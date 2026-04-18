@@ -19,19 +19,19 @@
   },
   "SS-SMMD": {
     "beta": null,
-    "real_ticker": "SVSPX",
-    "fund_name": "State Street S&P 1500 (Small/Mid)",
+    "real_ticker": "SMMD",
+    "fund_name": "State Street Russell Small/Mid Cap Index (proxy: SMMD - iShares Russell 2500 ETF)",
     "source": null,
     "date_added": null,
-    "notes": "Small/mid blend — beta likely 1.05-1.20. Yahoo ticker: SVSPX (not SSMSX)"
+    "notes": "Underlying is State Street Russell Small/Mid Cap (CIT, no public ticker). SMMD tracks Russell 2500 which matches the benchmark. Beta likely 1.05-1.20."
   },
   "TRP-LVAL": {
     "beta": null,
-    "real_ticker": "TRLVX",
-    "fund_name": "T. Rowe Price Large-Cap Value",
+    "real_ticker": "TILCX",
+    "fund_name": "T. Rowe Price Large-Cap Value I Class (TILCX)",
     "source": null,
     "date_added": null,
-    "notes": "Large value — beta likely 0.85-0.95"
+    "notes": "Large value. Direct ticker TILCX available. Previous mapping to TRLVX was WRONG (TRLVX is SEI Core Fixed Income, a bond fund)."
   },
   "JPM-LGCG": {
     "beta": null,
@@ -75,11 +75,11 @@
   },
   "AB-DISC-Z": {
     "beta": null,
-    "real_ticker": "VOE",
-    "fund_name": "AB Discovery Value Z (proxy: Vanguard Mid-Cap Value ETF)",
+    "real_ticker": "ABSZX",
+    "fund_name": "AB Discovery Value Z (ABSZX)",
     "source": null,
     "date_added": null,
-    "notes": "Mid-cap value — beta likely 0.90-1.10. ADIZX not on Yahoo; using VOE as mid-cap value proxy"
+    "notes": "Small/mid value. Direct ticker ABSZX available. Beta likely 0.90-1.10."
   },
   "FCNTX": {
     "beta": null,
