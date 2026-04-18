@@ -424,20 +424,6 @@ Be specific: exact dollar amounts, tax estimates, investment tickers.
 Format as numbered advisory points.""",
     model=SONNET, max_tokens=1400)
 
-
-    ctx = _portfolio_context(portfolio, analysis, rebalancing)
-    return _ai(_AI_RULES + f"""{ctx}
-
-You are a senior wealth manager writing a morning brief for a high-net-worth client.
-Write 4-5 sentences covering:
-1. Portfolio health snapshot
-2. The single biggest risk right now
-3. The single best opportunity right now
-4. One specific action to take this week
-
-Be direct. Use specific numbers. No bullet points — flowing prose like a real wealth manager's note.""",
-    model=HAIKU, max_tokens=300)
-
 # ── Section 2: Deep Stock-Level Analysis ─────────────────────────────────────
 
 def _deep_holdings_analysis(portfolio: Dict, analysis: Dict, rebalancing: Dict) -> str:
