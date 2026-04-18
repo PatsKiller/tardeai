@@ -248,7 +248,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         _ecache_path = state_dir / "ticker_enrichment_cache.json"
         if _ecache_path.exists():
             _existing = set(json.loads(_ecache_path.read_text()).keys())
-        _supplement = []
+        # Always include SPY for benchmark comparison
+        _supplement = ["SPY"] if "SPY" not in _existing else []
         for _h in portfolio.get("holdings", []):
             _sym = (_h.get("symbol") or "").upper()
             if not _sym or _sym in _SKIP or _sym in _existing:
