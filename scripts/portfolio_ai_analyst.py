@@ -21,11 +21,26 @@ def _get_api_key():
     return key
 
 HAIKU  = os.getenv("CLAUDE_CHEAP_MODEL",    "claude-haiku-4-5-20251001")
-SONNET = os.getenv("CLAUDE_ESCALATION_MODEL","claude-sonnet-4-6")
+SONNET = os.getenv("CLAUDE_ESCALATION_MODEL","claude-sonnet-4-20250514")
 OLLAMA_MODEL = "qwen3:1.7b"  # 1.7b for weekly AI sections (fast, no think tokens)
 _USE_OLLAMA = False  # set True when run_type=="weekly"
 
 _AI_RULES = """/no_think
+STRICT AI ANALYST PAGE REBUILD RULES — APPLY TO EVERY SECTION EVERY RUN:
+
+1. TOP OF PAGE: Actionable Checklist (4–6 bullets) with ✅/❌ status + one-click buttons.
+2. Professional card layout only — no walls of text. Max 3–5 bullets per card + "Why it matters" + "Action".
+3. Graphics required where useful:
+   - Sector Exposure → Tailwind CSS pie chart (colored segments)
+   - P&L Performance → simple horizontal bar chart (contributors green, detractors red)
+   - Risk Assessment → gauge-style beta + protected/unprotected split
+   - All Holdings → clean sortable table with color-coded gain %
+4. Fidelity 401k handling: If fidelity_401k data is missing or $0, explicitly state: "Fidelity 401k data unavailable — refresh NetBenefits export" in Account Structure and Executive Summary.
+5. Rating logic: Explain BEARISH rating even when returns are positive (concentration risk, worthless positions, stop-loss gaps, rule-based signals).
+6. No repetition of Personal Financial Situation. No $0 placeholders.
+7. Dark professional theme, neon accents, consistent card borders, scannable hierarchy.
+8. End every output with: "For informational purposes only. Not investment advice."
+
 STRICT RULES — READ FIRST:
 1. Pull EVERY number from the portfolio data passed. NEVER default to $0.
 2. If a number is missing, say "Data unavailable" — never substitute zero.
