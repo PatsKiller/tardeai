@@ -197,22 +197,49 @@ def _build_performance_section(data: Dict) -> Dict:
     total_val = totals.get("total_value", 0) or 0
     cash_pct = (cash_total / total_val * 100) if total_val else 0
 
-    # Top movers from snapshots
+    # Top movers: enrichment cache perf_week_pct (primary), snapshot delta (fallback)
+    enrichment = data.get("enrichment", {})
+    all_holdings = holdings.get("holdings", [])
+    top_movers = []
+    seen = set()
+    for h in all_holdings:
+        sym = h.get("symbol", "")
+        if not sym or sym in CASH_SYMS or sym in seen:
+            continue
+        seen.add(sym)
+        mv = h.get("market_value", 0) or 0
+        if mv < 1:
+            continue
+        e = enrichment.get(sym, {})
+        pw = e.get("perf_week_pct")
+        if pw is not None:
+            top_movers.append({"symbol": sym, "change_pct": round(pw, 2), "value": mv})
+    # Fallback: snapshot-based deltas for tickers not in enrichment
     snaps = data.get("snapshots", {})
     snap_dates = sorted(snaps.keys())
-    top_movers = []
     if len(snap_dates) >= 2:
         prev_snap = snaps.get(snap_dates[-2], {})
         curr_snap = snaps.get(snap_dates[-1], {})
         prev_h = {h.get("symbol"): h.get("market_value", 0) for h in prev_snap.get("holdings", {}).values() if isinstance(h, dict)}
         curr_h = {h.get("symbol"): h.get("market_value", 0) for h in curr_snap.get("holdings", {}).values() if isinstance(h, dict)}
         for sym in set(prev_h) & set(curr_h):
+            if sym in seen:
+                continue
             prev_v = prev_h[sym] or 0
             curr_v = curr_h[sym] or 0
             if prev_v > 0:
                 chg = (curr_v - prev_v) / prev_v * 100
                 top_movers.append({"symbol": sym, "change_pct": round(chg, 2), "value": curr_v})
-        top_movers.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
+    top_movers.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
+
+    # SPY benchmark (from enrichment cache)
+    spy_data = enrichment.get("SPY", {})
+    spy_benchmark = {
+        "perf_week_pct": spy_data.get("perf_week_pct"),
+        "perf_month_pct": spy_data.get("perf_month_pct"),
+        "perf_ytd_pct": spy_data.get("perf_ytd_pct"),
+        "perf_year_pct": spy_data.get("perf_year_pct"),
+    }
 
     return {
         "total_value": total_val,
@@ -221,6 +248,7 @@ def _build_performance_section(data: Dict) -> Dict:
         "cash_total": cash_total,
         "cash_pct": round(cash_pct, 1),
         "top_movers": top_movers[:10],
+        "spy_benchmark": spy_benchmark,
     }
 
 
@@ -765,6 +793,20 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
           <td>${t.get('value', 0):,.0f}</td>
         </tr>"""
 
+    # SPY benchmark pre-computed for f-string
+    _spy = perf_data.get("spy_benchmark", {})
+    _spy_w = f"{_spy['perf_week_pct']:+.2f}%" if _spy.get("perf_week_pct") is not None else "n/a"
+    _spy_m = f"{_spy['perf_month_pct']:+.2f}%" if _spy.get("perf_month_pct") is not None else "n/a"
+    _spy_ytd = f"{_spy['perf_ytd_pct']:+.2f}%" if _spy.get("perf_ytd_pct") is not None else "n/a"
+    _spy_y = f"{_spy['perf_year_pct']:+.2f}%" if _spy.get("perf_year_pct") is not None else "n/a"
+    _p1m = perf_data.get("periods", {}).get("1M", {})
+    _p1m_chg = _p1m.get("change_pct", 0) or 0
+    _p1m_color = "#00e676" if _p1m_chg >= 0 else "#ff5252"
+    _ytd_chg = pytd.get("change_pct", 0) or 0
+    _ytd_color = "#00e676" if _ytd_chg >= 0 else "#ff5252"
+    _p1y_chg = p1y.get("change_pct", 0) or 0
+    _p1y_color = "#00e676" if _p1y_chg >= 0 else "#ff5252"
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -834,6 +876,27 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
   <table>
     <tr><th>Account</th><th>Value</th><th>1W Change</th><th>$ Change</th></tr>
     {acct_rows}
+  </table>
+</div>
+
+<h2>vs SPY Benchmark</h2>
+<div class="section">
+  <table>
+    <tr><th></th><th>1 Week</th><th>1 Month</th><th>YTD</th><th>1 Year</th></tr>
+    <tr>
+      <td><b>Your Portfolio</b></td>
+      <td style="color:{w_color}">{w_chg:+.2f}%</td>
+      <td style="color:{_p1m_color}">{_p1m_chg:+.2f}%</td>
+      <td style="color:{_ytd_color}">{_ytd_chg:+.2f}%</td>
+      <td style="color:{_p1y_color}">{_p1y_chg:+.2f}%</td>
+    </tr>
+    <tr style="color:var(--text3)">
+      <td><b>SPY (S&amp;P 500)</b></td>
+      <td>{_spy_w}</td>
+      <td>{_spy_m}</td>
+      <td>{_spy_ytd}</td>
+      <td>{_spy_y}</td>
+    </tr>
   </table>
 </div>
 
