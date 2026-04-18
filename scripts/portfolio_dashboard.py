@@ -1626,6 +1626,19 @@ def _build_ai_analysis(ai_analysis: Optional[Dict]) -> str:
                              f"border-radius:6px;border-left:4px solid #2979FF'>"
                              f"{_inline(line[2:])}</div>")
 
+                # ── checklist items (✅/❌/⚠️ prefix) ────────────────────
+                elif any(line.startswith(p) for p in ("✅", "❌", "⚠️", "- ✅", "- ❌", "- ⚠️")):
+                    txt = line.lstrip("-•* ").strip()
+                    icon = txt[0] if txt and txt[0] in "✅❌⚠" else "▸"
+                    rest = txt.lstrip("✅❌⚠️ ").strip()
+                    border_col = "#0F9D58" if "✅" in txt[:3] else "#DB4437" if "❌" in txt[:3] else "#F4B400"
+                    body += (f"<div style='display:flex;align-items:flex-start;"
+                             f"padding:6px 10px;margin:3px 0;background:#0d0d1a;"
+                             f"border-left:3px solid {border_col};border-radius:0 4px 4px 0'>"
+                             f"<span style='margin-right:8px;flex-shrink:0;font-size:13px'>{icon}</span>"
+                             f"<span style='color:#e0e0f0;font-size:12px;"
+                             f"line-height:1.55'>{_inline(rest)}</span></div>")
+
                 # ── bullet points ─────────────────────────────────────────
                 elif line and line[0] in "•-*→▸":
                     txt = line.lstrip("•-*→▸ ")
@@ -1641,7 +1654,23 @@ def _build_ai_analysis(ai_analysis: Optional[Dict]) -> str:
                 elif len(line) >= 3 and set(line) <= {"-", "=", "_"}:
                     body += "<hr style='border:none;border-top:1px solid #2a2a5e;margin:10px 0'>"
 
-                # ── ALL-CAPS label (e.g. "RECOMMENDATION: **TRIM**") ──────
+                # ── RECOMMENDATION / ACTION highlight card ─────────────
+                elif any(line.upper().startswith(p) for p in
+                         ("RECOMMENDATION:", "ACTION:", "KEY RISK:", "WHY IT MATTERS:",
+                          "OPTIMAL:", "IMMEDIATE ACTION:", "PRIORITY:")):
+                    label_end = line.index(":")
+                    label = line[:label_end].strip()
+                    rest = line[label_end+1:].strip()
+                    label_col = "#DB4437" if "RISK" in label.upper() else "#0F9D58" if any(w in label.upper() for w in ("RECOMMEND","ACTION","OPTIMAL")) else "#F4B400"
+                    body += (f"<div style='background:#0d0d1a;border:1px solid {label_col}30;"
+                             f"border-left:3px solid {label_col};border-radius:0 6px 6px 0;"
+                             f"padding:8px 12px;margin:8px 0'>"
+                             f"<span style='color:{label_col};font-size:10px;font-weight:800;"
+                             f"text-transform:uppercase;letter-spacing:.5px'>{_inline(label)}</span>"
+                             f"<div style='color:#e0e0f0;font-size:12px;margin-top:3px;"
+                             f"line-height:1.5'>{_inline(rest)}</div></div>")
+
+                # ── ALL-CAPS label (e.g. "EXECUTIVE RECOMMENDATION") ──────
                 elif (line == line.upper() and len(line) > 4
                       and any(c.isalpha() for c in line)
                       and not line.startswith("|")):
@@ -1650,13 +1679,15 @@ def _build_ai_analysis(ai_analysis: Optional[Dict]) -> str:
 
                 # ── numbered item "1. " or "1) " ──────────────────────────
                 elif line[:3].rstrip(". )").isdigit():
-                    body += (f"<div style='color:#F4B400;font-size:12px;font-weight:700;"
-                             f"margin:8px 0 4px'>{_inline(line)}</div>")
+                    body += (f"<div style='background:#111122;border-left:2px solid #2979FF;"
+                             f"padding:6px 10px;margin:6px 0;border-radius:0 4px 4px 0'>"
+                             f"<span style='color:#7BB3FF;font-size:12px;font-weight:700'>"
+                             f"{_inline(line)}</span></div>")
 
-                # ── normal paragraph ──────────────────────────────────────
+                # ── normal paragraph (compact) ────────────────────────────
                 else:
-                    body += (f"<p style='color:#c8c8e8;font-size:12px;"
-                             f"margin:4px 0;line-height:1.65'>{_inline(line)}</p>")
+                    body += (f"<p style='color:#b8b8d0;font-size:12px;"
+                             f"margin:4px 0;line-height:1.6'>{_inline(line)}</p>")
 
             if in_table:
                 body += flush_table()
@@ -1664,13 +1695,28 @@ def _build_ai_analysis(ai_analysis: Optional[Dict]) -> str:
 
         body      = _render_md(text)
         generated = ai_analysis.get("generated_at", "")[:10]
+        lines_count = len([l for l in text.split("\n") if l.strip()])
+        is_long = lines_count > 15
+        card_id = f"ai-{key}"
+        collapse_btn = ""
+        collapse_style = ""
+        if is_long:
+            collapse_btn = (f"<button onclick=\"var c=document.getElementById('{card_id}-body');"
+                            f"var b=this;if(c.style.maxHeight==='200px'){{c.style.maxHeight='none';"
+                            f"b.textContent='▲ Collapse'}}else{{c.style.maxHeight='200px';"
+                            f"b.textContent='▼ Show all {lines_count} items'}}\""
+                            f" style='background:none;border:1px solid #2a2a5e;color:#7BB3FF;"
+                            f"font-size:10px;padding:3px 10px;border-radius:4px;cursor:pointer;"
+                            f"margin-top:8px'>▼ Show all {lines_count} items</button>")
+            collapse_style = "max-height:200px;overflow:hidden;"
         return f"""
         <div class='account-card' style='border-left:4px solid #2979FF;margin-bottom:16px'>
           <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'>
             <h3 style='color:#7BB3FF;font-size:13px;font-weight:800'>{icon} {_e(title)}</h3>
             <span style='font-size:10px;color:#9A9AB0'>Sonnet 4.6 · {generated}</span>
           </div>
-          <div style='border-top:1px solid #2a2a5e;padding-top:10px'>{body}</div>
+          <div id='{card_id}-body' style='border-top:1px solid #2a2a5e;padding-top:10px;{collapse_style}'>{body}</div>
+          {collapse_btn}
         </div>"""
 
     run_type = ai_analysis.get("run_type","daily")
