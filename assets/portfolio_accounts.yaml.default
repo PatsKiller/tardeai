@@ -1,0 +1,140 @@
+version: "1.0"
+as_of: "2026-04-02"
+owner: "John W Whiting"
+currency: USD
+tax_method: FIFO
+
+# ── Account Definitions ───────────────────────────────────────────────────────
+accounts:
+
+  fidelity_401k:
+    display_name: "Fidelity 401k (Omnicom)"
+    broker: fidelity
+    type: 401k
+    account_id: "Omnicom-Retirement"
+    taxable: false
+    input_file: "fidelity_netbenefits.pdf"
+    loan_balance: 21735.38
+    notes: "Omnicom Group Retirement Savings Plan. Terminated 02/28/2026."
+    target_allocation:
+      us_large_blend: 40
+      us_large_growth: 15
+      us_large_value: 15
+      us_small: 15
+      international: 15
+      bonds: 0
+
+  schwab_rollover_ira:
+    display_name: "Schwab Rollover IRA"
+    broker: schwab
+    type: rollover_ira
+    account_id: "...258"
+    taxable: false
+    positions_file: "Rollover_IRA-Positions-2026-04-02-142424.csv"
+    transactions_file: null
+    notes: "WARNING: V (Visa) = ~50% of account. High concentration risk."
+    target_allocation:
+      us_equity: 60
+      international_equity: 10
+      bonds: 25
+      dividend_income: 5
+
+  schwab_roth:
+    display_name: "Schwab Roth IRA"
+    broker: schwab
+    type: roth_ira
+    account_id: "...415"
+    taxable: false
+    positions_file: "Roth_Contributory_IRA-Positions-2026-04-02-142439.csv"
+    transactions_file: "Roth_Contributory_IRA_XXX415_Transactions_20260402-142508.csv"
+    notes: "Roth Contributory IRA. Small account, growth-focused."
+    target_allocation:
+      us_large_growth: 70
+      us_large_blend: 20
+      cash: 10
+
+  schwab_taxable:
+    display_name: "Schwab Individual (Taxable)"
+    broker: schwab
+    type: taxable
+    account_id: "...469"
+    taxable: true
+    positions_file: "Individual-Positions-2026-04-02-142408.csv"
+    transactions_file: "Individual_XXX469_Transactions_20260402-142523.csv"
+    notes: "AI WWIII defense portfolio + income ETFs + BDCs."
+    target_allocation:
+      defense: 30
+      income_etf: 30
+      bdc_income: 20
+      growth_etf: 10
+      cash: 10
+
+# ── Portfolio-wide Targets ────────────────────────────────────────────────────
+portfolio_targets:
+  max_single_stock_pct: 15.0      # Flag if any stock > 15% of total portfolio
+  max_single_sector_pct: 30.0     # Flag if any sector > 30%
+  min_cash_pct: 2.0               # Minimum cash across all accounts
+  concentration_warning_pct: 10.0  # Single stock warning threshold
+
+# ── ETF Look-Through Sector Mapping ──────────────────────────────────────────
+# Approximate sector breakdown for ETF transparency analysis
+etf_sectors:
+  SCHG:
+    name: "Schwab US Large-Cap Growth ETF"
+    top_sectors: {Technology: 55, "Consumer Discretionary": 15, "Communication Services": 12, Healthcare: 8, Industrials: 5}
+    top_holdings: ["AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "AVGO", "COST"]
+  SCHD:
+    name: "Schwab US Dividend Equity ETF"
+    top_sectors: {Financials: 17, Healthcare: 14, Industrials: 13, Technology: 12, "Consumer Staples": 11, Energy: 9}
+    top_holdings: ["AVGO", "HD", "CVX", "KO", "MCD", "PEP", "VZ", "CSCO", "LMT"]
+  ARKG:
+    name: "ARK Genomic Revolution ETF"
+    top_sectors: {Healthcare: 92, Technology: 6, Industrials: 2}
+    top_holdings: ["CRSP", "BEAM", "VCYT", "PACB", "FATE", "TWST", "RXRX"]
+  ARKQ:
+    name: "ARK Autonomous Tech & Robotics ETF"
+    top_sectors: {"Consumer Discretionary": 35, Technology: 30, Industrials: 20, Healthcare: 10}
+    top_holdings: ["TSLA", "TER", "JOBY", "DKNG", "TSM", "UIPATH"]
+  DIV:
+    name: "Global X SuperDividend US ETF"
+    top_sectors: {Energy: 22, Utilities: 18, Financials: 15, "Real Estate": 12, Industrials: 10}
+    top_holdings: ["T", "F", "OMP", "SBR", "MPLX", "EPD"]
+  BND:
+    name: "Vanguard Total Bond Market ETF"
+    top_sectors: {Government: 45, "Corporate Investment Grade": 28, "Mortgage-Backed": 20, Other: 7}
+    top_holdings: ["US Treasury", "FNMA", "GNMA", "FHLMC"]
+  XLB:
+    name: "Materials Select Sector SPDR ETF"
+    top_sectors: {Materials: 100}
+    top_holdings: ["LIN", "ECL", "APD", "SHW", "FCX", "NEM", "PPG"]
+  XLI:
+    name: "Industrial Select Sector SPDR ETF"
+    top_sectors: {Industrials: 100}
+    top_holdings: ["CAT", "GE", "RTX", "HON", "UPS", "DE", "LMT", "NOC"]
+  AMANX:
+    name: "Amana Income Investor"
+    top_sectors: {Technology: 28, Healthcare: 18, Industrials: 15, Financials: 12, "Consumer Staples": 10}
+    top_holdings: ["MSFT", "QCOM", "JCI", "TXN", "AMGN"]
+  FCNTX:
+    name: "Fidelity Contrafund"
+    top_sectors: {Technology: 40, "Communication Services": 15, "Consumer Discretionary": 12, Healthcare: 10, Financials: 8}
+    top_holdings: ["AAPL", "MSFT", "AMZN", "NVDA", "META", "GOOGL", "UNH", "AVGO"]
+
+# ── Known Worthless/Revoked Securities ───────────────────────────────────────
+revoked_securities:
+  - symbol: CDEX
+    reason: "SEC revoked 05/18/2018"
+    account: schwab_taxable
+  - symbol: LPIH
+    reason: "SEC revoked 05/11/2018"
+    account: schwab_rollover_ira
+    cost_basis: 4762.95
+  - symbol: "628518102"
+    name: "MYGO Games Hldg"
+    reason: "SEC revoked 04/16/2021"
+    account: schwab_rollover_ira
+  - symbol: SRNE
+    reason: "Sorrento Therapeutics - effectively worthless ($0.0035/share)"
+    account: schwab_rollover_ira
+    cost_basis: 13177.95
+    notes: "Tax loss harvest candidate - -99.97% loss"

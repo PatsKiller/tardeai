@@ -1,0 +1,99 @@
+# ============================================================================
+# Trade AI v12 .gitignore
+# Philosophy: Git tracks CODE and SCHEMA only. Personal financial state stays
+# out of version control entirely. Generated outputs stay out (regenerable
+# from code + state).
+# ============================================================================
+
+# ── Python ──────────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# ── Node ────────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# ── Claude Code ─────────────────────────────────────────────────────────────
+.claude/
+
+# ── Secrets — NEVER COMMIT ──────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+token.json
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Backups & archives (out-of-band backup strategy, not git) ──────────────
+backups/
+file_backups/
+archive/
+*.tar.gz
+*.zip
+*.bak
+*_backup_*
+
+# ── Audit/screenshot workspace (tmp analysis folders) ──────────────────────
+cc_audit/
+sandbox/
+
+# ── All portfolio/personal data — PII, holdings, AI outputs, CSVs ──────────
+# Option A: state stays out of git
+data/
+
+# ── Generated reports (regenerable from code + state) ──────────────────────
+reports/monthly/
+reports/weekly/
+reports/daily/
+reports/audit/
+!reports/command_center.html
+!reports/*.js
+!reports/*.css
+
+# ── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Temporary ───────────────────────────────────────────────────────────────
+tmp/
+temp/
+*.tmp
+
+# ── Yesterday's experimental files at repo root (review before keeping) ─────
+# These were created during Phase 2/3 iteration. Uncomment to exclude, or
+# leave to track. If unsure, ignore for now and decide later.
+# patch_ai_tab_v2.py
+# phase1b_fix.py
+# phase2_weekly.py
+# phase2b_analyst.py
+
+# ── Other scripts/binaries that need review ────────────────────────────────
+# cleanup_ms01.sh    # keep if you want to version your cleanup scripts
+

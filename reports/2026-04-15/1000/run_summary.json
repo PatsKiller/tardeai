@@ -1,0 +1,32 @@
+{
+  "version": "12.0",
+  "date": "2026-04-15",
+  "run_label": "1000",
+  "generated_at": "2026-04-15T10:05:25",
+  "ticker_count": 14,
+  "go_count": 0,
+  "wait_count": 0,
+  "aplus_count": 0,
+  "trade_plans_count": 0,
+  "new_tickers": [
+    "NCI"
+  ],
+  "faded_tickers": [],
+  "delta_events": 6,
+  "top_ticker": "BIRD",
+  "top_score": 27,
+  "breadth": "Neutral",
+  "vix": 0,
+  "options_sweeps": 0,
+  "high_squeeze": 0,
+  "halted": 0,
+  "resumed": 0,
+  "social_tickers_scanned": 0,
+  "social_bullish_count": 0,
+  "social_wsb_spikes": [],
+  "html_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-15/1000/dashboard_2026-04-15_1000.html",
+  "pdf_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-15/1000/trade_ai_2026-04-15_1000.pdf",
+  "docx_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-15/1000/trade_ai_2026-04-15_1000.docx",
+  "tos_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-15/1000/trade_ai_1000.tst",
+  "llm_enabled": true
+}

@@ -1,0 +1,5 @@
+interface:
+  display_name: Trade AI Reports v10
+  short_description: Local Trade AI pipeline for Finviz screeners, source-list tracking, weekly hygiene, and day scalp flags.
+  icon: ../assets/icon.svg
+  color: "#1f2937"

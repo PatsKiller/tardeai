@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Command Center v2 Concept</title>
+<style>
+:root{
+  --bg:#071018; --bg2:#0c1521; --bg3:#101b28; --panel:#0f1824; --panel2:#121f2f;
+  --line:#203040; --line2:#2a3d52; --text:#e4edf6; --muted:#8ea2b8; --soft:#698096;
+  --blue:#4e8cff; --cyan:#4fd1c5; --green:#27d17f; --amber:#ffbe55; --red:#ff6b6b; --violet:#a48cff;
+  --shadow:0 12px 40px rgba(0,0,0,.28); --r:14px; --r2:18px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:radial-gradient(circle at top,#102033 0%,#071018 40%,#050b12 100%);color:var(--text);font:13px/1.45 Inter,Segoe UI,Arial,sans-serif}
+button,input{font:inherit}
+a{color:inherit}
+.wrap{max-width:1700px;margin:0 auto;padding:18px 18px 28px}
+.masthead{display:grid;grid-template-columns:1.6fr 1fr auto;gap:14px;align-items:stretch;margin-bottom:16px}
+.brand,.hero-card,.panel,.workspace{background:linear-gradient(180deg,rgba(18,31,47,.92),rgba(12,21,33,.96));border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--shadow)}
+.brand{padding:18px 20px;display:flex;flex-direction:column;justify-content:space-between;min-height:120px;position:relative;overflow:hidden}
+.brand:before{content:"";position:absolute;inset:auto -40px -40px auto;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(78,140,255,.22),transparent 65%)}
+.kicker{color:var(--cyan);text-transform:uppercase;letter-spacing:.18em;font-size:10px;font-weight:700}
+.h1{font-size:28px;font-weight:800;letter-spacing:-.03em;margin-top:8px}
+.sub{color:var(--muted);max-width:760px;margin-top:8px}
+.mast-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;color:var(--muted)}
+.mast-meta b{display:block;color:var(--text);font-size:16px;margin-bottom:2px}
+.hero-card{padding:16px 18px;display:flex;flex-direction:column;justify-content:space-between}
+.hero-title{color:var(--soft);text-transform:uppercase;letter-spacing:.16em;font-size:10px;font-weight:700}
+.hero-value{font-size:30px;font-weight:800;letter-spacing:-.04em;margin-top:6px}
+.hero-sub{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:10px;align-items:flex-start;justify-content:flex-end;flex-wrap:wrap}
+.btn{padding:10px 14px;border-radius:12px;border:1px solid var(--line2);background:rgba(255,255,255,.02);color:var(--text);cursor:pointer;transition:.18s}
+.btn:hover{border-color:var(--blue);transform:translateY(-1px)}
+.btn.primary{background:linear-gradient(180deg,#4e8cff,#376bce);border-color:#4e8cff}
+.btn.good{background:rgba(39,209,127,.08);color:var(--green);border-color:rgba(39,209,127,.35)}
+.hero-grid{display:grid;grid-template-columns:1.25fr 1fr .95fr .95fr;gap:14px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:340px minmax(560px,1fr) 360px;gap:16px;align-items:start}
+.panel{padding:14px}
+.panel h3{margin:0 0 12px;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.section-title .label{font-size:12px;font-weight:700;color:var(--text)}
+.stack{display:grid;gap:12px}
+.metric-row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.metric-row:last-child{border-bottom:none}
+.metric-row .k{color:var(--muted)}
+.metric-row .v{font-weight:700}
+.up{color:var(--green)} .dn{color:var(--red)} .warn{color:var(--amber)} .info{color:var(--blue)}
+.account-pills,.ticker-pills,.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.pill{border:1px solid var(--line2);border-radius:999px;padding:8px 10px;background:rgba(255,255,255,.02);cursor:pointer;color:var(--muted)}
+.pill.active{background:rgba(78,140,255,.12);color:#fff;border-color:var(--blue)}
+.card{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:12px}
+.card .label{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--soft);margin-bottom:6px}
+.card .value{font-size:22px;font-weight:800;letter-spacing:-.03em}
+.mini-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.bar{height:8px;background:#162534;border-radius:999px;overflow:hidden}
+.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:999px}
+.table-wrap{border:1px solid rgba(255,255,255,.06);border-radius:14px;overflow:hidden;background:rgba(255,255,255,.02)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.05);text-align:left;vertical-align:top}
+th{font-size:10px;text-transform:uppercase;letter-spacing:.14em;color:var(--soft);background:rgba(255,255,255,.03);cursor:pointer}
+tr:hover td{background:rgba(255,255,255,.02)}
+.badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.08em}
+.badge.go{background:rgba(39,209,127,.15);color:var(--green)} .badge.wait{background:rgba(255,190,85,.15);color:var(--amber)} .badge.avoid{background:rgba(255,107,107,.14);color:var(--red)}
+.heatmap{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.heat{padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02)}
+.heat .name{font-weight:700}.heat .pct{color:var(--muted);font-size:12px;margin-top:4px}
+.alert{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.alert:last-child{border-bottom:none}.alert i{font-style:normal;width:24px;text-align:center}.alert .t{font-weight:700}.alert .s{font-size:12px;color:var(--muted);margin-top:2px}
+.raw-fragment{font-size:12px;color:var(--text)}
+.raw-fragment table{font-size:11px}.raw-fragment th,.raw-fragment td{padding:6px 8px}.raw-fragment .copybtn,.raw-fragment button{display:none !important}
+.workspace{margin-top:16px;padding:14px}
+.tabs{margin-bottom:12px}.tab{padding:9px 12px;border-radius:12px;border:1px solid var(--line2);background:rgba(255,255,255,.02);cursor:pointer;color:var(--muted)}
+.tab.active{background:rgba(78,140,255,.14);color:#fff;border-color:var(--blue)}
+.ws-panel{display:none}.ws-panel.active{display:block}
+.note{font-size:12px;color:var(--muted)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.footer-note{margin-top:14px;color:var(--muted);font-size:12px}
+@media (max-width:1400px){.hero-grid{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.masthead{grid-template-columns:1fr}.actions{justify-content:flex-start}}
+@media (max-width:760px){.wrap{padding:12px}.hero-grid,.split,.mini-grid,.heatmap{grid-template-columns:1fr}.h1{font-size:24px}.hero-value{font-size:24px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <div class="brand">
+      <div>
+        <div class="kicker">Command Center v2 concept</div>
+        <div class="h1">Institutional Operating Surface</div>
+        <div class="sub">A cleaner command layer that stages Trade AI, Portfolio Intelligence, risk, and action queues the way a PM, risk desk, and CIO would actually scan the day.</div>
+      </div>
+      <div class="mast-meta">
+        <div><span class="kicker">Portfolio</span><b id="mh-total">—</b></div>
+        <div><span class="kicker">Today</span><b id="mh-day">—</b></div>
+        <div><span class="kicker">Scanner</span><b id="mh-scan">—</b></div>
+        <div><span class="kicker">Risk Heat</span><b id="mh-risk">—</b></div>
+      </div>
+    </div>
+    <div class="hero-card">
+      <div>
+        <div class="hero-title">Portfolio NAV</div>
+        <div class="hero-value" id="hero-nav">—</div>
+        <div class="hero-sub" id="hero-nav-sub">Waiting for state files</div>
+      </div>
+      <div class="hero-sub" id="hero-gain">—</div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" onclick="refreshAll()">Refresh</button>
+      <button class="btn good" onclick="window.open('/reports/dashboard_live.html','_blank')">Trade AI ↗</button>
+      <button class="btn" onclick="window.open('/reports/portfolio_live.html','_blank')">Portfolio ↗</button>
+      <button class="btn" onclick="window.open('/reports/command_center.html','_blank')">Current CC ↗</button>
+    </div>
+  </div>
+
+  <div class="hero-grid">
+    <div class="hero-card">
+      <div class="hero-title">Scanner State</div>
+      <div class="hero-value" id="hero-scan">—</div>
+      <div class="hero-sub" id="hero-run">—</div>
+    </div>
+    <div class="hero-card">
+      <div class="hero-title">Market Regime</div>
+      <div class="hero-value" id="hero-regime">—</div>
+      <div class="hero-sub" id="hero-vix">—</div>
+    </div>
+    <div class="hero-card">
+      <div class="hero-title">Dividend Engine</div>
+      <div class="hero-value" id="hero-div">—</div>
+      <div class="hero-sub" id="hero-div-sub">—</div>
+    </div>
+    <div class="hero-card">
+      <div class="hero-title">Golden Window</div>
+      <div class="hero-value" id="hero-golden">—</div>
+      <div class="hero-sub" id="hero-golden-sub">—</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stack">
+      <div class="panel">
+        <h3>Portfolio Command</h3>
+        <div class="account-pills" id="account-pills"></div>
+        <div class="mini-grid" id="portfolio-cards"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Period returns</div><div class="note">7 windows</div></div>
+        <div id="period-rows"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Sector exposure</div><div class="note">Top weights</div></div>
+        <div id="sector-bars"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Critical flags</div><div class="note">From portfolio live</div></div>
+        <div id="critical-flags"></div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="section-title"><div class="label">Market radar</div><div class="note" id="market-note">—</div></div>
+        <div class="split">
+          <div class="card">
+            <div class="label">Sector tape</div>
+            <div class="heatmap" id="heatmap"></div>
+          </div>
+          <div class="card">
+            <div class="label">Leadership</div>
+            <div class="metric-row"><span class="k">Leaders</span><span class="v" id="leaders">—</span></div>
+            <div class="metric-row"><span class="k">Laggards</span><span class="v" id="laggards">—</span></div>
+            <div class="metric-row"><span class="k">Catalysts</span><span class="v" id="catalyst-count">—</span></div>
+            <div class="metric-row"><span class="k">Delta events</span><span class="v" id="delta-count">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Setup board</div><div class="ticker-pills" id="ticker-pills"></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th onclick="sortTickers('symbol')">Ticker</th><th onclick="sortTickers('score')">Score</th><th onclick="sortTickers('decision')">Decision</th><th onclick="sortTickers('rvol')">RVOL</th><th onclick="sortTickers('price')">Price</th><th onclick="sortTickers('chg')">Chg%</th></tr></thead>
+            <tbody id="ticker-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="split">
+        <div class="panel">
+          <div class="section-title"><div class="label">Catalyst tape</div><div class="note">Top drivers</div></div>
+          <div id="catalysts"></div>
+        </div>
+        <div class="panel">
+          <div class="section-title"><div class="label">Live alerts</div><div class="note">Cross-system</div></div>
+          <div id="alerts"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <div class="section-title"><div class="label">Risk desk</div><div class="note">Current posture</div></div>
+        <div id="risk-summary"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Economic calendar</div><div class="note">From Trade AI</div></div>
+        <div class="raw-fragment" id="economic-cal">Unavailable</div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Options flow</div><div class="note">From Trade AI</div></div>
+        <div class="raw-fragment" id="options-flow">Unavailable</div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">Watchlist</div><div class="note">Sizing & intent</div></div>
+        <div id="watchlist"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><div class="label">System health</div><div class="note">API posture</div></div>
+        <div id="system-health"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="workspace">
+    <div class="tabs">
+      <button class="tab active" onclick="showPanel('holdings',this)">Holdings</button>
+      <button class="tab" onclick="showPanel('journal',this)">Journal</button>
+      <button class="tab" onclick="showPanel('technical',this)">Technical</button>
+      <button class="tab" onclick="showPanel('ai',this)">AI / Strategy</button>
+    </div>
+    <div class="ws-panel active" id="ws-holdings">
+      <div class="table-wrap"><table><thead><tr><th>Symbol</th><th>Name</th><th>Account</th><th>Value</th><th>Day</th><th>Total Gain</th><th>% Port</th></tr></thead><tbody id="holdings-body"></tbody></table></div>
+    </div>
+    <div class="ws-panel" id="ws-journal">
+      <div class="split">
+        <div class="card" id="journal-stats"></div>
+        <div class="card"><div class="label">Recent closed trades</div><div id="journal-trades"></div></div>
+      </div>
+    </div>
+    <div class="ws-panel" id="ws-technical">
+      <div class="table-wrap"><table><thead><tr><th>Symbol</th><th>RSI</th><th>SMA50 %</th><th>SMA200 %</th><th>ATR</th><th>Beta</th></tr></thead><tbody id="technical-body"></tbody></table></div>
+    </div>
+    <div class="ws-panel" id="ws-ai">
+      <div class="split">
+        <div class="card"><div class="label">Strategy snapshot</div><div id="ai-text">Monthly AI analysis is not parsed yet in this concept. Use this area for CIO memo, allocation thesis, and action queue.</div></div>
+        <div class="card"><div class="label">Redesign notes</div><div id="design-notes"></div></div>
+      </div>
+    </div>
+    <div class="footer-note">This concept keeps the existing state-file model and legacy HTML parsing, so it can be adopted as a frontend-only redesign without touching pipeline logic.</div>
+  </div>
+</div>
+<script>
+const DP={async get(resource){const map={holdings:'/data/portfolios/state/holdings.json',health:'/data/portfolios/state/trade_ai_health.json',technical:'/data/portfolios/state/technical_snapshot.json',risk:'/data/portfolios/state/risk_management.json',journal:'/data/portfolios/state/trade_journal.json',watchlist:'/data/portfolios/state/watchlist.json',retirement:'/data/portfolios/state/retirement_roadmap.json',attribution:'/data/portfolios/state/performance_attribution.json',dividends:'/data/portfolios/state/dividend_calendar.json',perf_history:'/data/portfolios/state/performance_history.json',tax:'/data/portfolios/state/tax_lots.json'};try{const r=await fetch(map[resource]||resource);if(!r.ok) throw new Error(r.status);return await r.json()}catch(e){console.warn('DP.get failed',resource,e);return null}}};
+const S={holdings:null,health:null,technical:null,risk:null,journal:null,watchlist:null,retirement:null,dividends:null,perf:null,trade:null,legacy:{},tickerFilter:'ALL',tickerSort:{col:'score',dir:-1},accountFilter:'ALL'};
+const $=id=>document.getElementById(id);
+const fmt$=(n,d=0)=>n==null?'—':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtPct=(n,d=2)=>n==null?'—':(n>=0?'+':'')+Number(n).toFixed(d)+'%';
+const esc=s=>String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+function clsNum(n){return n==null?'':n>=0?'up':'dn'}
+function showPanel(name,btn){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.ws-panel').forEach(p=>p.classList.remove('active'));$('ws-'+name).classList.add('active')}
+async function fetchText(path){try{const r=await fetch(path);if(!r.ok) throw new Error(r.status);return await r.text()}catch(e){console.warn('fetchText failed',path,e);return ''}}
+async function loadTradeAI(){
+ const html=await fetchText('/reports/dashboard_live.html'); if(!html) return null;
+ const title=(html.match(/<title>([^<]+)<\/title>/)||[])[1]||''; const parts=title.split('·').map(s=>s.trim());
+ let tickers=[], sectors=[], deltas=[];
+ const tickM=html.match(/var TICKERS=(\[[\s\S]*?\]);\s*\n/); if(tickM){try{tickers=JSON.parse(tickM[1]).map(t=>({symbol:t.symbol||t.sym||'',score:+t.score||0,decision:t.decision||'WAIT',rvol:+(t.rvol||0),price:+(t.price||0),chg:+(t.chg||0),catalyst:t.catalyst||'',social:t.social_sentiment||t.social||''}))}catch(e){}}
+ const secM=html.match(/var SECTORS=(\[[\s\S]*?\]);\s*\n/); if(secM){try{sectors=JSON.parse(secM[1])}catch(e){}}
+ const delM=html.match(/var DELTAS=(\[[\s\S]*?\]);\s*\n/); if(delM){try{deltas=JSON.parse(delM[1])}catch(e){}}
+ const doc=new DOMParser().parseFromString(html,'text/html');
+ S.legacy.economic=doc.getElementById('cal-body')?.innerHTML||'';
+ S.legacy.options=doc.getElementById('opt-body')?.innerHTML||'';
+ S.legacy.leaders=doc.getElementById('leaders-txt')?.textContent?.trim()||'—';
+ S.legacy.laggards=doc.getElementById('laggards-txt')?.textContent?.trim()||'—';
+ S.legacy.marketBanner=doc.querySelector('.session-banner')?.textContent?.trim()||'';
+ S.legacy.sentiment=doc.querySelector('.sentiment-bar')?.textContent?.trim()||'';
+ return {title,runLabel:parts[1]||'—',runDate:parts[2]||'—',tickers,sectors,deltas,goCount:tickers.filter(t=>t.decision==='GO').length,waitCount:tickers.filter(t=>t.decision==='WAIT').length,avoidCount:tickers.filter(t=>t.decision==='AVOID').length};
+}
+async function loadLegacyPortfolio(){
+ const html=await fetchText('/reports/portfolio_live.html'); if(!html) return;
+ const doc=new DOMParser().parseFromString(html,'text/html');
+ const flags=Array.from(doc.querySelectorAll('#sec-overview .flag-row')).slice(0,8).map(el=>({title:el.querySelector('.flag-msg')?.textContent?.trim()||'',sub:el.querySelector('.flag-action')?.textContent?.trim()||'',sev:el.querySelector('.badge')?.textContent?.trim()||''}));
+ S.legacy.flags=flags;
+}
+async function refreshAll(){
+ [S.holdings,S.health,S.technical,S.risk,S.journal,S.watchlist,S.retirement,S.dividends,S.perf,S.trade]=await Promise.all([DP.get('holdings'),DP.get('health'),DP.get('technical'),DP.get('risk'),DP.get('journal'),DP.get('watchlist'),DP.get('retirement'),DP.get('dividends'),DP.get('perf_history'),loadTradeAI()]);
+ await loadLegacyPortfolio();
+ render();
+}
+function render(){renderMast();renderPortfolio();renderTrade();renderSide();renderWorkspace();}
+function renderMast(){
+ const pt=S.holdings?.portfolio_totals||{}; const r=S.risk||{}; const d=S.dividends||{}; const ret=S.retirement||{}; const t=S.trade||{};
+ $('mh-total').textContent=fmt$(pt.total_value,0); $('mh-day').innerHTML='<span class="'+clsNum(pt.day_change)+'">'+fmt$(pt.day_change,0)+'</span>'; $('mh-scan').textContent=(t.tickers?.length||0)+' names'; $('mh-risk').textContent=(r.portfolio_heat_pct?.toFixed?.(1)||'—')+'%';
+ $('hero-nav').textContent=fmt$(pt.total_value,0); $('hero-nav-sub').innerHTML='Day move <span class="'+clsNum(pt.day_change)+'">'+fmt$(pt.day_change,0)+'</span>'; $('hero-gain').innerHTML='Total gain <span class="'+clsNum(pt.total_gain)+'">'+fmt$(pt.total_gain,0)+' · '+fmtPct(pt.total_gain_pct||0,2)+'</span>';
+ $('hero-scan').textContent=(t.goCount||0)+' GO / '+(t.waitCount||0)+' WAIT'; $('hero-run').textContent='Run '+(t.runLabel||'—')+' · '+(t.runDate||'—');
+ $('hero-regime').textContent=(S.health?.last_run?.market_sentiment||'Bullish').replace(/\b\w/g,c=>c.toUpperCase()); $('hero-vix').textContent=S.legacy.sentiment||'Market context from legacy Trade AI';
+ $('hero-div').textContent=fmt$(d.total_annual||0,0); $('hero-div-sub').textContent=(d.payers?.length||0)+' payers · income engine';
+ $('hero-golden').textContent=(ret.golden_window_days||ret.countdown_days||'—'); $('hero-golden-sub').textContent='days remaining in conversion window';
+}
+function accountValueFor(key){const a=S.holdings?.account_summaries||{}; if(key==='ALL') return S.holdings?.portfolio_totals||{}; return a[key]||{}}
+function renderPortfolio(){
+ const accounts=S.holdings?.account_summaries||{}; const pills=[['ALL','All Accounts'],['fidelity_401k','Fidelity'],['schwab_rollover_ira','Rollover'],['schwab_roth','Roth'],['schwab_taxable','Taxable']];
+ $('account-pills').innerHTML=pills.map(([k,l])=>`<button class="pill ${S.accountFilter===k?'active':''}" onclick="S.accountFilter='${k}';renderPortfolio();">${l}</button>`).join('');
+ const scope=accountValueFor(S.accountFilter); $('portfolio-cards').innerHTML=`<div class="card"><div class="label">Value</div><div class="value">${fmt$(scope.total_value,0)}</div></div><div class="card"><div class="label">Today</div><div class="value ${clsNum(scope.day_change)}">${fmt$(scope.day_change,0)}</div></div><div class="card"><div class="label">Total Gain</div><div class="value ${clsNum(scope.total_gain)}">${fmt$(scope.total_gain,0)}</div></div><div class="card"><div class="label">Gain %</div><div class="value ${clsNum(scope.total_gain_pct)}">${fmtPct(scope.total_gain_pct||0,2)}</div></div>`;
+ const periods=S.perf?.period_returns||{}; const order=['1D','1W','1M','3M','6M','YTD','1Y']; $('period-rows').innerHTML=order.map(k=>{const p=periods[k]; if(!p) return ''; const w=Math.min(Math.abs(p.return_pct||0)*2.8,100); return `<div class="metric-row"><span class="k">${k} <span class="note">${esc(p.start_date||'')}</span><div class="bar" style="margin-top:6px"><div class="fill" style="width:${w}%;background:${(p.return_pct||0)>=0?'linear-gradient(90deg,var(--green),var(--cyan))':'linear-gradient(90deg,var(--red),#ff9b8a)'}"></div></div></span><span class="v ${clsNum(p.return_pct)}">${fmtPct(p.return_pct||0,2)}</span></div>`}).join('');
+ const holdings=S.holdings?.holdings||[]; const sectors={}; holdings.forEach(h=>{const s=h.sector_type||h.sector||'other'; sectors[s]=(sectors[s]||0)+(h.portfolio_pct||0)}); const top=Object.entries(sectors).sort((a,b)=>b[1]-a[1]).slice(0,8);
+ $('sector-bars').innerHTML=top.map(([s,p])=>`<div class="metric-row"><span class="k">${esc(String(s).replace(/_/g,' '))}</span><span class="v">${p.toFixed(1)}%</span></div>`).join('');
+ $('critical-flags').innerHTML=(S.legacy.flags||[]).map(f=>`<div class="alert"><i>${f.sev.includes('HIGH')?'⚠️':f.sev.includes('WARNING')?'⚡':'ℹ️'}</i><div><div class="t">${esc(f.title)}</div><div class="s">${esc(f.sub)}</div></div></div>`).join('')||'<div class="note">No flags parsed</div>';
+}
+function renderTrade(){
+ const t=S.trade||{tickers:[],sectors:[],deltas:[]}; $('market-note').textContent=S.legacy.marketBanner||'Legacy trade dashboard'; $('leaders').textContent=S.legacy.leaders||'—'; $('laggards').textContent=S.legacy.laggards||'—'; $('catalyst-count').textContent=(t.tickers||[]).filter(x=>x.catalyst).length; $('delta-count').textContent=(t.deltas||[]).length;
+ const sectors=(t.sectors||[]).slice(0,8); $('heatmap').innerHTML=sectors.map(s=>{const pct=+(s.chg_pct||s.change_pct||s.chg||0); const bg=pct>=0?'rgba(39,209,127,.08)':'rgba(255,107,107,.08)'; const bd=pct>=0?'rgba(39,209,127,.25)':'rgba(255,107,107,.25)'; return `<div class="heat" style="background:${bg};border-color:${bd}"><div class="name">${esc(s.name||s.symbol||'Sector')}</div><div class="pct ${clsNum(pct)}">${fmtPct(pct,2)}</div></div>`}).join('')||'<div class="note">No sector data</div>';
+ const pills=['ALL','GO','WAIT','AVOID']; $('ticker-pills').innerHTML=pills.map(p=>`<button class="pill ${S.tickerFilter===p?'active':''}" onclick="S.tickerFilter='${p}';renderTrade();">${p}</button>`).join('');
+ let rows=[...(t.tickers||[])]; if(S.tickerFilter!=='ALL') rows=rows.filter(r=>String(r.decision).toUpperCase()===S.tickerFilter); const col=S.tickerSort.col, dir=S.tickerSort.dir; rows.sort((a,b)=>{const av=a[col], bv=b[col]; if(typeof av==='number'&&typeof bv==='number') return dir*(av-bv); return dir*String(av).localeCompare(String(bv))}).reverse();
+ $('ticker-body').innerHTML=rows.slice(0,18).map(r=>`<tr><td><b>${esc(r.symbol)}</b></td><td>${Number(r.score||0).toFixed(1)}</td><td><span class="badge ${String(r.decision||'wait').toLowerCase()}">${esc(r.decision||'WAIT')}</span></td><td>${Number(r.rvol||0).toFixed(1)}x</td><td>${fmt$(r.price,2)}</td><td class="${clsNum(r.chg)}">${fmtPct(r.chg||0,2)}</td></tr>`).join('')||'<tr><td colspan="6" class="note">No setups</td></tr>';
+ const topCats=rows.filter(r=>r.catalyst).slice(0,6); $('catalysts').innerHTML=topCats.map(r=>`<div class="alert"><i>📰</i><div><div class="t">${esc(r.symbol)} · ${esc(r.decision)}</div><div class="s">${esc(String(r.catalyst).slice(0,140))}</div></div></div>`).join('')||'<div class="note">No catalyst text parsed</div>';
+ const alerts=[]; if((t.goCount||0)>0) alerts.push({i:'🟢',t:`${t.goCount} GO tickers active`,s:rows.filter(r=>r.decision==='GO').map(r=>r.symbol).slice(0,8).join(', ')}); if((S.risk?.danger||[]).length) alerts.push({i:'🛑',t:`${S.risk.danger.length} danger positions`,s:'Portfolio risk engine shows active danger names'}); Object.entries(S.health?.api_health||{}).filter(([,v])=>v.status!=='ok').slice(0,3).forEach(([k,v])=>alerts.push({i:'📡',t:`${k.replace(/_/g,' ')} ${v.status}`,s:'Degraded external service'}));
+ $('alerts').innerHTML=alerts.map(a=>`<div class="alert"><i>${a.i}</i><div><div class="t">${esc(a.t)}</div><div class="s">${esc(a.s)}</div></div></div>`).join('')||'<div class="note">No active alerts</div>';
+}
+function sortTickers(col){S.tickerSort.col=col;S.tickerSort.dir*=-1;renderTrade()}
+function renderSide(){
+ const r=S.risk||{}; $('risk-summary').innerHTML=`<div class="metric-row"><span class="k">Portfolio heat</span><span class="v ${(+r.portfolio_heat_pct||0)>5?'dn':(+r.portfolio_heat_pct||0)>2?'warn':'up'}">${(r.portfolio_heat_pct??0).toFixed?.(1)||'0.0'}%</span></div><div class="metric-row"><span class="k">Stops tracked</span><span class="v">${(r.positions||[]).length}</span></div><div class="metric-row"><span class="k">Danger positions</span><span class="v dn">${(r.danger||[]).length}</span></div><div class="metric-row"><span class="k">Warnings</span><span class="v warn">${(r.warning||[]).length||0}</span></div>`;
+ $('economic-cal').innerHTML=S.legacy.economic||'<div class="note">Calendar not parsed from legacy dashboard.</div>'; $('options-flow').innerHTML=S.legacy.options||'<div class="note">Options flow not parsed from legacy dashboard.</div>';
+ const wl=Object.entries(S.watchlist||{}).slice(0,6); $('watchlist').innerHTML=wl.map(([sym,v])=>`<div class="alert"><i>👁️</i><div><div class="t">${esc(sym)} · ${esc(v.target_intent||'watch')}</div><div class="s">${esc(String(v.thesis||'').slice(0,110))}</div></div></div>`).join('')||'<div class="note">No watchlist loaded</div>';
+ $('system-health').innerHTML=Object.entries(S.health?.api_health||{}).map(([k,v])=>`<div class="metric-row"><span class="k">${esc(k.replace(/_/g,' '))}</span><span class="v ${v.status==='ok'?'up':v.status==='degraded'?'warn':'dn'}">${esc(v.status)}</span></div>`).join('')||'<div class="note">No health data</div>';
+}
+function renderWorkspace(){
+ const holdings=[...(S.holdings?.holdings||[])].sort((a,b)=>(b.market_value||0)-(a.market_value||0)); $('holdings-body').innerHTML=holdings.slice(0,40).map(h=>`<tr><td><b>${esc(h.symbol)}</b></td><td>${esc((h.name||'').slice(0,42))}</td><td>${esc(h.account||h.account_name||'')}</td><td>${fmt$(h.market_value,0)}</td><td class="${clsNum(h.day_change)}">${fmt$(h.day_change,0)}</td><td class="${clsNum(h.gain_loss||h.total_gain)}">${fmt$(h.gain_loss??h.total_gain,0)}</td><td>${Number(h.portfolio_pct||0).toFixed(1)}%</td></tr>`).join('');
+ const st=S.journal?.stats||{}; $('journal-stats').innerHTML=`<div class="label">Journal scorecard</div><div class="value ${clsNum(st.total_pnl)}">${fmt$(st.total_pnl,0)}</div><div class="metric-row"><span class="k">Trades</span><span class="v">${st.total_trades||0}</span></div><div class="metric-row"><span class="k">Win rate</span><span class="v">${st.win_rate||0}%</span></div><div class="metric-row"><span class="k">Profit factor</span><span class="v">${st.profit_factor||'—'}x</span></div><div class="metric-row"><span class="k">Expectancy</span><span class="v ${clsNum(st.trade_expectancy)}">${fmt$(st.trade_expectancy,0)}</span></div>`;
+ const trades=(S.journal?.trades||[]).slice(0,8); $('journal-trades').innerHTML=trades.map(t=>`<div class="alert"><i>${(t.pnl||0)>=0?'📈':'📉'}</i><div><div class="t">${esc(t.symbol)} · ${esc(t.account||'')}</div><div class="s">${fmt$(t.pnl,0)} · ${fmtPct(t.pnl_pct||0,1)} · ${esc(t.exit_date||t.date||'')}</div></div></div>`).join('')||'<div class="note">No recent trades</div>';
+ const tech=(S.technical?.positions||S.technical?.technical_snapshot||[]); $('technical-body').innerHTML=tech.slice(0,24).map(t=>`<tr><td><b>${esc(t.symbol)}</b></td><td>${t.rsi??'—'}</td><td class="${clsNum(t.sma50_pct)}">${fmtPct(t.sma50_pct||0,1)}</td><td class="${clsNum(t.sma200_pct)}">${fmtPct(t.sma200_pct||0,1)}</td><td>${t.atr??'—'}</td><td>${t.beta??'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="note">No technical snapshot</td></tr>';
+ $('design-notes').innerHTML='<div class="alert"><i>01</i><div><div class="t">One surface, three reading depths</div><div class="s">Hero metrics for instant orientation, operational modules for live work, and workspace tabs for actual analysis.</div></div></div><div class="alert"><i>02</i><div><div class="t">Institutional hierarchy</div><div class="s">Scanner, risk, and capital allocation are separated visually so the eye knows what matters first.</div></div></div><div class="alert"><i>03</i><div><div class="t">Less neon, more conviction</div><div class="s">The redesign reduces gamer-style chrome and moves toward a premium desk-terminal aesthetic.</div></div></div><div class="alert"><i>04</i><div><div class="t">Frontend-only path</div><div class="s">This can evolve without touching scheduler, orchestrators, or state-file generation.</div></div></div>';
+}
+refreshAll();
+</script>
+</body>
+</html>

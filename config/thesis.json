@@ -1,0 +1,24 @@
+{
+  "targets": {
+    "annual_dividend_income": 28000,
+    "dividend_gap_trigger_yield_pct": 2.5,
+    "concentration_exit_pct": 15,
+    "concentration_trim_pct": 12,
+    "concentration_default_target_pct": 10,
+    "beta_target": 0.5,
+    "size_gate_pct": 0.5,
+    "dividend_candidates": ["SCHD", "MAIN", "ARCC", "HTGC", "CSWC", "PFLT", "DIV"]
+  },
+  "ai_wwiii_defense": {
+    "description": "AI World War III defense thesis",
+    "tickers": ["RTX", "LMT", "NOC", "BAH", "LDOS", "LHX", "CACI", "KBR", "AVAV", "KTOS", "RKLB", "IRDM", "V", "PLTR", "HII"],
+    "beta_exempt": true,
+    "min_allocation_pct": 15
+  },
+  "core_income": {
+    "description": "Dividend core",
+    "tickers": ["SCHD", "MAIN", "ARCC", "HTGC", "CSWC", "PFLT"],
+    "beta_exempt": false,
+    "min_allocation_pct": 10
+  }
+}

@@ -1,0 +1,131 @@
+version: "11.0"
+description: >
+  Expert-tuned weights for low-float scalping with sector momentum context.
+  Total max score: 55 points (50 from v10 + 5 sector momentum pillar).
+  New in v11: 6th pillar (sector_momentum) rewards tickers whose sector
+  is leading the market intraday — a genuine tailwind for momentum setups.
+
+score_scale:
+  min: 0
+  max: 55
+
+grade_bands:
+  A_plus:
+    min: 48
+    max: 55
+    label: "Elite Setup"
+  A:
+    min: 40
+    max: 47
+    label: "Strong Setup"
+  B:
+    min: 30
+    max: 39
+    label: "Watchlist"
+  C:
+    min: 20
+    max: 29
+    label: "Weak"
+  D:
+    min: 0
+    max: 19
+    label: "Avoid"
+
+decision_rules:
+  GO:
+    min_score: 40
+    description: "Trade-ready. Meets minimum threshold for entry consideration."
+  WAIT:
+    min_score: 30
+    max_score: 39
+    description: "Keep on watchlist. May develop into GO if RVOL or catalyst strengthens."
+  AVOID:
+    max_score: 29
+    description: "Does not meet criteria. Skip this run."
+
+llm_escalation:
+  triggers:
+    - score_gte: 40
+    - rvol_gte: 5.0
+    - catalyst_tier: "high_impact"
+  cheap_model: "claude-haiku-4-5-20251001"
+  escalation_model: "claude-sonnet-4-5-20251015"
+
+pillar_scoring:
+  catalyst:
+    weight_pct: 27
+    max_points: 15
+    tiers:
+      high_impact_multi_source:    15
+      high_impact_single_source:   12
+      medium_impact:                8
+      low_impact:                   4
+      noise_or_unverifiable:        0
+    recency_multipliers:
+      under_2h:    1.5
+      h2_to_12h:   1.2
+      h12_to_72h:  1.0
+      over_72h:    0.0
+
+  relative_volume:
+    weight_pct: 22
+    max_points: 12
+    tiers:
+      rvol_8_plus:    12
+      rvol_5_to_7_99: 10
+      rvol_3_to_4_99:  7
+      rvol_2_to_2_99:  4
+      rvol_1_5_to_199: 2
+      below_1_5:        0
+
+  price_action_structure:
+    weight_pct: 18
+    max_points: 10
+    tiers:
+      above_pm_high_above_vwap_at_hod:   10
+      above_pm_high_above_vwap:           8
+      inside_pm_range_constructive:        6
+      mixed_signals:                       3
+      broken_structure:                    0
+
+  float:
+    weight_pct: 15
+    max_points: 8
+    tiers:
+      under_5m:       8
+      m5_to_10m:      7
+      m10_to_20m:     6
+      m20_to_50m:     4
+      m50_to_100m:    2
+      above_100m:     0
+
+  price_range:
+    weight_pct: 9
+    max_points: 5
+    tiers:
+      p2_to_10:      5
+      p10_to_20:     4
+      p1_to_1_99:    3
+      p20_to_30:     2
+      p0_5_to_0_99:  1
+      outside_range: 0
+
+  # NEW in v11 — sector momentum pillar
+  # Rewards tickers whose sector ETF is leading the market intraday.
+  # Sector rank is computed from the 11 sector ETFs (XLK..XLC).
+  # sector_momentum_score is injected into ticker_row by the orchestrator
+  # before scoring.py is called.
+  sector_momentum:
+    weight_pct: 9
+    max_points: 5
+    tiers:
+      sector_top_3:    5   # sector ETF in top 3 by % change right now
+      sector_top_half: 3   # sector ETF in top 6 out of 11
+      sector_flat:     1   # sector ETF between -0.3% and +0.3%
+      sector_lagging:  0   # sector ETF in bottom half
+
+delta_rules:
+  grade_change_threshold: 5
+  rvol_threshold_crossings: [2.0, 3.0, 5.0, 8.0]
+  new_catalyst_window_hours: 2
+  dropped_ticker_log: true

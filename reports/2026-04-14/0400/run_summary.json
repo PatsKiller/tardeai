@@ -1,0 +1,32 @@
+{
+  "version": "12.0",
+  "date": "2026-04-14",
+  "run_label": "0400",
+  "generated_at": "2026-04-14T06:00:48",
+  "ticker_count": 5,
+  "go_count": 0,
+  "wait_count": 0,
+  "aplus_count": 0,
+  "trade_plans_count": 0,
+  "new_tickers": [
+    "OBAI"
+  ],
+  "faded_tickers": [],
+  "delta_events": 2,
+  "top_ticker": "RMSG",
+  "top_score": 18,
+  "breadth": "Bullish",
+  "vix": 18.62,
+  "options_sweeps": 0,
+  "high_squeeze": 0,
+  "halted": 0,
+  "resumed": 0,
+  "social_tickers_scanned": 0,
+  "social_bullish_count": 0,
+  "social_wsb_spikes": [],
+  "html_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-14/0400/dashboard_2026-04-14_0400.html",
+  "pdf_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-14/0400/trade_ai_2026-04-14_0400.pdf",
+  "docx_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-14/0400/trade_ai_2026-04-14_0400.docx",
+  "tos_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-04-14/0400/trade_ai_0400.tst",
+  "llm_enabled": true
+}
