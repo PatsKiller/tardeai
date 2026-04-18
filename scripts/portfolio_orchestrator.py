@@ -593,8 +593,36 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             if _n >= 1 and _ts > 0:
                 _ph.setdefault("periods",{})[_lbl] = {"change_pct": round((_tc/_ts)*100, 2), "change": round(_tc, 2), "source": "account-aggregated"}
         json.dump(_ph, open(state_dir / "performance_history.json", "w"), indent=2, default=str)
+        perf_history = _ph  # update for dashboard rebuild below
     except Exception as e:
         print(f"  [fidelity-perf] Error: {e}")
+
+    # ── Rebuild dashboard with corrected performance data ──────────
+    try:
+        print("  [dashboard-refresh] Rebuilding with account-aggregated periods...")
+        generate_portfolio_dashboard(
+            portfolio, analysis, tax, rebalancing, risk, dash_path,
+            performance=performance, ai_analysis=ai_analysis,
+            api_key=_api_key, journal=journal,
+            risk_mgmt=risk_mgmt,
+            options=options,
+            technical=technical,
+            tax_projection=tax_projection,
+            stress=stress,
+            retirement=retirement,
+            behavioral=behavioral,
+            perf_history=perf_history,
+            dividend_calendar=dividend_calendar,
+            attribution=attribution,
+            correlation=correlation,
+            watchlist=watchlist,
+            trade_analysis=trade_analysis
+        )
+        shutil.copy(dash_path, live_dash)
+        shutil.copy(dash_path, server_live)
+        print("  [dashboard-refresh] ✅ Live report updated with correct YTD")
+    except Exception as e:
+        print(f"  [dashboard-refresh] ❌ {e}")
 
     # ── Action Signals (rules engine v3) ────────────────────
     try:
