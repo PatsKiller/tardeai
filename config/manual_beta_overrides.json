@@ -31,12 +31,12 @@
     "n_observations": 156
   },
   "TRP-LVAL": {
-    "beta": null,
+    "beta": 0.81,
     "real_ticker": "TILCX",
     "fund_name": "T. Rowe Price Large-Cap Value I Class (TILCX)",
-    "source": null,
-    "date_added": null,
-    "notes": "Large value. Direct ticker TILCX available. Previous mapping to TRLVX was WRONG (TRLVX is SEI Core Fixed Income, a bond fund)."
+    "source": "morningstar_3y",
+    "date_added": "2026-04-18",
+    "notes": "Beta from Morningstar 3-year. R-sq 56.32, std dev 12.98, Alpha -2.67. Morningstar benchmark is category-appropriate (Russell 1000 Value likely). Our S&P 500 regression gave 0.775 beta with R-sq 0.19 - beta estimate was close to Morningstar but S&P 500 is not the right benchmark for large-cap value funds. Phase 7B multi-benchmark regression will fix automation."
   },
   "JPM-LGCG": {
     "beta": 1.202,
@@ -89,12 +89,12 @@
     "n_observations": 156
   },
   "AB-DISC-Z": {
-    "beta": null,
+    "beta": 1.22,
     "real_ticker": "ABSZX",
     "fund_name": "AB Discovery Value Z (ABSZX)",
-    "source": null,
-    "date_added": null,
-    "notes": "Small/mid value. Direct ticker ABSZX available. Beta likely 0.90-1.10."
+    "source": "morningstar_3y",
+    "date_added": "2026-04-18",
+    "notes": "Beta from Morningstar 3-year. R-sq 64.36, std dev 18.25, Alpha -9.09. Morningstar uses category-appropriate benchmark (Russell 2000 Value likely), which explains why S&P 500 regression gave low R-sq (0.23) despite reasonable beta (0.909). Phase 7B multi-benchmark regression will fix automation."
   },
   "FCNTX": {
     "beta": 1.054,
