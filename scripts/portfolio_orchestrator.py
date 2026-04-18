@@ -569,29 +569,30 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                         _start = _best["fidelity_401k"]
                         _chg = _fid_total - _start
                         _fid_periods[_lbl] = {"change_pct": round((_chg/_start)*100, 2) if _start > 0 else 0, "change": round(_chg, 2), "source": "snapshot-derived"}
-            # Recompute portfolio-level from all accounts with sanity filter
-            _MAX = {"1D":15,"1W":30,"1M":50,"3M":80,"6M":100,"YTD":150,"1Y":200}
-            _total_current = sum(a.get("current_value",0) for a in _ph.get("accounts",{}).values() if isinstance(a,dict))
-            for _lbl in ["1D","1W","1M","3M","6M","YTD","1Y"]:
-                _tc, _ts, _n = 0, 0, 0
-                for _ak, _av in _ph.get("accounts",{}).items():
-                    if not isinstance(_av, dict): continue
-                    _p = (_av.get("periods") or {}).get(_lbl)
-                    if not isinstance(_p, dict): continue
-                    _pct = _p.get("change_pct")
-                    _chg = _p.get("change")
-                    _cv = _av.get("current_value", 0)
-                    if _pct is not None and abs(_pct) > _MAX.get(_lbl, 200): continue
-                    if _chg is not None:
-                        _tc += _chg; _ts += _cv - _chg; _n += 1
-                    elif _pct is not None and _cv > 0:
-                        _st = _cv / (1 + _pct/100); _tc += _cv - _st; _ts += _st; _n += 1
-                if _n >= 1 and _ts > 0:
-                    _ph.setdefault("periods",{})[_lbl] = {"change_pct": round((_tc/_ts)*100, 2), "change": round(_tc, 2), "source": "account-aggregated"}
-            json.dump(_ph, open(state_dir / "performance_history.json", "w"), indent=2, default=str)
             print(f"  [fidelity-perf] Updated {len([k for k,v in _fid_periods.items() if isinstance(v,dict)])} periods from {len(_fund_returns)} funds")
         else:
             print(f"  [fidelity-perf] No Fidelity positions with real ticker mappings")
+        # Recompute portfolio-level from all accounts with sanity filter
+        # (runs unconditionally — even if Fidelity block above was skipped)
+        _MAX = {"1D":15,"1W":30,"1M":50,"3M":80,"6M":100,"YTD":150,"1Y":200}
+        _total_current = sum(a.get("current_value",0) for a in _ph.get("accounts",{}).values() if isinstance(a,dict))
+        for _lbl in ["1D","1W","1M","3M","6M","YTD","1Y"]:
+            _tc, _ts, _n = 0, 0, 0
+            for _ak, _av in _ph.get("accounts",{}).items():
+                if not isinstance(_av, dict): continue
+                _p = (_av.get("periods") or {}).get(_lbl)
+                if not isinstance(_p, dict): continue
+                _pct = _p.get("change_pct")
+                _chg = _p.get("change")
+                _cv = _av.get("current_value", 0)
+                if _pct is not None and abs(_pct) > _MAX.get(_lbl, 200): continue
+                if _chg is not None:
+                    _tc += _chg; _ts += _cv - _chg; _n += 1
+                elif _pct is not None and _cv > 0:
+                    _st = _cv / (1 + _pct/100); _tc += _cv - _st; _ts += _st; _n += 1
+            if _n >= 1 and _ts > 0:
+                _ph.setdefault("periods",{})[_lbl] = {"change_pct": round((_tc/_ts)*100, 2), "change": round(_tc, 2), "source": "account-aggregated"}
+        json.dump(_ph, open(state_dir / "performance_history.json", "w"), indent=2, default=str)
     except Exception as e:
         print(f"  [fidelity-perf] Error: {e}")
 
