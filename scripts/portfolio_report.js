@@ -663,10 +663,14 @@ children.push(p(`Mode: ${aiRunType.toUpperCase()} | Generated: ${aiDate} | Refre
 
 const aiSections = [
   ['executive_summary',  'Executive Portfolio Summary'],
+  ['deep_holdings',      'Deep Holdings Analysis'],
   ['dividend_strategy',  'Dividend Strategy & ETF/Stock Alternatives'],
   ['bond_strategy',      'Bond Strategy for Rollover IRA'],
   ['ira_opportunities',  'IRA Rollover Eligible Investments & Options'],
+  ['v_strategy',         'V (Visa) Concentration Strategic Options'],
   ['v_concentration',    'V (Visa) Concentration Strategic Options'],
+  ['defense_analysis',   'Defense Portfolio — AI WWIII Thesis'],
+  ['roth_conversion',    'Roth Conversion Strategy 2026'],
 ];
 
 // ── Full markdown → docx renderer ─────────────────────────────────────────
@@ -791,6 +795,38 @@ function renderMarkdown(text, dest) {
         spacing: { before: 40, after: 40 },
         indent: { left: 360 },
         border: { left: { style: BorderStyle.SINGLE, size: 12, color: C.accent, space: 8 } }
+      }));
+      i++; continue;
+    }
+
+    // Checklist items (✅/❌/⚠️)
+    if (/^[-•*]?\s*[✅❌⚠️]/.test(trimmed)) {
+      const body = trimmed.replace(/^[-•*]?\s*[✅❌⚠️]\s*/, '');
+      const icon = trimmed.includes('✅') ? '✅' : trimmed.includes('❌') ? '❌' : '⚠️';
+      const iconColor = icon === '✅' ? '0F9D58' : icon === '❌' ? 'DB4437' : 'F4B400';
+      dest.push(new Paragraph({
+        children: [run(icon + ' ', { size: 10 }), ...mdRuns(body)],
+        spacing: { before: 40, after: 40 },
+        indent: { left: 240 },
+        border: { left: { style: BorderStyle.SINGLE, size: 12, color: iconColor, space: 8 } }
+      }));
+      i++; continue;
+    }
+
+    // RECOMMENDATION/ACTION/KEY RISK highlight
+    if (/^(RECOMMENDATION|ACTION|KEY RISK|OPTIMAL|PRIORITY):/i.test(trimmed)) {
+      const colonIdx = trimmed.indexOf(':');
+      const label = trimmed.slice(0, colonIdx);
+      const rest = trimmed.slice(colonIdx + 1).trim();
+      const labelColor = /RISK/i.test(label) ? 'DB4437' : '0F9D58';
+      dest.push(new Paragraph({
+        children: [
+          run(label + ': ', { bold: true, size: 10, color: labelColor }),
+          ...mdRuns(rest)
+        ],
+        spacing: { before: 60, after: 60 },
+        indent: { left: 120 },
+        border: { left: { style: BorderStyle.SINGLE, size: 16, color: labelColor, space: 8 } }
       }));
       i++; continue;
     }
