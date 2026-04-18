@@ -236,6 +236,35 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as e:
         print(f"  [technical] ❌ {e}")
 
+    # ── Supplemental Finviz enrichment for small positions ──────────────
+    # Technical analysis only enriches positions > $1K. Enrich remaining
+    # portfolio tickers so weekly reports, signals, and dashboards have
+    # complete data (perf_week_pct, RSI, beta, etc.) for ALL positions.
+    try:
+        from finviz_enrichment import enrich_tickers as _enrich_supplemental
+        _FIDELITY_PREFIXES = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-")
+        _SKIP = {"CASH", "--", "SNSXX", "SWVXX", "SPRXX", "VMFXX", "FDRXX", "SRNE"}
+        _existing = set()
+        _ecache_path = state_dir / "ticker_enrichment_cache.json"
+        if _ecache_path.exists():
+            _existing = set(json.loads(_ecache_path.read_text()).keys())
+        _supplement = []
+        for _h in portfolio.get("holdings", []):
+            _sym = (_h.get("symbol") or "").upper()
+            if not _sym or _sym in _SKIP or _sym in _existing:
+                continue
+            if any(_sym.startswith(p) for p in _FIDELITY_PREFIXES):
+                continue
+            if "-" in _sym and len(_sym) > 5:
+                continue
+            _supplement.append(_sym)
+        _supplement = list(set(_supplement))
+        if _supplement:
+            print(f"  [enrich-supplement] Fetching {len(_supplement)} small positions: {', '.join(_supplement[:8])}")
+            _enrich_supplemental(_supplement, project_root=str(root), skip_fundamentals=True)
+    except Exception as _e:
+        print(f"  [enrich-supplement] {_e}")
+
     tech_chart_paths = {}
     try:
         from portfolio_technical_charts import generate_all_technical_charts
