@@ -746,20 +746,3 @@ if __name__ == "__main__":
     out = sd / "ai_analysis_cache.json"
     json.dump(result, open(out,"w"), indent=2)
     print(f"[ai_analyst] Done — {len(result)} sections → {out}")
-
-if __name__ == "__main__":
-    import argparse, sys
-    from pathlib import Path
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--project-root", default=".")
-    ap.add_argument("--run-type", default="weekly")
-    args = ap.parse_args()
-    root = Path(args.project_root).resolve()
-    sd = root / "data" / "portfolios" / "state"
-    port = json.load(open(sd / "holdings.json"))
-    analysis = json.load(open(sd / "ai_analysis_cache.json")) if (sd/"ai_analysis_cache.json").exists() else {}
-    risk = json.load(open(sd / "risk_management.json")) if (sd/"risk_management.json").exists() else {}
-    result = run_ai_analysis(port, analysis, risk, sd, force_refresh=True, run_type=args.run_type, root=str(root))
-    out = sd / "ai_analysis_cache.json"
-    json.dump(result, open(out,"w"), indent=2)
-    print(f"[ai_analyst] Done — {len(result)} sections → {out}")
