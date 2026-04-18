@@ -1,29 +1,34 @@
 {
   "_comment": "Manual beta overrides for positions without Finviz coverage. John fills in beta values from Morningstar/prospectus. Null = not yet entered. Used as fallback when Finviz beta is unavailable.",
-
   "FID-CONTRA-F": {
-    "beta": null,
+    "beta": 1.054,
     "real_ticker": "FCNKX",
     "fund_name": "Fidelity Contrafund K6",
-    "source": null,
-    "date_added": null,
-    "notes": "Morningstar: search FCNKX or Fidelity Contrafund K6"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Morningstar: search FCNKX or Fidelity Contrafund K6",
+    "r_squared": 0.69,
+    "n_observations": 156
   },
   "SP500-D": {
-    "beta": null,
+    "beta": 1.009,
     "real_ticker": "FXAIX",
     "fund_name": "Fidelity 500 Index",
-    "source": null,
-    "date_added": null,
-    "notes": "Should be ~1.00 (S&P 500 index fund)"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Should be ~1.00 (S&P 500 index fund)",
+    "r_squared": 1.0,
+    "n_observations": 156
   },
   "SS-SMMD": {
-    "beta": null,
+    "beta": 1.04,
     "real_ticker": "SMMD",
     "fund_name": "State Street Russell Small/Mid Cap Index (proxy: SMMD - iShares Russell 2500 ETF)",
-    "source": null,
-    "date_added": null,
-    "notes": "Underlying is State Street Russell Small/Mid Cap (CIT, no public ticker). SMMD tracks Russell 2500 which matches the benchmark. Beta likely 1.05-1.20."
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Underlying is State Street Russell Small/Mid Cap (CIT, no public ticker). SMMD tracks Russell 2500 which matches the benchmark. Beta likely 1.05-1.20.",
+    "r_squared": 0.69,
+    "n_observations": 156
   },
   "TRP-LVAL": {
     "beta": null,
@@ -34,44 +39,54 @@
     "notes": "Large value. Direct ticker TILCX available. Previous mapping to TRLVX was WRONG (TRLVX is SEI Core Fixed Income, a bond fund)."
   },
   "JPM-LGCG": {
-    "beta": null,
+    "beta": 1.202,
     "real_ticker": "JLGMX",
     "fund_name": "JPMorgan Large Cap Growth",
-    "source": null,
-    "date_added": null,
-    "notes": "Large growth — beta likely 1.05-1.15"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Large growth \u2014 beta likely 1.05-1.15",
+    "r_squared": 0.54,
+    "n_observations": 156
   },
   "VANG-FTSE-SOC": {
-    "beta": null,
+    "beta": 1.085,
     "real_ticker": "VFTNX",
     "fund_name": "Vanguard FTSE Social Index",
-    "source": null,
-    "date_added": null,
-    "notes": "ESG large blend — beta likely 0.95-1.05. Yahoo ticker: VFTNX (not VFTSX)"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "ESG large blend \u2014 beta likely 0.95-1.05. Yahoo ticker: VFTNX (not VFTSX)",
+    "r_squared": 0.98,
+    "n_observations": 156
   },
   "WM-BLAIR": {
-    "beta": null,
+    "beta": 1.137,
     "real_ticker": "WBSIX",
     "fund_name": "William Blair Small-Mid Cap Growth",
-    "source": null,
-    "date_added": null,
-    "notes": "Small-mid growth — beta likely 1.10-1.30"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Small-mid growth \u2014 beta likely 1.10-1.30",
+    "r_squared": 0.38,
+    "n_observations": 156
   },
   "FID-DIVINTL": {
-    "beta": null,
+    "beta": 0.929,
     "real_ticker": "FDIVX",
     "fund_name": "Fidelity Diversified International",
-    "source": null,
-    "date_added": null,
-    "notes": "International large blend — beta likely 0.80-0.95. Yahoo ticker: FDIVX (not FIDVX)"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "International large blend \u2014 beta likely 0.80-0.95. Yahoo ticker: FDIVX (not FIDVX)",
+    "r_squared": 0.36,
+    "n_observations": 156
   },
   "SS-GACEQ": {
-    "beta": null,
+    "beta": 1.145,
     "real_ticker": "SSAQX",
     "fund_name": "State Street Global All Cap Equity",
-    "source": null,
-    "date_added": null,
-    "notes": "Global all-cap — beta likely 0.95-1.05"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Global all-cap \u2014 beta likely 0.95-1.05",
+    "r_squared": 0.38,
+    "n_observations": 156
   },
   "AB-DISC-Z": {
     "beta": null,
@@ -82,28 +97,34 @@
     "notes": "Small/mid value. Direct ticker ABSZX available. Beta likely 0.90-1.10."
   },
   "FCNTX": {
-    "beta": null,
+    "beta": 1.054,
     "real_ticker": "FCNTX",
     "fund_name": "Fidelity Contrafund",
-    "source": null,
-    "date_added": null,
-    "notes": "Large growth — beta likely 1.00-1.10. Held in Schwab Rollover IRA."
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Large growth \u2014 beta likely 1.00-1.10. Held in Schwab Rollover IRA.",
+    "r_squared": 0.7,
+    "n_observations": 156
   },
   "AMANX": {
-    "beta": null,
+    "beta": 0.774,
     "real_ticker": "AMANX",
     "fund_name": "Amana Mutual Funds Growth",
-    "source": null,
-    "date_added": null,
-    "notes": "Islamic/ethical growth fund — beta likely 0.85-1.00"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "Islamic/ethical growth fund \u2014 beta likely 0.85-1.00",
+    "r_squared": 0.4,
+    "n_observations": 156
   },
   "ARKG": {
-    "beta": null,
+    "beta": 1.875,
     "real_ticker": "ARKG",
     "fund_name": "ARK Genomic Revolution ETF",
-    "source": null,
-    "date_added": null,
-    "notes": "High-beta genomics ETF — beta likely 1.50-2.00"
+    "source": "yfinance_regression_3y_weekly",
+    "date_added": "2026-04-18",
+    "notes": "High-beta genomics ETF \u2014 beta likely 1.50-2.00",
+    "r_squared": 0.44,
+    "n_observations": 156
   },
   "NEE": {
     "beta": null,
@@ -111,7 +132,7 @@
     "fund_name": "NextEra Energy",
     "source": null,
     "date_added": null,
-    "notes": "Utility — beta likely 0.50-0.70"
+    "notes": "Utility \u2014 beta likely 0.50-0.70"
   },
   "TDG": {
     "beta": null,
@@ -119,18 +140,102 @@
     "fund_name": "TransDigm Group",
     "source": null,
     "date_added": null,
-    "notes": "Aerospace/defense — beta likely 0.90-1.10"
+    "notes": "Aerospace/defense \u2014 beta likely 0.90-1.10"
   },
-  "LHX": { "beta": null, "real_ticker": "LHX", "fund_name": "L3Harris Technologies", "source": null, "date_added": null, "notes": "Defense — beta likely 0.60-0.80" },
-  "RTX": { "beta": null, "real_ticker": "RTX", "fund_name": "RTX Corporation", "source": null, "date_added": null, "notes": "Defense — beta likely 0.70-0.90" },
-  "LMT": { "beta": null, "real_ticker": "LMT", "fund_name": "Lockheed Martin", "source": null, "date_added": null, "notes": "Defense — beta likely 0.50-0.70" },
-  "NOC": { "beta": null, "real_ticker": "NOC", "fund_name": "Northrop Grumman", "source": null, "date_added": null, "notes": "Defense — beta likely 0.50-0.70" },
-  "LDOS": { "beta": null, "real_ticker": "LDOS", "fund_name": "Leidos Holdings", "source": null, "date_added": null, "notes": "Defense IT — beta likely 0.70-0.90" },
-  "BAH": { "beta": null, "real_ticker": "BAH", "fund_name": "Booz Allen Hamilton", "source": null, "date_added": null, "notes": "Defense consulting — beta likely 0.70-0.90" },
-  "KTOS": { "beta": null, "real_ticker": "KTOS", "fund_name": "Kratos Defense & Security", "source": null, "date_added": null, "notes": "Small-cap defense — beta likely 1.20-1.60" },
-  "AVAV": { "beta": null, "real_ticker": "AVAV", "fund_name": "AeroVironment", "source": null, "date_added": null, "notes": "Drones/defense — beta likely 0.80-1.10" },
-  "KBR": { "beta": null, "real_ticker": "KBR", "fund_name": "KBR Inc", "source": null, "date_added": null, "notes": "Defense/engineering — beta likely 0.80-1.00" },
-  "CACI": { "beta": null, "real_ticker": "CACI", "fund_name": "CACI International", "source": null, "date_added": null, "notes": "Defense IT — beta likely 0.70-0.90" },
-  "DRS": { "beta": null, "real_ticker": "DRS", "fund_name": "Leonardo DRS", "source": null, "date_added": null, "notes": "Defense electronics — beta likely 0.80-1.00" },
-  "SRNE": { "beta": null, "real_ticker": "SRNE", "fund_name": "Sorrento Therapeutics", "source": null, "date_added": null, "notes": "Biotech penny stock — beta likely 1.50-2.50. $2 position." }
+  "LHX": {
+    "beta": null,
+    "real_ticker": "LHX",
+    "fund_name": "L3Harris Technologies",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense \u2014 beta likely 0.60-0.80"
+  },
+  "RTX": {
+    "beta": null,
+    "real_ticker": "RTX",
+    "fund_name": "RTX Corporation",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense \u2014 beta likely 0.70-0.90"
+  },
+  "LMT": {
+    "beta": null,
+    "real_ticker": "LMT",
+    "fund_name": "Lockheed Martin",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense \u2014 beta likely 0.50-0.70"
+  },
+  "NOC": {
+    "beta": null,
+    "real_ticker": "NOC",
+    "fund_name": "Northrop Grumman",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense \u2014 beta likely 0.50-0.70"
+  },
+  "LDOS": {
+    "beta": null,
+    "real_ticker": "LDOS",
+    "fund_name": "Leidos Holdings",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense IT \u2014 beta likely 0.70-0.90"
+  },
+  "BAH": {
+    "beta": null,
+    "real_ticker": "BAH",
+    "fund_name": "Booz Allen Hamilton",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense consulting \u2014 beta likely 0.70-0.90"
+  },
+  "KTOS": {
+    "beta": null,
+    "real_ticker": "KTOS",
+    "fund_name": "Kratos Defense & Security",
+    "source": null,
+    "date_added": null,
+    "notes": "Small-cap defense \u2014 beta likely 1.20-1.60"
+  },
+  "AVAV": {
+    "beta": null,
+    "real_ticker": "AVAV",
+    "fund_name": "AeroVironment",
+    "source": null,
+    "date_added": null,
+    "notes": "Drones/defense \u2014 beta likely 0.80-1.10"
+  },
+  "KBR": {
+    "beta": null,
+    "real_ticker": "KBR",
+    "fund_name": "KBR Inc",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense/engineering \u2014 beta likely 0.80-1.00"
+  },
+  "CACI": {
+    "beta": null,
+    "real_ticker": "CACI",
+    "fund_name": "CACI International",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense IT \u2014 beta likely 0.70-0.90"
+  },
+  "DRS": {
+    "beta": null,
+    "real_ticker": "DRS",
+    "fund_name": "Leonardo DRS",
+    "source": null,
+    "date_added": null,
+    "notes": "Defense electronics \u2014 beta likely 0.80-1.00"
+  },
+  "SRNE": {
+    "beta": null,
+    "real_ticker": "SRNE",
+    "fund_name": "Sorrento Therapeutics",
+    "source": null,
+    "date_added": null,
+    "notes": "Biotech penny stock \u2014 beta likely 1.50-2.50. $2 position."
+  }
 }
