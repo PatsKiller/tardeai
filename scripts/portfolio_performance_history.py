@@ -394,10 +394,18 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
         }))
 
     snapshots: Dict[str, float] = {}
+    account_snapshots: Dict[str, Dict[str, float]] = {}  # {date: {acct_key: value}}
     for f in snap_dir.glob("*.json"):
         try:
             d = json.loads(f.read_text())
             snapshots[d["date"]] = float(d["total_value"])
+            if "accounts" in d:
+                acct_vals = {}
+                for ak, av in d["accounts"].items():
+                    if isinstance(av, dict):
+                        acct_vals[ak] = float(av.get("value", av.get("total_value", 0)) or 0)
+                if acct_vals:
+                    account_snapshots[d["date"]] = acct_vals
         except Exception:
             pass
 
@@ -469,6 +477,66 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
             "source":      "cost_basis",
         }
 
+    # ── Per-account period returns ────────────────────────────────────────────
+    account_labels = {
+        "fidelity_401k": "Fidelity 401k",
+        "schwab_rollover_ira": "Rollover IRA",
+        "schwab_roth": "Roth IRA",
+        "schwab_taxable": "Taxable",
+    }
+    acct_summaries = portfolio.get("account_summaries", {})
+    accounts_out = {}
+    for acct_key, label in account_labels.items():
+        acct_cv = acct_summaries.get(acct_key, {}).get("total_value", 0) or 0
+        if acct_cv <= 0:
+            continue
+        acct_holdings = [h for h in portfolio.get("holdings", [])
+                         if h.get("account") == acct_key]
+        if not acct_holdings:
+            continue
+        acct_portfolio = {**portfolio, "holdings": acct_holdings}
+        acct_periods = {}
+        for period in periods:
+            start_dt = _period_start_date(period, today)
+            if start_dt is None:
+                continue
+            start_str = start_dt.strftime("%Y-%m-%d")
+            # Snapshot match
+            hist_val = None
+            src_label = None
+            for delta in range(0, 4):
+                for sign in [0, -1, 1]:
+                    candidate = (start_dt + timedelta(days=delta * sign)).strftime("%Y-%m-%d")
+                    acct_snap = account_snapshots.get(candidate, {})
+                    if acct_key in acct_snap:
+                        hist_val = acct_snap[acct_key]
+                        src_label = "snapshot"
+                        break
+                if hist_val:
+                    break
+            # Reprice fallback
+            if hist_val is None and period != "1D":
+                hist_val = _portfolio_value_at(
+                    txns, start_str, price_cache, yahoo_cache, acct_portfolio, fidelity_map
+                )
+                src_label = "repriced"
+            if hist_val and hist_val > 0 and acct_cv > 0:
+                change = round(acct_cv - hist_val, 2)
+                change_pct = round((change / hist_val) * 100, 2)
+                acct_periods[period] = {
+                    "period": period, "start_date": start_str,
+                    "start_value": hist_val, "end_value": acct_cv,
+                    "change": change, "change_pct": change_pct,
+                    "source": src_label,
+                }
+            else:
+                acct_periods[period] = None
+        accounts_out[acct_key] = {
+            "label": label,
+            "current_value": acct_cv,
+            "periods": acct_periods,
+        }
+
     return {
         "periods":        results,
         "snapshot_count": snap_count,
@@ -477,4 +545,5 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
         "reconstructed":  [p for p, d in results.items() if d.get("source") == "repriced"],
         "current_value":  current_val,
         "has_data":       True,
+        "accounts":       accounts_out,
     }
