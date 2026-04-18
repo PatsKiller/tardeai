@@ -1,0 +1,95 @@
+# portfolio_intent.yaml — Position Intent Map
+# Controls stop logic, covered call eligibility, and technical analysis depth
+# Edit via Risk Manager tab → ⚙️ Config, or directly in this file
+# Re-run scripts/run_portfolio.bat to apply changes
+
+# ── Intent Categories ─────────────────────────────────────────────────────────
+# covered_call_candidate : SMA200 hard stop + monthly calls, V-type strategy
+# long_term_hold         : SMA200 - 1xATR stop, core portfolio positions
+# growth_speculative     : SMA50 - 0.5xATR stop, higher growth/risk
+# income                 : SMA50 - 1xATR stop, protect yield stream
+# etf_broad              : SMA200 wide stop, low-turnover index exposure
+# day_trade              : SMA20 or 8% trail, short-term only
+# unclassified           : SMA50 default (conservative fallback)
+
+covered_call_candidate:
+  - V        # Visa — DOJ overhang, 631 shares post-rebalance, sell monthly calls 5-8% OTM
+  - LMT      # Lockheed — F-35 backlog, 15 shares, sell quarterly calls if position grows
+  - SCHD     # Schwab Dividend ETF — large position, covered call income layer
+
+long_term_hold:
+  - NOC      # Northrop — B-21 bomber pure play
+  - RTX      # Raytheon — defense/aerospace diversifier
+  - CSWC     # Capital Southwest — BDC, 10.5% yield
+  - PFLT     # PennantPark — BDC, 11.2% yield
+  - BND      # Vanguard Bond ETF — core bond
+  - FCNTX    # Fidelity Contrafund — active growth fund
+  - BAH      # Booz Allen Hamilton
+  - LDOS     # Leidos — government IT
+  - LHX      # L3Harris
+  - NEE      # NextEra Energy
+  - AVAV     # AeroVironment
+
+growth_speculative:
+  - KTOS     # Kratos Defense — autonomous systems, volatile
+  - RKLB     # Rocket Lab — space, speculative
+  - ARKQ     # ARK Autonomous Tech ETF — high beta
+  - ARKG     # ARK Genomics — speculative
+  - IRDM     # Iridium — satellite, volatile
+
+income:
+  - DIV      # Global X Super Dividend ETF
+  - CSWC     # Also income — BDC
+  - PFLT     # Also income — BDC
+
+etf_broad:
+  - SCHG     # Schwab US Large Cap Growth ETF
+  - VTI      # Vanguard Total Stock Market
+  - SCHB     # Schwab Broad Market ETF
+  - VXUS     # Vanguard Total International
+  - SGOV     # iShares 0-3 Month Treasury
+  - SHV      # Short-term Treasury
+  - AGG      # iShares Core US Aggregate Bond
+  - VCIT     # Vanguard Intermediate Corporate Bond
+  - JEPI     # JPMorgan Equity Premium Income
+  - JEPQ     # JPMorgan Nasdaq Equity Premium
+  - PFF      # iShares Preferred Stock
+
+# Fidelity 401k fund codes
+fidelity_funds:
+  - FID-CONTRA-F
+  - SP500-D
+  - VANG-FTSE-SOC
+  - TRP-LVAL
+  - JPM-LGCG
+  - SS-SMMD
+  - WM-BLAIR
+  - AB-DISC-Z
+  - FID-DIVINTL
+  - SS-GACEQ
+  - AMANX
+
+# Covered call settings
+covered_call_settings:
+  default_dte_days: 30          # Days to expiration
+  default_otm_pct: 0.06         # 6% out of the money default strike
+  min_otm_pct: 0.04             # Never less than 4% OTM (too close)
+  max_otm_pct: 0.10             # Never more than 10% OTM (too far, low premium)
+  earnings_blackout_days: 14    # Days before earnings — no new calls
+  min_shares_for_call: 100      # Minimum lot size to write 1 contract
+  iv_rank_minimum: 25           # Don't write calls when IV rank < 25 (cheap premium)
+
+# Stop suggestion settings
+stop_settings:
+  covered_call_candidate_multiplier: 1.0   # SMA200 - 1.0xATR
+  long_term_hold_multiplier: 1.0            # SMA200 - 1.0xATR
+  growth_speculative_multiplier: 0.5        # SMA50 - 0.5xATR
+  income_multiplier: 1.0                    # SMA50 - 1.0xATR
+  etf_broad_multiplier: 1.0                 # SMA200 - 1.0xATR
+  trail_pct_speculative: 8.0               # % trailing for speculative
+
+# Benchmark for performance attribution
+benchmark:
+  spy_weight: 0.55
+  ita_weight: 0.20    # iShares US Aerospace & Defense
+  agg_weight: 0.25    # iShares Core US Aggregate Bond

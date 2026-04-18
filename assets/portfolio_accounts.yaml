@@ -1,0 +1,482 @@
+version: "1.2"
+as_of: "2026-04-10"
+owner: "John W Whiting"
+currency: USD
+tax_method: FIFO
+
+# ── Account Definitions ───────────────────────────────────────────────────────
+# NOTE: No positions_file or transactions_file keys anywhere in this file.
+# All data entry is via Command Center → Import Data modal.
+# holdings.json is the single source of truth for share counts.
+
+accounts:
+
+  fidelity_401k:
+    display_name: "Fidelity 401k (Omnicom)"
+    broker: fidelity
+    type: 401k
+    account_id: "Omnicom-Retirement"
+    taxable: false
+    loan_balance: 21735.38
+    loan_payoff_deadline: "2027-12-31"
+    notes: "Omnicom Group Retirement Savings Plan. Terminated 02/28/2026. Loan must be repaid before 2027 rollover to Schwab Rollover IRA."
+    drip_enabled: false
+    target_allocation:
+      us_large_blend: 40
+      us_large_growth: 15
+      us_large_value: 15
+      us_small: 15
+      international: 15
+      bonds: 0
+
+  schwab_rollover_ira:
+    display_name: "Schwab Rollover IRA"
+    broker: schwab
+    type: rollover_ira
+    account_id: "...258"
+    taxable: false
+    drip_enabled: true
+    notes: "Previously rolled from prior employer 401k. Contains worthless/revoked securities — see revoked_securities section. V (Visa) concentration risk."
+    target_allocation:
+      us_equity: 60
+      international_equity: 10
+      bonds: 25
+      dividend_income: 5
+
+  schwab_roth:
+    display_name: "Schwab Roth IRA"
+    broker: schwab
+    type: roth_ira
+    account_id: "...415"
+    taxable: false
+    drip_enabled: true
+    notes: "Roth conversion destination. Keep DRIP ON — dividends compound tax-free forever. Target: SCHG 30% / SCHD 60% / BND 10%."
+    target_allocation:
+      SCHG: 30
+      SCHD: 60
+      BND: 10
+
+  schwab_taxable:
+    display_name: "Schwab Individual (Taxable)"
+    broker: schwab
+    type: taxable
+    account_id: "...469"
+    taxable: true
+    drip_enabled: false
+    drip_note: "DRIP OFF recommended — dividends taxable when paid regardless. Take as cash for cost basis cleanliness and quarterly tax payment funding."
+    notes: "AI WWIII defense portfolio + income ETFs + BDCs. All dividends and realized gains are taxable income. CDEX cost basis unknown — obtain from Schwab to calculate harvestable loss."
+    target_allocation:
+      defense: 30
+      income_etf: 30
+      bdc_income: 20
+      growth_etf: 10
+      cash: 10
+
+# ── Portfolio-wide Targets ────────────────────────────────────────────────────
+portfolio_targets:
+  max_single_stock_pct: 15.0
+  max_single_sector_pct: 30.0
+  min_cash_pct: 2.0
+  concentration_warning_pct: 10.0
+
+# ── Roth Conversion Strategy ──────────────────────────────────────────────────
+# Parameters used by portfolio_ai_analyst.py (Roth section, Opus + extended thinking)
+# and portfolio_dashboard.py (Retirement tab projections).
+# UPDATE ANNUALLY: ytd_conversions_current_year, tax bracket thresholds (each January),
+# current_age. CPA review recommended before each tax year.
+# IMPORTANT: All figures are estimates. This is not tax advice.
+
+roth_conversion_strategy:
+
+  # ── Personal facts ──────────────────────────────────────────────────────────
+  dob: "1967-08-21"
+  filing_status: MFS                    # Married Filing Separately — living apart
+  current_age: 58.6                     # update annually
+
+  # ── Income sources ──────────────────────────────────────────────────────────
+  income:
+    ssdi_annual: 45600                  # $3,800/mo — taxable at 85% rule
+    ssdi_taxable_pct: 85                # IRS rule: 85% of SSDI included in AGI
+    ssdi_taxable_annual: 38760          # 45600 x 0.85
+    schedule_c_gross: 20000             # approximate gross receipts
+    schedule_c_net_typical: -16500      # typical net after expenses (loss year)
+    schedule_c_note: "Net loss reduces AGI and clears bracket room for conversions. Update with actuals from TurboTax each year."
+    private_disability_annual: 45000    # NOT taxable income — funds conversion taxes
+    private_disability_ends_age: 68.5   # recertify 2x/year with medical disclosure
+    ss_monthly_at_fra: 3800             # FRA = age 67 (Aug 2034)
+    ss_fra_age: 67
+    ss_converts_from_ssdi_at_fra: true
+    taxable_dividends_annual: 2830      # from schwab_taxable account — all taxable
+
+  # ── Deductions (MFS, itemized — always itemize in conversion years) ──────────
+  # Itemized deductions are ACTIVATED by conversion income.
+  # In low-income years (no conversion) deductions are partially wasted.
+  # In conversion years they reduce taxable income dollar-for-dollar.
+  deductions:
+    method: itemized                    # always itemize — exceeds standard $15,000
+    standard_deduction_mfs: 15000
+    mortgage_interest_annual: 16320     # estimate: 4% x $408K — UPDATE with Form 1098
+    property_tax_annual: 7670           # confirmed — update with Schedule A actuals
+    total_itemized_estimate: 23990      # mortgage interest + property tax
+    itemized_advantage: 8990            # extra vs standard deduction
+    federal_savings_vs_standard: 1978   # approx at 22% bracket
+    actuals_note: "Replace estimates with TurboTax actuals: Form 1098 box 1 (mortgage interest), Schedule A line 5b (property tax). Also check home office deduction eligibility."
+
+    home_office:
+      eligible: unknown                 # confirm with CPA — locksmith business use
+      potential_deduction: 2000         # estimate if dedicated office space exists
+      caution: "Depreciation recapture on home sale — discuss with CPA before claiming"
+
+    quarterly_estimates:
+      required: true                    # conversion income requires estimated payments
+      safe_harbor_2026: 0               # 2025 tax was near zero — no penalty risk
+      q1_due: "2026-04-15"
+      q2_due: "2026-06-15"
+      q3_due: "2026-09-15"
+      q4_due: "2027-01-15"
+      recommended_per_quarter: 2000     # ~$7,951 total / 4 — adjust with actuals
+      note: "Since 2025 liability was near zero, safe harbor = $0. But pay quarterly to avoid April 2027 surprise."
+
+  # ── Tax parameters (MFS 2026 — update each January) ──────────────────────────
+  tax:
+    standard_deduction: 15000
+    bracket_10_top: 11925
+    bracket_12_top: 48475
+    bracket_22_top: 103350
+    bracket_24_top: 197300
+    ny_state_rate: 0.06
+    nyc_rate: 0.034
+    combined_rate_22pct_bracket: 0.314  # 22% fed + 6% NY + 3.4% NYC
+    ny_ira_exemption_first_20k: unknown # CPA must confirm: does NY $20K IRA exemption
+                                        # apply to Roth conversions? If yes = $1,200/yr savings.
+
+  # ── IRMAA — Medicare premium surcharge (MFS thresholds) ──────────────────────
+  # MFS is highly punitive — surcharge threshold same as single filer.
+  # Joint filers get $212K before surcharge. MFS gets only $106K.
+  # CRITICAL: Never exceed $101,000 MAGI (keeping $5K buffer).
+  irmaa:
+    medicare_eligible_date: "2026-12-01"
+    currently_on_wifes_plan: true       # wife's plan until Dec 2026
+    threshold_tier1_mfs: 106000         # MAGI above this = +$594/mo = $7,128/yr extra
+    threshold_tier2_mfs: 394000
+    surcharge_tier1_monthly: 594
+    surcharge_tier1_annual: 7128
+    safe_buffer: 5000
+    irmaa_safe_magi_ceiling: 101000     # hard ceiling — never exceed this
+    note: "MFS IRMAA threshold = single filer threshold. Joint filers get $212K. This is the most important number in the retirement strategy."
+
+  # ── Base MAGI calculation (before conversions) ───────────────────────────────
+  # Used to calculate how much conversion capacity remains each year.
+  # Update schedule_c_net_actual each year from TurboTax.
+  base_magi:
+    ssdi_taxable: 38760
+    schedule_c_net_estimate: -16500     # loss year typical — REDUCES base MAGI
+    taxable_dividends: 2830
+    base_total_estimate: 25090          # 38760 - 16500 + 2830 (approximate)
+    irmaa_conversion_capacity: 75910    # 101000 - 25090
+    note: "Schedule C loss dramatically expands conversion capacity. A -$25K loss year gives ~$75K IRMAA-safe capacity."
+
+  # ── Conversion plan by phase ──────────────────────────────────────────────────
+  conversion:
+    ytd_conversions_2026: 40000         # ← UPDATE each time a conversion is made
+
+    # ── Phase 1: Pre-Medicare (now → Dec 2026) ──────────────────────────────────
+    # No IRMAA yet. Disability insurance covers taxes.
+    # Already converted $40K. Remaining capacity is small.
+    phase1_pre_medicare:
+      age_range: [58.6, 59.3]
+      already_converted_2026: 40000
+      remaining_2026_capacity: 2240     # 101000 - 58760 base - 40000 done (typical year)
+      remaining_with_25k_loss: 35000    # if Schedule C = -$25K loss: much more room
+      max_annual: 46000
+      tax_rate_all_in: 0.314
+      annual_tax_cost: 14444
+      strategy: "Convert up to IRMAA-safe ceiling. Disability insurance pays taxes. Already done $40K."
+      sensitivity: "With -$25K Schedule C loss: $40K conversion costs only $6,132 all-in (15.3% rate)"
+
+    # ── Phase 2: Medicare active + disability still running (2027–2035) ─────────
+    # IRMAA ceiling is the binding constraint, not the tax bracket.
+    # Disability insurance still covers taxes through age 68.5.
+    phase2_medicare_plus_disability:
+      age_range: [59.3, 68.5]
+      max_annual_irmaa_safe: 42240      # 101000 - 58760 typical base MAGI
+      recommended_annual: 40000         # conservative — $3K buffer
+      tax_rate_all_in: 0.314
+      annual_tax_cost: 12560
+      strategy: "Stay under $101K MAGI ceiling. Disability still covers taxes. ~$40K/yr optimal."
+      omnicom_rollover_note: "2027: Fidelity 401k rolls to Schwab Rollover IRA — loan must be paid first. No change to conversion math after rollover."
+
+    # ── Phase 3: Golden Window (disability ends → RMDs start) ─────────────────
+    # Lowest income of your life. 12% bracket on most conversions.
+    # Disability stops but SS + Schedule C remain.
+    phase3_golden_window:
+      age_range: [68.5, 73]
+      base_magi_ss_only: 38760          # SS $45,600 x 85% — Schedule C may still reduce
+      max_annual_irmaa_safe: 62240      # 101000 - 38760
+      recommended_annual: 60000
+      tax_rate_federal: 0.12            # mostly 12% bracket
+      tax_rate_all_in: 0.18             # 12% fed + 6% NY (NYC may not apply depending on residency)
+      annual_tax_cost: 10800
+      strategy: "Maximum conversions at lowest rate. Pay 18% now vs 22%+ on RMDs at 73."
+      note: "This is the prime window. Disability ends but tax rate drops 13 points."
+
+  # ── Key milestone dates ───────────────────────────────────────────────────────
+  milestones:
+    medicare_start: "2026-12-01"
+    currently_on_wifes_plan_until: "2026-11-30"
+    disability_ends_approx: "2036-02-28"    # age 68.5
+    ss_fra: "2034-08-21"                     # age 67
+    omnicom_rollover_target: "2027-12-31"
+    loan_payoff_deadline: "2027-12-31"
+    loan_balance: 21735.38
+    rmd_start: "2040-08-21"                  # age 73 per SECURE 2.0
+    golden_window_start: "2036-02-28"
+    golden_window_end: "2040-08-21"
+    no_early_withdrawal_penalty_from: "2026-02-21"  # age 59.5
+
+  # ── Projected balances at key ages ───────────────────────────────────────────
+  # Assumptions: 8% Roth growth (SCHG/SCHD blend), 6% Traditional growth.
+  # $40K/yr conversions phase 2, $60K/yr phase 3. All figures approximate.
+  projections:
+    starting_2026:
+      roth: 41500
+      traditional: 1138000
+
+    age_62_2029:
+      roth: 280000
+      traditional: 1223000
+      disability_status: still_running
+      note: "Disability still running — max conversion pace. Solid Roth base established."
+
+    age_64_2031:
+      roth: 430000
+      traditional: 1274000
+      disability_status: still_running
+      note: "Early disability-stop scenario: $430K Roth = meaningful tax-free base regardless."
+
+    age_68_2035:
+      roth: 809000
+      traditional: 1395000
+      disability_status: still_running
+      note: "One year before Golden Window opens. Nearly $1M tax-free approaching."
+
+    age_73_2040:
+      roth: 1582000
+      traditional: 1497000
+      rmd_divisor: 25.9                 # IRS uniform lifetime table age 73
+      rmd_year1: 57789                  # 1,497,000 / 25.9
+      rmd_plus_ss: 103389               # RMD + SS $45,600 — under $106K IRMAA ✅
+      irmaa_exposure: false
+
+    zero_conversion_scenario:
+      traditional_at_73: 2633581        # 6% growth, no conversions
+      rmd_year1: 101683
+      rmd_plus_ss: 147283
+      irmaa_exposure: true
+      annual_irmaa_penalty: 7128
+      note: "Doing nothing = $7,128/yr IRMAA surcharge every single year in retirement. Avoid."
+
+  # ── Disability stop scenarios (contingency planning) ─────────────────────────
+  # If disability insurance stops early, reduce conversion pace but do NOT stop.
+  disability_stop_scenarios:
+    stop_at_62:
+      year: 2029
+      roth_balance: 280000
+      traditional_balance: 1223000
+      recommended_annual_conversion: 22000   # fills 12% bracket without disability funding
+      tax_rate: 0.18
+      annual_tax_cost: 3960
+      roth_at_73_no_more_additions: 600000   # $280K x 8% for 11 years
+      note: "Still meaningful. $280K at 8% for 11 years = ~$600K tax-free at 73."
+
+    stop_at_64:
+      year: 2031
+      roth_balance: 430000
+      traditional_balance: 1274000
+      recommended_annual_conversion: 22000
+      tax_rate: 0.18
+      annual_tax_cost: 3960
+      roth_at_73_no_more_additions: 860000   # $430K x 8% for 9 years
+      note: "$430K at 8% for 9 years = ~$860K tax-free at 73 with zero additional conversions."
+
+    minimum_viable_conversion:
+      amount: 20000
+      rationale: "Even $20K/yr at 12% beats 22%+ RMD taxes at age 73. Never stop completely."
+      tax_cost: 2400
+
+  # ── Roth internal allocation ──────────────────────────────────────────────────
+  # AI analyst evaluates monthly and recommends tactical shifts.
+  # DRIP must stay ON inside Roth — dividends compound tax-free.
+  roth_allocation:
+    target:
+      SCHG: 30    # Schwab US Large-Cap Growth — high growth engine
+      SCHD: 60    # Schwab US Dividend — tax-free dividend compounding
+      BND:  10    # Bond buffer — rebalancing reserve
+
+    drip_rule: "ALWAYS keep DRIP ON inside Roth IRA. Dividends compound completely tax-free."
+
+    ai_monthly_rules:
+      risk_off:
+        trigger: "VIX > 25"
+        action: "Shift 10% from SCHG to SCHD or BND"
+        rationale: "Preserve gains during market stress"
+      bull_market:
+        trigger: "VIX < 15 AND SCHG YTD > 10%"
+        action: "Shift 5% from BND to SCHG"
+        rationale: "Maximize growth when momentum confirms bull trend"
+      year_end_tax:
+        trigger: "Month is November or December"
+        action: "Confirm conversion tax cash available in taxable account"
+        rationale: "Roth conversions taxable in year executed — need cash for Q4 payment"
+      rebalance_drift:
+        trigger: "Any holding drifts more than 10% from target"
+        action: "Rebalance to target weights"
+        rationale: "Dividends and growth cause allocation drift over time"
+
+# ── Tax Intelligence — Taxable Account ───────────────────────────────────────
+# Monthly report must include YTD taxable P&L summary.
+# Source: Individual_XXX469_Transactions CSV (import via modal).
+# RULE: Only schwab_taxable generates taxable events on gains/dividends.
+
+tax_intelligence:
+
+  taxable_account: schwab_taxable       # ...469 — only account with taxable events
+
+  drip_policy:
+    schwab_taxable: OFF                 # take dividends as cash — cost basis cleanliness
+    schwab_rollover_ira: ON             # tax-deferred — DRIP fine
+    schwab_roth: ON                     # tax-free forever — KEEP DRIP ON
+    fidelity_401k: ON                   # tax-deferred — DRIP fine
+
+  annual_taxable_dividends_estimate: 2830  # from ...469 — adds to AGI every year
+
+  harvest_candidates:
+    - symbol: ARKQ
+      account: schwab_taxable
+      unrealized_loss: -1874
+      pct_loss: -14.1
+      status: HARVEST_CANDIDATE
+      wash_sale_replacement: "VIS (Vanguard Industrials) or ROBO (ROBO Global)"
+    - symbol: PFLT
+      account: schwab_taxable
+      unrealized_loss: -1369
+      pct_loss: -14.1
+      status: HARVEST_CANDIDATE
+      wash_sale_replacement: "BIZD (BDC ETF) or GBDC"
+    - symbol: CDEX
+      account: schwab_taxable
+      unrealized_loss: unknown
+      cost_basis: unknown
+      status: PENDING_BASIS_CONFIRMATION
+      action_required: "Call Schwab ...469 to obtain original cost basis for CDEX. SEC revoked 05/18/2018. Once confirmed, remove as worthless security to generate 1099-B harvestable loss."
+      note: "MUST appear in monthly report until resolved."
+
+  revoked_ira_cleanup:
+    note: "These are in tax-sheltered accounts — no tax benefit from removal. Cleanup only."
+    positions:
+      - symbol: LPIH
+        account: schwab_rollover_ira
+        cost_basis: 4762.95
+        action: "Call Schwab to remove revoked security administratively. No 1099 generated."
+      - symbol: "628518102"
+        name: "MYGO Games Hldg"
+        account: schwab_rollover_ira
+        action: "Call Schwab to remove revoked security administratively."
+      - symbol: SRNE
+        account: schwab_rollover_ira
+        cost_basis: 13177.95
+        action: "Sell at $0.0035 or request removal. No tax benefit — IRA account."
+
+  monthly_report_requirements:
+    - ytd_realized_gains_losses_by_ticker  # taxable account only
+    - ytd_dividend_income_taxable          # ...469 dividends only
+    - ytd_drip_events                      # each reinvestment is a taxable event
+    - running_investment_income_total      # feeds Schedule D + B
+    - conversion_impact_on_magi            # how gains/losses affect remaining capacity
+    - cdex_basis_pending_flag              # show every month until resolved
+    - harvest_opportunities_current        # updated with current prices
+
+# ── ETF Look-Through Sector Mapping ──────────────────────────────────────────
+etf_sectors:
+  SCHG:
+    name: "Schwab US Large-Cap Growth ETF"
+    top_sectors: {Technology: 55, "Consumer Discretionary": 15, "Communication Services": 12, Healthcare: 8, Industrials: 5}
+    top_holdings: ["AAPL", "MSFT", "NVDA", "AMZN", "META", "TSLA", "GOOGL", "AVGO", "COST"]
+  SCHD:
+    name: "Schwab US Dividend Equity ETF"
+    top_sectors: {Financials: 17, Healthcare: 14, Industrials: 13, Technology: 12, "Consumer Staples": 11, Energy: 9}
+    top_holdings: ["AVGO", "HD", "CVX", "KO", "MCD", "PEP", "VZ", "CSCO", "LMT"]
+  ARKG:
+    name: "ARK Genomic Revolution ETF"
+    top_sectors: {Healthcare: 92, Technology: 6, Industrials: 2}
+    top_holdings: ["CRSP", "BEAM", "VCYT", "PACB", "FATE", "TWST", "RXRX"]
+  ARKQ:
+    name: "ARK Autonomous Tech & Robotics ETF"
+    top_sectors: {"Consumer Discretionary": 35, Technology: 30, Industrials: 20, Healthcare: 10}
+    top_holdings: ["TSLA", "TER", "JOBY", "DKNG", "TSM", "UIPATH"]
+  DIV:
+    name: "Global X SuperDividend US ETF"
+    top_sectors: {Energy: 22, Utilities: 18, Financials: 15, "Real Estate": 12, Industrials: 10}
+    top_holdings: ["T", "F", "OMP", "SBR", "MPLX", "EPD"]
+  BND:
+    name: "Vanguard Total Bond Market ETF"
+    top_sectors: {Government: 45, "Corporate Investment Grade": 28, "Mortgage-Backed": 20, Other: 7}
+    top_holdings: ["US Treasury", "FNMA", "GNMA", "FHLMC"]
+  XLB:
+    name: "Materials Select Sector SPDR ETF"
+    top_sectors: {Materials: 100}
+    top_holdings: ["LIN", "ECL", "APD", "SHW", "FCX", "NEM", "PPG"]
+  XLI:
+    name: "Industrial Select Sector SPDR ETF"
+    top_sectors: {Industrials: 100}
+    top_holdings: ["CAT", "GE", "RTX", "HON", "UPS", "DE", "LMT", "NOC"]
+  AMANX:
+    name: "Amana Income Investor"
+    top_sectors: {Technology: 28, Healthcare: 18, Industrials: 15, Financials: 12, "Consumer Staples": 10}
+    top_holdings: ["MSFT", "QCOM", "JCI", "TXN", "AMGN"]
+  FCNTX:
+    name: "Fidelity Contrafund"
+    top_sectors: {Technology: 40, "Communication Services": 15, "Consumer Discretionary": 12, Healthcare: 10, Financials: 8}
+    top_holdings: ["AAPL", "MSFT", "AMZN", "NVDA", "META", "GOOGL", "UNH", "AVGO"]
+
+# ── Known Worthless/Revoked Securities ───────────────────────────────────────
+revoked_securities:
+  - symbol: CDEX
+    reason: "SEC revoked 05/18/2018"
+    account: schwab_taxable
+    cost_basis: unknown
+    action: "PRIORITY — obtain cost basis from Schwab ...469. Remove as worthless to generate harvestable 1099-B loss."
+  - symbol: LPIH
+    reason: "SEC revoked 05/11/2018"
+    account: schwab_rollover_ira
+    cost_basis: 4762.95
+    action: "Call Schwab to remove administratively. IRA account — no tax benefit."
+  - symbol: "628518102"
+    name: "MYGO Games Hldg"
+    reason: "SEC revoked 04/16/2021"
+    account: schwab_rollover_ira
+    action: "Call Schwab to remove administratively. IRA account — no tax benefit."
+  - symbol: SRNE
+    reason: "Sorrento Therapeutics — effectively worthless ($0.0035/share)"
+    account: schwab_rollover_ira
+    cost_basis: 13177.95
+    action: "Sell or request removal. IRA account — no tax benefit from loss."
+
+# ── Fidelity 401k In-Plan Fund Universe ─────────────────────────────────────
+# Available funds for in-plan exchanges and rebalancing suggestions.
+# Rebalancer uses this list — only these symbols valid inside 401k.
+fidelity_available_funds:
+  FID-CONTRA-F:   {name: "FID Contra Pool CL F",    sector: us_large_blend,  one_yr_pct: 20.97}
+  JPM-LGCG:       {name: "JPM Lg CP Grth CF-A",     sector: us_large_growth, one_yr_pct: 13.43}
+  SP500-D:        {name: "SP 500 Index PL CL D",    sector: us_large_blend,  one_yr_pct: 17.79}
+  VANG-FTSE-SOC:  {name: "Vang Ftse SOC Idx IS",    sector: international,   one_yr_pct: 15.68}
+  TRP-LVAL:       {name: "TRP LargeCap Val I",      sector: us_large_value,  one_yr_pct: 10.34}
+  WM-BLAIR:       {name: "WM Blair Smmidcp GR",     sector: us_small,        one_yr_pct: 11.50}
+  SS-SMMD:        {name: "SS RSL Smmdcp Idx II",    sector: us_small,        one_yr_pct: 18.02}
+  AB-DISC-Z:      {name: "AB Disc Value Z",         sector: us_large_value,  one_yr_pct: 12.68}
+  SS-GACEQ:       {name: "SS GACEQ Exus Idx II",   sector: international,   one_yr_pct: 40.30}
+  FID-DIVINTL:    {name: "FID Div Intl PL CL C",   sector: international,   one_yr_pct: 21.21}
+  SS-BOND:        {name: "SS US Bond Indx XIV",     sector: bonds,           one_yr_pct: 6.27}
+  PIM-TOTAL:      {name: "PIM Total Rt Inst",       sector: bonds,           one_yr_pct: 5.32}
+  STABLE-VAL:     {name: "Stable Value Fund",       sector: cash,            one_yr_pct: 2.82}
+  OMC-STOCK:      {name: "Omnicom Stock Fund",      sector: single_stock,    one_yr_pct: -5.61, avoid: true}

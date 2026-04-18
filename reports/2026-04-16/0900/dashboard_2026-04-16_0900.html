@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta http-equiv="refresh" content="60">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade AI v12 · 0900 · 2026-04-16</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d1a;color:#e0e0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5}
+.top-nav{background:#12122a;border-bottom:2px solid #1A73E8;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:999;gap:12px;flex-wrap:wrap}
+.brand{font-size:17px;font-weight:800;color:#fff}.brand span{color:#1A73E8}
+.run-meta{font-size:10px;color:#9A9AB0;margin-top:1px}
+.nav-pills{display:flex;gap:5px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;border:1.5px solid #2a2a4e;color:#ccc;cursor:pointer;transition:all .15s;background:none;white-space:nowrap}
+.pill:hover{background:#1A73E8;color:#fff;border-color:#1A73E8}
+.pill.tos-pill{border-color:#F4B400;color:#F4B400}
+.pill.tos-pill:hover{background:#F4B400;color:#1e1e35}
+.session-banner{display:flex;align-items:center;gap:10px;padding:6px 16px;font-size:12px;font-weight:600;border-bottom:1px solid #2a2a4e}
+.sentiment-bar{display:flex;align-items:center;gap:12px;padding:7px 16px;border-bottom:1px solid #2a2a4e;flex-wrap:wrap}
+.sent-badge{border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800}
+.sent-bull{background:#0d3a22;color:#0F9D58;border:1px solid #0F9D58}
+.sent-bear{background:#3a0d0d;color:#DB4437;border:1px solid #DB4437}
+.sent-neut{background:#1e1e35;color:#9A9AB0;border:1px solid #3a3a5e}
+.sent-detail{font-size:11px;color:#9A9AB0}
+.stats-bar{display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px}
+.stat{background:#12122a;border-radius:8px;padding:8px 14px;text-align:center;min-width:76px;border:1px solid #2a2a4e;cursor:pointer;transition:all .15s}
+.stat:hover,.stat.active{border-color:#1A73E8;background:#1e1e35}
+.stat.go-chip:hover,.stat.go-chip.active{border-color:#0F9D58}
+.stat.top-chip{border-color:#1A73E8}
+.stat-val{font-size:19px;font-weight:800}
+.stat-lbl{font-size:9px;color:#9A9AB0;text-transform:uppercase;margin-top:1px}
+.section{background:#12122a;border-radius:10px;padding:14px;margin:0 10px 10px}
+.section-hdr{font-size:11px;font-weight:700;color:#1A73E8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.badge{background:#1e1e35;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:400;text-transform:none;color:#ccc}
+.collapse-btn{cursor:pointer;color:#9A9AB0;font-size:10px;margin-left:auto;padding:2px 8px;border:1px solid #2a2a4e;border-radius:10px;white-space:nowrap}
+.tos-box{background:#0d1a2a;border:2px solid #1A73E8;border-radius:10px;padding:14px;margin:0 10px 10px}
+.tos-title{font-size:13px;font-weight:800;color:#1A73E8;margin-bottom:10px}
+.tos-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;flex-wrap:wrap}
+.tos-grp{flex:1;min-width:200px}
+.tos-lbl{font-size:9px;color:#9A9AB0;font-weight:700;text-transform:uppercase;margin-bottom:3px}
+.tos-input{width:100%;background:#1e1e35;font-family:monospace;font-size:12px;font-weight:700;border:1.5px solid #3a3a5e;border-radius:6px;padding:6px 9px;cursor:text}
+.tos-input.go-color{color:#0F9D58}.tos-input.all-color{color:#F4B400}
+.copybtn{padding:7px 14px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;border:none;white-space:nowrap}
+.copybtn.go{background:#0F9D58;color:#fff}.copybtn.all{background:#F4B400;color:#1e1e35}
+.copybtn:hover{opacity:.85}
+.tos-steps{background:#0d0d1a;border-radius:8px;padding:10px;font-size:10px;color:#9A9AB0;line-height:1.9}
+.tos-steps b{color:#ccc}.tos-steps code{background:#1e1e35;padding:1px 5px;border-radius:3px;color:#1A73E8}
+.heatmap-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:6px}
+@media(max-width:700px){.heatmap-grid{grid-template-columns:repeat(3,1fr)}}
+.tile{border-radius:8px;padding:9px 5px;text-align:center;cursor:pointer;transition:transform .15s}
+.tile:hover{transform:scale(1.06)}
+.t-flat{background:#252540;color:#9A9AB0}.t-sup{background:#0d6e3f;color:#fff}
+.t-up{background:#1a9e5c;color:#fff}.t-dn{background:#c0392b;color:#fff}.t-sdn{background:#7b0d0d;color:#fff}
+.t-sym{font-weight:800;font-size:12px}.t-pct{font-size:11px;margin:1px 0;font-weight:600}.t-name{font-size:9px;opacity:.8;margin-top:1px}
+.delta-item{border-radius:6px;padding:7px 12px;margin-bottom:4px;cursor:pointer}
+.delta-item .delta-detail{display:none;margin-top:6px;font-size:11px;color:#9A9AB0;border-top:1px solid rgba(255,255,255,.08);padding-top:6px}
+.delta-item.open .delta-detail{display:block}
+.d-arrow{float:right;color:#9A9AB0;font-size:10px;margin-top:1px}
+.d-up{background:#0d2a1a;border-left:3px solid #0F9D58}.d-dn{background:#2a0d0d;border-left:3px solid #DB4437}
+.d-cat{background:#1a150d;border-left:3px solid #F4B400}.d-crit{background:#0d0d2a;border-left:3px solid #1A73E8}
+.d-new{background:#0d2a0d;border-left:3px solid #34a853}.d-fade{background:#1a1a1a;border-left:3px solid #9A9AB0}
+.ticker-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.ticker-tbl th{color:#9A9AB0;text-align:left;padding:5px 8px;border-bottom:1px solid #2a2a4e;font-size:9px;text-transform:uppercase;cursor:pointer;white-space:nowrap;font-weight:600}
+.ticker-tbl th:hover{color:#fff}
+.ticker-tbl td{padding:5px 8px;border-bottom:1px solid #1a1a2e;vertical-align:middle}
+.ticker-tbl tr.data-row{cursor:pointer;transition:background .1s}
+.ticker-tbl tr.data-row:hover{background:#1e1e35}
+.ticker-tbl tr.expanded td{background:#1a1a30}
+.dec-go{color:#0F9D58;font-weight:800}.dec-wait{color:#F4B400;font-weight:800}.dec-avoid{color:#DB4437}
+.up{color:#0F9D58}.dn{color:#DB4437}.nt{color:#9A9AB0}
+.sym-link{color:#fff;font-weight:800;font-size:13px}
+.sym-link:hover{color:#1A73E8;text-decoration:underline}
+.fv-btn{background:#1A73E8;color:#fff;border:none;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer}
+.fv-btn:hover{background:#1557b0}
+.sbar-wrap{background:#252540;border-radius:2px;height:4px;width:70px;display:inline-block;vertical-align:middle;margin-left:4px}
+.sbar-fill{height:4px;border-radius:2px;background:linear-gradient(90deg,#1A73E8,#0F9D58)}
+.crit-dots{display:inline-flex;gap:2px;vertical-align:middle}
+.crit-dot{width:5px;height:10px;border-radius:2px}
+.detail-row{display:none}.detail-row td{padding:0}
+.detail-inner{background:#161630;border-radius:8px;margin:3px 6px 6px;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.dg{background:#1e1e35;border-radius:6px;padding:9px 11px}
+.dg-lbl{font-size:9px;color:#9A9AB0;text-transform:uppercase;font-weight:700;margin-bottom:5px}
+.pm-row{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.pm-name{font-size:9px;color:#9A9AB0;width:68px;flex-shrink:0}
+.pm-wrap{flex:1;background:#252540;border-radius:2px;height:5px}
+.pm-bar{height:5px;border-radius:2px}
+.pm-pts{font-size:9px;color:#9A9AB0;width:24px;text-align:right;flex-shrink:0}
+.crit-wrap{display:flex;flex-wrap:wrap;gap:3px}
+.crit{font-size:10px;border-radius:10px;padding:2px 7px}
+.crit.met{background:#0d3a22;color:#0F9D58}.crit.unmet{background:#1e1e35;color:#9A9AB0}
+.chart-container img{width:100%;border-radius:4px;display:block;max-width:300px}
+.chart-fallback{padding:16px;color:#9A9AB0;font-size:11px;text-align:center}
+.cat-item{border-bottom:1px solid #1a1a2e;padding:6px 0;cursor:pointer}
+.cat-item:last-child{border-bottom:none}
+.cat-time{font-size:9px;color:#9A9AB0;margin-bottom:1px}
+.cat-title-text{font-size:11px;font-weight:500;line-height:1.4}
+.cat-summary{font-size:10px;color:#a0a0c0;font-style:italic;margin-top:3px;display:none;padding-left:8px;border-left:2px solid #3a3a5e}
+.cat-item.open .cat-summary{display:block}
+.tag-hi{color:#DB4437;font-weight:700}.tag-med{color:#F4B400;font-weight:700}.tag-low{color:#9A9AB0}
+.social-chip{background:#1e1e35;border-radius:6px;padding:3px 8px;font-size:10px;margin-right:4px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 10px 10px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+.cal-table,.opt-table{width:100%;border-collapse:collapse;font-size:11px}
+.cal-table th,.opt-table th{color:#9A9AB0;padding:4px 6px;border-bottom:1px solid #2a2a4e;text-align:left;font-size:9px;text-transform:uppercase}
+.cal-table td,.opt-table td{padding:4px 6px;border-bottom:1px solid #1a1a2e}
+.tape-sym{font-weight:700;color:#1A73E8;margin-top:10px;margin-bottom:3px;font-size:12px}
+.tape-row{font-size:11px;margin-left:8px;margin-bottom:3px;color:#ccc}
+.tape-row a{color:inherit}.tape-row a:hover{color:#1A73E8}
+footer{text-align:center;color:#9A9AB0;font-size:10px;padding:14px;border-top:1px solid #1e1e35;margin-top:10px}
+.exec-strip{background:#0a1628;border-bottom:2px solid #1A73E8;padding:6px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;font-size:11px}
+.exec-item{display:flex;flex-direction:column;gap:1px;min-width:70px}
+.exec-label{font-size:9px;color:#9A9AB0;text-transform:uppercase;letter-spacing:.4px}
+.exec-value{font-size:13px;font-weight:800;color:#e0e0f0}
+.exec-value.warn{color:#F4B400}.exec-value.danger{color:#DB4437}.exec-value.ok{color:#0F9D58}
+.regime-banner{background:#1a1500;border-left:4px solid #F4B400;border-radius:6px;padding:10px 16px;margin:6px 10px;font-size:11px;line-height:1.6}
+.regime-title{font-weight:800;color:#F4B400;font-size:12px;margin-bottom:4px}
+.regime-body{color:#ccc}
+.sf-btn{background:#1e1e35;border:1px solid #2a2a4e;border-radius:10px;padding:2px 10px;font-size:10px;color:#ccc;cursor:pointer}
+.sf-btn.active{background:#1A73E8;color:#fff;border-color:#1A73E8}
+</style></head><body>
+<div class="top-nav"><div><div class="brand">Trade AI <span>v12</span></div>
+<div class="run-meta">Run 0900 · 2026-04-16 · 18:47:27 ET</div></div>
+<div class="nav-pills">
+<span class="pill tos-pill" onclick="jumpTo('tos')">🎯 TOS</span>
+<span class="pill" onclick="jumpTo('market')">📊 Market</span>
+<span class="pill" onclick="jumpTo('delta')">📡 Changes</span>
+<span class="pill" onclick="jumpTo('setups')">🃏 Setups</span>
+<span class="pill" onclick="jumpTo('catalysts')">📰 Catalysts</span>
+</div></div>
+<div class="session-banner" style="background:#0d0d2a"><span>🌙</span>
+<span style="font-weight:700">After Hours</span>
+<span style="color:#9A9AB0;font-size:11px">After-hours trading. Closes at 8:00 PM ET</span></div>
+<div class="sentiment-bar"><span class="sent-badge sent-neut">🟡 Neutral</span>
+<div class="sent-detail">SPY <b>+1.04%</b> · QQQ <b>+1.89%</b> · VIX <b>17.9</b> · 4 GO · After Hours</div></div>
+<div class='exec-strip'><div class='exec-item'><span class='exec-label'>VIX</span><span class='exec-value ok'>17.9</span></div><div class='exec-item'><span class='exec-label'>Breadth</span><span class='exec-value'>Neutral</span></div><div class='exec-item'><span class='exec-label'>Scanned</span><span class='exec-value'>12</span></div><div class='exec-item'><span class='exec-label'>GO Tier</span><span class='exec-value ok'>4</span></div><div style='margin-left:auto;font-size:9px;color:#9A9AB0'>Run 0900 &middot; 2026-04-16 &middot; 18:47:27 ET</div></div>
+
+<div class="stats-bar">
+<div class="stat" onclick="filterBy('all')" id="s-all"><div class="stat-val">12</div><div class="stat-lbl">Scanned</div></div>
+<div class="stat go-chip" onclick="filterBy('GO')" id="s-go"><div class="stat-val up">4</div><div class="stat-lbl">GO Tier</div></div>
+<div class="stat" onclick="filterBy('WAIT')" id="s-wait"><div class="stat-val" style="color:#F4B400">4</div><div class="stat-lbl">WAIT</div></div>
+<div class="stat" onclick="filterBy('AVOID')" id="s-av"><div class="stat-val nt">4</div><div class="stat-lbl">Avoid</div></div>
+<div class="stat" onclick="jumpTo('delta')"><div class="stat-val">12</div><div class="stat-lbl">Δ Events</div></div>
+<div class="stat top-chip"><div class="stat-val" style="color:#1A73E8">WSHP</div><div class="stat-lbl">Top (46)</div></div>
+<div class="stat" onclick="filterBy('catalyst')"><div class="stat-val" style="color:#F4B400">12</div><div class="stat-lbl">Catalysts</div></div>
+<div class="stat"><div class="stat-val nt">17.9</div><div class="stat-lbl">VIX</div></div>
+</div>
+<div style="padding:0 12px 6px;font-size:11px;color:#9A9AB0">
+<span id="filter-lbl" style="background:#1A73E8;color:#fff;border-radius:10px;padding:2px 8px;font-size:10px">Showing: All</span>
+&nbsp; Click stats to filter · Click row to expand · FV opens Finviz Elite</div>
+<div class="tos-box" id="tos"><div class="tos-title">🎯 ThinkorSwim Export</div>
+<div class="tos-row"><div class="tos-grp"><div class="tos-lbl">GO-Tier Symbols</div>
+<input type="text" class="tos-input go-color" id="go-syms" readonly value="WSHP ONFO NUCL MYSE" placeholder="— no GO tickers —"></div>
+<button class="copybtn go" onclick="doCopy('go-syms',this)">Copy GO</button></div>
+<div class="tos-row"><div class="tos-grp"><div class="tos-lbl">All Qualified (GO + WAIT)</div>
+<input type="text" class="tos-input all-color" id="all-syms" readonly value="WSHP ONFO NUCL MYSE MAMO GLND NEXA ACHV" placeholder="— no qualified tickers —"></div>
+<button class="copybtn all" onclick="doCopy('all-syms',this)">📋 Copy All</button></div>
+<div class="tos-steps"><b>Import .tst:</b> TOS → Watchlists → Gear ⚙ → <b>Import Watchlist</b> → <code>reports\2026-04-16\0900\trade_ai_0900.tst</code><br>
+<b>Paste:</b> Click <b>Copy All</b> → TOS → New Watchlist → Paste
+</div></div>
+<div class="section" id="market">
+<div class="section-hdr">📊 Sector Heatmap <span class="badge">🌙 After Hours</span>
+<span class="collapse-btn" onclick="tog('heatmap-body',this)">▲ hide</span></div>
+<div id="heatmap-body"><div class="heatmap-grid" id="heatmap-grid"></div>
+<div style="font-size:11px;color:#9A9AB0;display:flex;gap:16px;flex-wrap:wrap;margin-top:4px">
+<span>▲ Leaders: <span style="color:#0F9D58" id="leaders-txt">—</span></span>
+<span>▼ Laggards: <span style="color:#DB4437" id="laggards-txt">—</span></span></div></div></div>
+<div class="two-col">
+<div class="section" style="margin:0"><div class="section-hdr">📅 Economic Calendar
+<span class="badge">0 high-impact</span>
+<span class="collapse-btn" onclick="tog('cal-body',this)">▲ hide</span></div>
+<div id="cal-body"><table class="cal-table"><thead><tr><th>Time</th><th>Impact</th><th>Event</th><th>Fcst</th><th>Prior</th></tr></thead>
+<tbody><tr><td colspan="5" class="nt" style="padding:8px">No high-impact events today</td></tr></tbody></table>
+<div style="margin-top:8px;font-size:11px;color:#9A9AB0;font-weight:700">Earnings Today/Tomorrow</div>
+<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+<span style='background:#1e1e35;border:1px solid #3a3a5e;border-radius:10px;padding:3px 9px;font-size:11px;margin:2px'>NFLX <small class='nt'>BMO</small></span><span style='background:#1e1e35;border:1px solid #3a3a5e;border-radius:10px;padding:3px 9px;font-size:11px;margin:2px'>PEP <small class='nt'>BMO</small></span><span style='background:#1e1e35;border:1px solid #3a3a5e;border-radius:10px;padding:3px 9px;font-size:11px;margin:2px'>TSM <small class='nt'>BMO</small></span></div></div></div>
+<div class="section" style="margin:0"><div class="section-hdr">⚡ Options Flow
+<span class="badge">0 sweeps · 0🟢/0🔴</span>
+<span class="collapse-btn" onclick="tog('opt-body',this)">▲ hide</span></div>
+<div id="opt-body"><table class="opt-table"><thead><tr><th>Ticker</th><th>Type</th><th>Strike</th><th>Expiry</th><th>Vol</th><th>Premium</th><th>Dir</th><th></th></tr></thead>
+<tbody><tr><td colspan="8" class="nt" style="padding:8px">No unusual flow detected</td></tr></tbody></table></div></div></div>
+<div class="section" id="delta"><div class="section-hdr">📡 What Changed
+<span class="badge">12 events · click to expand</span>
+<span class="collapse-btn" onclick="tog('delta-body',this)">▲ hide</span></div>
+<div id="delta-body"></div></div>
+<div style="padding:4px 12px 2px;display:flex;align-items:center;gap:8px"><button class="sf-btn active" id="sf-btn" onclick="toggleScoreFilter()">Score ≥15 Active (click for all)</button></div>
+<div class="section" id="setups"><div class="section-hdr">🃏 Setups
+<span class="badge" id="setups-count">12 tickers</span>
+<span class="collapse-btn" onclick="tog('setups-body',this)">▲ hide</span></div>
+<div id="setups-body" style="overflow-x:auto"><table class="ticker-tbl">
+<thead><tr>
+<th onclick="srt('sym')">Symbol ↕</th><th onclick="srt('score')">Score ↕</th>
+<th onclick="srt('dec')">Decision ↕</th><th onclick="srt('rvol')">RVOL ↕</th>
+<th onclick="srt('price')">Price ↕</th><th onclick="srt('chg')">Chg% ↕</th>
+<th onclick="srt('gap')">Gap% ↕</th><th onclick="srt('float_m')">Float ↕</th>
+<th>Country</th><th>Sector</th><th>Criteria</th><th>Social</th><th>Catalyst</th><th>Chart</th>
+</tr></thead><tbody id="tbl-body"></tbody></table></div></div>
+<div class="section" id="catalysts"><div class="section-hdr">📰 Catalyst Tape
+<span class="collapse-btn" onclick="tog('cat-body',this)">▲ hide</span></div>
+<div id="cat-body"></div></div>
+<footer>Trade AI v12 · Run 0900 · 2026-04-16 · 12 tickers · Auto-refresh 60s · 18:47:27 ET</footer>
+<script>
+var TICKERS=[{"sym": "WSHP", "co": "WeShop Holdings Ltd", "country": "🇺🇸", "sector": "Communication Services", "score": 46, "grade": "A", "dec": "GO", "rvol": 242.4, "price": 14.27, "chg": 73.5, "gap": 0.0, "float_m": 1.3, "vol": 33557238, "criteria_met": 7, "criteria_total": 9, "catalyst_count": 8, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 15, "rvol": 12, "pa": 6, "float": 8, "price": 4, "sector": 1}, "top_cat": {"title": "Keep an eye on the top gainers and losers in Thursday's session.", "source": "ChartMill", "age": 3.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0b49acdc48cf03330aa1452c8b25e3dfc1dd1084d8e8903ddac9d8af3c4993a5"}, "cats": [{"title": "Keep an eye on the top gainers and losers in Thursday's session.", "source": "ChartMill", "age": 3.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0b49acdc48cf03330aa1452c8b25e3dfc1dd1084d8e8903ddac9d8af3c4993a5", "summary": ""}, {"title": "12 Communication Services Stocks Moving In Thursday's After-Market Session", "source": "Benzinga", "age": 5.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=d88174b6f6e13324bda03f9a8608c0160f5a5041a427f89d26ab180bb3d91f60", "summary": ""}, {"title": "What's going on in today's session", "source": "ChartMill", "age": 6.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=bcf1fd64ab898ee521238d63f8d08f6470a37d953b2640119b5708c7787f39f2", "summary": ""}, {"title": "Dow Surges Over 100 Points; US Initial Jobless Claims Fall", "source": "Benzinga", "age": 13.0, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=13cd919f0603b5f13d7db1d9e922ccd944032d2975f750ef421f83f411fa949e", "summary": ""}, {"title": "What's Going On With Interactive Media Company WeShop Stock Today?", "source": "Benzinga", "age": 14.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=46dfacdc7de589ea4cae395f04fecfb581815bf8b2e1c9abf027a6cfcfb0683d", "summary": ""}], "ollama_flag": "GO", "ollama_risk": "Strong positive momentum", "ollama_summary": "Stock surges due to market sentiment improvement", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "other", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "ONFO", "co": "Onfolio Holdings Inc", "country": "🇺🇸", "sector": "Communication Services", "score": 45, "grade": "A", "dec": "GO", "rvol": 1437.9, "price": 1.5, "chg": 124.9, "gap": 0.0, "float_m": 4.0, "vol": 277466137, "criteria_met": 8, "criteria_total": 9, "catalyst_count": 12, "catalyst_tier": "high_impact", "criteria": {"has_catalyst": true, "has_high_impact": true, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 15, "rvol": 12, "pa": 6, "float": 8, "price": 3, "sector": 1}, "top_cat": {"title": "Onfolio Holdings Inc. Secures $100 Million Equity Facility to Accelerate Acquisition Strategy", "source": "Finnhub", "age": 11.0, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=4e6a0ba9b9be938539321084c5192f3ccebc893a19be175df798e76088ce52ed"}, "cats": [{"title": "Onfolio Holdings Inc. Secures $100 Million Equity Facility to Accelerate Acquisition Strategy", "source": "Finnhub", "age": 11.0, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=4e6a0ba9b9be938539321084c5192f3ccebc893a19be175df798e76088ce52ed", "summary": ""}, {"title": "Keep an eye on the top gainers and losers in Thursday's session.", "source": "ChartMill", "age": 3.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0b49acdc48cf03330aa1452c8b25e3dfc1dd1084d8e8903ddac9d8af3c4993a5", "summary": ""}, {"title": "These stocks are the most active in today's session", "source": "ChartMill", "age": 4.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=8f10e87191ccf507141f6173858aef8b3a5f597df63e0c525b060cf71b2fb656", "summary": ""}, {"title": "12 Communication Services Stocks Moving In Thursday's After-Market Session", "source": "Benzinga", "age": 5.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=d88174b6f6e13324bda03f9a8608c0160f5a5041a427f89d26ab180bb3d91f60", "summary": ""}, {"title": "BC-Most Active Stocks", "source": "Yahoo Finance", "age": 8.2, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/bc-most-active-stocks-143018717.html", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "NUCL", "co": "Eagle Nuclear Energy Corp", "country": "🇺🇸", "sector": "Energy", "score": 43, "grade": "A", "dec": "GO", "rvol": 9.8, "price": 12.2, "chg": 28.1, "gap": 0.0, "float_m": 2.2, "vol": 2389716, "criteria_met": 8, "criteria_total": 9, "catalyst_count": 3, "catalyst_tier": "high_impact", "criteria": {"has_catalyst": true, "has_high_impact": true, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 8, "rvol": 12, "pa": 6, "float": 8, "price": 4, "sector": 5}, "top_cat": {"title": "Why Is NuScale Power Stock Sliding Thursday?", "source": "Benzinga", "age": 10.3, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=c83900fffa174efb238cbc6e41fd7efa468524e58e47d903d679d5d8625c34f6"}, "cats": [{"title": "Why Is NuScale Power Stock Sliding Thursday?", "source": "Benzinga", "age": 10.3, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=c83900fffa174efb238cbc6e41fd7efa468524e58e47d903d679d5d8625c34f6", "summary": ""}, {"title": "Nuclear Stocks Rise As White House Launches Space Nuclear Power Strategy", "source": "Benzinga", "age": 13.0, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=9972ace7df327ce5fb0464ff90ef3e9c0599a17e126dfc9040d4225c9c7d0566", "summary": ""}, {"title": "Eagle Nuclear Energy Provides First Quarter 2026 Corporate Update", "source": "Finnhub", "age": 29.3, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=b229158e232c4894c4ca87efc0e9b6622ca63264614230dc50a2360be5cf9ecd", "summary": ""}], "ollama_flag": "TRAP", "ollama_risk": "project delays and regulatory hurdles", "ollama_summary": "Aurora project moves toward pre-feasibility study", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "other", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "MYSE", "co": "Myseum.AI Inc", "country": "🇺🇸", "sector": "Technology", "score": 40, "grade": "A", "dec": "GO", "rvol": 318.8, "price": 3.3, "chg": 129.2, "gap": 0.0, "float_m": 4.0, "vol": 209646254, "criteria_met": 7, "criteria_total": 9, "catalyst_count": 25, "catalyst_tier": "medium_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 4, "rvol": 12, "pa": 6, "float": 8, "price": 5, "sector": 5}, "top_cat": {"title": "Massimo Group (MAMO) Stock Jumps Nearly 39% After Hours: Here's What You Should Know", "source": "Benzinga", "age": 21.6, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=d6fd2711cdc6918248c646714a985e4f4a515356ff43d6cfe5700e27df70cc81"}, "cats": [{"title": "Massimo Group (MAMO) Stock Jumps Nearly 39% After Hours: Here's What You Should Know", "source": "Benzinga", "age": 21.6, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=d6fd2711cdc6918248c646714a985e4f4a515356ff43d6cfe5700e27df70cc81", "summary": ""}, {"title": "Myseum takes flight after Allbirds in fresh AI rebrand wave", "source": "Yahoo Finance", "age": 3.6, "tier": "low_impact", "url": "https://finance.yahoo.com/video/myseum-takes-flight-allbirds-fresh-190512953.html", "summary": ""}, {"title": "These stocks are the most active in today's session", "source": "ChartMill", "age": 4.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=8f10e87191ccf507141f6173858aef8b3a5f597df63e0c525b060cf71b2fb656", "summary": ""}, {"title": "Top Midday Gainers", "source": "Yahoo Finance", "age": 5.2, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/top-midday-gainers-173112656.html", "summary": ""}, {"title": "On Thursday, there are stocks with unusual volume. Let's take a look.", "source": "ChartMill", "age": 5.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=c4d4e9a3c66ffcf232b9417d921da196c96fc831e24ef56d0512539f9d861c68", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "MAMO", "co": "Massimo Group", "country": "🇺🇸", "sector": "Consumer Cyclical", "score": 37, "grade": "B", "dec": "WAIT", "rvol": 39.2, "price": 1.19, "chg": 20.6, "gap": 0.0, "float_m": 8.9, "vol": 41445356, "criteria_met": 7, "criteria_total": 9, "catalyst_count": 12, "catalyst_tier": "medium_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 8, "rvol": 12, "pa": 6, "float": 7, "price": 3, "sector": 1}, "top_cat": {"title": "Massimo Group (MAMO) Stock Jumps Nearly 39% After Hours: Here's What You Should Know", "source": "Benzinga", "age": 21.6, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=d6fd2711cdc6918248c646714a985e4f4a515356ff43d6cfe5700e27df70cc81"}, "cats": [{"title": "Massimo Group (MAMO) Stock Jumps Nearly 39% After Hours: Here's What You Should Know", "source": "Benzinga", "age": 21.6, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=d6fd2711cdc6918248c646714a985e4f4a515356ff43d6cfe5700e27df70cc81", "summary": ""}, {"title": "MAMO Announces Strategic Partnership to Advance Intelligent Commercial Automation and AI-Enabled Vehicle Platform Strategy", "source": "Yahoo Finance", "age": 33.3, "tier": "medium_impact", "url": "https://finance.yahoo.com/sectors/technology/articles/mamo-announces-strategic-partnership-advance-132500832.html", "summary": ""}, {"title": "Massimo Enters Into Strategic Cooperation Agreement With Shenzhen AIBO Robotics To Support MAMO's Expansion Into Intelligent Commercial Automation, Robotic Service Systems And AI-Enabled Equipment Upg", "source": "Benzinga", "age": 37.2, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=36562c3cefe7d99c6dd147af6792403bed4c62e861aa080a4383c83062724949", "summary": ""}, {"title": "Keep an eye on the top gainers and losers in Thursday's session.", "source": "ChartMill", "age": 3.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0b49acdc48cf03330aa1452c8b25e3dfc1dd1084d8e8903ddac9d8af3c4993a5", "summary": ""}, {"title": "What's going on in today's session", "source": "ChartMill", "age": 6.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=bcf1fd64ab898ee521238d63f8d08f6470a37d953b2640119b5708c7787f39f2", "summary": ""}], "ollama_flag": "WATCH", "ollama_risk": "Potential trap due to low trust score.", "ollama_summary": "Strategic partnership with AIBO drives growth.", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "partnership", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "GLND", "co": "Greenland Energy Co", "country": "🇺🇸", "sector": "Energy", "score": 34, "grade": "B", "dec": "WAIT", "rvol": 3.2, "price": 7.96, "chg": 45.0, "gap": 0.0, "float_m": 8.9, "vol": 2731625, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 1, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 4, "rvol": 7, "pa": 6, "float": 7, "price": 5, "sector": 5}, "top_cat": {"title": "Shares of oil and gas-related companies are trading higher as Middle East tensions and low movement in the Strait of Hormuz continue to keep energy pr", "source": "Benzinga", "age": 9.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=1b928f77bcc7a4b621f2ab65dfe01b380257920d56075b7a58396cece96c0366"}, "cats": [{"title": "Shares of oil and gas-related companies are trading higher as Middle East tensions and low movement in the Strait of Hormuz continue to keep energy prices elevated.", "source": "Benzinga", "age": 9.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=1b928f77bcc7a4b621f2ab65dfe01b380257920d56075b7a58396cece96c0366", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "NEXA", "co": "Nexa Resources S.A", "country": "🇺🇸", "sector": "Basic Materials", "score": 31, "grade": "B", "dec": "WAIT", "rvol": 4.8, "price": 14.87, "chg": 1.5, "gap": 0.0, "float_m": 43.5, "vol": 4496498, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 5, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": false}, "pillars": {"catalyst": 15, "rvol": 7, "pa": 0, "float": 4, "price": 4, "sector": 1}, "top_cat": {"title": "NEXA vs. NGLOY: Which Stock Is the Better Value Option?", "source": "Yahoo Finance", "age": 7.1, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/nexa-vs-ngloy-stock-better-154002025.html"}, "cats": [{"title": "NEXA vs. NGLOY: Which Stock Is the Better Value Option?", "source": "Yahoo Finance", "age": 7.1, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/nexa-vs-ngloy-stock-better-154002025.html", "summary": ""}, {"title": "Nexa Resources (NEXA) Surges 22.7%: Is This an Indication of Further Gains?", "source": "Yahoo Finance", "age": 13.9, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/nexa-resources-nexa-surges-22-084700542.html", "summary": ""}, {"title": "Nexa Resources S.A. Shares Resume Trade", "source": "Benzinga", "age": 34.5, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=cb98c9c5f3855b02bb9e9f3c7eda346f06853f426de2ce00d37dedbc301a9728", "summary": ""}, {"title": "Nexa Resources S.A. Shares Halted On Circuit Breaker To The Upside, Stock Now Up 9.30%", "source": "Benzinga", "age": 34.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=07e7b857133c515d5cf75a716568246da649bb9becb0ce1b7b4fbf4af9c1b16d", "summary": ""}, {"title": "Citigroup Maintains Neutral on Nexa Res, Raises Price Target to $12.5", "source": "Benzinga", "age": 57.1, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=ce0344b9b41c1c5a028bd0ed439f082287a4c0ebe751d426acc8918ddd70b9f2", "summary": ""}], "ollama_flag": "GO", "ollama_risk": "Positive momentum and potential for further gains", "ollama_summary": "52-week high achieved", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "other", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "ACHV", "co": "Achieve Life Sciences Inc", "country": "🇺🇸", "sector": "Healthcare", "score": 30, "grade": "B", "dec": "WAIT", "rvol": 20.9, "price": 4.81, "chg": 35.5, "gap": 0.0, "float_m": 46.6, "vol": 14052370, "criteria_met": 8, "criteria_total": 9, "catalyst_count": 13, "catalyst_tier": "high_impact", "criteria": {"has_catalyst": true, "has_high_impact": true, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 3, "rvol": 12, "pa": 6, "float": 4, "price": 5, "sector": 0}, "top_cat": {"title": "Achieve Life Sciences Announces $180M Financing Upfront With Up To Additional $174M From Warrants Exercisable Within 20 Days Of FDA Approval", "source": "Benzinga", "age": 13.8, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=96553701a08851a62c5dc11390f9564a2c491503754a8d8bb02cc95d1e69cbf2"}, "cats": [{"title": "Achieve Life Sciences Announces $180M Financing Upfront With Up To Additional $174M From Warrants Exercisable Within 20 Days Of FDA Approval", "source": "Benzinga", "age": 13.8, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=96553701a08851a62c5dc11390f9564a2c491503754a8d8bb02cc95d1e69cbf2", "summary": ""}, {"title": "Achieve Life Sciences Announces Up to $354 Million Private Placement", "source": "Finnhub", "age": 13.8, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=e33dffa53a1d2569552c1c1d5b1e5d61d5e46374186821652323609a1be21147", "summary": ""}, {"title": "Achieve Life Sciences Transfers Cystisinicline Manufacturing To  Adare Pharma Solutions; Manufactures First Cytisinicline Engineering Batch At Adare", "source": "Benzinga", "age": 38.7, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=c27731e80de9bff2c9a1904fa8adc842d6101c4a13ebdc6a24365ca9ec2a139d", "summary": ""}, {"title": "Achieve Life Sciences Announces Operational Progress Including Completion of Technology Transfer to Adare Pharma Solutions", "source": "Finnhub", "age": 38.7, "tier": "medium_impact", "url": "https://finnhub.io/api/news?id=e22f3064d75cb7f32bdecc3d25ac6d736b6ea0dd2edf8380fcaf81f2fe1a49cb", "summary": ""}, {"title": "Keep an eye on the top gainers and losers in Thursday's session.", "source": "ChartMill", "age": 3.7, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0b49acdc48cf03330aa1452c8b25e3dfc1dd1084d8e8903ddac9d8af3c4993a5", "summary": ""}], "ollama_flag": "DILUTION", "ollama_risk": "Dilution signal: private placement", "ollama_summary": "FDA approval triggers financing, potential upside", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "dilution", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "ARQQ", "co": "Arqit Quantum Inc", "country": "🇺🇸", "sector": "Technology", "score": 27, "grade": "C", "dec": "AVOID", "rvol": 4.5, "price": 15.77, "chg": -2.8, "gap": 0.0, "float_m": 9.7, "vol": 1098823, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 9, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": false}, "pillars": {"catalyst": 4, "rvol": 7, "pa": 0, "float": 7, "price": 4, "sector": 5}, "top_cat": {"title": "Tomorrow Street, a joint venture between Vodafone and Luxembourg’s technology incubator, chooses Arqit to add Quantum Security Solutions to its portfo", "source": "Finnhub", "age": 10.9, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=7a1b0aaa8b7b32178bc16054966cd227668af783ead2136473f445366ad13c0f"}, "cats": [{"title": "Tomorrow Street, a joint venture between Vodafone and Luxembourg’s technology incubator, chooses Arqit to add Quantum Security Solutions to its portfolio", "source": "Finnhub", "age": 10.9, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=7a1b0aaa8b7b32178bc16054966cd227668af783ead2136473f445366ad13c0f", "summary": ""}, {"title": "Arqit Selected To Join Tomorrow Street Portfolio As Scaleup Partner", "source": "Benzinga", "age": 13.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=4ee53ceb52f11d281c079e0daee200df9c27924530e91c234d5c1a3dc93d1ca8", "summary": ""}, {"title": "12 Information Technology Stocks Moving In Thursday's Pre-Market Session", "source": "Benzinga", "age": 14.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=dee9536dfa17dabd28e407d94a1715c88d98dd378488d248c14596529e650895", "summary": ""}, {"title": "Shares of quantum computing-related companies are trading higher amid continued strength after NVIDIA recently announced the launch of Ising open source quantum AI models.", "source": "Benzinga", "age": 15.1, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=d36d8640cb1f8df627a7f099e1f407050a886fb63d7739fa769be2990b38f3ef", "summary": ""}, {"title": "Shares of quantum computing-related companies are trading higher. The industry is extending yesterday's rally in response to NVIDIA's launch of Ising open source quantum AI models.", "source": "Benzinga", "age": 30.9, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=24dc7b868665d12a4ec2978d5762895a3677e69b1b8bbf71f62a490d1f52bec8", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "EVTL", "co": "Vertical Aerospace Ltd", "country": "🇺🇸", "sector": "Industrials", "score": 25, "grade": "C", "dec": "AVOID", "rvol": 8.6, "price": 3.34, "chg": 25.6, "gap": 0.0, "float_m": 96.1, "vol": 17170467, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 4, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": false, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 0, "rvol": 12, "pa": 6, "float": 2, "price": 5, "sector": 0}, "top_cat": {"title": "Thursday's session: gap up and gap down stocks", "source": "ChartMill", "age": 8.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=2d5a7139aad7596c189f740c306aafad85ce3bc03eb3701a93267166747cf26e"}, "cats": [{"title": "Thursday's session: gap up and gap down stocks", "source": "ChartMill", "age": 8.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=2d5a7139aad7596c189f740c306aafad85ce3bc03eb3701a93267166747cf26e", "summary": ""}, {"title": "12 Industrials Stocks Moving In Thursday's Intraday Session", "source": "Benzinga", "age": 9.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=2668d9e911dc6938580fa434afe39eb3879caf8d7a30a9b59fdc30c13f0c6fa5", "summary": ""}, {"title": "Vertical Aerospace Completes Two-Way Piloted Transition Flight", "source": "Yahoo Finance", "age": 11.6, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/vertical-aerospace-completes-two-way-110857032.html", "summary": ""}, {"title": "Vertical Aerospace Achieves World First Two-Way Piloted Transition Flight", "source": "Finnhub", "age": 16.0, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=cc5cb2005f4caff96544b7e312dae657336c634fbef90fc26198704aabe40d7a", "summary": ""}], "ollama_flag": "AVOID", "ollama_risk": "high", "ollama_summary": "new ticker", "ollama_preplan": "", "catalyst_type": "other", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "VANI", "co": "Vivani Medical Inc", "country": "🇺🇸", "sector": "Healthcare", "score": 24, "grade": "C", "dec": "AVOID", "rvol": 4.1, "price": 1.31, "chg": 14.9, "gap": 0.0, "float_m": 32.1, "vol": 1469825, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 2, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 4, "rvol": 7, "pa": 6, "float": 4, "price": 3, "sector": 0}, "top_cat": {"title": "Vivani Medical Insider Bought Shares Worth $1,999,999, According to a Recent SEC Filing", "source": "Yahoo Finance", "age": 12.1, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/vivani-medical-insider-bought-shares-103933516.html"}, "cats": [{"title": "Vivani Medical Insider Bought Shares Worth $1,999,999, According to a Recent SEC Filing", "source": "Yahoo Finance", "age": 12.1, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/vivani-medical-insider-bought-shares-103933516.html", "summary": ""}, {"title": "12 Health Care Stocks Moving In Thursday's Pre-Market Session", "source": "Benzinga", "age": 14.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=6ff9506a786c267b5a97d47b42b6c31bfc78821c18bd937c80484dea4543465a", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "CDNA", "co": "Caredx Inc", "country": "🇺🇸", "sector": "Healthcare", "score": 23, "grade": "C", "dec": "AVOID", "rvol": 4.4, "price": 22.42, "chg": 27.6, "gap": 0.0, "float_m": 45.6, "vol": 2964284, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 10, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": false, "chg_10": true}, "pillars": {"catalyst": 4, "rvol": 7, "pa": 6, "float": 4, "price": 2, "sector": 0}, "top_cat": {"title": "Why Diagnostics Names CareDx And QuidelOrtho Just Diverged", "source": "Yahoo Finance", "age": 2.3, "tier": "low_impact", "url": "https://finance.yahoo.com/m/b98e4623-62e8-37b7-acb8-4c866509a0bd/why-diagnostics-names-caredx.html"}, "cats": [{"title": "Why Diagnostics Names CareDx And QuidelOrtho Just Diverged", "source": "Yahoo Finance", "age": 2.3, "tier": "low_impact", "url": "https://finance.yahoo.com/m/b98e4623-62e8-37b7-acb8-4c866509a0bd/why-diagnostics-names-caredx.html", "summary": ""}, {"title": "Thursday's session: gap up and gap down stocks", "source": "ChartMill", "age": 8.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=2d5a7139aad7596c189f740c306aafad85ce3bc03eb3701a93267166747cf26e", "summary": ""}, {"title": "12 Health Care Stocks Moving In Thursday's Intraday Session", "source": "Benzinga", "age": 9.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=55403b3652d91cbd1f202689e2eb54851b4f08ae4e55ed580f1aa50b3c7d07bb", "summary": ""}, {"title": "Aehr Test Systems, CareDx, Okta And Other Big Stocks Moving Higher On Thursday", "source": "Benzinga", "age": 12.8, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=cc1aac531794eb9ccf7fe4cbf0dc9e18a7c8dd07b9b50ff722cd9f7958b9359f", "summary": ""}, {"title": "12 Health Care Stocks Moving In Thursday's Pre-Market Session", "source": "Benzinga", "age": 14.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=6ff9506a786c267b5a97d47b42b6c31bfc78821c18bd937c80484dea4543465a", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}];
+var DELTAS=[{"type": "d-up", "icon": "📈", "text": "<b>WSHP</b> — 37 → 46 (+9)", "detail": "Grade: B → A"}, {"type": "d-cat", "icon": "🔥", "text": "<b>WSHP</b> — 1 new catalyst(s): 12 Communication Services Stocks Moving In Thursday&#x27;s After-Market Session", "detail": "12 Communication Services Stocks Moving In Thursday&#x27;s After-Market Session"}, {"type": "d-cat", "icon": "🔥", "text": "<b>ONFO</b> — 1 new catalyst(s): 12 Communication Services Stocks Moving In Thursday&#x27;s After-Market Session", "detail": "12 Communication Services Stocks Moving In Thursday&#x27;s After-Market Session"}, {"type": "d-up", "icon": "📈", "text": "<b>NUCL</b> — 35 → 43 (+8)", "detail": "Grade: B → A"}, {"type": "d-cat", "icon": "🔥", "text": "<b>MYSE</b> — 3 new catalyst(s): Myseum Shares Surge After Rebrand To Myseum.AI", "detail": "Myseum Shares Surge After Rebrand To Myseum.AI<br>Myseum shares are trading higher. The company announced a rebrand to Myseum.AI.<br>Myseum Rebrands To Myseum.AI, Effective Immediately"}, {"type": "d-up", "icon": "📈", "text": "<b>GLND</b> — 19 → 34 (+15)", "detail": "Grade: D → B"}, {"type": "d-cat", "icon": "🔥", "text": "<b>GLND</b> — 1 new catalyst(s): Shares of oil and gas-related companies are trading higher as Middle East tensio", "detail": "Shares of oil and gas-related companies are trading higher as Middle East tensions and low movement in the Strait of Hormuz continue to keep energy prices elevated."}, {"type": "d-rvol", "icon": "🚀", "text": "<b>GLND</b> — RVOL crossed 2.0x", "detail": ""}, {"type": "d-rvol", "icon": "🚀", "text": "<b>GLND</b> — RVOL crossed 3.0x", "detail": ""}, {"type": "d-crit", "icon": "✅", "text": "<b>GLND</b> — New criteria: rvol_above_3, change_above_10pct, has_fresh_catalyst", "detail": "Total: 6/9"}, {"type": "d-up", "icon": "📈", "text": "<b>NEXA</b> — 20 → 31 (+11)", "detail": "Grade: C → B"}, {"type": "d-dn", "icon": "📉", "text": "<b>ARQQ</b> — GRADE_DOWN", "detail": ""}];
+var SECTORS=[{"sym": "XLK", "name": "Technology", "pct": 2.76, "tier": "t-sup"}, {"sym": "XLF", "name": "Financials", "pct": 0.48, "tier": "t-flat"}, {"sym": "XLE", "name": "Energy", "pct": 1.13, "tier": "t-up"}, {"sym": "XLV", "name": "Healthcare", "pct": -1.49, "tier": "t-dn"}, {"sym": "XLY", "name": "Consumer Disc.", "pct": 1.02, "tier": "t-up"}, {"sym": "XLI", "name": "Industrials", "pct": -1.74, "tier": "t-dn"}, {"sym": "XLP", "name": "Consumer Stapl.", "pct": -0.05, "tier": "t-flat"}, {"sym": "XLU", "name": "Utilities", "pct": -0.26, "tier": "t-flat"}, {"sym": "XLRE", "name": "Real Estate", "pct": 0.87, "tier": "t-up"}, {"sym": "XLB", "name": "Materials", "pct": -0.5, "tier": "t-flat"}, {"sym": "XLC", "name": "Comm. Services", "pct": 1.95, "tier": "t-up"}];
+var PC={catalyst:"#DB4437",rvol:"#F4B400",pa:"#1A73E8",float:"#9c27b0",price:"#00bcd4",sector:"#0F9D58"};
+var PM={catalyst:15,rvol:12,pa:10,float:8,price:5,sector:5};
+var PL={catalyst:"Catalyst",rvol:"RVOL",pa:"Price Act.",float:"Float",price:"Px Range",sector:"Sector"};
+var cf='all';
+function init(){buildHeatmap();buildDeltas();buildTable(TICKERS,true);buildCatTape();}
+var sfMode=true;
+function toggleScoreFilter(){
+  sfMode=!sfMode;
+  var btn=document.getElementById('sf-btn');
+  btn.textContent=sfMode?'Score ≥15 Active (click for all)':'Showing All (click for ≥15)';
+  btn.className=sfMode?'sf-btn active':'sf-btn';
+  buildTable(TICKERS,sfMode);
+}
+function buildHeatmap(){
+  var g=document.getElementById('heatmap-grid');
+  var s=SECTORS.slice().sort(function(a,b){return b.pct-a.pct});
+  document.getElementById('leaders-txt').textContent=s.slice(0,3).map(function(x){return x.sym+" "+(x.pct>=0?"+":"")+x.pct.toFixed(2)+"%"}).join(" · ")||"—";
+  document.getElementById('laggards-txt').textContent=s.slice(-3).map(function(x){return x.sym+" "+x.pct.toFixed(2)+"%"}).join(" · ")||"—";
+  g.innerHTML=SECTORS.map(function(s){
+    return '<div class="tile '+s.tier+'" onclick="window.open(\'https://elite.finviz.com/quote.ashx?t='+s.sym+'\',\'_blank\')" title="'+s.name+'">'+
+      '<div class="t-sym">'+s.sym+'</div><div class="t-pct">'+(s.pct>=0?"+":"")+s.pct.toFixed(2)+'%</div><div class="t-name">'+s.name+'</div></div>';
+  }).join('');
+}
+function buildDeltas(){
+  var el=document.getElementById('delta-body');
+  el.innerHTML=DELTAS.map(function(d,i){
+    return '<div class="delta-item '+d.type+'" onclick="tgD('+i+',this)">'+
+      (d.detail?'<span class="d-arrow" id="da'+i+'">▼</span>':'')+d.icon+' '+d.text+
+      (d.detail?'<div class="delta-detail" id="dd'+i+'">'+d.detail+'</div>':'')+
+    '</div>';
+  }).join('');
+}
+function tgD(i,el){
+  var dd=document.getElementById('dd'+i);
+  if(!dd)return;
+  el.classList.toggle('open');
+  document.getElementById('da'+i).textContent=el.classList.contains('open')?'▲':'▼';
+}
+function buildTable(tickers,scoreFilter){
+  var tb=document.getElementById('tbl-body');
+  tb.innerHTML='';
+  var n=0;
+  tickers.forEach(function(t){
+    var show=(cf==='all'||cf===t.dec||(cf==='catalyst'&&t.catalyst_count>0))&&(!scoreFilter||t.score>=15);
+    if(!show)return;n++;
+    var dc='dec-'+(t.dec==='GO'?'go':t.dec==='WAIT'?'wait':'avoid');
+    var cc=t.chg>0?'up':t.chg<0?'dn':'nt',gc=t.gap>0?'up':t.gap<0?'dn':'nt';
+    var sp=Math.round(t.score/55*100);
+    var dots='<div class="crit-dots">';
+    for(var j=0;j<t.criteria_total;j++)dots+='<div class="crit-dot" style="background:'+(j<t.criteria_met?'#0F9D58':'#2a2a4e')+'"></div>';
+    dots+='</div><span class="nt" style="font-size:10px">'+t.criteria_met+'/'+t.criteria_total+'</span>';
+    var sl=(t.social&&t.social.sentiment_label)||'—';
+    var sc=sl.includes('Bull')?'up':sl.includes('Bear')?'dn':'nt';
+    var stc=(t.social&&t.social.stocktwits&&t.social.stocktwits.count)||0;
+    var soc='<span class="'+sc+'" style="font-size:11px">'+sl+'</span>'+(stc?'<span class="nt" style="font-size:10px"> '+stc+'</span>':'');
+    var cath=t.top_cat?
+      '<span class="'+(t.catalyst_tier==='high_impact'?'tag-hi':t.catalyst_tier==='medium_impact'?'tag-med':'tag-low')+'">'+(t.catalyst_tier==='high_impact'?'🔥':t.catalyst_tier==='medium_impact'?'⚡':'📰')+'</span> '+
+      (t.top_cat.title||'').substring(0,40)+((t.top_cat.title||'').length>40?'…':''):'—';
+    var fu='https://elite.finviz.com/quote.ashx?t='+t.sym;
+    tb.innerHTML+=
+      '<tr class="data-row" onclick="tgR(\''+t.sym+'\',this)" id="row-'+t.sym+'">'+
+      '<td><a class="sym-link" href="'+fu+'" target="_blank" onclick="event.stopPropagation()">'+t.sym+'</a></td>'+
+      '<td><span style="font-weight:700">'+t.score+'</span><div class="sbar-wrap"><div class="sbar-fill" style="width:'+sp+'%"></div></div></td>'+
+      '<td class="'+dc+'">'+t.dec+'</td>'+
+      '<td class="'+(t.rvol>=5?'up':'nt')+'">'+t.rvol.toFixed(1)+'x</td>'+
+      '<td>$'+t.price.toFixed(2)+'</td>'+
+      '<td class="'+cc+'">'+(t.chg>=0?'+':'')+t.chg.toFixed(1)+'%</td>'+
+      '<td class="'+gc+'">'+(t.gap>=0?'+':'')+t.gap.toFixed(1)+'%</td>'+
+      '<td class="'+(t.float_m<10?'up':'nt')+'">'+t.float_m.toFixed(1)+'M</td>'+
+      '<td>'+t.country+'</td>'+
+      '<td style="font-size:11px;color:#9A9AB0">'+t.sector+'</td>'+
+      '<td>'+dots+'</td>'+
+      '<td>'+soc+'</td>'+
+      '<td style="font-size:11px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+cath+'</td>'+
+      '<td><a href="'+fu+'" target="_blank" onclick="event.stopPropagation()"><button class="fv-btn">FV</button></a></td>'+
+      '</tr>'+
+      '<tr class="detail-row" id="dr-'+t.sym+'"><td colspan="14">'+buildDet(t)+'</td></tr>';
+  });
+  document.getElementById('setups-count').textContent=n+' tickers';
+}
+function buildDet(t){
+  var fu='https://elite.finviz.com/quote.ashx?t='+t.sym;
+  var cu='https://elite.finviz.com/chart.ashx?t='+t.sym+'&ty=c&ta=1&p=d&s=m';
+  var ph='<div class="dg"><div class="dg-lbl">Pillars</div>';
+  ['catalyst','rvol','pa','float','price','sector'].forEach(function(k){
+    var pts=t.pillars[k]||0,max=PM[k],pct=max>0?Math.round(pts/max*100):0;
+    ph+='<div class="pm-row"><span class="pm-name">'+PL[k]+'</span><div class="pm-wrap"><div class="pm-bar" style="width:'+pct+'%;background:'+PC[k]+'"></div></div><span class="pm-pts">'+pts+'/'+max+'</span></div>';
+  });ph+='</div>';
+  var clab={has_catalyst:'Catalyst',has_high_impact:'High Impact',has_fresh_catalyst:'Fresh <12h',rvol_3:'RVOL≥3x',rvol_5:'RVOL≥5x',float_50:'Float≤50M',price_ok:'Price OK',gap_5:'Gap≥5%',chg_10:'Chg≥10%'};
+  var ch='<div class="dg"><div class="dg-lbl">Criteria</div><div class="crit-wrap">';
+  Object.keys(clab).forEach(function(k){var m=t.criteria[k];ch+='<span class="crit '+(m?'met':'unmet')+'">'+(m?'✅':'⬜')+' '+clab[k]+'</span>';});ch+='</div></div>';
+  var chart='<div class="dg"><div class="dg-lbl">Daily Chart (login to Finviz Elite)</div>'+
+    '<div class="chart-container"><a href="'+fu+'" target="_blank">'+
+    '<img src="'+cu+'" alt="'+t.sym+'" onerror="this.parentElement.parentElement.innerHTML=\'<div class=chart-fallback><a href='+fu+' target=_blank style=color:#1A73E8>Open '+t.sym+' on Finviz Elite →</a></div>\">'+
+    '</a></div></div>';
+  var cath='<div class="dg" style="grid-column:span 2;min-width:200px"><div class="dg-lbl">Catalysts (click headline for summary)</div>';
+  if(t.cats&&t.cats.length){
+    t.cats.slice(0,5).forEach(function(c){
+      var tc=c.tier==='high_impact'?'tag-hi':c.tier==='medium_impact'?'tag-med':'tag-low';
+      var te=c.tier==='high_impact'?'🔥':c.tier==='medium_impact'?'⚡':'📰';
+      cath+='<div class="cat-item" onclick="this.classList.toggle(\'open\')">'+
+        '<div class="cat-time"><span class="'+tc+'">'+te+' '+c.tier.replace('_impact',' impact')+'</span> · '+c.age.toFixed(1)+'h · '+c.source+'</div>'+
+        '<div class="cat-title-text">'+(c.url?'<a href="'+c.url+'" target="_blank" onclick="event.stopPropagation()" style="color:inherit">'+c.title+'</a>':c.title)+'</div>'+
+        (c.summary?'<div class="cat-summary">💡 '+c.summary+'</div>':'')+
+      '</div>';
+    });
+  }else{cath+='<div style="color:#9A9AB0;font-size:11px">No catalysts found</div>';}
+  cath+='</div>';
+  var soc=t.social||{},st=soc.stocktwits||{},rd=soc.reddit||{},sl=soc.sentiment_label||'Neutral';
+  var sc=sl.includes('Bull')?'up':sl.includes('Bear')?'dn':'nt';
+  var sh='<div class="dg"><div class="dg-lbl">Social Sentiment</div>'+
+    '<div style="font-size:14px;font-weight:800" class="'+sc+'">'+sl+'</div>'+
+    '<div style="margin-top:6px"><span class="social-chip">💬 '+((st.count)||0)+'</span>'+
+    '<span class="social-chip '+(st.bullish_pct>=60?'up':st.bullish_pct<=40?'dn':'nt')+'">'+((st.bullish_pct)||50)+'% bull</span>'+
+    (rd.count?'<span class="social-chip">📱 Reddit: '+rd.count+'</span>':'')+
+    '</div><a href="https://stocktwits.com/symbol/'+t.sym+'" target="_blank" style="font-size:10px;color:#1A73E8;display:block;margin-top:5px">StockTwits →</a></div>';
+  var mk='<div class="dg"><div class="dg-lbl">Market Data</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11px">'+
+    '<span class="nt">Price</span><span>$'+t.price.toFixed(2)+'</span>'+
+    '<span class="nt">Chg</span><span class="'+(t.chg>=0?'up':'dn')+'">'+(t.chg>=0?'+':'')+t.chg.toFixed(1)+'%</span>'+
+    '<span class="nt">Gap</span><span class="'+(t.gap>=0?'up':'dn')+'">'+(t.gap>=0?'+':'')+t.gap.toFixed(1)+'%</span>'+
+    '<span class="nt">RVOL</span><span>'+t.rvol.toFixed(1)+'x</span>'+
+    '<span class="nt">Float</span><span class="'+(t.float_m<10?'up':'nt')+'">'+t.float_m.toFixed(1)+'M</span>'+
+    '<span class="nt">Volume</span><span>'+t.vol.toLocaleString()+'</span></div></div>';
+  var lk='<div class="dg"><div class="dg-lbl">Links</div>'+
+    '<div style="display:flex;flex-direction:column;gap:5px">'+
+    '<a href="'+fu+'" target="_blank" style="background:#1A73E8;color:#fff;border-radius:6px;padding:6px;font-size:11px;font-weight:700;text-align:center;display:block">📊 Finviz Elite Chart</a>'+
+    '<a href="https://elite.finviz.com/news.ashx?t='+t.sym+'" target="_blank" style="background:#252540;color:#ccc;border-radius:6px;padding:5px;font-size:11px;text-align:center;display:block">📰 Finviz News</a>'+
+    '<a href="https://stocktwits.com/symbol/'+t.sym+'" target="_blank" style="background:#252540;color:#ccc;border-radius:6px;padding:5px;font-size:11px;text-align:center;display:block">💬 StockTwits</a>'+
+    '</div></div>';
+  return '<div class="detail-inner">'+ph+ch+chart+cath+sh+mk+lk+'</div>';
+}
+function tgR(sym,row){
+  var dr=document.getElementById('dr-'+sym);
+  var open=dr.style.display==='table-row';
+  document.querySelectorAll('.detail-row').forEach(function(r){r.style.display='none'});
+  document.querySelectorAll('.data-row').forEach(function(r){r.classList.remove('expanded')});
+  if(!open){dr.style.display='table-row';row.classList.add('expanded');}
+}
+function buildCatTape(){
+  var el=document.getElementById('cat-body');
+  el.innerHTML=TICKERS.filter(function(t){return t.cats&&t.cats.length>0}).map(function(t){
+    var rows=t.cats.map(function(c){
+      var tc=c.tier==='high_impact'?'tag-hi':c.tier==='medium_impact'?'tag-med':'tag-low';
+      var te=c.tier==='high_impact'?'🔥':c.tier==='medium_impact'?'⚡':'📰';
+      return '<div class="tape-row"><span class="'+tc+'">'+te+' ['+c.tier.replace('_impact','').toUpperCase()+' · '+c.age.toFixed(1)+'h · '+c.source+']</span> '+
+        (c.url?'<a href="'+c.url+'" target="_blank">'+c.title+'</a>':c.title)+
+        (c.summary?'<div style="font-size:10px;color:#9A9AB0;margin-left:14px;font-style:italic">💡 '+c.summary+'</div>':'')+
+      '</div>';
+    }).join('');
+    return '<div class="tape-sym">'+t.country+' '+t.sym+' · '+t.co+'</div>'+rows;
+  }).join('');
+}
+function filterBy(f){
+  cf=f;
+  var lbl={all:'All',GO:'GO Only',WAIT:'WAIT Only',AVOID:'Avoid Only',catalyst:'Has Catalyst'};
+  document.getElementById('filter-lbl').textContent='Showing: '+lbl[f];
+  document.querySelectorAll('.stat').forEach(function(s){s.classList.remove('active')});
+  var m={all:'s-all',GO:'s-go',WAIT:'s-wait',AVOID:'s-av'};
+  if(m[f])document.getElementById(m[f]).classList.add('active');
+  buildTable(TICKERS,sfMode);
+  jumpTo('setups');
+}
+function srt(k){
+  TICKERS.sort(function(a,b){var av=a[k]||0,bv=b[k]||0;return typeof av==='string'?av.localeCompare(bv):bv-av});
+  buildTable(TICKERS,sfMode);
+}
+function tog(id,btn){
+  var el=document.getElementById(id),h=el.style.display==='none';
+  el.style.display=h?'':'none';btn.textContent=h?'▲ hide':'▼ show';
+}
+function jumpTo(id){var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}
+function doCopy(id,btn){
+  var el=document.getElementById(id),txt=el.value.trim(),orig=btn.textContent;
+  if(!txt||txt.startsWith('—')){btn.textContent='Nothing to copy';setTimeout(function(){btn.textContent=orig},1500);return}
+  el.select();el.setSelectionRange(0,99999);
+  var ok=false;try{ok=document.execCommand('copy')}catch(e){}
+  if(!ok&&navigator.clipboard)navigator.clipboard.writeText(txt).catch(function(){});
+  btn.textContent='✅ Copied!';setTimeout(function(){btn.textContent=orig},2000);
+}
+init();
+</script></body></html>

@@ -1,0 +1,35 @@
+# ============================================================
+#  Trade AI v12 + Portfolio Intelligence - Linux Cron Schedule
+#  Timezone: America/New_York (ET)
+#
+#  To install:
+#    1. Edit this file - replace /home/YOUR_USER/trade-ai with your actual path
+#    2. Run: crontab -e
+#    3. Paste these lines (or: crontab linux/crontab.txt)
+#
+#  To verify installed crons:
+#    crontab -l
+#
+#  To view cron logs:
+#    grep CRON /var/log/syslog | tail -20
+# ============================================================
+
+# Set timezone for all cron jobs
+CRON_TZ=America/New_York
+
+# ── Trade AI ─────────────────────────────────────────────────────────────────
+# TradeAIContinuous: Mon-Fri 4:00 AM ET
+0 4 * * 1-5 /home/YOUR_USER/trade-ai/launchers/run_continuous.sh >> /home/YOUR_USER/trade-ai/logs/cron_trade_ai.log 2>&1
+
+# ── Portfolio Intelligence ────────────────────────────────────────────────────
+# Portfolio Daily: Mon-Fri 7:00 AM ET
+0 7 * * 1-5 /home/YOUR_USER/trade-ai/launchers/run_portfolio.sh >> /home/YOUR_USER/trade-ai/logs/cron_portfolio_daily.log 2>&1
+
+# Portfolio Monthly: 1st of every month 7:05 AM ET
+5 7 1 * * /home/YOUR_USER/trade-ai/launchers/run_portfolio_monthly.sh >> /home/YOUR_USER/trade-ai/logs/cron_portfolio_monthly.log 2>&1
+
+# Portfolio Price Cache: Every Sunday 7:00 PM ET (runs before weekly scan)
+0 19 * * 0 /home/YOUR_USER/trade-ai/launchers/run_price_cache.sh >> /home/YOUR_USER/trade-ai/logs/cron_price_cache.log 2>&1
+
+# Portfolio Weekly Technical Scan: Every Sunday 8:00 PM ET
+0 20 * * 0 /home/YOUR_USER/trade-ai/launchers/run_portfolio_weekly.sh >> /home/YOUR_USER/trade-ai/logs/cron_portfolio_weekly.log 2>&1

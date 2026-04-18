@@ -1,0 +1,587 @@
+"""trade_ai_orchestrator.py — Trade AI v12 master pipeline.
+
+v12 adds 5 new stages over v11:
+  - Short interest enrichment (squeeze flags from Finviz data)
+  - Squeeze bonus applied to scoring
+  - Halt detection (NASDAQ feed + Polygon + catalyst news)
+  - Trade plan generation (Claude Sonnet, A+ tickers only)
+  - Telegram alerts (alongside WhatsApp)
+
+v12.1 additions (Finviz API + social sentiment):
+  - Finviz news_export.ashx as catalyst source 6 (token auth, no cookie expiry)
+  - Yahoo Finance RSS/JSON as catalyst source 7 (no key required)
+  - Social sentiment stage 12b: Reddit WSB/stocks + StockTwits (no keys needed)
+  - social_data wired into dashboard, run_summary, and alerts
+
+Full 23-stage pipeline:
+  0  Market open check
+  1  Weekly hygiene
+  2  Finviz ingestion
+  3  Market context        (SPY/QQQ/IWM, 11 sectors, VIX)
+  4  Economic calendar     (Fed, CPI, earnings via FMP)
+  5  Catalyst enrichment   (7 sources: Finnhub/NewsAPI/Polygon/FMP/AlphaV/Finviz/Yahoo)
+  6  Options flow          (Polygon)
+  7  Short interest        ★ v12 — squeeze flags from Finviz short float %
+  8  Sector momentum       (inject sector_momentum_score)
+  9  Trend engine          (trend arrows)
+  10 Scoring               (6 pillars, max 55)
+  11 Squeeze bonus         ★ v12 — apply short interest catalyst bonus
+  12 Halt detection        ★ v12 — NASDAQ + Polygon + catalyst scan
+  12b Social sentiment     ★ v12.1 — Reddit WSB/stocks + StockTwits
+  13 Delta tracking        (state.json, consecutive GO days)
+  14 Trade plans           ★ v12 — Sonnet A+ trade plans
+  15 HTML dashboard        (auto-refresh 60s, TOS export, trade plan cards, social badges)
+  16 PDF generation
+  17 Word document
+  18 TOS export
+  19 Save state
+  20 Run summary           (includes social_tickers_scanned, social_bullish_count)
+  21 Alerts (WhatsApp + Telegram + Email + Slack)  ★ v12
+"""
+from __future__ import annotations
+import argparse, json, os, sys, traceback
+from datetime import datetime
+from pathlib import Path
+from dotenv import load_dotenv
+
+# NEW: Dashboard generator for single persistent file
+try:
+    from dashboard_copier import create_persistent_dashboard
+    _HAS_DASHBOARD_COPIER = True
+except ImportError:
+    _HAS_DASHBOARD_COPIER = False
+
+import sys
+# Force UTF-8 output so emojis work when piped to log files on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+try:
+    import exchange_calendars as xcals
+    _HAS_XCAL = True
+except Exception:
+    _HAS_XCAL = False
+
+
+def _market_open(date_str: str) -> bool:
+    if _HAS_XCAL:
+        try:
+            return xcals.get_calendar("XNYS").is_session(date_str)
+        except Exception:
+            pass
+    return datetime.fromisoformat(date_str).weekday() < 5
+
+def _ensure(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+def _ok(s, m):   print(f"  \u2705  {s:<24}  {m}")
+def _err(s, m):  print(f"  \u274c  {s:<24}  {m}")
+def _skip(s, m): print(f"  \u23ed\ufe0f  {s:<24}  {m}")
+
+
+def _inject_sector_scores(tickers, sectors):
+    if not sectors:
+        return
+    ranked = sorted(sectors, key=lambda s: s.get("change_percent", 0), reverse=True)
+    top3 = {s["symbol"] for s in ranked[:3]}
+    top6 = {s["symbol"] for s in ranked[:6]}
+    sector_name_map = {
+        "Technology": "XLK", "Financials": "XLF", "Energy": "XLE",
+        "Healthcare": "XLV", "Consumer Disc.": "XLY", "Industrials": "XLI",
+        "Consumer Stapl.": "XLP", "Utilities": "XLU", "Real Estate": "XLRE",
+        "Materials": "XLB", "Comm. Services": "XLC",
+    }
+    for t in tickers:
+        etf = sector_name_map.get(t.get("sector", ""), "")
+        if etf in top3:
+            t["sector_momentum_score"] = 5
+        elif etf in top6:
+            t["sector_momentum_score"] = 3
+        else:
+            s_data = next((s for s in sectors if s["symbol"] == etf), {})
+            t["sector_momentum_score"] = 1 if abs(s_data.get("change_percent", 0)) <= 0.3 else 0
+
+
+def _warmup_ollama():
+    """Ping Ollama with a tiny prompt to warm up the model before pipeline starts."""
+    try:
+        import urllib.request, json
+        payload = json.dumps({"model":"qwen3:14b","stream":False,"prompt":"hi","options":{"num_predict":1}}).encode()
+        req = urllib.request.Request("http://127.0.0.1:11434/api/generate",data=payload,headers={"Content-Type":"application/json"},method="POST")
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            json.loads(resp.read())
+            print("  [ollama] Model warmed up")
+    except Exception as e:
+        print(f"  [ollama] Warm-up skipped: {e}")
+
+def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip_market_check=False, institutional=False):
+    print(f"\n{'='*66}")
+    print(f"  \u26a1 Trade AI v12  |  Run {run_label}  |  {date_str}")
+    print(f"{'='*66}\n")
+    if use_llm:
+        _warmup_ollama()
+
+    if not skip_market_check and not _market_open(date_str):
+        print(f"  \u23f8  NYSE closed {date_str}. Use --skip-market-check to force.\n")
+        return 0
+
+    output_dir = _ensure(root / os.getenv("REPORT_OUTPUT_DIR","reports") / date_str / run_label)
+
+    # 1 Weekly hygiene
+    try:
+        from weekly_hygiene import clean_weekly, is_new_week
+        if is_new_week(date_str):
+            r = clean_weekly(root, date_str, keep_logs=True)
+            _ok("weekly_hygiene", f"Archived {len(r.get('archived',[]))} paths")
+        else:
+            _skip("weekly_hygiene", "Not Monday")
+    except Exception as exc:
+        _err("weekly_hygiene", str(exc))
+
+    # 2 Finviz ingestion
+    try:
+        from finviz_ingestion import load_live_candidates
+        live    = load_live_candidates(root, run_label, date_str, output_dir)
+        df      = live["dataframe"]
+        if df.empty:
+            _err("finviz_ingestion", "No tickers — aborting"); return 1
+        tickers = df.to_dict(orient="records")
+        _ok("finviz_ingestion", f"{len(tickers)} tickers  |  {len(live.get('downloads',[]))} screeners")
+    except Exception as exc:
+        _err("finviz_ingestion", str(exc)); traceback.print_exc(); return 1
+
+    # 3 Market context
+    market_snapshot: dict = {}
+    try:
+        from market_context import get_market_snapshot
+        market_snapshot = get_market_snapshot()
+        spy_pct = market_snapshot.get("indices",{}).get("SPY",{}).get("change_percent",0)
+        vix     = market_snapshot.get("vix",{}).get("price",0)
+        breadth = market_snapshot.get("breadth_label","?")
+        leader  = market_snapshot.get("sector_leader",{}).get("symbol","?")
+        laggard = market_snapshot.get("sector_laggard",{}).get("symbol","?")
+        _ok("market_context", f"SPY {spy_pct:+.2f}%  VIX {vix:.1f}  {breadth}  ▲{leader}  ▼{laggard}")
+    except Exception as exc:
+        _err("market_context", f"{exc}  — continuing without market data")
+
+    # 4 Economic calendar
+    calendar: dict = {}
+    try:
+        from economic_calendar import get_calendar
+        calendar = get_calendar(scored_tickers=tickers)
+        _ok("economic_calendar",
+            f"{len(calendar.get('high_impact_events',[]))} hi-impact  |  "
+            f"{len(calendar.get('earnings',[]))} earnings  |  "
+            f"watchlist: {calendar.get('watchlist_earnings',[])}")
+    except Exception as exc:
+        _err("economic_calendar", f"{exc}  — continuing")
+
+    # 2.5 Finviz enrichment — float, RVOL, RSI, SMA for all tickers
+    fv_enriched = {}
+    if use_llm:
+        try:
+            from finviz_enrichment import enrich_tickers
+            syms = [t.get("symbol","") for t in tickers if t.get("symbol")]
+            fv_enriched = enrich_tickers(syms, project_root=str(root),
+                                         skip_fundamentals=True)
+            # Inject float + RVOL into tickers (critical for scoring)
+            updated = 0
+            for t in tickers:
+                sym = t.get("symbol","")
+                e = fv_enriched.get(sym, {})
+                if e.get("float_m"):
+                    t["float_m"] = e["float_m"]
+                    updated += 1
+                if e.get("rvol"):
+                    t["relative_volume"] = e["rvol"]
+                # Also inject RSI/SMA for technical context
+                for field in ["rsi","sma20_pct","sma50_pct","sma200_pct",
+                               "beta","atr","trend","rsi_status",
+                               "short_float_pct","perf_week_pct"]:
+                    if e.get(field) is not None:
+                        t[field] = e[field]
+            _ok("finviz_enrichment",
+                f"{len(fv_enriched)} enriched | {updated} float/RVOL updated")
+        except Exception as exc:
+            _err("finviz_enrichment", f"{exc} — continuing without enrichment")
+
+    # 5 Catalyst enrichment — two-pass (pre-score filter first)
+    enrichments: dict = {}
+    try:
+        from catalyst_enrichment import enrich_all
+        from scoring import filter_candidates
+
+        # Pass 1: pre-score all tickers with no API calls
+        candidate_syms, tickers = filter_candidates(
+            tickers, project_root=str(root), min_pre_score=8
+        )
+        _ok("pre_score_filter",
+            f"{len(candidate_syms)} candidates from {len(tickers)} tickers "
+            f"(skipping {len(tickers)-len(candidate_syms)} low-scorers)")
+
+        # Pass 2: enrich only candidates
+        candidate_rows = [t for t in tickers if t.get("symbol","").upper() in set(candidate_syms)]
+        enrichments = enrich_all(candidate_rows)
+        _ok("catalyst_enrichment",
+            f"{sum(e.get('catalyst_count',0) for e in enrichments.values())} articles  |  "
+            f"{sum(1 for e in enrichments.values() if e.get('has_fresh_catalyst'))} fresh  |  "
+            f"{len(candidate_syms)} tickers enriched (not {len(tickers)})")
+    except Exception as exc:
+        _err("catalyst_enrichment", f"{exc}  — continuing")
+
+    # 6 Catalyst intelligence — Ollama classification + memory (pre-market full runs only)
+    catalyst_intel: dict = {}
+    if use_llm and enrichments:
+        try:
+            from catalyst_intelligence import analyze_all_catalysts
+            catalyst_intel = analyze_all_catalysts(
+                candidate_rows, enrichments, project_root=str(root)
+            )
+            # Merge Ollama flags back into enrichments
+            for sym, intel in catalyst_intel.items():
+                if sym in enrichments and intel.get("ollama_ok"):
+                    enrichments[sym]["ollama_flag"] = intel.get("ollama_flag", "NEUTRAL")
+                    enrichments[sym]["ollama_risk"] = intel.get("ollama_risk", "")
+                    enrichments[sym]["ollama_summary"] = intel.get("ollama_summary", "")
+                    enrichments[sym]["catalyst_type"] = intel.get("catalyst_type", "other")
+                    # Override catalyst score if Ollama scored it
+                    if intel.get("ollama_catalyst_score") is not None:
+                        enrichments[sym]["ollama_catalyst_score"] = intel["ollama_catalyst_score"]
+            traps = sum(1 for i in catalyst_intel.values() if i.get("ollama_flag") in ("TRAP","DILUTION"))
+            go_signals = sum(1 for i in catalyst_intel.values() if i.get("ollama_flag") == "GO")
+            _ok("catalyst_intel",
+                f"{len(catalyst_intel)} analyzed  |  {go_signals} GO signals  |  {traps} traps flagged")
+        except Exception as exc:
+            _err("catalyst_intel", f"{exc}  — continuing without Ollama analysis")
+
+    # 6b Options flow — moved to after scoring (see stage 11b below)
+    options_flow: dict = {}
+    options_summary: dict = {}
+
+    # 7 Short interest (v12)
+    short_summary: dict = {}
+    try:
+        from short_interest import enrich_short_interest
+        tickers, short_summary = enrich_short_interest(tickers)
+        _ok("short_interest",
+            f"{short_summary.get('high_squeeze_count',0)} high-squeeze  |  "
+            f"{short_summary.get('moderate_squeeze_count',0)} moderate  |  "
+            f"top: {[s['symbol'] for s in short_summary.get('top_squeezers',[])[:3]]}")
+    except Exception as exc:
+        _err("short_interest", f"{exc}  — continuing without squeeze data")
+
+    # 8 Sector momentum injection
+    try:
+        _inject_sector_scores(tickers, market_snapshot.get("sectors", []))
+        _ok("sector_momentum", f"{sum(1 for t in tickers if t.get('sector_momentum_score',0)>0)} tickers scored")
+    except Exception as exc:
+        _err("sector_momentum", str(exc))
+
+    # Load state for trend engine
+    state: dict = {}
+    try:
+        from delta_tracker import load_state
+        state = load_state(project_root=str(root))
+    except Exception:
+        pass
+
+    # 9 Trend engine
+    try:
+        from trend_engine import enrich_all_trends
+    except Exception:
+        pass
+
+    # 10 Scoring
+    scored: list = []
+    try:
+        from scoring import score_all
+        scored     = score_all(tickers, enrichments, project_root=str(root), use_llm=use_llm)
+        go_count   = sum(1 for t in scored if t.get("decision") == "GO")
+        wait_count = sum(1 for t in scored if t.get("decision") == "WAIT")
+        _ok("scoring", f"GO={go_count}  WAIT={wait_count}  AVOID={len(scored)-go_count-wait_count}  {'[LLM ON]' if use_llm else '[LLM OFF]'}")
+    except Exception as exc:
+        _err("scoring", str(exc)); traceback.print_exc(); return 1
+
+    # 10b Options flow — only on GO-tier tickers after scoring
+    try:
+        from options_flow import fetch_options_flow, get_options_summary
+        go_syms_for_opts = [t["symbol"] for t in scored if t.get("decision") == "GO"][:15]
+        if go_syms_for_opts:
+            options_flow    = fetch_options_flow(go_syms_for_opts)
+            options_summary = get_options_summary(options_flow)
+            _ok("options_flow",
+                f"{options_summary.get('total_sweeps',0)} sweeps  |  "
+                f"{options_summary.get('bullish_count',0)}bull/{options_summary.get('bearish_count',0)}bear  |  "
+                f"{options_summary.get('total_premium','$0')}  |  "
+                f"{len(go_syms_for_opts)} GO tickers queried")
+        else:
+            _skip("options_flow", "No GO-tier tickers to query")
+    except Exception as exc:
+        _err("options_flow", f"{exc}  — continuing without options data")
+
+    # 11 Squeeze bonus (v12)
+    try:
+        from short_interest import enrich_short_interest, apply_squeeze_bonus_to_scores
+        _, _ = enrich_short_interest(tickers, scored)   # sync to scored
+        scored = apply_squeeze_bonus_to_scores(scored)
+        bonused = sum(1 for t in scored if t.get("squeeze_applied"))
+        _ok("squeeze_bonus", f"{bonused} tickers received catalyst boost")
+    except Exception as exc:
+        _err("squeeze_bonus", f"{exc}  — continuing")
+
+    # Apply trend arrows
+    try:
+        from trend_engine import enrich_all_trends
+        market_snapshot = enrich_all_trends(scored, market_snapshot, state)
+        _ok("trend_engine",
+            f"{sum(1 for t in scored if t.get('score_arrow')==chr(11014))} \u2b06  "
+            f"{sum(1 for t in scored if t.get('rvol_arrow')==chr(128640))} RVOL\U0001f680")
+    except Exception as exc:
+        _err("trend_engine", f"{exc}  — continuing")
+
+    # 12 Halt detection (v12)
+    halt_data: dict = {}
+    try:
+        from halt_detector import detect_halts
+        halt_data = detect_halts(scored, enrichments)
+        h = halt_data.get("halt_count", 0)
+        r = halt_data.get("resume_count", 0)
+        _ok("halt_detector", f"{h} halted  |  {r} resumed")
+        if h:
+            syms = [x["symbol"] for x in halt_data.get("halted_tickers", [])]
+            _ok("halt_detector", f"  Halted: {syms}")
+    except Exception as exc:
+        _err("halt_detector", f"{exc}  — continuing without halt data")
+
+    # 12b Social sentiment (GO + WAIT tickers only)
+    social_data: dict = {}
+    try:
+        from social_sentiment import get_social_sentiment_bulk
+        qualified_syms = [t["symbol"] for t in scored if t.get("decision") in ("GO","WAIT")][:20]
+        if qualified_syms:
+            social_data = get_social_sentiment_bulk(qualified_syms, delay=0.3)
+            # Attach to scored tickers
+            for t in scored:
+                t["social"] = social_data.get(t["symbol"], {})
+            bullish_count = sum(1 for v in social_data.values() if v.get("sentiment_label","") in ("Bullish","Very Bullish"))
+            _ok("social_sentiment",
+                f"{len(social_data)} tickers scanned  |  {bullish_count} bullish sentiment")
+        else:
+            _skip("social_sentiment", "No GO/WAIT tickers to scan")
+    except Exception as exc:
+        _err("social_sentiment", f"{exc}  — continuing without social data")
+
+    # 13 Delta tracking
+    delta: dict = {"events":[],"new_tickers":[],"faded":[],"go_tickers":[],"updated_state":state}
+    try:
+        from delta_tracker import compute_delta
+        delta = compute_delta(scored, date_str, run_label, project_root=str(root))
+        ev_types = {}
+        for e in delta["events"]:
+            ev_types[e["event"]] = ev_types.get(e["event"],0) + 1
+        _ok("delta_tracker",
+            f"{len(delta['events'])} events  |  {len(delta['new_tickers'])} new  |  {len(delta['faded'])} faded")
+    except Exception as exc:
+        _err("delta_tracker", f"{exc}  — continuing")
+
+    # 14 Trade plans (v12 — A+ only)
+    trade_plans: dict = {}
+    if use_llm:
+        try:
+            from trade_plan import generate_all_plans
+            trade_plans = generate_all_plans(scored)
+            # Attach to scored tickers
+            for t in scored:
+                t["trade_plan"] = trade_plans.get(t["symbol"])
+            _ok("trade_plans", f"{len(trade_plans)} A+ plans generated")
+        except Exception as exc:
+            _err("trade_plans", f"{exc}  — continuing without trade plans")
+    else:
+        _skip("trade_plans", "--no-llm flag set")
+
+    # 15 HTML dashboard
+    html_path: str | None = None
+    try:
+        from html_dashboard import generate_html_dashboard
+        html_path = generate_html_dashboard(
+            scored, market_snapshot, delta, calendar,
+            options_flow, options_summary, output_dir, run_label, date_str,
+            trade_plans=trade_plans, halt_data=halt_data,
+            institutional=institutional,
+        )
+        _ok("html_dashboard", Path(html_path).name)
+    except Exception as exc:
+        _err("html_dashboard", str(exc))
+
+    # 16 PDF
+    pdf_path: str | None = None
+    if os.getenv("GENERATE_PDF","true").lower() == "true":
+        try:
+            from pdf_generator import generate_pdf
+            pdf_path = generate_pdf(scored, delta, output_dir, run_label, date_str,
+                                    market_snapshot=market_snapshot, calendar=calendar,
+                                    options_summary=options_summary)
+            _ok("pdf_generator", Path(pdf_path).name)
+        except Exception as exc:
+            _err("pdf_generator", str(exc))
+
+    # 17 Word doc
+    docx_path: str | None = None
+    if os.getenv("GENERATE_DOCX","true").lower() == "true":
+        try:
+            from docx_generator import generate_docx
+            docx_path = generate_docx(scored, delta, output_dir, run_label, date_str)
+            _ok("docx_generator", Path(docx_path).name)
+        except Exception as exc:
+            _err("docx_generator", str(exc))
+
+    # 18 TOS export
+    tos_result: dict | None = None
+    if os.getenv("GENERATE_TOS","true").lower() == "true":
+        try:
+            from tos_exporter import export_tos
+            tos_result = export_tos(scored, output_dir, run_label, date_str, min_decision="WAIT")
+            _ok("tos_exporter", f"{tos_result['ticker_count']} tickers")
+        except Exception as exc:
+            _err("tos_exporter", str(exc))
+
+    # 19 Save state
+    try:
+        from delta_tracker import save_state
+        save_state(delta.get("updated_state",{}), project_root=str(root))
+        _ok("state_save", "state.json updated")
+    except Exception as exc:
+        _err("state_save", str(exc))
+
+    # 20 Run summary
+    try:
+        aplus_tickers = [t["symbol"] for t in scored if t.get("score",0) >= 48]
+        # Social sentiment summary for run_summary.json
+        social_bullish = sum(1 for v in social_data.values()
+                             if v.get("sentiment_label","") in ("Bullish","Very Bullish"))
+        social_wsb_spikes = [
+            sym for sym, v in social_data.items()
+            if v.get("wsb_mentions", 0) >= 3
+        ]
+        summary = {
+            "version":           "12.0",
+            "date":              date_str,
+            "run_label":         run_label,
+            "generated_at":      datetime.now().isoformat(timespec="seconds"),
+            "ticker_count":      len(scored),
+            "go_count":          sum(1 for t in scored if t.get("decision") == "GO"),
+            "wait_count":        sum(1 for t in scored if t.get("decision") == "WAIT"),
+            "aplus_count":       len(aplus_tickers),
+            "trade_plans_count": len(trade_plans),
+            "new_tickers":       delta.get("new_tickers", []),
+            "faded_tickers":     delta.get("faded", []),
+            "delta_events":      len(delta.get("events", [])),
+            "top_ticker":        scored[0]["symbol"] if scored else None,
+            "top_score":         scored[0]["score"]  if scored else None,
+            "breadth":           market_snapshot.get("breadth_label"),
+            "vix":               market_snapshot.get("vix",{}).get("price"),
+            "options_sweeps":    options_summary.get("total_sweeps",0),
+            "high_squeeze":      short_summary.get("high_squeeze_count",0),
+            "halted":            halt_data.get("halt_count",0),
+            "resumed":           halt_data.get("resume_count",0),
+            "social_tickers_scanned": len(social_data),
+            "social_bullish_count":   social_bullish,
+            "social_wsb_spikes":      social_wsb_spikes,
+            "html_path":         html_path,
+            "pdf_path":          pdf_path,
+            "docx_path":         docx_path,
+            "tos_path":          tos_result.get("tst_path") if tos_result else None,
+            "llm_enabled":       use_llm,
+        }
+        (output_dir / "run_summary.json").write_text(json.dumps(summary, indent=2))
+        _ok("run_summary", "run_summary.json saved")
+        # Save full ticker decisions for live cycle preservation
+        try:
+            _decisions = [{"symbol": t.get("symbol",""), "decision": t.get("decision","NO GO"), "score": t.get("score",0)} for t in scored]
+            _live_state = {"run_label": run_label, "date": date_str, "generated_at": summary["generated_at"], "tickers": _decisions}
+            (root / "data" / "live_run_state.json").write_text(json.dumps(_live_state, indent=2))
+        except Exception as _e:
+            pass
+    except Exception as exc:
+        _err("run_summary", str(exc))
+
+    # Copy dated dashboard to dashboard_live.html (persistent live view)
+    if html_path:
+        try:
+            import shutil
+            live_path = root / "reports" / "dashboard_live.html"
+            shutil.copy2(html_path, live_path)
+            _ok("persistent_dashboard", "dashboard_live.html updated")
+        except Exception as exc:
+            _err("persistent_dashboard", str(exc))
+
+    # 21 Alerts
+    if send_alerts:
+        try:
+            from alerting import send_all_alerts
+            send_all_alerts(
+                scored, delta, run_label, date_str,
+                attachments=[p for p in [pdf_path, docx_path] if p],
+                market_snapshot=market_snapshot,
+                options_summary=options_summary,
+                halt_data=halt_data,
+                trade_plans=trade_plans,
+                short_summary=short_summary,
+                social_data=social_data,
+            )
+            _ok("alerting", "WhatsApp + Telegram + Email + Slack")
+        except Exception as exc:
+            _err("alerting", str(exc))
+    else:
+        _skip("alerting", "--no-alerts flag set")
+
+    go_syms = [t["symbol"] for t in scored if t.get("decision") == "GO"][:5]
+    print(f"\n{'='*66}")
+    print(f"  \u2705 v12 complete  |  {date_str} {run_label}")
+    if go_syms:
+        print(f"  \U0001f3af GO: {' \u00b7 '.join(go_syms)}")
+    if html_path:
+        print(f"  \U0001f310 Dashboard: {Path(html_path).name}")
+    dashboard_live = root / "reports" / "dashboard_live.html"
+    if dashboard_live.exists():
+        print(f"  \U0001f310 Live: {dashboard_live.name} (keep open in Chrome)")
+    print(f"  \U0001f4c1 Output: {output_dir}")
+    print(f"{'='*66}\n")
+    return 0
+
+
+def _parse():
+    ap = argparse.ArgumentParser(description="Trade AI v12")
+    ap.add_argument("--institutional", action="store_true",
+                    help="Also generate institutional-grade dashboard variant")
+    ap.add_argument("--macro-context", action="store_true",
+                    help="Force macro regime commentary (auto-enabled on zero-GO days)")
+    ap.add_argument("--run-label",         required=True, choices=["0400","0700","0900","1000"])
+    ap.add_argument("--date",              default=datetime.now().strftime("%Y-%m-%d"))
+    ap.add_argument("--project-root",      default=".")
+    ap.add_argument("--skip-market-check", action="store_true")
+    ap.add_argument("--no-llm",            action="store_true")
+    ap.add_argument("--no-alerts",         action="store_true")
+    return ap.parse_args()
+
+def main():
+    args = _parse()
+    root = Path(args.project_root).resolve()
+    if (root / ".env").exists():
+        load_dotenv(root / ".env")
+    scripts_dir = root / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    return run_pipeline(root, args.run_label, args.date,
+                        use_llm=not args.no_llm,
+                        send_alerts=not args.no_alerts,
+                        skip_market_check=args.skip_market_check,
+                        institutional=args.institutional)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

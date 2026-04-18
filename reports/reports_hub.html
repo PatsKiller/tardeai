@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reports Hub — Portfolio Intelligence</title>
+<style>
+  :root {
+    --bg:#0d0d1a;--bg2:#141428;--bg3:#1a1a30;
+    --border:rgba(255,255,255,.08);--text:#e8e8f0;
+    --text2:#b0b0c8;--text3:#7070a0;
+    --up:#00e676;--dn:#ff5252;--accent:#2979ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;max-width:1000px;margin:0 auto}
+  h1{font-size:22px;margin-bottom:4px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin:28px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  .meta{font-size:11px;color:var(--text3);margin-bottom:28px}
+  .report-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:24px}
+  .report-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;text-decoration:none;color:var(--text);transition:border-color .2s;display:block}
+  .report-card:hover{border-color:var(--accent)}
+  .rc-date{font-size:11px;color:var(--text3);margin-bottom:6px}
+  .rc-val{font-size:20px;font-weight:700;margin-bottom:2px}
+  .rc-total{font-size:12px;color:var(--text2);margin-bottom:6px}
+  .rc-action{font-size:10px;color:var(--text3);line-height:1.4;border-top:1px solid var(--border);padding-top:6px;margin-top:6px}
+  .daily-grid{display:flex;flex-wrap:wrap;gap:8px}
+  .daily-link{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text2);text-decoration:none}
+  .daily-link:hover{border-color:var(--accent);color:var(--text)}
+  .nav-bar{display:flex;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+  .nav-btn{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 14px;font-size:12px;color:var(--text2);text-decoration:none}
+  .nav-btn:hover{border-color:var(--accent)}
+  .empty{color:var(--text3);font-size:12px;padding:16px;background:var(--bg2);border-radius:10px;border:1px solid var(--border)}
+  .footer{margin-top:32px;font-size:10px;color:var(--text3);text-align:center}
+</style>
+</head>
+<body>
+<h1>📊 Reports Hub</h1>
+<div class="meta">Portfolio Intelligence v1.2 · Last updated 2026-04-17 20:33</div>
+
+<div class="nav-bar">
+  <a href="/reports/command_center.html" class="nav-btn">⚡ Command Center</a>
+  <a href="/reports/portfolio_live.html" class="nav-btn">📈 Portfolio Dashboard</a>
+  <a href="/reports/dashboard_live.html" class="nav-btn">🎯 Trade AI Dashboard</a>
+</div>
+
+<h2>📅 Weekly Reports (Last 8)</h2>
+<div class="report-grid">
+      <a href="/data/portfolios/reports/weekly/weekly_2026-04-17.html" class="report-card" target="_blank">
+        <div class="rc-date">2026-04-17</div>
+        <div class="rc-val" style="color:#00e676">+2.28%</div>
+        <div class="rc-total">$1,206,069</div>
+        <div class="rc-action">**Rebalance the portfolio to allocate 15% of total assets to SCHG, CSWC, and IRDM</div>
+      </a>
+      <a href="/data/portfolios/reports/weekly/weekly_2026-04-16.html" class="report-card" target="_blank">
+        <div class="rc-date">2026-04-16</div>
+        <div class="rc-val" style="color:#00e676">+3.57%</div>
+        <div class="rc-total">$1,201,407</div>
+        <div class="rc-action"></div>
+      </a></div>
+
+<h2>📆 Monthly Reports (Last 6)</h2>
+<div class="report-grid">
+      <a href="/data/portfolios/reports/monthly/monthly_2026-04-17.html" class="report-card" target="_blank">
+        <div class="rc-date">April 2026</div>
+        <div class="rc-val">Monthly</div>
+        <div class="rc-total">2 weeks synthesized</div>
+        <div class="rc-action">Sonnet synthesis</div>
+      </a>
+      <a href="/data/portfolios/reports/monthly/monthly_2026-04-16.html" class="report-card" target="_blank">
+        <div class="rc-date">April 2026</div>
+        <div class="rc-val">Monthly</div>
+        <div class="rc-total">1 weeks synthesized</div>
+        <div class="rc-action">Sonnet synthesis</div>
+      </a></div>
+
+<h2>📄 Daily Briefs (Last 14)</h2>
+<div class="daily-grid"><a href="/data/portfolios/reports/portfolio_brief_2026-04-17_weekly.docx" class="daily-link" target="_blank">📄 2026-04-17_weekly</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-17_morning.docx" class="daily-link" target="_blank">📄 2026-04-17_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-16_weekly.docx" class="daily-link" target="_blank">📄 2026-04-16_weekly</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-16_morning.docx" class="daily-link" target="_blank">📄 2026-04-16_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-16_manual.docx" class="daily-link" target="_blank">📄 2026-04-16_manual</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-15_morning.docx" class="daily-link" target="_blank">📄 2026-04-15_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-14_morning.docx" class="daily-link" target="_blank">📄 2026-04-14_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-13_morning.docx" class="daily-link" target="_blank">📄 2026-04-13_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-11_morning.docx" class="daily-link" target="_blank">📄 2026-04-11_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-10_morning.docx" class="daily-link" target="_blank">📄 2026-04-10_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-09_morning.docx" class="daily-link" target="_blank">📄 2026-04-09_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-08_morning.docx" class="daily-link" target="_blank">📄 2026-04-08_morning</a>
+<a href="/data/portfolios/reports/portfolio_brief_2026-04-04_manual.docx" class="daily-link" target="_blank">📄 2026-04-04_manual</a>
+</div>
+
+<div class="footer">
+  Reports Hub · Auto-generated after weekly and monthly runs
+  <br>Weekly: Ollama qwen3:14b ($0) · Monthly: Claude Sonnet synthesis
+</div>
+</body>
+</html>
