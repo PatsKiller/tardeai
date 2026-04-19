@@ -38,6 +38,7 @@ const ENDPOINTS = {
   stops:       '/data/portfolios/state/stops.json',
   enrichment:  '/data/portfolios/state/ticker_enrichment_cache.json',
   options:     '/data/portfolios/state/portfolio_options.json',
+  advisory:    '/data/portfolios/state/monthly_advisory.json',
 };
 
 function usePortfolioData() {
@@ -816,6 +817,65 @@ function AssumptionsDrawer() {
 // ═══════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════
+function DualAdvisory({data}) {
+  const adv = data.advisory || {};
+  const opus = adv.opus;
+  const sonnet = adv.sonnet;
+  const genDate = adv.generated_at?.slice(0,10) || '';
+
+  if (!opus && !sonnet) return null;
+
+  const [activeTab, setActiveTab] = useState('opus');
+
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="🎯" title="Monthly Advisory — Dual AI Analysis" subtitle="Two AI perspectives on the same portfolio data" badge="MONTHLY ONLY"/>
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setActiveTab('opus')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all ${activeTab==='opus' ? 'bg-blue-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
+          Conservative — Opus
+        </button>
+        <button onClick={() => setActiveTab('sonnet')}
+          className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all ${activeTab==='sonnet' ? 'bg-emerald-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
+          Opportunity — Sonnet
+        </button>
+        {genDate && <span className="text-[9px] text-muted self-center ml-auto">Generated: {genDate}</span>}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Opus Card */}
+        <div className={`bg-card border rounded-lg overflow-hidden transition-all ${activeTab==='opus' ? 'border-blue-500/40 ring-1 ring-blue-500/20' : 'border-border opacity-60'}`}>
+          <div className="px-4 py-3 bg-blue-900/20 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🛡</span>
+              <span className="text-xs font-bold text-blue-300">Conservative Fiduciary View</span>
+            </div>
+            <span className="text-[8px] px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 font-bold">CLAUDE OPUS</span>
+          </div>
+          <div className="p-4 max-h-[600px] overflow-y-auto">
+            {opus ? <MdBlock text={opus}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate Opus advisory</span>}
+          </div>
+        </div>
+        {/* Sonnet Card */}
+        <div className={`bg-card border rounded-lg overflow-hidden transition-all ${activeTab==='sonnet' ? 'border-emerald-500/40 ring-1 ring-emerald-500/20' : 'border-border opacity-60'}`}>
+          <div className="px-4 py-3 bg-emerald-900/20 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⚡</span>
+              <span className="text-xs font-bold text-emerald-300">Opportunity-Focused View</span>
+            </div>
+            <span className="text-[8px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold">CLAUDE SONNET</span>
+          </div>
+          <div className="p-4 max-h-[600px] overflow-y-auto">
+            {sonnet ? <MdBlock text={sonnet}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate Sonnet advisory</span>}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 text-[9px] text-dim text-center">
+        Two AI models analyzing the same data with different investment philosophies. Compare perspectives before acting.
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const {data, loading, errors} = usePortfolioData();
 
@@ -841,6 +901,7 @@ function App() {
       <IraOpportunities data={data}/>
       <TacticalSleeve data={data}/>
       <ActionCenter data={data}/>
+      <DualAdvisory data={data}/>
       <AiDeepSections data={data}/>
       <AssumptionsDrawer/>
       <div className="mt-12 mb-8 text-center text-[10px] text-dim border-t border-border pt-4">
