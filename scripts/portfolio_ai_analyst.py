@@ -135,7 +135,7 @@ FLAGS:
 {flag_lines}
 
 REBALANCING: ${(rebalancing or {}).get('total_to_rebalance',0):,.0f} needed
-"""
+{portfolio.get('_weekly_trajectory', '')}"""
 
 
 def _get_context(portfolio, analysis=None, rebalancing=None):
@@ -683,6 +683,33 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     global _USE_OLLAMA
     _USE_OLLAMA = (run_type == "weekly")
     print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Claude Sonnet'})...")
+
+    # Load previous weekly reports for monthly context
+    _weekly_context = ""
+    if run_type in ("monthly", "manual"):
+        try:
+            _weekly_dir = Path(root) / "data" / "portfolios" / "reports" / "weekly"
+            _weekly_jsons = sorted(_weekly_dir.glob("weekly_*.json"))[-4:]
+            if _weekly_jsons:
+                _wk_lines = []
+                for _wf in _weekly_jsons:
+                    _wd = json.loads(_wf.read_text())
+                    _wk_lines.append(
+                        f"  {_wd.get('date','?')}: ${_wd.get('total_value',0):,.0f} "
+                        f"1W={_wd.get('1w_change_pct',0) or 0:+.2f}% "
+                        f"YTD={_wd.get('ytd_change_pct',0) or 0:+.2f}% "
+                        f"beta={_wd.get('beta',0) or 0:.2f} "
+                        f"action: {str(_wd.get('narratives',{}).get('action',''))[:60]}"
+                    )
+                _weekly_context = "\n\nMONTH'S WEEKLY TRAJECTORY (use for trend analysis):\n" + "\n".join(_wk_lines) + "\n"
+                print(f"  [ai] Loaded {len(_weekly_jsons)} weekly reports for monthly context")
+        except Exception as _e:
+            print(f"  [ai] Weekly context load: {_e}")
+
+    # Inject weekly context into portfolio context for monthly runs
+    if _weekly_context:
+        portfolio = dict(portfolio)
+        portfolio["_weekly_trajectory"] = _weekly_context
 
     # Daily: executive summary (Haiku, cheap)
     print(f"  [ai] Executive summary ({'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Haiku'})...")
