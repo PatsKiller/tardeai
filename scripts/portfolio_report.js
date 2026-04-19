@@ -1176,31 +1176,64 @@ if (newsCatalysts.length > 0) {
   children.push(heading('Portfolio News & Catalyst Intelligence', HeadingLevel.HEADING_1));
   children.push(sourceLabel(`[Pipeline-Derived] — ${newsCatalysts.length} catalysts scored by Ollama LLM | Period: ${newsPeriod}`));
 
-  // Strategist summary
+  // Executive strip (if weekly/monthly)
+  const execStrip = newsWeekly.executive_strip || newsMonthly.executive_strip || {};
+  if (execStrip.top_catalyst) {
+    children.push(kpiRow([
+      ['Top Catalyst', execStrip.top_catalyst || '—', C.green, 'Pipeline-Derived'],
+      ['Biggest Risk', execStrip.biggest_risk || '—', C.red, 'Pipeline-Derived'],
+      ['Watch Next', execStrip.watch_next || '—', C.accent, 'Pipeline-Derived'],
+    ]));
+    children.push(new Paragraph({ spacing: { before: 60 } }));
+  }
+
+  // Strategist narrative
   if (newsSummary) {
     children.push(calloutBox(newsSummary));
   }
 
-  // Top catalysts table
-  const newsRows = newsCatalysts.slice(0, 10).map(c => [
-    c.portfolio_symbol || '?',
-    (c.title || '').slice(0, 60),
-    String(c.llm_score || '—'),
-    c.llm_category || '—',
-    (c.llm_urgency || 'monitor').toUpperCase(),
-    c.llm_summary || '—',
-  ]);
-  children.push(styledTable(
-    ['Ticker', 'Headline', 'Score', 'Category', 'Urgency', 'Why It Matters'],
-    newsRows,
-    { colorFn: (v,ci) => {
-      if (ci === 2) { const n = parseInt(v); return n >= 80 ? C.green : n >= 60 ? C.accent : n >= 40 ? C.amber : C.grayMid; }
-      if (ci === 4) return v === 'IMMEDIATE' ? C.red : v === 'WATCH' ? C.amber : C.grayMid;
-      return C.black;
-    }}
-  ));
+  // Separate company-specific from sector/macro
+  const companyNews = newsCatalysts.filter(c => c.relevance_type === 'company_specific' || !c.relevance_type || c.relevance_type === 'unknown');
+  const sectorNews = newsCatalysts.filter(c => ['sector_spillover','peer_related','macro','indirect'].includes(c.relevance_type));
 
-  // Week-over-week or month-over-month changes
+  // Company-specific catalysts
+  if (companyNews.length > 0) {
+    children.push(heading('Company-Specific Developments', HeadingLevel.HEADING_2));
+    children.push(styledTable(
+      ['Ticker', 'Headline', 'Score', 'Category', 'Urgency', 'Why It Matters'],
+      companyNews.slice(0, 8).map(c => [
+        c.portfolio_symbol || '?',
+        (c.title || '').slice(0, 55),
+        String(c.llm_score || '—'),
+        c.llm_category || '—',
+        (c.llm_urgency || 'monitor').toUpperCase(),
+        c.llm_summary || '—',
+      ]),
+      { colorFn: (v,ci) => {
+        if (ci === 2) { const n = parseInt(v); return n >= 80 ? C.green : n >= 60 ? C.accent : n >= 40 ? C.amber : C.grayMid; }
+        if (ci === 4) return v === 'IMMEDIATE' ? C.red : v === 'WATCH' ? C.amber : C.grayMid;
+        return C.black;
+      }}
+    ));
+  }
+
+  // Sector/macro context
+  if (sectorNews.length > 0) {
+    children.push(heading('Sector & Macro Context', HeadingLevel.HEADING_2));
+    children.push(styledTable(
+      ['Ticker', 'Headline', 'Score', 'Type', 'Relevance'],
+      sectorNews.slice(0, 5).map(c => [
+        c.portfolio_symbol || '?',
+        (c.title || '').slice(0, 55),
+        String(c.llm_score || '—'),
+        c.llm_category || '—',
+        (c.relevance_type || '—').replace('_', ' '),
+      ]),
+      { colorFn: (v,ci) => ci === 2 ? C.grayMid : C.black }
+    ));
+  }
+
+  // Week-over-week changes
   if (newsWeekly.new_this_week && newsWeekly.new_this_week.length > 0) {
     children.push(heading('Week-over-Week Changes', HeadingLevel.HEADING_2));
     children.push(kpiRow([
@@ -1210,15 +1243,37 @@ if (newsCatalysts.length > 0) {
     ]));
   }
 
+  // Monthly themes
   if (newsMonthly.dominant_themes && Object.keys(newsMonthly.dominant_themes).length > 0) {
-    children.push(heading('Monthly Themes', HeadingLevel.HEADING_2));
+    children.push(heading('Monthly Catalyst Themes', HeadingLevel.HEADING_2));
     children.push(styledTable(
-      ['Theme', 'Article Count'],
-      Object.entries(newsMonthly.dominant_themes).slice(0, 6).map(([t, c]) => [t, String(c)]),
+      ['Theme', 'Articles', 'Trend'],
+      Object.entries(newsMonthly.dominant_themes).slice(0, 6).map(([t, c]) => [
+        t.charAt(0).toUpperCase() + t.slice(1),
+        String(c),
+        c >= 5 ? 'Dominant' : c >= 3 ? 'Active' : 'Emerging',
+      ]),
+      { colorFn: (v,ci) => ci === 2 ? (v === 'Dominant' ? C.red : v === 'Active' ? C.amber : C.grayMid) : C.black }
     ));
+
+    // Most active holdings
+    if (newsMonthly.most_active_holdings) {
+      children.push(heading('Most Active Holdings', HeadingLevel.HEADING_2));
+      const activeHoldings = Object.entries(newsMonthly.most_active_holdings).slice(0, 6);
+      const activeChart = drawHBar(
+        activeHoldings.map(([sym, count]) => ({ label: sym, value: count, display: `${count} catalysts` })),
+        480, null, 'Catalyst Activity by Holding'
+      );
+      children.push(imgPara(activeChart, 460, Math.min(activeHoldings.length * 34 + 30, 250)));
+    }
   }
 
-  children.push(p(`Sources: Finnhub, NewsAPI, Polygon, FMP, Finviz News, Yahoo Finance, Brave Search. Scored by local LLM (qwen3:1.7b). ${activeNews.generated_at?.slice(0,10) || ''}`, { size:8, color:C.grayMid, italic:true }));
+  // Watch list for next period
+  if (execStrip.watch_next) {
+    children.push(calloutBox(`Next Period Watch: ${execStrip.watch_next}`, C.accent));
+  }
+
+  children.push(p(`Sources: Finnhub, NewsAPI, Polygon, FMP, Finviz News, Yahoo Finance, Brave Search. Scored by Ollama qwen3:1.7b with relevance classification. ${activeNews.generated_at?.slice(0,10) || ''}`, { size:8, color:C.grayMid, italic:true }));
   children.push(pageBreak());
 }
 

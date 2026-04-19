@@ -222,18 +222,20 @@ def _score_catalysts(catalysts: List[Dict], portfolio: Dict) -> List[Dict]:
 
         prompt = f"""/no_think
 Score this news article for portfolio relevance (0-100).
-Ticker: {sym} ({weight:.1f}% of portfolio)
-Title: {title}
+Ticker searched: {sym} ({weight:.1f}% of portfolio)
+Headline: {title}
 Summary: {summary}
 
-Scoring criteria:
-- 80-100: Material event (earnings, FDA, merger, lawsuit, regulatory)
-- 60-79: Significant development (analyst upgrade/downgrade, sector shift, major contract)
-- 40-59: Notable but not urgent (industry trend, minor news)
-- 20-39: Low relevance (general market noise)
-- 0-19: Irrelevant
+IMPORTANT: Determine if this headline is actually about {sym} or just returned in search results.
 
-Respond with ONLY a JSON object: {{"score": <number>, "category": "<one of: earnings, regulatory, analyst, sector, macro, company, noise>", "urgency": "<one of: immediate, watch, monitor, ignore>", "one_line": "<why this matters in 15 words>"}}"""
+Scoring criteria:
+- 80-100: Material event directly about {sym} (earnings, FDA, merger, lawsuit, regulatory)
+- 60-79: Significant development about {sym} (analyst upgrade/downgrade, major contract)
+- 40-59: Sector/industry news relevant to {sym} but not specifically about it
+- 20-39: Tangentially related (peer company, macro trend)
+- 0-19: Not about {sym} at all — noise from search results
+
+Respond with ONLY a JSON object: {{"score": <number>, "category": "<one of: earnings, regulatory, analyst, sector, macro, company, noise>", "urgency": "<one of: immediate, watch, monitor, ignore>", "relevance_type": "<one of: company_specific, sector_spillover, peer_related, macro, indirect, misattributed>", "one_line": "<why this matters to {sym} in 15 words>"}}"""
 
         try:
             response = _ollama(prompt, max_tokens=150)
@@ -246,16 +248,23 @@ Respond with ONLY a JSON object: {{"score": <number>, "category": "<one of: earn
                 c["llm_category"] = data.get("category", "unknown")
                 c["llm_urgency"] = data.get("urgency", "monitor")
                 c["llm_summary"] = data.get("one_line", "")
+                c["relevance_type"] = data.get("relevance_type", "unknown")
+                # Downgrade misattributed articles
+                if c["relevance_type"] == "misattributed":
+                    c["llm_score"] = min(c["llm_score"], 15)
+                    c["llm_urgency"] = "ignore"
             else:
                 c["llm_score"] = 30
                 c["llm_category"] = "unknown"
                 c["llm_urgency"] = "monitor"
                 c["llm_summary"] = ""
+                c["relevance_type"] = "unknown"
         except:
             c["llm_score"] = 30
             c["llm_category"] = "unknown"
             c["llm_urgency"] = "monitor"
             c["llm_summary"] = ""
+            c["relevance_type"] = "unknown"
 
         c["portfolio_weight"] = round(weight, 1)
         scored.append(c)
@@ -328,15 +337,25 @@ NEW THIS WEEK: {', '.join(new_this_week) if new_this_week else 'None'}
 RESOLVED FROM LAST WEEK: {', '.join(resolved) if resolved else 'None'}
 STILL ACTIVE: {', '.join(curr_symbols & prev_symbols) if curr_symbols & prev_symbols else 'None'}
 
-Write a 4-sentence strategist summary:
-1. What mattered most this week (cite specific tickers and events)
-2. What was noise vs real catalyst
-3. What resolved or escalated from prior week
-4. What should be watched next week
+Respond with ONLY a JSON object:
+{{"top_catalyst": "<ticker: one-line description of most important catalyst>",
+"biggest_risk": "<ticker: one-line description of biggest risk this week>",
+"biggest_positive": "<ticker: one-line description of most positive development>",
+"what_changed": "<one sentence on what shifted from last week>",
+"watch_next": "<what to monitor next week, cite tickers>",
+"narrative": "<3 sentences: what mattered, what was noise, what to watch>"}}
 
-Be specific. No generic statements. Use the data above."""
+Be specific. Cite tickers. No generic statements."""
 
-    synthesis = _ollama(synthesis_prompt, max_tokens=400)
+    synthesis_raw = _ollama(synthesis_prompt, max_tokens=500)
+    import re as _re
+    synthesis = {}
+    try:
+        _jm = _re.search(r'\{[\s\S]*\}', synthesis_raw)
+        if _jm:
+            synthesis = json.loads(_jm.group())
+    except:
+        synthesis = {"narrative": synthesis_raw[:300]}
 
     return {
         "period": "weekly",
@@ -348,7 +367,14 @@ Be specific. No generic statements. Use the data above."""
         "resolved": list(resolved),
         "still_active": list(curr_symbols & prev_symbols),
         "highest_scoring": unique[0] if unique else None,
-        "strategist_summary": synthesis,
+        "executive_strip": {
+            "top_catalyst": synthesis.get("top_catalyst", ""),
+            "biggest_risk": synthesis.get("biggest_risk", ""),
+            "biggest_positive": synthesis.get("biggest_positive", ""),
+            "what_changed": synthesis.get("what_changed", ""),
+            "watch_next": synthesis.get("watch_next", ""),
+        },
+        "strategist_summary": synthesis.get("narrative", synthesis_raw[:300] if isinstance(synthesis_raw, str) else ""),
         "snapshots_used": len(this_week),
     }
 
