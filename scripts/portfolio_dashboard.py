@@ -1834,7 +1834,7 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
         <div class='account-card' style='border-left:4px solid #2979FF;margin-bottom:16px'>
           <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'>
             <h3 style='color:#7BB3FF;font-size:13px;font-weight:800'>{icon} {_e(title)}</h3>
-            <span style='font-size:10px;color:#9A9AB0'>Sonnet 4.6 · {generated}</span>
+            <span style='font-size:10px;color:#9A9AB0'>claude-sonnet-4-20250514 · {generated}</span>
           </div>
           <div id='{card_id}-body' style='border-top:1px solid #2a2a5e;padding-top:10px;{collapse_style}'>{body}</div>
           {collapse_btn}
@@ -1945,7 +1945,7 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
     </div>"""
 
     html = f"""<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>
-      <div class='section-title' style='margin:0'>🤖 AI Strategic Analysis — Sonnet 4.6</div>
+      <div class='section-title' style='margin:0'>🤖 AI Strategic Analysis — claude-sonnet-4-20250514</div>
       <div style='font-size:11px;color:#9A9AB0'>{mode_badge} &nbsp; Generated: {generated}</div>
     </div>
     {refresh_note}
