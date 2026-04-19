@@ -1,0 +1,475 @@
+"""portfolio_news.py — Portfolio News & Catalyst Intelligence
+Fetches, scores, and synthesizes news for all portfolio holdings.
+Stores 90-day rolling history for week-over-week and month-over-month comparison.
+
+Surfaces:
+  - Command Center AI Catalyst / AI Analyst
+  - Weekly DOCX report
+  - Monthly DOCX report
+
+Uses: catalyst_enrichment.py (7 API sources), Brave search (threshold),
+      Ollama local LLM (scoring/curation), social_sentiment.py
+"""
+import json, os, time, hashlib, requests
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+
+# ═══════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════
+HISTORY_DAYS = 90
+OLLAMA_MODEL = "qwen3:1.7b"
+OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+BRAVE_SCORE_THRESHOLD = 70  # Only Brave-enrich catalysts scoring >= this
+MAX_PORTFOLIO_TICKERS = 40
+FIDELITY_PREFIXES = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-")
+SKIP_SYMBOLS = {"CASH", "--", "SNSXX", "SWVXX", "SPRXX", "VMFXX", "FDRXX"}
+
+
+def _env(key, default=""):
+    val = os.getenv(key, "").strip()
+    if val:
+        return val
+    try:
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        for line in env_path.read_text().splitlines():
+            if line.startswith(f"{key}="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except:
+        pass
+    return default
+
+
+def _ollama(prompt, max_tokens=500):
+    """Call local Ollama LLM for scoring/curation."""
+    import re as _re
+    try:
+        r = requests.post(OLLAMA_URL,
+            json={"model": OLLAMA_MODEL, "stream": False, "prompt": prompt,
+                  "think": False,
+                  "options": {"temperature": 0.2, "num_predict": max_tokens, "num_ctx": 4096}},
+            timeout=60)
+        text = r.json().get("response", "").strip()
+        return _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+    except Exception as e:
+        return f"LLM error: {e}"
+
+
+def _brave_search(query, count=3):
+    """Search Brave for enrichment context on high-scoring catalysts."""
+    key = _env("BRAVE_SEARCH_API_KEY")
+    if not key:
+        return []
+    try:
+        r = requests.get("https://api.search.brave.com/res/v1/news/search",
+            headers={"X-Subscription-Token": key, "Accept": "application/json"},
+            params={"q": query, "count": count, "freshness": "pw"},
+            timeout=15)
+        if r.status_code != 200:
+            return []
+        results = []
+        for item in r.json().get("results", [])[:count]:
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "description": item.get("description", "")[:200],
+                "source": item.get("meta_url", {}).get("hostname", ""),
+                "age": item.get("age", ""),
+            })
+        return results
+    except:
+        return []
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CORE: Collect news for portfolio holdings
+# ═══════════════════════════════════════════════════════════════════
+
+def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") -> Dict:
+    """Fetch catalyst news for all portfolio holdings, score with LLM, store daily snapshot."""
+    import sys
+    sys.path.insert(0, str(Path(root) / "scripts"))
+
+    holdings = portfolio.get("holdings", [])
+    enrichment_cache = {}
+    try:
+        ec_path = state_dir / "ticker_enrichment_cache.json"
+        if ec_path.exists():
+            enrichment_cache = json.loads(ec_path.read_text())
+    except:
+        pass
+
+    # Build ticker list (skip Fidelity internal, CASH, etc.)
+    tickers = []
+    seen = set()
+    for h in holdings:
+        sym = (h.get("symbol") or "").upper()
+        if not sym or sym in SKIP_SYMBOLS or sym in seen:
+            continue
+        if any(sym.startswith(p) for p in FIDELITY_PREFIXES):
+            continue
+        if "-" in sym and len(sym) > 5:
+            continue
+        company = enrichment_cache.get(sym, {}).get("company", "")
+        mv = h.get("market_value", 0) or 0
+        tickers.append({"symbol": sym, "company": company, "market_value": mv})
+        seen.add(sym)
+
+    tickers.sort(key=lambda x: -x["market_value"])
+    tickers = tickers[:MAX_PORTFOLIO_TICKERS]
+    print(f"  [portfolio-news] Scanning {len(tickers)} tickers for news...")
+
+    # Fetch catalysts using existing catalyst_enrichment
+    all_catalysts = []
+    sources_summary = {}
+    try:
+        from catalyst_enrichment import enrich_ticker
+        for t in tickers:
+            sym = t["symbol"]
+            try:
+                result = enrich_ticker(sym, t.get("company", ""))
+                catalysts = result.get("catalysts", [])
+                for c in catalysts:
+                    c["portfolio_symbol"] = sym
+                    c["market_value"] = t["market_value"]
+                all_catalysts.extend(catalysts)
+                sources_summary[sym] = {
+                    "count": result.get("catalyst_count", 0),
+                    "tier": result.get("catalyst_tier", "none"),
+                    "sources": result.get("sources_hit", []),
+                }
+                time.sleep(0.2)
+            except Exception as e:
+                print(f"  [portfolio-news] {sym}: {e}")
+    except ImportError:
+        print("  [portfolio-news] catalyst_enrichment not available")
+
+    print(f"  [portfolio-news] Found {len(all_catalysts)} raw articles from {len(tickers)} tickers")
+
+    # Deduplicate across tickers
+    seen_fps = set()
+    unique = []
+    for c in all_catalysts:
+        fp = hashlib.md5((c.get("title", "") + c.get("url", "")).encode()).hexdigest()[:12]
+        if fp not in seen_fps:
+            seen_fps.add(fp)
+            unique.append(c)
+    print(f"  [portfolio-news] {len(unique)} unique articles after dedup")
+
+    # Score with local LLM (batch — top 30 by recency)
+    unique.sort(key=lambda x: x.get("published", ""), reverse=True)
+    scored = _score_catalysts(unique[:30], portfolio)
+
+    # Brave-enrich top-scoring catalysts
+    brave_enriched = []
+    for c in scored:
+        if c.get("llm_score", 0) >= BRAVE_SCORE_THRESHOLD:
+            sym = c.get("portfolio_symbol", "")
+            query = f"{sym} {c.get('title', '')[:50]}"
+            brave = _brave_search(query, count=2)
+            if brave:
+                c["brave_context"] = brave
+                brave_enriched.append(sym)
+    if brave_enriched:
+        print(f"  [portfolio-news] Brave-enriched {len(brave_enriched)} high-scoring catalysts")
+
+    # Build daily snapshot
+    today = datetime.now().strftime("%Y-%m-%d")
+    snapshot = {
+        "date": today,
+        "generated_at": datetime.now().isoformat(),
+        "ticker_count": len(tickers),
+        "total_articles": len(unique),
+        "scored_articles": len(scored),
+        "catalysts": scored[:20],  # Top 20 scored
+        "sources_summary": sources_summary,
+        "brave_enriched_count": len(brave_enriched),
+    }
+
+    # Save daily snapshot
+    history_dir = state_dir / "portfolio_news_history"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = history_dir / f"{today}.json"
+    snapshot_path.write_text(json.dumps(snapshot, indent=2, default=str))
+
+    # Save current state for CC
+    current_path = state_dir / "portfolio_news.json"
+    current_path.write_text(json.dumps(snapshot, indent=2, default=str))
+
+    # Prune history > 90 days
+    _prune_history(history_dir)
+
+    print(f"  [portfolio-news] ✅ {len(scored)} scored catalysts saved | {len(brave_enriched)} Brave-enriched")
+    return snapshot
+
+
+def _score_catalysts(catalysts: List[Dict], portfolio: Dict) -> List[Dict]:
+    """Score catalysts using local LLM for portfolio relevance."""
+    if not catalysts:
+        return []
+
+    totals = portfolio.get("portfolio_totals", {})
+    tv = totals.get("total_value", 0)
+
+    scored = []
+    for c in catalysts:
+        sym = c.get("portfolio_symbol", "")
+        title = c.get("title", "")
+        summary = c.get("summary", "")[:200]
+        mv = c.get("market_value", 0)
+        weight = (mv / tv * 100) if tv > 0 else 0
+
+        prompt = f"""/no_think
+Score this news article for portfolio relevance (0-100).
+Ticker: {sym} ({weight:.1f}% of portfolio)
+Title: {title}
+Summary: {summary}
+
+Scoring criteria:
+- 80-100: Material event (earnings, FDA, merger, lawsuit, regulatory)
+- 60-79: Significant development (analyst upgrade/downgrade, sector shift, major contract)
+- 40-59: Notable but not urgent (industry trend, minor news)
+- 20-39: Low relevance (general market noise)
+- 0-19: Irrelevant
+
+Respond with ONLY a JSON object: {{"score": <number>, "category": "<one of: earnings, regulatory, analyst, sector, macro, company, noise>", "urgency": "<one of: immediate, watch, monitor, ignore>", "one_line": "<why this matters in 15 words>"}}"""
+
+        try:
+            response = _ollama(prompt, max_tokens=150)
+            # Parse JSON from response
+            import re
+            json_match = re.search(r'\{[^}]+\}', response)
+            if json_match:
+                data = json.loads(json_match.group())
+                c["llm_score"] = min(100, max(0, int(data.get("score", 30))))
+                c["llm_category"] = data.get("category", "unknown")
+                c["llm_urgency"] = data.get("urgency", "monitor")
+                c["llm_summary"] = data.get("one_line", "")
+            else:
+                c["llm_score"] = 30
+                c["llm_category"] = "unknown"
+                c["llm_urgency"] = "monitor"
+                c["llm_summary"] = ""
+        except:
+            c["llm_score"] = 30
+            c["llm_category"] = "unknown"
+            c["llm_urgency"] = "monitor"
+            c["llm_summary"] = ""
+
+        c["portfolio_weight"] = round(weight, 1)
+        scored.append(c)
+
+    scored.sort(key=lambda x: -x.get("llm_score", 0))
+    return scored
+
+
+def _prune_history(history_dir: Path):
+    """Remove snapshots older than HISTORY_DAYS."""
+    cutoff = datetime.now() - timedelta(days=HISTORY_DAYS)
+    cutoff_str = cutoff.strftime("%Y-%m-%d")
+    for f in history_dir.glob("*.json"):
+        if f.stem < cutoff_str:
+            f.unlink()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SYNTHESIS: Weekly and Monthly summaries
+# ═══════════════════════════════════════════════════════════════════
+
+def build_weekly_summary(state_dir: Path) -> Dict:
+    """Build weekly catalyst summary from last 7 days of snapshots."""
+    history_dir = state_dir / "portfolio_news_history"
+    cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    prev_cutoff = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+
+    this_week = _load_range(history_dir, cutoff, datetime.now().strftime("%Y-%m-%d"))
+    prev_week = _load_range(history_dir, prev_cutoff, cutoff)
+
+    # Aggregate catalysts
+    all_catalysts = []
+    for snap in this_week:
+        all_catalysts.extend(snap.get("catalysts", []))
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for c in all_catalysts:
+        fp = (c.get("title", "") + c.get("portfolio_symbol", ""))[:80]
+        if fp not in seen:
+            seen.add(fp)
+            unique.append(c)
+
+    unique.sort(key=lambda x: -x.get("llm_score", 0))
+
+    # Previous week's top catalysts for comparison
+    prev_catalysts = []
+    for snap in prev_week:
+        prev_catalysts.extend(snap.get("catalysts", []))
+    prev_symbols = set(c.get("portfolio_symbol", "") for c in prev_catalysts if c.get("llm_score", 0) >= 50)
+    curr_symbols = set(c.get("portfolio_symbol", "") for c in unique if c.get("llm_score", 0) >= 50)
+
+    # Synthesize with LLM
+    top_5 = unique[:5]
+    catalyst_text = "\n".join(
+        f"- {c.get('portfolio_symbol','?')} ({c.get('llm_score',0)}): {c.get('title','')[:80]} [{c.get('llm_category','?')}]"
+        for c in top_5
+    )
+    new_this_week = curr_symbols - prev_symbols
+    resolved = prev_symbols - curr_symbols
+
+    synthesis_prompt = f"""/no_think
+You are a portfolio strategist writing a weekly news brief.
+
+TOP CATALYSTS THIS WEEK:
+{catalyst_text}
+
+NEW THIS WEEK: {', '.join(new_this_week) if new_this_week else 'None'}
+RESOLVED FROM LAST WEEK: {', '.join(resolved) if resolved else 'None'}
+STILL ACTIVE: {', '.join(curr_symbols & prev_symbols) if curr_symbols & prev_symbols else 'None'}
+
+Write a 4-sentence strategist summary:
+1. What mattered most this week (cite specific tickers and events)
+2. What was noise vs real catalyst
+3. What resolved or escalated from prior week
+4. What should be watched next week
+
+Be specific. No generic statements. Use the data above."""
+
+    synthesis = _ollama(synthesis_prompt, max_tokens=400)
+
+    return {
+        "period": "weekly",
+        "date_range": f"{cutoff} to {datetime.now().strftime('%Y-%m-%d')}",
+        "generated_at": datetime.now().isoformat(),
+        "top_catalysts": unique[:10],
+        "total_articles": len(unique),
+        "new_this_week": list(new_this_week),
+        "resolved": list(resolved),
+        "still_active": list(curr_symbols & prev_symbols),
+        "highest_scoring": unique[0] if unique else None,
+        "strategist_summary": synthesis,
+        "snapshots_used": len(this_week),
+    }
+
+
+def build_monthly_summary(state_dir: Path) -> Dict:
+    """Build monthly catalyst summary from last 30 days of snapshots."""
+    history_dir = state_dir / "portfolio_news_history"
+    cutoff = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    prev_cutoff = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+
+    this_month = _load_range(history_dir, cutoff, datetime.now().strftime("%Y-%m-%d"))
+    prev_month = _load_range(history_dir, prev_cutoff, cutoff)
+
+    # Aggregate and deduplicate
+    all_catalysts = []
+    for snap in this_month:
+        all_catalysts.extend(snap.get("catalysts", []))
+    seen = set()
+    unique = []
+    for c in all_catalysts:
+        fp = (c.get("title", "") + c.get("portfolio_symbol", ""))[:80]
+        if fp not in seen:
+            seen.add(fp)
+            unique.append(c)
+    unique.sort(key=lambda x: -x.get("llm_score", 0))
+
+    # Theme analysis
+    from collections import Counter
+    categories = Counter(c.get("llm_category", "unknown") for c in unique)
+    by_symbol = Counter(c.get("portfolio_symbol", "?") for c in unique if c.get("llm_score", 0) >= 50)
+    by_urgency = Counter(c.get("llm_urgency", "monitor") for c in unique)
+
+    # Previous month comparison
+    prev_cats = []
+    for snap in prev_month:
+        prev_cats.extend(snap.get("catalysts", []))
+    prev_symbols = Counter(c.get("portfolio_symbol", "?") for c in prev_cats if c.get("llm_score", 0) >= 50)
+
+    # Monthly synthesis
+    top_10 = unique[:10]
+    catalyst_text = "\n".join(
+        f"- {c.get('portfolio_symbol','?')} ({c.get('llm_score',0)}, {c.get('llm_category','?')}): {c.get('title','')[:80]}"
+        for c in top_10
+    )
+
+    synthesis_prompt = f"""/no_think
+You are a portfolio strategist writing a monthly news intelligence summary.
+
+TOP CATALYSTS THIS MONTH:
+{catalyst_text}
+
+DOMINANT THEMES: {dict(categories.most_common(5))}
+MOST ACTIVE HOLDINGS: {dict(by_symbol.most_common(5))}
+URGENCY BREAKDOWN: {dict(by_urgency)}
+TOTAL SCORED ARTICLES: {len(unique)}
+
+Write a 5-sentence monthly intelligence narrative:
+1. What defined the month's news flow for this portfolio
+2. Which holdings/sectors had the most important catalyst activity
+3. What recurring themes or risks appeared across multiple sources
+4. What unresolved risks carry forward to next month
+5. What should be monitored or acted on next month
+
+Be specific. Reference tickers and scores. No generic commentary."""
+
+    synthesis = _ollama(synthesis_prompt, max_tokens=500)
+
+    return {
+        "period": "monthly",
+        "date_range": f"{cutoff} to {datetime.now().strftime('%Y-%m-%d')}",
+        "generated_at": datetime.now().isoformat(),
+        "top_catalysts": unique[:15],
+        "total_articles": len(unique),
+        "dominant_themes": dict(categories.most_common(8)),
+        "most_active_holdings": dict(by_symbol.most_common(8)),
+        "urgency_breakdown": dict(by_urgency),
+        "highest_scoring": unique[0] if unique else None,
+        "strategist_summary": synthesis,
+        "snapshots_used": len(this_month),
+    }
+
+
+def _load_range(history_dir: Path, start: str, end: str) -> List[Dict]:
+    """Load snapshots in date range."""
+    snapshots = []
+    if not history_dir.exists():
+        return snapshots
+    for f in sorted(history_dir.glob("*.json")):
+        if start <= f.stem <= end:
+            try:
+                snapshots.append(json.loads(f.read_text()))
+            except:
+                pass
+    return snapshots
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ENTRY POINT — called by orchestrator
+# ═══════════════════════════════════════════════════════════════════
+
+def run_portfolio_news(portfolio: Dict, state_dir: Path, run_type: str = "daily", root: str = ".") -> Dict:
+    """Main entry point. Collects news, builds appropriate summary."""
+    state_dir = Path(state_dir)
+
+    # Always collect fresh news
+    snapshot = collect_portfolio_news(portfolio, state_dir, root)
+
+    # Build period summary based on run type
+    summary = None
+    if run_type == "weekly":
+        print("  [portfolio-news] Building weekly synthesis...")
+        summary = build_weekly_summary(state_dir)
+        (state_dir / "portfolio_news_weekly.json").write_text(
+            json.dumps(summary, indent=2, default=str))
+        print(f"  [portfolio-news] ✅ Weekly summary: {summary.get('total_articles',0)} articles, {len(summary.get('new_this_week',[]))} new")
+
+    elif run_type in ("monthly", "manual"):
+        print("  [portfolio-news] Building monthly synthesis...")
+        summary = build_monthly_summary(state_dir)
+        (state_dir / "portfolio_news_monthly.json").write_text(
+            json.dumps(summary, indent=2, default=str))
+        print(f"  [portfolio-news] ✅ Monthly summary: {summary.get('total_articles',0)} articles, {len(summary.get('dominant_themes',{}))} themes")
+
+    return {"snapshot": snapshot, "summary": summary}
