@@ -457,6 +457,18 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     else:
         print("\n[10/10] Report skipped")
 
+    # ── Monthly Advisory: Dual-AI analysis (Opus + Sonnet) ──────────
+    if run_type in ("monthly", "manual"):
+        try:
+            from monthly_advisory import run_monthly_advisory
+            print("\n  [advisory] Running dual-AI monthly advisory...")
+            advisory = run_monthly_advisory(
+                portfolio, analysis, risk, perf_history,
+                retirement, tax_projection, rebalancing, state_dir, root=str(root)
+            )
+        except Exception as e:
+            print(f"  [advisory] ❌ {e}")
+
     print("\n"+"="*60)
     print(f"  ✅ Portfolio Intelligence v1.2 complete  [{run_type.upper()}]")
     print(f"  💼 ${totals.get('total_value',0):,.2f}  📈 +${totals.get('total_gain',0):,.2f} ({totals.get('total_gain_pct',0):.1f}%)")
