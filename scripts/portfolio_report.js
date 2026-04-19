@@ -443,7 +443,9 @@ function styledTable(headers, rows, opts={}) {
 // ═══════════════════════════════════════════════════════════════════
 function renderMarkdown(text, dest) {
   if (!text) return;
-  const lines = String(text).split('\n');
+  // Strip raw HTML tags from AI-generated content
+  let cleaned = String(text).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'");
+  const lines = cleaned.split('\n');
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
@@ -943,11 +945,6 @@ children.push(kpiRow([
   ['Annual Target', fUSD(gw.optimal_annual_conversion||50000), C.green, 'Modeled Strategy Layer'],
 ]));
 
-// AI Roth analysis
-if (aiAnalysis.roth_conversion) {
-  children.push(heading('Detailed Roth Advisory', HeadingLevel.HEADING_2, {before:160}));
-  renderMarkdown(aiAnalysis.roth_conversion, children);
-}
 children.push(pageBreak());
 
 // ── PAGE 8: INCOME STRATEGY (two-column) ────────────────────────
@@ -997,10 +994,6 @@ children.push(twoColumnRow(
   ]
 ));
 
-if (aiAnalysis.dividend_strategy) {
-  children.push(heading('Detailed Dividend Analysis', HeadingLevel.HEADING_2));
-  renderMarkdown(aiAnalysis.dividend_strategy, children);
-}
 children.push(pageBreak());
 
 // ── PAGE 9: BOND STRATEGY (two-column) ──────────────────────────
@@ -1041,10 +1034,6 @@ children.push(kpiRow([
   ['Deployment Source', `${fUSD(28465)} cash + trims`, C.darkBlue, 'Modeled Strategy Layer'],
 ]));
 
-if (aiAnalysis.bond_strategy) {
-  children.push(heading('Detailed Bond Analysis', HeadingLevel.HEADING_2));
-  renderMarkdown(aiAnalysis.bond_strategy, children);
-}
 children.push(pageBreak());
 
 // ── PAGE 10: CONCENTRATION RISK (two-column) ────────────────────
@@ -1080,10 +1069,6 @@ children.push(styledTable(
 
 children.push(calloutBox('Recommended: Trim 30% over 12 weeks (15 shares/week). Begin with Rollover IRA. Both IRAs = zero capital gains tax on sale.'));
 
-if (aiAnalysis.v_strategy) {
-  children.push(heading('Detailed V Strategy', HeadingLevel.HEADING_2));
-  renderMarkdown(aiAnalysis.v_strategy, children);
-}
 children.push(pageBreak());
 
 // ── PAGE 11: RISK MONITORING (two-column with stops data) ───────
@@ -1166,10 +1151,6 @@ children.push(kpiRow([
   ['V Concentration', `${vPct.toFixed(1)}%`, vPct > 13 ? C.red : C.green, 'Pipeline-Derived'],
 ]));
 
-if (aiAnalysis.defense_analysis) {
-  children.push(heading('Defense Portfolio Analysis', HeadingLevel.HEADING_2));
-  renderMarkdown(aiAnalysis.defense_analysis, children);
-}
 children.push(pageBreak());
 
 // ── PAGE 12: ACTION PLAN ────────────────────────────────────────
