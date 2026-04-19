@@ -96,9 +96,11 @@ def _claude(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
 _CURRENT_ROOT = "."
 
 
-def _mini_context(portfolio: Dict, analysis: Dict = None, rebalancing: Dict = None) -> str:
+def _mini_context(portfolio: Dict, analysis: Dict = None, rebalancing: Dict = None, personal: Dict = None) -> str:
     """Compact portfolio context for Ollama (fits in ~800 tokens).
     No biographical dump — just key numbers the model needs to analyze."""
+    if personal is None:
+        personal = {}
     totals = portfolio.get("portfolio_totals", {})
     accounts = portfolio.get("account_summaries", {})
     holdings = [h for h in portfolio.get("holdings", [])
@@ -123,7 +125,7 @@ def _mini_context(portfolio: Dict, analysis: Dict = None, rebalancing: Dict = No
 
     return f"""PORTFOLIO: ${totals.get('total_value',0):,.0f} | Gain: ${totals.get('total_gain',0):+,.0f}
 Dividends: ${divs.get('total_annual_income',0):,.0f}/yr
-Owner: John Whiting, age 58, SSDI income $45,600/yr, conservative
+Owner: {personal.get('owner','John Whiting')}, age {personal.get('age','?')}, SSDI income ${personal.get('ssdi_annual',0) or 0:,.0f}/yr, conservative
 
 ACCOUNTS:
 {acct_lines}
@@ -138,10 +140,10 @@ REBALANCING: ${(rebalancing or {}).get('total_to_rebalance',0):,.0f} needed
 {portfolio.get('_weekly_trajectory', '')}"""
 
 
-def _get_context(portfolio, analysis=None, rebalancing=None):
+def _get_context(portfolio, analysis=None, rebalancing=None, personal=None):
     """Return mini context for Ollama, full context for Claude."""
     if _USE_OLLAMA:
-        return _mini_context(portfolio, analysis, rebalancing)
+        return _mini_context(portfolio, analysis, rebalancing, personal)
     return _portfolio_context(portfolio, analysis or {}, rebalancing or {})
 
 
@@ -211,6 +213,178 @@ def _load_fidelity_constraint(root: str = ".") -> str:
         )
     except Exception as e:
         return f"  [fidelity constraint: {e}]"
+
+
+# ── Personal Situation helpers ────────────────────────────────────────────────
+
+def _load_personal_situation(server_url: str = "http://localhost:7777") -> Dict:
+    """Load personal situation via server API (authoritative for computed fields).
+    Falls back to direct file read if server unavailable.
+    Returns flattened dict {field_name: current_value, ...} plus 'owner' key.
+    """
+    import urllib.request
+
+    # Try API first — server has authoritative computed-fields logic
+    try:
+        with urllib.request.urlopen(f"{server_url}/api/personal/read", timeout=3) as r:
+            data = json.loads(r.read().decode())
+            if data.get("ok"):
+                fields = data.get("data", {}).get("fields", {})
+                result = {"owner": data["data"].get("owner", "John W. Whiting")}
+                for key, field in fields.items():
+                    result[key] = field.get("current")
+                result["_source"] = "api"
+                result["_raw_fields"] = fields
+                return result
+    except Exception as e:
+        print(f"  [ai] personal situation API unavailable ({e}) - falling back to file")
+
+    # Fallback: direct file read, no computed fields
+    ps_path = Path("data/portfolios/state/personal_situation.json")
+    if not ps_path.exists():
+        print("  [ai] WARNING: personal_situation.json not found")
+        return {}
+
+    try:
+        data = json.loads(ps_path.read_text())
+        fields = data.get("fields", {})
+        result = {"owner": data.get("owner", "John W. Whiting")}
+        for key, field in fields.items():
+            result[key] = field.get("current")
+        result["_source"] = "file"
+        result["_raw_fields"] = fields
+        return result
+    except Exception as e:
+        print(f"  [ai] personal_situation.json parse error: {e}")
+        return {}
+
+
+def _staleness_warning(ps: Dict, days_threshold: int = 30) -> str:
+    """Return warning text if personal_situation fields haven't been updated recently."""
+    if not ps:
+        return "NOTE: Personal financial context unavailable - analysis may use outdated assumptions.\n"
+
+    raw_fields = ps.get("_raw_fields", {})
+    if not raw_fields:
+        return ""
+
+    from datetime import date as _date, timedelta
+    cutoff = (_date.today() - timedelta(days=days_threshold)).isoformat()
+
+    stale = []
+    for key, field in raw_fields.items():
+        if not isinstance(field, dict):
+            continue
+        if not field.get("editable", True):
+            continue
+        last_updated = field.get("last_updated", "")
+        if last_updated and last_updated < cutoff:
+            stale.append(key)
+
+    if not stale:
+        return ""
+
+    if len(stale) <= 5:
+        stale_list = ", ".join(stale)
+    else:
+        stale_list = f"{', '.join(stale[:5])}, and {len(stale)-5} others"
+
+    return (
+        f"NOTE: Personal financial fields not updated in {days_threshold}+ days: {stale_list}. "
+        f"Caveat time-sensitive recommendations (taxes, conversions, contributions) accordingly.\n"
+    )
+
+
+def _personal_context(ps: Dict, include_staleness: bool = True) -> str:
+    """Format personal financial situation for prompt interpolation.
+    Produces a multi-line block from personal_situation.json values."""
+    if not ps:
+        return "=== PERSONAL FINANCIAL SITUATION ===\n(personal_situation.json unavailable - check /api/personal/read)\n"
+
+    owner = ps.get("owner", "John W. Whiting")
+    age = ps.get("age", "?")
+    dob = ps.get("dob", "?")
+
+    ssdi = ps.get("ssdi_annual") or 0
+    ssdi_mo = ps.get("ssdi_monthly_computed") or 0
+    sch_c = ps.get("schedule_c_gross") or 0
+    se_ded = ps.get("se_tax_deduction") or 0
+
+    filing = ps.get("filing_status", "MFS")
+    bracket = ps.get("current_tax_bracket_pct", 22)
+    ceiling = ps.get("next_bracket_ceiling") or 0
+    fed_ded = ps.get("federal_itemized") or 0
+    ny_ded = ps.get("ny_itemized") or 0
+
+    disability_active = ps.get("private_disability_active", True)
+    disability_end = ps.get("disability_end_age", 68.5)
+    fra = ps.get("fra_age", 67)
+    rmd = ps.get("rmd_age", 73)
+
+    mort_bal = ps.get("mortgage_balance") or 0
+    mort_rate = ps.get("mortgage_rate_pct") or 0
+    mort_int = ps.get("mortgage_annual_interest") or 0
+    mort_mat = ps.get("mortgage_maturity", "?")
+    prop_tax = ps.get("property_tax_annual") or 0
+
+    roth_ytd = ps.get("roth_conversion_ytd_2026") or 0
+    roth_remaining = ps.get("roth_conversion_remaining_2026") or 0
+    roth_sweet = ps.get("roth_target_sweet_spot", 25000)
+    roth_upper = ps.get("roth_target_upper", 50000)
+    rollover_year = ps.get("plan_401k_rollover_year", 2027)
+
+    gw_open = ps.get("golden_window_open", "?")
+    gw_close = ps.get("golden_window_close", "?")
+
+    # Compute derived figures
+    income_base = ssdi + sch_c
+    adjusted_income = income_base - se_ded
+    taxable_ssdi_portion = ssdi * 0.85
+    taxable_pre_conversion = taxable_ssdi_portion + sch_c - fed_ded - se_ded
+
+    disability_status = "ACTIVE" if disability_active else "ENDED"
+
+    blocks = []
+
+    if include_staleness:
+        warning = _staleness_warning(ps)
+        if warning:
+            blocks.append(warning.rstrip())
+
+    blocks.append(f"""=== PERSONAL FINANCIAL SITUATION ===
+Owner: {owner} | DOB: {dob} | Age: {age}
+
+Income: SSDI ${ssdi:,.0f}/yr (${ssdi_mo:,.0f}/mo) + Schedule C ~${sch_c:,.0f}/yr gross
+Private disability: {disability_status} - ends at age {disability_end}
+No need to withdraw from investments until age {disability_end}
+
+Filing: {filing} | Current bracket: {bracket}%
+Federal itemized: ${fed_ded:,.0f} (mortgage interest ${mort_int:,.0f} + property tax ${prop_tax:,.0f})
+NY itemized: ${ny_ded:,.0f}
+SE tax deduction: ${se_ded:,.0f}/yr
+
+Housing: Mortgage ${mort_bal:,.0f} @ {mort_rate}% fixed, matures {mort_mat}
+
+=== RETIREMENT TIMELINE ===
+FRA (SS transition): age {fra}
+Disability insurance ends: age {disability_end}
+Golden Window: {gw_open} to {gw_close} (ages {disability_end}-{rmd})
+RMDs begin: age {rmd}
+401k rollover planned: {rollover_year}
+
+=== ROTH CONVERSION STATUS ===
+2026 YTD converted: ${roth_ytd:,.0f}
+Remaining room in {bracket}% bracket: ${roth_remaining:,.0f}
+Sweet spot target: ${roth_sweet:,.0f}/yr | Upper target: ${roth_upper:,.0f}/yr
+{bracket}% bracket ceiling ({filing}): ${ceiling:,.0f}
+
+=== TAX MATH (pre-conversion) ===
+Income base: ${income_base:,.0f} (SSDI + Schedule C)
+After SE deduction: ${adjusted_income:,.0f}
+After 85% SSDI taxability + SE deduction + federal itemized: ${taxable_pre_conversion:,.0f} taxable
+Remaining {bracket}% capacity: ${roth_remaining:,.0f}""")
+
+    return "\n\n".join(blocks)
 
 
 def _portfolio_context(portfolio: Dict, analysis: Dict, rebalancing: Dict) -> str:
@@ -351,18 +525,27 @@ Net to rebalance: ${rebalancing.get('total_to_rebalance',0):,.0f}
 
 # ── Section 1: Executive Summary ──────────────────────────────────────────────
 
-def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict) -> str:
+def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: Dict = None) -> str:
     """Haiku quick executive summary for daily runs."""
+    if personal is None:
+        personal = {}
     totals = portfolio.get("portfolio_totals", {})
     flags  = analysis.get("critical_flags", [])
     high_flags = [f for f in flags if f.get("severity") in ("HIGH","CRITICAL")]
 
-    prompt = f"""Portfolio morning brief for John W. Whiting (age 58, turns 59 Aug 2026):
+    owner = personal.get('owner', 'John W. Whiting')
+    age = personal.get('age', '?')
+    ssdi = personal.get('ssdi_annual', 0) or 0
+    filing = personal.get('filing_status', 'MFS')
+    roth_ytd = personal.get('roth_conversion_ytd_2026', 0) or 0
+    roth_sweet = personal.get('roth_target_sweet_spot', 25000)
+
+    prompt = f"""Portfolio morning brief for {owner} (age {age}):
 Total: ${totals.get('total_value',0):,.0f} | Gain: +${totals.get('total_gain',0):,.0f} (+{totals.get('total_gain_pct',0):.1f}%)
 Annual dividends: ${analysis.get('dividends',{}).get('total_annual_income',0):,.0f}/yr
 Rebalancing needed: ${rebalancing.get('total_to_rebalance',0):,.0f} net
-Income: SSDI $45,600/yr only. MFS lived-apart filing. Prop tax + mortgage interest itemized.
-Roth conversion: $35K done in 2026. Sweet spot $25K/yr ($3,547 tax).
+Income: SSDI ${ssdi:,.0f}/yr only. {filing} filing. Prop tax + mortgage interest itemized.
+Roth conversion: ${roth_ytd:,.0f} done in 2026. Sweet spot ${roth_sweet:,.0f}/yr.
 High priority flags: {len(high_flags)}
 Top flags: {chr(10).join(f['message'] for f in high_flags[:3])}
 
@@ -373,9 +556,9 @@ Include the single most important action item considering his Roth conversion st
 
 def _roth_conversion_analysis(portfolio: Dict) -> str:
     """Sonnet: annual Roth conversion advice — how much to convert and what to buy."""
-    rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value",531268)
-    fidelity_mv = portfolio.get("account_summaries",{}).get("fidelity_401k",{}).get("total_value",501155)
-    roth_mv     = portfolio.get("account_summaries",{}).get("schwab_roth",{}).get("total_value",40422)
+    rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value", 0)
+    fidelity_mv = portfolio.get("account_summaries",{}).get("fidelity_401k",{}).get("total_value", 0)
+    roth_mv     = portfolio.get("account_summaries",{}).get("schwab_roth",{}).get("total_value", 0)
 
     return _ai(_AI_RULES + f"""JOHN'S ROTH CONVERSION — ANNUAL ADVISOR ANALYSIS
 
@@ -482,7 +665,7 @@ DIVIDEND HOLDINGS:
 
 def _bond_strategy(portfolio: Dict, rebalancing: Dict) -> str:
     ctx = _get_context(portfolio, rebalancing=rebalancing)
-    rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value",531268)
+    rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value", 0)
 
     return _ai(_AI_RULES + f"""TASK: Bond allocation strategy for John's Rollover IRA (${rollover_mv:,.0f}).
 Current bonds: BND only. Target: 25% of IRA in bonds.
@@ -496,7 +679,7 @@ Assess duration risk for a 10-15 year retirement horizon. Write in prose paragra
 
 def _ira_opportunities(portfolio: Dict) -> str:
     ctx = _get_context(portfolio)
-    rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value",531268)
+    rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value", 0)
 
     return _ai(_AI_RULES + f"""TASK: Rollover IRA opportunities for John's ${rollover_mv:,.0f} account.
 This is a tax-deferred IRA with full investment access (stocks, bonds, REITs, BDCs, ETFs).
@@ -711,9 +894,12 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
         portfolio = dict(portfolio)
         portfolio["_weekly_trajectory"] = _weekly_context
 
+    # Load personal situation once, reused across all section builders
+    personal = _load_personal_situation()
+
     # Daily: executive summary (Haiku, cheap)
     print(f"  [ai] Executive summary ({'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Haiku'})...")
-    results["executive_summary"] = _exec_summary(portfolio, analysis, rebalancing)
+    results["executive_summary"] = _exec_summary(portfolio, analysis, rebalancing, personal)
 
     if run_type in ("monthly","manual","weekly") or force_refresh:
         sections = [
