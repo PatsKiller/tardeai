@@ -2124,6 +2124,16 @@ a.ext:hover { text-decoration: underline; }
     <div class="zone-hdr" style="margin-top:6px">Next Ex-Dividend Dates</div>
     <div id="exdiv-calendar"></div>
 
+    <!-- Portfolio News & Catalyst Feed -->
+    <div class="divider"></div>
+    <div id="portfolio-news-feed" style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:800;color:var(--text)">📰 Portfolio News & Catalysts</span>
+        <span id="pnf-count" style="font-size:9px;color:var(--text3)"></span>
+      </div>
+      <div id="pnf-items" style="max-height:240px;overflow-y:auto"></div>
+    </div>
+
     <!-- v36: Open Portfolio Dashboard Button -->
     <div class="divider"></div>
     <!-- v38: AI Ask button for Portfolio zone -->
@@ -3209,6 +3219,28 @@ async function init() {
   try { window._snapshotIndex = await fetch('/data/portfolios/state/snapshot_index.json').then(r=>r.ok?r.json():[]).catch(()=>[]); } catch(e) { window._snapshotIndex = []; }
   await refreshAll();
   startRefreshTimer();
+  // Load and render portfolio news feed
+  try {
+    const pnf = await fetch('/data/portfolios/state/portfolio_news.json').then(r=>r.ok?r.json():null).catch(()=>null);
+    if (pnf && pnf.catalysts && pnf.catalysts.length > 0) {
+      const countEl = document.getElementById('pnf-count');
+      const itemsEl = document.getElementById('pnf-items');
+      if (countEl) countEl.textContent = `${pnf.catalysts.length} catalysts | ${pnf.ticker_count||0} tickers | ${pnf.date||''}`;
+      if (itemsEl) {
+        const scoreColor = (s) => s >= 80 ? '#0F9D58' : s >= 60 ? '#2979FF' : s >= 40 ? '#F4B400' : '#9A9AB0';
+        const urgencyBg = (u) => u === 'immediate' ? 'rgba(219,68,55,.12)' : u === 'watch' ? 'rgba(244,180,0,.08)' : 'transparent';
+        itemsEl.innerHTML = pnf.catalysts.slice(0, 8).map(c => {
+          const sc = scoreColor(c.llm_score||0);
+          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 8px;margin-bottom:2px;border-radius:4px;background:${urgencyBg(c.llm_urgency)}">
+            <span style="font-size:10px;font-weight:800;color:${sc};min-width:22px">${c.llm_score||'?'}</span>
+            <span style="font-size:10px;font-weight:700;color:var(--text);min-width:36px">${c.portfolio_symbol||'?'}</span>
+            <span style="font-size:10px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(c.title||'').slice(0,55)}</span>
+            <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${sc}18;color:${sc};font-weight:600">${(c.llm_urgency||'monitor').toUpperCase()}</span>
+          </div>`;
+        }).join('');
+      }
+    }
+  } catch(e) { console.log('Portfolio news load:', e); }
   // v39: restore last open tab
   const lastTab = loadLastTab();
   if (lastTab) { setTimeout(() => openDeepTab(lastTab), 100); }
