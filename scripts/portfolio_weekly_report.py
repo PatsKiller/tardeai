@@ -98,6 +98,17 @@ def _ollama(prompt: str, timeout: int = 180) -> str:
         return ""
 
 
+def _clean_md(text: str) -> str:
+    """Strip markdown artifacts before sending to Telegram."""
+    import re
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)   # **bold** → bold
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)        # *italic* → italic
+    text = re.sub(r'^#{1,4}\s*', '', text, flags=re.MULTILINE)  # ## headings
+    text = re.sub(r'`([^`]+)`', r'\1', text)           # `code` → code
+    text = re.sub(r'\n{3,}', '\n\n', text)             # collapse triple+ newlines
+    return text.strip()
+
+
 def _get_env(key: str) -> str:
     val = os.getenv(key, "")
     if val:
@@ -1086,8 +1097,8 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         f"📊 <b>Weekly Report — {date_str}</b>\n\n"
         f"<b>${perf_data.get('total_value',0):,.0f}</b> | "
         f"1W: <b>{w_chg:+.2f}%</b> | YTD: {ytd_chg:+.2f}%\n\n"
-        f"{narratives.get('performance','')[:300]}\n\n"
-        f"🎯 {narratives.get('action','')[:200]}\n\n"
+        f"{_clean_md(narratives.get('performance',''))[:300]}\n\n"
+        f"🎯 {_clean_md(narratives.get('action',''))[:200]}\n\n"
         f"<a href='http://192.168.50.16:7777/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
     )
     _send_telegram(tg_msg)
