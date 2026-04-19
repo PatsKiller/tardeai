@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "canvas": "^3.2.3",
     "docx": "^9.6.1",
     "puppeteer": "^24.41.0",
     "puppeteer-core": "^24.41.0"
