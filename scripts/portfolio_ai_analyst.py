@@ -387,7 +387,9 @@ Remaining {bracket}% capacity: ${roth_remaining:,.0f}""")
     return "\n\n".join(blocks)
 
 
-def _portfolio_context(portfolio: Dict, analysis: Dict, rebalancing: Dict) -> str:
+def _portfolio_context(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: Dict = None) -> str:
+    if personal is None:
+        personal = _load_personal_situation()
     totals = portfolio.get("portfolio_totals", {})
     accounts = portfolio.get("account_summaries", {})
     holdings = [h for h in portfolio.get("holdings", [])
@@ -446,54 +448,31 @@ def _portfolio_context(portfolio: Dict, analysis: Dict, rebalancing: Dict) -> st
     else:
         overlap_lines = "  (none detected)"
 
+    # Live account balances from portfolio data (never hardcoded)
+    acct = portfolio.get("account_summaries", {}) or {}
+    fidelity_mv = acct.get("fidelity_401k", {}).get("total_value") or 0
+    rollover_mv = acct.get("schwab_rollover_ira", {}).get("total_value") or 0
+    roth_mv = acct.get("schwab_roth", {}).get("total_value") or 0
+    taxable_mv = acct.get("schwab_taxable", {}).get("total_value") or 0
+    rollover_year = personal.get("plan_401k_rollover_year", 2027)
+
+    accounts_block = f"""=== ACCOUNTS (live values) ===
+Fidelity 401k: ${fidelity_mv:,.0f} [rolling to Rollover IRA in {rollover_year}]
+Schwab Rollover IRA: ${rollover_mv:,.0f}
+Schwab Roth IRA: ${roth_mv:,.0f} [Roth conversion target account]
+Schwab Taxable: ${taxable_mv:,.0f}
+Total: ${(fidelity_mv + rollover_mv + roth_mv + taxable_mv):,.0f}
+{rollover_year} rollover pool: ~${(fidelity_mv + rollover_mv):,.0f}"""
+
     return f"""=== PORTFOLIO OVERVIEW ===
-Owner: John W. Whiting | DOB: 8/21/1967 (turns 59 August 2026)
 Total Value: ${totals.get('total_value',0):,.0f}
 Total All-Time Gain: ${totals.get('total_gain',0):,.0f} (+{totals.get('total_gain_pct',0):.1f}%)
 Annual Dividend Income: ${divs.get('total_annual_income',0):,.2f}/yr (${divs.get('total_monthly_income',0):,.2f}/mo)
 Day Change: ${totals.get('day_change',0):+,.0f}
 
-=== PERSONAL FINANCIAL SITUATION ===
-Income sources:
-  - SSDI: $3,800/month ($45,600/yr) — converts to SS retirement at FRA age 67
-  - Schedule C: ~$20,000/yr gross (business income, deductions reduce taxable net)
-  - Private disability insurance: ACTIVE until age 68.5 (recertify 2x/yr medically)
-  - NO need to withdraw from investments until age 68.5 — 10+ years uninterrupted compounding
+{_personal_context(personal)}
 
-Filing: MFS (Married Filing Separately, lived-apart rule)
-  - Mortgage interest: ~$16,011/yr (declining ~$150/yr as balance pays down)
-  - Property tax: $7,670/yr (Bronxwood, NYC)
-  - Total federal itemized: ~$21,011 | NY itemized: ~$23,681
-  - SE tax deduction: ~$1,413/yr (from ~$20K Schedule C gross)
-
-Housing: Bronxwood NYC (owned)
-  - Mortgage balance: ~$408,347 @ 4% fixed, matures 09/2042
-
-
-=== ROTH CONVERSION STRATEGY ===
-GOLDEN WINDOW TIMELINE:
-  Age 58-68.5: SSDI $45,600 + Sch C $20K → convert $25-50K/yr low tax
-  Age 68.5-73: Disability stops, ONLY SS retirement (very low bracket!) → MAX conversions
-  Age 73+:     RMDs kick in → want Roth as large as possible before this
-
-2026 tax math ($20K Sch C + $45,600 SSDI):
-  Income base: $65,600 → after SE deduction: $64,187
-  Federal itemized: $21,011 → taxable pre-conversion: $43,176
-  22% bracket ceiling MFS: ~$94,300 → room for $51,124 more before 24%
-  Already converted $35K → remaining safe room in 2026: ~$16K
-  Adding $16K: ~$3,520 incremental tax — highly efficient
-
-SCHD 12.3% historical growth:
-  $25K/yr → $500K Roth by 2035 (break-even 1.1 yrs)
-  $50K/yr → $1,000K Roth by 2035 (break-even 2.3 yrs)
-
-2027: Omnicom 401k ($501K) → Rollover IRA → total conversion pool ~$1,032K
-
-=== ACCOUNTS ===
-Fidelity 401k (Omnicom):   $501,155  [TERMINATED — rolling to Rollover IRA in 2027]
-Schwab Rollover IRA ...258: $531,268  [WARNING: V=49.6% of this account, +702% unrealized gain]
-Schwab Roth IRA ...415:     $40,422   [V + SCHG only — TARGET ACCOUNT for Roth conversions]
-Schwab Taxable ...469:      $71,773   [AI WWIII defense portfolio + income ETFs + BDCs]
+{accounts_block}
 
 === TOP HOLDINGS (with unrealized gain) ===
 {top_h}
@@ -554,50 +533,38 @@ Include the single most important action item considering his Roth conversion st
     return _ai(prompt, model=HAIKU, max_tokens=250)
 
 
-def _roth_conversion_analysis(portfolio: Dict) -> str:
+def _roth_conversion_analysis(portfolio: Dict, personal: Dict = None) -> str:
     """Sonnet: annual Roth conversion advice — how much to convert and what to buy."""
+    if personal is None:
+        personal = _load_personal_situation()
     rollover_mv = portfolio.get("account_summaries",{}).get("schwab_rollover_ira",{}).get("total_value", 0)
     fidelity_mv = portfolio.get("account_summaries",{}).get("fidelity_401k",{}).get("total_value", 0)
     roth_mv     = portfolio.get("account_summaries",{}).get("schwab_roth",{}).get("total_value", 0)
+    rollover_year = personal.get("plan_401k_rollover_year", 2027)
+    total_2027 = fidelity_mv + rollover_mv
+    roth_ytd = personal.get("roth_conversion_ytd_2026", 0) or 0
+    sch_c = personal.get("schedule_c_gross", 0) or 0
 
     return _ai(_AI_RULES + f"""JOHN'S ROTH CONVERSION — ANNUAL ADVISOR ANALYSIS
 
-FULL INCOME PICTURE 2026:
-  SSDI: $45,600/yr (converts to SS retirement at FRA age 67)
-  Schedule C: ~$20,000/yr gross (business write-offs reduce net taxable)
-  Private disability insurance: continues to age 68.5 (recertify 2x/yr medically)
-  NO need to draw from investments until 68.5 — 10+ years uninterrupted compounding
-  Already converted: $35,000 in 2026
+{_personal_context(personal)}
 
-TAX MATH:
-  Base income: $65,600 → SE deduction ~$1,413 → adjusted: $64,187
-  Federal itemized deductions: ~$21,011 (mort int $16,011 + prop tax $7,670)
-  Taxable income pre-conversion: ~$43,176
-  22% bracket tops at ~$94,300 MFS → room for ~$51K total conversion before 24%
-  Already did $35K → ~$16K safe room remaining in 2026 at 22%
-
-IRA POOL:
+IRA POOL (live values):
   Rollover IRA: ${rollover_mv:,.0f} (current)
-  Fidelity 401k: ${fidelity_mv:,.0f} (rolls to Rollover IRA in 2027)
+  Fidelity 401k: ${fidelity_mv:,.0f} (rolls to Rollover IRA in {rollover_year})
   NOTE: Until rollover, Fidelity 401k can ONLY exchange between plan funds
   listed in the constraint block above. Recommend exchanges within plan to
   optimize for lowest-cost and best-performing available funds.
   Current Roth: ${roth_mv:,.0f}
-  2027 total pool: ~$1,032,000
+  {rollover_year} total pool: ~${total_2027:,.0f}
 
-GOLDEN WINDOW STRATEGY:
-  Age 58-68.5: Convert $25-50K/yr while disability + SSDI + Sch C provides income
-  Age 68.5-73: Disability stops → ONLY SS income → LOWEST TAX BRACKET WINDOW
-                 → could convert $50-100K/yr at 10-12% federal
-  Age 73+: RMDs begin → Roth should be as large as possible by then
-
-Schedule C business write-offs (deduct from $20K gross to reduce net taxable):
+Schedule C business write-offs (deduct from ${sch_c:,.0f} gross to reduce net taxable):
   Home office, equipment, software, internet, phone, mileage, professional services
 
 You are a CPA and fee-only financial advisor. Answer these ANNUAL ADVISORY questions:
 
 1. HOW MUCH TO CONVERT IN 2026?
-   John has done $35K. Should he convert more before Dec 31?
+   John has done ${roth_ytd:,.0f}. Should he convert more before Dec 31?
    Give exact tax at different additional amounts: $0 more, $10K more, $16K more.
    What is the OPTIMAL additional amount given his situation?
 
@@ -606,12 +573,12 @@ You are a CPA and fee-only financial advisor. Answer these ANNUAL ADVISORY quest
    Rank these in order for Roth: SCHG (0.4%), JEPQ (9.5%), JEPI (7.8%), SCHD (3.58%), O/REIT (5.7%)
    Explain why for his specific situation.
 
-3. 2027 PLAN (401K ROLLS OVER)
-   When $501K Omnicom 401k moves to Rollover IRA in 2027 (+ existing $531K):
-   How much to convert in 2027? What's the optimal sequence?
-   
-4. GOLDEN WINDOW AT 68.5-73
-   Model the projected balances at 68.5 and optimal conversion strategy in that window.
+3. {rollover_year} PLAN (401K ROLLS OVER)
+   When ${fidelity_mv:,.0f} 401k moves to Rollover IRA in {rollover_year} (+ existing ${rollover_mv:,.0f}):
+   How much to convert in {rollover_year}? What's the optimal sequence?
+
+4. GOLDEN WINDOW
+   Model the projected balances at disability end and optimal conversion strategy in that window.
    How much could John realistically convert tax-free in that low-bracket window?
 
 5. SCHEDULE C WRITE-OFF STRATEGY
@@ -919,6 +886,7 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
                     elif n_args == 2:
                         if key == "dividend_strategy": text = fn(portfolio, analysis)
                         else: text = fn(portfolio, rebalancing)
+                    elif key == "roth_conversion": text = fn(portfolio, personal)
                     else: text = fn(portfolio)
                     _save_cache(state_dir, key, text)
                     results[key] = text
