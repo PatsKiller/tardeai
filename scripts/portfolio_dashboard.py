@@ -1540,6 +1540,95 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
         text = ai_analysis.get(key, "")
         if not text: return ""
 
+        def _detect_bar_chart(lines_block: list) -> str:
+            """Detect lines like '- $10K additional: ~$2,200 tax' and render as horizontal bar chart."""
+            import re as _re
+            items = []
+            for ln in lines_block:
+                m = _re.match(r'^[-•*]\s*\$?([\d,.]+K?)\s*(additional|more)?\s*:?\s*[~]?\$?([\d,.]+K?)\s*(.*)', ln.strip())
+                if m:
+                    label = f"${m.group(1)}"
+                    val_str = m.group(3).replace(",","").replace("K","000")
+                    try: val = float(val_str)
+                    except: continue
+                    note = m.group(4).strip().lstrip("(").rstrip(")")
+                    items.append((label, val, note))
+            if len(items) < 2: return ""
+            max_val = max(v for _,v,_ in items) or 1
+            bars = ""
+            for label, val, note in items:
+                pct = val / max_val * 100
+                rec = "← RECOMMENDED" in note.upper() or "OPTIMAL" in note.upper()
+                col = "#0F9D58" if rec else "#2979FF"
+                border = f"border:1px solid {col};" if rec else ""
+                bars += (f"<div style='display:flex;align-items:center;gap:8px;margin:4px 0;{border}"
+                         f"padding:4px 8px;border-radius:4px'>"
+                         f"<span style='color:#e0e0f0;font-size:11px;min-width:50px;font-weight:600'>{label}</span>"
+                         f"<div style='flex:1;background:#1a1a35;border-radius:3px;height:18px;overflow:hidden'>"
+                         f"<div style='background:{col};height:100%;width:{pct:.0f}%;border-radius:3px;"
+                         f"display:flex;align-items:center;padding-left:6px'>"
+                         f"<span style='color:#fff;font-size:9px;font-weight:600'>${val:,.0f}</span></div></div>"
+                         f"<span style='color:#9A9AB0;font-size:9px;min-width:80px'>{_e(note[:40])}</span></div>")
+            return (f"<div style='background:#0d0d1a;border:1px solid #2a2a5e;border-radius:8px;"
+                    f"padding:12px;margin:10px 0'>"
+                    f"<div style='color:#7BB3FF;font-size:10px;font-weight:700;margin-bottom:8px;"
+                    f"text-transform:uppercase;letter-spacing:.5px'>📊 Tax Impact Analysis</div>{bars}</div>")
+
+        def _detect_allocation_chart(lines_block: list) -> str:
+            """Detect numbered allocation lists like '1. **SCHG (0.4%)** — desc' and render as horizontal bars."""
+            import re as _re
+            items = []
+            for ln in lines_block:
+                clean = ln.strip().replace("**", "")
+                m = _re.match(r'^\d+\.\s*([A-Z/]+(?:\s*\w*)?)\s*\(([^)]+)\)\s*[—–-]\s*(.*)', clean)
+                if m:
+                    ticker = m.group(1).strip()
+                    metric = m.group(2).strip()
+                    desc = m.group(3).strip()
+                    items.append((ticker, metric, desc))
+            if len(items) < 3: return ""
+            cols = ["#2979FF","#0F9D58","#F4B400","#DB4437","#9C27B0","#00BCD4"]
+            bars = ""
+            for i, (ticker, metric, desc) in enumerate(items):
+                col = cols[i % len(cols)]
+                width = max(20, 100 - i * 15)
+                bars += (f"<div style='display:flex;align-items:center;gap:8px;margin:3px 0'>"
+                         f"<span style='color:#e0e0f0;font-size:11px;min-width:50px;font-weight:700'>{_e(ticker)}</span>"
+                         f"<div style='flex:1;background:#1a1a35;border-radius:3px;height:14px;overflow:hidden'>"
+                         f"<div style='background:{col};height:100%;width:{width}%;border-radius:3px'></div></div>"
+                         f"<span style='color:{col};font-size:10px;min-width:55px'>{_e(metric)}</span>"
+                         f"<span style='color:#9A9AB0;font-size:9px'>{_e(desc[:50])}</span></div>")
+            return (f"<div style='background:#0d0d1a;border:1px solid #2a2a5e;border-radius:8px;"
+                    f"padding:12px;margin:10px 0'>"
+                    f"<div style='color:#7BB3FF;font-size:10px;font-weight:700;margin-bottom:8px;"
+                    f"text-transform:uppercase;letter-spacing:.5px'>📈 Allocation Priority</div>{bars}</div>")
+
+        def _detect_deduction_table(lines_block: list) -> str:
+            """Detect deduction lists like '1. **Home office:** $3,000-$5,000' and render as table."""
+            import re as _re
+            items = []
+            for ln in lines_block:
+                clean = ln.strip().replace("**", "")
+                m = _re.match(r'^\d+\.\s*([^:]+):\s*\$?([\d,.]+)\s*[-–]\s*\$?([\d,.]+)', clean)
+                if m:
+                    items.append((m.group(1).strip(), m.group(2), m.group(3)))
+            if len(items) < 3: return ""
+            rows = ""
+            for cat, lo, hi in items:
+                rows += (f"<tr><td style='padding:4px 8px;border-bottom:1px solid #1e1e38;color:#e0e0f0;font-size:11px'>"
+                         f"{_e(cat)}</td>"
+                         f"<td style='padding:4px 8px;border-bottom:1px solid #1e1e38;color:#0F9D58;font-size:11px;"
+                         f"text-align:right;font-weight:600'>${lo} – ${hi}</td></tr>")
+            return (f"<div style='background:#0d0d1a;border:1px solid #2a2a5e;border-radius:8px;"
+                    f"padding:12px;margin:10px 0'>"
+                    f"<div style='color:#7BB3FF;font-size:10px;font-weight:700;margin-bottom:8px;"
+                    f"text-transform:uppercase;letter-spacing:.5px'>💰 Deduction Opportunities</div>"
+                    f"<table style='width:100%;border-collapse:collapse'>"
+                    f"<tr><th style='padding:4px 8px;color:#6b6b8a;font-size:9px;text-align:left;"
+                    f"border-bottom:1px solid #2a2a5e'>Category</th>"
+                    f"<th style='padding:4px 8px;color:#6b6b8a;font-size:9px;text-align:right;"
+                    f"border-bottom:1px solid #2a2a5e'>Annual Range</th></tr>{rows}</table></div>")
+
         def _inline(s: str) -> str:
             """Convert inline markdown (**bold**, *italic*, `code`) to HTML."""
             import re
@@ -1554,6 +1643,32 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
             body       = ""
             table_rows: list = []
             in_table   = False
+
+            # Pre-scan: detect chart-worthy blocks and insert them
+            _chart_inserts = {}  # line_index -> chart_html
+            _block = []
+            _block_start = -1
+            for li, raw in enumerate(lines):
+                stripped = raw.strip()
+                if stripped and (stripped[0] in "-•*" or (len(stripped) > 1 and stripped[:2].rstrip(". ").isdigit())):
+                    if not _block:
+                        _block_start = li
+                    _block.append(stripped)
+                else:
+                    if len(_block) >= 3:
+                        chart = _detect_bar_chart(_block)
+                        if not chart:
+                            chart = _detect_allocation_chart(_block)
+                        if not chart:
+                            chart = _detect_deduction_table(_block)
+                        if chart:
+                            _chart_inserts[_block_start] = chart
+                    _block = []
+                    _block_start = -1
+            if len(_block) >= 3:
+                chart = _detect_bar_chart(_block) or _detect_allocation_chart(_block) or _detect_deduction_table(_block)
+                if chart:
+                    _chart_inserts[_block_start] = chart
 
             def flush_table() -> str:
                 nonlocal table_rows, in_table
@@ -1585,8 +1700,12 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
                 in_table   = False
                 return out
 
-            for raw in lines:
+            for _li, raw in enumerate(lines):
                 line = raw.strip()
+
+                # Insert auto-detected chart before this line if applicable
+                if _li in _chart_inserts:
+                    body += _chart_inserts[_li]
 
                 # blank line — flush table if open, skip otherwise
                 if not line:
