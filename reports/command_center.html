@@ -3983,13 +3983,13 @@ function renderPortfolioEvents(filteredHoldings) {
     const rsi = e.rsi;
     const sma200 = e.sma200_pct;
     const trend = e.trend || '';
-    if (rsi >= 75) events.push({
+    if (rsi != null && rsi >= 75) events.push({
       kind:'Technical', sym:sym, date:'',
       title:`${sym} RSI ${rsi.toFixed(0)} — Overbought`,
       meta:`Consider trimming or setting stop · SMA200 ${sma200!=null?sma200.toFixed(1)+'%':'—'}`,
       reason:'technical signal', score:82
     });
-    if (rsi <= 28) events.push({
+    if (rsi != null && rsi <= 28) events.push({
       kind:'Technical', sym:sym, date:'',
       title:`${sym} RSI ${rsi.toFixed(0)} — Oversold`,
       meta:`Potential accumulation opportunity · Trend: ${trend}`,
