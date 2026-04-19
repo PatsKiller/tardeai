@@ -1039,7 +1039,11 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
             holdings_data, ai_analysis, tax_data,
             rebalance_data, risk_data, docx_path,
             retirement=_load("retirement_roadmap.json"),
-            perf_history=_load("performance_history.json")
+            perf_history=_load("performance_history.json"),
+            stress=_load("stress_test.json"),
+            technical=_load("technical_snapshot.json"),
+            tax_projection=_load("tax_projection.json"),
+            ai_analysis=ai_analysis,
         )
         print(f"[weekly-report] DOCX saved: {docx_path}")
         # Copy both HTML and DOCX to reports/weekly/ so server can serve them
