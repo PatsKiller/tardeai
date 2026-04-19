@@ -159,6 +159,18 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             for a in stop_alerts:
                 _send_telegram(a["msg"], root)
                 print(f"  [stops] Alert sent: {a['msg'][:60]}")
+            # Generate decision briefs for danger-level positions
+            danger_positions = risk_mgmt.get("danger", [])
+            if not danger_positions:
+                # Fallback: build from alerts
+                danger_positions = [{"symbol": a["symbol"], "price": 0, "stop_price": 0} for a in stop_alerts]
+            if danger_positions:
+                try:
+                    from stop_decision_brief import process_stop_alerts
+                    briefs = process_stop_alerts(danger_positions, str(state_dir), str(root))
+                    print(f"  [stop-brief] {len(briefs)} decision brief(s) generated and sent")
+                except Exception as _sbe:
+                    print(f"  [stop-brief] {_sbe}")
     except Exception as e:
         print(f"  [risk_mgmt] {e}")
         risk_mgmt = {}
