@@ -2129,9 +2129,13 @@ a.ext:hover { text-decoration: underline; }
     <div id="portfolio-news-feed" style="margin-bottom:8px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:11px;font-weight:800;color:var(--text)">📰 Portfolio News & Catalysts</span>
-        <span id="pnf-count" style="font-size:9px;color:var(--text3)"></span>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span id="pnf-count" style="font-size:9px;color:var(--text3)"></span>
+          <span id="pnf-updated" style="font-size:8px;color:var(--text3)"></span>
+        </div>
       </div>
-      <div id="pnf-items" style="max-height:240px;overflow-y:auto"></div>
+      <div id="pnf-strip" style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap"></div>
+      <div id="pnf-items" style="max-height:280px;overflow-y:auto"></div>
     </div>
 
     <!-- v36: Open Portfolio Dashboard Button -->
@@ -3225,26 +3229,50 @@ async function init() {
     if (pnf && pnf.catalysts && pnf.catalysts.length > 0) {
       const countEl = document.getElementById('pnf-count');
       const itemsEl = document.getElementById('pnf-items');
-      if (countEl) countEl.textContent = `${pnf.catalysts.length} catalysts | ${pnf.ticker_count||0} tickers | ${pnf.date||''}`;
+      if (countEl) countEl.textContent = `${pnf.catalysts.length} catalysts | ${pnf.ticker_count||0} tickers`;
+      const updEl = document.getElementById('pnf-updated');
+      if (updEl) updEl.textContent = `Updated: ${(pnf.generated_at||'').slice(11,16) || pnf.date || ''}`;
+      // Executive strip KPIs
+      const stripEl = document.getElementById('pnf-strip');
+      if (stripEl) {
+        const company = pnf.catalysts.filter(c => c.relevance_type === 'company_specific' || !c.relevance_type).length;
+        const sector = pnf.catalysts.filter(c => ['sector_spillover','peer_related','macro'].includes(c.relevance_type)).length;
+        const critical = pnf.catalysts.filter(c => (c.llm_score||0) >= 80).length;
+        const brave = pnf.brave_enriched_count || 0;
+        stripEl.innerHTML = [
+          `<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:rgba(16,185,129,.12);color:#10b981">${company} company</span>`,
+          `<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:rgba(59,130,246,.12);color:#3b82f6">${sector} sector</span>`,
+          critical > 0 ? `<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:rgba(239,68,68,.12);color:#ef4444">${critical} critical</span>` : '',
+          brave > 0 ? `<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:rgba(168,85,247,.12);color:#a855f7">${brave} brave</span>` : '',
+        ].filter(Boolean).join('');
+      }
       if (itemsEl) {
         const scoreColor = (s) => s >= 80 ? '#0F9D58' : s >= 60 ? '#2979FF' : s >= 40 ? '#F4B400' : '#9A9AB0';
         const urgencyBg = (u) => u === 'immediate' ? 'rgba(219,68,55,.12)' : u === 'watch' ? 'rgba(244,180,0,.08)' : 'transparent';
         const urgencyTips = {immediate:'Act now — material event affecting position',watch:'Monitor closely — significant development this week',monitor:'Awareness only — no action needed yet',ignore:'Background noise — no portfolio impact'};
-        itemsEl.innerHTML = pnf.catalysts.slice(0, 10).map(c => {
+        const relColors = {company_specific:'#10b981',sector_spillover:'#3b82f6',peer_related:'#6366f1',macro:'#f59e0b',indirect:'#6b7280',misattributed:'#374151',unknown:'#6b7280'};
+        const relLabels = {company_specific:'CO',sector_spillover:'SEC',peer_related:'PEER',macro:'MACRO',indirect:'IND',unknown:''};
+        // Filter out misattributed and sort by score
+        const filtered = pnf.catalysts.filter(c => c.relevance_type !== 'misattributed').slice(0, 12);
+        itemsEl.innerHTML = filtered.map(c => {
           const sc = scoreColor(c.llm_score||0);
           const url = c.url || c.link || '';
-          const title = (c.title||'').slice(0,60);
-          const headline = url ? `<a href="${url}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;border-bottom:1px dotted var(--border2)" title="${(c.title||'').replace(/"/g,'')}">${title}</a>` : title;
+          const title = (c.title||'').slice(0,55);
+          const headline = url ? `<a href="${url}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;border-bottom:1px dotted rgba(255,255,255,.1)" title="${(c.title||'').replace(/"/g,'&#34;')}">${title}</a>` : title;
           const urg = c.llm_urgency || 'monitor';
           const tip = urgencyTips[urg] || '';
-          const why = c.llm_summary ? ` title="${(c.llm_summary||'').replace(/"/g,'')}"` : '';
-          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 8px;margin-bottom:2px;border-radius:4px;background:${urgencyBg(urg)}">
-            <span style="font-size:10px;font-weight:800;color:${sc};min-width:22px" title="Catalyst score: ${c.llm_score||0}/100 — ${c.llm_category||'unknown'} category">${c.llm_score||'?'}</span>
-            <span style="font-size:10px;font-weight:700;color:var(--text);min-width:36px">${c.portfolio_symbol||'?'}</span>
-            <span style="font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${headline}</span>
-            <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${sc}18;color:${sc};font-weight:600;cursor:help" title="${tip}"${why}>${urg.toUpperCase()}</span>
+          const rel = c.relevance_type || 'unknown';
+          const relCol = relColors[rel] || '#6b7280';
+          const relLbl = relLabels[rel] || '';
+          const whyTip = c.llm_summary ? (c.llm_summary||'').replace(/"/g,'&#34;') : '';
+          return `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;margin-bottom:1px;border-radius:4px;background:${urgencyBg(urg)};border-left:2px solid ${sc}" title="${whyTip}">
+            <span style="font-size:9px;font-weight:800;color:${sc};min-width:20px;text-align:right">${c.llm_score||'?'}</span>
+            <span style="font-size:9px;font-weight:700;color:var(--text);min-width:32px">${c.portfolio_symbol||'?'}</span>
+            ${relLbl ? `<span style="font-size:7px;padding:0px 3px;border-radius:2px;background:${relCol}18;color:${relCol};font-weight:700;min-width:24px;text-align:center">${relLbl}</span>` : ''}
+            <span style="font-size:9px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${headline}</span>
+            <span style="font-size:7px;padding:1px 4px;border-radius:3px;background:${sc}15;color:${sc};font-weight:600;cursor:help" title="${tip}">${urg.toUpperCase()}</span>
           </div>`;
-        }).join('') + '<div style="font-size:8px;color:var(--text3);margin-top:4px;padding:0 8px">Score: relevance 0-100 | IMMEDIATE=act now | WATCH=monitor closely | MONITOR=awareness only</div>';
+        }).join('') + '<div style="font-size:7px;color:var(--text3);margin-top:4px;padding:0 8px">CO=company-specific SEC=sector PEER=peer MACRO=macro | Hover for details | Click headline to open</div>';
       }
     }
   } catch(e) { console.log('Portfolio news load:', e); }
