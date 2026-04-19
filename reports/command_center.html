@@ -3229,15 +3229,22 @@ async function init() {
       if (itemsEl) {
         const scoreColor = (s) => s >= 80 ? '#0F9D58' : s >= 60 ? '#2979FF' : s >= 40 ? '#F4B400' : '#9A9AB0';
         const urgencyBg = (u) => u === 'immediate' ? 'rgba(219,68,55,.12)' : u === 'watch' ? 'rgba(244,180,0,.08)' : 'transparent';
-        itemsEl.innerHTML = pnf.catalysts.slice(0, 8).map(c => {
+        const urgencyTips = {immediate:'Act now — material event affecting position',watch:'Monitor closely — significant development this week',monitor:'Awareness only — no action needed yet',ignore:'Background noise — no portfolio impact'};
+        itemsEl.innerHTML = pnf.catalysts.slice(0, 10).map(c => {
           const sc = scoreColor(c.llm_score||0);
-          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 8px;margin-bottom:2px;border-radius:4px;background:${urgencyBg(c.llm_urgency)}">
-            <span style="font-size:10px;font-weight:800;color:${sc};min-width:22px">${c.llm_score||'?'}</span>
+          const url = c.url || c.link || '';
+          const title = (c.title||'').slice(0,60);
+          const headline = url ? `<a href="${url}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;border-bottom:1px dotted var(--border2)" title="${(c.title||'').replace(/"/g,'')}">${title}</a>` : title;
+          const urg = c.llm_urgency || 'monitor';
+          const tip = urgencyTips[urg] || '';
+          const why = c.llm_summary ? ` title="${(c.llm_summary||'').replace(/"/g,'')}"` : '';
+          return `<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 8px;margin-bottom:2px;border-radius:4px;background:${urgencyBg(urg)}">
+            <span style="font-size:10px;font-weight:800;color:${sc};min-width:22px" title="Catalyst score: ${c.llm_score||0}/100 — ${c.llm_category||'unknown'} category">${c.llm_score||'?'}</span>
             <span style="font-size:10px;font-weight:700;color:var(--text);min-width:36px">${c.portfolio_symbol||'?'}</span>
-            <span style="font-size:10px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(c.title||'').slice(0,55)}</span>
-            <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${sc}18;color:${sc};font-weight:600">${(c.llm_urgency||'monitor').toUpperCase()}</span>
+            <span style="font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${headline}</span>
+            <span style="font-size:8px;padding:1px 4px;border-radius:3px;background:${sc}18;color:${sc};font-weight:600;cursor:help" title="${tip}"${why}>${urg.toUpperCase()}</span>
           </div>`;
-        }).join('');
+        }).join('') + '<div style="font-size:8px;color:var(--text3);margin-top:4px;padding:0 8px">Score: relevance 0-100 | IMMEDIATE=act now | WATCH=monitor closely | MONITOR=awareness only</div>';
       }
     }
   } catch(e) { console.log('Portfolio news load:', e); }
