@@ -382,17 +382,27 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     gt = round(sum((acct.get("total_value") or 0) for acct in account_summaries.values()), 2)
     valid = [h for h in holdings if not h.get("is_loan")]
-    gc    = sum(h.get("cost_basis") or 0 for h in valid)
-    gg    = gt - gc
+    # Only include positions WITH cost basis in gain calculation
+    # (positions without cost basis would inflate gain by treating them as $0 cost)
+    valid_with_cost = [h for h in valid if h.get("cost_basis")]
+    gc    = sum(h.get("cost_basis") or 0 for h in valid_with_cost)
+    gv    = sum(h.get("market_value") or 0 for h in valid_with_cost)
+    gg    = gv - gc
+    # Track excluded positions for downstream labeling
+    excluded_mv    = round(gt - gv, 2)
+    excluded_count = len(valid) - len(valid_with_cost)
     gd    = sum((acct.get("day_change") or 0) for acct in account_summaries.values())
 
     portfolio["portfolio_totals"].update({
-        "total_value":    round(gt, 2),
-        "total_cost":     round(gc, 2),
-        "total_gain":     round(gg, 2),
-        "total_gain_pct": round((gg / gc * 100) if gc else 0, 4),
-        "day_change":     round(gd, 2),
-        "day_change_pct": round((gd / (gt - gd) * 100) if (gt - gd) else 0, 4),
+        "total_value":        round(gt, 2),
+        "total_cost":         round(gc, 2),
+        "total_gain":         round(gg, 2),
+        "total_gain_pct":     round((gg / gc * 100) if gc else 0, 4),
+        "total_mv_with_cost": round(gv, 2),
+        "total_mv_excluded":  excluded_mv,
+        "excluded_count":     excluded_count,
+        "day_change":         round(gd, 2),
+        "day_change_pct":     round((gd / (gt - gd) * 100) if (gt - gd) else 0, 4),
     })
 
     for h in holdings:
