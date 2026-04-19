@@ -2209,6 +2209,10 @@ a.ext:hover { text-decoration: underline; }
         <span class="ab-icon">🔑</span>
         <span class="ab-lbl">ENV Keys</span>
       </button>
+      <button class="action-btn" onclick="openPersonalModal()">
+        <span class="ab-icon">👤</span>
+        <span class="ab-lbl">Personal</span>
+      </button>
     </div>
 
     <div class="divider"></div>
@@ -10267,6 +10271,272 @@ function saveEnvChanges(keys) {
     .catch(function(e){ alert('Save error: ' + e.message); });
 }
 
+
+// ── Personal Situation Modal ───────────────────────────────────────────────
+
+function openPersonalModal() {
+  fetch('/api/personal/read').then(r => r.json()).then(data => {
+    if (!data.ok) {
+      alert('Could not load personal situation: ' + (data.error || 'unknown error'));
+      return;
+    }
+
+    var allFields = data.data.fields || {};
+
+    // Category display config
+    var categories = [
+      { key: 'income',     label: '💰 Income' },
+      { key: 'tax',        label: '📋 Tax' },
+      { key: 'housing',    label: '🏠 Housing' },
+      { key: 'retirement', label: '🎯 Retirement' },
+      { key: 'roth',       label: '🔄 Roth Strategy' }
+    ];
+
+    // Create overlay (matches .env modal pattern)
+    var overlay = document.createElement('div');
+    overlay.id = 'personal-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9000;display:flex;align-items:center;justify-content:center';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    // ESC to close
+    var escHandler = function(e) {
+      if (e.key === 'Escape') {
+        overlay.remove();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    // Build card HTML
+    var html = '<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:24px;width:640px;max-width:95vw;max-height:85vh;overflow-y:auto">';
+
+    // Header
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+    html += '<div style="font-size:18px;font-weight:600;color:var(--text)">👤 Personal Situation</div>';
+    html += '<button class="btn" onclick="document.getElementById(\'personal-modal-overlay\').remove()">✕ Close</button>';
+    html += '</div>';
+
+    // Warning text
+    html += '<div style="font-size:11px;color:var(--warn);margin-bottom:16px;padding:8px 12px;background:rgba(255,193,7,0.08);border-left:3px solid var(--warn);border-radius:4px">';
+    html += '⚠ Changes are backed up before saving. AI analysis will pick up new values on next pipeline run.';
+    html += '</div>';
+
+    // Track editable keys for save function
+    var editableKeys = [];
+
+    // Render each category section
+    categories.forEach(function(cat) {
+      var fieldsInCat = Object.keys(allFields).filter(function(k) {
+        return allFields[k].category === cat.key;
+      });
+
+      if (fieldsInCat.length === 0) return;
+
+      // Category header
+      html += '<div style="margin-top:20px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border2);font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px">';
+      html += cat.label;
+      html += '</div>';
+
+      // Render fields in this category
+      fieldsInCat.forEach(function(key) {
+        var field = allFields[key];
+        var lastUpdated = field.last_updated || '';
+        var desc = field.description || '';
+        var isEditable = field.editable !== false;
+        var historyCount = (field.history || []).length;
+
+        if (isEditable) editableKeys.push(key);
+
+        html += '<div style="margin-bottom:12px">';
+
+        // Label row
+        html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">';
+        html += '<label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">' + _escapeHtml(key);
+        if (!isEditable) {
+          html += ' <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-style:italic;opacity:0.7">(auto-computed)</span>';
+        }
+        html += '</label>';
+
+        if (lastUpdated) {
+          var staleness = _stalenessIndicator(lastUpdated);
+          html += '<span style="font-size:10px;color:' + staleness.color + '">';
+          html += staleness.text;
+          if (historyCount > 0) {
+            html += ' · ' + historyCount + ' prior value' + (historyCount > 1 ? 's' : '');
+          }
+          html += '</span>';
+        }
+        html += '</div>';
+
+        // Description
+        if (desc) {
+          html += '<div style="font-size:10px;color:var(--text3);margin-bottom:4px;font-style:italic;opacity:0.7">' + _escapeHtml(desc) + '</div>';
+        }
+
+        // Field input
+        html += _renderFieldInput(key, field, isEditable);
+
+        html += '</div>';
+      });
+    });
+
+    // Footer buttons
+    html += '<div style="display:flex;gap:12px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border2)">';
+    html += '<button class="btn primary" onclick=\'savePersonalChanges(' + JSON.stringify(editableKeys) + ')\'>💾 Review & Save</button>';
+    html += '<button class="btn" onclick="document.getElementById(\'personal-modal-overlay\').remove()">Cancel</button>';
+    html += '</div>';
+
+    html += '</div>';
+
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+  }).catch(function(e) {
+    alert('Personal situation error: ' + e.message);
+  });
+}
+
+function _renderFieldInput(key, field, isEditable) {
+  var current = field.current;
+  var dtype = field.data_type;
+  var readOnly = !isEditable ? ' readonly' : '';
+  var baseStyle = 'width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:var(--mono);font-size:13px;box-sizing:border-box';
+  if (!isEditable) baseStyle += ';opacity:0.6;cursor:not-allowed';
+
+  var inputId = 'psf-' + key;
+  var val = current === null || current === undefined ? '' : String(current);
+
+  if (dtype === 'enum') {
+    var options = field.options || [];
+    var html = '<select id="' + inputId + '" style="' + baseStyle + '"' + readOnly + '>';
+    options.forEach(function(opt) {
+      var selected = (String(opt) === val) ? ' selected' : '';
+      html += '<option value="' + _escapeHtml(opt) + '"' + selected + '>' + _escapeHtml(opt) + '</option>';
+    });
+    html += '</select>';
+    return html;
+  }
+
+  if (dtype === 'boolean') {
+    var checked = (val === 'true' || val === 'True' || current === true) ? ' checked' : '';
+    var disabled = !isEditable ? ' disabled' : '';
+    return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text)">' +
+           '<input type="checkbox" id="' + inputId + '"' + checked + disabled + '> ' +
+           (current === true || val === 'true' ? 'Yes' : 'No') +
+           '</label>';
+  }
+
+  if (dtype === 'date') {
+    return '<input type="date" id="' + inputId + '" value="' + _escapeHtml(val) + '" style="' + baseStyle + '"' + readOnly + '>';
+  }
+
+  if (dtype === 'currency' || dtype === 'integer') {
+    return '<input type="number" id="' + inputId + '" value="' + _escapeHtml(val) + '" step="1" style="' + baseStyle + '"' + readOnly + '>';
+  }
+
+  if (dtype === 'percentage') {
+    return '<input type="number" id="' + inputId + '" value="' + _escapeHtml(val) + '" step="0.1" style="' + baseStyle + '"' + readOnly + '>';
+  }
+
+  // string or unknown
+  return '<input type="text" id="' + inputId + '" value="' + _escapeHtml(val) + '" style="' + baseStyle + '"' + readOnly + '>';
+}
+
+function _stalenessIndicator(lastUpdatedStr) {
+  try {
+    var lastUpdated = new Date(lastUpdatedStr);
+    var now = new Date();
+    var daysDiff = Math.floor((now - lastUpdated) / (1000 * 60 * 60 * 24));
+
+    if (daysDiff < 30) {
+      return { color: 'var(--text3)', text: 'updated ' + daysDiff + 'd ago' };
+    } else if (daysDiff < 90) {
+      return { color: 'var(--warn)', text: 'updated ' + daysDiff + 'd ago (stale)' };
+    } else {
+      return { color: 'var(--loss)', text: 'updated ' + daysDiff + 'd ago (very stale)' };
+    }
+  } catch (e) {
+    return { color: 'var(--text3)', text: '' };
+  }
+}
+
+function _escapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function savePersonalChanges(editableKeys) {
+  var updates = {};
+  var changedPreview = [];
+
+  fetch('/api/personal/read').then(r => r.json()).then(function(data) {
+    if (!data.ok) { alert('Could not reload current values'); return; }
+    var fields = data.data.fields || {};
+
+    editableKeys.forEach(function(key) {
+      var el = document.getElementById('psf-' + key);
+      if (!el) return;
+
+      var field = fields[key] || {};
+      var oldVal = field.current;
+      var newVal;
+
+      if (field.data_type === 'boolean') {
+        newVal = el.checked;
+      } else if (field.data_type === 'currency' || field.data_type === 'integer') {
+        var num = parseInt(el.value, 10);
+        if (isNaN(num)) return;
+        newVal = num;
+      } else if (field.data_type === 'percentage') {
+        var numP = parseFloat(el.value);
+        if (isNaN(numP)) return;
+        newVal = numP;
+      } else {
+        newVal = el.value;
+      }
+
+      if (String(oldVal) !== String(newVal)) {
+        updates[key] = newVal;
+        changedPreview.push(key + ': ' + oldVal + ' → ' + newVal);
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      alert('No changes detected.');
+      return;
+    }
+
+    var msg = 'Save ' + Object.keys(updates).length + ' change(s) to Personal Situation?\n\n';
+    msg += changedPreview.slice(0, 10).join('\n');
+    if (changedPreview.length > 10) msg += '\n...and ' + (changedPreview.length - 10) + ' more';
+    msg += '\n\nBackup will be created first.';
+
+    if (!confirm(msg)) return;
+
+    var note = 'Edited via Personal Situation modal';
+    fetch('/api/personal/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: updates, note: note })
+    }).then(r => r.json()).then(function(resp) {
+      if (resp.ok) {
+        alert('Saved ' + resp.changed_count + ' change(s). Backup: ' + (resp.backup || 'created'));
+        var overlay = document.getElementById('personal-modal-overlay');
+        if (overlay) overlay.remove();
+      } else if (resp.errors) {
+        alert('Validation errors:\n\n' + resp.errors.join('\n'));
+      } else {
+        alert('Error: ' + (resp.error || 'unknown'));
+      }
+    }).catch(function(e) {
+      alert('Save error: ' + e.message);
+    });
+  });
+}
 
 // ── v48 CHART.JS VISUALIZATION FUNCTIONS ─────────────────────────────────────
 window.__sectorDonutChart = null;
