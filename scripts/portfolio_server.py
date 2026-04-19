@@ -45,6 +45,201 @@ PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 HOLDINGS_PATH = STATE_DIR / "holdings.json"
+PERSONAL_PATH = STATE_DIR / "personal_situation.json"
+PERSONAL_BACKUP_DIR = PROJECT_ROOT / "file_backups"
+
+
+# ── Personal Situation helpers ────────────────────────────────────────────────
+
+def _compute_derived_fields(data: dict) -> dict:
+    """Populate computed_from fields with their derived values.
+    Mutates a copy of the data and returns it. Never modifies the source file."""
+    import copy
+    data = copy.deepcopy(data)
+    fields = data.get("fields", {})
+
+    def get_val(field_name):
+        f = fields.get(field_name, {})
+        return f.get("current")
+
+    # age: years from dob to today
+    if "age" in fields:
+        dob_str = get_val("dob")
+        if dob_str:
+            try:
+                dob = date.fromisoformat(dob_str)
+                today = date.today()
+                age = (today - dob).days / 365.25
+                fields["age"]["current"] = round(age, 1)
+                fields["age"]["last_updated"] = today.isoformat()
+            except (ValueError, TypeError):
+                fields["age"]["current"] = None
+
+    # ssdi_monthly_computed: ssdi_annual / 12
+    if "ssdi_monthly_computed" in fields:
+        ssdi = get_val("ssdi_annual")
+        if ssdi is not None:
+            fields["ssdi_monthly_computed"]["current"] = round(ssdi / 12, 2)
+            fields["ssdi_monthly_computed"]["last_updated"] = date.today().isoformat()
+
+    # golden_window_open: dob + disability_end_age years
+    if "golden_window_open" in fields:
+        dob_str = get_val("dob")
+        end_age = get_val("disability_end_age")
+        if dob_str and end_age is not None:
+            try:
+                dob = date.fromisoformat(dob_str)
+                days = int(float(end_age) * 365.25)
+                open_date = date.fromordinal(dob.toordinal() + days)
+                fields["golden_window_open"]["current"] = open_date.isoformat()
+                fields["golden_window_open"]["last_updated"] = date.today().isoformat()
+            except (ValueError, TypeError):
+                fields["golden_window_open"]["current"] = None
+
+    # golden_window_close: dob + rmd_age years
+    if "golden_window_close" in fields:
+        dob_str = get_val("dob")
+        rmd = get_val("rmd_age")
+        if dob_str and rmd is not None:
+            try:
+                dob = date.fromisoformat(dob_str)
+                days = int(float(rmd) * 365.25)
+                close_date = date.fromordinal(dob.toordinal() + days)
+                fields["golden_window_close"]["current"] = close_date.isoformat()
+                fields["golden_window_close"]["last_updated"] = date.today().isoformat()
+            except (ValueError, TypeError):
+                fields["golden_window_close"]["current"] = None
+
+    # roth_conversion_remaining_2026
+    if "roth_conversion_remaining_2026" in fields:
+        ceiling = get_val("next_bracket_ceiling") or 0
+        ssdi = get_val("ssdi_annual") or 0
+        sch_c = get_val("schedule_c_gross") or 0
+        fed_ded = get_val("federal_itemized") or 0
+        se_ded = get_val("se_tax_deduction") or 0
+        ytd = get_val("roth_conversion_ytd_2026") or 0
+        taxable_ssdi = ssdi * 0.85
+        taxable_income = taxable_ssdi + sch_c - fed_ded - se_ded
+        remaining = max(0, ceiling - taxable_income - ytd)
+        fields["roth_conversion_remaining_2026"]["current"] = round(remaining, 2)
+        fields["roth_conversion_remaining_2026"]["last_updated"] = date.today().isoformat()
+
+    return data
+
+
+def _validate_field_update(field_name: str, new_value, field_def: dict) -> tuple:
+    """Validate a proposed field update. Returns (is_valid, coerced_value_or_error)."""
+    if not field_def.get("editable", True):
+        return False, f"{field_name} is computed, not editable"
+
+    dtype = field_def.get("data_type")
+    try:
+        if dtype in ("currency", "integer"):
+            return True, int(float(new_value))
+        elif dtype == "percentage":
+            return True, float(new_value)
+        elif dtype == "date":
+            date.fromisoformat(str(new_value))
+            return True, str(new_value)
+        elif dtype == "enum":
+            options = field_def.get("options", [])
+            if str(new_value) not in options:
+                return False, f"must be one of {options}"
+            return True, str(new_value)
+        elif dtype == "boolean":
+            s = str(new_value).lower().strip()
+            if s in ("true", "1", "yes", "y"):
+                return True, True
+            if s in ("false", "0", "no", "n"):
+                return True, False
+            return False, "must be boolean"
+        elif dtype == "string":
+            return True, str(new_value)
+        else:
+            return False, f"unknown data_type {dtype}"
+    except (ValueError, TypeError) as e:
+        return False, f"invalid value for {dtype}: {e}"
+
+
+def _handle_personal_read(handler):
+    """GET /api/personal/read — return personal situation with computed fields."""
+    try:
+        if not PERSONAL_PATH.exists():
+            json_response(handler, 404, {"ok": False, "error": "personal_situation.json not found"})
+            return
+        raw = json.loads(PERSONAL_PATH.read_text(encoding="utf-8"))
+        populated = _compute_derived_fields(raw)
+        json_response(handler, 200, {"ok": True, "data": populated})
+    except Exception as e:
+        json_response(handler, 500, {"ok": False, "error": str(e)})
+
+
+def _handle_personal_write(handler, raw_body: bytes):
+    """POST /api/personal/write — validate, append history, write."""
+    try:
+        body = json.loads(raw_body.decode("utf-8", errors="replace")) if raw_body else {}
+        updates = body.get("updates", {})
+        note = body.get("note", "")
+
+        if not updates:
+            json_response(handler, 400, {"ok": False, "error": "no updates in body"})
+            return
+        if not PERSONAL_PATH.exists():
+            json_response(handler, 404, {"ok": False, "error": "personal_situation.json not found"})
+            return
+
+        data = json.loads(PERSONAL_PATH.read_text(encoding="utf-8"))
+        fields = data.get("fields", {})
+
+        # Validate all updates BEFORE writing any
+        errors = []
+        coerced = {}
+        for field_name, new_value in updates.items():
+            if field_name not in fields:
+                errors.append(f"{field_name}: unknown field")
+                continue
+            ok, result = _validate_field_update(field_name, new_value, fields[field_name])
+            if not ok:
+                errors.append(f"{field_name}: {result}")
+            else:
+                coerced[field_name] = result
+
+        if errors:
+            json_response(handler, 400, {"ok": False, "errors": errors})
+            return
+
+        # Backup current file
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = PERSONAL_BACKUP_DIR / f"personal_{ts}"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = backup_dir / "personal_situation.json"
+        backup_path.write_bytes(PERSONAL_PATH.read_bytes())
+
+        # Apply updates with history append
+        today = date.today().isoformat()
+        changes = []
+        for field_name, new_value in coerced.items():
+            f = fields[field_name]
+            old_value = f.get("current")
+            if old_value != new_value:
+                f.setdefault("history", []).append({
+                    "value": old_value,
+                    "date": f.get("last_updated", today),
+                    "note": note or f"superseded by edit on {today}"
+                })
+                f["current"] = new_value
+                f["last_updated"] = today
+                changes.append({"field": field_name, "from": old_value, "to": new_value})
+
+        data["generated_at"] = datetime.now().isoformat()
+        PERSONAL_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        json_response(handler, 200, {
+            "ok": True, "changes": changes,
+            "backup": str(backup_path), "changed_count": len(changes)
+        })
+    except Exception as e:
+        json_response(handler, 500, {"ok": False, "error": str(e)})
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -316,6 +511,11 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             })
             return
 
+        # Personal Situation read (GET)
+        if path == "/api/personal/read":
+            _handle_personal_read(self)
+            return
+
         # ENV read (GET)
         if path == "/api/env/read":
             import json as _ej
@@ -470,6 +670,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _m = _v[:4] + "****" + _v[-4:] if len(_v) > 10 else "****"
                     _flds.append({"key": _k, "value": _v if _k in _SHOW else "", "masked": _m, "sensitive": _k in _SENS})
             json_response(self, 200, {"ok": True, "fields": _flds})
+            return
+
+        elif path == "/api/personal/write":
+            _handle_personal_write(self, raw)
             return
 
         elif path == "/api/env/write":
