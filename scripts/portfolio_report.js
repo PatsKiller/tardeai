@@ -53,7 +53,17 @@ const divTarget = 28000;
 const divGap = divTarget - divTotal;
 
 // ── Stops data: dict format {symbol: {stop, notes, set_date, ...}} ──
-const stopsDict = DATA.risk?.stops || risk.stops || {};
+// Load from stops.json directly (not inside risk_management.json)
+let stopsDict = DATA.risk?.stops || risk.stops || {};
+try {
+  const stopsPath = path.resolve(__dirname, '..', 'data', 'portfolios', 'state', 'stops.json');
+  if (fs.existsSync(stopsPath)) {
+    const stopsFile = JSON.parse(fs.readFileSync(stopsPath, 'utf8'));
+    if (typeof stopsFile === 'object' && !Array.isArray(stopsFile) && Object.keys(stopsFile).length > 0) {
+      stopsDict = stopsFile;
+    }
+  }
+} catch(e) { /* ignore */ }
 const stopsEntries = typeof stopsDict === 'object' && !Array.isArray(stopsDict)
   ? Object.entries(stopsDict)
   : [];
@@ -502,33 +512,23 @@ const totalGainPct = totals.total_gain_pct || 491.14;
 const dayChange = totals.day_change || 0;
 
 // Account data with exact source-reported gain percentages
-const acctGainPcts = {
-  fidelity_401k: 0,             // no cost basis data
-  schwab_rollover_ira: 267.36,
-  schwab_roth: 6.35,
-  schwab_taxable: 14.71,
-};
+// Read gain_pct from source data (account_summaries or analysis.account_summaries)
+const _analysisSumm = analysis.account_summaries || {};
+const acctGainPcts = {};
+['fidelity_401k','schwab_rollover_ira','schwab_roth','schwab_taxable'].forEach(k => {
+  const src = _analysisSumm[k] || acctSumm[k] || {};
+  acctGainPcts[k] = src.gain_pct ?? src.total_gain_pct ?? null;
+});
 const accts = [
-  { key:'fidelity_401k', label:'Fidelity 401k', type:'401(k)',
-    val: acctSumm.fidelity_401k?.total_value || 533176.02,
-    gain: acctSumm.fidelity_401k?.total_gain || 0,
-    gainPct: acctGainPcts.fidelity_401k,
-    hasCostBasis: false },
-  { key:'schwab_rollover_ira', label:'Schwab Rollover IRA', type:'Rollover IRA',
-    val: acctSumm.schwab_rollover_ira?.total_value || 553903.84,
-    gain: acctSumm.schwab_rollover_ira?.total_gain || 0,
-    gainPct: acctGainPcts.schwab_rollover_ira,
-    hasCostBasis: true },
-  { key:'schwab_roth', label:'Schwab Roth IRA', type:'Roth IRA',
-    val: acctSumm.schwab_roth?.total_value || 42643.24,
-    gain: acctSumm.schwab_roth?.total_gain || 0,
-    gainPct: acctGainPcts.schwab_roth,
-    hasCostBasis: true },
-  { key:'schwab_taxable', label:'Schwab Taxable', type:'Taxable',
-    val: acctSumm.schwab_taxable?.total_value || 76345.54,
-    gain: acctSumm.schwab_taxable?.total_gain || 0,
-    gainPct: acctGainPcts.schwab_taxable,
-    hasCostBasis: true },
+  ...['fidelity_401k','schwab_rollover_ira','schwab_roth','schwab_taxable'].map(k => {
+    const labels = {fidelity_401k:'Fidelity 401k', schwab_rollover_ira:'Schwab Rollover IRA', schwab_roth:'Schwab Roth IRA', schwab_taxable:'Schwab Taxable'};
+    const types = {fidelity_401k:'401(k)', schwab_rollover_ira:'Rollover IRA', schwab_roth:'Roth IRA', schwab_taxable:'Taxable'};
+    const a = acctSumm[k] || {};
+    const gp = acctGainPcts[k];
+    return { key:k, label:labels[k], type:types[k],
+      val: a.total_value || 0, gain: a.total_gain || 0,
+      gainPct: gp, hasCostBasis: gp != null && gp !== 0 };
+  }),
 ];
 const rothBal = accts[2].val;
 const tradBal = accts[0].val + accts[1].val;
