@@ -1333,7 +1333,7 @@ def generate_portfolio_dashboard(
         "tax":        _safe("tax",        lambda: _build_tax(tax)),
         "rebalance":  _safe("rebalance",  lambda: _build_rebalancing(rebalancing, sonnet_model)),
         "trade_ai":   _safe("trade_ai",   lambda: _build_trade_ai(risk)),
-        "ai_analysis":_safe("ai_analysis",lambda: _build_ai_analysis(ai_analysis)),
+        "ai_analysis":_safe("ai_analysis",lambda: _build_ai_analysis(ai_analysis, portfolio, analysis, risk, perf_history or {}, rebalancing)),
         "periods":    _safe("periods",    lambda: _build_period_returns(performance, portfolio, perf_history or {})),
         "technical":  _safe("technical",  lambda: _build_technical_tab(technical or {})),
         "retirement": _safe("retirement", lambda: _build_retirement_tab(retirement or {}, tax_projection or {})),
@@ -1529,7 +1529,9 @@ def _build_accounts(portfolio: Dict) -> str:
     return "<div class='section-title'>🏦 Accounts</div>" + "\n".join(parts)
 
 
-def _build_ai_analysis(ai_analysis: Optional[Dict]) -> str:
+def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = None,
+                       analysis: Optional[Dict] = None, risk: Optional[Dict] = None,
+                       perf_history: Optional[Dict] = None, rebalancing: Optional[Dict] = None) -> str:
     if not ai_analysis:
         return """<div class='section-title'>🤖 AI Strategic Analysis</div>
         <p class='nt'>Run with --run-type monthly to generate full Sonnet 4.6 analysis.</p>"""
@@ -1737,11 +1739,98 @@ def _build_ai_analysis(ai_analysis: Optional[Dict]) -> str:
     refresh_note = "" if run_type != "daily" else \
         "<p style='font-size:11px;color:#F4B400;margin-bottom:12px'>⚡ Daily mode — full analysis cached from last monthly run. Run monthly for fresh Sonnet analysis.</p>"
 
+    # ── KPI Hero Bar + Sector Pie ────────────────────────────────────────
+    _p = portfolio or {}
+    _a = analysis or {}
+    _r = risk or {}
+    _ph = perf_history or {}
+    _rb = rebalancing or {}
+    _totals = _p.get("portfolio_totals", {})
+    _tv = _totals.get("total_value", 0)
+    _tg = _totals.get("total_gain", 0)
+    _tg_pct = _totals.get("total_gain_pct", 0)
+    _dc = _totals.get("day_change", 0) or 0
+    _dc_pct = _totals.get("day_change_pct", 0) or 0
+    _divs = _a.get("dividends", {})
+    _div_inc = _divs.get("total_annual_income", 0) or 0
+    _beta = _r.get("portfolio_beta", 0) or 0
+    _ytd = _ph.get("periods", {}).get("YTD", {}).get("change_pct", 0) or 0
+    _1y = _ph.get("periods", {}).get("1Y", {}).get("change_pct", 0) or 0
+    _dc_col = "#0F9D58" if _dc >= 0 else "#DB4437"
+    _ytd_col = "#0F9D58" if _ytd >= 0 else "#DB4437"
+
+    # Sector pie chart (CSS conic-gradient)
+    _sectors = _p.get("resolved_sectors", [])
+    _sec_colors = ["#2979FF","#0F9D58","#F4B400","#DB4437","#9C27B0","#00BCD4",
+                   "#FF5722","#8BC34A","#3F51B5","#E91E63","#607D8B","#795548","#CDDC39"]
+    _pie_stops = []
+    _legend = ""
+    _cum = 0
+    for i, s in enumerate(_sectors[:10]):
+        pct = s.get("pct", 0)
+        col = _sec_colors[i % len(_sec_colors)]
+        _pie_stops.append(f"{col} {_cum}% {_cum + pct}%")
+        _cum += pct
+        _legend += (f"<div style='display:flex;align-items:center;gap:6px;margin:2px 0'>"
+                    f"<div style='width:8px;height:8px;border-radius:2px;background:{col};flex-shrink:0'></div>"
+                    f"<span style='color:#9A9AB0;font-size:10px'>{_e(s.get('sector',''))} {pct:.1f}%</span></div>")
+    if _cum < 100:
+        _pie_stops.append(f"#1a1a35 {_cum}% 100%")
+    _pie_grad = ", ".join(_pie_stops)
+
+    kpi_html = f"""
+    <div style='display:grid;grid-template-columns:1fr 280px;gap:16px;margin-bottom:16px'>
+      <!-- KPI Cards -->
+      <div style='display:grid;grid-template-columns:repeat(3,1fr);gap:8px'>
+        <div class='account-card' style='text-align:center;padding:12px'>
+          <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>Portfolio</div>
+          <div style='color:#e0e0f0;font-size:22px;font-weight:800'>${_tv:,.0f}</div>
+          <div style='color:{_dc_col};font-size:11px'>{'+' if _dc>=0 else ''}{_dc_pct:.2f}% today</div>
+        </div>
+        <div class='account-card' style='text-align:center;padding:12px'>
+          <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>All-Time Gain</div>
+          <div style='color:#0F9D58;font-size:22px;font-weight:800'>+${_tg:,.0f}</div>
+          <div style='color:#0F9D58;font-size:11px'>+{_tg_pct:.1f}%</div>
+        </div>
+        <div class='account-card' style='text-align:center;padding:12px'>
+          <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>Dividends/yr</div>
+          <div style='color:#e0e0f0;font-size:22px;font-weight:800'>${_div_inc:,.0f}</div>
+          <div style='color:#F4B400;font-size:11px'>{_div_inc/_tv*100:.2f}% yield</div>
+        </div>
+        <div class='account-card' style='text-align:center;padding:12px'>
+          <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>Beta</div>
+          <div style='color:#e0e0f0;font-size:22px;font-weight:800'>{_beta:.2f}</div>
+          <div style='color:{"#0F9D58" if _beta<1.0 else "#F4B400"};font-size:11px'>{"Below" if _beta<1.0 else "Above"} 1.0 target</div>
+        </div>
+        <div class='account-card' style='text-align:center;padding:12px'>
+          <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>YTD</div>
+          <div style='color:{_ytd_col};font-size:22px;font-weight:800'>{_ytd:+.1f}%</div>
+          <div style='color:#9A9AB0;font-size:11px'>1Y: {_1y:+.1f}%</div>
+        </div>
+        <div class='account-card' style='text-align:center;padding:12px'>
+          <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>Rebalance</div>
+          <div style='color:#F4B400;font-size:22px;font-weight:800'>${_rb.get("total_to_rebalance",0):,.0f}</div>
+          <div style='color:#9A9AB0;font-size:11px'>{_rb.get("order_count",0)} orders</div>
+        </div>
+      </div>
+      <!-- Sector Pie -->
+      <div class='account-card' style='padding:12px'>
+        <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;text-align:center'>Sector Exposure (Look-Through)</div>
+        <div style='display:flex;align-items:center;gap:12px'>
+          <div style='width:120px;height:120px;border-radius:50%;flex-shrink:0;
+                      background:conic-gradient({_pie_grad});
+                      box-shadow:0 0 12px rgba(41,121,255,0.15)'></div>
+          <div style='flex:1;max-height:120px;overflow-y:auto'>{_legend}</div>
+        </div>
+      </div>
+    </div>"""
+
     html = f"""<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px'>
       <div class='section-title' style='margin:0'>🤖 AI Strategic Analysis — Sonnet 4.6</div>
       <div style='font-size:11px;color:#9A9AB0'>{mode_badge} &nbsp; Generated: {generated}</div>
     </div>
-    {refresh_note}"""
+    {refresh_note}
+    {kpi_html}"""
 
     for key, title, icon in sections:
         html += _ai_card(title, key, icon)
