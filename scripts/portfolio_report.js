@@ -30,6 +30,19 @@ const stress      = DATA.stress        || {};
 const retirement  = DATA.retirement    || {};
 const taxProj     = DATA.tax_projection|| {};
 
+// ── Portfolio News data (loaded from state files) ──
+let newsData = {};
+let newsWeekly = {};
+let newsMonthly = {};
+try {
+  const _nd = path.resolve(__dirname, '..', 'data', 'portfolios', 'state', 'portfolio_news.json');
+  if (fs.existsSync(_nd)) newsData = JSON.parse(fs.readFileSync(_nd, 'utf8'));
+  const _nw = path.resolve(__dirname, '..', 'data', 'portfolios', 'state', 'portfolio_news_weekly.json');
+  if (fs.existsSync(_nw)) newsWeekly = JSON.parse(fs.readFileSync(_nw, 'utf8'));
+  const _nm = path.resolve(__dirname, '..', 'data', 'portfolios', 'state', 'portfolio_news_monthly.json');
+  if (fs.existsSync(_nm)) newsMonthly = JSON.parse(fs.readFileSync(_nm, 'utf8'));
+} catch(e) { /* ignore */ }
+
 const totals    = portfolio.portfolio_totals || {};
 const holdings  = portfolio.holdings || [];
 const acctSumm  = portfolio.account_summaries || {};
@@ -1152,6 +1165,62 @@ children.push(kpiRow([
 ]));
 
 children.push(pageBreak());
+
+// ── PORTFOLIO NEWS & CATALYST INTELLIGENCE ─────────────────────
+const activeNews = newsMonthly.top_catalysts ? newsMonthly : newsWeekly.top_catalysts ? newsWeekly : newsData;
+const newsCatalysts = activeNews.top_catalysts || activeNews.catalysts || [];
+const newsSummary = activeNews.strategist_summary || '';
+const newsPeriod = activeNews.period || 'daily';
+
+if (newsCatalysts.length > 0) {
+  children.push(heading('Portfolio News & Catalyst Intelligence', HeadingLevel.HEADING_1));
+  children.push(sourceLabel(`[Pipeline-Derived] — ${newsCatalysts.length} catalysts scored by Ollama LLM | Period: ${newsPeriod}`));
+
+  // Strategist summary
+  if (newsSummary) {
+    children.push(calloutBox(newsSummary));
+  }
+
+  // Top catalysts table
+  const newsRows = newsCatalysts.slice(0, 10).map(c => [
+    c.portfolio_symbol || '?',
+    (c.title || '').slice(0, 60),
+    String(c.llm_score || '—'),
+    c.llm_category || '—',
+    (c.llm_urgency || 'monitor').toUpperCase(),
+    c.llm_summary || '—',
+  ]);
+  children.push(styledTable(
+    ['Ticker', 'Headline', 'Score', 'Category', 'Urgency', 'Why It Matters'],
+    newsRows,
+    { colorFn: (v,ci) => {
+      if (ci === 2) { const n = parseInt(v); return n >= 80 ? C.green : n >= 60 ? C.accent : n >= 40 ? C.amber : C.grayMid; }
+      if (ci === 4) return v === 'IMMEDIATE' ? C.red : v === 'WATCH' ? C.amber : C.grayMid;
+      return C.black;
+    }}
+  ));
+
+  // Week-over-week or month-over-month changes
+  if (newsWeekly.new_this_week && newsWeekly.new_this_week.length > 0) {
+    children.push(heading('Week-over-Week Changes', HeadingLevel.HEADING_2));
+    children.push(kpiRow([
+      ['New This Week', newsWeekly.new_this_week.join(', ') || '—', C.green, 'Pipeline-Derived'],
+      ['Resolved', (newsWeekly.resolved || []).join(', ') || '—', C.accent, 'Pipeline-Derived'],
+      ['Still Active', (newsWeekly.still_active || []).join(', ') || '—', C.amber, 'Pipeline-Derived'],
+    ]));
+  }
+
+  if (newsMonthly.dominant_themes && Object.keys(newsMonthly.dominant_themes).length > 0) {
+    children.push(heading('Monthly Themes', HeadingLevel.HEADING_2));
+    children.push(styledTable(
+      ['Theme', 'Article Count'],
+      Object.entries(newsMonthly.dominant_themes).slice(0, 6).map(([t, c]) => [t, String(c)]),
+    ));
+  }
+
+  children.push(p(`Sources: Finnhub, NewsAPI, Polygon, FMP, Finviz News, Yahoo Finance, Brave Search. Scored by local LLM (qwen3:1.7b). ${activeNews.generated_at?.slice(0,10) || ''}`, { size:8, color:C.grayMid, italic:true }));
+  children.push(pageBreak());
+}
 
 // ── PAGE 12: ACTION PLAN ────────────────────────────────────────
 children.push(heading('Strategic Action Plan', HeadingLevel.HEADING_1));

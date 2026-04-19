@@ -225,6 +225,15 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         except Exception as e:
             print(f"  [ai] {e}")
 
+    # ── Portfolio News & Catalyst Intelligence ─────────────────────────────────
+    portfolio_news = {}
+    try:
+        from portfolio_news import run_portfolio_news
+        print("  [portfolio-news] Scanning portfolio holdings for news...")
+        portfolio_news = run_portfolio_news(portfolio, state_dir, run_type=run_type, root=str(root))
+    except Exception as e:
+        print(f"  [portfolio-news] ❌ {e}")
+
     # ── Stage 7b-7g: New Intelligence Modules ─────────────────────────────────
 
     technical = {}
