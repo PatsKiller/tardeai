@@ -521,10 +521,17 @@ function renderMarkdown(text, dest) {
 // ═══════════════════════════════════════════════════════════════════
 // DERIVED DATA
 // ═══════════════════════════════════════════════════════════════════
-const totalVal = totals.total_value || 1206068.64;
-const totalGain = totals.total_gain || 1002044.50;
-const totalGainPct = totals.total_gain_pct || 491.14;
+const totalVal = totals.total_value || 0;
+const totalGain = totals.total_gain || 0;
+const totalGainPct = totals.total_gain_pct || 0;
 const dayChange = totals.day_change || 0;
+const totalMvWithCost = totals.total_mv_with_cost || totalVal;
+const totalMvExcluded = totals.total_mv_excluded || 0;
+const excludedCount = totals.excluded_count || 0;
+const gainCoverageNote = totalMvExcluded > 0
+  ? `Cost-basis-tracked positions only (${fUSD(totalMvWithCost)} of ${fUSD(totalVal)}). ` +
+    `${excludedCount} position(s) (${fUSD(totalMvExcluded)}) excluded — no cost basis data reported.`
+  : '';
 
 // Account data with exact source-reported gain percentages
 // Read gain_pct from source data (account_summaries or analysis.account_summaries)
@@ -585,9 +592,12 @@ children.push(
   new Paragraph({ alignment: AlignmentType.CENTER, children: [
     run(`Portfolio Value: ${fUSD(totalVal)}`, { size:18, bold:true, color:C.darkBlue }),
   ]}),
-  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 100, after: 60 }, children: [
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 100, after: 20 }, children: [
     run(`All-Time Gain: ${fUSD(totalGain)} (${fPct(totalGainPct)})`, { size:12, bold:true, color:C.green }),
   ]}),
+  ...(gainCoverageNote ? [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 60 }, children: [
+    run(gainCoverageNote, { size:8, color:C.grayMid, italic:true }),
+  ]})] : []),
   new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 80 }, children: [
     run(`Generated: ${generatedDate}  |  Data as of: ${asOfDate}`, { size:10, color:C.grayMid }),
   ]}),
@@ -622,7 +632,7 @@ children.push(
   heading('Executive Summary', HeadingLevel.HEADING_1),
   kpiRow([
     ['Total Portfolio', fUSD(totalVal), C.darkBlue, 'Source-Reported'],
-    ['All-Time Gain', `${fUSD(totalGain)} (${fPct(totalGainPct)})`, C.green, 'Source-Reported'],
+    ['All-Time Gain', `${fUSD(totalGain)} (${fPct(totalGainPct)})`, C.green, totalMvExcluded > 0 ? 'Pipeline-Derived*' : 'Source-Reported'],
     ['Roth IRA', fUSD(rothBal), C.accent, 'Source-Reported'],
   ]),
   new Paragraph({ spacing: { before: 80 } }),
@@ -686,7 +696,7 @@ if (aiAnalysis.executive_summary) {
 } else {
   children.push(heading('Strategist Assessment', HeadingLevel.HEADING_2, { before:120 }));
   children.push(p('Primary objective: reduce concentration risk in Visa, improve income resilience through dividend strategy, and reposition retirement assets for tax-efficient Roth conversion over the Golden Window (Feb 2036 - Aug 2040).', { size:10, color:C.slate }));
-  children.push(p('The portfolio has generated exceptional returns (+491% all-time) driven primarily by Visa appreciation. The current phase shifts from growth accumulation to income generation and tax optimization.', { size:10, color:C.slate }));
+  children.push(p(`The portfolio has generated strong returns (${fPct(totalGainPct)} all-time on cost-basis-tracked positions) driven primarily by Visa appreciation. The current phase shifts from growth accumulation to income generation and tax optimization.${gainCoverageNote ? ' ' + gainCoverageNote : ''}`, { size:10, color:C.slate }));
 }
 children.push(pageBreak());
 
