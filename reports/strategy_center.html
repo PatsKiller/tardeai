@@ -820,57 +820,73 @@ function AssumptionsDrawer() {
 function DualAdvisory({data}) {
   const adv = data.advisory || {};
   const opus = adv.opus;
-  const sonnet = adv.sonnet;
+  const gpt4o = adv.gpt4o;
+  const opusModel = adv.opus_model || 'Claude Opus';
+  const gptModel = adv.gpt4o_model || 'GPT-4o';
   const genDate = adv.generated_at?.slice(0,10) || '';
 
-  if (!opus && !sonnet) return null;
+  if (!opus && !gpt4o) return null;
 
-  const [activeTab, setActiveTab] = useState('opus');
+  const [activeTab, setActiveTab] = useState('both');
 
   return (
     <div className="fade-in">
-      <SectionHeader icon="🎯" title="Monthly Advisory — Dual AI Analysis" subtitle="Two AI perspectives on the same portfolio data" badge="MONTHLY ONLY"/>
+      <SectionHeader icon="🎯" title="Monthly Advisory — Dual AI Analysis" subtitle="Two different AI systems analyzing the same portfolio data" badge="MONTHLY ONLY"/>
       <div className="flex gap-2 mb-4">
-        <button onClick={() => setActiveTab('opus')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all ${activeTab==='opus' ? 'bg-blue-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
-          Conservative — Opus
+        <button onClick={() => setActiveTab('both')}
+          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${activeTab==='both' ? 'bg-gray-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
+          Side by Side
         </button>
-        <button onClick={() => setActiveTab('sonnet')}
-          className={`px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-all ${activeTab==='sonnet' ? 'bg-emerald-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
-          Opportunity — Sonnet
+        <button onClick={() => setActiveTab('opus')}
+          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${activeTab==='opus' ? 'bg-blue-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
+          🛡 {opusModel}
+        </button>
+        <button onClick={() => setActiveTab('gpt4o')}
+          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${activeTab==='gpt4o' ? 'bg-emerald-600 text-white' : 'bg-card border border-border text-muted hover:text-white'}`}>
+          ⚡ {gptModel}
         </button>
         {genDate && <span className="text-[9px] text-muted self-center ml-auto">Generated: {genDate}</span>}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className={`grid gap-4 ${activeTab==='both' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 max-w-4xl'}`}>
         {/* Opus Card */}
-        <div className={`bg-card border rounded-lg overflow-hidden transition-all ${activeTab==='opus' ? 'border-blue-500/40 ring-1 ring-blue-500/20' : 'border-border opacity-60'}`}>
-          <div className="px-4 py-3 bg-blue-900/20 border-b border-border flex items-center justify-between">
+        {(activeTab==='both' || activeTab==='opus') && (
+        <div className="bg-card border border-blue-500/30 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-blue-900/20 border-b border-blue-500/20 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm">🛡</span>
-              <span className="text-xs font-bold text-blue-300">Conservative Fiduciary View</span>
+              <span className="text-sm font-bold text-blue-300">Conservative Fiduciary View</span>
             </div>
-            <span className="text-[8px] px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 font-bold">CLAUDE OPUS</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2.5 py-1 rounded-md bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">{opusModel}</span>
+              <span className="text-[8px] text-blue-400/60">Anthropic</span>
+            </div>
           </div>
-          <div className="p-4 max-h-[600px] overflow-y-auto">
-            {opus ? <MdBlock text={opus}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate Opus advisory</span>}
+          <div className="p-4 max-h-[700px] overflow-y-auto">
+            {opus ? <MdBlock text={opus}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate</span>}
           </div>
         </div>
-        {/* Sonnet Card */}
-        <div className={`bg-card border rounded-lg overflow-hidden transition-all ${activeTab==='sonnet' ? 'border-emerald-500/40 ring-1 ring-emerald-500/20' : 'border-border opacity-60'}`}>
-          <div className="px-4 py-3 bg-emerald-900/20 border-b border-border flex items-center justify-between">
+        )}
+        {/* GPT-4o Card */}
+        {(activeTab==='both' || activeTab==='gpt4o') && (
+        <div className="bg-card border border-emerald-500/30 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-emerald-900/20 border-b border-emerald-500/20 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm">⚡</span>
-              <span className="text-xs font-bold text-emerald-300">Opportunity-Focused View</span>
+              <span className="text-sm font-bold text-emerald-300">Opportunity-Focused View</span>
             </div>
-            <span className="text-[8px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold">CLAUDE SONNET</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">{gptModel}</span>
+              <span className="text-[8px] text-emerald-400/60">OpenAI</span>
+            </div>
           </div>
-          <div className="p-4 max-h-[600px] overflow-y-auto">
-            {sonnet ? <MdBlock text={sonnet}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate Sonnet advisory</span>}
+          <div className="p-4 max-h-[700px] overflow-y-auto">
+            {gpt4o ? <MdBlock text={gpt4o}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate</span>}
           </div>
         </div>
+        )}
       </div>
       <div className="mt-3 text-[9px] text-dim text-center">
-        Two AI models analyzing the same data with different investment philosophies. Compare perspectives before acting.
+        Two different AI systems ({opusModel} + {gptModel}) analyzing the same portfolio data with different investment philosophies. Compare perspectives before acting.
       </div>
     </div>
   );

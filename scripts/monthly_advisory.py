@@ -9,23 +9,25 @@ from pathlib import Path
 from datetime import datetime
 
 OPUS   = "claude-opus-4-20250514"
-SONNET = "claude-sonnet-4-20250514"
+GPT4O  = "gpt-4o"
 
-def _get_api_key():
-    key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+def _get_key(provider):
+    """Get API key for 'anthropic' or 'openai'."""
+    env_var = "ANTHROPIC_API_KEY" if provider == "anthropic" else "OPENAI_API_KEY"
+    key = os.getenv(env_var, "").strip()
     if not key:
         env_path = Path(__file__).resolve().parent.parent / ".env"
         if env_path.exists():
             for line in env_path.read_text().splitlines():
-                if line.startswith("ANTHROPIC_API_KEY="):
+                if line.startswith(f"{env_var}="):
                     key = line.split("=", 1)[1].strip().strip('"').strip("'")
                     break
     return key
 
 def _call_claude(prompt, model, max_tokens=2000):
-    key = _get_api_key()
+    key = _get_key("anthropic")
     if not key:
-        return "API key not available."
+        return "Anthropic API key not available."
     try:
         r = requests.post("https://api.anthropic.com/v1/messages",
             headers={"x-api-key": key, "anthropic-version": "2023-06-01",
@@ -35,6 +37,22 @@ def _call_claude(prompt, model, max_tokens=2000):
             timeout=180)
         r.raise_for_status()
         return r.json()["content"][0]["text"].strip()
+    except Exception as e:
+        return f"Error: {str(e)[:200]}"
+
+def _call_openai(prompt, model=GPT4O, max_tokens=2000):
+    key = _get_key("openai")
+    if not key:
+        return "OpenAI API key not available."
+    try:
+        r = requests.post("https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json"},
+            json={"model": model, "max_tokens": max_tokens,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=180)
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"Error: {str(e)[:200]}"
 
@@ -228,19 +246,21 @@ Rules:
     results = {
         "generated_at": datetime.now().isoformat(),
         "opus": None,
-        "sonnet": None,
+        "opus_model": OPUS,
+        "gpt4o": None,
+        "gpt4o_model": GPT4O,
     }
 
-    print("  [advisory] Generating Opus advisory (conservative)...")
+    print(f"  [advisory] Generating Opus advisory (conservative) — {OPUS}...")
     results["opus"] = _call_claude(opus_prompt, OPUS, max_tokens=2500)
     time.sleep(1)
 
-    print("  [advisory] Generating Sonnet advisory (opportunity-focused)...")
-    results["sonnet"] = _call_claude(sonnet_prompt, SONNET, max_tokens=2500)
+    print(f"  [advisory] Generating GPT-4o advisory (opportunity-focused) — {GPT4O}...")
+    results["gpt4o"] = _call_openai(sonnet_prompt, GPT4O, max_tokens=2500)
 
     # Save to state
     cache_path = state_dir / "monthly_advisory.json"
     cache_path.write_text(json.dumps(results, indent=2))
-    print(f"  [advisory] ✅ Dual advisory saved ({len(results['opus'] or '')} + {len(results['sonnet'] or '')} chars)")
+    print(f"  [advisory] ✅ Dual advisory saved (Opus: {len(results['opus'] or '')} chars, GPT-4o: {len(results['gpt4o'] or '')} chars)")
 
     return results
