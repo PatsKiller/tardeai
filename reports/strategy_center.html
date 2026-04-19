@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategic Portfolio & Retirement Command Center</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{surface:'#0f1117',card:'#161822',border:'#1e2230',accent:'#3b82f6',up:'#10b981',dn:'#ef4444',warn:'#f59e0b',muted:'#6b7280',dim:'#374151'}}}}</script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  body{background:#0f1117;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',sans-serif;margin:0}
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#161822}::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
+  .fade-in{animation:fadeIn .4s ease}@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useMemo} = React;
+
+// ═══════════════════════════════════════════════════════════════════
+// DATA LAYER — Fetch live JSON from portfolio server
+// ═══════════════════════════════════════════════════════════════════
+const ENDPOINTS = {
+  holdings:    '/data/portfolios/state/holdings.json',
+  perf:        '/data/portfolios/state/performance_history.json',
+  ai:          '/data/portfolios/state/ai_analysis_cache.json',
+  risk:        '/data/portfolios/state/risk_management.json',
+  retirement:  '/data/portfolios/state/retirement_roadmap.json',
+  dividends:   '/data/portfolios/state/dividend_calendar.json',
+  tax:         '/data/portfolios/state/tax_projection.json',
+  stress:      '/data/portfolios/state/stress_test.json',
+  signals:     '/data/portfolios/state/action_signals.json',
+  correlation: '/data/portfolios/state/correlation.json',
+  technical:   '/data/portfolios/state/technical_snapshot.json',
+  stops:       '/data/portfolios/state/stops.json',
+  enrichment:  '/data/portfolios/state/ticker_enrichment_cache.json',
+  options:     '/data/portfolios/state/portfolio_options.json',
+};
+
+function usePortfolioData() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState([]);
+  useEffect(() => {
+    Promise.all(
+      Object.entries(ENDPOINTS).map(([key, url]) =>
+        fetch(url).then(r => r.ok ? r.json() : null).catch(() => null).then(d => [key, d])
+      )
+    ).then(results => {
+      const obj = {};
+      const errs = [];
+      results.forEach(([k, v]) => { obj[k] = v || {}; if (!v) errs.push(k); });
+      setData(obj);
+      setErrors(errs);
+      setLoading(false);
+    });
+  }, []);
+  return { data, loading, errors };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════
+const fmt$ = (v, d=0) => v == null ? '—' : '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmtPct = (v, d=1) => v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(d) + '%';
+const fmtNum = (v, d=0) => v == null ? '—' : Number(v).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+
+// ═══════════════════════════════════════════════════════════════════
+// REUSABLE COMPONENTS
+// ═══════════════════════════════════════════════════════════════════
+
+function KpiCard({label, value, sub, color, warn}) {
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 relative">
+      <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5">{label}</div>
+      <div className="text-xl font-bold" style={{color: color || '#e5e7eb'}}>{value}</div>
+      {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
+      {warn && <div className="absolute top-2 right-2 w-2 h-2 bg-warn rounded-full" title={warn}></div>}
+    </div>
+  );
+}
+
+function SectionHeader({icon, title, subtitle, thesis, badge}) {
+  return (
+    <div className="mb-4 mt-10 first:mt-0">
+      <div className="flex items-center gap-3 mb-1">
+        {icon && <span className="text-lg">{icon}</span>}
+        <h2 className="text-lg font-bold text-white tracking-tight">{title}</h2>
+        {badge && <span className="text-[9px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-semibold uppercase tracking-wide">{badge}</span>}
+      </div>
+      {subtitle && <p className="text-xs text-muted ml-7">{subtitle}</p>}
+      {thesis && <p className="text-[11px] text-blue-300/70 ml-7 mt-0.5 italic">{thesis}</p>}
+    </div>
+  );
+}
+
+function DataIntegrityBadge({issues}) {
+  const [open, setOpen] = useState(false);
+  if (!issues || issues.length === 0) return <span className="text-[9px] px-2 py-0.5 rounded-full bg-up/10 text-up">Data OK</span>;
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(!open)} className="text-[9px] px-2 py-0.5 rounded-full bg-warn/10 text-warn cursor-pointer hover:bg-warn/20">
+        ⚠ {issues.length} conflict{issues.length > 1 ? 's' : ''}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-6 z-50 bg-card border border-border rounded-lg p-3 w-72 shadow-xl">
+          {issues.map((iss, i) => <div key={i} className="text-[10px] text-warn/80 mb-1">• {iss}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecommendationCard({title, children, color}) {
+  const c = color || '#3b82f6';
+  return (
+    <div className="rounded-lg p-4 mb-3" style={{background:`${c}08`, borderLeft:`3px solid ${c}`}}>
+      {title && <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{color:c}}>{title}</div>}
+      <div className="text-sm text-gray-200 leading-relaxed">{children}</div>
+    </div>
+  );
+}
+
+function StatusBadge({status}) {
+  const map = {done:'bg-up/15 text-up', pending:'bg-warn/15 text-warn', blocked:'bg-dn/15 text-dn', info:'bg-accent/15 text-accent'};
+  const icons = {done:'✓', pending:'○', blocked:'✗', info:'→'};
+  return <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${map[status]||map.info}`}>{icons[status]||'·'} {status.toUpperCase()}</span>;
+}
+
+function ChecklistItem({status, text, detail}) {
+  const colors = {done:'border-up/40 bg-up/5', pending:'border-warn/40 bg-warn/5', blocked:'border-dn/40 bg-dn/5'};
+  const icons = {done:'✓', pending:'○', blocked:'✗'};
+  const ic = {done:'text-up', pending:'text-warn', blocked:'text-dn'};
+  return (
+    <div className={`flex items-start gap-3 p-2.5 rounded-md border-l-2 mb-1.5 ${colors[status]||colors.pending}`}>
+      <span className={`text-sm font-bold mt-0.5 ${ic[status]||ic.pending}`}>{icons[status]||'·'}</span>
+      <div>
+        <div className="text-[12px] text-gray-200 font-medium">{text}</div>
+        {detail && <div className="text-[10px] text-muted mt-0.5">{detail}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ScenarioCard({title, values, highlight, risk}) {
+  return (
+    <div className={`bg-card border rounded-lg p-4 ${highlight ? 'border-accent/40 ring-1 ring-accent/20' : 'border-border'}`}>
+      <div className="text-xs font-bold text-gray-200 mb-2">{title}</div>
+      {values && values.map(([k,v], i) => (
+        <div key={i} className="flex justify-between text-[11px] py-0.5">
+          <span className="text-muted">{k}</span>
+          <span className="font-semibold text-gray-300">{v}</span>
+        </div>
+      ))}
+      {highlight && <div className="text-[9px] text-accent font-bold mt-2 uppercase">← Recommended</div>}
+      {risk && <div className="text-[10px] text-muted mt-2 italic">Risk: {risk}</div>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SVG CHART COMPONENTS
+// ═══════════════════════════════════════════════════════════════════
+
+function DonutChart({data, size=160, thickness=24, centerLabel, centerValue}) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const r = (size - thickness) / 2;
+  const circ = 2 * Math.PI * r;
+  let cum = 0;
+  return (
+    <div className="flex items-center gap-6">
+      <svg width={size} height={size} className="flex-shrink-0">
+        {data.map((d, i) => {
+          const pct = d.value / total;
+          const offset = circ * (1 - cum);
+          cum += pct;
+          return <circle key={i} cx={size/2} cy={size/2} r={r} fill="none" stroke={d.color} strokeWidth={thickness}
+            strokeDasharray={`${circ * pct} ${circ * (1 - pct)}`}
+            strokeDashoffset={offset} transform={`rotate(-90 ${size/2} ${size/2})`} />;
+        })}
+        {centerLabel && <>
+          <text x={size/2} y={size/2-6} textAnchor="middle" fill="#e5e7eb" fontSize="18" fontWeight="800">{centerValue}</text>
+          <text x={size/2} y={size/2+12} textAnchor="middle" fill="#6b7280" fontSize="9">{centerLabel}</text>
+        </>}
+      </svg>
+      <div className="space-y-1">
+        {data.map((d, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{background:d.color}}></div>
+            <span className="text-[10px] text-muted">{d.label}</span>
+            <span className="text-[10px] text-gray-400 font-semibold ml-auto">{fmt$(d.value, 0)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HBarChart({data, maxVal, height=20}) {
+  const mx = maxVal || Math.max(...data.map(d => d.value));
+  return (
+    <div className="space-y-2">
+      {data.map((d, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <span className="text-[11px] text-gray-300 font-semibold w-16 text-right flex-shrink-0">{d.label}</span>
+          <div className="flex-1 bg-dim/30 rounded-full overflow-hidden" style={{height}}>
+            <div className="h-full rounded-full flex items-center pl-2 transition-all duration-500"
+              style={{width:`${Math.max(2, (d.value/mx)*100)}%`, background: d.color || '#3b82f6'}}>
+              <span className="text-[9px] text-white font-bold whitespace-nowrap">{d.display || fmt$(d.value,0)}</span>
+            </div>
+          </div>
+          {d.note && <span className="text-[9px] text-muted w-20 flex-shrink-0">{d.note}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GaugeChart({value, max=100, label, threshold, size=140}) {
+  const pct = Math.min(value / max, 1);
+  const thPct = threshold ? threshold / max : null;
+  const angle = pct * 180;
+  const r = size / 2 - 12;
+  const arc = (a) => {
+    const rad = (a - 180) * Math.PI / 180;
+    return `${size/2 + r * Math.cos(rad)},${size/2 + r * Math.sin(rad)}`;
+  };
+  const color = threshold && value > threshold ? '#ef4444' : value > max * 0.7 ? '#f59e0b' : '#10b981';
+  return (
+    <div className="text-center">
+      <svg width={size} height={size/2 + 20} className="mx-auto">
+        <path d={`M ${12},${size/2} A ${r},${r} 0 0,1 ${size-12},${size/2}`} fill="none" stroke="#1e2230" strokeWidth="10" strokeLinecap="round"/>
+        <path d={`M ${12},${size/2} A ${r},${r} 0 0,1 ${arc(angle)}`} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"/>
+        {thPct && <line x1={size/2 + r * Math.cos((thPct*180-180)*Math.PI/180)} y1={size/2 + r * Math.sin((thPct*180-180)*Math.PI/180)}
+          x2={size/2 + (r-14) * Math.cos((thPct*180-180)*Math.PI/180)} y2={size/2 + (r-14) * Math.sin((thPct*180-180)*Math.PI/180)}
+          stroke="#f59e0b" strokeWidth="2" strokeDasharray="3,2"/>}
+        <text x={size/2} y={size/2-4} textAnchor="middle" fill={color} fontSize="22" fontWeight="800">{typeof value==='number'?value.toFixed(1)+'%':value}</text>
+      </svg>
+      {label && <div className="text-[10px] text-muted -mt-2">{label}</div>}
+    </div>
+  );
+}
+
+function TimelineChart({events, width='100%'}) {
+  return (
+    <div className="relative py-4" style={{width}}>
+      <div className="absolute top-1/2 left-4 right-4 h-0.5 bg-border -translate-y-1/2"></div>
+      <div className="flex justify-between px-2 relative">
+        {events.map((e, i) => (
+          <div key={i} className="flex flex-col items-center relative" style={{flex:1}}>
+            <div className={`w-3 h-3 rounded-full border-2 ${e.active ? 'bg-accent border-accent' : e.done ? 'bg-up border-up' : 'bg-card border-dim'} z-10`}></div>
+            <div className="text-[9px] font-bold text-gray-300 mt-1.5 text-center">{e.label}</div>
+            <div className="text-[8px] text-muted text-center">{e.date}</div>
+            {e.detail && <div className="text-[8px] text-accent text-center">{e.detail}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({current, target, label, color}) {
+  const pct = Math.min(current / target * 100, 100);
+  return (
+    <div>
+      {label && <div className="flex justify-between text-[10px] mb-1">
+        <span className="text-muted">{label}</span>
+        <span className="text-gray-400">{fmt$(current,0)} / {fmt$(target,0)}</span>
+      </div>}
+      <div className="h-3 bg-dim/30 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{width:`${pct}%`, background: color || '#3b82f6'}}></div>
+      </div>
+      <div className="text-[9px] text-muted mt-0.5 text-right">{pct.toFixed(0)}% — gap: {fmt$(target-current,0)}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MARKDOWN RENDERER (for AI-generated text sections)
+// ═══════════════════════════════════════════════════════════════════
+function MdBlock({text}) {
+  if (!text) return <div className="text-xs text-muted italic">No data available</div>;
+  const lines = String(text).split('\n');
+  const elements = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const inl = (s) => {
+      const parts = [];
+      let last = 0;
+      const regex = /\*\*(.+?)\*\*|\*([^*]+?)\*|`([^`]+)`/g;
+      let m;
+      while ((m = regex.exec(s)) !== null) {
+        if (m.index > last) parts.push(<span key={`t${i}-${last}`}>{s.slice(last, m.index)}</span>);
+        if (m[1]) parts.push(<strong key={`b${i}-${m.index}`} className="text-amber-400">{m[1]}</strong>);
+        else if (m[2]) parts.push(<em key={`i${i}-${m.index}`} className="text-blue-300">{m[2]}</em>);
+        else if (m[3]) parts.push(<code key={`c${i}-${m.index}`} className="bg-blue-900/30 text-teal-300 px-1 rounded text-[10px]">{m[3]}</code>);
+        last = m.index + m[0].length;
+      }
+      if (last < s.length) parts.push(<span key={`e${i}-${last}`}>{s.slice(last)}</span>);
+      return parts.length ? parts : s;
+    };
+    // Checklist
+    if (/^[-•*]?\s*[✅❌⚠️]/.test(line)) {
+      const rest = line.replace(/^[-•*]?\s*[✅❌⚠️]\s*/, '');
+      const icon = line.includes('✅') ? '✓' : line.includes('❌') ? '✗' : '!';
+      const bc = icon==='✓' ? 'border-up/40 bg-up/5' : icon==='✗' ? 'border-dn/40 bg-dn/5' : 'border-warn/40 bg-warn/5';
+      const ic = icon==='✓' ? 'text-up' : icon==='✗' ? 'text-dn' : 'text-warn';
+      elements.push(<div key={i} className={`flex items-start gap-2 p-2 rounded border-l-2 mb-1 ${bc}`}>
+        <span className={`text-sm font-bold ${ic}`}>{icon}</span>
+        <span className="text-[11px] text-gray-200">{inl(rest)}</span>
+      </div>);
+      continue;
+    }
+    // Headers
+    if (line.startsWith('#### ')) { elements.push(<p key={i} className="text-[9px] font-bold text-muted uppercase tracking-wider mt-3 mb-1">{inl(line.slice(5))}</p>); continue; }
+    if (line.startsWith('### ')) { elements.push(<div key={i} className="text-xs font-bold text-amber-400 mt-3 mb-1 pl-2 border-l-2 border-amber-400/40">{inl(line.slice(4))}</div>); continue; }
+    if (line.startsWith('## ')) { elements.push(<div key={i} className="text-sm font-extrabold text-blue-300 mt-4 mb-1.5 pl-2 bg-accent/5 border-l-3 border-accent rounded-r py-1">{inl(line.slice(3))}</div>); continue; }
+    if (line.startsWith('# ')) { elements.push(<div key={i} className="text-sm font-black text-white mt-4 mb-2 px-3 py-1.5 bg-accent/10 rounded border-l-4 border-accent">{inl(line.slice(2))}</div>); continue; }
+    // RECOMMENDATION/ACTION
+    if (/^(RECOMMENDATION|ACTION|KEY RISK|OPTIMAL|PRIORITY):/i.test(line)) {
+      const ci = line.indexOf(':');
+      const lbl = line.slice(0, ci);
+      const rest = line.slice(ci+1).trim();
+      const lc = /RISK/i.test(lbl) ? 'border-dn/60 bg-dn/5' : 'border-up/60 bg-up/5';
+      const tc = /RISK/i.test(lbl) ? 'text-dn' : 'text-up';
+      elements.push(<div key={i} className={`p-3 rounded border-l-3 mb-2 ${lc}`}>
+        <span className={`text-[9px] font-extrabold uppercase tracking-wider ${tc}`}>{lbl}</span>
+        <div className="text-[11px] text-gray-200 mt-1">{inl(rest)}</div>
+      </div>);
+      continue;
+    }
+    // Bullets
+    if (/^[•\-*→▸]\s/.test(line)) {
+      elements.push(<div key={i} className="flex items-start gap-2 pl-2 py-0.5">
+        <span className="text-accent text-xs mt-0.5">▸</span>
+        <span className="text-[11px] text-gray-300">{inl(line.replace(/^[•\-*→▸]\s+/, ''))}</span>
+      </div>);
+      continue;
+    }
+    // ALL CAPS
+    if (line === line.toUpperCase() && line.length > 4 && /[A-Z]/.test(line)) {
+      elements.push(<div key={i} className="text-[10px] font-extrabold text-amber-400 tracking-wider mt-3 mb-1">{line}</div>);
+      continue;
+    }
+    // Numbered
+    if (/^\d+[\.\)]\s/.test(line)) {
+      elements.push(<div key={i} className="pl-2 py-1 my-0.5 border-l-2 border-accent/30 bg-accent/3 rounded-r">
+        <span className="text-[11px] text-blue-300 font-bold">{inl(line)}</span>
+      </div>);
+      continue;
+    }
+    // Paragraph
+    elements.push(<p key={i} className="text-[11px] text-gray-400 leading-relaxed my-1">{inl(line)}</p>);
+  }
+  return <div>{elements}</div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD SECTIONS
+// ═══════════════════════════════════════════════════════════════════
+
+function HeaderHero({data}) {
+  const t = data.holdings?.portfolio_totals || {};
+  const ret = data.retirement || {};
+  const ph = data.perf?.periods || {};
+  const divPayers = data.dividends?.payers || [];
+  const divTotal = divPayers.reduce((s,p) => s + (p.annual_income||0), 0);
+  const tv = t.total_value || 0;
+  const accts = data.holdings?.account_summaries || {};
+  const rothBal = accts.schwab_roth?.total_value || 0;
+  const tradBal = (accts.schwab_rollover_ira?.total_value||0) + (accts.fidelity_401k?.total_value||0);
+  const dc = t.day_change || 0;
+  const ytd = ph.YTD?.change_pct;
+
+  // Concentration
+  const holdings = data.holdings?.holdings || [];
+  const bySym = {};
+  holdings.forEach(h => { bySym[h.symbol] = (bySym[h.symbol]||0) + (h.market_value||0); });
+  const topConc = Object.entries(bySym).sort((a,b) => b[1]-a[1])[0] || ['—',0];
+
+  const issues = [];
+  if (Math.abs(rothBal - 42373) < 300 && Math.abs(rothBal - 42643) < 300) issues.push('Roth balance: multiple values in source — using latest');
+  const aiDate = data.ai?.generated_at?.slice(0,10) || '—';
+  const runType = data.ai?.run_type || 'daily';
+
+  return (
+    <div className="mb-8 fade-in">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-white tracking-tight">Strategic Portfolio & Retirement Command Center</h1>
+          <p className="text-xs text-muted mt-1">Tax efficiency · Income resilience · Concentration risk management</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-accent/10 text-accent font-semibold uppercase">{runType}</span>
+          <span className="text-[10px] text-muted">Updated: {aiDate}</span>
+          <DataIntegrityBadge issues={issues} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <KpiCard label="Total Portfolio" value={fmt$(tv,0)} sub={`Today ${dc>=0?'+':''}${fmt$(dc,0)}`} color={dc>=0?'#10b981':'#ef4444'}/>
+        <KpiCard label="Roth Balance" value={fmt$(rothBal,0)} sub="Tax-free forever" color="#3b82f6" warn={issues.length?'Multiple values in source':null}/>
+        <KpiCard label="Traditional / Pre-Tax" value={fmt$(tradBal,0)} sub="Conversion target pool"/>
+        <KpiCard label="Annual Dividends" value={fmt$(divTotal,0)} sub={`${(divTotal/tv*100).toFixed(1)}% yield · Target: $28,000`} color="#f59e0b"/>
+        <KpiCard label="2026 Conversion Room" value="$16,000" sub="Remaining 22% bracket" color="#10b981"/>
+        <KpiCard label="Top Concentration" value={`${topConc[0]} ${(topConc[1]/tv*100).toFixed(1)}%`} sub={fmt$(topConc[1],0)} color={topConc[1]/tv > 0.15 ? '#ef4444' : '#10b981'}/>
+      </div>
+      {ytd != null && <div className="mt-3 flex gap-3 text-[10px]">
+        {['1W','1M','YTD','1Y'].map(p => {
+          const v = ph[p]?.change_pct;
+          return v != null ? <span key={p} className={`px-2 py-0.5 rounded ${v>=0?'bg-up/10 text-up':'bg-dn/10 text-dn'}`}>{p} {fmtPct(v)}</span> : null;
+        })}
+      </div>}
+    </div>
+  );
+}
+
+function PrioritiesPanel({data}) {
+  const priorities = [
+    {name:'Complete 2026 Roth Optimization', urgency:'HIGH', outcome:'Lock in 22% bracket conversion', blocker:'$16K not yet converted', action:'Convert $16K before Dec 31', status:'pending'},
+    {name:'Lower Visa Concentration', urgency:'HIGH', outcome:'Reduce single-stock risk below 13%', blocker:'15.9% weight with +4,850% gain', action:'Staged 30% trim over 12 weeks', status:'blocked'},
+    {name:'Build Bond Ballast', urgency:'MEDIUM', outcome:'Achieve 25% fixed income allocation', blocker:'Currently 2.3% bonds only', action:'Deploy $111K from cash + trims', status:'pending'},
+    {name:'Improve Dividend Architecture', urgency:'MEDIUM', outcome:'Close $15,494 income gap to $28K target', blocker:'1.04% yield, V dragging income', action:'Rotate to SCHD/JEPI/JEPQ blend', status:'pending'},
+  ];
+  return (
+    <div className="fade-in">
+      <SectionHeader title="Executive Priorities" subtitle="Ranked by urgency and portfolio impact" badge="ACTION REQUIRED"/>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {priorities.map((p, i) => (
+          <div key={i} className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-white">{p.name}</span>
+              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${p.urgency==='HIGH'?'bg-dn/15 text-dn':'bg-warn/15 text-warn'}`}>{p.urgency}</span>
+            </div>
+            <div className="space-y-1 text-[10px]">
+              <div className="flex gap-2"><span className="text-muted w-16">Outcome</span><span className="text-gray-300">{p.outcome}</span></div>
+              <div className="flex gap-2"><span className="text-muted w-16">Blocker</span><span className="text-warn">{p.blocker}</span></div>
+              <div className="flex gap-2"><span className="text-muted w-16">Next</span><span className="text-accent">{p.action}</span></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RothStrategy({data}) {
+  const ret = data.retirement || {};
+  const kd = ret.key_dates || {};
+  const gw = ret.golden_window || {};
+  const ladder = ret.roth_ladder || [];
+  const accts = data.holdings?.account_summaries || {};
+  const rothBal = accts.schwab_roth?.total_value || 42643;
+  const tradBal = (accts.schwab_rollover_ira?.total_value||0) + (accts.fidelity_401k?.total_value||0);
+
+  const donutData = [
+    {label:'Traditional IRA', value: tradBal, color:'#f59e0b'},
+    {label:'Roth IRA', value: rothBal, color:'#3b82f6'},
+  ];
+
+  const scenarioData = [
+    {label:'$0', value:0, color:'#374151', display:'$0 tax', note:'Wastes bracket room'},
+    {label:'$10K', value:2200, color:'#3b82f6', display:'$2,200 tax', note:'22% bracket'},
+    {label:'$16K', value:3520, color:'#10b981', display:'$3,520 tax', note:'← Optimal'},
+    {label:'$20K', value:4800, color:'#ef4444', display:'~$4,800 tax', note:'Hits 24% bracket'},
+  ];
+
+  const timelineEvents = [
+    {label:'Now', date:'2026', detail:'$35K done', done:true},
+    {label:'Rollover', date:'2027', detail:'$533K 401k', active:false},
+    {label:'FRA', date:'2034', detail:'SS at 67'},
+    {label:'Golden Start', date:'Feb 2036', detail:'Disability ends', active:true},
+    {label:'RMD Begin', date:'Aug 2040', detail:'Age 73'},
+  ];
+
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="📊" title="Roth Conversion Strategy" subtitle="Current-year optimization and long-horizon tax arbitrage" thesis="Convert at 22% now to avoid 24%+ on forced RMDs later" badge="2026"/>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Traditional vs Roth</div>
+          <DonutChart data={donutData} size={140} thickness={20} centerLabel="Roth %" centerValue={`${(rothBal/(rothBal+tradBal)*100).toFixed(1)}%`}/>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4 col-span-2">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">2026 Conversion Scenarios</div>
+          <HBarChart data={scenarioData} maxVal={5000} height={22}/>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-lg p-4 mb-4">
+        <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Retirement Timeline</div>
+        <TimelineChart events={timelineEvents}/>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div>
+          <div className="text-xs font-bold text-gray-300 mb-2">Action Checklist</div>
+          <ChecklistItem status="done" text="$35K converted in 2026" detail="On track for annual target"/>
+          <ChecklistItem status="pending" text="Convert additional $16K" detail="Maximize 22% bracket room before Dec 31"/>
+          <ChecklistItem status="pending" text="Schedule C write-offs" detail="Reduce taxable base by $5K+ to expand capacity"/>
+          <ChecklistItem status="pending" text="Roth asset reallocation" detail="Move growth positions (SCHG) to Roth"/>
+          <ChecklistItem status="pending" text="2027 rollover planning" detail="Prepare $533K Fidelity 401k strategy"/>
+        </div>
+        <div>
+          <RecommendationCard title="Optimal Move" color="#10b981">
+            Convert additional <strong>$16,000</strong> before Dec 31. Federal tax: ~$3,520 at 22% marginal rate. This uses remaining bracket capacity without triggering 24%.
+          </RecommendationCard>
+          <div className="bg-card border border-accent/20 rounded-lg p-4 mt-3">
+            <div className="text-[10px] uppercase tracking-wider text-accent mb-2">Golden Window Preview</div>
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div><span className="text-muted">Opens:</span> <span className="text-gray-300">{kd.golden_window_start || 'Feb 2036'}</span></div>
+              <div><span className="text-muted">Closes:</span> <span className="text-gray-300">{kd.golden_window_end || 'Aug 2040'}</span></div>
+              <div><span className="text-muted">Annual target:</span> <span className="text-accent font-bold">{fmt$(gw.optimal_annual_conversion||50000,0)}</span></div>
+              <div><span className="text-muted">Window capacity:</span> <span className="text-gray-300">~$350K at 10-12%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IncomeArchitecture({data}) {
+  const divPayers = data.dividends?.payers || [];
+  const divTotal = divPayers.reduce((s,p) => s + (p.annual_income||0), 0);
+  const target = 28000;
+  const topPayers = [...divPayers].sort((a,b) => (b.annual_income||0)-(a.annual_income||0)).slice(0,6);
+
+  const payerBars = topPayers.map(p => ({
+    label: p.symbol || '?',
+    value: p.annual_income || 0,
+    color: (p.annual_income||0) > 2000 ? '#10b981' : '#3b82f6',
+    display: fmt$(p.annual_income,0),
+  }));
+
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="💰" title="Dividend Income Architecture" subtitle="Close the income gap without destroying quality" thesis="Current 1.04% yield requires strategic repositioning to reach $28K target"/>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Income Progress</div>
+          <ProgressBar current={divTotal} target={target} label="Annual Dividend Income" color="#10b981"/>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+            <div><span className="text-muted">Current</span><div className="text-up font-bold text-sm">{fmt$(divTotal,0)}/yr</div></div>
+            <div><span className="text-muted">Shortfall</span><div className="text-dn font-bold text-sm">{fmt$(target-divTotal,0)}</div></div>
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4 col-span-2">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Top Income Contributors</div>
+          <HBarChart data={payerBars} height={18}/>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <ScenarioCard title="V → JEPI/JEPQ Rotation" values={[['V current','$1,536/yr (0.83%)'],['JEPI/JEPQ on $92K','$7,820/yr (8.5%)'],['Net gain','+$6,284/yr']]} highlight/>
+        <ScenarioCard title="2027 Rollover → Dividends" values={[['Deploy $200K','SCHD/VYM/SPHD'],['Target yield','4.2% blended'],['Income add','+$8,400/yr']]}/>
+        <ScenarioCard title="Taxable Optimization" values={[['Replace XLI/XLB $61K','QYLD/RYLD covered call'],['Current income','$1,098/yr'],['New income','+$5,917/yr']]}/>
+      </div>
+    </div>
+  );
+}
+
+function BondStrategy({data}) {
+  const currentBond = 27457;
+  const targetBond = 138476;
+
+  const allocData = [
+    {label:'BND', value:48467, color:'#3b82f6'},
+    {label:'AGG', value:27695, color:'#6366f1'},
+    {label:'VCIT', value:34619, color:'#8b5cf6'},
+    {label:'VGIT', value:27695, color:'#a78bfa'},
+  ];
+
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="🏛" title="Fixed Income / Ballast Policy" subtitle="Stability, duration control, and conversion support" thesis="Build from 2.3% to 25% bond allocation for retirement readiness"/>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Current vs Target</div>
+          <DonutChart data={[{label:'Current bonds',value:currentBond,color:'#3b82f6'},{label:'Gap to target',value:targetBond-currentBond,color:'#1e2230'}]} size={130} thickness={18} centerLabel="Target" centerValue={fmt$(targetBond,0)}/>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4 col-span-2">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Recommended Allocation ({fmt$(targetBond,0)} total)</div>
+          <HBarChart data={allocData} height={20}/>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Duration Sensitivity</div>
+          <div className="text-center py-3">
+            <div className="text-2xl font-bold text-white">5.8 yrs</div>
+            <div className="text-[10px] text-muted">Weighted Average Duration</div>
+            <div className="text-xs text-dn mt-2">1% rate rise = ~{fmt$(8032,0)} impact</div>
+          </div>
+        </div>
+        <RecommendationCard title="Deployment Plan" color="#3b82f6">
+          Use <strong>{fmt$(28465,0)} cash</strong> + selective trimming from overweight Financial Services (27.9%). Phase purchases over 3-4 months via dollar-cost averaging.
+        </RecommendationCard>
+      </div>
+    </div>
+  );
+}
+
+function ConcentrationRisk({data}) {
+  const holdings = data.holdings?.holdings || [];
+  const tv = data.holdings?.portfolio_totals?.total_value || 1;
+  const bySym = {};
+  holdings.forEach(h => { bySym[h.symbol] = (bySym[h.symbol]||0) + (h.market_value||0); });
+  const vMv = bySym['V'] || 192057;
+  const vPct = vMv / tv * 100;
+
+  const issues = ['V trim recommendation conflict: "trim to 12-13%" vs "trim 30%" — verify target before execution'];
+
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="⚠" title="Visa Concentration Decision Framework" subtitle="Protect gains, reduce single-name risk, improve income efficiency"/>
+      <DataIntegrityBadge issues={issues}/>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-3 mb-4">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <GaugeChart value={vPct} max={25} label={`V Weight (target: <13%)`} threshold={15} size={160}/>
+        </div>
+        <div className="col-span-2 grid grid-cols-3 gap-3">
+          <ScenarioCard title="A: Hold All V" values={[['5yr value','~$335K'],['Income','$2,780/yr'],['Growth','12% assumed']]} risk="High single-stock, low income"/>
+          <ScenarioCard title="B: Trim 30% → SCHD/VCIT" values={[['5yr value','~$310K'],['Income','$4,200/yr'],['Growth','10% blended']]} highlight risk="Balanced growth/income"/>
+          <ScenarioCard title="C: Trim 50% → Diversified" values={[['5yr value','~$285K'],['Income','$5,800/yr'],['Growth','8% blended']]} risk="Lower growth, max income"/>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Income Delta (Trimmed Portion)</div>
+          <div className="flex items-center gap-4">
+            <div className="text-center"><div className="text-dn text-lg font-bold">$473</div><div className="text-[9px] text-muted">V income (0.83%)</div></div>
+            <div className="text-2xl text-muted">→</div>
+            <div className="text-center"><div className="text-up text-lg font-bold">$1,890</div><div className="text-[9px] text-muted">SCHD/VCIT (4.2%)</div></div>
+            <div className="text-center"><div className="text-accent text-lg font-bold">+$1,417</div><div className="text-[9px] text-accent">annual gain</div></div>
+          </div>
+        </div>
+        <RecommendationCard title="Execution Plan" color="#f59e0b">
+          Sell 180 shares (~$57K) over <strong>12 weeks</strong> (15 shares/week). Begin with Rollover IRA (140 shares), then Roth (40 shares). Both IRAs = zero capital gains tax.
+        </RecommendationCard>
+      </div>
+    </div>
+  );
+}
+
+function IraOpportunities({data}) {
+  const ai = data.ai?.ira_opportunities;
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="🏦" title="IRA Opportunity Set" subtitle="Missing asset classes and tax-location opportunities" badge="Enhancement"/>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        {[{name:'REITs',current:'0%',target:'5-10%',amount:'$60K',tickers:'O, VNQ, STAG'},
+          {name:'Covered Call',current:'0%',target:'8-12%',amount:'$75K',tickers:'JEPI, JEPQ'},
+          {name:'Fixed Income',current:'2.3%',target:'25%',amount:'$111K',tickers:'BND, AGG, VCIT'},
+          {name:'International',current:'0%',target:'10-15%',amount:'$79K',tickers:'BNDX, VXUS'}
+        ].map((g, i) => (
+          <div key={i} className="bg-card border border-border rounded-lg p-4">
+            <div className="text-xs font-bold text-gray-200 mb-2">{g.name}</div>
+            <div className="flex justify-between text-[10px] mb-1"><span className="text-muted">Current</span><span className="text-dn font-bold">{g.current}</span></div>
+            <div className="flex justify-between text-[10px] mb-1"><span className="text-muted">Target</span><span className="text-up font-bold">{g.target}</span></div>
+            <div className="flex justify-between text-[10px] mb-1"><span className="text-muted">Deploy</span><span className="text-accent font-bold">{g.amount}</span></div>
+            <div className="text-[9px] text-muted mt-2">Tickers: {g.tickers}</div>
+          </div>
+        ))}
+      </div>
+      {ai && <div className="bg-card border border-border rounded-lg p-4"><div className="max-h-64 overflow-y-auto"><MdBlock text={ai}/></div></div>}
+    </div>
+  );
+}
+
+function TacticalSleeve({data}) {
+  const ai = data.ai?.defense_analysis;
+  const holdings = data.holdings?.holdings || [];
+  const defTickers = ['LMT','RTX','NOC','LHX','LDOS','BAH','KTOS','AVAV','KBR','CACI','DRS','RKLB','IRDM'];
+  const defHoldings = holdings.filter(h => defTickers.includes(h.symbol)).sort((a,b) => (b.market_value||0)-(a.market_value||0));
+
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="🛡" title="Tactical Sleeve" subtitle="Non-core opportunistic allocations" badge="NOT CORE CAPITAL"/>
+      <div className="bg-warn/5 border border-warn/20 rounded-lg px-4 py-2 mb-4 text-[10px] text-warn font-semibold">
+        ⚠ Tactical / Not Core Retirement Capital — Manage separately from retirement strategy
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Defense Holdings</div>
+          <div className="space-y-1">
+            {defHoldings.map((h, i) => {
+              const gl = h.gain_loss || 0;
+              return (
+                <div key={i} className="flex items-center justify-between text-[10px] py-1 border-b border-border/50">
+                  <span className="font-bold text-gray-200 w-12">{h.symbol}</span>
+                  <span className="text-muted">{fmt$(h.market_value,0)}</span>
+                  <span className={gl >= 0 ? 'text-up' : 'text-dn'}>{fmtPct(h.market_value && h.cost_basis ? ((h.market_value - h.cost_basis)/h.cost_basis*100) : gl, 1)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-3">AI Defense Analysis</div>
+          <div className="max-h-64 overflow-y-auto">{ai ? <MdBlock text={ai}/> : <span className="text-xs text-muted italic">Run monthly pipeline to generate</span>}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActionCenter({data}) {
+  const actions = [
+    {action:'Convert additional $16K to Roth', cat:'Tax', amount:'$16,000', timing:'Before Dec 31', impact:'Save ~$3,520 at 22% vs future 24%+', status:'pending'},
+    {action:'Maximize Schedule C deductions', cat:'Tax', amount:'$5,000+', timing:'2026 tax year', impact:'Expand conversion capacity $1K per $1K deduction', status:'pending'},
+    {action:'Trim Visa 30% — staged exit', cat:'Risk', amount:'$57,000', timing:'12 weeks', impact:'Reduce concentration to ~11%, +$1,417 income', status:'blocked'},
+    {action:'Build bond allocation', cat:'Asset', amount:'$111,000', timing:'Q2-Q3 2026', impact:'Achieve 25% fixed income target', status:'pending'},
+    {action:'Add REIT exposure to IRA', cat:'Asset', amount:'$60,000', timing:'Q3 2026', impact:'Missing asset class, 4-6% yield', status:'pending'},
+    {action:'Close SRNE position', cat:'Hygiene', amount:'~$2', timing:'Immediate', impact:'Remove dead weight, clean portfolio', status:'blocked'},
+    {action:'Update stale stop losses', cat:'Risk', amount:'—', timing:'This week', impact:'Protect $304K unrealized gains', status:'pending'},
+    {action:'Prepare 2027 401k rollover', cat:'Planning', amount:'$533,000', timing:'2027', impact:'Consolidate under single strategy', status:'pending'},
+  ];
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="📋" title="Action Center" subtitle="Prioritized execution roadmap"/>
+      <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <table className="w-full text-[11px]">
+          <thead><tr className="border-b border-border bg-surface">
+            <th className="text-left px-3 py-2 text-muted font-normal text-[9px] uppercase tracking-wider">Action</th>
+            <th className="text-left px-3 py-2 text-muted font-normal text-[9px] uppercase tracking-wider">Category</th>
+            <th className="text-right px-3 py-2 text-muted font-normal text-[9px] uppercase tracking-wider">Amount</th>
+            <th className="text-left px-3 py-2 text-muted font-normal text-[9px] uppercase tracking-wider">Timing</th>
+            <th className="text-left px-3 py-2 text-muted font-normal text-[9px] uppercase tracking-wider">Expected Impact</th>
+            <th className="text-center px-3 py-2 text-muted font-normal text-[9px] uppercase tracking-wider">Status</th>
+          </tr></thead>
+          <tbody>
+            {actions.map((a, i) => (
+              <tr key={i} className="border-b border-border/30 hover:bg-surface/50">
+                <td className="px-3 py-2.5 text-gray-200 font-medium">{a.action}</td>
+                <td className="px-3 py-2.5"><span className="px-1.5 py-0.5 rounded text-[8px] bg-accent/10 text-accent font-bold">{a.cat}</span></td>
+                <td className="px-3 py-2.5 text-right text-gray-400 font-mono">{a.amount}</td>
+                <td className="px-3 py-2.5 text-muted">{a.timing}</td>
+                <td className="px-3 py-2.5 text-gray-400">{a.impact}</td>
+                <td className="px-3 py-2.5 text-center"><StatusBadge status={a.status}/></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AiDeepSections({data}) {
+  const ai = data.ai || {};
+  const sections = [
+    ['deep_holdings','🔬','Deep Holdings Analysis','Stock-level concentration and look-through analysis'],
+    ['dividend_strategy','💰','Dividend Strategy','Income architecture and payout optimization'],
+    ['bond_strategy','🏛','Bond Strategy Detail','Rate exposure, tax location, and duration analysis'],
+    ['v_strategy','💳','Visa Strategy Detail','Concentration management and rotation logic'],
+    ['roth_conversion','⚡','Roth Conversion Detail','Full advisory analysis with Schedule C optimization'],
+  ];
+  const [expanded, setExpanded] = useState({});
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="🤖" title="AI Deep Analysis" subtitle="Sonnet 4 generated strategic analysis" badge={ai.run_type?.toUpperCase() || 'CACHED'}/>
+      <div className="space-y-3">
+        {sections.map(([key, icon, title, desc]) => {
+          const text = ai[key];
+          const isOpen = expanded[key];
+          return (
+            <div key={key} className="bg-card border border-border rounded-lg overflow-hidden">
+              <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface/30 cursor-pointer text-left"
+                onClick={() => setExpanded(prev => ({...prev, [key]: !prev[key]}))}>
+                <div className="flex items-center gap-2">
+                  <span>{icon}</span>
+                  <span className="text-sm font-bold text-white">{title}</span>
+                  <span className="text-[9px] text-muted">{desc}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {text ? <span className="text-[8px] px-1.5 py-0.5 rounded bg-up/10 text-up font-bold">✓ DATA</span>
+                        : <span className="text-[8px] px-1.5 py-0.5 rounded bg-dim/30 text-muted">NO DATA</span>}
+                  <span className="text-muted text-xs">{isOpen ? '▲' : '▼'}</span>
+                </div>
+              </button>
+              {isOpen && text && <div className="px-4 pb-4 border-t border-border/30 pt-3 max-h-[500px] overflow-y-auto"><MdBlock text={text}/></div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AssumptionsDrawer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-8 fade-in">
+      <button onClick={() => setOpen(!open)} className="text-[10px] text-muted hover:text-gray-400 cursor-pointer">
+        {open ? '▼' : '▶'} Assumptions & Data Quality Notes
+      </button>
+      {open && (
+        <div className="bg-card border border-border rounded-lg p-4 mt-2 text-[10px] text-muted space-y-1">
+          <div>• Growth assumption: 7% annualized for projection models</div>
+          <div>• Tax brackets: 2026 MFS rates; 22% current, 24% next tier at ~$94.3K</div>
+          <div>• Roth balance conflict: $42,373 vs $42,643 — using latest available value</div>
+          <div>• V trim recommendation conflict: "trim to 12-13%" vs "trim 30%" — different analysis sections</div>
+          <div>• Defense section may reference January 2025 data while core sections are 2026</div>
+          <div>• Dividend yields based on trailing 12-month distributions; may vary</div>
+          <div>• SSDI converts to Social Security retirement at FRA age 67 (Aug 2034)</div>
+          <div>• Private disability insurance continues to age 68.5 (Feb 2036)</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════
+function App() {
+  const {data, loading, errors} = usePortfolioData();
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="text-2xl mb-2">⚡</div>
+        <div className="text-sm text-muted">Loading portfolio data...</div>
+      </div>
+    </div>
+  );
+
+  if (!data) return <div className="p-8 text-dn">Failed to load portfolio data</div>;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 md:px-8 py-6">
+      <HeaderHero data={data}/>
+      <PrioritiesPanel data={data}/>
+      <RothStrategy data={data}/>
+      <IncomeArchitecture data={data}/>
+      <BondStrategy data={data}/>
+      <ConcentrationRisk data={data}/>
+      <IraOpportunities data={data}/>
+      <TacticalSleeve data={data}/>
+      <ActionCenter data={data}/>
+      <AiDeepSections data={data}/>
+      <AssumptionsDrawer/>
+      <div className="mt-12 mb-8 text-center text-[10px] text-dim border-t border-border pt-4">
+        For informational planning use only. Not investment, legal, or tax advice. Verify all figures before execution.
+        <br/>Trade AI v12 · Strategic Portfolio & Retirement Command Center
+      </div>
+    </div>
+  );
+}
+
+// Mount
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+</script>
+</body>
+</html>
