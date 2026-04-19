@@ -7762,24 +7762,71 @@ async function renderAIDeep() {
        ${content}
      </div>`;
 
-  // Strip markdown artifacts from AI-generated text
-  const cleanMd = (text) => {
+  // Render markdown AI text as styled dashboard HTML
+  const renderMd = (text) => {
     if (!text) return '';
-    return String(text)
-      .replace(/\*\*([^*]+)\*\*/g, '$1')   // **bold** → bold
-      .replace(/\*\*\s*/g, '')              // orphan ** (no closing pair)
-      .replace(/\*([^*\n]+)\*/g, '$1')     // *italic* → italic (single line)
-      .replace(/^#{1,4}\s*/gm, '')          // ### headers
-      .replace(/`([^`]+)`/g, '$1')          // `code`
-      .replace(/^---+$/gm, '')              // --- rules
-      .replace(/^\|.*\|$/gm, '')            // | table | rows |
-      .replace(/\n{3,}/g, '\n\n')           // collapse triple newlines
-      .trim();
+    const _esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const _inline = s => {
+      let o = _esc(s);
+      o = o.replace(/\*\*(.+?)\*\*/g, '<strong style="color:#F4B400">$1</strong>');
+      o = o.replace(/\*([^*]+?)\*/g, '<em style="color:#aaddff">$1</em>');
+      o = o.replace(/`([^`]+)`/g, '<code style="background:#1e2a4a;color:#80CBC4;padding:1px 4px;border-radius:3px;font-size:10px">$1</code>');
+      return o;
+    };
+    const lines = String(text).split('\n');
+    let html = '';
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      // Checklist items
+      if (/^[-•*]?\s*[✅❌⚠️]/.test(line)) {
+        const rest = line.replace(/^[-•*]?\s*[✅❌⚠️]\s*/, '');
+        const icon = line.includes('✅') ? '✅' : line.includes('❌') ? '❌' : '⚠️';
+        const bc = icon==='✅' ? '#0F9D58' : icon==='❌' ? '#DB4437' : '#F4B400';
+        html += `<div style="display:flex;align-items:flex-start;padding:5px 8px;margin:2px 0;background:rgba(0,0,0,.2);border-left:3px solid ${bc};border-radius:0 4px 4px 0"><span style="margin-right:6px;flex-shrink:0;font-size:12px">${icon}</span><span style="color:#e0e0f0;font-size:11px;line-height:1.5">${_inline(rest)}</span></div>`;
+        continue;
+      }
+      // RECOMMENDATION/ACTION/KEY RISK
+      if (/^(RECOMMENDATION|ACTION|KEY RISK|OPTIMAL|PRIORITY):/i.test(line)) {
+        const ci = line.indexOf(':');
+        const label = line.slice(0,ci);
+        const rest = line.slice(ci+1).trim();
+        const lc = /RISK/i.test(label) ? '#DB4437' : '#0F9D58';
+        html += `<div style="background:rgba(0,0,0,.2);border:1px solid ${lc}30;border-left:3px solid ${lc};border-radius:0 6px 6px 0;padding:6px 10px;margin:6px 0"><span style="color:${lc};font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">${_esc(label)}</span><div style="color:#e0e0f0;font-size:11px;margin-top:2px;line-height:1.5">${_inline(rest)}</div></div>`;
+        continue;
+      }
+      // Headers
+      if (line.startsWith('#### ')) { html += `<p style="color:#9A9AB0;font-size:9px;font-weight:700;margin:8px 0 2px;text-transform:uppercase;letter-spacing:.5px">${_inline(line.slice(5))}</p>`; continue; }
+      if (line.startsWith('### ')) { html += `<div style="color:#F4B400;font-size:11px;font-weight:700;margin:10px 0 4px;padding:2px 0 3px 6px;border-left:2px solid #F4B400">${_inline(line.slice(4))}</div>`; continue; }
+      if (line.startsWith('## ')) { html += `<div style="color:#7BB3FF;font-size:12px;font-weight:800;margin:12px 0 5px;padding:4px 8px;background:rgba(41,121,255,.08);border-left:3px solid #2979FF;border-radius:0 4px 4px 0">${_inline(line.slice(3))}</div>`; continue; }
+      if (line.startsWith('# ')) { html += `<div style="color:#fff;font-size:13px;font-weight:900;margin:14px 0 6px;padding:6px 10px;background:rgba(41,121,255,.12);border-radius:5px;border-left:4px solid #2979FF">${_inline(line.slice(2))}</div>`; continue; }
+      // Bullets
+      if (/^[•\-*→▸]\s/.test(line)) {
+        const txt = line.replace(/^[•\-*→▸]\s+/, '');
+        if (txt) html += `<div style="display:flex;align-items:flex-start;padding:1px 0 1px 6px;margin:1px 0"><span style="color:#2979FF;margin-right:6px;margin-top:1px;flex-shrink:0">▸</span><span style="color:#e0e0f0;font-size:11px;line-height:1.5">${_inline(txt)}</span></div>`;
+        continue;
+      }
+      // Horizontal rule
+      if (/^---+$/.test(line)) { html += '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:8px 0">'; continue; }
+      // ALL-CAPS label
+      if (line === line.toUpperCase() && line.length > 4 && /[A-Z]/.test(line) && !line.startsWith('|')) {
+        html += `<div style="color:#F4B400;font-size:10px;font-weight:800;margin:10px 0 3px;letter-spacing:.6px">${_inline(line)}</div>`;
+        continue;
+      }
+      // Numbered items
+      if (/^\d+[\.\)]\s/.test(line)) {
+        html += `<div style="background:rgba(41,121,255,.05);border-left:2px solid #2979FF;padding:4px 8px;margin:4px 0;border-radius:0 4px 4px 0"><span style="color:#7BB3FF;font-size:11px;font-weight:700">${_inline(line)}</span></div>`;
+        continue;
+      }
+      // Normal paragraph
+      html += `<p style="color:#b8b8d0;font-size:11px;margin:3px 0;line-height:1.55">${_inline(line)}</p>`;
+    }
+    return html;
   };
   const aiText = (key,fallback='') => {
     const t = aiCache[key]||'';
     if(!t) return `<div style="font-size:10px;color:var(--text3);font-style:italic;padding:8px 0">${fallback||'Run weekly pipeline to generate (qwen3:14b, free, local).'}</div>`;
-    return `<div style="font-size:11px;color:var(--text2);line-height:1.65;max-height:280px;overflow-y:auto">${esc(cleanMd(t))}</div>`;
+    return `<div style="font-size:11px;line-height:1.65;max-height:400px;overflow-y:auto">${renderMd(t)}</div>`;
   };
 
   // ══════════════════════════════════════════════════════════
@@ -7797,7 +7844,7 @@ async function renderAIDeep() {
     </div>
     <div style="background:rgba(255,255,255,.02);border-left:3px solid ${rCol};border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:10px">
       <div style="font-size:10px;font-weight:800;color:${rCol};margin-bottom:5px">AI Executive Summary — ${rating}</div>
-      <div style="font-size:11px;color:var(--text2);line-height:1.65">${esc(aiCache.executive_summary||'Run weekly pipeline to generate executive summary.')}</div>
+      <div style="font-size:11px;line-height:1.65">${renderMd(aiCache.executive_summary||'Run weekly pipeline to generate executive summary.')}</div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
       ${kpi('CAGR',attr.portfolio_cagr||'—','Since inception','var(--up)')}
