@@ -450,7 +450,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             portfolio, analysis, tax, rebalancing, risk, docx_path,
             chart_paths=chart_paths, performance=performance, ai_analysis=ai_analysis,
             technical=technical, stress=stress, retirement=retirement,
-            tax_projection=tax_projection, tech_chart_paths=tech_chart_paths
+            tax_projection=tax_projection, tech_chart_paths=tech_chart_paths,
+            perf_history=perf_history
         )
         print(f"  ✅ {docx_path.name}")
     else:
