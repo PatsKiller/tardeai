@@ -4803,7 +4803,7 @@ async function renderDeepTab(tab) {
     case 'watchlist':  el.innerHTML = renderWatchlistDeep(); break;
     case 'rebalance':  el.innerHTML = await renderRebalanceDeep(); break;
     case 'correlation':el.innerHTML = renderCorrelationDeep(); break;
-    case 'ai':         el.innerHTML = await renderAIDeep(); break;
+    case 'ai':         el.innerHTML = `<iframe src="/reports/strategy_center.html" style="width:100%;height:calc(100vh - 60px);border:none;border-radius:8px"></iframe>`; break;
     default: el.innerHTML = `<div class="empty">Unknown tab: ${tab}</div>`;
   }
 }
