@@ -1,1203 +1,828 @@
-// portfolio_report.js — Trade AI v12 Portfolio Intelligence
-// Generates AIWWIII-style CIA/GSE intelligence brief as Word .docx
-// Format mirrors AI WWIII Intel Brief v3.12 — 16 sections
+// portfolio_report.js — Trade AI v12 Personal Portfolio Strategy Report
+// Generates professional wealth-strategy DOCX with embedded charts
+// Output: 12-14 page board-ready document
 
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   AlignmentType, HeadingLevel, BorderStyle, WidthType, ShadingType,
-  VerticalAlign, PageNumber, PageBreak, LevelFormat, Header, Footer,
-  ImageRun
+  VerticalAlign, PageBreak, Header, Footer, ImageRun, PageNumber,
+  Tab, TabStopPosition, TabStopType
 } = require('docx');
 const fs = require('fs');
+const { createCanvas } = require('canvas');
 
-const DATA = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));
-const CHART_PATHS  = DATA.chart_paths  || {};
-const PERFORMANCE  = DATA.performance  || {};
-const AI_ANALYSIS  = DATA.ai_analysis  || {};
+// ═══════════════════════════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════════════════════════
+const DATA        = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const OUTPUT      = process.argv[3];
+const portfolio   = DATA.portfolio     || {};
+const analysis    = DATA.analysis      || {};
+const tax         = DATA.tax           || {};
+const rebalancing = DATA.rebalancing   || {};
+const risk        = DATA.risk          || {};
+const perf        = DATA.performance   || {};
+const perfHistory = DATA.perf_history  || {};
+const aiAnalysis  = DATA.ai_analysis   || {};
+const technical   = DATA.technical     || {};
+const stress      = DATA.stress        || {};
+const retirement  = DATA.retirement    || {};
+const taxProj     = DATA.tax_projection|| {};
 
-// Embed PNG chart as ImageRun if path exists
-function chartImage(key, widthEmu = 6480000, heightEmu = 3600000) {
-  const p = CHART_PATHS[key];
-  if (!p) return null;
-  try {
-    const imgData = require('fs').readFileSync(p);
-    return new ImageRun({ data: imgData, transformation: { width: Math.round(widthEmu/9144), height: Math.round(heightEmu/9144) }, type: 'png' });
-  } catch(e) { return null; }
-}
-function chartPara(key, w=600, h=350) {
-  const img = chartImage(key, w*9144, h*9144);
-  if (!img) return null;
-  return new Paragraph({ children: [img], spacing: { before: 120, after: 120 } });
-}
-const OUTPUT = process.argv[3];
+const totals    = portfolio.portfolio_totals || {};
+const holdings  = portfolio.holdings || [];
+const acctSumm  = portfolio.account_summaries || {};
+const sectors   = portfolio.resolved_sectors || [];
+const periods   = (perfHistory.periods || perf.periods || {});
 
-// ── Colors ────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// COLORS & STYLE CONSTANTS
+// ═══════════════════════════════════════════════════════════════════
 const C = {
-  navy:   "1A237E", darkBlue: "0D1B4F", accent: "2979FF",
-  green:  "1B5E20", lightGreen: "E8F5E9",
-  red:    "B71C1C", lightRed:   "FFEBEE",
-  yellow: "F57F17", lightYellow:"FFFDE7",
-  gray:   "424242", lightGray:  "F5F5F5",
-  white:  "FFFFFF", black:      "000000",
-  gold:   "F9A825",
+  navy: '0D1B4F', darkBlue: '1A237E', accent: '2979FF', slate: '37474F',
+  green: '1B5E20', greenLight: 'E8F5E9', greenMid: '4CAF50',
+  red: 'C62828', redLight: 'FFEBEE',
+  amber: 'F57F17', amberLight: 'FFF8E1',
+  gold: 'C9A94E', goldLight: 'FFF9E5',
+  gray: '616161', grayLight: 'F5F5F5', grayMid: '9E9E9E',
+  white: 'FFFFFF', black: '212121',
+  bg1: 'FAFBFC', bg2: 'F0F2F5',
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function border(color = "CCCCCC", size = 6) {
-  return { style: BorderStyle.SINGLE, size, color };
+// ═══════════════════════════════════════════════════════════════════
+// CHART GENERATION (Canvas → PNG Buffer)
+// ═══════════════════════════════════════════════════════════════════
+function drawDonut(dataArr, w=480, h=320, title='') {
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  const total = dataArr.reduce((s,d) => s + d.value, 0);
+  const cx = h/2, cy = h/2, r = h/2 - 40;
+  const colors = ['#1A237E','#2979FF','#F57F17','#C62828','#4CAF50','#7B1FA2','#00838F','#E65100'];
+
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
+  if (title) { ctx.fillStyle = '#212121'; ctx.font = 'bold 14px Arial'; ctx.fillText(title, 10, 20); }
+
+  let angle = -Math.PI / 2;
+  dataArr.forEach((d, i) => {
+    const slice = (d.value / total) * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, angle, angle + slice);
+    ctx.fillStyle = d.color || colors[i % colors.length]; ctx.fill();
+    angle += slice;
+  });
+  // Center hole
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+  ctx.fillStyle = '#FFFFFF'; ctx.fill();
+  // Center text
+  ctx.fillStyle = '#212121'; ctx.font = 'bold 18px Arial'; ctx.textAlign = 'center';
+  ctx.fillText(fUSD(total), cx, cy + 6);
+
+  // Legend
+  let ly = 40;
+  dataArr.forEach((d, i) => {
+    ctx.fillStyle = d.color || colors[i % colors.length];
+    ctx.fillRect(h + 20, ly, 12, 12);
+    ctx.fillStyle = '#616161'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
+    ctx.fillText(`${d.label}  ${fUSD(d.value)}  (${(d.value/total*100).toFixed(1)}%)`, h + 38, ly + 10);
+    ly += 20;
+  });
+  return canvas.toBuffer('image/png');
 }
-function noB() {
-  const n = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
-  return { top: n, bottom: n, left: n, right: n };
+
+function drawHBar(dataArr, w=520, h=null, title='') {
+  const barH = 28, gap = 6, padTop = title ? 30 : 10, padBot = 10, padLeft = 90, padRight = 80;
+  h = h || (padTop + dataArr.length * (barH + gap) + padBot);
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
+  if (title) { ctx.fillStyle = '#212121'; ctx.font = 'bold 13px Arial'; ctx.fillText(title, 10, 20); }
+  const maxVal = Math.max(...dataArr.map(d => d.value), 1);
+  const barArea = w - padLeft - padRight;
+  const colors = ['#1A237E','#2979FF','#4CAF50','#F57F17','#C62828','#7B1FA2','#00838F','#E65100','#558B2F','#AD1457'];
+
+  dataArr.forEach((d, i) => {
+    const y = padTop + i * (barH + gap);
+    const bw = (d.value / maxVal) * barArea;
+    // Label
+    ctx.fillStyle = '#212121'; ctx.font = '11px Arial'; ctx.textAlign = 'right';
+    ctx.fillText(d.label, padLeft - 8, y + barH/2 + 4);
+    // Bar
+    ctx.fillStyle = d.color || colors[i % colors.length];
+    ctx.beginPath(); ctx.roundRect(padLeft, y, Math.max(bw, 2), barH, 4); ctx.fill();
+    // Value
+    ctx.fillStyle = '#616161'; ctx.font = 'bold 11px Arial'; ctx.textAlign = 'left';
+    ctx.fillText(d.display || fUSD(d.value), padLeft + bw + 6, y + barH/2 + 4);
+  });
+  return canvas.toBuffer('image/png');
 }
-function allBorders(c = "CCCCCC", sz = 6) {
-  const b = border(c, sz);
-  return { top: b, bottom: b, left: b, right: b };
-}
-function shade(fill, type = ShadingType.CLEAR) { return { fill, type }; }
-function cell(children, opts = {}) {
-  // Handle legacy call pattern: cell("text", isHeader, width)
-  if (typeof opts === 'boolean') {
-    const isHdr = opts;
-    const w = arguments[2];
-    opts = { fill: isHdr ? C.navy : undefined, width: w };
-    if (isHdr && typeof children === 'string') {
-      children = p(children, { bold: true, size: 9, color: C.white });
-    } else if (typeof children === 'string') {
-      children = p(children, { size: 9 });
+
+function drawColumnChart(dataArr, w=520, h=260, title='') {
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
+  if (title) { ctx.fillStyle = '#212121'; ctx.font = 'bold 13px Arial'; ctx.fillText(title, 10, 20); }
+  const padTop = title ? 40 : 20, padBot = 40, padLeft = 50, padRight = 20;
+  const maxVal = Math.max(...dataArr.map(d => Math.abs(d.value)), 1);
+  const chartH = h - padTop - padBot;
+  const chartW = w - padLeft - padRight;
+  const colW = chartW / dataArr.length * 0.65;
+  const colGap = chartW / dataArr.length;
+  const baseline = padTop + chartH;
+
+  // Zero line
+  ctx.strokeStyle = '#E0E0E0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padLeft, baseline); ctx.lineTo(w - padRight, baseline); ctx.stroke();
+
+  dataArr.forEach((d, i) => {
+    const x = padLeft + i * colGap + (colGap - colW) / 2;
+    const barH = (d.value / maxVal) * chartH * 0.85;
+    const color = d.value >= 0 ? '#4CAF50' : '#C62828';
+    ctx.fillStyle = color;
+    if (d.value >= 0) {
+      ctx.beginPath(); ctx.roundRect(x, baseline - barH, colW, barH, [4, 4, 0, 0]); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.roundRect(x, baseline, colW, Math.abs(barH), [0, 0, 4, 4]); ctx.fill();
     }
+    // Label
+    ctx.fillStyle = '#616161'; ctx.font = '10px Arial'; ctx.textAlign = 'center';
+    ctx.fillText(d.label, x + colW/2, baseline + 16);
+    // Value
+    ctx.fillStyle = color; ctx.font = 'bold 10px Arial';
+    const vy = d.value >= 0 ? baseline - barH - 6 : baseline + Math.abs(barH) + 14;
+    ctx.fillText(d.display || `${d.value >= 0 ? '+' : ''}${d.value.toFixed(1)}%`, x + colW/2, vy);
+  });
+  return canvas.toBuffer('image/png');
+}
+
+function drawTimeline(events, w=520, h=100) {
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
+  const padX = 40, lineY = 40;
+  const lineW = w - padX * 2;
+
+  // Line
+  ctx.strokeStyle = '#E0E0E0'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(padX, lineY); ctx.lineTo(w - padX, lineY); ctx.stroke();
+
+  events.forEach((e, i) => {
+    const x = padX + (i / (events.length - 1)) * lineW;
+    // Dot
+    ctx.beginPath(); ctx.arc(x, lineY, 6, 0, Math.PI * 2);
+    ctx.fillStyle = e.done ? '#4CAF50' : e.active ? '#2979FF' : '#9E9E9E'; ctx.fill();
+    ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 2; ctx.stroke();
+    // Label
+    ctx.fillStyle = '#212121'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
+    ctx.fillText(e.label, x, lineY + 20);
+    ctx.fillStyle = '#9E9E9E'; ctx.font = '9px Arial';
+    ctx.fillText(e.date || '', x, lineY + 32);
+    if (e.detail) { ctx.fillStyle = '#2979FF'; ctx.fillText(e.detail, x, lineY + 44); }
+  });
+  return canvas.toBuffer('image/png');
+}
+
+function drawProgressBar(current, target, w=480, h=60, label='') {
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
+  const pct = Math.min(current / target, 1);
+  const barY = 25, barH = 20, padX = 10;
+  // Label
+  ctx.fillStyle = '#212121'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
+  ctx.fillText(`${label}  ${fUSD(current)} / ${fUSD(target)}  (${(pct*100).toFixed(0)}%)`, padX, 16);
+  // Background
+  ctx.fillStyle = '#E8EAF6';
+  ctx.beginPath(); ctx.roundRect(padX, barY, w - padX*2, barH, 6); ctx.fill();
+  // Fill
+  ctx.fillStyle = pct >= 0.9 ? '#4CAF50' : pct >= 0.5 ? '#2979FF' : '#F57F17';
+  ctx.beginPath(); ctx.roundRect(padX, barY, (w - padX*2) * pct, barH, 6); ctx.fill();
+  // Gap text
+  ctx.fillStyle = '#C62828'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'right';
+  ctx.fillText(`Gap: ${fUSD(target - current)}`, w - padX, h - 4);
+  return canvas.toBuffer('image/png');
+}
+
+function drawGauge(value, max, threshold, w=240, h=160, label='') {
+  const canvas = createCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, h);
+  const cx = w/2, cy = h - 30, r = Math.min(w/2, h) - 40;
+  const pct = Math.min(value / max, 1);
+  const color = threshold && value > threshold ? '#C62828' : value > max * 0.7 ? '#F57F17' : '#4CAF50';
+
+  // Background arc
+  ctx.strokeStyle = '#E8EAF6'; ctx.lineWidth = 14; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.stroke();
+  // Value arc
+  ctx.strokeStyle = color;
+  ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, Math.PI + pct * Math.PI); ctx.stroke();
+  // Threshold tick
+  if (threshold) {
+    const thAngle = Math.PI + (threshold / max) * Math.PI;
+    ctx.strokeStyle = '#F57F17'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + (r-12) * Math.cos(thAngle), cy + (r-12) * Math.sin(thAngle));
+    ctx.lineTo(cx + (r+12) * Math.cos(thAngle), cy + (r+12) * Math.sin(thAngle));
+    ctx.stroke();
   }
-  return new TableCell({
-    width: opts.width ? { size: opts.width, type: WidthType.DXA } : undefined,
-    shading: opts.fill ? shade(opts.fill) : undefined,
-    borders: opts.borders || allBorders(),
-    margins: { top: 80, bottom: 80, left: 120, right: 120 },
-    verticalAlign: VerticalAlign.CENTER,
-    children: Array.isArray(children) ? children : [children],
-  });
+  // Value text
+  ctx.fillStyle = color; ctx.font = 'bold 22px Arial'; ctx.textAlign = 'center';
+  ctx.fillText(`${value.toFixed(1)}%`, cx, cy - 4);
+  if (label) { ctx.fillStyle = '#616161'; ctx.font = '10px Arial'; ctx.fillText(label, cx, cy + 14); }
+  return canvas.toBuffer('image/png');
 }
-function row(cells) { return new TableRow({ children: cells }); }
-function p(text, opts = {}) {
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+const fUSD = (v,d=0) => v == null ? '—' : '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fPct = (v,d=1) => v == null ? '—' : `${v >= 0 ? '+' : ''}${Number(v).toFixed(d)}%`;
+
+function shade(fill) { return { fill, type: ShadingType.CLEAR }; }
+function border(color='CCCCCC', size=4) { return { style: BorderStyle.SINGLE, size, color }; }
+function noBorder() { const n = {style:BorderStyle.NONE,size:0,color:'FFFFFF'}; return {top:n,bottom:n,left:n,right:n}; }
+function allBorders(c='E0E0E0',s=4) { const b = border(c,s); return {top:b,bottom:b,left:b,right:b}; }
+
+function run(text, opts={}) {
+  return new TextRun({ text: String(text||''), bold:opts.bold, italics:opts.italic,
+    color:opts.color||C.black, size:(opts.size||10)*2, font:opts.font||'Segoe UI',
+    underline:opts.underline?{}:undefined });
+}
+
+function p(text, opts={}) {
   return new Paragraph({
     alignment: opts.align || AlignmentType.LEFT,
-    spacing: { before: opts.before || 0, after: opts.after || 60 },
-    border: opts.border,
-    children: [new TextRun({
-      text: String(text),
-      bold: opts.bold || false,
-      italics: opts.italic || false,
-      color: opts.color || C.black,
-      size: (opts.size || 11) * 2,
-      font: "Arial",
-      underline: opts.underline ? {} : undefined,
-    })]
+    spacing: { before: opts.before||0, after: opts.after||80 },
+    indent: opts.indent ? { left: opts.indent } : undefined,
+    children: [run(text, opts)],
   });
 }
-function p2(runs, opts = {}) {
+
+function heading(text, level, opts={}) {
   return new Paragraph({
-    alignment: opts.align || AlignmentType.LEFT,
-    spacing: { before: opts.before || 0, after: opts.after || 60 },
-    border: opts.border,
-    children: runs,
+    heading: level, spacing: { before: opts.before||200, after: opts.after||80 },
+    children: [run(text, { bold:true, size: level===HeadingLevel.HEADING_1?16:level===HeadingLevel.HEADING_2?13:11,
+      color: opts.color||C.darkBlue, ...opts })],
   });
 }
-function run(text, opts = {}) {
-  return new TextRun({
-    text: String(text), bold: opts.bold, italics: opts.italic,
-    color: opts.color || C.black, size: (opts.size || 11) * 2, font: "Arial",
-    underline: opts.underline ? {} : undefined,
-  });
-}
-function hRule(color = C.accent) {
+
+function pageBreak() { return new Paragraph({ children: [new TextRun({ children: [new PageBreak()] })] }); }
+
+function imgPara(buffer, w=580, h=300) {
   return new Paragraph({
-    border: { bottom: { style: BorderStyle.SINGLE, size: 12, color, space: 1 } },
     spacing: { before: 120, after: 120 },
-    children: [],
+    alignment: AlignmentType.CENTER,
+    children: [new ImageRun({ data: buffer, transformation: { width: w, height: h }, type: 'png' })],
   });
 }
 
-function heading1(text) {
-  return new Paragraph({
-    text: String(text),
-    heading: HeadingLevel.HEADING_1,
-    spacing: { before: 240, after: 100 },
-  });
+function calloutBox(text, borderColor=C.accent, bgColor=C.bg2) {
+  return new Table({ width:{size:9360,type:WidthType.DXA}, columnWidths:[9360], rows:[
+    new TableRow({ children:[new TableCell({
+      borders: { left:border(borderColor,16), top:border('E0E0E0',2), bottom:border('E0E0E0',2), right:border('E0E0E0',2) },
+      shading: shade(bgColor),
+      margins: { top:100, bottom:100, left:200, right:200 },
+      children: [p(text, { size:10, color:C.slate, italic:true })],
+    })] })
+  ]});
 }
 
-function heading2(text) {
-  return new Paragraph({
-    text: String(text),
-    heading: HeadingLevel.HEADING_2,
-    spacing: { before: 200, after: 80 },
-  });
+function dataQualityFlag(text) { return calloutBox('Data Integrity: ' + text, C.amber, C.amberLight); }
+
+function statusBadge(status) {
+  const colors = {done:C.green, pending:C.amber, blocked:C.red, info:C.accent};
+  const labels = {done:'COMPLETE', pending:'PENDING', blocked:'ACTION NEEDED', info:'MONITOR'};
+  return run(` [${labels[status]||status.toUpperCase()}] `, { bold:true, size:8, color:colors[status]||C.gray });
 }
 
-function heading3(text) {
-  return new Paragraph({
-    text: String(text),
-    heading: HeadingLevel.HEADING_3,
-    spacing: { before: 160, after: 60 },
-  });
-}
-
-function sectionHeader(num, title) {
-  return [
-    hRule(C.darkBlue),
-    new Paragraph({
-      spacing: { before: 200, after: 80 },
+function kpiRow(pairs) {
+  // pairs = [[label, value, color], ...]
+  const colW = Math.floor(9360 / pairs.length);
+  return new Table({ width:{size:9360,type:WidthType.DXA}, columnWidths: pairs.map(() => colW), rows:[
+    new TableRow({ children: pairs.map(([label, value, color]) => new TableCell({
+      borders: allBorders('E8EAF6',2),
+      shading: shade(C.bg1),
+      margins: { top:80, bottom:80, left:120, right:120 },
+      verticalAlign: VerticalAlign.CENTER,
+      width: { size:colW, type:WidthType.DXA },
       children: [
-        run(`${num}. `, { bold: true, color: C.accent, size: 13 }),
-        run(title, { bold: true, color: C.darkBlue, size: 13 }),
+        p(label, { size:8, color:C.grayMid, bold:false, after:20 }),
+        p(value, { size:14, bold:true, color: color||C.darkBlue, before:0 }),
       ],
-    }),
-  ];
+    })) })
+  ]});
 }
-function fmtUSD(v) {
-  if (v == null) return "—";
-  const abs = Math.abs(v);
-  const sign = v < 0 ? "-" : "";
-  return sign + "$" + abs.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function fmtPct(v) {
-  if (v == null) return "—";
-  return (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
-}
-function gainColor(v) { return v > 0 ? C.green : (v < 0 ? C.red : C.gray); }
 
-// ── Data extraction ───────────────────────────────────────────────────────────
-const portfolio  = DATA.portfolio  || {};
-const analysis   = DATA.analysis   || {};
-const tax        = DATA.tax        || {};
-const rebal      = DATA.rebalancing || {};
-const risk       = DATA.risk       || {};
-const totals     = portfolio.portfolio_totals || {};
-const accounts   = portfolio.account_summaries || {};
-const holdings   = portfolio.holdings || [];
-const flags      = analysis.critical_flags || [];
-const divs       = analysis.dividends || {};
-const vitals     = analysis.vitals || {};
-const sectorPct  = analysis.sector_pct || {};
-const attribution = analysis.attribution || {};
-const riskMetrics = risk.risk_metrics || {};
-const benchmarks  = (risk.benchmark_comparison || {}).benchmarks || [];
-const taCorr      = risk.trade_ai_correlation || {};
-const harvestCand = tax.harvest_candidates || [];
-const driftData   = rebal.drift_analysis || {};
-const rebalOrders = rebal.rebalance_orders || [];
+function styledTable(headers, rows, opts={}) {
+  const colW = Math.floor(9360 / headers.length);
+  const hdrRow = new TableRow({ tableHeader:true, children: headers.map(h => new TableCell({
+    borders: allBorders(C.darkBlue, 2),
+    shading: shade(C.darkBlue),
+    margins: { top:60, bottom:60, left:100, right:100 },
+    width: { size:colW, type:WidthType.DXA },
+    children: [p(h, { bold:true, size:9, color:C.white, after:0 })],
+  })) });
+  const dataRows = rows.map((cells, ri) => new TableRow({ children: cells.map((cell, ci) => new TableCell({
+    borders: allBorders('E0E0E0', 2),
+    shading: shade(ri % 2 === 0 ? C.white : C.bg1),
+    margins: { top:50, bottom:50, left:100, right:100 },
+    width: { size:colW, type:WidthType.DXA },
+    children: [p(String(cell||''), { size:9, color: opts.colorFn ? opts.colorFn(cell,ci,ri) : C.black, after:0 })],
+  })) }));
+  return new Table({ width:{size:9360,type:WidthType.DXA}, columnWidths:headers.map(()=>colW), rows:[hdrRow,...dataRows] });
+}
 
-const asOf = portfolio.as_of || new Date().toISOString().slice(0, 10);
-const owner = portfolio.owner || "";
-const totalMV = totals.total_value || 0;
+// ═══════════════════════════════════════════════════════════════════
+// MARKDOWN → DOCX RENDERER (for AI sections)
+// ═══════════════════════════════════════════════════════════════════
+function renderMarkdown(text, dest) {
+  if (!text) return;
+  const lines = String(text).split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const clean = line.replace(/\*\*/g, '');
+    // Checklist
+    if (/^[-•*]?\s*[✅❌⚠️]/.test(line)) {
+      const rest = clean.replace(/^[-•*]?\s*[✅❌⚠️]\s*/, '');
+      const icon = line.includes('✅') ? '✓' : line.includes('❌') ? '✗' : '!';
+      const col = icon==='✓' ? C.green : icon==='✗' ? C.red : C.amber;
+      dest.push(new Paragraph({
+        spacing: { before:40, after:40 }, indent: { left:240 },
+        border: { left: { style:BorderStyle.SINGLE, size:12, color:col, space:8 } },
+        children: [run(`${icon} `, {bold:true, size:10, color:col}), run(rest, {size:10})],
+      }));
+      continue;
+    }
+    // RECOMMENDATION/ACTION
+    if (/^(RECOMMENDATION|ACTION|KEY RISK|OPTIMAL|PRIORITY):/i.test(clean)) {
+      const ci = clean.indexOf(':');
+      const lbl = clean.slice(0,ci), rest = clean.slice(ci+1).trim();
+      const col = /RISK/i.test(lbl) ? C.red : C.green;
+      dest.push(new Paragraph({
+        spacing: { before:60, after:60 }, indent: { left:120 },
+        border: { left: { style:BorderStyle.SINGLE, size:16, color:col, space:8 } },
+        children: [run(`${lbl}: `, {bold:true, size:10, color:col}), run(rest, {size:10})],
+      }));
+      continue;
+    }
+    // Headers
+    if (clean.startsWith('# ')) { dest.push(heading(clean.slice(2), HeadingLevel.HEADING_2, {before:160})); continue; }
+    if (clean.startsWith('## ')) { dest.push(heading(clean.slice(3), HeadingLevel.HEADING_3, {before:120})); continue; }
+    if (clean.startsWith('### ')) { dest.push(p(clean.slice(4), {bold:true, size:11, color:C.darkBlue, before:100})); continue; }
+    // Bullet
+    if (/^[•\-*→▸]\s/.test(clean)) {
+      dest.push(new Paragraph({
+        spacing: { before:30, after:30 }, indent: { left:240 },
+        children: [run('• ', {bold:true, size:10}), run(clean.replace(/^[•\-*→▸]\s+/,''), {size:10})],
+      }));
+      continue;
+    }
+    // Numbered
+    if (/^\d+[\.\)]\s/.test(clean)) {
+      const num = clean.match(/^(\d+)/)[1];
+      dest.push(new Paragraph({
+        spacing: { before:30, after:30 }, indent: { left:240 },
+        children: [run(`${num}. `, {bold:true, size:10, color:C.darkBlue}), run(clean.replace(/^\d+[\.\)]\s+/,''), {size:10})],
+      }));
+      continue;
+    }
+    // ALL CAPS
+    if (clean === clean.toUpperCase() && clean.length > 4 && /[A-Z]/.test(clean)) {
+      dest.push(p(clean, {bold:true, size:10, color:C.amber, before:100}));
+      continue;
+    }
+    // Normal
+    dest.push(p(clean, { size:10, color:C.slate }));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DERIVED DATA
+// ═══════════════════════════════════════════════════════════════════
+const totalVal = totals.total_value || 0;
 const totalGain = totals.total_gain || 0;
 const totalGainPct = totals.total_gain_pct || 0;
-const flagCount = analysis.flag_count || {};
+const dayChange = totals.day_change || 0;
+const accts = [
+  { key:'fidelity_401k', label:'Fidelity 401k', type:'401(k)', val: acctSumm.fidelity_401k?.total_value||0, gain: acctSumm.fidelity_401k?.total_gain||0 },
+  { key:'schwab_rollover_ira', label:'Schwab Rollover IRA', type:'Rollover IRA', val: acctSumm.schwab_rollover_ira?.total_value||0, gain: acctSumm.schwab_rollover_ira?.total_gain||0 },
+  { key:'schwab_roth', label:'Schwab Roth IRA', type:'Roth IRA', val: acctSumm.schwab_roth?.total_value||0, gain: acctSumm.schwab_roth?.total_gain||0 },
+  { key:'schwab_taxable', label:'Schwab Taxable', type:'Taxable', val: acctSumm.schwab_taxable?.total_value||0, gain: acctSumm.schwab_taxable?.total_gain||0 },
+];
+const rothBal = accts[2].val;
+const tradBal = accts[0].val + accts[1].val;
+const kd = retirement.key_dates || {};
+const gw = retirement.golden_window || {};
+const ytdPct = periods.YTD?.change_pct;
+const y1Pct = periods['1Y']?.change_pct;
 
-// Status
-const status = (flagCount.CRITICAL || 0) > 0 ? "⚠ CRITICAL FLAGS" :
-               (flagCount.HIGH || 0) > 0 ? "ACTION REQUIRED" : "MONITORING";
+// Holdings aggregated by symbol
+const bySym = {};
+holdings.forEach(h => { const s = h.symbol||''; bySym[s] = (bySym[s]||0) + (h.market_value||0); });
+const topHoldings = Object.entries(bySym).sort((a,b) => b[1]-a[1]).slice(0, 12);
+const vPct = (bySym['V']||0) / totalVal * 100;
 
-// ── Document Construction ─────────────────────────────────────────────────────
+// Dividend totals from analysis
+const divByHolding = analysis.dividends?.by_holding || [];
+const divTotal = divByHolding.reduce((s,d) => s + (d.annual_income||0), 0) || analysis.dividends?.total_annual_income || 0;
+
+// ═══════════════════════════════════════════════════════════════════
+// BUILD DOCUMENT SECTIONS
+// ═══════════════════════════════════════════════════════════════════
 const children = [];
 
-// COVER BLOCK
-children.push(new Paragraph({
-  alignment: AlignmentType.CENTER,
-  spacing: { before: 0, after: 80 },
-  shading: shade(C.darkBlue),
-  border: { bottom: border(C.accent, 24) },
-  children: [
-    run("PERSONAL PORTFOLIO INTELLIGENCE BRIEF", { bold: true, color: C.white, size: 16 }),
-  ],
-}));
-children.push(new Paragraph({
-  alignment: AlignmentType.CENTER,
-  spacing: { before: 0, after: 160 },
-  shading: shade(C.darkBlue),
-  children: [
-    run(`v1.0  |  ${asOf}  |  ${status}  |  ${fmtUSD(totalMV)}`, { color: C.gold, size: 11 }),
-  ],
-}));
-
-// SECTION 1 — EXECUTIVE SUMMARY
-children.push(...sectionHeader(1, "EXECUTIVE SUMMARY"));
-const execRows = [
-  ["Total Portfolio Value", fmtUSD(totalMV), ""],
-  ["All-Time Gain/Loss", fmtUSD(totalGain), fmtPct(totalGainPct)],
-  ["Annual Dividend Income (Est.)", fmtUSD(divs.total_annual_income), `${fmtUSD(divs.total_monthly_income)}/mo`],
-  ["Weighted Portfolio Beta", riskMetrics.weighted_beta || "—", riskMetrics.risk_assessment || ""],
-  ["Critical Flags", flagCount.CRITICAL || 0, `${flagCount.HIGH || 0} HIGH · ${flagCount.WARNING || 0} WARN`],
-  ["Tax Loss Harvest Opportunities", harvestCand.length, `Potential savings: ${fmtUSD((tax.summary || {}).harvest_potential_savings)}`],
-  ["Rebalancing Orders", rebalOrders.length, `${fmtUSD(rebal.total_to_rebalance)} to move`],
-];
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [3200, 2480, 3680],
-  rows: execRows.map(([label, val, note]) => row([
-    cell(p(label, { bold: true, size: 10 }), { fill: C.lightGray, width: 3200 }),
-    cell(p(val, { bold: true, size: 10, color: gainColor(parseFloat(String(val).replace(/[$,%+]/g, "")) || 0) }), { width: 2480 }),
-    cell(p(note, { size: 10, color: C.gray }), { width: 3680 }),
-  ])),
-}));
-
-// SECTION 2 — SIGINT LAYER (Account Breakdown)
-children.push(...sectionHeader(2, "SIGINT LAYER — ACCOUNT STRUCTURE"));
-const acctRows = Object.entries(accounts).map(([k, s]) =>
-  row([
-    cell(p(s.display_name || k, { bold: true, size: 10 }), { width: 3200 }),
-    cell(p(s.account_type || "", { size: 10 }), { width: 1500 }),
-    cell(p(fmtUSD(s.total_value), { bold: true, size: 10 }), { width: 1800 }),
-    cell(p(fmtUSD(s.total_gain), { size: 10, color: gainColor(s.total_gain || 0) }), { width: 1700 }),
-    cell(p(fmtPct(s.total_gain_pct), { size: 10, color: gainColor(s.total_gain_pct || 0) }), { width: 1160 }),
-  ])
+// ── PAGE 1: COVER ─────────────────────────────────────────────────
+children.push(
+  new Paragraph({ spacing: { before: 3000 } }),
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 },
+    children: [run('Personal Portfolio Strategy Report', { bold:true, size:28, color:C.darkBlue, font:'Segoe UI Light' })] }),
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 400 },
+    children: [run('Portfolio Structure, Risk, Retirement Tax Planning, and Income Strategy', { size:12, color:C.gray, italic:true })] }),
+  new Paragraph({ alignment: AlignmentType.CENTER, children: [
+    run(`Portfolio Value: ${fUSD(totalVal)}`, { size:18, bold:true, color:C.darkBlue }),
+  ]}),
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 200 }, children: [
+    run(`Report Date: ${new Date().toISOString().slice(0,10)}`, { size:10, color:C.grayMid }),
+  ]}),
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 600 }, children: [
+    run('CONFIDENTIAL — PREPARED FOR JOHN W. WHITING', { size:9, color:C.grayMid, bold:true }),
+  ]}),
+  pageBreak(),
 );
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [3200, 1500, 1800, 1700, 1160],
-  rows: [
-    row([
-      cell(p("Account", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 3200 }),
-      cell(p("Type", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 1500 }),
-      cell(p("Value", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 1800 }),
-      cell(p("Gain/Loss $", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 1700 }),
-      cell(p("Gain %", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 1160 }),
-    ]),
-    ...acctRows,
-  ],
-}));
 
-// SECTION 3 — CRITICAL FLAGS (Rules Engine)
-children.push(...sectionHeader(3, "RULES ENGINE — CRITICAL FLAGS"));
-if (flags.length === 0) {
-  children.push(p("✅ No critical flags at this time.", { color: C.green }));
-} else {
-  flags.slice(0, 12).forEach(f => {
-    const sevColor = f.severity === "CRITICAL" ? C.red : f.severity === "HIGH" ? "E65100" :
-                     f.severity === "WARNING" ? C.yellow : C.green;
-    const sevFill  = f.severity === "CRITICAL" ? "FFEBEE" : f.severity === "HIGH" ? "FFF3E0" :
-                     f.severity === "WARNING" ? "FFFDE7" : C.lightGreen;
-    children.push(new Table({
-      width: { size: 9360, type: WidthType.DXA },
-      columnWidths: [800, 8560],
-      rows: [row([
-        cell(p(f.severity || "", { bold: true, size: 9, color: C.white, align: AlignmentType.CENTER }),
-             { fill: sevColor, width: 800 }),
-        cell([
-          p2([run(`${f.symbol ? "[" + f.symbol + "] " : ""}`, { bold: true, size: 10 }),
-              run(f.message || "", { size: 10 })]),
-          p(f.action || "", { size: 9, italic: true, color: C.gray }),
-        ], { fill: sevFill, width: 8560 }),
-      ])],
-    }));
-    children.push(p("", { after: 40 }));
-  });
-}
-
-// SECTION 4 — PERFORMANCE P&L
-children.push(...sectionHeader(4, "PERFORMANCE — ALL-TIME P&L"));
-const contributors = attribution.top_contributors || [];
-const detractors = attribution.top_detractors || [];
-if (contributors.length > 0 || detractors.length > 0) {
-  const pRows = [
-    row([
-      cell(p("CONTRIBUTORS", { bold: true, size: 10, color: C.white }), { fill: C.green, width: 4680 }),
-      cell(p("DETRACTORS", { bold: true, size: 10, color: C.white }), { fill: C.red, width: 4680 }),
-    ]),
-    ...Array.from({ length: Math.max(contributors.length, detractors.length) }, (_, i) => {
-      const c = contributors[i] || {};
-      const d = detractors[i] || {};
-      return row([
-        cell(p2([
-          run(c.symbol ? `${c.symbol}  ` : "", { bold: true, size: 10 }),
-          run(c.gain ? fmtUSD(c.gain) : "", { size: 10, color: C.green }),
-          run(c.gain_pct ? `  ${fmtPct(c.gain_pct)}` : "", { size: 10, color: C.green }),
-        ]), { width: 4680 }),
-        cell(p2([
-          run(d.symbol ? `${d.symbol}  ` : "", { bold: true, size: 10 }),
-          run(d.loss ? fmtUSD(d.loss) : "", { size: 10, color: C.red }),
-          run(d.loss_pct ? `  ${fmtPct(d.loss_pct)}` : "", { size: 10, color: C.red }),
-        ]), { width: 4680 }),
-      ]);
-    }),
-  ];
-  children.push(new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [4680, 4680], rows: pRows }));
-}
-
-// SECTION 5 — BENCHMARK GRID
-children.push(...sectionHeader(5, "BENCHMARK COMPARISON GRID — vs Your Portfolio"));
-// Pull your portfolio period returns for comparison
-const _b5ph = DATA.perf_history || {};
-const _b5pds = _b5ph.periods || {};
-const _portYTD = (_b5pds.YTD || {}).change_pct;
-const _port1Y  = (_b5pds["1Y"] || {}).change_pct;
-const _port1M  = (_b5pds["1M"] || {}).change_pct;
-
-// Header row with YOUR PORTFOLIO column highlighted
-const bRows = [
-  row([
-    cell(p("Benchmark", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 2400 }),
-    cell(p("YTD %", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 1560 }),
-    cell(p("Your YTD", { bold: true, size: 10, color: C.white }), { fill: "1B5E20", width: 1400 }),
-    cell(p("Delta", { bold: true, size: 10, color: C.white }), { fill: "1A237E", width: 1000 }),
-    cell(p("1-Year %", { bold: true, size: 10, color: C.white }), { fill: C.navy, width: 1500 }),
-    cell(p("Your 1Y", { bold: true, size: 10, color: C.white }), { fill: "1B5E20", width: 1500 }),
+// ── PAGE 2: EXECUTIVE SUMMARY ─────────────────────────────────────
+children.push(
+  heading('Executive Summary', HeadingLevel.HEADING_1),
+  kpiRow([
+    ['Total Portfolio', fUSD(totalVal), C.darkBlue],
+    ['All-Time Gain', `${fUSD(totalGain)} (${fPct(totalGainPct)})`, C.green],
+    ['Roth IRA', fUSD(rothBal), C.accent],
   ]),
-  ...benchmarks.map(b => {
-    const bYTD = b.ytd_pct;
-    const b1Y  = b["1yr_pct"];
-    const deltaYTD = (_portYTD != null && bYTD != null) ? _portYTD - bYTD : null;
-    const delta1Y  = (_port1Y  != null && b1Y  != null) ? _port1Y  - b1Y  : null;
-    return row([
-      cell(p2([run(b.ticker + " ", { bold: true, size: 10 }), run(b.name || "", { size: 10, color: C.gray })]), { width: 2400 }),
-      cell(p(fmtPct(bYTD), { size: 10, color: gainColor(bYTD) }), { width: 1560 }),
-      cell(p(_portYTD != null ? fmtPct(_portYTD) : "—", { size: 10, bold: true, color: gainColor(_portYTD || 0) }), { fill: "F1F8E9", width: 1400 }),
-      cell(p(deltaYTD != null ? fmtPct(deltaYTD) : "—", { size: 10, bold: true, color: gainColor(deltaYTD || 0) }), { fill: deltaYTD > 0 ? "E8F5E9" : "FFEBEE", width: 1000 }),
-      cell(p(fmtPct(b1Y), { size: 10, color: gainColor(b1Y) }), { width: 1500 }),
-      cell(p(_port1Y != null ? fmtPct(_port1Y) : "—", { size: 10, bold: true, color: gainColor(_port1Y || 0) }), { fill: "F1F8E9", width: 1500 }),
-    ]);
+  new Paragraph({ spacing: { before: 80 } }),
+  kpiRow([
+    ['Traditional / Pre-Tax', fUSD(tradBal)],
+    ['Annual Dividends', fUSD(divTotal), divTotal < 28000 ? C.amber : C.green],
+    ['YTD Return', fPct(ytdPct), ytdPct >= 0 ? C.green : C.red],
+  ]),
+  new Paragraph({ spacing: { before: 80 } }),
+  kpiRow([
+    ['Current Age', `${(retirement.current_age||58.7).toFixed(1)}`, C.darkBlue],
+    ['Golden Window', `${(kd.years_to_golden||9.8).toFixed(1)} years`, C.accent],
+    ['1Y Return', fPct(y1Pct), y1Pct >= 0 ? C.green : C.red],
+  ]),
+  new Paragraph({ spacing: { before: 120 } }),
+  calloutBox('Primary objective: reduce concentration risk, improve income resilience, and reposition retirement assets for tax-efficient conversion over the Golden Window.'),
+);
+
+// AI Executive Summary
+if (aiAnalysis.executive_summary) {
+  children.push(heading('Strategist Assessment', HeadingLevel.HEADING_2, { before:160 }));
+  renderMarkdown(aiAnalysis.executive_summary, children);
+}
+children.push(pageBreak());
+
+// ── PAGE 3: PORTFOLIO STRUCTURE ───────────────────────────────────
+children.push(heading('Portfolio Structure by Account', HeadingLevel.HEADING_1));
+const acctDonut = drawDonut(
+  accts.map((a,i) => ({ label:a.label, value:a.val, color:['#1A237E','#2979FF','#4CAF50','#F57F17'][i] })),
+  500, 280, 'Account Allocation'
+);
+children.push(imgPara(acctDonut, 480, 260));
+children.push(styledTable(
+  ['Account', 'Type', 'Value', 'Gain/Loss'],
+  accts.map(a => [a.label, a.type, fUSD(a.val), a.gain ? `${fUSD(a.gain)} (${a.val > 0 ? fPct(a.gain/a.val*100) : '—'})` : '—']),
+));
+children.push(calloutBox('Over 90% of assets are in tax-advantaged retirement accounts, making tax-location strategy central to long-term planning.'));
+children.push(pageBreak());
+
+// ── PAGE 4: TOP HOLDINGS & CONCENTRATION ──────────────────────────
+children.push(heading('Top Holdings and Concentration Risk', HeadingLevel.HEADING_1));
+const holdBars = drawHBar(
+  topHoldings.map(([sym, mv]) => ({ label:sym, value:mv })),
+  520, null, 'Top Holdings by Market Value'
+);
+children.push(imgPara(holdBars, 500, Math.min(topHoldings.length * 34 + 40, 450)));
+
+if (vPct > 13) {
+  children.push(dataQualityFlag(`V concentration at ${vPct.toFixed(1)}% exceeds 13% threshold. Source contains conflicting guidance: "trim to 12-13%" vs "trim 30%". Verify target before execution.`));
+}
+
+// Sector exposure
+if (sectors.length > 0) {
+  children.push(heading('Sector Exposure (ETF Look-Through)', HeadingLevel.HEADING_2));
+  const secDonut = drawDonut(
+    sectors.slice(0,8).map((s,i) => ({label:s.sector, value:s.value, color:['#1A237E','#2979FF','#F57F17','#C62828','#4CAF50','#7B1FA2','#00838F','#558B2F'][i]})),
+    500, 280, ''
+  );
+  children.push(imgPara(secDonut, 480, 260));
+}
+children.push(pageBreak());
+
+// ── PAGE 5: PERFORMANCE REVIEW ────────────────────────────────────
+children.push(heading('Performance Review', HeadingLevel.HEADING_1));
+const perfLabels = ['1W','1M','3M','6M','YTD','1Y'];
+const perfData = perfLabels.map(lbl => ({
+  label: lbl,
+  value: periods[lbl]?.change_pct || 0,
+  display: fPct(periods[lbl]?.change_pct),
+}));
+const perfChart = drawColumnChart(perfData, 520, 240, 'Period Returns (%)');
+children.push(imgPara(perfChart, 500, 230));
+children.push(styledTable(
+  ['Period', 'Return %', 'Return $', 'Source'],
+  perfLabels.map(lbl => {
+    const pd = periods[lbl] || {};
+    return [lbl, fPct(pd.change_pct), fUSD(pd.change), pd.source || '—'];
   }),
+  { colorFn: (v, ci) => ci === 1 && v && v.startsWith('+') ? C.green : ci === 1 && v && v.startsWith('-') ? C.red : C.black }
+));
+children.push(pageBreak());
+
+// ── PAGE 6: RETIREMENT TAX POSITION ──────────────────────────────
+children.push(heading('Retirement Tax Position', HeadingLevel.HEADING_1));
+const retDonut = drawDonut([
+  {label:'Traditional IRA / 401k', value:tradBal, color:'#F57F17'},
+  {label:'Roth IRA', value:rothBal, color:'#2979FF'},
+], 480, 260, 'Tax Bucket Split');
+children.push(imgPara(retDonut, 460, 250));
+
+children.push(calloutBox('Target: Reduce traditional IRA / 401k balance to $0 by age 73 through systematic Roth conversions.'));
+
+const timeline = drawTimeline([
+  {label:'Now', date:'Age 58.7', detail:'$35K done', done:true},
+  {label:'Rollover', date:'2027', detail:'$533K 401k'},
+  {label:'FRA', date:'2034', detail:'SS at 67'},
+  {label:'Golden Start', date:'Feb 2036', detail:'Disability ends', active:true},
+  {label:'RMD', date:'Aug 2040', detail:'Age 73'},
+], 520, 100);
+children.push(imgPara(timeline, 500, 95));
+
+if (!taxProj.tax?.estimated_federal) {
+  children.push(dataQualityFlag('Current tax bracket and estimated federal tax are not populated in source data. Flag as incomplete.'));
+}
+children.push(pageBreak());
+
+// ── PAGE 7: GOLDEN WINDOW STRATEGY ──────────────────────────────
+children.push(heading('Golden Window Conversion Strategy', HeadingLevel.HEADING_1));
+children.push(p('Tax arbitrage: convert at 22% now to avoid 24%+ forced RMD distributions later.', { italic:true, color:C.accent, size:11 }));
+
+const scenarioChart = drawHBar([
+  {label:'$0 add\'l', value:0, display:'$0 tax', color:'#9E9E9E'},
+  {label:'$10K add\'l', value:2200, display:'$2,200 tax', color:'#2979FF'},
+  {label:'$16K add\'l', value:3520, display:'$3,520 tax', color:'#4CAF50'},
+  {label:'$20K add\'l', value:4800, display:'~$4,800 tax', color:'#C62828'},
+], 480, null, '2026 Conversion Scenarios — Federal Tax Impact');
+children.push(imgPara(scenarioChart, 460, 160));
+
+children.push(calloutBox('Recommended: Convert additional $16,000 before Dec 31. Uses remaining 22% bracket capacity without triggering 24%.'));
+
+children.push(heading('Action Checklist', HeadingLevel.HEADING_2));
+const checkItems = [
+  ['done','$35K converted in 2026 — on track for annual target'],
+  ['pending','Convert additional $16K — maximize 22% bracket'],
+  ['pending','Schedule C write-offs — reduce taxable base by $5K+'],
+  ['pending','Roth asset reallocation — move growth to Roth'],
+  ['pending','2027 rollover planning — prepare $533K 401k strategy'],
 ];
-children.push(new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [2400, 1560, 1400, 1000, 1500, 1500], rows: bRows }));
-const _ytdWin = benchmarks.filter(b => b.ytd_pct != null && _portYTD != null && _portYTD > b.ytd_pct).length;
-const _ytdLos = benchmarks.filter(b => b.ytd_pct != null && _portYTD != null && _portYTD < b.ytd_pct).length;
-if (_portYTD != null) {
-  children.push(p(
-    `Your YTD: ${fmtPct(_portYTD)} — beating ${_ytdWin}/${benchmarks.length} benchmarks, trailing ${_ytdLos}/${benchmarks.length}`,
-    { size: 10, bold: true, color: _ytdWin >= _ytdLos ? C.green : C.red, before: 80 }
+checkItems.forEach(([status, text]) => {
+  const col = status==='done' ? C.green : C.amber;
+  const icon = status==='done' ? '✓' : '○';
+  children.push(new Paragraph({
+    spacing: { before:40, after:40 }, indent: { left:240 },
+    border: { left: { style:BorderStyle.SINGLE, size:12, color:col, space:8 } },
+    children: [run(`${icon} `, {bold:true, size:10, color:col}), run(text, {size:10})],
+  }));
+});
+
+children.push(heading('Golden Window Parameters', HeadingLevel.HEADING_2));
+children.push(kpiRow([
+  ['Window Opens', kd.golden_window_start || 'Feb 2036', C.accent],
+  ['Window Closes', kd.golden_window_end || 'Aug 2040'],
+  ['Annual Target', fUSD(gw.optimal_annual_conversion||50000), C.green],
+]));
+
+// AI Roth analysis
+if (aiAnalysis.roth_conversion) {
+  children.push(heading('Detailed Roth Advisory', HeadingLevel.HEADING_2, {before:160}));
+  renderMarkdown(aiAnalysis.roth_conversion, children);
+}
+children.push(pageBreak());
+
+// ── PAGE 8: INCOME STRATEGY ─────────────────────────────────────
+children.push(heading('Dividend Income Architecture', HeadingLevel.HEADING_1));
+children.push(p('Close the income gap without destroying portfolio quality.', { italic:true, color:C.accent, size:11 }));
+
+const incProgress = drawProgressBar(divTotal, 28000, 480, 60, 'Annual Dividend Income');
+children.push(imgPara(incProgress, 460, 55));
+
+const incomeBridge = drawHBar([
+  {label:'Current', value:divTotal, display:fUSD(divTotal), color:'#2979FF'},
+  {label:'V→JEPI/JEPQ', value:6284, display:'+$6,284', color:'#4CAF50'},
+  {label:'2027 Rollover', value:8400, display:'+$8,400', color:'#4CAF50'},
+  {label:'Taxable Opt', value:5917, display:'+$5,917', color:'#4CAF50'},
+  {label:'Target', value:28000, display:'$28,000', color:'#1A237E'},
+], 500, null, 'Income Bridge — Path to $28,000/yr');
+children.push(imgPara(incomeBridge, 480, 200));
+
+if (aiAnalysis.dividend_strategy) {
+  children.push(heading('Detailed Dividend Analysis', HeadingLevel.HEADING_2));
+  renderMarkdown(aiAnalysis.dividend_strategy, children);
+}
+children.push(pageBreak());
+
+// ── PAGE 9: BOND STRATEGY ───────────────────────────────────────
+children.push(heading('Fixed Income and Portfolio Ballast', HeadingLevel.HEADING_1));
+const bondDonut = drawDonut([
+  {label:'Current BND', value:27457, color:'#2979FF'},
+  {label:'Gap to Target', value:138476-27457, color:'#E8EAF6'},
+], 480, 240, 'Current vs Target Bond Allocation');
+children.push(imgPara(bondDonut, 460, 230));
+
+const bondBars = drawHBar([
+  {label:'BND', value:48467, color:'#1A237E'},
+  {label:'AGG', value:27695, color:'#2979FF'},
+  {label:'VCIT', value:34619, color:'#7B1FA2'},
+  {label:'VGIT', value:27695, color:'#4CAF50'},
+], 480, null, `Target Allocation — ${fUSD(138476)} Total`);
+children.push(imgPara(bondBars, 460, 160));
+
+children.push(kpiRow([
+  ['Weighted Duration', '~5.8 years'],
+  ['1% Rate Impact', `${fUSD(8032)} loss`, C.red],
+  ['Deployment Source', `${fUSD(28465)} cash + trims`],
+]));
+
+if (aiAnalysis.bond_strategy) {
+  children.push(heading('Detailed Bond Analysis', HeadingLevel.HEADING_2));
+  renderMarkdown(aiAnalysis.bond_strategy, children);
+}
+children.push(pageBreak());
+
+// ── PAGE 10: CONCENTRATION RISK ─────────────────────────────────
+children.push(heading('Visa Concentration Decision Framework', HeadingLevel.HEADING_1));
+
+const gauge = drawGauge(vPct, 25, 15, 240, 150, 'V Weight (target <13%)');
+children.push(imgPara(gauge, 230, 140));
+
+children.push(styledTable(
+  ['Scenario', '5yr Value', 'Annual Income', 'Growth', 'Risk Level'],
+  [
+    ['A: Hold All V', '~$335,000', '$2,780/yr', '12%', 'HIGH'],
+    ['B: Trim 30%', '~$310,000', '$4,200/yr', '10%', 'MODERATE'],
+    ['C: Trim 50%', '~$285,000', '$5,800/yr', '8%', 'LOW'],
+  ],
+  { colorFn: (v,ci) => ci===4 ? (v==='HIGH'?C.red:v==='LOW'?C.green:C.amber) : C.black }
+));
+
+children.push(calloutBox('Recommended: Trim 30% over 12 weeks (15 shares/week). Begin with Rollover IRA. Both IRAs = zero capital gains tax on sale.'));
+
+if (aiAnalysis.v_strategy) {
+  children.push(heading('Detailed V Strategy', HeadingLevel.HEADING_2));
+  renderMarkdown(aiAnalysis.v_strategy, children);
+}
+children.push(pageBreak());
+
+// ── PAGE 11: RISK MONITORING ────────────────────────────────────
+children.push(heading('Risk Monitoring and Position Controls', HeadingLevel.HEADING_1));
+
+const stops = DATA.risk?.stops || risk.stops || [];
+if (stops.length > 0) {
+  children.push(styledTable(
+    ['Symbol', 'Current Price', 'Stop Level', 'Downside %', 'Status'],
+    stops.map(s => [
+      s.symbol || '—',
+      fUSD(s.current_price || s.price, 2),
+      fUSD(s.stop_price || s.stop, 2),
+      s.distance_pct != null ? `${s.distance_pct.toFixed(1)}%` : '—',
+      s.triggered ? 'TRIGGERED' : 'Active',
+    ]),
+    { colorFn: (v,ci) => ci===3 && v!=='—' && parseFloat(v) < -10 ? C.red : ci===4 && v==='TRIGGERED' ? C.red : C.black }
   ));
-}
-
-// SECTION 6 — HOLDINGS SIDE-BY-SIDE
-children.push(...sectionHeader(6, "ACCOUNT HOLDINGS SIDE-BY-SIDE"));
-const validHoldings = holdings.filter(h => !h.is_loan && (h.market_value || 0) > 0)
-  .sort((a, b) => (b.market_value || 0) - (a.market_value || 0)).slice(0, 30);
-const hRows = [
-  row([
-    cell(p("Symbol", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 900 }),
-    cell(p("Account", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2200 }),
-    cell(p("Value", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1600 }),
-    cell(p("Cost", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1400 }),
-    cell(p("Gain $", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1400 }),
-    cell(p("Gain %", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1000 }),
-    cell(p("Port%", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 860 }),
-  ]),
-  ...validHoldings.map((h, i) => {
-    const gl = h.gain_loss || 0;
-    const fill = i % 2 === 0 ? C.white : "F8F9FF";
-    return row([
-      cell(p(h.symbol || "", { bold: true, size: 9 }), { fill, width: 900 }),
-      cell(p(h.account_display || "", { size: 9, color: C.gray }), { fill, width: 2200 }),
-      cell(p(fmtUSD(h.market_value), { size: 9 }), { fill, width: 1600 }),
-      cell(p(fmtUSD(h.cost_basis), { size: 9, color: C.gray }), { fill, width: 1400 }),
-      cell(p(fmtUSD(gl), { size: 9, color: gainColor(gl) }), { fill, width: 1400 }),
-      cell(p(fmtPct(h.gain_loss_pct), { size: 9, color: gainColor(gl) }), { fill, width: 1000 }),
-      cell(p(`${(h.portfolio_pct || 0).toFixed(1)}%`, { size: 9, color: (h.portfolio_pct || 0) > 15 ? C.red : C.gray }), { fill, width: 860 }),
-    ]);
-  }),
-];
-children.push(new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [900, 2200, 1600, 1400, 1400, 1000, 860], rows: hRows }));
-// Section 6A — Top Holdings chart
-const c6 = chartPara('top_holdings', 700, 420);
-if (c6) children.push(c6);
-// Section 6B — Gain/Loss chart
-const c6b = chartPara('gain_loss', 700, 380);
-if (c6b) children.push(c6b);
-
-// SECTION 7 — SECTOR & FACTOR EXPOSURE
-children.push(...sectionHeader(7, "SECTOR & FACTOR EXPOSURE (with ETF Look-Through)"));
-const sectors = Object.entries(sectorPct).sort((a, b) => b[1] - a[1]).slice(0, 15);
-const sRows = [
-  row([
-    cell(p("Sector", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 4000 }),
-    cell(p("% Portfolio", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2000 }),
-    cell(p("Est. Value", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 3360 }),
-  ]),
-  ...sectors.map(([sector, pct], i) => {
-    const mv = (pct / 100) * totalMV;
-    const fill = pct > 30 ? "FFEBEE" : pct > 15 ? "FFF3E0" : (i % 2 === 0 ? C.white : "F8F9FF");
-    return row([
-      cell(p(sector, { size: 10, bold: pct > 20 }), { fill, width: 4000 }),
-      cell(p(`${pct.toFixed(1)}%`, { size: 10, color: pct > 30 ? C.red : pct > 15 ? "E65100" : C.black }), { fill, width: 2000 }),
-      cell(p(fmtUSD(mv), { size: 10 }), { fill, width: 3360 }),
-    ]);
-  }),
-];
-children.push(new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [4000, 2000, 3360], rows: sRows }));
-// Section 7A — Sector Donut
-const c7 = chartPara('sector_donut', 600, 420);
-if (c7) children.push(c7);
-// Section 7B — ETF Look-Through
-const c7b = chartPara('etf_exposure', 700, 460);
-if (c7b) children.push(c7b);
-
-// SECTION 8 — RISK ASSESSMENT
-children.push(...sectionHeader(8, "RISK ASSESSMENT"));
-const rRows = [
-  ["Weighted Portfolio Beta", riskMetrics.weighted_beta || "—", "vs S&P 500 = 1.0"],
-  ["Annualized Volatility", riskMetrics.weighted_volatility_pct ? riskMetrics.weighted_volatility_pct + "%" : "—", "Weighted average"],
-  ["Sharpe Ratio (est.)", riskMetrics.approximate_sharpe || "—", "Risk-adjusted return"],
-  ["Risk Profile", riskMetrics.risk_assessment || "—", ""],
-];
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [3500, 2500, 3360],
-  rows: rRows.map(([label, val, note]) => row([
-    cell(p(label, { bold: true, size: 10 }), { fill: C.lightGray, width: 3500 }),
-    cell(p(String(val), { bold: true, size: 10 }), { width: 2500 }),
-    cell(p(note, { size: 9, color: C.gray }), { width: 3360 }),
-  ])),
-}));
-
-// SECTION 9 — OSINT SENTIMENT (Trade AI Correlation)
-children.push(...sectionHeader(9, "OSINT — TRADE AI CORRELATION"));
-const goTickers = taCorr.go_tickers || [];
-const overlaps  = taCorr.holdings_in_screener || [];
-children.push(p2([
-  run("GO Tickers Today: ", { bold: true, size: 11 }),
-  run(goTickers.length > 0 ? goTickers.join(", ") : "None", { size: 11, color: goTickers.length > 0 ? C.green : C.gray }),
-]));
-children.push(p(`Holdings appearing in Trade AI screener: ${overlaps.length}`, { size: 10, color: C.gray }));
-if (overlaps.length > 0) {
-  const oRows = overlaps.map(o => row([
-    cell(p(o.symbol || "", { bold: true, size: 10 }), { width: 1200 }),
-    cell(p(o.account || "", { size: 10 }), { width: 2500 }),
-    cell(p(fmtUSD(o.market_value), { size: 10 }), { width: 1800 }),
-    cell(p(`${o.trade_ai_decision || "—"} (${o.trade_ai_score || 0})`, { size: 10,
-      color: o.trade_ai_decision === "GO" ? C.green : C.gray }), { width: 1800 }),
-    cell(p(o.alert || "", { size: 9, italic: true }), { width: 2060 }),
-  ]));
-  children.push(new Table({
-    width: { size: 9360, type: WidthType.DXA },
-    columnWidths: [1200, 2500, 1800, 1800, 2060],
-    rows: [
-      row([
-        cell(p("Symbol", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1200 }),
-        cell(p("Account", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2500 }),
-        cell(p("Value", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1800 }),
-        cell(p("Trade AI", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1800 }),
-        cell(p("Alert", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2060 }),
-      ]),
-      ...oRows,
-    ],
-  }));
-}
-
-// SECTION 10 — CRITICAL FLAGS (Detail)
-children.push(...sectionHeader(10, "CRITICAL FLAGS — FULL DETAIL"));
-(analysis.critical_flags || []).forEach((f, i) => {
-  children.push(p2([
-    run(`${i + 1}. [${f.severity}] `, { bold: true, size: 11,
-      color: f.severity === "CRITICAL" ? C.red : f.severity === "HIGH" ? "E65100" : C.yellow }),
-    run(f.message || "", { size: 10 }),
-  ], { before: 80 }));
-  if (f.action) children.push(p(`   → ${f.action}`, { size: 9, italic: true, color: C.gray, before: 20 }));
-});
-
-// SECTION 11 — TAX LOT INTELLIGENCE
-children.push(...sectionHeader(11, "TAX LOT INTELLIGENCE — FIFO METHOD"));
-const taxSummary = tax.summary || {};
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [3800, 2780, 2780],
-  rows: [
-    ["Total Unrealized Gain",   fmtUSD(taxSummary.total_unrealized_gain),   ""],
-    ["Taxable Account Gain",    fmtUSD(taxSummary.taxable_unrealized_gain),  "If sold, taxable events apply"],
-    ["Est. Tax If All Sold",    fmtUSD(taxSummary.estimated_tax_if_all_sold),"Approx. at max rates"],
-    ["Harvest Opportunities",   harvestCand.length,                          fmtUSD(taxSummary.harvest_potential_savings) + " potential savings"],
-    ["YTD Dividends Received",  fmtUSD((tax.dividend_income_ytd || {}).ytd_total), ""],
-  ].map(([label, val, note]) => row([
-    cell(p(label, { bold: true, size: 10 }), { fill: C.lightGray, width: 3800 }),
-    cell(p(String(val), { bold: true, size: 10 }), { width: 2780 }),
-    cell(p(note, { size: 9, color: C.gray }), { width: 2780 }),
-  ])),
-}));
-if (harvestCand.length > 0) {
-  children.push(p("Tax Loss Harvest Candidates (Taxable Account Only):", { bold: true, size: 10, before: 120 }));
-  harvestCand.forEach(c => {
-    children.push(p2([
-      run(`  ${c.symbol}  `, { bold: true, size: 10 }),
-      run(`${fmtUSD(c.unrealized_gain)} (${fmtPct(c.unrealized_gain_pct)})  `, { size: 10, color: C.red }),
-      run(`Est. savings: ${fmtUSD(c.tax_savings_estimate)}`, { size: 10, color: C.green }),
-    ]));
-  });
-}
-
-// SECTION 12 — REBALANCING ORDERS
-children.push(...sectionHeader(12, "REBALANCING ORDERS"));
-if (rebalOrders.length === 0) {
-  children.push(p("✅ Portfolio is within target allocation thresholds. No rebalancing required.", { color: C.green }));
 } else {
-  children.push(p(`Total to rebalance: ${fmtUSD(rebal.total_to_rebalance)} across ${rebalOrders.length} orders`, { bold: true, size: 10 }));
-  const rOrderRows = rebalOrders.map(o => row([
-    cell(p(o.account || "", { size: 9 }), { width: 2600 }),
-    cell(p(o.bucket || "", { size: 9 }), { width: 2200 }),
-    cell(p(o.action || "", { bold: true, size: 9, color: o.action === "BUY" ? C.green : C.red }),
-         { fill: o.action === "BUY" ? C.lightGreen : C.lightRed, width: 800 }),
-    cell(p(fmtUSD(o.amount_usd), { bold: true, size: 9 }), { width: 1600 }),
-    cell(p(o.note || "", { size: 9, color: C.gray }), { width: 2160 }),
-  ]));
-  children.push(new Table({
-    width: { size: 9360, type: WidthType.DXA },
-    columnWidths: [2600, 2200, 800, 1600, 2160],
-    rows: [
-      row([
-        cell(p("Account", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2600 }),
-        cell(p("Bucket", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2200 }),
-        cell(p("Action", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 800 }),
-        cell(p("Amount", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1600 }),
-        cell(p("Note", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2160 }),
-      ]),
-      ...rOrderRows,
-    ],
-  }));
+  children.push(p('Stop-loss data available in pipeline state. See technical analysis for current levels.', { italic:true, color:C.grayMid }));
 }
 
-// SECTION 13 — WATCHLIST / STOP LEVELS
-children.push(...sectionHeader(13, "STOP LOSS LEVELS — MONITORED POSITIONS"));
-const stopData = [
-  ["AVAV", "182.41", "165.00", "-9.5%", "Defense — binary event risk around earnings"],
-  ["RKLB", "65.67", "55.00", "-16.2%", "High beta, speculative — tight stop"],
-  ["KTOS", "67.00", "58.00", "-13.4%", "Defense tech — volatile"],
-  ["CSWC", "22.26", "19.50", "-12.4%", "BDC — dividend yield floor support"],
-  ["PFLT", "8.17",  "7.00",  "-14.3%", "BDC — monthly dividend, watch NAV"],
-  ["V",    "301.01","275.00","-8.7%",  "MEGA POSITION — soft alert only"],
+children.push(dataQualityFlag('Source risk metrics (volatility, Sharpe, risk profile) may not be fully populated. Distinguish actual stop-monitoring from incomplete risk analytics.'));
+
+if (aiAnalysis.defense_analysis) {
+  children.push(heading('Defense Portfolio Analysis', HeadingLevel.HEADING_2));
+  renderMarkdown(aiAnalysis.defense_analysis, children);
+}
+children.push(pageBreak());
+
+// ── PAGE 12: ACTION PLAN ────────────────────────────────────────
+children.push(heading('Strategic Action Plan', HeadingLevel.HEADING_1));
+const actions = [
+  ['Immediate','Convert additional $16K to Roth','$16,000','Before Dec 31','Lock 22% rate'],
+  ['Immediate','Close SRNE position','~$2','This week','Remove dead weight'],
+  ['Immediate','Update stale stop losses','—','This week','Protect $304K gains'],
+  ['Near-Term','Build bond allocation','$111,000','Q2-Q3 2026','Achieve 25% target'],
+  ['Near-Term','Trim Visa 30%','$57,000','12 weeks','Reduce to ~11%'],
+  ['Near-Term','Schedule C write-offs','$5,000+','2026 tax year','Expand conversion room'],
+  ['Monitor','Add REIT exposure','$60,000','Q3 2026','Missing asset class'],
+  ['Monitor','Prepare 2027 rollover','$533,000','2027','Consolidate strategy'],
 ];
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [900, 1500, 1500, 1200, 4260],
-  rows: [
-    row([
-      cell(p("Symbol", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 900 }),
-      cell(p("Current", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1500 }),
-      cell(p("Stop Level", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1500 }),
-      cell(p("Downside", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1200 }),
-      cell(p("Notes", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 4260 }),
-    ]),
-    ...stopData.map(([sym, curr, stop, down, note], i) => row([
-      cell(p(sym, { bold: true, size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 900 }),
-      cell(p("$" + curr, { size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1500 }),
-      cell(p("$" + stop, { size: 9, color: C.red }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1500 }),
-      cell(p(down, { size: 9, color: C.red }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1200 }),
-      cell(p(note, { size: 9, color: C.gray }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 4260 }),
-    ])),
-  ],
-}));
+children.push(styledTable(
+  ['Priority', 'Action', 'Amount', 'Timing', 'Expected Outcome'],
+  actions,
+  { colorFn: (v,ci) => ci===0 ? (v==='Immediate'?C.red:v==='Near-Term'?C.amber:C.accent) : C.black }
+));
+children.push(pageBreak());
 
-// SECTION 14 — ROUTING REFERENCE
-children.push(...sectionHeader(14, "ROUTING REFERENCE (PERMANENT)"));
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [2500, 2500, 4360],
-  rows: [
-    ["Fidelity 401k",      "NetBenefits",          "workplaceservices.fidelity.com — Omnicom plan — $501,155"],
-    ["Schwab Rollover IRA","Schwab.com ...258",     "WARNING: 50% in V — concentration risk critical"],
-    ["Schwab Roth IRA",    "Schwab.com ...415",     "Small account — V + SCHG only"],
-    ["Schwab Taxable",     "Schwab.com ...469",     "AI WWIII defense portfolio + income ETFs + BDCs"],
-  ].map(([acct, route, note], i) => row([
-    cell(p(acct, { bold: true, size: 9 }), { fill: C.lightGray, width: 2500 }),
-    cell(p(route, { size: 9 }), { width: 2500 }),
-    cell(p(note, { size: 9, color: C.gray }), { width: 4360 }),
-  ])),
-}));
+// ── PAGE 13: DATA INTEGRITY ─────────────────────────────────────
+children.push(heading('Data Integrity and Methodology Notes', HeadingLevel.HEADING_1));
+children.push(p('This section documents known data gaps, conflicts, and assumptions to support report credibility.', { italic:true, color:C.gray }));
 
-// SECTION 15 — DIVIDEND CALENDAR
-children.push(...sectionHeader(15, "DIVIDEND CALENDAR — INCOME TRACKER"));
-const divByHolding = (analysis.dividends || {}).by_holding || [];
-const divRows = divByHolding.slice(0, 15).map((d, i) => row([
-  cell(p(d.symbol || "", { bold: true, size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 900 }),
-  cell(p(d.account || "", { size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 2200 }),
-  cell(p(`${(d.yield_pct || 0).toFixed(1)}%`, { size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1000 }),
-  cell(p(fmtUSD(d.annual_income), { size: 9, color: C.green }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1600 }),
-  cell(p(fmtUSD(d.monthly_income), { size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1500 }),
-  cell(p(d.frequency || "", { size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 1200 }),
-  cell(p(d.reinvest ? "✅ DRIP" : "💵 Cash", { size: 9 }), { fill: i % 2 === 0 ? C.white : "F8F9FF", width: 960 }),
-]));
-children.push(new Table({
-  width: { size: 9360, type: WidthType.DXA },
-  columnWidths: [900, 2200, 1000, 1600, 1500, 1200, 960],
-  rows: [
-    row([
-      cell(p("Symbol", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 900 }),
-      cell(p("Account", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2200 }),
-      cell(p("Yield", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1000 }),
-      cell(p("Annual $", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1600 }),
-      cell(p("Monthly", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1500 }),
-      cell(p("Frequency", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 1200 }),
-      cell(p("Mode", { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 960 }),
-    ]),
-    ...divRows,
-    row([
-      cell(p("TOTAL", { bold: true, size: 9 }), { fill: C.lightGray, width: 900 }),
-      cell(p("", { size: 9 }), { fill: C.lightGray, width: 2200 }),
-      cell(p("", { size: 9 }), { fill: C.lightGray, width: 1000 }),
-      cell(p(fmtUSD(divs.total_annual_income), { bold: true, size: 9, color: C.green }), { fill: C.lightGreen, width: 1600 }),
-      cell(p(fmtUSD(divs.total_monthly_income), { bold: true, size: 9, color: C.green }), { fill: C.lightGreen, width: 1500 }),
-      cell(p("", { size: 9 }), { fill: C.lightGray, width: 1200 }),
-      cell(p("", { size: 9 }), { fill: C.lightGray, width: 960 }),
-    ]),
-  ],
-}));
+const flags = [
+  ['Roth Balance','Multiple values: $42,373 vs $42,643 — using latest snapshot','Low'],
+  ['V Trim Target','Conflicting: "12-13%" vs "30%" across analysis sections','Medium'],
+  ['Weighted Beta','Not populated in portfolio totals — computed in pipeline at 0.38','Low'],
+  ['Dividend Calendar','Blank in some source files — computed from holdings at ' + fUSD(divTotal),'Low'],
+  ['Benchmark Comparison','SPY benchmark available but not in all reports','Medium'],
+  ['Tax Bracket','May be incomplete in tax projection module','Medium'],
+  ['Defense Section Date','May reference January 2025 vs 2026 core sections','Low'],
+  ['Growth Assumption','7% annualized for projection models — not guaranteed','Info'],
+];
+children.push(styledTable(
+  ['Data Point', 'Issue', 'Severity'],
+  flags,
+  { colorFn: (v,ci) => ci===2 ? (v==='Medium'?C.amber:v==='Low'?C.grayMid:C.accent) : C.black }
+));
+children.push(pageBreak());
 
-// SECTION 16 — CLIFF NOTES
-children.push(...sectionHeader(16, "CLIFF NOTES — KEY METRICS GLOSSARY"));
-[
-  ["V (Visa)", "875 shares in Rollover IRA = 49.6% of that account. +702% gain (+$230K). Tax-free growth in IRA — but extreme concentration risk."],
-  ["Beta", `Portfolio beta ${riskMetrics.weighted_beta || "N/A"} — moderate market sensitivity. Defense stocks lower beta; RKLB/KTOS raise it.`],
-  ["DRIP", "Dividend Reinvestment Plan — enabled on most income positions. Creates small taxable lots in taxable account."],
-  ["FIFO", "First-in-first-out cost basis. Oldest shares sold first. Oldest lots held since ~2023 estimated."],
-  ["BDC", "Business Development Company — CSWC and PFLT pay high monthly dividends (10-11% yield). NAV-sensitive."],
-  ["Tax Harvest", "Selling losing positions to realize losses for tax offset. Only beneficial in taxable account. 30-day wash sale rule applies."],
-  ["ETF Look-Through", "Sector exposure analysis penetrates through ETF holdings to see true underlying concentration."],
-].forEach(([term, desc]) => {
-  children.push(p2([
-    run(`${term}: `, { bold: true, size: 10 }),
-    run(desc, { size: 10 }),
-  ], { before: 60 }));
-});
-
-// SECTION 17 — AI STRATEGIC ANALYSIS
-children.push(...sectionHeader(17, 'AI STRATEGIC ANALYSIS — Claude Sonnet 4.6'));
-const aiRunType = AI_ANALYSIS.run_type || 'daily';
-const aiDate = (AI_ANALYSIS.generated_at || '').slice(0, 10);
-children.push(p(`Mode: ${aiRunType.toUpperCase()} | Generated: ${aiDate} | Refreshes: Monthly`, 
-  { size: 9, italic: true, color: C.gray, before: 0 }));
+// ── PAGE 14: AI ANALYSIS APPENDIX ───────────────────────────────
+children.push(heading('Appendix: AI Strategic Analysis', HeadingLevel.HEADING_1));
+children.push(p(`Generated: ${aiAnalysis.generated_at || '—'}  |  Run type: ${aiAnalysis.run_type || '—'}`, { size:9, color:C.grayMid }));
 
 const aiSections = [
-  ['executive_summary',  'Executive Portfolio Summary'],
-  ['deep_holdings',      'Deep Holdings Analysis'],
-  ['dividend_strategy',  'Dividend Strategy & ETF/Stock Alternatives'],
-  ['bond_strategy',      'Bond Strategy for Rollover IRA'],
-  ['ira_opportunities',  'IRA Rollover Eligible Investments & Options'],
-  ['v_strategy',         'V (Visa) Concentration Strategic Options'],
-  ['v_concentration',    'V (Visa) Concentration Strategic Options'],
-  ['defense_analysis',   'Defense Portfolio — AI WWIII Thesis'],
-  ['roth_conversion',    'Roth Conversion Strategy 2026'],
+  ['deep_holdings', 'Deep Holdings Analysis'],
+  ['ira_opportunities', 'IRA Opportunity Set'],
 ];
-
-// ── Full markdown → docx renderer ─────────────────────────────────────────
-function mdRuns(text) {
-  // Convert inline **bold**, *italic*, `code` to TextRun array
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
-  return parts.filter(Boolean).map(part => {
-    if (part.startsWith('**') && part.endsWith('**'))
-      return run(part.slice(2,-2), { bold: true, size: 10 });
-    if (part.startsWith('*') && part.endsWith('*'))
-      return run(part.slice(1,-1), { italic: true, size: 10 });
-    if (part.startsWith('`') && part.endsWith('`'))
-      return new TextRun({ text: part.slice(1,-1), font: 'Courier New', size: 18, color: C.navy });
-    return run(part, { size: 10 });
-  });
-}
-
-function mdTableToDocx(lines) {
-  // Parse markdown pipe table lines into a Word table
-  const dataRows = lines.filter(l => !l.match(/^\|[-:\s|]+\|?$/));
-  if (dataRows.length === 0) return null;
-  const parseRow = l => l.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
-  const headers = parseRow(dataRows[0]);
-  const colW = Math.floor(9360 / Math.max(headers.length, 1));
-  const colWidths = headers.map(() => colW);
-  const tRows = [
-    new TableRow({ children: headers.map((h,i) =>
-      new TableCell({
-        borders: allBorders(),
-        width: { size: colWidths[i], type: WidthType.DXA },
-        shading: shade(C.navy),
-        margins: { top: 60, bottom: 60, left: 100, right: 100 },
-        children: [new Paragraph({ children: [run(h, { bold: true, size: 9, color: C.white })] })]
-      })
-    ), tableHeader: true }),
-    ...dataRows.slice(1).map((line, ri) => {
-      const cells = parseRow(line);
-      return new TableRow({ children: headers.map((_,ci) => {
-        const txt = cells[ci] || '';
-        const fill = ri % 2 === 0 ? C.white : 'F8F9FF';
-        return new TableCell({
-          borders: allBorders(),
-          width: { size: colWidths[ci], type: WidthType.DXA },
-          shading: shade(fill),
-          margins: { top: 60, bottom: 60, left: 100, right: 100 },
-          children: [new Paragraph({ children: mdRuns(txt), spacing: { before: 0, after: 0 } })]
-        });
-      })});
-    }),
-  ];
-  return new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: colWidths, rows: tRows });
-}
-
-function renderMarkdown(text, dest) {
-  const lines = text.split('\n');
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Skip empty lines
-    if (!trimmed) { i++; continue; }
-
-    // Horizontal rule
-    if (/^---+$/.test(trimmed)) {
-      dest.push(hRule("CCCCCC")); i++; continue;
-    }
-
-    // Headers
-    if (trimmed.startsWith('#### ')) {
-      dest.push(p(trimmed.slice(5), { bold: true, size: 10, color: C.gray, before: 80 })); i++; continue;
-    }
-    if (trimmed.startsWith('### ')) {
-      dest.push(p(trimmed.slice(4), { bold: true, size: 11, color: C.darkBlue, before: 120 })); i++; continue;
-    }
-    if (trimmed.startsWith('## ')) {
-      dest.push(p(trimmed.slice(3), { bold: true, size: 12, color: C.navy, before: 140 })); i++; continue;
-    }
-    if (trimmed.startsWith('# ')) {
-      dest.push(p(trimmed.slice(2), { bold: true, size: 13, color: C.darkBlue, before: 160 })); i++; continue;
-    }
-
-    // Code block (```)
-    if (trimmed.startsWith('```')) {
-      i++;
-      const codeLines = [];
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        codeLines.push(lines[i]); i++;
-      }
-      i++; // skip closing ```
-      if (codeLines.length > 0) {
-        dest.push(new Table({ width: { size: 9360, type: WidthType.DXA }, columnWidths: [9360], rows: [
-          new TableRow({ children: [new TableCell({
-            borders: allBorders("999999"),
-            shading: shade("F5F5F5"),
-            margins: { top: 80, bottom: 80, left: 160, right: 160 },
-            children: codeLines.map(cl => new Paragraph({
-              children: [new TextRun({ text: cl || ' ', font: 'Courier New', size: 16, color: C.gray })],
-              spacing: { before: 0, after: 20 }
-            }))
-          })] })
-        ]}));
-      }
-      continue;
-    }
-
-    // Markdown pipe table — collect all consecutive | lines
-    if (trimmed.startsWith('|')) {
-      const tableLines = [];
-      while (i < lines.length && lines[i].trim().startsWith('|')) {
-        tableLines.push(lines[i]); i++;
-      }
-      const tbl = mdTableToDocx(tableLines);
-      if (tbl) dest.push(tbl);
-      continue;
-    }
-
-    // Blockquote >
-    if (trimmed.startsWith('> ')) {
-      dest.push(new Paragraph({
-        children: mdRuns(trimmed.slice(2)),
-        spacing: { before: 40, after: 40 },
-        indent: { left: 360 },
-        border: { left: { style: BorderStyle.SINGLE, size: 12, color: C.accent, space: 8 } }
-      }));
-      i++; continue;
-    }
-
-    // Checklist items (✅/❌/⚠️)
-    if (/^[-•*]?\s*[✅❌⚠️]/.test(trimmed)) {
-      const body = trimmed.replace(/^[-•*]?\s*[✅❌⚠️]\s*/, '');
-      const icon = trimmed.includes('✅') ? '✅' : trimmed.includes('❌') ? '❌' : '⚠️';
-      const iconColor = icon === '✅' ? '0F9D58' : icon === '❌' ? 'DB4437' : 'F4B400';
-      dest.push(new Paragraph({
-        children: [run(icon + ' ', { size: 10 }), ...mdRuns(body)],
-        spacing: { before: 40, after: 40 },
-        indent: { left: 240 },
-        border: { left: { style: BorderStyle.SINGLE, size: 12, color: iconColor, space: 8 } }
-      }));
-      i++; continue;
-    }
-
-    // RECOMMENDATION/ACTION/KEY RISK highlight
-    if (/^(RECOMMENDATION|ACTION|KEY RISK|OPTIMAL|PRIORITY):/i.test(trimmed)) {
-      const colonIdx = trimmed.indexOf(':');
-      const label = trimmed.slice(0, colonIdx);
-      const rest = trimmed.slice(colonIdx + 1).trim();
-      const labelColor = /RISK/i.test(label) ? 'DB4437' : '0F9D58';
-      dest.push(new Paragraph({
-        children: [
-          run(label + ': ', { bold: true, size: 10, color: labelColor }),
-          ...mdRuns(rest)
-        ],
-        spacing: { before: 60, after: 60 },
-        indent: { left: 120 },
-        border: { left: { style: BorderStyle.SINGLE, size: 16, color: labelColor, space: 8 } }
-      }));
-      i++; continue;
-    }
-
-    // Bullet list item
-    if (/^[•*\-] /.test(trimmed)) {
-      const body = trimmed.replace(/^[•*\-]\s+/, '');
-      dest.push(new Paragraph({
-        children: [run('• ', { bold: true, size: 10 }), ...mdRuns(body)],
-        spacing: { before: 30, after: 30 },
-        indent: { left: 240 }
-      }));
-      i++; continue;
-    }
-
-    // Numbered list
-    if (/^\d+\.\s/.test(trimmed)) {
-      const body = trimmed.replace(/^\d+\.\s+/, '');
-      const num = trimmed.match(/^(\d+)/)[1];
-      dest.push(new Paragraph({
-        children: [run(num + '. ', { bold: true, size: 10, color: C.navy }), ...mdRuns(body)],
-        spacing: { before: 30, after: 30 },
-        indent: { left: 240 }
-      }));
-      i++; continue;
-    }
-
-    // Regular paragraph — parse inline formatting
-    dest.push(new Paragraph({
-      children: mdRuns(trimmed),
-      spacing: { before: 40, after: 40 }
-    }));
-    i++;
-  }
-}
-
 aiSections.forEach(([key, title]) => {
-  const text = AI_ANALYSIS[key];
+  const text = aiAnalysis[key];
   if (!text) return;
-  children.push(p(title, { bold: true, size: 11, color: C.darkBlue, before: 140 }));
+  children.push(heading(title, HeadingLevel.HEADING_2, { before: 160 }));
   renderMarkdown(text, children);
 });
 
-// SECTION 18 — PERIOD PERFORMANCE
-children.push(...sectionHeader(18, 'PERIOD PERFORMANCE'));
-// perf_history uses .periods{}; legacy performance uses .portfolio_returns{}
-const _ph = DATA.perf_history || {};
-const _phPeriods = _ph.periods || {};
-const _legPR = (PERFORMANCE.portfolio_returns) || {};
-// Merge: perf_history periods preferred, fall back to legacy
-function _getPeriod(pk) {
-  const ph = _phPeriods[pk];
-  if (ph && ph.change_pct != null) return { pct: ph.change_pct, dollar: ph.change, note: ph.start_date || '', src: ph.source || '' };
-  const leg = _legPR[pk];
-  if (leg && leg.pct != null) return { pct: leg.pct, dollar: leg.dollar, note: leg.prior_date || leg.note || '', src: 'snapshot' };
-  return null;
-}
-const snapCount = _ph.snapshot_count || PERFORMANCE.snapshots_available || 0;
-const allTime = PERFORMANCE.all_time || {};
-const totalGainForPeriod = DATA.portfolio?.portfolio_totals?.total_gain || 0;
-const totalGainPctForPeriod = DATA.portfolio?.portfolio_totals?.total_gain_pct || 0;
-children.push(p(
-  `Snapshots: ${snapCount} daily | All-Time Gain: ${fmtUSD(totalGainForPeriod)} (${fmtPct(totalGainPctForPeriod)})`,
-  { size: 10, bold: true }));
-const perfPeriods = ['1D','1W','1M','3M','6M','YTD','1Y'];
-const perfRows = perfPeriods.map(period => {
-  const d = _getPeriod(period);
-  if (!d) {
-    return row([
-      cell(p(period, { bold: true, size: 10 }), { fill: C.lightGray, width: 900 }),
-      cell(p('—', { size: 10, color: C.gray }), { width: 2000 }),
-      cell(p('—', { size: 10, color: C.gray }), { width: 2500 }),
-      cell(p('Accumulating...', { size: 9, color: C.gray }), { width: 3960 }),
-    ]);
-  }
-  const pct = d.pct != null ? fmtPct(d.pct) : '—';
-  const dollar = d.dollar != null ? fmtUSD(d.dollar) : '—';
-  return row([
-    cell(p(period, { bold: true, size: 10 }), { fill: C.lightGray, width: 900 }),
-    cell(p(pct, { size: 10, color: d.pct > 0 ? C.green : d.pct < 0 ? C.red : C.gray }), { width: 2000 }),
-    cell(p(dollar, { size: 10, color: d.dollar > 0 ? C.green : d.dollar < 0 ? C.red : C.gray }), { width: 2500 }),
-    cell(p(String(d.note || '').slice(0,50), { size: 9, color: C.gray }), { width: 3960 }),
-  ]);
-});
-if (perfRows.length > 0) {
-  children.push(new Table({
-    width: { size: 9360, type: WidthType.DXA },
-    columnWidths: [900, 2000, 2500, 3960],
-    rows: [
-      row([
-        cell(p('Period', { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 900 }),
-        cell(p('Return %', { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2000 }),
-        cell(p('Return $', { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 2500 }),
-        cell(p('Note', { bold: true, size: 9, color: C.white }), { fill: C.navy, width: 3960 }),
-      ]),
-      ...perfRows,
-    ],
-  }));
-}
-if (snapCount < 7) {
-  children.push(p(`Period returns accumulate as daily snapshots build up. Currently ${snapCount} snapshot(s) saved.`,
-    { size: 9, italic: true, color: C.gray, before: 80 }));
-}
+// ── APPENDIX B: HOLDINGS TABLE ──────────────────────────────────
+children.push(pageBreak());
+children.push(heading('Appendix: Complete Holdings', HeadingLevel.HEADING_1));
+const holdRows = [...holdings].sort((a,b) => (b.market_value||0)-(a.market_value||0)).slice(0, 30).map(h => [
+  h.symbol || '—',
+  h.account === 'fidelity_401k' ? '401k' : h.account === 'schwab_rollover_ira' ? 'IRA' : h.account === 'schwab_roth' ? 'Roth' : h.account === 'schwab_taxable' ? 'Taxable' : '—',
+  fUSD(h.market_value, 0),
+  h.market_value && totalVal ? `${(h.market_value/totalVal*100).toFixed(1)}%` : '—',
+  h.gain_loss != null ? fUSD(h.gain_loss, 0) : '—',
+]);
+children.push(styledTable(['Symbol', 'Account', 'Value', 'Weight', 'Gain/Loss'], holdRows));
 
+// ── FOOTER / DISCLOSURE ─────────────────────────────────────────
+children.push(new Paragraph({ spacing: { before: 400 } }));
+children.push(calloutBox('For informational planning use only. Not investment, legal, or tax advice. Verify all figures before execution. Trade AI v12 — Personal Portfolio Strategy Report.'));
 
-// ══════════════════════════════════════════════════════════════════════════
-// SECTION: Technical Health Overview
-// ══════════════════════════════════════════════════════════════════════════
-const technical = DATA.technical || {};
-const techPositions = technical.positions || {};
-const techScore = technical.portfolio_score || 0;
-const techGrade = technical.portfolio_grade || "yellow";
-const techChanges = technical.signal_changes || [];
-const techChartPaths = DATA.tech_chart_paths || {};
-
-if (Object.keys(techPositions).length > 0) {
-  children.push(hRule());
-  children.push(heading2("Technical Analysis Report"));
-
-  // Portfolio health summary
-  const gradeColors = { green: C.green, yellow: C.amber, red: C.red };
-  const gradeColor = gradeColors[techGrade] || C.amber;
-  children.push(p(
-    `Portfolio Technical Score: ${techScore.toFixed(0)}/100 (${techGrade.toUpperCase()})  ` +
-    `|  Positions Analyzed: ${Object.keys(techPositions).length}  ` +
-    `|  Signal Changes: ${techChanges.length}  ` +
-    `|  Updated: ${technical.last_updated || ""}`,
-    { size: 10, color: gradeColor, bold: true, before: 120 }
-  ));
-
-  // Critical signals
-  const critSignals = (technical.critical_signals || []);
-  if (critSignals.length > 0) {
-    children.push(p("Critical Signals:", { size: 10, bold: true, color: C.red, before: 100 }));
-    critSignals.forEach(sig => {
-      children.push(p(`  🚨 [${sig.severity}] ${sig.msg}`, { size: 10, color: C.red }));
-    });
-  }
-
-  // Health chart
-  if (techChartPaths.health) {
-    try {
-      const fs2 = require('fs');
-      const imgData = fs2.readFileSync(techChartPaths.health);
-      const b64 = imgData.toString('base64');
-      children.push(new Paragraph({
-        children: [new ImageRun({
-          data: Buffer.from(b64, 'base64'),
-          transformation: { width: 580, height: 260 },
-          type: 'png',
-        })],
-        spacing: { before: 120 },
-      }));
-    } catch(e) {}
-  }
-
-  // Technical status table
-  const posEntries = Object.entries(techPositions)
-    .sort((a, b) => (b[1].market_value || 0) - (a[1].market_value || 0))
-    .slice(0, 20);
-
-  if (posEntries.length > 0) {
-    children.push(p("Position Technical Status:", { size: 10, bold: true, before: 120 }));
-    const techRows = [
-      new TableRow({ children: [
-        cell("Symbol", true, 900), cell("Price", true, 900), cell("Score", true, 700),
-        cell("vs SMA200", true, 1100), cell("RSI", true, 700),
-        cell("From High", true, 1000), cell("Stop Suggest", true, 1200), cell("Intent", true, 1200),
-      ], tableHeader: true })
-    ];
-    posEntries.forEach(([sym, d]) => {
-      const above = d.above_sma200;
-      const sma200val = d.sma200;
-      const aboveStr = above === true 
-        ? ("Above" + (sma200val ? " $" + sma200val.toFixed(0) : ""))
-        : above === false 
-        ? ("BELOW" + (sma200val ? " $" + sma200val.toFixed(0) : ""))
-        : (sma200val ? "$" + sma200val.toFixed(0) : "—");
-      const rsi = d.rsi ? d.rsi.toFixed(0) : "—";
-      const fromHigh = d.pct_from_high != null ? d.pct_from_high.toFixed(1) + "%" : "—";
-      const stopSug = d.suggested_stop ? "$" + d.suggested_stop.toFixed(2) : "—";
-      techRows.push(new TableRow({ children: [
-        cell(sym, false, 900),
-        cell(d.price ? "$" + d.price.toFixed(2) : "—", false, 900),
-        cell(d.tech_score ? d.tech_score.toString() : "—", false, 700),
-        cell(aboveStr, false, 1100),
-        cell(rsi, false, 700),
-        cell(fromHigh, false, 1000),
-        cell(stopSug, false, 1200),
-        cell(d.intent || "—", false, 1200),
-      ]}));
-    });
-    children.push(new Table({
-      rows: techRows,
-      width: { size: 100, type: WidthType.PERCENTAGE },
-    }));
-  }
-
-  // SMA matrix and RSI charts
-  if (techChartPaths.sma_matrix || techChartPaths.rsi) {
-    children.push(p("Signal Analysis Charts:", { size: 10, bold: true, before: 120 }));
-    ['sma_matrix', 'rsi', 'support_gap'].forEach(k => {
-      if (!techChartPaths[k]) return;
-      try {
-        const fs2 = require('fs');
-        const imgData = fs2.readFileSync(techChartPaths[k]);
-        const b64 = imgData.toString('base64');
-        children.push(new Paragraph({
-          children: [new ImageRun({
-            data: Buffer.from(b64, 'base64'),
-            transformation: { width: 540, height: 220 },
-            type: 'png',
-          })],
-          spacing: { before: 80 },
-        }));
-      } catch(e) {}
-    });
-  }
-
-  // Top position price charts
-  const priceChartKeys = Object.keys(techChartPaths).filter(k => k.startsWith('price_'));
-  if (priceChartKeys.length > 0) {
-    children.push(p("Position Price History (6-Month, with SMA Overlay):",
-      { size: 10, bold: true, before: 120 }));
-    priceChartKeys.forEach(k => {
-      try {
-        const fs2 = require('fs');
-        const imgData = fs2.readFileSync(techChartPaths[k]);
-        const b64 = imgData.toString('base64');
-        children.push(new Paragraph({
-          children: [new ImageRun({
-            data: Buffer.from(b64, 'base64'),
-            transformation: { width: 560, height: 200 },
-            type: 'png',
-          })],
-          spacing: { before: 60 },
-        }));
-      } catch(e) {}
-    });
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// SECTION: Stress Test Analysis
-// ══════════════════════════════════════════════════════════════════════════
-const stressData = DATA.stress || {};
-const stressScenarios = stressData.scenarios || {};
-const scenarioOrder = ["2022_rate_shock","2020_covid","visa_doj","defense_reversal"];
-
-if (stressData.has_data && Object.keys(stressScenarios).length > 0) {
-  children.push(hRule());
-  children.push(heading2("Portfolio Stress Testing"));
-  children.push(p(
-    `Portfolio Value: $${(stressData.portfolio_value||0).toLocaleString()}  |  ` +
-    `Worst Case: ${stressData.worst_case_scenario || ""}  |  ` +
-    `Max Loss: $${Math.abs(stressData.worst_case_loss||0).toLocaleString()}`,
-    { size: 10, bold: true, before: 100 }
-  ));
-
-  const stressRows = [
-    new TableRow({ children: [
-      cell("Scenario", true, 1800), cell("Description", true, 3000),
-      cell("Loss $", true, 1200), cell("Loss %", true, 900),
-      cell("Portfolio After", true, 1400), cell("Stops Save", true, 1200),
-    ], tableHeader: true })
-  ];
-  scenarioOrder.forEach(sid => {
-    const s = stressScenarios[sid];
-    if (!s) return;
-    stressRows.push(new TableRow({ children: [
-      cell(s.name || sid, false, 1800),
-      cell((s.description || "").substring(0, 80), false, 3000),
-      cell(`-$${Math.abs(s.total_loss||0).toLocaleString()}`, false, 1200),
-      cell(`${(s.loss_pct||0).toFixed(1)}%`, false, 900),
-      cell(`$${(s.total_value_after||0).toLocaleString()}`, false, 1400),
-      cell(`$${(s.stops_would_save||0).toLocaleString()}`, false, 1200),
-    ]}));
-  });
-  children.push(new Table({
-    rows: stressRows,
-    width: { size: 100, type: WidthType.PERCENTAGE },
-  }));
-  children.push(p(
-    "Note: Setting stops reduces maximum loss significantly. " +
-    "Review stop levels in the Risk Manager tab and set stops for all major positions.",
-    { size: 9, italic: true, color: C.gray, before: 80 }
-  ));
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// SECTION: Retirement Roadmap Summary
-// ══════════════════════════════════════════════════════════════════════════
-const retData = DATA.retirement || {};
-const txData  = DATA.tax_projection || {};
-
-if (retData.key_dates) {
-  children.push(hRule());
-  children.push(heading2("Retirement Roadmap"));
-
-  const kd      = retData.key_dates || {};
-  const accts   = retData.accounts || {};
-  const gw      = retData.golden_window || {};
-  const loan    = retData.loan || {};
-  const txTax   = txData.tax || {};
-  const txRoth  = txData.roth || {};
-
-  const retRows = [
-    ["Current Age",            retData.current_age ? retData.current_age.toFixed(1) : ""],
-    ["Total Portfolio",         `$${(accts.total||0).toLocaleString()}`],
-    ["Roth IRA Balance",        `$${(accts.roth||0).toLocaleString()} (${accts.roth_pct||0}% of portfolio)`],
-    ["Traditional IRA/401k",   `$${(accts.traditional||0).toLocaleString()} — target $0 at age 73`],
-    ["Golden Window",          `${kd.years_to_golden||""} years (${kd.days_to_golden||""} days)`],
-    ["Roth at Golden Window",  `$${(gw.projected_roth_at_start||0).toLocaleString()}`],
-    ["Optimal Annual Conversion", `$${(gw.optimal_annual_conversion||25000).toLocaleString()}/yr in Golden Window`],
-    ["401k Loan Balance",      `$${(loan.balance||0).toLocaleString()} — deadline ${loan.deadline||""} (${loan.days_remaining||0}d)`],
-    ["Current Tax Bracket",    txTax.current_bracket || ""],
-    ["Estimated Federal Tax",  `$${(txTax.federal_tax||0).toLocaleString()}`],
-    ["Total Tax Estimate",     `$${(txTax.total_est||0).toLocaleString()}`],
-    ["IRMAA Exposure",         `$${(txData.irmaa||{}).annual_surcharge||0}/yr`],
-    ["Remaining Roth Capacity",`$${(txRoth.remaining_capacity||0).toLocaleString()} before bracket increase`],
-  ];
-
-  const retTableRows = [
-    new TableRow({ children: [cell("Metric", true, 3600), cell("Value", true, 5900)], tableHeader: true })
-  ];
-  retRows.forEach(([k, v]) => {
-    retTableRows.push(new TableRow({ children: [cell(k, false, 3600), cell(String(v), false, 5900)] }));
-  });
-  children.push(new Table({
-    rows: retTableRows,
-    width: { size: 100, type: WidthType.PERCENTAGE },
-  }));
-
-  children.push(p(
-    "Golden Window Strategy: Between ages 68.5 (disability ends) and 73 (RMD age), " +
-    "income drops to Social Security only (~$3,800/mo). This is the prime Roth conversion window " +
-    "— maximize conversions in this period to reach $0 traditional IRA balance at RMD age.",
-    { size: 10, italic: false, before: 100 }
-  ));
-}
-
-
-// FOOTER DISCLAIMER
-children.push(hRule());
-children.push(p("For informational purposes only. Not investment advice. | Portfolio Intelligence v1.0 | Trade AI v12.1d | Data as of " + asOf,
-  { size: 8, italic: true, color: C.gray, align: AlignmentType.CENTER, before: 120 }));
-
-// ── Build Document ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// GENERATE DOCUMENT
+// ═══════════════════════════════════════════════════════════════════
 const doc = new Document({
+  creator: 'Trade AI v12',
+  title: 'Personal Portfolio Strategy Report',
+  description: 'Portfolio structure, risk, retirement tax planning, and income strategy',
   styles: {
-    default: { document: { run: { font: "Arial", size: 22 } } },
+    default: { heading1: { run: { font:'Segoe UI', size:32, bold:true, color:C.darkBlue } },
+               heading2: { run: { font:'Segoe UI', size:26, bold:true, color:C.darkBlue } },
+               heading3: { run: { font:'Segoe UI', size:22, bold:true, color:C.slate } },
+               document: { run: { font:'Segoe UI', size:20, color:C.black } } },
   },
   sections: [{
     properties: {
-      page: {
-        size: { width: 12240, height: 15840 },
-        margin: { top: 720, right: 720, bottom: 720, left: 720 },
-      },
+      page: { margin: { top: 720, bottom: 720, left: 900, right: 900 },
+              size: { width: 12240, height: 15840 } },
     },
+    headers: { default: new Header({ children: [
+      new Paragraph({ alignment: AlignmentType.RIGHT, children: [
+        run('Personal Portfolio Strategy Report', { size:7, color:C.grayMid, italic:true }),
+        run('  |  ', { size:7, color:C.grayMid }),
+        run('Confidential', { size:7, color:C.grayMid }),
+      ]})
+    ]})},
+    footers: { default: new Footer({ children: [
+      new Paragraph({ alignment: AlignmentType.CENTER, children: [
+        run('Trade AI v12  |  ', { size:7, color:C.grayMid }),
+        new TextRun({ children: [PageNumber.CURRENT], size:14, color:C.grayMid }),
+        run(' of ', { size:7, color:C.grayMid }),
+        new TextRun({ children: [PageNumber.TOTAL_PAGES], size:14, color:C.grayMid }),
+      ]})
+    ]})},
     children,
   }],
 });
 
-Packer.toBuffer(doc).then(buf => {
-  fs.writeFileSync(OUTPUT, buf);
-  console.log("Brief generated: " + OUTPUT);
+Packer.toBuffer(doc).then(buffer => {
+  fs.writeFileSync(OUTPUT, buffer);
+  console.log(`Report saved: ${OUTPUT} (${(buffer.length/1024).toFixed(0)} KB, ${children.length} elements)`);
 }).catch(err => {
-  console.error("Error:", err);
+  console.error('DOCX generation error:', err);
   process.exit(1);
 });
-
-// ══════════════════════════════════════════════════════════════════════════
-// NEW SECTION: Technical Health Overview
-// ══════════════════════════════════════════════════════════════════════════
