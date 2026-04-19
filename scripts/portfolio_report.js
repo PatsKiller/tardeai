@@ -613,7 +613,7 @@ children.push(
   new Paragraph({ spacing: { before: 80 } }),
   kpiRow([
     ['Traditional / Pre-Tax', fUSD(tradBal), C.darkBlue, 'Source-Reported'],
-    ['Annual Dividends', fUSD(divTotal), divTotal < divTarget ? C.amber : C.green, 'Pipeline-Derived'],
+    ['Annual Dividends', fUSD(divTotal), divTotal < divTarget ? C.amber : C.green, 'Pipeline-Derived*'],
     ['YTD Return', fPct(ytdPct), ytdPct >= 0 ? C.green : C.red, 'Pipeline-Derived'],
   ]),
   new Paragraph({ spacing: { before: 80 } }),
@@ -623,6 +623,7 @@ children.push(
     ['1Y Return', fPct(y1Pct), y1Pct >= 0 ? C.green : C.red, 'Pipeline-Derived'],
   ]),
   new Paragraph({ spacing: { before: 120 } }),
+  p(`* Dividend income note: Pipeline-derived value (${fUSD(divTotal)}) from dividend_calendar.json payers differs from modeled strategy-layer estimate ($12,506) in AI advisory analysis. Difference reflects calculation methodology; verify before execution.`, { size:8, color:C.grayMid, italic:true }),
 );
 
 // "What Matters Now" box — 3 priorities
@@ -730,6 +731,16 @@ children.push(pageBreak());
 children.push(heading('Top Holdings and Concentration Risk', HeadingLevel.HEADING_1));
 children.push(sourceLabel('Market values: [Source-Reported] | Concentration percentages: [Pipeline-Derived]'));
 
+// Top-5 concentration stat
+const top5Mv = topHoldings.slice(0, 5).reduce((s, [, mv]) => s + mv, 0);
+const top5Pct = (top5Mv / totalVal * 100).toFixed(1);
+children.push(kpiRow([
+  ['Top 5 Holdings', `${top5Pct}% of portfolio`, C.amber, 'Pipeline-Derived'],
+  ['V Concentration', `${vPct.toFixed(1)}%`, vPct > 13 ? C.red : C.green, 'Source-Reported'],
+  ['Positions', `${Object.keys(bySym).length} unique`, C.darkBlue, 'Source-Reported'],
+]));
+children.push(new Paragraph({ spacing: { before: 60 } }));
+
 const holdBars = drawHBar(
   topHoldings.map(([sym, mv]) => ({ label:sym, value:mv })),
   520, null, 'Top Holdings by Market Value'
@@ -796,7 +807,7 @@ children.push(twoColumnRow(
     })),
     new Paragraph({ spacing: { before: 60 } }),
     p('Assessment:', { bold:true, size:9, color:C.darkBlue, after:20 }),
-    p('Portfolio has outperformed SPY over all time periods. Low beta (0.38) indicates defensive positioning from SCHD/BND/dividend mix. 1Y return of +41.5% reflects Visa and defense sector strength.', { size:9, color:C.slate }),
+    p('Pipeline indicates outperformance versus SPY; formal benchmark comparison panel omitted from this version pending validated benchmark feed. Low beta (0.38, pipeline-derived) indicates defensive positioning. 1Y return of +41.5% reflects Visa and defense sector strength.', { size:9, color:C.slate }),
   ]
 ));
 
@@ -905,7 +916,7 @@ const scenarioChart = drawHBar([
 ], 480, null, '2026 Conversion Scenarios — Federal Tax Impact');
 children.push(imgPara(scenarioChart, 460, 160));
 
-children.push(calloutBox('Recommended: Convert additional $16,000 before Dec 31. Uses remaining 22% bracket capacity without triggering 24%.'));
+children.push(calloutBox('Recommended: Convert additional $16,000 before Dec 31. Uses remaining 22% bracket capacity without triggering 24%. Tradeoff: tax paid at 22% now vs. potentially higher forced distributions at 24%+ under future RMD rules.'));
 
 children.push(heading('Action Checklist', HeadingLevel.HEADING_2));
 const checkItems = [
@@ -1167,7 +1178,6 @@ children.push(sourceLabel('Action items: [Modeled Strategy Layer] — advisory r
 
 const actions = [
   ['Immediate','Convert additional $16K to Roth','$16,000','Before Dec 31','Lock 22% rate'],
-  ['Immediate','Close SRNE position','~$2','This week','Remove dead weight'],
   ['Immediate','Update stale stop losses','—','This week','Protect $304K gains'],
   ['Near-Term','Build bond allocation','$111,000','Q2-Q3 2026','Achieve 25% target'],
   ['Near-Term','Trim Visa 30%','$57,000','12 weeks','Reduce to ~11%'],
@@ -1208,6 +1218,8 @@ const flags = [
   ['Tax Bracket','May be incomplete in tax projection module','Medium'],
   ['Defense Section Date','May reference January 2025 vs 2026 core sections','Low'],
   ['Growth Assumption','7% annualized for projection models — not guaranteed','Info'],
+  ['Dividend Reconciliation',`Pipeline-derived: ${fUSD(divTotal)} vs modeled strategy estimate: $12,506 — methodology difference`,'Medium'],
+  ['Appendix Total','Holdings appendix may not reconcile to cover total due to sweep balances and unmapped positions','Low'],
 ];
 children.push(styledTable(
   ['Data Point', 'Issue', 'Severity'],
@@ -1297,6 +1309,11 @@ children.push(styledTable(
     rowShading: (ri) => ri === holdRows.length - 1 ? C.bg2 : (ri % 2 === 0 ? C.white : C.bg1),
   }
 ));
+
+// Reconciliation note
+if (Math.abs(totalMV - totalVal) > 100) {
+  children.push(p(`Note: Appendix total (${fUSD(totalMV)}) differs from cover total (${fUSD(totalVal)}). Difference of ${fUSD(Math.abs(totalVal - totalMV))} reflects residual sweep balances, unmapped positions, or rounding in the top ${displayHoldings.length} holdings shown.`, { size:8, color:C.grayMid, italic:true }));
+}
 
 // ── FOOTER / DISCLOSURE ─────────────────────────────────────────
 children.push(new Paragraph({ spacing: { before: 400 } }));
