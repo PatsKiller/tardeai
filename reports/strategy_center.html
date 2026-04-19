@@ -451,6 +451,592 @@ function PrioritiesPanel({data}) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// POSITION INTELLIGENCE — Decision cockpit for every holding
+// ═══════════════════════════════════════════════════════════════════
+
+function PositionIntelligence({data}) {
+  const [activeFilters, setActiveFilters] = useState([]);
+  const [sortKey, setSortKey] = useState('piScore');
+  const [expandedTicker, setExpandedTicker] = useState(null);
+
+  // ── data sources ────────────────────────────────────────────────
+  const holdings = data.holdings?.holdings || [];
+  const enrichment = data.enrichment || {};
+  const newsData = data.news || {};
+  const catalysts = newsData.catalysts || [];
+  const stops = data.stops || {};
+  const technical = data.technical?.positions || {};
+  const signals = data.signals || {};
+  const retirement = data.retirement || {};
+  const keyDates = retirement.key_dates || {};
+  const tv = data.holdings?.portfolio_totals?.total_value || 1;
+
+  // ── skip internal / tiny positions ──────────────────────────────
+  const SKIP = /^(FID-|SS-|CASH$|FCASH$|SPAXX$|FDRXX$|SWVXX$)/i;
+
+  // ── aggregate holdings by symbol ────────────────────────────────
+  const bySymbol = useMemo(() => {
+    const map = {};
+    holdings.forEach(h => {
+      if (SKIP.test(h.symbol)) return;
+      if ((h.market_value || 0) < 200) return;
+      if (!map[h.symbol]) {
+        map[h.symbol] = {
+          symbol: h.symbol,
+          market_value: 0,
+          shares: 0,
+          cost_basis: 0,
+          gain_loss: 0,
+          accounts: [],
+        };
+      }
+      const m = map[h.symbol];
+      m.market_value += (h.market_value || 0);
+      m.shares += (h.shares || 0);
+      m.cost_basis += (h.cost_basis || 0);
+      m.gain_loss += (h.gain_loss || 0);
+      if (h.account && !m.accounts.includes(h.account)) m.accounts.push(h.account);
+    });
+    return map;
+  }, [holdings]);
+
+  // ── earnings dates helper ───────────────────────────────────────
+  const earningsDates = useMemo(() => {
+    const dates = {};
+    // Try to extract from retirement key_dates or enrichment
+    Object.entries(enrichment).forEach(([sym, info]) => {
+      if (info && info.earnings_date) {
+        dates[sym] = new Date(info.earnings_date);
+      }
+    });
+    return dates;
+  }, [enrichment]);
+
+  // ── compute PI score for each position ──────────────────────────
+  const computePIScore = useCallback((sym) => {
+    const e = enrichment[sym] || {};
+    const stopData = stops[sym] || {};
+    const price = e.price || bySymbol[sym]?.market_value / (bySymbol[sym]?.shares || 1) || 0;
+    const newsForSym = catalysts.filter(c => (c.portfolio_symbol || '').toUpperCase() === sym.toUpperCase());
+
+    // Technical (25%): RSI zone, above SMA200, above SMA50
+    let techScore = 50;
+    const rsi = e.rsi;
+    if (rsi != null) {
+      if (rsi >= 40 && rsi <= 60) techScore += 20;
+      else if (rsi >= 30 && rsi <= 70) techScore += 10;
+      else if (rsi < 30) techScore -= 10;
+      else if (rsi > 80) techScore -= 15;
+    }
+    const sma200 = e.sma200_pct;
+    if (sma200 != null) {
+      if (sma200 > 0) techScore += 15;
+      else techScore -= 10;
+    }
+    const sma50 = e.sma50_pct;
+    if (sma50 != null) {
+      if (sma50 > 0) techScore += 15;
+      else techScore -= 5;
+    }
+    techScore = Math.max(0, Math.min(100, techScore));
+
+    // Momentum (25%): week/month/YTD
+    let momScore = 50;
+    if (e.perf_week_pct != null) momScore += Math.max(-20, Math.min(20, e.perf_week_pct * 3));
+    if (e.perf_month_pct != null) momScore += Math.max(-15, Math.min(15, e.perf_month_pct * 1.5));
+    if (e.perf_ytd_pct != null) momScore += Math.max(-15, Math.min(15, e.perf_ytd_pct * 0.5));
+    momScore = Math.max(0, Math.min(100, momScore));
+
+    // Analyst (20%): rating quality
+    let analystScore = 50;
+    const rating = (e.analyst_rating || '').toLowerCase();
+    if (rating.includes('buy') || rating.includes('outperform') || rating.includes('overweight')) analystScore += 25;
+    else if (rating.includes('hold') || rating.includes('neutral') || rating.includes('equal')) analystScore += 5;
+    else if (rating.includes('sell') || rating.includes('underperform') || rating.includes('underweight')) analystScore -= 20;
+    if (e.forward_pe != null && e.forward_pe > 0 && e.forward_pe < 25) analystScore += 10;
+    analystScore = Math.max(0, Math.min(100, analystScore));
+
+    // Risk (15%): stop distance, beta, short interest
+    let riskScore = 60;
+    if (stopData.stop && price > 0) {
+      const stopDist = ((price - stopData.stop) / price) * 100;
+      if (stopDist < 3) riskScore -= 25;
+      else if (stopDist < 5) riskScore -= 15;
+      else if (stopDist < 10) riskScore += 5;
+      else riskScore += 10;
+    }
+    if (e.beta != null) {
+      if (e.beta > 1.8) riskScore -= 15;
+      else if (e.beta > 1.3) riskScore -= 5;
+      else if (e.beta < 0.7) riskScore += 10;
+    }
+    if (e.short_float_pct != null) {
+      if (e.short_float_pct > 10) riskScore -= 15;
+      else if (e.short_float_pct > 5) riskScore -= 5;
+    }
+    riskScore = Math.max(0, Math.min(100, riskScore));
+
+    // Catalyst (15%): news score if available
+    let catalystScore = 50;
+    if (newsForSym.length > 0) {
+      const avgScore = newsForSym.reduce((s, n) => s + (n.llm_score || 0), 0) / newsForSym.length;
+      catalystScore = Math.max(0, Math.min(100, avgScore));
+    }
+
+    const composite = Math.round(
+      techScore * 0.25 +
+      momScore * 0.25 +
+      analystScore * 0.20 +
+      riskScore * 0.15 +
+      catalystScore * 0.15
+    );
+
+    return {
+      total: Math.max(0, Math.min(100, composite)),
+      technical: Math.round(techScore),
+      momentum: Math.round(momScore),
+      analyst: Math.round(analystScore),
+      risk: Math.round(riskScore),
+      catalyst: Math.round(catalystScore),
+    };
+  }, [enrichment, stops, catalysts, bySymbol]);
+
+  // ── build enriched position list ────────────────────────────────
+  const positions = useMemo(() => {
+    return Object.values(bySymbol).map(pos => {
+      const sym = pos.symbol;
+      const e = enrichment[sym] || {};
+      const stopData = stops[sym] || {};
+      const price = e.price || pos.market_value / (pos.shares || 1);
+      const newsForSym = catalysts.filter(c => (c.portfolio_symbol || '').toUpperCase() === sym.toUpperCase());
+      const topNews = newsForSym.sort((a, b) => (b.llm_score || 0) - (a.llm_score || 0))[0] || null;
+      const piScore = computePIScore(sym);
+      const portfolioPct = (pos.market_value / tv) * 100;
+
+      // Stop distance
+      let stopDist = null;
+      if (stopData.stop && price > 0) {
+        stopDist = ((price - stopData.stop) / price) * 100;
+      }
+
+      // Rough target price from forward_pe * eps_next_y
+      let targetPrice = null;
+      if (e.forward_pe && e.eps_next_y) {
+        targetPrice = e.forward_pe * e.eps_next_y;
+      }
+      const upsideToTarget = targetPrice && price > 0 ? ((targetPrice - price) / price) * 100 : null;
+
+      // Action bias
+      let actionBias = 'Hold';
+      if (stopDist != null && stopDist < 3) actionBias = 'Watch';
+      else if (piScore.total >= 75 && upsideToTarget && upsideToTarget > 10) actionBias = 'Add';
+      else if (piScore.total < 35) actionBias = 'Trim';
+      else if (stopDist != null && stopDist < 5) actionBias = 'Watch';
+
+      // Earnings within 30 days
+      let earningsDate = null;
+      let earningsDays = null;
+      if (earningsDates[sym]) {
+        const now = new Date();
+        const diff = Math.ceil((earningsDates[sym] - now) / (1000 * 60 * 60 * 24));
+        if (diff >= 0 && diff <= 30) {
+          earningsDate = earningsDates[sym].toLocaleDateString('en-US', {month:'short', day:'numeric'});
+          earningsDays = diff;
+        }
+      }
+
+      // Analyst downgrade detection
+      const isDowngrade = rating => {
+        const r = (rating || '').toLowerCase();
+        return r.includes('sell') || r.includes('underperform') || r.includes('underweight');
+      };
+
+      return {
+        ...pos,
+        price,
+        enrichment: e,
+        piScore,
+        portfolioPct,
+        stopData,
+        stopDist,
+        targetPrice,
+        upsideToTarget,
+        actionBias,
+        topNews,
+        newsForSym,
+        earningsDate,
+        earningsDays,
+        isDowngrade: isDowngrade(e.analyst_rating),
+        hasNegativeNews: newsForSym.some(n => (n.llm_category || '').toLowerCase().includes('negative') || (n.llm_category || '').toLowerCase().includes('risk') || (n.llm_category || '').toLowerCase().includes('bearish')),
+        sector: e.sector || '',
+        company: e.company || sym,
+      };
+    });
+  }, [bySymbol, enrichment, stops, catalysts, computePIScore, tv, earningsDates]);
+
+  // ── KPI calculations ────────────────────────────────────────────
+  const kpis = useMemo(() => {
+    const nearStop = positions.filter(p => p.stopDist != null && p.stopDist < 5).length;
+    const nearEarnings = positions.filter(p => p.earningsDays != null && p.earningsDays <= 14).length;
+    const downgrades = positions.filter(p => p.isDowngrade).length;
+    const negNews = positions.filter(p => p.hasNegativeNews).length;
+    const avgPI = positions.length > 0
+      ? Math.round(positions.reduce((s, p) => s + p.piScore.total, 0) / positions.length)
+      : 0;
+    return {
+      total: positions.length,
+      nearStop,
+      nearEarnings,
+      downgrades,
+      negNews,
+      avgPI,
+    };
+  }, [positions]);
+
+  // ── filter logic ────────────────────────────────────────────────
+  const filterChips = [
+    {key: 'nearStop', label: 'Near Stop', match: p => p.stopDist != null && p.stopDist < 5},
+    {key: 'nearEarnings', label: 'Near Earnings', match: p => p.earningsDays != null && p.earningsDays <= 14},
+    {key: 'downgrade', label: 'Analyst Downgrade', match: p => p.isDowngrade},
+    {key: 'negNews', label: 'Negative News', match: p => p.hasNegativeNews},
+    {key: 'techBreak', label: 'Technical Breakdown', match: p => (p.enrichment.sma200_pct != null && p.enrichment.sma200_pct < -5) || (p.enrichment.rsi != null && p.enrichment.rsi < 30)},
+    {key: 'highUpside', label: 'High Upside', match: p => p.upsideToTarget != null && p.upsideToTarget > 15},
+  ];
+  const toggleFilter = (key) => setActiveFilters(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+
+  const sortOptions = [
+    {key: 'piScore', label: 'PI Score'},
+    {key: 'upside', label: 'Upside to Target'},
+    {key: 'stopProx', label: 'Stop Proximity'},
+    {key: 'catalyst', label: 'Catalyst Score'},
+  ];
+
+  // ── filtered + sorted positions ─────────────────────────────────
+  const displayed = useMemo(() => {
+    let items = [...positions];
+    if (activeFilters.length > 0) {
+      const matchers = filterChips.filter(f => activeFilters.includes(f.key));
+      items = items.filter(p => matchers.some(m => m.match(p)));
+    }
+    items.sort((a, b) => {
+      switch (sortKey) {
+        case 'piScore': return b.piScore.total - a.piScore.total;
+        case 'upside': return (b.upsideToTarget || -999) - (a.upsideToTarget || -999);
+        case 'stopProx': return (a.stopDist == null ? 999 : a.stopDist) - (b.stopDist == null ? 999 : b.stopDist);
+        case 'catalyst': return b.piScore.catalyst - a.piScore.catalyst;
+        default: return b.piScore.total - a.piScore.total;
+      }
+    });
+    return items;
+  }, [positions, activeFilters, sortKey]);
+
+  // ── color helpers ───────────────────────────────────────────────
+  const piColor = (score) => score >= 75 ? '#10b981' : score >= 55 ? '#3b82f6' : score >= 40 ? '#f59e0b' : '#ef4444';
+  const piBg = (score) => `${piColor(score)}18`;
+  const actionColor = (bias) => ({Add:'#10b981', Hold:'#3b82f6', Watch:'#f59e0b', Trim:'#ef4444'}[bias] || '#6b7280');
+  const smaStatus = (pct) => pct == null ? '—' : pct > 0 ? 'Above' : 'Below';
+  const smaColor = (pct) => pct == null ? '#6b7280' : pct > 0 ? '#10b981' : '#ef4444';
+
+  // ── sector peers helper ─────────────────────────────────────────
+  const sectorPeers = useCallback((sym) => {
+    const sector = (enrichment[sym] || {}).sector;
+    if (!sector) return [];
+    return Object.keys(bySymbol).filter(s => s !== sym && (enrichment[s] || {}).sector === sector);
+  }, [enrichment, bySymbol]);
+
+  // ── render ──────────────────────────────────────────────────────
+  return (
+    <div className="fade-in">
+      <SectionHeader icon="🧠" title="Position Intelligence" subtitle={`${positions.length} active positions analyzed | Composite decision scoring`} badge="LIVE"/>
+
+      {/* ── KPI Row ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+        <KpiCard label="Total Positions" value={kpis.total} sub="Active holdings"/>
+        <KpiCard label="Near Stop (<5%)" value={kpis.nearStop} sub="Positions at risk" color={kpis.nearStop > 0 ? '#ef4444' : '#10b981'} warn={kpis.nearStop > 0 ? `${kpis.nearStop} position(s) near stop` : null}/>
+        <KpiCard label="Near Earnings (<14d)" value={kpis.nearEarnings} sub="Upcoming reports" color={kpis.nearEarnings > 0 ? '#f59e0b' : '#6b7280'}/>
+        <KpiCard label="Analyst Downgrades" value={kpis.downgrades} sub="Sell/Underperform" color={kpis.downgrades > 0 ? '#ef4444' : '#10b981'}/>
+        <KpiCard label="Negative News" value={kpis.negNews} sub="Risk catalysts" color={kpis.negNews > 0 ? '#ef4444' : '#10b981'}/>
+        <KpiCard label="Average PI Score" value={kpis.avgPI} sub="Composite 0-100" color={piColor(kpis.avgPI)}/>
+      </div>
+
+      {/* ── Filter / Sort Bar ────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <span className="text-[9px] uppercase tracking-wider text-muted font-bold mr-1">Filters:</span>
+        {filterChips.map(f => (
+          <button key={f.key} onClick={() => toggleFilter(f.key)}
+            className={`text-[10px] px-2.5 py-1 rounded-full font-semibold transition-all cursor-pointer border ${
+              activeFilters.includes(f.key)
+                ? 'bg-accent/20 text-accent border-accent/40'
+                : 'bg-card text-muted border-border hover:border-accent/30 hover:text-gray-300'
+            }`}>
+            {f.label}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-[9px] uppercase tracking-wider text-muted font-bold">Sort:</span>
+          <select value={sortKey} onChange={e => setSortKey(e.target.value)}
+            className="text-[10px] bg-card border border-border rounded px-2 py-1 text-gray-300 cursor-pointer focus:outline-none focus:border-accent/40">
+            {sortOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* ── Position Cards Grid ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 mb-6">
+        {displayed.map(pos => {
+          const isExpanded = expandedTicker === pos.symbol;
+          const e = pos.enrichment;
+
+          return (
+            <div key={pos.symbol} className="bg-card border border-border rounded-lg overflow-hidden hover:border-accent/30 transition-all">
+              {/* ── Card Header ──────────────────────────────────── */}
+              <div className="p-4 cursor-pointer" onClick={() => setExpandedTicker(isExpanded ? null : pos.symbol)}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-white">{pos.symbol}</span>
+                    <span className="text-[10px] text-muted truncate max-w-[140px]">{pos.company}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{background: piBg(pos.piScore.total), color: piColor(pos.piScore.total)}}>
+                      PI {pos.piScore.total}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{background: `${actionColor(pos.actionBias)}15`, color: actionColor(pos.actionBias)}}>
+                      {pos.actionBias}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <div>
+                    <div className="text-[9px] text-muted">Price</div>
+                    <div className="text-xs font-bold text-gray-200">{fmt$(pos.price, 2)}</div>
+                    {e.perf_week_pct != null && (
+                      <div className={`text-[9px] font-semibold ${e.perf_week_pct >= 0 ? 'text-up' : 'text-dn'}`}>{fmtPct(e.perf_week_pct)}</div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-muted">Weight</div>
+                    <div className="text-xs font-bold text-gray-200">{pos.portfolioPct.toFixed(1)}%</div>
+                    <div className="text-[9px] text-muted">{fmt$(pos.market_value, 0)}</div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-muted">Stop Dist</div>
+                    <div className={`text-xs font-bold ${pos.stopDist != null ? (pos.stopDist < 5 ? 'text-dn' : pos.stopDist < 10 ? 'text-warn' : 'text-up') : 'text-muted'}`}>
+                      {pos.stopDist != null ? pos.stopDist.toFixed(1) + '%' : 'No stop'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-[9px] mb-1.5">
+                  <span className="text-muted">RSI</span>
+                  <span className={`font-bold ${e.rsi != null ? (e.rsi > 70 ? 'text-dn' : e.rsi < 30 ? 'text-warn' : 'text-gray-300') : 'text-muted'}`}>
+                    {e.rsi != null ? e.rsi.toFixed(0) : '—'}
+                  </span>
+                  <span className="text-muted">SMA200</span>
+                  <span className="font-bold" style={{color: smaColor(e.sma200_pct)}}>{smaStatus(e.sma200_pct)}</span>
+                  {e.analyst_rating && <>
+                    <span className="text-muted">Analyst</span>
+                    <span className="font-bold text-gray-300">{e.analyst_rating}</span>
+                  </>}
+                </div>
+
+                {pos.topNews && (
+                  <div className="text-[9px] text-blue-300/70 truncate mt-1" title={pos.topNews.title}>
+                    ▸ {pos.topNews.title}
+                  </div>
+                )}
+
+                {pos.earningsDate && (
+                  <div className="text-[9px] text-warn mt-1 font-semibold">
+                    Earnings in {pos.earningsDays}d ({pos.earningsDate})
+                  </div>
+                )}
+              </div>
+
+              {/* ── Expandable Detail Drawer ─────────────────────── */}
+              {isExpanded && (
+                <div className="border-t border-border bg-surface/30 px-4 py-4 space-y-4">
+                  {/* Decision Header */}
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      {label: 'Action Bias', value: pos.actionBias, color: actionColor(pos.actionBias)},
+                      {label: 'Confidence', value: pos.piScore.total >= 70 ? 'High' : pos.piScore.total >= 50 ? 'Medium' : 'Low',
+                        color: pos.piScore.total >= 70 ? '#10b981' : pos.piScore.total >= 50 ? '#f59e0b' : '#ef4444'},
+                      {label: 'Analyst', value: e.analyst_rating || '—', color: '#3b82f6'},
+                      {label: 'Technical', value: e.sma200_pct != null ? (e.sma200_pct > 0 ? 'Bullish' : 'Bearish') : '—',
+                        color: e.sma200_pct > 0 ? '#10b981' : '#ef4444'},
+                      {label: 'News Tone', value: pos.hasNegativeNews ? 'Negative' : pos.newsForSym.length > 0 ? 'Neutral/Positive' : 'No News',
+                        color: pos.hasNegativeNews ? '#ef4444' : '#10b981'},
+                    ].map((item, i) => (
+                      <div key={i} className="text-center">
+                        <div className="text-[8px] text-muted uppercase tracking-wider mb-1">{item.label}</div>
+                        <div className="text-[10px] font-bold" style={{color: item.color}}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* PI Score Breakdown */}
+                  <div>
+                    <div className="text-[9px] font-bold text-muted uppercase tracking-wider mb-2">PI Score Breakdown</div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {[
+                        {label: 'Technical', value: pos.piScore.technical, weight: '25%'},
+                        {label: 'Momentum', value: pos.piScore.momentum, weight: '25%'},
+                        {label: 'Analyst', value: pos.piScore.analyst, weight: '20%'},
+                        {label: 'Risk', value: pos.piScore.risk, weight: '15%'},
+                        {label: 'Catalyst', value: pos.piScore.catalyst, weight: '15%'},
+                      ].map((item, i) => (
+                        <div key={i} className="text-center">
+                          <div className="text-[8px] text-muted">{item.label} ({item.weight})</div>
+                          <div className="h-1.5 bg-dim/30 rounded-full overflow-hidden mt-1 mb-0.5">
+                            <div className="h-full rounded-full" style={{width: `${item.value}%`, background: piColor(item.value)}}></div>
+                          </div>
+                          <div className="text-[10px] font-bold" style={{color: piColor(item.value)}}>{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Analyst View */}
+                  <div>
+                    <div className="text-[9px] font-bold text-muted uppercase tracking-wider mb-2">Analyst View</div>
+                    <div className="grid grid-cols-4 gap-3 text-[10px]">
+                      <div><span className="text-muted block">Rating</span><span className="text-gray-200 font-semibold">{e.analyst_rating || '—'}</span></div>
+                      <div><span className="text-muted block">Forward PE</span><span className="text-gray-200 font-semibold">{e.forward_pe != null ? e.forward_pe.toFixed(1) : '—'}</span></div>
+                      <div><span className="text-muted block">EPS Next Y</span><span className="text-gray-200 font-semibold">{e.eps_next_y != null ? '$' + e.eps_next_y.toFixed(2) : '—'}</span></div>
+                      <div><span className="text-muted block">Target Price</span>
+                        <span className={`font-semibold ${pos.upsideToTarget != null ? (pos.upsideToTarget > 0 ? 'text-up' : 'text-dn') : 'text-muted'}`}>
+                          {pos.targetPrice != null ? fmt$(pos.targetPrice, 2) : '—'}
+                          {pos.upsideToTarget != null && <span className="text-[8px] ml-1">({fmtPct(pos.upsideToTarget)})</span>}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* News & Catalysts */}
+                  <div>
+                    <div className="text-[9px] font-bold text-muted uppercase tracking-wider mb-2">News & Catalysts</div>
+                    {pos.newsForSym.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {pos.newsForSym.slice(0, 3).map((n, i) => (
+                          <div key={i} className="flex items-start gap-2 bg-card rounded p-2 border border-border/50">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0" style={{
+                              background: `${n.llm_score >= 70 ? '#10b981' : n.llm_score >= 40 ? '#f59e0b' : '#6b7280'}15`,
+                              color: n.llm_score >= 70 ? '#10b981' : n.llm_score >= 40 ? '#f59e0b' : '#6b7280'
+                            }}>{n.llm_score || 0}</span>
+                            <div className="min-w-0">
+                              <div className="text-[10px] text-gray-200 leading-tight">{n.title}</div>
+                              {n.llm_summary && <div className="text-[9px] text-muted mt-0.5 line-clamp-2">{n.llm_summary}</div>}
+                              <div className="flex gap-2 mt-1">
+                                {n.llm_category && <span className="text-[8px] text-accent">{n.llm_category}</span>}
+                                {n.llm_urgency && <span className="text-[8px] text-warn">{n.llm_urgency}</span>}
+                                {n.url && <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-[8px] text-blue-400 hover:underline">Source</a>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-muted italic">No recent catalysts for this ticker</div>
+                    )}
+                  </div>
+
+                  {/* Technical */}
+                  <div>
+                    <div className="text-[9px] font-bold text-muted uppercase tracking-wider mb-2">Technical Indicators</div>
+                    <div className="grid grid-cols-4 gap-3 text-[10px]">
+                      <div>
+                        <span className="text-muted block">RSI</span>
+                        <span className={`font-semibold ${e.rsi != null ? (e.rsi > 70 ? 'text-dn' : e.rsi < 30 ? 'text-warn' : 'text-gray-200') : 'text-muted'}`}>
+                          {e.rsi != null ? e.rsi.toFixed(1) : '—'}
+                        </span>
+                      </div>
+                      <div><span className="text-muted block">SMA 20</span><span className="font-semibold" style={{color: smaColor(e.sma20_pct)}}>{e.sma20_pct != null ? fmtPct(e.sma20_pct) : '—'}</span></div>
+                      <div><span className="text-muted block">SMA 50</span><span className="font-semibold" style={{color: smaColor(e.sma50_pct)}}>{e.sma50_pct != null ? fmtPct(e.sma50_pct) : '—'}</span></div>
+                      <div><span className="text-muted block">SMA 200</span><span className="font-semibold" style={{color: smaColor(e.sma200_pct)}}>{e.sma200_pct != null ? fmtPct(e.sma200_pct) : '—'}</span></div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3 text-[10px] mt-2">
+                      <div><span className="text-muted block">ATR</span><span className="text-gray-200 font-semibold">{e.atr != null ? e.atr.toFixed(2) : '—'}</span></div>
+                      <div><span className="text-muted block">Beta</span><span className="text-gray-200 font-semibold">{e.beta != null ? e.beta.toFixed(2) : '—'}</span></div>
+                      <div><span className="text-muted block">52w High</span><span className={`font-semibold ${e.week52_high_pct != null ? (e.week52_high_pct > -5 ? 'text-up' : 'text-muted') : 'text-muted'}`}>{e.week52_high_pct != null ? fmtPct(e.week52_high_pct) : '—'}</span></div>
+                      <div><span className="text-muted block">52w Low</span><span className={`font-semibold ${e.week52_low_pct != null ? (e.week52_low_pct < 10 ? 'text-dn' : 'text-muted') : 'text-muted'}`}>{e.week52_low_pct != null ? fmtPct(e.week52_low_pct) : '—'}</span></div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3 text-[10px] mt-2">
+                      <div><span className="text-muted block">Vol (RVOL)</span><span className="text-gray-200 font-semibold">{e.rvol != null ? e.rvol.toFixed(2) + 'x' : '—'}</span></div>
+                      <div><span className="text-muted block">Short Float</span><span className={`font-semibold ${e.short_float_pct != null && e.short_float_pct > 5 ? 'text-warn' : 'text-gray-200'}`}>{e.short_float_pct != null ? e.short_float_pct.toFixed(1) + '%' : '—'}</span></div>
+                      <div><span className="text-muted block">Perf Month</span><span className="font-semibold" style={{color: e.perf_month_pct >= 0 ? '#10b981' : '#ef4444'}}>{e.perf_month_pct != null ? fmtPct(e.perf_month_pct) : '—'}</span></div>
+                      <div><span className="text-muted block">Perf YTD</span><span className="font-semibold" style={{color: e.perf_ytd_pct >= 0 ? '#10b981' : '#ef4444'}}>{e.perf_ytd_pct != null ? fmtPct(e.perf_ytd_pct) : '—'}</span></div>
+                    </div>
+                  </div>
+
+                  {/* Sector Peers */}
+                  {sectorPeers(pos.symbol).length > 0 && (
+                    <div>
+                      <div className="text-[9px] font-bold text-muted uppercase tracking-wider mb-2">Sector Peers ({e.sector})</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {sectorPeers(pos.symbol).map(peer => {
+                          const pe = enrichment[peer] || {};
+                          const peerPI = computePIScore(peer);
+                          return (
+                            <span key={peer} className="text-[9px] px-2 py-1 rounded bg-card border border-border/50 cursor-pointer hover:border-accent/30"
+                              onClick={(ev) => {ev.stopPropagation(); setExpandedTicker(peer);}}>
+                              <span className="font-bold text-gray-200">{peer}</span>
+                              <span className="ml-1.5 font-semibold" style={{color: piColor(peerPI.total)}}>PI {peerPI.total}</span>
+                              {pe.perf_week_pct != null && <span className={`ml-1 ${pe.perf_week_pct >= 0 ? 'text-up' : 'text-dn'}`}>{fmtPct(pe.perf_week_pct)}</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stop / Risk */}
+                  <div>
+                    <div className="text-[9px] font-bold text-muted uppercase tracking-wider mb-2">Stop / Risk Management</div>
+                    <div className="grid grid-cols-3 gap-3 text-[10px]">
+                      <div>
+                        <span className="text-muted block">Current Stop</span>
+                        <span className={`font-semibold ${pos.stopData.stop ? 'text-gray-200' : 'text-muted italic'}`}>
+                          {pos.stopData.stop ? fmt$(pos.stopData.stop, 2) : 'Not set'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted block">Distance</span>
+                        <span className={`font-semibold ${pos.stopDist != null ? (pos.stopDist < 5 ? 'text-dn' : pos.stopDist < 10 ? 'text-warn' : 'text-up') : 'text-muted'}`}>
+                          {pos.stopDist != null ? pos.stopDist.toFixed(1) + '%' : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted block">Suggested Action</span>
+                        <span className="font-semibold" style={{color: actionColor(pos.actionBias)}}>{pos.actionBias}</span>
+                      </div>
+                    </div>
+                    {pos.stopData.notes && (
+                      <div className="text-[9px] text-muted mt-2 italic">Notes: {pos.stopData.notes}</div>
+                    )}
+                    {pos.stopDist != null && pos.stopDist < 5 && (
+                      <div className="mt-2 p-2 rounded bg-dn/5 border border-dn/20 text-[10px] text-dn font-semibold">
+                        Warning: Price is within {pos.stopDist.toFixed(1)}% of stop loss. Review position sizing and exit strategy.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="text-[8px] text-dim text-right">Click card header to collapse</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {displayed.length === 0 && (
+        <div className="text-center py-8 text-muted text-sm">No positions match the selected filters</div>
+      )}
+    </div>
+  );
+}
+
 function RothStrategy({data}) {
   const ret = data.retirement || {};
   const kd = ret.key_dates || {};
@@ -1332,6 +1918,7 @@ function App() {
     <div className="max-w-7xl mx-auto px-4 md:px-8 py-6">
       <HeaderHero data={data}/>
       <PrioritiesPanel data={data}/>
+      <PositionIntelligence data={data}/>
       <RothStrategy data={data}/>
       <IncomeArchitecture data={data}/>
       <BondStrategy data={data}/>
