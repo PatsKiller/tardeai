@@ -10362,7 +10362,7 @@ function openPersonalModal() {
           html += '<span style="font-size:10px;color:' + staleness.color + '">';
           html += staleness.text;
           if (historyCount > 0) {
-            html += ' · <a href="#" onclick="_toggleHistoryPanel(\'' + _escapeHtml(key) + '\', this); return false;" style="color:#4a9eff;cursor:pointer;text-decoration:underline">' + historyCount + ' prior value' + (historyCount > 1 ? 's' : '') + '</a>';
+            html += ' · <a href="#" onclick="_toggleHistoryPanel(\'' + _escapeHtml(key) + '\', this); return false;" style="color:#f0a020;cursor:pointer;text-decoration:underline;font-weight:500">' + historyCount + ' prior value' + (historyCount > 1 ? 's' : '') + '</a>';
           } else {
             html += ' · <a href="#" onclick="_toggleHistoryPanel(\'' + _escapeHtml(key) + '\', this); return false;" style="color:var(--text3);cursor:pointer;text-decoration:none;opacity:0.7" title="View history from Postgres">history</a>';
           }
