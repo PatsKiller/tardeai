@@ -10321,6 +10321,17 @@ function openPersonalModal() {
     html += '⚠ Changes are backed up before saving. AI analysis will pick up new values on next pipeline run.';
     html += '</div>';
 
+    // Time-travel slider (Phase 8D-3b)
+    html += '<div id="time-travel-bar" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px">';
+    html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+    html += '<span style="font-size:12px;color:var(--text2);font-weight:500;min-width:80px">📅 As of:</span>';
+    html += '<span id="time-travel-date" style="font-size:14px;font-weight:600;color:var(--accent);min-width:110px">' + _todayISO() + '</span>';
+    html += '<input type="range" id="time-travel-slider" min="0" max="30" value="30" step="1" style="flex:1;min-width:200px;cursor:pointer;accent-color:var(--accent)" oninput="_onTimeTravelSliderInput(this.value)">';
+    html += '<button onclick="_resetTimeTravelToToday()" style="padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer;font-size:12px">↻ Today</button>';
+    html += '</div>';
+    html += '<div id="time-travel-status" style="font-size:10px;color:var(--text3);margin-top:6px;font-style:italic">Drag slider to view historical state. Editing disabled in time-travel mode.</div>';
+    html += '</div>';
+
     // Track editable keys for save function
     var editableKeys = [];
 
@@ -10737,6 +10748,206 @@ function _renderHistoryTable(panelDiv, data) {
   footer.style.cssText = 'font-size:9px;color:var(--text3);margin-top:6px';
   footer.innerHTML = 'Current value: <b style="color:var(--text)">' + _escapeHtml(String(data.current_value)) + '</b>';
   panelDiv.appendChild(footer);
+}
+
+// ── Time-Travel Slider (Phase 8D-3b) ──────────────────────────────────────────
+
+var _timeTravelCurrentValues = null; // stores live JSON values for reset
+var _timeTravelActive = false;
+
+function _todayISO() {
+  var d = new Date();
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+function _sliderValueToDate(sliderVal) {
+  var d = new Date();
+  d.setDate(d.getDate() - (30 - parseInt(sliderVal, 10)));
+  return d.getFullYear() + '-' +
+    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getDate()).padStart(2, '0');
+}
+
+function _onTimeTravelSliderInput(sliderVal) {
+  var dateStr = _sliderValueToDate(sliderVal);
+  var dateLabel = document.getElementById('time-travel-date');
+  var statusEl = document.getElementById('time-travel-status');
+  if (dateLabel) dateLabel.textContent = dateStr;
+
+  var isToday = parseInt(sliderVal, 10) === 30;
+
+  if (isToday) {
+    _resetTimeTravelToToday();
+    return;
+  }
+
+  // Store current values on first drag away from today
+  if (!_timeTravelActive) {
+    _timeTravelActive = true;
+    _timeTravelCurrentValues = {};
+    var inputs = document.querySelectorAll('[id^="psf-"]');
+    inputs.forEach(function(el) {
+      _timeTravelCurrentValues[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+  }
+
+  if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent)">🕐 Loading state as of ' + dateStr + '...</span>';
+
+  // Fetch reconstructed state
+  fetch('/api/personal/as_of/' + dateStr)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--warn)">⚠ ' + _escapeHtml(data.error || 'Reconstruction failed') + '</span>';
+        return;
+      }
+      _applyReconstructedValues(data, dateStr);
+    })
+    .catch(function(e) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--warn)">⚠ Network error: ' + _escapeHtml(e.message) + '</span>';
+    });
+}
+
+function _applyReconstructedValues(data, dateStr) {
+  var fields = (data.data || {}).fields || {};
+  var changed = 0;
+  var total = 0;
+  var statusEl = document.getElementById('time-travel-status');
+  var saveBtn = document.querySelector('#personal-modal-overlay .btn.primary');
+
+  // Disable save button in time-travel mode
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.4';
+    saveBtn.style.pointerEvents = 'none';
+    saveBtn.title = 'Editing disabled in time-travel mode — click "↻ Today" to return';
+  }
+
+  Object.keys(fields).forEach(function(fieldName) {
+    var field = fields[fieldName];
+    if (!field || typeof field !== 'object') return;
+    var el = document.getElementById('psf-' + fieldName);
+    if (!el) return;
+
+    total++;
+    var newVal = field.current;
+    var isReconstructed = field._reconstructed === true;
+    var valStr = (newVal === null || newVal === undefined) ? '' : String(newVal);
+
+    // Set value
+    if (el.type === 'checkbox') {
+      el.checked = (newVal === true || valStr === 'true');
+    } else {
+      el.value = valStr;
+    }
+
+    // Disable editing in time-travel mode
+    if (el.tagName === 'SELECT') {
+      el.disabled = true;
+    } else {
+      el.readOnly = true;
+    }
+    el.style.cursor = 'not-allowed';
+
+    // Visual marker for reconstructed fields
+    var row = el.closest('div[style*="margin-bottom:12px"]');
+    if (isReconstructed && field._reconstructed_from !== 'not_yet_set') {
+      el.style.borderColor = 'var(--accent)';
+      el.style.fontStyle = 'italic';
+      if (row && !row.querySelector('.time-travel-marker')) {
+        var marker = document.createElement('span');
+        marker.className = 'time-travel-marker';
+        marker.style.cssText = 'font-size:10px;color:var(--accent);margin-left:4px';
+        marker.title = 'Value differs from current — showing historical state as of ' + dateStr;
+        marker.textContent = ' 🕐';
+        var label = row.querySelector('label');
+        if (label) label.appendChild(marker);
+      }
+      changed++;
+    } else if (isReconstructed && field._reconstructed_from === 'not_yet_set') {
+      el.style.borderColor = 'var(--text3)';
+      el.style.fontStyle = 'italic';
+      el.style.opacity = '0.4';
+      if (row && !row.querySelector('.time-travel-marker')) {
+        var marker2 = document.createElement('span');
+        marker2.className = 'time-travel-marker';
+        marker2.style.cssText = 'font-size:10px;color:var(--text3);margin-left:4px';
+        marker2.title = 'Field did not exist at this date';
+        marker2.textContent = ' ∅';
+        var label2 = row.querySelector('label');
+        if (label2) label2.appendChild(marker2);
+      }
+    } else {
+      el.style.borderColor = 'var(--border2)';
+      el.style.fontStyle = 'normal';
+    }
+  });
+
+  if (statusEl) {
+    statusEl.innerHTML = '<span style="color:var(--accent)">🕐 Viewing state as of <b>' + dateStr + '</b> — ' +
+      changed + ' of ' + total + ' field(s) differ from current. ' +
+      '<span style="color:var(--text3)">Editing disabled.</span></span>';
+  }
+}
+
+function _resetTimeTravelToToday() {
+  var slider = document.getElementById('time-travel-slider');
+  var dateLabel = document.getElementById('time-travel-date');
+  var statusEl = document.getElementById('time-travel-status');
+  var saveBtn = document.querySelector('#personal-modal-overlay .btn.primary');
+
+  if (slider) slider.value = 30;
+  if (dateLabel) dateLabel.textContent = _todayISO();
+  if (statusEl) statusEl.innerHTML = '<span style="color:var(--text3);font-style:italic">Drag slider to view historical state. Editing disabled in time-travel mode.</span>';
+
+  // Re-enable save button
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.style.opacity = '1';
+    saveBtn.style.pointerEvents = 'auto';
+    saveBtn.title = '';
+  }
+
+  // Restore original values
+  if (_timeTravelCurrentValues) {
+    Object.keys(_timeTravelCurrentValues).forEach(function(inputId) {
+      var el = document.getElementById(inputId);
+      if (!el) return;
+      var origVal = _timeTravelCurrentValues[inputId];
+      if (el.type === 'checkbox') {
+        el.checked = origVal;
+      } else {
+        el.value = origVal;
+      }
+      // Restore styling
+      el.style.borderColor = 'var(--border2)';
+      el.style.fontStyle = 'normal';
+      el.style.opacity = '1';
+      el.style.cursor = '';
+      if (el.tagName === 'SELECT') {
+        el.disabled = false;
+      } else {
+        el.readOnly = false;
+      }
+    });
+  }
+
+  // Remove all time-travel markers
+  var markers = document.querySelectorAll('.time-travel-marker');
+  markers.forEach(function(m) { m.remove(); });
+
+  // Re-enable computed fields (they're always readonly)
+  var computedInputs = document.querySelectorAll('[id^="psf-"][readonly]');
+  computedInputs.forEach(function(el) {
+    // Check if this field was already readonly (computed fields)
+    // Those should stay readonly — only editable fields get restored
+    // The _timeTravelCurrentValues won't have overridden their readonly state
+  });
+
+  _timeTravelActive = false;
+  _timeTravelCurrentValues = null;
 }
 
 // ── v48 CHART.JS VISUALIZATION FUNCTIONS ─────────────────────────────────────
