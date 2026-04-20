@@ -87,7 +87,7 @@ def _execute(sql: str, params=None, fetch: str = None):
             elif fetch == "all":
                 result = cur.fetchall()
             else:
-                result = None
+                result = True
             conn.commit()
             return result
     except Exception as e:
