@@ -295,6 +295,95 @@ def _staleness_warning(ps: Dict, days_threshold: int = 30) -> str:
     )
 
 
+def _personal_historical_context(ps: dict, days_back: int = 90, threshold_fields: int = 5) -> str:
+    """Build HISTORICAL CONTEXT block from personal_history if enough data exists.
+
+    Returns empty string if fewer than threshold_fields have >=2 entries
+    in the last days_back window, OR if Postgres is unavailable.
+    """
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return ""
+    except Exception:
+        return ""
+
+    rows = _execute(
+        """SELECT field_name, value, effective_date, recorded_at, source
+           FROM personal_history
+           WHERE recorded_at >= (CURRENT_DATE - INTERVAL '%s days')
+           ORDER BY field_name, recorded_at ASC""" % int(days_back),
+        fetch="all"
+    )
+    if not rows or not isinstance(rows, list):
+        return ""
+
+    # Group by field
+    by_field: Dict[str, list] = {}
+    for row in rows:
+        fn = row.get("field_name")
+        if fn:
+            by_field.setdefault(fn, []).append(row)
+
+    # Filter to fields with >=2 entries
+    qualifying = {fn: entries for fn, entries in by_field.items() if len(entries) >= 2}
+
+    if len(qualifying) < threshold_fields:
+        return ""
+
+    # Build narrative lines
+    raw_fields = ps.get("_raw_fields", {})
+    lines = []
+
+    for fn in sorted(qualifying.keys()):
+        entries = qualifying[fn]
+        first_val = entries[0].get("value")
+        last_val = entries[-1].get("value")
+        first_date = entries[0].get("effective_date")
+        last_date = entries[-1].get("effective_date")
+        n_changes = len(entries)
+        data_type = raw_fields.get(fn, {}).get("data_type", "unknown")
+
+        if data_type in ("currency", "percentage", "integer"):
+            try:
+                fv = float(first_val) if first_val is not None else 0
+                lv = float(last_val) if last_val is not None else 0
+                delta = lv - fv
+                days_span = (last_date - first_date).days if first_date and last_date and first_date != last_date else 0
+
+                if days_span >= 7:
+                    monthly_rate = delta / (days_span / 30.44)
+                    if data_type == "currency":
+                        line = f"  - {fn}: ${fv:,.0f} -> ${lv:,.0f} (delta ${delta:+,.0f} over {days_span}d, ~${monthly_rate:+,.0f}/mo)"
+                    elif data_type == "percentage":
+                        line = f"  - {fn}: {fv:.2f}% -> {lv:.2f}% (delta {delta:+.2f}pp over {days_span}d)"
+                    else:
+                        line = f"  - {fn}: {fv:,.0f} -> {lv:,.0f} (delta {delta:+,.0f} over {days_span}d)"
+                else:
+                    if data_type == "currency":
+                        line = f"  - {fn}: ${fv:,.0f} -> ${lv:,.0f} ({n_changes} changes within {days_span}d)"
+                    elif data_type == "percentage":
+                        line = f"  - {fn}: {fv:.2f}% -> {lv:.2f}% ({n_changes} changes within {days_span}d)"
+                    else:
+                        line = f"  - {fn}: {fv:,.0f} -> {lv:,.0f} ({n_changes} changes within {days_span}d)"
+            except (TypeError, ValueError):
+                line = f"  - {fn}: {first_val} -> {last_val} ({n_changes} entries)"
+        elif data_type in ("enum", "boolean"):
+            if first_val != last_val:
+                line = f"  - {fn}: {first_val!r} -> {last_val!r} (changed {n_changes-1}x in window)"
+            else:
+                line = f"  - {fn}: {first_val!r} (stable, {n_changes} entries)"
+        elif data_type == "date":
+            line = f"  - {fn}: {first_val} -> {last_val} ({n_changes} entries)"
+        else:
+            line = f"  - {fn}: {first_val} -> {last_val} ({n_changes} entries)"
+
+        lines.append(line)
+
+    header = f"=== HISTORICAL CONTEXT (last {days_back} days, {len(qualifying)} fields with multi-entry history) ==="
+    return header + "\n" + "\n".join(lines)
+
+
 def _personal_context(ps: Dict, include_staleness: bool = True) -> str:
     """Format personal financial situation for prompt interpolation.
     Produces a multi-line block from personal_situation.json values."""
@@ -383,6 +472,11 @@ Income base: ${income_base:,.0f} (SSDI + Schedule C)
 After SE deduction: ${adjusted_income:,.0f}
 After 85% SSDI taxability + SE deduction + federal itemized: ${taxable_pre_conversion:,.0f} taxable
 Remaining {bracket}% capacity: ${roth_remaining:,.0f}""")
+
+    # Phase 8D-3c: Historical context if enough data accumulated
+    historical = _personal_historical_context(ps)
+    if historical:
+        blocks.append(historical)
 
     return "\n\n".join(blocks)
 
