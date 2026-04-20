@@ -303,6 +303,94 @@ def _handle_personal_as_of(handler, target_date: str):
     json_response(handler, code, result)
 
 
+def _handle_personal_history(handler, field_name: str):
+    """GET /api/personal/history/<field_name> - Phase 8D-2 field timeline endpoint."""
+    if not field_name:
+        json_response(handler, 400, {"ok": False, "error": "field_name is required"})
+        return
+
+    # Validate field exists in JSON schema
+    if not PERSONAL_PATH.exists():
+        json_response(handler, 404, {"ok": False, "error": "personal_situation.json not found"})
+        return
+
+    try:
+        ps_data = json.loads(PERSONAL_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        json_response(handler, 500, {"ok": False, "error": f"JSON parse error: {e}"})
+        return
+
+    fields = ps_data.get("fields", {})
+    if field_name not in fields:
+        json_response(handler, 404, {"ok": False, "error": f"field '{field_name}' not found"})
+        return
+
+    field_def = fields[field_name]
+    metadata = {
+        "field": field_name,
+        "data_type": field_def.get("data_type"),
+        "category": field_def.get("category"),
+        "description": field_def.get("description"),
+        "editable": field_def.get("editable", True),
+        "current_value": field_def.get("current"),
+        "last_updated": field_def.get("last_updated"),
+    }
+
+    # Query Postgres for history
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    try:
+        from db_adapter import USE_DB, _execute
+    except Exception as e:
+        json_response(handler, 500, {"ok": False, "error": f"db_adapter import failed: {e}"})
+        return
+
+    if not USE_DB:
+        json_response(handler, 200, {
+            "ok": True, **metadata,
+            "history": [], "row_count": 0,
+            "note": "Postgres unavailable — no history data"
+        })
+        return
+
+    rows = _execute(
+        """SELECT value, effective_date, recorded_at, note, source
+           FROM personal_history
+           WHERE field_name = %s
+           ORDER BY recorded_at ASC""",
+        (field_name,),
+        fetch="all"
+    )
+
+    if rows is None:
+        json_response(handler, 500, {"ok": False, "error": "Postgres query failed"})
+        return
+
+    # Serialize dates/timestamps
+    history = []
+    for row in rows:
+        eff = row.get("effective_date")
+        rec = row.get("recorded_at")
+        history.append({
+            "value": row.get("value"),
+            "effective_date": eff.isoformat() if hasattr(eff, "isoformat") else str(eff) if eff else None,
+            "recorded_at": rec.isoformat() if hasattr(rec, "isoformat") else str(rec) if rec else None,
+            "note": row.get("note", ""),
+            "source": row.get("source", ""),
+        })
+
+    # Summary stats
+    first_change = history[0]["recorded_at"] if history else None
+    latest_change = history[-1]["recorded_at"] if history else None
+
+    json_response(handler, 200, {
+        "ok": True, **metadata,
+        "history": history,
+        "row_count": len(history),
+        "first_change": first_change,
+        "latest_change": latest_change,
+    })
+
+
 def _handle_personal_read(handler):
     """GET /api/personal/read — return personal situation with computed fields."""
     try:
@@ -678,6 +766,11 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/api/personal/as_of/"):
             _date_str = path[len("/api/personal/as_of/"):].strip("/")
             _handle_personal_as_of(self, _date_str)
+            return
+
+        if path.startswith("/api/personal/history/"):
+            _field_name = path[len("/api/personal/history/"):].strip("/")
+            _handle_personal_history(self, _field_name)
             return
 
         if path == "/api/personal/read":
