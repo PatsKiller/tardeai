@@ -170,6 +170,139 @@ def _validate_field_update(field_name: str, new_value, field_def: dict) -> tuple
         return False, f"invalid value for {dtype}: {e}"
 
 
+def _reconstruct_personal_as_of(target_date: str) -> dict:
+    """Phase 8D-1: Reconstruct personal_situation state as of target_date.
+
+    Walks personal_history (via personal_timeline view) backwards. For each
+    editable field, finds the most recent entry with effective_date <= target_date.
+    Falls back to current JSON value if it predates target_date.
+
+    Re-runs _compute_derived_fields against reconstructed state so computed
+    fields (age, golden_window_*, ssdi_monthly_computed, roth_remaining)
+    reflect the target_date context.
+
+    Returns: {ok, data, as_of, fields_changed, fields_no_data} on success
+             {ok: False, error: str} on failure
+    """
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    try:
+        from db_adapter import USE_DB, _execute
+    except Exception as e:
+        return {"ok": False, "error": f"db_adapter import failed: {e}"}
+
+    if not PERSONAL_PATH.exists():
+        return {"ok": False, "error": "personal_situation.json not found"}
+
+    if not USE_DB:
+        return {"ok": False, "error": "Postgres unavailable - reconstruction requires DB"}
+
+    base_data = json.loads(PERSONAL_PATH.read_text(encoding="utf-8"))
+    fields = base_data.get("fields", {})
+
+    # SELECT DISTINCT ON gives us the latest matching row per field
+    rows = _execute(
+        """SELECT DISTINCT ON (field_name)
+               field_name, value, effective_date, recorded_at, note, source
+           FROM personal_history
+           WHERE effective_date <= %s
+           ORDER BY field_name, effective_date DESC, recorded_at DESC""",
+        (target_date,),
+        fetch="all"
+    )
+
+    if rows is None:
+        return {"ok": False, "error": "Postgres query failed"}
+
+    historical = {r["field_name"]: r for r in (rows or [])}
+
+    # Reconstruct field-by-field
+    import copy
+    reconstructed_fields = {}
+    fields_changed = 0
+    fields_no_data = 0
+
+    for field_name, field_def in fields.items():
+        if not isinstance(field_def, dict):
+            reconstructed_fields[field_name] = field_def
+            continue
+
+        new_field = copy.deepcopy(field_def)
+
+        # Computed fields will be overwritten by _compute_derived_fields - skip for now
+        if not field_def.get("editable", True):
+            reconstructed_fields[field_name] = new_field
+            continue
+
+        if field_name in historical:
+            hist = historical[field_name]
+            hist_value = hist["value"]  # JSONB - already deserialized by psycopg2
+            current_value = field_def.get("current")
+
+            if hist_value != current_value:
+                new_field["current"] = hist_value
+                eff_date = hist["effective_date"]
+                new_field["last_updated"] = eff_date.isoformat() if hasattr(eff_date, "isoformat") else str(eff_date)
+                new_field["_reconstructed"] = True
+                new_field["_reconstructed_from"] = "history"
+                new_field["_reconstructed_source"] = hist.get("source", "unknown")
+                fields_changed += 1
+            else:
+                new_field["_reconstructed"] = False
+        else:
+            current_last_updated = field_def.get("last_updated", "")
+            if current_last_updated and current_last_updated <= target_date:
+                # Current value predates target - it WAS active at target_date
+                new_field["_reconstructed"] = False
+            else:
+                # Field had no value at target_date
+                new_field["current"] = None
+                new_field["last_updated"] = None
+                new_field["_reconstructed"] = True
+                new_field["_reconstructed_from"] = "not_yet_set"
+                fields_no_data += 1
+
+        reconstructed_fields[field_name] = new_field
+
+    result_data = {
+        "schema_version": base_data.get("schema_version", 1),
+        "owner": base_data.get("owner", "John W. Whiting"),
+        "fields": reconstructed_fields,
+        "_as_of": target_date,
+        "_reconstructed_at": datetime.now().isoformat(),
+        "_fields_changed": fields_changed,
+        "_fields_no_data": fields_no_data,
+    }
+
+    # Re-run computed fields against reconstructed state
+    result_data = _compute_derived_fields(result_data)
+
+    return {
+        "ok": True,
+        "data": result_data,
+        "as_of": target_date,
+        "fields_changed": fields_changed,
+        "fields_no_data": fields_no_data,
+    }
+
+
+def _handle_personal_as_of(handler, target_date: str):
+    """GET /api/personal/as_of/<YYYY-MM-DD> - Phase 8D-1 reconstruction endpoint."""
+    # Validate date format
+    try:
+        from datetime import date as _date
+        _date.fromisoformat(target_date)
+    except (ValueError, TypeError):
+        json_response(handler, 400, {
+            "ok": False,
+            "error": f"Invalid date format: {target_date}. Use YYYY-MM-DD."
+        })
+        return
+
+    result = _reconstruct_personal_as_of(target_date)
+    code = 200 if result.get("ok") else 500
+    json_response(handler, code, result)
+
+
 def _handle_personal_read(handler):
     """GET /api/personal/read — return personal situation with computed fields."""
     try:
@@ -255,11 +388,11 @@ def _handle_personal_write(handler, raw_body: bytes):
                         """INSERT INTO personal_history 
                            (field_name, value, data_type, category, effective_date, note, source)
                            VALUES (%s, %s, %s, %s, %s, %s, 'modal_edit')""",
-                        (fn, json.dumps(change["from"]), 
+                        (fn, json.dumps(change["to"]), 
                          f_def.get("data_type", "unknown"),
                          f_def.get("category", "unknown"),
-                         f_def.get("last_updated", today),
-                         note or f"superseded by edit on {today}")
+                         today,
+                         note or f"set via modal on {today}")
                     )
         except Exception as db_err:
             print(f"  [personal] Postgres dual-write failed (JSON saved OK): {db_err}")
@@ -542,6 +675,11 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             return
 
         # Personal Situation read (GET)
+        if path.startswith("/api/personal/as_of/"):
+            _date_str = path[len("/api/personal/as_of/"):].strip("/")
+            _handle_personal_as_of(self, _date_str)
+            return
+
         if path == "/api/personal/read":
             _handle_personal_read(self)
             return
