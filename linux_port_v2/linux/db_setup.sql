@@ -104,3 +104,29 @@ CREATE OR REPLACE VIEW recent_runs AS
 --   \dt                           -- list tables
 --   SELECT * FROM price_cache_coverage;
 --   SELECT COUNT(*) FROM holdings;
+
+-- ── Personal Situation History (Phase P1) ──────────────────────────────────
+-- Time-series of personal financial field changes.
+-- One row per change event. Used by Phase 8D historical reconstruction.
+CREATE TABLE IF NOT EXISTS personal_history (
+    id             SERIAL PRIMARY KEY,
+    field_name     TEXT NOT NULL,
+    value          JSONB NOT NULL,
+    data_type      TEXT NOT NULL,
+    category       TEXT NOT NULL,
+    effective_date DATE NOT NULL,
+    recorded_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    note           TEXT DEFAULT '',
+    source         TEXT NOT NULL DEFAULT 'live_write',
+    CONSTRAINT personal_history_unique UNIQUE (field_name, effective_date, recorded_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_personal_field ON personal_history (field_name);
+CREATE INDEX IF NOT EXISTS idx_personal_date  ON personal_history (effective_date DESC);
+CREATE INDEX IF NOT EXISTS idx_personal_cat   ON personal_history (category);
+
+-- View: field change timeline (used by Phase 8D)
+CREATE OR REPLACE VIEW personal_timeline AS
+    SELECT field_name, value, data_type, category, effective_date, recorded_at, note, source
+    FROM personal_history
+    ORDER BY field_name, recorded_at;

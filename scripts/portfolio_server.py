@@ -43,6 +43,15 @@ from urllib.parse import urlparse
 
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+
+# Phase P1: Load .env into os.environ so db_adapter sees DB_* keys when run as systemd service
+_env_file = PROJECT_ROOT / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 HOLDINGS_PATH = STATE_DIR / "holdings.json"
 PERSONAL_PATH = STATE_DIR / "personal_situation.json"
@@ -233,6 +242,27 @@ def _handle_personal_write(handler, raw_body: bytes):
 
         data["generated_at"] = datetime.now().isoformat()
         PERSONAL_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        # Phase P1: Dual-write changes to personal_history table (non-blocking)
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from db_adapter import USE_DB, _execute
+            if USE_DB:
+                for change in changes:
+                    fn = change["field"]
+                    f_def = fields.get(fn, {})
+                    _execute(
+                        """INSERT INTO personal_history 
+                           (field_name, value, data_type, category, effective_date, note, source)
+                           VALUES (%s, %s, %s, %s, %s, %s, 'modal_edit')""",
+                        (fn, json.dumps(change["from"]), 
+                         f_def.get("data_type", "unknown"),
+                         f_def.get("category", "unknown"),
+                         f_def.get("last_updated", today),
+                         note or f"superseded by edit on {today}")
+                    )
+        except Exception as db_err:
+            print(f"  [personal] Postgres dual-write failed (JSON saved OK): {db_err}")
 
         json_response(handler, 200, {
             "ok": True, "changes": changes,
