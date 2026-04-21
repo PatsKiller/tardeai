@@ -210,3 +210,27 @@ CREATE INDEX IF NOT EXISTS idx_article_published ON article_index(published_at D
 CREATE INDEX IF NOT EXISTS idx_article_symbols ON article_index USING gin(symbols);
 CREATE INDEX IF NOT EXISTS idx_article_portfolio_symbol ON article_index(portfolio_symbol);
 CREATE INDEX IF NOT EXISTS idx_article_ingested ON article_index(ingested_at DESC);
+
+-- ── Notification Log ────────────────────────────────────────────────────────
+-- Audit trail for all notifications sent or attempted.
+CREATE TABLE IF NOT EXISTS notification_log (
+    id serial PRIMARY KEY,
+    created_at timestamptz DEFAULT now(),
+    notification_date date NOT NULL,
+    notification_type varchar(30) NOT NULL,
+    channel varchar(20) NOT NULL,
+    subject text,
+    body_summary text,
+    recommendation_ids integer[],
+    escalation_ids integer[],
+    observation_ids integer[],
+    payload jsonb,
+    status varchar(20) DEFAULT 'queued',
+    dedupe_key varchar(100) NOT NULL,
+    sent_at timestamptz,
+    error text,
+    UNIQUE(dedupe_key)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_date ON notification_log(notification_date DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_status ON notification_log(status);
+CREATE INDEX IF NOT EXISTS idx_notification_type ON notification_log(notification_type);

@@ -4552,7 +4552,7 @@ function openWatchlistModal() {
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">' +
     '<input id="wl-sym" placeholder="Symbol (e.g. AAPL)" style="padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;text-transform:uppercase">' +
     '<select id="wl-source" style="padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">' +
-    '<option value="user">User</option><option value="analyst_curated">Analyst Curated</option></select>' +
+    '<option value="user">User</option><option value="analyst_curated">Analyst Curated</option><option value="ai_generated">AI Generated</option></select>' +
     '<select id="wl-intent" style="padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">' +
     '<option value="">Intent...</option><option value="growth">Growth</option><option value="income">Income</option>' +
     '<option value="defense">Defense</option><option value="speculative">Speculative</option><option value="swing">Swing</option>' +
@@ -4590,6 +4590,16 @@ function wlLoadItems() {
         '<span style="font-size:10px;color:var(--text3)">' + esc((a.target_intent||'').replace(/_/g,' ')) + '</span>' +
         '<div style="font-size:10px;color:var(--text2);margin-top:2px">' + esc((a.thesis||'').substring(0,80)) + '</div></div>' +
         '<button onclick="wlRemove(\'' + esc(a.symbol) + '\',\'analyst_curated\')" style="background:#DB4437;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;flex-shrink:0">Remove</button></div>';
+    });
+    // AI-generated items from Postgres
+    var ai = d.ai_generated || [];
+    ai.forEach(function(a) {
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
+        '<div><span style="font-weight:700;color:var(--accent);margin-right:6px">' + esc(a.symbol) + '</span>' +
+        '<span style="background:#0F9D58;color:#fff;padding:1px 5px;border-radius:3px;font-size:9px;margin-right:4px">AI</span>' +
+        '<span style="font-size:10px;color:var(--text3)">' + esc((a.target_intent||'').replace(/_/g,' ')) + '</span>' +
+        '<div style="font-size:10px;color:var(--text2);margin-top:2px">' + esc((a.thesis||'').substring(0,80)) + '</div></div>' +
+        '<button onclick="wlRemove(\'' + esc(a.symbol) + '\',\'ai_generated\')" style="background:#DB4437;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;flex-shrink:0">Dismiss</button></div>';
     });
     if (!html) html = '<div class="empty">No watchlist items</div>';
     document.getElementById('wl-modal-list').innerHTML = html;
