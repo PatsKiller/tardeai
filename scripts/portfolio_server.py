@@ -485,6 +485,17 @@ def _handle_personal_write(handler, raw_body: bytes):
         except Exception as db_err:
             print(f"  [personal] Postgres dual-write failed (JSON saved OK): {db_err}")
 
+        # Invalidate AI caches that depend on personal situation (Phase 4)
+        try:
+            _sd = PROJECT_ROOT / "data" / "portfolios" / "state"
+            for _stale in ["ai_roth_conversion.json", "ai_analysis_cache.json"]:
+                _sf = _sd / _stale
+                if _sf.exists():
+                    _sf.unlink()
+            print(f"  [personal] Invalidated AI caches (Roth + analysis)")
+        except Exception:
+            pass
+
         json_response(handler, 200, {
             "ok": True, "changes": changes,
             "backup": str(backup_path), "changed_count": len(changes)
@@ -762,6 +773,86 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             })
             return
 
+        # Freshness manifest (Phase 0)
+        if path == "/api/freshness":
+            _fp = PROJECT_ROOT / "data" / "portfolios" / "state" / "_freshness.json"
+            if _fp.exists():
+                try:
+                    _fm = json.loads(_fp.read_text())
+                    from datetime import datetime as _dt
+                    _completed = _dt.fromisoformat(_fm.get("completed_at", "2000-01-01"))
+                    _age_hours = round((_dt.now() - _completed).total_seconds() / 3600, 1)
+                    _status = "fresh" if _age_hours <= 26 else "stale"
+                    json_response(self, 200, {
+                        **_fm,
+                        "age_hours": _age_hours,
+                        "status": _status,
+                        "message": f"Pipeline ran {_age_hours:.1f}h ago" if _status == "fresh" else f"Data is {_age_hours:.0f}h stale — pipeline may not have run",
+                    })
+                except Exception as _e:
+                    json_response(self, 500, {"status": "error", "message": str(_e)})
+            else:
+                json_response(self, 200, {
+                    "status": "unknown",
+                    "age_hours": None,
+                    "message": "No freshness manifest found — pipeline has not written _freshness.json yet",
+                })
+            return
+
+        # Database health (Phase P5-3)
+        if path == "/api/db/health":
+            try:
+                from db_adapter import _execute, USE_DB, db_status
+                if not USE_DB:
+                    json_response(self, 200, {"ok": False, "status": "disabled", "message": "USE_DB is False"})
+                    return
+                rows = _execute("""
+                    SELECT s.relname AS name,
+                           s.n_live_tup AS live_rows,
+                           s.n_dead_tup AS dead_rows,
+                           pg_size_pretty(pg_total_relation_size(s.schemaname||'.'||s.relname)) AS size,
+                           s.last_autovacuum::text,
+                           s.last_autoanalyze::text
+                    FROM pg_stat_user_tables s
+                    ORDER BY pg_total_relation_size(s.schemaname||'.'||s.relname) DESC
+                """, fetch="all")
+                if rows is None:
+                    json_response(self, 503, {"ok": False, "status": "connection_failed", "message": "DB connection failed"})
+                    return
+                from datetime import datetime as _dt
+                json_response(self, 200, {
+                    "ok": True,
+                    "status": db_status(),
+                    "checked_at": _dt.now().isoformat(),
+                    "tables": [dict(r) for r in rows],
+                })
+            except Exception as _e:
+                json_response(self, 500, {"ok": False, "status": "error", "message": str(_e)})
+            return
+
+        # Watchlist read (GET)
+        if path == "/api/watchlist/read":
+            try:
+                _wl_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "watchlist.json"
+                _wl = json.loads(_wl_path.read_text()) if _wl_path.exists() else {}
+                # Also load analyst_curated from Postgres
+                _analyst_items = []
+                try:
+                    from db_adapter import load_watchlist_items
+                    _raw = load_watchlist_items(source_type="analyst_curated", status="active")
+                    # Convert date objects to strings for JSON serialization
+                    for _r in _raw:
+                        for _k, _v in _r.items():
+                            if hasattr(_v, 'isoformat'):
+                                _r[_k] = _v.isoformat()
+                    _analyst_items = _raw
+                except Exception:
+                    pass
+                json_response(self, 200, {"ok": True, "items": _wl, "analyst_curated": _analyst_items})
+            except Exception as _e:
+                json_response(self, 500, {"ok": False, "error": str(_e)})
+            return
+
         # Personal Situation read (GET)
         if path.startswith("/api/personal/as_of/"):
             _date_str = path[len("/api/personal/as_of/"):].strip("/")
@@ -935,6 +1026,71 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         elif path == "/api/personal/write":
             _handle_personal_write(self, raw)
+            return
+
+        elif path == "/api/watchlist/write":
+            try:
+                body = json.loads(raw.decode("utf-8"))
+                action = body.get("action", "add")  # 'add' or 'remove'
+                symbol = body.get("symbol", "").upper().strip()
+                source_type = body.get("source_type", "user")  # 'user' or 'analyst_curated'
+                if source_type not in ("user", "analyst_curated"):
+                    source_type = "user"
+                if not symbol:
+                    json_response(self, 400, {"ok": False, "error": "symbol required"})
+                    return
+                _wl_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "watchlist.json"
+                _wl = json.loads(_wl_path.read_text()) if _wl_path.exists() else {}
+                if action == "remove":
+                    # Only touch watchlist.json for user entries
+                    if source_type == "user":
+                        _wl.pop(symbol, None)
+                        _wl_path.write_text(json.dumps(_wl, indent=2))
+                    try:
+                        from db_adapter import remove_watchlist_item
+                        remove_watchlist_item(symbol, source_type)
+                    except Exception:
+                        pass
+                    json_response(self, 200, {"ok": True, "action": "removed", "symbol": symbol, "source_type": source_type})
+                else:
+                    from datetime import date as _d
+                    _added = body.get("added") or _d.today().isoformat()
+                    _entry = {
+                        "thesis": body.get("thesis", ""),
+                        "target_intent": body.get("target_intent", ""),
+                        "added": _added,
+                        "notes": body.get("notes", ""),
+                        "watching_since": "",
+                    }
+                    # Only write to watchlist.json for user entries (preserve compatibility)
+                    if source_type == "user":
+                        _wl[symbol] = _entry
+                        _wl_path.write_text(json.dumps(_wl, indent=2))
+                    # Postgres write for all source types
+                    try:
+                        from db_adapter import save_watchlist_item
+                        _added_by = body.get("added_by", source_type.replace("_", " "))
+                        _data = {}
+                        if body.get("analyst_source"):
+                            _data["analyst_source"] = body["analyst_source"]
+                        if body.get("curation_note"):
+                            _data["curation_note"] = body["curation_note"]
+                        save_watchlist_item({
+                            "symbol": symbol,
+                            "source_type": source_type,
+                            "thesis": _entry["thesis"],
+                            "target_intent": _entry["target_intent"],
+                            "added_date": _added,
+                            "added_by": _added_by,
+                            "status": "active",
+                            "notes": _entry["notes"],
+                            "data": _data,
+                        })
+                    except Exception as _dbe:
+                        print(f"  [watchlist] Postgres write failed: {_dbe}")
+                    json_response(self, 200, {"ok": True, "action": "added", "symbol": symbol, "source_type": source_type, "entry": _entry})
+            except Exception as _e:
+                json_response(self, 500, {"ok": False, "error": str(_e)})
             return
 
         elif path == "/api/env/write":

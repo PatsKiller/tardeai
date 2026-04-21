@@ -60,6 +60,13 @@ def save_state(state: Dict[str, Any], project_root: str = ".") -> None:
     path = _state_path(project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    # Postgres dual-write (non-blocking, JSON already saved above)
+    try:
+        from db_adapter import save_state as _db_save_state, USE_DB
+        if USE_DB:
+            _db_save_state(state, path)
+    except Exception as e:
+        print(f"  [state] Postgres write failed (JSON saved OK): {e}")
 
 
 # ── Delta computation ─────────────────────────────────────────────────────────

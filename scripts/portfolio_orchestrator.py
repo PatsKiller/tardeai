@@ -246,6 +246,20 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as e:
         print(f"  [portfolio-news] ❌ {e}")
 
+    # ── Article Index persistence ────────────────────────────────────────────
+    try:
+        from db_adapter import save_article_index
+        _news_path = state_dir / "portfolio_news.json"
+        if _news_path.exists():
+            _news_data = json.loads(_news_path.read_text())
+            # Use all_scored (top 50, includes watchlist) for broader index; fall back to catalysts (top 20)
+            _index_articles = _news_data.get("all_scored") or _news_data.get("catalysts", [])
+            if _index_articles:
+                save_article_index(_index_articles)
+                print(f"  [article-index] ✅ {len(_index_articles)} articles indexed")
+    except Exception as _aie:
+        print(f"  [article-index] Persistence failed (pipeline continues): {_aie}")
+
     # ── Stage 7b-7g: New Intelligence Modules ─────────────────────────────────
 
     technical = {}
@@ -286,6 +300,79 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             _enrich_supplemental(_supplement, project_root=str(root), skip_fundamentals=True)
     except Exception as _e:
         print(f"  [enrich-supplement] {_e}")
+
+    # ── Ticker Snapshot Daily (market intelligence persistence) ───────────────
+    try:
+        from db_adapter import save_ticker_snapshot_daily
+        _ecache_path = state_dir / "ticker_enrichment_cache.json"
+        if _ecache_path.exists():
+            _ecache = json.loads(_ecache_path.read_text())
+            save_ticker_snapshot_daily(date_str, _ecache)
+            _snap_count = len([k for k in _ecache if not k.startswith("_") and isinstance(_ecache.get(k), dict)])
+            print(f"  [ticker-snapshot] ✅ {_snap_count} tickers persisted to daily snapshot")
+    except Exception as _tse:
+        print(f"  [ticker-snapshot] Persistence failed (pipeline continues): {_tse}")
+
+    # ── Analyst Consensus History ────────────────────────────────────────────
+    try:
+        from db_adapter import save_analyst_consensus_history
+        _ecache_path2 = state_dir / "ticker_enrichment_cache.json"
+        _qcache_path = state_dir / "finviz_quote_cache.json"
+        if _ecache_path2.exists():
+            _ec = json.loads(_ecache_path2.read_text())
+            _qc = json.loads(_qcache_path.read_text()) if _qcache_path.exists() else {}
+            save_analyst_consensus_history(date_str, _ec, _qc)
+    except Exception as _ace:
+        print(f"  [analyst-consensus] Persistence failed (pipeline continues): {_ace}")
+
+    # ── Yahoo Analyst Targets History ────────────────────────────────────────
+    try:
+        import yfinance as _yf_targets
+        from db_adapter import save_yahoo_analyst_targets_history
+        # Use symbols from enrichment cache (already loaded above or re-read)
+        _ecache_path3 = state_dir / "ticker_enrichment_cache.json"
+        _target_syms = []
+        if _ecache_path3.exists():
+            _ec3 = json.loads(_ecache_path3.read_text())
+            # Filter to likely stocks (skip ETF-like: no PE, no float, sector=Financial/ETF)
+            _FIDELITY_PFX = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-")
+            _ETF_INDUSTRIES = {"Exchange Traded Fund", ""}
+            for _s, _d in _ec3.items():
+                if not isinstance(_d, dict) or _s.startswith("_"):
+                    continue
+                if any(_s.startswith(p) for p in _FIDELITY_PFX):
+                    continue
+                if _d.get("industry") in _ETF_INDUSTRIES and _d.get("pe") is None:
+                    continue
+                _target_syms.append(_s)
+        _targets_payload = []
+        if _target_syms:
+            # Batch fetch (yfinance supports batch via Tickers)
+            for _sym in _target_syms[:50]:  # cap at 50 to limit API calls
+                try:
+                    _info = _yf_targets.Ticker(_sym).info
+                    _tm = _info.get("targetMeanPrice")
+                    if _tm is not None:
+                        _targets_payload.append({
+                            "symbol": _sym,
+                            "current_price": _info.get("currentPrice"),
+                            "target_mean_price": _tm,
+                            "target_high_price": _info.get("targetHighPrice"),
+                            "target_low_price": _info.get("targetLowPrice"),
+                            "target_median_price": _info.get("targetMedianPrice"),
+                            "recommendation_mean": _info.get("recommendationMean"),
+                            "recommendation_key": _info.get("recommendationKey"),
+                            "number_of_analyst_opinions": _info.get("numberOfAnalystOpinions"),
+                        })
+                except Exception:
+                    pass
+            if _targets_payload:
+                save_yahoo_analyst_targets_history(date_str, _targets_payload)
+                print(f"  [yahoo-targets] ✅ {len(_targets_payload)} symbols with analyst targets persisted")
+            else:
+                print(f"  [yahoo-targets] No analyst targets returned")
+    except Exception as _yte:
+        print(f"  [yahoo-targets] Failed (pipeline continues): {_yte}")
 
     tech_chart_paths = {}
     try:
@@ -345,6 +432,12 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         annual = dividend_calendar.get("total_annual",0)
         alerts = len(dividend_calendar.get("ex_div_alerts",[]))
         print(f"  [dividends] ✅ {payers} payers | ${annual:,.0f}/yr | {alerts} ex-div alerts")
+        # Dividend history dual-write (OpenClaw Phase A1)
+        try:
+            from db_adapter import save_dividend_history
+            save_dividend_history(dividend_calendar.get("payers", []), date_str)
+        except Exception as _dhe:
+            print(f"  [dividend-history] Postgres write failed (pipeline continues): {_dhe}")
     except Exception as e:
         print(f"  [dividends] ❌ {e}")
 
@@ -475,6 +568,23 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             perf_history=perf_history
         )
         print(f"  ✅ {docx_path.name}")
+        # Postgres dual-write for intel_briefs (non-blocking)
+        try:
+            from db_adapter import save_intel_brief
+            _wc = 0
+            if docx_path.exists():
+                _wc = docx_path.stat().st_size // 6  # rough word count estimate from file size
+            save_intel_brief({
+                "brief_date": date_str,
+                "brief_type": run_type,
+                "fund": "consolidated",
+                "docx_path": str(docx_path),
+                "word_count": _wc,
+                "sections": list(ai_analysis.keys()) if ai_analysis else [],
+                "triggers": {"run_label": run_label, "run_type": run_type},
+            })
+        except Exception as _ibe:
+            print(f"  [intel-brief] Postgres write failed (DOCX saved OK): {_ibe}")
     else:
         print("\n[10/10] Report skipped")
 
@@ -661,6 +771,16 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as e:
         print(f"  [fidelity-perf] Error: {e}")
 
+    # Postgres dual-write for performance_daily (non-blocking, JSON already saved above)
+    try:
+        from db_adapter import save_performance_daily
+        _perf_src = perf_history if perf_history else (json.load(open(state_dir / "performance_history.json")) if (state_dir / "performance_history.json").exists() else {})
+        if _perf_src and _perf_src.get("current_value"):
+            # Pre-clean numpy types via JSON round-trip before JSONB insert
+            save_performance_daily(json.loads(json.dumps(_perf_src, default=str)))
+    except Exception as _pde:
+        print(f"  [perf-daily] Postgres write failed (JSON saved OK): {_pde}")
+
     # ── Rebuild dashboard with corrected performance data ──────────
     try:
         print("  [dashboard-refresh] Rebuilding with account-aggregated periods...")
@@ -694,6 +814,430 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         generate_and_save_signals(project_root)
     except Exception as e:
         print(f"  [signals] Error generating signals: {e}")
+
+    # ── Freshness Manifest (Phase 0) ─────────────────────────────────────────
+    try:
+        import time as _time, hashlib as _hl
+        _pipeline_end = datetime.now()
+        _pipeline_start = datetime.strptime(f"{date_str} {now_str}", "%Y-%m-%d %H:%M ET")
+        _duration = (_pipeline_end - _pipeline_start).total_seconds()
+        # Holdings hash: deterministic signature of portfolio composition
+        _h_tuples = sorted(
+            (h.get("symbol",""), h.get("account",""), round(h.get("shares",0) or 0, 4))
+            for h in portfolio.get("holdings", [])
+            if (h.get("market_value") or 0) > 100
+        )
+        _holdings_hash = _hl.md5(str(_h_tuples).encode()).hexdigest()[:12]
+        _freshness = {
+            "run_id": _pipeline_end.strftime("%Y%m%d-%H%M%S"),
+            "completed_at": _pipeline_end.isoformat(),
+            "holdings_as_of": portfolio.get("as_of", date_str),
+            "holdings_repriced": portfolio.get("last_repriced", ""),
+            "holdings_hash": _holdings_hash,
+            "steps_completed": 10,
+            "pipeline_duration_seconds": round(_duration, 1),
+            "run_type": run_type,
+            "status": "fresh",
+        }
+        _freshness_path = state_dir / "_freshness.json"
+        _freshness_path.write_text(json.dumps(_freshness, indent=2))
+        print(f"  [freshness] ✅ Manifest written ({_freshness['run_id']}, hash={_holdings_hash})")
+    except Exception as _fe:
+        print(f"  [freshness] Warning: manifest write failed: {_fe}")
+
+    # ── Advisor Observations (OpenClaw Phase A1) ─────────────────────────────
+    try:
+        from db_adapter import save_advisor_observations
+        _obs = []
+        _today = date_str
+        _h_hash = _freshness.get("holdings_hash", "") if '_freshness' in dir() else ""
+
+        # Category: performance
+        _totals = portfolio.get("portfolio_totals", {})
+        _tv = _totals.get("total_value", 0)
+        _ph = perf_history if perf_history else {}
+        _periods = _ph.get("periods", {})
+        if _tv > 0:
+            _ytd = _periods.get("YTD", {}).get("change_pct")
+            _1w = _periods.get("1W", {}).get("change_pct")
+            _obs.append({
+                "observation_date": _today, "symbol": None, "category": "performance",
+                "observation": f"Portfolio at ${_tv:,.0f}" + (f" | YTD {_ytd:+.1f}%" if _ytd else "") + (f" | 1W {_1w:+.1f}%" if _1w else ""),
+                "evidence": {"total_value": _tv, "ytd_pct": _ytd, "1w_pct": _1w},
+                "source": "pipeline:performance_daily", "freshness_hash": _h_hash,
+            })
+
+        # Category: dividend
+        if dividend_calendar and dividend_calendar.get("payers"):
+            _div_total = dividend_calendar.get("total_annual", 0)
+            _div_count = len(dividend_calendar.get("payers", []))
+            _obs.append({
+                "observation_date": _today, "symbol": None, "category": "dividend",
+                "observation": f"Portfolio dividend income: ${_div_total:,.0f}/yr from {_div_count} payers",
+                "evidence": {"total_annual": _div_total, "payer_count": _div_count},
+                "source": "pipeline:dividend_calendar", "freshness_hash": _h_hash,
+            })
+
+        # Category: concentration (top position)
+        _signals_path = state_dir / "action_signals.json"
+        if _signals_path.exists():
+            try:
+                _sigs = json.loads(_signals_path.read_text()).get("signals", [])
+                _trims = [s for s in _sigs if s.get("signal") in ("TRIM", "WATCH") and s.get("portfolio_pct", 0) > 12]
+                for _t in _trims[:3]:
+                    _obs.append({
+                        "observation_date": _today, "symbol": _t["symbol"], "category": "concentration",
+                        "observation": f"{_t['symbol']} is {_t['portfolio_pct']:.1f}% of portfolio — signal: {_t['signal']}",
+                        "evidence": {"portfolio_pct": _t["portfolio_pct"], "signal": _t["signal"], "rule": _t.get("rule","")},
+                        "source": "pipeline:action_signals", "freshness_hash": _h_hash,
+                    })
+                _adds = [s for s in _sigs if s.get("signal") == "ADD"]
+                if _adds:
+                    _obs.append({
+                        "observation_date": _today, "symbol": None, "category": "signal",
+                        "observation": f"{len(_adds)} positions have ADD signal: {', '.join(s['symbol'] for s in _adds[:5])}",
+                        "evidence": {"add_count": len(_adds), "symbols": [s["symbol"] for s in _adds]},
+                        "source": "pipeline:action_signals", "freshness_hash": _h_hash,
+                    })
+            except Exception:
+                pass
+
+        # Category: risk
+        _risk_path = state_dir / "risk_management.json"
+        if _risk_path.exists():
+            try:
+                _rm = json.loads(_risk_path.read_text())
+                _heat = _rm.get("portfolio_heat_pct", 0)
+                _triggered = len(_rm.get("triggered", []))
+                _danger = len(_rm.get("danger", []))
+                if _heat > 0 or _triggered > 0 or _danger > 0:
+                    _obs.append({
+                        "observation_date": _today, "symbol": None, "category": "risk",
+                        "observation": f"Portfolio heat: {_heat:.1f}% | {_triggered} stops triggered | {_danger} in danger zone",
+                        "evidence": {"heat_pct": _heat, "triggered": _triggered, "danger": _danger},
+                        "source": "pipeline:risk_management", "freshness_hash": _h_hash,
+                    })
+            except Exception:
+                pass
+
+        # Category: freshness
+        _age = _freshness.get("pipeline_duration_seconds", 0) if '_freshness' in dir() else 0
+        _obs.append({
+            "observation_date": _today, "symbol": None, "category": "freshness",
+            "observation": f"Pipeline completed successfully in {_age:.0f}s",
+            "evidence": {"duration_seconds": _age, "run_type": run_type, "holdings_hash": _h_hash},
+            "source": "pipeline:freshness_manifest", "freshness_hash": _h_hash,
+        })
+
+        if _obs:
+            save_advisor_observations(_obs)
+            print(f"  [advisor] ✅ {len(_obs)} observations written")
+
+            # ── Escalation scoring (Phase A2-supervisory) ────────────────
+            try:
+                from db_adapter import save_escalations, _execute
+                from datetime import timedelta
+                _escalations = []
+                _exp_date = (datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
+
+                # Get observation IDs for today (for FK linkage)
+                _obs_rows = _execute(
+                    "SELECT id, symbol, category, evidence FROM advisor_observations WHERE observation_date = %s",
+                    (_today,), fetch="all"
+                ) or []
+                _obs_map = {(r["symbol"] or "", r["category"]): r for r in _obs_rows}
+
+                # Rule 1: concentration_above_15
+                for _o in _obs:
+                    if _o["category"] == "concentration":
+                        _pct = (_o.get("evidence") or {}).get("portfolio_pct", 0)
+                        _sym = _o.get("symbol") or ""
+                        _obs_ref = _obs_map.get((_sym, "concentration"), {})
+                        if _pct >= 20:
+                            _escalations.append({
+                                "observation_id": _obs_ref.get("id"),
+                                "symbol": _sym, "severity": 1, "category": "concentration",
+                                "trigger_rule": "concentration_above_20",
+                                "summary": f"{_sym} concentration at {_pct:.1f}% exceeds 20% threshold",
+                                "evidence": {"portfolio_pct": _pct},
+                                "expires_at": _exp_date,
+                            })
+                        elif _pct >= 15:
+                            _escalations.append({
+                                "observation_id": _obs_ref.get("id"),
+                                "symbol": _sym, "severity": 2, "category": "concentration",
+                                "trigger_rule": "concentration_above_15",
+                                "summary": f"{_sym} concentration at {_pct:.1f}% exceeds 15% threshold",
+                                "evidence": {"portfolio_pct": _pct},
+                                "expires_at": _exp_date,
+                            })
+
+                # Rule 3: signal_add_present
+                for _o in _obs:
+                    if _o["category"] == "signal" and (_o.get("evidence") or {}).get("add_count", 0) > 0:
+                        _obs_ref = _obs_map.get(("", "signal"), {})
+                        _add_count = _o["evidence"]["add_count"]
+                        _escalations.append({
+                            "observation_id": _obs_ref.get("id"),
+                            "symbol": None, "severity": 3, "category": "signal",
+                            "trigger_rule": "signal_add_present",
+                            "summary": f"{_add_count} ADD signals present in today's signal set",
+                            "evidence": _o.get("evidence", {}),
+                            "expires_at": _exp_date,
+                        })
+
+                # Rule 4: stop_triggered_present
+                for _o in _obs:
+                    if _o["category"] == "risk" and (_o.get("evidence") or {}).get("triggered", 0) > 0:
+                        _obs_ref = _obs_map.get(("", "risk"), {})
+                        _trig = _o["evidence"]["triggered"]
+                        _escalations.append({
+                            "observation_id": _obs_ref.get("id"),
+                            "symbol": None, "severity": 1, "category": "risk",
+                            "trigger_rule": "stop_triggered_present",
+                            "summary": f"{_trig} stop(s) currently triggered",
+                            "evidence": _o.get("evidence", {}),
+                            "expires_at": _exp_date,
+                        })
+
+                # Rule 5: data_stale_24h (check freshness)
+                if '_freshness' in dir():
+                    _completed = datetime.fromisoformat(_freshness.get("completed_at", "2000-01-01"))
+                    _age_h = (datetime.now() - _completed).total_seconds() / 3600
+                    if _age_h > 24:
+                        _obs_ref = _obs_map.get(("", "freshness"), {})
+                        _escalations.append({
+                            "observation_id": _obs_ref.get("id"),
+                            "symbol": None, "severity": 2, "category": "freshness",
+                            "trigger_rule": "data_stale_24h",
+                            "summary": f"Portfolio data freshness exceeds 24h threshold ({_age_h:.0f}h old)",
+                            "evidence": {"age_hours": round(_age_h, 1)},
+                            "expires_at": _exp_date,
+                        })
+
+                if _escalations:
+                    save_escalations(_escalations)
+                    print(f"  [advisor] ✅ {len(_escalations)} escalations queued")
+            except Exception as _esc_e:
+                print(f"  [advisor] Escalation scoring failed (pipeline continues): {_esc_e}")
+
+            # ── Recommendation Drafts (from severity 1-2 escalations) ────
+            try:
+                from db_adapter import save_advisor_recommendations, _execute as _rec_exec
+                from datetime import timedelta as _td_rec
+                _rec_exp = (datetime.now() + _td_rec(days=14)).strftime("%Y-%m-%d")
+                _drafts = []
+
+                # Get today's severity 1-2 escalations with IDs
+                _esc_rows = _rec_exec(
+                    "SELECT id, symbol, severity, category, trigger_rule, summary, evidence FROM escalation_queue WHERE created_at::date = %s AND severity <= 2",
+                    (_today,), fetch="all"
+                ) or []
+
+                # Get Yahoo analyst targets for context
+                _yahoo_ctx = {}
+                _yahoo_rows = _rec_exec(
+                    "SELECT symbol, current_price, target_mean_price, recommendation_key, number_of_analyst_opinions FROM yahoo_analyst_targets_history WHERE snapshot_date = %s",
+                    (_today,), fetch="all"
+                ) or []
+                for _yr in _yahoo_rows:
+                    _yahoo_ctx[_yr["symbol"]] = _yr
+
+                # Pre-fetch article context for all symbols (last 7 days)
+                _article_ctx = {}
+                try:
+                    _art_rows = _rec_exec(
+                        """SELECT portfolio_symbol, COUNT(*) AS cnt,
+                           COUNT(*) FILTER (WHERE llm_category='analyst') AS analyst_cnt,
+                           MAX(published_at) AS most_recent,
+                           array_agg(DISTINCT llm_category) FILTER (WHERE llm_category IS NOT NULL) AS categories
+                           FROM article_index
+                           WHERE published_at >= now() - interval '7 days' AND portfolio_symbol IS NOT NULL AND portfolio_symbol != ''
+                           GROUP BY portfolio_symbol""",
+                        fetch="all"
+                    ) or []
+                    for _ar in _art_rows:
+                        _article_ctx[_ar["portfolio_symbol"]] = _ar
+                except Exception:
+                    pass
+
+                # Also get top 3 article titles per symbol for evidence
+                _article_titles = {}
+                try:
+                    _title_rows = _rec_exec(
+                        """SELECT DISTINCT ON (portfolio_symbol, title) portfolio_symbol, title, source, llm_category, published_at
+                           FROM article_index
+                           WHERE published_at >= now() - interval '7 days' AND portfolio_symbol IS NOT NULL AND portfolio_symbol != ''
+                           ORDER BY portfolio_symbol, title, published_at DESC""",
+                        fetch="all"
+                    ) or []
+                    for _tr in _title_rows:
+                        _sym_key = _tr["portfolio_symbol"]
+                        if _sym_key not in _article_titles:
+                            _article_titles[_sym_key] = []
+                        if len(_article_titles[_sym_key]) < 3:
+                            _article_titles[_sym_key].append({"title": _tr["title"], "source": _tr["source"], "category": _tr["llm_category"]})
+                except Exception:
+                    pass
+
+                for _esc in _esc_rows:
+                    _esc_sym = _esc.get("symbol") or ""
+                    _trigger = _esc["trigger_rule"]
+                    _sev = _esc["severity"]
+
+                    # Map trigger -> action type
+                    if _trigger in ("concentration_above_15", "concentration_above_20"):
+                        _action = "ALLOCATION_REVIEW"
+                    elif _trigger == "stop_triggered_present":
+                        _action = "STOP_REVIEW"
+                    elif _trigger == "data_stale_24h":
+                        _action = "DATA_FRESHNESS_REVIEW"
+                    else:
+                        continue
+
+                    # Confidence
+                    _conf = 0.90 if _sev == 1 else 0.80
+
+                    # Build rationale
+                    _rationale = _esc["summary"] + "."
+                    _yahoo_info = _yahoo_ctx.get(_esc_sym)
+                    if _yahoo_info and _yahoo_info.get("target_mean_price"):
+                        _rationale += (
+                            f" Yahoo analyst context: {_yahoo_info['number_of_analyst_opinions']} analysts, "
+                            f"mean target ${_yahoo_info['target_mean_price']:.0f}, "
+                            f"consensus: {_yahoo_info['recommendation_key']}."
+                        )
+                    # Article context (optional, non-blocking)
+                    _art_info = _article_ctx.get(_esc_sym)
+                    if _art_info and _art_info.get("cnt", 0) > 0:
+                        _art_cats = [c for c in (_art_info.get("categories") or []) if c and c != "noise"]
+                        if _art_cats:
+                            _rationale += f" Recent coverage includes {', '.join(_art_cats[:3])} articles ({_art_info['cnt']} in 7d)."
+                        else:
+                            _rationale += f" Recent catalyst coverage active ({_art_info['cnt']} articles in 7d)."
+                    _rationale += f" Pending review (severity {_sev})."
+
+                    # Evidence
+                    _evidence = {
+                        "trigger_rule": _trigger,
+                        "severity": _sev,
+                        "escalation_summary": _esc["summary"],
+                    }
+                    if _yahoo_info:
+                        _evidence["yahoo_analyst"] = {
+                            "current_price": _yahoo_info.get("current_price"),
+                            "target_mean_price": _yahoo_info.get("target_mean_price"),
+                            "recommendation_key": _yahoo_info.get("recommendation_key"),
+                            "number_of_analyst_opinions": _yahoo_info.get("number_of_analyst_opinions"),
+                        }
+                    if _art_info:
+                        _evidence["article_context"] = {
+                            "article_count_7d": _art_info.get("cnt", 0),
+                            "analyst_article_count": _art_info.get("analyst_cnt", 0),
+                            "categories": _art_info.get("categories"),
+                            "most_recent_article_at": str(_art_info.get("most_recent", ""))[:19],
+                            "top_titles": _article_titles.get(_esc_sym, []),
+                        }
+
+                    _dedupe = f"{_today}:{_esc_sym or 'portfolio'}:{_action}:{_trigger}"
+                    _drafts.append({
+                        "recommendation_date": _today,
+                        "symbol": _esc_sym or None,
+                        "action": _action,
+                        "rationale": _rationale,
+                        "confidence": _conf,
+                        "model": "rule",
+                        "escalation_ids": [_esc["id"]],
+                        "observation_ids": None,
+                        "evidence_summary": _evidence,
+                        "status": "draft",
+                        "expires_at": _rec_exp,
+                        "dedupe_key": _dedupe,
+                    })
+
+                if _drafts:
+                    save_advisor_recommendations(_drafts)
+                    print(f"  [advisor] ✅ {len(_drafts)} recommendation drafts created")
+            except Exception as _rde:
+                print(f"  [advisor] Recommendation drafts failed (pipeline continues): {_rde}")
+
+    except Exception as _aoe:
+        print(f"  [advisor] Observations write failed (pipeline continues): {_aoe}")
+
+    # ── Ollama Daily Summary Enrichment (Phase A2-enrichment) ────────────────
+    try:
+        import re as _re, urllib.request as _ur
+        # Gather today's observations and escalations for prompt
+        _obs_today = _execute(
+            "SELECT category, symbol, observation FROM advisor_observations WHERE observation_date = %s ORDER BY category",
+            (date_str,), fetch="all"
+        ) if '_execute' not in dir() else None
+        if _obs_today is None:
+            from db_adapter import _execute as _ex2
+            _obs_today = _ex2(
+                "SELECT category, symbol, observation FROM advisor_observations WHERE observation_date = %s ORDER BY category",
+                (date_str,), fetch="all"
+            ) or []
+        _esc_today = []
+        try:
+            from db_adapter import _execute as _ex3
+            _esc_today = _ex3(
+                "SELECT severity, symbol, trigger_rule, summary FROM escalation_queue WHERE created_at::date = %s ORDER BY severity",
+                (date_str,), fetch="all"
+            ) or []
+        except Exception:
+            pass
+
+        if _obs_today:
+            # Format prompt
+            _obs_lines = "\n".join(f"- [{r['category']}] {r['observation']}" for r in _obs_today)
+            _esc_lines = "\n".join(f"- [severity {r['severity']}] {r['summary']}" for r in _esc_today) if _esc_today else "None"
+            _prompt = (
+                "/no_think\n"
+                "You are a portfolio surveillance system. Summarize today's findings factually.\n\n"
+                f"TODAY'S OBSERVATIONS:\n{_obs_lines}\n\n"
+                f"TODAY'S ESCALATIONS:\n{_esc_lines}\n\n"
+                "RULES:\n"
+                "- State WHAT IS, never WHAT SHOULD BE\n"
+                "- No recommendations, no 'should', 'consider', 'buy', 'sell'\n"
+                "- Order by importance (severity 1 first)\n"
+                "- Include key numbers\n"
+                "- Maximum 3 sentences\n\n"
+                "SUMMARY:"
+            )
+            # Call Ollama (think=False disables qwen3 thinking mode)
+            _payload = json.dumps({"model": "qwen3:1.7b", "prompt": _prompt, "stream": False,
+                                   "think": False,
+                                   "options": {"temperature": 0.3, "num_predict": 200}}).encode()
+            _req = _ur.Request("http://127.0.0.1:11434/api/generate", data=_payload,
+                               headers={"Content-Type": "application/json"})
+            _resp = _ur.urlopen(_req, timeout=30)
+            _result = json.loads(_resp.read().decode())
+            _summary = _result.get("response", "").strip()
+            # Strip think tags
+            _summary = _re.sub(r"<think>.*?</think>", "", _summary, flags=_re.DOTALL).strip()
+            # Validate: reject if advisory language found (as imperatives, not signal labels)
+            _BANNED = ["you should", "consider ", "recommend", "i suggest", "rotate into", "trim now", "add to your"]
+            _is_valid = not any(b in _summary.lower() for b in _BANNED) and len(_summary) > 20
+            if _is_valid:
+                from db_adapter import save_advisor_observations
+                save_advisor_observations([{
+                    "observation_date": date_str,
+                    "symbol": "",
+                    "category": "daily_summary",
+                    "observation": _summary[:500],
+                    "evidence": {"observation_count": len(_obs_today), "escalation_count": len(_esc_today),
+                                 "model": "qwen3:1.7b", "prompt_tokens": len(_prompt.split())},
+                    "source": "ollama:enrichment",
+                    "confidence": 0.85,
+                    "model": "ollama:qwen3:1.7b",
+                    "freshness_hash": _freshness.get("holdings_hash", "") if '_freshness' in dir() else "",
+                }])
+                print(f"  [enrichment] ✅ Daily summary written ({len(_summary)} chars)")
+            else:
+                print(f"  [enrichment] ⚠️  Summary rejected (banned language or too short)")
+    except Exception as _enr_e:
+        print(f"  [enrichment] Skipped ({_enr_e})")
 
     print("="*60)
 

@@ -498,7 +498,8 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             "tos_path":          tos_result.get("tst_path") if tos_result else None,
             "llm_enabled":       use_llm,
         }
-        (output_dir / "run_summary.json").write_text(json.dumps(summary, indent=2))
+        from db_adapter import save_run_summary
+        save_run_summary(summary, output_dir / "run_summary.json")
         _ok("run_summary", "run_summary.json saved")
         # Save full ticker decisions for live cycle preservation
         try:

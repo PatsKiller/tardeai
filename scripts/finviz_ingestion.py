@@ -69,8 +69,10 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
         "Gap": "gap_percent", "Gap %": "gap_percent",
         "Volume": "volume", "Rel Volume": "relative_volume",
         "Relative Volume": "relative_volume", "Avg Volume": "avg_volume",
+        "Average Volume": "avg_volume",
         "Market Cap": "market_cap", "Float": "float_shares",
-        "Shs Float": "float_shares", "ATR": "atr",
+        "Shs Float": "float_shares", "Shares Float": "float_shares",
+        "ATR": "atr",
         "Premarket Price": "premarket_price",
         "Premarket Change": "premarket_change_percent",
         "Premarket Volume": "premarket_volume",
@@ -86,6 +88,19 @@ def normalize_finviz_columns(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].map(parse_num)
     if "symbol" in df.columns:
         df["symbol"] = df["symbol"].astype(str).str.upper().str.strip()
+    # Data quality gate: warn if critical scoring columns are missing or all-zero
+    _required = ["relative_volume", "gap_percent", "float_shares"]
+    _missing = [c for c in _required if c not in df.columns]
+    _zero = [c for c in _required if c in df.columns and df[c].sum() == 0]
+    if _missing or _zero:
+        _msg = f"⚠️ TRADE AI DATA QUALITY ALERT\nMissing: {_missing}\nAll-zero: {_zero}\n→ Scoring degraded. Check screeners.yaml uses v=152"
+        print(f"  [finviz] ⚠️  DATA QUALITY: missing columns {_missing}, all-zero columns {_zero}")
+        print(f"  [finviz]    → Scoring will be degraded. Check screeners.yaml uses v=152 (not v=111)")
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(_msg)
+        except Exception:
+            pass
     return df
 
 

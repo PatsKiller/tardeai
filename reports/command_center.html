@@ -2258,7 +2258,9 @@ a.ext:hover { text-decoration: underline; }
     <div class="divider"></div>
 
     <!-- Watchlist snapshot -->
-    <div class="zone-hdr">Watchlist <span id="watch-count" style="font-size:9px;color:var(--text3)"></span></div>
+    <div class="zone-hdr">Watchlist <span id="watch-count" style="font-size:9px;color:var(--text3)"></span>
+      <button onclick="openWatchlistModal()" style="float:right;background:#1A73E8;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">+ Manage</button>
+    </div>
     <div id="watchlist-quick"></div>
 
     <div class="divider"></div>
@@ -4530,6 +4532,102 @@ function renderWatchlistQuick() {
       <div class="w-thesis">${esc((data.thesis||'').substring(0,55))}</div>
     </div>`
   ).join('');
+}
+
+// ── Watchlist Modal ────────────────────────────────────────────────────────
+function openWatchlistModal() {
+  var old = document.getElementById('watchlist-modal-overlay');
+  if (old) old.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'watchlist-modal-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  var modal = document.createElement('div');
+  modal.style.cssText = 'background:var(--card);border-radius:12px;padding:20px;max-width:600px;width:95%;max-height:85vh;overflow-y:auto;color:var(--text)';
+  modal.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+    '<div style="font-size:18px;font-weight:600">👁️ Watchlist Manager</div>' +
+    '<button onclick="document.getElementById(\'watchlist-modal-overlay\').remove()" style="background:none;border:none;color:var(--text);font-size:18px;cursor:pointer">✕</button></div>' +
+    '<div id="wl-modal-list" style="margin-bottom:16px"><div class="empty">Loading...</div></div>' +
+    '<div style="border-top:1px solid var(--border);padding-top:12px">' +
+    '<div style="font-size:13px;font-weight:600;margin-bottom:8px">Add to Watchlist</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">' +
+    '<input id="wl-sym" placeholder="Symbol (e.g. AAPL)" style="padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;text-transform:uppercase">' +
+    '<select id="wl-source" style="padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">' +
+    '<option value="user">User</option><option value="analyst_curated">Analyst Curated</option></select>' +
+    '<select id="wl-intent" style="padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">' +
+    '<option value="">Intent...</option><option value="growth">Growth</option><option value="income">Income</option>' +
+    '<option value="defense">Defense</option><option value="speculative">Speculative</option><option value="swing">Swing</option>' +
+    '<option value="long_term_hold">Long-Term Hold</option><option value="etf_broad">ETF/Broad</option></select></div>' +
+    '<textarea id="wl-thesis" rows="2" placeholder="Thesis / reason (optional)" style="width:100%;margin-top:6px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;box-sizing:border-box"></textarea>' +
+    '<textarea id="wl-notes" rows="1" placeholder="Notes (optional)" style="width:100%;margin-top:4px;padding:6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;box-sizing:border-box"></textarea>' +
+    '<button onclick="wlAdd()" style="margin-top:8px;background:#0F9D58;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;width:100%">+ Add to Watchlist</button></div>';
+  overlay.appendChild(modal);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  wlLoadItems();
+}
+
+function wlLoadItems() {
+  fetch('/api/watchlist/read').then(r => r.json()).then(d => {
+    if (!d.ok) { document.getElementById('wl-modal-list').innerHTML = '<div class="empty">Error loading</div>'; return; }
+    var html = '';
+    // User items from JSON
+    var items = Object.entries(d.items || {});
+    items.forEach(function(e) {
+      var sym = e[0], data = e[1];
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
+        '<div><span style="font-weight:700;color:var(--accent);margin-right:6px">' + esc(sym) + '</span>' +
+        '<span style="background:#1A73E8;color:#fff;padding:1px 5px;border-radius:3px;font-size:9px;margin-right:4px">user</span>' +
+        '<span style="font-size:10px;color:var(--text3)">' + esc((data.target_intent||'').replace(/_/g,' ')) + '</span>' +
+        '<div style="font-size:10px;color:var(--text2);margin-top:2px">' + esc((data.thesis||'').substring(0,80)) + '</div></div>' +
+        '<button onclick="wlRemove(\'' + esc(sym) + '\',\'user\')" style="background:#DB4437;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;flex-shrink:0">Remove</button></div>';
+    });
+    // Analyst-curated items from Postgres
+    var analyst = d.analyst_curated || [];
+    analyst.forEach(function(a) {
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">' +
+        '<div><span style="font-weight:700;color:var(--accent);margin-right:6px">' + esc(a.symbol) + '</span>' +
+        '<span style="background:#F4B400;color:#1e1e35;padding:1px 5px;border-radius:3px;font-size:9px;margin-right:4px">analyst</span>' +
+        '<span style="font-size:10px;color:var(--text3)">' + esc((a.target_intent||'').replace(/_/g,' ')) + '</span>' +
+        '<div style="font-size:10px;color:var(--text2);margin-top:2px">' + esc((a.thesis||'').substring(0,80)) + '</div></div>' +
+        '<button onclick="wlRemove(\'' + esc(a.symbol) + '\',\'analyst_curated\')" style="background:#DB4437;color:#fff;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer;flex-shrink:0">Remove</button></div>';
+    });
+    if (!html) html = '<div class="empty">No watchlist items</div>';
+    document.getElementById('wl-modal-list').innerHTML = html;
+  }).catch(function() { document.getElementById('wl-modal-list').innerHTML = '<div class="empty">Error loading</div>'; });
+}
+
+function wlAdd() {
+  var sym = (document.getElementById('wl-sym').value || '').toUpperCase().trim();
+  if (!sym) { alert('Symbol is required'); return; }
+  var sourceType = document.getElementById('wl-source').value || 'user';
+  var body = {
+    action: 'add', symbol: sym, source_type: sourceType,
+    thesis: document.getElementById('wl-thesis').value || '',
+    target_intent: document.getElementById('wl-intent').value || '',
+    notes: document.getElementById('wl-notes').value || ''
+  };
+  fetch('/api/watchlist/write', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(r => r.json()).then(d => {
+      if (d.ok) {
+        document.getElementById('wl-sym').value = '';
+        document.getElementById('wl-thesis').value = '';
+        document.getElementById('wl-intent').value = '';
+        document.getElementById('wl-notes').value = '';
+        document.getElementById('wl-source').value = 'user';
+        wlLoadItems();
+        loadData('watchlist');
+      } else { alert('Error: ' + (d.error || 'unknown')); }
+    });
+}
+
+function wlRemove(sym, sourceType) {
+  sourceType = sourceType || 'user';
+  if (!confirm('Remove ' + sym + ' (' + sourceType.replace(/_/g,' ') + ') from watchlist?')) return;
+  fetch('/api/watchlist/write', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action:'remove',symbol:sym,source_type:sourceType})})
+    .then(r => r.json()).then(d => {
+      if (d.ok) { wlLoadItems(); loadData('watchlist'); }
+      else { alert('Error: ' + (d.error || 'unknown')); }
+    });
 }
 
 function renderKeyDates() {

@@ -896,13 +896,31 @@ Be direct. Give specific tickers, share counts, and dollar amounts.""",
 
 # ── Cache Management ──────────────────────────────────────────────────────────
 
+def _current_holdings_hash(state_dir: Path) -> str:
+    """Read holdings_hash from _freshness.json (written by orchestrator)."""
+    try:
+        fp = Path(state_dir) / "_freshness.json"
+        if fp.exists():
+            return json.loads(fp.read_text()).get("holdings_hash", "")
+    except Exception:
+        pass
+    return ""
+
+
 def _should_refresh(state_dir: Path, key: str, max_days: int = 30) -> bool:
     f = Path(state_dir) / f"ai_{key}.json"
     if not f.exists(): return True
     try:
         d = json.loads(f.read_text())
+        # Time-based: refresh if older than max_days
         age = (datetime.now() - datetime.fromisoformat(d.get("ts","2000-01-01"))).days
-        return age >= max_days
+        if age >= max_days:
+            return True
+        # Holdings-change-based: refresh if portfolio composition changed
+        cached_hash = d.get("holdings_hash", "")
+        if cached_hash and cached_hash != _current_holdings_hash(state_dir):
+            return True
+        return False
     except: return True
 
 def _load_cache(state_dir: Path, key: str) -> Optional[str]:
@@ -912,8 +930,10 @@ def _load_cache(state_dir: Path, key: str) -> Optional[str]:
 
 def _save_cache(state_dir: Path, key: str, text: str):
     Path(state_dir).mkdir(parents=True, exist_ok=True)
+    h_hash = _current_holdings_hash(state_dir)
     (Path(state_dir) / f"ai_{key}.json").write_text(
-        json.dumps({"key":key,"text":text,"ts":datetime.now().isoformat()},indent=2))
+        json.dumps({"key":key,"text":text,"ts":datetime.now().isoformat(),
+                    "holdings_hash":h_hash},indent=2))
 
 # ── Main Entry Point ──────────────────────────────────────────────────────────
 
@@ -927,6 +947,30 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     global _USE_OLLAMA
     _USE_OLLAMA = (run_type == "weekly")
     print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Claude Sonnet'})...")
+
+    # ── Freshness check (Phase 0) ────────────────────────────────────────────
+    _freshness_warning = ""
+    try:
+        _fp = state_dir / "_freshness.json"
+        if _fp.exists():
+            _fm = json.loads(_fp.read_text())
+            _completed = datetime.fromisoformat(_fm.get("completed_at", "2000-01-01"))
+            _age_hours = (datetime.now() - _completed).total_seconds() / 3600
+            if _age_hours > 26:
+                _freshness_warning = (
+                    f"\n⚠️ DATA STALENESS WARNING: Portfolio data is {_age_hours:.0f} hours old "
+                    f"(last pipeline: {_fm.get('completed_at', 'unknown')[:16]}). "
+                    f"Analysis may not reflect current positions or prices.\n"
+                )
+                print(f"  [ai] ⚠️  Data is {_age_hours:.0f}h stale — injecting warning")
+        else:
+            _freshness_warning = (
+                "\n⚠️ DATA STALENESS WARNING: No pipeline freshness manifest found. "
+                "Unable to verify data recency. Analysis may be based on stale data.\n"
+            )
+            print("  [ai] ⚠️  No freshness manifest — injecting warning")
+    except Exception:
+        pass  # Don't block AI on freshness check failure
 
     # Load previous weekly reports for monthly context
     _weekly_context = ""
@@ -955,12 +999,20 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
         portfolio = dict(portfolio)
         portfolio["_weekly_trajectory"] = _weekly_context
 
+    # Inject freshness warning into portfolio for prompt context
+    if _freshness_warning:
+        portfolio = dict(portfolio) if not isinstance(portfolio.get("_weekly_trajectory"), str) else portfolio
+        portfolio["_freshness_warning"] = _freshness_warning
+
     # Load personal situation once, reused across all section builders
     personal = _load_personal_situation()
 
     # Daily: executive summary (Haiku, cheap)
     print(f"  [ai] Executive summary ({'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Haiku'})...")
     results["executive_summary"] = _exec_summary(portfolio, analysis, rebalancing, personal)
+    if _freshness_warning:
+        results["executive_summary"] = _freshness_warning + results["executive_summary"]
+        results["_freshness_warning"] = _freshness_warning
 
     if run_type in ("monthly","manual","weekly") or force_refresh:
         sections = [

@@ -116,8 +116,22 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
         tickers.append({"symbol": sym, "company": company, "market_value": mv})
         seen.add(sym)
 
+    # Add user watchlist symbols not already in portfolio
+    try:
+        wl_path = state_dir / "watchlist.json"
+        if wl_path.exists():
+            _wl = json.loads(wl_path.read_text())
+            for _ws, _wd in _wl.items():
+                _ws = _ws.upper().strip()
+                if _ws and _ws not in seen and _ws not in SKIP_SYMBOLS:
+                    company = enrichment_cache.get(_ws, {}).get("company", "")
+                    tickers.append({"symbol": _ws, "company": company, "market_value": 0, "source": "watchlist"})
+                    seen.add(_ws)
+    except Exception:
+        pass
+
     tickers.sort(key=lambda x: -x["market_value"])
-    tickers = tickers[:MAX_PORTFOLIO_TICKERS]
+    tickers = tickers[:MAX_PORTFOLIO_TICKERS + 15]  # allow room for watchlist additions
     print(f"  [portfolio-news] Scanning {len(tickers)} tickers for news...")
 
     # Fetch catalysts using existing catalyst_enrichment
@@ -161,6 +175,17 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
     unique.sort(key=lambda x: x.get("published", ""), reverse=True)
     scored = _score_catalysts(unique[:30], portfolio)
 
+    # Also score a small batch of watchlist-only articles not already scored
+    _scored_urls = set(c.get("url", "") for c in scored)
+    _wl_unscored = [c for c in unique[30:] if c.get("url", "") not in _scored_urls
+                    and c.get("market_value", 0) == 0][:10]  # cap at 10 extra
+    if _wl_unscored:
+        _wl_scored = _score_catalysts(_wl_unscored, portfolio)
+        for _ws in _wl_scored:
+            _ws["_source_family"] = "watchlist"
+        scored.extend(_wl_scored)
+        scored.sort(key=lambda x: -x.get("llm_score", 0))
+
     # Brave-enrich top-scoring catalysts
     brave_enriched = []
     for c in scored:
@@ -176,13 +201,19 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
 
     # Build daily snapshot
     today = datetime.now().strftime("%Y-%m-%d")
+    # Tag source_family on articles that don't have it yet
+    for c in scored:
+        if "_source_family" not in c:
+            c["_source_family"] = "portfolio" if c.get("market_value", 0) > 0 else "watchlist"
+
     snapshot = {
         "date": today,
         "generated_at": datetime.now().isoformat(),
         "ticker_count": len(tickers),
         "total_articles": len(unique),
         "scored_articles": len(scored),
-        "catalysts": scored[:20],  # Top 20 scored
+        "catalysts": scored[:20],  # Top 20 scored for JSON/display
+        "all_scored": scored[:50],  # Top 50 for article_index persistence (includes watchlist)
         "sources_summary": sources_summary,
         "brave_enriched_count": len(brave_enriched),
     }
