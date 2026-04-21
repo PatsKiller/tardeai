@@ -43,6 +43,50 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     print(f"  {run_label}  |  {date_str}  |  {now_str}")
     print("="*60)
 
+    # ── Stale-data check (before pipeline runs, checks PREVIOUS freshness) ───
+    try:
+        import os as _sd_os
+        _sd_fp = state_dir / "_freshness.json"
+        if _sd_fp.exists():
+            _sd_fm = json.loads(_sd_fp.read_text())
+            _sd_completed = datetime.fromisoformat(_sd_fm.get("completed_at", "2000-01-01"))
+            _sd_age_h = (datetime.now() - _sd_completed).total_seconds() / 3600
+            if _sd_age_h > 26:
+                from db_adapter import notification_already_logged, save_notification_log_entry
+                _sd_bucket = datetime.now().hour // 6
+                _sd_dk = f"{date_str}:stale_data:telegram:bucket_{_sd_bucket}"
+                if not notification_already_logged(_sd_dk):
+                    _sd_msg = (
+                        f"\u26a0\ufe0f DATA STALENESS ALERT\n\n"
+                        f"Portfolio data is {_sd_age_h:.0f}h old.\n"
+                        f"Last pipeline: {_sd_fm.get('completed_at', '?')[:16]}\n"
+                        f"Hash: {_sd_fm.get('holdings_hash', '?')}\n\n"
+                        f"Pipeline is running now to refresh."
+                    )
+                    _sd_ok = False
+                    _sd_err = None
+                    try:
+                        from telegram_alert import send_telegram as _sd_tg
+                        _sd_ok = _sd_tg(_sd_msg)
+                    except Exception as _sd_te:
+                        _sd_err = str(_sd_te)
+                    save_notification_log_entry({
+                        "notification_date": date_str,
+                        "notification_type": "stale_data_alert",
+                        "channel": "telegram",
+                        "subject": "Data Staleness Alert",
+                        "body_summary": f"Data is {_sd_age_h:.0f}h old. Pipeline running to refresh.",
+                        "payload": {"age_hours": round(_sd_age_h, 1), "last_completed": _sd_fm.get("completed_at"), "holdings_hash": _sd_fm.get("holdings_hash")},
+                        "status": "sent" if _sd_ok else "failed",
+                        "dedupe_key": _sd_dk,
+                        "sent_at": datetime.now().isoformat() if _sd_ok else None,
+                        "error": _sd_err,
+                    })
+                    if _sd_ok:
+                        print(f"  [stale-alert] \u26a0\ufe0f  Stale data alert sent ({_sd_age_h:.0f}h old)")
+    except Exception:
+        pass  # stale check is best-effort, never blocks pipeline
+
     # 1 — Load
     from portfolio_loader import load_all_portfolios, save_state
     from portfolio_repricer import reprice_portfolio
@@ -373,6 +417,103 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 print(f"  [yahoo-targets] No analyst targets returned")
     except Exception as _yte:
         print(f"  [yahoo-targets] Failed (pipeline continues): {_yte}")
+
+    # ── AI-Generated Watchlist Candidates ────────────────────────────────────
+    try:
+        from db_adapter import save_watchlist_item, _execute as _ai_wl_exec
+        from datetime import timedelta as _td_wl
+
+        # Get current held + active watchlist symbols to exclude
+        _held_syms = set(
+            (h.get("symbol") or "").upper()
+            for h in portfolio.get("holdings", [])
+            if (h.get("market_value") or 0) > 100
+        )
+        _active_wl = _ai_wl_exec(
+            "SELECT symbol FROM watchlist_items WHERE status='active'", fetch="all"
+        ) or []
+        _exclude = _held_syms | set(r["symbol"] for r in _active_wl)
+        # Cap total AI-generated active items at 5
+        _current_ai_count = len([r for r in _active_wl if True])  # all active already counted
+        _ai_active = _ai_wl_exec(
+            "SELECT COUNT(*) AS cnt FROM watchlist_items WHERE source_type='ai_generated' AND status='active'", fetch="one"
+        )
+        _ai_active_count = (_ai_active or {}).get("cnt", 0)
+        # Reconcile: if over cap, expire lowest-confidence excess items
+        if _ai_active_count > 5:
+            _ai_wl_exec(
+                """UPDATE watchlist_items SET status = 'expired', updated_at = now()
+                   WHERE id IN (
+                       SELECT id FROM watchlist_items
+                       WHERE source_type = 'ai_generated' AND status = 'active'
+                       ORDER BY confidence ASC, created_at ASC
+                       LIMIT %s
+                   )""",
+                (_ai_active_count - 5,)
+            )
+            _expired_n = _ai_active_count - 5
+            _ai_active_count = 5
+            print(f"  [ai-watchlist] Reconciled: expired {_expired_n} lowest-confidence AI items (cap=5)")
+        _ai_slots = max(0, 5 - _ai_active_count)  # cap total AI items at 5
+
+        # Find candidates: high upside, buy/strong_buy, 3+ analysts, not excluded
+        _candidates = _ai_wl_exec(
+            """SELECT y.symbol, y.current_price, y.target_mean_price,
+                      round((y.target_mean_price - y.current_price) / y.current_price * 100, 1) AS upside_pct,
+                      y.recommendation_key, y.number_of_analyst_opinions
+               FROM yahoo_analyst_targets_history y
+               WHERE y.snapshot_date = (SELECT MAX(snapshot_date) FROM yahoo_analyst_targets_history)
+                 AND y.target_mean_price > 0 AND y.current_price > 0
+                 AND (y.target_mean_price - y.current_price) / y.current_price > 0.25
+                 AND y.number_of_analyst_opinions >= 3
+                 AND y.recommendation_key IN ('strong_buy', 'buy')
+               ORDER BY (y.target_mean_price - y.current_price) / y.current_price DESC
+               LIMIT 10""",
+            fetch="all"
+        ) or []
+
+        _ai_added = 0
+        _exp_date = (datetime.now() + _td_wl(days=30)).strftime("%Y-%m-%d")
+        _max_new = min(3, _ai_slots)  # at most 3 new per run, capped by total limit
+        for _c in _candidates:
+            if _c["symbol"] in _exclude:
+                continue
+            if _ai_added >= _max_new:
+                break
+            _upside = float(_c["upside_pct"])
+            _conf = min(0.90, 0.60 + (_c["number_of_analyst_opinions"] / 50))
+            save_watchlist_item({
+                "symbol": _c["symbol"],
+                "source_type": "ai_generated",
+                "thesis": (
+                    f"Analyst consensus: {_c['recommendation_key']} with "
+                    f"{_c['number_of_analyst_opinions']} opinions. "
+                    f"Mean target ${float(_c['target_mean_price']):.0f} "
+                    f"({_upside:.0f}% upside from ${float(_c['current_price']):.2f})."
+                ),
+                "target_intent": "growth" if _upside > 100 else "speculative",
+                "added_date": date_str,
+                "added_by": "portfolio_agent",
+                "confidence": round(_conf, 2),
+                "status": "active",
+                "notes": f"Auto-generated {date_str}. Expires {_exp_date}.",
+                "data": {
+                    "current_price": float(_c["current_price"]),
+                    "target_mean_price": float(_c["target_mean_price"]),
+                    "upside_pct": float(_upside),
+                    "recommendation_key": _c["recommendation_key"],
+                    "analyst_count": _c["number_of_analyst_opinions"],
+                    "expires_at": _exp_date,
+                    "generation_rule": "yahoo_high_upside_buy",
+                },
+            })
+            _exclude.add(_c["symbol"])
+            _ai_added += 1
+
+        if _ai_added:
+            print(f"  [ai-watchlist] ✅ {_ai_added} AI-generated watchlist candidates added")
+    except Exception as _awle:
+        print(f"  [ai-watchlist] Generation failed (pipeline continues): {_awle}")
 
     tech_chart_paths = {}
     try:
@@ -1238,6 +1379,163 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 print(f"  [enrichment] ⚠️  Summary rejected (banned language or too short)")
     except Exception as _enr_e:
         print(f"  [enrichment] Skipped ({_enr_e})")
+
+    # ── Urgent Telegram Notifications (severity 1 escalations) ───────────────
+    try:
+        from db_adapter import notification_already_logged, save_notification_log_entry, _execute as _notif_exec
+        _s1_escalations = _notif_exec(
+            "SELECT id, symbol, severity, trigger_rule, summary FROM escalation_queue WHERE created_at::date = %s AND severity = 1",
+            (date_str,), fetch="all"
+        ) or []
+        _notif_sent = 0
+        for _s1 in _s1_escalations:
+            _dk = f"{date_str}:urgent_alert:telegram:esc_{_s1['id']}"
+            if notification_already_logged(_dk):
+                continue
+            # Build message
+            _age_h = 0
+            if '_freshness' in dir() and _freshness.get("completed_at"):
+                try:
+                    _age_h = round((datetime.now() - datetime.fromisoformat(_freshness["completed_at"])).total_seconds() / 3600, 1)
+                except Exception:
+                    pass
+            _msg = (
+                f"\U0001f6a8 {_s1['trigger_rule'].upper().replace('_',' ')}\n\n"
+                f"{_s1['summary']}\n\n"
+                f"Severity: 1 (urgent)\n"
+                f"Data freshness: {_age_h}h"
+            )
+            # Send
+            _send_ok = False
+            _send_err = None
+            try:
+                from telegram_alert import send_telegram as _tg_send
+                _send_ok = _tg_send(_msg)
+            except Exception as _tge:
+                _send_err = str(_tge)
+            # Log
+            save_notification_log_entry({
+                "notification_date": date_str,
+                "notification_type": "urgent_alert",
+                "channel": "telegram",
+                "subject": _s1["trigger_rule"].replace("_", " ").title(),
+                "body_summary": _s1["summary"],
+                "escalation_ids": [_s1["id"]],
+                "payload": {"telegram_text": _msg, "freshness_hash": _freshness.get("holdings_hash", "") if '_freshness' in dir() else ""},
+                "status": "sent" if _send_ok else "failed",
+                "dedupe_key": _dk,
+                "sent_at": datetime.now().isoformat() if _send_ok else None,
+                "error": _send_err,
+            })
+            if _send_ok:
+                _notif_sent += 1
+            if _notif_sent >= 2:  # rate cap
+                break
+        if _notif_sent:
+            print(f"  [notifications] \u2705 {_notif_sent} urgent alert(s) sent via Telegram")
+    except Exception as _ne:
+        print(f"  [notifications] Failed (pipeline continues): {_ne}")
+
+    # ── Gmail Daily Digest ───────────────────────────────────────────────────
+    try:
+        from db_adapter import notification_already_logged, save_notification_log_entry, _execute as _digest_exec
+        _digest_dk = f"{date_str}:daily_digest:gmail:daily"
+        if not notification_already_logged(_digest_dk):
+            # Gather digest content
+            _d_summary = (_digest_exec(
+                "SELECT observation FROM advisor_observations WHERE observation_date=%s AND category='daily_summary' LIMIT 1",
+                (date_str,), fetch="one"
+            ) or {}).get("observation", "No daily summary available.")
+
+            _d_escs = _digest_exec(
+                "SELECT severity, symbol, summary FROM escalation_queue WHERE created_at::date=%s ORDER BY severity",
+                (date_str,), fetch="all"
+            ) or []
+
+            _d_drafts = _digest_exec(
+                "SELECT symbol, action, confidence, rationale FROM advisor_recommendations WHERE recommendation_date=%s",
+                (date_str,), fetch="all"
+            ) or []
+
+            _d_ai_wl = _digest_exec(
+                "SELECT symbol, confidence FROM watchlist_items WHERE source_type='ai_generated' AND status='active'",
+                fetch="all"
+            ) or []
+
+            # Portfolio value
+            _d_tv = portfolio.get("portfolio_totals", {}).get("total_value", 0)
+            _d_periods = perf_history.get("periods", {}) if perf_history else {}
+
+            # Build HTML body
+            _subject = f"[OpenClaw] Daily Portfolio Digest \u2014 {date_str}"
+            _sections = []
+            _sections.append(f"<h3>\U0001f4ca Daily Summary</h3><p>{_d_summary.replace(chr(10), '<br>')}</p>")
+
+            if _d_escs:
+                _esc_lines = "".join(f"<li>[S{e['severity']}] {e.get('symbol') or 'Portfolio'}: {e['summary']}</li>" for e in _d_escs)
+                _sections.append(f"<h3>\u26a1 Escalations ({len(_d_escs)} pending)</h3><ul>{_esc_lines}</ul>")
+
+            if _d_drafts:
+                _draft_lines = "".join(
+                    f"<li><b>{d['action']}</b>{' for ' + d['symbol'] if d.get('symbol') else ''} "
+                    f"(conf {float(d['confidence']):.0%}) &mdash; <i>Draft pending review</i></li>"
+                    for d in _d_drafts
+                )
+                _sections.append(f"<h3>\U0001f4cb Recommendation Drafts ({len(_d_drafts)} pending review)</h3><ul>{_draft_lines}</ul>")
+
+            if _d_ai_wl:
+                _wl_syms = ", ".join(f"{w['symbol']} ({float(w['confidence']):.0%})" for w in _d_ai_wl[:5])
+                _sections.append(f"<h3>\U0001f441 AI Watchlist</h3><p>{len(_d_ai_wl)} active: {_wl_syms}</p>")
+
+            _ytd = _d_periods.get("YTD", {}).get("change_pct")
+            _1w = _d_periods.get("1W", {}).get("change_pct")
+            _perf_line = f"${_d_tv:,.0f}"
+            if _ytd is not None: _perf_line += f" | YTD {_ytd:+.1f}%"
+            if _1w is not None: _perf_line += f" | 1W {_1w:+.1f}%"
+            _sections.append(f"<h3>\U0001f4c8 Portfolio</h3><p>{_perf_line}</p>")
+
+            _h_hash = _freshness.get("holdings_hash", "") if '_freshness' in dir() else ""
+            _sections.append(f"<hr><p style='font-size:11px;color:#888'>Data freshness: pipeline just completed | Hash: {_h_hash}</p>")
+
+            _body_html = f"<div style='font-family:sans-serif;max-width:600px'>" + "".join(_sections) + "</div>"
+
+            # Send via gog (set keyring password for non-interactive)
+            import subprocess as _sp
+            _gog_env = dict(os.environ)
+            _kr_path = Path.home() / ".openclaw" / "credentials" / "gog_keyring_password"
+            if _kr_path.exists():
+                _gog_env["GOG_KEYRING_PASSWORD"] = _kr_path.read_text().strip()
+            _send_result = _sp.run(
+                ["gog", "gmail", "send",
+                 "-a", "john@jwwhiting.com",
+                 "--to", "john@jwwhiting.com",
+                 "--subject", _subject,
+                 "--body-html", _body_html],
+                capture_output=True, text=True, timeout=30,
+                env=_gog_env
+            )
+            _send_ok = _send_result.returncode == 0
+            _send_err = _send_result.stderr.strip() if not _send_ok else None
+
+            save_notification_log_entry({
+                "notification_date": date_str,
+                "notification_type": "daily_digest",
+                "channel": "gmail",
+                "subject": _subject,
+                "body_summary": _d_summary[:200],
+                "escalation_ids": [e["id"] for e in _d_escs] if _d_escs and _d_escs[0].get("id") else None,
+                "payload": {"subject": _subject, "body_html_length": len(_body_html), "sections": len(_sections), "freshness_hash": _h_hash},
+                "status": "sent" if _send_ok else "failed",
+                "dedupe_key": _digest_dk,
+                "sent_at": datetime.now().isoformat() if _send_ok else None,
+                "error": _send_err,
+            })
+            if _send_ok:
+                print(f"  [notifications] \u2705 Daily digest sent via Gmail")
+            else:
+                print(f"  [notifications] \u26a0\ufe0f  Gmail digest failed: {_send_err}")
+    except Exception as _gde:
+        print(f"  [notifications] Gmail digest failed (pipeline continues): {_gde}")
 
     print("="*60)
 

@@ -51,6 +51,14 @@ def save_note(state_dir,key,note,tags,rating,setup,execution):
     (state_dir/"trade_notes.json").write_text(json.dumps(notes,indent=2))
 
 def match_trades_fifo(transactions,stops,notes):
+    # Normalize: accept both "txn_type" and "action" fields
+    for t in transactions:
+        if "txn_type" not in t and "action" in t:
+            _a = t["action"].lower().strip()
+            if _a in ("buy","reinvest","reinvest shares","reinvest dividend"):
+                t["txn_type"] = "buy"
+            elif _a in ("sell","sold"):
+                t["txn_type"] = "sell"
     txns=sorted([t for t in transactions if t.get("txn_type") in ("buy","sell") and t.get("symbol","").strip()],
                 key=lambda x:(x.get("datetime_str") or x.get("date","")))
     lots=defaultdict(list)
@@ -247,7 +255,7 @@ def compute_stats(trades):
     }
 
 def build_trade_journal(portfolio,state_dir):
-    all_txns=portfolio.get("transactions",[])
+    all_txns=portfolio.get("transactions",[]) or portfolio.get("trade_journal",[])
     if not all_txns:
         return {"closed_trades":[],"open_lots":[],"stats":{},"has_data":False,
                 "note":"No transaction history. Export Schwab History CSV to data/portfolios/input/"}

@@ -835,20 +835,24 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             try:
                 _wl_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "watchlist.json"
                 _wl = json.loads(_wl_path.read_text()) if _wl_path.exists() else {}
-                # Also load analyst_curated from Postgres
+                # Load analyst_curated and ai_generated from Postgres
                 _analyst_items = []
+                _ai_items = []
                 try:
                     from db_adapter import load_watchlist_items
-                    _raw = load_watchlist_items(source_type="analyst_curated", status="active")
-                    # Convert date objects to strings for JSON serialization
-                    for _r in _raw:
-                        for _k, _v in _r.items():
-                            if hasattr(_v, 'isoformat'):
-                                _r[_k] = _v.isoformat()
-                    _analyst_items = _raw
+                    for _st, _target in [("analyst_curated", "_analyst_items"), ("ai_generated", "_ai_items")]:
+                        _raw = load_watchlist_items(source_type=_st, status="active")
+                        for _r in _raw:
+                            for _k, _v in _r.items():
+                                if hasattr(_v, 'isoformat'):
+                                    _r[_k] = _v.isoformat()
+                        if _st == "analyst_curated":
+                            _analyst_items = _raw
+                        else:
+                            _ai_items = _raw
                 except Exception:
                     pass
-                json_response(self, 200, {"ok": True, "items": _wl, "analyst_curated": _analyst_items})
+                json_response(self, 200, {"ok": True, "items": _wl, "analyst_curated": _analyst_items, "ai_generated": _ai_items})
             except Exception as _e:
                 json_response(self, 500, {"ok": False, "error": str(_e)})
             return
@@ -921,11 +925,42 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/api/import":
+            print(f"  [import] POST /api/import received — body keys: {list(body.keys())[:10]}, size: {len(raw)} bytes")
+            try:
+                # Log import attempt to file
+                import datetime as _imp_dt
+                _imp_log = PROJECT_ROOT / "logs" / "import_audit.log"
+                _imp_log.parent.mkdir(parents=True, exist_ok=True)
+                with open(_imp_log, "a") as _ilf:
+                    _ilf.write(f"[{_imp_dt.datetime.now().isoformat()}] /api/import — keys={list(body.keys())[:10]} size={len(raw)}B\n")
+                    if "positions" in body:
+                        _ilf.write(f"  positions count: {len(body['positions'])}\n")
+                        for _p in body['positions'][:3]:
+                            _ilf.write(f"  sample: {_p.get('symbol','')} {_p.get('shares','')} {_p.get('account','')}\n")
+                    if "accounts" in body:
+                        _ilf.write(f"  accounts: {list(body['accounts'].keys()) if isinstance(body['accounts'], dict) else body['accounts']}\n")
+            except Exception:
+                pass
             status, result = handle_import(body)
+            print(f"  [import] Result: status={status}, ok={result.get('ok','?')}")
             json_response(self, status, result)
 
         elif path == "/api/import-transactions":
+            print(f"  [import-txn] POST /api/import-transactions received — body keys: {list(body.keys())[:10]}, size: {len(raw)} bytes")
+            try:
+                import datetime as _imp_dt
+                _imp_log = PROJECT_ROOT / "logs" / "import_audit.log"
+                _imp_log.parent.mkdir(parents=True, exist_ok=True)
+                with open(_imp_log, "a") as _ilf:
+                    _ilf.write(f"[{_imp_dt.datetime.now().isoformat()}] /api/import-transactions — keys={list(body.keys())[:10]} size={len(raw)}B\n")
+                    txns = body.get("transactions", [])
+                    _ilf.write(f"  transactions count: {len(txns)}\n")
+                    for _t in txns[:3]:
+                        _ilf.write(f"  sample: {_t.get('date','')} {_t.get('action','')} {_t.get('symbol','')} {_t.get('quantity','')}\n")
+            except Exception:
+                pass
             status, result = handle_import_transactions(body)
+            print(f"  [import-txn] Result: status={status}, ok={result.get('ok','?')}")
             json_response(self, status, result)
 
         elif path == "/api/clear-pending":

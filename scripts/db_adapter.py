@@ -535,6 +535,42 @@ def save_ticker_snapshot_daily(snapshot_date: str, enrichment_cache: dict) -> No
             print(f"  [db_adapter] Ticker snapshot daily save failed: {e}")
 
 
+def notification_already_logged(dedupe_key: str) -> bool:
+    """Check if a notification with this dedupe_key already exists."""
+    if not USE_DB:
+        return False
+    result = _execute(
+        "SELECT COUNT(*) AS cnt FROM notification_log WHERE dedupe_key = %s",
+        (dedupe_key,), fetch="one"
+    )
+    return (result or {}).get("cnt", 0) > 0
+
+
+def save_notification_log_entry(entry: dict) -> None:
+    """Save a notification log entry. Upsert by dedupe_key."""
+    if not USE_DB:
+        return
+    _execute(
+        """INSERT INTO notification_log
+           (notification_date, notification_type, channel, subject, body_summary,
+            recommendation_ids, escalation_ids, observation_ids, payload,
+            status, dedupe_key, sent_at, error)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+           ON CONFLICT (dedupe_key) DO UPDATE SET
+            status = EXCLUDED.status,
+            sent_at = EXCLUDED.sent_at,
+            error = EXCLUDED.error,
+            payload = EXCLUDED.payload""",
+        (entry["notification_date"], entry["notification_type"], entry["channel"],
+         entry.get("subject"), entry.get("body_summary"),
+         entry.get("recommendation_ids"), entry.get("escalation_ids"),
+         entry.get("observation_ids"),
+         json.dumps(entry.get("payload", {}), default=str),
+         entry.get("status", "queued"), entry["dedupe_key"],
+         entry.get("sent_at"), entry.get("error"))
+    )
+
+
 def save_article_index(articles: list) -> None:
     """Save article metadata to article_index. Dedupe by URL hash."""
     if not USE_DB or not articles:
