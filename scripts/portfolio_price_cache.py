@@ -14,6 +14,17 @@ from __future__ import annotations
 import json, sys, os, time, argparse, logging
 from datetime import datetime, date, timedelta
 from pathlib import Path
+
+# Load .env before db_adapter import so USE_DB evaluates correctly
+# (systemd does NOT inherit shell environment)
+_env_file = Path(__file__).resolve().parent.parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _v = _line.split("=", 1)
+            os.environ.setdefault(_k.strip(), _v.strip())
+
 try:
     from db_adapter import load_price_cache as _db_load_cache, save_price_cache as _db_save_cache
 except ImportError:

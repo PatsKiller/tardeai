@@ -47,7 +47,7 @@ body{background:#0d0d1a;color:#e0e0f0;font-family:-apple-system,BlinkMacSystemFo
 .tos-input{width:100%;background:#1e1e35;font-family:monospace;font-size:12px;font-weight:700;border:1.5px solid #3a3a5e;border-radius:6px;padding:6px 9px;cursor:text}
 .tos-input.go-color{color:#0F9D58}.tos-input.all-color{color:#F4B400}
 .copybtn{padding:7px 14px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;border:none;white-space:nowrap}
-.copybtn.go{background:#0F9D58;color:#fff}.copybtn.all{background:#F4B400;color:#1e1e35}
+.copybtn.go{background:#0F9D58;color:#fff}.copybtn.wait{background:#1A73E8;color:#fff}.copybtn.all{background:#F4B400;color:#1e1e35}
 .copybtn:hover{opacity:.85}
 .tos-steps{background:#0d0d1a;border-radius:8px;padding:10px;font-size:10px;color:#9A9AB0;line-height:1.9}
 .tos-steps b{color:#ccc}.tos-steps code{background:#1e1e35;padding:1px 5px;border-radius:3px;color:#1A73E8}
@@ -304,10 +304,17 @@ function jumpTo(id){{var el=document.getElementById(id);if(el)el.scrollIntoView(
 function doCopy(id,btn){{
   var el=document.getElementById(id),txt=el.value.trim(),orig=btn.textContent;
   if(!txt||txt.startsWith('—')){{btn.textContent='Nothing to copy';setTimeout(function(){{btn.textContent=orig}},1500);return}}
-  el.select();el.setSelectionRange(0,99999);
-  var ok=false;try{{ok=document.execCommand('copy')}}catch(e){{}}
-  if(!ok&&navigator.clipboard)navigator.clipboard.writeText(txt).catch(function(){{}});
-  btn.textContent='✅ Copied!';setTimeout(function(){{btn.textContent=orig}},2000);
+  if(navigator.clipboard&&navigator.clipboard.writeText){{
+    navigator.clipboard.writeText(txt).then(function(){{
+      btn.textContent='✅ Copied!';setTimeout(function(){{btn.textContent=orig}},2000);
+    }}).catch(function(){{_fallbackCopy(el,btn,orig)}});
+  }}else{{_fallbackCopy(el,btn,orig)}}
+}}
+function _fallbackCopy(el,btn,orig){{
+  var ta=document.createElement('textarea');ta.value=el.value;ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{{document.execCommand('copy');btn.textContent='✅ Copied!'}}catch(e){{btn.textContent='⚠ Select & Ctrl+C'}}
+  document.body.removeChild(ta);setTimeout(function(){{btn.textContent=orig}},2000);
 }}
 init();
 """
@@ -431,6 +438,7 @@ def generate_html_dashboard(
     go_list   = [t for t in scored_tickers if t.get("decision")=="GO"]
     wait_list = [t for t in scored_tickers if t.get("decision")=="WAIT"]
     go_syms   = " ".join(t["symbol"] for t in go_list[:20])
+    wait_syms = " ".join(t["symbol"] for t in wait_list[:20])
     all_syms  = " ".join(t["symbol"] for t in (go_list+wait_list)[:30])
     top_sym   = scored_tickers[0]["symbol"] if scored_tickers else "—"
     top_score = scored_tickers[0]["score"]  if scored_tickers else 0
@@ -577,6 +585,9 @@ def generate_html_dashboard(
 <div class="tos-row"><div class="tos-grp"><div class="tos-lbl">GO-Tier Symbols</div>
 <input type="text" class="tos-input go-color" id="go-syms" readonly value="{_e(go_syms)}" placeholder="— no GO tickers —"></div>
 <button class="copybtn go" onclick="doCopy('go-syms',this)">Copy GO</button></div>
+<div class="tos-row"><div class="tos-grp"><div class="tos-lbl">WAIT-Tier Symbols</div>
+<input type="text" class="tos-input" id="wait-syms" readonly value="{_e(wait_syms)}" placeholder="— no WAIT tickers —"></div>
+<button class="copybtn wait" onclick="doCopy('wait-syms',this)">Copy WAIT</button></div>
 <div class="tos-row"><div class="tos-grp"><div class="tos-lbl">All Qualified (GO + WAIT)</div>
 <input type="text" class="tos-input all-color" id="all-syms" readonly value="{_e(all_syms)}" placeholder="— no qualified tickers —"></div>
 <button class="copybtn all" onclick="doCopy('all-syms',this)">📋 Copy All</button></div>

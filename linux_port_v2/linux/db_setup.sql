@@ -130,3 +130,60 @@ CREATE OR REPLACE VIEW personal_timeline AS
     SELECT field_name, value, data_type, category, effective_date, recorded_at, note, source
     FROM personal_history
     ORDER BY field_name, recorded_at;
+
+-- ── Performance Daily ───────────────────────────────────────────────────────
+-- Computed period returns stored once per day. Derived from snapshots + Yahoo.
+-- NOT a raw time-series (that's portfolio_snapshots). This stores the computed
+-- 1D/1W/1M/3M/6M/YTD/1Y return percentages as of each day's pipeline run.
+CREATE TABLE IF NOT EXISTS performance_daily (
+    id serial PRIMARY KEY,
+    snapshot_date date NOT NULL UNIQUE,
+    total_value numeric(14,2) NOT NULL,
+    change_1d_pct numeric(8,4),
+    change_1w_pct numeric(8,4),
+    change_1m_pct numeric(8,4),
+    change_3m_pct numeric(8,4),
+    change_6m_pct numeric(8,4),
+    change_ytd_pct numeric(8,4),
+    change_1y_pct numeric(8,4),
+    data jsonb,
+    created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_performance_daily_date
+    ON performance_daily(snapshot_date DESC);
+
+-- ── Intel Briefs ────────────────────────────────────────────────────────────
+-- Tracks every portfolio intelligence brief generated (daily, weekly, monthly).
+CREATE TABLE IF NOT EXISTS intel_briefs (
+    id serial PRIMARY KEY,
+    brief_date date NOT NULL,
+    brief_type varchar(20) NOT NULL,
+    fund varchar(20) NOT NULL,
+    docx_path text,
+    word_count integer,
+    sections jsonb NOT NULL,
+    triggers jsonb,
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(brief_date, brief_type, fund)
+);
+CREATE INDEX IF NOT EXISTS idx_brief_date ON intel_briefs(brief_date DESC);
+CREATE INDEX IF NOT EXISTS idx_brief_fund ON intel_briefs(fund);
+
+-- ── Action Signals History ──────────────────────────────────────────────────
+-- Daily snapshot of per-ticker action signals. One row per ticker per day.
+-- Enables queries like "how long has V been TRIM?" and signal frequency analysis.
+CREATE TABLE IF NOT EXISTS action_signals_history (
+    id serial PRIMARY KEY,
+    signal_date date NOT NULL,
+    symbol varchar(20) NOT NULL,
+    signal varchar(10) NOT NULL,
+    rule text,
+    portfolio_pct numeric(6,3),
+    market_value numeric(14,2),
+    data jsonb,
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(signal_date, symbol)
+);
+CREATE INDEX IF NOT EXISTS idx_signals_date ON action_signals_history(signal_date DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_symbol ON action_signals_history(symbol);
+CREATE INDEX IF NOT EXISTS idx_signals_action ON action_signals_history(signal);

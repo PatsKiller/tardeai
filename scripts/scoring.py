@@ -243,6 +243,8 @@ def score_ticker(
     change_pct  = float(ticker_row.get("change_percent", 0) or 0)
     gap_pct     = float(ticker_row.get("gap_percent", 0) or 0)
     rvol        = float(ticker_row.get("relative_volume", 0) or 0)
+    if rvol == 0 and gap_pct == 0:
+        print(f"  [scoring] ⚠️  {symbol}: RVOL and gap both zero — likely missing from screener export")
     # float_m injected from finviz_enrichment (millions), fallback to float_shares
     float_m_direct = float(ticker_row.get("float_m", 0) or 0)
     float_raw   = float(ticker_row.get("float_shares", 0) or 0)

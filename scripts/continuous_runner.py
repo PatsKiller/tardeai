@@ -1,32 +1,32 @@
-"""continuous_runner.py â€” Trade AI v12 Advanced Continuous Runner.
+"""continuous_runner.py  -- Trade AI v12 Advanced Continuous Runner.
 
 Schedule (weekdays):
-  4:00 AM         â†’ Full run (use launcher/run_0400.bat instead)
-  5:00 AM         â†’ Full run (use launcher/run_0500.bat instead)
-  6:00â€“9:00 AM    â†’ Every 15 min, Full anchors at 6:00, 7:00, 8:00
-  9:00â€“10:00 AM   â†’ Every 10 min (market open â€” highest frequency)
-  10:00â€“11:00 AM  â†’ Every 15 min
+  4:00 AM            ' Full run (use launcher/run_0400.bat instead)
+  5:00 AM            ' Full run (use launcher/run_0500.bat instead)
+  6:00 --9:00 AM       ' Every 15 min, Full anchors at 6:00, 7:00, 8:00
+  9:00 --10:00 AM      ' Every 10 min (market open  -- highest frequency)
+  10:00 --11:00 AM     ' Every 15 min
   Self-terminates at 11:00 AM
 
 Modes:
-  LIVE   â€” Fast cycle: Finviz + scoring (no LLM), alert on significant changes only
-  FULL   â€” Complete pipeline: LLM, PDF, DOCX, trade plans, all alerts
+  LIVE    -- Fast cycle: Finviz + scoring (no LLM), alert on significant changes only
+  FULL    -- Complete pipeline: LLM, PDF, DOCX, trade plans, all alerts
 
 LLM credit management:
-  Haiku  â€” Runs ONLY when:
-            (a) Ticker passes pre-score filter (score â‰¥ 8)
+  Haiku   -- Runs ONLY when:
+            (a) Ticker passes pre-score filter (score       8)
             (b) Catalyst fingerprints have CHANGED since last Haiku call
             (c) No more than once per ticker per 30 minutes (rate gate)
-  Sonnet â€” Runs ONLY when:
-            (a) Score â‰¥ 48 (A+)
+  Sonnet  -- Runs ONLY when:
+            (a) Score       48 (A+)
             (b) Ticker has not had a plan generated today
             (c) Score increased by 5+ points since last plan OR new high-impact catalyst
 
-Alert triggers (LIVE mode â€” suppressed otherwise):
+Alert triggers (LIVE mode  -- suppressed otherwise):
   NEW_GO          : Ticker entered GO tier
   HALT            : Halt detected
   RVOL_5X / 8X   : RVOL threshold crossed for first time this session
-  SCORE_JUMP      : Score jumped â‰¥ 10 points since last cycle
+  SCORE_JUMP      : Score jumped       10 points since last cycle
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Set
 from dotenv import load_dotenv
 
 
-# â”€â”€ Schedule config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    Schedule config "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 SCHEDULE = [
     # (start_hhmm, end_hhmm, interval_minutes, is_full_at_start)
@@ -66,7 +66,7 @@ LLM_HAIKU_COOLDOWN_MIN  = 30   # min minutes between Haiku calls per ticker
 LLM_SONNET_COOLDOWN_MIN = 120  # min minutes between Sonnet plans per ticker
 
 
-# â”€â”€ State tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    State tracker "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 class CycleState:
     def __init__(self):
@@ -160,13 +160,13 @@ class CycleState:
         self.prev_score = {t["symbol"]: t.get("score",0) for t in scored}
 
 
-# â”€â”€ Alert builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    Alert builder "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
     spy = market.get("indices",{}).get("SPY",{}).get("change_percent",0)
     vix = market.get("vix",{}).get("price",0)
     b   = market.get("breadth_label","?")
-    lines = [f"âš¡ *Trade AI LIVE [{time_str}]*", f"SPY {spy:+.2f}%  VIX {vix:.1f}  {b}", ""]
+    lines = [f"\u26a1 *Trade AI LIVE [{time_str}]*", f"SPY {spy:+.2f}%  VIX {vix:.1f}  {b}", ""]
     for t in triggers:
         if t["type"] == "NEW_GO":
             sym = t["symbol"]
@@ -184,19 +184,19 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
             _sc = t["score"]; _rv = t.get("rvol",0)
             lines.append(f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x\n  _{_cat}_" + ai_line)
         elif t["type"] == "HALT":
-            lines.append(f"ðŸš¨ *HALT* â€” *{t['symbol']}*  {t.get('reason','')}")
+            lines.append(f"\U0001f6a8 *HALT* \u2014 *{t['symbol']}*  {t.get('reason','')}")
         elif t["type"] == "RESUMED":
-            lines.append(f"âœ… *RESUMED* â€” *{t['symbol']}*")
+            lines.append(f"\u2705 *RESUMED* \u2014 *{t['symbol']}*")
         elif t["type"] == "RVOL_8X":
-            lines.append(f"ðŸš€ *RVOL 8x* â€” *{t['symbol']}*  {t['rvol']:.1f}x")
+            lines.append(f"\U0001f680 *RVOL 8x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x")
         elif t["type"] == "RVOL_5X":
-            lines.append(f"ðŸš€ *RVOL 5x* â€” *{t['symbol']}*  {t['rvol']:.1f}x")
+            lines.append(f"\U0001f680 *RVOL 5x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x")
         elif t["type"] == "SCORE_JUMP":
-            lines.append(f"ðŸ“ˆ *+{t['delta']}pts* â€” *{t['symbol']}*  {t['prev']}â†’{t['score']} ({t['decision']})")
+            lines.append(f"\U0001f4c8 *+{t['delta']}pts* \u2014 *{t['symbol']}*  {t['prev']}\u2192{t['score']} ({t['decision']})")
     return "\n".join(lines)
 
 
-# â”€â”€ Live cycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    Live cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 def run_live_cycle(root: Path, run_label: str, date_str: str,
                    state: CycleState, time_str: str,
@@ -290,7 +290,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         from halt_detector import detect_halts
         halt_data = detect_halts(scored, enrichments)
         if halt_data.get("halt_count",0):
-            print(f"  [live] ðŸš¨ HALTED: {[h['symbol'] for h in halt_data.get('halted_tickers',[])]}")
+            print(f"  [live]          HALTED: {[h['symbol'] for h in halt_data.get('halted_tickers',[])]}")
     except Exception as e:
         print(f"  [live] halt error: {e}")
 
@@ -309,7 +309,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             send_telegram(msg)
         except Exception: pass
     else:
-        print(f"  [live] no changes â€” alerts suppressed")
+        print(f"  [live] no changes  -- alerts suppressed")
 
     # Refresh dashboard (no PDF/DOCX)
     try:
@@ -330,7 +330,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         print(f"  [live] dashboard error: {e}")
 
 
-# â”€â”€ Full cycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    Full cycle "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
     cmd = [sys.executable, str(root/"scripts"/"trade_ai_orchestrator.py"),
@@ -339,12 +339,12 @@ def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
     try:
         subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
     except subprocess.TimeoutExpired:
-        print(f"  [FULL] âš ï¸  Pipeline timed out after 45 min â€” killing and continuing")
+        print(f"  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")
     except Exception as e:
-        print(f"  [FULL] âš ï¸  Pipeline error: {e}")
+        print(f"  [FULL]            Pipeline error: {e}")
 
 
-# â”€â”€ Schedule helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    Schedule helpers "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 def _hm_to_min(hm: str) -> int:
     h, m = hm.split(":")
@@ -373,7 +373,7 @@ def _current_interval() -> int:
     return 15
 
 
-# â”€â”€ Main loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# "   "    Main loop "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -410,7 +410,7 @@ def main() -> int:
         now  = datetime.now()
         date = now.strftime("%Y-%m-%d")
         lbl  = _best_run_label(now)
-        print(f"[TEST] Single live cycle â€” {_now_hm()}  run_label={lbl}")
+        print(f"[TEST] Single live cycle  -- {_now_hm()}  run_label={lbl}")
         run_live_cycle(root, lbl, date, state, _now_hm())
         return 0
 
@@ -420,19 +420,19 @@ def main() -> int:
     start_min = _hm_to_min(SCHEDULE[0][0])
 
     print(f"\n{'='*60}")
-    print(f"  Trade AI v12 â€” Advanced Continuous Runner")
-    print(f"  Schedule: 4â€“6 AM (30min) Â· 6â€“9 AM (15min) Â· 9â€“10 AM (10min) Â· 10â€“11 AM (15min)")
+    print(f"  Trade AI v12  -- Advanced Continuous Runner")
+    print(f"  Schedule: 4 --6 AM (30min)   * 6 --9 AM (15min)   * 9 --10 AM (10min)   * 10 --11 AM (15min)")
     print(f"  Startup FULL run: fires immediately on launch")
     print(f"  Full anchors at: {', '.join(sorted(HOURLY_FULL_ANCHORS))}")
     print(f"  Self-terminates at {end_hm}")
     print(f"{'='*60}\n")
 
-    # â”€â”€ Startup: run FULL pipeline immediately on launch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # "   "    Startup: run FULL pipeline immediately on launch "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
     # Ensures 4AM run fires even if Task Scheduler was late or machine slept.
     _startup_now   = datetime.now()
     _startup_label = _best_run_label(_startup_now)
     _startup_date  = _startup_now.strftime("%Y-%m-%d")
-    print(f"\n[STARTUP] {_startup_now.strftime('%H:%M:%S')} â€” immediate FULL run (label={_startup_label})")
+    print(f"\n[STARTUP] {_startup_now.strftime('%H:%M:%S')}  -- immediate FULL run (label={_startup_label})")
     try:
         run_full_cycle(root, _startup_label, _startup_date)
         print(f"[STARTUP] Complete")
@@ -450,18 +450,18 @@ def main() -> int:
         date_str = now.strftime("%Y-%m-%d")
         time_str = _now_hm()
 
-        # Hard safety net â€” force exit if past 11:30 AM no matter what
+        # Hard safety net  -- force exit if past 11:30 AM no matter what
         if now_min >= _hm_to_min("11:30"):
-            print(f"[{time_str}] Hard cutoff 11:30 AM â€” forcing shutdown.")
+            print(f"[{time_str}] Hard cutoff 11:30 AM  -- forcing shutdown.")
             break
 
         if now_min >= end_min:
-            print(f"[{time_str}] Reached end time ({end_hm}) â€” shutting down.")
+            print(f"[{time_str}] Reached end time ({end_hm})  -- shutting down.")
             break
 
         if now_min < start_min:
             wait = start_min - now_min
-            print(f"[{time_str}] Before window start ({SCHEDULE[0][0]}) â€” waiting {wait} min...")
+            print(f"[{time_str}] Before window start ({SCHEDULE[0][0]})  -- waiting {wait} min...")
             time.sleep(wait * 60)
             continue
 
@@ -520,7 +520,7 @@ def main() -> int:
         elapsed = (datetime.now() - now).total_seconds()
         sleep   = max(10, interval * 60 - elapsed)
         nxt     = (datetime.now() + timedelta(seconds=sleep)).strftime("%H:%M")
-        print(f"  â†’ Next cycle at {nxt}  (sleep {int(sleep)}s)")
+        print(f"     ' Next cycle at {nxt}  (sleep {int(sleep)}s)")
         time.sleep(sleep)
 
     return 0

@@ -811,6 +811,15 @@ def generate_and_save_signals(project_root: str = ".") -> Path:
     out_path = state / "action_signals.json"
     out_path.write_text(json.dumps(output, indent=2, default=str))
     print(f"  [signals] Saved {len(signals)} signals to {out_path}")
+
+    # Postgres dual-write: daily signal history (non-blocking)
+    try:
+        from db_adapter import save_signals_history
+        _today = datetime.now().strftime("%Y-%m-%d")
+        save_signals_history(output["signals"], _today)
+    except Exception as _she:
+        print(f"  [signals] Postgres history write failed (JSON saved OK): {_she}")
+
     return out_path
 
 
