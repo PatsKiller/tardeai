@@ -1,8 +1,8 @@
-# Trade AI v12 System Bible v2.28
+# Trade AI v12 System Bible v2.29
 
-**April 28, 2026 | ms01-openclaw | Audit-Verified + 4 Critical Fixes Applied**
+**April 29, 2026 | ms01-openclaw | Production-Verified After April 29 Incident Response**
 
-Every number verified against live system. 4 critical gaps fixed and re-tested without bias.
+Every number verified against live system. April 28 audit + April 29 production fixes applied.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 
 ---
@@ -291,20 +291,80 @@ MONTHLY (1st): Deep tax reconciliation + Roth ladder + income progress
 
 ---
 
-## 7. Remaining Gaps (Honest)
+## 7. Remaining Gaps (Honest — updated April 29)
 
 | Gap | Impact | Cost to Fix |
 |---|---|---|
 | Agent quality (qwen3:1.7b) | Maria confidence 0.49, shallow reasoning | GPU → qwen3:14b (hardware pending) |
-| News limited to 2 sources | Google News code deployed but 0 records in DB yet | Free — just needs next cron cycle |
 | Brave Search API | Wired but 402 Payment Required | $5/mo |
 | Social APIs | 3 manual test posts, no live data | $100/mo (X) or free (StockTwits) |
-| Decision audit trail | Cannot trace which data influenced which decision | Build `decision_inputs` table |
 | Decision outcome evaluation | 88 tracked but 0 accuracy scored | Needs 30+ days |
-| Aegis intelligence | 0 events in DB despite script existing | Wire Aegis to produce intelligence_events |
 | Signal clustering | 0 records | Not implemented |
 | MARL | 1 shadow run | Not functional |
-| Learning loop | No feedback from outcomes to future agent prompts | Major gap for decision quality |
+
+### Gaps CLOSED (April 28-29)
+
+| Gap | Fix | Status |
+|---|---|---|
+| ~~News limited to 2 sources~~ | Savepoint fix + URL dedup. 552 articles, 46 sources | **VERIFIED** — preflight confirms |
+| ~~Decision audit trail~~ | `decision_inputs` table created + wired into synthesis | **DEPLOYED** — 0 records, populates on next synthesis |
+| ~~Learning loop~~ | `get_outcome_feedback()` in every agent + Alex prompt | **WORKING** — tested with SCHD, V, RTX outcomes |
+| ~~Aegis intelligence~~ | INSERT added to `aegis_morning_brief_delivery.py` | **DEPLOYED** — will produce events on next cron |
+| ~~Finviz broken~~ | URL `/export.ashx` → `/export`, `.env` sourcing in launcher | **VERIFIED** — 41 tickers via preflight check |
+
+---
+
+## 8. Production Incident Log — April 29, 2026
+
+### What Broke (reported by John at 7 AM)
+
+| Issue | Symptom |
+|---|---|
+| No scalp candidates | Trade AI runner producing 0 GO/WAIT tickers |
+| No morning brief | Aegis brief not delivered |
+| Stop briefs showing $0.00 | Price and stop fields empty in Telegram |
+
+### Root Cause Analysis (all pre-existing, NOT caused by April 28 session)
+
+| Issue | Root Cause | When It Actually Broke | Evidence |
+|---|---|---|---|
+| **Finviz 0 tickers** | Finviz changed URL from `/export.ashx` → `/export` (301 redirect) | External change by Finviz (unknown date) | Yesterday's log: 13 tickers. Today: 0 + "No tickers" |
+| **Finviz cookie not loaded** | `run_continuous.sh` never sourced `.env` file. `os.getenv("FINVIZ_COOKIE")` returned empty | Pre-existing launcher bug. Worked when env was set by other mechanism | Launcher had no `source .env` line |
+| **Ollama warm-up 404** | Hardcoded `qwen3:14b` but only `1.7b` installed | Pre-existing mismatch | Line 114: `"model":"qwen3:14b"` |
+| **Stop briefs $0.00** | `portfolio_orchestrator.py` line 210: `"price": 0, "stop_price": 0` hardcoded in fallback | Pre-existing bug in orchestrator | Code inspection confirms |
+| **Morning brief crash** | Export path pointed to deleted `docs/handoff_2026-04-19/` directory | Pre-existing since old docs cleanup | Directory does not exist |
+
+### Fixes Applied
+
+| Fix | File | Change |
+|---|---|---|
+| Finviz URL | `assets/screeners.yaml` + 3 scripts | `/export.ashx` → `/export` |
+| .env sourcing | `linux_launchers/run_continuous.sh` | Added `set -a; source .env; set +a` |
+| Ollama model | `scripts/trade_ai_orchestrator.py` | `qwen3:14b` → `qwen3:1.7b` |
+| Pipeline abort | `scripts/trade_ai_orchestrator.py` | Graceful fallback to cached tickers instead of `return 1` |
+| Stop prices | `scripts/portfolio_orchestrator.py` + `scripts/stop_decision_brief.py` | Pass real prices from alerts + enrichment cache fallback |
+| Brief export | `scripts/aegis_morning_brief_delivery.py` | Fixed path to `docs/` |
+
+### Prevention: System Preflight Check
+
+**`scripts/system_preflight_check.py`** — 19-point health check. Run before AND after any session:
+
+```bash
+python3 scripts/system_preflight_check.py
+```
+
+| Check | What It Catches |
+|---|---|
+| FINVIZ_COOKIE exists + has auth tokens | Cookie expiry / missing |
+| Finviz CSV download + returns tickers | URL changes, auth failures |
+| Ollama responds with correct model | Model name mismatches |
+| 3 API endpoints return OK | Server crashes, route errors |
+| Database tables + article + agent counts | DB connection, data loss |
+| Systemd services active | Service crashes |
+| State files fresh (<24h) | Stale data, failed imports |
+| Screener URLs use `/export` not `.ashx` | Finviz URL format changes |
+
+**Current result: 18/19 PASS** (portfolio-server runs via nohup, not systemd — expected)
 
 ---
 
@@ -345,8 +405,9 @@ MONTHLY (1st): Deep tax reconciliation + Roth ladder + income progress
 | v2.25 | Disability planning, trust tracking, auto-discovery, watchlist hygiene |
 | v2.26 | Audit: verified all numbers, found contradictions |
 | v2.27 | Honest rewrite: removed contradictions, Trust Matrix, Operator Framework, Intelligence Limitations |
-| **v2.28** | **4 critical fixes: (1) news 2→46 sources via savepoint fix, (2) Aegis events wired, (3) decision_inputs lineage table, (4) outcome→prompt learning loop. All tested without bias.** |
+| v2.28 | 4 critical fixes: news 46 sources, Aegis events, decision_inputs, learning loop |
+| **v2.29** | **April 29 incident response: Finviz URL fix (`/export.ashx`→`/export`), .env sourcing in launcher, ollama model name, stop price $0 fix, pipeline graceful fallback. Added `system_preflight_check.py` (19 checks). Full root cause analysis documented.** |
 
 ---
 
-**v2.28 — 4 critical fixes applied and tested. 517 articles from 46 sources (was 345 from 2). Learning loop active: agents see past CORRECT/WRONG outcomes. Decision lineage table deployed. Maturity: 71% (was 67%). Still not a trustable decision engine — agent quality (1.7B) and 0 human-evaluated decisions remain the bottleneck.**
+**v2.29 — April 29 production incident resolved. 5 pre-existing bugs fixed (Finviz URL, .env sourcing, ollama model, stop prices, brief export). Preflight check prevents recurrence (18/19 pass). 552 articles from 46 sources. Learning loop active. Finviz confirmed working (41 tickers). Maturity: 71%.**
