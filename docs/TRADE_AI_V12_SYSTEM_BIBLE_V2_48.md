@@ -1470,3 +1470,52 @@ Telegram report with:
 | Sunday 7 AM | `overnight_batch.py --research` | Re-analyze persistent research topics |
 | Daily 9 PM weekdays | `overnight_batch.py --index-embeddings` | Index new content embeddings |
 | Sunday 8 AM | `agent_watchlist_engine.py --autonomy-summary --telegram` | Weekly autonomy report |
+
+---
+
+## v2.48 Final — Smart Search Routing + Search Sources Status
+
+### Smart Search Routing Decision Tree
+
+`get_intel_summary()` now accepts `source_hint` parameter:
+
+| source_hint | When Used | Search Strategy | Brave Query Terms |
+|---|---|---|---|
+| `"research"` | Telegram `research TOPIC` command | **Brave first** → DB | `{symbol} stock retirement SSDI disability planning 2026` |
+| `"high_value"` | Alex retirement analysis | **Brave first** → DB | `{symbol} stock analysis dividend retirement income` |
+| `"routine"` (default) | Agent daily scans, overnight batch | **DB only** (Google/Yahoo RSS already ingested) | N/A |
+| Any + < 3 DB results | Automatic fallback | **Brave supplement** | `{symbol} stock analysis retirement dividend 2026` |
+
+**Brave 402 handling:** Graceful fallback — logs warning, continues with DB-only results. No crash.
+
+### Callers with source_hint
+
+| Caller | source_hint | Why |
+|---|---|---|
+| `alex_retirement_advisor._get_intel_context()` | `high_value` | Every Alex analysis gets best available intel |
+| `telegram_command_handler` (research command) | `research` | User research deserves freshest web data |
+| `process_watchlist_agent_jobs` | `routine` (default) | Daily agent scans use DB — RSS already captured |
+| `overnight_batch.refresh_research_topics()` | `routine` (default) | Weekly re-analysis uses DB + FRED |
+
+### Search Sources Status API
+
+**Endpoint:** `/api/v2/search-sources`
+
+| Source | Fields Returned |
+|---|---|
+| `yahoo_rss` | active, articles count, last ingested |
+| `google_news` | active, articles count, last ingested |
+| `finnhub` | active, articles count, last ingested |
+| `brave_search` | active (false), status ("402"), key_present |
+| `youtube` | active, transcripts count |
+| `fred` | active, series count |
+| `embeddings` | active, indexed count, model, dim |
+
+**UI:** Green/red dot strip on Intelligence Sources page showing live status of every source.
+
+### LLM Resilience (hardened in v2.48)
+
+When cloud providers hit budget limits ($2/day), Alex now:
+1. Tries cloud (high_impact=True) via `cio_synthesis`
+2. Falls back to local qwen3:1.7b via `agent_narrative` (prompt truncated to 4K)
+3. All functions produce output — never silent failure
