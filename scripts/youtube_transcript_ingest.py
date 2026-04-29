@@ -471,8 +471,12 @@ def fetch_channel_videos(channel_id_or_name: str, max_videos: int = 3) -> dict:
     return {"channel": channel_name, "found": len(videos), "ingested": ingested, "videos": results}
 
 
-def ingest_all_channels() -> dict:
-    """Ingest recent videos from all tracked channels."""
+def ingest_all_channels(max_per_channel: int = 3) -> dict:
+    """Ingest videos from all tracked channels.
+
+    Args:
+        max_per_channel: Videos to fetch per channel (3 = daily, 50 = backfill 12 months)
+    """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -480,19 +484,27 @@ def ingest_all_channels() -> dict:
     channels = cur.fetchall()
     conn.close()
 
-    print(f"[yt] Processing {len(channels)} tracked channels")
+    print(f"[yt] Processing {len(channels)} tracked channels (max {max_per_channel} videos each)")
     total_found = 0
     total_ingested = 0
     channel_results = []
 
     for ch in channels:
-        result = fetch_channel_videos(ch["channel_id"], max_videos=3)
+        result = fetch_channel_videos(ch["channel_id"], max_videos=max_per_channel)
         total_found += result.get("found", 0)
         total_ingested += result.get("ingested", 0)
         channel_results.append(result)
 
     print(f"[yt] All channels done: {total_found} found, {total_ingested} ingested")
     return {"channels": len(channels), "total_found": total_found, "total_ingested": total_ingested, "results": channel_results}
+
+
+def backfill_all_channels(max_per_channel: int = 50) -> dict:
+    """Backfill: fetch up to 50 videos per channel (~12 months of weekly uploads).
+    Use this once when adding new channels, not for daily runs.
+    """
+    print(f"[yt-backfill] Starting backfill — up to {max_per_channel} videos per channel")
+    return ingest_all_channels(max_per_channel=max_per_channel)
 
 
 def test_pipeline():
@@ -593,6 +605,14 @@ if __name__ == "__main__":
             print(json.dumps(results, indent=2, default=str))
         else:
             print("Usage: --channel CHANNEL_ID")
+    elif "--backfill" in sys.argv:
+        max_v = 50
+        if "--max" in sys.argv:
+            mi = sys.argv.index("--max")
+            if mi + 1 < len(sys.argv):
+                max_v = int(sys.argv[mi + 1])
+        results = backfill_all_channels(max_per_channel=max_v)
+        print(json.dumps(results, indent=2, default=str))
     elif "--all-channels" in sys.argv:
         results = ingest_all_channels()
         print(json.dumps(results, indent=2, default=str))
@@ -600,8 +620,9 @@ if __name__ == "__main__":
         print("Usage:")
         print("  --import-channel URL [--max 20] [--strategy retirement_planning]")
         print("      Import a channel: add to tracking + ingest transcripts")
-        print("      URL can be: youtube.com/channel/UCxxx, youtube.com/@handle, or channel ID")
-        print("  --ingest URL        Ingest a single video transcript")
-        print("  --channel ID        List recent videos from a channel")
-        print("  --all-channels      Ingest new videos from all tracked channels")
-        print("  --test              Run pipeline test")
+        print("  --backfill [--max 50]    Backfill: fetch up to 50 videos per channel (~12 months)")
+        print("      Run once after adding new channels. NOT for daily use.")
+        print("  --all-channels           Daily: fetch latest 3 videos per channel")
+        print("  --ingest URL             Ingest a single video transcript")
+        print("  --channel ID             List recent videos from a channel")
+        print("  --test                   Run pipeline test")
