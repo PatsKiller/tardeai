@@ -317,7 +317,13 @@ Use warm, supportive tone: "Here's what I recommend for you..." Be specific with
         result = get_llm_response("cio_synthesis" if high_impact else "agent_narrative",
                                    prompt, max_tokens=800, high_impact=high_impact)
         if not result.get("success") and high_impact:
+            import time; time.sleep(1)  # Brief pause before local fallback
             result = get_llm_response("agent_narrative", prompt[:4000], max_tokens=600, high_impact=False)
+            if not result.get("success"):
+                # Last resort: minimal prompt to local
+                import time; time.sleep(1)
+                mini = f"/no_think Analyze {symbol} for retirement. Brief: {prompt[:1500]}"
+                result = get_llm_response("agent_narrative", mini, max_tokens=500)
 
         if result.get("success"):
             analysis = result["response"]
