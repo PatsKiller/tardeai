@@ -42,8 +42,11 @@ SOURCE_QUALITY = {
 # Known high-quality YouTube channels for finance
 TRUSTED_YOUTUBE_CHANNELS = {
     "dividend bull": 75,
+    "dividendbull": 75,
     "joseph carlson": 70,
+    "josephcarlson": 70,
     "ppc ian": 65,
+    "ppcian": 65,
     "dave ramsey": 60,
     "the plain bagel": 70,
     "ben felix": 80,
@@ -51,6 +54,11 @@ TRUSTED_YOUTUBE_CHANNELS = {
     "nick murray": 75,
     "income investors": 65,
     "dividend data": 65,
+    "investkaki": 55,
+    "rational reminder": 70,
+    "joe f. schmitz": 70,
+    "peak retirement": 70,
+    "strong man personal finance": 55,
 }
 
 
@@ -75,11 +83,13 @@ def score_content(title: str, text: str, source: str = "unknown",
     # --- Quality Score ---
     base_quality = SOURCE_QUALITY.get(source.lower().replace(" ", "_"), 30)
 
-    # YouTube channel boost
+    # YouTube channel boost — flexible matching (handles spaces, no spaces, partial names)
     if source.lower() == "youtube" and channel:
-        ch_lower = channel.lower()
+        ch_lower = channel.lower().replace(" ", "")
+        ch_lower_spaced = channel.lower()
         for ch_name, ch_score in TRUSTED_YOUTUBE_CHANNELS.items():
-            if ch_name in ch_lower:
+            ch_key = ch_name.replace(" ", "")
+            if ch_key in ch_lower or ch_name in ch_lower_spaced or ch_lower in ch_key:
                 base_quality = max(base_quality, ch_score)
                 break
 
