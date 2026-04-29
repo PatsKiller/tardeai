@@ -3524,6 +3524,9 @@ ROUTES = {
     "/api/v2/tax-situation": lambda: _tax_situation(),
     "/api/v2/trust-transfers": lambda: {"transfers": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, event_date, amount, description, trust_type, five_year_lookback_start, protected_amount, trust_notes, created_at FROM tax_events WHERE event_type='trust_transfer' ORDER BY event_date DESC") or [])]},
     "/api/v2/sec/form4": lambda: {"filings": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, filer_name, filer_relation, transaction_type, shares, price, total_value, filing_date, sec_url, quality_score, strategy_tags, agent_tags, created_at FROM sec_form4 ORDER BY filing_date DESC LIMIT 50") or [])]},
+    "/api/v2/proposals": lambda: {"proposals": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, action, strategy_type, reason, account_name, shares_to_sell, target_symbol, confidence, status, ssdi_impact, income_impact, irmaa_risk, review_date, created_at FROM watchlist_proposals ORDER BY CASE status WHEN 'proposed' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END, created_at DESC LIMIT 30") or [])]},
+    "/api/v2/qualified-intelligence": lambda: {"items": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, source_type, symbol, title, quality_score, retirement_relevance, strategy_focus, discovered_at FROM qualified_intelligence ORDER BY quality_score DESC, discovered_at DESC LIMIT 30") or [])]},
+    "/api/v2/discovery-log": lambda: {"entries": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, discovery_type, title, summary, symbols_mentioned, intel_count, created_at FROM agent_discovery_log ORDER BY created_at DESC LIMIT 10") or [])]},
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
@@ -3769,6 +3772,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                      b.get("notes", ""))
                 )
                 return 200, {"ok": True, "action": "trust_transfer_recorded", "amount": amount, "trust_type": trust_type}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/proposals/decide":
+            try:
+                b = body or {}
+                pid = b.get("id")
+                decision = b.get("decision", "")  # approved / rejected
+                if not pid or decision not in ("approved", "rejected"):
+                    return 400, {"ok": False, "error": "id and decision (approved/rejected) required"}
+                _db_write("UPDATE watchlist_proposals SET status=%s, reviewed_by=%s, reviewed_at=NOW() WHERE id=%s",
+                          (decision, b.get("reviewer", "john"), pid))
+                return 200, {"ok": True, "action": decision, "id": pid}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/intelligence-sources/delete":
