@@ -690,7 +690,7 @@ python3 scripts/system_preflight_check.py
 | v2.36 | Enhanced structured JSON: relevance_score, main_topics, llm_confidence. Alex context 400→1200 chars |
 | v2.37 | Complete 9/9 structured JSON schema. timestamped_highlights from timed segment analysis |
 | v2.38 | 37 YouTube channels, 47 trusted scores, manual backfill mode |
-| **v2.39** | **Automated backfill manager: processes 5 channels/batch every 4 hours until all 37 complete. Rate limit detection + 4h cooldown + auto-retry. State tracking in youtube_backfill_status table. Retirement/SSDI channels prioritized. ~3 days to complete.** |
+| v2.39 | Automated backfill manager: processes 5 channels/batch every 4 hours until all 37 complete. Rate limit detection + 4h cooldown + auto-retry. State tracking in youtube_backfill_status table. Retirement/SSDI channels prioritized. ~3 days to complete.** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -786,4 +786,49 @@ See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
 
 ---
 
-**v2.39 — Automated YouTube backfill: 37 channels processing 50 videos each (~1,850 total) every 4 hours until complete. Rate limit detection + cooldown + auto-retry. Retirement/SSDI channels first. State tracked in DB. ~3 days to full 12-month coverage. Maturity: 74%.**
+**v2.40 — Automated YouTube backfill: 37 channels processing 50 videos each (~1,850 total) every 4 hours until complete. Rate limit detection + cooldown + auto-retry. Retirement/SSDI channels first. State tracked in DB. ~3 days to full 12-month coverage. Maturity: 74%.**
+
+---
+
+## Qualified Intelligence Pipeline (v2.40)
+
+### How It Works
+
+```
+RAW DATA (552 news, 12 YouTube, 4 SEC, 3 social)
+  ↓ scored + tagged (content_scoring.py)
+  ↓
+QUALIFIED INTELLIGENCE (agent_watchlist_engine.py — daily 7 PM)
+  Promotion criteria:
+    News: relevance_score ≥ 0.7
+    YouTube: quality_score ≥ 70 AND ai_validated
+    SEC Form 4: all filings (inherently high-value)
+  Currently: 14 qualified items (8 news, 4 SEC, 2 YouTube)
+  ↓
+WATCHLIST PROPOSALS (auto-generated)
+  Symbols in qualified intel but NOT on watchlist
+  Require 2+ mentions across sources
+  Status: 'proposed' (needs human approval)
+  ↓
+DISCOVERY SUMMARY (daily Telegram)
+  "What I Discovered Today" — top items + pending proposals
+  Stored in agent_discovery_log
+```
+
+### What Alex Now Sees (v2.40)
+
+```
+QUALIFIED INTELLIGENCE (high-confidence verified):
+  [news] Q:83 [RETIREMENT] How To Use 3 Retirement Accounts To Pay No Taxes
+  [sec] Q:80 Form 4: VISA INC. insider transaction
+  [youtube] Q:70 When Individual Bonds Make Sense
+SEC FORM 4 + YFINANCE + ALPHA VANTAGE + YOUTUBE (structured) + NEWS + OUTCOME FEEDBACK + CROSS-AGENT
+```
+
+### DB Tables
+
+| Table | Purpose |
+|---|---|
+| `qualified_intelligence` | High-Q items promoted from all sources (14 items) |
+| `watchlist_proposals` | Auto-generated add/rotate proposals (human approval required) |
+| `agent_discovery_log` | Daily "What I Discovered" summaries |
