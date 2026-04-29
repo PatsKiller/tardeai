@@ -41,24 +41,36 @@ SOURCE_QUALITY = {
 
 # Known high-quality YouTube channels for finance
 TRUSTED_YOUTUBE_CHANNELS = {
-    "dividend bull": 75,
-    "dividendbull": 75,
-    "joseph carlson": 70,
-    "josephcarlson": 70,
-    "ppc ian": 65,
-    "ppcian": 65,
-    "dave ramsey": 60,
-    "the plain bagel": 70,
-    "ben felix": 80,
-    "rob berger": 70,
-    "nick murray": 75,
-    "income investors": 65,
-    "dividend data": 65,
-    "investkaki": 55,
-    "rational reminder": 70,
-    "joe f. schmitz": 70,
-    "peak retirement": 70,
-    "strong man personal finance": 55,
+    # Existing
+    "dividend bull": 75, "dividendbull": 75,
+    "joseph carlson": 70, "josephcarlson": 70,
+    "ppc ian": 65, "ppcian": 65,
+    "dave ramsey": 60, "the plain bagel": 70,
+    "ben felix": 80, "rob berger": 70,
+    "nick murray": 75, "income investors": 65,
+    "dividend data": 65, "investkaki": 55,
+    "rational reminder": 70, "joe f. schmitz": 70,
+    "peak retirement": 70, "strong man personal finance": 55,
+    # Dividend & Compounding
+    "dividend growth investing": 70, "genexdividendinvestor": 65,
+    "josh invests": 60, "dividend guy": 60,
+    "ryne williams": 55, "the wealthy listener": 55,
+    "financial education": 65, "longacres finance": 55,
+    "doctor dividend": 60,
+    # Swing Trading
+    "humbled trader": 70, "desire to trade": 60,
+    "oliver velez": 65, "carter farr": 55,
+    "swing trade pros": 55, "t3 live": 60, "t3live": 60,
+    "trader talks": 60, "felix and friends": 55,
+    # Retirement / SSDI / Tax
+    "financial fast lane": 65, "paytaxeslater": 70, "james lange": 70,
+    "mission financial": 65, "fedlife": 60,
+    # Market Trends / Sectors
+    "stockcharts": 70, "tastylive": 70,
+    "yahoo finance": 65, "investors podcast": 65,
+    "everything money": 65, "sven carlin": 70,
+    "the swedish investor": 65, "brian stoffel": 60,
+    "couch investor": 55,
 }
 
 
