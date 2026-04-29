@@ -254,17 +254,22 @@ STEP 2: EXTRACTIVE PRE-FILTER (TextRank via Sumy)
   → Used as input for Step 3 (not stored separately)
   │
   ▼
-STEP 3: ABSTRACTIVE STRUCTURED SUMMARY (LLM)
-  Forced JSON output with exact keys:
+STEP 3: ABSTRACTIVE STRUCTURED SUMMARY (LLM) — v2.36 enhanced schema
+  Strict JSON with validation + 1 retry on failure:
   {
-    "summary": "150-200 word overview",
-    "key_points": ["point 1", "point 2", ...] (max 8),
+    "summary": "150-250 word professional overview",
+    "key_points": ["point 1", ...] (5-8 concise factual points),
     "action_items": ["recommendation 1", ...] (max 6),
-    "tickers_mentioned": ["SCHD", "V"],
+    "tickers_mentioned": ["SCHD", "V", "JEPI"],
     "retirement_relevance": "high | medium | low",
-    "topics": ["main topic 1", "main topic 2"]
+    "relevance_score": 0-100,               ← NEW v2.36
+    "main_topics": ["roth_conversion_ladder", "income_gap_strategy"],  ← NEW v2.36
+    "llm_confidence": 0-100                 ← NEW v2.36
   }
+  Required keys validated: summary, key_points, retirement_relevance
+  If missing → retry once with same prompt
   Routing: Claude for Q≥70 videos, local model for rest
+  Results: 8/12 transcripts with full schema (relevance 85-95, confidence 90-95)
   → summary column + structured_json JSONB column
   │
   ▼
@@ -643,7 +648,8 @@ python3 scripts/system_preflight_check.py
 | v2.32 | Transcript processor: cleaning, LLM summaries, 12 sub-tags, purge dates |
 | v2.33 | Structured YouTube JSON, 9 data sources in every prompt, service restart fix |
 | v2.34 | Breakage gates (23-point preflight), weekly backup zip, garbage cleanup (43 MB), restore guide |
-| **v2.35** | **Full hybrid transcript pipeline: TextRank extractive pre-filter (35% sentence retention) + structured JSON summaries + cross-channel dedup (Jaccard n-gram fingerprints) + unified agents_data_sources.yaml. Built for 1000+ transcripts. Sumy/NLTK installed.** |
+| v2.35 | Full hybrid transcript pipeline: TextRank extractive + structured JSON + cross-channel dedup + agents_data_sources.yaml |
+| **v2.36** | **Enhanced structured JSON schema: added relevance_score (0-100), main_topics (array), llm_confidence (0-100). JSON validation + 1 retry on failure. Alex context expanded 400→1200 chars so YouTube key_points + action_items appear in every analysis. 8/12 transcripts reprocessed with full schema.** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -739,4 +745,4 @@ See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
 
 ---
 
-**v2.35 — Full hybrid transcript pipeline built for scale: TextRank extractive → LLM abstractive → structured JSON → cross-channel dedup → tiered purge. Unified agent data source config (YAML). 23-point preflight gates. Weekly backup zip. Maturity: 74%.**
+**v2.36 — Enhanced structured JSON (relevance_score, main_topics, llm_confidence) with validation + retry. Alex now sees YouTube key_points + action_items in every analysis (context expanded 400→1200 chars). Full hybrid pipeline: TextRank → LLM → structured JSON → dedup → purge. Maturity: 74%.**
