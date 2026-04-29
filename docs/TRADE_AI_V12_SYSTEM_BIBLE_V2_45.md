@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.44
+# Trade AI v12 System Bible v2.45
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + SSDI Rules + Auto-Execute + Semantic Search**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + FRED-Aware Projections + Timeline Chart**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -1122,3 +1122,77 @@ WHERE rule_type = 'auto_execute' AND rule_key = 'low_risk';
 | `fred_data_ingest.py --test` | 7/7 FRED series live (Fed Rate 3.64%, VIX 17.83, SP500 7138.80) |
 | `alex --analyze V --tax-advisor` | Full disability-aware analysis: Roth $43.7K + IRA $93.6K, IRMAA/Medicaid projections |
 | `alex --roth-ladder` | 5-year projection: $126K converted, IRMAA Tier 1 starting 2028, Medicaid impact table |
+
+---
+
+## v2.45 — Retirement Timeline Chart Overhaul + FRED-Aware Projections
+
+### Timeline Chart Fixes (Phase 1)
+
+**Before (v2.44):** Y-axis showed "$1203K" for $1.2M values. Tooltips showed only `$1,203,691`.
+
+**After (v2.45):**
+- Y-axis: dynamic `$K` / `$M` formatting — `$1.2M`, `$5.3M`, `$8.5M`
+- Tooltips show for each data point:
+
+| Tooltip Field | Example |
+|---|---|
+| **Year & Age** | `2035 (Age 68)  ★ Golden Window Opens` |
+| **Scenario** | `Base: $2,847,312` |
+| **Rate assumption** | `Rate: 7.5% return (2.5% dividends + 5.0% growth)` |
+| **YoY growth** | `YoY growth: +7.5% ($198,312)` |
+| **Estimated dividends** | `Est. dividends: $71,183/yr` |
+| **Milestone** | `★ Golden Window Opens — Disability Ends` |
+
+- Milestone data points: larger (5px radius), white-bordered, highlighted
+- Milestone annotations show base scenario projected value
+- "Last updated" timestamp from `as_of` field
+
+### FRED-Aware Projection Engine (Phase 2)
+
+`portfolio_retirement.py` now reads FRED data to adjust return assumptions:
+
+| FRED Condition | Rate Adjustment |
+|---|---|
+| Fed Funds Rate < 3.0% | +0.5% to base rate (low-rate equity boost) |
+| Fed Funds Rate > 5.0% | -0.5% to base rate (high-rate drag) |
+| Yield spread < 0 (inverted) | -1.0% to conservative (recession risk) |
+| Normal conditions (3-5%, positive spread) | No adjustment (use defaults) |
+
+**Current state (April 29, 2026):** DFF=3.64%, T10Y2Y=0.52 → normal range → rates unchanged at 5.5%/7.5%/9.6%
+
+**Output JSON now includes:**
+```json
+"rate_assumptions": {
+  "conservative": 0.055,
+  "base": 0.075,
+  "aggressive": 0.096,
+  "fred_adjusted": false
+}
+```
+
+### Update Frequency
+
+| Trigger | What Updates |
+|---|---|
+| Portfolio pipeline (daily) | `retirement_roadmap.json` regenerated via `portfolio_orchestrator.py` |
+| FRED daily 6:30 AM | Macro data refreshed → next roadmap generation uses latest rates |
+| Manual: `build_retirement_roadmap()` | Can be called anytime with latest holdings |
+
+### SSDI-Aware Retirement Projections
+
+| Scenario | Assumes |
+|---|---|
+| Conservative (5.5%) | SSDI continues, minimal Roth conversions, 401k stays put |
+| Base (7.5%) | Moderate Roth ladder ($25K/yr pre-golden, $50K/yr in golden window) |
+| Aggressive (9.6%) | Full bracket-filling conversions, disability exemption utilized |
+| All scenarios | $7,000/yr Roth contribution, disability penalty exemption, MFS filing |
+
+### Milestone Markers
+
+| Age | Year | Event |
+|---|---|---|
+| 59 | 2026 | No early withdrawal penalty |
+| 67 | 2034 | SS Retirement @ FRA |
+| 68.5 | 2036 | Golden Window Opens — Disability Ends |
+| 73 | 2040 | RMD Age — Complete Roth Conversion |
