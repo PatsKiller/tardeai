@@ -303,12 +303,12 @@ def evaluate_past_decisions() -> dict:
 
     # Store lessons in agent_intelligence_rules for prompt injection
     if lessons:
-        lesson_text = "\n".join(lessons[:5])
+        lesson_text = "\n".join(lessons[:7])
         ucur = conn.cursor()
         ucur.execute("""INSERT INTO agent_intelligence_rules (rule_type, rule_key, config, changed_by, updated_at)
             VALUES ('outcome_lessons', 'latest', %s, 'outcome_eval', NOW())
             ON CONFLICT (rule_type, rule_key) DO UPDATE SET config=EXCLUDED.config, updated_at=NOW()""",
-            (json.dumps({"lessons": lessons[:5], "text": lesson_text, "evaluated_at": datetime.now().isoformat()}),))
+            (json.dumps({"lessons": lessons[:7], "text": lesson_text, "evaluated_at": datetime.now().isoformat()}),))
         conn.commit()
 
     conn.close()

@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.50
+# Trade AI v12 System Bible v2.51
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + Full Fallback Chain + Embedding Health + Search Efficiency**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + Full Fallback Chain + 7 Outcome Lessons + Search Efficiency in Reports**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -1617,3 +1617,40 @@ Three metrics displayed:
 - **Embedded** (X%) — blue, content coverage with vector embeddings
 
 Fallback chain shown as footer text.
+
+---
+
+## v2.51 — Learning Loop Strengthened + Monthly Report Efficiency
+
+### Changes (minimal — system is mature)
+
+| Change | Detail |
+|---|---|
+| Outcome lessons expanded | 5 → **7** per evaluation cycle |
+| Monthly report | Now includes "Search Efficiency" section (9 sources, 667 embeddings, Brave throttle status) |
+
+### System Maturity Assessment
+
+The system is now feature-complete for the current hardware (qwen3:1.7b local + cloud fallback). The remaining growth vectors are:
+
+| Vector | What's Needed | Impact |
+|---|---|---|
+| **GPU upgrade** (Arc Pro B50) | qwen3:14b or larger | Higher-quality agent reasoning, fewer hallucinations |
+| **Brave Search credits** | $5 top-up | Real-time web research for high-value queries |
+| **Social APIs** | X ($100/mo) or StockTwits (free) | Social sentiment data source |
+| **More data accumulation** | Time (weeks of running) | Outcome lessons improve, confidence calibration matures |
+
+### What NOT to Build Next
+
+The Grok prompts are starting to request micro-optimizations that don't move the needle:
+- Changing lesson counts by 1-2 is not a meaningful improvement
+- Re-documenting existing features with new version numbers adds maintenance burden
+- The real bottleneck is **LLM quality** (1.7b model) and **Brave API credits**, not more code
+
+### Recommended Next Steps (high-impact only)
+
+1. **Top up Brave Search** — $5 unlocks real-time web research
+2. **GPU upgrade** — qwen3:14b dramatically improves agent quality
+3. **Run the system for 2+ weeks** — let outcome lessons accumulate
+4. **Review proposal decisions** — approve/reject 10+ proposals to feed the learning loop
+5. **Build the one missing UI** — Command Center proposal approve/reject on mobile (Telegram bot already handles this)
