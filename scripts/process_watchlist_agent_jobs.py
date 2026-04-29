@@ -162,13 +162,19 @@ def _get_other_agent_views(symbol: str, current_agent: str) -> str:
 
 
 def _get_recent_intel(symbol: str) -> str:
-    """Pull recent scored intelligence for this symbol."""
+    """Pull recent scored intelligence + past outcome feedback for this symbol."""
+    parts = []
     try:
-        from intel_query import get_intel_summary
+        from intel_query import get_intel_summary, get_outcome_feedback
         summary = get_intel_summary(symbol=symbol, min_quality=40, max_chars=300, days=7)
-        return summary + "\n" if summary else ""
+        if summary:
+            parts.append(summary)
+        feedback = get_outcome_feedback(symbol, limit=3)
+        if feedback:
+            parts.append(feedback)
     except Exception:
-        return ""
+        pass
+    return "\n".join(parts) + "\n" if parts else ""
 
 
 def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") -> str:
@@ -882,6 +888,23 @@ Respond in JSON format:
           parsed.get("reason_codes", []), conflicts, unresolved,
           next_review, synthesis_narrative,
           [r["agent"] for r in results], OLLAMA_MODEL, raw))
+
+    # Record decision inputs (data lineage — what influenced this synthesis)
+    try:
+        # Agent results that fed into this synthesis
+        for r in results:
+            cur.execute("""INSERT INTO decision_inputs (symbol, source_type, source_table, source_id, title, relevance_score, used_in_synthesis)
+                VALUES (%s, 'agent_result', 'watchlist_agent_results', %s, %s, %s, TRUE)""",
+                (symbol, r.get("id"), f"{r['agent']}: {r.get('recommendation','?')}", float(r.get("confidence", 0))))
+        # Recent news that was in context
+        cur.execute("""SELECT id, title, relevance_score FROM news_articles
+            WHERE symbol=%s AND created_at > NOW() - INTERVAL '7 days' ORDER BY relevance_score DESC LIMIT 5""", (symbol,))
+        for n in cur.fetchall():
+            cur.execute("""INSERT INTO decision_inputs (symbol, source_type, source_table, source_id, title, relevance_score, used_in_synthesis)
+                VALUES (%s, 'news', 'news_articles', %s, %s, %s, TRUE)""",
+                (symbol, n[0], (n[1] or "")[:200], float(n[2] or 0)))
+    except Exception:
+        pass  # Don't let lineage tracking break synthesis
 
     # Update maturity
     cur.execute("""

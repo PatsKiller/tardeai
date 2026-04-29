@@ -199,15 +199,20 @@ def _format_tax_context() -> str:
 
 
 def _get_intel_context(symbol: str = None) -> str:
-    """Pull recent intelligence + cross-agent context for Alex's prompt."""
+    """Pull recent intelligence + cross-agent context + outcome feedback for Alex's prompt."""
     parts = []
 
     # Scored intelligence (news, YouTube, social)
     try:
-        from intel_query import get_intel_summary
+        from intel_query import get_intel_summary, get_outcome_feedback
         summary = get_intel_summary(agent="Alex", symbol=symbol, min_quality=60, max_chars=400)
         if summary:
             parts.append(summary)
+        # Past decision outcomes (learning loop)
+        if symbol:
+            feedback = get_outcome_feedback(symbol, limit=3)
+            if feedback:
+                parts.append(feedback)
     except Exception:
         pass
 

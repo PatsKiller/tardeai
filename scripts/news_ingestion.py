@@ -182,31 +182,32 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
     relevance = scores.get("relevance_score", 0)
     keywords = scores.get("matched_keywords", [])
 
-    # Catalyst event — if relevance > 0.3, it might be a catalyst
+    # Catalyst + sentiment — use savepoints to prevent transaction abort
     if relevance > 0.3:
         try:
-            cur.execute("""
-                INSERT INTO catalyst_events (symbol, strategy_type, catalyst_type, title, description, source, relevance_score)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-            """, (symbol, strategy_type, "news", title, summary, source, relevance))
+            cur.execute("SAVEPOINT ds_cat")
+            cur.execute("""INSERT INTO catalyst_events (symbol, strategy_type, catalyst_type, title, description, source, relevance_score)
+                VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+                (symbol, strategy_type, "news", title, summary, source, relevance))
+            cur.execute("RELEASE SAVEPOINT ds_cat")
         except Exception:
-            conn.rollback()
+            try: cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
+            except Exception: pass
 
-    # Sentiment observation — extract sentiment from scoring
     try:
         from content_scoring import SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE
         text_lower = f"{title} {summary}".lower()
         pos = sum(1 for s in SENTIMENT_POSITIVE if s in text_lower)
         neg = sum(1 for s in SENTIMENT_NEGATIVE if s in text_lower)
         sentiment = "positive" if pos > neg else "negative" if neg > pos else "neutral"
-        cur.execute("""
-            INSERT INTO sentiment_observations (symbol, source, sentiment, score, raw_text)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT DO NOTHING
-        """, (symbol, source, sentiment, relevance, title))
+        cur.execute("SAVEPOINT ds_sent")
+        cur.execute("""INSERT INTO sentiment_observations (symbol, source, sentiment, score, raw_text)
+            VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+            (symbol, source, sentiment, relevance, title))
+        cur.execute("RELEASE SAVEPOINT ds_sent")
     except Exception:
-        conn.rollback()
+        try: cur.execute("ROLLBACK TO SAVEPOINT ds_sent")
+        except Exception: pass
 
 
 def ingest(priority_only: bool = False) -> dict:
@@ -241,13 +242,19 @@ def ingest(priority_only: bool = False) -> dict:
             articles.extend(_fetch_benzinga_api(sym, benzinga_key))
 
         for a in articles:
-            # Dedup by symbol + title (cross-source dedup)
-            cur.execute("SELECT id FROM news_articles WHERE symbol=%s AND title=%s LIMIT 1", (sym, a["title"][:500]))
-            if cur.fetchone():
-                continue
-            # Also dedup by URL if available
-            if a.get("source_url"):
-                cur.execute("SELECT id FROM news_articles WHERE source_url=%s LIMIT 1", (a["source_url"][:500],))
+            src = a.get("source", "")
+            is_google = src.startswith("google_news:") or src in ("seeking_alpha", "motley_fool", "morningstar", "barrons", "marketwatch", "benzinga_rss")
+            # Dedup: Google News sources dedup by URL only (titles overlap with Yahoo)
+            # Yahoo/Finnhub dedup by symbol + title
+            if is_google:
+                if a.get("source_url"):
+                    cur.execute("SELECT id FROM news_articles WHERE source_url=%s LIMIT 1", (a["source_url"][:500],))
+                    if cur.fetchone():
+                        continue
+                else:
+                    continue  # Skip Google News without URL
+            else:
+                cur.execute("SELECT id FROM news_articles WHERE symbol=%s AND title=%s LIMIT 1", (sym, a["title"][:500]))
                 if cur.fetchone():
                     continue
 
