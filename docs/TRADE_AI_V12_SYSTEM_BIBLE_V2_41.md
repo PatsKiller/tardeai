@@ -825,10 +825,48 @@ QUALIFIED INTELLIGENCE (high-confidence verified):
 SEC FORM 4 + YFINANCE + ALPHA VANTAGE + YOUTUBE (structured) + NEWS + OUTCOME FEEDBACK + CROSS-AGENT
 ```
 
+### Rotation Rules (v2.41 — strategy-aware)
+
+| Strategy | Auto-Rotate? | Rule |
+|---|---|---|
+| dividend_growth_compounder | **NEVER** | HOLD unless dividend cut or payout unsafe |
+| high_yield_income_bdc | **NEVER** | HOLD unless income floor threatened (>20% of income) |
+| tactical_income | **NEVER** | HOLD unless yield drops below 4% |
+| reit_income | **NEVER** | HOLD unless occupancy collapse |
+| bond_income | **NEVER** | HOLD unless duration mismatch |
+| swing_trade | YES | Rotate on RSI >75 or <25 + catalyst exhaustion |
+| core_growth_compounder | YES | Rotate if PE >40 AND growth decelerating |
+| retirement_planning | **NEVER** | Alex reviews: Roth ladder, tax bracket, SSDI impact |
+| disability_retirement_planning | **NEVER** | Alex reviews: Medicaid, IRMAA, MFS implications |
+
+**Protection**: Income and retirement assets are NEVER auto-rotated. Only swing/growth positions get rotation proposals, and even those require human approval.
+
+### Weekly Retirement Health Check (Sunday 10 AM)
+
+Claude-powered deep analysis:
+1. Income gap progress (on track?)
+2. Roth conversion pace (ahead/behind?)
+3. Tax bracket room remaining
+4. SSDI/disability considerations
+5. Medicaid planning status
+6. Top 3 actions for next week
+
+Stored in `ai_reports` (type='weekly_health') + `agent_discovery_log` + Telegram
+
+### Autonomous Engine Schedule
+
+| Job | Schedule | What It Does |
+|---|---|---|
+| Promote qualified intel | Daily 7 PM | Scan news/YouTube/SEC → promote Q≥70 to qualified_intelligence |
+| Propose watchlist adds | Daily 7 PM | Symbols in qualified intel not on watchlist → proposals |
+| Propose rotations | Daily 7 PM | Check positions against strategy rotation rules |
+| Discovery summary | Daily 7 PM | "What I Discovered Today" → Telegram + DB |
+| Weekly health check | Sunday 10 AM | Deep retirement/disability check → Telegram + AI reports |
+
 ### DB Tables
 
-| Table | Purpose |
-|---|---|
-| `qualified_intelligence` | High-Q items promoted from all sources (14 items) |
-| `watchlist_proposals` | Auto-generated add/rotate proposals (human approval required) |
-| `agent_discovery_log` | Daily "What I Discovered" summaries |
+| Table | Purpose | Records |
+|---|---|---|
+| `qualified_intelligence` | High-Q items from all sources | 14 |
+| `watchlist_proposals` | Add/rotate proposals (human approval) | 2 (SCHG, TRP-LVAL) |
+| `agent_discovery_log` | Daily/weekly summaries | 2 |
