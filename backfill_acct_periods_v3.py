@@ -36,19 +36,64 @@ SKIP_SYMBOLS = frozenset(['CASH', 'SNSXX', 'SWVXX', 'SPRXX', 'VMFXX',
                            'VMMXX', 'FDRXX', 'FCASH', '--'])
 
 def get_price(symbol, date_str):
-    sym = FIDELITY_MAP.get(symbol, symbol)
-    if sym in SKIP_SYMBOLS:
+    """Get price for a symbol on a date.
+
+    Source priority:
+    1. PostgreSQL ticker_prices table (canonical source of truth)
+    2. JSON price_cache.json (fallback if DB unavailable)
+
+    For Fidelity proprietary funds, maps to public ticker and applies scale factor.
+    """
+    mapped = FIDELITY_MAP.get(symbol, symbol)
+    if mapped in SKIP_SYMBOLS:
         return None
-    prices = price_cache.get(sym, {})
-    if date_str in prices:
-        return prices[date_str]
-    target = date.fromisoformat(date_str)
-    for delta in range(1, 6):
-        for d in [target - timedelta(days=delta), target + timedelta(days=delta)]:
-            p = prices.get(d.isoformat())
-            if p:
-                return p
-    return None
+
+    # Try DB first (source of truth)
+    raw_price = None
+    try:
+        from price_db_sync import get_price_from_db
+        raw_price = get_price_from_db(mapped, date_str)
+    except Exception:
+        pass  # DB unavailable, fall through to JSON
+
+    # Fallback to JSON cache
+    if raw_price is None:
+        prices = price_cache.get(mapped, {})
+        if date_str in prices:
+            raw_price = prices[date_str]
+        else:
+            target = date.fromisoformat(date_str)
+            for delta in range(1, 6):
+                for d in [target - timedelta(days=delta), target + timedelta(days=delta)]:
+                    p = prices.get(d.isoformat())
+                    if p:
+                        raw_price = p
+                        break
+                if raw_price:
+                    break
+
+    if raw_price is None:
+        return None
+
+    # For Fidelity proprietary symbols, apply scale factor
+    # Scale = current_fidelity_price / current_public_price
+    if symbol != mapped and symbol in FIDELITY_MAP:
+        fid_holding = next((h for h in current_holdings if h.get('symbol') == symbol), None)
+        if fid_holding:
+            fid_price = fid_holding.get('price', 0)
+            # Get latest public price for ratio
+            try:
+                from price_db_sync import get_latest_price_from_db
+                latest_pub = get_latest_price_from_db(mapped)
+            except Exception:
+                prices = price_cache.get(mapped, {})
+                latest_dates = sorted(prices.keys()) if prices else []
+                latest_pub = prices[latest_dates[-1]] if latest_dates else 0
+            if latest_pub and latest_pub > 0 and fid_price > 0:
+                scale = fid_price / latest_pub
+                return raw_price * scale
+
+    return raw_price
 
 def compute_account_value_at_historical(acct_key, target_date_str):
     """
@@ -71,8 +116,10 @@ def compute_account_value_at_historical(acct_key, target_date_str):
             cash_total += mv
             continue
 
-        # Proprietary Fidelity symbols — skip (no clean price history)
-        if '-' in sym and len(sym) > 5:
+        # For symbols with no price cache at all, use current MV as approximation
+        mapped_sym = FIDELITY_MAP.get(sym, sym)
+        if mapped_sym not in price_cache or len(price_cache.get(mapped_sym, {})) == 0:
+            cash_total += mv  # treat as stable value
             continue
 
         if shares <= 0:

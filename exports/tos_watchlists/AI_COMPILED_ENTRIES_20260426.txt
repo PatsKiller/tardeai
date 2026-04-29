@@ -1,0 +1,5 @@
+LHX
+LMT
+NOC
+RTX
+V

@@ -39,7 +39,7 @@ import sys
 import threading
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
@@ -186,7 +186,7 @@ def _reconstruct_personal_as_of(target_date: str) -> dict:
     """
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
-        from db_adapter import USE_DB, _execute
+        from db_adapter import USE_DB, get_personal_snapshot_at_date
     except Exception as e:
         return {"ok": False, "error": f"db_adapter import failed: {e}"}
 
@@ -199,16 +199,7 @@ def _reconstruct_personal_as_of(target_date: str) -> dict:
     base_data = json.loads(PERSONAL_PATH.read_text(encoding="utf-8"))
     fields = base_data.get("fields", {})
 
-    # SELECT DISTINCT ON gives us the latest matching row per field
-    rows = _execute(
-        """SELECT DISTINCT ON (field_name)
-               field_name, value, effective_date, recorded_at, note, source
-           FROM personal_history
-           WHERE effective_date <= %s
-           ORDER BY field_name, effective_date DESC, recorded_at DESC""",
-        (target_date,),
-        fetch="all"
-    )
+    rows = get_personal_snapshot_at_date(target_date)
 
     if rows is None:
         return {"ok": False, "error": "Postgres query failed"}
@@ -339,7 +330,7 @@ def _handle_personal_history(handler, field_name: str):
     # Query Postgres for history
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     try:
-        from db_adapter import USE_DB, _execute
+        from db_adapter import USE_DB, get_personal_field_history
     except Exception as e:
         json_response(handler, 500, {"ok": False, "error": f"db_adapter import failed: {e}"})
         return
@@ -352,14 +343,7 @@ def _handle_personal_history(handler, field_name: str):
         })
         return
 
-    rows = _execute(
-        """SELECT value, effective_date, recorded_at, note, source
-           FROM personal_history
-           WHERE field_name = %s
-           ORDER BY recorded_at ASC""",
-        (field_name,),
-        fetch="all"
-    )
+    rows = get_personal_field_history(field_name)
 
     if rows is None:
         json_response(handler, 500, {"ok": False, "error": "Postgres query failed"})
@@ -467,20 +451,19 @@ def _handle_personal_write(handler, raw_body: bytes):
         # Phase P1: Dual-write changes to personal_history table (non-blocking)
         try:
             sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-            from db_adapter import USE_DB, _execute
+            from db_adapter import USE_DB, save_personal_history_entry
             if USE_DB:
                 for change in changes:
                     fn = change["field"]
                     f_def = fields.get(fn, {})
-                    _execute(
-                        """INSERT INTO personal_history 
-                           (field_name, value, data_type, category, effective_date, note, source)
-                           VALUES (%s, %s, %s, %s, %s, %s, 'modal_edit')""",
-                        (fn, json.dumps(change["to"]), 
-                         f_def.get("data_type", "unknown"),
-                         f_def.get("category", "unknown"),
-                         today,
-                         note or f"set via modal on {today}")
+                    save_personal_history_entry(
+                        field_name=fn,
+                        value=json.dumps(change["to"]),
+                        data_type=f_def.get("data_type", "unknown"),
+                        category=f_def.get("category", "unknown"),
+                        effective_date=today,
+                        note=note or f"set via modal on {today}",
+                        source="modal_edit",
                     )
         except Exception as db_err:
             print(f"  [personal] Postgres dual-write failed (JSON saved OK): {db_err}")
@@ -561,6 +544,13 @@ def serve_file(handler, path: Path) -> None:
     handler.send_header("Content-Type", ctype)
     handler.send_header("Content-Length", str(len(data)))
     handler.send_header("Access-Control-Allow-Origin", "*")
+    # Cache: HTML pages no-cache, hashed assets cache forever
+    if path.suffix == ".html":
+        handler.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+    elif path.suffix in (".js", ".css") and "-" in path.stem:
+        handler.send_header("Cache-Control", "public, max-age=31536000, immutable")
+    else:
+        handler.send_header("Cache-Control", "no-cache")
     handler.send_header("Cache-Control", "no-cache")
     handler.end_headers()
     handler.wfile.write(data)
@@ -612,8 +602,17 @@ def handle_import(body: dict) -> tuple:
         if h.get("account") != account_key
     ]
     # Ensure account key is set on all incoming holdings
+    # Mark cash/money-market positions so repricers never treat them as stocks
+    _CASH_SYMS = {"CASH", "CASH & CASH INVESTMENTS", "MMKT", "SNAXX", "SWVXX", "VMFXX", "SPRXX", "FDRXX"}
     for h in new_holdings:
         h["account"] = account_key
+        sym = (h.get("symbol") or "").upper().strip()
+        if sym in _CASH_SYMS or h.get("is_cash"):
+            h["is_cash"] = True
+            h["price"] = 1
+            h["market_value"] = round(float(h.get("shares") or h.get("market_value") or 0), 2)
+            h["day_change"] = 0.0
+            h["day_change_pct"] = 0.0
 
     current["holdings"] = existing_other + new_holdings
 
@@ -756,6 +755,52 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
+        # v2 API dispatch
+        if path.startswith("/api/v2/"):
+            try:
+                from api_v2 import handle as _v2_handle
+                _v2_query = dict(parse_qs(parsed.query)) if parsed.query else {}
+                _v2_query = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in _v2_query.items()}
+                _v2_result = _v2_handle(path, method="GET", query=_v2_query)
+                if _v2_result is not None:
+                    _v2_status, _v2_body = _v2_result
+                    json_response(self, _v2_status, _v2_body)
+                    return
+            except Exception as _v2e:
+                json_response(self, 500, {"ok": False, "error": str(_v2e)})
+                return
+
+        # Command Center v2 — serve built app at /v2/
+        if path == "/v2" or path.startswith("/v2/"):
+            _v2_dist = PROJECT_ROOT / "apps" / "command-center-v2" / "dist"
+            _v2_sub = path[3:] or "/index.html"  # strip /v2 prefix
+            if _v2_sub == "":
+                _v2_sub = "/index.html"
+            _v2_file = _v2_dist / _v2_sub.lstrip("/")
+            # SPA fallback: serve index.html for non-asset paths
+            if not _v2_file.exists() and not any(_v2_sub.endswith(ext) for ext in (".js", ".css", ".svg", ".png", ".ico", ".woff", ".woff2")):
+                _v2_file = _v2_dist / "index.html"
+            if _v2_file.exists():
+                _ct = "text/html"
+                if _v2_sub.endswith(".js"): _ct = "application/javascript"
+                elif _v2_sub.endswith(".css"): _ct = "text/css"
+                elif _v2_sub.endswith(".svg"): _ct = "image/svg+xml"
+                elif _v2_sub.endswith(".png"): _ct = "image/png"
+                elif _v2_sub.endswith(".ico"): _ct = "image/x-icon"
+                self.send_response(200)
+                self.send_header("Content-Type", _ct)
+                self.send_header("Cache-Control", "no-cache" if _v2_sub.endswith(".html") else "public, max-age=86400")
+                _body = _v2_file.read_bytes()
+                self.send_header("Content-Length", str(len(_body)))
+                self.end_headers()
+                self.wfile.write(_body)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Not found")
+            return
+
         # Root redirect
         if path == "/":
             self.send_response(302)
@@ -802,21 +847,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # Database health (Phase P5-3)
         if path == "/api/db/health":
             try:
-                from db_adapter import _execute, USE_DB, db_status
+                from db_adapter import USE_DB, db_status, get_db_table_stats
                 if not USE_DB:
                     json_response(self, 200, {"ok": False, "status": "disabled", "message": "USE_DB is False"})
                     return
-                rows = _execute("""
-                    SELECT s.relname AS name,
-                           s.n_live_tup AS live_rows,
-                           s.n_dead_tup AS dead_rows,
-                           pg_size_pretty(pg_total_relation_size(s.schemaname||'.'||s.relname)) AS size,
-                           s.last_autovacuum::text,
-                           s.last_autoanalyze::text
-                    FROM pg_stat_user_tables s
-                    ORDER BY pg_total_relation_size(s.schemaname||'.'||s.relname) DESC
-                """, fetch="all")
-                if rows is None:
+                rows = get_db_table_stats()
+                if not rows:
                     json_response(self, 503, {"ok": False, "status": "connection_failed", "message": "DB connection failed"})
                     return
                 from datetime import datetime as _dt
@@ -828,6 +864,94 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 })
             except Exception as _e:
                 json_response(self, 500, {"ok": False, "status": "error", "message": str(_e)})
+            return
+
+        # Notifications read (GET) — recent notification_log entries
+        if path == "/api/notifications/recent":
+            try:
+                from db_adapter import USE_DB, get_recent_notifications
+                _rows = []
+                if USE_DB:
+                    _rows = get_recent_notifications(20)
+                    for _r in _rows:
+                        for _k, _v in _r.items():
+                            if hasattr(_v, 'isoformat'):
+                                _r[_k] = _v.isoformat()
+                json_response(self, 200, {"ok": True, "notifications": _rows})
+            except Exception as _e:
+                json_response(self, 500, {"ok": False, "error": str(_e)})
+            return
+
+        # Report catalog (GET) — filesystem scan of all report outputs
+        if path in ("/api/reports/catalog", "/api/v2/reports/catalog"):
+            try:
+                import os as _os
+                _cat = {"live": [], "trade_ai_daily": [], "portfolio_daily": [], "weekly": [], "monthly": [], "docx": []}
+                _r = PROJECT_ROOT / "reports"
+                _pf = PROJECT_ROOT / "data" / "portfolios" / "reports"
+                # Live dashboards
+                for _f in ["command_center.html", "portfolio_live.html", "dashboard_live.html", "strategy_center.html", "reports_hub.html"]:
+                    _fp = _r / _f
+                    if _fp.exists():
+                        _cat["live"].append({"name": _f, "path": f"/reports/{_f}", "size_kb": round(_fp.stat().st_size / 1024, 1),
+                            "modified": datetime.fromtimestamp(_os.path.getmtime(_fp)).isoformat(timespec="seconds")})
+                # Trade AI daily
+                for _fp in sorted(_r.glob("2026-*/*/dashboard_*.html"), reverse=True)[:20]:
+                    _rel = str(_fp.relative_to(PROJECT_ROOT))
+                    _cat["trade_ai_daily"].append({"name": _fp.name, "path": f"/{_rel}", "date": _fp.parent.parent.name,
+                        "time": _fp.parent.name, "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                # Portfolio daily
+                for _fp in sorted(_pf.glob("portfolio_dashboard_*.html"), reverse=True)[:20]:
+                    _rel = str(_fp.relative_to(PROJECT_ROOT))
+                    _cat["portfolio_daily"].append({"name": _fp.name, "path": f"/{_rel}",
+                        "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                # Weekly
+                _wk = _pf / "weekly"
+                if _wk.exists():
+                    for _fp in sorted(_wk.glob("*.html"), reverse=True)[:10]:
+                        _cat["weekly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "html",
+                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                    for _fp in sorted(_wk.glob("*.docx"), reverse=True)[:10]:
+                        _cat["weekly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "docx",
+                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                # Monthly
+                _mo = _pf / "monthly"
+                if _mo.exists():
+                    for _fp in sorted(_mo.glob("*.html"), reverse=True)[:10]:
+                        _cat["monthly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "html",
+                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                    for _fp in sorted(_mo.glob("*.docx"), reverse=True)[:10]:
+                        _cat["monthly"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "type": "docx",
+                            "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                # DOCX files (briefs + Trade AI)
+                for _fp in sorted(_pf.glob("portfolio_brief_*.docx"), reverse=True)[:10]:
+                    _cat["docx"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "category": "portfolio_brief",
+                        "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                for _fp in sorted(_r.glob("2026-*/*/*.docx"), reverse=True)[:10]:
+                    _cat["docx"].append({"name": _fp.name, "path": f"/{_fp.relative_to(PROJECT_ROOT)}", "category": "trade_ai",
+                        "size_kb": round(_fp.stat().st_size / 1024, 1)})
+                json_response(self, 200, {"ok": True, "catalog": _cat})
+            except Exception as _e:
+                json_response(self, 500, {"ok": False, "error": str(_e)})
+            return
+
+        # Action queue read (GET) — pending approval items
+        if path == "/api/approvals/pending":
+            try:
+                from db_adapter import USE_DB, get_pending_action_queue
+                from decimal import Decimal
+                _rows = []
+                if USE_DB:
+                    _rows = get_pending_action_queue()
+                    for _r in _rows:
+                        for _k, _v in _r.items():
+                            if hasattr(_v, 'isoformat'):
+                                _r[_k] = _v.isoformat()
+                            elif isinstance(_v, Decimal):
+                                _r[_k] = float(_v)
+                json_response(self, 200, {"ok": True, "pending": _rows})
+            except Exception as _e:
+                json_response(self, 500, {"ok": False, "error": str(_e)})
             return
 
         # Watchlist read (GET)
@@ -924,6 +1048,19 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             json_response(self, 400, {"error": "Invalid JSON body"})
             return
 
+        # v2 API POST dispatch
+        if path.startswith("/api/v2/"):
+            try:
+                from api_v2 import handle as _v2_handle
+                _v2_result = _v2_handle(path, method="POST", body=body)
+                if _v2_result is not None:
+                    _v2_status, _v2_body = _v2_result
+                    json_response(self, _v2_status, _v2_body)
+                    return
+            except Exception as _v2e:
+                json_response(self, 500, {"ok": False, "error": str(_v2e)})
+                return
+
         if path == "/api/import":
             print(f"  [import] POST /api/import received — body keys: {list(body.keys())[:10]}, size: {len(raw)} bytes")
             try:
@@ -941,8 +1078,57 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                         _ilf.write(f"  accounts: {list(body['accounts'].keys()) if isinstance(body['accounts'], dict) else body['accounts']}\n")
             except Exception:
                 pass
+            # Capture before-state for reconciliation
+            _before_total = 0
+            _before_positions = 0
+            try:
+                _hb = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8")) if HOLDINGS_PATH.exists() else {}
+                _acct_key = body.get("account_key", "")
+                for _hp in _hb.get("holdings", []):
+                    if _hp.get("account") == _acct_key:
+                        _before_positions += 1
+                        _before_total += _hp.get("market_value", 0)
+            except Exception:
+                pass
+
             status, result = handle_import(body)
             print(f"  [import] Result: status={status}, ok={result.get('ok','?')}")
+
+            # Capture after-state
+            _after_total = 0
+            _after_positions = 0
+            try:
+                _ha = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8")) if HOLDINGS_PATH.exists() else {}
+                for _hp in _ha.get("holdings", []):
+                    if _hp.get("account") == body.get("account_key", ""):
+                        _after_positions += 1
+                        _after_total += _hp.get("market_value", 0)
+            except Exception:
+                pass
+
+            # Write structured audit entry with reconciliation
+            try:
+                import datetime as _sa_dt
+                _sa_log = PROJECT_ROOT / "logs" / "import_audit_structured.jsonl"
+                _sa_entry = json.dumps({
+                    "timestamp": _sa_dt.datetime.now().isoformat(),
+                    "type": "positions", "import_type": body.get("import_type", "unknown"),
+                    "filename": body.get("filename", ""),
+                    "account": body.get("account_key") or body.get("display_name", ""),
+                    "rows_received": len(body.get("positions", body.get("holdings", []))),
+                    "rows_accepted": result.get("positions_written") or result.get("count") or len(body.get("holdings", [])),
+                    "rows_rejected": 0,
+                    "status": "success" if result.get("ok") else "error",
+                    "message": result.get("message", result.get("error", "")),
+                    "size_bytes": len(raw),
+                    "before": {"positions": _before_positions, "total_value": round(_before_total, 2)},
+                    "after": {"positions": _after_positions, "total_value": round(_after_total, 2)},
+                    "delta_value": round(_after_total - _before_total, 2),
+                })
+                with open(_sa_log, "a") as _sf:
+                    _sf.write(_sa_entry + "\n")
+            except Exception:
+                pass
             json_response(self, status, result)
 
         elif path == "/api/import-transactions":
@@ -999,6 +1185,28 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             threading.Thread(target=_run_trade_ai, daemon=True).start()
             json_response(self, 202, {"ok": True, "message": "Trade AI continuous scan triggered"})
 
+
+        elif path == "/api/run-recovery-review":
+            def _run_recovery():
+                try:
+                    from recovery_watch_daily import main as recovery_main
+                    result = recovery_main()
+                    print(f"  [recovery] Review complete: {result}")
+                except Exception as e:
+                    print(f"  [recovery] Review failed: {e}")
+            threading.Thread(target=_run_recovery, daemon=True).start()
+            json_response(self, 202, {"ok": True, "message": "Recovery watch daily review triggered"})
+
+        elif path == "/api/run-aegis":
+            def _run_aegis():
+                try:
+                    from aegis_overnight import main as overnight_main
+                    result = overnight_main()
+                    print(f"  [aegis] Overnight orchestrator complete: {result}")
+                except Exception as e:
+                    print(f"  [aegis] Overnight orchestrator failed: {e}")
+            threading.Thread(target=_run_aegis, daemon=True).start()
+            json_response(self, 202, {"ok": True, "message": "Aegis overnight orchestrator triggered (collection → synthesis → refinement)"})
 
         elif path == "/api/run-reprice":
             sh = PROJECT_ROOT / "linux_launchers" / "run_reprice_only.sh"
@@ -1183,8 +1391,14 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+class ReusableHTTPServer(http.server.HTTPServer):
+    """HTTPServer with SO_REUSEADDR to prevent 'Address already in use' on restart."""
+    allow_reuse_address = True
+    allow_reuse_port = True
+
+
 if __name__ == "__main__":
-    server = http.server.HTTPServer(("", PORT), PortfolioHandler)
+    server = ReusableHTTPServer(("", PORT), PortfolioHandler)
     print(f"Portfolio server → http://localhost:{PORT}")
     print(f"Project root: {PROJECT_ROOT}")
     print(f"Holdings: {HOLDINGS_PATH}")

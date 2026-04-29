@@ -1,0 +1,691 @@
+"""
+aegis_synthesis.py — Aegis Tier 1E: Local LLM synthesis + covered-call candidates + Steph escalation.
+
+Consumes:
+- aegis_symbol_snapshot_nightly (Tier 1B)
+- social_sentiment_history (Tier 1C)
+- transcript_intel_history (Tier 1D)
+- internal portfolio/risk/recovery state
+
+Produces:
+- aegis_portfolio_briefs (per-symbol intelligence)
+- aegis_covered_call_candidates (options income proposals)
+- Steph escalation markers
+
+Entry point: main()
+"""
+from __future__ import annotations
+import json
+import os
+import sys
+import urllib.request
+from datetime import date, datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+_env_path = PROJECT_ROOT / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            k, v = k.strip(), v.strip()
+            if k and v and k not in os.environ:
+                os.environ[k] = v
+
+AGENT = "aegis"
+RUN_ID = f"aegis-synthesis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+OLLAMA_MODEL = "qwen3:1.7b"
+
+
+def _load_json(p: Path):
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def _db_write(sql, params=None):
+    try:
+        from db_adapter import _get_conn
+        import psycopg2.extras
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"  [aegis-synth] DB write error: {e}")
+        return False
+
+
+def _db_query(sql, params=None, fetch="all"):
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return None
+        return _execute(sql, params, fetch=fetch)
+    except Exception:
+        return None
+
+
+def _llm(prompt: str, max_tokens: int = 400) -> str:
+    """Call local ollama for synthesis. Returns raw text."""
+    try:
+        payload = json.dumps({
+            "model": OLLAMA_MODEL, "stream": False,
+            "prompt": prompt,
+            "options": {"temperature": 0.2, "num_predict": max_tokens}
+        }).encode()
+        req = urllib.request.Request(
+            "http://127.0.0.1:11434/api/generate",
+            data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read()).get("response", "").strip()
+    except Exception as e:
+        print(f"  [llm] Failed: {e}")
+        return ""
+
+
+# ── D1: Per-symbol synthesis ─────────────────────────────────────────────
+
+def synthesize_symbol_briefs(symbols: list[str]) -> int:
+    """For each symbol, gather all Aegis intel and produce a brief."""
+    written = 0
+
+    for sym in symbols:
+        # Gather inputs
+        snap = _db_query(
+            "SELECT price, rsi, sma200_pct, beta, company, sector, change_pct, pct_from_52wk_high FROM aegis_symbol_snapshot_nightly WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1",
+            (sym,), fetch="one"
+        ) or {}
+
+        sentiment = _db_query(
+            "SELECT mention_count, sentiment_score, unusual_spike, top_posts_summary FROM social_sentiment_history WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1",
+            (sym,), fetch="one"
+        ) or {}
+
+        transcripts = _db_query(
+            "SELECT title, summary, stance FROM transcript_intel_history WHERE symbol=%s ORDER BY observed_at DESC LIMIT 3",
+            (sym,)
+        ) or []
+
+        # Build context for LLM
+        price = snap.get("price") or "?"
+        rsi = snap.get("rsi") or "?"
+        sma200 = snap.get("sma200_pct") or "?"
+        company = snap.get("company") or sym
+        sector = snap.get("sector") or "?"
+        mentions = sentiment.get("mention_count", 0)
+        sent_score = sentiment.get("sentiment_score", 0)
+        spike = sentiment.get("unusual_spike", False)
+        news_titles = "; ".join(t.get("title", "")[:50] for t in transcripts[:3])
+
+        # Only call LLM for symbols with enough data
+        has_data = snap.get("price") is not None
+        if not has_data:
+            continue
+
+        prompt = f"""Analyze {sym} ({company}, {sector}) for an overnight portfolio brief.
+Price: ${price}, RSI: {rsi}, SMA200: {sma200}%, Beta: {snap.get('beta','?')}, 52wk from high: {snap.get('pct_from_52wk_high','?')}%
+Social: {mentions} mentions, sentiment {sent_score}, spike={spike}
+Recent news: {news_titles or 'none'}
+
+Answer in 3 short lines:
+1. THESIS STATUS (intact/improving/weakening/broken):
+2. WHAT CHANGED:
+3. WHY IT MATTERS for the portfolio:
+
+Be concise. No disclaimers."""
+
+        llm_output = _llm(prompt, max_tokens=200)
+
+        # Parse LLM output
+        thesis_status = "intact"
+        what_changed = ""
+        why_matters = ""
+        if llm_output:
+            lines = [l.strip() for l in llm_output.split("\n") if l.strip()]
+            for l in lines:
+                ll = l.lower()
+                if "thesis" in ll or "status" in ll:
+                    for s in ("broken", "weakening", "improving", "intact"):
+                        if s in ll:
+                            thesis_status = s
+                            break
+                if "changed" in ll:
+                    what_changed = l[:200]
+                if "matters" in ll or "portfolio" in ll:
+                    why_matters = l[:200]
+            if not what_changed and lines:
+                what_changed = lines[0][:200]
+
+        # Determine if Steph review needed
+        needs_steph = thesis_status in ("broken", "weakening") or spike or (rsi != "?" and float(rsi) > 75)
+        escalation = ""
+        if thesis_status in ("broken", "weakening"):
+            escalation = f"Thesis {thesis_status} — Steph should validate"
+        elif spike:
+            escalation = "Unusual social spike — Steph should check"
+
+        confidence = 0.55 if llm_output else 0.35
+
+        ok = _db_write(
+            """INSERT INTO aegis_portfolio_briefs
+               (run_id, symbol, brief_type, thesis_status, what_changed, why_it_matters,
+                technical_drift, news_context, social_context, confidence,
+                needs_steph_review, escalation_reason, provenance)
+               VALUES (%s,%s,'symbol',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (run_id, symbol, brief_type) DO UPDATE SET
+                thesis_status=EXCLUDED.thesis_status, what_changed=EXCLUDED.what_changed,
+                confidence=EXCLUDED.confidence, needs_steph_review=EXCLUDED.needs_steph_review""",
+            (RUN_ID, sym, thesis_status, what_changed, why_matters,
+             f"RSI {rsi}, SMA200 {sma200}%",
+             news_titles[:200] if news_titles else None,
+             f"{mentions} mentions, score {sent_score}" if mentions else None,
+             confidence, needs_steph, escalation,
+             json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:synthesis", "model": OLLAMA_MODEL}))
+        )
+        if ok:
+            written += 1
+
+    return written
+
+
+# ── D2: Covered-call candidates ──────────────────────────────────────────
+
+def evaluate_covered_calls() -> int:
+    """For eligible holdings, produce covered-call candidate proposals."""
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    written = 0
+
+    # Eligible: individual stocks (not ETFs/funds), with 100+ shares, in taxable or IRA
+    for p in h.get("holdings", []):
+        sym = p.get("symbol", "")
+        shares = p.get("shares", 0)
+        price = p.get("price", 0)
+        acct = p.get("account", "")
+        is_fund = p.get("is_fund") or p.get("is_cash")
+
+        if is_fund or shares < 100 or price < 5:
+            continue
+        if acct == "fidelity_401k":
+            continue  # Can't trade options in 401k
+
+        # Get current technicals
+        snap = _db_query(
+            "SELECT rsi, sma200_pct, beta FROM aegis_symbol_snapshot_nightly WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1",
+            (sym,), fetch="one"
+        ) or {}
+
+        rsi = float(snap.get("rsi") or 50)
+        sma200 = float(snap.get("sma200_pct") or 0)
+        beta_val = float(snap.get("beta") or 1.0)
+
+        # Rule-based covered-call evaluation
+        if rsi > 70 and sma200 > 5:
+            verdict = "candidate"
+            reasoning = f"{sym} RSI {rsi:.0f} (overbought) with positive SMA200 trend ({sma200:.1f}%). Good candidate for selling calls against the position."
+            strike_guidance = "Near-the-money or slightly OTM (1-3% above current)"
+            time_horizon = "30-45 DTE preferred"
+            risk_note = f"Beta {beta_val:.2f}. If stock gaps up past strike, shares get called away."
+        elif rsi > 55 and sma200 > 0:
+            verdict = "review_needed"
+            reasoning = f"{sym} RSI {rsi:.0f} with constructive trend. Could sell OTM calls for income, but review thesis first."
+            strike_guidance = "OTM (5-10% above current)"
+            time_horizon = "30-45 DTE"
+            risk_note = f"Check earnings dates. Beta {beta_val:.2f}."
+        elif rsi < 35 or sma200 < -5:
+            verdict = "avoid"
+            reasoning = f"{sym} RSI {rsi:.0f}, SMA200 {sma200:.1f}% — technically weak. Selling calls risks locking in at depressed levels."
+            strike_guidance = "Not recommended"
+            time_horizon = "Wait for technical repair"
+            risk_note = "Position may need recovery before options income is appropriate."
+        else:
+            verdict = "review_needed"
+            reasoning = f"{sym} neutral technical state (RSI {rsi:.0f}). Manual review recommended."
+            strike_guidance = "OTM if writing"
+            time_horizon = "30-45 DTE"
+            risk_note = f"Beta {beta_val:.2f}."
+
+        # V2: Enrich with thesis/brief context
+        brief = _db_query(
+            "SELECT thesis_status, needs_steph_review, social_context FROM aegis_portfolio_briefs WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1",
+            (sym,), fetch="one"
+        ) or {}
+        thesis = brief.get("thesis_status", "intact")
+        social = brief.get("social_context") or ""
+
+        # Thesis quality assessment
+        thesis_quality = "strong" if thesis in ("intact", "improving") else "weak" if thesis == "weakening" else "broken" if thesis == "broken" else "unknown"
+        upside_cap = f"Selling calls caps upside. If {sym} rallies past strike, shares called away." if verdict != "avoid" else ""
+        catalyst_conflict = ""
+        if "spike" in social.lower() or "mentions" in social and int(social.split()[0] or "0") > 3:
+            catalyst_conflict = f"Social activity elevated — potential catalyst. Selling calls before catalyst resolution adds risk."
+
+        income_fit = "good" if verdict == "candidate" else "marginal" if verdict == "review_needed" else "poor"
+        steph_reason = ""
+        if thesis_quality == "weak" and verdict != "avoid":
+            steph_reason = f"Thesis weakening but CC not avoided — Steph should validate thesis before income strategy"
+        elif catalyst_conflict:
+            steph_reason = f"Social catalyst may conflict with income goal — Steph review recommended"
+
+        ok = _db_write(
+            """INSERT INTO aegis_covered_call_candidates
+               (run_id, symbol, account, verdict, reasoning, strike_guidance, time_horizon,
+                risk_note, shares_available, current_price, needs_steph_review, confidence,
+                thesis_quality, upside_cap_risk, catalyst_conflict, income_goal_fit, steph_review_reason,
+                provenance)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (run_id, symbol) DO UPDATE SET
+                verdict=EXCLUDED.verdict, reasoning=EXCLUDED.reasoning, confidence=EXCLUDED.confidence,
+                thesis_quality=EXCLUDED.thesis_quality, steph_review_reason=EXCLUDED.steph_review_reason""",
+            (RUN_ID, sym, acct, verdict, reasoning, strike_guidance, time_horizon,
+             risk_note, shares, price, bool(steph_reason) or verdict != "avoid",
+             0.55 if verdict == "candidate" else 0.40 if verdict == "review_needed" else 0.30,
+             thesis_quality, upside_cap, catalyst_conflict, income_fit, steph_reason,
+             json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:covered-calls-v2"}))
+        )
+        if ok:
+            written += 1
+
+    return written
+
+
+# ── Rotation alternatives ────────────────────────────────────────────────
+
+def evaluate_rotation_alternatives() -> int:
+    """For stopped-out/recovery/weak positions, find stronger alternatives."""
+    written = 0
+
+    # Get recovery items
+    recovery = _db_query("SELECT symbol, analyst_verdict, analyst_confidence, temp_allocation_verdict FROM stopped_out_watch WHERE is_active=true") or []
+    if not recovery:
+        return 0
+
+    # Get watchlist with intent
+    wl = _load_json(STATE_DIR / "watchlist.json") or {}
+    # Get nightly snapshots for comparison
+    snaps = _db_query(
+        "SELECT symbol, rsi, sma200_pct, confidence FROM aegis_symbol_snapshot_nightly WHERE run_id=(SELECT run_id FROM aegis_symbol_snapshot_nightly ORDER BY observed_at DESC LIMIT 1)"
+    ) or []
+    snap_map = {r["symbol"]: r for r in snaps}
+
+    for rec in recovery:
+        from_sym = rec["symbol"]
+        from_verdict = rec.get("analyst_verdict", "wait_monitor")
+        from_alloc = rec.get("temp_allocation_verdict", "stay_cash")
+
+        # Find potential rotation targets from watchlist
+        candidates = []
+        for wl_sym, wl_meta in wl.items():
+            if wl_sym == from_sym:
+                continue
+            ws = snap_map.get(wl_sym, {})
+            w_rsi = float(ws.get("rsi") or 50)
+            w_sma = float(ws.get("sma200_pct") or 0)
+            w_conf = float(ws.get("confidence") or 0)
+            intent = wl_meta.get("target_intent", "")
+
+            # Score: prefer constructive technicals + high intent match
+            score = 0
+            if w_rsi < 40:
+                score += 2  # Oversold = opportunity
+            if w_sma > 0:
+                score += 1
+            if intent in ("long_term_hold", "growth"):
+                score += 1
+            if w_conf > 0.5:
+                score += 1
+
+            if score >= 2:
+                candidates.append({
+                    "symbol": wl_sym, "score": score,
+                    "rsi": w_rsi, "sma200": w_sma, "intent": intent,
+                    "reason": f"{wl_sym} RSI {w_rsi:.0f}, SMA200 {w_sma:+.1f}%, intent={intent}. {'Oversold opportunity.' if w_rsi < 40 else 'Constructive trend.'}"
+                })
+
+        candidates.sort(key=lambda c: -c["score"])
+
+        if candidates and from_verdict in ("do_not_reenter", "wait_monitor"):
+            best = candidates[0]
+            switch_verdict = "consider" if from_verdict == "do_not_reenter" else "not_yet"
+            blocker = f"{from_sym} still in {from_verdict} — wait for verdict clarity before deploying" if switch_verdict == "not_yet" else ""
+            evidence = f"Freed capital from {from_sym} (currently {from_alloc}). Best alternative: {best['reason']}"
+
+            _db_write(
+                """INSERT INTO aegis_rotation_candidates
+                   (run_id, from_symbol, from_reason, to_symbol, to_reason, switch_verdict, evidence, blocker, confidence, needs_steph_review, provenance)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (run_id, from_symbol, to_symbol) DO NOTHING""",
+                (RUN_ID, from_sym, f"{from_verdict} — {from_alloc}",
+                 best["symbol"], best["reason"], switch_verdict, evidence,
+                 blocker, 0.45, True,
+                 json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:rotation"}))
+            )
+            written += 1
+
+            # Second alternative if available
+            if len(candidates) >= 2:
+                second = candidates[1]
+                _db_write(
+                    """INSERT INTO aegis_rotation_candidates
+                       (run_id, from_symbol, from_reason, to_symbol, to_reason, switch_verdict, evidence, blocker, confidence, needs_steph_review, provenance)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (run_id, from_symbol, to_symbol) DO NOTHING""",
+                    (RUN_ID, from_sym, f"{from_verdict} — {from_alloc}",
+                     second["symbol"], second["reason"], "consider",
+                     f"2nd alternative for {from_sym} capital", blocker, 0.35, True,
+                     json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:rotation"}))
+                )
+                written += 1
+        else:
+            # No valid alternative — record explicitly
+            _db_write(
+                """INSERT INTO aegis_rotation_candidates
+                   (run_id, from_symbol, from_reason, to_symbol, to_reason, switch_verdict, evidence, blocker, confidence, needs_steph_review, provenance)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (run_id, from_symbol, to_symbol) DO NOTHING""",
+                (RUN_ID, from_sym, f"{from_verdict} — {from_alloc}",
+                 None, "No strong watchlist alternative passes threshold", "not_yet",
+                 f"Checked {len(wl)} watchlist names — none scored >= 2", "No qualifying alternative",
+                 0.30, False,
+                 json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:rotation"}))
+            )
+            written += 1
+
+    return written
+
+
+# ── Steph escalation reasoning ───────────────────────────────────────────
+
+def generate_steph_escalations() -> int:
+    """Collect all items needing Steph review with rich reasoning."""
+    written = 0
+
+    # From briefs
+    briefs = _db_query(
+        f"SELECT symbol, thesis_status, escalation_reason, social_context FROM aegis_portfolio_briefs WHERE run_id=%s AND needs_steph_review=true",
+        (RUN_ID,)
+    ) or []
+    for b in briefs:
+        _db_write(
+            """INSERT INTO aegis_steph_escalations (run_id, symbol, category, reason, evidence_summary, unresolved_question, confidence, provenance)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (run_id, symbol, category) DO NOTHING""",
+            (RUN_ID, b["symbol"], "thesis_review",
+             b.get("escalation_reason") or f"{b['symbol']} thesis {b.get('thesis_status','')}",
+             b.get("social_context") or "",
+             f"Is {b['symbol']} thesis still intact? Social activity suggests possible change.",
+             0.50,
+             json.dumps({"agent": AGENT, "source": "aegis:escalation"}))
+        )
+        written += 1
+
+    # From covered-call conflicts
+    cc_conflicts = _db_query(
+        f"SELECT symbol, steph_review_reason, catalyst_conflict FROM aegis_covered_call_candidates WHERE run_id=%s AND steph_review_reason IS NOT NULL AND steph_review_reason != ''",
+        (RUN_ID,)
+    ) or []
+    for c in cc_conflicts:
+        _db_write(
+            """INSERT INTO aegis_steph_escalations (run_id, symbol, category, reason, evidence_summary, unresolved_question, confidence, provenance)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (run_id, symbol, category) DO NOTHING""",
+            (RUN_ID, c["symbol"], "covered_call_review",
+             c["steph_review_reason"],
+             c.get("catalyst_conflict") or "",
+             f"Should {c['symbol']} covered calls proceed given current context?",
+             0.45,
+             json.dumps({"agent": AGENT, "source": "aegis:escalation"}))
+        )
+        written += 1
+
+    # From rotation candidates
+    rotations = _db_query(
+        f"SELECT from_symbol, to_symbol, evidence FROM aegis_rotation_candidates WHERE run_id=%s AND needs_steph_review=true",
+        (RUN_ID,)
+    ) or []
+    for r in rotations:
+        _db_write(
+            """INSERT INTO aegis_steph_escalations (run_id, symbol, category, reason, evidence_summary, unresolved_question, confidence, provenance)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (run_id, symbol, category) DO NOTHING""",
+            (RUN_ID, r["from_symbol"], "rotation_review",
+             f"Capital rotation from {r['from_symbol']} → {r.get('to_symbol') or 'alternatives'} needs review",
+             r.get("evidence") or "",
+             f"Should freed capital from {r['from_symbol']} be rotated to {r.get('to_symbol') or 'best alternative'}?",
+             0.40,
+             json.dumps({"agent": AGENT, "source": "aegis:escalation"}))
+        )
+        written += 1
+
+    return written
+
+
+# ── D3: Portfolio-wide summary ───────────────────────────────────────────
+
+def generate_portfolio_summary() -> bool:
+    """Generate a portfolio-wide overnight summary brief."""
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+
+    heat = rm.get("portfolio_heat_pct", 0)
+    triggered = len([p for p in rm.get("positions", []) if p.get("status") == "TRIGGERED"])
+    unprotected = len([p for p in rm.get("positions", []) if p.get("status") == "NO STOP"])
+    total_value = sum(p.get("market_value", 0) for p in h.get("holdings", []))
+
+    # Count escalation candidates from briefs
+    steph_count = _db_query(
+        f"SELECT COUNT(*) as cnt FROM aegis_portfolio_briefs WHERE run_id=%s AND needs_steph_review=true",
+        (RUN_ID,), fetch="one"
+    ) or {}
+    steph_items = steph_count.get("cnt", 0)
+
+    # Count covered-call candidates
+    cc_count = _db_query(
+        f"SELECT verdict, COUNT(*) as cnt FROM aegis_covered_call_candidates WHERE run_id=%s GROUP BY verdict",
+        (RUN_ID,)
+    ) or []
+    cc_summary = {r["verdict"]: r["cnt"] for r in cc_count}
+
+    summary = f"Portfolio ${total_value:,.0f}. Heat {heat:.1f}%. {triggered} stops triggered, {unprotected} unprotected. "
+    summary += f"{steph_items} items flagged for Steph review. "
+    summary += f"Covered calls: {cc_summary.get('candidate',0)} candidates, {cc_summary.get('review_needed',0)} need review, {cc_summary.get('avoid',0)} avoid."
+
+    return _db_write(
+        """INSERT INTO aegis_portfolio_briefs
+           (run_id, symbol, brief_type, thesis_status, what_changed, confidence,
+            needs_steph_review, escalation_reason, provenance)
+           VALUES (%s, 'PORTFOLIO', 'summary', 'n/a', %s, 0.60, %s, %s, %s)
+           ON CONFLICT (run_id, symbol, brief_type) DO UPDATE SET what_changed=EXCLUDED.what_changed""",
+        (RUN_ID, summary, steph_items > 0,
+         f"{steph_items} items need Steph review" if steph_items > 0 else None,
+         json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:synthesis"}))
+    )
+
+
+# ── Main ─────────────────────────────────────────────────────────────────
+
+# ── Tier 2C: Evidence ledger + bias check ────────────────────────────────
+
+def build_evidence_ledger(symbols: list[str]) -> int:
+    """For each synthesized symbol, audit evidence quality and check for bias."""
+    written = 0
+
+    for sym in symbols:
+        # Gather all evidence sources for this symbol
+        snap = _db_query("SELECT sources_used, confidence FROM aegis_symbol_snapshot_nightly WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1", (sym,), fetch="one") or {}
+        sentiment = _db_query("SELECT source_family, mention_count, sentiment_score, unusual_spike FROM social_sentiment_history WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1", (sym,), fetch="one") or {}
+        transcripts = _db_query("SELECT source_family, stance, confidence FROM transcript_intel_history WHERE symbol=%s ORDER BY observed_at DESC LIMIT 5", (sym,)) or []
+        brief = _db_query("SELECT thesis_status, confidence, needs_steph_review FROM aegis_portfolio_briefs WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1", (sym,), fetch="one") or {}
+
+        # Count sources by family
+        families = set()
+        tier_mix = {}
+        source_count = 0
+        if snap.get("sources_used"):
+            for s in snap["sources_used"]:
+                families.add(s)
+                tier = "A" if s in ("holdings", "technical_snapshot") else "A" if s == "finviz" else "A" if s == "yahoo" else "C"
+                tier_mix[tier] = tier_mix.get(tier, 0) + 1
+                source_count += 1
+        if sentiment.get("source_family"):
+            families.add("social")
+            tier_mix["C"] = tier_mix.get("C", 0) + 1
+            source_count += 1
+        for t in transcripts:
+            families.add(t.get("source_family", "transcript"))
+            tier = "B" if t.get("source_family") == "article_index" else "D"
+            tier_mix[tier] = tier_mix.get(tier, 0) + 1
+            source_count += 1
+
+        # Bias checks
+        bias_flags = []
+        bias_score = 0.0
+
+        # 1. Single-source dominance
+        if source_count > 0 and len(families) == 1:
+            bias_flags.append("single_source_dominance")
+            bias_score += 0.3
+
+        # 2. Social overweight
+        social_mentions = sentiment.get("mention_count", 0) or 0
+        if social_mentions > 3 and source_count <= 2:
+            bias_flags.append("social_overweight")
+            bias_score += 0.2
+
+        # 3. One-sided bull/bear
+        stances = [t.get("stance") for t in transcripts if t.get("stance")]
+        if stances and len(set(stances)) == 1 and len(stances) >= 2:
+            bias_flags.append(f"one_sided_{stances[0]}")
+            bias_score += 0.2
+
+        # 4. High confidence / low evidence
+        brief_conf = float(brief.get("confidence") or 0)
+        if brief_conf > 0.6 and source_count < 3:
+            bias_flags.append("high_confidence_low_evidence")
+            bias_score += 0.25
+
+        # 5. Stale evidence
+        snap_conf = float(snap.get("confidence") or 0)
+        if snap_conf < 0.4 and source_count > 0:
+            bias_flags.append("low_data_quality")
+            bias_score += 0.15
+
+        bias_score = min(round(bias_score, 2), 1.0)
+
+        # Evidence sufficiency
+        if source_count >= 4 and len(families) >= 3:
+            sufficiency = "strong"
+        elif source_count >= 2 and len(families) >= 2:
+            sufficiency = "adequate"
+        elif source_count >= 1:
+            sufficiency = "weak"
+        else:
+            sufficiency = "insufficient"
+
+        # Counterevidence check for high-impact items
+        needs_counter = brief.get("needs_steph_review") or bias_score > 0.4
+        counter_summary = None
+        conflict = False
+        if needs_counter:
+            # Check for contradictory stances
+            bull_count = sum(1 for t in transcripts if t.get("stance") == "bullish")
+            bear_count = sum(1 for t in transcripts if t.get("stance") == "bearish")
+            sent_score = float(sentiment.get("sentiment_score") or 0)
+            if bull_count > 0 and bear_count > 0:
+                counter_summary = f"Mixed transcript stances: {bull_count} bullish, {bear_count} bearish"
+                conflict = True
+            elif sent_score > 0.3 and any(t.get("stance") == "bearish" for t in transcripts):
+                counter_summary = "Social bullish but transcript bearish — conflicting signals"
+                conflict = True
+            elif sent_score < -0.3 and any(t.get("stance") == "bullish" for t in transcripts):
+                counter_summary = "Social bearish but transcript bullish — conflicting signals"
+                conflict = True
+
+        # Determine statement type for the brief
+        if brief.get("thesis_status") in ("intact", "improving", "weakening", "broken"):
+            stmt_type = "inference"  # Thesis status is always an inference
+        elif source_count == 0:
+            stmt_type = "fact"  # Just reporting no data
+        else:
+            stmt_type = "recommendation" if brief.get("needs_steph_review") else "inference"
+
+        # If bias is high, downgrade the brief confidence
+        if bias_score > 0.4 and brief.get("confidence"):
+            new_conf = max(0.25, float(brief["confidence"]) - 0.15)
+            _db_write("UPDATE aegis_portfolio_briefs SET confidence=%s, needs_steph_review=true WHERE symbol=%s AND run_id=%s",
+                       (new_conf, sym, RUN_ID))
+
+        ok = _db_write(
+            """INSERT INTO aegis_evidence_ledger
+               (run_id, output_type, symbol, source_families, source_count, tier_mix,
+                supporting_count, contradictory_count, evidence_confidence,
+                statement_type, bias_score, bias_flags, needs_counterevidence,
+                evidence_sufficiency, counterevidence_summary, conflict_flag,
+                steph_review_required, raw_evidence)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               ON CONFLICT (run_id, output_type, symbol) DO UPDATE SET
+                bias_score=EXCLUDED.bias_score, bias_flags=EXCLUDED.bias_flags,
+                evidence_sufficiency=EXCLUDED.evidence_sufficiency, conflict_flag=EXCLUDED.conflict_flag""",
+            (RUN_ID, "brief", sym, list(families), source_count, json.dumps(tier_mix),
+             source_count, 1 if conflict else 0, round(snap_conf, 2),
+             stmt_type, bias_score, bias_flags, needs_counter,
+             sufficiency, counter_summary, conflict,
+             conflict or bias_score > 0.5,
+             json.dumps({"families": list(families), "tier_mix": tier_mix, "social_mentions": social_mentions,
+                         "transcript_stances": stances, "bias_flags": bias_flags}))
+        )
+        if ok:
+            written += 1
+
+    return written
+
+
+def main():
+    print(f"[aegis-synthesis] Starting — {RUN_ID}")
+
+    from aegis_nightly_ingestion import resolve_universe
+    universe = resolve_universe()
+    symbols = [u["symbol"] for u in universe]
+    print(f"  Universe: {len(symbols)} symbols")
+
+    # D1: Per-symbol briefs (top 15 by priority to stay within LLM budget)
+    priority = sorted(symbols, key=lambda s: (
+        0 if any("recovery" in u["reasons"] for u in universe if u["symbol"] == s) else
+        1 if any("watchlist" in u["reasons"] for u in universe if u["symbol"] == s) else 2
+    ))[:15]
+    briefs = synthesize_symbol_briefs(priority)
+    print(f"  Symbol briefs: {briefs}")
+
+    # D2: Covered-call candidates (v2 with thesis/catalyst context)
+    cc = evaluate_covered_calls()
+    print(f"  Covered-call candidates: {cc}")
+
+    # D3: Rotation alternatives
+    rot = evaluate_rotation_alternatives()
+    print(f"  Rotation alternatives: {rot}")
+
+    # D4: Portfolio summary
+    generate_portfolio_summary()
+    print(f"  Portfolio summary: written")
+
+    # D5: Steph escalation reasoning
+    esc = generate_steph_escalations()
+    print(f"  Steph escalations: {esc}")
+
+    # Tier 2C: Evidence ledger + bias check
+    ev_count = build_evidence_ledger(priority)
+    print(f"  Evidence ledger: {ev_count} entries")
+
+    print(f"[aegis-synthesis] Complete — {datetime.now().isoformat()}")
+    return {"briefs": briefs, "covered_calls": cc, "rotations": rot, "steph_escalations": esc, "evidence_entries": ev_count, "run_id": RUN_ID}
+
+
+if __name__ == "__main__":
+    main()

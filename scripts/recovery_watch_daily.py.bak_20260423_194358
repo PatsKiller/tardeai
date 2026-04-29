@@ -1,0 +1,825 @@
+"""
+recovery_watch_daily.py — Daily stopped-out detection + analyst re-entry review.
+
+Run daily after the portfolio pipeline completes.
+Entry point: main()
+
+Flow:
+1. Detect new stop-outs from risk_management.json (TRIGGERED status)
+2. Auto-create stopped_out_watch records (deduped by symbol+account+date)
+3. Review all active watch items using available data
+4. Update verdict/confidence/summary
+5. Escalate to Maria or Steph when criteria met
+6. Send Telegram notification for escalations
+7. Log to notification_log for audit
+"""
+from __future__ import annotations
+import json
+import os
+import sys
+from datetime import date, datetime
+from pathlib import Path
+from decimal import Decimal
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+# Load .env for DB credentials
+_env_path = PROJECT_ROOT / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            k, v = k.strip(), v.strip()
+            if k and v and k not in os.environ:
+                os.environ[k] = v
+
+
+def _load_json(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def _db():
+    """Get DB helpers."""
+    from db_adapter import _execute, USE_DB
+    return _execute, USE_DB
+
+
+def _db_query(sql, params=None, fetch="all"):
+    _execute, USE_DB = _db()
+    if not USE_DB:
+        return None
+    return _execute(sql, params, fetch=fetch)
+
+
+def _db_write(sql, params=None):
+    _execute, USE_DB = _db()
+    if not USE_DB:
+        return None
+    from db_adapter import _get_conn
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(sql, params)
+    conn.commit()
+    try:
+        return dict(cur.fetchone()) if cur.description else None
+    except Exception:
+        return None
+
+
+# ── Step 1: Detect new stop-outs ─────────────────────────────────────────
+
+def detect_new_stopouts() -> list[dict]:
+    """Find triggered positions not yet in stopped_out_watch."""
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+
+    # Build holdings price map
+    price_map = {}
+    for pos in h.get("holdings", []):
+        s = pos.get("symbol", "")
+        if s and s not in price_map:
+            price_map[s] = {"price": pos.get("price", 0), "shares": pos.get("shares", 0),
+                            "market_value": pos.get("market_value", 0), "name": pos.get("name", ""),
+                            "account": pos.get("account", "")}
+
+    triggered = []
+    for p in rm.get("positions", []):
+        if p.get("status") != "TRIGGERED":
+            continue
+        sym = p.get("symbol", "")
+        acct = p.get("account", "")
+        live = price_map.get(sym, {})
+        current_price = live.get("price") or p.get("price") or 0
+        stop_price = p.get("stop_price", 0)
+
+        # Check if already in stopped_out_watch (dedup)
+        existing = _db_query(
+            "SELECT id FROM stopped_out_watch WHERE symbol = %s AND account = %s AND is_active = true",
+            (sym, acct), fetch="one"
+        )
+        if existing:
+            continue
+
+        triggered.append({
+            "symbol": sym,
+            "account": acct or live.get("account", ""),
+            "exit_price": current_price,
+            "stop_price": stop_price,
+            "shares": live.get("shares", 0),
+            "market_value": live.get("market_value", 0),
+            "name": live.get("name", ""),
+        })
+
+    return triggered
+
+
+def create_watch_records(new_stopouts: list[dict]) -> int:
+    """Insert new stopped_out_watch records."""
+    created = 0
+    for s in new_stopouts:
+        try:
+            _db_write(
+                """INSERT INTO stopped_out_watch
+                   (symbol, account, stopped_out_at, exit_price, stop_price, reason,
+                    status, analyst_verdict, analyst_confidence, analyst_summary,
+                    detection_source, auto_created, next_review_at, is_active)
+                   VALUES (%s, %s, %s, %s, %s, 'mechanical', 'active', 'wait_monitor', 0.50,
+                           %s, 'risk_management_triggered', true, CURRENT_DATE + 1, true)
+                   ON CONFLICT (symbol, account, stopped_out_at) DO NOTHING""",
+                (s["symbol"], s["account"], date.today(), s["exit_price"], s["stop_price"],
+                 f'{s["symbol"]} stopped out at ${s["exit_price"]:.2f} (stop was ${s["stop_price"]:.2f}). Auto-detected from TRIGGERED status. Initial verdict: wait_monitor pending analyst review.')
+            )
+            created += 1
+        except Exception as e:
+            print(f"  [recovery] Failed to create watch for {s['symbol']}: {e}")
+    return created
+
+
+# ── Step 2: Daily analyst review ─────────────────────────────────────────
+
+def review_active_items() -> list[dict]:
+    """Review all active watch items and update verdicts."""
+    items = _db_query(
+        """SELECT id, symbol, account, stopped_out_at, exit_price, stop_price,
+                  analyst_verdict, analyst_confidence, analyst_summary, is_active
+           FROM stopped_out_watch WHERE is_active = true AND status = 'active'
+           ORDER BY stopped_out_at DESC""",
+        fetch="all"
+    ) or []
+
+    if not items:
+        return []
+
+    # Load enrichment data
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
+    news = _load_json(STATE_DIR / "portfolio_news.json") or {}
+
+    price_map = {}
+    for pos in h.get("holdings", []):
+        s = pos.get("symbol", "")
+        if s:
+            price_map[s] = {"price": pos.get("price", 0), "market_value": pos.get("market_value", 0)}
+    for s, td in ts.items():
+        if isinstance(td, dict):
+            if s in price_map:
+                price_map[s].update({"rsi": td.get("rsi"), "sma50_pct": td.get("sma50_pct"),
+                                     "sma200_pct": td.get("sma200_pct"), "beta": td.get("beta"),
+                                     "perf_week": td.get("perf_week")})
+            else:
+                price_map[s] = {"price": td.get("price"), "rsi": td.get("rsi"),
+                                "sma200_pct": td.get("sma200_pct")}
+
+    # News context
+    articles = news.get("all_scored") or news.get("catalysts") or []
+    article_counts = {}
+    for a in articles:
+        sym = a.get("portfolio_symbol", "")
+        article_counts[sym] = article_counts.get(sym, 0) + 1
+
+    reviewed = []
+    for item in items:
+        sym = item["symbol"]
+        exit_price = float(item.get("exit_price") or 0)
+        stop_price = float(item.get("stop_price") or 0)
+        live = price_map.get(sym, {})
+        current_price = float(live.get("price") or 0)
+        rsi = live.get("rsi")
+        sma200 = live.get("sma200_pct")
+        days_since = (date.today() - item["stopped_out_at"]).days if item.get("stopped_out_at") else 0
+        recovery_pct = ((current_price - exit_price) / exit_price * 100) if exit_price > 0 and current_price > 0 else 0
+        news_count = article_counts.get(sym, 0)
+
+        # Fetch journal history for this symbol
+        journal_ctx = _get_journal_context(sym)
+
+        # Compute verdict based on available signals + journal history
+        verdict, confidence, summary, trigger, invalidation = _compute_verdict(
+            sym, exit_price, stop_price, current_price, rsi, sma200,
+            days_since, recovery_pct, news_count, journal_ctx
+        )
+
+        old_verdict = item.get("analyst_verdict")
+        evidence = {
+            "current_price": current_price, "exit_price": exit_price,
+            "recovery_pct": round(recovery_pct, 1), "rsi": rsi,
+            "journal_history": journal_ctx,
+            "sma200_pct": sma200, "days_since_stop": days_since,
+            "news_count_7d": news_count, "reviewed_at": datetime.now().isoformat(),
+        }
+
+        _db_write(
+            """UPDATE stopped_out_watch SET
+                      analyst_verdict = %s, analyst_confidence = %s,
+                      analyst_summary = %s, reentry_trigger = %s, invalidated_if = %s,
+                      evidence_payload = %s, last_reviewed_at = NOW(),
+                      next_review_at = CURRENT_DATE + 1, updated_at = NOW()
+               WHERE id = %s""",
+            (verdict, confidence, summary, trigger, invalidation,
+             json.dumps(evidence), item["id"])
+        )
+
+        # Log history if verdict changed
+        if old_verdict != verdict:
+            _db_write(
+                """INSERT INTO stopped_out_watch_history
+                   (watch_id, symbol, changed_by, old_verdict, new_verdict, summary, evidence)
+                   VALUES (%s, %s, 'aegis', %s, %s, %s, %s)""",
+                (item["id"], sym, old_verdict, verdict, summary, json.dumps(evidence))
+            )
+
+        reviewed.append({"id": item["id"], "symbol": sym, "verdict": verdict,
+                        "confidence": confidence, "old_verdict": old_verdict})
+
+    return reviewed
+
+
+def _get_journal_context(sym: str) -> dict:
+    """Pull journal review history for a symbol to inform recovery decisions."""
+    rows = _db_query(
+        """SELECT setup_name, timeframe, well_executed, followed_plan,
+                  execution_quality_score, emotion_before, mistake_tags
+           FROM journal_trade_reviews WHERE symbol = %s ORDER BY closed_date DESC LIMIT 5""",
+        (sym,)
+    ) or []
+    if not rows:
+        return {"has_history": False}
+    total = len(rows)
+    well_exec = sum(1 for r in rows if r.get("well_executed"))
+    plan_follow = sum(1 for r in rows if r.get("followed_plan"))
+    avg_exec = sum(r.get("execution_quality_score") or 0 for r in rows if r.get("execution_quality_score")) / max(1, sum(1 for r in rows if r.get("execution_quality_score")))
+    setups = list(set(r.get("setup_name") for r in rows if r.get("setup_name")))
+    mistakes = []
+    for r in rows:
+        for t in (r.get("mistake_tags") or []):
+            if t not in mistakes:
+                mistakes.append(t)
+    return {
+        "has_history": True,
+        "review_count": total,
+        "well_executed_rate": well_exec / total if total else 0,
+        "plan_follow_rate": plan_follow / total if total else 0,
+        "avg_execution": round(avg_exec, 1),
+        "setups_used": setups,
+        "common_mistakes": mistakes[:3],
+        "last_emotion": rows[0].get("emotion_before") if rows else None,
+    }
+
+
+def _compute_verdict(sym, exit_price, stop_price, current_price, rsi, sma200,
+                     days_since, recovery_pct, news_count, journal_ctx=None):
+    """Rule-based verdict computation using available signals."""
+
+    # Default
+    verdict = "wait_monitor"
+    confidence = 0.50
+    reasons = []
+
+    # Price recovery signals
+    if current_price > 0 and stop_price > 0:
+        if current_price > stop_price:
+            reasons.append(f"Price ${current_price:.2f} has recovered above stop ${stop_price:.2f}")
+            verdict = "reentry_candidate"
+            confidence = 0.70
+        elif recovery_pct > 5:
+            reasons.append(f"Price recovering: +{recovery_pct:.1f}% from exit")
+            confidence = 0.55
+        elif recovery_pct < -10:
+            reasons.append(f"Continued decline: {recovery_pct:.1f}% from exit. Thesis may be damaged.")
+            verdict = "do_not_reenter"
+            confidence = 0.65
+
+    # RSI signals
+    if rsi is not None:
+        if rsi < 30:
+            reasons.append(f"RSI {rsi:.0f} — oversold, possible reversal setup")
+            if verdict == "wait_monitor":
+                confidence = max(confidence, 0.55)
+        elif rsi > 60 and current_price > stop_price:
+            reasons.append(f"RSI {rsi:.0f} — momentum recovering")
+            if verdict == "reentry_candidate":
+                confidence = min(confidence + 0.10, 0.85)
+        elif rsi > 70:
+            reasons.append(f"RSI {rsi:.0f} — overbought after recovery, wait for pullback")
+
+    # SMA200 signals
+    if sma200 is not None:
+        if sma200 > 0:
+            reasons.append(f"Above SMA200 (+{sma200:.1f}%) — constructive")
+        else:
+            reasons.append(f"Below SMA200 ({sma200:.1f}%) — weak trend")
+
+    # Time decay
+    if days_since > 30 and verdict == "wait_monitor":
+        reasons.append(f"{days_since} days since stop — consider closing watch if no recovery")
+        confidence = max(confidence, 0.55)
+    if days_since > 60 and verdict != "reentry_candidate":
+        reasons.append(f"{days_since} days with no recovery signal — thesis likely broken")
+        verdict = "do_not_reenter"
+        confidence = 0.70
+
+    # News activity
+    if news_count > 5:
+        reasons.append(f"{news_count} articles in recent coverage — active news flow")
+
+    # Journal history context
+    jc = journal_ctx or {}
+    if jc.get("has_history"):
+        rc = jc["review_count"]
+        we_rate = jc.get("well_executed_rate", 0)
+        setups = jc.get("setups_used", [])
+        mistakes = jc.get("common_mistakes", [])
+        if we_rate >= 0.7:
+            reasons.append(f"Journal history ({rc} reviews): {we_rate*100:.0f}% well-executed — good execution track record on {sym}.")
+            if verdict == "reentry_candidate":
+                confidence = min(confidence + 0.05, 0.85)
+        elif we_rate < 0.5 and rc >= 2:
+            reasons.append(f"Journal history ({rc} reviews): only {we_rate*100:.0f}% well-executed — caution, past execution on {sym} was weak.")
+            confidence = max(confidence - 0.05, 0.40)
+        if mistakes:
+            reasons.append(f"Past mistakes on {sym}: {', '.join(mistakes[:2])}.")
+        if setups:
+            reasons.append(f"Previously traded as: {', '.join(setups[:2])}.")
+
+    # Build summary
+    if not reasons:
+        reasons.append(f"Monitoring {sym} post stop-out. No strong signals yet.")
+
+    summary = " ".join(reasons)
+
+    # Build trigger/invalidation — specific and actionable
+    if verdict == "reentry_candidate":
+        trigger = f"Re-enter when: {sym} closes above ${stop_price:.2f} on above-average volume with RSI > 50. Confirm with 2-day hold above stop level."
+        invalidation = f"Do NOT re-enter if: price drops below ${exit_price:.2f}, or sector/thesis fundamentally changes, or portfolio heat exceeds 7%."
+    elif verdict == "do_not_reenter":
+        trigger = f"Reconsider only if: major positive catalyst (earnings beat, M&A, sector rotation), AND price recovers above ${stop_price:.2f}. Otherwise this name is closed."
+        invalidation = f"Current assessment: avoid {sym}. Thesis appears damaged. Capital better deployed elsewhere."
+    else:
+        rsi_note = f" RSI is {rsi:.0f}" if rsi is not None else ""
+        trigger = f"Watch for: {sym} to recover above ${stop_price:.2f} with volume confirmation.{rsi_note}. Check daily until verdict changes."
+        invalidation = f"Close watch if: price falls below ${exit_price * 0.9:.2f} (10% below exit), or {days_since + 30}+ days pass with no recovery signal."
+
+    return verdict, round(confidence, 2), summary, trigger, invalidation
+
+
+# ── Step 3: Escalation + notification ────────────────────────────────────
+
+def _route_escalation(item: dict) -> str:
+    """Route escalation: Maria for simple re-entry, Steph for complex/thesis cases.
+
+    Steph gets:
+    - Items where thesis may be damaged (keyword signals in summary)
+    - Items with high market value (>$5K freed capital)
+    - Items where the stop was discretionary or news-driven
+    - Items with multiple prior verdict changes (complex history)
+
+    Maria gets:
+    - Straightforward mechanical stop-outs with clear technical re-entry
+    - Lower-complexity re-entry candidates
+    """
+    summary = (item.get("summary") or "").lower()
+    confidence = item.get("confidence", 0)
+
+    # Steph indicators: thesis damage, complexity, discretionary
+    steph_signals = ["thesis", "broken", "damaged", "discretionary", "news-driven",
+                     "fundamental", "regime", "sector rotation", "complex"]
+    steph_score = sum(1 for s in steph_signals if s in summary)
+
+    if steph_score >= 2:
+        return "steph"
+    if confidence >= 0.80:
+        return "steph"  # Very high confidence = needs senior review
+
+    return "maria"
+
+
+def check_and_escalate(reviewed: list[dict]) -> list[dict]:
+    """Escalate high-confidence reentry candidates to Maria/Steph."""
+    escalated = []
+
+    for r in reviewed:
+        if r["verdict"] != "reentry_candidate" or r["confidence"] < 0.65:
+            continue
+
+        # Check if already escalated recently
+        item = _db_query(
+            "SELECT id, symbol, escalated_to, escalated_at FROM stopped_out_watch WHERE id = %s",
+            (r["id"],), fetch="one"
+        )
+        if not item:
+            continue
+
+        # Don't re-escalate if already escalated in last 3 days
+        if item.get("escalated_at"):
+            esc_at = item["escalated_at"]
+            if hasattr(esc_at, 'date') and (date.today() - esc_at.date()).days < 3:
+                continue
+
+        # Route: Maria for straightforward re-entry, Steph for complex/thesis-damage cases
+        escalate_to = _route_escalation(r)
+        reason = f"{r['symbol']} is a re-entry candidate ({r['confidence']*100:.0f}% confidence) after stop-out. Routed to {escalate_to} for review."
+
+        _db_write(
+            """UPDATE stopped_out_watch SET escalated_to = %s, escalated_at = NOW(),
+                      escalation_reason = %s, updated_at = NOW()
+               WHERE id = %s""",
+            (escalate_to, reason, r["id"])
+        )
+
+        _db_write(
+            """INSERT INTO stopped_out_watch_history
+               (watch_id, symbol, changed_by, old_verdict, new_verdict, summary)
+               VALUES (%s, %s, 'aegis', %s, %s, %s)""",
+            (r["id"], r["symbol"], r.get("old_verdict"), r["verdict"],
+             f"Auto-escalated to {escalate_to}: {reason}")
+        )
+
+        # Get full item details for richer notification
+        full_item = _db_query(
+            "SELECT analyst_summary, reentry_trigger, invalidated_if, temp_allocation_verdict FROM stopped_out_watch WHERE id = %s",
+            (r["id"],), fetch="one"
+        ) or {}
+        escalated.append({"symbol": r["symbol"], "verdict": r["verdict"],
+                         "confidence": r["confidence"], "escalated_to": escalate_to,
+                         "reason": reason,
+                         "summary": full_item.get("analyst_summary", ""),
+                         "trigger": full_item.get("reentry_trigger", ""),
+                         "invalidation": full_item.get("invalidated_if", ""),
+                         "allocation": full_item.get("temp_allocation_verdict", "")})
+
+    return escalated
+
+
+def send_notifications(escalated: list[dict]):
+    """Send Telegram + log notification for each escalation."""
+    if not escalated:
+        return
+
+    from db_adapter import save_notification_log_entry
+
+    for e in escalated:
+        # Notification log entry
+        # Richer notification body
+        body_parts = [
+            f"{e['symbol']} recovery watch escalated to {e['escalated_to'].title()}.",
+            f"Verdict: {e['verdict'].replace('_',' ').title()} ({e['confidence']*100:.0f}% confidence).",
+        ]
+        if e.get("summary"):
+            body_parts.append(f"Analyst: {e['summary'][:120]}")
+        if e.get("trigger"):
+            body_parts.append(f"Trigger: {e['trigger'][:100]}")
+        body_parts.append(f"Next step: review at /v2/recovery")
+        body_text = " ".join(body_parts)
+
+        try:
+            save_notification_log_entry({
+                "notification_date": date.today(),
+                "notification_type": "recovery_escalation",
+                "channel": "dashboard",
+                "subject": f"[Recovery Watch] {e['verdict'].replace('_',' ').title()} — {e['symbol']} → {e['escalated_to'].title()}",
+                "body_summary": body_text,
+                "recommendation_ids": None,
+                "escalation_ids": None,
+                "observation_ids": None,
+                "payload": json.dumps(e),
+                "status": "sent",
+                "dedupe_key": f"recovery_esc_{e['symbol']}_{date.today()}",
+                "sent_at": datetime.now(),
+                "error": None,
+            })
+        except Exception as ex:
+            print(f"  [recovery] notification_log failed: {ex}")
+
+        # Telegram — richer notification
+        try:
+            from telegram_alert import send_telegram
+            lines = [
+                f"*Recovery Watch Escalation*",
+                f"Symbol: *{e['symbol']}*",
+                f"Verdict: {e['verdict'].replace('_', ' ').title()} ({e['confidence']*100:.0f}%)",
+                f"Escalated to: *{e['escalated_to'].title()}*",
+                f"Reason: {e.get('reason', 'N/A')}",
+            ]
+            if e.get("summary"):
+                lines.append(f"Summary: {e['summary'][:150]}")
+            if e.get("trigger"):
+                lines.append(f"Re-entry trigger: {e['trigger'][:100]}")
+            if e.get("invalidation"):
+                lines.append(f"Invalidated if: {e['invalidation'][:100]}")
+            if e.get("allocation"):
+                lines.append(f"Capital: {e['allocation'].replace('_', ' ')}")
+            lines.append(f"Review at: /v2/recovery")
+            send_telegram("\n".join(lines))
+        except Exception as ex:
+            print(f"  [recovery] Telegram send failed: {ex}")
+
+
+# ── Step 4: Stop placement confirmation scan ────────────────────────────
+
+def scan_unconfirmed_stops() -> list[dict]:
+    """Find positions without confirmed stops, upsert into stop_confirmations, send reminders."""
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    price_map = {}
+    for pos in h.get("holdings", []):
+        s = pos.get("symbol", "")
+        if s:
+            price_map[s] = {"market_value": pos.get("market_value", 0), "portfolio_pct": pos.get("portfolio_pct", 0)}
+
+    reminders = []
+    for p in rm.get("positions", []):
+        if p.get("status") != "NO STOP":
+            continue
+        sym = p.get("symbol", "")
+        acct = p.get("account", "")
+        live = price_map.get(sym, {})
+        mv = live.get("market_value") or p.get("market_value", 0)
+        pct = live.get("portfolio_pct", 0)
+
+        # Skip tiny positions and 401k funds (can't set stops on mutual funds)
+        if mv < 500 or acct == "fidelity_401k":
+            continue
+
+        # Upsert into stop_confirmations
+        existing = _db_query(
+            "SELECT id, stop_status, last_reminder_at, reminder_count FROM stop_confirmations WHERE symbol = %s AND account = %s",
+            (sym, acct), fetch="one"
+        )
+        if existing:
+            # Already tracked — check if reminder needed (>24h since last)
+            last = existing.get("last_reminder_at")
+            if last and hasattr(last, 'date') and (date.today() - last.date()).days < 1:
+                continue
+            if existing.get("stop_status") in ("confirmed", "intentional_no_stop"):
+                continue
+            _db_write(
+                "UPDATE stop_confirmations SET last_reminder_at = NOW(), reminder_count = reminder_count + 1, market_value = %s, position_pct = %s, updated_at = NOW() WHERE id = %s",
+                (mv, pct, existing["id"])
+            )
+            reminders.append({"symbol": sym, "account": acct, "market_value": mv, "pct": pct, "reminder_num": (existing.get("reminder_count") or 0) + 1})
+        else:
+            _db_write(
+                """INSERT INTO stop_confirmations (symbol, account, stop_status, market_value, position_pct, last_reminder_at, reminder_count)
+                   VALUES (%s, %s, 'unconfirmed', %s, %s, NOW(), 1)
+                   ON CONFLICT (symbol, account) DO NOTHING""",
+                (sym, acct, mv, pct)
+            )
+            reminders.append({"symbol": sym, "account": acct, "market_value": mv, "pct": pct, "reminder_num": 1})
+
+    return reminders
+
+
+def send_stop_reminders(reminders: list[dict]):
+    """Send Telegram reminder for unconfirmed stops."""
+    if not reminders:
+        return
+    try:
+        from telegram_alert import send_telegram
+        from db_adapter import save_notification_log_entry
+    except ImportError:
+        return
+
+    total_unprotected = sum(r['market_value'] for r in reminders)
+    lines = [f"*Stop Placement Reminder*\n{len(reminders)} position(s) without confirmed stops (${total_unprotected:,.0f} total exposure):\n"]
+    for r in reminders[:8]:
+        lines.append(f"• *{r['symbol']}* — ${r['market_value']:,.0f} ({r['pct']:.1f}%) — reminder #{r['reminder_num']}")
+    lines.append(f"\nReply: yes SYMBOL / no / intentional SYMBOL")
+    lines.append(f"Or review at /v2/risk")
+    msg = "\n".join(lines)
+
+    try:
+        send_telegram(msg)
+    except Exception as ex:
+        print(f"  [recovery] Stop reminder Telegram failed: {ex}")
+
+    try:
+        save_notification_log_entry({
+            "notification_date": date.today(),
+            "notification_type": "stop_confirmation_reminder",
+            "channel": "telegram",
+            "subject": f"[Stop Reminder] {len(reminders)} position{'s' if len(reminders) != 1 else ''} need stop confirmation — ${total_unprotected:,.0f} exposure",
+            "body_summary": msg[:500],
+            "recommendation_ids": None, "escalation_ids": None, "observation_ids": None,
+            "payload": json.dumps(reminders[:10], default=str),
+            "status": "sent", "dedupe_key": f"stop_remind_{date.today()}",
+            "sent_at": datetime.now(), "error": None,
+        })
+    except Exception as ex:
+        print(f"  [recovery] Stop reminder notification_log failed: {ex}")
+
+
+# ── Step 5: Post-stop temporary allocation advisor ───────────────────────
+
+def compute_temp_allocations():
+    """For each active stopped-out watch item, recommend where freed capital should sit."""
+    items = _db_query(
+        """SELECT id, symbol, exit_price, stop_price, analyst_verdict, analyst_confidence,
+                  temp_allocation_verdict
+           FROM stopped_out_watch WHERE is_active = true AND status = 'active'""",
+        fetch="all"
+    ) or []
+    if not items:
+        return 0
+
+    # Get market context
+    fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    wl = _load_json(STATE_DIR / "watchlist.json") or {}
+
+    total_value = sum(p.get("market_value", 0) for p in h.get("holdings", []))
+    cash = sum(p.get("market_value", 0) for p in h.get("holdings", []) if p.get("is_cash"))
+    cash_pct = (cash / total_value * 100) if total_value > 0 else 0
+    heat_pct = rm.get("portfolio_heat_pct", 0)
+    watchlist_count = len(wl)
+    unprotected_count = len([p for p in rm.get("positions", []) if p.get("status") == "NO STOP"])
+
+    updated = 0
+    for item in items:
+        sym = item["symbol"]
+        exit_price = float(item.get("exit_price") or 0)
+        freed_capital = exit_price * 1  # approximate, shares may vary
+        verdict = item.get("analyst_verdict", "wait_monitor")
+
+        # Compute allocation recommendation
+        alloc_verdict, alloc_conf, alloc_reason, alloc_target, alloc_until, alloc_trigger = _compute_allocation(
+            sym, verdict, float(item.get("analyst_confidence") or 0.5),
+            cash_pct, heat_pct, watchlist_count, unprotected_count
+        )
+
+        _db_write(
+            """UPDATE stopped_out_watch SET
+                      temp_allocation_verdict = %s, temp_allocation_confidence = %s,
+                      temp_allocation_reason = %s, temp_allocation_target = %s,
+                      temp_allocation_until = %s, temp_allocation_exit_trigger = %s,
+                      updated_at = NOW()
+               WHERE id = %s""",
+            (alloc_verdict, alloc_conf, alloc_reason, alloc_target, alloc_until, alloc_trigger, item["id"])
+        )
+        updated += 1
+
+    return updated
+
+
+def _compute_allocation(sym, analyst_verdict, analyst_conf, cash_pct, heat_pct, wl_count, unprotected):
+    """Rule-based temporary allocation recommendation with deep rationale."""
+
+    # Load regime context
+    fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    overview_data = _load_json(STATE_DIR / "holdings.json") or {}
+    total_positions = len([p for p in overview_data.get("holdings", []) if not p.get("is_cash") and (p.get("market_value") or 0) > 50])
+
+    # Determine market regime
+    regime = "neutral"
+    try:
+        tai_runs = sorted((STATE_DIR / "data" / "runs").glob("*/state.json"), reverse=True)[:1] if (STATE_DIR / "data" / "runs").exists() else []
+    except Exception:
+        tai_runs = []
+
+    verdict = "stay_cash"
+    confidence = 0.60
+    reasons = []
+    target = "Cash"
+    until = "Until re-entry signal or next rebalance review"
+    trigger = "Re-entry candidate confirmed or new high-conviction opportunity"
+
+    # ── Re-entry candidate path ──
+    if analyst_verdict == "reentry_candidate" and analyst_conf >= 0.65:
+        verdict = "hold_for_reentry"
+        confidence = 0.70
+        target = f"Cash earmarked for {sym} re-entry"
+        reasons.append(f"{sym} is a re-entry candidate ({analyst_conf*100:.0f}% confidence). Technical repair signals detected.")
+        reasons.append("Hold freed capital ready — deploying elsewhere would forfeit the re-entry opportunity.")
+        if heat_pct > 5:
+            reasons.append(f"Portfolio heat is elevated ({heat_pct:.1f}%), but re-entry conviction overrides the cash preference.")
+        until = "Until re-entry trigger price confirms with volume, or analyst verdict downgrades to wait_monitor"
+        trigger = f"{sym} re-entry trigger price confirmed with above-average volume and RSI crossing 50"
+        confidence = min(0.80, analyst_conf + 0.05)
+
+    # ── Do not re-enter path ──
+    elif analyst_verdict == "do_not_reenter":
+        if cash_pct > 5 and heat_pct < 4:
+            verdict = "treasury_ballast"
+            confidence = 0.65
+            target = "BND, SGOV, or short-term treasury ETF"
+            reasons.append(f"{sym} thesis is broken — permanent exit.")
+            reasons.append(f"Cash is already {cash_pct:.1f}% of portfolio. Excess cash earns nothing — deploy to treasury/bond for yield.")
+            reasons.append("Short-duration treasuries maintain liquidity and hedge equity volatility.")
+            until = "Until next rebalance review or new high-conviction opportunity emerges from watchlist/Trade AI"
+            trigger = "Rebalance pipeline identifies a better allocation target, or watchlist candidate hits GO signal"
+        elif wl_count > 3 and heat_pct < 5:
+            verdict = "rotate_existing_conviction"
+            confidence = 0.55
+            target = "Top watchlist candidate or existing underweight conviction position"
+            reasons.append(f"{sym} exited permanently. {wl_count} watchlist candidates available for rotation.")
+            reasons.append("Rotation preferred over idle cash when risk posture is manageable.")
+            reasons.append("Select from highest-confidence watchlist names or existing positions below target weight.")
+            until = "Until capital is deployed to selected rotation target"
+            trigger = f"Watchlist candidate reaches GO or analyst marks re-entry candidate with confidence >= 70%"
+        elif heat_pct > 5:
+            verdict = "stay_cash"
+            confidence = 0.70
+            target = "Cash"
+            reasons.append(f"{sym} thesis is broken. Portfolio heat at {heat_pct:.1f}% — risk is elevated.")
+            reasons.append("Stay in cash to reduce overall portfolio risk before deploying elsewhere.")
+            reasons.append("Do not rotate into new names while heat is above 5% threshold.")
+        else:
+            verdict = "stay_cash"
+            confidence = 0.60
+            target = "Cash"
+            reasons.append(f"{sym} thesis broken. No high-conviction alternatives available right now.")
+            reasons.append("Cash is the correct default when no better opportunity is clear.")
+
+    # ── Wait/monitor path ──
+    elif analyst_verdict == "wait_monitor":
+        if heat_pct > 5:
+            verdict = "stay_cash"
+            confidence = 0.65
+            target = "Cash"
+            reasons.append(f"Portfolio heat at {heat_pct:.1f}%. {sym} verdict is wait/monitor — no conviction for re-entry yet.")
+            reasons.append("Elevated heat means the priority is risk reduction, not deployment.")
+            reasons.append(f"{unprotected} position(s) without stops — capital should stay defensive.")
+        elif unprotected > 5:
+            verdict = "stay_cash"
+            confidence = 0.60
+            target = "Cash"
+            reasons.append(f"{unprotected} positions without confirmed stops. Overall risk posture is weak.")
+            reasons.append(f"{sym} in wait/monitor — no urgency to deploy. Stay defensive.")
+        elif cash_pct < 2:
+            verdict = "stay_cash"
+            confidence = 0.55
+            target = "Cash"
+            reasons.append(f"Cash is only {cash_pct:.1f}% of portfolio — below comfortable buffer level.")
+            reasons.append(f"Retaining {sym} freed capital as cash reserve improves liquidity posture.")
+        else:
+            verdict = "cash_equivalent"
+            confidence = 0.55
+            target = "Money market fund or ultra-short bond (SGOV, BIL)"
+            reasons.append(f"{sym} monitoring continues — no strong recovery or breakdown signal.")
+            reasons.append("Park in cash-equivalent for modest yield (~5% annualized) while maintaining instant liquidity.")
+            reasons.append("This is a temporary holding — will reallocate when verdict changes.")
+            until = "Until {sym} verdict changes to reentry_candidate or do_not_reenter"
+            trigger = f"{sym} shows technical repair above stop level, or further breakdown below exit price"
+
+    if not reasons:
+        reasons.append(f"Default: keep freed capital from {sym} in cash pending further analyst review.")
+
+    reason = " ".join(reasons)
+    return verdict, round(confidence, 2), reason, target, until, trigger
+
+
+# ── Main entry point ─────────────────────────────────────────────────────
+
+def main():
+    print(f"[recovery_watch_daily] Starting — {datetime.now().isoformat()}")
+
+    # Step 1: Detect new stop-outs
+    new_stopouts = detect_new_stopouts()
+    created = create_watch_records(new_stopouts)
+    print(f"  New stop-outs detected: {len(new_stopouts)}, records created: {created}")
+
+    # Step 2: Review all active items
+    reviewed = review_active_items()
+    print(f"  Active items reviewed: {len(reviewed)}")
+    for r in reviewed:
+        change = f" (was {r['old_verdict']})" if r['old_verdict'] != r['verdict'] else ""
+        print(f"    {r['symbol']}: {r['verdict']} ({r['confidence']*100:.0f}%){change}")
+
+    # Step 3: Escalate + notify
+    escalated = check_and_escalate(reviewed)
+    print(f"  Escalations: {len(escalated)}")
+    send_notifications(escalated)
+
+    # Step 4: Process any Telegram replies first
+    try:
+        from telegram_reply_processor import process_replies
+        reply_count = process_replies()
+        print(f"  Telegram replies processed: {reply_count}")
+    except Exception as e:
+        print(f"  Telegram reply processing skipped: {e}")
+
+    # Step 5: Stop confirmation scan (after processing replies)
+    reminders = scan_unconfirmed_stops()
+    print(f"  Stop reminders: {len(reminders)}")
+    send_stop_reminders(reminders)
+
+    # Step 5: Temp allocation recommendations
+    alloc_updated = compute_temp_allocations()
+    print(f"  Temp allocation recommendations updated: {alloc_updated}")
+
+    print(f"[recovery_watch_daily] Complete — {datetime.now().isoformat()}")
+    return {"new_stopouts": len(new_stopouts), "created": created,
+            "reviewed": len(reviewed), "escalated": len(escalated),
+            "stop_reminders": len(reminders), "alloc_updated": alloc_updated}
+
+
+if __name__ == "__main__":
+    main()

@@ -362,10 +362,11 @@ def format_strategic_message(alerts: List[Dict], portfolio: Dict) -> str:
     totals  = portfolio.get("portfolio_totals", {})
     total   = totals.get("total_value",0)
     day_pnl = totals.get("day_change",0)
-    sign    = "+" if day_pnl >= 0 else ""
+    sign    = "+" if day_pnl >= 0 else "-"
+    pct     = day_pnl / total * 100 if total else 0
     lines   = [
         f"💼 <b>PORTFOLIO INTELLIGENCE — {datetime.now().strftime('%b %d, %Y')}</b>",
-        f"Total: ${total:,.0f}  |  Today: {sign}${abs(day_pnl):,.0f} ({sign}{day_pnl/total*100:.2f}%)\n",
+        f"Total: ${total:,.0f}  |  Today: {sign}${abs(day_pnl):,.0f} ({pct:+.2f}%)\n",
     ]
     for a in alerts:
         sev = a.get("severity","INFO")
@@ -394,6 +395,28 @@ def run_portfolio_alerts(portfolio: Dict, analysis: Dict,
         strategic = generate_strategic_alerts(portfolio, analysis)
         if strategic:
             msg = format_strategic_message(strategic, portfolio)
+            # DB first
+            try:
+                from alert_event_writer import save_alert_event
+                for sa in strategic:
+                    sym = None
+                    # Extract symbol from PRICE_DROP/SPIKE msgs
+                    import re as _re
+                    sym_match = _re.match(r'^(\w+):', sa.get("msg", ""))
+                    if sym_match:
+                        sym = sym_match.group(1)
+                    sev = "warning" if sa.get("severity") == "HIGH" else "info"
+                    save_alert_event(
+                        alert_type="strategic_alert",
+                        raw_text=sa.get("msg", "")[:2000],
+                        symbol=sym,
+                        severity=sev,
+                        source_script="portfolio_alerts.py",
+                        parsed_payload={"alert_subtype": sa.get("type")},
+                        requires_agent_review=sa.get("severity") == "HIGH" and sym is not None,
+                    )
+            except Exception as e:
+                print(f"  [alerts] Alert DB write failed (non-fatal): {e}")
             if msg and _send_telegram(msg, project_root):
                 sent["strategic"] = len(strategic)
                 print(f"  [alerts] ✅ Strategic: {len(strategic)} alerts sent")
@@ -548,7 +571,7 @@ def send_technical_alerts(technical: dict, project_root: "Path",
         mv  = c.get("market_value",0)
         pfx = {"CRITICAL":"CRITICAL","HIGH":"HIGH","WARNING":"NOTE"}.get(sev,"")
         body += f"[{pfx}] {msg}"
-        if mv: body += f" (${mv:,.0f})"
+        if mv: body += f" (Position: ${mv:,.0f})"
         body += "\n"
     if is_escalated:
         body += "\nEscalated to full analysis — check dashboard."

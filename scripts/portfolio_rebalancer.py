@@ -156,22 +156,42 @@ def generate_rebalance_orders(drift_analysis):
 
 # ── Share-count enrichment ────────────────────────────────────────────────────
 
-# Dividend yields (%) for key holdings — used to show income lost on sells
-HOLDING_YIELDS: Dict[str, float] = {
-    "V": 0.83, "PFE": 6.2,  "SCHD": 3.58, "DIV": 5.8,
-    "CSWC": 10.5, "PFLT": 11.2, "LMT": 2.8, "NOC": 1.6,
-    "RTX": 2.1,   "LHX": 2.2,   "LDOS": 1.4, "BAH": 1.8,
-    "NEE": 3.2,   "XLI": 1.7,   "XLB": 1.9,  "BND": 3.4,
-    "SCHG": 0.4,  "VXUS": 3.1,  "JEPI": 7.8, "JEPQ": 9.5,
-    "O": 5.7,     "PFF": 6.2,   "VCIT": 4.8, "AGG": 3.5,
-    "AMANX": 1.8, "FCNTX": 0.3, "ARKG": 0.0, "ARKQ": 0.0,
-    "SRNE": 0.0,  "RKLB": 0.0,
+# Fallback yields (%) for suggested-buy tickers not in the portfolio.
+# Held tickers are loaded from dividend_calendar.json at runtime.
+_SUGGESTED_BUY_YIELDS: Dict[str, float] = {
+    "AGG": 3.5, "JEPQ": 9.5, "O": 5.7, "PFE": 6.2,
+    "PFF": 6.2, "VCIT": 4.8, "VXUS": 3.1,
 }
+
+_yield_cache: Optional[Dict[str, float]] = None
+
+
+def _load_yields() -> Dict[str, float]:
+    """Load live dividend yields from dividend_calendar.json, with static fallback for suggested buys."""
+    global _yield_cache
+    if _yield_cache is not None:
+        return _yield_cache
+    import json
+    from pathlib import Path
+    yields: Dict[str, float] = dict(_SUGGESTED_BUY_YIELDS)
+    try:
+        dc_path = Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state" / "dividend_calendar.json"
+        if dc_path.exists():
+            dc = json.loads(dc_path.read_text())
+            for p in dc.get("payers", []):
+                sym = (p.get("symbol") or "").upper()
+                yld = p.get("yield_pct")
+                if sym and yld is not None:
+                    yields[sym] = float(yld)
+    except Exception:
+        pass
+    _yield_cache = yields
+    return yields
 
 
 def _div_income(ticker: str, market_value: float) -> float:
     """Annual dividend income from a position."""
-    return market_value * HOLDING_YIELDS.get(ticker.upper(), 0) / 100
+    return market_value * _load_yields().get(ticker.upper(), 0) / 100
 
 
 SUGGESTED_PRICES = {
@@ -248,7 +268,7 @@ def enrich_orders_with_shares(orders: List[Dict], holdings: List[Dict]) -> List[
                         "proceeds":         round(sell_mv_actual, 2),
                         "annual_div_lost":  round(annual_div_lost, 2),
                         "monthly_div_lost": round(annual_div_lost / 12, 2),
-                        "yield_pct":        HOLDING_YIELDS.get(ticker.upper(), 0),
+                        "yield_pct":        _load_yields().get(ticker.upper(), 0),
                     })
                     remaining -= sell_mv_actual
             order["sell_details"] = sell_details
@@ -274,7 +294,7 @@ def enrich_orders_with_shares(orders: List[Dict], holdings: List[Dict]) -> List[
                     "is_alternative":    i > 0,
                     "annual_div_gained": round(annual_div_gained, 2),
                     "monthly_div_gained":round(annual_div_gained / 12, 2),
-                    "yield_pct":         HOLDING_YIELDS.get(ticker.upper(), 0),
+                    "yield_pct":         _load_yields().get(ticker.upper(), 0),
                 })
             order["buy_details"] = buy_details
 

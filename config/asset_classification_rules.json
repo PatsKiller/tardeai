@@ -1,0 +1,178 @@
+{
+  "version": "1.0",
+  "exclude_symbols": [
+    "CASH",
+    "SRNE",
+    "SP500-D",
+    "AB-DISC-Z",
+    "SS-GACEQ",
+    "SS-SMMD",
+    "TRP-LVAL",
+    "WM-BLAIR",
+    "JPM-LGCG",
+    "FID-DIVINTL"
+  ],
+  "aliases": {
+    "FID-CONTRA-F": "FCNTX"
+  },
+  "asset_type_overrides": {
+    "AMANX": "mutual_fund",
+    "FCNTX": "mutual_fund",
+    "SCHD": "etf",
+    "SCHG": "etf",
+    "JEPI": "etf",
+    "DIV": "etf",
+    "BND": "etf",
+    "ARKG": "etf",
+    "ARKQ": "etf",
+    "XLB": "etf",
+    "XLI": "etf",
+    "LHX": "stock",
+    "RTX": "stock",
+    "LMT": "stock",
+    "NOC": "stock",
+    "AVAV": "stock",
+    "KTOS": "stock",
+    "RKLB": "stock",
+    "IRDM": "stock",
+    "DRS": "stock",
+    "KBR": "stock",
+    "LDOS": "stock",
+    "CACI": "stock",
+    "TDG": "stock",
+    "V": "stock",
+    "NEE": "stock",
+    "CSWC": "stock",
+    "PFLT": "stock",
+    "BAH": "stock",
+    "LPIH": "stock"
+  },
+  "bucket_overrides": {
+    "SCHD": [
+      "etf",
+      "dividend_etf",
+      "dividend_income"
+    ],
+    "JEPI": [
+      "etf",
+      "dividend_etf",
+      "dividend_income"
+    ],
+    "DIV": [
+      "etf",
+      "dividend_etf",
+      "dividend_income"
+    ],
+    "BND": [
+      "etf",
+      "bond_income",
+      "dividend_etf"
+    ],
+    "AVAV": [
+      "stock",
+      "swing_trade",
+      "defense_aerospace"
+    ],
+    "KTOS": [
+      "stock",
+      "swing_trade",
+      "defense_aerospace"
+    ],
+    "RKLB": [
+      "stock",
+      "swing_trade",
+      "space_defense"
+    ],
+    "IRDM": [
+      "stock",
+      "swing_trade",
+      "satellite"
+    ],
+    "DRS": [
+      "stock",
+      "swing_trade",
+      "defense_aerospace"
+    ],
+    "KBR": [
+      "stock",
+      "swing_trade",
+      "defense_services"
+    ],
+    "LDOS": [
+      "stock",
+      "swing_trade",
+      "defense_services"
+    ],
+    "CACI": [
+      "stock",
+      "swing_trade",
+      "defense_services"
+    ],
+    "TDG": [
+      "stock",
+      "swing_trade",
+      "aerospace"
+    ],
+    "CSWC": [
+      "stock",
+      "dividend_stock",
+      "income"
+    ],
+    "PFLT": [
+      "stock",
+      "dividend_stock",
+      "income"
+    ],
+    "NEE": [
+      "stock",
+      "dividend_stock",
+      "utility"
+    ],
+    "BAH": [
+      "stock",
+      "compiled_entry",
+      "government_services"
+    ],
+    "LPIH": [
+      "stock",
+      "compiled_entry",
+      "review_candidate"
+    ]
+  },
+  "keyword_rules": {
+    "dividend_income": [
+      "dividend",
+      "yield",
+      "income",
+      "distribution",
+      "qualified dividend"
+    ],
+    "swing_trade": [
+      "swing",
+      "momentum",
+      "breakout",
+      "relative volume",
+      "orb",
+      "gap"
+    ],
+    "defense_aerospace": [
+      "defense",
+      "aerospace",
+      "missile",
+      "drone",
+      "military"
+    ],
+    "growth_fund": [
+      "growth",
+      "nasdaq",
+      "technology",
+      "innovation"
+    ],
+    "bond_income": [
+      "bond",
+      "treasury",
+      "duration",
+      "fixed income"
+    ]
+  }
+}

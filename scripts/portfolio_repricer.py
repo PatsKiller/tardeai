@@ -38,6 +38,11 @@ PRICE_CHANGE_THRESHOLD  = 0.001   # $0.001 — update price if changed by this m
 PCT_CHANGE_THRESHOLD    = 0.01    # 0.01% — update change_pct if changed this much
 VOLUME_CHANGE_THRESHOLD = 0.05    # 5%    — update volume if changed this much
 
+# ── Cash / money-market symbols — never reprice these as stocks ───────────────
+_CASH_SYMBOLS = frozenset({
+    "SNAXX", "SWVXX", "VMFXX", "SPRXX", "FDRXX",
+    "CASH & CASH INVESTMENTS", "CASH", "MMKT",
+})
 
 # ── ET time helpers ────────────────────────────────────────────────────────────
 def _et_now() -> datetime:
@@ -78,6 +83,7 @@ def _get_all_symbols(portfolio: Dict, root: Path) -> Dict[str, List[str]]:
     schwab_syms = list(set(
         h["symbol"] for h in holdings
         if not h.get("is_loan") and not h.get("is_cash")
+        and h.get("symbol") not in _CASH_SYMBOLS
         and h.get("broker") != "fidelity"
         and h.get("symbol") and len(h["symbol"]) <= 6
     ))
@@ -299,6 +305,8 @@ def _apply_to_holdings(
         if h.get("is_loan") or h.get("is_cash"):
             continue
         sym    = h.get("symbol", "")
+        if sym in _CASH_SYMBOLS:
+            continue
         shares = float(h.get("shares") or 0)
         broker = h.get("broker", "")
 
@@ -306,6 +314,10 @@ def _apply_to_holdings(
             if sym in fidelity_prices and shares > 0:
                 new_price = fidelity_prices[sym]
                 old_price = float(h.get("price") or new_price)
+                # Sanity: reject price jumps > 50% in a single reprice
+                if old_price > 0 and abs(new_price - old_price) / old_price > 0.50:
+                    print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_price:.2f} → {new_price:.2f} ({abs(new_price-old_price)/old_price*100:.0f}%) exceeds 50% guard")
+                    continue
                 h["price"]          = round(new_price, 4)
                 h["market_value"]   = round(new_price * shares, 2)
                 h["day_change"]     = round((new_price - old_price) * shares, 2)
@@ -317,6 +329,11 @@ def _apply_to_holdings(
                 new_price  = p["price"]
                 prev_close = p["prev_close"]
                 chg_pct    = p["change_pct"]
+                old_price  = float(h.get("price") or new_price)
+                # Sanity: reject price jumps > 50% in a single reprice
+                if old_price > 0 and abs(new_price - old_price) / old_price > 0.50:
+                    print(f"  [repricer] ⛔ REJECTED {sym}: price jump {old_price:.2f} → {new_price:.2f} ({abs(new_price-old_price)/old_price*100:.0f}%) exceeds 50% guard")
+                    continue
                 h["price"]          = round(new_price, 4)
                 h["market_value"]   = round(new_price * shares, 2)
                 h["day_change"]     = round((new_price - prev_close) * shares, 2)
@@ -336,7 +353,7 @@ def _recalc_totals(portfolio: Dict) -> None:
     account_summaries = portfolio.get("account_summaries", {})
 
     def _choose_anchor(ah):
-        candidates = [h for h in ah if not h.get("is_loan") and not h.get("is_cash")]
+        candidates = [h for h in ah if not h.get("is_loan") and not h.get("is_cash") and h.get("symbol") not in _CASH_SYMBOLS]
         if not candidates:
             return None
         proprietary = [h for h in candidates if "-" in str(h.get("symbol", ""))]
@@ -392,6 +409,15 @@ def _recalc_totals(portfolio: Dict) -> None:
     excluded_mv    = round(gt - gv, 2)
     excluded_count = len(valid) - len(valid_with_cost)
     gd    = sum((acct.get("day_change") or 0) for acct in account_summaries.values())
+
+    # Sanity: reject if total changed > 25% from previous (likely data corruption)
+    prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0
+    if prev_total > 0 and gt > 0:
+        drift_pct = abs(gt - prev_total) / prev_total * 100
+        if drift_pct > 25:
+            print(f"  [repricer] ⛔ TOTAL SANITY FAIL: ${prev_total:,.0f} → ${gt:,.0f} ({drift_pct:.1f}% drift)")
+            print(f"  [repricer]   Likely data corruption. Keeping previous total.")
+            return  # abort total update, keep previous values
 
     portfolio["portfolio_totals"].update({
         "total_value":        round(gt, 2),
