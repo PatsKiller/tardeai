@@ -316,6 +316,8 @@ Use warm, supportive tone: "Here's what I recommend for you..." Be specific with
         high_impact = ctx["portfolio_weight"] > 5 or ctx["total_market_value"] > 50000
         result = get_llm_response("cio_synthesis" if high_impact else "agent_narrative",
                                    prompt, max_tokens=800, high_impact=high_impact)
+        if not result.get("success") and high_impact:
+            result = get_llm_response("agent_narrative", prompt[:4000], max_tokens=600, high_impact=False)
 
         if result.get("success"):
             analysis = result["response"]
@@ -590,6 +592,9 @@ Be specific with numbers. Use warm tone. Address disability implications for eve
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         from llm_router import get_llm_response
         result = get_llm_response("cio_synthesis", prompt, max_tokens=800, high_impact=True)
+        if not result.get("success"):
+            # Fallback to local model if cloud providers unavailable
+            result = get_llm_response("agent_narrative", prompt[:4000], max_tokens=600, high_impact=False)
         report = result.get("response", "Report unavailable") if result.get("success") else "Report generation failed"
 
         # Store in ai_reports
