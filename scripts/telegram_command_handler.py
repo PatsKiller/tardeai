@@ -303,11 +303,26 @@ def process_command(cmd: dict) -> str:
             print(f"  [topics] Saved new topic: {args[:50]}")
         conn.close()
 
-        # Route to LLM for immediate response
+        # Route to LLM for immediate response (enhanced with FRED + outcome lessons)
         try:
             from llm_router import get_llm_response
             task = "agent_narrative"
-            prompt = f"/no_think You are a certified retirement planner and financial research assistant.\n\n{command.title()} request: {args}\n\nContext: Managing $1.2M retirement portfolio across 4 accounts (Fidelity 401k, Schwab Rollover IRA, Schwab Roth IRA, Schwab Taxable). Target: $55K/yr income. Current: $14,342/yr. Timeline: 4-8 years.\n\nProvide actionable analysis with specific recommendations. If relevant, mention account placement (IRA vs Roth vs Taxable)."
+            extra_ctx = ""
+            try:
+                from external_market_data_ingest import get_macro_context
+                mc = get_macro_context()
+                if mc:
+                    extra_ctx += f"\n{mc}\n"
+            except Exception:
+                pass
+            try:
+                from intel_query import get_intel_summary
+                intel = get_intel_summary(agent="Alex", symbol=args.split()[0] if args else None, max_chars=400)
+                if intel:
+                    extra_ctx += f"\n{intel[:400]}\n"
+            except Exception:
+                pass
+            prompt = f"/no_think You are a certified retirement planner and financial research assistant.\n\n{command.title()} request: {args}\n\nContext: Managing $1.2M retirement portfolio across 4 accounts (Fidelity 401k, Schwab Rollover IRA, Schwab Roth IRA, Schwab Taxable). Target: $55K/yr income. Current: $14,342/yr. SSDI $3,800/mo. MFS filing. Timeline: 4-8 years.\n{extra_ctx}\nProvide actionable analysis with specific recommendations. If relevant, mention account placement (IRA vs Roth vs Taxable) and SSDI/Medicaid impact."
             result = get_llm_response(task, prompt, max_tokens=600)
             if result.get("success"):
                 # Save findings to topic

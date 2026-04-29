@@ -47,6 +47,7 @@ interface ProposalsResp { proposals: Proposal[] }
 interface MacroResp { context: string }
 interface AgentInfo { agent: string; total_analyses: number; avg_confidence: number; last_run: string; low_conf_count: number }
 interface AgentHealthResp { agents: AgentInfo[]; escalations_7d: number; pending_proposals: number; pending_instructions: number; outcome_accuracy: { total: number; correct: number; wrong: number }; latest_lessons: string }
+interface AutonomyResp { latest_lessons: string; debates_7d: { count: number; avg_consensus: number | null }; content_embeddings: number }
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -62,6 +63,7 @@ export default function Overview() {
   const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
   const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
   const { data: agentHealth } = useApi<AgentHealthResp>('/api/v2/agent-health')
+  const { data: autonomy } = useApi<AutonomyResp>('/api/v2/autonomy-progress')
 
   const sectors = ov?.sectors ?? []
   const totalSector = sectors.reduce((s, row) => s + row.value, 0)
@@ -373,6 +375,25 @@ export default function Overview() {
                 <span>Proposals: <strong style={{ color: 'var(--amber)' }}>{agentHealth.pending_proposals}</strong></span>
                 {agentHealth.outcome_accuracy.total > 0 && (
                   <span>Accuracy: <strong style={{ color: 'var(--green)' }}>{agentHealth.outcome_accuracy.correct}/{agentHealth.outcome_accuracy.total}</strong></span>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* What We Learned This Week */}
+          {(autonomy?.latest_lessons || (autonomy?.debates_7d?.count ?? 0) > 0) && (
+            <Card title="What We Learned" subtitle="this week">
+              {autonomy?.latest_lessons && (
+                <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.6, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap', marginBottom: 8 }}>
+                  {autonomy.latest_lessons}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 10, fontSize: 9, color: 'var(--text3)' }}>
+                {(autonomy?.debates_7d?.count ?? 0) > 0 && (
+                  <span>Debates: <strong style={{ color: 'var(--accent)' }}>{autonomy!.debates_7d.count}</strong></span>
+                )}
+                {(autonomy?.content_embeddings ?? 0) > 0 && (
+                  <span>Indexed: <strong>{autonomy!.content_embeddings}</strong></span>
                 )}
               </div>
             </Card>

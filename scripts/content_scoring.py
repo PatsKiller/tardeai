@@ -453,3 +453,87 @@ def tag_content(text: str, title: str = "", matched_keywords: list = None) -> di
         "strategy_tags": sorted(set(strategy_tags)),
         "agent_tags": sorted(set(agent_tags)),
     }
+
+
+# ── TF-IDF Semantic Similarity Engine ──────────────────────────────────
+# Lightweight, no dependencies — uses Python stdlib only.
+
+import re as _re
+import math as _math
+from collections import Counter as _Counter
+
+_STOP_WORDS = frozenset("the a an is are was were be been being have has had do does did will would shall should "
+    "may might can could of in to for on with at by from as into through during before after above below between "
+    "and or but not no nor so yet both either neither each every all any few more most other some such than too "
+    "very it its he she they them their this that these those i me my we us our you your who what which when where "
+    "how why if then else also just only even still already again once here there now then".split())
+
+
+def _tokenize(text: str) -> list:
+    """Tokenize text into lowercase words, strip stopwords and short tokens."""
+    words = _re.findall(r'[a-zA-Z]{3,}', text.lower())
+    return [w for w in words if w not in _STOP_WORDS]
+
+
+def compute_tfidf(text: str, top_n: int = 30) -> dict:
+    """Compute TF-IDF-like term weights for a document. Returns {term: weight}."""
+    tokens = _tokenize(text)
+    if not tokens:
+        return {}
+    tf = _Counter(tokens)
+    total = len(tokens)
+    # Use log-scaled term frequency (simulates TF-IDF without corpus)
+    # Boost retirement/dividend/SSDI domain terms
+    DOMAIN_BOOST = {"retirement": 2.0, "dividend": 2.0, "ssdi": 3.0, "disability": 2.5,
+                    "roth": 2.5, "conversion": 2.0, "medicaid": 2.5, "irmaa": 3.0,
+                    "medicare": 2.0, "income": 1.5, "yield": 1.5, "tax": 1.5,
+                    "portfolio": 1.5, "rebalance": 2.0, "etf": 1.5, "growth": 1.3}
+    weights = {}
+    for term, count in tf.items():
+        w = (1 + _math.log(count)) / (1 + _math.log(total))
+        w *= DOMAIN_BOOST.get(term, 1.0)
+        weights[term] = round(w, 4)
+    # Return top N by weight
+    sorted_terms = sorted(weights.items(), key=lambda x: -x[1])[:top_n]
+    return dict(sorted_terms)
+
+
+def semantic_similarity(query: str, doc_terms: dict) -> float:
+    """Compute similarity between a query string and a document's TF-IDF terms.
+    Returns 0.0 to 1.0."""
+    query_tokens = set(_tokenize(query))
+    if not query_tokens or not doc_terms:
+        return 0.0
+    overlap = query_tokens & set(doc_terms.keys())
+    if not overlap:
+        return 0.0
+    score = sum(doc_terms[t] for t in overlap)
+    max_possible = sum(sorted(doc_terms.values(), reverse=True)[:len(query_tokens)])
+    return min(1.0, score / max_possible) if max_possible > 0 else 0.0
+
+
+def index_content(source_type: str, source_id: int, title: str, text: str) -> dict:
+    """Compute TF-IDF terms and store in content_embeddings table. Returns the terms dict."""
+    combined = f"{title} {title} {text}"  # title weighted 2x
+    terms = compute_tfidf(combined)
+    top_kw = list(terms.keys())[:10]
+
+    try:
+        import psycopg2, json
+        from pathlib import Path
+        pw = ""
+        for line in Path(__file__).resolve().parent.parent.joinpath(".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+        conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO content_embeddings (source_type, source_id, title, tfidf_terms, top_keywords)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (source_type, source_id) DO UPDATE SET tfidf_terms=EXCLUDED.tfidf_terms,
+            top_keywords=EXCLUDED.top_keywords""",
+            (source_type, source_id, title[:200], json.dumps(terms), top_kw))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    return {"terms": terms, "top_keywords": top_kw}

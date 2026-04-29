@@ -222,6 +222,73 @@ def generate_discovery_summary(send_telegram: bool = False) -> dict:
     return {"items": len(items), "proposals": len(proposals)}
 
 
+# ── Job 3b: Multi-agent debate for high-confidence intel ─────────────
+
+def run_agent_debate(symbol: str, trigger_title: str, trigger_id: int = 0,
+                     trigger_source: str = "qualified_intelligence") -> dict:
+    """Run quick Maria/Steph/Risk debate on a symbol, store transcript, return consensus."""
+    try:
+        from llm_router import get_llm_response
+
+        prompt = f"""/no_think You are moderating a quick debate between 3 portfolio agents about {symbol}.
+
+CONTEXT: "{trigger_title}"
+CLIENT: Age 58, SSDI $3,800/mo, MFS filing, $1.2M portfolio, $55K income target.
+
+Simulate brief responses from each agent (2-3 sentences each):
+
+MARIA (Fundamentals): What does the research say? Catalyst strength?
+STEPH (Allocation): Does this fit the income/allocation strategy? Position sizing?
+RISK (Technical): What are the risk levels? Stop placement? RSI/volatility?
+
+Then provide:
+CONSENSUS: BUY/HOLD/SELL/RESEARCH_MORE
+CONFIDENCE: 0-100%
+SSDI_IMPACT: Does this affect SSDI/Medicaid/IRMAA?
+
+Keep total response under 200 words."""
+
+        result = get_llm_response("cio_synthesis", prompt, max_tokens=400)
+        debate = result.get("response", "") if result.get("success") else ""
+
+        # Extract consensus
+        consensus_rec = "HOLD"
+        consensus_score = 50
+        for line in debate.split("\n"):
+            line_up = line.upper().strip()
+            if "CONSENSUS:" in line_up:
+                for r in ("BUY", "SELL", "HOLD", "RESEARCH_MORE"):
+                    if r in line_up:
+                        consensus_rec = r
+                        break
+            if "CONFIDENCE:" in line_up:
+                import re
+                nums = re.findall(r'(\d+)', line)
+                if nums:
+                    consensus_score = min(100, int(nums[0]))
+
+        # Store in DB
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO agent_debate_log
+            (symbol, trigger_source, trigger_id, participants, debate_transcript,
+             consensus_score, consensus_recommendation, provider)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            (symbol, trigger_source, trigger_id,
+             ["Maria", "Steph", "Risk"],
+             debate[:2000], consensus_score / 100.0, consensus_rec,
+             result.get("provider", "")))
+        conn.commit()
+        conn.close()
+
+        print(f"  [debate] {symbol}: {consensus_rec} (conf:{consensus_score}%) via {result.get('provider','?')}")
+        return {"symbol": symbol, "consensus": consensus_rec, "confidence": consensus_score / 100.0,
+                "transcript": debate, "provider": result.get("provider")}
+    except Exception as e:
+        print(f"  [debate] {symbol}: error — {e}")
+        return {"symbol": symbol, "error": str(e)}
+
+
 # ── Job 4: Rotation proposals (strategy-aware) ──────────────────────
 
 ROTATION_RULES = {
