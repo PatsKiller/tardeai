@@ -2714,9 +2714,33 @@ def _search_sources_status():
     # FRED
     fred = _db_query("SELECT count(*) as cnt FROM fred_economic_series") or [{"cnt": 0}]
     sources["fred"] = {"active": (fred[0].get("cnt", 0) or 0) > 0, "series": fred[0].get("cnt", 0)}
-    # Embeddings
-    emb = _db_query("SELECT count(*) as cnt FROM content_embeddings WHERE embedding IS NOT NULL") or [{"cnt": 0}]
-    sources["embeddings"] = {"active": True, "indexed": emb[0].get("cnt", 0), "model": "nomic-embed-text", "dim": 768}
+    # Embeddings health
+    emb = _db_query("""SELECT count(*) as total,
+           SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) as with_emb,
+           MAX(created_at) as last_indexed
+        FROM content_embeddings""") or [{"total": 0, "with_emb": 0}]
+    total_content = _db_query("SELECT (SELECT count(*) FROM news_articles) + (SELECT count(*) FROM youtube_transcripts) as total") or [{"total": 0}]
+    emb_count = emb[0].get("with_emb", 0) or 0
+    content_total = total_content[0].get("total", 0) or 1
+    sources["embeddings"] = {
+        "active": emb_count > 0,
+        "indexed": emb_count,
+        "total_content": content_total,
+        "coverage_pct": round(emb_count / content_total * 100) if content_total > 0 else 0,
+        "last_indexed": _json_clean(emb[0].get("last_indexed")),
+        "model": "nomic-embed-text", "dim": 768,
+    }
+    # Search efficiency: % routed to free sources today
+    brave_calls = brave_today[0].get("cnt", 0) or 0
+    total_news_today = _db_query("SELECT count(*) as cnt FROM news_articles WHERE created_at > CURRENT_DATE") or [{"cnt": 0}]
+    free_queries = (total_news_today[0].get("cnt", 0) or 0)
+    total_queries = free_queries + brave_calls
+    sources["_efficiency"] = {
+        "brave_calls_today": brave_calls,
+        "free_source_queries": free_queries,
+        "free_pct": round(free_queries / max(1, total_queries) * 100),
+        "fallback_chain": "Brave → Finnhub → Google News RSS → Yahoo RSS → DB embeddings",
+    }
     return sources
 
 

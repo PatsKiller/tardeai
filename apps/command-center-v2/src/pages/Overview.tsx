@@ -48,6 +48,9 @@ interface MacroResp { context: string }
 interface AgentInfo { agent: string; total_analyses: number; avg_confidence: number; last_run: string; low_conf_count: number }
 interface AgentHealthResp { agents: AgentInfo[]; escalations_7d: number; pending_proposals: number; pending_instructions: number; outcome_accuracy: { total: number; correct: number; wrong: number }; latest_lessons: string }
 interface AutonomyResp { latest_lessons: string; debates_7d: { count: number; avg_consensus: number | null }; content_embeddings: number; maturity_score: number }
+interface SearchEfficiency { brave_calls_today: number; free_source_queries: number; free_pct: number; fallback_chain: string }
+interface EmbeddingInfo { indexed: number; total_content: number; coverage_pct: number; last_indexed: string }
+interface SearchSourcesResp { _efficiency: SearchEfficiency; embeddings: EmbeddingInfo; brave_search: { calls_today: number; daily_limit: number } }
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -64,6 +67,7 @@ export default function Overview() {
   const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
   const { data: agentHealth } = useApi<AgentHealthResp>('/api/v2/agent-health')
   const { data: autonomy } = useApi<AutonomyResp>('/api/v2/autonomy-progress')
+  const { data: searchSrc } = useApi<SearchSourcesResp>('/api/v2/search-sources')
 
   const sectors = ov?.sectors ?? []
   const totalSector = sectors.reduce((s, row) => s + row.value, 0)
@@ -403,6 +407,27 @@ export default function Overview() {
                 {(autonomy.debates_7d?.count ?? 0) > 0 && <span>Debates: <strong style={{ color: 'var(--accent)' }}>{autonomy.debates_7d.count}</strong></span>}
                 {(autonomy.content_embeddings ?? 0) > 0 && <span>Embeddings: <strong>{autonomy.content_embeddings}</strong></span>}
               </div>
+            </Card>
+          )}
+
+          {/* Search Efficiency */}
+          {searchSrc?._efficiency && (
+            <Card title="Search Efficiency" subtitle="today">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--amber)', fontFamily: 'var(--sans)' }}>{searchSrc.brave_search?.calls_today ?? 0}/{searchSrc.brave_search?.daily_limit ?? 5}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>Brave calls</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)', fontFamily: 'var(--sans)' }}>{searchSrc._efficiency.free_pct}%</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>free sources</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--sans)' }}>{searchSrc.embeddings?.coverage_pct ?? 0}%</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>embedded</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text3)', textAlign: 'center' }}>{searchSrc._efficiency.fallback_chain}</div>
             </Card>
           )}
         </div>
