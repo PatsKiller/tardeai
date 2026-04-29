@@ -22,6 +22,15 @@ interface RetirementData {
 }
 
 const fmtK = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v.toLocaleString()}`
+const fmtAxis = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(0)}K` : `$${v}`
+const fmtFull = (v: number) => `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+
+// Scenario assumptions for rich tooltips
+const SCENARIO_RATES: Record<string, { rate: number; divYield: number; label: string }> = {
+  Conservative: { rate: 0.055, divYield: 0.025, label: '5.5% return (2.5% dividends + 3.0% growth)' },
+  Base: { rate: 0.075, divYield: 0.025, label: '7.5% return (2.5% dividends + 5.0% growth)' },
+  Aggressive: { rate: 0.096, divYield: 0.025, label: '9.6% return (2.5% dividends + 7.1% growth)' },
+}
 
 interface AlexAnalysis { symbol: string; strategy_type: string; severity: string; provider: string; weight: number; pnl: number; trigger: string; created_at: string }
 interface AlexResp { analyses: AlexAnalysis[]; total: number }
@@ -349,46 +358,59 @@ export default function Retirement() {
         </div>
       </div>
 
-      {/* === 3. Timeline Projection Chart === */}
+      {/* === 3. Timeline Projection Chart (enhanced v2.45) === */}
       <div style={{ marginTop: 16 }}>
         <SectionHeader title="Retirement Timeline Projections" count={data.timeline.length} />
         <Card>
-          <div style={{ height: 300, position: 'relative' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 9, color: 'var(--text3)' }}>Portfolio value projection through age 80 · 3 scenarios · SSDI + disability-aware</span>
+            <span style={{ fontSize: 8, color: 'var(--text3)' }}>Updated: {data.as_of || 'live'}</span>
+          </div>
+          <div style={{ height: 320, position: 'relative' }}>
             <Line
               data={{
-                labels: data.timeline.map(r => String(r.year)),
+                labels: data.timeline.map(r => `${r.year}`),
                 datasets: [
                   {
-                    label: 'Conservative',
+                    label: 'Conservative (5.5%)',
                     data: data.timeline.map(r => r.conservative),
                     borderColor: '#f6465d',
-                    backgroundColor: 'rgba(246,70,93,0.08)',
-                    fill: false,
+                    backgroundColor: 'rgba(246,70,93,0.06)',
+                    fill: true,
                     tension: 0.3,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
+                    pointRadius: data.timeline.map(r => r.milestone ? 5 : 2),
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: data.timeline.map(r => r.milestone ? '#f6465d' : 'transparent'),
+                    pointBorderColor: data.timeline.map(r => r.milestone ? '#fff' : '#f6465d'),
+                    pointBorderWidth: data.timeline.map(r => r.milestone ? 2 : 1),
                     borderWidth: 2,
                   },
                   {
-                    label: 'Base',
+                    label: 'Base (7.5%)',
                     data: data.timeline.map(r => r.base),
                     borderColor: '#4a90f4',
-                    backgroundColor: 'rgba(74,144,244,0.08)',
-                    fill: false,
+                    backgroundColor: 'rgba(74,144,244,0.06)',
+                    fill: true,
                     tension: 0.3,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
+                    pointRadius: data.timeline.map(r => r.milestone ? 5 : 2),
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: data.timeline.map(r => r.milestone ? '#4a90f4' : 'transparent'),
+                    pointBorderColor: data.timeline.map(r => r.milestone ? '#fff' : '#4a90f4'),
+                    pointBorderWidth: data.timeline.map(r => r.milestone ? 2 : 1),
                     borderWidth: 2,
                   },
                   {
-                    label: 'Aggressive',
+                    label: 'Aggressive (9.6%)',
                     data: data.timeline.map(r => r.aggressive),
                     borderColor: '#0ecb81',
-                    backgroundColor: 'rgba(14,203,129,0.08)',
-                    fill: false,
+                    backgroundColor: 'rgba(14,203,129,0.06)',
+                    fill: true,
                     tension: 0.3,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
+                    pointRadius: data.timeline.map(r => r.milestone ? 5 : 2),
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: data.timeline.map(r => r.milestone ? '#0ecb81' : 'transparent'),
+                    pointBorderColor: data.timeline.map(r => r.milestone ? '#fff' : '#0ecb81'),
+                    pointBorderWidth: data.timeline.map(r => r.milestone ? 2 : 1),
                     borderWidth: 2,
                   },
                 ],
@@ -404,13 +426,51 @@ export default function Retirement() {
                     labels: { color: '#b8c1d0', font: { size: 10 }, boxWidth: 12, padding: 16 },
                   },
                   tooltip: {
-                    backgroundColor: '#1b2230',
+                    backgroundColor: 'rgba(16,20,30,0.95)',
                     titleColor: '#eaeff6',
                     bodyColor: '#b8c1d0',
                     borderColor: '#2c3a52',
                     borderWidth: 1,
+                    padding: 12,
+                    bodyFont: { size: 11 },
+                    titleFont: { size: 12, weight: 'bold' as const },
                     callbacks: {
-                      label: (ctx) => `${ctx.dataset.label}: ${fmt$(ctx.parsed.y)}`,
+                      title: (items) => {
+                        if (!items.length) return ''
+                        const idx = items[0].dataIndex
+                        const row = data.timeline[idx]
+                        const milestone = row?.milestone ? `  ★ ${row.milestone}` : ''
+                        return `${row?.year} (Age ${row?.age})${milestone}`
+                      },
+                      label: (ctx) => {
+                        const val = ctx.parsed.y
+                        const label = ctx.dataset.label?.split(' (')[0] || ''
+                        const scenario = SCENARIO_RATES[label]
+                        const idx = ctx.dataIndex
+                        const prevIdx = idx > 0 ? idx - 1 : 0
+                        const tl = data.timeline
+                        const prevVal = label === 'Conservative' ? tl[prevIdx]?.conservative
+                          : label === 'Base' ? tl[prevIdx]?.base
+                          : tl[prevIdx]?.aggressive
+                        const yoyGrowth = prevVal && prevVal > 0 && idx > 0 ? ((val / prevVal) - 1) * 100 : 0
+                        const divContrib = scenario ? Math.round(val * scenario.divYield) : 0
+                        const compounding = idx > 0 ? Math.round(val - (prevVal || val)) : 0
+                        const lines = [
+                          `${label}: ${fmtFull(val)}`,
+                        ]
+                        if (scenario) lines.push(`  Rate: ${scenario.label}`)
+                        if (idx > 0) {
+                          lines.push(`  YoY growth: ${yoyGrowth >= 0 ? '+' : ''}${yoyGrowth.toFixed(1)}% (${fmtFull(compounding)})`)
+                          lines.push(`  Est. dividends: ${fmtFull(divContrib)}/yr`)
+                        }
+                        return lines
+                      },
+                      afterBody: (items) => {
+                        const idx = items[0]?.dataIndex ?? 0
+                        const row = data.timeline[idx]
+                        if (!row?.milestone) return []
+                        return [``, `★ ${row.milestone}`]
+                      },
                     },
                   },
                 },
@@ -425,7 +485,7 @@ export default function Retirement() {
                     ticks: {
                       color: '#6b7a8d',
                       font: { size: 9 },
-                      callback: (v) => typeof v === 'number' ? fmtK(v) : v,
+                      callback: (v) => typeof v === 'number' ? fmtAxis(v) : v,
                     },
                     grid: { color: 'rgba(255,255,255,0.04)' },
                   },
@@ -436,16 +496,21 @@ export default function Retirement() {
           {/* Milestone annotations row */}
           {data.timeline.some(r => r.milestone) && (
             <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {data.timeline.filter(r => r.milestone).map((r, i) => (
-                <div key={i} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '3px 10px', borderRadius: 99,
-                  background: 'rgba(74,144,244,0.1)', border: '1px solid rgba(74,144,244,0.2)',
-                }}>
-                  <span style={{ fontSize: 9, color: '#4a90f4', fontWeight: 600, fontFamily: 'var(--sans)' }}>{r.year} (Age {r.age})</span>
-                  <span style={{ fontSize: 9, color: 'var(--text2)', fontFamily: 'var(--sans)' }}>{r.milestone}</span>
-                </div>
-              ))}
+              {data.timeline.filter(r => r.milestone).map((r, i) => {
+                const base = r.base
+                return (
+                  <div key={i} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '4px 12px', borderRadius: 99,
+                    background: 'rgba(74,144,244,0.1)', border: '1px solid rgba(74,144,244,0.2)',
+                  }}>
+                    <span style={{ fontSize: 9, color: '#4a90f4', fontWeight: 700, fontFamily: 'var(--sans)' }}>{r.year}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text1)', fontWeight: 600, fontFamily: 'var(--sans)' }}>Age {r.age}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text2)', fontFamily: 'var(--sans)' }}>{r.milestone}</span>
+                    <span style={{ fontSize: 8, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{fmtAxis(base)}</span>
+                  </div>
+                )
+              })}
             </div>
           )}
         </Card>
