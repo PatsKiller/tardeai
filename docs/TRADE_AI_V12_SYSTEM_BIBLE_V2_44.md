@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.43
+# Trade AI v12 System Bible v2.44
 
-**April 29, 2026 | ms01-openclaw | FRED Macro + Feedback Loop + Enhanced Weekly Health**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + SSDI Rules + Auto-Execute + Semantic Search**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -16,8 +16,8 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | SSDI | $3,800/mo ($45,600/yr) | personal_situation |
 | Filing status | MFS | personal_situation (corrected) |
 | Tax bracket | 12% — room: $66,883 | personal_tax_history |
-| DB tables | **145** | information_schema count |
-| API endpoints | 112+ | grep api_v2.py |
+| DB tables | **146** | information_schema count |
+| API endpoints | 115+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
 | Cron entries | **54** | crontab -l |
 | Telegram commands | 13 unique (17 parse patterns) | telegram_command_handler.py |
@@ -1043,3 +1043,82 @@ Proposal created → User reviews on Retirement page → Approve/Reject
 ### OpenClaw Gateway
 
 Fixed `xai:default` auth profile (removed invalid fields: model, api_key_env, base_url, note). Gateway restart confirmed.
+
+---
+
+## v2.44 — SSDI Rules + Auto-Execute + Proposal History Chart + Semantic Search
+
+### Enhanced SSDI-Specific Rotation Rules (Phase 2)
+
+| Check | Threshold | Action |
+|---|---|---|
+| **IRMAA projection** | MAGI + sale value > $103,000 (MFS) | irmaa_risk = true, warning appended |
+| **MFS bracket ceiling** | MAGI + sale value > $94,300 (22% top) | income_impact = "bracket_jump" |
+| **Medicaid 5-year lookback** | IRA distribution > $50,000 | Warning: large IRA distribution may affect lookback |
+| **Capital gains MAGI** | Taxable sale est. gain pushes MAGI past IRMAA | irmaa_risk = true |
+| **Roth IRA** | Always safe | ssdi_impact = "none", income_impact = "none" |
+
+**Data sources for thresholds:**
+- `personal_situation.json`: AGI, Roth YTD, bracket ceiling, SSDI annual
+- Live MAGI calculation: base AGI + Roth conversions YTD + proposed sale value
+
+### Auto-Execution Toggle (Phase 3)
+
+| Setting | Value |
+|---|---|
+| Table | `agent_intelligence_rules` (rule_type='auto_execute', rule_key='low_risk') |
+| Default | **DISABLED** (enabled: false) |
+| Criteria | confidence ≥ 90%, ssdi_impact = "none", irmaa_risk = false, income_impact = "none" |
+| Behavior | Auto-approves proposal + generates trade instruction. Logs only — no actual trade. |
+
+**To enable:**
+```sql
+UPDATE agent_intelligence_rules
+SET config = jsonb_set(config, '{enabled}', 'true')
+WHERE rule_type = 'auto_execute' AND rule_key = 'low_risk';
+```
+
+### Trade Instructions (Phase 3)
+
+| Field | Description |
+|---|---|
+| `trade_instructions` table | Generated on proposal approval (manual or auto) |
+| Fields | proposal_id, symbol, action, account_name, shares, target_symbol, estimated_tax_impact, ssdi_note, irmaa_note |
+| execution_type | "manual" (human-approved) or "auto_approved" (engine-approved) |
+| instruction_text | Human-readable: "SELL 45 shares of SCHG in Roth IRA. Target: cash. No SSDI impact." |
+
+### Proposal History Chart (Phase 1)
+
+- `/api/v2/proposals/history` — 30-day daily breakdown of approved/rejected/proposed counts
+- Stacked Bar chart on Retirement page using Chart.js
+- Approval rate progress bar with percentage
+
+### Semantic Search on Transcripts (Phase 4)
+
+- YouTube queries now search `structured_json` (key_points, action_items, tickers_mentioned)
+- New `search_transcripts(query)` function for topic-based transcript search
+- `get_intel_for_symbol()` enhanced with summary + structured_json ILIKE matching
+
+### New API Endpoints (v2.44)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v2/proposals/history` | GET | 30-day daily breakdown for chart |
+| `/api/v2/trade-instructions` | GET | Pending/executed trade instructions |
+
+### New DB Table (v2.44)
+
+| Table | Purpose | Records |
+|---|---|---|
+| `trade_instructions` | Actionable trade instructions from approved proposals | 0 (new) |
+
+### Test Results (April 29, 2026)
+
+| Test | Result |
+|---|---|
+| `config_sync.py --sync` | 59 rules synced (24 data source + 18 SEC + 18 intelligence) |
+| `agent_watchlist_engine.py --test` | 14 qualified items, 4 proposals, discovery summary generated |
+| `agent_watchlist_engine.py --daily` | Full pipeline: promote → propose → rotate → discover |
+| `fred_data_ingest.py --test` | 7/7 FRED series live (Fed Rate 3.64%, VIX 17.83, SP500 7138.80) |
+| `alex --analyze V --tax-advisor` | Full disability-aware analysis: Roth $43.7K + IRA $93.6K, IRMAA/Medicaid projections |
+| `alex --roth-ladder` | 5-year projection: $126K converted, IRMAA Tier 1 starting 2028, Medicaid impact table |
