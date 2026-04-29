@@ -242,12 +242,12 @@ ROTATION_RULES = {
 
 
 def propose_rotations() -> dict:
-    """Check watchlist positions against rotation rules. Propose rotations for eligible symbols."""
+    """Check positions against rotation rules. Account-specific, SSDI-aware proposals."""
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Get latest agent results with strategy classification
+    # Get latest agent results with strategy + account info
     cur.execute("""
         SELECT DISTINCT ON (r.symbol)
             r.symbol, r.agent, r.recommendation, r.confidence,
@@ -261,30 +261,76 @@ def propose_rotations() -> dict:
     """)
     sell_candidates = cur.fetchall()
 
+    # Load holdings for account-specific details
+    holdings_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    holdings_map = {}
+    try:
+        import json as _j
+        h = _j.loads(holdings_path.read_text())
+        for pos in h.get("holdings", []):
+            sym = pos.get("symbol", "")
+            if sym:
+                if sym not in holdings_map:
+                    holdings_map[sym] = []
+                aid = pos.get("account_id", pos.get("account", ""))
+                acct_type = "Roth IRA" if "roth" in aid.lower() else "Rollover IRA" if "rollover" in aid.lower() or "ira" in aid.lower() else "401k" if "401k" in aid.lower() else "Taxable"
+                holdings_map[sym].append({
+                    "account": acct_type,
+                    "shares": float(pos.get("shares", 0) or 0),
+                    "value": float(pos.get("market_value", 0) or 0),
+                })
+    except Exception:
+        pass
+
     ucur = conn.cursor()
     rotations = 0
 
     for c in sell_candidates:
         strategy = c.get("strategy_type", "")
-        rule = ROTATION_RULES.get(strategy, {"auto_rotate": False, "rule": "Unknown strategy — manual review"})
+        rule = ROTATION_RULES.get(strategy, {"auto_rotate": False, "rule": "Unknown — manual review"})
 
         if not rule["auto_rotate"]:
-            # Income/retirement assets — flag for review only, don't propose rotation
             continue
 
-        # Check if already proposed
+        # Skip if already proposed
         cur.execute("SELECT id FROM watchlist_proposals WHERE symbol=%s AND status='proposed' AND action='rotate'", (c["symbol"],))
         if cur.fetchone():
             continue
 
-        ucur.execute("""INSERT INTO watchlist_proposals
-            (symbol, action, strategy_type, reason, confidence, proposed_by, status)
-            VALUES (%s, 'rotate', %s, %s, %s, 'rotation_engine', 'proposed')""",
-            (c["symbol"], strategy,
-             f"{c['agent']} says {c['recommendation']} (conf:{float(c['confidence']):.0%}). Rule: {rule['rule']}",
-             float(c["confidence"])))
-        rotations += 1
-        print(f"  [rotate] {c['symbol']} ({strategy}): {c['recommendation']} — {rule['rule'][:60]}")
+        # Account-specific proposals
+        positions = holdings_map.get(c["symbol"], [{"account": "Unknown", "shares": 0, "value": 0}])
+        review_date = (datetime.now() + __import__("datetime").timedelta(days=14)).date()
+
+        for pos in positions:
+            # SSDI impact assessment
+            ssdi_impact = "none"
+            income_impact = "none"
+            irmaa_risk = False
+
+            if pos["account"] in ("Rollover IRA", "401k"):
+                ssdi_impact = "conversion_taxable"  # Selling here creates taxable event if converted
+                irmaa_risk = pos["value"] > 50000  # Large IRA sale could push MAGI up
+            elif pos["account"] == "Roth IRA":
+                ssdi_impact = "none"  # Roth sales are tax-free
+                income_impact = "none"
+            elif pos["account"] == "Taxable":
+                ssdi_impact = "capital_gains"  # May trigger capital gains
+                income_impact = "taxable_event"
+
+            ucur.execute("""INSERT INTO watchlist_proposals
+                (symbol, action, strategy_type, reason, confidence, proposed_by, status,
+                 account_name, shares_to_sell, target_symbol, review_date,
+                 ssdi_impact, income_impact, irmaa_risk)
+                VALUES (%s, 'rotate', %s, %s, %s, 'rotation_engine', 'proposed',
+                        %s, %s, 'cash', %s, %s, %s, %s)""",
+                (c["symbol"], strategy,
+                 f"{c['agent']}: {c['recommendation']} (conf:{float(c['confidence']):.0%}). {rule['rule']}",
+                 float(c["confidence"]),
+                 pos["account"], pos["shares"], review_date,
+                 ssdi_impact, income_impact, irmaa_risk))
+            rotations += 1
+            risk_badge = " IRMAA!" if irmaa_risk else ""
+            print(f"  [rotate] {c['symbol']} in {pos['account']}: {pos['shares']:.0f} shares → cash.{risk_badge} SSDI:{ssdi_impact}")
 
     conn.commit()
     conn.close()
