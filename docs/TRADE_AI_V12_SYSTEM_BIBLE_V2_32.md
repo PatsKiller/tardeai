@@ -231,15 +231,43 @@ MONTHLY (1st of month via cron):
 5. Approved channels added to youtube_channels → daily 7 PM auto-ingest
 ```
 
-### What Is NOT Done (Limitations)
+### Transcript Processing (v2.32 — `transcript_processor.py`)
 
-- No text cleaning (filler words, auto-caption errors remain in stored text)
-- No summarization (agents get raw transcript, not a summary)
+After ingestion, transcripts are processed through 3 additional steps:
+
+```
+RAW TRANSCRIPT → CLEANING → SUMMARY → SUB-TAGGING → PURGE DATE
+
+CLEANING (deterministic, no LLM):
+  Remove fillers: um, uh, you know, like, basically, sort of, kind of
+  Collapse whitespace, basic sentence capitalization
+  Result: cleaned_text column (stored alongside raw)
+
+SUMMARY (LLM-generated, 150-200 words):
+  Local model via llm_router. Focuses on actionable insights.
+  Output: main topic + 3-4 key insights + 1 actionable takeaway
+  Result: summary column (11/12 transcripts summarized)
+
+SUB-TAGGING (12 retirement-specific subtopics):
+  roth_conversion_ladder  | ssdi_ira_rules         | medicaid_trust_planning
+  disability_spousal_ira  | irmaa_medicare         | income_gap_strategy
+  tax_bracket_management  | covered_call_income    | dividend_growth
+  rmd_planning            | 401k_rollover          | bond_ladder
+  Result: sub_tags JSONB column
+
+PURGE DATES (tiered retention):
+  Q ≥ 75: keep forever (Ben Felix Q:80)
+  Q 50-74: purge after 12 months (PPC Ian Q:65 → Apr 2027)
+  Q < 50: purge after 90 days (zoo video Q:30 → Jul 2026)
+```
+
+### What Is NOT Done (Remaining Limitations)
+
 - No semantic understanding ("Apple stock is terrible" would match AAPL positively)
-- No sentiment analysis on transcripts (only on social posts)
 - No cross-channel dedup (same topic on 2 channels = 2 separate entries)
 - No caption quality detection (auto-generated vs manual not distinguished)
-- Channel matching is flexible but not perfect (added both "ppc ian" and "ppcian" to handle variants)
+- Summaries depend on local 1.7B model quality (adequate but not deep)
+- Sub-tags are regex-based, not semantic (may miss creative phrasings)
 
 ---
 
@@ -561,8 +589,9 @@ python3 scripts/system_preflight_check.py
 | v2.28 | 4 critical fixes: news 46 sources, Aegis events, decision_inputs, learning loop |
 | v2.29 | April 29 incident response: Finviz URL, .env sourcing, ollama model, stop prices, header tape sync, preflight check |
 | v2.30 | SEC EDGAR Form 4 + yfinance + Alpha Vantage + agent YAML config |
-| **v2.31** | **YouTube channel auto-discovery (agent-driven, monthly). Full transcript methodology documented: ingestion → scoring → tagging → retention → limitations. Channel scoring: subscriber quality + keyword relevance + upload consistency. 15 candidates found (Q:42-83). Trusted channel list expanded to 18.** |
+| v2.31 | YouTube channel auto-discovery. Full transcript methodology documented |
+| **v2.32** | **Transcript processor: filler removal + LLM summaries (11/12) + 12 retirement sub-tags + tiered purge dates. 5 limitations fixed (cleaning, summarization done). 5 remain (semantic, dedup, caption quality).** |
 
 ---
 
-**v2.31 — Agent-driven YouTube channel discovery. 15 candidates found and scored from 10 strategy-aligned searches. Complete transcript methodology documented (8-step pipeline, retention policy, scoring breakdown, all limitations listed honestly). 18 trusted channels. Maturity: 73%.**
+**v2.32 — Transcript intelligence upgrade: raw → cleaned → summarized → sub-tagged → purge-dated. 12 retirement sub-tags (roth_ladder, ssdi_ira, medicaid_trust, etc). Tiered retention (Q≥75 forever, Q50-74 12mo, Q<50 90d). Maturity: 73%.**
