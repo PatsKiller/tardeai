@@ -202,7 +202,7 @@ def write_formal_export(brief: dict, summary: str) -> str:
     export_path.write_text("\n".join(lines))
 
     # Also write to docs for archival
-    docs_path = PROJECT_ROOT / "docs" / "handoff_2026-04-19" / f"openclaw_aegis_morning_brief_{today}.md"
+    docs_path = PROJECT_ROOT / "docs" / f"openclaw_aegis_morning_brief_{today}.md"
     docs_path.write_text("\n".join(lines))
 
     return str(export_path)
