@@ -77,13 +77,40 @@ def build_retirement_roadmap(portfolio: Dict, state_dir: Path) -> Dict:
     days_to_loan_deadline = (LOAN_ROLLOVER_DEADLINE - today).days
     monthly_to_payoff = round(LOAN_BALANCE / max(1, days_to_loan_deadline/30), 0)
 
-    # Wealth timeline (3 scenarios)
+    # Wealth timeline (3 scenarios) — FRED-aware rate adjustment
     years_to_model = 80 - int(current_age)
     annual_contrib = 7_000   # Roth IRA max 2026
 
-    conservative = _project_wealth(total, annual_contrib, 0.05, years_to_model)
-    base         = _project_wealth(total, annual_contrib, 0.07, years_to_model)
-    aggressive   = _project_wealth(total, annual_contrib, 0.09, years_to_model)
+    # Try to adjust rates based on FRED macro data (Fed Funds Rate, yield spread)
+    rate_conservative = 0.055
+    rate_base = 0.075
+    rate_aggressive = 0.096
+    try:
+        from external_market_data_ingest import get_macro_context, _get_conn as _fred_conn
+        import psycopg2.extras as _px
+        _fc = _fred_conn()
+        _fcur = _fc.cursor(cursor_factory=_px.RealDictCursor)
+        _fcur.execute("SELECT series_id, value FROM fred_economic_series WHERE series_id IN ('DFF','T10Y2Y') ORDER BY observation_date DESC LIMIT 2")
+        fred = {r["series_id"]: float(r["value"]) for r in _fcur.fetchall()}
+        _fc.close()
+        fed_rate = fred.get("DFF", 4.0)
+        spread = fred.get("T10Y2Y", 0.5)
+        # Adjust: lower fed rate = slightly higher equity returns, inverted yield = lower
+        if fed_rate < 3.0:
+            rate_base += 0.005  # low-rate environment boosts equities
+        elif fed_rate > 5.0:
+            rate_base -= 0.005  # high-rate environment drags equities
+        if spread < 0:
+            rate_conservative -= 0.01  # inverted yield = recession risk
+        rate_conservative = round(rate_conservative, 3)
+        rate_base = round(rate_base, 3)
+        rate_aggressive = round(rate_aggressive, 3)
+    except Exception:
+        pass  # Fall back to defaults
+
+    conservative = _project_wealth(total, annual_contrib, rate_conservative, years_to_model)
+    base         = _project_wealth(total, annual_contrib, rate_base, years_to_model)
+    aggressive   = _project_wealth(total, annual_contrib, rate_aggressive, years_to_model)
 
     # Build timeline with age labels
     timeline = []
@@ -138,7 +165,14 @@ def build_retirement_roadmap(portfolio: Dict, state_dir: Path) -> Dict:
 
     result = {
         "as_of":              today.isoformat(),
+        "generated_at":       datetime.now().isoformat()[:19],
         "current_age":        round(current_age, 1),
+        "rate_assumptions": {
+            "conservative": rate_conservative,
+            "base": rate_base,
+            "aggressive": rate_aggressive,
+            "fred_adjusted": rate_base != 0.075,
+        },
         "key_dates": {
             "fra":               str(date_fra),
             "disability_end":    str(date_disability_end),
