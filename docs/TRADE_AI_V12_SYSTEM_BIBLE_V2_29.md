@@ -345,17 +345,29 @@ MONTHLY (1st): Deep tax reconciliation + Roth ladder + income progress
 | Stop prices | `scripts/portfolio_orchestrator.py` + `scripts/stop_decision_brief.py` | Pass real prices from alerts + enrichment cache fallback |
 | Brief export | `scripts/aegis_morning_brief_delivery.py` | Fixed path to `docs/` |
 | **Value desync** | `scripts/api_v2.py` (aegis/chat-context) | Aegis showed stale $1,197,222 vs live $1,203,691. Now reads LIVE from holdings.json |
+| **Header tape 0s** | `scripts/api_v2.py` (overview) | Header showed `0 GO · 0 WAIT` while Trade AI page showed `1 GO · 4 WAIT`. Root cause: `run_summary.json` uses snake_case (`go_count`) but overview read camelCase (`goCount`). Fixed: reads both with fallback |
 
-### Data Sync Verification (after all fixes)
+### Data Sync Verification (all APIs cross-checked April 29)
 
 | Source | Value | In Sync |
 |---|---|---|
 | `holdings.json` | $1,203,691 | LIVE |
 | API `/api/v2/overview` | $1,203,691 | YES |
-| Aegis `/api/v2/aegis/chat-context` | $1,203,691 | **FIXED** |
+| API `/api/v2/overview` trade_ai | GO:1 WAIT:4 label:0700 | **FIXED** (was 0s) |
+| API `/api/v2/trade-ai` | GO:1 WAIT:4 tickers:6 top:KALV | YES |
+| Aegis `/api/v2/aegis/chat-context` | $1,203,691 | **FIXED** (was $1,197,222) |
 | Telegram Portfolio Intel (7:07 AM) | $1,203,691 | YES |
-| Trade AI scalp candidates | KALV, WALD, AKAN, GCTK, ATLN, TRAW | WORKING |
+| Telegram Scalp (8:14 AM) | KALV GO-tier, WALD NEW GO | WORKING |
 | Stop briefs (next trigger) | Will show real prices | FIXED |
+
+### camelCase vs snake_case Audit
+
+All internal state files use snake_case. Verified no remaining mismatches:
+- `run_summary.json`: `go_count`, `wait_count`, `run_label`, `date` (snake_case)
+- `holdings.json`: `total_value`, `day_change`, `day_change_pct` (snake_case)
+- `risk_management.json`: `stop_price`, `dist_pct`, `market_value` (snake_case)
+- API `overview` now reads both formats with fallback: `tai.get("goCount", tai.get("go_count", 0))`
+- External APIs (Yahoo Finance, Finviz CSV) correctly use their own formats
 
 ### Prevention: System Preflight Check
 
