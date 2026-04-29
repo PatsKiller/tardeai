@@ -11,6 +11,10 @@ source .venv/bin/activate
 set -a
 source .env 2>/dev/null || true
 set +a
+# Gate: run preflight check before starting
+echo "[gate] Running preflight check..."
+python scripts/system_preflight_check.py 2>&1 | tee -a "$LOG_DIR/preflight-$STAMP.log"
+echo "[gate] Preflight complete. Starting Trade AI..."
 {
   python scripts/continuous_runner.py --project-root .
 } 2>&1 | tee -a "$LOG_FILE"

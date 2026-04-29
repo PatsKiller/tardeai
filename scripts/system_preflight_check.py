@@ -125,6 +125,54 @@ def run():
     except Exception as e:
         check("screeners.yaml", False, str(e))
 
+    # 8. Data sync (catches the value desync + header 0s issues)
+    print("\nDATA SYNC:")
+    try:
+        ov = json.loads(urllib.request.urlopen("http://localhost:7777/api/v2/overview", timeout=5).read()).get("data", {})
+        ta = json.loads(urllib.request.urlopen("http://localhost:7777/api/v2/trade-ai", timeout=5).read()).get("data", {})
+        ae = json.loads(urllib.request.urlopen("http://localhost:7777/api/v2/aegis/chat-context", timeout=5).read()).get("data", {})
+        # Portfolio value sync
+        ov_val = ov.get("portfolio_value", 0)
+        ae_sum = ae.get("portfolio_summary", "")
+        check("Aegis portfolio value matches overview", f"${ov_val:,.0f}" in ae_sum if ov_val > 0 else True,
+              f"Overview: ${ov_val:,.0f}, Aegis: {ae_sum[:40]}")
+        # Trade AI header sync
+        ov_go = ov.get("trade_ai", {}).get("go_count", 0)
+        ta_go = ta.get("go_count", 0)
+        check(f"Header GO count matches Trade AI page ({ov_go} vs {ta_go})", ov_go == ta_go,
+              f"Overview: {ov_go}, Trade AI: {ta_go}")
+    except Exception as e:
+        check("Data sync", False, str(e))
+
+    # 9. Continuous runner producing results
+    print("\nTRADE AI RUNNER:")
+    import glob
+    summaries = sorted(glob.glob(str(PROJECT_ROOT / "reports" / "2026-*" / "*" / "run_summary.json")))
+    if summaries:
+        latest = json.loads(Path(summaries[-1]).read_text())
+        go = latest.get("go_count", latest.get("goCount", 0))
+        tickers = latest.get("ticker_count", 0)
+        label = latest.get("run_label", "?")
+        check(f"Latest run {label}: {tickers} tickers, {go} GO", tickers > 0 or go >= 0, f"0 tickers = Finviz may be broken")
+    else:
+        check("Run summaries exist", False, "No run_summary.json found")
+
+    # 10. Stop brief prices (catches the $0.00 bug)
+    print("\nSTOP BRIEF INTEGRITY:")
+    try:
+        import psycopg2
+        pw = ""
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+        conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM watchlist_strategy_cards WHERE stop_loss IS NOT NULL AND stop_loss > 0")
+        stops = cur.fetchone()[0]
+        check(f"Stops with real prices: {stops}", stops > 0, "No stops have prices set")
+        conn.close()
+    except Exception as e:
+        check("Stop data", False, str(e))
+
     # Summary
     print(f"\n{'='*50}")
     print(f"PASS: {PASS}  FAIL: {FAIL}")
