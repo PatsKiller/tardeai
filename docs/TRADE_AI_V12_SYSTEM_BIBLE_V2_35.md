@@ -199,9 +199,10 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 
 ### Retention & Purge
 
-- **Retention: indefinite** — `purge_after` column exists but always NULL
+- **Tiered retention**: Q≥75 forever, Q50-74 12 months, Q<50 90 days
+- `purge_after` dates set automatically on every transcript
+- Monthly cron: `--purge-expired` deletes transcripts past their purge date
 - Current storage: 0.16 MB (12 transcripts). Projected: ~100 MB/year
-- No automated purge process. When needed: set `purge_after` dates on low_confidence items
 
 ### Channel Discovery (Agent-Driven)
 
@@ -231,43 +232,92 @@ MONTHLY (1st of month via cron):
 5. Approved channels added to youtube_channels → daily 7 PM auto-ingest
 ```
 
-### Transcript Processing (v2.32 — `transcript_processor.py`)
+### Transcript Processing — Full Hybrid Pipeline (v2.35 — `transcript_processor.py`)
 
-After ingestion, transcripts are processed through 3 additional steps:
+6-step pipeline built for scale (tested on 12, designed for 1000+):
 
 ```
-RAW TRANSCRIPT → CLEANING → SUMMARY → SUB-TAGGING → PURGE DATE
-
-CLEANING (deterministic, no LLM):
+RAW TRANSCRIPT
+  │
+  ▼
+STEP 1: CLEAN (deterministic, no LLM)
   Remove fillers: um, uh, you know, like, basically, sort of, kind of
-  Collapse whitespace, basic sentence capitalization
-  Result: cleaned_text column (stored alongside raw)
-
-SUMMARY (LLM-generated, 150-200 words):
-  Local model via llm_router. Focuses on actionable insights.
-  Output: main topic + 3-4 key insights + 1 actionable takeaway
-  Result: summary column (11/12 transcripts summarized)
-
-SUB-TAGGING (12 retirement-specific subtopics):
-  roth_conversion_ladder  | ssdi_ira_rules         | medicaid_trust_planning
-  disability_spousal_ira  | irmaa_medicare         | income_gap_strategy
-  tax_bracket_management  | covered_call_income    | dividend_growth
-  rmd_planning            | 401k_rollover          | bond_ladder
-  Result: sub_tags JSONB column
-
-PURGE DATES (tiered retention):
+  Collapse whitespace, sentence capitalization
+  → cleaned_text column
+  │
+  ▼
+STEP 2: EXTRACTIVE PRE-FILTER (TextRank via Sumy)
+  Keep top 35% most important sentences using TextRank algorithm
+  Reduces noise before sending to LLM
+  Tested: 20,088 chars → 11,804 chars (59% kept) on PPC Ian
+  Falls back to truncation if Sumy fails
+  → Used as input for Step 3 (not stored separately)
+  │
+  ▼
+STEP 3: ABSTRACTIVE STRUCTURED SUMMARY (LLM)
+  Forced JSON output with exact keys:
+  {
+    "summary": "150-200 word overview",
+    "key_points": ["point 1", "point 2", ...] (max 8),
+    "action_items": ["recommendation 1", ...] (max 6),
+    "tickers_mentioned": ["SCHD", "V"],
+    "retirement_relevance": "high | medium | low",
+    "topics": ["main topic 1", "main topic 2"]
+  }
+  Routing: Claude for Q≥70 videos, local model for rest
+  → summary column + structured_json JSONB column
+  │
+  ▼
+STEP 4: SUB-TAGGING (12 retirement-specific regex patterns)
+  roth_conversion_ladder  │ ssdi_ira_rules         │ medicaid_trust_planning
+  disability_spousal_ira  │ irmaa_medicare         │ income_gap_strategy
+  tax_bracket_management  │ covered_call_income    │ dividend_growth
+  rmd_planning            │ 401k_rollover          │ bond_ladder
+  → sub_tags JSONB column
+  │
+  ▼
+STEP 5: CROSS-CHANNEL DEDUPLICATION
+  Jaccard similarity on word 5-gram fingerprints
+  Compares transcripts across different channels
+  Threshold: 40% similarity = flagged as potential duplicate
+  Same-channel comparisons skipped (expected overlap)
+  CLI: python3 scripts/transcript_processor.py --dedup
+  → Report only (does not auto-delete — human review)
+  │
+  ▼
+STEP 6: TIERED PURGE DATES
   Q ≥ 75: keep forever (Ben Felix Q:80)
   Q 50-74: purge after 12 months (PPC Ian Q:65 → Apr 2027)
   Q < 50: purge after 90 days (zoo video Q:30 → Jul 2026)
+  Monthly cron: --purge-expired deletes past-due transcripts
+  → purge_after column
 ```
+
+### Agent Integration (How Agents See Transcript Data)
+
+Agents receive structured YouTube intelligence via `intel_query.get_intel_summary()`:
+```
+[youtube] Q:70 When Individual Bonds Make Sense (bond income)
+  — Summary text from LLM...
+  • Key point 1 (from structured_json.key_points)
+  • Key point 2
+  → Action item (from structured_json.action_items)
+```
+
+### Unified Agent Data Source Config
+
+`config/agents_data_sources.yaml` — single source of truth defining for each agent:
+- Which data sources they consume (news, YouTube, SEC, yfinance, AV, FRED, FMP)
+- What specific data they get from each source
+- Automated triggers (insider buys, rate changes, dividend cuts, RSI extremes)
 
 ### What Is NOT Done (Remaining Limitations)
 
 - No semantic understanding ("Apple stock is terrible" would match AAPL positively)
-- No cross-channel dedup (same topic on 2 channels = 2 separate entries)
 - No caption quality detection (auto-generated vs manual not distinguished)
-- Summaries depend on local 1.7B model quality (adequate but not deep)
+- Summaries depend on 1.7B model for Q<70 transcripts (Claude used for Q≥70)
 - Sub-tags are regex-based, not semantic (may miss creative phrasings)
+- Dedup is report-only — does not auto-delete (requires human review)
 
 ---
 
@@ -592,7 +642,8 @@ python3 scripts/system_preflight_check.py
 | v2.31 | YouTube channel auto-discovery. Full transcript methodology documented |
 | v2.32 | Transcript processor: cleaning, LLM summaries, 12 sub-tags, purge dates |
 | v2.33 | Structured YouTube JSON, 9 data sources in every prompt, service restart fix |
-| **v2.34** | **Breakage prevention gates (23-point preflight + service startup gate). Full system backup to weekly zip (DB + .env + crontab + OpenClaw + systemd + state + restore instructions). Garbage cleanup: 78K lines of .bak files deleted, 43 MB recovered. Restore guide with 13-step bare-metal instructions.** |
+| v2.34 | Breakage gates (23-point preflight), weekly backup zip, garbage cleanup (43 MB), restore guide |
+| **v2.35** | **Full hybrid transcript pipeline: TextRank extractive pre-filter (35% sentence retention) + structured JSON summaries + cross-channel dedup (Jaccard n-gram fingerprints) + unified agents_data_sources.yaml. Built for 1000+ transcripts. Sumy/NLTK installed.** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -688,4 +739,4 @@ See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
 
 ---
 
-**v2.34 — Breakage prevention: 23-point preflight check + service startup gate. Weekly full system backup (3.8 MB zip, 70 files, 13-step restore). Garbage cleanup: 78K lines of dead code removed, 43 MB recovered. DB backup daily with 7-day retention. Maturity: 74%.**
+**v2.35 — Full hybrid transcript pipeline built for scale: TextRank extractive → LLM abstractive → structured JSON → cross-channel dedup → tiered purge. Unified agent data source config (YAML). 23-point preflight gates. Weekly backup zip. Maturity: 74%.**
