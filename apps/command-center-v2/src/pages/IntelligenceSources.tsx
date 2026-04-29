@@ -73,12 +73,17 @@ interface SocialPost {
 
 interface SocialStatusResp { apis: Record<string, { configured: boolean; env_var: string; label: string }>; total_posts: number }
 
+interface QualifiedItem { id: number; source_type: string; symbol: string; title: string; quality_score: number; retirement_relevance: string; strategy_focus: string; discovered_at: string }
+interface QualifiedResp { items: QualifiedItem[] }
+interface DiscoveryEntry { id: number; discovery_type: string; title: string; summary: string; symbols_mentioned: string; intel_count: number; created_at: string }
+interface DiscoveryResp { entries: DiscoveryEntry[] }
+
 interface SourcesResp { sources: Source[] }
 interface TranscriptsResp { transcripts: Transcript[] }
 interface ChannelsResp { channels: Channel[] }
 interface SocialPostsResp { posts: SocialPost[] }
 
-type Tab = 'screeners' | 'youtube' | 'social'
+type Tab = 'screeners' | 'youtube' | 'social' | 'qualified' | 'discovery'
 
 const badge = (text: string, color: string) => (
   <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: `${color}22`, color, fontWeight: 700, textTransform: 'uppercase' }}>{text}</span>
@@ -102,6 +107,8 @@ export default function IntelligenceSources() {
   const { data: chData } = useApi<ChannelsResp>('/api/v2/youtube/channels')
   const { data: socialData, loading: socialLoading } = useApi<SocialPostsResp>('/api/v2/social/posts')
   const { data: socialStatus } = useApi<SocialStatusResp>('/api/v2/social/status')
+  const { data: qualData, loading: qualLoading } = useApi<QualifiedResp>('/api/v2/qualified-intelligence')
+  const { data: discData, loading: discLoading } = useApi<DiscoveryResp>('/api/v2/discovery-log')
   const [tab, setTab] = useState<Tab>('screeners')
   const [filter, setFilter] = useState('')
   const [stratFilter, setStratFilter] = useState<string>('all')
@@ -222,7 +229,9 @@ export default function IntelligenceSources() {
     } finally { setSocialSaving(false) }
   }
 
-  const totalSources = sources.length + transcripts.length + channels.length + socialPosts.length
+  const qualItems = qualData?.items || []
+  const discEntries = discData?.entries || []
+  const totalSources = sources.length + transcripts.length + channels.length + socialPosts.length + qualItems.length
 
   return (
     <>
@@ -230,14 +239,14 @@ export default function IntelligenceSources() {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-        {(['screeners', 'youtube', 'social'] as Tab[]).map(t => (
+        {(['screeners', 'youtube', 'social', 'qualified', 'discovery'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '8px 16px', fontSize: 11, fontWeight: 700, border: 'none',
             borderBottom: t === tab ? '2px solid #4a90f4' : '2px solid transparent',
             background: 'transparent', color: t === tab ? '#4a90f4' : 'var(--text3)',
             cursor: 'pointer', textTransform: 'uppercase',
           }}>
-            {t === 'screeners' ? `Screeners (${sources.length})` : t === 'youtube' ? `YouTube (${transcripts.length})` : `Social (${socialPosts.length})`}
+            {t === 'screeners' ? `Screeners (${sources.length})` : t === 'youtube' ? `YouTube (${transcripts.length})` : t === 'social' ? `Social (${socialPosts.length})` : t === 'qualified' ? `Qualified (${qualItems.length})` : `Discovery (${discEntries.length})`}
           </button>
         ))}
       </div>
@@ -515,6 +524,79 @@ export default function IntelligenceSources() {
               </table>
             </div>
           </Card>
+        </>
+      )}
+
+      {/* Qualified Intelligence Tab */}
+      {tab === 'qualified' && (
+        <>
+          {qualLoading && <div style={{ color: 'var(--text3)', fontSize: 12 }}>Loading...</div>}
+          <Card>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text3)', textAlign: 'left' }}>
+                    <th style={th}>Source</th>
+                    <th style={th}>Symbol</th>
+                    <th style={th}>Title</th>
+                    <th style={th}>Quality</th>
+                    <th style={th}>Retirement</th>
+                    <th style={th}>Strategy</th>
+                    <th style={th}>Discovered</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qualItems.map(q => (
+                    <tr key={q.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={td}>{badge(q.source_type?.toUpperCase() || '?', q.source_type === 'sec' ? '#f6465d' : q.source_type === 'news' ? '#0ecb81' : '#4a90f4')}</td>
+                      <td style={td}><span style={{ fontWeight: 800, color: 'var(--accent)', fontSize: 12 }}>{q.symbol || '—'}</span></td>
+                      <td style={{ ...td, maxWidth: 280 }}><div style={{ fontSize: 10, color: 'var(--text1)', lineHeight: 1.3 }}>{q.title}</div></td>
+                      <td style={td}><span style={{ fontSize: 12, fontWeight: 700, color: qualityColor(q.quality_score) }}>{q.quality_score}</span></td>
+                      <td style={td}>
+                        {q.retirement_relevance === 'high'
+                          ? badge('HIGH', '#f6465d')
+                          : q.retirement_relevance === 'medium' ? badge('MED', '#c4a34f') : badge('LOW', 'var(--text3)')}
+                      </td>
+                      <td style={td}><span style={{ fontSize: 9, color: 'var(--text2)' }}>{q.strategy_focus?.replace(/_/g, ' ') || '—'}</span></td>
+                      <td style={td}><span style={{ fontSize: 9, color: 'var(--text3)' }}>{q.discovered_at ? new Date(q.discovered_at).toLocaleDateString() : '—'}</span></td>
+                    </tr>
+                  ))}
+                  {qualItems.length === 0 && (
+                    <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: 'var(--text3)' }}>No qualified intelligence yet. The engine promotes high-quality items daily at 7 PM.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {/* Discovery Log Tab */}
+      {tab === 'discovery' && (
+        <>
+          {discLoading && <div style={{ color: 'var(--text3)', fontSize: 12 }}>Loading...</div>}
+          {discEntries.length === 0 ? (
+            <Card><div style={{ color: 'var(--text3)', fontSize: 11, padding: 16, textAlign: 'center' }}>No discovery summaries yet. The engine generates daily at 7 PM.</div></Card>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {discEntries.map(d => (
+                <Card key={d.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    {badge(d.discovery_type?.replace(/_/g, ' ') || 'daily', '#4a90f4')}
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', fontFamily: 'var(--sans)' }}>{d.title}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--text3)' }}>{d.created_at ? new Date(d.created_at).toLocaleDateString() : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 200, overflowY: 'auto' }}>
+                    {d.summary}
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: 'var(--text3)' }}>
+                    {d.intel_count > 0 && <span>{d.intel_count} intel items</span>}
+                    {d.symbols_mentioned && <span>Symbols: {d.symbols_mentioned}</span>}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </>
       )}
 
