@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.46
+# Trade AI v12 System Bible v2.47
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + Monthly Report + Agent Autonomy + Learning Loop**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + Semantic Search + Multi-Agent Debate + Autonomy Dashboard**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -16,7 +16,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | SSDI | $3,800/mo ($45,600/yr) | personal_situation |
 | Filing status | MFS | personal_situation (corrected) |
 | Tax bracket | 12% — room: $66,883 | personal_tax_history |
-| DB tables | **146** | information_schema count |
+| DB tables | **148** | information_schema count |
 | API endpoints | 115+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
 | Cron entries | **57** | crontab -l |
@@ -1295,3 +1295,88 @@ API: `/api/v2/agent-health`
 | 5:30 AM weekdays | `overnight_batch.py --outcomes` | Score past decisions + extract lessons |
 | 6:45 AM weekdays | `overnight_batch.py --proactive` | Auto-queue high-Q symbols for agent analysis |
 | 1st of month 9 AM | `alex_retirement_advisor.py --monthly-report --telegram` | Monthly retirement report |
+
+---
+
+## v2.47 — Semantic Intelligence + Multi-Agent Debate + Autonomy Dashboard
+
+### 1. TF-IDF Semantic Intelligence Layer
+
+**No external dependencies** — uses Python stdlib (`re`, `math`, `collections.Counter`).
+
+| Component | Detail |
+|---|---|
+| `compute_tfidf(text)` | Returns top-30 term weights with domain boosting |
+| `semantic_similarity(query, doc_terms)` | Cosine-like similarity (0.0–1.0) between query and indexed doc |
+| `index_content(type, id, title, text)` | Stores TF-IDF terms in `content_embeddings` table |
+| Table | `content_embeddings` (source_type, source_id, tfidf_terms JSONB, top_keywords TEXT[]) |
+
+**Domain-boosted terms** (2-3x weight):
+retirement, dividend, SSDI, disability, Roth, conversion, Medicaid, IRMAA, Medicare, income, yield, tax, portfolio, rebalance, ETF, growth
+
+**How it works:**
+```
+Content ingested → compute_tfidf(text) → store {term: weight} in content_embeddings
+  ↓
+Search query → tokenize → compute similarity against stored terms
+  ↓
+Re-rank candidates by semantic_score (similarity × quality_score)
+```
+
+`search_transcripts()` now does: keyword retrieval (3x limit) → TF-IDF re-ranking → return top N.
+
+### 2. Multi-Agent Debate
+
+| Component | Detail |
+|---|---|
+| Function | `run_agent_debate(symbol, title)` in `agent_watchlist_engine.py` |
+| Participants | Maria (fundamentals), Steph (allocation), Risk (technical) |
+| Output | Consensus recommendation (BUY/HOLD/SELL), confidence score (0-100%) |
+| Table | `agent_debate_log` (symbol, participants, transcript, consensus_score, recommendation) |
+| Gate | `proactive_intel_scan()` requires ≥50% debate consensus before queuing for Alex |
+
+**Flow:**
+```
+High-Q intel item found (Q≥75) → run_agent_debate()
+  → Maria/Steph/Risk debate (200 words, ~2 sec via LLM)
+  → Extract consensus + confidence
+  → If consensus ≥50%: queue for full agent chain
+  → If consensus <50%: skip (not enough agreement)
+  → Transcript stored in agent_debate_log
+```
+
+### 3. Brave Search Activation
+
+| Component | Detail |
+|---|---|
+| Integration | `get_intel_summary()` calls `web_research.search_web()` when DB results < 3 items |
+| Key | `BRAVE_SEARCH_API_KEY` in .env (present but 402 — needs credit top-up) |
+| Fallback | Gracefully skips if API unavailable |
+| Research | Telegram `research` command now injects FRED macro + intel context |
+
+### 4. Autonomy Progress Dashboard
+
+**API:** `/api/v2/autonomy-progress`
+
+| Field | Source |
+|---|---|
+| `learning_curve` | Weekly avg confidence trend (4 weeks) |
+| `proposal_acceptance` | Weekly approved/rejected/total |
+| `debates_7d` | Debate count + avg consensus this week |
+| `latest_lessons` | Top outcome lessons text |
+| `content_embeddings` | Number of indexed documents |
+
+**Overview widget:** "What We Learned" card showing outcome lessons, debate count, and indexed content count.
+
+### New DB Tables (v2.47)
+
+| Table | Purpose | Records |
+|---|---|---|
+| `content_embeddings` | TF-IDF term weights for semantic search | 0 (new) |
+| `agent_debate_log` | Multi-agent debate transcripts + consensus | 0 (new) |
+
+### New API Endpoints (v2.47)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v2/autonomy-progress` | GET | Learning curve, acceptance rate, debates, lessons |
