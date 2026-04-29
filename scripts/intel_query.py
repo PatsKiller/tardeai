@@ -164,7 +164,7 @@ def get_outcome_feedback(symbol: str, limit: int = 3) -> str:
             chg30 = ((p30 / p0) - 1) * 100 if p0 > 0 and p30 > 0 else 0
             rec = r.get("recommendation", "?")
             dt = str(r.get("created_at", ""))[:10]
-            correct = "CORRECT" if (rec in ("BUY", "ADD") and chg7 > 0) or (rec in ("SELL", "TRIM") and chg7 < 0) or (rec == "HOLD" and abs(chg7) < 5) else "WRONG" if abs(chg7) > 2 else "NEUTRAL"
+            correct = "CORRECT" if (rec in ("BUY", "ADD") and chg7 > 0) or (rec in ("SELL", "TRIM") and chg7 < 0) or (rec in ("HOLD", "REBALANCE_TRIM") and abs(chg7) < 10) else "WRONG" if abs(chg7) > 5 else "NEUTRAL"
             lines.append(f"  {dt}: Rec={rec} at ${p0:.2f} → 7d: {chg7:+.1f}% → 30d: {chg30:+.1f}% [{correct}]")
         return "\n".join(lines)
     except Exception:
