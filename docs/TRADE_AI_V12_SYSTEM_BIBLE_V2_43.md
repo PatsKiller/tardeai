@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.42
+# Trade AI v12 System Bible v2.43
 
-**April 28, 2026 | ms01-openclaw | 8 Data Sources + SEC + Account-Specific Proposals**
+**April 29, 2026 | ms01-openclaw | FRED Macro + Feedback Loop + Enhanced Weekly Health**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -16,8 +16,8 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | SSDI | $3,800/mo ($45,600/yr) | personal_situation |
 | Filing status | MFS | personal_situation (corrected) |
 | Tax bracket | 12% — room: $66,883 | personal_tax_history |
-| DB tables | **142** | information_schema count |
-| API endpoints | 109+ | grep api_v2.py |
+| DB tables | **143** | information_schema count |
+| API endpoints | 112+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
 | Cron entries | **45** | crontab -l |
 | Telegram commands | 13 unique (17 parse patterns) | telegram_command_handler.py |
@@ -29,7 +29,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | SEC filings | **4 Form 4 insider filings** | sec_form4 |
 | Market quotes | **3 yfinance quotes** | market_quotes |
 | Fundamentals | **15 Alpha Vantage metrics** | fundamental_data |
-| FRED macro | 0 (needs API key, free) | fred_economic_series |
+| FRED macro | 7 series configured (awaiting API key) | fred_economic_series |
 
 ### Data Sources Feeding Agents (8 active)
 
@@ -48,7 +48,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 
 | Source | Why | Cost |
 |---|---|---|
-| FRED macro | No API key | Free — fred.stlouisfed.org |
+| FRED macro | Code + cron ready, needs free API key in .env | Free — fred.stlouisfed.org |
 | Brave Search | 402 Payment Required | $5/mo |
 | Social (X/StockTwits) | No API keys | $100/mo (X) or free (StockTwits) |
 | SEC 13F | Schema ready, quarterly parser TBD | Free |
@@ -920,5 +920,93 @@ Stored in `ai_reports` (type='weekly_health') + `agent_discovery_log` + Telegram
 
 ### Still Needed
 
-- Command Center UI: approve/reject buttons on Retirement + Intelligence Sources pages
-- FRED macro data: code ready in `external_market_data_ingest.py`, needs free API key
+- FRED API key: free from fred.stlouisfed.org — add to .env as FRED_API_KEY
+- Brave Search: needs $5 credit top-up
+- Social APIs: X ($100/mo) or StockTwits (free)
+
+---
+
+## v2.43 — FRED Macro + Human Feedback Loop + Enhanced UI
+
+### FRED Macro Data Pipeline (Phase 1)
+
+| Component | Detail |
+|---|---|
+| Script | `scripts/fred_data_ingest.py` (standalone wrapper) |
+| Backend | `scripts/external_market_data_ingest.py` — `ingest_fred()` |
+| Table | `fred_economic_series` (7 series: DFF, T10Y2Y, UNRATE, CPIAUCSL, VIXCLS, MORTGAGE30US, SP500) |
+| Cron | Daily 6:30 AM weekdays |
+| API | `/api/v2/macro-context` — returns formatted FRED context string |
+| Agent injection | `get_macro_context()` auto-injected into every `get_intel_summary()` call |
+| Status | Code + cron ready, awaiting FRED_API_KEY (free) |
+
+```
+CLI: python3 scripts/fred_data_ingest.py --test | --ingest | --context | --history [--days 90] | --status
+```
+
+### Human Feedback Loop (Phase 2)
+
+| Component | Detail |
+|---|---|
+| Table | `agent_feedback_log` (proposal_id, symbol, decision, confidence_at_decision, confidence_adjustment) |
+| Trigger | POST `/api/v2/proposals/decide` now auto-records feedback |
+| Confidence adjustment | +0.05 per approval, -0.05 per rejection |
+| Learning | `propose_rotations()` queries last 90 days of feedback to adjust future proposal confidence |
+| API | `/api/v2/proposals/feedback` — returns feedback history + approval/rejection stats |
+
+**Flow:**
+```
+Proposal created → User reviews on Retirement page → Approve/Reject
+  → agent_feedback_log records decision + confidence adjustment
+  → Next rotation cycle: adjusted confidence applied to same symbol/strategy
+  → Repeatedly rejected symbols get lower confidence → less likely to be proposed
+```
+
+### Command Center Enhancements (Phase 3)
+
+**Overview page:**
+- Pending proposals widget (top 4 with SSDI/IRMAA badges, links to Retirement page)
+- FRED macro context card (pre-formatted economic data)
+
+**Retirement page:**
+- Proposal decision history bar (approved vs rejected with approval rate bar)
+- FRED macro economic context panel
+- Existing approve/reject cards now include feedback recording
+
+**Intelligence Sources page (added v2.42):**
+- Qualified Intelligence tab (promoted high-quality items)
+- Discovery Log tab (daily "What I Discovered" summaries)
+
+### Enhanced Weekly Health Report (Phase 4)
+
+| Field | v2.42 | v2.43 |
+|---|---|---|
+| Prompt length | 250 words | 300 words |
+| Analysis points | 6 | 7 (added macro environment impact) |
+| FRED context | Not included | Injected into prompt |
+| Income data | Hardcoded | Live from dividend_calendar.json |
+| Feedback stats | Not included | Human approval/rejection counts injected |
+| Schedule | Sunday 10 AM | Sunday 10 AM (unchanged) |
+
+### New API Endpoints (v2.43)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v2/macro-context` | GET | FRED economic context string |
+| `/api/v2/proposals/feedback` | GET | Feedback history + approval stats |
+
+### New DB Table (v2.43)
+
+| Table | Purpose | Records |
+|---|---|---|
+| `agent_feedback_log` | Human approve/reject decisions with confidence adjustments | 0 (new) |
+
+### Cron Additions (v2.43)
+
+| Schedule | Script | What |
+|---|---|---|
+| 6:30 AM weekdays | `fred_data_ingest.py --ingest` | Daily FRED macro snapshot |
+
+### OpenClaw Gateway
+
+Fixed `xai:default` auth profile (removed invalid fields: model, api_key_env, base_url, note). Gateway restart confirmed.
