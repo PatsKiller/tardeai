@@ -10,7 +10,7 @@ Usage:
     python3 scripts/youtube_transcript_ingest.py --channel CHANNEL_URL
     python3 scripts/youtube_transcript_ingest.py --all-channels
 """
-import json, os, re, sys
+import json, os, re, sys, urllib.request, urllib.parse
 from datetime import datetime, date
 from pathlib import Path
 
@@ -42,33 +42,87 @@ def extract_video_id(url: str) -> str:
     return ""
 
 
+def _parse_transcript_entries(transcript) -> dict:
+    """Parse transcript entries (from any source) into {text, segments, duration}."""
+    segments = []
+    full_text = []
+    max_end = 0
+    for entry in transcript:
+        text = entry.text if hasattr(entry, 'text') else entry.get('text', '')
+        start = entry.start if hasattr(entry, 'start') else entry.get('start', 0)
+        duration = entry.duration if hasattr(entry, 'duration') else entry.get('duration', 0)
+        segments.append({"text": text, "start": start, "duration": duration})
+        full_text.append(text)
+        max_end = max(max_end, start + duration)
+    return {"text": " ".join(full_text), "segments": len(segments), "duration_seconds": int(max_end)}
+
+
+def _fetch_timedtext(video_id: str) -> dict:
+    """Fallback: fetch transcript via YouTube's timedtext XML endpoint."""
+    import time, xml.etree.ElementTree as ET
+    try:
+        time.sleep(1)  # Rate limit protection
+        page_url = f"https://www.youtube.com/watch?v={video_id}"
+        req = urllib.request.Request(page_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml",
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+        m = re.search(r'"baseUrl":"(https://www\.youtube\.com/api/timedtext[^"]+)"', html)
+        if not m:
+            return {"error": "No captions found", "text": "", "segments": 0, "duration_seconds": 0}
+        caption_url = m.group(1).replace("\\u0026", "&")
+        time.sleep(0.5)  # Be polite
+        cap_req = urllib.request.Request(caption_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        })
+        with urllib.request.urlopen(cap_req, timeout=15) as resp:
+            root = ET.fromstring(resp.read())
+            entries = []
+            for elem in root.findall(".//text"):
+                text = (elem.text or "").strip()
+                start = float(elem.get("start", 0))
+                dur = float(elem.get("dur", 0))
+                if text:
+                    entries.append({"text": text, "start": start, "duration": dur})
+            if entries:
+                return _parse_transcript_entries(entries)
+            return {"error": "Captions empty", "text": "", "segments": 0, "duration_seconds": 0}
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            return {"error": "Rate limited by YouTube (429) — try again later or add cookies", "text": "", "segments": 0, "duration_seconds": 0}
+        return {"error": f"HTTP {e.code}", "text": "", "segments": 0, "duration_seconds": 0}
+    except Exception as e:
+        return {"error": f"timedtext: {e}", "text": "", "segments": 0, "duration_seconds": 0}
+
+
 def fetch_transcript(video_id: str) -> dict:
-    """Fetch transcript for a video. Returns {text, segments, duration}."""
+    """Fetch transcript. Tries youtube-transcript-api first, falls back to timedtext scraping."""
+    # Method 1: youtube-transcript-api library
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
-
         ytt_api = YouTubeTranscriptApi()
-        transcript = ytt_api.fetch(video_id)
+        transcript = None
+        for langs in [['en'], ['en-US'], ['en-GB']]:
+            try:
+                transcript = ytt_api.fetch(video_id, languages=langs)
+                break
+            except Exception:
+                continue
+        if transcript is None:
+            transcript = ytt_api.fetch(video_id)
+        return _parse_transcript_entries(transcript)
+    except Exception:
+        pass
 
-        segments = []
-        full_text = []
-        max_end = 0
+    # Method 2: Direct timedtext scraping (bypasses IP blocks)
+    result = _fetch_timedtext(video_id)
+    if result.get("text"):
+        return result
 
-        for entry in transcript:
-            text = entry.text if hasattr(entry, 'text') else entry.get('text', '')
-            start = entry.start if hasattr(entry, 'start') else entry.get('start', 0)
-            duration = entry.duration if hasattr(entry, 'duration') else entry.get('duration', 0)
-            segments.append({"text": text, "start": start, "duration": duration})
-            full_text.append(text)
-            max_end = max(max_end, start + duration)
-
-        return {
-            "text": " ".join(full_text),
-            "segments": len(segments),
-            "duration_seconds": int(max_end),
-        }
-    except Exception as e:
-        return {"error": str(e), "text": "", "segments": 0, "duration_seconds": 0}
+    return {"error": "All transcript methods failed", "text": "", "segments": 0, "duration_seconds": 0}
 
 
 def get_video_metadata(video_id: str) -> dict:
@@ -175,22 +229,113 @@ def _get_youtube_api_key() -> str:
     return key
 
 
-def search_channel_videos(channel_name: str, max_results: int = 5) -> list:
-    """Search YouTube for recent videos from a channel using Data API v3."""
+def extract_channel_id(url_or_id: str) -> str:
+    """Extract channel ID from various URL formats or return as-is if already an ID."""
+    import re
+    # Direct channel ID (starts with UC, 24 chars)
+    if re.match(r'^UC[a-zA-Z0-9_-]{22}$', url_or_id):
+        return url_or_id
+    # https://www.youtube.com/channel/UCxxxxx
+    m = re.search(r'youtube\.com/channel/(UC[a-zA-Z0-9_-]{22})', url_or_id)
+    if m:
+        return m.group(1)
+    # https://www.youtube.com/@handle — need API lookup
+    m = re.search(r'youtube\.com/@([a-zA-Z0-9_.-]+)', url_or_id)
+    if m:
+        handle = m.group(1)
+        api_key = _get_youtube_api_key()
+        if api_key:
+            try:
+                lookup_url = f"https://www.googleapis.com/youtube/v3/channels?part=id,snippet&forHandle={handle}&key={api_key}"
+                with urllib.request.urlopen(lookup_url, timeout=10) as resp:
+                    data = json.loads(resp.read())
+                    if data.get("items"):
+                        return data["items"][0]["id"]
+            except Exception:
+                pass
+    return url_or_id  # Return as-is, might be a channel ID
+
+
+def get_channel_info(channel_id: str) -> dict:
+    """Get channel name and uploads playlist ID."""
     api_key = _get_youtube_api_key()
     if not api_key:
-        print("[yt] No YOUTUBE_API_KEY configured")
+        return {"error": "No YOUTUBE_API_KEY"}
+    try:
+        url = f"https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&id={channel_id}&key={api_key}"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+            if data.get("items"):
+                ch = data["items"][0]
+                return {
+                    "channel_id": channel_id,
+                    "channel_name": ch["snippet"]["title"],
+                    "description": ch["snippet"].get("description", "")[:200],
+                    "uploads_playlist": ch["contentDetails"]["relatedPlaylists"]["uploads"],
+                }
+    except Exception as e:
+        return {"error": str(e)}
+    return {"error": "Channel not found"}
+
+
+def list_channel_videos(channel_id: str, max_results: int = 50) -> list:
+    """List videos from a channel's uploads playlist (reliable, ordered by date)."""
+    api_key = _get_youtube_api_key()
+    if not api_key:
+        return []
+
+    info = get_channel_info(channel_id)
+    if info.get("error"):
+        print(f"[yt] {info['error']}")
+        return []
+
+    playlist_id = info["uploads_playlist"]
+    videos = []
+    next_page = None
+
+    while len(videos) < max_results:
+        page_size = min(50, max_results - len(videos))
+        url = (f"https://www.googleapis.com/youtube/v3/playlistItems"
+               f"?part=snippet&playlistId={playlist_id}&maxResults={page_size}&key={api_key}")
+        if next_page:
+            url += f"&pageToken={next_page}"
+
+        try:
+            with urllib.request.urlopen(url, timeout=15) as resp:
+                data = json.loads(resp.read())
+                for item in data.get("items", []):
+                    s = item["snippet"]
+                    vid = s["resourceId"]["videoId"]
+                    videos.append({
+                        "video_id": vid,
+                        "title": s.get("title", ""),
+                        "channel": s.get("channelTitle", info.get("channel_name", "")),
+                        "published": s.get("publishedAt", ""),
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                    })
+                next_page = data.get("nextPageToken")
+                if not next_page:
+                    break
+        except Exception as e:
+            print(f"[yt] API error: {e}")
+            break
+
+    return videos
+
+
+def search_channel_videos(channel_name: str, max_results: int = 5) -> list:
+    """Search YouTube for recent videos from a channel (fallback if no channel ID)."""
+    api_key = _get_youtube_api_key()
+    if not api_key:
         return []
 
     import urllib.parse
-    # Search for channel's recent videos
     query = urllib.parse.quote(f"{channel_name} finance investing")
     url = (f"https://www.googleapis.com/youtube/v3/search"
            f"?part=snippet&q={query}&type=video&maxResults={max_results}"
            f"&order=date&key={api_key}")
 
     try:
-        import urllib.request
         with urllib.request.urlopen(url, timeout=15) as resp:
             data = json.loads(resp.read())
             videos = []
@@ -207,8 +352,76 @@ def search_channel_videos(channel_name: str, max_results: int = 5) -> list:
                     })
             return videos
     except Exception as e:
-        print(f"[yt] YouTube API error: {e}")
+        print(f"[yt] Search error: {e}")
         return []
+
+
+def import_channel(channel_url: str, max_videos: int = 20, strategy_focus: str = "") -> dict:
+    """Import a YouTube channel: add to tracked channels + ingest recent video transcripts.
+
+    Args:
+        channel_url: Channel URL (youtube.com/channel/UCxxx or youtube.com/@handle) or channel ID
+        max_videos: How many recent videos to ingest (default 20)
+        strategy_focus: Optional strategy tag (e.g. 'retirement_planning')
+    """
+    channel_id = extract_channel_id(channel_url)
+    info = get_channel_info(channel_id)
+    if info.get("error"):
+        return {"error": info["error"], "input": channel_url}
+
+    channel_name = info["channel_name"]
+    print(f"[yt] Importing channel: {channel_name} ({channel_id})")
+    print(f"[yt] Fetching up to {max_videos} videos...")
+
+    # Add to tracked channels
+    import psycopg2
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO youtube_channels (channel_id, channel_name, channel_url, strategy_focus, added_by)
+        VALUES (%s, %s, %s, %s, 'user')
+        ON CONFLICT (channel_id) DO UPDATE SET channel_name=EXCLUDED.channel_name, channel_url=EXCLUDED.channel_url
+    """, (channel_id, channel_name, f"https://www.youtube.com/channel/{channel_id}",
+          strategy_focus or "general"))
+    conn.commit()
+    conn.close()
+    print(f"[yt] Channel added to tracking: {channel_name}")
+
+    # Get videos via uploads playlist
+    videos = list_channel_videos(channel_id, max_results=max_videos)
+    print(f"[yt] Found {len(videos)} videos")
+
+    # Ingest transcripts
+    ingested = 0
+    skipped = 0
+    errors = 0
+    for i, v in enumerate(videos):
+        result = ingest_video(v["url"], added_by="user")
+        if result.get("status") == "ingested":
+            ingested += 1
+            print(f"  [{i+1}/{len(videos)}] INGESTED: {v['title'][:50]} (Q:{result.get('quality_score',0)} R:{result.get('relevance_score',0):.2f})")
+        elif result.get("status") == "already_exists":
+            skipped += 1
+        else:
+            errors += 1
+            if i < 5:  # Only print first few errors
+                print(f"  [{i+1}/{len(videos)}] SKIP: {v['title'][:40]} — {str(result.get('error',''))[:40]}")
+
+    # Update last_checked
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("UPDATE youtube_channels SET last_checked=NOW() WHERE channel_id=%s", (channel_id,))
+    conn.commit()
+    conn.close()
+
+    return {
+        "channel": channel_name,
+        "channel_id": channel_id,
+        "videos_found": len(videos),
+        "ingested": ingested,
+        "skipped": skipped,
+        "errors": errors,
+    }
 
 
 def fetch_channel_videos(channel_id_or_name: str, max_videos: int = 3) -> dict:
@@ -348,6 +561,25 @@ if __name__ == "__main__":
             print(json.dumps(result, indent=2, default=str))
         else:
             print("Usage: --ingest VIDEO_URL")
+    elif "--import-channel" in sys.argv or "--import" in sys.argv:
+        flag = "--import-channel" if "--import-channel" in sys.argv else "--import"
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            channel_url = sys.argv[idx + 1]
+            max_vids = 20
+            strategy = ""
+            if "--max" in sys.argv:
+                mi = sys.argv.index("--max")
+                if mi + 1 < len(sys.argv):
+                    max_vids = int(sys.argv[mi + 1])
+            if "--strategy" in sys.argv:
+                si = sys.argv.index("--strategy")
+                if si + 1 < len(sys.argv):
+                    strategy = sys.argv[si + 1]
+            result = import_channel(channel_url, max_videos=max_vids, strategy_focus=strategy)
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            print("Usage: --import-channel URL [--max 20] [--strategy retirement_planning]")
     elif "--channel" in sys.argv:
         idx = sys.argv.index("--channel")
         if idx + 1 < len(sys.argv):
@@ -355,13 +587,16 @@ if __name__ == "__main__":
             results = fetch_channel_videos(channel_id)
             print(json.dumps(results, indent=2, default=str))
         else:
-            print("Usage: --channel CHANNEL_ID_OR_NAME")
+            print("Usage: --channel CHANNEL_ID")
     elif "--all-channels" in sys.argv:
         results = ingest_all_channels()
         print(json.dumps(results, indent=2, default=str))
     else:
         print("Usage:")
-        print("  --test              Run pipeline test")
+        print("  --import-channel URL [--max 20] [--strategy retirement_planning]")
+        print("      Import a channel: add to tracking + ingest transcripts")
+        print("      URL can be: youtube.com/channel/UCxxx, youtube.com/@handle, or channel ID")
         print("  --ingest URL        Ingest a single video transcript")
-        print("  --channel ID        Ingest recent videos from a channel")
-        print("  --all-channels      Ingest from all tracked channels")
+        print("  --channel ID        List recent videos from a channel")
+        print("  --all-channels      Ingest new videos from all tracked channels")
+        print("  --test              Run pipeline test")
