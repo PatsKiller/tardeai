@@ -207,7 +207,7 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             danger_positions = risk_mgmt.get("danger", [])
             if not danger_positions:
                 # Fallback: build from alerts
-                danger_positions = [{"symbol": a["symbol"], "price": 0, "stop_price": 0} for a in stop_alerts]
+                danger_positions = [{"symbol": a["symbol"], "price": a.get("price", a.get("current_price", 0)), "stop_price": a.get("stop_price", a.get("stop", 0))} for a in stop_alerts]
             if danger_positions:
                 try:
                     from stop_decision_brief import process_stop_alerts
