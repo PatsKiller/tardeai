@@ -3523,6 +3523,8 @@ ROUTES = {
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),
     "/api/v2/tax-situation": lambda: _tax_situation(),
     "/api/v2/trust-transfers": lambda: {"transfers": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, event_date, amount, description, trust_type, five_year_lookback_start, protected_amount, trust_notes, created_at FROM tax_events WHERE event_type='trust_transfer' ORDER BY event_date DESC") or [])]},
+    "/api/v2/sec/form4": lambda: {"filings": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, filer_name, filer_relation, transaction_type, shares, price, total_value, filing_date, sec_url, quality_score, strategy_tags, agent_tags, created_at FROM sec_form4 ORDER BY filing_date DESC LIMIT 50") or [])]},
+    "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
