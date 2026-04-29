@@ -16,10 +16,10 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | SSDI | $3,800/mo ($45,600/yr) | personal_situation |
 | Filing status | MFS | personal_situation (corrected) |
 | Tax bracket | 12% — room: $66,883 | personal_tax_history |
-| DB tables | **143** | information_schema count |
+| DB tables | **145** | information_schema count |
 | API endpoints | 112+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
-| Cron entries | **45** | crontab -l |
+| Cron entries | **54** | crontab -l |
 | Telegram commands | 13 unique (17 parse patterns) | telegram_command_handler.py |
 | Agent results | **198** | watchlist_agent_results |
 | Agent handoffs | **110 total** (32+ escalations) | agent_handoffs |
@@ -29,9 +29,9 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | SEC filings | **4 Form 4 insider filings** | sec_form4 |
 | Market quotes | **3 yfinance quotes** | market_quotes |
 | Fundamentals | **15 Alpha Vantage metrics** | fundamental_data |
-| FRED macro | 7 series configured (awaiting API key) | fred_economic_series |
+| FRED macro | **7 series LIVE** (DFF, T10Y2Y, UNRATE, CPI, VIX, MORTGAGE30US, SP500) | fred_economic_series |
 
-### Data Sources Feeding Agents (8 active)
+### Data Sources Feeding Agents (9 active)
 
 | Source | Type | Articles/Records | API Key | Status |
 |---|---|---|---|---|
@@ -43,12 +43,12 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | yfinance | Real-time quotes | 3 | None needed | ACTIVE — 7:15 AM daily |
 | Alpha Vantage | Fundamentals (15 metrics) | 15 | ALPHA_VANTAGE_API_KEY | ACTIVE — Monday 8 AM |
 | FMP | Dividends, yields | 34 symbols | FMP_API_KEY | ACTIVE — 7:05 AM daily |
+| **FRED** | **Macro (7 series)** | **7 live** | **FRED_API_KEY** | **ACTIVE — daily 6:30 AM** |
 
 ### Not Yet Active
 
 | Source | Why | Cost |
 |---|---|---|
-| FRED macro | Code + cron ready, needs free API key in .env | Free — fred.stlouisfed.org |
 | Brave Search | 402 Payment Required | $5/mo |
 | Social (X/StockTwits) | No API keys | $100/mo (X) or free (StockTwits) |
 | SEC 13F | Schema ready, quarterly parser TBD | Free |
@@ -920,15 +920,34 @@ Stored in `ai_reports` (type='weekly_health') + `agent_discovery_log` + Telegram
 
 ### Still Needed
 
-- FRED API key: free from fred.stlouisfed.org — add to .env as FRED_API_KEY
 - Brave Search: needs $5 credit top-up
 - Social APIs: X ($100/mo) or StockTwits (free)
+- GPU upgrade: qwen3:1.7b → 14b for better agent reasoning
 
 ---
 
-## v2.43 — FRED Macro + Human Feedback Loop + Enhanced UI
+## v2.43 — Config Sync + FRED Macro LIVE + Feedback Loop + Enhanced UI
 
-### FRED Macro Data Pipeline (Phase 1)
+### Hybrid YAML → DB Config System (Phase 1)
+
+| Component | Detail |
+|---|---|
+| Script | `scripts/config_sync.py` — `--dry-run`, `--sync`, `--status` |
+| Sources | `config/agents_data_sources.yaml`, `config/agents_sec_interaction.yaml`, `assets/screeners.yaml` |
+| Tables | `agent_data_source_rules` (24 rows), `agent_sec_rules` (18 rows), `agent_intelligence_rules` (17 rows) |
+| Behavior | Idempotent — INSERT ... ON CONFLICT DO UPDATE with changed_by + updated_at |
+
+```
+Agent Data Source Rules:
+  Alex: 8 sources | Maria: 5 | Steph: 5 | Risk: 4 | Aegis: 2
+Agent SEC Rules:
+  Maria: 7 rules | Risk: 4 | Steph: 3 | Aegis: 3 | Alex: 1
+Intelligence Rules:
+  data_source: 6 | sec_agent: 5 | run_window: 4 | screener: 2
+Total: 59 rules synced
+```
+
+### FRED Macro Data Pipeline — NOW LIVE
 
 | Component | Detail |
 |---|---|
@@ -938,7 +957,18 @@ Stored in `ai_reports` (type='weekly_health') + `agent_discovery_log` + Telegram
 | Cron | Daily 6:30 AM weekdays |
 | API | `/api/v2/macro-context` — returns formatted FRED context string |
 | Agent injection | `get_macro_context()` auto-injected into every `get_intel_summary()` call |
-| Status | Code + cron ready, awaiting FRED_API_KEY (free) |
+| Status | **LIVE** — 7 series fetched, all agents receiving macro context |
+
+**Live FRED Data (as of April 29, 2026):**
+| Series | Value | Date |
+|---|---|---|
+| Federal Funds Rate (DFF) | 3.64% | 2026-04-28 |
+| 10Y-2Y Yield Spread | 0.52 | 2026-04-28 |
+| Unemployment (UNRATE) | 4.3% | 2026-03-01 |
+| CPI (inflation) | 330.29 | 2026-03-01 |
+| VIX | 17.83 | 2026-04-28 |
+| 30Y Mortgage | 6.23% | 2026-04-23 |
+| S&P 500 | 7,138.80 | 2026-04-28 |
 
 ```
 CLI: python3 scripts/fred_data_ingest.py --test | --ingest | --context | --history [--days 90] | --status
@@ -995,11 +1025,14 @@ Proposal created → User reviews on Retirement page → Approve/Reject
 | `/api/v2/macro-context` | GET | FRED economic context string |
 | `/api/v2/proposals/feedback` | GET | Feedback history + approval stats |
 
-### New DB Table (v2.43)
+### New DB Tables (v2.43)
 
 | Table | Purpose | Records |
 |---|---|---|
 | `agent_feedback_log` | Human approve/reject decisions with confidence adjustments | 0 (new) |
+| `agent_data_source_rules` | YAML-synced agent data source configs | 24 |
+| `agent_sec_rules` | YAML-synced SEC trigger rules per agent | 18 |
+| `agent_intelligence_rules` | YAML-synced screener + data source + run window configs | 17 |
 
 ### Cron Additions (v2.43)
 
