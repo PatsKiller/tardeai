@@ -166,6 +166,117 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
     }
 
 
+def _get_youtube_api_key() -> str:
+    key = os.environ.get("YOUTUBE_API_KEY", "")
+    if not key:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("YOUTUBE_API_KEY="):
+                key = line.split("=", 1)[1].strip()
+    return key
+
+
+def search_channel_videos(channel_name: str, max_results: int = 5) -> list:
+    """Search YouTube for recent videos from a channel using Data API v3."""
+    api_key = _get_youtube_api_key()
+    if not api_key:
+        print("[yt] No YOUTUBE_API_KEY configured")
+        return []
+
+    import urllib.parse
+    # Search for channel's recent videos
+    query = urllib.parse.quote(f"{channel_name} finance investing")
+    url = (f"https://www.googleapis.com/youtube/v3/search"
+           f"?part=snippet&q={query}&type=video&maxResults={max_results}"
+           f"&order=date&key={api_key}")
+
+    try:
+        import urllib.request
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            data = json.loads(resp.read())
+            videos = []
+            for item in data.get("items", []):
+                vid = item.get("id", {}).get("videoId", "")
+                snippet = item.get("snippet", {})
+                if vid:
+                    videos.append({
+                        "video_id": vid,
+                        "title": snippet.get("title", ""),
+                        "channel": snippet.get("channelTitle", ""),
+                        "published": snippet.get("publishedAt", ""),
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                    })
+            return videos
+    except Exception as e:
+        print(f"[yt] YouTube API error: {e}")
+        return []
+
+
+def fetch_channel_videos(channel_id_or_name: str, max_videos: int = 3) -> dict:
+    """Discover and ingest recent videos from a channel."""
+    # Look up channel in DB
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT channel_name, channel_url FROM youtube_channels WHERE channel_id=%s OR channel_name ILIKE %s",
+                (channel_id_or_name, f"%{channel_id_or_name}%"))
+    ch = cur.fetchone()
+    conn.close()
+
+    channel_name = ch["channel_name"] if ch else channel_id_or_name
+    print(f"[yt] Searching for recent videos from: {channel_name}")
+
+    videos = search_channel_videos(channel_name, max_results=max_videos)
+    if not videos:
+        return {"channel": channel_name, "found": 0, "ingested": 0}
+
+    print(f"[yt] Found {len(videos)} videos")
+    ingested = 0
+    results = []
+    for v in videos:
+        print(f"  → {v['title'][:60]}")
+        result = ingest_video(v["url"], added_by="ai")
+        results.append(result)
+        if result.get("status") == "ingested":
+            ingested += 1
+
+    # Update last_checked
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        if ch:
+            cur.execute("UPDATE youtube_channels SET last_checked=NOW() WHERE channel_name=%s", (channel_name,))
+            conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    return {"channel": channel_name, "found": len(videos), "ingested": ingested, "videos": results}
+
+
+def ingest_all_channels() -> dict:
+    """Ingest recent videos from all tracked channels."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT channel_id, channel_name FROM youtube_channels WHERE active=TRUE ORDER BY last_checked ASC NULLS FIRST")
+    channels = cur.fetchall()
+    conn.close()
+
+    print(f"[yt] Processing {len(channels)} tracked channels")
+    total_found = 0
+    total_ingested = 0
+    channel_results = []
+
+    for ch in channels:
+        result = fetch_channel_videos(ch["channel_id"], max_videos=3)
+        total_found += result.get("found", 0)
+        total_ingested += result.get("ingested", 0)
+        channel_results.append(result)
+
+    print(f"[yt] All channels done: {total_found} found, {total_ingested} ingested")
+    return {"channels": len(channels), "total_found": total_found, "total_ingested": total_ingested, "results": channel_results}
+
+
 def test_pipeline():
     """Test the pipeline with a known finance video."""
     print("=== YouTube Transcript Ingestion — Test ===\n")
@@ -238,13 +349,19 @@ if __name__ == "__main__":
         else:
             print("Usage: --ingest VIDEO_URL")
     elif "--channel" in sys.argv:
-        print("Channel bulk ingest not yet implemented (requires YouTube Data API key)")
-        print("For now, ingest individual videos with: --ingest VIDEO_URL")
+        idx = sys.argv.index("--channel")
+        if idx + 1 < len(sys.argv):
+            channel_id = sys.argv[idx + 1]
+            results = fetch_channel_videos(channel_id)
+            print(json.dumps(results, indent=2, default=str))
+        else:
+            print("Usage: --channel CHANNEL_ID_OR_NAME")
     elif "--all-channels" in sys.argv:
-        print("Bulk channel ingest not yet implemented (requires YouTube Data API key)")
+        results = ingest_all_channels()
+        print(json.dumps(results, indent=2, default=str))
     else:
         print("Usage:")
         print("  --test              Run pipeline test")
         print("  --ingest URL        Ingest a single video transcript")
-        print("  --channel URL       Ingest recent videos from a channel (requires API key)")
-        print("  --all-channels      Ingest from all tracked channels (requires API key)")
+        print("  --channel ID        Ingest recent videos from a channel")
+        print("  --all-channels      Ingest from all tracked channels")
