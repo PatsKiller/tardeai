@@ -248,8 +248,14 @@ def get_outcome_feedback(symbol: str, limit: int = 3) -> str:
 
 def get_intel_summary(agent: str = None, symbol: str = None,
                       min_quality: int = 60, max_chars: int = 800,
-                      days: int = 7) -> str:
+                      days: int = 7, source_hint: str = "routine") -> str:
     """Get a text summary of recent intel for LLM prompt injection.
+
+    Smart routing logic (v2.48):
+      source_hint="research" → Brave Search first, then DB
+      source_hint="high_value" → Brave first for retirement/SSDI topics
+      source_hint="routine" → DB only (Google News RSS + Yahoo RSS already ingested)
+      Brave 402/error → graceful fallback to DB-only
 
     Returns a formatted string ready to insert into an agent prompt.
     """
@@ -332,18 +338,42 @@ def get_intel_summary(agent: str = None, symbol: str = None,
     except Exception:
         pass
 
-    # Brave Search fallback — if we have few items, try web search
-    if symbol and len(items) < 3:
+    # Smart search routing (v2.48):
+    #   research/high_value → Brave first
+    #   routine + few DB results → Brave fallback
+    #   routine + enough DB results → DB only (Google/Yahoo RSS already ingested)
+    use_brave = False
+    if source_hint in ("research", "high_value"):
+        use_brave = True  # User research or high-value intel → always try Brave
+    elif symbol and len(items) < 3:
+        use_brave = True  # Few DB results → try Brave as supplement
+    # Also check if any items are retirement-relevant (boost to Brave)
+    if not use_brave and any(
+        (i.get("quality_score", 0) >= 80 or
+         str(i.get("strategy_tags", "")).find("retirement") >= 0)
+        for i in items[:5]
+    ):
+        if source_hint != "routine":
+            use_brave = True
+
+    if use_brave and symbol:
         try:
             from web_research import search_web
-            web_results = search_web(f"{symbol} stock analysis retirement dividend 2026", count=3)
+            query_terms = f"{symbol} stock"
+            if source_hint == "research":
+                query_terms += " retirement SSDI disability planning 2026"
+            elif source_hint == "high_value":
+                query_terms += " analysis dividend retirement income"
+            else:
+                query_terms += " analysis retirement dividend 2026"
+            web_results = search_web(query_terms, count=3)
             if web_results:
-                web_lines = ["WEB RESEARCH (Brave Search):"]
+                web_lines = [f"WEB RESEARCH (Brave Search — {source_hint}):"]
                 for wr in web_results[:3]:
                     web_lines.append(f"  {wr.get('title', '')[:60]} — {wr.get('description', '')[:80]}")
                 extra_context.append("\n".join(web_lines))
         except Exception:
-            pass  # Brave may be unavailable (402 / no key)
+            pass  # Brave 402 or unavailable — graceful fallback to DB-only
 
     if not items and not extra_context:
         return ""

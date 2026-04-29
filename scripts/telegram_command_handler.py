@@ -317,7 +317,7 @@ def process_command(cmd: dict) -> str:
                 pass
             try:
                 from intel_query import get_intel_summary
-                intel = get_intel_summary(agent="Alex", symbol=args.split()[0] if args else None, max_chars=400)
+                intel = get_intel_summary(agent="Alex", symbol=args.split()[0] if args else None, max_chars=400, source_hint="research")
                 if intel:
                     extra_ctx += f"\n{intel[:400]}\n"
             except Exception:

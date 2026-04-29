@@ -2685,6 +2685,39 @@ def _compute_maturity(learning_curve, proposals, embedding_count, debate_count, 
     return min(100, score)
 
 
+def _search_sources_status():
+    """GET /api/v2/search-sources — Status of all search/news sources."""
+    sources = {}
+    # Yahoo RSS
+    yahoo = _db_query("SELECT count(*) as cnt, MAX(created_at) as last FROM news_articles WHERE source ILIKE '%yahoo%'") or [{}]
+    sources["yahoo_rss"] = {"active": (yahoo[0].get("cnt", 0) or 0) > 0, "articles": yahoo[0].get("cnt", 0), "last": _json_clean(yahoo[0].get("last"))}
+    # Google News RSS
+    google = _db_query("SELECT count(*) as cnt, MAX(created_at) as last FROM news_articles WHERE source NOT ILIKE '%yahoo%' AND source NOT ILIKE '%finnhub%'") or [{}]
+    sources["google_news"] = {"active": (google[0].get("cnt", 0) or 0) > 0, "articles": google[0].get("cnt", 0), "last": _json_clean(google[0].get("last"))}
+    # Finnhub
+    finnhub = _db_query("SELECT count(*) as cnt, MAX(created_at) as last FROM news_articles WHERE source ILIKE '%finnhub%'") or [{}]
+    sources["finnhub"] = {"active": (finnhub[0].get("cnt", 0) or 0) > 0, "articles": finnhub[0].get("cnt", 0), "last": _json_clean(finnhub[0].get("last"))}
+    # Brave Search
+    brave_key = ""
+    try:
+        for line in PROJECT_ROOT.joinpath(".env").read_text().splitlines():
+            if line.startswith("BRAVE_SEARCH_API_KEY="):
+                brave_key = line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    sources["brave_search"] = {"active": False, "status": "402 — needs $5 credit top-up", "key_present": bool(brave_key)}
+    # YouTube
+    yt = _db_query("SELECT count(*) as cnt FROM youtube_transcripts") or [{"cnt": 0}]
+    sources["youtube"] = {"active": True, "transcripts": yt[0].get("cnt", 0)}
+    # FRED
+    fred = _db_query("SELECT count(*) as cnt FROM fred_economic_series") or [{"cnt": 0}]
+    sources["fred"] = {"active": (fred[0].get("cnt", 0) or 0) > 0, "series": fred[0].get("cnt", 0)}
+    # Embeddings
+    emb = _db_query("SELECT count(*) as cnt FROM content_embeddings WHERE embedding IS NOT NULL") or [{"cnt": 0}]
+    sources["embeddings"] = {"active": True, "indexed": emb[0].get("cnt", 0), "model": "nomic-embed-text", "dim": 768}
+    return sources
+
+
 def _tax_situation():
     """GET /api/v2/tax-situation — current tax context from DB."""
     try:
@@ -3667,6 +3700,7 @@ ROUTES = {
     "/api/v2/discovery-log": lambda: {"entries": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, discovery_type, title, summary, symbols_mentioned, intel_count, created_at FROM agent_discovery_log ORDER BY created_at DESC LIMIT 10") or [])]},
     "/api/v2/trade-instructions": lambda: {"instructions": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, proposal_id, symbol, action, account_name, shares, target_symbol, estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text, created_at, executed_at FROM trade_instructions ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'executed' THEN 2 ELSE 3 END, created_at DESC LIMIT 20") or [])]},
     "/api/v2/agent-health": lambda: _agent_health(),
+    "/api/v2/search-sources": lambda: _search_sources_status(),
     "/api/v2/autonomy-progress": lambda: _autonomy_progress(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
