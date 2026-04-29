@@ -355,7 +355,7 @@ DELIVERY LAYER:
 | Agent quality (1.7B) | Maria confidence 0.40, shallow narratives | OPEN | GPU upgrade → qwen3:14b (Arc Pro B50) |
 | Decision outcomes tracking | 88 outcomes, 87 with 7d prices | PARTIAL | Need 30+ days for statistical accuracy |
 | Brave Search API credits | Wired but 402 Payment Required | NEEDS TOP-UP | Top up at brave.com/search/api ($5/mo) |
-| YouTube channel bulk ingest | Need YouTube Data API key for auto-discovery | OPEN | Add YOUTUBE_API_KEY |
+| ~~YouTube channel bulk ingest~~ | ~~Need YouTube Data API key~~ | **DONE** | API key added, 10 transcripts ingested, cron at 7 PM daily |
 | ~~News scoring basic~~ | ~~Default 0.5 relevance~~ | **DONE** | 345 articles backfilled with scores + tags |
 | ~~No live web search~~ | ~~Intel limited to pre-loaded~~ | **DONE** | web_research.py + Brave API wired (needs credits) |
 
