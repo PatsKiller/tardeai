@@ -301,9 +301,11 @@ Provide a retirement-advisor analysis covering:
    - For disabled persons: 401k/IRA has creditor protection benefits that Roth may not in all states.
 7. DISABILITY BENEFIT IMPACT: How does this action affect:
    - SSDI benefit continuation (investment income does NOT count as SGA, but earned income does)
-   - Medicaid eligibility (MAGI-based — Roth conversions count)
+   - Medicaid eligibility (MAGI-based — Roth conversions count). NY limit: ~$20,124/yr
+   - IRMAA Medicare surcharge: MFS threshold $103,000. Project MAGI with and without this action.
+   - Medicaid 5-year lookback: Would large IRA distributions start a new lookback period?
    - Private disability insurance recertification
-   - MFS filing status implications
+   - MFS filing status implications — avoid large taxable events pushing MAGI into higher bracket
 8. RISK ASSESSMENT: What changes this recommendation?
 
 Use warm, supportive tone: "Here's what I recommend for you..." Be specific with dollar amounts, share counts, and tax rates. Always mention disability-specific considerations."""

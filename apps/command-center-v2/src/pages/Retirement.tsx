@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Line } from 'react-chartjs-2'
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js'
+import { Line, Bar } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Tooltip, Legend } from 'chart.js'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import MetricTile from '../components/MetricTile'
@@ -10,7 +10,7 @@ import { DoughnutChart } from '../components/charts'
 import { useApi } from '../hooks/useApi'
 import { fmt$, timeAgo } from '../lib/format'
 
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Tooltip, Legend)
 
 interface RetirementData {
   as_of: string; current_age: number
@@ -34,6 +34,8 @@ interface ProposalsResp { proposals: Proposal[] }
 interface FeedbackStat { decision: string; cnt: number }
 interface FeedbackResp { feedback: unknown[]; stats: FeedbackStat[] }
 interface MacroResp { context: string }
+interface HistoryDay { date: string; approved: number; rejected: number; proposed: number }
+interface HistoryResp { daily: HistoryDay[] }
 
 export default function Retirement() {
   const navigate = useNavigate()
@@ -45,6 +47,7 @@ export default function Retirement() {
   const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
   const { data: feedbackResp } = useApi<FeedbackResp>('/api/v2/proposals/feedback')
   const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
+  const { data: historyResp } = useApi<HistoryResp>('/api/v2/proposals/history')
   const [deciding, setDeciding] = useState<Record<number, string>>({})
   const [decided, setDecided] = useState<Set<number>>(new Set())
 
@@ -636,44 +639,64 @@ export default function Retirement() {
         )
       })()}
 
-      {/* Feedback stats + macro context side by side */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
-        {/* Proposal History Stats */}
-        {feedbackResp && (feedbackResp.stats?.length ?? 0) > 0 && (
-          <Card title="Proposal Decision History">
-            <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
-              {feedbackResp.stats.map(s => (
-                <div key={s.decision} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: s.decision === 'approved' ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--sans)' }}>{s.cnt}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.decision}</div>
+      {/* Proposal history chart + feedback stats + macro context */}
+      {(() => {
+        const days = historyResp?.daily ?? []
+        const hasActivity = days.some(d => d.approved > 0 || d.rejected > 0 || d.proposed > 0)
+        const fbStats = feedbackResp?.stats ?? []
+        const totalFb = fbStats.reduce((s, x) => s + x.cnt, 0)
+        const approvedFb = fbStats.find(s => s.decision === 'approved')?.cnt ?? 0
+        const approvalPct = totalFb > 0 ? Math.round((approvedFb / totalFb) * 100) : 0
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+            {/* Proposal History Chart */}
+            <Card title="Proposal Activity (30 days)">
+              {hasActivity ? (
+                <div style={{ height: 160, position: 'relative' }}>
+                  <Bar
+                    data={{
+                      labels: days.map(d => typeof d.date === 'string' ? d.date.slice(5) : ''),
+                      datasets: [
+                        { label: 'Approved', data: days.map(d => d.approved), backgroundColor: 'rgba(14,203,129,0.7)', borderRadius: 2 },
+                        { label: 'Rejected', data: days.map(d => d.rejected), backgroundColor: 'rgba(246,70,93,0.7)', borderRadius: 2 },
+                        { label: 'Proposed', data: days.map(d => d.proposed), backgroundColor: 'rgba(74,144,244,0.3)', borderRadius: 2 },
+                      ],
+                    }}
+                    options={{
+                      responsive: true, maintainAspectRatio: false,
+                      plugins: { legend: { display: true, position: 'top', labels: { color: '#b8c1d0', font: { size: 9 }, boxWidth: 10, padding: 8 } }, tooltip: { backgroundColor: '#1b2230', titleColor: '#eaeff6', bodyColor: '#b8c1d0', borderColor: '#2c3a52', borderWidth: 1 } },
+                      scales: { x: { stacked: true, ticks: { color: '#6b7a8d', font: { size: 7 }, maxTicksLimit: 10 }, grid: { display: false } }, y: { stacked: true, ticks: { color: '#6b7a8d', font: { size: 8 }, stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.04)' } } },
+                    }}
+                  />
                 </div>
-              ))}
-            </div>
-            {(() => {
-              const total = feedbackResp.stats.reduce((s, x) => s + x.cnt, 0)
-              const approved = feedbackResp.stats.find(s => s.decision === 'approved')?.cnt ?? 0
-              if (total === 0) return null
-              const pct = Math.round((approved / total) * 100)
-              return (
-                <div style={{ height: 8, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--green)', borderRadius: 99 }} />
+              ) : (
+                <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 11 }}>No proposal activity yet. Engine runs daily at 7 PM.</div>
+              )}
+              {totalFb > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ width: `${approvalPct}%`, height: '100%', background: 'var(--green)', borderRadius: 99 }} />
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: approvalPct >= 50 ? 'var(--green)' : 'var(--red)' }}>{approvalPct}%</span>
+                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>approval rate ({totalFb} decisions)</span>
                 </div>
-              )
-            })()}
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>Approval rate drives confidence adjustments on future proposals</div>
-          </Card>
-        )}
+              )}
+            </Card>
 
-        {/* FRED Macro Context */}
-        {macroResp?.context && (
-          <Card title="Macro Economic Context">
-            <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.8, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap' }}>
-              {macroResp.context}
-            </div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: FRED (St. Louis Fed). Injected into all agent analyses.</div>
-          </Card>
-        )}
-      </div>
+            {/* FRED Macro Context */}
+            {macroResp?.context ? (
+              <Card title="Macro Economic Context">
+                <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.8, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap' }}>
+                  {macroResp.context}
+                </div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: FRED (St. Louis Fed). Injected into all agent analyses.</div>
+              </Card>
+            ) : (
+              <Card title="Macro Context"><div style={{ padding: 16, color: 'var(--text3)', fontSize: 11 }}>Loading FRED data...</div></Card>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Strategy guidance */}
       <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--sans)', lineHeight: 1.6 }}>

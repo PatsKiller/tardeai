@@ -114,27 +114,70 @@ def get_intel_for_symbol(symbol: str, min_quality: int = 50, limit: int = 10,
     """, (sym_upper, days, limit))
     results.extend(cur.fetchall())
 
-    # YouTube + social — keyword search in text
-    for table, text_col, date_col, q_col, title_col in [
-        ("youtube_transcripts", "transcript_text", "ingested_at", "quality_score", "title"),
-        ("social_posts", "text", "ingested_at", "quality_score", "username"),
-    ]:
-        cur.execute(f"""
-            SELECT '{table.split('_')[0]}' as source_type,
-                   {title_col} as title, LEFT({text_col}, 200) as text_snippet,
-                   {q_col} as quality_score, relevance_score,
-                   strategy_tags, agent_tags, {date_col} as date
-            FROM {table}
-            WHERE ({text_col} ILIKE %s OR {title_col} ILIKE %s)
-              AND {q_col} >= %s
-              AND {date_col} > NOW() - INTERVAL '%s days'
-            ORDER BY {date_col} DESC LIMIT %s
-        """, (sym_pattern, sym_pattern, min_quality, days, limit))
-        results.extend(cur.fetchall())
+    # YouTube — semantic search across structured_json + text + title
+    cur.execute("""
+        SELECT 'youtube' as source_type, title,
+               COALESCE(summary, LEFT(cleaned_text, 200), LEFT(transcript_text, 200)) as text_snippet,
+               quality_score, relevance_score,
+               strategy_tags, agent_tags, sub_tags, structured_json,
+               ingested_at as date
+        FROM youtube_transcripts
+        WHERE (transcript_text ILIKE %s OR title ILIKE %s
+               OR summary ILIKE %s
+               OR structured_json::text ILIKE %s)
+          AND quality_score >= %s
+          AND ingested_at > NOW() - INTERVAL '%s days'
+        ORDER BY quality_score DESC, ingested_at DESC LIMIT %s
+    """, (sym_pattern, sym_pattern, sym_pattern, sym_pattern, min_quality, days, limit))
+    results.extend(cur.fetchall())
+
+    # Social — keyword search in text
+    cur.execute("""
+        SELECT 'social' as source_type, username as title, LEFT(text, 200) as text_snippet,
+               quality_score, relevance_score,
+               strategy_tags, agent_tags, ingested_at as date
+        FROM social_posts
+        WHERE (text ILIKE %s OR username ILIKE %s)
+          AND quality_score >= %s
+          AND ingested_at > NOW() - INTERVAL '%s days'
+        ORDER BY ingested_at DESC LIMIT %s
+    """, (sym_pattern, sym_pattern, min_quality, days, limit))
+    results.extend(cur.fetchall())
 
     conn.close()
     results.sort(key=lambda r: r.get("date") or "", reverse=True)
     return results[:limit]
+
+
+def search_transcripts(query: str, min_quality: int = 50, limit: int = 5,
+                       days: int = 30) -> list:
+    """Semantic-like search across YouTube transcripts using keyword matching on structured fields.
+
+    Searches: title, summary, structured_json (key_points, action_items, main_topics, tickers_mentioned).
+    Returns ranked results by quality_score.
+    """
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    pattern = f"%{query}%"
+    cur.execute("""
+        SELECT id, title, channel_name,
+               COALESCE(summary, LEFT(cleaned_text, 300)) as text_snippet,
+               quality_score, relevance_score, strategy_tags, sub_tags,
+               structured_json, ingested_at as date
+        FROM youtube_transcripts
+        WHERE (title ILIKE %s
+               OR summary ILIKE %s
+               OR structured_json::text ILIKE %s
+               OR transcript_text ILIKE %s)
+          AND quality_score >= %s
+          AND ingested_at > NOW() - INTERVAL '%s days'
+        ORDER BY quality_score DESC, ingested_at DESC LIMIT %s
+    """, (pattern, pattern, pattern, pattern, min_quality, days, limit))
+    results = cur.fetchall()
+    conn.close()
+    return results
 
 
 def get_outcome_feedback(symbol: str, limit: int = 3) -> str:
