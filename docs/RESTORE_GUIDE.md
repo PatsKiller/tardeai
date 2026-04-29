@@ -1,6 +1,7 @@
 # Trade AI v12 — Restore Guide
 
 **If you need to rebuild the system from scratch, follow this guide.**
+**All backup files are in the git repo under the project root.**
 
 ---
 
@@ -33,7 +34,26 @@ XAI_API_KEY=<key>
 #TWITTER_BEARER_TOKEN=
 ```
 
-## 3. Cron Jobs (restore with `crontab /path/to/crontab_backup`)
+## 3. Database Backup & Restore
+
+**Backup location:** `backups/db/trade_ai_YYYYMMDD.sql.gz`
+**Size:** ~3.7 MB compressed (105 MB uncompressed, 143 tables)
+**Schedule:** Daily at 2 AM, keeps 7 days
+
+### Restore DB from backup:
+```bash
+gunzip < backups/db/trade_ai_20260429.sql.gz | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
+```
+
+### Create fresh backup:
+```bash
+DB_PW=$(grep '^DB_PASSWORD=' .env | cut -d= -f2)
+PGPASSWORD="$DB_PW" pg_dump -h localhost -U trade_ai trade_ai | gzip > backups/db/trade_ai_$(date +%Y%m%d).sql.gz
+```
+
+---
+
+## 4. Cron Jobs (restore with `crontab /path/to/crontab_backup`)
 
 Current crontab has ~46 entries. Key ones:
 - `*/15 6-19 * * 1-5` — Agent processing (market hours)
@@ -136,3 +156,81 @@ Must pass 21+ of 23 checks. Known acceptable fail: portfolio-server (nohup, not 
 | `assets/screeners.yaml` | Finviz screener URLs (MUST use /export not /export.ashx) |
 | `config/agents_sec_interaction.yaml` | Agent SEC data interaction rules |
 | `config/agents_data_sources.yaml` | Agent data source rules (if exists) |
+
+---
+
+## 11. Backup File Locations (all in git repo)
+
+```
+~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/
+├── .env                                    ← API keys, DB password, cookies (NOT in git — manual restore)
+├── crontab_backup.txt                      ← Full crontab (restore: crontab crontab_backup.txt)
+├── backups/
+│   ├── db/
+│   │   └── trade_ai_20260429.sql.gz        ← DB dump 3.7 MB (restore: gunzip | psql)
+│   ├── openclaw/
+│   │   ├── openclaw.json                   ← Gateway + agents + models config
+│   │   ├── jobs.json                       ← 3 OpenClaw cron jobs
+│   │   ├── steph_SOUL.md                   ← Steph personality
+│   │   └── aegis_SOUL.md                   ← Aegis personality
+│   └── systemd/
+│       ├── tradeai-continuous.service      ← Trade AI runner service
+│       └── tradeai-continuous.timer        ← Timer trigger
+├── assets/
+│   └── screeners.yaml                      ← Finviz screener URLs (MUST use /export)
+├── config/
+│   └── agents_sec_interaction.yaml         ← Agent SEC data rules
+├── linux_launchers/
+│   └── run_continuous.sh                   ← Runner launcher (sources .env, runs preflight)
+├── scripts/
+│   └── system_preflight_check.py           ← 23-point health check
+└── docs/
+    ├── RESTORE_GUIDE.md                    ← This file
+    └── TRADE_AI_V12_SYSTEM_BIBLE_V2_33.md  ← Latest Bible
+```
+
+### What is NOT in git (must restore manually):
+- `.env` file (API keys, passwords — keep a secure copy elsewhere)
+- PostgreSQL data (restore from `backups/db/` dump)
+- OpenClaw live configs (restore from `backups/openclaw/` to `~/.openclaw/`)
+- Systemd services (restore from `backups/systemd/` to `~/.config/systemd/user/`)
+- Crontab (restore: `crontab crontab_backup.txt`)
+
+### Full Restore Sequence:
+```bash
+# 1. Clone repo
+git clone <repo_url>
+cd trade-ai-v12-rebuild/trade-ai-v12-rebuild
+
+# 2. Restore .env (from your secure backup)
+cp /path/to/secure/.env .env
+
+# 3. Install Python deps
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt  # or pip install psycopg2 yfinance requests pyyaml youtube-transcript-api
+
+# 4. Restore DB
+DB_PW=$(grep '^DB_PASSWORD=' .env | cut -d= -f2)
+gunzip < backups/db/trade_ai_20260429.sql.gz | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
+
+# 5. Restore crontab
+crontab crontab_backup.txt
+
+# 6. Restore OpenClaw
+cp backups/openclaw/openclaw.json ~/.openclaw/
+cp backups/openclaw/jobs.json ~/.openclaw/cron/
+cp backups/openclaw/steph_SOUL.md ~/.openclaw/agents/steph/agent/SOUL.md
+cp backups/openclaw/aegis_SOUL.md ~/.openclaw/agents/aegis/SOUL.md
+
+# 7. Restore systemd
+cp backups/systemd/* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tradeai-continuous.timer
+
+# 8. Start services
+nohup .venv/bin/python scripts/portfolio_server.py &
+openclaw gateway restart
+
+# 9. Verify
+python3 scripts/system_preflight_check.py
+```
