@@ -218,6 +218,29 @@ def get_intel_summary(agent: str = None, symbol: str = None,
     except Exception:
         pass
 
+    # Qualified intelligence highlights (top items across all sources)
+    try:
+        import psycopg2.extras as _pxe
+        _conn = _get_conn()
+        _cur = _conn.cursor(cursor_factory=_pxe.RealDictCursor)
+        if symbol:
+            _cur.execute("""SELECT source_type, title, quality_score, retirement_relevance
+                FROM qualified_intelligence WHERE symbol=%s ORDER BY quality_score DESC LIMIT 3""", (symbol,))
+        else:
+            _cur.execute("""SELECT source_type, title, quality_score, retirement_relevance
+                FROM qualified_intelligence WHERE retirement_relevance='high'
+                ORDER BY discovered_at DESC LIMIT 3""")
+        _qi = _cur.fetchall()
+        _conn.close()
+        if _qi:
+            qi_lines = ["QUALIFIED INTELLIGENCE (high-confidence verified):"]
+            for q in _qi:
+                rel = " [RETIREMENT]" if q.get("retirement_relevance") == "high" else ""
+                qi_lines.append(f"  [{q['source_type']}] Q:{q['quality_score']}{rel} {q['title'][:60]}")
+            extra_context.append("\n".join(qi_lines))
+    except Exception:
+        pass
+
     if not items and not extra_context:
         return ""
 
