@@ -237,6 +237,25 @@ def deliver(force: bool = False) -> dict:
     results["export"] = export_path
     print(f"  Export: {export_path}")
 
+    # Log intelligence event
+    try:
+        import psycopg2 as _pg
+        _pw = ""
+        for _line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if _line.startswith("DB_PASSWORD="): _pw = _line.split("=", 1)[1].strip()
+        _conn = _pg.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=_pw)
+        _cur = _conn.cursor()
+        _cur.execute("""INSERT INTO portfolio_intelligence_events
+            (event_type, severity, source, payload)
+            VALUES ('aegis_morning_brief', 'info', 'aegis_morning_brief_delivery.py', %s)""",
+            (json.dumps({"run_id": run_id, "sections": len(brief.get("sections", [])),
+                         "telegram": results.get("telegram")}, default=str),))
+        _conn.commit()
+        _conn.close()
+        print(f"  Intel event: logged")
+    except Exception as _e:
+        print(f"  Intel event: failed ({_e})")
+
     # Audit trail
     try:
         from db_adapter import save_notification_log_entry

@@ -135,6 +135,42 @@ def get_intel_for_symbol(symbol: str, min_quality: int = 50, limit: int = 10,
     return results[:limit]
 
 
+def get_outcome_feedback(symbol: str, limit: int = 3) -> str:
+    """Get past decision outcomes for a symbol — feedback loop for agents.
+
+    Returns text showing what was recommended before and what actually happened,
+    so agents can learn from past accuracy.
+    """
+    import psycopg2.extras
+    try:
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT recommendation, price_at_decision, price_7d, price_30d, created_at
+            FROM decision_outcomes
+            WHERE symbol = %s AND price_7d IS NOT NULL
+            ORDER BY created_at DESC LIMIT %s
+        """, (symbol, limit))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        lines = [f"PAST DECISION OUTCOMES FOR {symbol} (learn from these):"]
+        for r in rows:
+            p0 = float(r.get("price_at_decision") or 0)
+            p7 = float(r.get("price_7d") or 0)
+            p30 = float(r.get("price_30d") or 0)
+            chg7 = ((p7 / p0) - 1) * 100 if p0 > 0 and p7 > 0 else 0
+            chg30 = ((p30 / p0) - 1) * 100 if p0 > 0 and p30 > 0 else 0
+            rec = r.get("recommendation", "?")
+            dt = str(r.get("created_at", ""))[:10]
+            correct = "CORRECT" if (rec in ("BUY", "ADD") and chg7 > 0) or (rec in ("SELL", "TRIM") and chg7 < 0) or (rec == "HOLD" and abs(chg7) < 5) else "WRONG" if abs(chg7) > 2 else "NEUTRAL"
+            lines.append(f"  {dt}: Rec={rec} at ${p0:.2f} → 7d: {chg7:+.1f}% → 30d: {chg30:+.1f}% [{correct}]")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def get_intel_summary(agent: str = None, symbol: str = None,
                       min_quality: int = 60, max_chars: int = 800,
                       days: int = 7) -> str:
