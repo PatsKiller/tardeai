@@ -1139,11 +1139,32 @@ def _aegis_chat_context():
     This is the bridge between Aegis Core and Aegis Chat.
     Provides all the data Aegis Chat needs to answer questions.
     """
-    # Portfolio summary from latest brief
+    # Portfolio summary — use LIVE holdings data, not stale Aegis brief
+    _h = _load_json(STATE_DIR / "holdings.json") or {}
+    _pt = _h.get("portfolio_totals", {})
+    _pv = _pt.get("total_value", 0)
+    _heat = _pt.get("day_change_pct", 0)
+    # Risk data for stop count
+    _risk = _load_json(STATE_DIR / "risk_management.json") or {}
+    _triggered = len([p for p in _risk.get("positions", []) if p.get("triggered")])
+    _unprotected = len([p for p in _risk.get("positions", []) if not p.get("has_stop") and not p.get("stop_price")])
+    _live_summary = f"Portfolio ${_pv:,.0f}. Heat {_heat:.1f}%. {_triggered} stops triggered, {_unprotected} unprotected."
+    # Also get Aegis brief for additional context
     summary = _db_query(
         "SELECT what_changed FROM aegis_portfolio_briefs WHERE brief_type='summary' ORDER BY observed_at DESC LIMIT 1",
         fetch="one"
     )
+    # Append Aegis extras (Steph review, covered calls) if available
+    _aegis_extra = (summary or {}).get("what_changed", "")
+    # Strip stale portfolio/heat/stop data from Aegis extra — we already have live
+    import re as _re
+    _aegis_extra = _re.sub(r'Portfolio \$[\d,]+\.?\d*', '', _aegis_extra)
+    _aegis_extra = _re.sub(r'Heat [\d.]+%\.?', '', _aegis_extra)
+    _aegis_extra = _re.sub(r'\d+ stops? triggered,?\s*', '', _aegis_extra)
+    _aegis_extra = _re.sub(r'\d+ unprotected\.?\s*', '', _aegis_extra)
+    _aegis_extra = _aegis_extra.strip('. ')
+    if _aegis_extra and len(_aegis_extra) > 10:
+        _live_summary += " " + _aegis_extra
     # Top findings needing attention
     steph_items = _db_query(
         "SELECT symbol, category, reason, unresolved_question, review_status, steph_verdict, steph_reasoning, steph_confidence, send_to_john, john_question, reviewed_by, resolved_at FROM aegis_steph_escalations ORDER BY observed_at DESC LIMIT 10"
@@ -1188,7 +1209,7 @@ def _aegis_chat_context():
     ) or []
 
     return {
-        "portfolio_summary": (summary or {}).get("what_changed", "No summary available"),
+        "portfolio_summary": _live_summary,
         "steph_escalations": [{k: _json_clean(v) for k, v in r.items()} for r in steph_items],
         "covered_calls": [{k: _json_clean(v) for k, v in r.items()} for r in cc],
         "rotations": [{k: _json_clean(v) for k, v in r.items()} for r in rot],
@@ -1203,7 +1224,7 @@ def _aegis_chat_context():
         "stop_coverage": stop_coverage,
         "stop_briefs": [{k: _json_clean(v) for k, v in r.items()} for r in stop_briefs],
         "morning_brief": _compose_morning_brief(
-            (summary or {}).get("what_changed", ""),
+            _live_summary,
             [{k: _json_clean(v) for k, v in r.items()} for r in steph_items],
             [{k: _json_clean(v) for k, v in r.items()} for r in cc],
             [{k: _json_clean(v) for k, v in r.items()} for r in rot],
