@@ -117,17 +117,19 @@ Channel: {channel}
 Transcript (key sentences):
 {extracted_text[:4000]}
 
-Output ONLY this JSON structure (no other text):
+Output ONLY valid JSON with this exact schema (no other text before or after):
 {{
-  "summary": "one-paragraph concise overview (150-200 words)",
-  "key_points": ["point 1", "point 2", "point 3", "point 4"],
-  "action_items": ["actionable recommendation 1", "actionable recommendation 2"],
-  "tickers_mentioned": ["SCHD", "V"],
-  "retirement_relevance": "high or medium or low",
-  "topics": ["main topic 1", "main topic 2"]
+  "summary": "150-250 word professional overview focused on retirement/income/tax implications",
+  "key_points": ["concise factual point 1", "point 2", "point 3"] (5-8 points),
+  "action_items": ["actionable recommendation 1", "recommendation 2"] (max 6),
+  "tickers_mentioned": ["SCHD", "V", "JEPI"],
+  "retirement_relevance": "high" or "medium" or "low",
+  "relevance_score": 0-100,
+  "main_topics": ["roth_conversion_ladder", "income_gap_strategy", "dividend_growth"],
+  "llm_confidence": 0-100
 }}
 
-Focus on: dividend strategy, Roth ladders, SSDI rules, Medicaid planning, tax optimization, income gap, specific ticker mentions."""
+Focus on: dividend strategy, Roth ladders, SSDI rules, Medicaid planning, tax optimization, income gap, covered calls, specific ticker or ETF mentions."""
 
         result = get_llm_response(
             "cio_synthesis" if high_impact else "agent_narrative",
@@ -140,8 +142,24 @@ Focus on: dividend strategy, Roth ladders, SSDI rules, Medicaid planning, tax op
             end = raw.rfind('}') + 1
             if start >= 0 and end > start:
                 parsed = json.loads(raw[start:end])
-                parsed["_provider"] = result.get("provider", "unknown")
-                return parsed
+                # Validate required keys
+                required = ["summary", "key_points", "retirement_relevance"]
+                if all(k in parsed for k in required):
+                    parsed["_provider"] = result.get("provider", "unknown")
+                    return parsed
+                # Retry once if missing keys
+                result2 = get_llm_response(
+                    "cio_synthesis" if high_impact else "agent_narrative",
+                    prompt, max_tokens=500, high_impact=high_impact
+                )
+                if result2.get("success"):
+                    raw2 = result2["response"]
+                    s2, e2 = raw2.find('{'), raw2.rfind('}') + 1
+                    if s2 >= 0 and e2 > s2:
+                        parsed2 = json.loads(raw2[s2:e2])
+                        parsed2["_provider"] = result2.get("provider", "unknown")
+                        parsed2["_retry"] = True
+                        return parsed2
     except (json.JSONDecodeError, Exception):
         pass
     return {}
