@@ -47,17 +47,27 @@ def save_snapshot(portfolio: Dict, analysis: Dict, state_dir: Path) -> None:
     sector_pct = analysis.get("sector_pct", {})
     holdings = portfolio.get("holdings", [])
 
+    # Compute LIVE account totals from actual holdings market_value
+    # (account_summaries.total_value may be stale from last import)
+    live_account_totals: Dict = {}
+    live_account_day_change: Dict = {}
+    for h in holdings:
+        acct = h.get("account", "unknown")
+        live_account_totals[acct] = live_account_totals.get(acct, 0) + (h.get("market_value") or 0)
+        live_account_day_change[acct] = live_account_day_change.get(acct, 0) + (h.get("day_change") or 0)
+    live_total = sum(live_account_totals.values())
+
     # Snapshot is lightweight — just the key metrics
     snapshot = {
         "date": date_str,
-        "total_value": totals.get("total_value", 0),
+        "total_value": live_total if live_total > 0 else totals.get("total_value", 0),
         "total_gain": totals.get("total_gain", 0),
-        "day_change": totals.get("day_change", 0),
+        "day_change": sum(live_account_day_change.values()) if live_account_day_change else totals.get("day_change", 0),
         "accounts": {
             k: {
-                "value": v.get("total_value", 0),
+                "value": live_account_totals.get(k, v.get("total_value", 0)),
                 "gain": v.get("total_gain", 0),
-                "day_change": v.get("day_change", 0),
+                "day_change": live_account_day_change.get(k, v.get("day_change", 0)),
             }
             for k, v in account_summaries.items()
         },
@@ -76,11 +86,33 @@ def save_snapshot(portfolio: Dict, analysis: Dict, state_dir: Path) -> None:
         },
     }
 
-    with open(snap_path, "w") as f:
-        json.dump(snapshot, f, indent=2, default=str)
-    # Also persist via db_adapter (PostgreSQL on Linux)
-    if _db_save_snapshot:
-        _db_save_snapshot(snapshot, snap_dir.parent)
+    # Guard: check previous snapshot for >25% drift before writing
+    _snap_ok = True
+    _total_val = snapshot.get("total_value", 0) or 0
+    _prev_files = sorted(snap_dir.glob("*.json"), key=lambda f: f.name, reverse=True)
+    for _pf in _prev_files[:3]:
+        if _pf.name == snap_path.name:
+            continue
+        try:
+            _pd = json.loads(_pf.read_text())
+            _pv = float(_pd.get("total_value", 0))
+            if _pv > 0 and _total_val > 0:
+                _drift = abs(_total_val - _pv) / _pv * 100
+                if _drift > 25:
+                    print(f"  [snapshot] ⛔ REJECTED: ${_total_val:,.0f} vs prev ${_pv:,.0f} ({_drift:.1f}% drift > 25%)")
+                    _snap_ok = False
+                break
+        except Exception:
+            continue
+
+    if _snap_ok:
+        with open(snap_path, "w") as f:
+            json.dump(snapshot, f, indent=2, default=str)
+        # Also persist via db_adapter (PostgreSQL on Linux)
+        if _db_save_snapshot:
+            _db_save_snapshot(snapshot, snap_dir.parent)
+    else:
+        print(f"  [snapshot] Snapshot NOT written — sanity check failed")
 
 
 def load_snapshot(state_dir: Path, date_str: str) -> Optional[Dict]:

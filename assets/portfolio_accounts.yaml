@@ -36,12 +36,22 @@ accounts:
     account_id: "...258"
     taxable: false
     drip_enabled: true
-    notes: "Previously rolled from prior employer 401k. Contains worthless/revoked securities — see revoked_securities section. V (Visa) concentration risk."
+    notes: "Previously rolled from prior employer 401k. Contains worthless/revoked securities — see revoked_securities section. V (Visa) concentration risk. DGRO added 2026-04-26 as dividend growth complement to SCHD."
     target_allocation:
-      us_equity: 60
+      us_equity: 57
       international_equity: 10
       bonds: 25
       dividend_income: 5
+      dividend_growth: 3        # DGRO — added 2026-04-26, target ~$15-25K initial position
+    rebalancing_candidates:
+      - symbol: DGRO
+        name: "iShares Core Dividend Growth ETF"
+        rationale: "Dividend growth complement to SCHD. Low overlap, adds Financials/Tech dividend growers. Tax-deferred account ideal home."
+        target_weight: 3        # ~3% of rollover IRA (~$16,500 at current values)
+        target_range: [2, 5]
+        funding_source: "Trim V concentration or deploy from CASH ($16,575 available)"
+        added: "2026-04-26"
+        status: pending_purchase
 
   schwab_roth:
     display_name: "Schwab Roth IRA"
@@ -434,6 +444,15 @@ etf_sectors:
     name: "Amana Income Investor"
     top_sectors: {Technology: 28, Healthcare: 18, Industrials: 15, Financials: 12, "Consumer Staples": 10}
     top_holdings: ["MSFT", "QCOM", "JCI", "TXN", "AMGN"]
+  DGRO:
+    name: "iShares Core Dividend Growth ETF"
+    top_sectors: {Financials: 21, Technology: 18, Healthcare: 17, "Consumer Staples": 12, Industrials: 11, Utilities: 7, Energy: 6, "Consumer Discretionary": 6, Materials: 2}
+    top_holdings: ["XOM", "JPM", "JNJ", "AAPL", "MSFT", "ABBV", "AVGO", "PG", "PM", "MRK"]
+    expense_ratio: 0.08
+    yield_approx: 2.1
+    style: dividend_growth
+    added: "2026-04-26"
+    notes: "Dividend growth tilt. Low overlap with SCHD. Complements income sleeve without doubling down on same names."
   FCNTX:
     name: "Fidelity Contrafund"
     top_sectors: {Technology: 40, "Communication Services": 15, "Consumer Discretionary": 12, Healthcare: 10, Financials: 8}

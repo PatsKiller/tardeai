@@ -243,6 +243,23 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
     total_value = float(snapshot.get("total_value", 0))
     source = snapshot.get("source", "live")
 
+    # Sanity guard: reject snapshots that jump >30% from the most recent saved value
+    if USE_DB and date_str and total_value > 0:
+        try:
+            prev = _execute(
+                "SELECT total_value FROM portfolio_snapshots ORDER BY snapshot_date DESC LIMIT 1",
+                fetch="one"
+            )
+            if prev:
+                prev_val = float(prev.get("total_value", 0))
+                if prev_val > 0:
+                    drift_pct = abs(total_value - prev_val) / prev_val * 100
+                    if drift_pct > 30:
+                        print(f"  [db_adapter] ⛔ SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${prev_val:,.0f} ({drift_pct:.1f}% drift > 30% guard)")
+                        return
+        except Exception:
+            pass  # If we can't check, allow the write
+
     if USE_DB and date_str and total_value > 0:
         result = _execute(
             """INSERT INTO portfolio_snapshots (snapshot_date, total_value, source, data)
@@ -257,11 +274,31 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
             return
         print("  [db_adapter] Snapshot DB save failed — writing JSON backup")
 
-    # JSON fallback
+    # JSON fallback — with drift guard
     snap_dir = Path(state_dir) / "snapshots"
     snap_dir.mkdir(parents=True, exist_ok=True)
     snap_path = snap_dir / f"{date_str}.json"
-    snap_path.write_text(json.dumps(snapshot, indent=2, default=str))
+
+    # Check previous JSON snapshot for drift before writing
+    _prev_files = sorted(snap_dir.glob("*.json"), key=lambda f: f.name, reverse=True)
+    _json_ok = True
+    for _pf in _prev_files[:3]:
+        if _pf.name == snap_path.name:
+            continue
+        try:
+            _pd = json.loads(_pf.read_text())
+            _pv = float(_pd.get("total_value", 0))
+            if _pv > 0:
+                _drift = abs(total_value - _pv) / _pv * 100
+                if _drift > 25:
+                    print(f"  [db_adapter] ⛔ JSON SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${_pv:,.0f} ({_drift:.1f}% drift > 25%)")
+                    _json_ok = False
+                break
+        except Exception:
+            continue
+
+    if _json_ok:
+        snap_path.write_text(json.dumps(snapshot, indent=2, default=str))
 
 
 # ── PERFORMANCE DAILY ────────────────────────────────────────────────────────
@@ -887,6 +924,159 @@ def save_escalations(escalations: list) -> None:
         except Exception as e:
             conn.rollback()
             print(f"  [db_adapter] Escalation queue save failed: {e}")
+
+
+# ── MAINTENANCE / QUERY HELPERS ────────────────────────────────────────────
+
+def expire_stale_escalations() -> list:
+    """Mark pending escalations past their expires_at as expired. Returns list of expired rows."""
+    return _execute(
+        """UPDATE escalation_queue SET status = 'expired'
+           WHERE status = 'pending' AND expires_at IS NOT NULL
+           AND expires_at < CURRENT_DATE
+           RETURNING id, symbol, trigger_rule""",
+        fetch="all"
+    ) or []
+
+
+def expire_stale_drafts() -> list:
+    """Mark draft recommendations past their expires_at as expired. Returns list of expired rows."""
+    return _execute(
+        """UPDATE advisor_recommendations SET status = 'expired'
+           WHERE status = 'draft' AND expires_at IS NOT NULL
+           AND expires_at < CURRENT_DATE
+           RETURNING id, symbol, action""",
+        fetch="all"
+    ) or []
+
+
+def expire_stale_ai_watchlist() -> list:
+    """Mark active AI-generated watchlist items past their expires_at as expired. Returns list of expired rows."""
+    return _execute(
+        """UPDATE watchlist_items SET status = 'expired', updated_at = now()
+           WHERE source_type = 'ai_generated' AND status = 'active'
+           AND data->>'expires_at' IS NOT NULL
+           AND data->>'expires_at' < CURRENT_DATE::text
+           RETURNING id, symbol""",
+        fetch="all"
+    ) or []
+
+
+def get_active_watchlist_symbols(source_types: list) -> list:
+    """Return active watchlist symbols for given source_types. Each row has 'symbol' key."""
+    placeholders = ",".join(["%s"] * len(source_types))
+    return _execute(
+        f"SELECT symbol FROM watchlist_items WHERE status='active' AND source_type IN ({placeholders})",
+        tuple(source_types), fetch="all"
+    ) or []
+
+
+def get_escalations_by_date_severity(date_str: str, severity: int) -> list:
+    """Return escalation rows for a given date and severity level."""
+    return _execute(
+        "SELECT id, symbol, severity, trigger_rule, summary, evidence FROM escalation_queue WHERE created_at::date = %s AND severity = %s",
+        (date_str, severity), fetch="all"
+    ) or []
+
+
+def get_high_confidence_drafts(date_str: str, min_confidence: float = 0.90) -> list:
+    """Return recommendation drafts at or above confidence threshold for a given date."""
+    return _execute(
+        "SELECT id, symbol, action, rationale, confidence FROM advisor_recommendations WHERE recommendation_date = %s AND status = 'draft' AND confidence >= %s",
+        (date_str, min_confidence), fetch="all"
+    ) or []
+
+
+# ── ACTION QUEUE HELPERS ────────────────────────────────────────────────────
+
+def action_queue_already_exists(dedupe_key: str) -> bool:
+    """Check if an action_queue item with this dedupe_key exists."""
+    row = _execute("SELECT 1 FROM action_queue WHERE dedupe_key = %s", (dedupe_key,), fetch="one")
+    return row is not None
+
+
+def save_action_queue_entry(entry: dict) -> None:
+    """Upsert one action_queue row by dedupe_key."""
+    _execute(
+        """INSERT INTO action_queue
+           (recommendation_id, symbol, action, rationale, confidence, urgency, status, expires_at, dedupe_key)
+           VALUES (%(recommendation_id)s, %(symbol)s, %(action)s, %(rationale)s, %(confidence)s,
+                   %(urgency)s, %(status)s, %(expires_at)s, %(dedupe_key)s)
+           ON CONFLICT (dedupe_key) DO NOTHING""",
+        entry
+    )
+
+
+def get_pending_action_queue() -> list:
+    """Return all pending action_queue items."""
+    return _execute(
+        """SELECT id, recommendation_id, symbol, action, rationale, confidence, urgency, status, expires_at, dedupe_key, created_at
+           FROM action_queue WHERE status = 'pending'
+           ORDER BY urgency = 'urgent' DESC, confidence DESC, created_at DESC""",
+        fetch="all"
+    ) or []
+
+
+# ── SERVER / API HELPERS ────────────────────────────────────────────────────
+
+def get_personal_snapshot_at_date(target_date: str) -> list:
+    """Return the latest personal_history row per field as of target_date."""
+    return _execute(
+        """SELECT DISTINCT ON (field_name)
+               field_name, value, effective_date, recorded_at, note, source
+           FROM personal_history
+           WHERE effective_date <= %s
+           ORDER BY field_name, effective_date DESC, recorded_at DESC""",
+        (target_date,), fetch="all"
+    ) or []
+
+
+def get_personal_field_history(field_name: str) -> list:
+    """Return all history rows for a single personal field, ordered by recorded_at."""
+    return _execute(
+        """SELECT value, effective_date, recorded_at, note, source
+           FROM personal_history
+           WHERE field_name = %s
+           ORDER BY recorded_at ASC""",
+        (field_name,), fetch="all"
+    ) or []
+
+
+def save_personal_history_entry(field_name: str, value, data_type: str, category: str,
+                                 effective_date: str, note: str, source: str = "modal_edit") -> bool:
+    """Insert one personal_history row. Returns True on success."""
+    result = _execute(
+        """INSERT INTO personal_history
+           (field_name, value, data_type, category, effective_date, note, source)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (field_name, value, data_type, category, effective_date, note, source)
+    )
+    return result is not None and result is not False
+
+
+def get_db_table_stats() -> list:
+    """Return pg_stat_user_tables stats for the health endpoint."""
+    return _execute("""
+        SELECT s.relname AS name,
+               s.n_live_tup AS live_rows,
+               s.n_dead_tup AS dead_rows,
+               pg_size_pretty(pg_total_relation_size(s.schemaname||'.'||s.relname)) AS size,
+               s.last_autovacuum::text,
+               s.last_autoanalyze::text
+        FROM pg_stat_user_tables s
+        ORDER BY pg_total_relation_size(s.schemaname||'.'||s.relname) DESC
+    """, fetch="all") or []
+
+
+def get_recent_notifications(limit: int = 20) -> list:
+    """Return recent notification_log rows for display."""
+    return _execute(
+        """SELECT notification_date, notification_type, channel, status, subject,
+                  body_summary, sent_at::text, dedupe_key
+           FROM notification_log
+           ORDER BY created_at DESC LIMIT %s""",
+        (limit,), fetch="all"
+    ) or []
 
 
 # ── TRADE AI STATE (delta tracker) ───────────────────────────────────────────

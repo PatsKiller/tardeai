@@ -234,3 +234,82 @@ CREATE TABLE IF NOT EXISTS notification_log (
 CREATE INDEX IF NOT EXISTS idx_notification_date ON notification_log(notification_date DESC);
 CREATE INDEX IF NOT EXISTS idx_notification_status ON notification_log(status);
 CREATE INDEX IF NOT EXISTS idx_notification_type ON notification_log(notification_type);
+
+-- ── Action Queue ────────────────────────────────────────────────────────────
+-- Pending human-review items derived from qualifying recommendation drafts.
+-- No execution authority — approved items are records of intent only.
+CREATE TABLE IF NOT EXISTS action_queue (
+    id serial PRIMARY KEY,
+    created_at timestamptz DEFAULT now(),
+    recommendation_id integer REFERENCES advisor_recommendations(id),
+    symbol varchar(20),
+    action varchar(30) NOT NULL,
+    rationale text,
+    confidence numeric(4,3),
+    urgency varchar(10) DEFAULT 'normal',
+    status varchar(20) DEFAULT 'pending',
+    expires_at date,
+    reviewed_at timestamptz,
+    reviewed_by varchar(50),
+    dedupe_key varchar(100) NOT NULL,
+    UNIQUE(dedupe_key)
+);
+CREATE INDEX IF NOT EXISTS idx_action_queue_status ON action_queue(status);
+
+-- ── Approval Log ────────────────────────────────────────────────────────────
+-- Audit trail of approve/reject/defer decisions on action_queue items.
+CREATE TABLE IF NOT EXISTS approval_log (
+    id serial PRIMARY KEY,
+    created_at timestamptz DEFAULT now(),
+    action_queue_id integer REFERENCES action_queue(id),
+    decision varchar(20) NOT NULL,
+    decision_reason text,
+    decided_by varchar(50) DEFAULT 'john',
+    decided_at timestamptz DEFAULT now(),
+    notes text
+);
+
+-- ── Account Value Anchors ───────────────────────────────────────────────────
+-- Verified account values from broker statements (Dec 31, quarterly, etc.)
+-- These are the ground truth for period return calculations.
+CREATE TABLE IF NOT EXISTS account_value_anchors (
+    id serial PRIMARY KEY,
+    anchor_date date NOT NULL,
+    account_key varchar(50) NOT NULL,
+    verified_value numeric(14,2) NOT NULL,
+    source varchar(50) NOT NULL,
+    notes text,
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(anchor_date, account_key)
+);
+
+-- ── Daily Snapshots (DB-backed) ─────────────────────────────────────────────
+-- Per-account daily values. Replaces JSON-only snapshot approach.
+CREATE TABLE IF NOT EXISTS daily_snapshots (
+    id serial PRIMARY KEY,
+    snapshot_date date NOT NULL,
+    account_key varchar(50) NOT NULL,
+    total_value numeric(14,2) NOT NULL,
+    cash_value numeric(14,2) DEFAULT 0,
+    position_count integer DEFAULT 0,
+    source varchar(30) DEFAULT 'pipeline',
+    holdings_hash varchar(20),
+    created_at timestamptz DEFAULT now(),
+    UNIQUE(snapshot_date, account_key)
+);
+CREATE INDEX IF NOT EXISTS idx_daily_snap_date ON daily_snapshots(snapshot_date DESC);
+
+-- ── Account Transfers ───────────────────────────────────────────────────────
+-- Roth conversions, deposits, withdrawals between/into accounts.
+-- Portfolio-neutral transfers (Roth conversion) don't change total value.
+-- External deposits/withdrawals change total value but are not returns.
+CREATE TABLE IF NOT EXISTS account_transfers (
+    id serial PRIMARY KEY,
+    transfer_date date NOT NULL,
+    from_account varchar(50),
+    to_account varchar(50),
+    amount numeric(14,2) NOT NULL,
+    transfer_type varchar(30) NOT NULL,
+    notes text,
+    created_at timestamptz DEFAULT now()
+);

@@ -372,6 +372,34 @@ def process_stop_alerts(danger_list: List[Dict], state_dir: str, root: str = "."
         print(f"  [stop-brief] Generating decision brief for {sym}...")
         try:
             result = generate_stop_brief(sym, d, state_dir, root)
+
+            # DB first, Telegram second
+            try:
+                from alert_event_writer import save_alert_event
+                price = result.get("price", d.get("price", 0))
+                stop_p = result.get("stop_price", d.get("stop_price", 0))
+                dec = result.get("decision", {})
+                save_alert_event(
+                    alert_type="stop_brief",
+                    raw_text=result.get("telegram_msg", "")[:2000],
+                    symbol=sym,
+                    severity="warning" if dec.get("recommendation") != "SELL" else "urgent",
+                    source_script="stop_decision_brief.py",
+                    price=price if price else None,
+                    stop_price=stop_p if stop_p else None,
+                    gap_pct=result.get("dist_pct"),
+                    position_value=result.get("market_value"),
+                    pnl=result.get("total_gl"),
+                    decision=dec.get("recommendation"),
+                    confidence=dec.get("confidence"),
+                    parsed_payload={"accounts": result.get("accounts", []),
+                                    "rsi": result.get("rsi"),
+                                    "beta": result.get("beta")},
+                    requires_agent_review=True,
+                )
+            except Exception as e:
+                print(f"  [stop-brief] Alert DB write failed (non-fatal): {e}")
+
             send_stop_brief_telegram(result)
             rec = result.get("decision", {}).get("recommendation", "?")
             conf = result.get("decision", {}).get("confidence", 0)

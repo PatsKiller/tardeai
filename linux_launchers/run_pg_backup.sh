@@ -5,7 +5,6 @@ PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 BACKUP_DIR="/home/johnclaw/db_backups"
 ENV_FILE="$PROJECT_ROOT/.env"
 TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
-BACKUP_FILE="$BACKUP_DIR/trade_ai_$TIMESTAMP.sql.gz"
 LOG_FILE="$BACKUP_DIR/backup.log"
 
 mkdir -p "$BACKUP_DIR"
@@ -15,27 +14,43 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-DB_PASSWORD=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
+# Safe grep-based extraction (never source .env — FINVIZ_COOKIE breaks shell)
+_env_val() { grep "^${1}=" "$ENV_FILE" | head -1 | cut -d= -f2-; }
+
+DB_HOST=$(_env_val DB_HOST)
+DB_PORT=$(_env_val DB_PORT)
+DB_NAME=$(_env_val DB_NAME)
+DB_USER=$(_env_val DB_USER)
+DB_PASSWORD=$(_env_val DB_PASSWORD)
+
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
+DB_NAME="${DB_NAME:-trade_ai}"
+DB_USER="${DB_USER:-trade_ai}"
+
 if [ -z "$DB_PASSWORD" ]; then
     echo "[$(date)] ERROR: DB_PASSWORD not found in $ENV_FILE" >> "$LOG_FILE"
     exit 1
 fi
 
+BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_$TIMESTAMP.sql.gz"
+
 {
-    echo "[$(date)] Starting backup..."
+    echo "[$(date)] Starting backup of $DB_NAME@$DB_HOST:$DB_PORT..."
     PGPASSWORD="$DB_PASSWORD" pg_dump \
-        -U trade_ai \
-        -h localhost \
+        -U "$DB_USER" \
+        -h "$DB_HOST" \
+        -p "$DB_PORT" \
         --format=plain \
         --no-owner \
         --no-acl \
-        trade_ai | gzip -9 > "$BACKUP_FILE"
+        "$DB_NAME" | gzip -9 > "$BACKUP_FILE"
 
     SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
     echo "[$(date)] Backup complete: $BACKUP_FILE ($SIZE)"
 
     # Cleanup old backups (>30 days)
-    find "$BACKUP_DIR" -name "trade_ai_*.sql.gz" -mtime +30 -delete
-    REMAINING=$(ls -1 "$BACKUP_DIR"/trade_ai_*.sql.gz 2>/dev/null | wc -l)
+    find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -mtime +30 -delete
+    REMAINING=$(ls -1 "$BACKUP_DIR"/${DB_NAME}_*.sql.gz 2>/dev/null | wc -l)
     echo "[$(date)] Retention cleanup done. $REMAINING backups retained."
 } >> "$LOG_FILE" 2>&1

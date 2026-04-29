@@ -387,11 +387,27 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
 
     snap_today = snap_dir / f"{today_str}.json"
     if not snap_today.exists() and current_val > 0:
-        snap_today.write_text(json.dumps({
-            "date": today_str,
-            "total_value": current_val,
-            "source": "live",
-        }))
+        # Guard: check previous snapshot for >25% drift before writing
+        _prev_snaps = sorted(snap_dir.glob("*.json"), key=lambda f: f.name, reverse=True)
+        _write_ok = True
+        for _pf in _prev_snaps[:3]:
+            try:
+                _pd = json.loads(_pf.read_text())
+                _pv = float(_pd.get("total_value", 0))
+                if _pv > 0:
+                    _drift = abs(current_val - _pv) / _pv * 100
+                    if _drift > 25:
+                        print(f"  [perf] SNAPSHOT REJECTED: ${current_val:,.0f} vs prev ${_pv:,.0f} ({_drift:.1f}% drift > 25%)")
+                        _write_ok = False
+                    break
+            except Exception:
+                continue
+        if _write_ok:
+            snap_today.write_text(json.dumps({
+                "date": today_str,
+                "total_value": current_val,
+                "source": "live",
+            }))
 
     snapshots: Dict[str, float] = {}
     account_snapshots: Dict[str, Dict[str, float]] = {}  # {date: {acct_key: value}}
@@ -409,6 +425,20 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
         except Exception:
             pass
 
+    # Guard: reject outlier snapshots (>25% jump from neighbors)
+    _sorted_dates = sorted(snapshots.keys())
+    _rejected = []
+    if len(_sorted_dates) >= 3:
+        _vals = [snapshots[d] for d in _sorted_dates]
+        _median = sorted(_vals)[len(_vals) // 2]
+        for d in _sorted_dates:
+            v = snapshots[d]
+            if _median > 0 and abs(v - _median) / _median > 0.25:
+                _rejected.append((d, v, _median))
+                print(f"  [perf] OUTLIER SNAPSHOT EXCLUDED: {d} ${v:,.0f} vs median ${_median:,.0f} ({abs(v - _median) / _median * 100:.1f}% drift)")
+        for d, _, _ in _rejected:
+            del snapshots[d]
+
     snap_count = len(snapshots)
     snap_dates = sorted(snapshots.keys())
 
@@ -423,10 +453,11 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
             continue
         start_str = start_dt.strftime("%Y-%m-%d")
 
-        # Source 1: snapshot match (±3 days)
+        # Source 1: snapshot match (±3 days, then widen to ±14 for monthly+)
         hist_val  = None
         src_label = None
-        for delta in range(0, 4):
+        max_delta = 4 if period in ("1D", "1W") else 45
+        for delta in range(0, max_delta):
             for sign in [0, -1, 1]:
                 candidate = (start_dt + timedelta(days=delta * sign)).strftime("%Y-%m-%d")
                 if candidate in snapshots:
@@ -436,16 +467,27 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
             if hist_val:
                 break
 
-        # Source 2: reprice current holdings (with Fidelity translation)
-        if hist_val is None and period != "1D":
-            hist_val  = _portfolio_value_at(
-                txns, start_str, price_cache, yahoo_cache, portfolio, fidelity_map
-            )
-            src_label = "repriced"
+        # Source 2: repricing DISABLED — produces inaccurate values after trades.
+        # Only real snapshots/statement anchors are used. Periods without
+        # snapshot coverage show as unavailable until an anchor is added.
+        # See incident_performance_import_2026-04-21.md for full rationale.
 
         if hist_val and hist_val > 0 and current_val > 0:
             change     = round(current_val - hist_val, 2)
             change_pct = round((change / hist_val) * 100, 2)
+
+            # Guard: reject impossible short-term returns
+            max_pct = 25 if period in ("1D", "1W") else 50
+            if abs(change_pct) > max_pct:
+                print(f"  [perf] RETURN REJECTED: {period} {change_pct:+.1f}% exceeds {max_pct}% guard (start=${hist_val:,.0f} end=${current_val:,.0f})")
+                results[period] = {
+                    "period": period, "start_date": start_str,
+                    "change": None, "change_pct": None,
+                    "source": "rejected",
+                    "note": f"Computed {change_pct:+.1f}% exceeds sanity threshold — likely bad snapshot",
+                }
+                continue
+
             results[period] = {
                 "period":      period,
                 "start_date":  start_str,

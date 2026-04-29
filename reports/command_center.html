@@ -2035,6 +2035,14 @@ a.ext:hover { text-decoration: underline; }
       <span id="pending-banner-msg">Holdings imported — pipeline not yet run · prices may be stale</span>
       <button class="btn" style="margin-left:auto;font-size:10px;padding:2px 10px" onclick="triggerRunPipeline()">Run Now</button>
     </div>
+    <!-- v50: Dashboard notifications panel -->
+    <div id="notif-panel" style="display:none;margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;background:var(--bg2);font-size:11px;font-family:var(--mono)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-weight:600;color:var(--text2)">Notifications</span>
+        <span id="notif-count" style="font-size:9px;color:var(--text3)"></span>
+      </div>
+      <div id="notif-items" style="max-height:160px;overflow-y:auto"></div>
+    </div>
     <!-- v39: 7-day equity curve -->
     <div id="equity-curve-wrap" style="display:none"></div>
 
@@ -2213,6 +2221,22 @@ a.ext:hover { text-decoration: underline; }
         <span class="ab-icon">👤</span>
         <span class="ab-lbl">Personal</span>
       </button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- ── JOHN DECISION TASKS ── -->
+    <div class="zone-hdr">📋 John Decision Tasks <span id="john-task-count" style="font-size:9px;color:var(--text3)"></span></div>
+    <div id="john-tasks-panel" style="display:none">
+      <div id="john-tasks-list"></div>
+    </div>
+    <div id="john-tasks-empty" style="font-size:10px;color:var(--text3);padding:4px 0">Loading tasks...</div>
+
+    <!-- Task detail modal -->
+    <div id="john-task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1100;align-items:center;justify-content:center">
+      <div style="background:var(--bg1,#10141c);border:1px solid var(--border,#212d3f);border-radius:10px;padding:20px 24px;width:480px;max-height:80vh;overflow-y:auto">
+        <div id="john-task-detail"></div>
+      </div>
     </div>
 
     <div class="divider"></div>
@@ -3229,6 +3253,64 @@ async function init() {
   try { window._snapshotIndex = await fetch('/data/portfolios/state/snapshot_index.json').then(r=>r.ok?r.json():[]).catch(()=>[]); } catch(e) { window._snapshotIndex = []; }
   await refreshAll();
   startRefreshTimer();
+  // Load and render dashboard notifications
+  try {
+    const nResp = await fetch('/api/notifications/recent').then(r=>r.ok?r.json():null).catch(()=>null);
+    if (nResp && nResp.notifications && nResp.notifications.length > 0) {
+      const panel = document.getElementById('notif-panel');
+      const countEl = document.getElementById('notif-count');
+      const itemsEl = document.getElementById('notif-items');
+      if (panel) panel.style.display = 'block';
+      if (countEl) countEl.textContent = `${nResp.notifications.length} recent`;
+      if (itemsEl) {
+        const channelIcon = (ch) => ch==='telegram'?'\u{1f4e8}':ch==='gmail'?'\u{2709}':ch==='dashboard'?'\u{1f4cb}':'\u{2022}';
+        const statusColor = (s) => s==='sent'?'var(--accent2)':s==='failed'?'var(--accent)':'var(--text3)';
+        itemsEl.innerHTML = nResp.notifications.map(n => {
+          const time = (n.sent_at||'').slice(11,16) || (n.notification_date||'');
+          return `<div style="display:flex;gap:6px;align-items:baseline;padding:3px 0;border-bottom:1px solid var(--border)">
+            <span style="flex-shrink:0">${channelIcon(n.channel)}</span>
+            <span style="flex:1;color:var(--text1)">${_escapeHtml(n.subject||n.notification_type||'')}</span>
+            <span style="flex-shrink:0;font-size:9px;color:${statusColor(n.status)}">${n.status}</span>
+            <span style="flex-shrink:0;font-size:9px;color:var(--text3)">${time}</span>
+          </div>`;
+        }).join('');
+      }
+    }
+  } catch(e) { console.warn('Notification panel load failed:', e); }
+  // Load and render John decision tasks
+  try {
+    const tResp = await fetch('/api/v2/tasks').then(r=>r.ok?r.json():null).catch(()=>null);
+    const tasks = (tResp && tResp.data && tResp.data.tasks) ? tResp.data.tasks.filter(t=>t.source==='john_decision_queue' && t.status==='pending_john') : [];
+    const countEl = document.getElementById('john-task-count');
+    const panel = document.getElementById('john-tasks-panel');
+    const listEl = document.getElementById('john-tasks-list');
+    const emptyEl = document.getElementById('john-tasks-empty');
+    if (tasks.length > 0 && panel && listEl) {
+      panel.style.display = 'block';
+      if (emptyEl) emptyEl.style.display = 'none';
+      if (countEl) countEl.textContent = `${tasks.length} pending`;
+      listEl.innerHTML = tasks.map(t => {
+        const priColor = t.priority==='urgent'?'#f6465d':t.priority==='high'?'#f0b90b':'#4a90f4';
+        const isFailed = t.category === 'failed_stop_review';
+        return `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid var(--border,#212d3f);align-items:center;cursor:pointer" onclick="openJohnTask(${t.id})">
+          <span style="width:4px;height:28px;border-radius:2px;background:${priColor};flex-shrink:0"></span>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:2px">
+              <span style="font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;background:${priColor}22;color:${priColor};text-transform:uppercase">${t.priority}</span>
+              ${isFailed?'<span style="font-size:7px;font-weight:700;padding:1px 4px;border-radius:2px;background:#f6465d22;color:#f6465d">FAILED AUTO</span>':''}
+              <span style="font-weight:700;color:#eef2f8">${_escapeHtml(t.symbol||'')}</span>
+            </div>
+            <div style="font-size:10px;color:#c4cdd8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_escapeHtml(t.title||'')}</div>
+          </div>
+          <span style="font-size:9px;color:${priColor};font-weight:700;flex-shrink:0">Review →</span>
+        </div>`;
+      }).join('');
+      window._johnTasks = tasks;
+    } else {
+      if (emptyEl) emptyEl.textContent = 'No pending tasks.';
+      if (countEl) countEl.textContent = '';
+    }
+  } catch(e) { console.warn('John tasks load failed:', e); }
   // Load and render portfolio news feed
   try {
     const pnf = await fetch('/data/portfolios/state/portfolio_news.json').then(r=>r.ok?r.json():null).catch(()=>null);
@@ -11369,10 +11451,85 @@ function renderSectorDonutIfReady() {
   renderSectorDonut(rs.slice(0,12));
 }
 
+// ── John Decision Task modal ──
+function openJohnTask(id) {
+  const tasks = window._johnTasks || [];
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  const modal = document.getElementById('john-task-modal');
+  const detail = document.getElementById('john-task-detail');
+  if (!modal || !detail) return;
+  const priColor = task.priority==='urgent'?'#f6465d':task.priority==='high'?'#f0b90b':'#4a90f4';
+  const isFailed = task.category === 'failed_stop_review';
+  const prov = task.provenance || {};
+  detail.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;background:${priColor}22;color:${priColor};text-transform:uppercase">${task.priority}</span>
+        ${isFailed?'<span style="font-size:8px;font-weight:700;padding:2px 6px;border-radius:3px;background:#f6465d22;color:#f6465d">AUTO-REVIEW FAILED</span>':''}
+      </div>
+      <button onclick="closeJohnTaskModal()" style="font-size:12px;padding:2px 8px;border:1px solid var(--border,#212d3f);border-radius:4px;background:transparent;color:var(--text2,#8a95a8);cursor:pointer">✕</button>
+    </div>
+    <h3 style="font-size:16px;font-weight:800;color:#fff;margin:0 0 6px">${_escapeHtml(task.symbol||'')}</h3>
+    <div style="font-size:12px;color:#eef2f8;font-weight:700;margin-bottom:8px">${_escapeHtml(task.title||'')}</div>
+    <div style="font-size:11px;color:#c4cdd8;line-height:1.5;margin-bottom:12px">${_escapeHtml(task.description||'')}</div>
+    ${task.followup?`<div style="font-size:10px;color:#0ecb81;font-weight:600;margin-bottom:8px">Next: ${_escapeHtml(task.followup)}</div>`:''}
+    ${task.due_by?`<div style="font-size:9px;color:${priColor};margin-bottom:8px">Due: ${task.due_by}</div>`:''}
+    ${prov.resolved_price?`<div style="font-size:10px;color:#8a95a8;margin-bottom:8px">Price: $${Number(prov.resolved_price).toFixed(2)} | Stop: $${Number(prov.stop_price||0).toFixed(2)} | Value: $${Number(prov.market_value||0).toLocaleString()}</div>`:''}
+    ${task.linked_route?`<div style="margin-bottom:12px"><a href="/v2${task.linked_route}" target="_blank" style="font-size:10px;padding:4px 10px;border:1px solid #4a90f4;border-radius:4px;color:#4a90f4;text-decoration:none">Open in Risk Manager →</a></div>`:''}
+    <div style="border-top:1px solid var(--border,#212d3f);padding-top:10px;margin-top:8px">
+      <div style="font-size:9px;color:#586578;margin-bottom:4px">Your rationale (required)</div>
+      <textarea id="john-task-note-${id}" rows="2" style="width:100%;padding:6px 8px;font-size:10px;background:var(--bg3,#1b2230);border:1px solid var(--border,#212d3f);border-radius:4px;color:#c4cdd8;font-family:monospace;resize:vertical;outline:none" placeholder="What did you verify? What is your decision?"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="submitJohnDecision(${id},'decided_action')" style="flex:1;padding:6px;font-size:10px;font-weight:700;border:1px solid #0ecb81;border-radius:4px;background:#0ecb8118;color:#0ecb81;cursor:pointer">Resolve</button>
+        <button onclick="submitJohnDecision(${id},'deferred')" style="flex:1;padding:6px;font-size:10px;font-weight:700;border:1px solid #f0b90b;border-radius:4px;background:#f0b90b18;color:#f0b90b;cursor:pointer">Defer</button>
+        <button onclick="submitJohnDecision(${id},'rejected')" style="flex:1;padding:6px;font-size:10px;font-weight:700;border:1px solid #f6465d;border-radius:4px;background:#f6465d18;color:#f6465d;cursor:pointer">Reject</button>
+      </div>
+    </div>`;
+  modal.style.display = 'flex';
+  modal.onclick = function(e) { if (e.target === modal) closeJohnTaskModal(); };
+}
+function closeJohnTaskModal() {
+  const modal = document.getElementById('john-task-modal');
+  if (modal) modal.style.display = 'none';
+}
+async function submitJohnDecision(id, status) {
+  const noteEl = document.getElementById('john-task-note-' + id);
+  const note = noteEl ? noteEl.value.trim() : '';
+  if (!note) { alert('A rationale note is required.'); return; }
+  try {
+    const r = await fetch('/api/v2/john/decide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, status: status, decision: status, reasoning: note })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      closeJohnTaskModal();
+      // Remove from list
+      const row = document.querySelector(`[onclick="openJohnTask(${id})"]`);
+      if (row) row.style.display = 'none';
+      const countEl = document.getElementById('john-task-count');
+      const remaining = document.querySelectorAll('#john-tasks-list > div[style*="display:flex"]').length;
+      if (countEl) countEl.textContent = remaining > 0 ? `${remaining} pending` : '';
+      alert('Decision saved: ' + status);
+    } else {
+      alert(d.error || 'Decision failed');
+    }
+  } catch(e) { alert('Network error: ' + e); }
+}
+
 window.addEventListener('DOMContentLoaded', function(){ loadEnrichmentData(); init(); setTimeout(renderSectorDonutIfReady, 3000); setTimeout(renderSparkline, 3000); });// ── Load Trade AI data from run_summary.json + dashboard HTML ──
 
 
 
 </script>
+<a href="/reports/ai_watchlist_dashboard.html" style="margin-left:8px;">AI Watchlist</a>
+
+
+<section id="ai-watchlist-command-center" style="margin:20px 0;border:1px solid #334155;border-radius:14px;overflow:hidden;">
+  <iframe src="/reports/ai_watchlist_dashboard.html" style="width:100%;height:900px;border:0;background:#0f172a;"></iframe>
+</section>
+
 </body>
 </html>

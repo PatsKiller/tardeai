@@ -469,9 +469,38 @@ def main() -> None:
 
             for alert in triggered:
                 msg = alert["msg"]
-                print(f"  🔔 ALERT: {alert['ticker']} — {alert['trigger']}")
+                sym = alert.get("ticker", "")
+                trig = alert.get("trigger", "")
+                print(f"  🔔 ALERT: {sym} — {trig}")
+
+                # DB first
+                try:
+                    from alert_event_writer import save_alert_event
+                    type_map = {
+                        "DOWN_3PCT": "portfolio_intelligence", "UP_8PCT": "portfolio_intelligence",
+                        "SMA50_CROSS": "technical_signal", "SMA200_CROSS": "technical_signal",
+                        "RSI_HIGH": "technical_signal", "RSI_LOW": "technical_signal",
+                        "RVOL_SPIKE": "technical_signal", "52WK_HIGH": "technical_signal",
+                        "CONCENTRATION": "concentration_alert",
+                        "DRAWDOWN": "drawdown_alert", "GAIN_DAY": "gain_alert",
+                    }
+                    sev_map = {
+                        "SMA200_CROSS": "warning", "RSI_HIGH": "warning", "DOWN_3PCT": "warning",
+                        "CONCENTRATION": "warning", "DRAWDOWN": "warning",
+                    }
+                    save_alert_event(
+                        alert_type=type_map.get(trig, "technical_signal"),
+                        raw_text=msg[:2000],
+                        symbol=sym,
+                        severity=sev_map.get(trig, "info"),
+                        source_script="portfolio_live_monitor.py",
+                        parsed_payload={"trigger": trig},
+                    )
+                except Exception as e:
+                    print(f"  [monitor] Alert DB write failed (non-fatal): {e}")
+
                 _send_telegram(msg, root)
-                alerts_fired_today.append(f"{_hhmm(now)} — {alert['ticker']} {alert['trigger']}")
+                alerts_fired_today.append(f"{_hhmm(now)} — {sym} {trig}")
 
             if not triggered:
                 print(f"  → No triggers fired this cycle")

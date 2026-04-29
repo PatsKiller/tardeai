@@ -439,6 +439,13 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             "SELECT COUNT(*) AS cnt FROM watchlist_items WHERE source_type='ai_generated' AND status='active'", fetch="one"
         )
         _ai_active_count = (_ai_active or {}).get("cnt", 0)
+        # Expire AI items past their expires_at date
+        from db_adapter import expire_stale_ai_watchlist
+        _expired_by_date = expire_stale_ai_watchlist()
+        if _expired_by_date:
+            _exp_syms = [r["symbol"] for r in _expired_by_date]
+            print(f"  [ai-watchlist] Date-expired {len(_expired_by_date)} AI items: {', '.join(_exp_syms)}")
+            _ai_active_count -= len(_expired_by_date)
         # Reconcile: if over cap, expire lowest-confidence excess items
         if _ai_active_count > 5:
             _ai_wl_exec(
@@ -986,6 +993,13 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as _fe:
         print(f"  [freshness] Warning: manifest write failed: {_fe}")
 
+    # ── Price DB sync — persist all today's prices to PostgreSQL ────────────
+    try:
+        from price_db_sync import sync_daily_prices
+        sync_daily_prices()
+    except Exception as _pdb_e:
+        print(f"  [price-db] Warning: {_pdb_e}")
+
     # ── Advisor Observations (OpenClaw Phase A1) ─────────────────────────────
     try:
         from db_adapter import save_advisor_observations
@@ -1069,6 +1083,26 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             "evidence": {"duration_seconds": _age, "run_type": run_type, "holdings_hash": _h_hash},
             "source": "pipeline:freshness_manifest", "freshness_hash": _h_hash,
         })
+
+        # ── Expire stale escalations (date-based) ────────────────────
+        try:
+            from db_adapter import expire_stale_escalations
+            _expired_escs = expire_stale_escalations()
+            if _expired_escs:
+                _exp_rules = [f"{r.get('symbol') or '*'}:{r['trigger_rule']}" for r in _expired_escs]
+                print(f"  [advisor] Expired {len(_expired_escs)} stale escalations: {', '.join(_exp_rules)}")
+        except Exception as _e_exp:
+            print(f"  [advisor] escalation expiry check failed: {_e_exp}")
+
+        # ── Expire stale recommendation drafts (date-based) ───────────
+        try:
+            from db_adapter import expire_stale_drafts
+            _expired_drafts = expire_stale_drafts()
+            if _expired_drafts:
+                _exp_actions = [f"{r.get('symbol') or '*'}:{r['action']}" for r in _expired_drafts]
+                print(f"  [advisor] Expired {len(_expired_drafts)} stale drafts: {', '.join(_exp_actions)}")
+        except Exception as _e_dexp:
+            print(f"  [advisor] draft expiry check failed: {_e_dexp}")
 
         if _obs:
             save_advisor_observations(_obs)
@@ -1159,6 +1193,39 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 if _escalations:
                     save_escalations(_escalations)
                     print(f"  [advisor] ✅ {len(_escalations)} escalations queued")
+
+                # ── Dashboard-only notifications for severity 3 escalations ──
+                try:
+                    from db_adapter import notification_already_logged, save_notification_log_entry
+                    _s3 = [e for e in _escalations if e.get("severity") == 3]
+                    # Look up actual escalation row ids from DB (save_escalations doesn't return them)
+                    from db_adapter import get_escalations_by_date_severity
+                    _s3_db = get_escalations_by_date_severity(_today, 3)
+                    _s3_id_map = {r["trigger_rule"]: r["id"] for r in _s3_db}
+                    _dash_logged = 0
+                    for _e3 in _s3:
+                        _dk3 = f"{_today}:info:dashboard:s3_{_e3['trigger_rule']}"
+                        if notification_already_logged(_dk3):
+                            continue
+                        _esc_id = _s3_id_map.get(_e3["trigger_rule"])
+                        save_notification_log_entry({
+                            "notification_date": _today,
+                            "notification_type": "info",
+                            "channel": "dashboard",
+                            "subject": _e3["trigger_rule"].replace("_", " ").title(),
+                            "body_summary": _e3["summary"],
+                            "escalation_ids": [_esc_id] if _esc_id else None,
+                            "payload": {"severity": 3, "category": _e3.get("category"), "evidence": _e3.get("evidence")},
+                            "status": "sent",
+                            "dedupe_key": _dk3,
+                            "sent_at": datetime.now().isoformat(),
+                        })
+                        _dash_logged += 1
+                    if _dash_logged:
+                        print(f"  [notifications] {_dash_logged} severity-3 dashboard notification(s) logged")
+                except Exception as _dn_e:
+                    print(f"  [notifications] dashboard logging failed: {_dn_e}")
+
             except Exception as _esc_e:
                 print(f"  [advisor] Escalation scoring failed (pipeline continues): {_esc_e}")
 
@@ -1305,6 +1372,95 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as _aoe:
         print(f"  [advisor] Observations write failed (pipeline continues): {_aoe}")
 
+    # ── Action Queue: queue threshold-qualifying drafts for human review ────
+    # Thresholds per plan: severity 1 >= 0.90 (urgent), severity 2 >= 0.85 (normal)
+    try:
+        from db_adapter import action_queue_already_exists, save_action_queue_entry, get_escalations_by_date_severity
+        _s1_rules = set(e["trigger_rule"] for e in get_escalations_by_date_severity(date_str, 1))
+        _s2_rules = set(e["trigger_rule"] for e in get_escalations_by_date_severity(date_str, 2))
+        from db_adapter import get_high_confidence_drafts
+        # Fetch all drafts (threshold applied below per severity)
+        _today_drafts = get_high_confidence_drafts(date_str, 0.0)
+        _aq_queued = 0
+        for _d in _today_drafts:
+            _conf = float(_d["confidence"])
+            _action = _d["action"].upper()
+            # Classify by linked escalation severity
+            _is_s1 = _action in ("STOP_REVIEW",) or any(r in _action.lower().replace("_", "") for r in _s1_rules)
+            _is_s2 = _action in ("ALLOCATION_REVIEW",) or any(r in _action.lower().replace("_", "") for r in _s2_rules)
+            # Apply threshold gate
+            if _is_s1 and _conf >= 0.90:
+                _urgency = "urgent"
+            elif _is_s2 and _conf >= 0.85:
+                _urgency = "normal"
+            else:
+                continue  # below threshold — stays as draft only
+            _sym = _d["symbol"] or "portfolio"
+            _dk = f"{date_str}:{_sym}:{_d['action']}:rec_{_d['id']}"
+            if action_queue_already_exists(_dk):
+                continue
+            save_action_queue_entry({
+                "recommendation_id": _d["id"],
+                "symbol": _d["symbol"],
+                "action": _d["action"],
+                "rationale": (_d["rationale"] or "")[:500],
+                "confidence": _conf,
+                "urgency": _urgency,
+                "status": "pending",
+                "expires_at": str(_d["expires_at"]) if _d.get("expires_at") else None,
+                "dedupe_key": _dk,
+            })
+            _aq_queued += 1
+        if _aq_queued:
+            print(f"  [action-queue] {_aq_queued} draft(s) queued for review")
+    except Exception as _aqe:
+        print(f"  [action-queue] Queue failed (pipeline continues): {_aqe}")
+
+    # ── High-confidence draft Telegram alerts (>= 0.90) ────────────────────
+    try:
+        from db_adapter import notification_already_logged, save_notification_log_entry, get_high_confidence_drafts
+        _hc_drafts = get_high_confidence_drafts(date_str, 0.90)
+        _hc_sent = 0
+        for _hc in _hc_drafts:
+            _hc_dk = f"{date_str}:draft_alert:telegram:rec_{_hc['id']}"
+            if notification_already_logged(_hc_dk):
+                continue
+            _hc_sym = _hc["symbol"] or "Portfolio"
+            _hc_msg = (
+                f"\U0001f4cb DRAFT PENDING REVIEW\n\n"
+                f"{_hc_sym}: {_hc['action'].replace('_',' ')}\n"
+                f"Confidence: {_hc['confidence']}\n\n"
+                f"{(_hc['rationale'] or '')[:200]}\n\n"
+                f"Status: Draft only \u2014 not actioned, not approved."
+            )
+            _hc_ok = False
+            _hc_err = None
+            try:
+                from telegram_alert import send_telegram as _hc_tg
+                _hc_ok = _hc_tg(_hc_msg)
+            except Exception as _hc_tge:
+                _hc_err = str(_hc_tge)
+            save_notification_log_entry({
+                "notification_date": date_str,
+                "notification_type": "draft_alert",
+                "channel": "telegram",
+                "subject": f"{_hc_sym}: {_hc['action'].replace('_',' ')}",
+                "body_summary": (_hc["rationale"] or "")[:200],
+                "recommendation_ids": [_hc["id"]],
+                "payload": {"confidence": float(_hc["confidence"]), "action": _hc["action"], "symbol": _hc["symbol"]},
+                "status": "sent" if _hc_ok else "failed",
+                "dedupe_key": _hc_dk,
+                "sent_at": datetime.now().isoformat() if _hc_ok else None,
+                "error": _hc_err,
+            })
+            _hc_sent += 1
+            _status = "\u2705" if _hc_ok else "\u274c"
+            print(f"  [notifications] {_status} Draft alert: {_hc_sym} {_hc['action']} (conf={_hc['confidence']})")
+        if _hc_sent:
+            print(f"  [notifications] {_hc_sent} high-confidence draft alert(s) sent")
+    except Exception as _hce:
+        print(f"  [notifications] High-confidence draft alerts failed: {_hce}")
+
     # ── Ollama Daily Summary Enrichment (Phase A2-enrichment) ────────────────
     try:
         import re as _re, urllib.request as _ur
@@ -1382,11 +1538,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
 
     # ── Urgent Telegram Notifications (severity 1 escalations) ───────────────
     try:
-        from db_adapter import notification_already_logged, save_notification_log_entry, _execute as _notif_exec
-        _s1_escalations = _notif_exec(
-            "SELECT id, symbol, severity, trigger_rule, summary FROM escalation_queue WHERE created_at::date = %s AND severity = 1",
-            (date_str,), fetch="all"
-        ) or []
+        from db_adapter import notification_already_logged, save_notification_log_entry, get_escalations_by_date_severity
+        _s1_escalations = get_escalations_by_date_severity(date_str, 1)
         _notif_sent = 0
         for _s1 in _s1_escalations:
             _dk = f"{date_str}:urgent_alert:telegram:esc_{_s1['id']}"

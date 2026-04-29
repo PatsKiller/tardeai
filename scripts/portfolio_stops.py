@@ -90,7 +90,7 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
         acct  = h.get("account_display", h.get("account",""))
         gl    = h.get("gain_loss", 0) or 0
 
-        if mv < 100 or price <= 0 or h.get("is_loan") or h.get("is_cash"):
+        if mv < 100 or price <= 0 or h.get("is_loan") or h.get("is_cash") or sym in ("CASH", "CASH & CASH INVESTMENTS", "MMKT"):
             continue
 
         stop_data = stops.get(sym)

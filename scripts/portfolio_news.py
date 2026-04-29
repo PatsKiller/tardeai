@@ -130,6 +130,23 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
     except Exception:
         pass
 
+    # Add active AI-generated and analyst-curated watchlist symbols from DB
+    try:
+        from db_adapter import get_active_watchlist_symbols
+        _db_wl_rows = get_active_watchlist_symbols(["ai_generated", "analyst_curated"])
+        _ai_added = 0
+        for _r in _db_wl_rows:
+            _ws = (_r.get("symbol") or "").upper().strip()
+            if _ws and _ws not in seen and _ws not in SKIP_SYMBOLS:
+                company = enrichment_cache.get(_ws, {}).get("company", "")
+                tickers.append({"symbol": _ws, "company": company, "market_value": 0, "source": "ai_watchlist"})
+                seen.add(_ws)
+                _ai_added += 1
+        if _ai_added:
+            print(f"  [portfolio-news] Added {_ai_added} AI/analyst watchlist symbols to news universe")
+    except Exception as _e_wl_db:
+        print(f"  [portfolio-news] DB watchlist lookup skipped: {_e_wl_db}")
+
     tickers.sort(key=lambda x: -x["market_value"])
     tickers = tickers[:MAX_PORTFOLIO_TICKERS + 15]  # allow room for watchlist additions
     print(f"  [portfolio-news] Scanning {len(tickers)} tickers for news...")
@@ -144,9 +161,14 @@ def collect_portfolio_news(portfolio: Dict, state_dir: Path, root: str = ".") ->
             try:
                 result = enrich_ticker(sym, t.get("company", ""))
                 catalysts = result.get("catalysts", [])
+                _src = t.get("source", "")
                 for c in catalysts:
                     c["portfolio_symbol"] = sym
                     c["market_value"] = t["market_value"]
+                    if _src == "ai_watchlist":
+                        c["_source_family"] = "ai_watchlist"
+                    elif _src == "watchlist":
+                        c["_source_family"] = "watchlist"
                 all_catalysts.extend(catalysts)
                 sources_summary[sym] = {
                     "count": result.get("catalyst_count", 0),
