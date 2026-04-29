@@ -42,6 +42,9 @@ interface DividendResp { total_annual: number }
 interface TaxData { agi: number; roth_conversions_ytd: number; current_bracket: number; bracket_room_22pct: number; max_additional_conversion: number; extra_from_loss: number }
 interface IntelEvent { symbol: string; event_type: string; severity: string; created_at: string }
 interface IntelResp { events: IntelEvent[] }
+interface Proposal { id: number; symbol: string; action: string; account_name: string; confidence: number; status: string; ssdi_impact: string; irmaa_risk: boolean; created_at: string }
+interface ProposalsResp { proposals: Proposal[] }
+interface MacroResp { context: string }
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -54,6 +57,8 @@ export default function Overview() {
   const { data: news } = useFetch<NewsData>('/data/portfolios/state/portfolio_news.json')
   const { data: tax } = useApi<TaxData>('/api/v2/tax-situation')
   const { data: intel } = useApi<IntelResp>('/api/v2/intelligence-events')
+  const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
+  const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
 
   const sectors = ov?.sectors ?? []
   const totalSector = sectors.reduce((s, row) => s + row.value, 0)
@@ -281,6 +286,41 @@ export default function Overview() {
                   <span style={{ color: 'var(--text3)' }}>Bracket</span>
                   <span style={{ color: 'var(--text1)' }}>{tax ? `${tax.current_bracket}%` : '—'}</span>
                 </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Pending Proposals */}
+          {(() => {
+            const pending = (proposalsResp?.proposals ?? []).filter(p => p.status === 'proposed')
+            if (!pending.length) return null
+            return (
+              <Card title="Pending Proposals" subtitle={`${pending.length} awaiting review`}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {pending.slice(0, 4).map(p => (
+                    <button key={p.id} onClick={() => navigate('/retirement')} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 8px', border: `1px solid ${p.irmaa_risk ? 'var(--red)' : 'var(--border)'}`, borderRadius: 6, background: p.irmaa_risk ? 'var(--red-dim)' : 'var(--bg3)', cursor: 'pointer', textAlign: 'left' }}>
+                      <span style={{ fontWeight: 800, color: 'var(--accent)', fontSize: 12, minWidth: 36 }}>{p.symbol}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: 'var(--text1)' }}>{p.action} · {p.account_name || '?'}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text3)', display: 'flex', gap: 6 }}>
+                          <span>conf: {(p.confidence * 100).toFixed(0)}%</span>
+                          {p.ssdi_impact !== 'none' && <span style={{ color: 'var(--amber)' }}>SSDI: {p.ssdi_impact.replace(/_/g, ' ')}</span>}
+                          {p.irmaa_risk && <span style={{ color: 'var(--red)', fontWeight: 700 }}>IRMAA</span>}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => navigate('/retirement')} style={{ ...secondaryAction, marginTop: 8, width: '100%' }}>Review All Proposals</button>
+              </Card>
+            )
+          })()}
+
+          {/* Macro Context */}
+          {macroResp?.context && (
+            <Card title="Macro Context" subtitle="FRED economic data">
+              <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.7, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap' }}>
+                {macroResp.context}
               </div>
             </Card>
           )}

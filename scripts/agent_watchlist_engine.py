@@ -282,6 +282,28 @@ def propose_rotations() -> dict:
     except Exception:
         pass
 
+    # Load feedback history for confidence adjustment
+    feedback_adj = {}
+    try:
+        cur.execute("""
+            SELECT symbol, strategy_type,
+                   SUM(CASE WHEN decision='approved' THEN 1 ELSE 0 END) as approved,
+                   SUM(CASE WHEN decision='rejected' THEN 1 ELSE 0 END) as rejected,
+                   SUM(confidence_adjustment) as total_adj
+            FROM agent_feedback_log
+            WHERE created_at > NOW() - INTERVAL '90 days'
+            GROUP BY symbol, strategy_type
+        """)
+        for row in cur.fetchall():
+            key = (row["symbol"], row["strategy_type"])
+            feedback_adj[key] = {
+                "approved": int(row["approved"] or 0),
+                "rejected": int(row["rejected"] or 0),
+                "adj": float(row["total_adj"] or 0),
+            }
+    except Exception:
+        pass  # Table may not exist yet
+
     ucur = conn.cursor()
     rotations = 0
 
@@ -297,6 +319,18 @@ def propose_rotations() -> dict:
         if cur.fetchone():
             continue
 
+        # Apply feedback-based confidence adjustment
+        base_conf = float(c["confidence"])
+        fb = feedback_adj.get((c["symbol"], strategy))
+        adj_conf = base_conf
+        feedback_note = ""
+        if fb:
+            adj_conf = max(0.1, min(1.0, base_conf + fb["adj"]))
+            if fb["rejected"] > fb["approved"]:
+                feedback_note = f" [feedback: {fb['rejected']} rejected, skewing down]"
+            elif fb["approved"] > 0:
+                feedback_note = f" [feedback: {fb['approved']} approved, confidence boosted]"
+
         # Account-specific proposals
         positions = holdings_map.get(c["symbol"], [{"account": "Unknown", "shares": 0, "value": 0}])
         review_date = (datetime.now() + __import__("datetime").timedelta(days=14)).date()
@@ -308,13 +342,13 @@ def propose_rotations() -> dict:
             irmaa_risk = False
 
             if pos["account"] in ("Rollover IRA", "401k"):
-                ssdi_impact = "conversion_taxable"  # Selling here creates taxable event if converted
-                irmaa_risk = pos["value"] > 50000  # Large IRA sale could push MAGI up
+                ssdi_impact = "conversion_taxable"
+                irmaa_risk = pos["value"] > 50000
             elif pos["account"] == "Roth IRA":
-                ssdi_impact = "none"  # Roth sales are tax-free
+                ssdi_impact = "none"
                 income_impact = "none"
             elif pos["account"] == "Taxable":
-                ssdi_impact = "capital_gains"  # May trigger capital gains
+                ssdi_impact = "capital_gains"
                 income_impact = "taxable_event"
 
             ucur.execute("""INSERT INTO watchlist_proposals
@@ -324,13 +358,13 @@ def propose_rotations() -> dict:
                 VALUES (%s, 'rotate', %s, %s, %s, 'rotation_engine', 'proposed',
                         %s, %s, 'cash', %s, %s, %s, %s)""",
                 (c["symbol"], strategy,
-                 f"{c['agent']}: {c['recommendation']} (conf:{float(c['confidence']):.0%}). {rule['rule']}",
-                 float(c["confidence"]),
+                 f"{c['agent']}: {c['recommendation']} (conf:{base_conf:.0%}). {rule['rule']}{feedback_note}",
+                 adj_conf,
                  pos["account"], pos["shares"], review_date,
                  ssdi_impact, income_impact, irmaa_risk))
             rotations += 1
             risk_badge = " IRMAA!" if irmaa_risk else ""
-            print(f"  [rotate] {c['symbol']} in {pos['account']}: {pos['shares']:.0f} shares → cash.{risk_badge} SSDI:{ssdi_impact}")
+            print(f"  [rotate] {c['symbol']} in {pos['account']}: {pos['shares']:.0f} shares → cash.{risk_badge} SSDI:{ssdi_impact} conf:{adj_conf:.0%}")
 
     conn.commit()
     conn.close()
@@ -355,7 +389,7 @@ def weekly_health_check(send_telegram: bool = False) -> dict:
         room = tax.get("bracket_room_22pct", 0)
         roth_ytd = tax.get("roth_conversions_ytd", 0)
 
-        # Get recent qualified intel count
+        # Get recent metrics
         import psycopg2.extras
         conn = _get_conn()
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -365,27 +399,59 @@ def weekly_health_check(send_telegram: bool = False) -> dict:
         proposals_count = cur.fetchone()["count"]
         cur.execute("SELECT count(*) FROM agent_handoffs WHERE escalated=TRUE AND created_at > NOW() - INTERVAL '7 days'")
         escalations = cur.fetchone()["count"]
+        # Feedback stats
+        feedback_line = ""
+        try:
+            cur.execute("SELECT decision, count(*) as cnt FROM agent_feedback_log GROUP BY decision")
+            fb = {r["decision"]: r["cnt"] for r in cur.fetchall()}
+            if fb:
+                feedback_line = f"- Human feedback: {fb.get('approved', 0)} approved, {fb.get('rejected', 0)} rejected (confidence adjusted accordingly)\n"
+        except Exception:
+            pass
         conn.close()
+
+        # FRED macro context
+        macro_context = ""
+        try:
+            from external_market_data_ingest import get_macro_context
+            mc = get_macro_context()
+            if mc:
+                macro_context = f"\n{mc}\n"
+        except Exception:
+            pass
+
+        # Income data
+        income_line = "Income: $14,285/yr vs $55K target. Gap: $40,715."
+        try:
+            div_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "dividend_calendar.json"
+            if div_path.exists():
+                dc = json.loads(div_path.read_text())
+                annual = float(dc.get("total_annual", 14285))
+                gap = 55000 - annual
+                income_line = f"Income: ${annual:,.0f}/yr vs $55K target. Gap: ${gap:,.0f} ({annual/55000*100:.0f}% of target)."
+        except Exception:
+            pass
 
         prompt = f"""/no_think You are Alex, a disability-optimized retirement planner. Provide a weekly health check.
 
 CLIENT: Age 58, SSDI $3,800/mo, MFS filing, Medicare Dec 2026, $1.2M portfolio.
-Income: $14,285/yr vs $55K target. Gap: $40,715.
+{income_line}
 Tax: {bracket}% bracket, ${room:,.0f} room, Roth YTD ${roth_ytd:,.0f}.
-
+{macro_context}
 THIS WEEK:
 - {intel_count} qualified intelligence items discovered
 - {proposals_count} watchlist proposals pending review
 - {escalations} agent escalations
-
-Provide weekly health check (under 250 words):
-1. Income gap progress — are we on track?
-2. Roth conversion pace — ahead/behind schedule?
-3. Tax bracket management — room remaining?
-4. SSDI/disability considerations — anything changed?
-5. Medicaid planning status
-6. Top 3 actions for next week
-Be specific with numbers. Address disability implications."""
+{feedback_line}
+Provide weekly health check (under 300 words):
+1. Income gap progress — are we on track? What's needed to close the $40K+ gap?
+2. Roth conversion pace — ahead/behind schedule? How much more room in 22% bracket?
+3. Tax bracket management — room remaining, optimal conversion timing?
+4. SSDI/disability considerations — any macro changes affecting disability benefits?
+5. Medicaid planning status — NY income limits, MAGI impact of conversions
+6. Macro environment impact — how do current rates/inflation affect the retirement plan?
+7. Top 3 specific actions for next week with dollar amounts
+Be specific with numbers. Address disability implications. Reference macro data if relevant."""
 
         result = get_llm_response("cio_synthesis", prompt, max_tokens=500, high_impact=True)
         review = result.get("response", "Health check unavailable") if result.get("success") else "Health check failed"
