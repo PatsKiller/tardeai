@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.48
+# Trade AI v12 System Bible v2.49
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + Ollama Embeddings + Research Engine + Maturity Score**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + Brave Throttling + Ticker Gating + 667 Embeddings**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -1518,4 +1518,51 @@ Telegram report with:
 When cloud providers hit budget limits ($2/day), Alex now:
 1. Tries cloud (high_impact=True) via `cio_synthesis`
 2. Falls back to local qwen3:1.7b via `agent_narrative` (prompt truncated to 4K)
-3. All functions produce output — never silent failure
+3. Last resort: minimal 1.5K prompt to local
+4. All functions produce output — never silent failure
+
+---
+
+## v2.49 — Brave Throttling + Ticker-Level Analysis Gating
+
+### Brave Search Throttling Engine
+
+| Control | Setting | Purpose |
+|---|---|---|
+| **Daily budget** | 5 calls/day | Prevents burning Brave credits |
+| **Cooldown** | 60 minutes between calls | Spreads usage across the day |
+| **Per-symbol cache** | 24 hours | No duplicate queries for same ticker |
+| **Tracking** | `content_embeddings` (source_type='brave_cache') | Counts reset at midnight |
+
+### Brave Routing Decision Table (v2.49)
+
+| Condition | Use Brave? | Reason Logged |
+|---|---|---|
+| `source_hint="research"` (user research command) | **YES** | `user_research` |
+| `source_hint="high_value"` AND (relevance≥0.85 OR retirement_relevance=high) | **YES** | `high_relevance` |
+| `source_hint!="routine"` AND < 3 DB results | **YES** | `sparse_db_results` |
+| `source_hint="routine"` | **NO** | DB only (RSS already ingested) |
+| Daily budget exhausted (≥5 today) | **NO** | `daily_limit (5/5)` |
+| Cooldown active (< 60 min since last) | **NO** | `cooldown (Xmin < 60min)` |
+| Symbol cached in last 24h | **NO** | `cached_24h (SYMBOL)` |
+
+### Ticker-Level Analysis Gating
+
+`proactive_intel_scan()` now checks before running full agent chain:
+
+| Gate | Condition | Action |
+|---|---|---|
+| **New intel** | qualified_intelligence Q≥70 in last 24h | Analyze (pass to debate → queue) |
+| **Portfolio stale** | Symbol in holdings.json AND last_analyzed > 48h | Analyze |
+| **Portfolio fresh** | Symbol in holdings AND last_analyzed < 48h | Skip: `portfolio_fresh` |
+| **No trigger** | No new intel, not in portfolio | Skip: logged with reason |
+
+**Result:** Only symbols with genuine new information or stale portfolio positions get expensive LLM analysis. All others use cached embeddings + recent DB intel.
+
+### Search Sources Status (enhanced)
+
+`/api/v2/search-sources` now includes:
+- `brave_search.calls_today` — today's Brave call count
+- `brave_search.daily_limit` — max 5
+
+Intelligence Sources page shows amber `X/5` badge next to Brave status.
