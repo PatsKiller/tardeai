@@ -190,21 +190,38 @@ def get_intel_summary(agent: str = None, symbol: str = None,
                 items.append(si)
                 seen_titles.add(si.get("title", ""))
 
-    # SEC data (always include if symbol provided)
-    sec_text = ""
+    # SEC + market data (always include if symbol provided)
+    extra_context = []
     if symbol:
         try:
             from sec_data_ingest import get_sec_intel
             sec_text = get_sec_intel(symbol)
+            if sec_text:
+                extra_context.append(sec_text)
         except Exception:
             pass
+        try:
+            from external_market_data_ingest import get_yfinance_context
+            yf_text = get_yfinance_context(symbol)
+            if yf_text:
+                extra_context.append(yf_text)
+        except Exception:
+            pass
+    # Macro context (always include)
+    try:
+        from external_market_data_ingest import get_macro_context
+        macro = get_macro_context()
+        if macro:
+            extra_context.append(macro)
+    except Exception:
+        pass
 
-    if not items and not sec_text:
+    if not items and not extra_context:
         return ""
 
     lines = []
-    if sec_text:
-        lines.append(sec_text)
+    for ctx in extra_context:
+        lines.append(ctx)
     if items:
         lines.append(f"RECENT INTELLIGENCE ({len(items)} items, last {days} days):")
     total_chars = 0
