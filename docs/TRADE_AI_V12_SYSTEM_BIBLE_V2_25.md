@@ -22,9 +22,9 @@
 | DB tables | 135 |
 | UI pages | 28 (9 with Chart.js, dropdown nav, tooltips) |
 | API endpoints | 57+ |
-| Cron entries | 41 |
+| Cron entries | 44 |
 | News sources | 40+ via Google News RSS (Benzinga, SA, Morningstar, Barrons, Bloomberg...) |
-| YouTube transcripts | 12 (5 tracked channels, daily auto-discovery) |
+| YouTube transcripts | 12 (6 tracked channels, daily auto-discovery + --import-channel) |
 | Telegram commands | 12 |
 | Smart alert types | 6 proactive + 5 scheduled |
 | Strategy types | 10 (including disability_retirement_planning) |
@@ -207,6 +207,7 @@ Alex shows trust transfer lookback status (years remaining) in every analysis.
 6:25 AM   agent_intelligence_cron.sh daily    Asset intelligence + proactive discovery
 6:30 AM   news_ingestion.py --priority        Yahoo + Finnhub + Google News (40+ sources) → score + tag → catalyst + sentiment
 6:35 AM   classify_candidates.py              Auto-classify screener finds
+6:40 AM   intel_auto_discovery.py             Scan news for new tickers → auto-add to watchlist + Telegram
 6:45 AM   sync_watchlist_items_to_db.py       Sync watchlist state
 6:50 AM   materialize_watchlist_strategy_cards Strategy cards
 6:55 AM   materialize_income_engine.py        Income profiles
@@ -223,6 +224,7 @@ Alex shows trust transfer lookback status (years remaining) in every analysis.
 8:05 AM   aegis_morning_brief_delivery.py     Overnight brief → Telegram
 10:00 AM  finviz_screener_runner.py           Screener discovery (market open)
 12:30 PM  news_ingestion.py                   Mid-day news refresh (scored + tagged)
+12:40 PM  intel_auto_discovery.py             Mid-day ticker discovery scan
 1:00 PM   finviz_enrichment.py                Mid-day RSI/SMA refresh
 4:00 PM   finviz_screener_runner.py           Screener discovery (market close)
 6:30 PM   news_ingestion.py                   Evening news (scored + tagged)
@@ -237,9 +239,10 @@ OVERNIGHT (8 PM–5 AM, every 5 min, 25 jobs/batch = 300/hr):
   9:00 PM   auto_research.py                  Conflict resolution via Claude + Brave web search
   By 10 PM  All overnight jobs complete       Synthesis + auto-escalation done
 
-WEEKLY (Sunday 8–9 AM):
-  run_alex_daily.py --weekly                  Strategy review → Telegram + ai_reports
-  OpenClaw: Steph allocation review           Weekly allocation drift → Telegram
+WEEKLY (Sunday):
+  8:00 AM   run_alex_daily.py --weekly        Strategy review → Telegram + ai_reports
+  9:00 AM   OpenClaw: Steph allocation review Weekly allocation drift → Telegram
+  9:30 AM   watchlist_hygiene.py              Cleanup: remove stale, flag negatives, rotation candidates → Telegram
 
 MONTHLY (1st):
   run_alex_daily.py --monthly                 Deep tax reconciliation + Roth ladder → Telegram + ai_reports
@@ -251,17 +254,78 @@ OPENCLAW CRON:
   9 AM 1st    Steph income progress
 ```
 
-### Watchlist → Full Analysis Timeline
+### Watchlist Full Lifecycle
 
 ```
-T+0 min     Symbol added to watchlist
-T+0-15 min  Auto-detected → 3 agent jobs queued (Maria, Steph, Risk)
-T+15 min    Maria analysis (with other agents' views + recent intel)
-T+30 min    Steph analysis
-T+45 min    Risk analysis → all complete → auto-synthesis
-            → Strategy-weighted combination → hard gates → safety → QA → CIO decision
-            → Auto-escalate if conflicts or low confidence
-T+60 min    Fully analyzed: /v2/watchlist + /v2/cio + Alex context + Telegram
+DISCOVERY → ANALYSIS → MAINTENANCE → CLEANUP
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ DISCOVERY (automatic)                                                   │
+│                                                                         │
+│ Source 1: Finviz screeners (10 AM + 4 PM)                              │
+│   → 20 screeners find new tickers → auto-classify → add to watchlist   │
+│                                                                         │
+│ Source 2: Intel auto-discovery (6:40 AM + 12:40 PM)                    │
+│   → Scan news/YouTube/social for $TICKER mentions                      │
+│   → Require 2+ mentions from multiple sources                          │
+│   → Auto-add with strategy classification + confidence                 │
+│   → Telegram: "Auto-Discovery: MSTY — 3 mentions, Q:75"               │
+│                                                                         │
+│ Source 3: Manual (Telegram "research SYMBOL" or UI)                    │
+│                                                                         │
+│ Source 4: YouTube channel import                                        │
+│   → --import-channel URL [--max 20] [--strategy retirement_planning]   │
+│   → Supports: youtube.com/channel/UCxxx, youtube.com/@handle, raw ID   │
+│   → 6 channels tracked, daily auto-discovery at 7 PM                   │
+└─────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ ANALYSIS (automatic, within 15–60 minutes)                              │
+│                                                                         │
+│ T+0 min     Symbol added to watchlist_items                            │
+│ T+0-15 min  _auto_queue_new_symbols() detects it                       │
+│             → Queues 3 jobs: Maria (research), Steph (allocation), Risk │
+│ T+15 min    Maria analyzes (sees other agents' views + recent intel)   │
+│ T+30 min    Steph analyzes (sees Maria's view)                         │
+│ T+45 min    Risk analyzes → all complete → auto-synthesis              │
+│             → Strategy-weighted combination                             │
+│             → Post-LLM hard gates (income protection, RSI override)    │
+│             → Safety assessment (10 rules)                              │
+│             → Decision QA (11 checks)                                   │
+│             → CIO decision created                                      │
+│             → Auto-escalate if conflicts or low confidence              │
+│ T+60 min    Fully analyzed in: watchlist, CIO, Alex context, Telegram  │
+└─────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ MAINTENANCE (ongoing)                                                   │
+│                                                                         │
+│ Overnight batch (8 PM): re-queue symbols with analysis >5 days old     │
+│ Auto-research (9 PM): deep research on agent conflicts                 │
+│ Decision outcomes: track if recommendations were correct                │
+│ Performance trending: daily_system_metrics + agent_performance_history  │
+└─────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ CLEANUP — watchlist_hygiene.py (weekly Sunday 9:30 AM)                  │
+│                                                                         │
+│ 5 cleanup rules:                                                        │
+│ ✂️ REMOVE: AI-discovered + low confidence (<35%) + AVOID/SELL           │
+│ ✂️ REMOVE: ALL agents consensus SELL/TRIM/AVOID (non-portfolio)         │
+│ ✂️ REMOVE: No analysis in 30+ days (non-portfolio)                      │
+│ ⚠️ REVIEW: Portfolio holdings with consensus negative (never auto-remove)│
+│ ⚠️ REVIEW: Synthesis blocked by safety gates                            │
+│ 🔄 ROTATE: High-confidence SELL with suggested alternative              │
+│                                                                         │
+│ Protection: Portfolio holdings are NEVER auto-removed.                  │
+│ Telegram: "Hygiene Report: 3 removed, 2 review, 1 rotation"           │
+│                                                                         │
+│ Removed symbols: status='removed', classification deactivated,          │
+│   historical data preserved, logged as intelligence event               │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -434,7 +498,10 @@ T+60 min    Fully analyzed: /v2/watchlist + /v2/cio + Alex context + Telegram
 | v2.24 | 9 charted pages, dropdown nav, tooltips, progress bars, enhanced Telegram |
 | v2.24b | Google News RSS (40+ sources), YouTube API, overnight batch, auto-research |
 | v2.25 | Disability retirement planning, trust-transfer tracking, spousal IRA, 12 Telegram commands |
+| v2.25b | Benzinga/Google News (40+ sources), YouTube channel import (--import-channel), 6 channels |
+| v2.25c | Auto-discovery: scan intel for new tickers → auto-add to watchlist → full analysis in 60 min |
+| v2.25d | Watchlist hygiene: weekly cleanup (remove stale, flag negatives, rotation candidates) |
 
 ---
 
-**v2.25 — Disability-optimized retirement intelligence: 40+ news sources, 10 strategy tags, cross-agent collaboration with auto-escalation, overnight batch (300 jobs/hr), trust-transfer tracking, 12 Telegram commands, 9 charted pages. Maturity: 7.5/10.**
+**v2.25 — Full watchlist lifecycle: auto-discover tickers from 40+ news sources, auto-analyze within 60 min, weekly hygiene (remove stale, flag negatives, suggest rotations). Disability-optimized retirement planning, trust tracking, cross-agent collaboration, overnight batch (300 jobs/hr), 44 crons, 9 charted pages. Maturity: 7.5/10.**
