@@ -349,14 +349,32 @@ DELIVERY LAYER:
 
 ## Remaining Gaps
 
-| Gap | Impact | Fix |
-|---|---|---|
-| Social APIs not configured | No live social data | Add TWITTER_BEARER_TOKEN ($100/mo) or STOCKTWITS_API_KEY (free) |
-| Agent quality (1.7B) | Maria/Steph/Risk narratives are shallow | GPU upgrade → qwen3:14b |
-| Decision outcomes still synthetic | Can't measure if recommendations are right | Wait 7-30 days of real pipeline |
-| No live web search | Intel limited to pre-loaded sources | Add Brave API or similar |
-| YouTube channel bulk ingest | Need YouTube Data API key for auto-discovery | Add YOUTUBE_API_KEY |
-| News scoring basic | Default 0.5 relevance for legacy articles | Backfill with content_scoring |
+| Gap | Impact | Status | Fix |
+|---|---|---|---|
+| Social APIs not configured | No live social data | OPEN | Add TWITTER_BEARER_TOKEN ($100/mo) or STOCKTWITS_API_KEY (free) |
+| Agent quality (1.7B) | Maria confidence 0.40, shallow narratives | OPEN | GPU upgrade → qwen3:14b (Arc Pro B50) |
+| Decision outcomes tracking | 88 outcomes, 87 with 7d prices | PARTIAL | Need 30+ days for statistical accuracy |
+| Brave Search API credits | Wired but 402 Payment Required | NEEDS TOP-UP | Top up at brave.com/search/api ($5/mo) |
+| YouTube channel bulk ingest | Need YouTube Data API key for auto-discovery | OPEN | Add YOUTUBE_API_KEY |
+| ~~News scoring basic~~ | ~~Default 0.5 relevance~~ | **DONE** | 345 articles backfilled with scores + tags |
+| ~~No live web search~~ | ~~Intel limited to pre-loaded~~ | **DONE** | web_research.py + Brave API wired (needs credits) |
+
+### What's Working Well (No Gaps)
+
+| System | Status |
+|---|---|
+| Tax bracket room calculation | VERIFIED — real 2025 return + 2026 events |
+| Medicare/IRMAA/Medicaid in all analysis | VERIFIED — every Alex prompt |
+| Cross-agent collaboration | WORKING — agents see each other's views |
+| Auto-escalation on conflicts | WORKING — 22 escalations logged today |
+| Auto-queue new watchlist symbols | WORKING — 15 min detection |
+| Overnight batch processing | WORKING — 300 jobs/hr capacity |
+| 9 pages with charts | WORKING — all loading, tooltips active |
+| Dropdown navigation | WORKING — 7 groups, no scrolling |
+| Smart Telegram alerts | SCHEDULED — 6 AM weekdays |
+| Daily/weekly/monthly reports | SCHEDULED — stored in DB + Telegram |
+| News scoring + tagging on ingest | WORKING — every new article scored + tagged |
+| 12 Telegram commands | WORKING — tax, intel, conflicts, status, etc. |
 
 ---
 
@@ -478,20 +496,28 @@ DELIVERY LAYER:
 
 ---
 
-## System Summary (Updated)
+## System Summary (Final — April 28, 2026)
 
 | Metric | Value |
 |--------|-------|
 | Portfolio | ~$1,197,985 |
+| Annual income | $14,285/yr (26% of $55K target) |
 | LLM providers | 4 (Local qwen3:1.7b, Grok, Claude, OpenAI) |
 | Agents | 7 (Maria, Steph, Risk, Tax, Full Chain, Alex, Aegis) |
-| DB tables | 127+ |
-| UI pages | 28 (9 with charts) |
-| API endpoints | 45+ |
-| Cron jobs | 22 |
-| Telegram alert types | 11 (6 smart + 5 scheduled) |
+| Agent results stored | 195 (cross-agent collaboration active) |
+| Agent handoffs logged | 90 (22 escalations) |
+| Intelligence events | 76 |
+| DB tables | 135 |
+| UI pages | 28 (9 with charts, dropdown nav) |
+| API endpoints | 48+ |
+| Cron entries | 40 (overnight: every 5 min, 25 jobs/batch) |
+| Telegram commands | 12 |
+| Telegram alert types | 11 (6 smart proactive + 5 scheduled) |
 | Intelligence sources | 20 screeners + 5 YouTube channels + social (stub) |
+| News articles | 345 (151 strategy-tagged, 345 scored) |
 | Charts library | Chart.js (Doughnut, Bar, Line) |
+| OpenClaw cron jobs | 3 (evening scan, weekly alloc, monthly income) |
+| Web search | Brave API (wired, needs credits) |
 | Maturity | **7.5 / 10** |
 
 ---
