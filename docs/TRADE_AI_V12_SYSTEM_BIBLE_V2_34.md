@@ -551,15 +551,15 @@ python3 scripts/system_preflight_check.py
 
 | Component | Score | Change | Justification |
 |---|---|---|---|
-| Infrastructure (DB, API, cron) | **96%** | +1% | 142 tables, 105+ APIs, 45 crons, preflight check, all verified |
+| Infrastructure (DB, API, cron) | **97%** | +1% | 143 tables, 105+ APIs, 48 crons, preflight check, weekly backup, DB backup |
 | Data ingestion | **85%** | +7% | 8 active sources: 50 news outlets + YouTube + SEC + yfinance + Alpha Vantage + FMP. Only social + FRED missing |
 | Agent intelligence | 55% | — | 198 results but 1.7B quality. Cross-agent + outcome feedback + SEC + fundamentals in prompts |
 | Decision system | 58% | — | `decision_inputs` wired. Outcome tracking active. 0 human-evaluated |
 | Disability/tax planning | 85% | — | Alex comprehensive. Trust tracking, MFS, spousal IRA |
 | UI/visualization | 80% | — | 31 pages, 14 charts, dropdown nav, tooltips |
-| Automation | **88%** | +3% | Full lifecycle + SEC cron + yfinance cron + Alpha Vantage cron + watchlist hygiene + preflight check |
+| Automation | **91%** | +3% | Full lifecycle + SEC/yfinance/AV crons + 23-point preflight gate + weekly backup + DB backup + garbage cleanup |
 | Learning/feedback | 35% | — | Outcome → prompt feedback working. Still needs 30d data |
-| **Overall** | **73%** | +2% | 8 data sources active (+7% ingestion), SEC + fundamentals in every prompt (+3% automation) |
+| **Overall** | **74%** | +1% | Infrastructure 97%, Automation 91% (gates + backups + garbage cleanup) |
 
 **What moved:**
 - Data ingestion: 85% — 8 active sources covering news (50 outlets), transcripts, SEC filings, real-time quotes, fundamentals, dividends
@@ -591,7 +591,8 @@ python3 scripts/system_preflight_check.py
 | v2.30 | SEC EDGAR Form 4 + yfinance + Alpha Vantage + agent YAML config |
 | v2.31 | YouTube channel auto-discovery. Full transcript methodology documented |
 | v2.32 | Transcript processor: cleaning, LLM summaries, 12 sub-tags, purge dates |
-| **v2.33** | **Structured JSON for 11 transcripts (key_points + action_items + retirement_relevance). YouTube summaries injected into every agent prompt with bullet points. Service restart fix for Finviz live cycle. Monthly transcript purge cron. 9 data sources in Alex's context verified.** |
+| v2.33 | Structured YouTube JSON, 9 data sources in every prompt, service restart fix |
+| **v2.34** | **Breakage prevention gates (23-point preflight + service startup gate). Full system backup to weekly zip (DB + .env + crontab + OpenClaw + systemd + state + restore instructions). Garbage cleanup: 78K lines of .bak files deleted, 43 MB recovered. Restore guide with 13-step bare-metal instructions.** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -613,4 +614,78 @@ MACRO: FRED data (when API key added)
 
 ---
 
-**v2.33 — 9 data sources in every agent prompt. Structured YouTube intelligence (key_points, action_items, retirement_relevance). Transcripts: raw → cleaned → summarized → structured → sub-tagged → purge-dated. Maturity: 73%.**
+## Breakage Prevention (v2.34)
+
+### 3 Gates
+
+| Gate | When | What It Catches |
+|---|---|---|
+| **Preflight check (23 tests)** | Run manually: `python3 scripts/system_preflight_check.py` | Finviz cookie/URL, ollama, APIs, data sync, header values, stops, runner output |
+| **Service startup gate** | Every `tradeai-continuous.service` start | Preflight runs automatically before Trade AI runner launches, logged to `preflight-YYYYMMDD.log` |
+| **Data sync checks** | Part of preflight | Aegis portfolio value matches overview, header GO matches Trade AI page, stop prices exist |
+
+### Preflight Check — 23 Tests
+
+| Category | Tests |
+|---|---|
+| Finviz (5) | Cookie exists, has .ASPXAUTH, has .AspNetCore.Session, CSV downloads, returns tickers |
+| Ollama (1) | qwen3:1.7b responds |
+| Portfolio Server (3) | /api/v2/overview, /api/v2/tax-situation, /api/v2/alex/recent all return OK |
+| Database (3) | PostgreSQL connected, 143+ tables, news articles exist, agent results exist |
+| Services (2) | tradeai-continuous active, portfolio-server check |
+| State Files (3) | holdings.json, enrichment cache, dividend calendar all <24h old |
+| Screener Config (2) | Both screener URLs use `/export` not `.ashx` |
+| Data Sync (2) | Aegis value matches overview, header GO matches Trade AI |
+| Trade AI Runner (1) | Latest run has tickers, GO count valid |
+| Stop Integrity (1) | Stops have real prices (not $0) |
+
+---
+
+## Backup System (v2.34)
+
+### Weekly Full Backup
+
+**`scripts/full_system_backup.py`** — creates single dated zip with everything needed for bare-metal restore:
+
+| What | Included |
+|---|---|
+| Database | Full PostgreSQL dump (143 tables, ~3.8 MB compressed) |
+| .env | API keys + passwords (+ sanitized version with keys masked) |
+| Crontab | Full crontab (~46 active entries) |
+| OpenClaw | Gateway config, cron jobs, Steph + Aegis SOULs |
+| Systemd | 21 service/timer files |
+| Configs | screeners.yaml, agent YAML |
+| Launchers | 14 shell scripts |
+| State files | holdings, enrichment, dividends, risk, stops, retirement |
+| Docs | All Bible versions + Restore Guide |
+| Restore instructions | 13-step bare-metal guide embedded in zip |
+
+**Schedule:**
+- Weekly full zip: Sunday 1 AM → `docs/backups/trade_ai_backup_YYYYMMDD.zip` (keeps 4 weeks)
+- Daily DB dump: 2 AM → `backups/db/trade_ai_YYYYMMDD.sql.gz` (keeps 7 days)
+- Archive cleanup: Sunday 3 AM → delete archived garbage older than 7 days
+
+**Output:** `docs/backups/trade_ai_backup_20260429.zip` (3.8 MB, 70 files)
+
+### Restore from Backup
+
+See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
+13 steps: clone → .env → venv → DB restore → crontab → OpenClaw → systemd → configs → launchers → state → services → UI build → preflight verify.
+
+---
+
+## Garbage Cleanup (v2.34)
+
+| Cleaned | Count | Action |
+|---|---|---|
+| Script .bak files | 55 files (78K lines) | Archived 7 days → auto-delete |
+| Old dist backup dirs | 3 dirs (2 MB) | Archived |
+| OpenClaw .json.bak files | 10 files | Archived |
+| portfolio_server.log | 42 MB → 50 KB | Truncated to last 1000 lines |
+| Empty .log files | 11 files | Deleted |
+| __pycache__ dirs | 226 dirs | Deleted |
+| **Total recovered** | **~43 MB immediate** | **17 MB in archive (7-day auto-delete)** |
+
+---
+
+**v2.34 — Breakage prevention: 23-point preflight check + service startup gate. Weekly full system backup (3.8 MB zip, 70 files, 13-step restore). Garbage cleanup: 78K lines of dead code removed, 43 MB recovered. DB backup daily with 7-day retention. Maturity: 74%.**
