@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.30
+# Trade AI v12 System Bible v2.42
 
-**April 29, 2026 | ms01-openclaw | 8 Data Sources + SEC + Agent YAML Config**
+**April 28, 2026 | ms01-openclaw | 8 Data Sources + SEC + Account-Specific Proposals**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -17,7 +17,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | Filing status | MFS | personal_situation (corrected) |
 | Tax bracket | 12% — room: $66,883 | personal_tax_history |
 | DB tables | **142** | information_schema count |
-| API endpoints | 105+ | grep api_v2.py |
+| API endpoints | 109+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
 | Cron entries | **45** | crontab -l |
 | Telegram commands | 13 unique (17 parse patterns) | telegram_command_handler.py |
@@ -868,5 +868,57 @@ Stored in `ai_reports` (type='weekly_health') + `agent_discovery_log` + Telegram
 | Table | Purpose | Records |
 |---|---|---|
 | `qualified_intelligence` | High-Q items from all sources | 14 |
-| `watchlist_proposals` | Add/rotate proposals (human approval) | 2 (SCHG, TRP-LVAL) |
+| `watchlist_proposals` | Add/rotate proposals (human approval) | 6+ (per-account) |
 | `agent_discovery_log` | Daily/weekly summaries | 2 |
+
+---
+
+## Account-Specific Rotation Proposals (v2.42)
+
+### What Changed
+
+`propose_rotations()` now generates **one proposal per account** instead of one per symbol. Each position held across multiple accounts gets separate proposals with SSDI-aware impact assessments.
+
+### Proposal Fields
+
+| Field | Purpose |
+|---|---|
+| `account_name` | Roth IRA, Rollover IRA, 401k, Taxable |
+| `shares_to_sell` | Actual shares from holdings.json |
+| `target_symbol` | What to rotate into (default: cash) |
+| `review_date` | 14-day deadline for human review |
+| `ssdi_impact` | none / conversion_taxable / capital_gains |
+| `income_impact` | none / taxable_event |
+| `irmaa_risk` | true if IRA/401k sale > $50K (could push MAGI up) |
+
+### SSDI Impact Logic
+
+| Account Type | SSDI Impact | IRMAA Risk |
+|---|---|---|
+| Roth IRA | none (tax-free) | false |
+| Rollover IRA | conversion_taxable | true if > $50K |
+| 401k | conversion_taxable | true if > $50K |
+| Taxable | capital_gains | false |
+
+### New API Endpoints (v2.42)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v2/proposals` | GET | All proposals sorted by status (proposed first) |
+| `/api/v2/proposals/decide` | POST | Approve/reject: `{id, decision: "approved"/"rejected"}` |
+| `/api/v2/qualified-intelligence` | GET | Top 30 qualified intel items by quality |
+| `/api/v2/discovery-log` | GET | Last 10 discovery summaries |
+
+### Example Proposal Output
+
+```
+[rotate] SCHG in Roth IRA: 45 shares → cash. SSDI:none
+[rotate] SCHG in Taxable: 120 shares → cash. SSDI:capital_gains
+[rotate] SCHG in Rollover IRA: 200 shares → cash. IRMAA! SSDI:conversion_taxable
+[rotate] TRP-LVAL in 401k: 85 shares → cash. IRMAA! SSDI:conversion_taxable
+```
+
+### Still Needed
+
+- Command Center UI: approve/reject buttons on Retirement + Intelligence Sources pages
+- FRED macro data: code ready in `external_market_data_ingest.py`, needs free API key
