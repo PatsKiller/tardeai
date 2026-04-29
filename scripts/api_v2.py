@@ -3526,9 +3526,11 @@ ROUTES = {
     "/api/v2/sec/form4": lambda: {"filings": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, filer_name, filer_relation, transaction_type, shares, price, total_value, filing_date, sec_url, quality_score, strategy_tags, agent_tags, created_at FROM sec_form4 ORDER BY filing_date DESC LIMIT 50") or [])]},
     "/api/v2/proposals": lambda: {"proposals": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, action, strategy_type, reason, account_name, shares_to_sell, target_symbol, confidence, status, ssdi_impact, income_impact, irmaa_risk, review_date, created_at FROM watchlist_proposals ORDER BY CASE status WHEN 'proposed' THEN 1 WHEN 'approved' THEN 2 ELSE 3 END, created_at DESC LIMIT 30") or [])]},
     "/api/v2/proposals/feedback": lambda: {"feedback": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, proposal_id, symbol, action, strategy_type, account_name, decision, reviewer, reason, ssdi_impact, irmaa_risk, confidence_at_decision, confidence_adjustment, created_at FROM agent_feedback_log ORDER BY created_at DESC LIMIT 30") or [])], "stats": (_db_query("SELECT decision, count(*) as cnt FROM agent_feedback_log GROUP BY decision") or [])},
+    "/api/v2/proposals/history": lambda: {"daily": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT d::date as date, COALESCE(SUM(CASE WHEN wp.status='approved' THEN 1 ELSE 0 END),0) as approved, COALESCE(SUM(CASE WHEN wp.status='rejected' THEN 1 ELSE 0 END),0) as rejected, COALESCE(SUM(CASE WHEN wp.status='proposed' THEN 1 ELSE 0 END),0) as proposed FROM generate_series(NOW()-INTERVAL '30 days', NOW(), '1 day') d LEFT JOIN watchlist_proposals wp ON wp.reviewed_at::date = d::date OR (wp.status='proposed' AND wp.created_at::date = d::date) GROUP BY d::date ORDER BY d::date") or [])]},
     "/api/v2/macro-context": lambda: {"context": __import__('importlib').import_module('external_market_data_ingest').get_macro_context()},
     "/api/v2/qualified-intelligence": lambda: {"items": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, source_type, symbol, title, quality_score, retirement_relevance, strategy_focus, discovered_at FROM qualified_intelligence ORDER BY quality_score DESC, discovered_at DESC LIMIT 30") or [])]},
     "/api/v2/discovery-log": lambda: {"entries": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, discovery_type, title, summary, symbols_mentioned, intel_count, created_at FROM agent_discovery_log ORDER BY created_at DESC LIMIT 10") or [])]},
+    "/api/v2/trade-instructions": lambda: {"instructions": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, proposal_id, symbol, action, account_name, shares, target_symbol, estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text, created_at, executed_at FROM trade_instructions ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'executed' THEN 2 ELSE 3 END, created_at DESC LIMIT 20") or [])]},
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
@@ -3799,6 +3801,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         (pid, p.get("symbol"), p.get("action"), p.get("strategy_type"),
                          p.get("account_name"), decision, reviewer, reason,
                          p.get("ssdi_impact"), p.get("irmaa_risk"), p.get("confidence"), conf_adj))
+                # Generate trade instruction on approval
+                if decision == "approved" and prop:
+                    p = prop[0]
+                    full = _db_query("SELECT symbol, account_name, shares_to_sell, target_symbol, ssdi_impact, irmaa_risk, confidence, reason FROM watchlist_proposals WHERE id=%s", (pid,))
+                    if full:
+                        fp = full[0]
+                        shares = float(fp.get("shares_to_sell") or 0)
+                        ssdi = fp.get("ssdi_impact", "none")
+                        irmaa = fp.get("irmaa_risk", False)
+                        ssdi_note = "No SSDI impact" if ssdi == "none" else f"SSDI impact: {ssdi}"
+                        irmaa_note = "IRMAA risk: YES — review with CPA" if irmaa else "No IRMAA risk"
+                        est_tax = shares * 300 * 0.22 if ssdi != "none" else 0  # rough estimate
+                        instr = (f"SELL {shares:.0f} shares of {fp.get('symbol')} in {fp.get('account_name', '?')}. "
+                                 f"Target: {fp.get('target_symbol', 'cash')}. "
+                                 f"{ssdi_note}. {irmaa_note}. "
+                                 f"Reason: {(fp.get('reason') or '')[:200]}")
+                        _db_write("""INSERT INTO trade_instructions
+                            (proposal_id, symbol, action, account_name, shares, target_symbol,
+                             estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text)
+                            VALUES (%s,%s,'sell',%s,%s,%s,%s,%s,%s,'manual','pending',%s)""",
+                            (pid, fp.get("symbol"), fp.get("account_name"), shares,
+                             fp.get("target_symbol", "cash"), est_tax, ssdi_note, irmaa_note, instr))
                 return 200, {"ok": True, "action": decision, "id": pid}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}

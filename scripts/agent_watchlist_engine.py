@@ -335,21 +335,69 @@ def propose_rotations() -> dict:
         positions = holdings_map.get(c["symbol"], [{"account": "Unknown", "shares": 0, "value": 0}])
         review_date = (datetime.now() + __import__("datetime").timedelta(days=14)).date()
 
+        # Load personal situation for MAGI/threshold checks (once)
+        if not hasattr(propose_rotations, '_ps_loaded'):
+            propose_rotations._ps_cache = {}
+            try:
+                ps_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "personal_situation.json"
+                if ps_path.exists():
+                    ps = json.loads(ps_path.read_text())
+                    fields = ps.get("fields", {})
+                    propose_rotations._ps_cache = {
+                        "agi": float(fields.get("schedule_c_gross", {}).get("current", 20000))
+                              + float(fields.get("ssdi_annual", {}).get("current", 45600)),
+                        "roth_ytd": float(fields.get("roth_conversion_ytd_2026", {}).get("current", 35000)),
+                        "bracket_ceiling": float(fields.get("next_bracket_ceiling", {}).get("current", 94300)),
+                        "ssdi_annual": float(fields.get("ssdi_annual", {}).get("current", 45600)),
+                    }
+            except Exception:
+                pass
+            propose_rotations._ps_loaded = True
+
+        ps = propose_rotations._ps_cache
+        current_magi = ps.get("agi", 65600) + ps.get("roth_ytd", 35000)
+        irmaa_threshold = 103000  # 2026 MFS IRMAA Tier 1 threshold
+        medicaid_limit = 20124    # NY Medicaid income limit
+        bracket_ceiling = ps.get("bracket_ceiling", 94300)  # 22% bracket top for MFS
+
         for pos in positions:
-            # SSDI impact assessment
+            # SSDI-aware impact assessment with MAGI thresholds
             ssdi_impact = "none"
             income_impact = "none"
             irmaa_risk = False
+            ssdi_warnings = []
 
             if pos["account"] in ("Rollover IRA", "401k"):
                 ssdi_impact = "conversion_taxable"
-                irmaa_risk = pos["value"] > 50000
+                # IRMAA check: would this sale + current MAGI push past threshold?
+                projected_magi = current_magi + pos["value"]
+                irmaa_risk = projected_magi > irmaa_threshold
+                # MFS bracket check: would this push AGI past 22% ceiling?
+                if projected_magi > bracket_ceiling:
+                    ssdi_warnings.append(f"MAGI ${projected_magi:,.0f} exceeds 22% ceiling ${bracket_ceiling:,.0f}")
+                    income_impact = "bracket_jump"
+                else:
+                    income_impact = "taxable_event"
+                # Medicaid 5-year lookback: flag if large distribution could affect eligibility
+                if pos["value"] > 50000:
+                    ssdi_warnings.append("Large IRA distribution may affect Medicaid 5-year lookback")
             elif pos["account"] == "Roth IRA":
                 ssdi_impact = "none"
                 income_impact = "none"
+                # Roth distributions don't affect MAGI, SSDI, or Medicaid
             elif pos["account"] == "Taxable":
                 ssdi_impact = "capital_gains"
                 income_impact = "taxable_event"
+                # Capital gains add to MAGI
+                est_gain = pos["value"] * 0.5  # conservative 50% gain estimate
+                if current_magi + est_gain > irmaa_threshold:
+                    irmaa_risk = True
+                    ssdi_warnings.append(f"Cap gains could push MAGI past IRMAA ${irmaa_threshold:,.0f}")
+
+            # Build enhanced reason with warnings
+            reason = f"{c['agent']}: {c['recommendation']} (conf:{base_conf:.0%}). {rule['rule']}{feedback_note}"
+            if ssdi_warnings:
+                reason += " | SSDI: " + "; ".join(ssdi_warnings)
 
             ucur.execute("""INSERT INTO watchlist_proposals
                 (symbol, action, strategy_type, reason, confidence, proposed_by, status,
@@ -357,14 +405,41 @@ def propose_rotations() -> dict:
                  ssdi_impact, income_impact, irmaa_risk)
                 VALUES (%s, 'rotate', %s, %s, %s, 'rotation_engine', 'proposed',
                         %s, %s, 'cash', %s, %s, %s, %s)""",
-                (c["symbol"], strategy,
-                 f"{c['agent']}: {c['recommendation']} (conf:{base_conf:.0%}). {rule['rule']}{feedback_note}",
-                 adj_conf,
+                (c["symbol"], strategy, reason, adj_conf,
                  pos["account"], pos["shares"], review_date,
                  ssdi_impact, income_impact, irmaa_risk))
             rotations += 1
             risk_badge = " IRMAA!" if irmaa_risk else ""
-            print(f"  [rotate] {c['symbol']} in {pos['account']}: {pos['shares']:.0f} shares → cash.{risk_badge} SSDI:{ssdi_impact} conf:{adj_conf:.0%}")
+            warn_str = f" WARN:{';'.join(ssdi_warnings)}" if ssdi_warnings else ""
+
+            # Auto-execution check: conf≥90%, no SSDI/IRMAA risk, income_impact=none, Roth account
+            auto_eligible = (adj_conf >= 0.90 and ssdi_impact == "none"
+                             and not irmaa_risk and income_impact == "none"
+                             and not ssdi_warnings)
+            auto_tag = " [AUTO-ELIGIBLE]" if auto_eligible else ""
+
+            # Check if auto-execute is enabled in intelligence rules
+            if auto_eligible:
+                try:
+                    cur.execute("SELECT config FROM agent_intelligence_rules WHERE rule_type='auto_execute' AND rule_key='low_risk'")
+                    ae_row = cur.fetchone()
+                    ae_enabled = ae_row and ae_row.get("config", {}).get("enabled", False) if ae_row else False
+                    if ae_enabled:
+                        # Auto-approve: update status and generate trade instruction
+                        ucur.execute("UPDATE watchlist_proposals SET status='approved', reviewed_by='auto_engine', reviewed_at=NOW() WHERE symbol=%s AND status='proposed' AND account_name=%s ORDER BY created_at DESC LIMIT 1",
+                                     (c["symbol"], pos["account"]))
+                        ucur.execute("""INSERT INTO trade_instructions
+                            (symbol, action, account_name, shares, target_symbol,
+                             estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text)
+                            VALUES (%s, 'sell', %s, %s, 'cash', 0, 'No SSDI impact', 'No IRMAA risk', 'auto_approved', 'pending', %s)""",
+                            (c["symbol"], pos["account"], pos["shares"],
+                             f"AUTO-APPROVED: Sell {pos['shares']:.0f} shares of {c['symbol']} in {pos['account']}. Conf:{adj_conf:.0%}. No risk flags."))
+                        auto_tag = " [AUTO-APPROVED]"
+                        print(f"  [auto] {c['symbol']} in {pos['account']}: auto-approved (conf:{adj_conf:.0%}, no risk)")
+                except Exception:
+                    pass
+
+            print(f"  [rotate] {c['symbol']} in {pos['account']}: {pos['shares']:.0f} shares → cash.{risk_badge} SSDI:{ssdi_impact}{warn_str} conf:{adj_conf:.0%}{auto_tag}")
 
     conn.commit()
     conn.close()
