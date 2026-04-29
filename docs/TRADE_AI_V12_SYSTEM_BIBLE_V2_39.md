@@ -163,13 +163,21 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
    └→ For each video: check if video_id already in DB (dedup)
    └→ 37 channels × 3 videos = up to 111 videos checked daily
 
-2b. BACKFILL MODE (run once after adding new channels)
-   └→ youtube_transcript_ingest.py --backfill [--max 50]
-   └→ Fetches up to 50 videos per channel (~12 months of weekly uploads)
-   └→ 37 channels × 50 = up to 1,850 videos checked
-   └→ Deduplicates against existing transcripts
-   └→ Rate-limited by YouTube (may take multiple runs to complete)
-   └→ NOT for daily use — run once, then daily cron handles new content
+2b. AUTOMATED BACKFILL (youtube_backfill_manager.py — runs until complete)
+   └→ Cron: every 4 hours until all 37 channels completed
+   └→ Processes 5 channels per batch (retirement/SSDI prioritized first)
+   └→ 50 videos per channel (~12 months of weekly uploads)
+   └→ State machine: pending → in_progress → completed / rate_limited
+   └→ Rate limit handling:
+      • Detects YouTube IP blocks (429/IpBlocked)
+      • Stops batch on rate limit (saves API calls)
+      • Waits 4 hours before retrying rate_limited channels
+      • 3 consecutive transcript failures = rate_limited (safety cutoff)
+   └→ Tracking: youtube_backfill_status table (per-channel progress)
+      CLI: --status (matrix), --reset (restart all)
+   └→ Telegram progress updates on each batch
+   └→ Estimated: ~3 days to complete 37 channels with rate limits
+   └→ Self-exits when all channels completed (cron harmless after that)
 
 3. TRANSCRIPT FETCH (2 methods, fallback chain)
    └→ Method 1: youtube-transcript-api library (English captions)
@@ -662,7 +670,8 @@ python3 scripts/system_preflight_check.py
 | v2.35 | Full hybrid transcript pipeline: TextRank extractive + structured JSON + cross-channel dedup + agents_data_sources.yaml |
 | v2.36 | Enhanced structured JSON: relevance_score, main_topics, llm_confidence. Alex context 400→1200 chars |
 | v2.37 | Complete 9/9 structured JSON schema. timestamped_highlights from timed segment analysis |
-| **v2.38** | **37 YouTube channels (was 6): 10 dividend, 9 swing, 5 retirement/SSDI, 9 market trends. 47 trusted channel scores. Backfill mode: --backfill fetches up to 50 videos per channel (~12 months). Daily mode unchanged (3/channel).** |
+| v2.38 | 37 YouTube channels, 47 trusted scores, manual backfill mode |
+| **v2.39** | **Automated backfill manager: processes 5 channels/batch every 4 hours until all 37 complete. Rate limit detection + 4h cooldown + auto-retry. State tracking in youtube_backfill_status table. Retirement/SSDI channels prioritized. ~3 days to complete.** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -758,4 +767,4 @@ See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
 
 ---
 
-**v2.38 — 37 YouTube channels tracked across 4 strategies (10 dividend, 9 swing, 5 retirement/SSDI, 9 market). Backfill mode: 50 videos/channel for 12-month history. 47 trusted channel scores. Daily: 3/channel (111 videos checked). Full 6-step hybrid pipeline with 9-field structured JSON. Maturity: 74%.**
+**v2.39 — Automated YouTube backfill: 37 channels processing 50 videos each (~1,850 total) every 4 hours until complete. Rate limit detection + cooldown + auto-retry. Retirement/SSDI channels first. State tracked in DB. ~3 days to full 12-month coverage. Maturity: 74%.**
