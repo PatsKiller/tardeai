@@ -165,11 +165,11 @@ def overview():
         "trade_ai": {
             "vix": tai.get("vix"),
             "breadth": tai.get("breadth"),
-            "go_count": tai.get("goCount", 0),
-            "wait_count": tai.get("waitCount", 0),
-            "no_go_count": tai.get("noGoCount", 0),
-            "run_date": tai.get("runDate", ""),
-            "run_label": tai.get("runLabel", ""),
+            "go_count": tai.get("goCount", tai.get("go_count", 0)),
+            "wait_count": tai.get("waitCount", tai.get("wait_count", 0)),
+            "no_go_count": tai.get("noGoCount", tai.get("no_go_count", 0)),
+            "run_date": tai.get("runDate", tai.get("date", "")),
+            "run_label": tai.get("runLabel", tai.get("run_label", "")),
         },
         "journal": {
             "trade_count": len(j_all),
