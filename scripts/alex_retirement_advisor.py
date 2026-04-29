@@ -154,12 +154,18 @@ def _format_tax_context() -> str:
             f"2025 business loss carryforward: ${biz_loss:,.0f} (extra conversion capacity)",
             f"MEDICARE: Eligible {medicare}. {medicare_note}",
             f"CRITICAL: 2024 income determines 2026 IRMAA. 2026 income determines 2028 IRMAA.",
+            f"DISABILITY STATUS: On SSDI ($3,800/mo). MFS filer. Private disability insurance to age 68.5.",
+            f"  - SSDI converts to SS retirement at FRA 67. No 10% early withdrawal penalty (disability exemption).",
+            f"  - Investment income does NOT affect SSDI (not SGA). Roth conversions do NOT threaten SSDI.",
+            f"  - MFS: Cannot contribute directly to Roth ($0 income limit). Use backdoor Roth if IRA is clean.",
+            f"  - Schedule C ~$20K/yr = earned income → eligible for IRA contributions ($7,000/yr).",
             f"MEDICAID PLANNING: After Medicare starts Dec 2026, Medicaid may supplement for extra benefits.",
             f"  - Medicaid Asset Protection Trust (MAPT) has 5-year lookback in NY (must be funded by ~2022 to be safe now).",
-            f"  - Roth conversions INCREASE MAGI, which can disqualify Medicaid (income limits ~$1,677/mo or ~$20,124/yr for single in NY 2026).",
+            f"  - Roth conversions INCREASE MAGI, which can disqualify Medicaid (income limits ~$1,677/mo or ~$20,124/yr for MFS in NY 2026).",
             f"  - Aggressive conversions ($50K+/yr) will likely push MAGI well above Medicaid income thresholds.",
             f"  - TRADEOFF: Higher Roth conversions = better long-term tax efficiency BUT may delay/prevent Medicaid eligibility.",
             f"  - Asset spend-down: Medicaid counts most assets; Roth IRAs ARE countable in NY. MAPT assets are exempt after 5yr lookback.",
+            f"  - DISABILITY + MEDICAID: Disabled persons on SSDI may qualify for Medicaid through disability pathway (different income limits).",
         ]
         if prior_agi is not None:
             lines.append(f"Prior year AGI (2025): ${prior_agi:,.0f}")
@@ -212,9 +218,22 @@ def analyze_for_retirement(symbol: str, trigger: str = "manual") -> dict:
         for p in ctx["positions"]
     )
 
-    prompt = f"""/no_think You are Alex, a certified retirement planner and fiduciary advisor with 20+ years experience. You are warm, professional, conservative, and client-focused. Always prioritize the client's retirement income goal, tax efficiency, and risk tolerance.
+    prompt = f"""/no_think You are Alex, a certified retirement planner and fiduciary advisor with 20+ years experience specializing in DISABILITY-OPTIMIZED retirement planning. You are warm, professional, conservative, and client-focused. Always prioritize the client's retirement income goal, tax efficiency, risk tolerance, and disability benefit preservation.
 
 TRIGGER: {trigger}
+
+CLIENT DISABILITY PROFILE (PERMANENT — APPLIES TO EVERY ANALYSIS):
+- Status: On SSDI (Social Security Disability Insurance), $3,800/mo (~$45,600/yr)
+- Private disability insurance: continues to age 68.5 (recertify 2x/year)
+- Filing status: MFS (Married Filing Separately, lived apart)
+- SSDI converts to SS retirement at FRA age 67
+- No 10% early withdrawal penalty (age 58.5+ AND disability exemption under IRC §72(t)(2)(A)(iii))
+- IRA contributions: CAN contribute to IRA while on SSDI if have earned income (Schedule C ~$20K/yr)
+- Roth conversions: DO count as MAGI — can affect Medicaid eligibility and IRMAA
+- MFS special rules: Roth contribution income limit is $0 for MFS (CANNOT contribute directly to Roth)
+- MFS workaround: Backdoor Roth (contribute to Traditional IRA → convert) IS allowed for MFS filers
+- 401k rollover: Omnicom 401k ($526K) rolls to Schwab IRA in 2027 — timing matters for disability planning
+- Key risk: Aggressive Roth conversions increase MAGI → can affect SSDI trial work period evaluation, Medicaid, IRMAA
 
 POSITION: {symbol}
 {pos_text}
@@ -228,7 +247,8 @@ Strategy: {ctx['strategy_type']} | Yield: {ctx['yield_pct']:.1f}% | Income: ${ct
 
 PORTFOLIO CONTEXT:
 Income target: $55,000/yr. Current: $14,342/yr. Gap: $40,658. Timeline: 4-8 years.
-Accounts: Fidelity 401k (~$526K), Schwab Rollover IRA (~$556K), Schwab Roth IRA (~$42K), Schwab Taxable (~$75K).
+Accounts: Fidelity 401k (~$526K, rolls to IRA 2027), Schwab Rollover IRA (~$556K), Schwab Roth IRA (~$42K), Schwab Taxable (~$75K).
+SSDI income: $45,600/yr. Schedule C: ~$20K/yr gross.
 
 TAX SITUATION (LIVE FROM DB):
 {_format_tax_context()}
@@ -247,9 +267,17 @@ Provide a retirement-advisor analysis covering:
    - Roth conversion ladder impact: Does this action affect the conversion schedule?
 5. ROTATION SUGGESTION: Tax-efficient redeployment to close income gap. Specify which account to buy in.
 6. ROTH CONVERSION CONSIDERATION: If applicable, how does this position fit the Roth conversion ladder? Should gains be converted? What's the tax cost?
-7. RISK ASSESSMENT: What changes this recommendation?
+   - DISABILITY NOTE: Client is MFS — cannot contribute directly to Roth. Must use Backdoor Roth.
+   - Consider: Is it better to leave this in 401k/IRA (creditor protected, disability exemption) or convert to Roth?
+   - For disabled persons: 401k/IRA has creditor protection benefits that Roth may not in all states.
+7. DISABILITY BENEFIT IMPACT: How does this action affect:
+   - SSDI benefit continuation (investment income does NOT count as SGA, but earned income does)
+   - Medicaid eligibility (MAGI-based — Roth conversions count)
+   - Private disability insurance recertification
+   - MFS filing status implications
+8. RISK ASSESSMENT: What changes this recommendation?
 
-Use warm, supportive tone: "Here's what I recommend for you..." Be specific with dollar amounts, share counts, and tax rates."""
+Use warm, supportive tone: "Here's what I recommend for you..." Be specific with dollar amounts, share counts, and tax rates. Always mention disability-specific considerations."""
 
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -330,15 +358,28 @@ def roth_conversion_analysis() -> dict:
     safe_room = ps.get("roth_safe_room_22pct", "16000")
     filing = ps.get("filing_status", "single")
 
-    prompt = f"""/no_think You are Alex, a certified retirement planner specializing in Roth conversion and IRMAA optimization.
+    prompt = f"""/no_think You are Alex, a certified retirement planner specializing in Roth conversion, IRMAA optimization, and DISABILITY-OPTIMIZED retirement strategies.
 
 CLIENT PROFILE:
 DOB: {dob} (age {age})
-Filing status: {filing}
-Social Security: ~${ss_annual}/yr starting age {ss_start}
+Filing status: {filing} (Married Filing Separately — lived apart)
+DISABILITY STATUS: On SSDI ($3,800/mo = $45,600/yr). Private disability insurance to age 68.5.
+SSDI converts to SS retirement at FRA age {ss_start}: ~${ss_annual}/yr
+Schedule C income: ~$20K/yr gross (this IS earned income — counts for IRA contributions)
+No 10% early withdrawal penalty (age 58.5+ AND disability exemption IRC §72(t)(2)(A)(iii))
 Current tax bracket: {bracket}%
 Roth conversions YTD: ${roth_ytd}
 Target conversion this year: ${roth_target} (safe room at 22%: ${safe_room})
+
+DISABILITY-SPECIFIC RULES FOR ROTH LADDER:
+- MFS filers: Roth contribution income limit is $0 → CANNOT contribute directly to Roth IRA
+- Workaround: Backdoor Roth (Traditional IRA contribution → immediate conversion) IS allowed
+- SSDI income is NOT earned income for IRA purposes — but Schedule C income IS
+- Investment income (dividends, capital gains) does NOT affect SSDI (not SGA)
+- Roth conversions increase MAGI → affects IRMAA, Medicaid, but NOT SSDI eligibility
+- 401k rollover to IRA in 2027: timing matters — once rolled, no longer employer-plan protected
+- Creditor protection: 401k has ERISA protection; IRA protection varies by state (NY: unlimited)
+- KEY QUESTION: Should disabled person prioritize Roth ladder OR leave money in 401k/IRA for creditor protection + lower MAGI?
 
 PORTFOLIO:
 Rollover IRA: ${ira_value:,.0f}
@@ -381,9 +422,19 @@ Create a detailed 5-year Roth Conversion Ladder projection including:
    - TRADEOFF ANALYSIS: Quantify tax savings from Roth conversion vs value of potential Medicaid benefits
    - Recommend: should client prioritize Roth conversions OR Medicaid eligibility? Or is there a middle path?
    - Note: Roth IRAs ARE countable assets for NY Medicaid; MAPT-held assets are exempt after 5yr lookback
-8. Risks: tax law changes, bracket creep, IRMAA tier jumps, opportunity cost, Medicaid rule changes
+8. DISABILITY-SPECIFIC ROTH LADDER ANALYSIS:
+   - Should you prioritize the Roth ladder OR leave money in 401k/IRA?
+   - PRO-ROTH: Tax-free income in retirement, no RMDs, hedge against future tax increases
+   - PRO-LEAVE: Creditor protection (ERISA for 401k), lower MAGI preserves Medicaid, simpler
+   - Can you still contribute to IRA while on SSDI? YES — if you have earned income (Schedule C $20K)
+   - MFS backdoor Roth strategy: contribute $7,000/yr to Traditional → convert (pro-rata rule applies if IRA has pre-tax funds)
+   - Pro-rata warning: With $556K in Rollover IRA, backdoor Roth has massive pro-rata tax hit — NOT recommended until IRA is significantly reduced via conversions
+   - Optimal disability strategy: Convert enough to fill 12%/22% bracket from IRA, then backdoor Roth becomes clean
+   - Impact on private disability insurance: Roth conversions are not earned income — should NOT affect disability recertification
+   - Impact on SSDI: Investment income and conversions do NOT count as SGA — SSDI is safe
+9. Risks: tax law changes, bracket creep, IRMAA tier jumps, opportunity cost, Medicaid rule changes, disability benefit changes
 
-Include clear tables. Use warm, professional, fiduciary tone. Address client as "you"."""
+Include clear tables. Use warm, professional, fiduciary tone. Address client as "you". Always address the Roth-vs-leave-in-401k question for disabled persons."""
 
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -564,6 +615,15 @@ if __name__ == "__main__":
             ps = _load_personal()
             print(f'Medicare starts: {ps.get("medicare_start_date", "unknown")}')
             print(f'Note: {ps.get("medicare_start_note", "")}')
+            print(f'\n=== Disability Status ===')
+            print(f'SSDI: $3,800/mo ($45,600/yr)')
+            print(f'Filing: MFS (Married Filing Separately)')
+            print(f'Private disability ins: to age 68.5')
+            print(f'Early withdrawal: No 10% penalty (disability + age 58.5+)')
+            print(f'IRA contributions: YES with Schedule C earned income ($7K/yr max)')
+            print(f'Roth contributions: NO (MFS $0 limit) — use Backdoor Roth')
+            print(f'Roth conversions: OK but increase MAGI (affects Medicaid, IRMAA)')
+            print(f'SSDI impact: Investment income does NOT affect SSDI eligibility')
         sys.exit(0)
     if "--alert" in sys.argv:
         sym = sys.argv[sys.argv.index("--alert") + 1].upper()

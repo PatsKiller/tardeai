@@ -348,6 +348,15 @@ STRATEGY_TAG_RULES = {
         "reit", "real estate", "rental income", "property", "nnn lease",
         "triple net", "occupancy",
     ],
+    "disability_retirement_planning": [
+        "disability", "disabled", "ssdi", "social security disability",
+        "disability insurance", "disability benefits", "disabled person",
+        "married filing separately", "mfs", "married disabled",
+        "ira while disabled", "roth while disabled", "disability retirement",
+        "substantial gainful activity", "sga", "trial work period",
+        "disability and roth", "disability and ira", "disability and 401k",
+        "disability income", "disability planning",
+    ],
 }
 
 # Agent responsibility mapping — which keywords trigger which agent
@@ -356,6 +365,7 @@ AGENT_TAG_RULES = {
         "roth", "ira", "401k", "retirement", "irmaa", "medicare", "medicaid",
         "social security", "rmd", "conversion", "tax bracket", "tax loss",
         "income gap", "withdrawal", "estate", "pension",
+        "disability", "ssdi", "disabled", "mfs", "disability insurance",
     ],
     "Maria": [
         "earnings", "revenue", "guidance", "catalyst", "upgrade", "downgrade",
