@@ -1019,6 +1019,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         file_map = [
             ("/data/portfolios/state/", PROJECT_ROOT / "data" / "portfolios" / "state"),
             ("/data/portfolios/charts/", PROJECT_ROOT / "data" / "portfolios" / "charts"),
+            ("/data/portfolios/reports/", PROJECT_ROOT / "data" / "portfolios" / "reports"),
             ("/reports/", PROJECT_ROOT / "reports"),
             ("/config/", PROJECT_ROOT / "config"),
             ("/assets/", PROJECT_ROOT / "assets"),
