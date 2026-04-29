@@ -24,7 +24,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | Agent results | **198** | watchlist_agent_results |
 | Agent handoffs | **110 total** (32+ escalations) | agent_handoffs |
 | Strategy types | 10 | content_scoring.py |
-| YouTube channels | 6 tracked, 12 transcripts | youtube_channels |
+| YouTube channels | **37 active** (47 trusted scores), 12 transcripts stored | youtube_channels |
 | News articles | **552 from 50 sources** | news_articles |
 | SEC filings | **4 Form 4 insider filings** | sec_form4 |
 | Market quotes | **3 yfinance quotes** | market_quotes |
@@ -38,7 +38,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | Yahoo RSS | News | 365 | None needed | ACTIVE — 3x daily |
 | Finnhub | News | 32 | FINNHUB_API_KEY | ACTIVE — 3x daily |
 | Google News RSS | News (40+ outlets) | 155 | None needed | ACTIVE — Benzinga, SA, Morningstar, Barrons, Bloomberg |
-| YouTube Data API | Transcripts | 12 (6 channels) | YOUTUBE_API_KEY | ACTIVE — 7 PM daily |
+| YouTube Data API | Transcripts | 12 stored (37 channels tracked) | YOUTUBE_API_KEY | ACTIVE — daily 7 PM (3/channel) + backfill mode (50/channel) |
 | SEC EDGAR | Form 4 insider | 4 | None needed | ACTIVE — 8 PM daily |
 | yfinance | Real-time quotes | 3 | None needed | ACTIVE — 7:15 AM daily |
 | Alpha Vantage | Fundamentals (15 metrics) | 15 | ALPHA_VANTAGE_API_KEY | ACTIVE — Monday 8 AM |
@@ -152,13 +152,24 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 ### How Transcripts Are Ingested
 
 ```
-1. CHANNEL TRACKING (6 active channels, manually added or agent-discovered)
+1. CHANNEL TRACKING (37 active channels across 4 strategies)
    └→ youtube_channels table: channel_id, name, strategy_focus, last_checked
+   └→ Strategies: dividend_growth_compounding (10), swing_trading (9),
+      retirement_ssdi_roth_tax (5), market_trends_sectors (9), other (4)
 
 2. DAILY PULL (7 PM weekdays via cron)
    └→ youtube_transcript_ingest.py --all-channels
    └→ YouTube Data API: list latest 3 videos per channel via uploads playlist
    └→ For each video: check if video_id already in DB (dedup)
+   └→ 37 channels × 3 videos = up to 111 videos checked daily
+
+2b. BACKFILL MODE (run once after adding new channels)
+   └→ youtube_transcript_ingest.py --backfill [--max 50]
+   └→ Fetches up to 50 videos per channel (~12 months of weekly uploads)
+   └→ 37 channels × 50 = up to 1,850 videos checked
+   └→ Deduplicates against existing transcripts
+   └→ Rate-limited by YouTube (may take multiple runs to complete)
+   └→ NOT for daily use — run once, then daily cron handles new content
 
 3. TRANSCRIPT FETCH (2 methods, fallback chain)
    └→ Method 1: youtube-transcript-api library (English captions)
@@ -650,7 +661,8 @@ python3 scripts/system_preflight_check.py
 | v2.34 | Breakage gates (23-point preflight), weekly backup zip, garbage cleanup (43 MB), restore guide |
 | v2.35 | Full hybrid transcript pipeline: TextRank extractive + structured JSON + cross-channel dedup + agents_data_sources.yaml |
 | v2.36 | Enhanced structured JSON: relevance_score, main_topics, llm_confidence. Alex context 400→1200 chars |
-| **v2.37** | **Complete 9/9 structured JSON schema. Added timestamped_highlights from timed segment keyword analysis (30-second windows, 2+ keyword threshold). timed_segments JSONB column stores raw segment data. New transcripts get full timestamps automatically. Existing 12 transcripts lack timed data (pre-column).** |
+| v2.37 | Complete 9/9 structured JSON schema. timestamped_highlights from timed segment analysis |
+| **v2.38** | **37 YouTube channels (was 6): 10 dividend, 9 swing, 5 retirement/SSDI, 9 market trends. 47 trusted channel scores. Backfill mode: --backfill fetches up to 50 videos per channel (~12 months). Daily mode unchanged (3/channel).** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -746,4 +758,4 @@ See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
 
 ---
 
-**v2.37 — Complete 9/9 structured JSON schema with timestamped_highlights. Full 6-step hybrid pipeline: clean → TextRank extract → LLM structured JSON (with validation + retry) → sub-tags → cross-channel dedup → tiered purge. All fields: summary, key_points, action_items, tickers_mentioned, retirement_relevance, relevance_score, main_topics, llm_confidence, timestamped_highlights. Maturity: 74%.**
+**v2.38 — 37 YouTube channels tracked across 4 strategies (10 dividend, 9 swing, 5 retirement/SSDI, 9 market). Backfill mode: 50 videos/channel for 12-month history. 47 trusted channel scores. Daily: 3/channel (111 videos checked). Full 6-step hybrid pipeline with 9-field structured JSON. Maturity: 74%.**
