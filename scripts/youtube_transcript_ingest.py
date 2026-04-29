@@ -54,7 +54,8 @@ def _parse_transcript_entries(transcript) -> dict:
         segments.append({"text": text, "start": start, "duration": duration})
         full_text.append(text)
         max_end = max(max_end, start + duration)
-    return {"text": " ".join(full_text), "segments": len(segments), "duration_seconds": int(max_end)}
+    return {"text": " ".join(full_text), "segments": len(segments), "duration_seconds": int(max_end),
+            "timed_segments": segments}
 
 
 def _fetch_timedtext(video_id: str) -> dict:
@@ -192,18 +193,22 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
 
     # Store
     url = f"https://www.youtube.com/watch?v={video_id}"
+    # Store timed segments for timestamped highlights
+    timed_json = json.dumps(result.get("timed_segments", [])[:500])  # Cap at 500 segments
+
     cur.execute("""
         INSERT INTO youtube_transcripts
             (video_id, title, channel_name, url, transcript_text, duration_seconds,
              quality_score, relevance_score, validation_status, matched_keywords, added_by,
-             strategy_tags, agent_tags)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             strategy_tags, agent_tags, timed_segments)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """, (video_id, meta["title"], meta["channel_name"], url,
-          result["text"][:50000],  # Limit stored text
+          result["text"][:50000],
           result["duration_seconds"],
           scores["quality_score"], scores["relevance_score"],
           scores["validation_status"], json.dumps(scores["matched_keywords"]),
-          added_by, json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"])))
+          added_by, json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"]),
+          timed_json))
     conn.commit()
     conn.close()
 
