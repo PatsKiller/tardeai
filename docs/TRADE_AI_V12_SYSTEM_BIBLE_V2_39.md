@@ -484,6 +484,25 @@ Placeholder in `.env`. No API key configured. Will activate with `BENZINGA_API_K
 | TradeAI | Charts present | VERIFIED |
 | + 17 more pages | No charts | Functional but text/table only |
 
+### Intelligence Sources Page (`/v2/intelligence-sources`)
+
+Header shows **"72 sources configured"** = sum of all items across 3 tabs:
+
+| Tab | Count | What It Shows |
+|---|---|---|
+| **Screeners (20)** | 20 Finviz screeners | Name, strategy, URL, keywords, sources, added_by, schedule |
+| **YouTube (12)** | 12 stored transcripts | Channel, title, duration, quality, relevance, status, keywords |
+| | 37 tracked channels | Listed below transcript table with strategy focus |
+| **Social (3)** | 3 manual test posts | Platform, user, text, quality, sentiment, validation |
+
+**Why YouTube says "(12)" not "(37)":** The tab count shows transcripts stored in DB, not channels tracked. 37 channels are tracked but backfill is still processing — only 12 transcripts ingested so far. As backfill completes (~3 days), this number will grow to 500+ transcripts.
+
+**Scoring status breakdown (current 12 transcripts):**
+- ai_validated (Q≥60 + R≥30%): PPC Ian (3), Rob Berger (2) = 5 transcripts
+- unscored (middle ground): Ben Felix, InvestKaki, Strong Man = 3 transcripts
+- low_confidence (Q<30 or R<10%): Rational Reminder, Rob Berger bonds, zoo = 3 transcripts
+- too short for scoring: zoo video = 1 transcript
+
 ---
 
 ## 6. Pipeline Timeline (Verified against crontab)
