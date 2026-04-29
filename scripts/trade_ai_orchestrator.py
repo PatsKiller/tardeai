@@ -111,7 +111,7 @@ def _warmup_ollama():
     """Ping Ollama with a tiny prompt to warm up the model before pipeline starts."""
     try:
         import urllib.request, json
-        payload = json.dumps({"model":"qwen3:14b","stream":False,"prompt":"hi","options":{"num_predict":1}}).encode()
+        payload = json.dumps({"model":"qwen3:1.7b","stream":False,"prompt":"hi","options":{"num_predict":1}}).encode()
         req = urllib.request.Request("http://127.0.0.1:11434/api/generate",data=payload,headers={"Content-Type":"application/json"},method="POST")
         with urllib.request.urlopen(req, timeout=60) as resp:
             json.loads(resp.read())
@@ -149,11 +149,28 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         live    = load_live_candidates(root, run_label, date_str, output_dir)
         df      = live["dataframe"]
         if df.empty:
-            _err("finviz_ingestion", "No tickers — aborting"); return 1
-        tickers = df.to_dict(orient="records")
-        _ok("finviz_ingestion", f"{len(tickers)} tickers  |  {len(live.get('downloads',[]))} screeners")
+            _err("finviz_ingestion", "No tickers — continuing with cached data")
+            # Fall back to cached tickers from last successful run
+            _cache = root / "data" / "scored_tickers_latest.json"
+            if _cache.exists():
+                import json
+                tickers = json.loads(_cache.read_text())
+                _ok("finviz_ingestion", f"Using {len(tickers)} cached tickers from last run")
+            else:
+                _err("finviz_ingestion", "No cache available — skipping scoring")
+                tickers = []
+        else:
+            tickers = df.to_dict(orient="records")
+            _ok("finviz_ingestion", f"{len(tickers)} tickers  |  {len(live.get('downloads',[]))} screeners")
+            # Save cache for next time
+            try:
+                import json
+                (root / "data" / "scored_tickers_latest.json").write_text(json.dumps(tickers, default=str))
+            except Exception:
+                pass
     except Exception as exc:
-        _err("finviz_ingestion", str(exc)); traceback.print_exc(); return 1
+        _err("finviz_ingestion", str(exc))
+        tickers = []
 
     # 3 Market context
     market_snapshot: dict = {}
