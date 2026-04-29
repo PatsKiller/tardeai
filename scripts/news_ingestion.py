@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """news_ingestion.py — Ingest news for portfolio/watchlist symbols.
 
-Sources: Yahoo RSS (free), Finnhub (if API key exists). Gracefully skips missing APIs.
+Sources:
+  - Yahoo RSS (free, always active)
+  - Finnhub (if FINNHUB_API_KEY exists)
+  - Benzinga RSS (free, always active — benzinga.com/feed)
+  - Benzinga API (if BENZINGA_API_KEY exists — richer data, analyst ratings)
+
+All sources dedup by symbol + title. Scored + tagged via content_scoring.
+Feeds into: news_articles, catalyst_events, sentiment_observations.
 
 Usage:
     python3 scripts/news_ingestion.py --priority [--json]
@@ -91,6 +98,117 @@ def _fetch_finnhub(symbol: str, api_key: str) -> list:
     return articles
 
 
+def _fetch_google_news_rss(symbol: str) -> list:
+    """Fetch Google News RSS — free, captures Benzinga + Seeking Alpha + Motley Fool + all sources."""
+    articles = []
+    try:
+        import re
+        query = urllib.parse.quote(f"{symbol} stock") if hasattr(urllib, 'parse') else symbol
+        url = f"https://news.google.com/rss/search?q={symbol}+stock&hl=en-US&gl=US&ceid=US:en"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (TradeAI/1.0)"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            root = ET.fromstring(resp.read())
+            for item in root.findall(".//item")[:5]:
+                title = item.findtext("title", "")
+                link = item.findtext("link", "")
+                pub = item.findtext("pubDate", "")
+                source_name = item.findtext("source", "")
+                # Map source to our naming
+                src_lower = source_name.lower()
+                if "benzinga" in src_lower:
+                    source_tag = "benzinga_rss"
+                elif "seeking alpha" in src_lower:
+                    source_tag = "seeking_alpha"
+                elif "motley fool" in src_lower:
+                    source_tag = "motley_fool"
+                elif "barron" in src_lower:
+                    source_tag = "barrons"
+                elif "morningstar" in src_lower:
+                    source_tag = "morningstar"
+                elif "marketwatch" in src_lower:
+                    source_tag = "marketwatch"
+                else:
+                    source_tag = f"google_news:{source_name[:30]}"
+                articles.append({
+                    "title": title,
+                    "summary": f"[{source_name}] {title}",
+                    "source": source_tag,
+                    "source_url": link,
+                    "published_at": pub,
+                })
+    except Exception:
+        pass  # Gracefully skip
+    return articles
+
+
+def _fetch_benzinga_api(symbol: str, api_key: str) -> list:
+    """Fetch Benzinga news via API — richer data with analyst ratings."""
+    articles = []
+    try:
+        from_date = datetime.now().strftime("%Y-%m-%d")
+        url = (f"https://api.benzinga.com/api/v2/news"
+               f"?token={api_key}&tickers={symbol}&dateFrom={from_date}"
+               f"&pageSize=5&displayOutput=full")
+        req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            for item in data[:5]:
+                title = item.get("title", "")
+                body = item.get("body", item.get("teaser", ""))
+                # Clean HTML
+                import re
+                clean_body = re.sub(r'<[^>]+>', '', body or "")[:500]
+                pub_str = item.get("created", item.get("updated", ""))
+                articles.append({
+                    "title": title,
+                    "summary": clean_body,
+                    "source": "benzinga_api",
+                    "source_url": item.get("url", ""),
+                    "published_at": pub_str,
+                    "benzinga_channels": item.get("channels", []),
+                    "benzinga_stocks": item.get("stocks", []),
+                })
+    except Exception:
+        pass  # Gracefully skip if API key invalid or rate limited
+    return articles
+
+
+def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, scores: dict, tags: dict):
+    """Feed article into catalyst_events, sentiment_observations, research_insights."""
+    cur = conn.cursor()
+    title = article.get("title", "")[:500]
+    summary = article.get("summary", "")[:1000]
+    source = article.get("source", "unknown")
+    relevance = scores.get("relevance_score", 0)
+    keywords = scores.get("matched_keywords", [])
+
+    # Catalyst event — if relevance > 0.3, it might be a catalyst
+    if relevance > 0.3:
+        try:
+            cur.execute("""
+                INSERT INTO catalyst_events (symbol, strategy_type, catalyst_type, title, description, source, relevance_score)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+            """, (symbol, strategy_type, "news", title, summary, source, relevance))
+        except Exception:
+            conn.rollback()
+
+    # Sentiment observation — extract sentiment from scoring
+    try:
+        from content_scoring import SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE
+        text_lower = f"{title} {summary}".lower()
+        pos = sum(1 for s in SENTIMENT_POSITIVE if s in text_lower)
+        neg = sum(1 for s in SENTIMENT_NEGATIVE if s in text_lower)
+        sentiment = "positive" if pos > neg else "negative" if neg > pos else "neutral"
+        cur.execute("""
+            INSERT INTO sentiment_observations (symbol, source, sentiment, score, raw_text)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
+        """, (symbol, source, sentiment, relevance, title))
+    except Exception:
+        conn.rollback()
+
+
 def ingest(priority_only: bool = False) -> dict:
     conn = _get_conn()
     import psycopg2.extras
@@ -102,20 +220,36 @@ def ingest(priority_only: bool = False) -> dict:
         for line in (PROJECT_ROOT / ".env").read_text().splitlines():
             if line.startswith("FINNHUB_API_KEY="): finnhub_key = line.split("=", 1)[1].strip()
 
+    # Benzinga API key (optional — RSS works without it)
+    benzinga_key = os.environ.get("BENZINGA_API_KEY", "")
+    if not benzinga_key:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("BENZINGA_API_KEY="): benzinga_key = line.split("=", 1)[1].strip()
+
     total_new = 0
     total_scanned = 0
+    source_counts = {"yahoo_rss": 0, "finnhub": 0, "benzinga_rss": 0, "benzinga_api": 0}
 
     for sym, strategy_type in symbols[:30]:  # Limit to avoid rate limits
         articles = _fetch_yahoo_rss(sym)
         if finnhub_key:
             articles.extend(_fetch_finnhub(sym, finnhub_key))
+        # Google News RSS — captures Benzinga + Seeking Alpha + Motley Fool + all sources
+        articles.extend(_fetch_google_news_rss(sym))
+        # Benzinga API — richer data if key exists
+        if benzinga_key:
+            articles.extend(_fetch_benzinga_api(sym, benzinga_key))
 
         for a in articles:
-            # Dedup by symbol + title hash
-            title_hash = hashlib.sha256(f"{sym}:{a['title']}".encode()).hexdigest()[:24]
+            # Dedup by symbol + title (cross-source dedup)
             cur.execute("SELECT id FROM news_articles WHERE symbol=%s AND title=%s LIMIT 1", (sym, a["title"][:500]))
             if cur.fetchone():
                 continue
+            # Also dedup by URL if available
+            if a.get("source_url"):
+                cur.execute("SELECT id FROM news_articles WHERE source_url=%s LIMIT 1", (a["source_url"][:500],))
+                if cur.fetchone():
+                    continue
 
             # Score and tag
             from content_scoring import score_content, tag_content
@@ -130,6 +264,11 @@ def ingest(priority_only: bool = False) -> dict:
                   a["source"], a.get("source_url", "")[:500],
                   a.get("published_at"), _scores["relevance_score"],
                   json.dumps(_tags["strategy_tags"]), json.dumps(_tags["agent_tags"])))
+
+            # Feed downstream pipeline
+            _feed_downstream(conn, sym, strategy_type, a, _scores, _tags)
+
+            source_counts[a["source"]] = source_counts.get(a["source"], 0) + 1
             total_new += 1
 
         total_scanned += 1
@@ -137,8 +276,9 @@ def ingest(priority_only: bool = False) -> dict:
     conn.commit()
     conn.close()
 
-    result = {"scanned": total_scanned, "new_articles": total_new, "sources": ["yahoo_rss"] + (["finnhub"] if finnhub_key else [])}
-    print(f"[news] Scanned {total_scanned} symbols, {total_new} new articles")
+    active_sources = [s for s, c in source_counts.items() if c > 0]
+    result = {"scanned": total_scanned, "new_articles": total_new, "sources": active_sources, "by_source": {s: c for s, c in source_counts.items() if c > 0}}
+    print(f"[news] Scanned {total_scanned} symbols, {total_new} new articles — sources: {', '.join(f'{s}:{c}' for s, c in source_counts.items() if c > 0)}")
     return result
 
 
