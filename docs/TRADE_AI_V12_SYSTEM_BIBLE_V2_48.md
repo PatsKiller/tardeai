@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.47
+# Trade AI v12 System Bible v2.48
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + Semantic Search + Multi-Agent Debate + Autonomy Dashboard**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + Ollama Embeddings + Research Engine + Maturity Score**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -19,7 +19,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | DB tables | **148** | information_schema count |
 | API endpoints | 115+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
-| Cron entries | **57** | crontab -l |
+| Cron entries | **60** | crontab -l |
 | Telegram commands | 13 unique (17 parse patterns) | telegram_command_handler.py |
 | Agent results | **198** | watchlist_agent_results |
 | Agent handoffs | **110 total** (32+ escalations) | agent_handoffs |
@@ -1372,11 +1372,101 @@ High-Q intel item found (Q≥75) → run_agent_debate()
 
 | Table | Purpose | Records |
 |---|---|---|
-| `content_embeddings` | TF-IDF term weights for semantic search | 0 (new) |
-| `agent_debate_log` | Multi-agent debate transcripts + consensus | 0 (new) |
+| `content_embeddings` | Ollama nomic-embed-text 768-dim vectors + TF-IDF | **667** (654 news + 12 YouTube + 1 test) |
+| `agent_debate_log` | Multi-agent debate transcripts + consensus | 0 (accumulating) |
 
 ### New API Endpoints (v2.47)
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/v2/autonomy-progress` | GET | Learning curve, acceptance rate, debates, lessons |
+| `/api/v2/autonomy-progress` | GET | Learning curve, acceptance rate, debates, lessons, maturity score |
+
+---
+
+## v2.48 — Ollama Embeddings + Persistent Research Engine + Live Maturity Score
+
+### Ollama Embedding Engine (replaces TF-IDF)
+
+| Component | Detail |
+|---|---|
+| Model | `nomic-embed-text` via Ollama (local, no API key) |
+| Dimensions | 768 |
+| Storage | `content_embeddings.embedding` JSONB column |
+| Similarity | Cosine similarity computed in Python |
+| Indexed | **667 items** (654 news articles + 12 YouTube + 1 test) |
+| Fallback | TF-IDF keyword match when embedding unavailable |
+
+**Embedding quality verified:**
+```
+"retirement SSDI Roth" vs "Roth IRA conversion disabled": similarity = 0.729
+"retirement SSDI Roth" vs "stock day trading penny stocks": similarity = 0.398
+(related >> unrelated — PASS)
+```
+
+**How search works now:**
+```
+Query → nomic-embed-text embedding (768-dim)
+  ↓
+Candidates: keyword ILIKE retrieval (3× limit)
+  ↓
+Re-ranking: cosine_similarity(query_vec, doc_vec) × quality_score
+  ↓
+Return top N by semantic_score
+```
+
+### Persistent Research Engine
+
+| Component | Detail |
+|---|---|
+| Function | `refresh_research_topics()` in `overnight_batch.py` |
+| Schedule | Weekly Sunday 7 AM |
+| What it does | Re-analyzes all active `user_research_topics` with fresh FRED + intel context |
+| Learning | Injects outcome lessons into re-analysis prompts |
+| CLI | `overnight_batch.py --research` |
+
+### Embedding Index Automation
+
+| Schedule | What |
+|---|---|
+| Daily 9 PM weekdays | `overnight_batch.py --index-embeddings` — indexes new content |
+| Manual | `batch_index_all(batch_size=100)` — bulk backfill |
+
+### Stronger Learning Loop (v2.48)
+
+- Outcome lessons expanded from 3 to **5** per evaluation cycle
+- Monthly report now includes **"What the System Learned This Month"** section
+- Research topic re-analysis uses FRED macro + intel + outcome lessons context
+
+### Live Maturity Score (0-100%)
+
+Computed by `_compute_maturity()` across 10 dimensions:
+
+| Dimension | Max Points | Current |
+|---|---|---|
+| Data sources active (9) | 15 | 15 |
+| Embedding coverage | 10 | 10 |
+| Agent analyses (200+) | 10 | ~10 |
+| Avg confidence (>0.5) | 10 | ~7 |
+| Proposals reviewed | 10 | 0 |
+| Debates active | 5 | 0 |
+| Outcome lessons | 5 | 0 |
+| FRED live | 5 | 5 |
+| Feedback loop entries | 5 | 0 |
+| **Total** | **75** | **~47** |
+
+Score updates in real-time on Overview page.
+
+### Weekly Autonomy Summary (Sunday 8 AM)
+
+Telegram report with:
+- Analyses count, intel discovered, proposals, debates, escalations, embeddings
+- Latest outcome lessons
+- CLI: `agent_watchlist_engine.py --autonomy-summary --telegram`
+
+### New Crons (v2.48)
+
+| Schedule | Script | What |
+|---|---|---|
+| Sunday 7 AM | `overnight_batch.py --research` | Re-analyze persistent research topics |
+| Daily 9 PM weekdays | `overnight_batch.py --index-embeddings` | Index new content embeddings |
+| Sunday 8 AM | `agent_watchlist_engine.py --autonomy-summary --telegram` | Weekly autonomy report |
