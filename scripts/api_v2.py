@@ -2705,7 +2705,9 @@ def _search_sources_status():
                 brave_key = line.split("=", 1)[1].strip()
     except Exception:
         pass
-    sources["brave_search"] = {"active": False, "status": "402 — needs $5 credit top-up", "key_present": bool(brave_key)}
+    brave_today = _db_query("SELECT count(*) as cnt FROM content_embeddings WHERE source_type='brave_cache' AND created_at > CURRENT_DATE") or [{"cnt": 0}]
+    sources["brave_search"] = {"active": False, "status": "402 — needs $5 credit", "key_present": bool(brave_key),
+                               "calls_today": brave_today[0].get("cnt", 0), "daily_limit": 5}
     # YouTube
     yt = _db_query("SELECT count(*) as cnt FROM youtube_transcripts") or [{"cnt": 0}]
     sources["youtube"] = {"active": True, "transcripts": yt[0].get("cnt", 0)}
