@@ -59,7 +59,7 @@ CACHE_FILE = "data/state/ticker_enrichment_cache.json"
 CACHE_TTL_HOURS = 6          # refresh if older than 6 hours
 BATCH_SIZE = 20              # Finviz max tickers per export request
 REQUEST_DELAY = 0.5          # seconds between requests
-FINVIZ_EXPORT = "https://elite.finviz.com/export.ashx"
+FINVIZ_EXPORT = "https://elite.finviz.com/export"
 
 # Views to pull and their column mappings
 # Format: {view: {col_index: field_name}}

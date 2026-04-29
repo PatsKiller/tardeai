@@ -44,7 +44,7 @@ screeners:
     status: active
     strategy_class: day_scalp
     description: RVOL>5x + gap>10% + price $2-$20 + float<50M. All markets.
-    finviz_url: "https://elite.finviz.com/export.ashx?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
 
   watchlist_setups:
     display_name: Watchlist Setups (Tier 2)
@@ -52,4 +52,4 @@ screeners:
     status: active
     strategy_class: day_scalp
     description: RVOL>3x + gap>5% + price $1-$30 + float<100M. All markets.
-    finviz_url: "https://elite.finviz.com/export.ashx?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u100,sh_price_1to30,sh_relvol_o3,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u100,sh_price_1to30,sh_relvol_o3,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"

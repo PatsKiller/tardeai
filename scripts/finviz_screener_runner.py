@@ -36,7 +36,7 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
     tickers = []
     try:
         # Convert to export URL for CSV download
-        export_url = url.replace("/screener.ashx?", "/export.ashx?").replace("elite.finviz.com", "elite.finviz.com")
+        export_url = url.replace("/screener.ashx?", "/export?").replace("elite.finviz.com", "elite.finviz.com")
         if "elite.finviz.com" not in export_url:
             export_url = export_url.replace("finviz.com", "elite.finviz.com")
 

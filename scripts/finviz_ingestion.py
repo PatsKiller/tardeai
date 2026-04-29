@@ -163,10 +163,10 @@ def make_session() -> requests.Session:
 
 
 def finviz_export_url(url: str) -> str:
-    if "export.ashx" in url:
+    if "export" in url:
         return url
     if "screener.ashx" in url:
-        return url.replace("screener.ashx", "export.ashx")
+        return url.replace("screener.ashx", "export")
     raise ValueError(f"Unsupported Finviz URL: {url}")
 
 
