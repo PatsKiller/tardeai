@@ -2550,6 +2550,53 @@ def _social_api_status():
     return {"apis": status, "total_posts": post_count.get("cnt", 0)}
 
 
+def _agent_health():
+    """GET /api/v2/agent-health — Agent system health: last run, avg confidence, escalation rate."""
+    agents_data = _db_query("""
+        SELECT agent,
+               count(*) as total_analyses,
+               AVG(confidence) as avg_confidence,
+               MAX(created_at) as last_run,
+               SUM(CASE WHEN confidence < 0.5 THEN 1 ELSE 0 END) as low_conf_count
+        FROM watchlist_agent_results
+        WHERE created_at > NOW() - INTERVAL '30 days'
+        GROUP BY agent ORDER BY agent
+    """) or []
+    escalations = _db_query("""
+        SELECT count(*) as cnt FROM agent_handoffs
+        WHERE escalated=TRUE AND created_at > NOW() - INTERVAL '7 days'
+    """) or [{"cnt": 0}]
+    pending_proposals = _db_query("SELECT count(*) as cnt FROM watchlist_proposals WHERE status='proposed'") or [{"cnt": 0}]
+    pending_instructions = _db_query("SELECT count(*) as cnt FROM trade_instructions WHERE status='pending'") or [{"cnt": 0}]
+    outcomes = _db_query("""
+        SELECT count(*) as total,
+               SUM(CASE WHEN outcome_score > 0 THEN 1 ELSE 0 END) as correct,
+               SUM(CASE WHEN outcome_score < 0 THEN 1 ELSE 0 END) as wrong
+        FROM decision_outcomes WHERE outcome_score IS NOT NULL AND evaluated_at > NOW() - INTERVAL '30 days'
+    """) or [{"total": 0, "correct": 0, "wrong": 0}]
+    lessons = _db_query("SELECT config FROM agent_intelligence_rules WHERE rule_type='outcome_lessons' AND rule_key='latest'") or []
+    lesson_text = ""
+    if lessons and lessons[0].get("config"):
+        cfg = lessons[0]["config"]
+        if isinstance(cfg, str):
+            import json as _j
+            cfg = _j.loads(cfg)
+        lesson_text = cfg.get("text", "")
+
+    return {
+        "agents": [{k: _json_clean(v) for k, v in a.items()} for a in agents_data],
+        "escalations_7d": escalations[0].get("cnt", 0),
+        "pending_proposals": pending_proposals[0].get("cnt", 0),
+        "pending_instructions": pending_instructions[0].get("cnt", 0),
+        "outcome_accuracy": {
+            "total": outcomes[0].get("total", 0),
+            "correct": outcomes[0].get("correct", 0),
+            "wrong": outcomes[0].get("wrong", 0),
+        },
+        "latest_lessons": lesson_text,
+    }
+
+
 def _tax_situation():
     """GET /api/v2/tax-situation — current tax context from DB."""
     try:
@@ -3531,6 +3578,7 @@ ROUTES = {
     "/api/v2/qualified-intelligence": lambda: {"items": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, source_type, symbol, title, quality_score, retirement_relevance, strategy_focus, discovered_at FROM qualified_intelligence ORDER BY quality_score DESC, discovered_at DESC LIMIT 30") or [])]},
     "/api/v2/discovery-log": lambda: {"entries": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, discovery_type, title, summary, symbols_mentioned, intel_count, created_at FROM agent_discovery_log ORDER BY created_at DESC LIMIT 10") or [])]},
     "/api/v2/trade-instructions": lambda: {"instructions": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, proposal_id, symbol, action, account_name, shares, target_symbol, estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text, created_at, executed_at FROM trade_instructions ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'executed' THEN 2 ELSE 3 END, created_at DESC LIMIT 20") or [])]},
+    "/api/v2/agent-health": lambda: _agent_health(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},

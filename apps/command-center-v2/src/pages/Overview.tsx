@@ -45,6 +45,8 @@ interface IntelResp { events: IntelEvent[] }
 interface Proposal { id: number; symbol: string; action: string; account_name: string; confidence: number; status: string; ssdi_impact: string; irmaa_risk: boolean; created_at: string }
 interface ProposalsResp { proposals: Proposal[] }
 interface MacroResp { context: string }
+interface AgentInfo { agent: string; total_analyses: number; avg_confidence: number; last_run: string; low_conf_count: number }
+interface AgentHealthResp { agents: AgentInfo[]; escalations_7d: number; pending_proposals: number; pending_instructions: number; outcome_accuracy: { total: number; correct: number; wrong: number }; latest_lessons: string }
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -59,6 +61,7 @@ export default function Overview() {
   const { data: intel } = useApi<IntelResp>('/api/v2/intelligence-events')
   const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
   const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
+  const { data: agentHealth } = useApi<AgentHealthResp>('/api/v2/agent-health')
 
   const sectors = ov?.sectors ?? []
   const totalSector = sectors.reduce((s, row) => s + row.value, 0)
@@ -346,6 +349,34 @@ export default function Overview() {
               ))}
             </div>
           </Card>
+
+          {/* Agent Health Widget */}
+          {agentHealth && (agentHealth.agents?.length ?? 0) > 0 && (
+            <Card title="Agent Health" subtitle="30-day performance">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {agentHealth.agents.map(a => {
+                  const conf = (a.avg_confidence ?? 0) * 100
+                  return (
+                    <div key={a.agent} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--text0)', fontSize: 11, minWidth: 50 }}>{a.agent.replace('_agent', '').replace(/^\w/, (c: string) => c.toUpperCase())}</span>
+                      <div style={{ flex: 1, height: 4, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(100, conf)}%`, height: '100%', background: conf >= 60 ? 'var(--green)' : conf >= 40 ? 'var(--amber)' : 'var(--red)', borderRadius: 99 }} />
+                      </div>
+                      <span style={{ fontSize: 9, color: conf >= 60 ? 'var(--green)' : 'var(--amber)', fontWeight: 600, minWidth: 28 }}>{conf.toFixed(0)}%</span>
+                      <span style={{ fontSize: 8, color: 'var(--text3)' }}>{a.total_analyses}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 9, color: 'var(--text3)' }}>
+                <span>Escalations: <strong style={{ color: agentHealth.escalations_7d > 5 ? 'var(--red)' : 'var(--text2)' }}>{agentHealth.escalations_7d}</strong></span>
+                <span>Proposals: <strong style={{ color: 'var(--amber)' }}>{agentHealth.pending_proposals}</strong></span>
+                {agentHealth.outcome_accuracy.total > 0 && (
+                  <span>Accuracy: <strong style={{ color: 'var(--green)' }}>{agentHealth.outcome_accuracy.correct}/{agentHealth.outcome_accuracy.total}</strong></span>
+                )}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     </>

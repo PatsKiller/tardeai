@@ -360,6 +360,23 @@ def propose_rotations() -> dict:
         medicaid_limit = 20124    # NY Medicaid income limit
         bracket_ceiling = ps.get("bracket_ceiling", 94300)  # 22% bracket top for MFS
 
+        # FRED-aware macro context for rotation decisions
+        macro_note = ""
+        try:
+            cur.execute("SELECT series_id, value FROM fred_economic_series WHERE series_id IN ('DFF','VIXCLS','T10Y2Y') ORDER BY observation_date DESC")
+            fred = {r["series_id"]: float(r["value"]) for r in cur.fetchall()}
+            vix = fred.get("VIXCLS", 20)
+            fed_rate = fred.get("DFF", 4.0)
+            spread = fred.get("T10Y2Y", 0.5)
+            if vix > 25:
+                macro_note = f" [MACRO: VIX {vix:.0f} elevated — consider holding]"
+            elif spread < 0:
+                macro_note = f" [MACRO: Yield curve inverted — recession risk]"
+            elif fed_rate > 5:
+                macro_note = f" [MACRO: Fed rate {fed_rate:.2f}% high — bonds competitive]"
+        except Exception:
+            pass
+
         for pos in positions:
             # SSDI-aware impact assessment with MAGI thresholds
             ssdi_impact = "none"
@@ -394,8 +411,8 @@ def propose_rotations() -> dict:
                     irmaa_risk = True
                     ssdi_warnings.append(f"Cap gains could push MAGI past IRMAA ${irmaa_threshold:,.0f}")
 
-            # Build enhanced reason with warnings
-            reason = f"{c['agent']}: {c['recommendation']} (conf:{base_conf:.0%}). {rule['rule']}{feedback_note}"
+            # Build enhanced reason with warnings + macro context
+            reason = f"{c['agent']}: {c['recommendation']} (conf:{base_conf:.0%}). {rule['rule']}{feedback_note}{macro_note}"
             if ssdi_warnings:
                 reason += " | SSDI: " + "; ".join(ssdi_warnings)
 

@@ -284,6 +284,24 @@ def get_intel_summary(agent: str = None, symbol: str = None,
     except Exception:
         pass
 
+    # Outcome lessons (learning loop — top lessons from past decisions)
+    try:
+        import psycopg2.extras as _pxl
+        _conn2 = _get_conn()
+        _cur2 = _conn2.cursor(cursor_factory=_pxl.RealDictCursor)
+        _cur2.execute("SELECT config FROM agent_intelligence_rules WHERE rule_type='outcome_lessons' AND rule_key='latest'")
+        _lr = _cur2.fetchone()
+        _conn2.close()
+        if _lr and _lr.get("config"):
+            cfg = _lr["config"]
+            if isinstance(cfg, str):
+                cfg = json.loads(cfg)
+            lt = cfg.get("text", "")
+            if lt:
+                extra_context.append(f"OUTCOME LESSONS (learn from these):\n{lt}")
+    except Exception:
+        pass
+
     if not items and not extra_context:
         return ""
 

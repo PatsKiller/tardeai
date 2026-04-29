@@ -485,6 +485,107 @@ Include clear tables. Use warm, professional, fiduciary tone. Address client as 
     return {"error": "LLM failed"}
 
 
+def monthly_retirement_report(send_telegram: bool = False) -> dict:
+    """Generate monthly retirement performance report with YTD vs scenarios, gap analysis, suggestions."""
+    try:
+        tax = get_tax_context(2026)
+        bracket = tax.get("current_bracket", 12)
+        room = tax.get("bracket_room_22pct", 0)
+        roth_ytd = tax.get("roth_conversions_ytd", 0)
+
+        # Load current portfolio data
+        holdings = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+        totals = holdings.get("portfolio_totals", {})
+        current_value = totals.get("total_value", 0)
+
+        # Load roadmap for scenario projections
+        roadmap = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "retirement_roadmap.json").read_text())
+        tl = roadmap.get("timeline", [])
+        rates = roadmap.get("rate_assumptions", {"conservative": 0.055, "base": 0.075, "aggressive": 0.096})
+
+        # Find 2026 projections
+        proj_2026 = next((r for r in tl if r.get("year") == 2026), None)
+        start_value = tl[0].get("base", current_value) if tl else current_value
+        ytd_return_pct = ((current_value / start_value) - 1) * 100 if start_value > 0 else 0
+
+        # Income data
+        div_path = PROJECT_ROOT / "data" / "portfolios" / "state" / "dividend_calendar.json"
+        annual_income = 14285
+        if div_path.exists():
+            dc = json.loads(div_path.read_text())
+            annual_income = float(dc.get("total_annual", 14285))
+        income_gap = 55000 - annual_income
+
+        # Macro context
+        macro = ""
+        try:
+            from external_market_data_ingest import get_macro_context
+            macro = get_macro_context() or ""
+        except Exception:
+            pass
+
+        from datetime import datetime as _dt
+        month_name = _dt.now().strftime("%B %Y")
+
+        prompt = f"""/no_think You are Alex, a disability-optimized retirement planner. Generate a Monthly Retirement Performance Report for {month_name}.
+
+CLIENT: Age 58, SSDI $3,800/mo, MFS filing, Medicare Dec 2026, permanent disability.
+Portfolio: ${current_value:,.0f} (started 2026 at ${start_value:,.0f}).
+YTD return: {ytd_return_pct:+.1f}%
+Annual income: ${annual_income:,.0f}/yr vs $55K target (gap: ${income_gap:,.0f}).
+Tax: {bracket}% bracket, ${room:,.0f} room in 22%, Roth YTD: ${roth_ytd:,.0f}.
+{macro}
+2026 scenario projections (year-end):
+  Conservative ({rates.get('conservative',0.055)*100:.1f}%): ${proj_2026['conservative']:,.0f if proj_2026 else 0}
+  Base ({rates.get('base',0.075)*100:.1f}%): ${proj_2026['base']:,.0f if proj_2026 else 0}
+  Aggressive ({rates.get('aggressive',0.096)*100:.1f}%): ${proj_2026['aggressive']:,.0f if proj_2026 else 0}
+
+Provide MONTHLY RETIREMENT PERFORMANCE REPORT (under 400 words):
+
+1. YTD PERFORMANCE: Actual ${current_value:,.0f} vs 3 scenarios. Which scenario are we tracking? On/ahead/behind pace?
+2. MONTHLY TREND: Estimate Jan-{_dt.now().strftime('%b')} 2026 monthly values. Highlight best/worst months.
+3. REST OF 2026 NEEDED: What return is needed rest-of-year to hit base scenario? Is it achievable given macro?
+4. INCOME GAP ANALYSIS: ${income_gap:,.0f} gap to $55K. Progress this month. What closes it?
+5. 3-5 ACTIONABLE SUGGESTIONS (disability/SSDI/IRMAA aware):
+   - Specific dollar amounts and account names
+   - Roth conversion pacing recommendation for rest of 2026
+   - Any rebalancing moves with SSDI impact assessment
+   - Medicaid/IRMAA implications of each suggestion
+
+Be specific with numbers. Use warm tone. Address disability implications for every suggestion."""
+
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from llm_router import get_llm_response
+        result = get_llm_response("cio_synthesis", prompt, max_tokens=800, high_impact=True)
+        report = result.get("response", "Report unavailable") if result.get("success") else "Report generation failed"
+
+        # Store in ai_reports
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("""INSERT INTO ai_reports (report_type, title, content, provider)
+                VALUES ('monthly_retirement', %s, %s, %s)""",
+                (f"Monthly Retirement Report — {month_name}", report, result.get("provider", "")))
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        if send_telegram:
+            try:
+                from telegram_alert import send_telegram as _tg
+                divider = "\u2501" * 24
+                _tg(f"\U0001F4CA *Alex: Monthly Retirement Report*\n_{month_name}_\n{divider}\n\n{report[:1800]}\n\n{divider}\n_via {result.get('provider','?')}_")
+            except Exception:
+                pass
+
+        print(f"[alex] Monthly report generated via {result.get('provider', '?')}")
+        return {"report": report, "provider": result.get("provider"), "cost": result.get("cost", 0)}
+    except Exception as e:
+        print(f"[alex] Monthly report error: {e}")
+        return {"error": str(e)}
+
+
 def scan_portfolio_for_alerts(send_telegram: bool = False) -> list:
     """Scan portfolio for significant moves and generate Alex analysis for each."""
     holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
@@ -678,6 +779,14 @@ if __name__ == "__main__":
             print(r["analysis"])
         else:
             print(f"Error: {r.get('error')}")
+    elif "--monthly-report" in sys.argv:
+        tg = "--telegram" in sys.argv
+        r = monthly_retirement_report(send_telegram=tg)
+        if r.get("report"):
+            print(r["report"])
+            print(f"\n_Provider: {r.get('provider')} | Cost: ${r.get('cost', 0):.4f}_")
+        else:
+            print(f"Error: {r.get('error')}")
     elif "--scan-portfolio" in sys.argv:
         tg = "--telegram" in sys.argv
         alerts = scan_portfolio_for_alerts(send_telegram=tg)
@@ -689,6 +798,7 @@ if __name__ == "__main__":
         print("  --alert SYMBOL       Analyze a price alert")
         print("  --analyze SYMBOL     Full retirement analysis")
         print("  --roth-ladder        5-year Roth conversion ladder with IRMAA + Medicaid")
+        print("  --monthly-report     Monthly retirement performance report")
         print("  --tax-situation      Current tax bracket and conversion room")
         print("  --medicare-estimate  Medicare/IRMAA premium + Medicaid eligibility estimate")
         print("  --scan-portfolio     Scan all holdings for alerts")

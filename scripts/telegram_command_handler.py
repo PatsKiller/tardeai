@@ -25,6 +25,7 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 _COMMANDS = {
     "alex": "Alex retirement analysis for a symbol (e.g. alex V)",
     "roth ladder": "5-year Roth conversion ladder with IRMAA + Medicaid",
+    "monthly report": "Monthly retirement performance report with gap analysis",
     "tax": "Current tax bracket, Roth room, conversion capacity",
     "intel": "Recent intelligence for a symbol (e.g. intel SCHD)",
     "conflicts": "Show agent disagreements",
@@ -80,6 +81,8 @@ def parse_command(text: str) -> dict:
         return {"command": "alex", "args": text[11:].strip()}
     if lower in ("roth ladder", "roth conversion", "roth conversion ladder"):
         return {"command": "roth_ladder", "args": ""}
+    if lower in ("monthly report", "monthly", "monthly retirement"):
+        return {"command": "monthly_report", "args": ""}
     if lower.startswith("run screener "):
         return {"command": "run_screener", "args": text[13:].strip()}
     if lower.startswith("research "):
@@ -104,6 +107,7 @@ def process_command(cmd: dict) -> str:
         lines.append("\nExamples:")
         lines.append("  alex V — full retirement analysis")
         lines.append("  roth ladder — 5-year conversion plan")
+        lines.append("  monthly report — monthly retirement performance")
         lines.append("  tax — bracket room + conversion capacity")
         lines.append("  intel SCHD — recent intelligence")
         lines.append("  intel — all agent intel (no symbol)")
@@ -122,6 +126,16 @@ def process_command(cmd: dict) -> str:
             return f"Error: {r.get('error', 'Analysis failed')}"
         except Exception as e:
             return f"Roth ladder error: {e}"
+
+    if command == "monthly_report":
+        try:
+            from alex_retirement_advisor import monthly_retirement_report
+            r = monthly_retirement_report(send_telegram=False)
+            if r.get("report"):
+                return f"\U0001F4CA *Alex: Monthly Retirement Report*\n\n{r['report'][:2000]}\n\n_via {r.get('provider')} (${r.get('cost', 0):.4f})_"
+            return f"Error: {r.get('error', 'Report failed')}"
+        except Exception as e:
+            return f"Monthly report error: {e}"
 
     if command == "alex":
         # Route to Alex retirement advisor

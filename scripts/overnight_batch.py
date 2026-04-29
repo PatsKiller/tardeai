@@ -250,6 +250,115 @@ def run(send_telegram: bool = False):
     return {"metrics": metrics, "stale": stale}
 
 
+def evaluate_past_decisions() -> dict:
+    """Score past decisions at 7d/30d/90d and extract top lessons for future prompts."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    updated = 0
+
+    # Fill in 7-day prices for decisions made 7+ days ago
+    cur.execute("""
+        SELECT do.id, do.symbol, do.price_at_decision, do.recommendation, do.created_at
+        FROM decision_outcomes do
+        WHERE do.price_7d IS NULL AND do.created_at < NOW() - INTERVAL '7 days'
+        LIMIT 50
+    """)
+    for row in cur.fetchall():
+        try:
+            cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur2.execute("SELECT price FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1", (row["symbol"],))
+            q = cur2.fetchone()
+            if q:
+                price_now = float(q["price"])
+                p0 = float(row["price_at_decision"] or 0)
+                if p0 > 0:
+                    chg = ((price_now / p0) - 1) * 100
+                    rec = row["recommendation"] or ""
+                    correct = (rec in ("BUY", "ADD") and chg > 0) or (rec in ("SELL", "TRIM") and chg < 0) or (rec in ("HOLD",) and abs(chg) < 10)
+                    score = 1.0 if correct else -0.5 if abs(chg) > 5 else 0
+                    cur2.execute("""UPDATE decision_outcomes SET price_7d=%s, outcome_score=%s, evaluated_at=NOW()
+                        WHERE id=%s""", (price_now, score, row["id"]))
+                    updated += 1
+        except Exception:
+            pass
+
+    conn.commit()
+
+    # Extract top 3 lessons from recent outcomes
+    cur.execute("""
+        SELECT symbol, recommendation, price_at_decision, price_7d, outcome_score,
+               created_at, evaluated_at
+        FROM decision_outcomes
+        WHERE outcome_score IS NOT NULL AND evaluated_at > NOW() - INTERVAL '30 days'
+        ORDER BY ABS(outcome_score) DESC LIMIT 5
+    """)
+    lessons = []
+    for r in cur.fetchall():
+        p0 = float(r.get("price_at_decision") or 0)
+        p7 = float(r.get("price_7d") or 0)
+        chg = ((p7 / p0) - 1) * 100 if p0 > 0 and p7 > 0 else 0
+        label = "CORRECT" if r["outcome_score"] > 0 else "WRONG"
+        lessons.append(f"{r['symbol']}: {r['recommendation']} at ${p0:.2f} → ${p7:.2f} ({chg:+.1f}%) [{label}]")
+
+    # Store lessons in agent_intelligence_rules for prompt injection
+    if lessons:
+        lesson_text = "\n".join(lessons[:3])
+        ucur = conn.cursor()
+        ucur.execute("""INSERT INTO agent_intelligence_rules (rule_type, rule_key, config, changed_by, updated_at)
+            VALUES ('outcome_lessons', 'latest', %s, 'outcome_eval', NOW())
+            ON CONFLICT (rule_type, rule_key) DO UPDATE SET config=EXCLUDED.config, updated_at=NOW()""",
+            (json.dumps({"lessons": lessons[:3], "text": lesson_text, "evaluated_at": datetime.now().isoformat()}),))
+        conn.commit()
+
+    conn.close()
+    print(f"[outcomes] Updated {updated} decisions, {len(lessons)} lessons extracted")
+    return {"updated": updated, "lessons": lessons}
+
+
+def proactive_intel_scan() -> dict:
+    """Scan qualified_intelligence for high-conf items and auto-escalate to Alex."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Find recent high-quality qualified intel not yet acted on
+    cur.execute("""
+        SELECT qi.symbol, qi.title, qi.quality_score, qi.source_type, qi.retirement_relevance
+        FROM qualified_intelligence qi
+        WHERE qi.quality_score >= 75
+          AND qi.discovered_at > NOW() - INTERVAL '24 hours'
+          AND qi.symbol IS NOT NULL
+          AND qi.symbol NOT IN (SELECT symbol FROM watchlist_agent_jobs WHERE created_at > NOW() - INTERVAL '24 hours')
+        ORDER BY qi.quality_score DESC LIMIT 5
+    """)
+    hot_items = cur.fetchall()
+
+    queued = 0
+    for item in hot_items:
+        sym = item["symbol"]
+        try:
+            ucur = conn.cursor()
+            ucur.execute("""INSERT INTO watchlist_agent_jobs
+                (symbol, agent, request_type, status, requested_by, priority, note)
+                VALUES (%s, 'full_chain', 'analysis', 'queued', 'proactive_scan', 'high', %s)""",
+                (sym, f"Auto-escalated: Q:{item['quality_score']} {item['source_type']} — {item['title'][:100]}"))
+            queued += 1
+            print(f"  [proactive] Queued {sym} (Q:{item['quality_score']}) for full agent chain")
+        except Exception:
+            pass  # Likely duplicate
+
+    conn.commit()
+    conn.close()
+    print(f"[proactive] Scanned qualified intel, queued {queued} symbols for agent analysis")
+    return {"scanned": len(hot_items), "queued": queued}
+
+
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
-    run(send_telegram=tg)
+    if "--outcomes" in sys.argv:
+        evaluate_past_decisions()
+    elif "--proactive" in sys.argv:
+        proactive_intel_scan()
+    else:
+        run(send_telegram=tg)
