@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.49
+# Trade AI v12 System Bible v2.50
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + Brave Throttling + Ticker Gating + 667 Embeddings**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + Full Fallback Chain + Embedding Health + Search Efficiency**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -1566,3 +1566,54 @@ When cloud providers hit budget limits ($2/day), Alex now:
 - `brave_search.daily_limit` — max 5
 
 Intelligence Sources page shows amber `X/5` badge next to Brave status.
+
+---
+
+## v2.50 — Full Fallback Chain + Embedding Health + Search Efficiency Dashboard
+
+### Complete Search Fallback Chain
+
+```
+Query arrives → Check source_hint + throttle gates
+  ↓
+1. BRAVE SEARCH (if allowed by throttle)
+   Condition: research/high_value AND budget<5/day AND cooldown>60min AND not cached<24h
+   On success: cache result, return
+   On 402/error: log "Brave failed → Finnhub fallback"
+  ↓
+2. FINNHUB SUPPLEMENT (first fallback)
+   Query: news_articles WHERE source='finnhub' AND symbol=X, last 14 days
+   Quality-ranked (top 3 by relevance_score)
+   Always available — no API call needed (already ingested 3x daily)
+  ↓
+3. DB COMBINED (Google News RSS + Yahoo RSS + all other sources)
+   Already in items[] from initial get_intel_for_agent/symbol queries
+   654+ news articles from 50+ outlets
+  ↓
+4. CACHED EMBEDDINGS (semantic fallback)
+   667 nomic-embed-text 768-dim vectors
+   search_transcripts() with cosine similarity re-ranking
+```
+
+### Embedding Health Metrics
+
+`/api/v2/search-sources` now returns:
+
+| Field | Description |
+|---|---|
+| `embeddings.indexed` | Total items with embeddings (667) |
+| `embeddings.total_content` | Total news + YouTube in DB |
+| `embeddings.coverage_pct` | % of content with embeddings (100%) |
+| `embeddings.last_indexed` | Timestamp of last embedding operation |
+| `_efficiency.brave_calls_today` | Brave calls used today |
+| `_efficiency.free_pct` | % of queries handled by free sources |
+| `_efficiency.fallback_chain` | Human-readable chain description |
+
+### Search Efficiency Card (Overview page)
+
+Three metrics displayed:
+- **Brave calls** (X/5) — amber, daily budget usage
+- **Free sources** (X%) — green, percentage routed to free RSS/DB
+- **Embedded** (X%) — blue, content coverage with vector embeddings
+
+Fallback chain shown as footer text.
