@@ -3501,6 +3501,7 @@ ROUTES = {
     "/api/v2/system-health": lambda: _system_health_dashboard(),
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),
     "/api/v2/tax-situation": lambda: _tax_situation(),
+    "/api/v2/trust-transfers": lambda: {"transfers": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, event_date, amount, description, trust_type, five_year_lookback_start, protected_amount, trust_notes, created_at FROM tax_events WHERE event_type='trust_transfer' ORDER BY event_date DESC") or [])]},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
@@ -3725,6 +3726,26 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     replies=b.get("replies", 0), added_by=b.get("added_by", "user"),
                 )
                 return 200, {"ok": True, **result}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/trust-transfers":
+            try:
+                b = body or {}
+                amount = b.get("amount", 0)
+                if not amount:
+                    return 400, {"ok": False, "error": "amount required"}
+                event_date = b.get("event_date", __import__("datetime").datetime.now().strftime("%Y-%m-%d"))
+                trust_type = b.get("trust_type", "MAPT")
+                lookback_start = b.get("five_year_lookback_start", event_date)
+                _db_write(
+                    """INSERT INTO tax_events (event_date, event_type, amount, description, tax_year,
+                        trust_type, five_year_lookback_start, protected_amount, trust_notes)
+                       VALUES (%s, 'trust_transfer', %s, %s, %s, %s, %s, %s, %s)""",
+                    (event_date, amount, b.get("description", f"{trust_type} transfer ${amount:,.0f}"),
+                     int(event_date[:4]), trust_type, lookback_start, amount,
+                     b.get("notes", ""))
+                )
+                return 200, {"ok": True, "action": "trust_transfer_recorded", "amount": amount, "trust_type": trust_type}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/intelligence-sources/delete":

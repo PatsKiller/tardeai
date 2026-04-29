@@ -149,7 +149,7 @@ AUTO-RESEARCH (9 PM):
   5. Available in next morning's agent prompts → better-informed next cycle
 ```
 
-### Strategy Tagging Rules (9 types)
+### Strategy Tagging Rules (10 types)
 
 | Strategy Type | Trigger Keywords |
 |---|---|
@@ -159,9 +159,70 @@ AUTO-RESEARCH (9 PM):
 | swing_trade | swing trade, momentum, breakout, rsi oversold, sma cross |
 | tactical_income | covered call, option income, premium, cash secured put |
 | retirement_planning | roth, ira, 401k, irmaa, medicare, medicaid, rmd, conversion |
+| **disability_retirement_planning** | **disability, ssdi, disabled, mfs, married filing separately, sga, trial work period, ira while disabled** |
 | bond_income | bond, treasury, fixed income, yield curve, municipal |
 | defense_sector | defense, aerospace, military, geopolitical |
 | reit_income | reit, real estate, rental income, nnn lease |
+
+### Disability Retirement Planning (v2.25)
+
+Alex is permanently disability-aware. Every analysis includes:
+
+**Client Disability Profile:**
+- SSDI: $3,800/mo ($45,600/yr) — converts to SS retirement at FRA age 67
+- Filing status: MFS (Married Filing Separately, lived apart)
+- Private disability insurance: continues to age 68.5 (recertify 2x/year)
+- Schedule C income: ~$20K/yr gross (earned income for IRA purposes)
+- No 10% early withdrawal penalty: disability exemption IRC §72(t)(2)(A)(iii) + age 58.5+
+
+**Disability-Specific Rules Alex Enforces:**
+
+| Rule | Detail |
+|---|---|
+| MFS Roth contribution | $0 income limit — CANNOT contribute directly to Roth IRA |
+| Backdoor Roth | Allowed for MFS — Traditional IRA → convert. But pro-rata rule applies ($556K IRA) |
+| Spousal IRA loophole | Working spouse can contribute $7,500/$8,600 to your IRA even though SSDI is not earned income |
+| IRA contributions | YES with Schedule C earned income ($7,000/yr max) |
+| SSDI + investment income | Investment income does NOT count as SGA — SSDI benefits are safe |
+| SSDI + Roth conversions | Conversions increase MAGI but do NOT affect SSDI eligibility |
+| Private disability insurance | Roth conversions are NOT earned income — should not affect recertification |
+| Creditor protection | 401k has ERISA protection; NY IRA has unlimited protection |
+| 401k rollover timing | Omnicom 401k ($526K) rolls to IRA in 2027 — loses ERISA, gains NY unlimited protection |
+| Medicaid disability pathway | SSDI recipients may qualify through disability pathway (different income limits than standard) |
+| Pro-rata warning | $556K in Rollover IRA makes backdoor Roth tax-inefficient — convert IRA first |
+
+**Trust-Transfer Tracking (tax_events table):**
+
+| Field | Purpose |
+|---|---|
+| `event_type = 'trust_transfer'` | Identifies trust transfers in tax_events |
+| `trust_type` | MAPT, irrevocable, etc. |
+| `five_year_lookback_start` | When the 5-year Medicaid lookback clock started |
+| `protected_amount` | Amount protected by the trust |
+| `trust_notes` | Additional notes |
+
+Alex automatically shows trust transfer status (lookback remaining) in every analysis.
+API: `GET /api/v2/trust-transfers` + `POST /api/v2/trust-transfers`
+
+**Key Decision Framework (Roth Ladder vs Leave in 401k):**
+
+```
+FOR DISABLED PERSON ON SSDI:
+
+PRO ROTH LADDER:                        PRO LEAVE IN 401k/IRA:
++ Tax-free income in retirement         + ERISA creditor protection (401k)
++ No RMDs — flexibility                 + Lower MAGI preserves Medicaid
++ Hedge against future tax increases    + Simpler — no conversion tax
++ Fill low brackets now while income    + No IRMAA impact
+  is low ($49K AGI)                     + No pro-rata complications
+
+ALEX'S DEFAULT RECOMMENDATION:
+→ Gradual Roth conversions filling 12%/22% bracket
+→ Keep MAGI under $103K to avoid IRMAA
+→ Start MAPT transfers NOW to begin 5-year lookback
+→ Use spousal IRA contribution if applicable
+→ Monitor Medicaid disability pathway eligibility
+```
 
 ### Agent Responsibility Map
 
@@ -197,10 +258,10 @@ AUTO-RESEARCH (9 PM):
 
 | Command | What It Does |
 |---|---|
-| `--analyze SYMBOL` | Full retirement analysis with tax, cross-agent context, intel |
-| `--roth-ladder` | 5-year conversion projection with IRMAA + Medicaid tradeoffs |
-| `--tax-situation` | Current bracket room, Medicare date, conversion capacity |
-| `--medicare-estimate` | IRMAA tiers, MAGI scenarios, Medicaid eligibility check |
+| `--analyze SYMBOL` | Full retirement analysis with tax, disability, cross-agent context, intel. Includes SSDI impact, MFS rules, spousal IRA, trust status |
+| `--roth-ladder` | 5-year conversion projection with IRMAA + Medicaid + disability-specific analysis (Roth vs leave in 401k, backdoor Roth, pro-rata, creditor protection) |
+| `--tax-situation` | Bracket room, Medicare, conversion capacity + Disability Status section (SSDI, MFS, IRA eligibility, Roth limits) |
+| `--medicare-estimate` | IRMAA tiers, MAGI scenarios, Medicaid eligibility, MAPT guidance |
 | `--scan-portfolio` | Scan all holdings for significant moves (>3%, RSI extremes) |
 | `--alert SYMBOL` | Analyze a specific price alert trigger |
 
@@ -225,7 +286,8 @@ AUTO-RESEARCH (9 PM):
 | `/api/v2/agents/performance-history` | GET | Weekly agent performance trending |
 | `/api/v2/ai-reports` | GET | Weekly + monthly LLM-generated reports |
 | `/api/v2/system/metrics-history` | GET | Daily system metrics (30-day trend) |
-| `/api/v2/tax-situation` | GET | Live bracket room, Roth YTD, conversion capacity |
+| `/api/v2/tax-situation` | GET | Live bracket room, Roth YTD, conversion capacity, disability status |
+| `/api/v2/trust-transfers` | GET/POST | MAPT and trust transfer tracking with 5-year lookback status |
 
 ---
 

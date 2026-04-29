@@ -166,9 +166,33 @@ def _format_tax_context() -> str:
             f"  - TRADEOFF: Higher Roth conversions = better long-term tax efficiency BUT may delay/prevent Medicaid eligibility.",
             f"  - Asset spend-down: Medicaid counts most assets; Roth IRAs ARE countable in NY. MAPT assets are exempt after 5yr lookback.",
             f"  - DISABILITY + MEDICAID: Disabled persons on SSDI may qualify for Medicaid through disability pathway (different income limits).",
+            f"SPOUSAL IRA LOOPHOLE: If married, working spouse can make spousal IRA contributions ($7,500/$8,600 in 2026) to your account even though SSDI is not earned income.",
         ]
         if prior_agi is not None:
             lines.append(f"Prior year AGI (2025): ${prior_agi:,.0f}")
+        # Trust transfers
+        try:
+            cur2 = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+            cur2.execute("SELECT event_date, amount, trust_type, five_year_lookback_start, protected_amount, trust_notes FROM tax_events WHERE event_type='trust_transfer' ORDER BY event_date DESC")
+            transfers = cur2.fetchall()
+            if transfers:
+                lines.append(f"TRUST TRANSFERS ({len(transfers)} recorded):")
+                for t in transfers:
+                    from datetime import date as _date
+                    lookback = t.get("five_year_lookback_start")
+                    if lookback:
+                        if isinstance(lookback, str):
+                            lookback = _date.fromisoformat(lookback)
+                        elapsed = (_date.today() - lookback).days / 365.25
+                        remaining = max(0, 5 - elapsed)
+                        status = "PROTECTED" if remaining <= 0 else f"{remaining:.1f}yr remaining"
+                    else:
+                        status = "no lookback date"
+                    lines.append(f"  {t['trust_type'] or 'MAPT'}: ${float(t.get('amount',0)):,.0f} on {t['event_date']} — lookback: {status}")
+            else:
+                lines.append("TRUST TRANSFERS: None recorded. Consider starting MAPT to begin 5-year lookback clock.")
+        except Exception:
+            pass
         return "\n".join(lines)
     except Exception:
         return "Tax data unavailable"
