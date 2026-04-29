@@ -205,7 +205,7 @@ def _get_intel_context(symbol: str = None) -> str:
     # Scored intelligence (news, YouTube, social)
     try:
         from intel_query import get_intel_summary, get_outcome_feedback
-        summary = get_intel_summary(agent="Alex", symbol=symbol, min_quality=60, max_chars=400)
+        summary = get_intel_summary(agent="Alex", symbol=symbol, min_quality=40, max_chars=1200)
         if summary:
             parts.append(summary)
         # Past decision outcomes (learning loop)
