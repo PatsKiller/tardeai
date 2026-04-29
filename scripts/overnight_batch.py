@@ -335,8 +335,21 @@ def proactive_intel_scan() -> dict:
     hot_items = cur.fetchall()
 
     queued = 0
+    debated = 0
     for item in hot_items:
         sym = item["symbol"]
+        # Run multi-agent debate before queuing (Phase 2: consensus gate)
+        try:
+            from agent_watchlist_engine import run_agent_debate
+            debate = run_agent_debate(sym, item["title"][:100], trigger_source=item["source_type"])
+            if debate.get("confidence", 0) >= 0.5:
+                debated += 1
+            else:
+                print(f"  [proactive] {sym}: debate consensus too low ({debate.get('confidence',0):.0%}), skipping")
+                continue
+        except Exception as e:
+            print(f"  [proactive] {sym}: debate error ({e}), queuing anyway")
+
         try:
             ucur = conn.cursor()
             ucur.execute("""INSERT INTO watchlist_agent_jobs
@@ -344,14 +357,14 @@ def proactive_intel_scan() -> dict:
                 VALUES (%s, 'full_chain', 'analysis', 'queued', 'proactive_scan', 'high', %s)""",
                 (sym, f"Auto-escalated: Q:{item['quality_score']} {item['source_type']} — {item['title'][:100]}"))
             queued += 1
-            print(f"  [proactive] Queued {sym} (Q:{item['quality_score']}) for full agent chain")
+            print(f"  [proactive] Queued {sym} (Q:{item['quality_score']}) after debate consensus")
         except Exception:
             pass  # Likely duplicate
 
     conn.commit()
     conn.close()
-    print(f"[proactive] Scanned qualified intel, queued {queued} symbols for agent analysis")
-    return {"scanned": len(hot_items), "queued": queued}
+    print(f"[proactive] Scanned {len(hot_items)} items, debated {debated}, queued {queued}")
+    return {"scanned": len(hot_items), "debated": debated, "queued": queued}
 
 
 if __name__ == "__main__":

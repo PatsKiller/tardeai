@@ -2597,6 +2597,61 @@ def _agent_health():
     }
 
 
+def _autonomy_progress():
+    """GET /api/v2/autonomy-progress — Learning curve, proposal acceptance, weekly lessons."""
+    # Weekly learning curve: confidence trend over 4 weeks
+    learning_curve = _db_query("""
+        SELECT date_trunc('week', created_at)::date as week,
+               AVG(confidence) as avg_conf,
+               count(*) as analyses
+        FROM watchlist_agent_results
+        WHERE created_at > NOW() - INTERVAL '4 weeks'
+        GROUP BY date_trunc('week', created_at)
+        ORDER BY week
+    """) or []
+
+    # Proposal acceptance rate by week
+    proposal_rate = _db_query("""
+        SELECT date_trunc('week', COALESCE(reviewed_at, created_at))::date as week,
+               SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) as approved,
+               SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) as rejected,
+               count(*) as total
+        FROM watchlist_proposals
+        WHERE created_at > NOW() - INTERVAL '4 weeks'
+        GROUP BY date_trunc('week', COALESCE(reviewed_at, created_at))
+        ORDER BY week
+    """) or []
+
+    # Debates this week
+    debates = _db_query("""
+        SELECT count(*) as cnt,
+               AVG(consensus_score) as avg_consensus
+        FROM agent_debate_log
+        WHERE created_at > NOW() - INTERVAL '7 days'
+    """) or [{"cnt": 0, "avg_consensus": None}]
+
+    # Latest lessons text
+    lessons = _db_query("SELECT config FROM agent_intelligence_rules WHERE rule_type='outcome_lessons' AND rule_key='latest'") or []
+    lesson_text = ""
+    if lessons and lessons[0].get("config"):
+        cfg = lessons[0]["config"]
+        if isinstance(cfg, str):
+            import json as _j2
+            cfg = _j2.loads(cfg)
+        lesson_text = cfg.get("text", "")
+
+    # Content embeddings count
+    embeddings = _db_query("SELECT count(*) as cnt FROM content_embeddings") or [{"cnt": 0}]
+
+    return {
+        "learning_curve": [{k: _json_clean(v) for k, v in r.items()} for r in learning_curve],
+        "proposal_acceptance": [{k: _json_clean(v) for k, v in r.items()} for r in proposal_rate],
+        "debates_7d": {"count": debates[0].get("cnt", 0), "avg_consensus": _json_clean(debates[0].get("avg_consensus"))},
+        "latest_lessons": lesson_text,
+        "content_embeddings": embeddings[0].get("cnt", 0),
+    }
+
+
 def _tax_situation():
     """GET /api/v2/tax-situation — current tax context from DB."""
     try:
@@ -3579,6 +3634,7 @@ ROUTES = {
     "/api/v2/discovery-log": lambda: {"entries": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, discovery_type, title, summary, symbols_mentioned, intel_count, created_at FROM agent_discovery_log ORDER BY created_at DESC LIMIT 10") or [])]},
     "/api/v2/trade-instructions": lambda: {"instructions": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, proposal_id, symbol, action, account_name, shares, target_symbol, estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text, created_at, executed_at FROM trade_instructions ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'executed' THEN 2 ELSE 3 END, created_at DESC LIMIT 20") or [])]},
     "/api/v2/agent-health": lambda: _agent_health(),
+    "/api/v2/autonomy-progress": lambda: _autonomy_progress(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},

@@ -151,33 +151,51 @@ def get_intel_for_symbol(symbol: str, min_quality: int = 50, limit: int = 10,
 
 def search_transcripts(query: str, min_quality: int = 50, limit: int = 5,
                        days: int = 30) -> list:
-    """Semantic-like search across YouTube transcripts using keyword matching on structured fields.
+    """Semantic search across YouTube transcripts using TF-IDF similarity + keyword fallback.
 
-    Searches: title, summary, structured_json (key_points, action_items, main_topics, tickers_mentioned).
-    Returns ranked results by quality_score.
+    1. Keyword ILIKE match for candidate retrieval
+    2. TF-IDF semantic re-ranking using content_embeddings
+    Returns results ranked by semantic_score (TF-IDF similarity * quality_score).
     """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     pattern = f"%{query}%"
+    # Candidate retrieval: keyword match (cast wider net)
     cur.execute("""
-        SELECT id, title, channel_name,
-               COALESCE(summary, LEFT(cleaned_text, 300)) as text_snippet,
-               quality_score, relevance_score, strategy_tags, sub_tags,
-               structured_json, ingested_at as date
-        FROM youtube_transcripts
-        WHERE (title ILIKE %s
-               OR summary ILIKE %s
-               OR structured_json::text ILIKE %s
-               OR transcript_text ILIKE %s)
-          AND quality_score >= %s
-          AND ingested_at > NOW() - INTERVAL '%s days'
-        ORDER BY quality_score DESC, ingested_at DESC LIMIT %s
-    """, (pattern, pattern, pattern, pattern, min_quality, days, limit))
-    results = cur.fetchall()
+        SELECT yt.id, yt.title, yt.channel_name,
+               COALESCE(yt.summary, LEFT(yt.cleaned_text, 300)) as text_snippet,
+               yt.quality_score, yt.relevance_score, yt.strategy_tags, yt.sub_tags,
+               yt.structured_json, yt.ingested_at as date,
+               ce.tfidf_terms
+        FROM youtube_transcripts yt
+        LEFT JOIN content_embeddings ce ON ce.source_type='youtube' AND ce.source_id=yt.id
+        WHERE (yt.title ILIKE %s
+               OR yt.summary ILIKE %s
+               OR yt.structured_json::text ILIKE %s
+               OR yt.transcript_text ILIKE %s)
+          AND yt.quality_score >= %s
+          AND yt.ingested_at > NOW() - INTERVAL '%s days'
+        ORDER BY yt.quality_score DESC, yt.ingested_at DESC LIMIT %s
+    """, (pattern, pattern, pattern, pattern, min_quality, days, limit * 3))
+    candidates = cur.fetchall()
     conn.close()
-    return results
+
+    # Semantic re-ranking using TF-IDF similarity
+    try:
+        from content_scoring import semantic_similarity
+        for c in candidates:
+            terms = c.get("tfidf_terms") or {}
+            if isinstance(terms, str):
+                terms = json.loads(terms)
+            sim = semantic_similarity(query, terms) if terms else 0.0
+            c["semantic_score"] = round(sim * (c.get("quality_score", 50) / 100), 3)
+        candidates.sort(key=lambda x: x.get("semantic_score", 0), reverse=True)
+    except Exception:
+        pass  # Fall back to quality-based ordering
+
+    return candidates[:limit]
 
 
 def get_outcome_feedback(symbol: str, limit: int = 3) -> str:
@@ -301,6 +319,19 @@ def get_intel_summary(agent: str = None, symbol: str = None,
                 extra_context.append(f"OUTCOME LESSONS (learn from these):\n{lt}")
     except Exception:
         pass
+
+    # Brave Search fallback — if we have few items, try web search
+    if symbol and len(items) < 3:
+        try:
+            from web_research import search_web
+            web_results = search_web(f"{symbol} stock analysis retirement dividend 2026", count=3)
+            if web_results:
+                web_lines = ["WEB RESEARCH (Brave Search):"]
+                for wr in web_results[:3]:
+                    web_lines.append(f"  {wr.get('title', '')[:60]} — {wr.get('description', '')[:80]}")
+                extra_context.append("\n".join(web_lines))
+        except Exception:
+            pass  # Brave may be unavailable (402 / no key)
 
     if not items and not extra_context:
         return ""
