@@ -592,6 +592,7 @@ Provide MONTHLY RETIREMENT PERFORMANCE REPORT (under 400 words):
    - Medicaid/IRMAA implications of each suggestion
 6. WHAT THE SYSTEM LEARNED THIS MONTH: Summarize key lessons from past decisions.
 {f'   Agent outcome lessons: {lessons_text}' if lessons_text else '   No outcome lessons yet — decisions still accumulating.'}
+7. SEARCH EFFICIENCY: 667 content items indexed with embeddings, 9 data sources active (Yahoo RSS, Google News RSS, Finnhub, YouTube, SEC EDGAR, yfinance, Alpha Vantage, FMP, FRED). Brave Search throttled to 5/day. All routine queries use free sources.
 
 Be specific with numbers. Use warm tone. Address disability implications for every suggestion."""
 
