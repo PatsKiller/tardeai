@@ -31,6 +31,9 @@ interface AIReport { id: number; report_type: string; title: string; content: st
 interface AIReportsResp { reports: AIReport[] }
 interface Proposal { id: number; symbol: string; action: string; strategy_type: string; reason: string; account_name: string; shares_to_sell: number; target_symbol: string; confidence: number; status: string; ssdi_impact: string; income_impact: string; irmaa_risk: boolean; review_date: string; created_at: string }
 interface ProposalsResp { proposals: Proposal[] }
+interface FeedbackStat { decision: string; cnt: number }
+interface FeedbackResp { feedback: unknown[]; stats: FeedbackStat[] }
+interface MacroResp { context: string }
 
 export default function Retirement() {
   const navigate = useNavigate()
@@ -40,6 +43,8 @@ export default function Retirement() {
   const { data: agentsSummary } = useApi<AgentsResp>('/api/v2/agents/summary')
   const { data: reports } = useApi<AIReportsResp>('/api/v2/ai-reports')
   const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
+  const { data: feedbackResp } = useApi<FeedbackResp>('/api/v2/proposals/feedback')
+  const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
   const [deciding, setDeciding] = useState<Record<number, string>>({})
   const [decided, setDecided] = useState<Set<number>>(new Set())
 
@@ -630,6 +635,45 @@ export default function Retirement() {
           </div>
         )
       })()}
+
+      {/* Feedback stats + macro context side by side */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+        {/* Proposal History Stats */}
+        {feedbackResp && (feedbackResp.stats?.length ?? 0) > 0 && (
+          <Card title="Proposal Decision History">
+            <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
+              {feedbackResp.stats.map(s => (
+                <div key={s.decision} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: s.decision === 'approved' ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--sans)' }}>{s.cnt}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.decision}</div>
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const total = feedbackResp.stats.reduce((s, x) => s + x.cnt, 0)
+              const approved = feedbackResp.stats.find(s => s.decision === 'approved')?.cnt ?? 0
+              if (total === 0) return null
+              const pct = Math.round((approved / total) * 100)
+              return (
+                <div style={{ height: 8, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--green)', borderRadius: 99 }} />
+                </div>
+              )
+            })()}
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>Approval rate drives confidence adjustments on future proposals</div>
+          </Card>
+        )}
+
+        {/* FRED Macro Context */}
+        {macroResp?.context && (
+          <Card title="Macro Economic Context">
+            <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.8, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap' }}>
+              {macroResp.context}
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: FRED (St. Louis Fed). Injected into all agent analyses.</div>
+          </Card>
+        )}
+      </div>
 
       {/* Strategy guidance */}
       <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--sans)', lineHeight: 1.6 }}>
