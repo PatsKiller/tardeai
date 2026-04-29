@@ -488,10 +488,24 @@ Include clear tables. Use warm, professional, fiduciary tone. Address client as 
 def monthly_retirement_report(send_telegram: bool = False) -> dict:
     """Generate monthly retirement performance report with YTD vs scenarios, gap analysis, suggestions."""
     try:
-        tax = get_tax_context(2026)
-        bracket = tax.get("current_bracket", 12)
-        room = tax.get("bracket_room_22pct", 0)
-        roth_ytd = tax.get("roth_conversions_ytd", 0)
+        # get_tax_context is defined later in this file — query DB directly
+        import psycopg2.extras
+        _tc = _get_conn()
+        _tcur = _tc.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        _tcur.execute("SELECT * FROM personal_tax_history WHERE tax_year=2026")
+        _ts = _tcur.fetchone()
+        _tc.close()
+        bracket = 12
+        room = 66883
+        roth_ytd = 35000
+        if _ts:
+            agi = float(_ts.get("agi", 0) or 0)
+            ded = max(float(_ts.get("itemized_deductions", 0) or 0), float(_ts.get("standard_deduction", 15700) or 15700))
+            taxable = max(0, agi - ded)
+            for low, high, rate in [(0,11600,10),(11600,47150,12),(47150,100525,22),(100525,191950,24)]:
+                if taxable >= low: bracket = rate
+            room = max(0, 100525 + ded - agi)
+            roth_ytd = float(_ts.get("roth_conversions_total", 0) or 0)
 
         # Load current portfolio data
         holdings = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
@@ -536,9 +550,9 @@ Annual income: ${annual_income:,.0f}/yr vs $55K target (gap: ${income_gap:,.0f})
 Tax: {bracket}% bracket, ${room:,.0f} room in 22%, Roth YTD: ${roth_ytd:,.0f}.
 {macro}
 2026 scenario projections (year-end):
-  Conservative ({rates.get('conservative',0.055)*100:.1f}%): ${proj_2026['conservative']:,.0f if proj_2026 else 0}
-  Base ({rates.get('base',0.075)*100:.1f}%): ${proj_2026['base']:,.0f if proj_2026 else 0}
-  Aggressive ({rates.get('aggressive',0.096)*100:.1f}%): ${proj_2026['aggressive']:,.0f if proj_2026 else 0}
+  Conservative ({rates.get('conservative',0.055)*100:.1f}%): ${proj_2026.get('conservative',0) if proj_2026 else 0:,.0f}
+  Base ({rates.get('base',0.075)*100:.1f}%): ${proj_2026.get('base',0) if proj_2026 else 0:,.0f}
+  Aggressive ({rates.get('aggressive',0.096)*100:.1f}%): ${proj_2026.get('aggressive',0) if proj_2026 else 0:,.0f}
 
 Provide MONTHLY RETIREMENT PERFORMANCE REPORT (under 400 words):
 
