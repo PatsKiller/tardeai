@@ -590,8 +590,27 @@ python3 scripts/system_preflight_check.py
 | v2.29 | April 29 incident response: Finviz URL, .env sourcing, ollama model, stop prices, header tape sync, preflight check |
 | v2.30 | SEC EDGAR Form 4 + yfinance + Alpha Vantage + agent YAML config |
 | v2.31 | YouTube channel auto-discovery. Full transcript methodology documented |
-| **v2.32** | **Transcript processor: filler removal + LLM summaries (11/12) + 12 retirement sub-tags + tiered purge dates. 5 limitations fixed (cleaning, summarization done). 5 remain (semantic, dedup, caption quality).** |
+| v2.32 | Transcript processor: cleaning, LLM summaries, 12 sub-tags, purge dates |
+| **v2.33** | **Structured JSON for 11 transcripts (key_points + action_items + retirement_relevance). YouTube summaries injected into every agent prompt with bullet points. Service restart fix for Finviz live cycle. Monthly transcript purge cron. 9 data sources in Alex's context verified.** |
+
+### What Alex Sees in Every Analysis (v2.33 — verified)
+
+```
+SEC FORM 4: VISA INC. insider transactions (2026-03-12)
+YFINANCE: $309.30 | PE:26.9 | Yield | 52wk: $294-$376
+ALPHA VANTAGE: 200DMA=332.98, 50DMA=309.96, AnalystTarget=$392.33, Beta=0.80
+YOUTUBE (structured):
+  [Q:70] When Individual Bonds Make Sense
+    • Individual bonds offer more control over when to sell
+    • Bond funds can experience value drops
+    → Consider using bond funds if you prefer lower fees
+NEWS (50 sources): scored + tagged articles from SA, Morningstar, Barrons...
+SOCIAL: scored posts
+OUTCOME FEEDBACK: past CORRECT/WRONG decisions
+CROSS-AGENT: Maria/Steph/Risk latest views
+MACRO: FRED data (when API key added)
+```
 
 ---
 
-**v2.32 — Transcript intelligence upgrade: raw → cleaned → summarized → sub-tagged → purge-dated. 12 retirement sub-tags (roth_ladder, ssdi_ira, medicaid_trust, etc). Tiered retention (Q≥75 forever, Q50-74 12mo, Q<50 90d). Maturity: 73%.**
+**v2.33 — 9 data sources in every agent prompt. Structured YouTube intelligence (key_points, action_items, retirement_relevance). Transcripts: raw → cleaned → summarized → structured → sub-tagged → purge-dated. Maturity: 73%.**
