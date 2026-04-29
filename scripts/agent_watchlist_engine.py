@@ -643,6 +643,59 @@ Be specific with numbers. Address disability implications. Reference macro data 
         return {"error": str(e)}
 
 
+# ── Job 6: Weekly autonomy summary (Sunday 8 AM) ───────────────────
+
+def weekly_autonomy_summary(send_telegram: bool = False) -> dict:
+    """Generate and send weekly autonomy progress summary."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Gather metrics
+    cur.execute("SELECT count(*) as cnt FROM watchlist_agent_results WHERE created_at > NOW() - INTERVAL '7 days'")
+    analyses = cur.fetchone()["cnt"]
+    cur.execute("SELECT count(*) as cnt FROM qualified_intelligence WHERE discovered_at > NOW() - INTERVAL '7 days'")
+    intel = cur.fetchone()["cnt"]
+    cur.execute("SELECT count(*) as cnt, SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) as approved FROM watchlist_proposals WHERE created_at > NOW() - INTERVAL '7 days'")
+    props = cur.fetchone()
+    cur.execute("SELECT count(*) as cnt FROM agent_debate_log WHERE created_at > NOW() - INTERVAL '7 days'")
+    debates = cur.fetchone()["cnt"]
+    cur.execute("SELECT count(*) as cnt FROM content_embeddings WHERE embedding IS NOT NULL")
+    embeddings = cur.fetchone()["cnt"]
+    cur.execute("SELECT count(*) as cnt FROM agent_handoffs WHERE escalated=TRUE AND created_at > NOW() - INTERVAL '7 days'")
+    escalations = cur.fetchone()["cnt"]
+
+    # Lessons
+    cur.execute("SELECT config FROM agent_intelligence_rules WHERE rule_type='outcome_lessons' AND rule_key='latest'")
+    lr = cur.fetchone()
+    lessons = ""
+    if lr and lr.get("config"):
+        cfg = lr["config"]
+        if isinstance(cfg, str):
+            cfg = json.loads(cfg)
+        lessons = cfg.get("text", "")
+
+    conn.close()
+
+    divider = "\u2501" * 24
+    msg = (f"\U0001F4CA *Weekly Autonomy Report*\n{divider}\n\n"
+           f"*This Week:*\n"
+           f"  Analyses: {analyses}\n"
+           f"  Intel discovered: {intel}\n"
+           f"  Proposals: {props['cnt']} ({props['approved'] or 0} approved)\n"
+           f"  Debates: {debates}\n"
+           f"  Escalations: {escalations}\n"
+           f"  Embeddings indexed: {embeddings}\n\n"
+           f"*Lessons Learned:*\n{lessons or '  (accumulating...)'}\n\n"
+           f"{divider}")
+
+    if send_telegram:
+        _send_tg(msg)
+
+    print(msg.replace('*', '').replace('\U0001F4CA ', ''))
+    return {"analyses": analyses, "intel": intel, "proposals": props["cnt"], "debates": debates}
+
+
 # ── Status ───────────────────────────────────────────────────────────
 
 def show_status():
@@ -716,6 +769,8 @@ if __name__ == "__main__":
         propose_rotations()
         generate_discovery_summary(send_telegram=tg)
         weekly_health_check(send_telegram=tg)
+    elif "--autonomy-summary" in sys.argv:
+        weekly_autonomy_summary(send_telegram=tg)
     elif "--status" in sys.argv:
         show_status()
     else:
@@ -728,5 +783,6 @@ if __name__ == "__main__":
         print("  --rotate            Propose rotations only")
         print("  --discovery         Discovery summary only")
         print("  --health [--force]  Weekly retirement health check")
+        print("  --autonomy-summary  Weekly autonomy progress report")
         print("  --status            Show current counts")
         print("  Add --telegram to send alerts")

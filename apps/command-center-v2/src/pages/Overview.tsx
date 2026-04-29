@@ -47,7 +47,7 @@ interface ProposalsResp { proposals: Proposal[] }
 interface MacroResp { context: string }
 interface AgentInfo { agent: string; total_analyses: number; avg_confidence: number; last_run: string; low_conf_count: number }
 interface AgentHealthResp { agents: AgentInfo[]; escalations_7d: number; pending_proposals: number; pending_instructions: number; outcome_accuracy: { total: number; correct: number; wrong: number }; latest_lessons: string }
-interface AutonomyResp { latest_lessons: string; debates_7d: { count: number; avg_consensus: number | null }; content_embeddings: number }
+interface AutonomyResp { latest_lessons: string; debates_7d: { count: number; avg_consensus: number | null }; content_embeddings: number; maturity_score: number }
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -380,21 +380,28 @@ export default function Overview() {
             </Card>
           )}
 
-          {/* What We Learned This Week */}
-          {(autonomy?.latest_lessons || (autonomy?.debates_7d?.count ?? 0) > 0) && (
-            <Card title="What We Learned" subtitle="this week">
-              {autonomy?.latest_lessons && (
-                <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.6, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap', marginBottom: 8 }}>
+          {/* Autonomy Progress */}
+          {autonomy && (
+            <Card title="System Autonomy" subtitle={`maturity: ${autonomy.maturity_score ?? 0}%`}>
+              {/* Maturity bar */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text3)', marginBottom: 3 }}>
+                  <span>System Maturity</span>
+                  <span style={{ fontWeight: 700, color: (autonomy.maturity_score ?? 0) >= 75 ? 'var(--green)' : 'var(--amber)' }}>{autonomy.maturity_score ?? 0}%</span>
+                </div>
+                <div style={{ height: 6, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ width: `${autonomy.maturity_score ?? 0}%`, height: '100%', background: (autonomy.maturity_score ?? 0) >= 75 ? 'var(--green)' : 'var(--amber)', borderRadius: 99, transition: 'width 0.5s ease' }} />
+                </div>
+              </div>
+              {/* Lessons */}
+              {autonomy.latest_lessons && (
+                <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.6, fontFamily: 'var(--mono)', whiteSpace: 'pre-wrap', marginBottom: 8, maxHeight: 80, overflowY: 'auto' }}>
                   {autonomy.latest_lessons}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 10, fontSize: 9, color: 'var(--text3)' }}>
-                {(autonomy?.debates_7d?.count ?? 0) > 0 && (
-                  <span>Debates: <strong style={{ color: 'var(--accent)' }}>{autonomy!.debates_7d.count}</strong></span>
-                )}
-                {(autonomy?.content_embeddings ?? 0) > 0 && (
-                  <span>Indexed: <strong>{autonomy!.content_embeddings}</strong></span>
-                )}
+              <div style={{ display: 'flex', gap: 10, fontSize: 9, color: 'var(--text3)', flexWrap: 'wrap' }}>
+                {(autonomy.debates_7d?.count ?? 0) > 0 && <span>Debates: <strong style={{ color: 'var(--accent)' }}>{autonomy.debates_7d.count}</strong></span>}
+                {(autonomy.content_embeddings ?? 0) > 0 && <span>Embeddings: <strong>{autonomy.content_embeddings}</strong></span>}
               </div>
             </Card>
           )}

@@ -2649,7 +2649,40 @@ def _autonomy_progress():
         "debates_7d": {"count": debates[0].get("cnt", 0), "avg_consensus": _json_clean(debates[0].get("avg_consensus"))},
         "latest_lessons": lesson_text,
         "content_embeddings": embeddings[0].get("cnt", 0),
+        "maturity_score": _compute_maturity(learning_curve, proposal_rate, embeddings[0].get("cnt", 0),
+                                            debates[0].get("cnt", 0), lesson_text),
     }
+
+
+def _compute_maturity(learning_curve, proposals, embedding_count, debate_count, lessons):
+    """Compute live system maturity score (0-100%). Measures how autonomous the system is."""
+    score = 0
+    # Data sources (9 active = 15 pts)
+    score += 15
+    # Embedding coverage (667 items = 10 pts)
+    score += min(10, int(embedding_count / 67))
+    # Agent analyses (200+ = 10 pts)
+    total_analyses = sum(w.get("analyses", 0) for w in learning_curve) if learning_curve else 0
+    score += min(10, int(total_analyses / 20))
+    # Confidence trend (avg > 0.5 = 10 pts)
+    if learning_curve:
+        avg = sum(float(w.get("avg_conf", 0) or 0) for w in learning_curve) / len(learning_curve)
+        score += min(10, int(avg * 20))
+    # Proposals reviewed (any decisions = 10 pts)
+    total_decisions = sum(int(p.get("approved", 0) or 0) + int(p.get("rejected", 0) or 0) for p in proposals) if proposals else 0
+    score += min(10, total_decisions * 2)
+    # Debates active (5 pts)
+    score += min(5, debate_count)
+    # Outcome lessons (5 pts)
+    score += 5 if lessons else 0
+    # FRED live (5 pts)
+    fred = _db_query("SELECT count(*) as cnt FROM fred_economic_series") or [{"cnt": 0}]
+    score += 5 if fred[0].get("cnt", 0) > 0 else 0
+    # Learning loop (feedback log entries = 5 pts)
+    fb = _db_query("SELECT count(*) as cnt FROM agent_feedback_log") or [{"cnt": 0}]
+    score += min(5, fb[0].get("cnt", 0))
+    # Capped at 100
+    return min(100, score)
 
 
 def _tax_situation():

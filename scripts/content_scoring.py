@@ -455,12 +455,19 @@ def tag_content(text: str, title: str = "", matched_keywords: list = None) -> di
     }
 
 
-# ── TF-IDF Semantic Similarity Engine ──────────────────────────────────
-# Lightweight, no dependencies — uses Python stdlib only.
+# ── Embedding Engine (Ollama nomic-embed-text + TF-IDF fallback) ──────
+# Uses local Ollama nomic-embed-text (768-dim) for real vector embeddings.
+# Falls back to TF-IDF keyword matching if Ollama unavailable.
 
 import re as _re
 import math as _math
+import json as _json_emb
 from collections import Counter as _Counter
+from pathlib import Path as _Path_emb
+
+_EMBED_MODEL = "nomic-embed-text"
+_EMBED_DIM = 768
+_OLLAMA_URL = "http://127.0.0.1:11434/api/embed"
 
 _STOP_WORDS = frozenset("the a an is are was were be been being have has had do does did will would shall should "
     "may might can could of in to for on with at by from as into through during before after above below between "
@@ -470,20 +477,46 @@ _STOP_WORDS = frozenset("the a an is are was were be been being have has had do 
 
 
 def _tokenize(text: str) -> list:
-    """Tokenize text into lowercase words, strip stopwords and short tokens."""
     words = _re.findall(r'[a-zA-Z]{3,}', text.lower())
     return [w for w in words if w not in _STOP_WORDS]
 
 
+def _get_embedding(text: str) -> list:
+    """Get 768-dim embedding from Ollama nomic-embed-text. Returns [] on failure."""
+    import urllib.request
+    try:
+        payload = _json_emb.dumps({"model": _EMBED_MODEL, "input": text[:2000]}).encode()
+        req = urllib.request.Request(_OLLAMA_URL, data=payload,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = _json_emb.loads(resp.read())
+        embeddings = data.get("embeddings", [])
+        if embeddings and len(embeddings[0]) == _EMBED_DIM:
+            return embeddings[0]
+    except Exception:
+        pass
+    return []
+
+
+def cosine_similarity(vec_a: list, vec_b: list) -> float:
+    """Cosine similarity between two vectors. Returns 0.0 to 1.0."""
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = _math.sqrt(sum(a * a for a in vec_a))
+    norm_b = _math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return max(0.0, min(1.0, dot / (norm_a * norm_b)))
+
+
 def compute_tfidf(text: str, top_n: int = 30) -> dict:
-    """Compute TF-IDF-like term weights for a document. Returns {term: weight}."""
+    """TF-IDF fallback when Ollama unavailable."""
     tokens = _tokenize(text)
     if not tokens:
         return {}
     tf = _Counter(tokens)
     total = len(tokens)
-    # Use log-scaled term frequency (simulates TF-IDF without corpus)
-    # Boost retirement/dividend/SSDI domain terms
     DOMAIN_BOOST = {"retirement": 2.0, "dividend": 2.0, "ssdi": 3.0, "disability": 2.5,
                     "roth": 2.5, "conversion": 2.0, "medicaid": 2.5, "irmaa": 3.0,
                     "medicare": 2.0, "income": 1.5, "yield": 1.5, "tax": 1.5,
@@ -493,47 +526,92 @@ def compute_tfidf(text: str, top_n: int = 30) -> dict:
         w = (1 + _math.log(count)) / (1 + _math.log(total))
         w *= DOMAIN_BOOST.get(term, 1.0)
         weights[term] = round(w, 4)
-    # Return top N by weight
-    sorted_terms = sorted(weights.items(), key=lambda x: -x[1])[:top_n]
-    return dict(sorted_terms)
+    return dict(sorted(weights.items(), key=lambda x: -x[1])[:top_n])
 
 
-def semantic_similarity(query: str, doc_terms: dict) -> float:
-    """Compute similarity between a query string and a document's TF-IDF terms.
-    Returns 0.0 to 1.0."""
-    query_tokens = set(_tokenize(query))
-    if not query_tokens or not doc_terms:
-        return 0.0
-    overlap = query_tokens & set(doc_terms.keys())
-    if not overlap:
-        return 0.0
-    score = sum(doc_terms[t] for t in overlap)
-    max_possible = sum(sorted(doc_terms.values(), reverse=True)[:len(query_tokens)])
-    return min(1.0, score / max_possible) if max_possible > 0 else 0.0
+def semantic_similarity(query: str, doc_terms: dict = None, query_vec: list = None, doc_vec: list = None) -> float:
+    """Compute similarity. Uses embeddings if available, falls back to TF-IDF keyword match."""
+    # Prefer vector cosine similarity
+    if query_vec and doc_vec:
+        return cosine_similarity(query_vec, doc_vec)
+    # TF-IDF fallback
+    if doc_terms:
+        query_tokens = set(_tokenize(query))
+        if not query_tokens or not doc_terms:
+            return 0.0
+        overlap = query_tokens & set(doc_terms.keys())
+        if not overlap:
+            return 0.0
+        score = sum(doc_terms[t] for t in overlap)
+        max_possible = sum(sorted(doc_terms.values(), reverse=True)[:len(query_tokens)])
+        return min(1.0, score / max_possible) if max_possible > 0 else 0.0
+    return 0.0
+
+
+def _emb_conn():
+    import psycopg2
+    pw = ""
+    for line in _Path_emb(__file__).resolve().parent.parent.joinpath(".env").read_text().splitlines():
+        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
 def index_content(source_type: str, source_id: int, title: str, text: str) -> dict:
-    """Compute TF-IDF terms and store in content_embeddings table. Returns the terms dict."""
-    combined = f"{title} {title} {text}"  # title weighted 2x
+    """Generate embedding via Ollama + TF-IDF terms, store in content_embeddings."""
+    combined = f"{title}. {text}"[:2000]
     terms = compute_tfidf(combined)
     top_kw = list(terms.keys())[:10]
+    embedding = _get_embedding(combined)
 
     try:
-        import psycopg2, json
-        from pathlib import Path
-        pw = ""
-        for line in Path(__file__).resolve().parent.parent.joinpath(".env").read_text().splitlines():
-            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-        conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+        conn = _emb_conn()
         cur = conn.cursor()
-        cur.execute("""INSERT INTO content_embeddings (source_type, source_id, title, tfidf_terms, top_keywords)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (source_type, source_id) DO UPDATE SET tfidf_terms=EXCLUDED.tfidf_terms,
-            top_keywords=EXCLUDED.top_keywords""",
-            (source_type, source_id, title[:200], json.dumps(terms), top_kw))
+        cur.execute("""INSERT INTO content_embeddings
+            (source_type, source_id, title, tfidf_terms, top_keywords, embedding, embedding_model, embedding_dim)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (source_type, source_id) DO UPDATE SET
+                tfidf_terms=EXCLUDED.tfidf_terms, top_keywords=EXCLUDED.top_keywords,
+                embedding=EXCLUDED.embedding, embedding_model=EXCLUDED.embedding_model,
+                embedding_dim=EXCLUDED.embedding_dim, created_at=NOW()""",
+            (source_type, source_id, title[:200], _json_emb.dumps(terms), top_kw,
+             _json_emb.dumps(embedding) if embedding else None,
+             _EMBED_MODEL if embedding else None,
+             len(embedding) if embedding else 0))
         conn.commit()
         conn.close()
     except Exception:
         pass
 
-    return {"terms": terms, "top_keywords": top_kw}
+    return {"terms": terms, "top_keywords": top_kw, "embedding_dim": len(embedding)}
+
+
+def batch_index_all(batch_size: int = 50) -> dict:
+    """Index all unindexed news articles + YouTube transcripts. Run once to backfill."""
+    import psycopg2.extras
+    conn = _emb_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    indexed = 0
+
+    # News articles not yet indexed
+    cur.execute("""SELECT na.id, na.title, COALESCE(na.summary, '') as text
+        FROM news_articles na
+        LEFT JOIN content_embeddings ce ON ce.source_type='news' AND ce.source_id=na.id
+        WHERE ce.id IS NULL
+        ORDER BY na.created_at DESC LIMIT %s""", (batch_size,))
+    for row in cur.fetchall():
+        index_content("news", row["id"], row["title"] or "", row["text"] or "")
+        indexed += 1
+
+    # YouTube transcripts not yet indexed
+    cur.execute("""SELECT yt.id, yt.title, COALESCE(yt.summary, LEFT(yt.cleaned_text, 500), LEFT(yt.transcript_text, 500), '') as text
+        FROM youtube_transcripts yt
+        LEFT JOIN content_embeddings ce ON ce.source_type='youtube' AND ce.source_id=yt.id
+        WHERE ce.id IS NULL
+        ORDER BY yt.ingested_at DESC LIMIT %s""", (batch_size,))
+    for row in cur.fetchall():
+        index_content("youtube", row["id"], row["title"] or "", row["text"] or "")
+        indexed += 1
+
+    conn.close()
+    print(f"[embeddings] Indexed {indexed} items via {_EMBED_MODEL}")
+    return {"indexed": indexed, "model": _EMBED_MODEL, "dim": _EMBED_DIM}
