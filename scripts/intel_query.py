@@ -392,6 +392,9 @@ def get_intel_summary(agent: str = None, symbol: str = None,
         except Exception:
             pass
 
+        # Full fallback chain: Brave → Finnhub supplement → DB (Google/Yahoo already ingested)
+        web_found = False
+
         if brave_allowed:
             try:
                 from web_research import search_web
@@ -406,6 +409,7 @@ def get_intel_summary(agent: str = None, symbol: str = None,
                     for wr in web_results[:3]:
                         web_lines.append(f"  {wr.get('title', '')[:60]} — {wr.get('description', '')[:80]}")
                     extra_context.append("\n".join(web_lines))
+                    web_found = True
                     # Record cache entry
                     try:
                         _cc = _get_conn()
@@ -416,9 +420,31 @@ def get_intel_summary(agent: str = None, symbol: str = None,
                     except Exception:
                         pass
             except Exception:
-                pass  # Brave 402 — graceful fallback
-        else:
-            print(f"  [brave-throttle] Skipped {symbol}: {brave_reason}")
+                print(f"  [search] Brave failed for {symbol} → Finnhub fallback")
+
+        if not web_found:
+            # Fallback: Finnhub-specific articles (higher quality than general RSS)
+            if brave_reason:
+                print(f"  [search] {symbol}: {brave_reason} → using Finnhub + DB")
+            try:
+                _fconn = _get_conn()
+                _fcur = _fconn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
+                _fcur.execute("""
+                    SELECT title, summary, (relevance_score * 100)::int as quality_score
+                    FROM news_articles
+                    WHERE source = 'finnhub' AND symbol = %s
+                      AND created_at > NOW() - INTERVAL '14 days'
+                    ORDER BY relevance_score DESC LIMIT 3
+                """, (symbol.upper(),))
+                fh_rows = _fcur.fetchall()
+                _fconn.close()
+                if fh_rows:
+                    fh_lines = ["FINNHUB NEWS (supplemental):"]
+                    for r in fh_rows:
+                        fh_lines.append(f"  Q:{r.get('quality_score',0)} {r.get('title','')[:60]}")
+                    extra_context.append("\n".join(fh_lines))
+            except Exception:
+                pass
 
     if not items and not extra_context:
         return ""
