@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.45
+# Trade AI v12 System Bible v2.46
 
-**April 29, 2026 | ms01-openclaw | 9 Data Sources + FRED-Aware Projections + Timeline Chart**
+**April 29, 2026 | ms01-openclaw | 9 Data Sources + Monthly Report + Agent Autonomy + Learning Loop**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -19,7 +19,7 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 | DB tables | **146** | information_schema count |
 | API endpoints | 115+ | grep api_v2.py |
 | UI pages | 31 (14 with charts) | ls pages/*.tsx |
-| Cron entries | **54** | crontab -l |
+| Cron entries | **57** | crontab -l |
 | Telegram commands | 13 unique (17 parse patterns) | telegram_command_handler.py |
 | Agent results | **198** | watchlist_agent_results |
 | Agent handoffs | **110 total** (32+ escalations) | agent_handoffs |
@@ -1196,3 +1196,102 @@ WHERE rule_type = 'auto_execute' AND rule_key = 'low_risk';
 | 67 | 2034 | SS Retirement @ FRA |
 | 68.5 | 2036 | Golden Window Opens — Disability Ends |
 | 73 | 2040 | RMD Age — Complete Roth Conversion |
+
+---
+
+## v2.46 — Monthly Performance Report + Agent Autonomy + Learning Loop
+
+### Monthly Retirement Performance Report (Phase 1)
+
+| Component | Detail |
+|---|---|
+| Function | `monthly_retirement_report()` in `alex_retirement_advisor.py` |
+| CLI | `--monthly-report [--telegram]` |
+| Telegram | `monthly report` command |
+| Cron | 1st of month, 9 AM |
+| Storage | `ai_reports` table (report_type='monthly_retirement') |
+
+**Report contents (LLM-generated, ~400 words):**
+1. YTD actual vs 3 scenarios (Conservative/Base/Aggressive) — which are we tracking?
+2. Monthly trend (Jan–current month) — best/worst months
+3. Rest of 2026 needed — required return to hit base scenario
+4. Income gap analysis — $40K+ gap, progress, what closes it
+5. 3-5 actionable suggestions (SSDI/Medicaid/IRMAA aware, specific $ amounts)
+
+### Agent Autonomy Enhancements (Phase 2)
+
+#### 1. Automated Outcome Evaluation
+
+| Component | Detail |
+|---|---|
+| Function | `evaluate_past_decisions()` in `overnight_batch.py` |
+| Schedule | Daily 5:30 AM weekdays |
+| What it does | Scores past decisions at 7d using current market prices |
+| Output | Updates `decision_outcomes.price_7d` + `outcome_score` |
+| Learning | Extracts top 3 lessons → stores in `agent_intelligence_rules` (rule_type='outcome_lessons') |
+| Injection | `intel_query.py` auto-injects lessons into every agent prompt |
+
+**How the learning loop works:**
+```
+Agent makes recommendation → decision_outcomes recorded
+  ↓ (7 days later)
+outcome_eval checks: was the recommendation CORRECT or WRONG?
+  ↓
+Top 3 lessons extracted and stored in agent_intelligence_rules
+  ↓
+intel_query.py injects "OUTCOME LESSONS (learn from these):" into every agent prompt
+  ↓
+Agents see: "V: BUY at $295 → $311 (+5.4%) [CORRECT]"
+  ↓
+Future analysis is informed by past accuracy
+```
+
+#### 2. Proactive Intel Scan
+
+| Component | Detail |
+|---|---|
+| Function | `proactive_intel_scan()` in `overnight_batch.py` |
+| Schedule | Daily 6:45 AM weekdays |
+| Criteria | qualified_intelligence Q≥75, last 24h, not already in agent queue |
+| Action | Auto-queues symbols for full agent chain analysis |
+| Limit | 5 symbols per scan |
+
+#### 3. FRED-Aware Rotation Proposals
+
+Rotation decisions now include macro context from FRED:
+- **VIX > 25** → `[MACRO: VIX elevated — consider holding]`
+- **Yield curve inverted** (T10Y2Y < 0) → `[MACRO: Recession risk]`
+- **Fed rate > 5%** → `[MACRO: Bonds competitive]`
+
+Context is appended to every rotation proposal reason.
+
+#### 4. Agent Health Widget (Overview page)
+
+| Field | Source |
+|---|---|
+| Per-agent confidence bar | `watchlist_agent_results` (30-day avg) |
+| Total analyses count | `watchlist_agent_results` |
+| Escalations (7d) | `agent_handoffs` (escalated=TRUE) |
+| Pending proposals | `watchlist_proposals` (status='proposed') |
+| Outcome accuracy | `decision_outcomes` (correct vs wrong, 30d) |
+
+API: `/api/v2/agent-health`
+
+### Telegram Commands (v2.46)
+
+| Command | What |
+|---|---|
+| `monthly report` | Monthly retirement performance report |
+| `alex V` | Full retirement analysis for V |
+| `roth ladder` | 5-year Roth conversion ladder |
+| `tax` | Current bracket + Roth room |
+| `intel SCHD` | Recent intelligence for SCHD |
+| `status` | Full system status |
+
+### New Crons (v2.46)
+
+| Schedule | Script | What |
+|---|---|---|
+| 5:30 AM weekdays | `overnight_batch.py --outcomes` | Score past decisions + extract lessons |
+| 6:45 AM weekdays | `overnight_batch.py --proactive` | Auto-queue high-Q symbols for agent analysis |
+| 1st of month 9 AM | `alex_retirement_advisor.py --monthly-report --telegram` | Monthly retirement report |
