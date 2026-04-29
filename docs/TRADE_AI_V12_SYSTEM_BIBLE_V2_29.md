@@ -344,6 +344,18 @@ MONTHLY (1st): Deep tax reconciliation + Roth ladder + income progress
 | Pipeline abort | `scripts/trade_ai_orchestrator.py` | Graceful fallback to cached tickers instead of `return 1` |
 | Stop prices | `scripts/portfolio_orchestrator.py` + `scripts/stop_decision_brief.py` | Pass real prices from alerts + enrichment cache fallback |
 | Brief export | `scripts/aegis_morning_brief_delivery.py` | Fixed path to `docs/` |
+| **Value desync** | `scripts/api_v2.py` (aegis/chat-context) | Aegis showed stale $1,197,222 vs live $1,203,691. Now reads LIVE from holdings.json |
+
+### Data Sync Verification (after all fixes)
+
+| Source | Value | In Sync |
+|---|---|---|
+| `holdings.json` | $1,203,691 | LIVE |
+| API `/api/v2/overview` | $1,203,691 | YES |
+| Aegis `/api/v2/aegis/chat-context` | $1,203,691 | **FIXED** |
+| Telegram Portfolio Intel (7:07 AM) | $1,203,691 | YES |
+| Trade AI scalp candidates | KALV, WALD, AKAN, GCTK, ATLN, TRAW | WORKING |
+| Stop briefs (next trigger) | Will show real prices | FIXED |
 
 ### Prevention: System Preflight Check
 
