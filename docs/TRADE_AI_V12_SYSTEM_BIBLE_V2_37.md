@@ -649,7 +649,8 @@ python3 scripts/system_preflight_check.py
 | v2.33 | Structured YouTube JSON, 9 data sources in every prompt, service restart fix |
 | v2.34 | Breakage gates (23-point preflight), weekly backup zip, garbage cleanup (43 MB), restore guide |
 | v2.35 | Full hybrid transcript pipeline: TextRank extractive + structured JSON + cross-channel dedup + agents_data_sources.yaml |
-| **v2.36** | **Enhanced structured JSON schema: added relevance_score (0-100), main_topics (array), llm_confidence (0-100). JSON validation + 1 retry on failure. Alex context expanded 400→1200 chars so YouTube key_points + action_items appear in every analysis. 8/12 transcripts reprocessed with full schema.** |
+| v2.36 | Enhanced structured JSON: relevance_score, main_topics, llm_confidence. Alex context 400→1200 chars |
+| **v2.37** | **Complete 9/9 structured JSON schema. Added timestamped_highlights from timed segment keyword analysis (30-second windows, 2+ keyword threshold). timed_segments JSONB column stores raw segment data. New transcripts get full timestamps automatically. Existing 12 transcripts lack timed data (pre-column).** |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -745,4 +746,4 @@ See `docs/RESTORE_GUIDE.md` or `RESTORE_FROM_THIS_BACKUP.md` inside the zip.
 
 ---
 
-**v2.36 — Enhanced structured JSON (relevance_score, main_topics, llm_confidence) with validation + retry. Alex now sees YouTube key_points + action_items in every analysis (context expanded 400→1200 chars). Full hybrid pipeline: TextRank → LLM → structured JSON → dedup → purge. Maturity: 74%.**
+**v2.37 — Complete 9/9 structured JSON schema with timestamped_highlights. Full 6-step hybrid pipeline: clean → TextRank extract → LLM structured JSON (with validation + retry) → sub-tags → cross-channel dedup → tiered purge. All fields: summary, key_points, action_items, tickers_mentioned, retirement_relevance, relevance_score, main_topics, llm_confidence, timestamped_highlights. Maturity: 74%.**
