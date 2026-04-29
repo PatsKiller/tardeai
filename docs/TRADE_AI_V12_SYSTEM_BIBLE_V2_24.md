@@ -73,25 +73,80 @@
 ```
 INGEST → SCORE → TAG → STORE → QUERY → INJECT INTO AGENT PROMPTS
 
-Sources:              Scoring:                   Tagging:
-├── Yahoo RSS         quality_score (0-100)      strategy_tags: [dividend_growth, retirement_planning, ...]
-├── Finnhub           relevance_score (0-1.0)    agent_tags: [Alex, Maria, Steph, Risk, Aegis]
-├── YouTube           validation_status
-├── Social (stub)     matched_keywords
-└── Finviz screeners  sentiment, misinfo_flags
+Sources (40+):              Scoring:                   Tagging:
+├── Yahoo RSS (free)        quality_score (0-100)      strategy_tags: [dividend_growth, retirement_planning, ...]
+├── Finnhub (API key)       relevance_score (0-1.0)    agent_tags: [Alex, Maria, Steph, Risk, Aegis]
+├── Google News RSS (free)  validation_status
+│   ├── Benzinga            matched_keywords
+│   ├── Seeking Alpha       sentiment (positive/negative/neutral)
+│   ├── Morningstar         misinfo_flags (6 signals)
+│   ├── Barron's
+│   ├── Bloomberg/CNBC
+│   ├── Motley Fool
+│   └── 30+ others
+├── YouTube Data API        → youtube_transcripts (scored + tagged)
+│   └── 5 tracked channels  → auto-discover daily at 7 PM
+├── Social (stub)           → social_posts (6-dimension scoring)
+├── Finviz screeners (20)   → ticker_strategy_classifications
+├── Brave Search API        → on-demand web research (needs credits)
+└── Benzinga API (optional) → richer data if BENZINGA_API_KEY set
+
+Downstream feed: news_articles → catalyst_events + sentiment_observations
+```
+
+### How News Ingestion Works
+
+```
+news_ingestion.py runs 3x daily (6:30 AM, 12:30 PM, 6:30 PM):
+
+1. Load 30 priority symbols from ticker_strategy_classifications
+2. For each symbol, fetch from 3 sources in parallel:
+   a. Yahoo Finance RSS → title, summary, link
+   b. Finnhub API → headline, summary, URL (if FINNHUB_API_KEY set)
+   c. Google News RSS → aggregates 40+ sources (Benzinga, SA, Morningstar, etc.)
+   d. Benzinga API → analyst ratings, full body (if BENZINGA_API_KEY set)
+3. Dedup by symbol + title AND by URL (cross-source)
+4. Score each article: content_scoring.score_content() → quality, relevance, validation
+5. Tag each article: content_scoring.tag_content() → strategy_tags[], agent_tags[]
+6. Store in news_articles with scores + tags
+7. Feed downstream:
+   - catalyst_events (if relevance > 0.3)
+   - sentiment_observations (positive/negative/neutral)
+8. Result: ~180 articles per run from 40+ named sources
 ```
 
 ### Agent Collaboration Flow
 
 ```
-Alex --analyze V:
+ALEX --analyze V (on-demand via CLI or Telegram):
   1. Build position context (holdings, P&L, enrichment)
-  2. Format tax context (bracket, Medicare, Medicaid)
-  3. Pull scored intelligence tagged to Alex + symbol V
-  4. Pull cross-agent context (Steph: ADD conf:0.85, Risk: RESEARCH_MORE conf:0.65)
+  2. Format tax context (bracket room, Medicare, Medicaid, IRMAA)
+  3. Pull scored intelligence tagged to Alex + symbol V (intel_query.py)
+  4. Pull cross-agent context: Steph ADD (0.85), Risk RESEARCH_MORE (0.65)
   5. Check escalation (conflicts? low confidence? missing agents?)
-  6. Send to LLM with all context
+  6. Send to Claude/Grok with all context combined
   7. Log handoffs to agent_handoffs table
+
+OVERNIGHT AGENT PROCESSING (every 5 min, 8 PM–5 AM):
+  1. _auto_queue_new_symbols() → detect unanalyzed watchlist symbols
+  2. Pick queued job (e.g., Steph analyzing SCHD)
+  3. _get_other_agent_views(SCHD, "steph") → inject Maria/Risk prior views
+  4. _get_recent_intel(SCHD) → inject scored news tagged to this symbol
+  5. Agent produces recommendation INFORMED by other agents + intel
+  6. When all 3 agents done → auto-synthesis triggers:
+     a. Combine narratives with strategy weights
+     b. Post-LLM hard gates (income protection, RSI override, >20% income impact)
+     c. Detect conflicts between agents
+     d. AUTO-ESCALATE if: conflicts, low confidence (<40%), gating overrides, unresolved questions
+     e. Log escalation to agent_handoffs (escalated=TRUE)
+     f. Send Telegram if high-priority (conf <30% or 3+ conflicts)
+
+AUTO-RESEARCH (9 PM):
+  1. auto_research.py finds agent conflicts + high-impact decisions
+  2. Brave web search for each triggered symbol
+  3. Claude deep research combining web + intel + agent views
+  4. Findings stored as intelligence events
+  5. Available in next morning's agent prompts → better-informed next cycle
 ```
 
 ### Strategy Tagging Rules (9 types)
@@ -164,6 +219,13 @@ Alex --analyze V:
 | `/api/v2/social/posts` | GET | Scored + tagged social posts |
 | `/api/v2/social/status` | GET | Which social APIs are configured |
 | `/api/v2/social/ingest` | POST | Score and store a manual post |
+| `/api/v2/alex/recent` | GET | Latest 15 Alex position analyses |
+| `/api/v2/alex/roth-history` | GET | Roth ladder analysis history |
+| `/api/v2/agents/summary` | GET | Agent activity: totals, buy/sell/hold, confidence |
+| `/api/v2/agents/performance-history` | GET | Weekly agent performance trending |
+| `/api/v2/ai-reports` | GET | Weekly + monthly LLM-generated reports |
+| `/api/v2/system/metrics-history` | GET | Daily system metrics (30-day trend) |
+| `/api/v2/tax-situation` | GET | Live bracket room, Roth YTD, conversion capacity |
 
 ---
 
@@ -214,23 +276,39 @@ TIME        SCRIPT                              WHAT IT DOES                    
 4:00 PM     finviz_screener_runner.py           End-of-day screener run                         new candidates
 6:30 PM     news_ingestion.py --priority        Evening news → SCORE + TAG                      news_articles (scored + tagged)
 
-EVERY 15 MINUTES:
-  process_watchlist_agent_jobs.py:
+MARKET HOURS (6 AM – 7 PM, every 15 min):
+  process_watchlist_agent_jobs.py --limit 10:
     1. Auto-queue new watchlist symbols (Maria + Steph + Risk)
-    2. Process queued agent jobs → watchlist_agent_results
-    3. Check synthesis readiness → run synthesis + safety gates
+    2. Process queued agent jobs with cross-agent views + intel
+    3. Check synthesis readiness → run synthesis + safety gates + auto-escalation
     4. Log cross-agent handoffs → agent_handoffs
 
-OVERNIGHT (8 PM — after market close):
-  overnight_batch.py:
-    1. Record daily_system_metrics (portfolio value, income, income%, jobs, events, news)
-    2. Find symbols not analyzed in 7+ days → queue 3 agent jobs each (Maria/Steph/Risk)
-    3. Record agent_performance_history (weekly: recs, confidence, accuracy per agent)
-    4. Send Telegram summary of overnight queue
-    → Queued jobs process via 15-min cron over next 1-2 hours
+7:00 PM     youtube_transcript_ingest.py --all-channels    Auto-discover videos from 5 channels via YouTube Data API
 
-MONTHLY (1st @ 9 AM):
-  run_alex_daily.py --monthly    Deep tax reconciliation + Roth ladder     Telegram + ai_reports table
+OVERNIGHT (8 PM – 5 AM, every 5 min, 25 jobs/batch):
+  8:00 PM   overnight_batch.py:
+              1. Record daily_system_metrics (portfolio, income, income%, jobs, events, news)
+              2. Find stale symbols (>5 days) → queue 3 agent jobs each
+              3. Record agent_performance_history (weekly)
+              4. Write daily portfolio snapshot
+              5. Telegram summary
+  8:05 PM+  process_watchlist_agent_jobs.py --limit 25 (every 5 min):
+              → Process overnight backlog with full cross-agent awareness
+              → Auto-escalate conflicts + low confidence
+  9:00 PM   auto_research.py --check:
+              → Find agent conflicts + high-impact decisions
+              → Brave web search for each symbol
+              → Claude deep research → stored as intelligence events
+              → Available in next day's agent prompts
+  By 10 PM  All overnight jobs processed, synthesis complete
+
+WEEKLY (Sunday):
+  8:00 AM   run_alex_daily.py --weekly     LLM strategy review → Telegram + ai_reports
+  9:00 AM   OpenClaw: Steph allocation review → Telegram
+
+MONTHLY (1st):
+  9:00 AM   run_alex_daily.py --monthly    Deep tax reconciliation + Roth ladder → Telegram + ai_reports
+  9:00 AM   OpenClaw: Steph income progress → Telegram
 ```
 
 ### Trending & Performance Tracking
@@ -308,41 +386,64 @@ When a symbol is removed from watchlist:
 
 ```
 INGEST LAYER (External → DB):
-  Finviz Screeners ──→ ticker_strategy_classifications + watchlist_items
-  Yahoo RSS/Finnhub ─→ news_articles (scored + strategy_tags + agent_tags)
-  YouTube Transcripts → youtube_transcripts (scored + tagged)
-  Social Posts ──────→ social_posts (scored + tagged)
-  FMP Dividend API ──→ ticker_dividend_data
-  Finviz Enrichment ─→ ticker_enrichment_cache.json (RSI, SMA, ATR)
-  Portfolio Import ──→ holdings.json + portfolio DB tables
+  Finviz Screeners (20) ──→ ticker_strategy_classifications + watchlist_items
+  Yahoo RSS ──────────────→ news_articles (scored + tagged)
+  Finnhub API ────────────→ news_articles (scored + tagged)
+  Google News RSS (40+) ──→ news_articles (Benzinga, SA, Morningstar, Barrons, Bloomberg...)
+  Benzinga API (optional) → news_articles (richer data if BENZINGA_API_KEY set)
+  YouTube Data API ───────→ youtube_transcripts (5 channels, daily at 7 PM)
+  Social Posts ───────────→ social_posts (scored + tagged, stub ingestion)
+  FMP Dividend API ───────→ ticker_dividend_data
+  Finviz Enrichment ──────→ ticker_enrichment_cache.json (RSI, SMA, ATR, beta)
+  Brave Search (on-demand) → auto_research findings
+  Portfolio Import ────────→ holdings.json + portfolio DB tables
+
+  News also feeds downstream:
+    news_articles → catalyst_events (if relevance > 0.3)
+    news_articles → sentiment_observations (positive/negative/neutral)
 
 SCORING + TAGGING LAYER (on every insert):
   content_scoring.py:
-    score_content()       → quality_score, relevance_score, validation_status
-    score_social_post()   → 6-dimension scoring (relevance, recency, engagement, credibility, sentiment, misinfo)
-    tag_content()         → strategy_tags[], agent_tags[]
+    score_content()       → quality_score (0-100), relevance_score (0-1.0), validation_status
+    score_social_post()   → 6-dimension: relevance, recency, engagement, credibility, sentiment, misinfo
+    tag_content()         → strategy_tags[] (9 types), agent_tags[] (5 agents)
 
-AGENT LAYER (every 15 min):
+AGENT LAYER (every 5 min overnight, 15 min daytime):
   process_watchlist_agent_jobs.py:
-    _auto_queue_new_symbols()  → detect + queue unanalyzed symbols
-    process_jobs()             → Maria/Steph/Risk/Tax analysis
-    _check_pending_synthesis() → auto-synthesize when all agents done
-    Cross-agent handoffs       → logged to agent_handoffs table
+    _auto_queue_new_symbols()    → detect + queue unanalyzed symbols (3 agents each)
+    _get_other_agent_views()     → inject prior agent views into each analysis
+    _get_recent_intel()          → inject scored news/social into each analysis
+    process_jobs()               → Maria/Steph/Risk/Tax analysis with cross-agent awareness
+    _check_pending_synthesis()   → auto-synthesize when all agents done
+    Auto-escalation              → log conflicts + send Telegram if high-priority
 
-INTELLIGENCE QUERY LAYER (on-demand):
+AUTO-RESEARCH LAYER (9 PM nightly):
+  auto_research.py:
+    find_research_triggers()     → agent conflicts, high-impact decisions, new discoveries
+    research_symbol()            → Brave web search + Claude deep research
+    Store findings               → portfolio_intelligence_events + user_research_topics
+
+INTELLIGENCE QUERY LAYER (on-demand, used by all agents):
   intel_query.py:
-    get_intel_for_agent()    → pull scored intel tagged to an agent
-    get_intel_for_symbol()   → pull intel mentioning a symbol
+    get_intel_for_agent()    → pull scored intel tagged to an agent (news + YouTube + social)
+    get_intel_for_symbol()   → pull intel mentioning a symbol across all sources
     get_intel_summary()      → formatted text for LLM prompt injection
   agent_collab.py:
-    get_agent_context()      → pull other agents' views on a symbol
-    check_escalation()       → detect conflicts, low confidence
+    get_agent_context()      → pull other agents' latest views on a symbol
+    check_escalation()       → detect conflicts, low confidence, missing coverage
+    log_handoff()            → audit trail of every agent-to-agent data pull
+  web_research.py:
+    search_web()             → Brave Search API for live web results
+    research_symbol_web()    → formatted web context for LLM injection
 
 DELIVERY LAYER:
-  Alex analysis      → portfolio_intelligence_events + Telegram
-  Daily/Weekly/Monthly → Telegram (formatted) + ai_reports (DB) + /v2/ai-analyst
-  Smart alerts       → Telegram (6 proactive alert types)
-  UI pages           → 28 pages, 9 with charts, dropdown nav
+  Alex analysis        → portfolio_intelligence_events + Telegram
+  Daily/Weekly/Monthly → Telegram (formatted with progress bars) + ai_reports (DB) + /v2/ai-analyst
+  Smart alerts (6)     → Telegram: Roth, income, conflicts, stops, Medicare
+  Overnight batch      → Telegram summary + daily_system_metrics + agent_performance_history
+  Auto-research        → Telegram (research briefs) + intelligence events
+  UI pages             → 28 pages, 9 with Chart.js, dropdown nav, tooltips
+  OpenClaw agents      → Steph allocation review (weekly), Aegis surveillance (nightly)
 ```
 
 ---
@@ -505,19 +606,25 @@ DELIVERY LAYER:
 | LLM providers | 4 (Local qwen3:1.7b, Grok, Claude, OpenAI) |
 | Agents | 7 (Maria, Steph, Risk, Tax, Full Chain, Alex, Aegis) |
 | Agent results stored | 195 (cross-agent collaboration active) |
-| Agent handoffs logged | 90 (22 escalations) |
-| Intelligence events | 76 |
+| Agent handoffs logged | 93 (22+ escalations, auto-escalation active) |
+| Intelligence events | 76+ (Alex analyses, Roth ladders, auto-research) |
 | DB tables | 135 |
-| UI pages | 28 (9 with charts, dropdown nav) |
-| API endpoints | 48+ |
-| Cron entries | 40 (overnight: every 5 min, 25 jobs/batch) |
-| Telegram commands | 12 |
+| UI pages | 28 (9 with charts, dropdown nav, tooltips) |
+| API endpoints | 55+ (including alex/recent, agents/summary, metrics-history) |
+| Cron entries | 41 (overnight: every 5 min, 25 jobs/batch) |
+| Telegram commands | 12 (tax, intel, conflicts, status, alex, roth ladder, etc.) |
 | Telegram alert types | 11 (6 smart proactive + 5 scheduled) |
-| Intelligence sources | 20 screeners + 5 YouTube channels + social (stub) |
-| News articles | 345 (151 strategy-tagged, 345 scored) |
+| News sources | 40+ via Google News RSS (Benzinga, SA, Morningstar, Barrons, Bloomberg, CNBC, Motley Fool...) |
+| News articles | 525+ (scored + strategy-tagged + agent-tagged + downstream feed) |
+| YouTube transcripts | 12 (5 tracked channels, auto-discover daily at 7 PM) |
+| Finviz screeners | 20 (run 2x daily — 10 AM + 4 PM) |
 | Charts library | Chart.js (Doughnut, Bar, Line) |
+| OpenClaw agents | 2 active (Steph, Aegis) with SOULs + memory enabled |
 | OpenClaw cron jobs | 3 (evening scan, weekly alloc, monthly income) |
-| Web search | Brave API (wired, needs credits) |
+| Web search | Brave API (wired, needs $5/mo top-up) |
+| YouTube API | Active (YOUTUBE_API_KEY configured) |
+| Benzinga API | Ready (BENZINGA_API_KEY placeholder in .env) |
+| Overnight capacity | 300 jobs/hr (full portfolio refresh in ~33 min) |
 | Maturity | **7.5 / 10** |
 
 ---
@@ -634,6 +741,26 @@ Full portfolio refresh (55 symbols × 3 agents = 165 jobs): **~33 minutes**
 - Fixed tax API serialization bug (dates + Decimals)
 - Fixed nav dropdown clipping (overflow CSS)
 
+### v2.24b: News Sources + YouTube API + Overnight Intelligence
+- **Google News RSS** integration → 40+ sources (Benzinga, Seeking Alpha, Morningstar, Barrons, Bloomberg, CNBC, Motley Fool, MarketBeat, TipRanks, IBD, and 30+ more)
+- **Benzinga API** ready (placeholder in .env, activates with BENZINGA_API_KEY)
+- Downstream feed: new articles → `catalyst_events` + `sentiment_observations`
+- Cross-source dedup by title AND URL
+- **YouTube Data API** activated — auto-discovers videos from 5 tracked channels daily
+- 12 transcripts ingested (PPC Ian, Rob Berger, Ben Felix scored + tagged)
+- YouTube cron: 7 PM daily
+- **Overnight batch** (`overnight_batch.py`): 8 PM metrics + stale refresh + snapshots
+- **Auto-research** (`auto_research.py`): 9 PM conflict resolution via Claude + Brave web search
+- **Brave Search API** wired (`web_research.py`) — needs $5/mo credit top-up
+- Agent processing: 5 min / 25 jobs overnight (300/hr), 15 min / 10 jobs daytime
+- Cross-agent awareness: agents see each other's prior views + recent scored intel
+- Auto-escalation in synthesis: conflicts, low confidence, gating overrides → agent_handoffs + Telegram
+- **OpenClaw**: Aegis SOUL.md, memory enabled, 3 cron jobs
+- **Telegram**: 12 commands (tax, intel, conflicts, status, alex, roth ladder, etc.)
+- Crontab: 41 entries, all with correct absolute paths
+- Daily snapshots for performance trending
+- `daily_system_metrics` + `agent_performance_history` tables + APIs
+
 ---
 
-**v2.24 — Full pipeline integration: every 15min auto-queue + agent analysis + synthesis, Finviz 2x daily, enrichment 2x daily, news 3x daily (scored+tagged), 6 smart proactive Telegram alerts, 9 charted pages, dropdown nav, tooltip components. New watchlist symbols fully analyzed within 15-60 minutes. Maturity: 7.5/10.**
+**v2.24 — Full pipeline: 40+ news sources, YouTube auto-discovery, cross-agent collaboration with auto-escalation, overnight batch processing (300 jobs/hr), auto-research from conflicts, 9 charted pages, 12 Telegram commands, 6 proactive alerts. Maturity: 7.5/10.**
