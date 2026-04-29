@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Line } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js'
@@ -7,7 +8,7 @@ import MetricTile from '../components/MetricTile'
 import SectionHeader from '../components/SectionHeader'
 import { DoughnutChart } from '../components/charts'
 import { useApi } from '../hooks/useApi'
-import { fmt$ } from '../lib/format'
+import { fmt$, timeAgo } from '../lib/format'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
@@ -28,6 +29,8 @@ interface AgentRow { agent: string; total: number; buy_count: number; sell_count
 interface AgentsResp { agents: AgentRow[]; handoffs: { from_agent: string; to_agent: string; cnt: number }[] }
 interface AIReport { id: number; report_type: string; title: string; content: string; provider: string; generated_at: string }
 interface AIReportsResp { reports: AIReport[] }
+interface Proposal { id: number; symbol: string; action: string; strategy_type: string; reason: string; account_name: string; shares_to_sell: number; target_symbol: string; confidence: number; status: string; ssdi_impact: string; income_impact: string; irmaa_risk: boolean; review_date: string; created_at: string }
+interface ProposalsResp { proposals: Proposal[] }
 
 export default function Retirement() {
   const navigate = useNavigate()
@@ -36,6 +39,21 @@ export default function Retirement() {
   const { data: alex } = useApi<AlexResp>('/api/v2/alex/recent')
   const { data: agentsSummary } = useApi<AgentsResp>('/api/v2/agents/summary')
   const { data: reports } = useApi<AIReportsResp>('/api/v2/ai-reports')
+  const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
+  const [deciding, setDeciding] = useState<Record<number, string>>({})
+  const [decided, setDecided] = useState<Set<number>>(new Set())
+
+  const handleProposalDecision = useCallback(async (id: number, decision: 'approved' | 'rejected') => {
+    setDeciding(s => ({ ...s, [id]: decision }))
+    try {
+      const r = await fetch('/api/v2/proposals/decide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, decision, reviewer: 'john' }) })
+      const d = await r.json()
+      if (d.ok) setDecided(s => new Set(s).add(id))
+      else alert(d.error || 'Decision failed')
+    } catch { alert('Network error') }
+    setDeciding(s => { const n = { ...s }; delete n[id]; return n })
+  }, [])
+
   if (!data) return <div style={{ color: 'var(--text3)', padding: 40, fontFamily: 'var(--sans)' }}>Loading retirement roadmap…</div>
 
   const gw = data.golden_window || {} as RetirementData['golden_window']
@@ -523,6 +541,95 @@ export default function Retirement() {
           </Card>
         </div>
       )}
+
+      {/* Rotation Proposals */}
+      {(() => {
+        const proposals = (proposalsResp?.proposals ?? []).filter(p => !decided.has(p.id))
+        const pending = proposals.filter(p => p.status === 'proposed')
+        const recent = proposals.filter(p => p.status !== 'proposed').slice(0, 5)
+        if (pending.length === 0 && recent.length === 0) return null
+        const ssdiLabel: Record<string, string> = { none: 'No impact', conversion_taxable: 'Taxable event', capital_gains: 'Cap gains' }
+        const ssdiColor: Record<string, string> = { none: 'var(--green)', conversion_taxable: 'var(--amber)', capital_gains: 'var(--amber)' }
+        return (
+          <div style={{ marginTop: 16 }}>
+            <SectionHeader title="Rotation Proposals" count={pending.length} />
+            {pending.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {pending.map(p => (
+                  <div key={p.id} style={{
+                    background: 'var(--bg2)', border: `1px solid ${p.irmaa_risk ? 'var(--red)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-lg)', padding: '14px 18px',
+                    borderLeft: `4px solid ${p.irmaa_risk ? 'var(--red)' : 'var(--amber)'}`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--sans)' }}>{p.symbol}</span>
+                      <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, fontWeight: 700, background: 'rgba(240,185,11,0.12)', color: 'var(--amber)', textTransform: 'uppercase' }}>{p.action}</span>
+                      {p.irmaa_risk && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: 'var(--red-dim)', color: 'var(--red)' }}>IRMAA RISK</span>}
+                      <span style={{ fontSize: 10, color: 'var(--text2)', fontWeight: 600 }}>{p.account_name || 'Unknown'}</span>
+                      <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: p.confidence >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{(p.confidence * 100).toFixed(0)}%</div>
+                        <div style={{ fontSize: 8, color: 'var(--text3)' }}>confidence</div>
+                      </div>
+                    </div>
+                    {/* Details grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10, fontSize: 10 }}>
+                      <div>
+                        <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Shares</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text0)' }}>{p.shares_to_sell?.toFixed(1) || '—'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Target</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text0)' }}>{p.target_symbol || 'cash'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>SSDI Impact</div>
+                        <div style={{ fontWeight: 700, color: ssdiColor[p.ssdi_impact] || 'var(--text2)' }}>{ssdiLabel[p.ssdi_impact] || p.ssdi_impact || '—'}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Review By</div>
+                        <div style={{ fontWeight: 600, color: 'var(--text2)' }}>{p.review_date || '—'}</div>
+                      </div>
+                    </div>
+                    {/* Reason */}
+                    <div style={{ padding: '8px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius)', marginBottom: 10, fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>
+                      {p.reason}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+                      Strategy: {p.strategy_type?.replace(/_/g, ' ')} | {p.created_at ? timeAgo(p.created_at) : ''}
+                    </div>
+                    {/* Decision buttons */}
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
+                      <button onClick={() => handleProposalDecision(p.id, 'approved')} disabled={!!deciding[p.id]}
+                        style={{ padding: '6px 16px', fontSize: 10, fontWeight: 700, border: '1px solid var(--green)', borderRadius: 'var(--radius)', background: 'var(--green-dim)', color: 'var(--green)', cursor: 'pointer', fontFamily: 'var(--mono)', opacity: deciding[p.id] ? 0.5 : 1 }}>
+                        {deciding[p.id] === 'approved' ? 'Saving...' : 'Approve'}
+                      </button>
+                      <button onClick={() => handleProposalDecision(p.id, 'rejected')} disabled={!!deciding[p.id]}
+                        style={{ padding: '6px 16px', fontSize: 10, fontWeight: 700, border: '1px solid var(--red)', borderRadius: 'var(--radius)', background: 'var(--red-dim)', color: 'var(--red)', cursor: 'pointer', fontFamily: 'var(--mono)', opacity: deciding[p.id] ? 0.5 : 1 }}>
+                        {deciding[p.id] === 'rejected' ? 'Saving...' : 'Reject'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Recent decisions */}
+            {recent.length > 0 && (
+              <Card compact>
+                <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 700, padding: '4px 0 6px', textTransform: 'uppercase' }}>Recent Decisions</div>
+                {recent.map(p => (
+                  <div key={p.id} style={{ display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center' }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase', background: p.status === 'approved' ? 'var(--green-dim)' : 'var(--red-dim)', color: p.status === 'approved' ? 'var(--green)' : 'var(--red)' }}>{p.status}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{p.symbol}</span>
+                    <span style={{ color: 'var(--text2)' }}>{p.account_name}</span>
+                    <span style={{ flex: 1, color: 'var(--text3)' }}>{p.shares_to_sell?.toFixed(0) || '?'} shares → {p.target_symbol || 'cash'}</span>
+                    <span style={{ color: 'var(--text3)' }}>{p.created_at ? timeAgo(p.created_at) : ''}</span>
+                  </div>
+                ))}
+              </Card>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Strategy guidance */}
       <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--sans)', lineHeight: 1.6 }}>
