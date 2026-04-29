@@ -56,16 +56,18 @@ def get_intel_for_agent(agent: str, min_quality: int = 70, limit: int = 10,
     """, (json.dumps([agent]), min_quality / 100.0, days, limit))
     results.extend(cur.fetchall())
 
-    # YouTube transcripts
+    # YouTube transcripts (prefer summary over raw text)
     cur.execute("""
-        SELECT 'youtube' as source_type, title, LEFT(transcript_text, 200) as text_snippet,
+        SELECT 'youtube' as source_type, title,
+               COALESCE(summary, LEFT(cleaned_text, 200), LEFT(transcript_text, 200)) as text_snippet,
                quality_score, relevance_score,
-               strategy_tags, agent_tags, ingested_at as date, '' as symbol
+               strategy_tags, agent_tags, sub_tags, structured_json,
+               ingested_at as date, '' as symbol
         FROM youtube_transcripts
         WHERE agent_tags @> %s
           AND quality_score >= %s
           AND ingested_at > NOW() - INTERVAL '%s days'
-        ORDER BY ingested_at DESC LIMIT %s
+        ORDER BY quality_score DESC, ingested_at DESC LIMIT %s
     """, (json.dumps([agent]), min_quality, days, limit))
     results.extend(cur.fetchall())
 
@@ -243,6 +245,19 @@ def get_intel_summary(agent: str = None, symbol: str = None,
             line += f" ({strat_str})"
         if snippet:
             line += f" — {snippet}"
+
+        # For YouTube: include structured key_points if available
+        sj = item.get("structured_json")
+        if sj and src == "youtube":
+            if isinstance(sj, str):
+                try: sj = json.loads(sj)
+                except: sj = None
+            if sj and sj.get("key_points"):
+                for kp in sj["key_points"][:2]:
+                    line += f"\n    • {kp[:80]}"
+            if sj and sj.get("action_items"):
+                for ai in sj["action_items"][:1]:
+                    line += f"\n    → {ai[:80]}"
 
         if total_chars + len(line) > max_chars:
             break
