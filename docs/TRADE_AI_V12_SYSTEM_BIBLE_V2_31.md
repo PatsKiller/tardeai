@@ -147,6 +147,102 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 
 ---
 
+## YouTube Transcript Pipeline — Complete Methodology
+
+### How Transcripts Are Ingested
+
+```
+1. CHANNEL TRACKING (6 active channels, manually added or agent-discovered)
+   └→ youtube_channels table: channel_id, name, strategy_focus, last_checked
+
+2. DAILY PULL (7 PM weekdays via cron)
+   └→ youtube_transcript_ingest.py --all-channels
+   └→ YouTube Data API: list latest 3 videos per channel via uploads playlist
+   └→ For each video: check if video_id already in DB (dedup)
+
+3. TRANSCRIPT FETCH (2 methods, fallback chain)
+   └→ Method 1: youtube-transcript-api library (English captions)
+   └→ Method 2: timedtext scraping (fallback if IP-blocked)
+   └→ If both fail: video skipped, no error propagated
+
+4. RAW STORAGE (no cleaning)
+   └→ Store up to 50,000 chars of raw auto-generated caption text
+   └→ Includes "um", "uh", filler words, misrecognitions
+   └→ NO text cleaning, NO summarization applied
+   └→ Current total: 12 transcripts, 0.16 MB
+
+5. SCORING (first 5,000 chars scored — deterministic, keyword-based)
+   Quality Score (0-100):
+     Base: 40 (YouTube default)
+     Trusted channel boost: 55-80 (18 channels in trusted list)
+     Penalty: short text (<100 chars: -30, <500 chars: -10)
+     Penalty: clickbait signals (🚀, "guaranteed", "!!!!"): -15
+   
+   Relevance Score (0-100%):
+     High keywords (27): +15% each (dividend, yield, roth, ira, retirement...)
+     Medium keywords (20): +8% each (earnings, guidance, PE ratio, analyst...)
+     Low keywords (11): +3% each (stock, market, bull, bear...)
+     Symbol mention: +10% each ($V, $SCHD, etc.)
+
+6. TAGGING (rule-based, not ML)
+   └→ Strategy tags: 10 types (dividend_growth, retirement_planning, etc.)
+   └→ Agent tags: 5 agents (Alex, Maria, Steph, Risk, Aegis)
+   └→ Matching: if ANY keyword from strategy/agent list appears → tagged
+
+7. VALIDATION STATUS
+   └→ ai_validated: Quality ≥ 60 AND Relevance ≥ 30%
+   └→ low_confidence: Quality < 30 OR Relevance < 10%
+   └→ unscored: everything in between
+
+8. AVAILABLE TO AGENTS via intel_query.get_intel_summary()
+```
+
+### Retention & Purge
+
+- **Retention: indefinite** — `purge_after` column exists but always NULL
+- Current storage: 0.16 MB (12 transcripts). Projected: ~100 MB/year
+- No automated purge process. When needed: set `purge_after` dates on low_confidence items
+
+### Channel Discovery (Agent-Driven)
+
+```
+MONTHLY (1st of month via cron):
+  youtube_channel_discovery.py --discover
+
+1. Search YouTube for channels matching 10 strategy-aligned queries:
+   - "dividend growth investing 2026"
+   - "retirement income strategy SSDI disability"
+   - "Roth conversion ladder strategy"
+   - "high yield income BDC CEF investing"
+   - "covered call ETF income strategy"
+   - etc.
+
+2. For each discovered channel:
+   - Get subscriber count + video count via YouTube Data API
+   - Score: keyword relevance + subscriber quality + upload consistency
+   - Classify: ADD (Q≥50), REVIEW (Q≥30), SKIP (Q<30)
+
+3. Store in youtube_channel_candidates table (status='pending')
+
+4. Human reviews candidates:
+   python3 scripts/youtube_channel_discovery.py --list-candidates
+   python3 scripts/youtube_channel_discovery.py --approve CHANNEL_ID
+
+5. Approved channels added to youtube_channels → daily 7 PM auto-ingest
+```
+
+### What Is NOT Done (Limitations)
+
+- No text cleaning (filler words, auto-caption errors remain in stored text)
+- No summarization (agents get raw transcript, not a summary)
+- No semantic understanding ("Apple stock is terrible" would match AAPL positively)
+- No sentiment analysis on transcripts (only on social posts)
+- No cross-channel dedup (same topic on 2 channels = 2 separate entries)
+- No caption quality detection (auto-generated vs manual not distinguished)
+- Channel matching is flexible but not perfect (added both "ppc ian" and "ppcian" to handle variants)
+
+---
+
 ## Intelligence Limitations (Honest Assessment)
 
 ### What the scoring engine CANNOT do
@@ -464,8 +560,9 @@ python3 scripts/system_preflight_check.py
 | v2.27 | Honest rewrite: removed contradictions, Trust Matrix, Operator Framework, Intelligence Limitations |
 | v2.28 | 4 critical fixes: news 46 sources, Aegis events, decision_inputs, learning loop |
 | v2.29 | April 29 incident response: Finviz URL, .env sourcing, ollama model, stop prices, header tape sync, preflight check |
-| **v2.30** | **SEC EDGAR Form 4 + yfinance quotes + Alpha Vantage fundamentals + FRED schema + agent YAML config. 8 active data sources, 142 tables, 45 crons. Agent prompts now include SEC insider data + real-time quotes + fundamentals for every symbol.** |
+| v2.30 | SEC EDGAR Form 4 + yfinance + Alpha Vantage + agent YAML config |
+| **v2.31** | **YouTube channel auto-discovery (agent-driven, monthly). Full transcript methodology documented: ingestion → scoring → tagging → retention → limitations. Channel scoring: subscriber quality + keyword relevance + upload consistency. 15 candidates found (Q:42-83). Trusted channel list expanded to 18.** |
 
 ---
 
-**v2.30 — 8 active data sources (news 50 outlets + YouTube + SEC + yfinance + Alpha Vantage + FMP). SEC insider transactions + real-time quotes + 15 fundamental metrics auto-injected into every agent prompt. Agent interaction rules defined in YAML. 142 tables, 45 crons, preflight check. Maturity: 73%.**
+**v2.31 — Agent-driven YouTube channel discovery. 15 candidates found and scored from 10 strategy-aligned searches. Complete transcript methodology documented (8-step pipeline, retention policy, scoring breakdown, all limitations listed honestly). 18 trusted channels. Maturity: 73%.**

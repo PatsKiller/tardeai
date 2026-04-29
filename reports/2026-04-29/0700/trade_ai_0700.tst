@@ -1,7 +1,6 @@
 # Trade AI v10 | 2026-04-29 | Run 0700
 
-KALV
-ATLN
+PRCH
 GCTK
-AKAN
+KALV
 WALD
