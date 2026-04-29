@@ -78,6 +78,9 @@ interface QualifiedResp { items: QualifiedItem[] }
 interface DiscoveryEntry { id: number; discovery_type: string; title: string; summary: string; symbols_mentioned: string; intel_count: number; created_at: string }
 interface DiscoveryResp { entries: DiscoveryEntry[] }
 
+interface SearchSourceInfo { active: boolean; articles?: number; transcripts?: number; series?: number; indexed?: number; status?: string; key_present?: boolean; last?: string; model?: string; dim?: number }
+interface SearchSourcesResp { [key: string]: SearchSourceInfo }
+
 interface SourcesResp { sources: Source[] }
 interface TranscriptsResp { transcripts: Transcript[] }
 interface ChannelsResp { channels: Channel[] }
@@ -108,6 +111,7 @@ export default function IntelligenceSources() {
   const { data: socialData, loading: socialLoading } = useApi<SocialPostsResp>('/api/v2/social/posts')
   const { data: socialStatus } = useApi<SocialStatusResp>('/api/v2/social/status')
   const { data: qualData, loading: qualLoading } = useApi<QualifiedResp>('/api/v2/qualified-intelligence')
+  const { data: searchSources } = useApi<SearchSourcesResp>('/api/v2/search-sources')
   const { data: discData, loading: discLoading } = useApi<DiscoveryResp>('/api/v2/discovery-log')
   const [tab, setTab] = useState<Tab>('screeners')
   const [filter, setFilter] = useState('')
@@ -236,6 +240,23 @@ export default function IntelligenceSources() {
   return (
     <>
       <PageHeader title="Intelligence Sources & Screeners" subtitle={`${totalSources} sources configured`} />
+
+      {/* Search Sources Status Strip */}
+      {searchSources && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap', padding: '6px 10px', background: 'var(--bg3)', borderRadius: 8 }}>
+          {Object.entries(searchSources).map(([name, info]) => (
+            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--text3)' }}>
+              <div style={{ width: 6, height: 6, borderRadius: 99, background: info.active ? '#0ecb81' : '#f6465d' }} />
+              <span style={{ fontWeight: 600 }}>{name.replace(/_/g, ' ')}</span>
+              {info.articles != null && <span>({info.articles})</span>}
+              {info.transcripts != null && <span>({info.transcripts})</span>}
+              {info.series != null && <span>({info.series})</span>}
+              {info.indexed != null && <span>({info.indexed})</span>}
+              {info.status && <span style={{ color: '#f6465d', fontSize: 8 }}>{info.status}</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
