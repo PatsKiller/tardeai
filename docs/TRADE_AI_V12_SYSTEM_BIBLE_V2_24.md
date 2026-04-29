@@ -195,7 +195,7 @@ TIME        SCRIPT                              WHAT IT DOES                    
 6:00 AM     telegram_smart_alerts.py            Roth/income/conflict/stop/Medicare checks       Proactive Telegram alerts
 6:15 AM     agent_router_cron.sh full           Reprice, risk, signals, news, discovery         holdings.json, risk.json, signals.json
 6:25 AM     agent_intelligence_cron.sh daily    Asset intelligence + proactive discovery        ai_watchlist.json, candidates
-6:30 AM     news_ingestion.py --priority        Yahoo RSS + Finnhub → SCORE + TAG               news_articles (with strategy_tags, agent_tags)
+6:30 AM     news_ingestion.py --priority        Yahoo + Finnhub + Google News (40+ sources) → SCORE + TAG    news_articles + catalyst_events + sentiment_observations
 6:35 AM     classify_candidates.py              Auto-classify new screener finds                ticker_strategy_classifications
 6:45 AM     sync_watchlist_items_to_db.py       Sync watchlist state to DB                      watchlist_items
 6:50 AM     materialize_watchlist_strategy_cards Strategy cards for all symbols                  watchlist_strategy_cards
