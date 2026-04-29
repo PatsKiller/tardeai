@@ -164,11 +164,17 @@ export default function Reports() {
             </>
           )}
 
-          {/* Trade AI Daily */}
+          {/* Trade AI Daily — latest inline + list */}
           {tradeAiDaily.length > 0 && (
             <>
               <SectionHeader title="Trade AI Daily Dashboards" count={tradeAiDaily.length} />
-              <Card>
+              <Card title={`Today's Latest: ${tradeAiDaily[0]?.name || ''}`}>
+                <iframe
+                  src={tradeAiDaily[0]?.path}
+                  style={{ width: '100%', height: 400, border: 'none', borderRadius: 6, background: '#fff' }}
+                />
+              </Card>
+              <Card compact>
                 {tradeAiDaily.map(item => (
                   <ReportRow key={item.path || item.name} item={item} showPreview={setPreviewUrl} />
                 ))}
@@ -188,21 +194,37 @@ export default function Reports() {
             </>
           )}
 
-          {/* Weekly + Monthly side by side */}
+          {/* Latest Weekly + Monthly — inline previews */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <SectionHeader title="Weekly Reports" count={weekly.length} />
-              <Card>
+              {weekly.filter(w => w.name.endsWith('.html')).length > 0 && (
+                <Card title={`Latest: ${weekly.filter(w => w.name.endsWith('.html'))[0]?.name}`}>
+                  <iframe
+                    src={weekly.filter(w => w.name.endsWith('.html'))[0]?.path}
+                    style={{ width: '100%', height: 300, border: 'none', borderRadius: 6, background: '#fff' }}
+                  />
+                </Card>
+              )}
+              <Card compact>
                 {weekly.length > 0 ? weekly.map(item => (
-                  <ReportRow key={item.path || item.name} item={item} showPreview={item.type === 'html' ? setPreviewUrl : undefined} />
+                  <ReportRow key={item.path || item.name} item={item} showPreview={item.name.endsWith('.html') ? setPreviewUrl : undefined} />
                 )) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No weekly reports yet.</div>}
               </Card>
             </div>
             <div>
               <SectionHeader title="Monthly Reports" count={monthly.length} />
-              <Card>
+              {monthly.filter(m => m.name.endsWith('.html')).length > 0 && (
+                <Card title={`Latest: ${monthly.filter(m => m.name.endsWith('.html'))[0]?.name}`}>
+                  <iframe
+                    src={monthly.filter(m => m.name.endsWith('.html'))[0]?.path}
+                    style={{ width: '100%', height: 300, border: 'none', borderRadius: 6, background: '#fff' }}
+                  />
+                </Card>
+              )}
+              <Card compact>
                 {monthly.length > 0 ? monthly.map(item => (
-                  <ReportRow key={item.path || item.name} item={item} showPreview={item.type === 'html' ? setPreviewUrl : undefined} />
+                  <ReportRow key={item.path || item.name} item={item} showPreview={item.name.endsWith('.html') ? setPreviewUrl : undefined} />
                 )) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No monthly reports yet.</div>}
               </Card>
             </div>
