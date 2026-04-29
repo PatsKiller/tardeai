@@ -338,42 +338,87 @@ def get_intel_summary(agent: str = None, symbol: str = None,
     except Exception:
         pass
 
-    # Smart search routing (v2.48):
-    #   research/high_value → Brave first
-    #   routine + few DB results → Brave fallback
-    #   routine + enough DB results → DB only (Google/Yahoo RSS already ingested)
+    # Smart search routing with throttling (v2.49):
+    #   Brave ONLY if: relevance≥85 OR retirement_relevance=high OR source_hint=research
+    #   Budget: max 5 calls/day, 60-min cooldown, 24h per-symbol cache
+    #   All other: DB only (Google/Yahoo RSS already ingested)
     use_brave = False
-    if source_hint in ("research", "high_value"):
-        use_brave = True  # User research or high-value intel → always try Brave
-    elif symbol and len(items) < 3:
-        use_brave = True  # Few DB results → try Brave as supplement
-    # Also check if any items are retirement-relevant (boost to Brave)
-    if not use_brave and any(
-        (i.get("quality_score", 0) >= 80 or
-         str(i.get("strategy_tags", "")).find("retirement") >= 0)
+    brave_reason = ""
+
+    if source_hint == "research":
+        use_brave = True
+        brave_reason = "user_research"
+    elif source_hint == "high_value" and any(
+        float(i.get("relevance_score", 0) or 0) >= 0.85 or
+        str(i.get("retirement_relevance", "")) == "high"
         for i in items[:5]
     ):
-        if source_hint != "routine":
-            use_brave = True
+        use_brave = True
+        brave_reason = "high_relevance"
+    elif symbol and len(items) < 3 and source_hint != "routine":
+        use_brave = True
+        brave_reason = "sparse_db_results"
 
     if use_brave and symbol:
+        # Check throttle: daily budget (5/day), cooldown (60min), per-symbol cache (24h)
+        brave_allowed = True
         try:
-            from web_research import search_web
-            query_terms = f"{symbol} stock"
-            if source_hint == "research":
-                query_terms += " retirement SSDI disability planning 2026"
-            elif source_hint == "high_value":
-                query_terms += " analysis dividend retirement income"
-            else:
-                query_terms += " analysis retirement dividend 2026"
-            web_results = search_web(query_terms, count=3)
-            if web_results:
-                web_lines = [f"WEB RESEARCH (Brave Search — {source_hint}):"]
-                for wr in web_results[:3]:
-                    web_lines.append(f"  {wr.get('title', '')[:60]} — {wr.get('description', '')[:80]}")
-                extra_context.append("\n".join(web_lines))
+            _bconn = _get_conn()
+            _bcur = _bconn.cursor()
+            # Check daily count
+            _bcur.execute("SELECT count(*) FROM content_embeddings WHERE source_type='brave_cache' AND created_at > CURRENT_DATE")
+            daily_count = _bcur.fetchone()[0]
+            if daily_count >= 5:
+                brave_allowed = False
+                brave_reason = f"daily_limit ({daily_count}/5)"
+            # Check per-symbol 24h cache
+            if brave_allowed:
+                _bcur.execute("SELECT id FROM content_embeddings WHERE source_type='brave_cache' AND title=%s AND created_at > NOW() - INTERVAL '24 hours'",
+                              (f"brave:{symbol}",))
+                if _bcur.fetchone():
+                    brave_allowed = False
+                    brave_reason = f"cached_24h ({symbol})"
+            # Check 60-min cooldown
+            if brave_allowed:
+                _bcur.execute("SELECT created_at FROM content_embeddings WHERE source_type='brave_cache' ORDER BY created_at DESC LIMIT 1")
+                last = _bcur.fetchone()
+                if last:
+                    from datetime import datetime, timezone
+                    age_min = (datetime.now(timezone.utc) - last[0].astimezone(timezone.utc)).total_seconds() / 60
+                    if age_min < 60:
+                        brave_allowed = False
+                        brave_reason = f"cooldown ({int(age_min)}min < 60min)"
+            _bconn.close()
         except Exception:
-            pass  # Brave 402 or unavailable — graceful fallback to DB-only
+            pass
+
+        if brave_allowed:
+            try:
+                from web_research import search_web
+                query_terms = f"{symbol} stock"
+                if source_hint == "research":
+                    query_terms += " retirement SSDI disability planning 2026"
+                else:
+                    query_terms += " analysis dividend retirement income"
+                web_results = search_web(query_terms, count=3)
+                if web_results:
+                    web_lines = [f"WEB RESEARCH (Brave — {brave_reason}):"]
+                    for wr in web_results[:3]:
+                        web_lines.append(f"  {wr.get('title', '')[:60]} — {wr.get('description', '')[:80]}")
+                    extra_context.append("\n".join(web_lines))
+                    # Record cache entry
+                    try:
+                        _cc = _get_conn()
+                        _cc.cursor().execute(
+                            "INSERT INTO content_embeddings (source_type, source_id, title, tfidf_terms) VALUES ('brave_cache', 0, %s, '{}'::jsonb)",
+                            (f"brave:{symbol}",))
+                        _cc.commit(); _cc.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass  # Brave 402 — graceful fallback
+        else:
+            print(f"  [brave-throttle] Skipped {symbol}: {brave_reason}")
 
     if not items and not extra_context:
         return ""

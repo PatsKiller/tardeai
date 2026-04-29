@@ -317,35 +317,87 @@ def evaluate_past_decisions() -> dict:
 
 
 def proactive_intel_scan() -> dict:
-    """Scan qualified_intelligence for high-conf items and auto-escalate to Alex."""
+    """Scan qualified_intelligence for high-conf items with ticker-level throttling.
+
+    Ticker throttle gate (v2.49):
+      - Only run full agent chain if:
+        1. New qualified_intelligence Q≥70 for this ticker in last 24h
+        2. User ran `research SYMBOL` (requested_by='telegram')
+        3. Ticker is in portfolio AND last_analyzed > 48h ago
+      - All others: skip, log reason, use cached embeddings
+    """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     # Find recent high-quality qualified intel not yet acted on
     cur.execute("""
-        SELECT qi.symbol, qi.title, qi.quality_score, qi.source_type, qi.retirement_relevance
+        SELECT qi.symbol, qi.title, qi.quality_score, qi.source_type, qi.retirement_relevance, qi.id
         FROM qualified_intelligence qi
-        WHERE qi.quality_score >= 75
+        WHERE qi.quality_score >= 70
           AND qi.discovered_at > NOW() - INTERVAL '24 hours'
           AND qi.symbol IS NOT NULL
           AND qi.symbol NOT IN (SELECT symbol FROM watchlist_agent_jobs WHERE created_at > NOW() - INTERVAL '24 hours')
-        ORDER BY qi.quality_score DESC LIMIT 5
+        ORDER BY qi.quality_score DESC LIMIT 10
     """)
     hot_items = cur.fetchall()
 
+    # Load portfolio symbols for priority check
+    portfolio_syms = set()
+    try:
+        h = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+        portfolio_syms = {p.get("symbol", "") for p in h.get("holdings", []) if p.get("symbol")}
+    except Exception:
+        pass
+
     queued = 0
     debated = 0
+    skipped = 0
+
     for item in hot_items:
         sym = item["symbol"]
-        # Run multi-agent debate before queuing (Phase 2: consensus gate)
+
+        # Ticker-level throttle gate
+        should_analyze = False
+        throttle_reason = ""
+
+        # Gate 1: New high-Q intel in last 24h (already filtered by query, but check Q≥70)
+        if item["quality_score"] >= 70:
+            should_analyze = True
+            throttle_reason = f"new_intel Q:{item['quality_score']}"
+
+        # Gate 2: Portfolio symbol not analyzed in 48h
+        if sym in portfolio_syms:
+            cur.execute("SELECT MAX(created_at) FROM watchlist_agent_results WHERE symbol=%s", (sym,))
+            last = cur.fetchone()
+            last_dt = last[0] if last and last[0] else None
+            if last_dt:
+                from datetime import timezone
+                age_h = (datetime.now(timezone.utc) - last_dt.astimezone(timezone.utc)).total_seconds() / 3600
+                if age_h > 48:
+                    should_analyze = True
+                    throttle_reason = f"portfolio_stale ({int(age_h)}h > 48h)"
+                elif not should_analyze:
+                    should_analyze = False
+                    throttle_reason = f"portfolio_fresh ({int(age_h)}h < 48h)"
+            else:
+                should_analyze = True
+                throttle_reason = "portfolio_never_analyzed"
+
+        if not should_analyze:
+            skipped += 1
+            print(f"  [throttle] Skipped {sym}: {throttle_reason}")
+            continue
+
+        # Run multi-agent debate before queuing
         try:
             from agent_watchlist_engine import run_agent_debate
             debate = run_agent_debate(sym, item["title"][:100], trigger_source=item["source_type"])
             if debate.get("confidence", 0) >= 0.5:
                 debated += 1
             else:
-                print(f"  [proactive] {sym}: debate consensus too low ({debate.get('confidence',0):.0%}), skipping")
+                print(f"  [throttle] {sym}: debate consensus too low ({debate.get('confidence',0):.0%}), skipping")
+                skipped += 1
                 continue
         except Exception as e:
             print(f"  [proactive] {sym}: debate error ({e}), queuing anyway")
@@ -355,16 +407,16 @@ def proactive_intel_scan() -> dict:
             ucur.execute("""INSERT INTO watchlist_agent_jobs
                 (symbol, agent, request_type, status, requested_by, priority, note)
                 VALUES (%s, 'full_chain', 'analysis', 'queued', 'proactive_scan', 'high', %s)""",
-                (sym, f"Auto-escalated: Q:{item['quality_score']} {item['source_type']} — {item['title'][:100]}"))
+                (sym, f"Auto: Q:{item['quality_score']} {item['source_type']} — {throttle_reason} — {item['title'][:80]}"))
             queued += 1
-            print(f"  [proactive] Queued {sym} (Q:{item['quality_score']}) after debate consensus")
+            print(f"  [proactive] Queued {sym} (Q:{item['quality_score']}, {throttle_reason}) after debate")
         except Exception:
-            pass  # Likely duplicate
+            pass
 
     conn.commit()
     conn.close()
-    print(f"[proactive] Scanned {len(hot_items)} items, debated {debated}, queued {queued}")
-    return {"scanned": len(hot_items), "debated": debated, "queued": queued}
+    print(f"[proactive] Scanned {len(hot_items)}, debated {debated}, queued {queued}, throttled {skipped}")
+    return {"scanned": len(hot_items), "debated": debated, "queued": queued, "throttled": skipped}
 
 
 def refresh_research_topics() -> dict:

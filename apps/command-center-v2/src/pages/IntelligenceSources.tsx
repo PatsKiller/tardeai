@@ -78,7 +78,7 @@ interface QualifiedResp { items: QualifiedItem[] }
 interface DiscoveryEntry { id: number; discovery_type: string; title: string; summary: string; symbols_mentioned: string; intel_count: number; created_at: string }
 interface DiscoveryResp { entries: DiscoveryEntry[] }
 
-interface SearchSourceInfo { active: boolean; articles?: number; transcripts?: number; series?: number; indexed?: number; status?: string; key_present?: boolean; last?: string; model?: string; dim?: number }
+interface SearchSourceInfo { active: boolean; articles?: number; transcripts?: number; series?: number; indexed?: number; status?: string; key_present?: boolean; last?: string; model?: string; dim?: number; calls_today?: number; daily_limit?: number }
 interface SearchSourcesResp { [key: string]: SearchSourceInfo }
 
 interface SourcesResp { sources: Source[] }
@@ -252,6 +252,7 @@ export default function IntelligenceSources() {
               {info.transcripts != null && <span>({info.transcripts})</span>}
               {info.series != null && <span>({info.series})</span>}
               {info.indexed != null && <span>({info.indexed})</span>}
+              {info.calls_today != null && <span style={{ color: 'var(--amber)', fontSize: 8 }}>{info.calls_today}/{info.daily_limit ?? 5}</span>}
               {info.status && <span style={{ color: '#f6465d', fontSize: 8 }}>{info.status}</span>}
             </div>
           ))}
