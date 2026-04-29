@@ -179,6 +179,71 @@ def extract_sub_tags(text: str) -> list:
     return sorted(set(tags))
 
 
+# ── Step 4b: Timestamped highlights from timed segments ──────────────
+
+HIGHLIGHT_KEYWORDS = [
+    "roth", "conversion", "ira", "401k", "dividend", "yield", "income",
+    "retirement", "medicare", "medicaid", "irmaa", "tax bracket", "ssdi",
+    "disability", "stop loss", "rebalance", "covered call", "bond ladder",
+]
+
+
+def extract_timestamped_highlights(timed_segments: list, max_highlights: int = 6) -> list:
+    """Find keyword-rich segments and return timestamped highlights."""
+    if not timed_segments:
+        return []
+
+    # Score each segment window (30-second chunks)
+    window_size = 30  # seconds
+    windows = []
+    i = 0
+    while i < len(timed_segments):
+        window_text = ""
+        start_time = timed_segments[i].get("start", 0)
+        end_time = start_time
+        j = i
+        while j < len(timed_segments) and (timed_segments[j].get("start", 0) - start_time) < window_size:
+            window_text += " " + (timed_segments[j].get("text", ""))
+            end_time = timed_segments[j].get("start", 0) + timed_segments[j].get("duration", 0)
+            j += 1
+
+        # Score this window
+        text_lower = window_text.lower()
+        score = sum(1 for kw in HIGHLIGHT_KEYWORDS if kw in text_lower)
+        if score >= 2:  # At least 2 keyword matches
+            # Determine topic from matched keywords
+            matched = [kw for kw in HIGHLIGHT_KEYWORDS if kw in text_lower]
+            topic = matched[0] if matched else "general"
+            # Map to readable topic name
+            topic_map = {"roth": "Roth conversion", "conversion": "Roth conversion",
+                         "dividend": "Dividend strategy", "yield": "Income yield",
+                         "income": "Income strategy", "retirement": "Retirement planning",
+                         "medicare": "Medicare/IRMAA", "irmaa": "IRMAA analysis",
+                         "tax bracket": "Tax bracket management", "disability": "Disability planning",
+                         "covered call": "Covered call income", "bond ladder": "Bond strategy"}
+            readable_topic = topic_map.get(topic, topic.title())
+
+            def _fmt_time(seconds):
+                m, s = divmod(int(seconds), 60)
+                h, m = divmod(m, 60)
+                return f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+
+            windows.append({
+                "start": _fmt_time(start_time),
+                "end": _fmt_time(end_time),
+                "topic": readable_topic,
+                "score": score,
+                "snippet": window_text.strip()[:80],
+            })
+
+        i = j if j > i else i + 1
+
+    # Sort by score descending, take top N
+    windows.sort(key=lambda w: w["score"], reverse=True)
+    # Remove score + snippet from output (internal only)
+    return [{"start": w["start"], "end": w["end"], "topic": w["topic"]} for w in windows[:max_highlights]]
+
+
 # ── Step 5: Cross-channel deduplication ──────────────────────────────
 
 def _text_fingerprint(text: str, n: int = 5) -> set:
@@ -275,9 +340,9 @@ def process_transcript(video_id: str = None, process_all: bool = False):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     if video_id:
-        cur.execute("SELECT id, video_id, title, channel_name, transcript_text, quality_score FROM youtube_transcripts WHERE video_id=%s", (video_id,))
+        cur.execute("SELECT id, video_id, title, channel_name, transcript_text, quality_score, timed_segments FROM youtube_transcripts WHERE video_id=%s", (video_id,))
     elif process_all:
-        cur.execute("SELECT id, video_id, title, channel_name, transcript_text, quality_score FROM youtube_transcripts WHERE summary IS NULL OR structured_json IS NULL")
+        cur.execute("SELECT id, video_id, title, channel_name, transcript_text, quality_score, timed_segments FROM youtube_transcripts WHERE summary IS NULL OR structured_json IS NULL")
     else:
         conn.close()
         return 0
@@ -316,6 +381,17 @@ def process_transcript(video_id: str = None, process_all: bool = False):
 
         # Step 4: Sub-tags
         sub_tags = extract_sub_tags(f"{title} {cleaned}")
+
+        # Step 4b: Timestamped highlights
+        timed = r.get("timed_segments")
+        if isinstance(timed, str):
+            try: timed = json.loads(timed)
+            except: timed = None
+        if timed and isinstance(timed, list):
+            highlights = extract_timestamped_highlights(timed)
+            if highlights and structured:
+                structured["timestamped_highlights"] = highlights
+                print(f"    → {len(highlights)} timestamped highlights extracted")
 
         # Store everything
         ucur.execute("""
