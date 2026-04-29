@@ -303,12 +303,12 @@ def evaluate_past_decisions() -> dict:
 
     # Store lessons in agent_intelligence_rules for prompt injection
     if lessons:
-        lesson_text = "\n".join(lessons[:3])
+        lesson_text = "\n".join(lessons[:5])
         ucur = conn.cursor()
         ucur.execute("""INSERT INTO agent_intelligence_rules (rule_type, rule_key, config, changed_by, updated_at)
             VALUES ('outcome_lessons', 'latest', %s, 'outcome_eval', NOW())
             ON CONFLICT (rule_type, rule_key) DO UPDATE SET config=EXCLUDED.config, updated_at=NOW()""",
-            (json.dumps({"lessons": lessons[:3], "text": lesson_text, "evaluated_at": datetime.now().isoformat()}),))
+            (json.dumps({"lessons": lessons[:5], "text": lesson_text, "evaluated_at": datetime.now().isoformat()}),))
         conn.commit()
 
     conn.close()
@@ -367,11 +367,70 @@ def proactive_intel_scan() -> dict:
     return {"scanned": len(hot_items), "debated": debated, "queued": queued}
 
 
+def refresh_research_topics() -> dict:
+    """Weekly re-analysis of persistent research topics with new embeddings + FRED + lessons."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute("""SELECT id, topic, latest_findings, research_count
+        FROM user_research_topics
+        WHERE status='active' AND (last_researched_at IS NULL OR last_researched_at < NOW() - INTERVAL '7 days')
+        ORDER BY priority DESC, updated_at DESC LIMIT 5""")
+    topics = cur.fetchall()
+    refreshed = 0
+
+    for t in topics:
+        topic = t["topic"]
+        try:
+            # Get fresh context
+            extra = ""
+            try:
+                from external_market_data_ingest import get_macro_context
+                mc = get_macro_context()
+                if mc: extra += mc + "\n"
+            except Exception:
+                pass
+            try:
+                from intel_query import get_intel_summary
+                intel = get_intel_summary(agent="Alex", max_chars=400)
+                if intel: extra += intel[:400] + "\n"
+            except Exception:
+                pass
+
+            from llm_router import get_llm_response
+            prompt = (f"/no_think Re-analyze this research topic with latest data:\n\nTOPIC: {topic}\n\n"
+                      f"PREVIOUS FINDINGS: {(t.get('latest_findings') or 'None')[:300]}\n\n"
+                      f"LATEST CONTEXT:\n{extra}\n\n"
+                      f"Provide updated analysis (under 200 words). What's new? Any actionable changes?")
+            result = get_llm_response("agent_narrative", prompt, max_tokens=400)
+            if result.get("success"):
+                ucur = conn.cursor()
+                ucur.execute("""UPDATE user_research_topics
+                    SET latest_findings=%s, latest_finding_at=NOW(), research_count=research_count+1, last_researched_at=NOW()
+                    WHERE id=%s""", (result["response"][:2000], t["id"]))
+                refreshed += 1
+                print(f"  [research] Refreshed: {topic[:40]} via {result.get('provider')}")
+        except Exception as e:
+            print(f"  [research] Error on '{topic[:30]}': {e}")
+
+    conn.commit()
+    conn.close()
+    print(f"[research] Refreshed {refreshed}/{len(topics)} topics")
+    return {"refreshed": refreshed, "total": len(topics)}
+
+
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
     if "--outcomes" in sys.argv:
         evaluate_past_decisions()
     elif "--proactive" in sys.argv:
         proactive_intel_scan()
+    elif "--research" in sys.argv:
+        refresh_research_topics()
+    elif "--index-embeddings" in sys.argv:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from content_scoring import batch_index_all
+        batch_index_all(batch_size=100)
     else:
         run(send_telegram=tg)

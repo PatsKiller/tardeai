@@ -151,24 +151,24 @@ def get_intel_for_symbol(symbol: str, min_quality: int = 50, limit: int = 10,
 
 def search_transcripts(query: str, min_quality: int = 50, limit: int = 5,
                        days: int = 30) -> list:
-    """Semantic search across YouTube transcripts using TF-IDF similarity + keyword fallback.
+    """Semantic search across YouTube transcripts using Ollama embeddings + TF-IDF fallback.
 
-    1. Keyword ILIKE match for candidate retrieval
-    2. TF-IDF semantic re-ranking using content_embeddings
-    Returns results ranked by semantic_score (TF-IDF similarity * quality_score).
+    1. Keyword ILIKE for candidate retrieval (cast wider net)
+    2. Compute query embedding via nomic-embed-text
+    3. Cosine similarity re-ranking against stored embeddings
+    4. TF-IDF fallback for items without embeddings
     """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     pattern = f"%{query}%"
-    # Candidate retrieval: keyword match (cast wider net)
     cur.execute("""
         SELECT yt.id, yt.title, yt.channel_name,
                COALESCE(yt.summary, LEFT(yt.cleaned_text, 300)) as text_snippet,
                yt.quality_score, yt.relevance_score, yt.strategy_tags, yt.sub_tags,
                yt.structured_json, yt.ingested_at as date,
-               ce.tfidf_terms
+               ce.tfidf_terms, ce.embedding
         FROM youtube_transcripts yt
         LEFT JOIN content_embeddings ce ON ce.source_type='youtube' AND ce.source_id=yt.id
         WHERE (yt.title ILIKE %s
@@ -182,18 +182,30 @@ def search_transcripts(query: str, min_quality: int = 50, limit: int = 5,
     candidates = cur.fetchall()
     conn.close()
 
-    # Semantic re-ranking using TF-IDF similarity
+    # Semantic re-ranking: embeddings first, TF-IDF fallback
     try:
-        from content_scoring import semantic_similarity
+        from content_scoring import semantic_similarity, _get_embedding, cosine_similarity
+        query_vec = _get_embedding(query)
+
         for c in candidates:
+            doc_vec = c.get("embedding")
+            if isinstance(doc_vec, str):
+                doc_vec = json.loads(doc_vec)
             terms = c.get("tfidf_terms") or {}
             if isinstance(terms, str):
                 terms = json.loads(terms)
-            sim = semantic_similarity(query, terms) if terms else 0.0
+
+            if query_vec and doc_vec and len(doc_vec) > 0:
+                sim = cosine_similarity(query_vec, doc_vec)
+            elif terms:
+                sim = semantic_similarity(query, doc_terms=terms)
+            else:
+                sim = 0.0
             c["semantic_score"] = round(sim * (c.get("quality_score", 50) / 100), 3)
+
         candidates.sort(key=lambda x: x.get("semantic_score", 0), reverse=True)
     except Exception:
-        pass  # Fall back to quality-based ordering
+        pass
 
     return candidates[:limit]
 

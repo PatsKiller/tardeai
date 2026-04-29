@@ -62,6 +62,12 @@ def search_web(query: str, count: int = 5, freshness: str = "pw") -> list:
                     "age": r.get("age", ""),
                 })
             return results
+    except urllib.error.HTTPError as e:
+        if e.code == 402:
+            print(f"[web-research] Brave API 402: Usage limit exceeded — add credits at search.brave.com/account")
+        else:
+            print(f"[web-research] Brave API HTTP {e.code}: {e.reason}")
+        return []
     except Exception as e:
         print(f"[web-research] Brave API error: {e}")
         return []

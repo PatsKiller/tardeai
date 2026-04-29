@@ -538,6 +538,23 @@ def monthly_retirement_report(send_telegram: bool = False) -> dict:
         except Exception:
             pass
 
+        # Outcome lessons for "What the System Learned" section
+        lessons_text = ""
+        try:
+            import psycopg2.extras as _px2
+            _lconn = _get_conn()
+            _lcur = _lconn.cursor(cursor_factory=_px2.RealDictCursor)
+            _lcur.execute("SELECT config FROM agent_intelligence_rules WHERE rule_type='outcome_lessons' AND rule_key='latest'")
+            _lr = _lcur.fetchone()
+            _lconn.close()
+            if _lr and _lr.get("config"):
+                cfg = _lr["config"]
+                if isinstance(cfg, str):
+                    cfg = json.loads(cfg)
+                lessons_text = cfg.get("text", "")
+        except Exception:
+            pass
+
         from datetime import datetime as _dt
         month_name = _dt.now().strftime("%B %Y")
 
@@ -565,6 +582,8 @@ Provide MONTHLY RETIREMENT PERFORMANCE REPORT (under 400 words):
    - Roth conversion pacing recommendation for rest of 2026
    - Any rebalancing moves with SSDI impact assessment
    - Medicaid/IRMAA implications of each suggestion
+6. WHAT THE SYSTEM LEARNED THIS MONTH: Summarize key lessons from past decisions.
+{f'   Agent outcome lessons: {lessons_text}' if lessons_text else '   No outcome lessons yet — decisions still accumulating.'}
 
 Be specific with numbers. Use warm tone. Address disability implications for every suggestion."""
 
