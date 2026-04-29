@@ -190,10 +190,23 @@ def get_intel_summary(agent: str = None, symbol: str = None,
                 items.append(si)
                 seen_titles.add(si.get("title", ""))
 
-    if not items:
+    # SEC data (always include if symbol provided)
+    sec_text = ""
+    if symbol:
+        try:
+            from sec_data_ingest import get_sec_intel
+            sec_text = get_sec_intel(symbol)
+        except Exception:
+            pass
+
+    if not items and not sec_text:
         return ""
 
-    lines = [f"RECENT INTELLIGENCE ({len(items)} items, last {days} days):"]
+    lines = []
+    if sec_text:
+        lines.append(sec_text)
+    if items:
+        lines.append(f"RECENT INTELLIGENCE ({len(items)} items, last {days} days):")
     total_chars = 0
     for item in items[:8]:
         src = item.get("source_type", "?")
