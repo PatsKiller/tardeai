@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, timeAgo } from '../lib/format'
 import TaskDetailDrawer, { type TaskItem } from '../components/TaskDetailDrawer'
-import AgentModal from '../components/AgentModal'
+import AgentModal, { type AgentDetailData } from '../components/AgentModal'
 import { useToast } from '../components/ToastProvider'
 import { DoughnutChart, BarChartJS } from '../components/charts'
 import MetricTile from '../components/MetricTile'
@@ -569,13 +569,12 @@ export default function MorningBrief() {
           return d ? { total_analyses: d.total_analyses, avg_confidence: d.avg_confidence, last_run: d.last_run } : null
         })() : null}
         detail={modalAgent && agentDetailResp ? (() => {
-          // Find matching DB key in agent detail response
-          const detailData = agentDetailResp as Record<string, unknown>
+          const detailData = agentDetailResp as Record<string, AgentDetailData>
           for (const dbName of modalAgent.dbNames || []) {
-            if (detailData[dbName]) return detailData[dbName] as { latest: unknown[]; distribution: unknown[]; top_symbols: unknown[] }
+            if (detailData[dbName]) return detailData[dbName]
           }
           return null
-        })() as never : null}
+        })() : null}
         onClose={() => setModalAgent(null)}
         onRunFresh={(q) => { setModalAgent(null); handleAiResearch(q) }}
       />
