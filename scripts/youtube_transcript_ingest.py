@@ -58,50 +58,132 @@ def _parse_transcript_entries(transcript) -> dict:
             "timed_segments": segments}
 
 
+COOKIE_PATH = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+
+def _load_cookie_session():
+    """Load YouTube cookies from Netscape-format cookie file into a requests.Session.
+
+    Cookie file: config/youtube_cookies.txt (Netscape/Mozilla format)
+    Export from browser using: "Get cookies.txt LOCALLY" Chrome extension
+    or: yt-dlp --cookies-from-browser chrome --cookies config/youtube_cookies.txt
+
+    Returns requests.Session with cookies loaded, or None if no cookie file.
+    """
+    if not COOKIE_PATH.exists():
+        return None
+    try:
+        import requests, http.cookiejar
+        jar = http.cookiejar.MozillaCookieJar(str(COOKIE_PATH))
+        jar.load(ignore_discard=True, ignore_expires=True)
+        session = requests.Session()
+        session.cookies = jar
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+        return session
+    except Exception as e:
+        print(f"  [cookies] Failed to load {COOKIE_PATH}: {e}")
+        return None
+
+
+def _get_cookie_opener():
+    """Build urllib opener with cookies for timedtext fallback."""
+    if not COOKIE_PATH.exists():
+        return None
+    try:
+        import http.cookiejar
+        jar = http.cookiejar.MozillaCookieJar(str(COOKIE_PATH))
+        jar.load(ignore_discard=True, ignore_expires=True)
+        return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    except Exception:
+        return None
+
+
 def _fetch_timedtext(video_id: str) -> dict:
-    """Fallback: fetch transcript via YouTube's timedtext XML endpoint."""
+    """Fallback: fetch transcript via YouTube's timedtext XML endpoint.
+    Uses cookies from config/youtube_cookies.txt if available to bypass IP blocks."""
     import time, xml.etree.ElementTree as ET
     try:
         time.sleep(1)  # Rate limit protection
         page_url = f"https://www.youtube.com/watch?v={video_id}"
-        req = urllib.request.Request(page_url, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml",
-        })
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
+        }
+        req = urllib.request.Request(page_url, headers=headers)
+
+        # Use cookie opener if available (bypasses IP blocks)
+        opener = _get_cookie_opener()
+        if opener:
+            with opener.open(req, timeout=15) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+        else:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+
         m = re.search(r'"baseUrl":"(https://www\.youtube\.com/api/timedtext[^"]+)"', html)
         if not m:
             return {"error": "No captions found", "text": "", "segments": 0, "duration_seconds": 0}
         caption_url = m.group(1).replace("\\u0026", "&")
-        time.sleep(0.5)  # Be polite
+        time.sleep(0.5)
         cap_req = urllib.request.Request(caption_url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         })
-        with urllib.request.urlopen(cap_req, timeout=15) as resp:
-            root = ET.fromstring(resp.read())
-            entries = []
-            for elem in root.findall(".//text"):
-                text = (elem.text or "").strip()
-                start = float(elem.get("start", 0))
-                dur = float(elem.get("dur", 0))
-                if text:
-                    entries.append({"text": text, "start": start, "duration": dur})
-            if entries:
-                return _parse_transcript_entries(entries)
-            return {"error": "Captions empty", "text": "", "segments": 0, "duration_seconds": 0}
+        if opener:
+            with opener.open(cap_req, timeout=15) as resp:
+                xml_data = resp.read()
+        else:
+            with urllib.request.urlopen(cap_req, timeout=15) as resp:
+                xml_data = resp.read()
+
+        root = ET.fromstring(xml_data)
+        entries = []
+        for elem in root.findall(".//text"):
+            text = (elem.text or "").strip()
+            start = float(elem.get("start", 0))
+            dur = float(elem.get("dur", 0))
+            if text:
+                entries.append({"text": text, "start": start, "duration": dur})
+        if entries:
+            return _parse_transcript_entries(entries)
+        return {"error": "Captions empty", "text": "", "segments": 0, "duration_seconds": 0}
     except urllib.error.HTTPError as e:
         if e.code == 429:
-            return {"error": "Rate limited by YouTube (429) — try again later or add cookies", "text": "", "segments": 0, "duration_seconds": 0}
+            cookie_hint = " (cookies loaded)" if COOKIE_PATH.exists() else " — add cookies: config/youtube_cookies.txt"
+            return {"error": f"Rate limited (429){cookie_hint}", "text": "", "segments": 0, "duration_seconds": 0}
         return {"error": f"HTTP {e.code}", "text": "", "segments": 0, "duration_seconds": 0}
     except Exception as e:
         return {"error": f"timedtext: {e}", "text": "", "segments": 0, "duration_seconds": 0}
 
 
 def fetch_transcript(video_id: str) -> dict:
-    """Fetch transcript. Tries youtube-transcript-api first, falls back to timedtext scraping."""
-    # Method 1: youtube-transcript-api library
+    """Fetch transcript with 3-method fallback chain:
+    1. youtube-transcript-api with cookies (if config/youtube_cookies.txt exists)
+    2. youtube-transcript-api without cookies
+    3. Direct timedtext HTML scraping with cookies
+    """
+    # Method 1: youtube-transcript-api with cookie session
+    session = _load_cookie_session()
+    if session:
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            ytt_api = YouTubeTranscriptApi(http_client=session)
+            transcript = None
+            for langs in [['en'], ['en-US'], ['en-GB']]:
+                try:
+                    transcript = ytt_api.fetch(video_id, languages=langs)
+                    break
+                except Exception:
+                    continue
+            if transcript is None:
+                transcript = ytt_api.fetch(video_id)
+            return _parse_transcript_entries(transcript)
+        except Exception as e:
+            pass  # Fall through to method 2
+
+    # Method 2: youtube-transcript-api without cookies
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         ytt_api = YouTubeTranscriptApi()
@@ -118,10 +200,38 @@ def fetch_transcript(video_id: str) -> dict:
     except Exception:
         pass
 
-    # Method 2: Direct timedtext scraping (bypasses IP blocks)
+    # Method 3: Direct timedtext scraping with cookies
     result = _fetch_timedtext(video_id)
     if result.get("text"):
         return result
+
+    # Method 4: yt-dlp subtitle download (most robust, handles anti-bot)
+    try:
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cmd = [sys.executable, "-m", "yt_dlp",
+                   "--write-auto-sub", "--sub-lang", "en", "--skip-download",
+                   "-o", f"{tmpdir}/sub", f"https://www.youtube.com/watch?v={video_id}"]
+            if COOKIE_PATH.exists():
+                cmd.extend(["--cookies", str(COOKIE_PATH)])
+            cp = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            # Find the subtitle file
+            from pathlib import Path as _P
+            vtt_files = list(_P(tmpdir).glob("*.vtt"))
+            if vtt_files:
+                vtt = vtt_files[0].read_text()
+                lines = []
+                for line in vtt.split("\n"):
+                    line = line.strip()
+                    if line and not line.startswith("WEBVTT") and "-->" not in line and not line[0:1].isdigit():
+                        clean = re.sub(r"<[^>]+>", "", line)
+                        if clean:
+                            lines.append(clean)
+                if lines:
+                    text = " ".join(lines)
+                    return {"text": text, "segments": len(lines), "duration_seconds": 0, "timed_segments": []}
+    except Exception:
+        pass
 
     return {"error": "All transcript methods failed", "text": "", "segments": 0, "duration_seconds": 0}
 

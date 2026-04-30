@@ -163,6 +163,24 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
    └→ For each video: check if video_id already in DB (dedup)
    └→ 37 channels × 3 videos = up to 111 videos checked daily
 
+2a. TRANSCRIPT FETCH — 4-method fallback chain (v2.51):
+   └→ Method 1: youtube-transcript-api WITH cookies (config/youtube_cookies.txt)
+   └→ Method 2: youtube-transcript-api WITHOUT cookies
+   └→ Method 3: Direct timedtext HTML scraping with cookies
+   └→ Method 4: yt-dlp subtitle download (most robust anti-bot handling)
+   └→ All methods: graceful fallback, logged errors, never crash
+
+2b. COOKIE SETUP (bypasses YouTube IP blocks on cloud/VPS servers):
+   └→ Cookie file: config/youtube_cookies.txt (Netscape/Mozilla format)
+   └→ Setup script: bash scripts/setup_youtube_cookies.sh
+   └→ Export methods:
+      • yt-dlp --cookies-from-browser chrome (on machine with Chrome logged into YouTube)
+      • yt-dlp --cookies-from-browser firefox (on machine with Firefox)
+      • "Get cookies.txt LOCALLY" Chrome extension → export → save
+   └→ Copy to server: scp youtube_cookies.txt server:config/youtube_cookies.txt
+   └→ Test: python3 scripts/youtube_transcript_ingest.py --test
+   └→ Cookies loaded by both youtube-transcript-api (requests.Session) and timedtext (urllib opener)
+
 2b. AUTOMATED BACKFILL (youtube_backfill_manager.py — runs until complete)
    └→ Cron: every 4 hours until all 37 channels completed
    └→ Processes 5 channels per batch (retirement/SSDI prioritized first)
