@@ -2118,3 +2118,66 @@ New button below discovery cards: **"▼ View Raw Intelligence (admin)"**
 ### DB Table Count
 
 149 tables (+1: intelligence_whiteboard)
+
+---
+
+## v2.53 — Finviz Validation + LLM Strategy Review + Backtest Hooks
+
+### Finviz Screener Validator
+
+**Script:** `scripts/finviz_validator.py`
+
+| Flag | What It Does |
+|---|---|
+| `--check` | Tests every screener URL: HTTP status, CSV headers, required columns (Ticker, Price, Float, Gap, RVOL), cookie validity |
+| `--strategies` | Shows full 15-strategy matrix: cards, targets with R:R, classified symbols, agent coverage, avg confidence |
+| `--llm-review` | LLM analyzes all strategies for overlaps, gaps, SSDI concerns — stores review in agent_intelligence_rules |
+
+**Current validation: 2/2 screeners OK**
+- prime_setups: 5 rows, day_scalp, v=152, all required columns present
+- watchlist_setups: 14 rows, day_scalp, v=152, all required columns present
+
+### Strategy Matrix (15 strategies, verified live)
+
+| Strategy | Cards | With Targets | Avg R:R | Classified | Analyzed | Avg Conf |
+|---|---|---|---|---|---|---|
+| income | 198 | 8 | 1.6x | — | — | — |
+| speculative_growth | 66 | 3 | 0.7x | 66 | 45 | 0.75 |
+| growth_etf | 56 | 6 | 3.9x | — | — | — |
+| defense_thesis | 36 | 13 | 2.4x | 46 | 35 | 0.73 |
+| dividend_growth_compounder | — | — | — | 74 | 60 | 0.74 |
+| covered_call_income | — | — | — | 69 | 44 | 0.78 |
+| core_growth_compounder | — | — | — | 51 | 43 | 0.76 |
+| reit_income | — | — | — | 32 | 22 | 0.73 |
+| bond_income | — | — | — | 31 | 24 | 0.73 |
+| international_dividend | — | — | — | 31 | 19 | 0.77 |
+| swing_trade | — | — | — | 30 | 19 | 0.77 |
+| recovery_watch | — | — | — | 30 | 17 | 0.77 |
+| core_holding | 25 | 1 | 1.5x | — | — | — |
+| high_yield_income_bdc | — | — | — | 22 | 19 | 0.78 |
+| core_index | — | — | — | 14 | 13 | 0.76 |
+
+### LLM Strategy Review (live output from qwen3:1.7b)
+
+**Key findings:**
+1. **Overlaps:** dividend_growth_compounder (74 symbols) + income (198 cards) heavily overlap — should merge
+2. **Gaps:** No cash/Treasury ladder, no sector rotation, no inflation hedges beyond REITs
+3. **Risk:** 9 strategies missing R:R ratios; speculative_growth has 0.7x R:R (terrible)
+4. **Covered calls:** 69 symbols but no R:R defined — major income opportunity undefined
+5. **SSDI:** No IRMAA threshold monitoring ($103K), missing Medicaid 5-year lookback strategies
+6. **Immediate action:** Fix covered call income strategy — largest undefined position
+
+Review stored in: `agent_intelligence_rules` (rule_type='strategy_review', rule_key='latest')
+
+### Backtest Hooks (Future-Proof)
+
+New columns on `trade_instructions` table:
+- `backtest_id` TEXT — links to replay/backtesting system
+- `backtest_result` JSONB — stores backtest output (P&L, drawdown, Sharpe, etc.)
+
+Purpose: when Alpaca paper trading or backtesting is added, each trade instruction can be linked to its simulated result for learning loop validation.
+
+### DB Updates
+
+- `intelligence_whiteboard` table created (v2.52.1): 149 → 149 tables
+- `trade_instructions.backtest_id` + `backtest_result` columns added (v2.53)
