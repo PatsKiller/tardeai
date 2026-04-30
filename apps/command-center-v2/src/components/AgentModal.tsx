@@ -35,6 +35,7 @@ const recColor: Record<string, string> = {
 export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, onNavigate }: Props) {
   const [freshQuery, setFreshQuery] = useState('')
   const [runningFresh, setRunningFresh] = useState(false)
+  const [showRawIntel, setShowRawIntel] = useState(false)
   const [freshResult, setFreshResult] = useState<string | null>(null)
 
   const handleRunFresh = useCallback(async () => {
@@ -244,6 +245,30 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
                       )
                     })}
                   </div>
+
+                  {/* Raw Intelligence Toggle */}
+                  <button onClick={() => setShowRawIntel(!showRawIntel)} style={{
+                    ...F, fontSize: 10, padding: '5px 12px', marginBottom: 14,
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6,
+                    background: showRawIntel ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    color: showRawIntel ? 'var(--text1)' : 'var(--text3)', cursor: 'pointer',
+                  }}>{showRawIntel ? '▲ Hide Raw Intelligence' : '▼ View Raw Intelligence (admin)'}</button>
+                  {showRawIntel && (
+                    <div style={{ marginBottom: 18, padding: '12px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10 }}>
+                      <div style={{ ...F, fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 8 }}>Underlying Data Sources</div>
+                      {latest.map((r, i) => (
+                        <div key={`raw-${i}`} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ ...F, fontSize: 12, fontWeight: 800, color: '#fff' }}>{r.symbol}</span>
+                            <span style={{ ...F, fontSize: 9, color: 'var(--text3)' }}>{r.created_at ? timeAgo(r.created_at) : ''}</span>
+                          </div>
+                          <div style={{ ...F, fontSize: 11, color: 'var(--text2)', lineHeight: 1.6, whiteSpace: 'pre-wrap', maxHeight: 120, overflowY: 'auto', padding: '4px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: 6, fontFamily: 'var(--mono)' }}>
+                            {r.narrative || r.summary || '(no raw text)'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* What to watch for */}
                   {watchItems.length > 0 && (
