@@ -129,8 +129,30 @@ export default function MorningBrief() {
   const [decidedIds, setDecidedIds] = useState<Set<number>>(new Set())
   const [boardFilter, setBoardFilter] = useState<BoardFilter>('all')
   const [intelExpanded, setIntelExpanded] = useState(false)
+  const [aiQuery, setAiQuery] = useState<string | null>(null)
+  const [aiResponse, setAiResponse] = useState<string | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
   const lastRefreshed = useRef(new Date())
   const { showToast } = useToast()
+
+  const handleAiResearch = useCallback(async (question: string) => {
+    setAiQuery(question)
+    setAiResponse(null)
+    setAiLoading(true)
+    try {
+      const r = await fetch('/api/v2/ai-ask', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      })
+      const d = await r.json()
+      if (d.ok || d.data?.ok) {
+        setAiResponse((d.data?.answer || d.answer || 'No response').slice(0, 2000))
+      } else {
+        setAiResponse(`Error: ${d.error || d.data?.error || 'Query failed'}`)
+      }
+    } catch { setAiResponse('Network error — server may be offline') }
+    setAiLoading(false)
+  }, [])
 
   const handleTaskDecided = useCallback((taskId: number, status: string) => {
     setDecidedIds(s => new Set(s).add(taskId))
@@ -249,13 +271,16 @@ export default function MorningBrief() {
                     <span>{analyses} analyses (30d)</span>
                     <span>last: {lastRun}</span>
                   </div>
-                  {/* Quick research buttons */}
+                  {/* Quick research buttons — triggers live AI query */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {agent.prompts.map(p => (
-                      <button key={p} onClick={() => nav(`/ai-analyst?q=${encodeURIComponent(p)}`)} style={{
-                        ...F, fontSize: 8, padding: '3px 8px', border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 99, background: 'rgba(255,255,255,0.04)', color: 'var(--text2)',
-                        cursor: 'pointer', whiteSpace: 'nowrap',
+                      <button key={p} onClick={() => handleAiResearch(p)} style={{
+                        ...F, fontSize: 8, padding: '3px 8px',
+                        border: `1px solid ${aiQuery === p ? agent.color + '55' : 'rgba(255,255,255,0.08)'}`,
+                        borderRadius: 99,
+                        background: aiQuery === p ? agent.color + '15' : 'rgba(255,255,255,0.04)',
+                        color: aiQuery === p ? agent.color : 'var(--text2)',
+                        cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 100ms',
                       }}>{p}</button>
                     ))}
                   </div>
@@ -265,6 +290,24 @@ export default function MorningBrief() {
           })}
         </div>
       </motion.div>
+
+      {/* ── AI Research Response (inline, appears when agent button clicked) ── */}
+      {(aiQuery || aiLoading) && (
+        <motion.div {...fadeUp} style={{ ...glassPanel, padding: '14px 18px', marginBottom: 14, borderLeft: '3px solid var(--accent)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ ...F, fontSize: 11, fontWeight: 800, color: 'var(--accent)' }}>
+              {aiLoading ? '⏳ ' : '🤖 '}{aiQuery}
+            </div>
+            <button onClick={() => { setAiQuery(null); setAiResponse(null) }} style={{ ...F, fontSize: 9, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>✕ Close</button>
+          </div>
+          {aiLoading && <div style={{ ...F, fontSize: 11, color: 'var(--text3)' }}>Analyzing with local AI...</div>}
+          {aiResponse && (
+            <div style={{ ...F, fontSize: 11, color: 'var(--text1)', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto' }}>
+              {aiResponse}
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 3: WHAT TO WATCH FOR
