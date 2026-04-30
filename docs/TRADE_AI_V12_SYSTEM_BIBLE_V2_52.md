@@ -1672,3 +1672,90 @@ The Grok prompts are starting to request micro-optimizations that don't move the
 3. **Run the system for 2+ weeks** — let outcome lessons accumulate
 4. **Review proposal decisions** — approve/reject 10+ proposals to feed the learning loop
 5. **Build the one missing UI** — Command Center proposal approve/reject on mobile (Telegram bot already handles this)
+
+---
+
+## v2.52 — Transcript Lifecycle + Credential Monitor + Cookie Protection
+
+### YouTube Transcript Pipeline — Full Lifecycle (v2.52)
+
+```
+INGESTION (daily 7 PM via cron, 37 channels × 3 videos)
+  └→ 4-method fetch chain: library+cookies → library → timedtext+cookies → yt-dlp+deno
+  └→ 344 transcripts ingested (332 today alone after cookie fix)
+  ↓
+CLEANING (immediate or batch)
+  └→ clean_transcript(): remove filler, normalize, strip ads
+  └→ extractive_filter(): TextRank 35% extraction of key sentences
+  └→ 30/344 cleaned (8%)
+  ↓
+SCORING (immediate)
+  └→ content_scoring.score_content(): quality_score (0-100), relevance_score (0-1.0)
+  └→ tag_content(): strategy_tags, agent_tags
+  └→ extract_sub_tags(): retirement subtopics
+  ↓
+LLM SUMMARY (slow, incremental — 2/hour overnight)
+  └→ generate_structured_summary() via local qwen3:1.7b
+  └→ 9-field JSON: summary, key_points, action_items, tickers, retirement_relevance, etc.
+  └→ 10/344 summarized (3%) — backlog processes ~18/night
+  ↓
+EMBEDDING (after scoring)
+  └→ nomic-embed-text 768-dim via Ollama
+  └→ Stored in content_embeddings table
+  └→ 30/344 embedded (8%)
+  ↓
+AGENT INJECTION
+  └→ get_intel_summary() pulls top YouTube results with structured key_points
+  └→ Semantic search via cosine similarity on embeddings
+  └→ Agents see: "[youtube] Q:70 Day Trading Tax Canada — key_point_1, key_point_2"
+```
+
+### Processing Schedule
+
+| Cron | Script | What | Volume |
+|---|---|---|---|
+| 7:00 PM weekdays | youtube_transcript_ingest.py --all-channels | Ingest new videos (3/channel) | ~111 checked |
+| 7:30 PM weekdays | transcript_slow_processor.py --fresh --count 5 | Process today's transcripts | 5 fresh |
+| 10PM-6AM hourly | transcript_slow_processor.py --run --count 2 | Process backlog with LLM | ~18/night |
+| 9:00 PM weekdays | overnight_batch.py --index-embeddings | Index new embeddings | all new |
+
+### Backlog ETA
+
+- **Total**: 344 transcripts
+- **Summarized**: 10 (3%)
+- **Remaining**: 334
+- **Rate**: 18/night (2/hour × 9 hours)
+- **ETA**: ~19 nights to complete full backlog
+- **Fresh transcripts**: processed same day (7:30 PM cron)
+
+### Credential Monitor (v2.52)
+
+Daily 6 AM check of all credentials with Telegram alerting:
+
+| Credential | Check Method | Current Status |
+|---|---|---|
+| Finviz Cookie | Test CSV download | ✅ OK |
+| YouTube Cookie | Check SID/LOGIN_INFO presence | ✅ OK (15 auth entries) |
+| YouTube API | Test search endpoint | ✅ OK |
+| FRED | Test DFF observation | ✅ OK (3.64%) |
+| Brave Search | Test web search | 🔴 402 (needs $5) |
+| Finnhub | Test AAPL quote | ✅ OK |
+| FMP | Test quote endpoint | ⚠️ Legacy endpoints deprecated |
+| Alpha Vantage | Test global quote | ✅ OK |
+| PostgreSQL | Count tables | ✅ OK (148) |
+| Ollama | List models | ✅ OK (qwen3:1.7b, nomic-embed-text) |
+
+**Telegram commands:**
+- `check credentials` → full health check
+- `update FINVIZ_COOKIE value` → updates .env directly
+
+**Guardrails:**
+- Finviz: detects login page returned (expired cookie) → Telegram alert with fix instructions
+- Empty screener CSV (0 rows) → no longer triggers false quality alert
+- YouTube cookie file: protected header, setup script validates auth before overwriting
+
+### Cookie Protection (v2.52)
+
+- `config/youtube_cookies.txt` has "DO NOT overwrite" header
+- `setup_youtube_cookies.sh` validates auth cookies (SID/LOGIN_INFO) before saving
+- yt-dlp method writes to temp file, never overwrites auth cookies directly
