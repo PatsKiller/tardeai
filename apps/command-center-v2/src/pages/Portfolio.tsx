@@ -78,8 +78,8 @@ export default function Portfolio() {
   const sectorEntries = Object.entries(sectors).sort((a, b) => b[1] - a[1]).slice(0, 8)
 
   const columns = [
-    { key: 'signal', label: 'Sig', width: 42, render: (r: Holding) => r.signal ? (
-      <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: SIG_BG[r.signal] || 'var(--bg3)', color: SIG_COLOR[r.signal] || 'var(--text3)' }}>{r.signal}</span>
+    { key: 'signal', label: 'Decision', width: 55, render: (r: Holding) => r.signal ? (
+      <span title={r.signal === 'ADD' ? 'Add shares — use available cash in this account' : r.signal === 'TRIM' ? 'Reduce position — sell in THIS account, proceeds stay here' : r.signal === 'HOLD' ? 'No change recommended' : r.signal === 'WAIT' || r.signal === 'MONITOR' ? 'AI flagged — check AI Analyst for details' : r.signal === 'GO' ? 'Scalp setup — Taxable account only' : r.signal} style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: SIG_BG[r.signal] || 'var(--bg3)', color: SIG_COLOR[r.signal] || 'var(--text3)' }}>{r.signal}{r.account?.includes('401k') && (r.signal === 'TRIM' || r.signal === 'SELL') ? ' (via Fidelity)' : ''}</span>
     ) : <span style={{ color: 'var(--text3)', fontSize: 8 }}>—</span> },
     { key: 'symbol', label: 'Symbol', width: 55, render: (r: Holding) => <span style={{ fontWeight: 700 }}>{r.symbol}</span> },
     { key: 'account', label: 'Acct', width: 50, render: (r: Holding) => <span style={{ fontSize: 9, color: 'var(--text3)' }}>{ACCT[r.account] || r.account}</span> },
