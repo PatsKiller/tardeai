@@ -70,6 +70,7 @@ export default function Dividends() {
               <div>Minimum <strong style={{ color: 'var(--amber)' }}>{fmt$(MINIMUM)}</strong></div>
               <div>Target <strong style={{ color: 'var(--green)' }}>{fmt$(TARGET)}</strong></div>
               <div>Stretch <strong style={{ color: '#a78bfa' }}>{fmt$(STRETCH)}</strong></div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Gap: {fmt$(TARGET - earned)} · Close by adding SCHD/JEPI in Roll IRA ($16K cash)</div>
             </div>
           </div>
 
