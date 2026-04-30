@@ -31,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # ── Configuration ──────────────────────────────────────────────
 
-LOCAL_TIMEOUT = 8       # seconds before falling back
+LOCAL_TIMEOUT = 30      # seconds — qwen3 thinking mode needs 15-20s
 CONFIDENCE_THRESHOLD = 0.65
 LOCAL_MODEL = "qwen3:1.7b"
 LOCAL_URL = "http://127.0.0.1:11434/api/generate"
@@ -78,7 +78,7 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
         payload = json.dumps({
             "model": LOCAL_MODEL, "stream": False, "think": False,
             "prompt": prompt,
-            "options": {"temperature": 0.3, "num_predict": max_tokens}
+            "options": {"temperature": 0.3, "num_predict": max(500, max_tokens)}
         }).encode()
         req = urllib.request.Request(LOCAL_URL, data=payload,
                                      headers={"Content-Type": "application/json"}, method="POST")
