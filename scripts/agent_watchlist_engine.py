@@ -41,71 +41,117 @@ def _send_tg(msg):
 # ── Job 1: Promote high-quality intel ────────────────────────────────
 
 def promote_qualified_intel() -> dict:
-    """Scan all content tables and promote high-quality items to qualified_intelligence."""
+    """Stage 1: Route new high-quality items to whiteboard (NOT directly to dashboard).
+    Stage 2: Promote validated whiteboard items to qualified_intelligence after multi-day curation.
+
+    Flow: Raw → Whiteboard (stage) → iterate 2-3 days → Qualified Intelligence (dashboard)
+    """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     ucur = conn.cursor()
+    staged = 0
     promoted = 0
 
-    # News articles (relevance as quality proxy — 0-1 scale, so Q≥0.7)
+    # ── Stage 1: Route new items to whiteboard ──────────────────────────
+    # News articles (relevance ≥ 0.7)
     cur.execute("""
-        SELECT id, symbol, title, source, relevance_score, strategy_tags, agent_tags
+        SELECT id, symbol, title, source, relevance_score, strategy_tags
         FROM news_articles
         WHERE relevance_score >= 0.7
+          AND id NOT IN (SELECT source_id FROM intelligence_whiteboard WHERE source_type='news')
           AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='news')
         ORDER BY relevance_score DESC LIMIT 50
     """)
     for r in cur.fetchall():
-        ucur.execute("""INSERT INTO qualified_intelligence
-            (source_type, source_table, source_id, symbol, title, strategy_focus, quality_score, relevance_score)
-            VALUES ('news', 'news_articles', %s, %s, %s, %s, %s, %s)
+        ucur.execute("""INSERT INTO intelligence_whiteboard
+            (source_type, source_id, symbol, title, summary, quality_score, confidence, status)
+            VALUES ('news', %s, %s, %s, %s, %s, %s, 'raw')
             ON CONFLICT DO NOTHING""",
-            (r["id"], r["symbol"], r["title"][:200],
-             (r.get("strategy_tags") or [""])[0] if r.get("strategy_tags") else "",
-             int(float(r["relevance_score"]) * 100), r["relevance_score"]))
-        promoted += 1
+            (r["id"], r["symbol"], r["title"][:200], r["title"][:200],
+             int(float(r["relevance_score"]) * 100), float(r["relevance_score"])))
+        staged += 1
 
-    # YouTube transcripts (Q≥70 + ai_validated)
+    # YouTube transcripts (Q ≥ 60 — lower bar for whiteboard than qualified)
     cur.execute("""
-        SELECT id, title, channel_name, quality_score, relevance_score, validation_status,
-               structured_json, sub_tags, strategy_tags
+        SELECT id, title, channel_name, quality_score, relevance_score, summary
         FROM youtube_transcripts
-        WHERE quality_score >= 70 AND validation_status = 'ai_validated'
+        WHERE quality_score >= 60
+          AND id NOT IN (SELECT source_id FROM intelligence_whiteboard WHERE source_type='youtube')
           AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='youtube')
+        ORDER BY quality_score DESC LIMIT 50
     """)
     for r in cur.fetchall():
-        sj = r.get("structured_json") or {}
-        retirement_rel = sj.get("retirement_relevance", "medium") if isinstance(sj, dict) else "medium"
-        ucur.execute("""INSERT INTO qualified_intelligence
-            (source_type, source_table, source_id, title, strategy_focus, sub_tags,
-             quality_score, relevance_score, retirement_relevance, structured_json)
-            VALUES ('youtube', 'youtube_transcripts', %s, %s, %s, %s, %s, %s, %s, %s)
+        ucur.execute("""INSERT INTO intelligence_whiteboard
+            (source_type, source_id, symbol, title, summary, quality_score, confidence, status)
+            VALUES ('youtube', %s, NULL, %s, %s, %s, %s, 'raw')
             ON CONFLICT DO NOTHING""",
-            (r["id"], r["title"][:200], r.get("channel_name", ""),
-             json.dumps(r.get("sub_tags") or []),
-             r["quality_score"], float(r["relevance_score"]),
-             retirement_rel, json.dumps(sj) if sj else None))
-        promoted += 1
+            (r["id"], r["title"][:200], (r.get("summary") or r["title"])[:500],
+             r["quality_score"], float(r["relevance_score"])))
+        staged += 1
 
-    # SEC Form 4 (all insider filings are qualified by definition)
+    # SEC Form 4 (always stage)
     cur.execute("""
         SELECT id, symbol, filer_name, transaction_type, filing_date
         FROM sec_form4
-        WHERE id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='sec_form4')
+        WHERE id NOT IN (SELECT source_id FROM intelligence_whiteboard WHERE source_type='sec_form4')
+          AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='sec_form4')
+    """)
+    for r in cur.fetchall():
+        ucur.execute("""INSERT INTO intelligence_whiteboard
+            (source_type, source_id, symbol, title, quality_score, confidence, status)
+            VALUES ('sec_form4', %s, %s, %s, 80, 0.8, 'raw')
+            ON CONFLICT DO NOTHING""",
+            (r["id"], r["symbol"], f"Form 4: {r['filer_name']} {r['transaction_type']}"[:200]))
+        staged += 1
+
+    conn.commit()
+
+    # ── Stage 2: Update days_on_board + check for cross-references ──────
+    ucur.execute("""UPDATE intelligence_whiteboard
+        SET days_on_board = EXTRACT(DAY FROM NOW() - first_seen_at)::int
+        WHERE status IN ('raw', 'iterating')""")
+
+    # Items with same symbol from 2+ sources → mark as iterating
+    ucur.execute("""UPDATE intelligence_whiteboard wb SET
+        status = 'iterating',
+        sources_count = sub.cnt,
+        last_iterated_at = NOW()
+        FROM (SELECT symbol, count(DISTINCT source_type) as cnt
+              FROM intelligence_whiteboard WHERE symbol IS NOT NULL AND status IN ('raw', 'iterating')
+              GROUP BY symbol HAVING count(DISTINCT source_type) >= 2) sub
+        WHERE wb.symbol = sub.symbol AND wb.status = 'raw'""")
+
+    # ── Stage 3: Promote validated items (2+ days + multi-source OR 3+ days + high Q) ──
+    cur.execute("""
+        SELECT DISTINCT ON (symbol) id, source_type, source_id, symbol, title, quality_score, confidence
+        FROM intelligence_whiteboard
+        WHERE status IN ('raw', 'iterating')
+          AND ((days_on_board >= 2 AND sources_count >= 2) OR (days_on_board >= 3 AND quality_score >= 75))
+          AND symbol IS NOT NULL
+          AND symbol NOT IN (SELECT symbol FROM qualified_intelligence WHERE symbol IS NOT NULL)
+        ORDER BY symbol, quality_score DESC
     """)
     for r in cur.fetchall():
         ucur.execute("""INSERT INTO qualified_intelligence
             (source_type, source_table, source_id, symbol, title, quality_score, relevance_score)
-            VALUES ('sec_form4', 'sec_form4', %s, %s, %s, 80, 0.8)
+            VALUES (%s, 'intelligence_whiteboard', %s, %s, %s, %s, %s)
             ON CONFLICT DO NOTHING""",
-            (r["id"], r["symbol"], f"Form 4: {r['filer_name']} {r['transaction_type']}"[:200]))
+            (r["source_type"], r["source_id"], r["symbol"], r["title"][:200],
+             r["quality_score"], float(r["confidence"] or 0)))
+        ucur.execute("UPDATE intelligence_whiteboard SET status='promoted', promoted_at=NOW(), promoted_by='curation_engine' WHERE id=%s", (r["id"],))
         promoted += 1
 
     conn.commit()
+
+    # Stats
+    cur.execute("SELECT status, count(*) FROM intelligence_whiteboard GROUP BY status ORDER BY status")
+    wb_stats = {r["status"]: r["count"] for r in cur.fetchall()}
     conn.close()
-    print(f"[qualify] Promoted {promoted} items to qualified_intelligence")
-    return {"promoted": promoted}
+
+    print(f"[qualify] Staged {staged} to whiteboard, promoted {promoted} to qualified")
+    print(f"[qualify] Whiteboard: {wb_stats}")
+    return {"staged": staged, "promoted": promoted, "whiteboard": wb_stats}
 
 
 # ── Job 2: Propose watchlist adds ────────────────────────────────────
