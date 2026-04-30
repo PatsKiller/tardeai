@@ -83,6 +83,10 @@ def parse_command(text: str) -> dict:
         return {"command": "roth_ladder", "args": ""}
     if lower in ("monthly report", "monthly", "monthly retirement"):
         return {"command": "monthly_report", "args": ""}
+    if lower.startswith("update "):
+        return {"command": "update_credential", "args": text[7:].strip()}
+    if lower in ("check credentials", "cred check", "credential check"):
+        return {"command": "credential_check", "args": ""}
     if lower.startswith("run screener "):
         return {"command": "run_screener", "args": text[13:].strip()}
     if lower.startswith("research "):
@@ -113,6 +117,8 @@ def process_command(cmd: dict) -> str:
         lines.append("  intel — all agent intel (no symbol)")
         lines.append("  conflicts — agent disagreements")
         lines.append("  status — portfolio + income + tax + agents")
+        lines.append("  check credentials — API key health check")
+        lines.append("  update KEY VALUE — update .env credential")
         lines.append("  research Roth conversion ladder")
         lines.append("  run screener dividend_growth")
         return "\n".join(lines)
@@ -136,6 +142,41 @@ def process_command(cmd: dict) -> str:
             return f"Error: {r.get('error', 'Report failed')}"
         except Exception as e:
             return f"Monthly report error: {e}"
+
+    if command == "credential_check":
+        try:
+            from credential_monitor import run_checks
+            results = run_checks(send_telegram=False)
+            lines = ["🔑 *Credential Health Check*", ""]
+            for r in results:
+                icon = {"ok": "✅", "warning": "⚠️", "expired": "🔴", "missing": "⬜", "error": "❌", "quota": "🟡"}.get(r["status"], "❓")
+                line = f"{icon} *{r['name']}*: {r['status']}"
+                if r.get("error"):
+                    line += f"\n   _{r['error']}_"
+                elif r.get("detail"):
+                    line += f" — {r['detail']}"
+                lines.append(line)
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Credential check error: {e}"
+
+    if command == "update_credential":
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: `update FINVIZ_COOKIE value_here`\n\nValid keys: FINVIZ_COOKIE, YOUTUBE_API_KEY, FRED_API_KEY, BRAVE_SEARCH_API_KEY, FINNHUB_API_KEY, FMP_API_KEY, ALPHA_VANTAGE_API_KEY"
+        key, value = parts[0].upper(), parts[1].strip()
+        allowed = {"FINVIZ_COOKIE", "YOUTUBE_API_KEY", "FRED_API_KEY", "BRAVE_SEARCH_API_KEY",
+                    "FINNHUB_API_KEY", "FMP_API_KEY", "ALPHA_VANTAGE_API_KEY", "OPENAI_API_KEY",
+                    "ANTHROPIC_API_KEY", "GEMINI_API_KEY"}
+        if key not in allowed:
+            return f"❌ Key `{key}` not in allowed list.\nAllowed: {', '.join(sorted(allowed))}"
+        try:
+            from credential_monitor import update_env_key
+            if update_env_key(key, value):
+                return f"✅ Updated `{key}` in .env ({len(value)} chars)\n\n_Restart services to apply: portfolio-server, tradeai-continuous_"
+            return "❌ Failed to update .env"
+        except Exception as e:
+            return f"Update error: {e}"
 
     if command == "alex":
         # Route to Alex retirement advisor
