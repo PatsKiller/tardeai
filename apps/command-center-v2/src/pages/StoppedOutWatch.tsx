@@ -66,7 +66,7 @@ export default function StoppedOutWatch() {
 
   return (
     <>
-      <PageHeader title="Recovery Watch" subtitle={items.length > 0 ? `${items.length} position${items.length !== 1 ? 's' : ''} under review` : 'No positions under watch'} actions={
+      <PageHeader title="Recovery Watch" subtitle={items.length > 0 ? `${items.length} stopped position${items.length !== 1 ? 's' : ''} · Freed capital stays as cash in original account (Taxable) until verdict upgrades. Money market: SPAXX/FZFXX at Fidelity.` : 'No positions under watch — all stops intact'} actions={
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button onClick={async () => {
             setReviewRunning(true); setReviewResult(null)

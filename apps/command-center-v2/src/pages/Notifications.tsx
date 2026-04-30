@@ -57,7 +57,7 @@ export default function Notifications() {
 
   return (
     <>
-      <PageHeader title="Notification Log" subtitle={`${notifications.length} entries across all channels`} />
+      <PageHeader title="Notification Log" subtitle={`${notifications.length} entries · telegram+export = sent to Telegram AND exported to Word report. Draft = queued for next batch. Urgent = sent immediately.`} />
 
       {/* Stats strip */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>

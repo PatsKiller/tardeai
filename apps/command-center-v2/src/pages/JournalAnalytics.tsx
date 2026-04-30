@@ -38,7 +38,7 @@ export default function JournalAnalytics() {
   if (!data.has_data) {
     return (
       <>
-        <PageHeader title="Journal Analytics" subtitle="Trade review intelligence" />
+        <PageHeader title="Journal Analytics" subtitle="Trade review intelligence — requires 3+ reviewed trades per setup type for pattern insights" />
         <Card>
           <div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>
             <div style={{ fontSize: 14, marginBottom: 8 }}>No reviewed trades yet</div>

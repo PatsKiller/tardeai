@@ -59,7 +59,7 @@ export default function CIODashboard() {
 
   return (
     <>
-      <PageHeader title="CIO Intelligence Dashboard" subtitle={`${decisions.length} decisions · ${humanReview.length} need review · ${dashboard?.pending_rotations || 0} rotations · ${dashboard?.draft_plans || 0} plans`} actions={
+      <PageHeader title="CIO Intelligence Dashboard" subtitle={`${decisions.length} total AI analyses (not active decisions) · ${humanReview.length} need review · ${dashboard?.pending_rotations || 0} rotations · ADD_REVIEW = AI recommends adding, awaiting approval · HUMAN_REVIEW = uncertain, needs your judgment`} actions={
         <button onClick={() => setRefreshKey(k => k + 1)} style={btnStyle}>⟳ Refresh</button>
       } />
 
