@@ -33,8 +33,11 @@ export default function Technical() {
   return (
     <>
       <PageHeader title={`Position Intelligence — ${sorted.length} Positions`} subtitle="Technical health across all holdings" />
+      <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8, padding: '4px 8px', background: 'var(--bg3)', borderRadius: 6 }}>
+        PI Score = aggregate technical health (0–100). &lt;40 = Bearish/Defensive, 40–60 = Neutral, &gt;60 = Bullish. Near Stop = SMA20 below 0% or RSI &lt;45.
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8, marginBottom: 12 }}>
-        <Summary label="PI Score" value={String(avgPi)} tone="amber" />
+        <Summary label="PI Score" value={String(avgPi)} tone={avgPi >= 60 ? 'green' : avgPi >= 40 ? 'amber' : 'red'} />
         <Summary label="Bullish" value={String(scored.filter(h => (h.pi_score ?? 0) >= 60).length)} tone="green" />
         <Summary label="Bearish" value={String(scored.filter(h => (h.pi_score ?? 0) < 45).length)} tone="red" />
         <Summary label="Above SMA200" value={String(scored.filter(h => (h.sma200_pct ?? 0) > 0).length)} tone="green" />
