@@ -48,6 +48,9 @@ export default function TradeAI() {
 
   if (!tai) return <div style={{ color: 'var(--text3)', padding: 40 }}>Loading Trade AI data...</div>
 
+  // Grade legend for tooltip
+  const gradeLegend: Record<string, string> = { A: 'High confidence (score ≥45, all criteria met)', B: 'Moderate (score 35-44, some criteria marginal)', C: 'Low confidence (score <35)' }
+
   const tickers = filter === 'ALL' ? (tai.tickers || []) : (tai.tickers || []).filter(t => t.decision === filter)
   const regimeEmoji = tai.breadth?.includes('Bull') ? '\u{1f7e2}' : tai.breadth?.includes('Bear') ? '\u{1f534}' : '\u{1f7e1}'
 
@@ -86,6 +89,9 @@ export default function TradeAI() {
   return (
     <>
       <PageHeader title="Trade AI" subtitle={`Run ${tai.run_label} | ${tai.run_date} | ${tai.ticker_count} tickers scanned`} />
+      <div style={{ padding: '8px 14px', marginBottom: 12, background: 'rgba(74,144,244,0.08)', border: '1px solid rgba(74,144,244,0.2)', borderRadius: 8, fontSize: 11, color: '#4a90f4' }}>
+        📋 Scalp trades only — execute in <strong>Taxable account</strong> (Fidelity cash account) or paper-trade. Do NOT use IRA accounts. Position size: risk $150/trade, target $300+. Grade: A = score ≥45 (all criteria met), B = 35-44 (marginal), C = &lt;35. Deltas = tickers whose score changed vs previous run.
+      </div>
 
       {/* Regime + VIX banner */}
       <div style={{
