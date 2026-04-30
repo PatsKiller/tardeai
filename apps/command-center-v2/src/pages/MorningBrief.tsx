@@ -577,6 +577,7 @@ export default function MorningBrief() {
         })() : null}
         onClose={() => setModalAgent(null)}
         onRunFresh={(q) => { setModalAgent(null); handleAiResearch(q) }}
+        onNavigate={(path) => { setModalAgent(null); nav(path) }}
       />
     </div>
   )
