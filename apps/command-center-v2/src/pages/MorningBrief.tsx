@@ -103,13 +103,13 @@ function buildActionBoard(ctx: ChatCtx, ov: OverviewData | null, rk: RiskData | 
 // ── Agent card config ─────────────────────────────────────────────────────
 
 const AGENT_CARDS = [
-  { id: 'maria', name: 'Maria', role: 'Research & Fundamentals', color: '#4a90f4', icon: '🔬',
+  { id: 'maria', dbNames: ['maria'], name: 'Maria', role: 'Research & Fundamentals', color: '#4a90f4', icon: '🔬',
     prompts: ['Deep-dive V fundamentals', 'Catalyst scan this week', 'Earnings surprise analysis'] },
-  { id: 'steph', name: 'Steph', role: 'Allocation & Income', color: '#0ecb81', icon: '📊',
+  { id: 'steph', dbNames: ['steph'], name: 'Steph', role: 'Allocation & Income', color: '#0ecb81', icon: '📊',
     prompts: ['Income gap strategy', 'Rebalance priorities', 'Dividend quality check'] },
-  { id: 'risk', name: 'Risk', role: 'Technical & Stops', color: '#f6465d', icon: '⚡',
+  { id: 'risk', dbNames: ['risk', 'risk_agent'], name: 'Risk', role: 'Technical & Stops', color: '#f6465d', icon: '⚡',
     prompts: ['Stop coverage audit', 'RSI extremes scan', 'Correlation risk'] },
-  { id: 'alex', name: 'Alex', role: 'Retirement & SSDI', color: '#f0b90b', icon: '🏦',
+  { id: 'alex', dbNames: ['tax', 'tax_agent', 'alex'], name: 'Alex', role: 'Retirement & SSDI', color: '#f0b90b', icon: '🏦',
     prompts: ['Roth conversion pace', 'IRMAA projection', 'Monthly performance'] },
 ]
 
@@ -220,7 +220,7 @@ export default function MorningBrief() {
         <div style={{ fontSize: 11, fontWeight: 800, color: '#fff', marginBottom: 8, ...F }}>Agent Intelligence</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 16 }}>
           {AGENT_CARDS.map(agent => {
-            const data = agents.find(a => a.agent?.toLowerCase().includes(agent.id))
+            const data = agents.find(a => agent.dbNames.some(n => a.agent?.toLowerCase() === n || a.agent?.toLowerCase().includes(n)))
             const conf = data ? (data.avg_confidence * 100) : 0
             const analyses = data?.total_analyses ?? 0
             const lastRun = data?.last_run ? timeAgo(data.last_run) : 'never'
@@ -439,19 +439,23 @@ export default function MorningBrief() {
       </motion.div>
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 7: CHARTS (existing, preserved)
+          SECTION 7: CHARTS (compact row)
          ══════════════════════════════════════════════════════════════════ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
         {positions.length > 0 && (
-          <div style={{ ...glassPanel, padding: 14 }}>
-            <div style={{ ...F, fontSize: 11, fontWeight: 800, color: '#fff', marginBottom: 10 }}>Top Risk Positions</div>
-            <BarChartJS labels={positions.slice().sort((a, b) => (b.max_loss || 0) - (a.max_loss || 0)).slice(0, 5).map(p => p.symbol)} data={positions.slice().sort((a, b) => (b.max_loss || 0) - (a.max_loss || 0)).slice(0, 5).map(p => -(p.max_loss || 0))} height={110} />
+          <div style={{ ...glassPanel, padding: '10px 12px' }}>
+            <div style={{ ...F, fontSize: 10, fontWeight: 800, color: '#fff', marginBottom: 6 }}>Top Risk Positions</div>
+            <div style={{ height: 80 }}>
+              <BarChartJS labels={positions.slice().sort((a, b) => (b.max_loss || 0) - (a.max_loss || 0)).slice(0, 5).map(p => p.symbol)} data={positions.slice().sort((a, b) => (b.max_loss || 0) - (a.max_loss || 0)).slice(0, 5).map(p => -(p.max_loss || 0))} height={80} />
+            </div>
           </div>
         )}
         {tasksData && (tasksData.count || 0) > 0 && (
-          <div style={{ ...glassPanel, padding: 14, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <div style={{ ...F, fontSize: 11, fontWeight: 800, color: '#fff', marginBottom: 10, alignSelf: 'flex-start' }}>Task Status</div>
-            <DoughnutChart labels={['Pending', 'Urgent', 'Done']} data={[tasksData.pending || 0, tasksData.urgent || 0, Math.max(0, (tasksData.count || 0) - (tasksData.pending || 0) - (tasksData.urgent || 0))]} colors={['#f0b90b', '#f6465d', '#0ecb81']} height={110} />
+          <div style={{ ...glassPanel, padding: '10px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div style={{ ...F, fontSize: 10, fontWeight: 800, color: '#fff', marginBottom: 6, alignSelf: 'flex-start' }}>Task Status</div>
+            <div style={{ height: 80, width: 80 }}>
+              <DoughnutChart labels={['Pending', 'Urgent', 'Done']} data={[tasksData.pending || 0, tasksData.urgent || 0, Math.max(0, (tasksData.count || 0) - (tasksData.pending || 0) - (tasksData.urgent || 0))]} colors={['#f0b90b', '#f6465d', '#0ecb81']} height={80} />
+            </div>
           </div>
         )}
       </div>
