@@ -350,16 +350,35 @@ def _log_call(task_type: str, result: dict):
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / "llm_router.log"
 
+    # Determine routing reason
+    hi = result.get("high_impact", False)
+    prov = result.get("provider", "?")
+    fallbacks = result.get("fallback_reasons", [])
+    if not hi and prov == "local":
+        routing_reason = "routine → local (default)"
+    elif hi and prov == "local":
+        routing_reason = f"high_impact but cloud unavailable ({len(fallbacks)} fallbacks) → local"
+    elif hi and prov == "claude":
+        routing_reason = "high_impact → claude (primary)"
+    elif hi and prov in ("grok", "openai"):
+        routing_reason = f"high_impact → {prov} (claude unavailable)"
+    else:
+        routing_reason = f"{prov} (task={task_type})"
+
+    resp_text = result.get("response", "")
     entry = {
         "timestamp": datetime.now().isoformat(),
         "task_type": task_type,
-        "provider": result.get("provider"),
+        "provider": prov,
         "model": result.get("model_used"),
+        "routing_reason": routing_reason,
         "latency": result.get("latency"),
         "cost": result.get("cost_estimate", 0),
-        "response_len": len(result.get("response", "")),
-        "fallbacks": result.get("fallback_reasons", []),
-        "high_impact": result.get("high_impact", False),
+        "response_len": len(resp_text),
+        "est_tokens": len(resp_text) // 4,
+        "prompt_len": len(result.get("_prompt", "")) if "_prompt" in result else 0,
+        "fallbacks": fallbacks,
+        "high_impact": hi,
     }
 
     try:

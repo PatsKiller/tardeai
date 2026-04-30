@@ -218,8 +218,83 @@ Be specific and actionable."""
         return {"error": str(e)}
 
 
+def full_audit() -> dict:
+    """Full audit: validate screeners (YAML + DB) + strategy matrix + gaps."""
+    import psycopg2.extras
+
+    print("=" * 70)
+    print("FINVIZ FULL AUDIT")
+    print("=" * 70)
+
+    # 1. YAML screeners (Elite, used for Trade AI day-scalp)
+    print("\n── YAML Screeners (screeners.yaml — Elite Finviz) ──\n")
+    yaml_results = validate_screeners()
+    for r in yaml_results:
+        icon = "✅" if r["url_ok"] and r["has_required_cols"] else "❌"
+        print(f"  {icon} {r['name']}: {r['rows']} rows, strategy={r['strategy']}")
+        for issue in r["issues"]:
+            print(f"       → {issue}")
+
+    # 2. DB screeners (finviz_screeners table — strategy-based)
+    print("\n── DB Screeners (finviz_screeners table) ──\n")
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""SELECT screener_id, display_name, strategy_type, active, schedule,
+        results_count, finviz_url FROM finviz_screeners ORDER BY strategy_type, screener_id""")
+    db_screeners = cur.fetchall()
+
+    issues = []
+    for s in db_screeners:
+        url = s.get("finviz_url", "") or ""
+        problems = []
+        if not url:
+            problems.append("NO URL")
+        elif "v=111" in url:
+            problems.append("v=111 (free — no RVOL/Float)")
+        if not s.get("strategy_type"):
+            problems.append("NO STRATEGY mapped")
+        if not s.get("active"):
+            problems.append("INACTIVE")
+
+        icon = "✅" if not problems else "⚠️" if "v=111" in str(problems) else "❌"
+        print(f"  {icon} {s['screener_id']:<25} {(s.get('strategy_type') or '—'):<28} {s.get('schedule','—'):<8} results={s.get('results_count',0)}")
+        for p in problems:
+            print(f"       → {p}")
+            issues.append({"screener": s["screener_id"], "issue": p})
+
+    conn.close()
+
+    # 3. Strategy coverage gaps
+    print(f"\n── Summary ──\n")
+    print(f"  YAML screeners: {len(yaml_results)} ({sum(1 for r in yaml_results if r['url_ok'])} OK)")
+    print(f"  DB screeners:   {len(db_screeners)} ({sum(1 for s in db_screeners if s.get('active') and s.get('finviz_url'))} active with URL)")
+    print(f"  Total issues:   {len(issues)}")
+
+    strategies_with_screener = set(s.get("strategy_type") for s in db_screeners if s.get("strategy_type") and s.get("finviz_url"))
+    all_strategies = set()
+    cur2 = _get_conn().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute("SELECT DISTINCT strategy_type FROM ticker_strategy_classifications WHERE active=TRUE")
+    all_strategies = {r["strategy_type"] for r in cur2.fetchall()}
+    cur2.connection.close()
+
+    uncovered = all_strategies - strategies_with_screener
+    if uncovered:
+        print(f"\n  ⚠️  Strategies WITHOUT a Finviz screener:")
+        for s in sorted(uncovered):
+            print(f"       → {s}")
+
+    return {"yaml": len(yaml_results), "db": len(db_screeners), "issues": len(issues), "uncovered_strategies": sorted(uncovered)}
+
+
 if __name__ == "__main__":
-    if "--check" in sys.argv:
+    if "--full-audit" in sys.argv:
+        r = full_audit()
+        if "--strategies" in sys.argv:
+            show_strategy_matrix()
+        if "--llm-review" in sys.argv:
+            llm_review_strategies()
+
+    elif "--check" in sys.argv:
         print("=== Finviz Screener Validation ===\n")
         results = validate_screeners()
         for r in results:
@@ -237,4 +312,4 @@ if __name__ == "__main__":
         llm_review_strategies()
 
     else:
-        print("Usage: --check | --strategies | --llm-review")
+        print("Usage: --full-audit [--strategies] [--llm-review] | --check | --strategies | --llm-review")
