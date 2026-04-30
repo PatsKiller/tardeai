@@ -205,16 +205,19 @@ def fetch_transcript(video_id: str) -> dict:
     if result.get("text"):
         return result
 
-    # Method 4: yt-dlp subtitle download (most robust, handles anti-bot)
+    # Method 4: yt-dlp subtitle download (most robust, handles anti-bot + JS challenges)
     try:
         import subprocess, tempfile
+        deno_path = Path.home() / ".deno" / "bin"
+        env = {**os.environ, "PATH": f"{deno_path}:{os.environ.get('PATH', '')}"}
         with tempfile.TemporaryDirectory() as tmpdir:
             cmd = [sys.executable, "-m", "yt_dlp",
                    "--write-auto-sub", "--sub-lang", "en", "--skip-download",
+                   "--no-check-formats", "--remote-components", "ejs:github",
                    "-o", f"{tmpdir}/sub", f"https://www.youtube.com/watch?v={video_id}"]
             if COOKIE_PATH.exists():
                 cmd.extend(["--cookies", str(COOKIE_PATH)])
-            cp = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            cp = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=env)
             # Find the subtitle file
             from pathlib import Path as _P
             vtt_files = list(_P(tmpdir).glob("*.vtt"))
