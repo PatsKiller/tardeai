@@ -82,7 +82,7 @@ export default function AlertsActions() {
   return (
     <>
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
-      <PageHeader title="Alerts & Actions" subtitle={`${alerts.length} alerts`} />
+      <PageHeader title="Alerts & Actions" subtitle={`${alerts.length} alerts · Red = action required · Green = opportunity · Data as of last reprice`} />
 
       {/* Quick Actions grid — matches v1 layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 6, marginBottom: 14 }}>

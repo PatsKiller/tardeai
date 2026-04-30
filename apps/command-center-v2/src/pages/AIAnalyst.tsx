@@ -158,7 +158,7 @@ export default function AIAnalyst() {
 
   return (
     <>
-      <PageHeader title="AI Analyst" subtitle={data?.generated_at ? `${data.run_type || 'daily'} · ${data.model || 'Claude'} · ${timeAgo(data.generated_at)}` : 'AI analysis'} />
+      <PageHeader title="AI Analyst" subtitle={data?.generated_at ? `${data.run_type || 'daily'} · ${data.model || 'Claude'} · ${timeAgo(data.generated_at)} · Validated = confirmed OK · Monitor = watch · Action = decide today` : 'AI analysis — run daily pipeline via Actions page to generate'} />
 
       {/* ── Ask AI ── */}
       <div style={{ background: 'rgba(16,20,28,0.92)', backdropFilter: 'blur(12px)', border: '1px solid rgba(74,144,244,0.25)', borderRadius: 12, padding: '18px 20px', marginBottom: 24 }}>
