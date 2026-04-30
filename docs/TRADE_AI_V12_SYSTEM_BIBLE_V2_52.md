@@ -1759,3 +1759,274 @@ Daily 6 AM check of all credentials with Telegram alerting:
 - `config/youtube_cookies.txt` has "DO NOT overwrite" header
 - `setup_youtube_cookies.sh` validates auth cookies (SID/LOGIN_INFO) before saving
 - yt-dlp method writes to temp file, never overwrites auth cookies directly
+
+---
+
+## v2.52 Final — Complete System State (April 30, 2026)
+
+### System at a Glance (Verified Live)
+
+| Metric | Value | Change from v2.41 |
+|---|---|---|
+| DB tables | **148** | +6 (content_embeddings, agent_debate_log, trade_instructions, agent_feedback_log, agent_data_source_rules, agent_sec_rules) |
+| API endpoints | **120+** | +15 (agent-detail, agent-health, autonomy-progress, search-sources, macro-context, proposals/*, trade-instructions, etc.) |
+| UI pages | **31** (14 with charts) | Morning Brief redesigned |
+| Cron entries | **63** | +18 (credential monitor, transcript processor, embedding indexer, outcome eval, proactive scan, research refresh, autonomy summary) |
+| Agent results | **946** | Maria 322, Steph 314, Risk 309, Tax 1 |
+| News articles | **693** from 50+ sources | +141 |
+| YouTube transcripts | **344** | +332 (cookie fix enabled mass ingestion) |
+| Content embeddings | **685** (nomic-embed-text 768-dim) | +685 (new) |
+| FRED macro series | **9** observations (7 series) | +9 (new, FRED_API_KEY activated) |
+| Strategy cards | **381** (31 with full stop/target/R:R) | +381 (new) |
+| Watchlist items | **462** across 4 sources | +462 (new) |
+| Qualified intelligence | **14** promoted items | +14 (new) |
+| Rotation proposals | **12** pending review | +12 (new) |
+
+### Morning Brief — Complete Redesign (v7)
+
+**Before:** Static action board with text-only items.
+
+**After:** Full intelligence briefing with 8 sections:
+
+```
+1. HERO NARRATIVE — synthesized portfolio summary + FRED macro context
+   Color-coded border (red = triggered stops, green = positive, amber = negative)
+
+2. AGENT INTELLIGENCE — 5 cards (Maria, Steph, Risk, Alex, Aegis)
+   Each card shows:
+   - Icon + name + role + confidence % (20px font)
+   - Confidence bar (agent color)
+   - Analyses count (30d) + last run time
+   - Escalation path (e.g., "Risk → Steph → Alex")
+   - Quick action buttons → open rich modal
+   
+   Click any card → Agent Modal:
+   - 22px agent name, 34px icon, escalation path at top
+   - Latest 5 discoveries (prioritizes items WITH strategy card data):
+     Symbol (18px, clickable → /research), recommendation badge, confidence %
+     Full summary paragraph (13px)
+     Strategy card details (when available):
+       Strategy type | Account (Roth/IRA/Taxable) | Position size | Horizon
+       Price | Support | Resistance | Stop (red) | Target (green) | R:R (green if ≥2x)
+     "+ Watchlist" button on ≥80% confidence items
+     → next action in blue
+   - "What to Watch For" — symbols with pending actions
+   - Recommendation Breakdown — BUY/HOLD/SELL/TRIM distribution tiles (30d)
+   - Top Confidence Picks — highest-confidence symbols as pills
+   - "Ask [Agent]" input for fresh analysis
+
+3. WHAT TO WATCH FOR — smart bullets with confidence %
+   Triggered stops, danger zone, pending proposals, overdue decisions
+
+4. METRIC TILES — 6-up (portfolio, heat, protected, proposals, tasks, escalations)
+
+5. COMMAND STRIP — 8-column clickable (today, triggered, steph, john, evidence, outcomes, vix, pipeline)
+
+6. ACTION BOARD — 14 items with filter bar (all/urgent/review/monitor)
+   + sidebar (decision queue, recent decisions, next 15 minutes)
+
+7. RISK & EXPOSURE + OPPORTUNITY & RECOVERY panels
+
+8. TRUST STRIP (clickable → relevant pages) + OVERNIGHT INTELLIGENCE (full narrative, clickable symbols)
+```
+
+### Agent Modal — Live Data Samples
+
+**Maria → AMD (BUY 85%)**
+```
+Strategy: growth_etf | Account: taxable | Size: Standard
+Price: $217.50 | Support: $192.43 | Resistance: $220.27
+Stop: $186.66 | Target: $224.68 | R:R: 3.9x
+Summary: "AMD is a semiconductor company with strong fundamentals
+and a competitive edge in the AI/ML space..."
+→ Monitor earnings and regulatory developments
+[+ Watchlist]
+```
+
+**Risk → AMANX (BUY 75%)**
+```
+Strategy: growth_etf | Account: taxable | R:R: 1.8x
+Stop: $63.66 | Target: $75.73
+```
+
+**Steph → BAH (RESEARCH_MORE 50%)**
+```
+Strategy: defense_thesis | Account: taxable | R:R: 2.8x
+Stop: $74.87 | Target: $85.76
+```
+
+### Watchlist Page — Enhanced Columns
+
+| Column | Data Source | What It Shows |
+|---|---|---|
+| **Symbol** | watchlist_symbol_master | Clickable → /research, shows last recommendation + confidence below |
+| **Agent / Source** | watchlist_items.source + watchlist_agent_results | Color-coded agent name (Maria=blue, Risk=red, Steph=green), source badges, green CURATED badge |
+| **Days** | first_seen_at → now | Days since first added (green ≥3, white ≥1, gray 0) |
+| **Strategy** | watchlist_strategy_cards | Strategy pill (income, defense_thesis, growth_etf, etc.) |
+| **Price** | strategy card latest_price | Current price |
+| **Value** | holdings.json | Market value if in portfolio |
+| **Weight** | holdings.json / total | Portfolio weight % |
+| **R:R** | strategy card risk_reward | Color-coded (green ≥2x, amber ≥1x, red <1x) |
+| **Stage** | analysis_maturity | Analysis pipeline stage |
+| **Analysts** | watchlist_agent_results | Maria/Steph/Risk/Tax status badges |
+| **Decision** | final_synthesis | Recommendation + QA status |
+
+**Curation logic:** `is_curated = true` when:
+- Symbol has been watched for 2+ days, OR
+- 2+ agent analyses in the last 7 days
+
+### Credential Monitor
+
+**Script:** `scripts/credential_monitor.py`
+
+**Schedule:** Daily 6:00 AM via cron (before all pipelines)
+
+**Checks (10 credentials):**
+
+| # | Credential | Method | Current |
+|---|---|---|---|
+| 1 | Finviz Cookie | Download test CSV | ✅ OK |
+| 2 | YouTube Cookie | Check SID/LOGIN_INFO in cookie file | ✅ OK (15 auth) |
+| 3 | YouTube API | Test search endpoint | ✅ OK |
+| 4 | FRED | Fetch DFF observation | ✅ OK (3.64%) |
+| 5 | Brave Search | Test web search | 🔴 402 ($5 needed) |
+| 6 | Finnhub | Test AAPL quote | ✅ OK ($270) |
+| 7 | FMP | Test quote endpoint | ⚠️ Legacy deprecated |
+| 8 | Alpha Vantage | Test global quote | ✅ OK |
+| 9 | PostgreSQL | Count tables | ✅ OK (148) |
+| 10 | Ollama | List models | ✅ OK (qwen3:1.7b, nomic-embed-text) |
+
+**Telegram commands:**
+- `check credentials` → full status report
+- `update FINVIZ_COOKIE value...` → updates .env directly
+
+**Guardrails:**
+- Finviz download detects login page → Telegram alert with fix instructions
+- Empty screener CSV (0 rows pre-market) → no longer false alert
+- YouTube cookie file protected: "DO NOT overwrite" header, setup script validates auth
+
+### YouTube Transcript Lifecycle
+
+```
+INGESTION (daily 7 PM, 37 channels × 3 videos)
+  └→ 4-method fetch: library+cookies → library → timedtext+cookies → yt-dlp+deno
+  └→ 344 transcripts total (332 ingested in single day after cookie fix)
+  ↓
+CLEANING (batch or incremental)
+  └→ clean_transcript() + extractive_filter(35%)
+  └→ 30/344 cleaned (9%)
+  ↓
+SCORING
+  └→ score_content(): quality 0-100, relevance 0-1.0
+  └→ tag_content(): strategy_tags, agent_tags, sub_tags
+  ↓
+LLM SUMMARY (slow processor, 2/hour overnight)
+  └→ generate_structured_summary() via local qwen3:1.7b
+  └→ 10/344 summarized (3%) — backlog ~19 nights
+  ↓
+EMBEDDING
+  └→ nomic-embed-text 768-dim via Ollama
+  └→ 685 total embedded (news + youtube)
+  ↓
+AGENT INJECTION
+  └→ get_intel_summary() pulls top results
+  └→ search_transcripts() with cosine similarity re-ranking
+```
+
+**Processing schedule:**
+| Time | What | Volume |
+|---|---|---|
+| 7:00 PM | Ingest new videos | ~111 checked |
+| 7:30 PM | Process fresh transcripts | 5 with LLM |
+| 9:00 PM | Index new embeddings | all unindexed |
+| 10PM-6AM | Process backlog | 2/hour = ~18/night |
+
+### Complete Cron Schedule (63 entries)
+
+**Morning cascade (5:00-7:00 AM):**
+| Time | Script |
+|---|---|
+| 5:00 AM | Alex daily scan |
+| 5:30 AM | Outcome evaluation (score past decisions) |
+| 6:00 AM | Credential monitor (check all API keys) |
+| 6:30 AM | FRED macro ingest |
+| 6:45 AM | Proactive intel scan (with debate gate) |
+
+**Market hours (7:00 AM - 7:00 PM):**
+| Time | Script |
+|---|---|
+| 7:05 AM | FMP dividend data |
+| 7:15 AM | yfinance quotes |
+| Every 15 min | Agent job processing |
+| 3x daily | News ingestion (Yahoo + Google + Finnhub) |
+
+**Evening pipeline (7:00-10:00 PM):**
+| Time | Script |
+|---|---|
+| 7:00 PM | YouTube transcript ingestion |
+| 7:30 PM | Fresh transcript processing (LLM) |
+| 8:00 PM | Overnight batch + SEC EDGAR |
+| 9:00 PM | Embedding indexer |
+
+**Overnight (10:00 PM - 6:00 AM):**
+| Time | Script |
+|---|---|
+| Hourly | Transcript slow processor (2/hr) |
+
+**Weekly:**
+| Day/Time | Script |
+|---|---|
+| Sunday 7 AM | Research topic refresh |
+| Sunday 8 AM | Autonomy summary (Telegram) |
+| Sunday 10 AM | Weekly health check (Alex) |
+| Monday 8 AM | Alpha Vantage fundamentals |
+| 1st of month 9 AM | Monthly retirement report |
+
+### Autonomous Engine Features
+
+| Feature | How It Works |
+|---|---|
+| **Multi-agent debate** | High-Q intel (≥75) → Maria/Steph/Risk debate → consensus ≥50% → queue for full chain |
+| **Outcome evaluation** | Daily 5:30 AM: score 7d outcomes, extract top 7 lessons → inject into every agent prompt |
+| **Proactive intel scan** | Daily 6:45 AM: scan qualified_intelligence, ticker-level throttling (48h stale gate) |
+| **Feedback loop** | Proposal approve/reject → agent_feedback_log → confidence adjustment (±0.05) → affects future proposals |
+| **Auto-execute toggle** | Disabled by default. Conf≥90%, no SSDI/IRMAA risk → auto-approve + trade instruction |
+| **FRED-aware proposals** | Rotation reasons include VIX/yield spread/fed rate context |
+
+### Search Fallback Chain
+
+```
+Query → Check source_hint + throttle gates
+  ↓
+1. BRAVE SEARCH (if research/high_value AND budget<5/day AND cooldown>60min AND not cached<24h)
+  ↓ (on 402 or error)
+2. FINNHUB supplement (14-day articles by symbol, quality-ranked)
+  ↓
+3. DB COMBINED (693 news from Yahoo/Google/Finnhub + 344 YouTube)
+  ↓
+4. CACHED EMBEDDINGS (685 nomic-embed-text 768-dim vectors, cosine similarity)
+```
+
+### What's Working Well
+
+- **Agent pipeline**: 946 analyses across 4 agents, avg confidence 72-76%
+- **News ingestion**: 693 articles from 50+ sources, automatic scoring + tagging
+- **YouTube transcripts**: 344 ingested (mass ingestion enabled by cookie fix)
+- **Embeddings**: 685 items with real 768-dim vectors, cosine similarity search
+- **FRED macro**: 7 series live, injected into all agent prompts
+- **Command Center**: 31 pages, Morning Brief fully redesigned with agent modals
+- **Credential monitoring**: 10 checks daily, Telegram update via reply
+- **Retirement planning**: Alex with SSDI/IRMAA/Medicaid awareness, monthly reports
+
+### What Needs Time (Not Code)
+
+- **Transcript backlog**: 334 remaining, processing ~18/night, ~19 nights to complete
+- **Outcome lessons**: Need 30+ days of accumulation for meaningful patterns
+- **Confidence trend**: Needs weeks of data points per symbol
+- **Decision feedback**: 0 proposals approved/rejected yet — loop hasn't started
+
+### What Needs Money/Hardware
+
+- **Brave Search**: $5 credit → unlocks real-time web research
+- **GPU upgrade**: qwen3:14b → dramatically better agent reasoning
+- **Social APIs**: X ($100/mo) or StockTwits (free) → sentiment data
