@@ -89,11 +89,11 @@ export default function Risk() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
         {[
-          { label: 'Portfolio Heat', value: `${r.portfolio_heat_pct.toFixed(1)}%`, color: r.portfolio_heat_pct > 5 ? 'var(--red)' : r.portfolio_heat_pct > 2 ? 'var(--amber)' : 'var(--green)' },
-          { label: 'Total Risk', value: fmt$(r.total_risk_dollars), color: 'var(--red)' },
-          { label: 'Protected', value: `${r.pct_protected.toFixed(0)}%`, sub: fmt$(r.total_protected_mv), color: 'var(--green)' },
-          { label: 'Unprotected', value: fmt$(r.total_unprotected_mv), color: 'var(--amber)' },
-          { label: 'Triggered', value: String(triggered.length), color: triggered.length > 0 ? 'var(--red)' : 'var(--green)' },
+          { label: 'Stop Risk Heat', value: `${r.portfolio_heat_pct.toFixed(1)}%`, color: r.portfolio_heat_pct > 5 ? 'var(--red)' : r.portfolio_heat_pct > 2 ? 'var(--amber)' : 'var(--green)', sub: r.portfolio_heat_pct > 5 ? 'Elevated — avoid new positions until <3%' : 'Normal range' },
+          { label: 'Total Risk $', value: fmt$(r.total_risk_dollars), color: 'var(--red)', sub: 'Sum of max loss if all stops hit' },
+          { label: 'Protected', value: `${r.pct_protected.toFixed(0)}%`, sub: `${fmt$(r.total_protected_mv)} with stops`, color: 'var(--green)' },
+          { label: 'Unprotected', value: fmt$(r.total_unprotected_mv), color: 'var(--amber)', sub: 'Includes 401k/mutual funds (no stops available)' },
+          { label: 'Triggered', value: String(triggered.length), color: triggered.length > 0 ? 'var(--red)' : 'var(--green)', sub: triggered.length > 0 ? 'Verify broker executed' : 'All stops intact' },
         ].map(m => (
           <div key={m.label} style={{ background: 'rgba(16,20,28,0.92)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px' }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6, fontFamily: 'var(--sans)' }}>{m.label}</div>
