@@ -2435,3 +2435,71 @@ Every LLM call now logs routing reason + token estimate:
 - No IRMAA threshold monitoring, no Medicaid lookback strategies
 - Missing: cash ladder, sector rotation, tax-loss harvesting, inflation hedges
 - Recommendation: consolidate to 8-10 well-defined strategies
+
+---
+
+## v2.53.4 — All 20 Finviz Screeners Upgraded to Elite v=152
+
+### What Changed
+
+All 20 Finviz screeners in the `finviz_screeners` database table were upgraded from free Finviz (`finviz.com/screener.ashx?v=111`) to Elite Finviz (`elite.finviz.com/export?v=152`) with custom columns.
+
+**Before:** 2 Elite + 18 Free + 1 broken = 21 issues
+**After:** 22 Elite (2 YAML + 20 DB) + 0 Free + 0 broken = **0 issues**
+
+### Conversion Applied
+
+| Component | Before | After |
+|---|---|---|
+| Domain | `finviz.com/screener.ashx` | `elite.finviz.com/export` |
+| View | `v=111` (free, basic columns) | `v=152` (elite, custom columns) |
+| Columns | Default (no RVOL/Float/Gap) | `c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67` |
+| Format | `ft=4` (HTML) | `ft=3` (CSV export) |
+
+**Custom columns (15):** No., Ticker, Company, Sector, Industry, Country, Market Cap, P/E, Shares Float, Gap, Average Volume, Relative Volume, Price, Change, Volume
+
+### dividend_growth Screener (Fixed)
+
+| Field | Before | After |
+|---|---|---|
+| URL | (empty) | `elite.finviz.com/export?v=152&f=fa_div_o2,fa_epsqoq_pos,fa_payoutratio_u70,cap_largeover&ft=3&c=...` |
+| Strategy | (empty) | `dividend_growth_compounder` |
+| Display name | `dividend_growth` | `Dividend Growth Compounder` |
+| Results | 0 | **128 rows** with RVOL + Float |
+
+### Full Audit Results (April 30, 2026 — 0 issues)
+
+| # | Screener ID | Strategy | Version | Rows | Status |
+|---|---|---|---|---|---|
+| 1 | prime_setups (YAML) | day_scalp | Elite v=152 | 5 | ✅ |
+| 2 | watchlist_setups (YAML) | day_scalp | Elite v=152 | 13 | ✅ |
+| 3 | bond_etf_income | bond_income | Elite v=152 | 50 | ✅ |
+| 4 | core_compounder_value | core_growth_compounder | Elite v=152 | 50 | ✅ |
+| 5 | core_index_broad | core_index | Elite v=152 | 50 | ✅ |
+| 6 | covered_call_etf | covered_call_income | Elite v=152 | 50 | ✅ |
+| 7 | covered_call_rotation | covered_call_income | Elite v=152 | 50 | ✅ |
+| 8 | defense_basket | defense_thesis | Elite v=152 | 50 | ✅ |
+| 9 | div_growth_quality | dividend_growth_compounder | Elite v=152 | 50 | ✅ |
+| 10 | dividend_growth | dividend_growth_compounder | Elite v=152 | 128 | ✅ (fixed) |
+| 11 | etf_income | covered_call_income | Elite v=152 | 50 | ✅ |
+| 12 | high_yield_income | high_yield_income_bdc | Elite v=152 | 50 | ✅ |
+| 13 | intl_dividend | international_dividend | Elite v=152 | 50 | ✅ |
+| 14 | ira_income_friendly | high_yield_income_bdc | Elite v=152 | 50 | ✅ |
+| 15 | recovery_candidates | recovery_watch | Elite v=152 | 50 | ✅ |
+| 16 | reit_income_scan | reit_income | Elite v=152 | 50 | ✅ |
+| 17 | roth_growth | core_growth_compounder | Elite v=152 | 50 | ✅ |
+| 18 | speculative_catalyst | speculative_growth | Elite v=152 | 30 | ✅ |
+| 19 | swing_momentum | swing_trade | Elite v=152 | 50 | ✅ |
+| 20 | tactical_momentum | speculative_growth | Elite v=152 | 50 | ✅ |
+| 21 | taxable_qualified_div | dividend_growth_compounder | Elite v=152 | 50 | ✅ |
+| 22 | value_income | dividend_growth_compounder | Elite v=152 | 50 | ✅ |
+
+**Total: 22/22 screeners Elite v=152, 0 issues**
+
+### Tested Live Downloads
+
+| Screener | Rows | RVOL Column | Float Column |
+|---|---|---|---|
+| div_growth_quality | 100 | ✅ | ✅ |
+| defense_basket | 84 | ✅ | ✅ |
+| dividend_growth (was broken) | 128 | ✅ | ✅ |
