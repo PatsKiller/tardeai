@@ -24,6 +24,7 @@ interface Props {
   detail: AgentDetailData | null
   onClose: () => void
   onRunFresh: (question: string) => void
+  onNavigate: (path: string) => void
 }
 
 const recColor: Record<string, string> = {
@@ -31,7 +32,7 @@ const recColor: Record<string, string> = {
   ADD: '#0ecb81', NEUTRAL: '#8b95a5', AVOID: '#f6465d', RESEARCH_MORE: '#4a90f4',
 }
 
-export default function AgentModal({ agent, stats, detail, onClose, onRunFresh }: Props) {
+export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, onNavigate }: Props) {
   const [freshQuery, setFreshQuery] = useState('')
   const [runningFresh, setRunningFresh] = useState(false)
   const [freshResult, setFreshResult] = useState<string | null>(null)
@@ -150,11 +151,14 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh }
                   <SectionTitle text="Latest Discoveries" />
                   <div style={{ display: 'grid', gap: 8, marginBottom: 18 }}>
                     {latest.map((r, i) => (
-                      <div key={i} style={{
+                      <div key={i} onClick={() => { onClose(); onNavigate(`/research?symbol=${r.symbol}`) }} style={{
                         padding: '12px 14px', background: 'rgba(255,255,255,0.025)',
                         border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10,
                         borderLeft: `3px solid ${recColor[r.recommendation] || '#555'}`,
-                      }}>
+                        cursor: 'pointer', transition: 'background 80ms',
+                      }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span style={{ ...F, fontSize: 15, fontWeight: 800, color: '#fff' }}>{r.symbol}</span>
@@ -183,12 +187,16 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh }
                       <SectionTitle text="What to Watch For" />
                       <div style={{ display: 'grid', gap: 4, marginBottom: 18 }}>
                         {watchItems.map((w, i) => (
-                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <div key={i} onClick={() => { onClose(); onNavigate(`/research?symbol=${w.symbol}`) }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 4px', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', borderRadius: 6, transition: 'background 80ms' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '' }}>
                             <span style={{ ...F, fontSize: 12, fontWeight: 800, color: '#fff', minWidth: 42 }}>{w.symbol}</span>
                             <span style={{ ...F, flex: 1, fontSize: 10, color: 'var(--text2)', lineHeight: 1.4 }}>{w.next_action}</span>
                             <span style={{ ...F, fontSize: 10, fontWeight: 700, color: w.confidence >= 0.8 ? '#0ecb81' : '#f0b90b', minWidth: 30, textAlign: 'right' }}>
                               {(w.confidence * 100).toFixed(0)}%
                             </span>
+                            <span style={{ fontSize: 10, color: 'var(--accent)' }}>→</span>
                           </div>
                         ))}
                       </div>
@@ -204,10 +212,14 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh }
                           const total = distribution.reduce((s, x) => s + x.cnt, 0)
                           const pct = total > 0 ? Math.round((d.cnt / total) * 100) : 0
                           return (
-                            <div key={d.recommendation} style={{
-                              padding: '8px 14px', background: 'rgba(255,255,255,0.03)',
-                              border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, textAlign: 'center',
-                            }}>
+                            <div key={d.recommendation} onClick={() => { onClose(); onNavigate('/watchlist') }}
+                              style={{
+                                padding: '8px 14px', background: 'rgba(255,255,255,0.03)',
+                                border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, textAlign: 'center',
+                                cursor: 'pointer', transition: 'background 80ms',
+                              }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)' }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)' }}>
                               <div style={{ ...F, fontSize: 18, fontWeight: 800, color: recColor[d.recommendation] || '#8b95a5' }}>{d.cnt}</div>
                               <div style={{ ...F, fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{d.recommendation} ({pct}%)</div>
                             </div>
@@ -223,11 +235,15 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh }
                       <SectionTitle text="Highest Confidence This Week" />
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 18 }}>
                         {topSymbols.map((s, i) => (
-                          <div key={i} style={{
-                            ...F, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10,
-                            padding: '4px 10px', background: 'rgba(255,255,255,0.03)',
-                            border: '1px solid rgba(255,255,255,0.06)', borderRadius: 99,
-                          }}>
+                          <div key={i} onClick={() => { onClose(); onNavigate(`/research?symbol=${s.symbol}`) }}
+                            style={{
+                              ...F, display: 'flex', alignItems: 'center', gap: 5, fontSize: 10,
+                              padding: '4px 10px', background: 'rgba(255,255,255,0.03)',
+                              border: '1px solid rgba(255,255,255,0.06)', borderRadius: 99,
+                              cursor: 'pointer', transition: 'background 80ms, border-color 80ms',
+                            }}
+                            onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.08)'; el.style.borderColor = 'rgba(255,255,255,0.15)' }}
+                            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.03)'; el.style.borderColor = 'rgba(255,255,255,0.06)' }}>
                             <span style={{ fontWeight: 800, color: '#fff' }}>{s.symbol}</span>
                             <span style={{ color: recColor[s.recommendation] || '#8b95a5', fontWeight: 700, fontSize: 9 }}>{s.recommendation}</span>
                             <span style={{ color: s.confidence >= 0.9 ? '#0ecb81' : '#f0b90b', fontWeight: 600 }}>
