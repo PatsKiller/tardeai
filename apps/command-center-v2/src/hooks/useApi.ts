@@ -1,36 +1,51 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 /**
  * Fetch from a /api/v2/* endpoint. Unwraps the { ok, data } envelope.
  * Returns data as T, or null while loading / on error.
+ * Retries once after 2s if the initial fetch fails (handles server restart).
  */
 export function useApi<T>(path: string) {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const retried = useRef(false)
 
   useEffect(() => {
     let cancelled = false
+    retried.current = false
     setLoading(true)
-    fetch(path)
-      .then(r => {
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
-        return r.json()
-      })
-      .then(envelope => {
-        if (!cancelled) {
+
+    const doFetch = () => {
+      fetch(path)
+        .then(r => {
+          if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+          return r.json()
+        })
+        .then(envelope => {
+          if (cancelled) return
           if (envelope.ok && envelope.data !== undefined) {
             setData(envelope.data)
           } else if (envelope.ok) {
-            // Some endpoints (reports/catalog) don't use the data wrapper
             setData(envelope as T)
           } else {
             setError(envelope.error || 'API error')
           }
-        }
-      })
-      .catch(e => { if (!cancelled) setError(e.message) })
-      .finally(() => { if (!cancelled) setLoading(false) })
+          setLoading(false)
+        })
+        .catch(e => {
+          if (cancelled) return
+          if (!retried.current) {
+            retried.current = true
+            setTimeout(() => { if (!cancelled) doFetch() }, 2000)
+            return
+          }
+          setError(e.message)
+          setLoading(false)
+        })
+    }
+
+    doFetch()
     return () => { cancelled = true }
   }, [path])
 
