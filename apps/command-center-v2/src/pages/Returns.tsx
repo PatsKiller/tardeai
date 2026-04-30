@@ -41,12 +41,17 @@ export default function Returns() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 8, marginBottom: 12 }}>
         {activePeriods.map(period => {
           const data = cardsSource[period]
-          if (!data) return <MetricTile key={period} label={period} value="—" delta="No data for this period" />
+          if (!data) return <MetricTile key={period} label={period} value="—" delta="Insufficient snapshot history" tooltip={`${period} returns require ${period === '6M' ? '180' : '365'}+ days of daily pipeline runs to compute.`} />
           return <MetricTile key={period} label={period} value={fmtPct(data.change_pct ?? 0)} delta={`${fmt$(data.change ?? 0)} · from ${periodData[period]?.start_date || '—'}`} deltaColor={deltaColor(data.change_pct)} />
         })}
       </div>
 
       {perf.warning && <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 10, fontSize: 10, color: 'var(--amber)' }}>{perf.warning}</div>}
+      {accountEntries.some(([k, r]) => k.includes('roth') && r.periods?.['YTD']?.change_pct > 500) && (
+        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'var(--accent-dim)', border: '1px solid var(--accent)', borderRadius: 10, fontSize: 10, color: 'var(--accent)' }}>
+          ℹ️ Roth IRA YTD return distorted by Roth conversion — reflects cost basis of converted shares, not actual market return.
+        </div>
+      )}
 
       <Card title="Period Returns" subtitle="portfolio vs prior periods">
         <div style={{ height: 260 }}>

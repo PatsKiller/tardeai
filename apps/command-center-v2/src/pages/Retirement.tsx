@@ -115,9 +115,9 @@ export default function Retirement() {
       {/* Account summary strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
         <MetricTile label="Total Portfolio" value={fmt$(data.accounts?.total ?? 0)} />
-        <MetricTile label="Roth IRA" value={fmt$(data.accounts?.roth ?? 0)} deltaColor="var(--green)" />
-        <MetricTile label="Traditional / Pre-tax" value={fmt$(data.accounts?.traditional ?? 0)} />
-        <MetricTile label="Taxable" value={fmt$(data.accounts?.taxable ?? 0)} />
+        <MetricTile label="Roth IRA" value={fmt$(data.accounts?.roth ?? 0)} deltaColor="var(--green)" delta={data.accounts?.total ? `${((data.accounts.roth / data.accounts.total) * 100).toFixed(1)}% — target 15-20%` : ''} />
+        <MetricTile label="Traditional / Pre-tax" value={fmt$(data.accounts?.traditional ?? 0)} delta="Taxed as ordinary income on withdrawal" />
+        <MetricTile label="Taxable" value={fmt$(data.accounts?.taxable ?? 0)} delta="Tax-loss harvesting eligible" />
         <MetricTile label="Days to Golden Window" value={String(daysToGolden || '—')} deltaColor="var(--amber)" />
       </div>
 
@@ -169,7 +169,7 @@ export default function Retirement() {
                 <div style={{ width: `${Math.min(100, (currentMAGI / 20124) * 100)}%`, height: '100%', background: currentMAGI <= 20124 ? '#0ecb81' : '#f6465d', borderRadius: 99 }} />
               </div>
               <div style={{ fontSize: 9, color: currentMAGI <= 20124 ? '#0ecb81' : '#f6465d' }}>
-                {currentMAGI <= 20124 ? `$${(20124 - currentMAGI).toLocaleString()} under limit` : `$${(currentMAGI - 20124).toLocaleString()} over limit`}
+                {currentMAGI <= 20124 ? `$${(20124 - currentMAGI).toLocaleString()} under limit` : `$${(currentMAGI - 20124).toLocaleString()} over limit — you do NOT qualify for Medicaid. Covered by Medicare (eligibility ${medicareDaysLeft}d).`}
               </div>
             </div>
           </div>
@@ -181,8 +181,9 @@ export default function Retirement() {
                 {currentMAGI <= 103000 ? 'Base (no surcharge)' : currentMAGI <= 129000 ? 'Tier 1' : currentMAGI <= 161000 ? 'Tier 2' : 'Tier 3+'}
               </div>
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text3)' }}>
-              MAGI threshold: $103,000
+            <div style={{ fontSize: 9, color: 'var(--text3)', textAlign: 'right' }}>
+              <div>MAGI threshold: $103,000</div>
+              <div style={{ marginTop: 2 }}>At $50K/yr conversions, MAGI stays below. Monitor: large conversion could trigger surcharge 2yr later.</div>
             </div>
           </div>
         </Card>
@@ -195,6 +196,7 @@ export default function Retirement() {
             <div style={{ fontSize: 10, fontWeight: 700, color: '#f2d35a', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: 'var(--sans)', marginBottom: 6 }}>Golden Roth Conversion Window</div>
             <div style={{ fontSize: 48, fontWeight: 800, color: '#f2d35a', lineHeight: 1, fontFamily: 'var(--sans)' }}>{daysToGolden || '—'}</div>
             <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 6 }}>days remaining · Opens {String(data.key_dates?.golden_window_start || '—')} · Closes {String(data.key_dates?.golden_window_end || '—')}</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Window = years between disability end (age 68.5) and RMD start (age 73). Convert aggressively at low tax rates before RMDs force higher income.</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>Optimal annual conversion</div>
@@ -217,7 +219,7 @@ export default function Retirement() {
         <div style={{ marginBottom: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: 'var(--text1)', fontWeight: 600, fontFamily: 'var(--sans)' }}>
-              Converted {fmtK(rothYTD)} of {fmtK(conversionTarget)} target ({conversionPct}%)
+              Converted {fmtK(rothYTD)} of {fmtK(conversionTarget)} target ({conversionPct}%) — FROM Rollover IRA → TO Roth IRA
             </span>
             <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--sans)' }}>
               22% bracket room: {fmt$(bracketRoom)} remaining
@@ -279,7 +281,8 @@ export default function Retirement() {
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', fontFamily: 'var(--sans)', marginBottom: 4 }}>401k Loan Payoff</div>
               <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text0)', fontFamily: 'var(--sans)' }}>{fmt$(loan.balance)}</div>
-              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4 }}>Due {loan.deadline} · {loan.days_remaining} days · {fmt$(loan.monthly_to_payoff)}/mo to payoff</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4 }}>Due {loan.deadline} · {loan.days_remaining} days · {fmt$(loan.monthly_to_payoff)}/mo auto-deduct</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>Pay off early via Fidelity NetBenefits → Loans. Early payoff returns money to your 401k balance.</div>
             </div>
             <div style={{ width: 80, height: 80, borderRadius: 999, border: '4px solid var(--amber)', display: 'grid', placeItems: 'center' }}>
               <div style={{ textAlign: 'center' }}>

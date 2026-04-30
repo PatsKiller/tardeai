@@ -48,13 +48,14 @@ export default function Dividends() {
     { key: 'annual_income', label: 'Annual', width: 62, align: 'right' as const, render: (r: Payer) => <span style={{ color: '#f2d35a', fontWeight: 700 }}>{fmt$(r.annual_income)}</span> },
     { key: 'monthly_amort', label: 'Monthly', width: 55, align: 'right' as const, render: (r: Payer) => fmt$(r.monthly_amort) },
     { key: 'frequency', label: 'Freq', width: 55, render: (r: Payer) => <span style={{ color: 'var(--text2)', fontSize: 10 }}>{r.frequency}</span> },
-    { key: 'safety', label: 'Safety', width: 50, render: (r: Payer) => <span style={{ color: r.safety === 'strong' ? 'var(--green)' : 'var(--amber)' }}>{r.safety}</span> },
+    { key: 'qualified', label: 'Tax', width: 40, render: (r: Payer) => <span style={{ fontSize: 9, color: r.qualified ? 'var(--green)' : 'var(--amber)' }} title={r.qualified ? 'Qualified: taxed at 0% LTCG rate at 12% bracket' : 'Ordinary: taxed as income (JEPI, PFLT, BND etc)'}>{r.qualified ? 'Qual' : 'Ord'}</span> },
+    { key: 'safety', label: 'Safety', width: 50, render: (r: Payer) => <span style={{ color: r.safety === 'strong' ? 'var(--green)' : 'var(--amber)' }} title={r.safety === 'watch' ? 'High yield may signal sustainability concern — monitor payout ratio and earnings' : 'Dividend appears well-covered by earnings'}>{r.safety}</span> },
     { key: 'links', label: 'Links', width: 90, sortable: false, render: (r: Payer) => <div style={{ display: 'flex', gap: 5 }}><a href={`https://finance.yahoo.com/quote/${r.symbol}`} target="_blank" rel="noreferrer">Yahoo</a><a href={`https://finviz.com/quote.ashx?t=${r.symbol}`} target="_blank" rel="noreferrer">Finviz</a></div> },
   ]
 
   return (
     <>
-      <PageHeader title={`Dividend Income — ${fmt$(d.total_annual)}/yr`} subtitle={`${payers.length} payers in scope`} />
+      <PageHeader title={`Dividend Income — ${fmt$(d.total_annual)}/yr`} subtitle={`${payers.length} payers · Qualified: ${fmt$(d.qualified_annual)} (0% LTCG at 12% bracket) · Ordinary: ${fmt$(d.ordinary_annual)} (taxed as income)`} />
 
       {/* ── Income Progress Hero Card ──────────────────────────────────── */}
       <Card title="Annual Income Progress">
