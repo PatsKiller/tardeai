@@ -2181,3 +2181,81 @@ Purpose: when Alpaca paper trading or backtesting is added, each trade instructi
 
 - `intelligence_whiteboard` table created (v2.52.1): 149 → 149 tables
 - `trade_instructions.backtest_id` + `backtest_result` columns added (v2.53)
+
+---
+
+## v2.53.1 — Cross-Agent Dedup + Escalation Paths + Holdings Context + Aegis Content
+
+### Cross-Agent Deduplication
+
+**Problem:** Same ticker (JUST, OFF, AEE) appeared in Maria, Steph, AND Risk modals — confusing, redundant.
+
+**Solution:** Global dedup in `/api/v2/agent-detail`:
+- Maria gets first pick of symbols (highest research coverage)
+- Risk gets remaining symbols not shown by Maria
+- Steph gets remaining not shown by Maria or Risk
+- Tax/Alex gets remaining
+- **Result: 0 duplicate symbols across all agent modals**
+
+### Escalation Path from DB
+
+Each discovery card now shows which agents reviewed that symbol:
+
+```
+RTX: maria → risk_agent → steph → tax_agent (4 agents reviewed)
+AVAV: maria → risk_agent → steph (3 agents)
+AMANX: risk_agent → steph (2 agents)
+AMD: maria (1 agent — new discovery)
+```
+
+Color-coded per agent (Maria=blue, Risk=red, Steph=green, Alex=gold).
+
+### Holdings Context
+
+Each discovery card shows if John currently holds the position:
+
+```
+AMANX: ✅ HELD | 45.2 shares | $3,360 | +$280
+RTX:   ✅ HELD | 25.0 shares | $4,578 | +$1,200
+AMD:   — (not held)
+```
+
+Green badge with shares, market value, and unrealized gain/loss.
+
+### User Context (injected into API response)
+
+Every agent-detail response includes `_user_context`:
+
+| Field | Live Value | Purpose |
+|---|---|---|
+| portfolio_value | $1,209,363 | Anchor position sizing |
+| income_gap | $40,596 | Income strategy priority |
+| ssdi_monthly | $3,800 | Disability awareness |
+| tax_bracket | 22% | Tax-loss harvesting threshold |
+| roth_ytd | $35,000 | Conversion pacing |
+| bracket_room | $28,700 | Room before bracket jump |
+
+### Aegis Modal Content
+
+**When overnight alerts exist:**
+- Risk alerts table: symbol, status (TRIGGERED/DANGER), current price vs stop
+- Intelligence events: severity-sorted (critical first)
+
+**When system is healthy:**
+- Large green checkmark ✅
+- "No Overnight Triggers — System healthy"
+- "All stops intact. No gap alerts."
+
+**Always shows:**
+- FRED Macro Snapshot grid (Fed Rate, VIX, S&P 500, Unemployment, etc.)
+
+### Verified Live Data
+
+```
+maria: AMD BUY 85% | stop=$186.66 target=$224.68 R:R=3.9x | taxable
+risk:  AMANX BUY 75% | HELD 45.2 shares | stop=$63.66 target=$75.73 R:R=1.8x
+steph: AVAV RESEARCH 50% | HELD | esc: maria→risk→steph | stop=$165 target=$206 R:R=2.0x
+tax:   RTX BUY 85% | HELD | esc: maria→risk→steph→tax | stop=$180.71 target=$207.55
+aegis: 8 intel events, 9 macro series
+Total: 9 unique symbols, 0 duplicates across agents
+```
