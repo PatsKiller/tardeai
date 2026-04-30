@@ -127,24 +127,59 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
             <div style={{ padding: '16px 24px 24px' }}>
 
               {!hasData ? (
-                /* ── No data state ── */
-                <div style={{ textAlign: 'center', padding: '30px 0' }}>
-                  <div style={{ ...F, fontSize: 14, color: 'var(--text2)', marginBottom: 16 }}>
-                    No recent analysis from {agent.name}.
-                  </div>
-                  <div style={{ ...F, fontSize: 11, color: 'var(--text3)', marginBottom: 16 }}>
-                    Would you like to run a fresh analysis?
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                    <input value={freshQuery} onChange={e => setFreshQuery(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleRunFresh()}
-                      placeholder={`Ask ${agent.name} anything...`}
-                      style={{ ...F, fontSize: 12, padding: '8px 14px', width: 320, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, background: 'rgba(255,255,255,0.05)', color: '#fff', outline: 'none' }} />
-                    <button onClick={handleRunFresh} disabled={runningFresh || !freshQuery.trim()} style={{
-                      ...F, fontSize: 11, fontWeight: 700, padding: '8px 18px', border: 'none', borderRadius: 8,
-                      background: agent.color, color: '#000', cursor: 'pointer', opacity: freshQuery.trim() ? 1 : 0.4,
-                    }}>{runningFresh ? 'Running...' : 'Run Analysis'}</button>
-                  </div>
+                /* ── No data / Aegis fallback ── */
+                <div style={{ padding: '16px 0' }}>
+                  {agent.id === 'aegis' ? (
+                    /* Aegis: show overnight status */
+                    <div>
+                      {detail?.risk_alerts && (detail.risk_alerts as unknown[]).length > 0 ? (
+                        <>
+                          <SectionTitle text="Overnight Risk Alerts" />
+                          {(detail.risk_alerts as Array<Record<string, unknown>>).map((a, i) => (
+                            <div key={i} style={{ ...F, display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 13, alignItems: 'center' }}>
+                              <span style={{ fontWeight: 800, color: '#fff', minWidth: 50 }}>{String(a.symbol)}</span>
+                              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: String(a.status) === 'TRIGGERED' ? '#f6465d20' : '#f0b90b20', color: String(a.status) === 'TRIGGERED' ? '#f6465d' : '#f0b90b' }}>{String(a.status)}</span>
+                              <span style={{ color: 'var(--text2)' }}>${String(a.current_price)} vs stop ${String(a.stop_price)}</span>
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <div style={{ ...F, textAlign: 'center', padding: '20px 0' }}>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: '#0ecb81', marginBottom: 8 }}>No Overnight Triggers</div>
+                          <div style={{ fontSize: 13, color: 'var(--text2)' }}>System healthy. All stops intact. No gap alerts.</div>
+                        </div>
+                      )}
+                      {detail?.macro && (detail.macro as unknown[]).length > 0 && (
+                        <>
+                          <SectionTitle text="Macro Snapshot" />
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                            {(detail.macro as Array<Record<string, unknown>>).map((m, i) => (
+                              <div key={i} style={{ ...F, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{String(m.series_name)}</div>
+                                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{Number(m.value).toFixed(2)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    /* Other agents: no data + run prompt */
+                    <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                      <div style={{ ...F, fontSize: 14, color: 'var(--text2)', marginBottom: 12 }}>No recent analysis from {agent.name}.</div>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <input value={freshQuery} onChange={e => setFreshQuery(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleRunFresh()}
+                          placeholder={`Ask ${agent.name} anything...`}
+                          style={{ ...F, fontSize: 12, padding: '8px 14px', width: 320, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, background: 'rgba(255,255,255,0.05)', color: '#fff', outline: 'none' }} />
+                        <button onClick={handleRunFresh} disabled={runningFresh || !freshQuery.trim()} style={{
+                          ...F, fontSize: 11, fontWeight: 700, padding: '8px 18px', border: 'none', borderRadius: 8,
+                          background: agent.color, color: '#000', cursor: 'pointer', opacity: freshQuery.trim() ? 1 : 0.4,
+                        }}>{runningFresh ? 'Running...' : 'Run Analysis'}</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* ── Rich narrative content ── */
@@ -162,12 +197,36 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
                     {latest.map((r, i) => {
                       const isHighConf = r.confidence >= 0.8
                       const isBuyAdd = ['BUY', 'ADD'].includes(r.recommendation)
+                      const reviewedBy: string[] = r.reviewed_by || []
+                      const agentColors: Record<string, string> = { maria: '#4a90f4', risk_agent: '#f6465d', steph: '#0ecb81', tax_agent: '#f0b90b' }
                       return (
                         <div key={i} style={{
-                          padding: '14px 18px', background: 'rgba(255,255,255,0.025)',
+                          padding: '16px 18px', background: 'rgba(255,255,255,0.025)',
                           border: `1px solid ${isHighConf ? agent.color + '30' : 'rgba(255,255,255,0.05)'}`,
                           borderRadius: 12, borderLeft: `4px solid ${recColor[r.recommendation] || '#555'}`,
                         }}>
+                          {/* Escalation path from DB */}
+                          {reviewedBy.length > 1 && (
+                            <div style={{ ...F, fontSize: 10, color: 'var(--text3)', marginBottom: 6, display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                              {reviewedBy.map((a, j) => (
+                                <span key={a}>
+                                  <span style={{ color: agentColors[a] || 'var(--text2)', fontWeight: 700 }}>{a.replace('_agent', '')}</span>
+                                  {j < reviewedBy.length - 1 && <span style={{ color: 'var(--text3)', margin: '0 2px' }}> → </span>}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* Holdings context */}
+                          {r.held && (
+                            <div style={{ ...F, fontSize: 10, marginBottom: 6, padding: '4px 8px', background: 'rgba(14,203,129,0.08)', borderRadius: 6, display: 'inline-flex', gap: 8, color: '#0ecb81' }}>
+                              <span style={{ fontWeight: 700 }}>HELD</span>
+                              <span>{r.held_shares?.toFixed(1)} shares</span>
+                              <span>${(r.held_value || 0).toLocaleString()}</span>
+                              <span style={{ color: (r.held_gain_loss || 0) >= 0 ? '#0ecb81' : '#f6465d' }}>
+                                {(r.held_gain_loss || 0) >= 0 ? '+' : ''}{r.held_gain_loss?.toLocaleString?.() || 0}
+                              </span>
+                            </div>
+                          )}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               <span onClick={() => { onClose(); onNavigate(`/research?symbol=${r.symbol}`) }}

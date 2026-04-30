@@ -2598,8 +2598,34 @@ def _agent_health():
 
 
 def _agent_detail():
-    """GET /api/v2/agent-detail — Per-agent latest results, narratives, and discoveries for modal display."""
-    result = {}
+    """GET /api/v2/agent-detail — Per-agent latest results with cross-agent dedup, escalation paths, and user context."""
+
+    # Load user context once (holdings, tax, income gap)
+    _h = _load_json(STATE_DIR / "holdings.json") or {}
+    _totals = _h.get("portfolio_totals", {})
+    _portfolio_value = _totals.get("total_value", 0)
+    _holdings_syms = {p.get("symbol", ""): {
+        "shares": float(p.get("shares", 0) or 0),
+        "value": float(p.get("market_value", 0) or 0),
+        "account": p.get("account_id", ""),
+        "gain_loss": float(p.get("gain_loss", 0) or 0),
+    } for p in _h.get("holdings", []) if p.get("symbol")}
+
+    _ps = _load_json(STATE_DIR / "personal_situation.json") or {}
+    _ps_fields = _ps.get("fields", {})
+    _user_ctx = {
+        "portfolio_value": round(_portfolio_value),
+        "income_gap": round(55000 - float((_load_json(STATE_DIR / "dividend_calendar.json") or {}).get("total_annual", 14285))),
+        "ssdi_monthly": float(_ps_fields.get("ssdi_annual", {}).get("current", 45600)) / 12,
+        "tax_bracket": int(_ps_fields.get("current_tax_bracket_pct", {}).get("current", 12)),
+        "roth_ytd": float(_ps_fields.get("roth_conversion_ytd_2026", {}).get("current", 35000)),
+        "bracket_room": float(_ps_fields.get("next_bracket_ceiling", {}).get("current", 94300)) - float(_ps_fields.get("ssdi_annual", {}).get("current", 45600)) - float(_ps_fields.get("schedule_c_gross", {}).get("current", 20000)),
+    }
+
+    # Track symbols already shown by higher-priority agents (dedup across agents)
+    _global_shown = set()
+
+    result = {"_user_context": _user_ctx}
     for agent_name in ['maria', 'risk_agent', 'steph', 'tax_agent']:
         # Latest 5 analyses — mix of items WITH strategy targets + most recent
         latest = _db_query("""
@@ -2644,19 +2670,41 @@ def _agent_detail():
             ORDER BY confidence DESC LIMIT 8
         """, (agent_name,)) or []
 
-        # Enrich latest results with strategy card data (stop/target/R:R/account)
+        # Enrich latest results with strategy card + escalation + holdings context
         enriched_latest = []
         for r in latest:
             item = {k: _json_clean(v) for k, v in r.items()}
             sym = item.get("symbol")
-            if sym:
-                sc = _db_query("""SELECT strategy_type, latest_price, support, resistance,
-                    stop_loss, target_price, risk_reward, account_fit,
-                    position_size_note, time_horizon
-                    FROM watchlist_strategy_cards WHERE symbol=%s LIMIT 1""", (sym,))
-                if sc:
-                    for k2, v2 in sc[0].items():
-                        item[f"sc_{k2}"] = _json_clean(v2)
+            if not sym or sym in _global_shown:
+                continue  # Cross-agent dedup
+            _global_shown.add(sym)
+
+            # Strategy card data
+            sc = _db_query("""SELECT strategy_type, latest_price, support, resistance,
+                stop_loss, target_price, risk_reward, account_fit,
+                position_size_note, time_horizon
+                FROM watchlist_strategy_cards WHERE symbol=%s LIMIT 1""", (sym,))
+            if sc:
+                for k2, v2 in sc[0].items():
+                    item[f"sc_{k2}"] = _json_clean(v2)
+
+            # Escalation path: which agents reviewed this symbol
+            esc = _db_query("""SELECT DISTINCT agent FROM watchlist_agent_results
+                WHERE symbol=%s AND created_at > NOW() - INTERVAL '14 days'
+                ORDER BY agent""", (sym,))
+            item["reviewed_by"] = [e["agent"] for e in esc] if esc else [agent_name]
+
+            # Holdings context: does John own this?
+            h = _holdings_syms.get(sym)
+            if h:
+                item["held"] = True
+                item["held_shares"] = h["shares"]
+                item["held_value"] = round(h["value"])
+                item["held_account"] = h["account"]
+                item["held_gain_loss"] = round(h["gain_loss"])
+            else:
+                item["held"] = False
+
             enriched_latest.append(item)
 
         result[agent_name] = {
@@ -2664,6 +2712,34 @@ def _agent_detail():
             "distribution": [{k: _json_clean(v) for k, v in r.items()} for r in dist],
             "top_symbols": [{k: _json_clean(v) for k, v in r.items()} for r in top_symbols],
         }
+
+    # ── Aegis: overnight surveillance data ──────────────────────────────
+    aegis_items = _db_query("""
+        SELECT symbol, event_type, severity, source, LEFT(payload::text, 300) as detail, created_at
+        FROM portfolio_intelligence_events
+        WHERE created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+                 created_at DESC LIMIT 8
+    """) or []
+    # Overnight stops/triggers from risk
+    risk_data = _db_query("""
+        SELECT symbol, current_price, stop_price, distance_pct, status
+        FROM risk_positions WHERE status IN ('TRIGGERED', 'DANGER')
+        ORDER BY CASE status WHEN 'TRIGGERED' THEN 1 ELSE 2 END LIMIT 5
+    """) or []
+    # Macro snapshot
+    macro = _db_query("""SELECT series_id, series_name, value, observation_date
+        FROM fred_economic_series ORDER BY series_id, observation_date DESC""") or []
+
+    result["aegis"] = {
+        "latest": [{k: _json_clean(v) for k, v in e.items()} for e in aegis_items] if aegis_items else [],
+        "risk_alerts": [{k: _json_clean(v) for k, v in r.items()} for r in risk_data] if risk_data else [],
+        "macro": [{k: _json_clean(v) for k, v in m.items()} for m in macro],
+        "distribution": [],
+        "top_symbols": [],
+        "overnight_healthy": len(aegis_items) == 0 and len(risk_data) == 0,
+    }
+
     return result
 
 
