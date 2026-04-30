@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
@@ -96,6 +96,7 @@ interface DrawerData {
 // ── Main Component ──
 
 export default function Watchlist() {
+  const navigate = useNavigate()
   const { showToast } = useToast()
   const [, setParams] = useSearchParams()
 
@@ -232,7 +233,8 @@ export default function Watchlist() {
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={th}><input type="checkbox" onChange={e => toggleAll(e.target.checked)} /></th>
                 <th style={th}>Symbol</th>
-                <th style={th}>Sources</th>
+                <th style={th}>Agent / Source</th>
+                <th style={th}>Days</th>
                 <th style={th}>Strategy</th>
                 <th style={{ ...th, textAlign: 'right' }}>Price</th>
                 <th style={{ ...th, textAlign: 'right' }}>Value</th>
@@ -258,10 +260,36 @@ export default function Watchlist() {
                       <input type="checkbox" checked={selected.has(item.symbol)} onChange={e => toggleSel(item.symbol, e.target.checked)} />
                     </td>
                     <td style={td}>
-                      <span style={{ color: 'var(--accent)', fontWeight: 700, fontSize: 12 }}>{item.symbol}</span>
+                      <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}
+                        onClick={e => { e.stopPropagation(); navigate(`/research?symbol=${item.symbol}`) }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = '' }}>
+                        {item.symbol}
+                      </span>
+                      {item.last_recommendation && (
+                        <div style={{ fontSize: 8, fontWeight: 700, marginTop: 2,
+                          color: item.last_recommendation === 'BUY' || item.last_recommendation === 'ADD' ? '#0ecb81' :
+                                 item.last_recommendation === 'SELL' || item.last_recommendation === 'TRIM' ? '#f6465d' :
+                                 item.last_recommendation === 'HOLD' ? '#f0b90b' : 'var(--text3)' }}>
+                          {item.last_recommendation} {item.last_confidence ? `${(item.last_confidence * 100).toFixed(0)}%` : ''}
+                        </div>
+                      )}
                     </td>
                     <td style={td}>
-                      <SourceBadges sources={item.sources || []} onFilter={filterBySource} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {item.last_agent && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: item.last_agent === 'maria' ? '#4a90f4' : item.last_agent === 'steph' ? '#0ecb81' : item.last_agent === 'risk_agent' ? '#f6465d' : '#f0b90b' }}>
+                            {item.last_agent.replace('_agent', '')}
+                          </span>
+                        )}
+                        <SourceBadges sources={item.sources || []} onFilter={filterBySource} />
+                        {item.is_curated && <span style={{ fontSize: 7, fontWeight: 700, color: '#0ecb81', background: '#0ecb8118', padding: '1px 4px', borderRadius: 3, width: 'fit-content' }}>CURATED</span>}
+                      </div>
+                    </td>
+                    <td style={{ ...td, textAlign: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: (item.days_watched ?? 0) >= 3 ? 'var(--green)' : (item.days_watched ?? 0) >= 1 ? 'var(--text1)' : 'var(--text3)' }}>
+                        {item.days_watched ?? 0}d
+                      </span>
                     </td>
                     <td style={td}><StrategyPill type={item.strategy_type} /></td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
