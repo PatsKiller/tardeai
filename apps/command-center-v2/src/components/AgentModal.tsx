@@ -83,29 +83,37 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
             onClick={e => e.stopPropagation()}
             style={{
               background: 'rgba(14,18,26,0.98)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 16, width: '92%', maxWidth: 720, maxHeight: '88vh',
+              borderRadius: 16, width: '95%', maxWidth: 820, maxHeight: '90vh',
               overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
-              borderTop: `3px solid ${agent.color}`,
+              borderTop: `4px solid ${agent.color}`,
             }}
           >
             {/* ── Header ── */}
-            <div style={{ padding: '20px 24px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ padding: '22px 28px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              {/* Escalation path */}
+              {'escalates' in agent && (
+                <div style={{ ...F, fontSize: 10, color: 'var(--text3)', marginBottom: 10, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ color: agent.color, fontWeight: 700 }}>{agent.name}</span>
+                  <span>→</span>
+                  <span>{(agent as Record<string, string>).escalates}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <span style={{ fontSize: 28 }}>{agent.icon}</span>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                  <span style={{ fontSize: 34 }}>{agent.icon}</span>
                   <div>
-                    <div style={{ ...F, fontSize: 18, fontWeight: 800, color: '#fff' }}>{agent.name}</div>
-                    <div style={{ ...F, fontSize: 11, color: agent.color, fontWeight: 600 }}>{agent.role}</div>
+                    <div style={{ ...F, fontSize: 22, fontWeight: 800, color: '#fff' }}>{agent.name}</div>
+                    <div style={{ ...F, fontSize: 13, color: agent.color, fontWeight: 600 }}>{agent.role}</div>
                   </div>
                 </div>
                 <button onClick={onClose} style={{
-                  ...F, fontSize: 14, width: 32, height: 32, border: '1px solid rgba(255,255,255,0.1)',
+                  ...F, fontSize: 16, width: 36, height: 36, border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 8, background: 'transparent', color: 'var(--text3)', cursor: 'pointer',
                   display: 'grid', placeItems: 'center',
                 }}>✕</button>
               </div>
               {stats && (
-                <div style={{ display: 'flex', gap: 24, marginTop: 14 }}>
+                <div style={{ display: 'flex', gap: 28, marginTop: 16 }}>
                   <StatBox label="Confidence" value={`${(stats.avg_confidence * 100).toFixed(0)}%`}
                     color={stats.avg_confidence >= 0.7 ? '#0ecb81' : '#f0b90b'} />
                   <StatBox label="Analyses (30d)" value={String(stats.total_analyses)} color="#fff" />
@@ -149,36 +157,71 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
 
                   {/* Latest discoveries */}
                   <SectionTitle text="Latest Discoveries" />
-                  <div style={{ display: 'grid', gap: 8, marginBottom: 18 }}>
-                    {latest.map((r, i) => (
-                      <div key={i} onClick={() => { onClose(); onNavigate(`/research?symbol=${r.symbol}`) }} style={{
-                        padding: '12px 14px', background: 'rgba(255,255,255,0.025)',
-                        border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10,
-                        borderLeft: `3px solid ${recColor[r.recommendation] || '#555'}`,
-                        cursor: 'pointer', transition: 'background 80ms',
-                      }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.06)' }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ ...F, fontSize: 15, fontWeight: 800, color: '#fff' }}>{r.symbol}</span>
-                            <RecBadge rec={r.recommendation} />
-                            <span style={{ ...F, fontSize: 11, fontWeight: 700, color: r.confidence >= 0.8 ? '#0ecb81' : r.confidence >= 0.6 ? '#f0b90b' : '#f6465d' }}>
-                              {(r.confidence * 100).toFixed(0)}%
-                            </span>
+                  <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
+                    {latest.map((r, i) => {
+                      const isHighConf = r.confidence >= 0.8
+                      const isBuyAdd = ['BUY', 'ADD'].includes(r.recommendation)
+                      return (
+                        <div key={i} style={{
+                          padding: '14px 18px', background: 'rgba(255,255,255,0.025)',
+                          border: `1px solid ${isHighConf ? agent.color + '30' : 'rgba(255,255,255,0.05)'}`,
+                          borderRadius: 12, borderLeft: `4px solid ${recColor[r.recommendation] || '#555'}`,
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <span onClick={() => { onClose(); onNavigate(`/research?symbol=${r.symbol}`) }}
+                                style={{ ...F, fontSize: 18, fontWeight: 800, color: '#fff', cursor: 'pointer' }}
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = agent.color }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#fff' }}>
+                                {r.symbol}
+                              </span>
+                              <RecBadge rec={r.recommendation} />
+                              <span style={{ ...F, fontSize: 13, fontWeight: 700, color: isHighConf ? '#0ecb81' : r.confidence >= 0.6 ? '#f0b90b' : '#f6465d' }}>
+                                {(r.confidence * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              <span style={{ ...F, fontSize: 10, color: 'var(--text3)' }}>{r.created_at ? timeAgo(r.created_at) : ''}</span>
+                              {isHighConf && (
+                                <button onClick={async (e) => {
+                                  e.stopPropagation()
+                                  try {
+                                    await fetch('/api/v2/watchlist/submit', {
+                                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ symbols: [r.symbol], agent: agent.name, request_type: 'analysis', note: `${agent.name}: ${r.recommendation} ${(r.confidence*100).toFixed(0)}% — ${(r.summary || '').slice(0, 100)}` })
+                                    })
+                                    ;(e.target as HTMLElement).textContent = '✓ Added'
+                                    ;(e.target as HTMLElement).style.background = '#0ecb8130'
+                                    ;(e.target as HTMLElement).style.color = '#0ecb81'
+                                  } catch { /* ignore */ }
+                                }} style={{
+                                  ...F, fontSize: 9, fontWeight: 700, padding: '3px 10px', border: `1px solid ${agent.color}55`,
+                                  borderRadius: 6, background: `${agent.color}15`, color: agent.color,
+                                  cursor: 'pointer', whiteSpace: 'nowrap',
+                                }}>+ Watchlist</button>
+                              )}
+                            </div>
                           </div>
-                          <span style={{ ...F, fontSize: 9, color: 'var(--text3)' }}>{r.created_at ? timeAgo(r.created_at) : ''}</span>
-                        </div>
-                        <div style={{ ...F, fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
-                          {r.summary || r.narrative || '—'}
-                        </div>
-                        {r.next_action && r.next_action !== r.recommendation && (
-                          <div style={{ ...F, fontSize: 10, color: '#4a90f4', marginTop: 6, fontWeight: 600 }}>
-                            → {r.next_action}
+                          {/* Summary */}
+                          <div style={{ ...F, fontSize: 13, color: 'var(--text1)', lineHeight: 1.7, marginBottom: 6 }}>
+                            {r.summary || r.narrative || '—'}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          {/* Actionable details */}
+                          {isBuyAdd && isHighConf && (
+                            <div style={{ ...F, fontSize: 11, color: 'var(--text2)', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, marginBottom: 6, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                              <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Strategy</span><div style={{ fontWeight: 700 }}>{r.recommendation === 'BUY' ? 'New position' : 'Add to existing'}</div></div>
+                              <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Size</span><div style={{ fontWeight: 700 }}>1-3% of portfolio</div></div>
+                              <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Account</span><div style={{ fontWeight: 700 }}>Taxable / Roth</div></div>
+                            </div>
+                          )}
+                          {r.next_action && r.next_action !== r.recommendation && (
+                            <div style={{ ...F, fontSize: 12, color: '#4a90f4', marginTop: 4, fontWeight: 600 }}>
+                              → {r.next_action}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
 
                   {/* What to watch for */}
@@ -289,20 +332,20 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
 function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div>
-      <div style={{ ...F, fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{label}</div>
-      <div style={{ ...F, fontSize: 16, fontWeight: 800, color }}>{value}</div>
+      <div style={{ ...F, fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 3 }}>{label}</div>
+      <div style={{ ...F, fontSize: 20, fontWeight: 800, color }}>{value}</div>
     </div>
   )
 }
 
 function SectionTitle({ text }: { text: string }) {
-  return <div style={{ ...F, fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{text}</div>
+  return <div style={{ ...F, fontSize: 12, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 10 }}>{text}</div>
 }
 
 function RecBadge({ rec }: { rec: string }) {
   const color = recColor[rec] || '#8b95a5'
   return (
-    <span style={{ ...F, fontSize: 8, fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: `${color}20`, color, letterSpacing: '.02em' }}>
+    <span style={{ ...F, fontSize: 10, fontWeight: 800, padding: '3px 10px', borderRadius: 99, background: `${color}20`, color, letterSpacing: '.02em' }}>
       {rec}
     </span>
   )
