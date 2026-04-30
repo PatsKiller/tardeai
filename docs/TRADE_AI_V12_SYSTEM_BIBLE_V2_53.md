@@ -2690,3 +2690,70 @@ v=111 (Free, basic columns only)
 | `scripts/finviz_ingestion.py` | Version fallback chain (v=152→v=151→v=141→v=111), Elite domain enforcement |
 | `intelligence_whiteboard` table | 7 new columns (level, credibility_score, local_analysis, embedding_similarity, synthesis_result, synthesis_provider, level_changed_at) |
 | `finviz_screeners` table | All 20 screeners: schedule updated (daily/weekly/biweekly/monthly) |
+
+---
+
+## v2.53.6 — LLM Router Fix (qwen3 Thinking Mode) + FRED Mini Dashboard
+
+### qwen3:1.7b Thinking Mode — Root Cause & Fix
+
+**Problem:** Every local LLM call returned empty string. Agents showed 0% confidence, strategy review failed, transcript processing hung.
+
+**Root cause:** qwen3:1.7b uses "thinking mode" — the model internally generates `<think>` reasoning tokens (15-20 seconds) before producing visible output. Ollama strips the think tags and returns only the visible response. With the old 8-second timeout, the model was killed mid-think every time, producing 0 visible tokens.
+
+**Evidence:**
+```
+OLD (8s timeout, 50 tokens): Response="" — 0 chars (thinking consumed all tokens)
+NEW (30s timeout, 500 tokens): Response="1. Apple 2. Banana 3. Cherry" — 32 chars in 14s
+```
+
+**Fix (2 lines in `scripts/llm_router.py`):**
+
+| Setting | Before | After | Why |
+|---|---|---|---|
+| `LOCAL_TIMEOUT` | 8 seconds | **30 seconds** | qwen3 needs 15-20s for thinking before producing output |
+| `num_predict` | `max_tokens` (could be 50) | **`max(500, max_tokens)`** | Ensures enough token budget for thinking + actual response |
+
+**Impact on all downstream systems:**
+- Agent analyses now produce real summaries (was returning empty)
+- Strategy review via `--llm-review` now succeeds
+- Transcript slow processor can generate LLM summaries
+- Monthly reports, Alex analyses, research queries all work via local
+- No cost increase (still $0 — all local)
+
+### FRED Macro Mini Dashboard (Morning Brief)
+
+**Before:** Raw monospace text dump of FRED data — hard to read, no visual hierarchy.
+
+**After:** Structured 7-tile grid dashboard with color-coded temperature indicators.
+
+| Indicator | Current Value | Color Rule | Current Color |
+|---|---|---|---|
+| **CPI** | 330 | green <310, amber ≥310 | 🟡 Amber |
+| **Fed Rate** | 3.64% | green <2%, blue 2-4.5%, amber 4.5-5.5%, red >5.5% | 🔵 Blue |
+| **30Y Mortgage** | 6.23% | green <6.5%, amber 6.5-7.5%, red >7.5% | 🟢 Green |
+| **S&P 500** | 7,136 | blue (neutral) | 🔵 Blue |
+| **10Y-2Y Spread** | 0.50 | green >0.3, amber 0-0.3, red <0 (inverted = recession) | 🟢 Green |
+| **Unemployment** | 4.30% | green <4.5%, amber 4.5-5.5%, red >5.5% | 🟢 Green |
+| **VIX** | 17.83 | green ≤20, amber 20-25, red >25 (>30 = extreme) | 🟢 Green |
+
+**Visual treatment:**
+- Tile titles: 12px bold (was 9px gray)
+- Values: 20px bold (16px for large numbers like S&P/CPI)
+- Background tint matches indicator color (red glow for danger, green for healthy)
+- Border color subtly matches indicator
+- Date shown in small gray below each value
+- Responsive grid: `repeat(auto-fit, minmax(120px, 1fr))`
+
+### dividend_growth Screener — Confirmed Working
+
+The validator showed `results=0` because the DB stored stale count from before the URL was created. Live test confirms **128 rows** with RVOL + Float columns. DB `results_count` updated to 128.
+
+### Full Audit Results (April 30, 2026)
+
+```
+YAML screeners:  2/2 OK
+DB screeners:   20/20 OK (all Elite v=152)
+Total issues:    0
+LLM review:      ✅ Succeeded (overlaps, gaps, SSDI analysis produced)
+```
