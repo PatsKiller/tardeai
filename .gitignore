@@ -97,3 +97,4 @@ temp/
 # ── Other scripts/binaries that need review ────────────────────────────────
 # cleanup_ms01.sh    # keep if you want to version your cleanup scripts
 
+apps/command-center-v2-backup-*
