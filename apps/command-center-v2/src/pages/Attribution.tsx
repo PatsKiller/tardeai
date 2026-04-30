@@ -28,10 +28,10 @@ export default function Attribution() {
     <>
       <PageHeader title={`Performance Attribution vs ${data.benchmark_label || 'Benchmark'}`} subtitle={data.last_updated ? `Updated ${data.last_updated}` : 'Attribution context'} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginBottom: 12 }}>
-        <MetricTile label="Alpha" value={data.alpha_annualized != null ? fmtPct(data.alpha_annualized, 1) : 'N/A'} deltaColor={deltaColor(data.alpha_annualized ?? 0)} />
-        <MetricTile label="Portfolio CAGR" value={data.port_cagr != null ? fmtPct(data.port_cagr, 1) + '/yr' : '—'} deltaColor="var(--green)" />
-        <MetricTile label="Benchmark CAGR" value={data.bench_cagr != null ? fmtPct(data.bench_cagr, 1) + '/yr' : '—'} />
-        <MetricTile label="Sharpe Ratio" value={data.port_sharpe != null ? data.port_sharpe.toFixed(2) : '—'} />
+        <MetricTile label="Alpha" value={data.alpha_annualized != null ? fmtPct(data.alpha_annualized, 1) : 'N/A'} deltaColor={deltaColor(data.alpha_annualized ?? 0)} tooltip={data.alpha_annualized == null ? 'Alpha unavailable — insufficient benchmark return data for full period. Alpha = Portfolio CAGR minus Benchmark CAGR.' : 'Excess return vs blended benchmark'} />
+        <MetricTile label="Portfolio CAGR" value={data.port_cagr != null ? fmtPct(data.port_cagr, 1) + '/yr' : '—'} deltaColor="var(--green)" tooltip="Compound Annual Growth Rate since inception" />
+        <MetricTile label="Benchmark CAGR" value={data.bench_cagr != null ? fmtPct(data.bench_cagr, 1) + '/yr' : '—'} tooltip={data.bench_cagr == null ? 'Benchmark CAGR unavailable — insufficient price history for ITA component. Run price cache rebuild via Actions.' : `Blended: ${data.benchmark_label}`} />
+        <MetricTile label="Sharpe Ratio" value={data.port_sharpe != null ? data.port_sharpe.toFixed(2) : '—'} tooltip="Sharpe >1.0 = good risk-adjusted return. Measures return per unit of total risk." />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: 12 }}>
         <Card title="Top Contributors / Detractors">
