@@ -55,10 +55,19 @@ fi
 echo "No cookie file found at: $COOKIE_FILE"
 echo ""
 
-# Try yt-dlp method
+# Try yt-dlp method — writes to a TEMP file, never overwrites auth cookies
 if command -v yt-dlp &>/dev/null; then
     echo "yt-dlp found. Attempting cookie export from Chrome..."
-    yt-dlp --cookies-from-browser chrome --cookies "$COOKIE_FILE" --skip-download "https://www.youtube.com/watch?v=dQw4w9WgXcQ" 2>/dev/null
+    TEMP_COOKIE="/tmp/yt-cookie-export-$$.txt"
+    yt-dlp --cookies-from-browser chrome --cookies "$TEMP_COOKIE" --skip-download "https://www.youtube.com/watch?v=dQw4w9WgXcQ" 2>/dev/null
+    if [ -f "$TEMP_COOKIE" ] && grep -q "SID\|LOGIN_INFO" "$TEMP_COOKIE" 2>/dev/null; then
+        cp "$TEMP_COOKIE" "$COOKIE_FILE"
+        echo "Auth cookies exported to $COOKIE_FILE"
+    elif [ -f "$TEMP_COOKIE" ]; then
+        echo "WARNING: Exported cookies don't have SID/LOGIN_INFO — not using them"
+        echo "You need to be logged into YouTube in Chrome for auth cookies"
+        rm -f "$TEMP_COOKIE"
+    fi
     if [ -f "$COOKIE_FILE" ]; then
         LINES=$(wc -l < "$COOKIE_FILE")
         echo "Cookies exported: $COOKIE_FILE ($LINES lines)"
