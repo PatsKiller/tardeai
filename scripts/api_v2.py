@@ -2601,15 +2601,32 @@ def _agent_detail():
     """GET /api/v2/agent-detail — Per-agent latest results, narratives, and discoveries for modal display."""
     result = {}
     for agent_name in ['maria', 'risk_agent', 'steph', 'tax_agent']:
-        # Latest 5 analyses with narratives
+        # Latest 5 analyses — mix of items WITH strategy targets + most recent
         latest = _db_query("""
-            SELECT symbol, recommendation, confidence, summary,
-                   LEFT(full_narrative, 500) as narrative, next_action,
-                   created_at
-            FROM watchlist_agent_results
-            WHERE agent = %s AND created_at > NOW() - INTERVAL '7 days'
-            ORDER BY created_at DESC LIMIT 5
-        """, (agent_name,)) or []
+            (SELECT DISTINCT ON (r.symbol) r.symbol, r.recommendation, r.confidence, r.summary,
+                    LEFT(r.full_narrative, 500) as narrative, r.next_action, r.created_at
+             FROM watchlist_agent_results r
+             JOIN watchlist_strategy_cards sc ON sc.symbol = r.symbol AND sc.stop_loss IS NOT NULL
+             WHERE r.agent = %s AND r.created_at > NOW() - INTERVAL '14 days'
+             ORDER BY r.symbol, r.confidence DESC LIMIT 3)
+            UNION ALL
+            (SELECT symbol, recommendation, confidence, summary,
+                    LEFT(full_narrative, 500) as narrative, next_action, created_at
+             FROM watchlist_agent_results
+             WHERE agent = %s AND created_at > NOW() - INTERVAL '3 days'
+             ORDER BY created_at DESC LIMIT 3)
+        """, (agent_name, agent_name)) or []
+        # Dedup by symbol, keep first occurrence (targets prioritized)
+        _seen_syms = set()
+        _deduped = []
+        for r in latest:
+            s = r.get("symbol") if isinstance(r, dict) else r["symbol"]
+            if s not in _seen_syms:
+                _seen_syms.add(s)
+                _deduped.append(r)
+            if len(_deduped) >= 5:
+                break
+        latest = _deduped
 
         # Recommendation distribution (30d)
         dist = _db_query("""
@@ -2627,8 +2644,23 @@ def _agent_detail():
             ORDER BY confidence DESC LIMIT 8
         """, (agent_name,)) or []
 
+        # Enrich latest results with strategy card data (stop/target/R:R/account)
+        enriched_latest = []
+        for r in latest:
+            item = {k: _json_clean(v) for k, v in r.items()}
+            sym = item.get("symbol")
+            if sym:
+                sc = _db_query("""SELECT strategy_type, latest_price, support, resistance,
+                    stop_loss, target_price, risk_reward, account_fit,
+                    position_size_note, time_horizon
+                    FROM watchlist_strategy_cards WHERE symbol=%s LIMIT 1""", (sym,))
+                if sc:
+                    for k2, v2 in sc[0].items():
+                        item[f"sc_{k2}"] = _json_clean(v2)
+            enriched_latest.append(item)
+
         result[agent_name] = {
-            "latest": [{k: _json_clean(v) for k, v in r.items()} for r in latest],
+            "latest": enriched_latest,
             "distribution": [{k: _json_clean(v) for k, v in r.items()} for r in dist],
             "top_symbols": [{k: _json_clean(v) for k, v in r.items()} for r in top_symbols],
         }

@@ -206,12 +206,33 @@ export default function AgentModal({ agent, stats, detail, onClose, onRunFresh, 
                           <div style={{ ...F, fontSize: 13, color: 'var(--text1)', lineHeight: 1.7, marginBottom: 6 }}>
                             {r.summary || r.narrative || '—'}
                           </div>
-                          {/* Actionable details */}
-                          {isBuyAdd && isHighConf && (
-                            <div style={{ ...F, fontSize: 11, color: 'var(--text2)', padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, marginBottom: 6, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-                              <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Strategy</span><div style={{ fontWeight: 700 }}>{r.recommendation === 'BUY' ? 'New position' : 'Add to existing'}</div></div>
-                              <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Size</span><div style={{ fontWeight: 700 }}>1-3% of portfolio</div></div>
-                              <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Account</span><div style={{ fontWeight: 700 }}>Taxable / Roth</div></div>
+                          {/* Actionable details from strategy card */}
+                          {(r.sc_stop_loss || r.sc_target_price || r.sc_account_fit || isBuyAdd) && (
+                            <div style={{ ...F, fontSize: 12, color: 'var(--text2)', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, marginBottom: 6 }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8 }}>
+                                {r.sc_strategy_type && (
+                                  <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Strategy</span><div style={{ fontWeight: 700 }}>{(r.sc_strategy_type || '').replace(/_/g, ' ')}</div></div>
+                                )}
+                                {r.sc_account_fit && (
+                                  <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Account</span><div style={{ fontWeight: 700, color: '#4a90f4' }}>{r.sc_account_fit}</div></div>
+                                )}
+                                {r.sc_position_size_note && (
+                                  <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Size</span><div style={{ fontWeight: 700 }}>{r.sc_position_size_note}</div></div>
+                                )}
+                                {r.sc_time_horizon && (
+                                  <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Horizon</span><div style={{ fontWeight: 700 }}>{r.sc_time_horizon}</div></div>
+                                )}
+                              </div>
+                              {(r.sc_stop_loss || r.sc_target_price || r.sc_risk_reward) && (
+                                <div style={{ display: 'flex', gap: 16, marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                  {r.sc_latest_price && <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Price</span><div style={{ fontWeight: 700 }}>${Number(r.sc_latest_price).toFixed(2)}</div></div>}
+                                  {r.sc_support && <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Support</span><div style={{ fontWeight: 700, color: '#0ecb81' }}>${Number(r.sc_support).toFixed(2)}</div></div>}
+                                  {r.sc_resistance && <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Resistance</span><div style={{ fontWeight: 700, color: '#f0b90b' }}>${Number(r.sc_resistance).toFixed(2)}</div></div>}
+                                  {r.sc_stop_loss && <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Stop</span><div style={{ fontWeight: 700, color: '#f6465d' }}>${Number(r.sc_stop_loss).toFixed(2)}</div></div>}
+                                  {r.sc_target_price && <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>Target</span><div style={{ fontWeight: 700, color: '#0ecb81' }}>${Number(r.sc_target_price).toFixed(2)}</div></div>}
+                                  {r.sc_risk_reward && <div><span style={{ color: 'var(--text3)', fontSize: 9 }}>R:R</span><div style={{ fontWeight: 800, color: Number(r.sc_risk_reward) >= 2 ? '#0ecb81' : '#f0b90b' }}>{Number(r.sc_risk_reward).toFixed(1)}x</div></div>}
+                                </div>
+                              )}
                             </div>
                           )}
                           {r.next_action && r.next_action !== r.recommendation && (
