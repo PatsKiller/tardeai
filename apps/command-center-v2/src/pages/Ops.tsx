@@ -41,7 +41,7 @@ export default function Ops() {
     <>
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
       {adminModal && <AdminModal type={adminModal} onClose={() => setAdminModal(null)} />}
-      <PageHeader title="Operations" subtitle="Pipeline health, database, and infrastructure" actions={
+      <PageHeader title="Operations" subtitle="Pipeline health, database, and infrastructure. Import CSV: Fidelity Position Export format. Dead rows >10K = check autovacuum." actions={
         <button onClick={() => setShowImport(true)} style={{ padding: '3px 10px', fontSize: 10, border: '1px solid var(--accent)', borderRadius: 'var(--radius)', background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>Import CSV</button>
       } />
 
