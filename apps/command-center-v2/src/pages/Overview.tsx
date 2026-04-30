@@ -87,7 +87,7 @@ export default function Overview() {
       cards.push({ tone: 'red', title: `${c.symbol} concentration`, body: `${c.symbol} is ${c.pct.toFixed(1)}% of portfolio. Review trim / rotate options and validate account concentration.`, cta: 'Open Rebalance', to: `/rebalance?symbol=${c.symbol}` })
     }
     if ((ov?.trade_ai?.go_count ?? 0) > 0) {
-      cards.push({ tone: 'green', title: `${ov?.trade_ai?.go_count} GO setups`, body: `${ov?.trade_ai?.run_label || 'Latest'} run found fresh setups worth review. Click through to inspect the live setup table.`, cta: 'Open Trade AI', to: '/trade-ai' })
+      cards.push({ tone: 'green', title: `${ov?.trade_ai?.go_count} GO setups`, body: `${ov?.trade_ai?.run_label || 'Latest'} run found fresh setups. Trade in Taxable account only (cash account) or paper-trade. These are scalp setups, not portfolio positions.`, cta: 'Open Trade AI', to: '/trade-ai' })
     }
     if ((ov?.journal?.trade_count ?? 0) > 0) {
       cards.push({ tone: 'blue', title: 'Journal review', body: `${ov?.journal?.trade_count} closed trades with ${ov?.journal?.win_rate}% win rate. Review recent executions and holding times.`, cta: 'Open Journal', to: '/journal' })
@@ -106,7 +106,7 @@ export default function Overview() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {ov?.pipeline_status === 'stale' && <Banner tone="amber" text={`Data may be stale — last completed ${ov.pipeline_completed ? timeAgo(ov.pipeline_completed) : 'unknown'}`} />}
           {(ov?.concentration_alerts ?? []).map(alert => <button key={alert.symbol} onClick={() => navigate(`/rebalance?symbol=${alert.symbol}`)} style={{ ...bannerBtn(alert.symbol), background: 'var(--red-dim)', color: 'var(--red)' }}>{alert.symbol} concentration {alert.pct.toFixed(1)}%</button>)}
-          {(ov?.pending_approvals ?? 0) > 0 && <button onClick={() => navigate('/approvals')} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: '1px solid var(--amber)', borderRadius: 'var(--radius)', background: 'var(--amber-dim)', color: 'var(--amber)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>{ov!.pending_approvals} pending approval{ov!.pending_approvals !== 1 ? 's' : ''} — review now</button>}
+          {(ov?.pending_approvals ?? 0) > 0 && <button onClick={() => navigate('/approvals')} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: '1px solid var(--amber)', borderRadius: 'var(--radius)', background: 'var(--amber-dim)', color: 'var(--amber)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>{ov!.pending_approvals} pending approval{ov!.pending_approvals !== 1 ? 's' : ''} (stop-triggered + governance) — review now</button>}
         </div>
       )}
 
@@ -231,8 +231,9 @@ export default function Overview() {
             ))}
           </div>
 
-          <Card title="Latest News" subtitle={`${topArticles.length} catalyst headlines`}>
+          <Card title="Latest News" subtitle={topArticles.length > 0 ? `${topArticles.length} catalyst headlines` : 'Populated by Maria agent during pipeline runs'}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {topArticles.length === 0 && <div style={{ fontSize: 10, color: 'var(--text3)', padding: 8 }}>No catalyst headlines. Run daily pipeline via Actions page to refresh.</div>}
               {topArticles.map((article, idx) => (
                 <button key={idx} onClick={() => navigate(`/research?symbol=${article.portfolio_symbol}`)} style={{ background: 'transparent', border: 'none', textAlign: 'left', padding: '6px 8px', borderRadius: 6, cursor: 'pointer' }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

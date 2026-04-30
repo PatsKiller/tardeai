@@ -29,6 +29,9 @@ export default function Forecast() {
   return (
     <>
       <PageHeader title="Portfolio Forecast" subtitle={`Age ${f.retirement_age?.toFixed(1) || '—'} | Yield ${f.portfolio_yield_pct}%`} />
+      <div style={{ padding: '8px 14px', marginBottom: 12, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 11, color: 'var(--amber)' }}>
+        ⚠️ No contributions, withdrawals, or rebalancing assumed. Projections are pre-inflation (subtract ~3%/yr for real returns). RMDs begin at age 73 (~2040) — mandatory withdrawals will increase taxable income.
+      </div>
 
       {/* Current income */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
@@ -84,6 +87,7 @@ export default function Forecast() {
               </div>
               <span style={{ width: 80, textAlign: 'right', fontSize: 11, color: 'var(--text0)', fontWeight: 600 }}>{fmt$(a.current_value)}</span>
               <span style={{ width: 35, textAlign: 'right', fontSize: 9, color: 'var(--text3)' }}>{a.pct_of_total}%</span>
+              <span style={{ width: 90, fontSize: 8, color: 'var(--text3)', textAlign: 'right' }}>{a.account.includes('401k') ? 'pre-tax' : a.account.includes('roth') ? 'tax-free' : a.account.includes('rollover') ? 'pre-tax (convert→Roth)' : 'taxable'}</span>
             </div>
           ))}
         </div>
