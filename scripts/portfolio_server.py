@@ -1001,7 +1001,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             import json as _ej
             _env = PROJECT_ROOT / ".env"
             _SENS = {"ANTHROPIC_API_KEY","FINVIZ_API_TOKEN","FINVIZ_COOKIE","TELEGRAM_BOT_TOKEN","NEWSAPI_KEY"}
-            _SHOW = {"FINVIZ_COOKIE","FINVIZ_API_TOKEN","TELEGRAM_CHAT_ID","ENABLE_TELEGRAM","TELEGRAM_BOT_TOKEN","BRAVE_SEARCH_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","CLAUDE_CHEAP_MODEL","CLAUDE_ESCALATION_MODEL","GEMINI_API_KEY","FINNHUB_API_KEY","NEWSAPI_KEY","POLYGON_API_KEY","FMP_API_KEY","ALPHA_VANTAGE_API_KEY","TIMEZONE","ENABLE_EMAIL","ENABLE_WHATSAPP","ENABLE_SLACK","FINVIZ_NEWS_ENABLED","YAHOO_NEWS_ENABLED","ERROR_NOTIFY_TELEGRAM","GENERATE_PDF","GENERATE_DOCX","GENERATE_TOS"}
+            _SHOW = {"FINVIZ_COOKIE","FINVIZ_API_TOKEN","TELEGRAM_CHAT_ID","ENABLE_TELEGRAM","TELEGRAM_BOT_TOKEN","BRAVE_SEARCH_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","CLAUDE_CHEAP_MODEL","CLAUDE_ESCALATION_MODEL","GEMINI_API_KEY","FINNHUB_API_KEY","NEWSAPI_KEY","POLYGON_API_KEY","FMP_API_KEY","ALPHA_VANTAGE_API_KEY","YOUTUBE_API_KEY","YOUTUBE_COOKIE","FRED_API_KEY","TIMEZONE","ENABLE_EMAIL","ENABLE_WHATSAPP","ENABLE_SLACK","FINVIZ_NEWS_ENABLED","YAHOO_NEWS_ENABLED","ERROR_NOTIFY_TELEGRAM","GENERATE_PDF","GENERATE_DOCX","GENERATE_TOS"}
             _flds = []
             if _env.exists():
                 for _ln in _env.read_text(encoding="utf-8").splitlines():
@@ -1011,6 +1011,15 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                     _k = _k.strip(); _v = _v.strip()
                     _m = _v[:4] + "****" + _v[-4:] if len(_v) > 10 else "****"
                     _flds.append({"key": _k, "value": _v if _k in _SHOW else "", "masked": _m, "sensitive": _k in _SENS})
+            # Inject YouTube cookie status as virtual field
+            _yt_ck = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+            if _yt_ck.exists():
+                _yt_lines = [l for l in _yt_ck.read_text().splitlines() if l.strip() and not l.startswith("#")]
+                _yt_auth = [l for l in _yt_lines if "SID" in l.split("\t")[-2] or "LOGIN" in l.split("\t")[-2]] if _yt_lines else []
+                _yt_val = f"LOADED ({len(_yt_lines)} cookies, {len(_yt_auth)} auth)"
+            else:
+                _yt_val = "MISSING — bash scripts/setup_youtube_cookies.sh"
+            _flds.append({"key": "YOUTUBE_COOKIE", "value": _yt_val, "masked": _yt_val, "sensitive": False})
             json_response(self, 200, {"ok": True, "fields": _flds})
             return
 
@@ -1255,7 +1264,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             import json as _ej
             _env = PROJECT_ROOT / ".env"
             _SENS = {"ANTHROPIC_API_KEY","FINVIZ_API_TOKEN","FINVIZ_COOKIE","TELEGRAM_BOT_TOKEN","NEWSAPI_KEY"}
-            _SHOW = {"FINVIZ_COOKIE","FINVIZ_API_TOKEN","TELEGRAM_CHAT_ID","ENABLE_TELEGRAM","TELEGRAM_BOT_TOKEN","BRAVE_SEARCH_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","CLAUDE_CHEAP_MODEL","CLAUDE_ESCALATION_MODEL","GEMINI_API_KEY","FINNHUB_API_KEY","NEWSAPI_KEY","POLYGON_API_KEY","FMP_API_KEY","ALPHA_VANTAGE_API_KEY","TIMEZONE","ENABLE_EMAIL","ENABLE_WHATSAPP","ENABLE_SLACK","FINVIZ_NEWS_ENABLED","YAHOO_NEWS_ENABLED","ERROR_NOTIFY_TELEGRAM","GENERATE_PDF","GENERATE_DOCX","GENERATE_TOS"}
+            _SHOW = {"FINVIZ_COOKIE","FINVIZ_API_TOKEN","TELEGRAM_CHAT_ID","ENABLE_TELEGRAM","TELEGRAM_BOT_TOKEN","BRAVE_SEARCH_API_KEY","OPENAI_API_KEY","ANTHROPIC_API_KEY","CLAUDE_CHEAP_MODEL","CLAUDE_ESCALATION_MODEL","GEMINI_API_KEY","FINNHUB_API_KEY","NEWSAPI_KEY","POLYGON_API_KEY","FMP_API_KEY","ALPHA_VANTAGE_API_KEY","YOUTUBE_API_KEY","YOUTUBE_COOKIE","FRED_API_KEY","TIMEZONE","ENABLE_EMAIL","ENABLE_WHATSAPP","ENABLE_SLACK","FINVIZ_NEWS_ENABLED","YAHOO_NEWS_ENABLED","ERROR_NOTIFY_TELEGRAM","GENERATE_PDF","GENERATE_DOCX","GENERATE_TOS"}
             _flds = []
             if _env.exists():
                 for _ln in _env.read_text(encoding="utf-8").splitlines():
