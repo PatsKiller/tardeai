@@ -201,7 +201,7 @@ export default function Overview() {
             />
           </Card>
 
-          <Card title="Period Returns" subtitle="click a period for details">
+          <Card title="Period Returns" subtitle="click a period for details · 6M/1Y require 180+/365+ days of snapshots">
             <PeriodReturnBars periods={ov?.periods ?? {}} />
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button onClick={() => navigate('/returns')} style={secondaryAction}>Open Returns</button>
