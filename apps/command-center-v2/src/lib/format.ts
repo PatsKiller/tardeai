@@ -29,10 +29,15 @@ export const fmtCompact = (v: number) => {
 export const deltaColor = (v: number | null | undefined) =>
   v == null ? 'var(--text3)' : v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--text2)'
 
-/** "3h ago" / "2d ago" */
+/** "3h ago" / "2d ago" — handles "2026-04-30 13:15:00 ET" format */
 export const timeAgo = (iso: string) => {
   if (!iso) return '—'
-  const ms = Date.now() - new Date(iso).getTime()
+  // Strip timezone abbreviations (ET, EST, EDT, PT, etc.) that Date() can't parse
+  const cleaned = iso.replace(/\s+[A-Z]{2,4}$/, '').trim()
+  const ts = new Date(cleaned).getTime()
+  if (isNaN(ts)) return '—'
+  const ms = Date.now() - ts
+  if (ms < 0) return 'just now'
   const h = ms / 3600000
   if (h < 1) return Math.round(h * 60) + 'm ago'
   if (h < 24) return Math.round(h) + 'h ago'
