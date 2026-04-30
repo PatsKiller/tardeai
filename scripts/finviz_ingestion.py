@@ -167,11 +167,24 @@ def make_session() -> requests.Session:
 
 
 def finviz_export_url(url: str) -> str:
+    """Convert screener URL to export URL. Ensure Elite v=152."""
     if "export" in url:
         return url
     if "screener.ashx" in url:
-        return url.replace("screener.ashx", "export")
-    raise ValueError(f"Unsupported Finviz URL: {url}")
+        url = url.replace("screener.ashx", "export")
+    # Ensure Elite v=152 with custom columns
+    if "elite.finviz.com" not in url:
+        url = url.replace("https://finviz.com/", "https://elite.finviz.com/")
+    for old_v in ["v=111", "v=121", "v=131", "v=141", "v=151"]:
+        if old_v in url:
+            url = url.replace(old_v, "v=152")
+    if "&c=" not in url:
+        url += "&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+    return url
+
+
+# Fallback version chain for download resilience
+_FINVIZ_VERSION_FALLBACKS = ["v=152", "v=151", "v=141", "v=111"]
 
 
 def download_screener_csvs(
@@ -190,18 +203,28 @@ def download_screener_csvs(
         # First request fires immediately; subsequent ones wait 1.5 seconds
         if i > 0:
             time.sleep(1.5)
-        # Retry up to 3 times on 429
-        for attempt in range(3):
-            resp = session.get(export_url, timeout=60)
-            if resp.status_code == 429:
-                wait = 5 * (attempt + 1)   # 5s, 10s, 15s
-                print(f"  [finviz] 429 on {name} — waiting {wait}s (attempt {attempt+1}/3)")
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            break
-        else:
-            raise RuntimeError(f"Finviz 429 rate limit persisted after 3 retries for screener: {name}")
+        # Try Elite v=152 first, fallback through versions on failure
+        resp = None
+        used_version = "v=152"
+        for version in _FINVIZ_VERSION_FALLBACKS:
+            try_url = export_url.replace("v=152", version) if version != "v=152" else export_url
+            for attempt in range(3):
+                resp = session.get(try_url, timeout=60)
+                if resp.status_code == 429:
+                    wait = 5 * (attempt + 1)
+                    print(f"  [finviz] 429 on {name} ({version}) — waiting {wait}s (attempt {attempt+1}/3)")
+                    time.sleep(wait)
+                    continue
+                break
+            if resp and resp.status_code == 200 and "Ticker" in resp.text[:300]:
+                used_version = version
+                break
+            elif version != "v=111":
+                print(f"  [finviz] {name}: {version} failed (HTTP {resp.status_code if resp else '?'}) → trying next version")
+        if not resp or resp.status_code != 200:
+            raise RuntimeError(f"Finviz download failed for {name} after all version fallbacks")
+        if used_version != "v=152":
+            print(f"  [finviz] {name}: fell back to {used_version} (Elite v=152 unavailable)")
         # Guardrail: detect expired cookie (login page returned instead of CSV)
         content = resp.text
         if "login" in content.lower()[:500] or "sign in" in content.lower()[:500] or "Ticker" not in content[:200]:

@@ -41,117 +41,134 @@ def _send_tg(msg):
 # ── Job 1: Promote high-quality intel ────────────────────────────────
 
 def promote_qualified_intel() -> dict:
-    """Stage 1: Route new high-quality items to whiteboard (NOT directly to dashboard).
-    Stage 2: Promote validated whiteboard items to qualified_intelligence after multi-day curation.
+    """5-level whiteboard curation pipeline. Local-first, multi-day, multi-source.
 
-    Flow: Raw → Whiteboard (stage) → iterate 2-3 days → Qualified Intelligence (dashboard)
+    Level 0: Raw — ingest from any source (news, YouTube, SEC, Finviz)
+    Level 1: Scored — keyword + quality scoring (no external LLM)
+    Level 2: Iterating — multi-day, cross-source aggregation (2+ sources = higher credibility)
+    Level 3: Validated — local analysis + embedding similarity + due diligence
+    Level 4: Promoted — dashboard-ready (appears in agent modals)
+    Level 5: Synthesized — full agent debate + Alex review (Claude only)
+
+    Promotion rules:
+      L0→L1: auto (on ingest, scored by content_scoring.py)
+      L1→L2: quality_score ≥ 50 AND days_on_board ≥ 1
+      L2→L3: (days_on_board ≥ 2 AND sources_count ≥ 2) OR (days_on_board ≥ 3 AND quality_score ≥ 75)
+      L3→L4: quality_score ≥ 75 AND credibility_score ≥ 0.6 AND symbol NOT NULL
+      L4→L5: agent debate consensus ≥ 50% (run by proactive_intel_scan)
     """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     ucur = conn.cursor()
-    staged = 0
-    promoted = 0
+    counts = {"L0_staged": 0, "L1_scored": 0, "L2_iterating": 0, "L3_validated": 0, "L4_promoted": 0}
 
-    # ── Stage 1: Route new items to whiteboard ──────────────────────────
-    # News articles (relevance ≥ 0.7)
-    cur.execute("""
-        SELECT id, symbol, title, source, relevance_score, strategy_tags
-        FROM news_articles
-        WHERE relevance_score >= 0.7
+    # ── L0: Stage new raw items to whiteboard ───────────────────────────
+    # News (relevance ≥ 0.5 — wider net for whiteboard)
+    cur.execute("""SELECT id, symbol, title, source, relevance_score, strategy_tags
+        FROM news_articles WHERE relevance_score >= 0.5
           AND id NOT IN (SELECT source_id FROM intelligence_whiteboard WHERE source_type='news')
           AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='news')
-        ORDER BY relevance_score DESC LIMIT 50
-    """)
+        ORDER BY relevance_score DESC LIMIT 80""")
     for r in cur.fetchall():
+        q = int(float(r["relevance_score"]) * 100)
         ucur.execute("""INSERT INTO intelligence_whiteboard
-            (source_type, source_id, symbol, title, summary, quality_score, confidence, status)
-            VALUES ('news', %s, %s, %s, %s, %s, %s, 'raw')
-            ON CONFLICT DO NOTHING""",
-            (r["id"], r["symbol"], r["title"][:200], r["title"][:200],
-             int(float(r["relevance_score"]) * 100), float(r["relevance_score"])))
-        staged += 1
+            (source_type, source_id, symbol, title, summary, quality_score, confidence, status, level)
+            VALUES ('news', %s, %s, %s, %s, %s, %s, 'raw', 0) ON CONFLICT DO NOTHING""",
+            (r["id"], r["symbol"], r["title"][:200], r["title"][:200], q, float(r["relevance_score"])))
+        counts["L0_staged"] += 1
 
-    # YouTube transcripts (Q ≥ 60 — lower bar for whiteboard than qualified)
-    cur.execute("""
-        SELECT id, title, channel_name, quality_score, relevance_score, summary
-        FROM youtube_transcripts
-        WHERE quality_score >= 60
+    # YouTube (Q ≥ 40 — wide net)
+    cur.execute("""SELECT id, title, channel_name, quality_score, relevance_score, summary
+        FROM youtube_transcripts WHERE quality_score >= 40
           AND id NOT IN (SELECT source_id FROM intelligence_whiteboard WHERE source_type='youtube')
           AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='youtube')
-        ORDER BY quality_score DESC LIMIT 50
-    """)
+        ORDER BY quality_score DESC LIMIT 80""")
     for r in cur.fetchall():
         ucur.execute("""INSERT INTO intelligence_whiteboard
-            (source_type, source_id, symbol, title, summary, quality_score, confidence, status)
-            VALUES ('youtube', %s, NULL, %s, %s, %s, %s, 'raw')
-            ON CONFLICT DO NOTHING""",
+            (source_type, source_id, symbol, title, summary, quality_score, confidence, status, level)
+            VALUES ('youtube', %s, NULL, %s, %s, %s, %s, 'raw', 0) ON CONFLICT DO NOTHING""",
             (r["id"], r["title"][:200], (r.get("summary") or r["title"])[:500],
              r["quality_score"], float(r["relevance_score"])))
-        staged += 1
+        counts["L0_staged"] += 1
 
     # SEC Form 4 (always stage)
-    cur.execute("""
-        SELECT id, symbol, filer_name, transaction_type, filing_date
-        FROM sec_form4
+    cur.execute("""SELECT id, symbol, filer_name, transaction_type FROM sec_form4
         WHERE id NOT IN (SELECT source_id FROM intelligence_whiteboard WHERE source_type='sec_form4')
-          AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='sec_form4')
-    """)
+          AND id NOT IN (SELECT source_id FROM qualified_intelligence WHERE source_type='sec_form4')""")
     for r in cur.fetchall():
         ucur.execute("""INSERT INTO intelligence_whiteboard
-            (source_type, source_id, symbol, title, quality_score, confidence, status)
-            VALUES ('sec_form4', %s, %s, %s, 80, 0.8, 'raw')
-            ON CONFLICT DO NOTHING""",
+            (source_type, source_id, symbol, title, quality_score, confidence, status, level)
+            VALUES ('sec_form4', %s, %s, %s, 80, 0.8, 'raw', 0) ON CONFLICT DO NOTHING""",
             (r["id"], r["symbol"], f"Form 4: {r['filer_name']} {r['transaction_type']}"[:200]))
-        staged += 1
-
+        counts["L0_staged"] += 1
     conn.commit()
 
-    # ── Stage 2: Update days_on_board + check for cross-references ──────
-    ucur.execute("""UPDATE intelligence_whiteboard
-        SET days_on_board = EXTRACT(DAY FROM NOW() - first_seen_at)::int
-        WHERE status IN ('raw', 'iterating')""")
+    # ── Update days_on_board for everything ─────────────────────────────
+    ucur.execute("UPDATE intelligence_whiteboard SET days_on_board = GREATEST(0, EXTRACT(DAY FROM NOW() - first_seen_at)::int)")
+    conn.commit()
 
-    # Items with same symbol from 2+ sources → mark as iterating
+    # ── L0 → L1: Auto-score (quality_score already set on ingest) ──────
+    ucur.execute("""UPDATE intelligence_whiteboard SET
+        level = 1, status = 'scored', level_changed_at = NOW()
+        WHERE level = 0 AND quality_score > 0""")
+    counts["L1_scored"] = cur.connection.info.transaction_status  # placeholder
+    conn.commit()
+    cur.execute("SELECT count(*) FROM intelligence_whiteboard WHERE level = 1 AND status = 'scored'")
+    counts["L1_scored"] = cur.fetchone()["count"]
+
+    # ── L1 → L2: Quality ≥ 50 AND days ≥ 1 ─────────────────────────────
+    # Also detect cross-source aggregation (same symbol from 2+ types)
     ucur.execute("""UPDATE intelligence_whiteboard wb SET
-        status = 'iterating',
-        sources_count = sub.cnt,
-        last_iterated_at = NOW()
+        sources_count = COALESCE(sub.cnt, 1),
+        credibility_score = LEAST(1.0, COALESCE(sub.cnt, 1) * 0.3 + quality_score / 200.0)
         FROM (SELECT symbol, count(DISTINCT source_type) as cnt
-              FROM intelligence_whiteboard WHERE symbol IS NOT NULL AND status IN ('raw', 'iterating')
-              GROUP BY symbol HAVING count(DISTINCT source_type) >= 2) sub
-        WHERE wb.symbol = sub.symbol AND wb.status = 'raw'""")
+              FROM intelligence_whiteboard WHERE symbol IS NOT NULL
+              GROUP BY symbol) sub
+        WHERE wb.symbol = sub.symbol""")
 
-    # ── Stage 3: Promote validated items (2+ days + multi-source OR 3+ days + high Q) ──
-    cur.execute("""
-        SELECT DISTINCT ON (symbol) id, source_type, source_id, symbol, title, quality_score, confidence
+    ucur.execute("""UPDATE intelligence_whiteboard SET
+        level = 2, status = 'iterating', level_changed_at = NOW(), last_iterated_at = NOW()
+        WHERE level = 1 AND quality_score >= 50 AND days_on_board >= 1""")
+    conn.commit()
+    cur.execute("SELECT count(*) FROM intelligence_whiteboard WHERE level = 2")
+    counts["L2_iterating"] = cur.fetchone()["count"]
+
+    # ── L2 → L3: Multi-source + time gate ───────────────────────────────
+    ucur.execute("""UPDATE intelligence_whiteboard SET
+        level = 3, status = 'validated', level_changed_at = NOW()
+        WHERE level = 2
+          AND ((days_on_board >= 2 AND sources_count >= 2) OR (days_on_board >= 3 AND quality_score >= 75))""")
+    conn.commit()
+    cur.execute("SELECT count(*) FROM intelligence_whiteboard WHERE level = 3")
+    counts["L3_validated"] = cur.fetchone()["count"]
+
+    # ── L3 → L4: Promote to qualified_intelligence (dashboard) ──────────
+    cur.execute("""SELECT DISTINCT ON (symbol) id, source_type, source_id, symbol, title, quality_score, confidence
         FROM intelligence_whiteboard
-        WHERE status IN ('raw', 'iterating')
-          AND ((days_on_board >= 2 AND sources_count >= 2) OR (days_on_board >= 3 AND quality_score >= 75))
-          AND symbol IS NOT NULL
+        WHERE level = 3 AND quality_score >= 75 AND credibility_score >= 0.6 AND symbol IS NOT NULL
           AND symbol NOT IN (SELECT symbol FROM qualified_intelligence WHERE symbol IS NOT NULL)
-        ORDER BY symbol, quality_score DESC
-    """)
+        ORDER BY symbol, quality_score DESC""")
     for r in cur.fetchall():
         ucur.execute("""INSERT INTO qualified_intelligence
             (source_type, source_table, source_id, symbol, title, quality_score, relevance_score)
-            VALUES (%s, 'intelligence_whiteboard', %s, %s, %s, %s, %s)
-            ON CONFLICT DO NOTHING""",
+            VALUES (%s, 'intelligence_whiteboard', %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
             (r["source_type"], r["source_id"], r["symbol"], r["title"][:200],
              r["quality_score"], float(r["confidence"] or 0)))
-        ucur.execute("UPDATE intelligence_whiteboard SET status='promoted', promoted_at=NOW(), promoted_by='curation_engine' WHERE id=%s", (r["id"],))
-        promoted += 1
-
+        ucur.execute("UPDATE intelligence_whiteboard SET level=4, status='promoted', promoted_at=NOW(), promoted_by='curation_engine', level_changed_at=NOW() WHERE id=%s", (r["id"],))
+        counts["L4_promoted"] += 1
     conn.commit()
 
-    # Stats
-    cur.execute("SELECT status, count(*) FROM intelligence_whiteboard GROUP BY status ORDER BY status")
-    wb_stats = {r["status"]: r["count"] for r in cur.fetchall()}
+    # ── Stats ───────────────────────────────────────────────────────────
+    cur.execute("SELECT level, status, count(*) as cnt FROM intelligence_whiteboard GROUP BY level, status ORDER BY level, status")
+    level_stats = {}
+    for r in cur.fetchall():
+        level_stats[f"L{r['level']}_{r['status']}"] = r["cnt"]
     conn.close()
 
-    print(f"[qualify] Staged {staged} to whiteboard, promoted {promoted} to qualified")
-    print(f"[qualify] Whiteboard: {wb_stats}")
-    return {"staged": staged, "promoted": promoted, "whiteboard": wb_stats}
+    print(f"[whiteboard] Pipeline: staged={counts['L0_staged']} scored={counts['L1_scored']} iterating={counts['L2_iterating']} validated={counts['L3_validated']} promoted={counts['L4_promoted']}")
+    print(f"[whiteboard] Levels: {level_stats}")
+    return {"counts": counts, "levels": level_stats}
 
 
 # ── Job 2: Propose watchlist adds ────────────────────────────────────
