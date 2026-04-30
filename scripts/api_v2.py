@@ -3106,6 +3106,37 @@ def _wl_symbols(query: dict = None):
             item["total_market_value"] = 0
             item["portfolio_weight"] = 0
 
+        # Enrich: days watched + source agent + why added
+        wi_rows = _db_query("SELECT source, first_seen_at, last_seen_at, LEFT(source_payload::text, 200) as why FROM watchlist_items WHERE symbol=%s AND status != 'removed' ORDER BY first_seen_at LIMIT 3", (sym,)) or []
+        if wi_rows:
+            first_seen = wi_rows[0].get("first_seen_at")
+            if first_seen:
+                from datetime import datetime as _dtx, timezone as _tzx
+                try:
+                    fs = first_seen if isinstance(first_seen, _dtx) else _dtx.fromisoformat(str(first_seen).replace("Z", "+00:00"))
+                    item["days_watched"] = max(0, (_dtx.now(_tzx.utc) - fs.astimezone(_tzx.utc)).days)
+                except Exception:
+                    item["days_watched"] = 0
+            item["added_by"] = wi_rows[0].get("source", "unknown")
+            item["why_added"] = wi_rows[0].get("why", "")[:200] if wi_rows[0].get("why") else ""
+            item["all_sources"] = list(set(r.get("source", "") for r in wi_rows))
+        else:
+            item["days_watched"] = 0
+            item["added_by"] = "unknown"
+            item["why_added"] = ""
+            item["all_sources"] = []
+
+        # Enrich: latest agent confidence + recommendation
+        agent_row = _db_query("SELECT agent, recommendation, confidence, created_at FROM watchlist_agent_results WHERE symbol=%s ORDER BY created_at DESC LIMIT 1", (sym,))
+        if agent_row:
+            item["last_agent"] = agent_row[0].get("agent", "")
+            item["last_recommendation"] = agent_row[0].get("recommendation", "")
+            item["last_confidence"] = _json_clean(agent_row[0].get("confidence"))
+            item["last_analyzed_at"] = _json_clean(agent_row[0].get("created_at"))
+        # Curated badge: 2+ days watched or 2+ agent analyses
+        agent_cnt = _db_query("SELECT count(*) as cnt FROM watchlist_agent_results WHERE symbol=%s AND created_at > NOW() - INTERVAL '7 days'", (sym,))
+        item["is_curated"] = (item.get("days_watched", 0) >= 2) or ((agent_cnt[0]["cnt"] if agent_cnt else 0) >= 2)
+
         items.append(item)
 
     return {"count": len(items), "symbols": items}
