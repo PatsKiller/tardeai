@@ -104,14 +104,21 @@ function buildActionBoard(ctx: ChatCtx, ov: OverviewData | null, rk: RiskData | 
 // ── Agent card config ─────────────────────────────────────────────────────
 
 const AGENT_CARDS = [
-  { id: 'maria', dbNames: ['maria'], name: 'Maria', role: 'Research & Fundamentals', color: '#4a90f4', icon: '🔬',
+  { id: 'maria', dbNames: ['maria'], name: 'Maria', role: 'Research & Catalysts', color: '#4a90f4', icon: '🔬',
+    escalates: 'Steph → Alex',
     prompts: ['Deep-dive V fundamentals', 'Catalyst scan this week', 'Earnings surprise analysis'] },
   { id: 'steph', dbNames: ['steph'], name: 'Steph', role: 'Allocation & Income', color: '#0ecb81', icon: '📊',
+    escalates: 'Alex (tax/SSDI)',
     prompts: ['Income gap strategy', 'Rebalance priorities', 'Dividend quality check'] },
   { id: 'risk', dbNames: ['risk', 'risk_agent'], name: 'Risk', role: 'Technical & Stops', color: '#f6465d', icon: '⚡',
+    escalates: 'Steph → Alex',
     prompts: ['Stop coverage audit', 'RSI extremes scan', 'Correlation risk'] },
   { id: 'alex', dbNames: ['tax', 'tax_agent', 'alex'], name: 'Alex', role: 'Retirement & SSDI', color: '#f0b90b', icon: '🏦',
+    escalates: 'Final (CIO)',
     prompts: ['Roth conversion pace', 'IRMAA projection', 'Monthly performance'] },
+  { id: 'aegis', dbNames: ['aegis'], name: 'Aegis', role: 'Overnight Surveillance', color: '#a78bfa', icon: '🛡️',
+    escalates: 'Risk → Steph',
+    prompts: ['Overnight alerts', 'Pre-market scan', 'Gap analysis'] },
 ]
 
 // ── Main component ────────────────────────────────────────────────────────
@@ -242,8 +249,8 @@ export default function MorningBrief() {
           SECTION 2: AGENT DISCOVERY CARDS (4-column grid)
          ══════════════════════════════════════════════════════════════════ */}
       <motion.div {...fadeUp} transition={{ delay: 0.1, duration: 0.4 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, color: '#fff', marginBottom: 8, ...F }}>Agent Intelligence</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 10, ...F }}>Agent Intelligence</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, marginBottom: 16 }}>
           {AGENT_CARDS.map(agent => {
             const data = agents.find(a => agent.dbNames.some(n => a.agent?.toLowerCase() === n || a.agent?.toLowerCase().includes(n)))
             const conf = data ? (data.avg_confidence * 100) : 0
@@ -251,40 +258,43 @@ export default function MorningBrief() {
             const lastRun = data?.last_run ? timeAgo(data.last_run) : 'never'
             return (
               <div key={agent.id} onClick={() => setModalAgent(agent)} style={{
-                ...glassPanel, borderTop: `2px solid ${agent.color}`, cursor: 'pointer',
+                ...glassPanel, borderTop: `3px solid ${agent.color}`, cursor: 'pointer',
                 transition: 'border-color 100ms, box-shadow 100ms',
               }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 20px ${agent.color}22`; (e.currentTarget as HTMLElement).style.borderColor = `${agent.color}44` }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = ''; (e.currentTarget as HTMLElement).style.borderColor = '' }}>
-                <div style={{ padding: '12px 14px 10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontSize: 16 }}>{agent.icon}</span>
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 24px ${agent.color}30` }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
+                <div style={{ padding: '14px 16px 12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 22 }}>{agent.icon}</span>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: '#fff', ...F }}>{agent.name}</div>
-                        <div style={{ fontSize: 8, color: agent.color, fontWeight: 600, ...F }}>{agent.role}</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', ...F }}>{agent.name}</div>
+                        <div style={{ fontSize: 10, color: agent.color, fontWeight: 600, ...F }}>{agent.role}</div>
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: conf >= 60 ? 'var(--green)' : 'var(--amber)', ...F }}>{conf.toFixed(0)}%</div>
-                      <div style={{ fontSize: 7, color: 'var(--text3)', ...F }}>confidence</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: conf >= 60 ? 'var(--green)' : conf > 0 ? 'var(--amber)' : 'var(--text3)', ...F }}>{conf > 0 ? `${conf.toFixed(0)}%` : '—'}</div>
                     </div>
                   </div>
                   {/* Confidence bar */}
-                  <div style={{ height: 3, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden', marginBottom: 8 }}>
+                  <div style={{ height: 4, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden', marginBottom: 10 }}>
                     <div style={{ width: `${Math.min(100, conf)}%`, height: '100%', background: agent.color, borderRadius: 99, transition: 'width 0.5s' }} />
                   </div>
                   {/* Stats */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text3)', marginBottom: 8, ...F }}>
-                    <span>{analyses} analyses (30d)</span>
-                    <span>last: {lastRun}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text2)', marginBottom: 6, ...F }}>
+                    <span>{analyses} analyses</span>
+                    <span>{lastRun}</span>
                   </div>
-                  {/* Quick action buttons — open modal */}
+                  {/* Escalation path */}
+                  <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8, ...F }}>
+                    Escalates → <span style={{ color: 'var(--text2)' }}>{agent.escalates}</span>
+                  </div>
+                  {/* Quick action buttons */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {agent.prompts.map(p => (
                       <button key={p} onClick={e => { e.stopPropagation(); setModalAgent(agent) }} style={{
-                        ...F, fontSize: 8, padding: '3px 8px',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        ...F, fontSize: 9, padding: '4px 10px',
+                        border: '1px solid rgba(255,255,255,0.1)',
                         borderRadius: 99, background: 'rgba(255,255,255,0.04)',
                         color: 'var(--text2)', cursor: 'pointer', whiteSpace: 'nowrap',
                       }}>{p}</button>
