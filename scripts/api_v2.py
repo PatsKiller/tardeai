@@ -2597,6 +2597,44 @@ def _agent_health():
     }
 
 
+def _agent_detail():
+    """GET /api/v2/agent-detail — Per-agent latest results, narratives, and discoveries for modal display."""
+    result = {}
+    for agent_name in ['maria', 'risk_agent', 'steph', 'tax_agent']:
+        # Latest 5 analyses with narratives
+        latest = _db_query("""
+            SELECT symbol, recommendation, confidence, summary,
+                   LEFT(full_narrative, 500) as narrative, next_action,
+                   created_at
+            FROM watchlist_agent_results
+            WHERE agent = %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY created_at DESC LIMIT 5
+        """, (agent_name,)) or []
+
+        # Recommendation distribution (30d)
+        dist = _db_query("""
+            SELECT recommendation, count(*) as cnt
+            FROM watchlist_agent_results
+            WHERE agent = %s AND created_at > NOW() - INTERVAL '30 days'
+            GROUP BY recommendation ORDER BY cnt DESC
+        """, (agent_name,)) or []
+
+        # Top symbols this agent analyzed recently
+        top_symbols = _db_query("""
+            SELECT symbol, recommendation, confidence, created_at
+            FROM watchlist_agent_results
+            WHERE agent = %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY confidence DESC LIMIT 8
+        """, (agent_name,)) or []
+
+        result[agent_name] = {
+            "latest": [{k: _json_clean(v) for k, v in r.items()} for r in latest],
+            "distribution": [{k: _json_clean(v) for k, v in r.items()} for r in dist],
+            "top_symbols": [{k: _json_clean(v) for k, v in r.items()} for r in top_symbols],
+        }
+    return result
+
+
 def _autonomy_progress():
     """GET /api/v2/autonomy-progress — Learning curve, proposal acceptance, weekly lessons."""
     # Weekly learning curve: confidence trend over 4 weeks
@@ -3726,6 +3764,7 @@ ROUTES = {
     "/api/v2/discovery-log": lambda: {"entries": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, discovery_type, title, summary, symbols_mentioned, intel_count, created_at FROM agent_discovery_log ORDER BY created_at DESC LIMIT 10") or [])]},
     "/api/v2/trade-instructions": lambda: {"instructions": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, proposal_id, symbol, action, account_name, shares, target_symbol, estimated_tax_impact, ssdi_note, irmaa_note, execution_type, status, instruction_text, created_at, executed_at FROM trade_instructions ORDER BY CASE status WHEN 'pending' THEN 1 WHEN 'executed' THEN 2 ELSE 3 END, created_at DESC LIMIT 20") or [])]},
     "/api/v2/agent-health": lambda: _agent_health(),
+    "/api/v2/agent-detail": lambda: _agent_detail(),
     "/api/v2/search-sources": lambda: _search_sources_status(),
     "/api/v2/autonomy-progress": lambda: _autonomy_progress(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
