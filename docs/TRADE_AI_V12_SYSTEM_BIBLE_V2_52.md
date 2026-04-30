@@ -2503,3 +2503,190 @@ All 20 Finviz screeners in the `finviz_screeners` database table were upgraded f
 | div_growth_quality | 100 | ✅ | ✅ |
 | defense_basket | 84 | ✅ | ✅ |
 | dividend_growth (was broken) | 128 | ✅ | ✅ |
+
+---
+
+## v2.53.5 — 5-Level Whiteboard Pipeline + Strategy Scheduling + Version Fallback
+
+### Multi-Level Whiteboard Workflow — Complete Architecture
+
+The intelligence whiteboard is the central curation engine. ALL raw data passes through 6 levels before reaching the dashboard. Nothing auto-promotes. Local LLM handles Levels 0-4. Claude only at Level 5.
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  LEVEL 0: RAW                                                    ║
+║  Sources: News (R≥0.5), YouTube (Q≥40), SEC Form 4, Finviz      ║
+║  Action: Ingest into intelligence_whiteboard, status='raw'       ║
+║  LLM: None                                                       ║
+║  Current: 102 items staged this run                              ║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEVEL 1: SCORED                                         ↓ auto  ║
+║  Gate: quality_score > 0 (set by content_scoring.py)             ║
+║  Action: Keyword scoring, relevance scoring, strategy tagging    ║
+║  LLM: None (pure keyword + rules engine)                         ║
+║  Current: 173 items                                              ║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEVEL 2: ITERATING / WHITEBOARD                ↓ Q≥50 + 1 day  ║
+║  Gate: quality_score ≥ 50 AND days_on_board ≥ 1                  ║
+║  Action: Cross-source aggregation                                ║
+║    - Same ticker from 2+ source types = higher credibility       ║
+║    - credibility_score = sources_count * 0.3 + quality / 200     ║
+║  LLM: Local qwen3:1.7b (optional enrichment)                    ║
+║  Current: 0 (all items are day-0 — will populate tomorrow)       ║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEVEL 3: VALIDATED                    ↓ multi-source + 2 days   ║
+║  Gate: (days≥2 AND sources≥2) OR (days≥3 AND quality≥75)         ║
+║  Action: Local analysis + embedding similarity + due diligence   ║
+║  LLM: Local qwen3:1.7b (analysis + embedding comparison)        ║
+║  Current: 0 (needs 2-3 days)                                    ║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEVEL 4: PROMOTED (Dashboard-Ready)  ↓ Q≥75 + credibility≥0.6  ║
+║  Gate: quality_score ≥ 75 AND credibility_score ≥ 0.6            ║
+║         AND symbol IS NOT NULL                                   ║
+║  Action: Insert into qualified_intelligence table                ║
+║  Visible: Appears in agent modals, Morning Brief, proposals      ║
+║  LLM: Local qwen3:1.7b                                          ║
+║  Current: 0 (needs multi-day validation first)                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEVEL 5: SYNTHESIZED                   ↓ agent debate ≥50%      ║
+║  Gate: Multi-agent debate consensus ≥ 50%                        ║
+║  Action: Maria/Steph/Risk debate → Alex synthesis                ║
+║  LLM: Claude (high-impact synthesis)                             ║
+║  Trigger: proactive_intel_scan() in overnight_batch.py           ║
+║  Current: 0 (needs L4 items first)                               ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+### Promotion Rules — Detailed
+
+| Transition | Gate Criteria | LLM Tier | Timing |
+|---|---|---|---|
+| L0 → L1 | quality_score > 0 (auto on ingest) | None | Immediate |
+| L1 → L2 | quality_score ≥ 50 AND days_on_board ≥ 1 | None | Day 1+ |
+| L2 → L3 | (days≥2 AND sources≥2) OR (days≥3 AND Q≥75) | Local | Day 2-3 |
+| L3 → L4 | quality_score ≥ 75 AND credibility_score ≥ 0.6 AND symbol NOT NULL | Local | Day 2-3 |
+| L4 → L5 | Agent debate consensus ≥ 50% (Maria/Steph/Risk) | Claude | Day 3+ |
+
+### Credibility Score Formula
+
+```
+credibility_score = MIN(1.0, sources_count × 0.3 + quality_score / 200)
+```
+
+| Sources | Quality | Credibility | Passes L4 Gate (≥0.6)? |
+|---|---|---|---|
+| 1 source | Q=50 | 0.55 | ❌ No |
+| 1 source | Q=80 | 0.70 | ✅ Yes |
+| 2 sources | Q=50 | 0.85 | ✅ Yes |
+| 2 sources | Q=80 | 1.00 | ✅ Yes |
+| 3 sources | Q=40 | 1.00 | ✅ Yes |
+
+### Database Columns (intelligence_whiteboard)
+
+| Column | Type | Purpose |
+|---|---|---|
+| level | INT (0-5) | Current pipeline level |
+| status | TEXT | raw → scored → iterating → validated → promoted → synthesized |
+| quality_score | INT | 0-100 from content_scoring |
+| credibility_score | NUMERIC | 0-1.0 from cross-source aggregation |
+| sources_count | INT | Number of distinct source types |
+| days_on_board | INT | Days since first_seen_at |
+| local_analysis | TEXT | Local LLM analysis text (L3+) |
+| embedding_similarity | NUMERIC | Cosine similarity to related items |
+| synthesis_result | TEXT | Claude synthesis (L5 only) |
+| synthesis_provider | TEXT | Which LLM produced synthesis |
+| level_changed_at | TIMESTAMPTZ | When item moved to current level |
+| cross_references | JSONB | Links to related whiteboard items |
+
+### Strategy-Based Screener Scheduling
+
+| Frequency | Strategies | Screener Count | Rationale |
+|---|---|---|---|
+| **Daily** | day_scalp, swing_trade, speculative_growth | 3 | Fast-moving, need daily price/volume data |
+| **Weekly** | dividend_growth, covered_call, high_yield, income | 9 | Slow-moving income, fundamentals change weekly |
+| **Biweekly** | core_growth, defense_thesis, core_holding, core_index | 4 | Long-term holds, minimal churn |
+| **Monthly** | recovery_watch, international, reit, bond | 4 | Very slow rotation, quarterly fundamentals |
+
+### Screener Schedule Table (22 screeners)
+
+| # | Screener | Strategy | Schedule | Version |
+|---|---|---|---|---|
+| 1 | prime_setups | day_scalp | daily | Elite v=152 |
+| 2 | watchlist_setups | day_scalp | daily | Elite v=152 |
+| 3 | speculative_catalyst | speculative_growth | daily | Elite v=152 |
+| 4 | swing_momentum | swing_trade | daily | Elite v=152 |
+| 5 | tactical_momentum | speculative_growth | daily | Elite v=152 |
+| 6 | covered_call_etf | covered_call_income | weekly | Elite v=152 |
+| 7 | covered_call_rotation | covered_call_income | weekly | Elite v=152 |
+| 8 | div_growth_quality | dividend_growth_compounder | weekly | Elite v=152 |
+| 9 | dividend_growth | dividend_growth_compounder | weekly | Elite v=152 |
+| 10 | etf_income | covered_call_income | weekly | Elite v=152 |
+| 11 | high_yield_income | high_yield_income_bdc | weekly | Elite v=152 |
+| 12 | ira_income_friendly | high_yield_income_bdc | weekly | Elite v=152 |
+| 13 | taxable_qualified_div | dividend_growth_compounder | weekly | Elite v=152 |
+| 14 | value_income | dividend_growth_compounder | weekly | Elite v=152 |
+| 15 | core_compounder_value | core_growth_compounder | biweekly | Elite v=152 |
+| 16 | core_index_broad | core_index | biweekly | Elite v=152 |
+| 17 | defense_basket | defense_thesis | biweekly | Elite v=152 |
+| 18 | roth_growth | core_growth_compounder | biweekly | Elite v=152 |
+| 19 | bond_etf_income | bond_income | monthly | Elite v=152 |
+| 20 | intl_dividend | international_dividend | monthly | Elite v=152 |
+| 21 | recovery_candidates | recovery_watch | monthly | Elite v=152 |
+| 22 | reit_income_scan | reit_income | monthly | Elite v=152 |
+
+### Finviz Version Fallback Chain
+
+When downloading screener data, the system tries versions in order:
+
+```
+v=152 (Elite, full columns: RVOL, Float, Gap)
+  ↓ on failure
+v=151 (Elite alternate)
+  ↓ on failure
+v=141 (Elite legacy)
+  ↓ on failure
+v=111 (Free, basic columns only)
+```
+
+**Also enforced on every URL:**
+- Domain forced to `elite.finviz.com` (not `finviz.com`)
+- Export format: `/export` (not `/screener.ashx`)
+- Custom columns auto-appended: `&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67`
+- Cookie authentication via FINVIZ_COOKIE from .env
+
+### LLM Tier Assignment by Level
+
+| Level | LLM Provider | Cost | Use Case |
+|---|---|---|---|
+| L0 (Raw) | None | $0 | Pure ingest, no processing |
+| L1 (Scored) | None | $0 | Keyword scoring engine only |
+| L2 (Iterating) | Local qwen3:1.7b | $0 | Optional enrichment, cross-ref |
+| L3 (Validated) | Local qwen3:1.7b | $0 | Local analysis, embedding similarity |
+| L4 (Promoted) | Local qwen3:1.7b | $0 | Dashboard narrative generation |
+| L5 (Synthesized) | Claude → Grok → OpenAI | ~$0.02 | Full agent debate + Alex review |
+
+### Current Pipeline State (April 30, 2026)
+
+| Level | Status | Count | Avg Quality |
+|---|---|---|---|
+| L0 | raw | 0 | — (immediately auto-promoted to L1) |
+| L1 | scored | 173 | 68 |
+| L2 | iterating | 0 | — (day 0, needs 1+ day) |
+| L3 | validated | 0 | — (needs 2-3 days) |
+| L4 | promoted | 0 | — (needs L3 qualification) |
+| L5 | synthesized | 0 | — (needs L4 + debate) |
+
+**Expected timeline:**
+- Day 1 (tomorrow): ~80 items advance to L2 (Q≥50 scored items with 1+ day)
+- Day 2-3: cross-source items advance to L3 (2+ sources or 3+ days + Q≥75)
+- Day 3+: strongest L3 items promote to L4 (dashboard-visible)
+- Day 3+: L4 items with debate consensus promote to L5 (full synthesis)
+
+### Files Modified
+
+| File | Changes |
+|---|---|
+| `scripts/agent_watchlist_engine.py` | Complete rewrite of promote_qualified_intel() — 5-level pipeline |
+| `scripts/finviz_ingestion.py` | Version fallback chain (v=152→v=151→v=141→v=111), Elite domain enforcement |
+| `intelligence_whiteboard` table | 7 new columns (level, credibility_score, local_analysis, embedding_similarity, synthesis_result, synthesis_provider, level_changed_at) |
+| `finviz_screeners` table | All 20 screeners: schedule updated (daily/weekly/biweekly/monthly) |
