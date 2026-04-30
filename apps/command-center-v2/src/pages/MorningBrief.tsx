@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, timeAgo } from '../lib/format'
 import TaskDetailDrawer, { type TaskItem } from '../components/TaskDetailDrawer'
+import AgentModal from '../components/AgentModal'
 import { useToast } from '../components/ToastProvider'
 import { DoughnutChart, BarChartJS } from '../components/charts'
 import MetricTile from '../components/MetricTile'
@@ -123,12 +124,14 @@ export default function MorningBrief() {
   const { data: tasksData } = useApi<TasksResp>('/api/v2/tasks')
   const { data: histData } = useApi<HistoryResp>('/api/v2/tasks/history')
   const { data: agentHealth } = useApi<AgentHealthResp>('/api/v2/agent-health')
+  const { data: agentDetailResp } = useApi<Record<string, { latest: unknown[]; distribution: unknown[]; top_symbols: unknown[] }>>('/api/v2/agent-detail')
   const { data: macroResp } = useApi<MacroResp>('/api/v2/macro-context')
   const { data: proposalsResp } = useApi<ProposalsResp>('/api/v2/proposals')
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
   const [decidedIds, setDecidedIds] = useState<Set<number>>(new Set())
   const [boardFilter, setBoardFilter] = useState<BoardFilter>('all')
   const [intelExpanded, setIntelExpanded] = useState(false)
+  const [modalAgent, setModalAgent] = useState<typeof AGENT_CARDS[number] | null>(null)
   const [aiQuery, setAiQuery] = useState<string | null>(null)
   const [aiResponse, setAiResponse] = useState<string | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
@@ -247,7 +250,12 @@ export default function MorningBrief() {
             const analyses = data?.total_analyses ?? 0
             const lastRun = data?.last_run ? timeAgo(data.last_run) : 'never'
             return (
-              <div key={agent.id} style={{ ...glassPanel, borderTop: `2px solid ${agent.color}` }}>
+              <div key={agent.id} onClick={() => setModalAgent(agent)} style={{
+                ...glassPanel, borderTop: `2px solid ${agent.color}`, cursor: 'pointer',
+                transition: 'border-color 100ms, box-shadow 100ms',
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 20px ${agent.color}22`; (e.currentTarget as HTMLElement).style.borderColor = `${agent.color}44` }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.boxShadow = ''; (e.currentTarget as HTMLElement).style.borderColor = '' }}>
                 <div style={{ padding: '12px 14px 10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -271,16 +279,14 @@ export default function MorningBrief() {
                     <span>{analyses} analyses (30d)</span>
                     <span>last: {lastRun}</span>
                   </div>
-                  {/* Quick research buttons — triggers live AI query */}
+                  {/* Quick action buttons — open modal */}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {agent.prompts.map(p => (
-                      <button key={p} onClick={() => handleAiResearch(p)} style={{
+                      <button key={p} onClick={e => { e.stopPropagation(); setModalAgent(agent) }} style={{
                         ...F, fontSize: 8, padding: '3px 8px',
-                        border: `1px solid ${aiQuery === p ? agent.color + '55' : 'rgba(255,255,255,0.08)'}`,
-                        borderRadius: 99,
-                        background: aiQuery === p ? agent.color + '15' : 'rgba(255,255,255,0.04)',
-                        color: aiQuery === p ? agent.color : 'var(--text2)',
-                        cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 100ms',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 99, background: 'rgba(255,255,255,0.04)',
+                        color: 'var(--text2)', cursor: 'pointer', whiteSpace: 'nowrap',
                       }}>{p}</button>
                     ))}
                   </div>
@@ -290,24 +296,6 @@ export default function MorningBrief() {
           })}
         </div>
       </motion.div>
-
-      {/* ── AI Research Response (inline, appears when agent button clicked) ── */}
-      {(aiQuery || aiLoading) && (
-        <motion.div {...fadeUp} style={{ ...glassPanel, padding: '14px 18px', marginBottom: 14, borderLeft: '3px solid var(--accent)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ ...F, fontSize: 11, fontWeight: 800, color: 'var(--accent)' }}>
-              {aiLoading ? '⏳ ' : '🤖 '}{aiQuery}
-            </div>
-            <button onClick={() => { setAiQuery(null); setAiResponse(null) }} style={{ ...F, fontSize: 9, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>✕ Close</button>
-          </div>
-          {aiLoading && <div style={{ ...F, fontSize: 11, color: 'var(--text3)' }}>Analyzing with local AI...</div>}
-          {aiResponse && (
-            <div style={{ ...F, fontSize: 11, color: 'var(--text1)', lineHeight: 1.7, whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto' }}>
-              {aiResponse}
-            </div>
-          )}
-        </motion.div>
-      )}
 
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 3: WHAT TO WATCH FOR
@@ -572,6 +560,25 @@ export default function MorningBrief() {
       </div>
 
       <TaskDetailDrawer task={selectedTask} onClose={() => setSelectedTask(null)} onDecided={handleTaskDecided} />
+
+      {/* Agent Detail Modal */}
+      <AgentModal
+        agent={modalAgent}
+        stats={modalAgent ? (() => {
+          const d = agents.find(a => (modalAgent.dbNames || []).some(n => a.agent?.toLowerCase() === n || a.agent?.toLowerCase().includes(n)))
+          return d ? { total_analyses: d.total_analyses, avg_confidence: d.avg_confidence, last_run: d.last_run } : null
+        })() : null}
+        detail={modalAgent && agentDetailResp ? (() => {
+          // Find matching DB key in agent detail response
+          const detailData = agentDetailResp as Record<string, unknown>
+          for (const dbName of modalAgent.dbNames || []) {
+            if (detailData[dbName]) return detailData[dbName] as { latest: unknown[]; distribution: unknown[]; top_symbols: unknown[] }
+          }
+          return null
+        })() as never : null}
+        onClose={() => setModalAgent(null)}
+        onRunFresh={(q) => { setModalAgent(null); handleAiResearch(q) }}
+      />
     </div>
   )
 }
