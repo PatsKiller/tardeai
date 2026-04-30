@@ -20,12 +20,19 @@ export default function Correlation() {
   const symbols = data.symbols.slice(0, 12)
   return (
     <>
-      <PageHeader title="Correlation" subtitle={`${data.symbols_analyzed} symbols analyzed · updated ${data.last_updated || '—'}`} />
+      <PageHeader title="Correlation" subtitle={`Top ${data.symbols_analyzed} positions by weight · updated ${data.last_updated || '—'}`} />
+      <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10, padding: '6px 10px', background: 'var(--bg3)', borderRadius: 6 }}>
+        Legend: ≥0.85 Very High (red) · 0.70–0.85 High (amber) · 0.40–0.70 Moderate (acceptable) · &lt;0.40 Low (green, good diversifier). Action: Trim one of any very-high pair — holding both adds little diversification.
+      </div>
       <Card title="High-Correlation Warnings">
+        {data.high_correlations.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 8 }}>No high-correlation pairs found — portfolio is well-diversified.</div>}
         {data.high_correlations.slice(0, 6).map((pair, idx) => (
           <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
             <span style={{ color: 'var(--text1)' }}>{pair.s1} + {pair.s2}</span>
-            <span style={{ color: pair.corr >= 0.85 ? 'var(--red)' : 'var(--amber)' }}>{pair.corr.toFixed(2)} — {pair.type}</span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ color: pair.corr >= 0.85 ? 'var(--red)' : 'var(--amber)' }}>{pair.corr.toFixed(2)} — {pair.type}</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{pair.corr >= 0.85 ? 'Consider trimming one' : 'Monitor'}</span>
+            </div>
           </div>
         ))}
       </Card>
