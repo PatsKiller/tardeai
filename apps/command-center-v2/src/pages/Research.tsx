@@ -57,7 +57,7 @@ export default function Research() {
 
   return (
     <>
-      <PageHeader title="Research" subtitle={`${tickers.length} tickers in enrichment cache`} />
+      <PageHeader title="Research" subtitle={`${tickers.length} tickers in enrichment cache — analyzed by Maria/Steph agents or added to watchlist`} />
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <input

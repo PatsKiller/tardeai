@@ -249,7 +249,7 @@ export default function Journal() {
 
   return (
     <>
-      <PageHeader title="Trade Journal" subtitle={`${j.real_trade_count} closed trades | ${filtered.length} shown`} />
+      <PageHeader title="Trade Journal" subtitle={`${j.real_trade_count} closed trades | ${filtered.length} shown (filters applied — clear to see all ${j.trade_count})`} />
 
       {/* Stat cards */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
