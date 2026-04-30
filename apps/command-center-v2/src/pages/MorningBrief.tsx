@@ -286,7 +286,7 @@ export default function MorningBrief() {
                       padding: '10px 12px', background: getBg(item.label, parseFloat(item.value)),
                       border: `1px solid ${getColor(item.label, parseFloat(item.value))}20`, borderRadius: 8,
                     }}>
-                      <div style={{ ...F, fontSize: 9, color: 'var(--text3)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                      <div style={{ ...F, fontSize: 12, fontWeight: 700, color: 'var(--text2)', marginBottom: 5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
                       <div style={{ ...F, fontSize: isLarge ? 16 : 20, fontWeight: 800, color, lineHeight: 1.1 }}>
                         {isLarge ? val.toLocaleString(undefined, { maximumFractionDigits: 0 }) : val.toFixed(2)}
                         {label === 'Fed Rate' || label === '30Y Mortgage' || label === 'Unemployment' ? '%' : ''}
