@@ -465,34 +465,55 @@ export default function MorningBrief() {
          ══════════════════════════════════════════════════════════════════ */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 1, ...glassStrip, marginBottom: 12 }}>
         {[
-          { label: 'Evidence', value: `${evidence.symbols_checked || 0} sym`, tone: 'neutral' as Tone },
-          { label: 'Bias', value: evidence.bias_flagged ? `${evidence.bias_flagged}` : 'Clean', tone: evidence.bias_flagged ? 'amber' as Tone : 'green' as Tone },
-          { label: 'Conflicts', value: evidence.conflicts ? `${evidence.conflicts}` : 'None', tone: evidence.conflicts ? 'amber' as Tone : 'green' as Tone },
-          { label: 'Outcomes', value: `${outcomes.evaluated}/${outcomes.total}`, tone: 'neutral' as Tone },
-          { label: 'Pipeline', value: titleCase(ov?.pipeline_status || '?'), tone: ov?.pipeline_status === 'fresh' ? 'green' as Tone : 'amber' as Tone },
-          { label: 'Stops', value: stopCov.total ? `${stopCov.fresh || 0}/${stopCov.total}` : '—', tone: stopCov.fresh === stopCov.total ? 'green' as Tone : 'amber' as Tone },
+          { label: 'Evidence', value: `${evidence.symbols_checked || 0} sym`, tone: 'neutral' as Tone, route: '/actions' },
+          { label: 'Bias', value: evidence.bias_flagged ? `${evidence.bias_flagged}` : 'Clean', tone: evidence.bias_flagged ? 'amber' as Tone : 'green' as Tone, route: '/actions' },
+          { label: 'Conflicts', value: evidence.conflicts ? `${evidence.conflicts}` : 'None', tone: evidence.conflicts ? 'amber' as Tone : 'green' as Tone, route: '/actions' },
+          { label: 'Outcomes', value: `${outcomes.evaluated}/${outcomes.total}`, tone: 'neutral' as Tone, route: '/ops' },
+          { label: 'Pipeline', value: titleCase(ov?.pipeline_status || '?'), tone: ov?.pipeline_status === 'fresh' ? 'green' as Tone : 'amber' as Tone, route: '/ops' },
+          { label: 'Stops', value: stopCov.total ? `${stopCov.fresh || 0}/${stopCov.total}` : '—', tone: stopCov.fresh === stopCov.total ? 'green' as Tone : 'amber' as Tone, route: '/risk' },
         ].map(c => (
-          <div key={c.label} style={{ background: 'rgba(16,20,28,0.85)', padding: '7px 8px' }}>
-            <div style={{ ...F, fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>{c.label}</div>
-            <div style={{ ...F, fontSize: 12, fontWeight: 800, color: toneColor(c.tone) }}>{c.value}</div>
-          </div>
+          <button key={c.label} onClick={() => nav(c.route)} style={{ ...F, background: 'rgba(16,20,28,0.85)', padding: '7px 8px', border: 0, cursor: 'pointer', textAlign: 'left', transition: 'background 80ms' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(30,40,55,0.9)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(16,20,28,0.85)' }}>
+            <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>{c.label}</div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: toneColor(c.tone) }}>{c.value}</div>
+          </button>
         ))}
       </div>
 
       {brief.has_findings && brief.sections.length > 0 && (
         <section style={{ ...glassPanel, marginBottom: 12 }}>
           <button onClick={() => setIntelExpanded(!intelExpanded)} style={{ ...F, width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'transparent', border: 0, cursor: 'pointer' }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#fff' }}>Overnight Intelligence ({brief.sections.length})</span>
-            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{intelExpanded ? '▲' : '▼'}</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: '#fff' }}>Overnight Intelligence ({brief.sections.length} sections, {brief.sections.reduce((s, sec) => s + sec.items.length, 0)} items)</span>
+            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{intelExpanded ? '▲ Collapse' : '▼ Show Full Narrative'}</span>
           </button>
           {intelExpanded && (
-            <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+            <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
               {brief.sections.map((s, i) => (
                 <div key={i}>
-                  <div style={{ ...F, fontSize: 9, fontWeight: 700, color: s.priority === 1 ? 'var(--red)' : s.priority === 2 ? 'var(--amber)' : 'var(--text1)', textTransform: 'uppercase', marginBottom: 3 }}>{s.title}</div>
-                  {s.items.slice(0, 3).map((item, j) => (
-                    <div key={j} style={{ ...F, fontSize: 10, color: 'var(--text2)', lineHeight: 1.4, padding: '2px 0 2px 8px', borderLeft: `2px solid ${s.priority === 1 ? 'var(--red)' : s.priority === 2 ? 'var(--amber)' : 'var(--border)'}`, marginBottom: 2 }}>{item}</div>
-                  ))}
+                  <div style={{ ...F, fontSize: 10, fontWeight: 800, color: s.priority === 1 ? 'var(--red)' : s.priority === 2 ? 'var(--amber)' : 'var(--text1)', textTransform: 'uppercase', marginBottom: 4, letterSpacing: '.03em' }}>{s.title}</div>
+                  {s.items.map((item, j) => {
+                    // Extract symbol from item text for clickable links
+                    const symMatch = item.match(/^([A-Z]{1,5})[:.]?\s/)
+                    const sym = symMatch ? symMatch[1] : null
+                    const route = item.includes('/v2/risk') ? '/risk' : item.includes('/v2/approvals') ? '/approvals' : item.includes('/v2/recovery') ? '/recovery' : sym ? `/research?symbol=${sym}` : ''
+                    return (
+                      <div key={j} onClick={() => route && nav(route)} style={{
+                        ...F, fontSize: 10, color: 'var(--text1)', lineHeight: 1.5,
+                        padding: '4px 0 4px 10px',
+                        borderLeft: `3px solid ${s.priority === 1 ? 'var(--red)' : s.priority === 2 ? 'var(--amber)' : 'var(--border)'}`,
+                        marginBottom: 3, cursor: route ? 'pointer' : 'default',
+                        borderRadius: '0 4px 4px 0',
+                        transition: 'background 80ms',
+                      }}
+                        onMouseEnter={e => { if (route) (e.currentTarget as HTMLElement).style.background = 'var(--bg3)' }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '' }}>
+                        {sym && <span style={{ fontWeight: 800, color: 'var(--accent)', marginRight: 4 }}>{sym}</span>}
+                        {sym ? item.replace(symMatch![0], '') : item}
+                        {route && <span style={{ fontSize: 8, color: 'var(--accent)', marginLeft: 6 }}>→</span>}
+                      </div>
+                    )
+                  })}
                 </div>
               ))}
             </div>
