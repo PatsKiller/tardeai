@@ -2377,3 +2377,61 @@ From `finviz_validator.py --llm-review` (qwen3:1.7b):
 | Qualified intelligence | 14 promoted |
 | Rotation proposals | 12 pending review |
 | Credential health | 8/10 OK (Brave needs $5, FMP legacy deprecated) |
+
+---
+
+## v2.53.3 — Full Finviz Audit + LLM Routing Logging
+
+### Finviz Full Audit (`--full-audit`)
+
+**Command:** `python3 scripts/finviz_validator.py --full-audit --strategies --llm-review`
+
+**Results (live April 30, 2026):**
+
+| Category | Count | Status |
+|---|---|---|
+| YAML screeners (Elite, v=152) | 2 | ✅ Both OK (prime_setups 5 rows, watchlist_setups 13 rows) |
+| DB screeners (finviz_screeners) | 20 | 19 active with URL |
+| Using Elite Finviz (v=152) | 2 | Full data: RVOL, Float, Gap |
+| Using Free Finviz (v=111) | 18 | ⚠️ Basic columns only |
+| No URL configured | 1 | ❌ `dividend_growth` — needs fix |
+| No strategy mapped | 1 | ❌ `dividend_growth` — no strategy_type |
+| Total issues found | 21 | Mostly v=111 warnings |
+
+### LLM Routing Decision Logging
+
+Every LLM call now logs routing reason + token estimate:
+
+| Field | Example | Purpose |
+|---|---|---|
+| `routing_reason` | "routine → local (default)" | WHY this provider was chosen |
+| `est_tokens` | 245 | Estimated tokens (response_len / 4) |
+| `prompt_len` | 2100 | Input prompt character count |
+| `provider` | "local" | Which provider handled it |
+| `fallbacks` | ["claude: budget exceeded"] | What failed before success |
+
+**Routing tiers (from llm_router.py):**
+
+| Tier | Provider | When Used | Cost |
+|---|---|---|---|
+| 1 (Default) | qwen3:1.7b local | All routine: scoring, cleaning, daily iteration, most agent analysis | $0 |
+| 2 (High-impact) | Claude | Strategy review, final synthesis, Alex disability analysis | ~$0.02/call |
+| 3 (Fallback) | Grok / OpenAI | When Claude budget exceeded | ~$0.01/call |
+| 4 (Last resort) | Local (truncated) | When all cloud providers unavailable | $0 |
+
+**Log location:** `logs/llm_router.log` (JSON lines, one per call)
+
+### Audit Findings Summary
+
+**Screener issues:**
+- 18 of 20 DB screeners use free Finviz (v=111) — no RVOL/Float/Gap columns
+- `dividend_growth` screener has no URL and no strategy mapped
+- Only 2 screeners (day_scalp) use Elite Finviz with full data
+
+**Strategy issues (from LLM review):**
+- 9 of 15 strategies have no R:R ratios defined
+- `speculative_growth` has 0.7x R:R — risk exceeds reward
+- `income` (198 cards) and `dividend_growth_compounder` (74 symbols) overlap heavily
+- No IRMAA threshold monitoring, no Medicaid lookback strategies
+- Missing: cash ladder, sector rotation, tax-loss harvesting, inflation hedges
+- Recommendation: consolidate to 8-10 well-defined strategies
