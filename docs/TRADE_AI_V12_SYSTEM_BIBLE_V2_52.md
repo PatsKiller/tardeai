@@ -2030,3 +2030,91 @@ Query → Check source_hint + throttle gates
 - **Brave Search**: $5 credit → unlocks real-time web research
 - **GPU upgrade**: qwen3:14b → dramatically better agent reasoning
 - **Social APIs**: X ($100/mo) or StockTwits (free) → sentiment data
+
+---
+
+## v2.52.1 — Intelligence Whiteboard + Raw Data Toggle
+
+### Intelligence Whiteboard — Multi-Day Curation Pipeline
+
+**Problem solved:** Raw intelligence (YouTube transcripts, news, SEC filings) was auto-promoted directly to the dashboard. Users saw every new alert daily with no curation, cross-referencing, or validation.
+
+**Solution:** New `intelligence_whiteboard` table acts as a staging area. Items must pass through multi-day validation before reaching the dashboard.
+
+```
+RAW DATA (news, YouTube, SEC, price)
+  ↓
+WHITEBOARD (intelligence_whiteboard table, status='raw')
+  71 items currently staged, avg quality 68
+  ↓
+DAILY ITERATION (cron: agent_watchlist_engine.py --daily)
+  - Update days_on_board for all items
+  - Detect cross-references: same symbol from 2+ source types → status='iterating'
+  - Cross-reference news + YouTube + SEC + price data
+  ↓
+PROMOTION GATE (only validated items pass)
+  Criteria (must meet ONE):
+    • 2+ days on board AND 2+ different source types
+    • 3+ days on board AND quality_score ≥ 75
+  → status='promoted', promoted_at, promoted_by='curation_engine'
+  ↓
+QUALIFIED INTELLIGENCE (dashboard-visible)
+  → Appears in agent modals, Morning Brief, proposals
+```
+
+### intelligence_whiteboard Table Schema
+
+| Column | Type | Purpose |
+|---|---|---|
+| id | BIGSERIAL | Primary key |
+| symbol | TEXT | Ticker (NULL for non-symbol intel) |
+| source_type | TEXT | news / youtube / sec_form4 |
+| source_id | BIGINT | FK to source table |
+| title | TEXT | Item title |
+| summary | TEXT | Summary text |
+| quality_score | INT | 0-100 quality score |
+| confidence | NUMERIC | 0-1.0 confidence |
+| sources_count | INT | Number of distinct source types referencing this symbol |
+| cross_references | JSONB | Links to related items |
+| status | TEXT | raw → iterating → validated → promoted → dismissed |
+| days_on_board | INT | Days since first_seen_at |
+| first_seen_at | TIMESTAMPTZ | When first staged |
+| last_iterated_at | TIMESTAMPTZ | Last cross-reference check |
+| promoted_at | TIMESTAMPTZ | When promoted to qualified |
+| promoted_by | TEXT | curation_engine / manual |
+| agent_notes | JSONB | Per-agent iteration notes |
+
+### Whiteboard Status Flow
+
+| Status | Meaning | Count |
+|---|---|---|
+| `raw` | Just staged, no cross-referencing yet | 71 |
+| `iterating` | Same symbol found in 2+ source types | 0 (day 1) |
+| `validated` | Passed promotion gate (multi-day + multi-source) | 0 (day 1) |
+| `promoted` | Moved to qualified_intelligence (dashboard-visible) | 0 (day 1) |
+| `dismissed` | Low quality or stale, removed from pipeline | 0 |
+
+### promote_qualified_intel() — Rewritten
+
+Three-stage function (runs daily via `--daily` cron):
+
+1. **Stage**: Route new high-Q items to whiteboard
+   - News: relevance ≥ 0.7
+   - YouTube: quality ≥ 60 (lower bar than qualified — wider net for curation)
+   - SEC Form 4: all filings
+2. **Iterate**: Update days_on_board, detect multi-source cross-references
+3. **Promote**: Only validated items reach qualified_intelligence
+
+### Raw Intelligence Toggle (Agent Modal)
+
+New button below discovery cards: **"▼ View Raw Intelligence (admin)"**
+
+- Click to expand: shows raw text from each analysis
+- Monospace font, dark background, scrollable (max-height 120px per item)
+- Shows symbol, timestamp, and full narrative/summary text
+- Click again: **"▲ Hide Raw Intelligence"** to collapse
+- Purpose: admin can see underlying data sources without leaving the modal
+
+### DB Table Count
+
+149 tables (+1: intelligence_whiteboard)
