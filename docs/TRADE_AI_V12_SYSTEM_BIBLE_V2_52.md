@@ -2259,3 +2259,121 @@ tax:   RTX BUY 85% | HELD | esc: maria→risk→steph→tax | stop=$180.71 targe
 aegis: 8 intel events, 9 macro series
 Total: 9 unique symbols, 0 duplicates across agents
 ```
+
+---
+
+## v2.53.2 — Complete Finviz Screener Table + System Summary
+
+### Finviz Screeners — Complete Inventory (20 screeners)
+
+| # | Screener ID | Display Name | Strategy Type | Active | URL Version | Status |
+|---|---|---|---|---|---|---|
+| 1 | prime_setups | Prime Setups (Tier 1) | day_scalp | ✅ | v=152 | ✅ 5 rows, all columns |
+| 2 | watchlist_setups | Watchlist Setups (Tier 2) | day_scalp | ✅ | v=152 | ✅ 13 rows, all columns |
+| 3 | div_growth_quality | Dividend Growth Quality | dividend_growth_compounder | ✅ | v=111 | ⚠️ Free Finviz (no RVOL/Float) |
+| 4 | taxable_qualified_div | Taxable-Friendly Qualified Dividends | dividend_growth_compounder | ✅ | v=111 | ⚠️ Free Finviz |
+| 5 | value_income | Value + Income | dividend_growth_compounder | ✅ | v=111 | ⚠️ Free Finviz |
+| 6 | high_yield_income | High-Yield Income (BDC/CEF) | high_yield_income_bdc | ✅ | v=111 | ⚠️ Free Finviz |
+| 7 | ira_income_friendly | IRA-Friendly Income | high_yield_income_bdc | ✅ | v=111 | ⚠️ Free Finviz |
+| 8 | covered_call_etf | Covered-Call ETF Scanner | covered_call_income | ✅ | v=111 | ⚠️ Free Finviz |
+| 9 | covered_call_rotation | Covered-Call Rotation Window | covered_call_income | ✅ | v=111 | ⚠️ Free Finviz |
+| 10 | etf_income | Income ETFs | covered_call_income | ✅ | v=111 | ⚠️ Free Finviz |
+| 11 | defense_basket | Defense/Aerospace Basket | defense_thesis | ✅ | v=111 | ⚠️ Free Finviz |
+| 12 | core_compounder_value | Core Compounder Value | core_growth_compounder | ✅ | v=111 | ⚠️ Free Finviz |
+| 13 | roth_growth | Roth-Friendly Growth | core_growth_compounder | ✅ | v=111 | ⚠️ Free Finviz |
+| 14 | core_index_broad | Core Index / Broad Market | core_index | ✅ | v=111 | ⚠️ Free Finviz |
+| 15 | bond_etf_income | Bond ETF Income | bond_income | ✅ | v=111 | ⚠️ Free Finviz |
+| 16 | reit_income_scan | REIT Income Scanner | reit_income | ✅ | v=111 | ⚠️ Free Finviz |
+| 17 | intl_dividend | International Dividend | international_dividend | ✅ | v=111 | ⚠️ Free Finviz |
+| 18 | speculative_catalyst | Speculative w/ Catalyst | speculative_growth | ✅ | v=111 | ⚠️ Free Finviz |
+| 19 | tactical_momentum | Tactical Momentum | speculative_growth | ✅ | v=111 | ⚠️ Free Finviz |
+| 20 | swing_momentum | Swing Trade Momentum | swing_trade | ✅ | v=111 | ⚠️ Free Finviz |
+
+**Notes:**
+- Screeners 1-2 (day_scalp) use Elite Finviz (`v=152`) with custom columns → full RVOL, Gap, Float data
+- Screeners 3-20 use free Finviz (`v=111`) → basic columns only (no RVOL/Float/Gap)
+- `dividend_growth` screener has no URL configured (empty) — needs fix
+- All 20 are `active=true` and scheduled `daily`
+
+### Screener-to-Strategy Mapping
+
+| Strategy | Screener(s) | Symbols Classified | Agent Coverage | Avg Confidence |
+|---|---|---|---|---|
+| dividend_growth_compounder | div_growth_quality, taxable_qualified_div, value_income | 74 | 60 analyzed | 0.74 |
+| covered_call_income | covered_call_etf, covered_call_rotation, etf_income | 69 | 44 analyzed | 0.78 |
+| speculative_growth | speculative_catalyst, tactical_momentum | 66 | 45 analyzed | 0.75 |
+| core_growth_compounder | core_compounder_value, roth_growth | 51 | 43 analyzed | 0.76 |
+| defense_thesis | defense_basket | 46 | 35 analyzed | 0.73 |
+| reit_income | reit_income_scan | 32 | 22 analyzed | 0.73 |
+| bond_income | bond_etf_income | 31 | 28 analyzed | 0.71 |
+| international_dividend | intl_dividend | 31 | 19 analyzed | 0.77 |
+| swing_trade | swing_momentum | 30 | 19 analyzed | 0.77 |
+| recovery_watch | recovery_candidates | 30 | 17 analyzed | 0.77 |
+| high_yield_income_bdc | high_yield_income, ira_income_friendly | 22 | 19 analyzed | 0.78 |
+| core_index | core_index_broad | 14 | 13 analyzed | 0.76 |
+| day_scalp | prime_setups, watchlist_setups | — | — | — |
+| income | (from strategy cards, no dedicated screener) | — | — | — |
+| core_holding | (from strategy cards, no dedicated screener) | — | — | — |
+| growth_etf | (from strategy cards, no dedicated screener) | — | — | — |
+
+### Strategy Cards with Full Targets (31 symbols)
+
+| Strategy | Cards | With Stop/Target | Avg R:R | Example |
+|---|---|---|---|---|
+| income | 198 | 8 | 1.6x | BND stop=$70.36 target=$75.54 |
+| speculative_growth | 66 | 3 | 0.7x | ARKG stop=$27.71 target=$31.41 |
+| growth_etf | 56 | 6 | 3.9x | AMD stop=$186.66 target=$224.68 |
+| defense_thesis | 36 | 13 | 2.4x | LDOS stop=$142.76 target=$163.85 R:R=4.9x |
+| core_holding | 25 | 1 | 1.5x | CASH stop=$84.39 target=$93.19 |
+
+### LLM Strategy Review Findings
+
+From `finviz_validator.py --llm-review` (qwen3:1.7b):
+
+1. **Major overlap:** dividend_growth_compounder (74 symbols) + income (198 cards) — should merge or clearly differentiate
+2. **Undefined risk:** covered_call_income has 69 symbols but NO R:R ratios — biggest undefined position
+3. **Bad R:R:** speculative_growth at 0.7x — risk exceeds reward, needs review or elimination
+4. **Missing strategies:** cash/Treasury ladder, sector rotation, inflation hedges (TIPS, commodities)
+5. **SSDI gaps:** No IRMAA threshold monitoring ($103K), missing Medicaid 5-year lookback strategies
+6. **9 of 15 strategies** have zero R:R ratios — cannot make risk-adjusted decisions
+
+### Complete v2.42 → v2.53 Change Summary
+
+| Version | Key Changes |
+|---|---|
+| v2.42 | Account-specific rotation proposals, SSDI impact assessment, 4 new API endpoints |
+| v2.43 | FRED API key activated (7 series live), config_sync.py (59 rules), human feedback loop |
+| v2.44 | Proposal history chart, stronger SSDI rules (MAGI thresholds), auto-execute toggle, trade_instructions table |
+| v2.45 | Timeline chart $M formatting, FRED-aware projections, rich tooltips |
+| v2.46 | Monthly retirement report, outcome evaluation, proactive intel scan, agent health widget, weekly autonomy summary |
+| v2.47 | TF-IDF semantic search, multi-agent debate, Brave Search fallback, autonomy dashboard |
+| v2.48 | Ollama embeddings (nomic-embed-text 768-dim, 685 indexed), research engine, live maturity score |
+| v2.49 | Brave throttling (5/day, 60min cooldown, 24h cache), ticker-level analysis gating |
+| v2.50 | Finnhub fallback chain, embedding health metrics, search efficiency card |
+| v2.51 | Outcome lessons 7/week, monthly report search efficiency, honest maturity assessment |
+| v2.52 | Morning Brief v7 redesign (8 sections), agent modal with strategy cards, credential monitor, YouTube cookie fix (344 transcripts), transcript slow processor |
+| v2.52.1 | Intelligence whiteboard (71 items staged), raw intel toggle in modal |
+| v2.53 | Finviz validator (20 screeners), LLM strategy review (15 strategies), backtest_id hooks |
+| v2.53.1 | Cross-agent dedup (0 duplicates), escalation paths from DB, holdings context, Aegis overnight content, user context injection ($1.2M portfolio, $40.6K gap, 22% bracket) |
+| v2.53.2 | Complete Finviz screener table (20 entries), strategy-to-screener mapping, full change summary |
+
+### Current System Metrics (April 30, 2026)
+
+| Metric | Value |
+|---|---|
+| DB tables | 149 |
+| API endpoints | 120+ |
+| Cron entries | 63 |
+| Finviz screeners | 20 (2 Elite + 18 Free) |
+| Strategies | 15 (12 with agent coverage) |
+| Strategy cards | 381 (31 with stop/target/R:R) |
+| Agent results | 946 (Maria 322, Steph 314, Risk 309, Tax 1) |
+| News articles | 693 from 50+ sources |
+| YouTube transcripts | 344 (10 LLM summarized, 30 cleaned, 685 embedded) |
+| Content embeddings | 685 (nomic-embed-text 768-dim) |
+| FRED macro series | 9 observations (7 series) |
+| Whiteboard items | 71 (raw, day 1) |
+| Watchlist items | 462 across 4 sources |
+| Qualified intelligence | 14 promoted |
+| Rotation proposals | 12 pending review |
+| Credential health | 8/10 OK (Brave needs $5, FMP legacy deprecated) |
