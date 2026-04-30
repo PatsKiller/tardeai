@@ -152,7 +152,7 @@ export default function Retirement() {
             <div style={{ padding: 12, background: 'rgba(74,144,244,0.06)', borderRadius: 8, border: '1px solid rgba(74,144,244,0.15)' }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: '#4a90f4', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: 'var(--sans)', marginBottom: 8 }}>Medicare Eligibility</div>
               <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--text0)', fontFamily: 'var(--sans)', lineHeight: 1 }}>{medicareDaysLeft}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>days until Dec 2026</div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>days until Dec 2026 · Enroll 3 months before at SSA.gov to avoid premium penalty</div>
               <div style={{ marginTop: 10, height: 4, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
                 <div style={{ width: `${Math.min(100, Math.max(0, 100 - (medicareDaysLeft / 365) * 100))}%`, height: '100%', background: '#4a90f4', borderRadius: 99 }} />
               </div>
@@ -222,7 +222,7 @@ export default function Retirement() {
               Converted {fmtK(rothYTD)} of {fmtK(conversionTarget)} target ({conversionPct}%) — FROM Rollover IRA → TO Roth IRA
             </span>
             <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--sans)' }}>
-              22% bracket room: {fmt$(bracketRoom)} remaining
+              22% bracket room: {fmt$(bracketRoom)} remaining · Complete before year-end via Fidelity/Schwab
             </span>
           </div>
           {/* Bar container */}

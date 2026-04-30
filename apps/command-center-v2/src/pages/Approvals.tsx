@@ -78,6 +78,9 @@ export default function Approvals() {
         return `${parts.join(' + ')} awaiting your decision`
       })()} />
 
+      <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
+        Advisory only — execute all trades at your broker. Decision Tasks = items from pipeline runs requiring yes/no. Approvals = agent recommendations requiring your action. "Auto-review failed" = AI couldn't decide automatically, needs your judgment.
+      </div>
       {/* Quick nav */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/morning-brief')} style={linkStyle}>Morning Brief</button>

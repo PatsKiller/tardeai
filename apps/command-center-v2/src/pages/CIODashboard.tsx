@@ -63,6 +63,9 @@ export default function CIODashboard() {
         <button onClick={() => setRefreshKey(k => k + 1)} style={btnStyle}>⟳ Refresh</button>
       } />
 
+      <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
+        Advisory only — all trades must be executed manually at your broker (Fidelity/Schwab). This app does not place or cancel orders.
+      </div>
       {/* Summary tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
         <MetricTile label="Total Decisions" value={String(decisions.length)} />
