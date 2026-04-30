@@ -94,7 +94,7 @@ export default function ActionCenter() {
     <>
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}
 
-      <PageHeader title="Action Center" subtitle="Pipeline execution and imports — all actions audited" actions={
+      <PageHeader title="Action Center" subtitle="Pipeline execution and imports — runtime ~5-8 min. Do not run multiple simultaneously. Updates all accounts." actions={
         <button onClick={() => navigate('/reports')} style={{ padding: '3px 10px', fontSize: 10, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg3)', color: 'var(--text1)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>View Reports</button>
       } />
 
