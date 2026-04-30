@@ -156,7 +156,7 @@ export default function Watchlist() {
 
   return (
     <>
-      <PageHeader title="Watchlist Workbench" subtitle={`${symbols.length} symbols · ${held} held · ${synthesized} synthesized · $${(totalValue / 1000).toFixed(0)}K tracked`} actions={
+      <PageHeader title="Watchlist Workbench" subtitle={`${symbols.length} symbols · ${held} held · ${synthesized} synthesized · $${(totalValue / 1000).toFixed(0)}K tracked · Pipeline: Raw → Strategy → Agent Review → Synthesized → Approval`} actions={
         <button onClick={() => setRefreshKey(k => k + 1)} style={{ padding: '4px 12px', fontSize: 10, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: 'rgba(255,255,255,0.04)', color: 'var(--text1)', cursor: 'pointer', fontFamily: 'var(--sans)' }}>⟳ Refresh</button>
       } />
 
