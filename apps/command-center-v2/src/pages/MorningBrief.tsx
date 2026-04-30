@@ -237,12 +237,68 @@ export default function MorningBrief() {
         ...glass, padding: '18px 22px', marginBottom: 16,
         borderLeft: `3px solid ${triggered.length > 0 ? 'var(--red)' : todayPct >= 0 ? 'var(--green)' : 'var(--amber)'}`,
       }}>
-        <div style={{ fontSize: 13, color: 'var(--text1)', lineHeight: 1.7, ...F }}>{narrative}</div>
-        {macroResp?.context && (
-          <div style={{ marginTop: 10, fontSize: 9, color: 'var(--text3)', fontFamily: 'var(--mono)', lineHeight: 1.6, borderTop: '1px solid var(--border-subtle)', paddingTop: 8, whiteSpace: 'pre-wrap' }}>
-            {macroResp.context}
-          </div>
-        )}
+        <div style={{ fontSize: 14, color: 'var(--text1)', lineHeight: 1.7, ...F }}>{narrative}</div>
+        {macroResp?.context && (() => {
+          // Parse FRED text into structured data for mini dashboard
+          const lines = macroResp.context.split('\n').filter(l => l.trim() && !l.includes('MACRO'))
+          const items = lines.map(l => {
+            const m = l.match(/^\s*(.+?):\s*([\d.]+)\s*\((\d{4}-\d{2}-\d{2})\)/)
+            if (!m) return null
+            return { label: m[1].trim(), value: m[2], date: m[3] }
+          }).filter(Boolean) as { label: string; value: string; date: string }[]
+
+          // Short labels + color coding
+          const shortLabel: Record<string, string> = {
+            'Consumer Price Index (inflation)': 'CPI',
+            'Federal Funds Rate': 'Fed Rate',
+            '30-Year Mortgage Rate': '30Y Mortgage',
+            'S&P 500 Index': 'S&P 500',
+            '10Y-2Y Yield Spread (inversion signal)': '10Y-2Y Spread',
+            'Unemployment Rate': 'Unemployment',
+            'VIX Closing Value': 'VIX',
+          }
+          const getColor = (label: string, val: number) => {
+            if (label.includes('VIX')) return val > 30 ? '#f6465d' : val > 25 ? '#f6465d' : val > 20 ? '#f0b90b' : '#0ecb81'
+            if (label.includes('Unemployment')) return val > 5.5 ? '#f6465d' : val > 4.5 ? '#f0b90b' : '#0ecb81'
+            if (label.includes('Spread')) return val < 0 ? '#f6465d' : val < 0.3 ? '#f0b90b' : '#0ecb81'
+            if (label.includes('Fed')) return val > 5.5 ? '#f6465d' : val > 4.5 ? '#f0b90b' : val < 2 ? '#0ecb81' : '#4a90f4'
+            if (label.includes('Mortgage')) return val > 7.5 ? '#f6465d' : val > 6.5 ? '#f0b90b' : '#0ecb81'
+            if (label.includes('S&P')) return '#4a90f4'
+            if (label.includes('CPI')) return val > 310 ? '#f0b90b' : '#0ecb81'
+            return '#fff'
+          }
+          const getBg = (label: string, val: number) => {
+            const c = getColor(label, val)
+            return c === '#f6465d' ? 'rgba(246,70,93,0.08)' : c === '#f0b90b' ? 'rgba(240,185,11,0.06)' : c === '#0ecb81' ? 'rgba(14,203,129,0.06)' : 'rgba(255,255,255,0.03)'
+          }
+
+          return (
+            <div style={{ marginTop: 12, borderTop: '1px solid var(--border-subtle)', paddingTop: 10 }}>
+              <div style={{ ...F, fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Macro Dashboard (FRED)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
+                {items.map(item => {
+                  const val = parseFloat(item.value)
+                  const label = shortLabel[item.label] || item.label
+                  const color = getColor(item.label, val)
+                  const isLarge = label === 'S&P 500' || label === 'CPI'
+                  return (
+                    <div key={item.label} style={{
+                      padding: '10px 12px', background: getBg(item.label, parseFloat(item.value)),
+                      border: `1px solid ${getColor(item.label, parseFloat(item.value))}20`, borderRadius: 8,
+                    }}>
+                      <div style={{ ...F, fontSize: 9, color: 'var(--text3)', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+                      <div style={{ ...F, fontSize: isLarge ? 16 : 20, fontWeight: 800, color, lineHeight: 1.1 }}>
+                        {isLarge ? val.toLocaleString(undefined, { maximumFractionDigits: 0 }) : val.toFixed(2)}
+                        {label === 'Fed Rate' || label === '30Y Mortgage' || label === 'Unemployment' ? '%' : ''}
+                      </div>
+                      <div style={{ ...F, fontSize: 8, color: 'var(--text3)', marginTop: 3 }}>{item.date}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
       </motion.div>
 
       {/* ══════════════════════════════════════════════════════════════════
