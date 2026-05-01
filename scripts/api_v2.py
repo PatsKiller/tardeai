@@ -5301,7 +5301,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     for oid in old_ids:
                         _db_write("UPDATE john_decision_queue SET status='closed', decided_at=NOW(), closure_note='Superseded by newer task' WHERE id=%s", (oid,))
                         deduped += 1
-                # Also dedup action_queue STOP_REVIEW entries
+                # Also dedup action_queue STOP_REVIEW entries (ONLY pending rows)
                 aq_dupes = _db_query("""
                     SELECT action, array_agg(id ORDER BY id DESC) as ids
                     FROM action_queue WHERE status='pending' AND action='STOP_REVIEW'
@@ -5309,7 +5309,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 for d in aq_dupes:
                     ids = d["ids"]
                     for oid in ids[1:]:
-                        _db_write("UPDATE action_queue SET status='resolved', reviewed_at=NOW(), reviewed_by='auto_dedup' WHERE id=%s", (oid,))
+                        _db_write("UPDATE action_queue SET status='resolved', reviewed_at=NOW(), reviewed_by='auto_dedup' WHERE id=%s AND status='pending'", (oid,))
                         deduped += 1
                 return 200, {"ok": True, "resolved_count": deduped}
             except Exception as e:
