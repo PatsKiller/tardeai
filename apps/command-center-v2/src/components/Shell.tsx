@@ -161,7 +161,7 @@ export default function Shell() {
   const [utilOpen, setUtilOpen] = useState(false)
   const [personalOpen, setPersonalOpen] = useState(false)
   const navigate = useNavigate()
-  const { data } = useApi<OverviewMini>('/api/v2/overview')
+  const { data } = useApi<OverviewMini>('/api/v2/overview', 30000)
 
   const regime = data?.trade_ai?.breadth || '—'
   const setupState = `${data?.trade_ai?.go_count ?? 0} GO · ${data?.trade_ai?.wait_count ?? 0} WAIT · ${data?.trade_ai?.no_go_count ?? 0} NO GO`
