@@ -29,7 +29,36 @@ export function AddYouTubeChannelModal({ isOpen, onClose, onSuccess }: Props) {
   const [errorMsg, setErrorMsg] = useState('')
   const nameRef = useRef<HTMLInputElement>(null)
 
+  const [lookupMsg, setLookupMsg] = useState('')
+
   useEffect(() => { if (isOpen) setTimeout(() => nameRef.current?.focus(), 100) }, [isOpen])
+
+  // Auto-map when URL is pasted
+  useEffect(() => {
+    if (!url.trim()) return
+    const m = url.match(/youtube\.com\/(?:channel\/|@|c\/|user\/)([^/?&]+)/)
+    if (m) {
+      setChannelId(m[1])
+      // Lookup in DB
+      fetch(`/api/v2/youtube/channel-lookup?url=${encodeURIComponent(url)}`)
+        .then(r => r.json())
+        .then(d => {
+          const ch = d.data || d
+          if (ch.found && ch.channel) {
+            setName(ch.channel.channel_name || '')
+            setChannelId(ch.channel.channel_id || m[1])
+            if (ch.channel.category) handleCategoryChange(ch.channel.category)
+            if (ch.channel.priority) setPriority(ch.channel.priority)
+            if (ch.channel.auto_promote_threshold) setThreshold(ch.channel.auto_promote_threshold)
+            if (ch.channel.agent_tags) setAgentTags(Array.isArray(ch.channel.agent_tags) ? ch.channel.agent_tags : [])
+            setLookupMsg('Channel already tracked \u2014 editing existing entry')
+          } else {
+            setLookupMsg('New channel \u2014 fill in name and category')
+          }
+        })
+        .catch(() => {})
+    }
+  }, [url])
 
   const handleCategoryChange = (cat: string) => {
     setCategory(cat)
@@ -44,8 +73,14 @@ export function AddYouTubeChannelModal({ isOpen, onClose, onSuccess }: Props) {
       const res = await fetch('/api/v2/youtube/channels/add', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          channel_name: name.trim(), channel_id: channelId.trim() || name.trim().toLowerCase().replace(/\s+/g, '_'),
-          channel_url: url.trim(), strategy_focus: category, added_by: 'dashboard',
+          channel_name: name.trim(),
+          channel_id: channelId.trim() || name.trim().toLowerCase().replace(/\s+/g, '_'),
+          channel_url: url.trim(),
+          category, priority,
+          agent_tags: agentTags,
+          auto_promote_threshold: threshold,
+          strategy_focus: category,
+          added_by: 'dashboard',
         }),
       })
       const data = await res.json()
@@ -82,14 +117,17 @@ export function AddYouTubeChannelModal({ isOpen, onClose, onSuccess }: Props) {
           <>
             {result === 'error' && <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)', borderRadius:6, padding:'8px 12px', marginBottom:12, fontSize:11, color:'var(--red)' }}>{errorMsg}</div>}
 
+            <Label>Channel URL (paste to auto-fill)</Label>
+            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://youtube.com/@ChannelName or /channel/UC..." style={inputStyle} />
+            {lookupMsg && (
+              <div style={{ fontSize: 10, padding: '4px 8px', marginBottom: 4, borderRadius: 4, color: lookupMsg.includes('already') ? 'var(--green)' : 'var(--accent)', background: lookupMsg.includes('already') ? 'rgba(0,255,136,.06)' : 'rgba(0,212,255,.06)' }}>{lookupMsg}</div>
+            )}
+
             <Label>Channel Name *</Label>
             <input ref={nameRef} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Ben Felix" style={inputStyle} />
 
-            <Label>Channel ID (optional)</Label>
+            <Label>Channel ID (auto-detected from URL)</Label>
             <input value={channelId} onChange={e => setChannelId(e.target.value)} placeholder="UC... (auto-generated if blank)" style={inputStyle} />
-
-            <Label>Channel URL (optional)</Label>
-            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://youtube.com/@ChannelName" style={inputStyle} />
 
             <Label>Category</Label>
             <select value={category} onChange={e => handleCategoryChange(e.target.value)} style={{ ...inputStyle, width:'100%' }}>

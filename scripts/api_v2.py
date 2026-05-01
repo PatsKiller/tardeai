@@ -3561,6 +3561,29 @@ def _iris_hygiene_status():
     }
 
 
+def _youtube_channel_lookup():
+    """GET /api/v2/youtube/channel-lookup?url= — Look up a channel by URL."""
+    import re as _re, urllib.parse as _up
+    # query comes via handle() which passes query dict
+    # but for GET routes in ROUTES dict, query params aren't passed — read from raw
+    # This is called as a lambda, so we need to get the URL from somewhere
+    # The handle() function doesn't pass query to ROUTES lambdas, so parse from env
+    # Actually — the ROUTES handler doesn't pass query. Let's check the request path.
+    # Workaround: this function reads from a module-level variable set by handle()
+    url = getattr(_youtube_channel_lookup, '_url', '') or ''
+    if not url:
+        return {"found": False, "error": "url parameter required"}
+    ch_match = _re.match(r'https?://(?:www\.)?youtube\.com/(?:channel/|@|c/|user/)([^/?&]+)', url)
+    ch_id = ch_match.group(1) if ch_match else url.strip().lstrip('@')
+    if not ch_id:
+        return {"found": False, "error": "Could not parse channel from URL"}
+    ch = _db_query("SELECT channel_name, channel_id, channel_url, category, priority, agent_tags, auto_promote_threshold FROM youtube_channels WHERE channel_id=%s OR channel_url LIKE %s OR channel_name ILIKE %s LIMIT 1",
+                   (ch_id, f"%{ch_id}%", f"%{ch_id}%"), fetch="one")
+    if ch:
+        return {"found": True, "channel": {k: _json_clean(v) for k, v in ch.items()}}
+    return {"found": False, "channel_id": ch_id, "channel_url": url}
+
+
 def _rewrite_status():
     """GET /api/v2/rewrite-note/status — Check local LLM availability."""
     local_up = False
@@ -5052,6 +5075,7 @@ ROUTES = {
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: {"transcripts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, video_id, title, channel_name, publish_date, url, duration_seconds, quality_score, relevance_score, validation_status, matched_keywords, added_by, ingested_at, strategy_tags, agent_tags FROM youtube_transcripts ORDER BY ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/youtube/channels": lambda: {"channels": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM youtube_channels WHERE active=TRUE ORDER BY channel_name") or [])]},
+    "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
     "/api/v2/cio-decisions": lambda: _cio_decisions_enriched(),
@@ -5430,6 +5454,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 url = b.get("url", "").strip()
                 if not url:
                     return 400, {"ok": False, "error": "url required"}
+                import re as _re
+                # Detect channel URLs vs video URLs
+                ch_match = _re.match(r'https?://(?:www\.)?youtube\.com/(?:channel/|@|c/|user/)([^/?&]+)', url)
+                if ch_match:
+                    ch_id = ch_match.group(1)
+                    # Look up channel in DB
+                    ch = _db_query("SELECT channel_name, channel_id FROM youtube_channels WHERE channel_id=%s OR channel_url LIKE %s OR channel_name ILIKE %s LIMIT 1",
+                                   (ch_id, f"%{ch_id}%", f"%{ch_id}%"), fetch="one")
+                    if not ch:
+                        return 400, {"ok": False, "error": f"Channel '{ch_id}' not tracked. Add it first with the + Channel button."}
+                    # Trigger ingest for this channel
+                    import subprocess, threading
+                    def _ingest():
+                        subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                                        str(PROJECT_ROOT / "scripts/youtube_transcript_ingest.py"),
+                                        "--channel", ch["channel_name"]], capture_output=True, timeout=120,
+                                       cwd=str(PROJECT_ROOT))
+                    threading.Thread(target=_ingest, daemon=True).start()
+                    return 200, {"ok": True, "channel": ch["channel_name"], "channel_id": ch["channel_id"], "queued": True,
+                                 "message": f"Ingesting latest videos from {ch['channel_name']}..."}
+                # Video URL — existing logic
                 import sys as _sys
                 _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
                 from youtube_transcript_ingest import ingest_video
@@ -5439,22 +5484,31 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, **result}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
-        if base_path == "/api/v2/youtube/channels/add":
+        if base_path == "/api/v2/youtube/channels/add" or base_path == "/api/v2/youtube/add-channel":
             try:
                 b = body or {}
                 name = b.get("channel_name", "").strip()
                 if not name:
                     return 400, {"ok": False, "error": "channel_name required"}
-                cid = b.get("channel_id", name.lower().replace(" ", "_"))
+                cid = b.get("channel_id", "").strip() or name.lower().replace(" ", "_").replace("-", "_")
+                category = b.get("category", "investment_general")
+                priority = b.get("priority", "medium")
+                agent_tags = b.get("agent_tags", ["maria", "steph"])
+                threshold = int(b.get("auto_promote_threshold", b.get("promote_threshold", 70)))
                 _db_write(
-                    """INSERT INTO youtube_channels (channel_id, channel_name, channel_url, strategy_focus, added_by)
-                       VALUES (%s, %s, %s, %s, %s)
+                    """INSERT INTO youtube_channels
+                       (channel_id, channel_name, channel_url, category, priority,
+                        agent_tags, auto_promote_threshold, strategy_focus, active, added_by)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, true, %s)
                        ON CONFLICT (channel_id) DO UPDATE SET
                          channel_name=EXCLUDED.channel_name, channel_url=EXCLUDED.channel_url,
-                         strategy_focus=EXCLUDED.strategy_focus""",
-                    (cid, name, b.get("channel_url", ""), b.get("strategy_focus", ""), b.get("added_by", "user"))
+                         category=EXCLUDED.category, priority=EXCLUDED.priority,
+                         agent_tags=EXCLUDED.agent_tags, auto_promote_threshold=EXCLUDED.auto_promote_threshold""",
+                    (cid, name, b.get("channel_url", ""), category, priority,
+                     agent_tags, threshold, b.get("strategy_focus", category),
+                     b.get("added_by", "user"))
                 )
-                return 200, {"ok": True, "action": "upserted", "channel_id": cid}
+                return 200, {"ok": True, "action": "upserted", "channel_id": cid, "channel_name": name}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/social/ingest":
@@ -5578,6 +5632,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "data": journal_review_read(trade_key)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    # Pass query params to lookup functions that need them
+    if query:
+        _youtube_channel_lookup._url = (query.get("url") or [""])[0] if isinstance(query.get("url"), list) else query.get("url", "")
 
     # Static routes
     handler = ROUTES.get(base_path)
