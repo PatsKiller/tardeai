@@ -1,15 +1,19 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 /**
  * Fetch from a /api/v2/* endpoint. Unwraps the { ok, data } envelope.
  * Returns data as T, or null while loading / on error.
  * Retries once after 2s if the initial fetch fails (handles server restart).
+ * Optional intervalMs: re-fetch every N milliseconds (for polling).
  */
-export function useApi<T>(path: string) {
+export function useApi<T>(path: string, intervalMs?: number) {
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const retried = useRef(false)
+  const [tick, setTick] = useState(0)
+
+  const refetch = useCallback(() => setTick(t => t + 1), [])
 
   useEffect(() => {
     let cancelled = false
@@ -47,7 +51,14 @@ export function useApi<T>(path: string) {
 
     doFetch()
     return () => { cancelled = true }
-  }, [path])
+  }, [path, tick])
 
-  return { data, loading, error }
+  // Polling interval
+  useEffect(() => {
+    if (!intervalMs || intervalMs < 5000) return
+    const id = setInterval(() => setTick(t => t + 1), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+
+  return { data, loading, error, refetch }
 }

@@ -118,7 +118,9 @@ def overview():
 
     # Notifications count
     notif_rows = _db_query("SELECT count(*) AS cnt FROM notification_log", fetch="one")
-    pending_rows = _db_query("SELECT count(*) AS cnt FROM action_queue WHERE status='pending'", fetch="one")
+    aq_cnt = (_db_query("SELECT count(*) AS cnt FROM action_queue WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
+    jdq_cnt = (_db_query("SELECT count(*) AS cnt FROM john_decision_queue WHERE status='pending_john'", fetch="one") or {}).get("cnt", 0)
+    pending_rows = {"cnt": aq_cnt + jdq_cnt}
 
     # Today's change = sum of per-holding day_change (actual market-hours move)
     today_change = sum(p.get("day_change") or 0 for p in holdings)
@@ -5298,6 +5300,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     old_ids = ids[1:]
                     for oid in old_ids:
                         _db_write("UPDATE john_decision_queue SET status='closed', decided_at=NOW(), closure_note='Superseded by newer task' WHERE id=%s", (oid,))
+                        deduped += 1
+                # Also dedup action_queue STOP_REVIEW entries
+                aq_dupes = _db_query("""
+                    SELECT action, array_agg(id ORDER BY id DESC) as ids
+                    FROM action_queue WHERE status='pending' AND action='STOP_REVIEW'
+                    GROUP BY action HAVING count(*) > 1""") or []
+                for d in aq_dupes:
+                    ids = d["ids"]
+                    for oid in ids[1:]:
+                        _db_write("UPDATE action_queue SET status='resolved', reviewed_at=NOW(), reviewed_by='auto_dedup' WHERE id=%s", (oid,))
                         deduped += 1
                 return 200, {"ok": True, "resolved_count": deduped}
             except Exception as e:

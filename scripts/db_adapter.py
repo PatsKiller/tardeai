@@ -996,7 +996,20 @@ def action_queue_already_exists(dedupe_key: str) -> bool:
 
 
 def save_action_queue_entry(entry: dict) -> None:
-    """Upsert one action_queue row by dedupe_key."""
+    """Upsert one action_queue row. For STOP_REVIEW: update existing pending row instead of creating duplicates."""
+    action = entry.get("action", "")
+    if action == "STOP_REVIEW":
+        # Check if a pending STOP_REVIEW already exists
+        existing = _execute(
+            "SELECT id FROM action_queue WHERE action='STOP_REVIEW' AND status='pending' LIMIT 1",
+            fetch="one"
+        )
+        if existing:
+            _execute(
+                "UPDATE action_queue SET rationale=%(rationale)s, confidence=%(confidence)s WHERE id=%(id)s",
+                {**entry, "id": existing["id"]}
+            )
+            return
     _execute(
         """INSERT INTO action_queue
            (recommendation_id, symbol, action, rationale, confidence, urgency, status, expires_at, dedupe_key)
