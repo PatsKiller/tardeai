@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -68,6 +68,21 @@ export default function Overview() {
   const { data: agentHealth } = useApi<AgentHealthResp>('/api/v2/agent-health')
   const { data: autonomy } = useApi<AutonomyResp>('/api/v2/autonomy-progress')
   const { data: searchSrc } = useApi<SearchSourcesResp>('/api/v2/search-sources')
+  const { data: irisData } = useApi<any>('/api/v2/iris/status')
+  const [irisQ, setIrisQ] = useState('')
+  const [irisA, setIrisA] = useState('')
+  const [askingIris, setAskingIris] = useState(false)
+
+  const askIris = async () => {
+    if (!irisQ.trim()) return
+    setAskingIris(true)
+    try {
+      const res = await fetch('/api/v2/iris/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: irisQ }) })
+      const d = await res.json()
+      if (d.ok) setIrisA(d.data.answer)
+    } catch {}
+    finally { setAskingIris(false) }
+  }
 
   const sectors = ov?.sectors ?? []
   const totalSector = sectors.reduce((s, row) => s + row.value, 0)
@@ -411,6 +426,35 @@ export default function Overview() {
             </Card>
           )}
 
+          {/* Iris Taxonomy */}
+          {irisData && (
+            <Card title="Iris — Taxonomy" subtitle={`${irisData.coverage_score ?? 0}% coverage`}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--text3)', marginBottom: 3 }}>
+                  <span>Channel Coverage</span>
+                  <span style={{ fontWeight: 700, color: (irisData.coverage_score ?? 0) >= 70 ? 'var(--green)' : (irisData.coverage_score ?? 0) >= 50 ? 'var(--amber)' : 'var(--red)' }}>{irisData.coverage_score ?? 0}%</span>
+                </div>
+                <div style={{ height: 6, background: 'var(--bg3)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(irisData.coverage_score ?? 0, 100)}%`, height: '100%', background: (irisData.coverage_score ?? 0) >= 70 ? 'var(--green)' : (irisData.coverage_score ?? 0) >= 50 ? 'var(--amber)' : 'var(--red)', borderRadius: 99, transition: 'width 0.5s ease' }} />
+                </div>
+              </div>
+              {(irisData.pending_proposals?.length ?? 0) > 0 && (
+                <div style={{ fontSize: 10, color: 'var(--amber)', marginBottom: 6 }}>
+                  {irisData.pending_proposals.length} proposals need review
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 8, lineHeight: 1.5 }}>{irisData.summary || ''}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={irisQ} onChange={e => setIrisQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && askIris()}
+                  placeholder="Ask Iris..." style={{ flex: 1, fontSize: 10, padding: '5px 8px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text1)', outline: 'none', fontFamily: 'var(--mono)' }} />
+                <button onClick={askIris} disabled={askingIris || !irisQ.trim()} style={{ fontSize: 9, padding: '4px 10px', background: 'rgba(0,212,255,.1)', border: '1px solid rgba(0,212,255,.3)', borderRadius: 4, color: 'var(--accent)', cursor: 'pointer' }}>
+                  {askingIris ? '...' : 'Ask'}
+                </button>
+              </div>
+              {irisA && <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text1)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--bg3)', borderRadius: 6, borderLeft: '3px solid var(--accent)', maxHeight: 120, overflowY: 'auto' }}>{irisA}</div>}
+            </Card>
+          )}
+
           {/* Search Efficiency */}
           {searchSrc?._efficiency && (
             <Card title="Search Efficiency" subtitle="today">
@@ -432,6 +476,24 @@ export default function Overview() {
             </Card>
           )}
         </div>
+      </div>
+
+      {/* G8: Workflow breadcrumb */}
+      <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--bg3)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 10, color: 'var(--text3)' }}>
+        <span style={{ fontWeight: 700, color: 'var(--text2)' }}>Lifecycle:</span>
+        {[
+          { label: 'Watchlist', to: '/watchlist', desc: 'discover' },
+          { label: 'Approval', to: '/approvals', desc: 'decide' },
+          { label: 'Portfolio', to: '/portfolio', desc: 'hold' },
+          { label: 'Journal', to: '/journal', desc: 'review' },
+          { label: 'Analytics', to: '/journal-analytics', desc: 'learn' },
+        ].map((step, i) => (
+          <span key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {i > 0 && <span style={{ color: 'var(--text3)' }}>→</span>}
+            <button onClick={() => navigate(step.to)} style={{ padding: '2px 8px', fontSize: 9, border: '1px solid var(--border-subtle)', borderRadius: 4, background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'var(--sans)' }}>{step.label}</button>
+            <span style={{ fontSize: 8, color: 'var(--text3)' }}>{step.desc}</span>
+          </span>
+        ))}
       </div>
     </>
   )

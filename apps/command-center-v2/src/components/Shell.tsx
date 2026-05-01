@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
+import AdminModals from './AdminModals'
 import styles from './Shell.module.css'
 
 type OverviewMini = {
@@ -23,13 +24,14 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: 'Portfolio', items: [
     { to: '/portfolio', label: 'Holdings' },
+    { to: '/portfolio-intelligence', label: 'Portfolio Intel' },
     { to: '/dividends', label: 'Dividends' },
     { to: '/returns', label: 'Returns' },
     { to: '/attribution', label: 'Attribution' },
     { to: '/tax', label: 'Tax & Lots' },
   ]},
   { label: 'Analysis', items: [
-    { to: '/trade-ai', label: 'Trade AI' },
+    { to: '/trade-ai', label: '⚡ Trade AI' },
     { to: '/technical', label: 'Technical' },
     { to: '/risk', label: 'Risk' },
     { to: '/correlation', label: 'Correlation' },
@@ -54,6 +56,8 @@ const NAV_GROUPS: NavGroup[] = [
   { label: 'System', items: [
     { to: '/hub', label: 'System Hub' },
     { to: '/system-health', label: 'System Health' },
+    { to: '/agent-monitor', label: 'Agent Monitor' },
+    { to: '/reports/agent_orchestration.html', label: 'Orchestration' },
     { to: '/intelligence-sources', label: 'Intel Sources' },
     { to: '/actions', label: 'Actions' },
     { to: '/approvals', label: 'Approvals' },
@@ -128,17 +132,24 @@ function NavDropdown({ group, pendingApprovals }: { group: NavGroup; pendingAppr
           padding: 4, marginTop: 2,
         }}>
           {group.items.map(item => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'}
-              className={({ isActive }) => isActive ? styles.dropActive : styles.dropLink}
-              onClick={() => setOpen(false)}
-            >
-              {item.label}
-              {item.label === 'Approvals' && pendingApprovals > 0 && (
-                <span style={{ marginLeft: 'auto', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--red)', color: '#fff' }}>
-                  {pendingApprovals}
-                </span>
-              )}
-            </NavLink>
+            item.to === '/agent-monitor' || item.to.startsWith('/reports/') ? (
+              <a key={item.to} href={item.to} className={styles.dropLink}
+                onClick={() => setOpen(false)}>
+                {item.label}
+              </a>
+            ) : (
+              <NavLink key={item.to} to={item.to} end={item.to === '/'}
+                className={({ isActive }) => isActive ? styles.dropActive : styles.dropLink}
+                onClick={() => setOpen(false)}
+              >
+                {item.label}
+                {item.label === 'Approvals' && pendingApprovals > 0 && (
+                  <span style={{ marginLeft: 'auto', fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--red)', color: '#fff' }}>
+                    {pendingApprovals}
+                  </span>
+                )}
+              </NavLink>
+            )
           ))}
         </div>
       )}
@@ -148,6 +159,7 @@ function NavDropdown({ group, pendingApprovals }: { group: NavGroup; pendingAppr
 
 export default function Shell() {
   const [utilOpen, setUtilOpen] = useState(false)
+  const [personalOpen, setPersonalOpen] = useState(false)
   const navigate = useNavigate()
   const { data } = useApi<OverviewMini>('/api/v2/overview')
 
@@ -172,6 +184,7 @@ export default function Shell() {
           <TapeMetric label="Journal P&L" value={fmtDollar(data?.journal?.total_pnl)} good={(data?.journal?.total_pnl ?? 0) >= 0} onClick={() => navigate('/journal-analytics')} />
           <TapeMetric label="Win Rate" value={data?.journal?.win_rate != null ? `${data.journal.win_rate}%` : '—'} good={(data?.journal?.win_rate ?? 0) >= 50} onClick={() => navigate('/journal-analytics')} />
           <div className={styles.live}><span className={styles.dot} />{data?.as_of || 'Live'}</div>
+          <button className={styles.utilityBtn} onClick={() => setPersonalOpen(true)} title="Personal Situation — age, SSDI, filing status, accounts">👤</button>
           <button className={styles.utilityBtn} onClick={() => setUtilOpen(v => !v)}>
             Utilities
             {pendingApprovals > 0 && (
@@ -200,6 +213,7 @@ export default function Shell() {
           )}
         </div>
       </header>
+      {personalOpen && <AdminModals type="personal" onClose={() => setPersonalOpen(false)} />}
       <main className={styles.main}>
         <Outlet />
       </main>

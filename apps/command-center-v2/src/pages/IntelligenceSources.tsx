@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
+import { AddYouTubeChannelModal } from '../components/shared/AddYouTubeChannelModal'
 
 interface Source {
   screener_id: string
@@ -121,6 +122,7 @@ export default function IntelligenceSources() {
   const [ytUrl, setYtUrl] = useState('')
   const [ytIngesting, setYtIngesting] = useState(false)
   const [ytMsg, setYtMsg] = useState('')
+  const [showAddChannel, setShowAddChannel] = useState(false)
   const [socialText, setSocialText] = useState('')
   const [socialUser, setSocialUser] = useState('')
   const [socialSaving, setSocialSaving] = useState(false)
@@ -240,6 +242,18 @@ export default function IntelligenceSources() {
   return (
     <>
       <PageHeader title="Intelligence Sources & Screeners" subtitle={`${totalSources} sources configured`} />
+
+      {/* G13: Brave Search credit warning */}
+      {searchSources && (() => {
+        const brave = (searchSources as any)?.brave_search
+        const eff = (searchSources as any)?._efficiency
+        const braveDown = brave && (brave.active === false || (brave.status || '').includes('402') || (eff?.brave_calls_today ?? 0) >= (brave.daily_limit ?? 5))
+        return braveDown ? (
+          <div style={{ padding: '10px 16px', marginBottom: 12, background: 'rgba(246,70,93,0.08)', border: '2px solid rgba(246,70,93,0.3)', borderRadius: 10, fontSize: 12, color: 'var(--red)', fontWeight: 700 }}>
+            ⚠️ Brave Search API depleted — {brave.status || 'credit exhausted'}. Market news coverage is reduced; system falls back to Finnhub → RSS → DB embeddings. <a href="https://brave.com/api" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Add $5 credit at brave.com/api</a> to restore full search.
+          </div>
+        ) : null
+      })()}
 
       {/* Search Sources Status Strip */}
       {searchSources && (
@@ -364,6 +378,7 @@ export default function IntelligenceSources() {
               <button onClick={handleYtIngest} disabled={ytIngesting || !ytUrl.trim()} style={{ ...btnStyle, background: 'rgba(74,144,244,.15)', color: '#4a90f4', whiteSpace: 'nowrap' }}>
                 {ytIngesting ? 'Ingesting...' : 'Ingest'}
               </button>
+              <button onClick={() => setShowAddChannel(true)} style={{ ...btnStyle, background: 'rgba(0,255,136,.1)', color: '#00ff88', whiteSpace: 'nowrap' }}>+ Channel</button>
             </div>
             {ytMsg && <div style={{ fontSize: 10, color: ytMsg.startsWith('Error') ? '#f6465d' : '#0ecb81', marginTop: 4 }}>{ytMsg}</div>}
           </Card>
@@ -666,6 +681,7 @@ export default function IntelligenceSources() {
           </div>
         </div>
       )}
+      <AddYouTubeChannelModal isOpen={showAddChannel} onClose={() => setShowAddChannel(false)} />
     </>
   )
 }

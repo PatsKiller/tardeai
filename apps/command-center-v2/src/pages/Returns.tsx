@@ -100,7 +100,7 @@ export default function Returns() {
           </div>
         </Card>
         <Card title="Attribution Context">
-          <div style={{ color: 'var(--text2)', fontSize: 11, lineHeight: 1.6 }}>Compare return windows across accounts. Check Attribution for position-level drivers.</div>
+          <div style={{ color: 'var(--text2)', fontSize: 11, lineHeight: 1.6 }}>Compare return windows across accounts. Check Attribution for position-level drivers. Rollover IRA losses don't generate tax deductions (pre-tax account) — focus on recovery and rebalancing rather than harvesting.</div>
           <div style={{ marginTop: 10, display: 'grid', gap: 5 }}>
             {accountEntries.map(([key, row]) => (
               <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 4 }}>

@@ -22,7 +22,7 @@ export default function Technical() {
   const holdings = data?.holdings ?? []
   const scored = holdings.filter(h => h.pi_score != null)
   const filtered = useMemo(() => {
-    if (filter === 'nearStop') return scored.filter(h => (h.sma20_pct ?? 0) < 0 || (h.rsi ?? 50) < 45)
+    if (filter === 'nearStop') return scored.filter(h => (h.sma20_pct ?? 0) < 0 || (h.rsi ?? 50) < 45).sort((a, b) => (a.pi_score ?? 0) - (b.pi_score ?? 0))
     if (filter === 'overbought') return scored.filter(h => (h.rsi ?? 0) >= 70)
     if (filter === 'bullish') return scored.filter(h => (h.pi_score ?? 0) >= 60)
     return scored
@@ -58,7 +58,7 @@ export default function Technical() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
               <div>
                 <div style={{ fontFamily: 'var(--sans)', fontSize: 18, fontWeight: 800, color: 'var(--text0)' }}>{h.symbol}</div>
-                <div style={{ color: 'var(--text3)', fontSize: 10 }}>{(h.portfolio_pct ?? 0).toFixed(1)}% · {h.signal || '—'}</div>
+                <div style={{ color: 'var(--text3)', fontSize: 10 }}>{(h.portfolio_pct ?? 0).toFixed(1)}% · {h.signal || '—'} · <span style={{ fontSize: 9 }}>{h.account?.replace('schwab_', '').replace('fidelity_', '') || ''}</span></div>
               </div>
               <div style={{ width: 48, height: 48, borderRadius: 999, border: `3px solid ${piTone(h.pi_score ?? 0)}`, display: 'grid', placeItems: 'center', color: piTone(h.pi_score ?? 0), fontWeight: 800 }}>{h.pi_score}</div>
             </div>
@@ -73,7 +73,10 @@ export default function Technical() {
                 <div style={{ width: `${Math.max(6, Math.min(100, (100 + (h.week52_high_pct ?? 0)) ))}%`, height: '100%', background: 'linear-gradient(90deg, #f0b90b, #0ecb81)' }} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 9, color: 'var(--text3)' }}>
-                <span>52-week range position</span><span>{h.week52_high_pct != null ? `${Math.max(0, 100 + h.week52_high_pct).toFixed(0)}%` : '—'}</span>
+                <span title="Position within 52-week range. &gt;90% = near highs (potential resistance), &lt;30% = near lows (potential support/breakdown)">52-week range position</span>
+                <span style={{ color: (() => { const p = Math.max(0, 100 + (h.week52_high_pct ?? 0)); return p > 90 ? 'var(--green)' : p < 30 ? 'var(--red)' : 'var(--text2)' })() }}>
+                  {h.week52_high_pct != null ? `${Math.max(0, 100 + h.week52_high_pct).toFixed(0)}%` : '—'}
+                </span>
               </div>
             </div>
           </button>

@@ -51,12 +51,19 @@ export default function JournalAnalytics() {
 
   return (
     <>
-      <PageHeader title="Journal Analytics" subtitle={`${data.total_reviews} trade${data.total_reviews !== 1 ? 's' : ''} reviewed`} />
+      <PageHeader title="Journal Analytics" subtitle={`${data.total_reviews} trade${data.total_reviews !== 1 ? 's' : ''} reviewed · ${data.total_reviews < 10 ? 'Need 10+ reviews for reliable patterns' : data.total_reviews < 30 ? 'Good sample — patterns becoming meaningful' : 'Strong sample — patterns are statistically useful'}`} />
+
+      {/* CTA to review unreviewed trades */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, padding: '8px 14px', background: 'rgba(74,144,244,0.06)', border: '1px solid rgba(74,144,244,0.15)', borderRadius: 10, fontSize: 11 }}>
+        <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Improve your edge:</span>
+        <span style={{ color: 'var(--text2)' }}>Review untagged trades in the Journal — the more reviews, the better the pattern detection.</span>
+        <button onClick={() => navigate('/journal')} style={{ marginLeft: 'auto', padding: '3px 12px', fontSize: 10, border: '1px solid var(--accent)', borderRadius: 'var(--radius)', background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>Open Journal</button>
+      </div>
 
       {/* Summary strip */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <MetricTile label="Reviews" value={String(data.total_reviews)} />
-        <MetricTile label="Avg Execution" value={num(data.avg_execution)} deltaColor={data.avg_execution != null && data.avg_execution >= 4 ? 'var(--green)' : data.avg_execution != null && data.avg_execution >= 3 ? 'var(--amber)' : 'var(--text2)'} />
+        <MetricTile label="Avg Execution" value={num(data.avg_execution)} delta="1-5 scale · entry/exit/plan" deltaColor={data.avg_execution != null && data.avg_execution >= 4 ? 'var(--green)' : data.avg_execution != null && data.avg_execution >= 3 ? 'var(--amber)' : 'var(--text2)'} />
         <MetricTile label="Avg Sizing" value={num(data.avg_sizing)} deltaColor={data.avg_sizing != null && data.avg_sizing >= 4 ? 'var(--green)' : 'var(--text2)'} />
         <MetricTile label="Well Executed" value={pct(data.well_executed_rate)} deltaColor={data.well_executed_rate != null && data.well_executed_rate >= 0.7 ? 'var(--green)' : 'var(--amber)'} />
         <MetricTile label="Followed Plan" value={pct(data.plan_follow_rate)} deltaColor={data.plan_follow_rate != null && data.plan_follow_rate >= 0.7 ? 'var(--green)' : 'var(--amber)'} />
@@ -154,9 +161,9 @@ export default function JournalAnalytics() {
             {data.by_setup.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {data.by_setup.map(s => (
-                  <div key={s.setup_name} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center' }}>
+                  <div key={s.setup_name} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center', opacity: s.n < 3 ? 0.5 : 1 }}>
                     <span style={{ fontWeight: 700, color: 'var(--text0)', width: 100 }}>{s.setup_name}</span>
-                    <span style={{ color: 'var(--text3)' }}>{s.n} trade{s.n !== 1 ? 's' : ''}</span>
+                    <span style={{ color: s.n < 3 ? 'var(--amber)' : 'var(--text3)' }}>{s.n} trade{s.n !== 1 ? 's' : ''}{s.n < 3 ? ' (needs 3+)' : ''}</span>
                     {s.avg_r != null && <span>Avg R: <strong style={{ color: s.avg_r >= 0 ? 'var(--green)' : 'var(--red)' }}>{s.avg_r.toFixed(2)}</strong></span>}
                     {s.avg_exec != null && <span>Exec: <strong>{s.avg_exec.toFixed(1)}</strong>/5</span>}
                     {s.well_exec_rate != null && <span style={{ color: s.well_exec_rate >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{pct(s.well_exec_rate)} well</span>}

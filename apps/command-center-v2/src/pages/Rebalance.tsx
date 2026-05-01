@@ -6,6 +6,7 @@ import MetricTile from '../components/MetricTile'
 import { DoughnutChart, BarChartJS } from '../components/charts'
 import { useApi } from '../hooks/useApi'
 import { fmt$, timeAgo } from '../lib/format'
+import AccountBadge from '../components/AccountBadge'
 
 interface RebalanceData {
   generated_at: string
@@ -130,8 +131,12 @@ export default function Rebalance() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
           <div style={{ width: 48, height: 48, borderRadius: 999, border: `3px solid ${data.yaml_health_score >= 70 ? 'var(--green)' : data.yaml_health_score >= 50 ? 'var(--amber)' : 'var(--red)'}`, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 16, color: data.yaml_health_score >= 70 ? 'var(--green)' : data.yaml_health_score >= 50 ? 'var(--amber)' : 'var(--red)' }}>{data.yaml_health_score}</div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)' }}>YAML Health Score</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)' }}>
+              YAML Health Score
+              <span style={{ fontSize: 9, fontWeight: 400, color: 'var(--text3)', marginLeft: 6 }} title="Measures alignment between portfolio_config.yaml targets vs actual holdings. 100 = all targets met, stops set, no drift. Below 50 = significant config-to-reality gaps — review YAML or run sync.">{data.yaml_health_score >= 70 ? 'Healthy' : data.yaml_health_score >= 50 ? 'Needs attention' : 'Critical drift'}</span>
+            </div>
             {data.yaml_health_notes && <div style={{ fontSize: 10, color: 'var(--text2)', maxWidth: 500 }}>{data.yaml_health_notes.slice(0, 150)}</div>}
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>Config: config/portfolio_config.yaml · Edit via Ops Console or SSH</div>
           </div>
         </div>
       )}
@@ -224,9 +229,9 @@ export default function Rebalance() {
                   <div key={i} style={{ padding: '8px 10px', borderRadius: 'var(--radius)', background: 'var(--bg3)', borderLeft: `3px solid ${sevColor}` }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
                       {rec.symbol && <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--text0)' }}>{rec.symbol}</span>}
+                      <AccountBadge account={rec.account} />
                       <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `color-mix(in srgb, ${actColor} 15%, transparent)`, color: actColor, textTransform: 'uppercase' }}>{rec.action}</span>
                       {rec.severity && <span style={{ fontSize: 8, color: sevColor, fontWeight: 600 }}>{rec.severity}</span>}
-                      {rec.account && <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>{rec.account.replace('schwab_', '').replace('fidelity_', '')}</span>}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>{rec.rationale}</div>
                   </div>
@@ -237,22 +242,39 @@ export default function Rebalance() {
         </>
       )}
 
-      {/* Account summary */}
+      {/* Account summary with next actions */}
       {(data.account_summary?.length ?? 0) > 0 && (
         <>
           <SectionHeader title="Account Breakdown" count={data.account_summary!.length} />
           <Card compact>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-              {data.account_summary!.map(a => (
-                <div key={a.account} style={{ padding: '8px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius)' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)', marginBottom: 4 }}>{a.account.replace('schwab_', '').replace('fidelity_', '')}</div>
-                  <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)' }}>
-                    <span>Value: <strong>{fmt$(a.total_value)}</strong></span>
-                    <span>{a.position_count} positions</span>
-                    {a.cash > 0 && <span>Cash: <strong style={{ color: 'var(--green)' }}>{fmt$(a.cash)}</strong></span>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
+              {data.account_summary!.map(a => {
+                const acctKey = a.account
+                const acctRecs = data.recommendations?.filter(r => r.account === acctKey) ?? []
+                const buyCount = acctRecs.filter(r => r.action?.toUpperCase().includes('BUY') || r.action?.toUpperCase().includes('ADD')).length
+                const sellCount = acctRecs.filter(r => r.action?.toUpperCase().includes('SELL') || r.action?.toUpperCase().includes('TRIM')).length
+                const is401k = acctKey.includes('401k')
+                return (
+                  <div key={acctKey} style={{ padding: '8px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius)' }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)' }}>{acctKey.replace('schwab_', '').replace('fidelity_', '')}</span>
+                      {is401k && <span style={{ fontSize: 8, color: 'var(--text3)' }} title="Managed via Fidelity NetBenefits — trades require manual login">{'\uD83C\uDFE6'}</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 10, color: 'var(--text2)' }}>
+                      <span>Value: <strong>{fmt$(a.total_value)}</strong></span>
+                      <span>{a.position_count} positions</span>
+                      {a.cash > 0 && <span>Cash: <strong style={{ color: 'var(--green)' }}>{fmt$(a.cash)}</strong></span>}
+                    </div>
+                    {acctRecs.length > 0 && (
+                      <div style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)' }}>
+                        {buyCount > 0 && <span style={{ color: 'var(--green)', marginRight: 8 }}>{buyCount} BUY/ADD</span>}
+                        {sellCount > 0 && <span style={{ color: 'var(--red)', marginRight: 8 }}>{sellCount} SELL/TRIM</span>}
+                        {is401k && sellCount > 0 && <span style={{ color: 'var(--amber)' }}>Execute via Fidelity</span>}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </Card>
         </>

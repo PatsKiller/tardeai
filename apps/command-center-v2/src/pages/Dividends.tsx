@@ -70,7 +70,10 @@ export default function Dividends() {
               <div>Minimum <strong style={{ color: 'var(--amber)' }}>{fmt$(MINIMUM)}</strong></div>
               <div>Target <strong style={{ color: 'var(--green)' }}>{fmt$(TARGET)}</strong></div>
               <div>Stretch <strong style={{ color: '#a78bfa' }}>{fmt$(STRETCH)}</strong></div>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Gap: {fmt$(TARGET - earned)} · Close by adding SCHD/JEPI in Roll IRA ($16K cash)</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+                Gap: {fmt$(TARGET - earned)} · Close by adding SCHD/JEPI in Roll IRA ($16K cash)
+                <div style={{ marginTop: 2 }}>Strategy: Add 3-5% yielders in Rollover IRA (largest account, no tax on dividends until withdrawal). JEPI monthly income, SCHD quarterly growth.</div>
+              </div>
             </div>
           </div>
 
@@ -132,6 +135,32 @@ export default function Dividends() {
         <MetricTile label="Qualified" value={fmt$(d.qualified_annual)} />
         <MetricTile label="Payers" value={String(payers.length)} />
       </div>
+
+      {/* ── Income by Tax Treatment ──────────────────────────────────── */}
+      {(() => {
+        const taxable = payers.filter(p => (p as any).account === 'schwab_taxable' || (p as any).account?.includes('taxable')).reduce((s, p) => s + p.annual_income, 0)
+        const roth = payers.filter(p => (p as any).account === 'schwab_roth' || (p as any).account?.includes('roth')).reduce((s, p) => s + p.annual_income, 0)
+        const deferred = d.total_annual - taxable - roth
+        return (taxable > 0 || roth > 0) ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div style={{ padding: '8px 12px', background: 'rgba(194,65,12,0.06)', border: '1px solid rgba(194,65,12,0.15)', borderRadius: 8 }}>
+              <div style={{ fontSize: 9, color: '#c2410c', fontWeight: 700, textTransform: 'uppercase' }}>Accessible Now (Taxable)</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(taxable)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/yr</span></div>
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>Taxed as income when received</div>
+            </div>
+            <div style={{ padding: '8px 12px', background: 'rgba(30,64,175,0.06)', border: '1px solid rgba(30,64,175,0.15)', borderRadius: 8 }}>
+              <div style={{ fontSize: 9, color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Tax-Deferred (Roll IRA + 401k)</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(deferred)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/yr</span></div>
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>Taxed on withdrawal — compounds tax-free</div>
+            </div>
+            <div style={{ padding: '8px 12px', background: 'rgba(21,128,61,0.06)', border: '1px solid rgba(21,128,61,0.15)', borderRadius: 8 }}>
+              <div style={{ fontSize: 9, color: '#15803d', fontWeight: 700, textTransform: 'uppercase' }}>Tax-Free (Roth)</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text0)' }}>{fmt$(roth)}<span style={{ fontSize: 10, color: 'var(--text3)' }}>/yr</span></div>
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>Never taxed — withdrawals are free</div>
+            </div>
+          </div>
+        ) : null
+      })()}
 
       {/* ── Charts row: bar charts + doughnut ─────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>

@@ -483,12 +483,21 @@ def watchlist_combined():
 
 
 def notifications_recent():
+    # Try with full body column first, fall back without it
     rows = _db_query(
         """SELECT notification_date, notification_type, channel, status, subject,
-                  body_summary, sent_at::text, dedupe_key
-           FROM notification_log ORDER BY created_at DESC LIMIT 20""",
+                  body_summary, body, sent_at::text, dedupe_key
+           FROM notification_log ORDER BY created_at DESC LIMIT 30""",
         fetch="all"
-    ) or []
+    )
+    if rows is None:
+        # body column may not exist — fall back
+        rows = _db_query(
+            """SELECT notification_date, notification_type, channel, status, subject,
+                      body_summary, sent_at::text, dedupe_key
+               FROM notification_log ORDER BY created_at DESC LIMIT 30""",
+            fetch="all"
+        ) or []
     return {"count": len(rows), "notifications": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
 
 
@@ -539,14 +548,17 @@ def approvals_pending():
         item["rec_symbol"] = r.get("rec_symbol") or r.get("symbol") or ""
         items.append(item)
 
-    # Build live price map from holdings + technical snapshot
+    # Build live price map + account map from holdings + technical snapshot
     _h = _load_json(STATE_DIR / "holdings.json") or {}
     _ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     price_map = {}  # sym -> {price, rsi, sma50_pct, sma200_pct, beta, market_value, ...}
+    acct_map = {}   # sym -> account
     for pos in _h.get("holdings", []):
         s = pos.get("symbol", "")
         if s and s not in price_map:
             price_map[s] = {"price": pos.get("price", 0), "market_value": pos.get("market_value", 0), "shares": pos.get("shares", 0), "name": pos.get("name", "")}
+        if s and s not in acct_map:
+            acct_map[s] = pos.get("account", "")
     for s, td in _ts.items():
         if isinstance(td, dict):
             existing = price_map.get(s, {})
@@ -619,6 +631,12 @@ def approvals_pending():
             pos_data["rsi"] = pos_data.get("rsi") or h_data.get("rsi")
             pos_data["name"] = pos_data.get("name") or h_data.get("name", "")
             item["risk_context"] = {"position": pos_data}
+
+    # Enrich each item with account from holdings
+    for item in items:
+        sym = item.get("symbol") or item.get("rec_symbol") or ""
+        if sym and not item.get("account"):
+            item["account"] = acct_map.get(sym, "")
 
     # Generate human-readable decision summaries
     for item in items:
@@ -771,8 +789,8 @@ def approval_decide(body: dict):
 
     if not queue_id:
         return 400, {"ok": False, "error": "queue_id required"}
-    if decision not in ("approved", "rejected"):
-        return 400, {"ok": False, "error": "decision must be 'approved' or 'rejected'"}
+    if decision not in ("approved", "rejected", "deferred"):
+        return 400, {"ok": False, "error": "decision must be 'approved', 'rejected', or 'deferred'"}
     if not note:
         return 400, {"ok": False, "error": "note/rationale required for all decisions"}
 
@@ -795,6 +813,38 @@ def approval_decide(body: dict):
            VALUES (%s, %s, %s, 'john', %s)""",
         (queue_id, decision, note, note)
     )
+
+    # Get symbol from the queue item for feedback loop
+    q_item = _db_query("SELECT aq.symbol, aq.action, ar.symbol as rec_symbol FROM action_queue aq LEFT JOIN advisor_recommendations ar ON aq.recommendation_id=ar.id WHERE aq.id=%s", (queue_id,), fetch="one") or {}
+    sym = q_item.get("symbol") or q_item.get("rec_symbol") or ""
+
+    # Write to agent_feedback_log (trains agents on John's decisions)
+    if sym and note:
+        try:
+            _db_write(
+                """INSERT INTO agent_feedback_log (symbol, decision, reason, john_decision, john_note, created_at)
+                   VALUES (%s, %s, %s, %s, %s, NOW())""",
+                (sym, decision, note, decision, note)
+            )
+        except Exception:
+            pass
+
+    # Generate immediate john_preferences lesson (agents read this)
+    if sym and note:
+        try:
+            lesson_type = "human_override" if decision == "rejected" else "human_approved"
+            lesson = f"{sym}: John {'REJECTED' if decision == 'rejected' else 'APPROVED'} — {note[:100]}"
+            _db_write(
+                """INSERT INTO agent_intelligence_rules (rule_type, rule_key, config, changed_by, updated_at)
+                   VALUES ('john_preferences', %s, %s, 'john', NOW())
+                   ON CONFLICT (rule_type, rule_key) DO UPDATE SET config=EXCLUDED.config, updated_at=NOW()""",
+                (f"{sym}_{datetime.now().strftime('%Y%m%d')}", json.dumps({
+                    "lesson": lesson, "symbol": sym, "decision": decision,
+                    "note": note, "type": lesson_type,
+                }))
+            )
+        except Exception:
+            pass
 
     return 200, {"ok": True, "action": decision, "queue_id": queue_id}
 
@@ -1208,6 +1258,26 @@ def _aegis_chat_context():
         fetch="all"
     ) or []
 
+    # Event intelligence digest (Level 3)
+    event_rows = _db_query(
+        """SELECT event_type, status, array_agg(DISTINCT symbol) as symbols, count(*) as cnt
+           FROM agent_event_queue
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           GROUP BY event_type, status
+           ORDER BY cnt DESC"""
+    ) or []
+    event_digest = {}
+    for er in event_rows:
+        et = er["event_type"]
+        if et not in event_digest:
+            event_digest[et] = {"symbols": [], "count": 0, "done": 0, "pending": 0}
+        event_digest[et]["symbols"] = list(set(event_digest[et]["symbols"] + [s for s in (er.get("symbols") or []) if s]))
+        event_digest[et]["count"] += er["cnt"]
+        if er["status"] == "done":
+            event_digest[et]["done"] += er["cnt"]
+        else:
+            event_digest[et]["pending"] += er["cnt"]
+
     return {
         "portfolio_summary": _live_summary,
         "steph_escalations": [{k: _json_clean(v) for k, v in r.items()} for r in steph_items],
@@ -1217,6 +1287,8 @@ def _aegis_chat_context():
         "improvement_proposals": [{k: _json_clean(v) for k, v in r.items()} for r in proposals],
         "john_decisions": _john_decisions_summary(),
         "outcome_tracking": _outcome_summary(),
+        "event_digest": event_digest,
+        "event_total_24h": sum(d["count"] for d in event_digest.values()),
         "agent": "aegis",
         "layer": "chat",
         "core_status": "active",
@@ -2013,23 +2085,71 @@ def _compute_journal_insights(totals, setup_rows, tf_rows, emotion_rows, mistake
 
 
 def journal():
-    j = _load_json(STATE_DIR / "trade_journal.json") or {}
-    stats = j.get("stats", {})
-    trades = j.get("closed_trades", [])
+    """GET /api/v2/journal — closed trades from DB (trade_closed table)."""
+    import psycopg2.extras
+    # Try DB first, fall back to JSON
+    trades = []
+    try:
+        rows = _db_query(
+            """SELECT symbol, account, open_date::text, close_date::text, trade_type,
+                      shares, buy_price, sell_price, cost_basis, proceeds,
+                      pnl, pnl_pct, hold_days
+               FROM trade_closed
+               ORDER BY close_date DESC, symbol
+               LIMIT 500""",
+            fetch="all"
+        )
+        if rows:
+            trades = [{k: (float(v) if isinstance(v, __import__('decimal').Decimal) else v)
+                       for k, v in r.items()} for r in rows]
+    except Exception:
+        pass
+
+    # Fallback to JSON if DB empty
+    if not trades:
+        j = _load_json(STATE_DIR / "trade_journal.json") or {}
+        trades = j.get("closed_trades", [])
+        trades = [{
+            "symbol": t.get("symbol", ""), "account": t.get("account", ""),
+            "open_date": t.get("open_date", ""), "close_date": t.get("close_date", ""),
+            "trade_type": t.get("trade_type", ""), "shares": t.get("shares", 0),
+            "buy_price": t.get("buy_price", 0), "sell_price": t.get("sell_price", 0),
+            "cost_basis": t.get("cost_basis", 0), "proceeds": t.get("proceeds", 0),
+            "pnl": t.get("pnl", 0), "pnl_pct": t.get("pnl_pct", 0),
+            "hold_days": t.get("hold_days", 0),
+        } for t in trades[:500]]
+
     real_trades = [t for t in trades if (t.get("pnl") or 0) != 0]
+
+    # Compute stats from DB data
+    total_pnl = sum(t.get("pnl", 0) for t in real_trades)
+    winners = [t for t in real_trades if t["pnl"] > 0]
+    losers = [t for t in real_trades if t["pnl"] < 0]
+    win_rate = round(len(winners) / len(real_trades) * 100, 1) if real_trades else 0
+    avg_winner = round(sum(t["pnl"] for t in winners) / len(winners), 2) if winners else 0
+    avg_loser = round(sum(t["pnl"] for t in losers) / len(losers), 2) if losers else 0
+    gross_profit = sum(t["pnl"] for t in winners)
+    gross_loss = abs(sum(t["pnl"] for t in losers))
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else 0
+    expectancy = round(total_pnl / len(real_trades), 2) if real_trades else 0
+
+    stats = {
+        "total_pnl": round(total_pnl, 2),
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "avg_winner": avg_winner,
+        "avg_loser": avg_loser,
+        "trade_expectancy": expectancy,
+    }
+
     return {
         "stats": stats,
         "trade_count": len(trades),
         "real_trade_count": len(real_trades),
         "trades": [{
             "trade_key": f"{t.get('symbol', '')}:{t.get('account', '')}:{t.get('close_date', '')}",
-            "symbol": t.get("symbol", ""), "account": t.get("account", ""),
-            "open_date": t.get("open_date", ""), "close_date": t.get("close_date", ""),
-            "trade_type": t.get("trade_type", ""), "shares": t.get("shares", 0),
-            "buy_price": t.get("buy_price", 0), "sell_price": t.get("sell_price", 0),
-            "pnl": t.get("pnl", 0), "pnl_pct": t.get("pnl_pct", 0),
-            "hold_days": t.get("hold_days", 0),
-        } for t in trades[:200]],
+            **t,
+        } for t in trades[:500]],
     }
 
 
@@ -2037,6 +2157,29 @@ def risk():
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     stops = _load_json(STATE_DIR / "stops.json") or {}
     positions = rm.get("positions", [])
+    # Enrich with live prices from holdings if risk prices are $0
+    holdings = _load_json(STATE_DIR / "holdings.json") or {}
+    h_prices = {}
+    for h in holdings.get("holdings", []):
+        sym = h.get("symbol", "")
+        if sym and h.get("price", 0) > 0:
+            h_prices[sym] = h["price"]
+    # Also try enrichment cache
+    enrich = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
+    for p in positions:
+        sym = p.get("symbol", "")
+        if not p.get("current_price") or p["current_price"] == 0:
+            p["current_price"] = h_prices.get(sym, 0)
+        if not p.get("current_price") or p["current_price"] == 0:
+            ec = enrich.get(sym, {})
+            if isinstance(ec, dict) and ec.get("price", 0) > 0:
+                p["current_price"] = ec["price"]
+        # Recompute distance_pct and max_loss with live price
+        if p.get("current_price", 0) > 0 and p.get("stop_price"):
+            dist = ((p["current_price"] - p["stop_price"]) / p["current_price"]) * 100
+            p["distance_pct"] = round(dist, 1)
+            shares = p.get("market_value", 0) / p["current_price"] if p["current_price"] > 0 else 0
+            p["max_loss"] = round(shares * (p["current_price"] - p["stop_price"]), 0) if shares > 0 else p.get("max_loss", 0)
     # Load stop confirmations for enrichment
     conf_rows = _db_query("SELECT symbol, account, stop_status, stop_confirmed, stop_price_confirmed, stop_confirmed_at, reminder_count FROM stop_confirmations") or []
     conf_map = {}
@@ -2057,9 +2200,13 @@ def risk():
         "position_count": len(positions),
         "positions": [{
             "symbol": p.get("symbol", ""), "market_value": p.get("market_value", 0),
-            "stop_price": p.get("stop_price"), "current_price": p.get("current_price", 0),
-            "distance_pct": p.get("distance_pct"), "max_loss": p.get("max_loss", 0),
+            "account": p.get("account", ""),
+            "stop_price": p.get("stop_price"), "current_price": p.get("current_price") or p.get("price", 0),
+            "distance_pct": p.get("distance_pct"), "max_loss": p.get("max_loss") or p.get("max_loss_dollar", 0),
             "status": p.get("status", ""), "triggered": p.get("triggered", False),
+            "has_stop": bool(p.get("stop_price")),
+            "rsi": p.get("rsi"), "day_change_pct": p.get("day_change_pct"),
+            "distance_to_stop_pct": p.get("distance_to_stop_pct") or p.get("distance_pct"),
             **(conf_map.get((p.get("symbol",""), p.get("account","")), {})),
         } for p in positions],
         "stops": {sym: {"stop_price": v.get("stop_price") or v.get("stop"), "triggered": v.get("triggered", False)}
@@ -2078,21 +2225,82 @@ def risk():
 
 def tax_lots():
     lots = _load_json(STATE_DIR / "tax_lots.json") or {}
+    # Build price map from holdings for current_value computation
+    holdings = _load_json(STATE_DIR / "holdings.json") or {}
+    price_map = {}
+    for h in holdings.get("holdings", []):
+        sym = h.get("symbol", "")
+        if sym and h.get("price", 0) > 0:
+            price_map[sym] = h["price"]
+    # Also try enrichment cache
+    enrich = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
+    for sym, ec in enrich.items():
+        if isinstance(ec, dict) and sym not in price_map and ec.get("price", 0) > 0:
+            price_map[sym] = ec["price"]
+
     flat = []
+    seen = set()
     for key, lot_list in lots.items():
-        if isinstance(lot_list, list):
-            for lot in lot_list:
-                flat.append({
-                    "symbol": lot.get("symbol", key.split(":")[0]),
-                    "account": lot.get("account", key.split(":")[-1] if ":" in key else ""),
-                    "shares": lot.get("shares", 0), "cost_basis": lot.get("cost_basis", 0),
-                    "current_value": lot.get("current_value", 0),
-                    "unrealized_gain": lot.get("unrealized_gain", 0),
-                    "gain_pct": lot.get("gain_pct", 0), "acquired": lot.get("acquired", ""),
-                    "holding_period": lot.get("holding_period", ""),
-                })
+        if not isinstance(lot_list, list):
+            continue
+        for lot in lot_list:
+            # Skip closed lots (shares_remaining = 0 or closed = True)
+            shares_rem = lot.get("shares_remaining")
+            if shares_rem is not None and shares_rem <= 0:
+                continue
+            if lot.get("closed"):
+                continue
+            shares = lot.get("shares", 0)
+            if shares <= 0:
+                continue
+
+            symbol = lot.get("symbol", key.split(":")[0])
+            account = lot.get("account", key.split(":")[-1] if ":" in key else "")
+            cost_per = lot.get("cost_per_share", 0)
+            cost_basis = lot.get("total_cost") or lot.get("cost_basis") or (cost_per * shares)
+            current_price = price_map.get(symbol, 0)
+            current_value = shares * current_price
+            # If price is 0 but we have cost basis, it's a worthless security — loss = full basis
+            unrealized_gain = current_value - cost_basis if (current_price > 0 or cost_basis > 0) else 0
+            gain_pct = (unrealized_gain / cost_basis * 100) if cost_basis > 0 and current_price > 0 else 0
+
+            # Determine holding period from lot_date
+            lot_date = lot.get("lot_date") or lot.get("acquired", "")
+            holding_period = "unknown"
+            if lot_date:
+                try:
+                    from datetime import datetime, date
+                    ld = datetime.strptime(lot_date[:10], "%Y-%m-%d").date()
+                    days_held = (date.today() - ld).days
+                    holding_period = "long" if days_held > 365 else "short"
+                except Exception:
+                    pass
+
+            # Dedup key to avoid showing identical lots
+            dk = f"{symbol}:{account}:{lot_date}:{shares}"
+            if dk in seen:
+                continue
+            seen.add(dk)
+
+            flat.append({
+                "symbol": symbol, "account": account,
+                "shares": shares, "cost_basis": round(cost_basis, 2),
+                "current_value": round(current_value, 2),
+                "unrealized_gain": round(unrealized_gain, 2),
+                "gain_pct": round(gain_pct, 1),
+                "acquired": lot_date,
+                "holding_period": holding_period,
+            })
     flat.sort(key=lambda x: abs(x.get("unrealized_gain", 0)), reverse=True)
-    return {"count": len(flat), "lots": flat[:200]}
+    # Summary stats
+    total_lots = len(flat)
+    harvest = [l for l in flat if l["unrealized_gain"] < -100 and l["account"] in ("schwab_taxable", "taxable")]
+    return {
+        "count": total_lots,
+        "lots": flat[:500],
+        "harvest_candidates": len(harvest),
+        "data_note": "Showing open lots only. Closed/sold lots excluded." if total_lots < 500 else None,
+    }
 
 
 def dividends():
@@ -2910,34 +3118,935 @@ def _tax_situation():
 
 
 def _cost_dashboard():
-    """GET /api/v2/cost-dashboard — LLM spend tracking."""
+    """GET /api/v2/cost-dashboard — LLM spend tracking (legacy, use /api/v2/llm-spend)."""
+    return _llm_spend()
+
+
+def _task_detail(task_id: int):
+    """GET /api/v2/task-detail/<id> — Full task context with P&L for stop-triggered items."""
+    task = _db_query("SELECT * FROM john_decision_queue WHERE id=%s", (task_id,), fetch="one")
+    if not task:
+        return {"error": "Task not found"}
+    task = {k: _json_clean(v) for k, v in task.items()}
+    symbol = (task.get("symbol") or "").upper()
+
+    # Holdings from JSON
+    h_data = _load_json(STATE_DIR / "holdings.json") or {}
+    sym_h = [h for h in h_data.get("holdings", []) if h.get("symbol") == symbol]
+
+    # Stop data
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    stop_data = {}
+    for p in rm.get("positions", []):
+        if p.get("symbol") == symbol:
+            stop_data = {"stop_price": p.get("stop_price"), "current_price": p.get("price", p.get("current_price", 0)),
+                         "distance_pct": p.get("distance_pct"), "triggered": p.get("triggered", False)}
+            break
+
+    # Also try provenance for stop data fallback
+    prov = task.get("provenance", {})
+    if isinstance(prov, str):
+        try: prov = json.loads(prov)
+        except Exception: prov = {}
+    if not stop_data.get("stop_price") and prov.get("stop_price"):
+        stop_data = {"stop_price": prov.get("stop_price"), "current_price": prov.get("current_price", 0)}
+
+    # Compute P&L
+    pnl_summary = {}
+    if sym_h:
+        total_shares = sum(h.get("shares", 0) for h in sym_h)
+        total_cost = sum(h.get("cost_basis", 0) for h in sym_h)
+        cost_per = total_cost / total_shares if total_shares > 0 else 0
+        price = sym_h[0].get("price", 0)
+        stop_p = float(stop_data.get("stop_price") or 0)
+        if total_shares > 0 and cost_per > 0 and price > 0:
+            cur_pnl = (price - cost_per) * total_shares
+            pnl_summary = {
+                "entry_price": round(cost_per, 4), "current_price": round(price, 4),
+                "stop_price": round(stop_p, 4) if stop_p else None,
+                "total_shares": round(total_shares, 4),
+                "current_pnl_dollars": round(cur_pnl, 2),
+                "current_pnl_pct": round((price - cost_per) / cost_per * 100, 2),
+                "stop_pnl_dollars": round((stop_p - cost_per) * total_shares, 2) if stop_p else None,
+                "stop_pnl_pct": round((stop_p - cost_per) / cost_per * 100, 2) if stop_p and cost_per else None,
+                "distance_to_stop_pct": round((price - stop_p) / price * 100, 2) if stop_p and price else None,
+                "stop_breached": price <= stop_p if stop_p else False,
+                "total_market_value": round(price * total_shares, 2),
+                "total_cost": round(total_cost, 2),
+                "total_annual_income": 0,
+            }
+        # Income from dividend calendar
+        dc = _load_json(STATE_DIR / "dividend_calendar.json") or {}
+        for dp in dc.get("payers", []):
+            if dp.get("symbol") == symbol:
+                pnl_summary["total_annual_income"] = round(dp.get("annual_income", 0), 2)
+                break
+
+    # Agent results
+    agents = _db_query(
+        """SELECT DISTINCT ON (agent) agent AS agent_name, recommendation, confidence AS confidence_score, summary, created_at
+           FROM watchlist_agent_results WHERE symbol=%s AND created_at > NOW() - INTERVAL '14 days'
+           ORDER BY agent, created_at DESC""", (symbol,)) or []
+
+    # News
+    news = _db_query(
+        """SELECT title, source, relevance_score, created_at FROM news_articles
+           WHERE symbol=%s AND created_at > NOW() - INTERVAL '7 days'
+           ORDER BY relevance_score DESC LIMIT 5""", (symbol,)) or []
+
+    # Data quality
+    data_quality = {"all_research_more": False, "analysis_count": 0, "avg_confidence": 0,
+                     "enrichment_attempted": False, "enrichment_date": None, "missing_data": []}
+    if symbol:
+        try:
+            qr = _db_query("""SELECT COUNT(*) as cnt, AVG(confidence) as avg_c,
+                                     SUM(CASE WHEN recommendation='RESEARCH_MORE' THEN 1 ELSE 0 END) as rm_cnt
+                              FROM watchlist_agent_results WHERE symbol=%s AND created_at > NOW() - INTERVAL '7 days'""",
+                           (symbol,), fetch="one")
+            if qr:
+                data_quality["analysis_count"] = qr["cnt"] or 0
+                data_quality["avg_confidence"] = round(float(qr["avg_c"] or 0), 2)
+                data_quality["all_research_more"] = (qr["rm_cnt"] or 0) > 0 and qr["rm_cnt"] == qr["cnt"]
+        except Exception:
+            pass
+        # Enrichment cache info
+        try:
+            er = _db_query("SELECT updated_at FROM enrichment_cache WHERE symbol=%s ORDER BY updated_at DESC LIMIT 1",
+                           (symbol,), fetch="one")
+            if er and er.get("updated_at"):
+                from datetime import datetime as _dt
+                age = (_dt.now() - er["updated_at"].replace(tzinfo=None)).total_seconds() / 3600
+                data_quality["enrichment_age_hours"] = round(age, 1)
+                data_quality["enrichment_date"] = str(er["updated_at"])[:16]
+                data_quality["enrichment_attempted"] = age < 24  # enriched in last 24h
+        except Exception:
+            pass
+        # Check for auto-enrichment jobs (from auto_enrich_research_more)
+        try:
+            ae = _db_query("""SELECT created_at FROM watchlist_agent_jobs
+                              WHERE symbol=%s AND submitted_from='auto_enrichment'
+                              ORDER BY created_at DESC LIMIT 1""", (symbol,), fetch="one")
+            if ae and ae.get("created_at"):
+                data_quality["enrichment_attempted"] = True
+                data_quality["enrichment_date"] = str(ae["created_at"])[:16]
+        except Exception:
+            pass
+        # Missing data detection
+        missing = []
+        try:
+            nc = _db_query("SELECT count(*) as n FROM news_articles WHERE symbol=%s AND created_at > NOW() - INTERVAL '30 days'",
+                           (symbol,), fetch="one")
+            if not nc or (nc.get("n") or 0) == 0:
+                missing.append("recent news")
+        except Exception:
+            pass
+        try:
+            sc = _db_query("SELECT count(*) as n FROM sec_form4 WHERE symbol=%s", (symbol,), fetch="one")
+            if not sc or (sc.get("n") or 0) == 0:
+                missing.append("SEC filings")
+        except Exception:
+            pass
+        data_quality["missing_data"] = missing
+
+    return {
+        "task": task,
+        "holdings": [{k: _json_clean(v) for k, v in h.items()} for h in sym_h],
+        "pnl_summary": pnl_summary,
+        "stop_data": stop_data,
+        "agent_results": [{k: _json_clean(v) for k, v in a.items()} for a in agents],
+        "news": [{k: _json_clean(v) for k, v in n.items()} for n in news],
+        "data_quality": data_quality,
+    }
+
+
+def _watchlist_context(symbol: str):
+    """GET /api/v2/watchlist/context/<symbol> — Full symbol context for watchlist view."""
+    sym = symbol.upper()
+
+    # 1. Agent analyses (latest per agent, 14 days)
+    agents = _db_query(
+        """SELECT DISTINCT ON (agent)
+                  agent AS agent_name, recommendation, confidence AS confidence_score,
+                  summary, full_narrative, reason_codes, created_at, status
+           FROM watchlist_agent_results
+           WHERE symbol = %s AND created_at > NOW() - INTERVAL '14 days'
+           ORDER BY agent, created_at DESC""",
+        (sym,)
+    ) or []
+
+    # 2. Synthesis
+    synth = _db_query(
+        """SELECT recommendation, confidence, action, synthesis_narrative,
+                  conflicts, unresolved, reason_codes, next_review_date,
+                  decision_quality_status, created_at
+           FROM watchlist_final_synthesis
+           WHERE symbol = %s ORDER BY created_at DESC LIMIT 1""",
+        (sym,), fetch="one"
+    )
+
+    # 3. Strategy card
+    strat = _db_query(
+        """SELECT strategy_type, latest_price, support, resistance,
+                  stop_loss, target_price, risk_reward, account_fit,
+                  thesis, time_horizon, position_size_note, created_at
+           FROM watchlist_strategy_cards
+           WHERE symbol = %s ORDER BY created_at DESC LIMIT 1""",
+        (sym,), fetch="one"
+    )
+
+    # 4. News (14 days)
+    news = _db_query(
+        """SELECT title, summary, source, relevance_score,
+                  sentiment, published_at
+           FROM news_articles
+           WHERE symbol = %s AND created_at > NOW() - INTERVAL '14 days'
+           ORDER BY relevance_score DESC, created_at DESC LIMIT 8""",
+        (sym,)
+    ) or []
+
+    # 5. Holdings from JSON
+    h_data = _load_json(STATE_DIR / "holdings.json") or {}
+    sym_h = [h for h in h_data.get("holdings", []) if h.get("symbol") == sym]
+
+    # 6. Intelligence whiteboard
+    intel = _db_query(
+        """SELECT title, summary, source_type, quality_score,
+                  confidence, status, days_on_board, created_at
+           FROM intelligence_whiteboard
+           WHERE symbol = %s
+           ORDER BY quality_score DESC, created_at DESC LIMIT 5""",
+        (sym,)
+    ) or []
+
+    # 7. Past outcomes
+    outcomes = _db_query(
+        """SELECT recommendation, price_at_decision, price_7d, price_30d,
+                  outcome_score, created_at
+           FROM decision_outcomes
+           WHERE symbol = %s AND price_7d IS NOT NULL
+           ORDER BY created_at DESC LIMIT 5""",
+        (sym,)
+    ) or []
+
+    # 8. Macro context
+    macro = ""
+    try:
+        from external_market_data_ingest import get_macro_context
+        macro = (get_macro_context() or "")[:500]
+    except Exception:
+        pass
+
+    # Detect real conflicts (opposing directions, both >40% confidence)
+    conflict_info = _detect_real_conflict(agents)
+
+    return {
+        "symbol": sym,
+        "agent_results": [{k: _json_clean(v) for k, v in a.items()} for a in agents],
+        "synthesis": {k: _json_clean(v) for k, v in synth.items()} if synth else None,
+        "strategy": {k: _json_clean(v) for k, v in strat.items()} if strat else None,
+        "news": [{k: _json_clean(v) for k, v in n.items()} for n in news],
+        "holdings": [{k: _json_clean(v) for k, v in h.items()} for h in sym_h],
+        "intel": [{k: _json_clean(v) for k, v in i.items()} for i in intel],
+        "outcomes": [{k: _json_clean(v) for k, v in o.items()} for o in outcomes],
+        "macro": macro,
+        "conflict": conflict_info,
+    }
+
+
+def _detect_real_conflict(agents: list) -> dict:
+    """Detect REAL agent conflicts — not data gaps."""
+    BUY_DIR = {"BUY", "ADD"}
+    SELL_DIR = {"SELL", "TRIM", "AVOID"}
+    SKIP = {"RESEARCH_MORE", "NEUTRAL"}
+
+    directional = []
+    for a in agents:
+        rec = (a.get("recommendation") or "").upper()
+        conf = float(a.get("confidence_score") or a.get("confidence") or 0)
+        agent = a.get("agent_name") or a.get("agent", "")
+        if rec in SKIP and conf < 0.4:
+            continue  # Data gap, not a real opinion
+        directional.append({"agent": agent, "rec": rec, "conf": conf})
+
+    has_buy = any(d["rec"] in BUY_DIR and d["conf"] > 0.4 for d in directional)
+    has_sell = any(d["rec"] in SELL_DIR and d["conf"] > 0.4 for d in directional)
+
+    if has_buy and has_sell:
+        buyers = [d for d in directional if d["rec"] in BUY_DIR]
+        sellers = [d for d in directional if d["rec"] in SELL_DIR]
+        return {
+            "is_conflict": True,
+            "type": "opposing_directions",
+            "explanation": f"{', '.join(d['agent'] for d in buyers)} say BUY/ADD vs {', '.join(d['agent'] for d in sellers)} say TRIM/SELL — genuine disagreement on direction",
+            "buyers": buyers,
+            "sellers": sellers,
+        }
+
+    # Check for data gap (RESEARCH_MORE at low conf)
+    data_gaps = [a for a in agents if (a.get("recommendation") or "").upper() in SKIP and float(a.get("confidence_score") or a.get("confidence") or 0) < 0.4]
+    if data_gaps:
+        return {
+            "is_conflict": False,
+            "type": "data_gap",
+            "explanation": f"{', '.join(a.get('agent','') for a in data_gaps)} returned RESEARCH_MORE due to insufficient data — not a real conflict",
+            "data_gaps": [{k: _json_clean(v) for k, v in g.items()} for g in data_gaps],
+        }
+
+    return {"is_conflict": False, "type": "none", "explanation": ""}
+
+
+def _proposal_detail(proposal_id: int):
+    """GET /api/v2/proposal-detail/<id> — Full context for one proposal."""
+    # 1. The proposal + strategy card
+    row = _db_query(
+        """SELECT p.*, sc.thesis, sc.stop_loss as sc_stop, sc.target_price as sc_target,
+                  sc.risk_reward as sc_rr, sc.account_fit as sc_account
+           FROM watchlist_proposals p
+           LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = p.symbol
+           WHERE p.id = %s""",
+        (proposal_id,), fetch="one"
+    )
+    if not row:
+        return {"error": "Proposal not found"}
+    proposal = {k: _json_clean(v) for k, v in row.items()}
+    symbol = proposal.get("symbol", "")
+
+    # 2. Holdings from JSON (more reliable than DB for live positions)
+    holdings_data = _load_json(STATE_DIR / "holdings.json") or {}
+    sym_holdings = [h for h in holdings_data.get("holdings", []) if h.get("symbol") == symbol]
+    position = {}
+    if sym_holdings:
+        total_shares = sum(h.get("shares", 0) for h in sym_holdings)
+        total_mv = sum(h.get("market_value", 0) for h in sym_holdings)
+        total_cost = sum(h.get("cost_basis", 0) for h in sym_holdings)
+        total_gl = sum(h.get("gain_loss", 0) for h in sym_holdings)
+        price = sym_holdings[0].get("price", 0)
+        position = {
+            "total_shares": round(total_shares, 4),
+            "total_market_value": round(total_mv, 2),
+            "total_cost_basis": round(total_cost, 2),
+            "cost_per_share": round(total_cost / total_shares, 2) if total_shares > 0 else 0,
+            "unrealized_pnl": round(total_gl, 2),
+            "unrealized_pct": round((total_gl / total_cost * 100) if total_cost > 0 else 0, 1),
+            "current_price": round(price, 2),
+            "accounts": [h.get("account", "").replace("schwab_", "").replace("fidelity_", "") for h in sym_holdings],
+        }
+        # Income from dividend calendar
+        dc = _load_json(STATE_DIR / "dividend_calendar.json") or {}
+        for p_item in dc.get("payers", []):
+            if p_item.get("symbol") == symbol:
+                position["annual_income"] = round(p_item.get("annual_income", 0), 2)
+                position["yield_pct"] = p_item.get("yield_pct", 0)
+                position["income_pct_of_target"] = round(p_item.get("annual_income", 0) / 55000 * 100, 1)
+                break
+        # Portfolio weight
+        pt = holdings_data.get("portfolio_totals", {})
+        tv = pt.get("total_value", 0)
+        if tv > 0:
+            position["pct_of_portfolio"] = round(total_mv / tv * 100, 1)
+
+    # 3. Agent results (last 7 days)
+    agents = _db_query(
+        """SELECT agent AS agent_name, recommendation, confidence AS confidence_score,
+                  summary, created_at
+           FROM watchlist_agent_results
+           WHERE symbol = %s AND created_at > NOW() - INTERVAL '7 days'
+           ORDER BY created_at DESC LIMIT 10""",
+        (symbol,)
+    ) or []
+
+    # 4. Synthesis
+    synth = _db_query(
+        """SELECT recommendation, confidence, synthesis_narrative,
+                  conflicts, decision_quality_status, created_at
+           FROM watchlist_final_synthesis
+           WHERE symbol = %s ORDER BY created_at DESC LIMIT 1""",
+        (symbol,), fetch="one"
+    )
+
+    # 5. News
+    news = _db_query(
+        """SELECT title, source, relevance_score, published_at
+           FROM news_articles
+           WHERE symbol = %s AND created_at > NOW() - INTERVAL '7 days'
+           ORDER BY relevance_score DESC LIMIT 5""",
+        (symbol,)
+    ) or []
+
+    # 6. Stop data from risk_management.json
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    stop_data = {}
+    for p_item in rm.get("positions", []):
+        if p_item.get("symbol") == symbol:
+            stop_data = {
+                "stop_price": p_item.get("stop_price"),
+                "current_price": p_item.get("price", p_item.get("current_price", 0)),
+                "distance_pct": p_item.get("distance_pct"),
+                "triggered": p_item.get("triggered", False),
+                "status": p_item.get("status", ""),
+            }
+            break
+
+    # 7. Past outcomes
+    outcomes = _db_query(
+        """SELECT recommendation, price_at_decision, price_7d, price_30d,
+                  outcome_score, created_at
+           FROM decision_outcomes
+           WHERE symbol = %s AND price_7d IS NOT NULL
+           ORDER BY created_at DESC LIMIT 3""",
+        (symbol,)
+    ) or []
+
+    # 8. Compute P&L summary
+    pnl_summary = {}
+    if sym_holdings:
+        h0 = sym_holdings[0]
+        shares = float(h0.get("shares", 0))
+        cost_basis = float(h0.get("cost_basis", 0))
+        price = float(h0.get("price", 0))
+        cost_per = round(cost_basis / shares, 4) if shares > 0 else 0
+        stop_p = float(stop_data.get("stop_price", 0) or 0)
+        if shares > 0 and cost_per > 0 and price > 0:
+            current_pnl = (price - cost_per) * shares
+            stop_pnl = (stop_p - cost_per) * shares if stop_p > 0 else None
+            pnl_summary = {
+                "entry_price": cost_per,
+                "current_price": round(price, 4),
+                "stop_price": round(stop_p, 4) if stop_p else None,
+                "shares": round(shares, 4),
+                "current_pnl_dollars": round(current_pnl, 2),
+                "current_pnl_pct": round((price - cost_per) / cost_per * 100, 2),
+                "stop_pnl_dollars": round(stop_pnl, 2) if stop_pnl is not None else None,
+                "stop_pnl_pct": round((stop_p - cost_per) / cost_per * 100, 2) if stop_p and cost_per else None,
+                "distance_to_stop_pct": round((price - stop_p) / price * 100, 2) if stop_p and price else None,
+                "stop_breached": price <= stop_p if stop_p else False,
+                "market_value": round(price * shares, 2),
+                "total_cost": round(cost_per * shares, 2),
+            }
+
+    return {
+        "proposal": proposal,
+        "position": position,
+        "pnl_summary": pnl_summary,
+        "holdings": [{k: _json_clean(v) for k, v in h.items()} for h in sym_holdings],
+        "agent_results": [{k: _json_clean(v) for k, v in a.items()} for a in agents],
+        "synthesis": {k: _json_clean(v) for k, v in synth.items()} if synth else None,
+        "news": [{k: _json_clean(v) for k, v in n.items()} for n in news],
+        "stop_data": stop_data,
+        "outcomes": [{k: _json_clean(v) for k, v in o.items()} for o in outcomes],
+        "portfolio_value": holdings_data.get("portfolio_totals", {}).get("total_value", 0),
+    }
+
+
+def _iris_hygiene_status():
+    """GET /api/v2/iris/hygiene-status — Hygiene pending decisions + recent actions."""
+    pending = _db_query("""SELECT id, content_type, content_title, proposed_action,
+                                  reason, confidence, expires_at, created_at
+                           FROM iris_hygiene_pending WHERE status='pending_john'
+                           ORDER BY confidence DESC, expires_at ASC LIMIT 20""") or []
+    recent = _db_query("""SELECT content_type, content_title, action, reason, confidence, created_at
+                          FROM iris_hygiene_log ORDER BY created_at DESC LIMIT 10""") or []
+    health = _db_query("""SELECT source_type, count(*) as total,
+                                 count(CASE WHEN hygiene_status='active' OR hygiene_status IS NULL THEN 1 END) as active,
+                                 count(CASE WHEN hygiene_status='demoted' THEN 1 END) as demoted,
+                                 count(CASE WHEN hygiene_status='archived' THEN 1 END) as archived
+                          FROM intelligence_whiteboard GROUP BY source_type""") or []
+    return {
+        "pending_decisions": [{k: _json_clean(v) for k, v in r.items()} for r in pending],
+        "recent_actions": [{k: _json_clean(v) for k, v in r.items()} for r in recent],
+        "content_health": [{k: _json_clean(v) for k, v in r.items()} for r in health],
+        "pending_count": len(pending),
+    }
+
+
+def _rewrite_status():
+    """GET /api/v2/rewrite-note/status — Check local LLM availability."""
+    local_up = False
+    try:
+        import urllib.request
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3) as r:
+            import json as _j
+            models = [m["name"] for m in _j.loads(r.read()).get("models", [])]
+            local_up = any("qwen3" in m for m in models)
+    except Exception:
+        pass
+    return {"local_llm": local_up, "fallback": "claude-haiku-4-5"}
+
+
+def _portfolio_intelligence():
+    """GET /api/v2/portfolio-intelligence — Sector classification, cross-account, performance."""
+    from datetime import datetime as _dt
+
+    # Load holdings
+    hp = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    raw = json.loads(hp.read_text()) if hp.exists() else {}
+    all_h = raw.get("holdings", [])
+    if not all_h:
+        return {"error": "No holdings found"}
+
+    total_value = raw.get("portfolio_totals", {}).get("total_value", 0) or sum(float(h.get("market_value", 0) or 0) for h in all_h)
+
+    # DB lookups for sector enrichment
+    finviz = {}
+    try:
+        rows = _db_query("SELECT symbol, sector, industry, market_cap, beta, rsi FROM finviz_data WHERE symbol = ANY(%s)", (list(set(h.get("symbol", "") for h in all_h if h.get("symbol"))),))
+        if rows:
+            for r in rows:
+                finviz[r["symbol"]] = {k: _json_clean(v) for k, v in r.items()}
+    except Exception:
+        pass
+
+    # ETF / fund sector map
+    ETF_MAP = {
+        "SCHD": "US Dividend Equity", "JEPI": "US Covered Call Income", "SCHG": "US Large Cap Growth",
+        "BND": "US Bond Market", "XLB": "Materials", "XLI": "Industrials",
+        "ARKQ": "Autonomous Tech/Robotics", "ARKG": "Genomics/Biotech", "DIV": "High Dividend Income",
+        "AMANX": "US Large Cap Blend", "FCNTX": "US Large Cap Growth", "PFLT": "BDC/Floating Rate",
+        "CSWC": "BDC/Capital Southwest", "RKLB": "Aerospace/Space",
+    }
+    FUND_MAP = {
+        "us_large_growth": "US Large Cap Growth", "us_large_blend": "US Large Cap Blend",
+        "us_small_mid": "US Small/Mid Cap", "us_large_value": "US Large Cap Value",
+        "international": "International Equity", "us_bond": "US Bond Market",
+    }
+    DEFENSE = {"LMT", "RTX", "NOC", "LHX", "TDG", "DRS", "AVAV", "KTOS", "HII", "GD", "BAH", "CACI", "LDOS", "KBR", "IRDM"}
+
+    def classify(h):
+        sym = h.get("symbol", "")
+        # finviz real sector
+        if sym in finviz and finviz[sym].get("sector"):
+            return finviz[sym]["sector"], finviz[sym].get("industry", ""), "finviz"
+        # ETF map
+        if sym in ETF_MAP:
+            return ETF_MAP[sym], "ETF/Fund", "etf_map"
+        # Defense
+        if sym in DEFENSE:
+            return "Defense & Aerospace", "Defense Contractor", "known_stock"
+        # 401k sector_type
+        st = h.get("sector_type", "")
+        if st and st in FUND_MAP:
+            return FUND_MAP[st], "Mutual Fund", "sector_type"
+        if st:
+            return st.replace("_", " ").title(), "Mutual Fund", "sector_type"
+        # Cash
+        if h.get("is_cash") or sym == "CASH":
+            return "Cash", "", "cash"
+        # Specific names
+        if sym == "V":
+            return "Financial Services", "Payment Processing", "known_stock"
+        if sym == "NEE":
+            return "Utilities", "Renewable Energy", "known_stock"
+        if sym in ("SRNE", "LPIH"):
+            return "Healthcare/Biotech", "Small Cap Biotech", "known_stock"
+        return "Unclassified", "", "none"
+
+    # Build enriched positions
+    enriched = []
+    for h in all_h:
+        sym = h.get("symbol", h.get("name", "?"))
+        acct = h.get("account", "unknown")
+        mv = float(h.get("market_value", 0) or 0)
+        cost = float(h.get("cost_basis", 0) or h.get("total_cost_basis", 0) or 0)
+        unrealized = mv - cost if cost > 0 else 0
+        unrealized_pct = round(unrealized / cost * 100, 2) if cost > 0 else 0
+        sector, industry, src = classify(h)
+        shares = float(h.get("shares", 0) or 0)
+        price = float(h.get("price", 0) or 0)
+        sec_type = h.get("asset_type", "")
+        if not sec_type:
+            sec_type = "Mutual Fund" if h.get("is_fund") else "ETF" if sym in ETF_MAP else "Stock"
+        tech = {}
+        if sym in finviz:
+            f = finviz[sym]
+            tech = {k: f[k] for k in ("rsi", "beta") if f.get(k) is not None}
+
+        enriched.append({
+            "symbol": sym, "name": (h.get("name", "") or sym)[:40],
+            "account": acct, "security_type": sec_type,
+            "sector": sector, "industry": industry, "sector_source": src,
+            "market_value": round(mv, 2), "cost_basis": round(cost, 2),
+            "unrealized_gain_loss": round(unrealized, 2), "unrealized_pct": unrealized_pct,
+            "shares": shares, "last_price": price,
+            "weight_pct": round(mv / max(total_value, 1) * 100, 2),
+            "technicals": tech,
+        })
+    enriched.sort(key=lambda x: x["market_value"], reverse=True)
+
+    # Account performance
+    accounts = {}
+    for h in enriched:
+        a = accounts.setdefault(h["account"], {"account": h["account"], "total_value": 0, "total_cost": 0, "total_gain_loss": 0, "position_count": 0})
+        a["total_value"] += h["market_value"]
+        a["total_cost"] += h["cost_basis"]
+        a["total_gain_loss"] += h["unrealized_gain_loss"]
+        a["position_count"] += 1
+    for a in accounts.values():
+        a["unrealized_pct"] = round(a["total_gain_loss"] / max(a["total_cost"], 1) * 100, 2) if a["total_cost"] > 0 else 0
+        a["total_value"] = round(a["total_value"], 2)
+
+    # Sector performance
+    sectors = {}
+    for h in enriched:
+        s = sectors.setdefault(h["sector"], {"sector": h["sector"], "total_value": 0, "total_cost": 0, "total_gain_loss": 0, "position_count": 0, "symbols": [], "accounts": set()})
+        s["total_value"] += h["market_value"]
+        s["total_cost"] += h["cost_basis"]
+        s["total_gain_loss"] += h["unrealized_gain_loss"]
+        s["position_count"] += 1
+        s["symbols"].append(h["symbol"])
+        s["accounts"].add(h["account"])
+    sector_list = []
+    for s in sectors.values():
+        sector_list.append({
+            "sector": s["sector"], "total_value": round(s["total_value"], 2),
+            "total_cost": round(s["total_cost"], 2), "total_gain_loss": round(s["total_gain_loss"], 2),
+            "unrealized_pct": round(s["total_gain_loss"] / max(s["total_cost"], 1) * 100, 2) if s["total_cost"] > 0 else 0,
+            "position_count": s["position_count"],
+            "weight_pct": round(s["total_value"] / max(total_value, 1) * 100, 2),
+            "symbols": sorted(set(s["symbols"])), "account_count": len(s["accounts"]),
+        })
+    sector_list.sort(key=lambda x: x["total_value"], reverse=True)
+
+    # Cross-account symbols
+    sym_accts = {}
+    for h in enriched:
+        sa = sym_accts.setdefault(h["symbol"], {"symbol": h["symbol"], "name": h["name"], "sector": h["sector"], "type": h["security_type"], "accounts": [], "total_value": 0, "total_shares": 0, "total_gain_loss": 0})
+        sa["accounts"].append({"account": h["account"], "market_value": h["market_value"], "shares": h["shares"], "unrealized_pct": h["unrealized_pct"], "weight_in_account": h["weight_pct"]})
+        sa["total_value"] += h["market_value"]
+        sa["total_shares"] += h["shares"]
+        sa["total_gain_loss"] += h["unrealized_gain_loss"]
+    cross = sorted([v for v in sym_accts.values() if len(v["accounts"]) > 1], key=lambda x: x["total_value"], reverse=True)
+
+    # Classification quality
+    classified = sum(1 for h in enriched if h["sector"] not in ("Unclassified", "Cash"))
+    unknown = [{"symbol": h["symbol"], "account": h["account"]} for h in enriched if h["sector"] == "Unclassified"]
+    sources = {}
+    for h in enriched:
+        sources[h["sector_source"]] = sources.get(h["sector_source"], 0) + 1
+
+    # Best/worst
+    with_perf = [h for h in enriched if h["unrealized_pct"] != 0 and h["cost_basis"] > 0]
+    best = sorted(with_perf, key=lambda x: x["unrealized_pct"], reverse=True)[:10]
+    worst = sorted(with_perf, key=lambda x: x["unrealized_pct"])[:10]
+
+    return {
+        "generated_at": _dt.now().isoformat(),
+        "total_positions": len(enriched), "total_value": round(total_value, 2),
+        "positions": enriched,
+        "accounts": list(accounts.values()),
+        "sectors": sector_list,
+        "cross_account_symbols": cross, "cross_account_count": len(cross),
+        "classification": {"total": len(enriched), "classified": classified, "unclassified": len(unknown),
+                           "classified_pct": round(classified / max(len(enriched), 1) * 100, 1),
+                           "sources": sources, "unknown_symbols": unknown},
+        "best_performers": best, "worst_performers": worst,
+    }
+
+
+def _transcript_audit():
+    """GET /api/v2/transcript-audit — Per-transcript tagging quality audit."""
+    stats_row = _db_query("""
+        SELECT count(*) as total,
+               count(CASE WHEN agent_tags IS NOT NULL AND agent_tags != '[]'::jsonb THEN 1 END) as tagged,
+               count(CASE WHEN promoted_to_whiteboard THEN 1 END) as promoted,
+               round(avg(quality_score)::numeric,1) as avg_quality,
+               round(stddev(quality_score)::numeric,1) as quality_stddev
+        FROM youtube_transcripts
+    """, fetch="one") or {}
+
+    # Agent distribution via jsonb
+    agent_rows = _db_query("""
+        SELECT a.agent, count(*) as count,
+               round(avg(t.quality_score)::numeric,1) as avg_quality
+        FROM youtube_transcripts t,
+             jsonb_array_elements_text(t.agent_tags) a(agent)
+        WHERE t.agent_tags IS NOT NULL AND t.agent_tags != '[]'::jsonb
+        GROUP BY a.agent ORDER BY count DESC
+    """) or []
+
+    # Strategy distribution
+    strat_rows = _db_query("""
+        SELECT s.tag as strategy_tag, count(*) as count,
+               round(avg(t.quality_score)::numeric,1) as avg_quality
+        FROM youtube_transcripts t,
+             jsonb_array_elements_text(t.strategy_tags) s(tag)
+        WHERE t.strategy_tags IS NOT NULL AND t.strategy_tags != '[]'::jsonb
+        GROUP BY s.tag ORDER BY count DESC
+    """) or []
+
+    # Quality distribution
+    qual_rows = _db_query("""
+        SELECT
+          CASE WHEN quality_score >= 80 THEN 'excellent'
+               WHEN quality_score >= 65 THEN 'good'
+               WHEN quality_score >= 50 THEN 'moderate'
+               WHEN quality_score >= 35 THEN 'low'
+               ELSE 'minimal' END as bucket,
+          count(*) as count
+        FROM youtube_transcripts GROUP BY 1
+    """) or []
+
+    return {
+        "stats": {k: _json_clean(v) for k, v in stats_row.items()},
+        "agents": [{k: _json_clean(v) for k, v in r.items()} for r in agent_rows],
+        "strategies": [{k: _json_clean(v) for k, v in r.items()} for r in strat_rows],
+        "quality_distribution": [{k: _json_clean(v) for k, v in r.items()} for r in qual_rows],
+    }
+
+
+def _iris_status():
+    """GET /api/v2/iris/status — Iris taxonomy agent status.
+    Note: ROUTES handler wraps return in {"ok": True, "data": ...} automatically.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from iris_taxonomy_agent import get_iris_status, iris_status_summary
+    status = get_iris_status()
+    status["summary"] = iris_status_summary()
+    # Deep clean for JSON serialization
+    def _clean(obj):
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(v) for v in obj]
+        return _json_clean(obj)
+    return _clean(status)
+
+
+def _youtube_audit():
+    """GET /api/v2/youtube-audit — Channel inventory + transcript quality."""
+    channels = _db_query("""
+        SELECT c.channel_name, c.channel_id, c.category, c.priority,
+               c.agent_tags, c.active, c.auto_promote_threshold,
+               count(t.id) as transcript_count,
+               count(CASE WHEN t.promoted_to_whiteboard THEN 1 END) as promoted_count,
+               round(avg(COALESCE(t.quality_score,0))::numeric,1) as avg_quality
+        FROM youtube_channels c
+        LEFT JOIN youtube_transcripts t ON t.channel_name = c.channel_name
+        GROUP BY c.channel_name, c.channel_id, c.category, c.priority,
+                 c.agent_tags, c.active, c.auto_promote_threshold
+        ORDER BY c.category, c.channel_name
+    """) or []
+    total_t = _db_query("SELECT count(*) as cnt FROM youtube_transcripts", fetch="one") or {}
+    total_wb = _db_query("SELECT count(*) as cnt FROM intelligence_whiteboard WHERE source_type='youtube'", fetch="one") or {}
+    return {
+        "channels": [{k: _json_clean(v) for k, v in c.items()} for c in channels],
+        "stats": {"total_transcripts": total_t.get("cnt", 0), "whiteboard_youtube": total_wb.get("cnt", 0),
+                  "total_channels": len(channels)},
+    }
+
+
+def _proposals_with_pnl():
+    """GET /api/v2/proposals-with-pnl — All pending proposals with P&L pre-computed."""
+    proposals = _db_query(
+        """SELECT id, symbol, action, strategy_type, confidence, status,
+                  account_name, entry_price, shares_held, unrealized_pnl,
+                  created_at
+           FROM watchlist_proposals WHERE status='proposed'
+           ORDER BY created_at DESC LIMIT 30"""
+    ) or []
+
+    # Merge with live prices from holdings + stops from risk_management
+    h_data = _load_json(STATE_DIR / "holdings.json") or {}
+    price_map = {}
+    for h in h_data.get("holdings", []):
+        s = h.get("symbol", "")
+        if s:
+            price_map[s] = {"price": h.get("price", 0), "shares": h.get("shares", 0),
+                            "cost_basis": h.get("cost_basis", 0), "gain_loss": h.get("gain_loss", 0),
+                            "market_value": h.get("market_value", 0)}
+
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    stop_map = {}
+    for p in rm.get("positions", []):
+        s = p.get("symbol", "")
+        if s:
+            stop_map[s] = {"stop_price": p.get("stop_price"), "distance_pct": p.get("distance_pct"),
+                           "triggered": p.get("triggered", False)}
+
+    result = []
+    for prop in proposals:
+        p = {k: _json_clean(v) for k, v in prop.items()}
+        sym = p.get("symbol", "")
+        live = price_map.get(sym, {})
+        stop = stop_map.get(sym, {})
+        p["current_price"] = live.get("price", 0)
+        p["market_value"] = live.get("market_value", 0)
+        p["live_pnl"] = live.get("gain_loss", 0)
+        p["stop_price"] = stop.get("stop_price")
+        p["distance_pct"] = stop.get("distance_pct")
+        p["stop_breached"] = stop.get("triggered", False)
+        # Compute days waiting
+        try:
+            from datetime import datetime
+            created = str(p.get("created_at", ""))[:10]
+            if created:
+                days = (datetime.now() - datetime.strptime(created, "%Y-%m-%d")).days
+                p["days_waiting"] = days
+        except Exception:
+            p["days_waiting"] = 0
+        result.append(p)
+
+    return {"proposals": result, "count": len(result)}
+
+
+def _agent_pipeline():
+    """GET /api/v2/agent-pipeline — Live agent job pipeline for orchestration dashboard.
+    Returns: jobs, results, handoffs, events, proposals, debates, summary.
+    """
+    # 1. Active + recent agent jobs (last 24h)
+    jobs = _db_query(
+        """SELECT id, symbol, requested_agent, request_type, status,
+                  priority, submitted_from, created_at, started_at, completed_at,
+                  payload::text as payload_text
+           FROM watchlist_agent_jobs
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           ORDER BY created_at DESC LIMIT 200"""
+    ) or []
+
+    # 2. Recent agent analyses
+    results = _db_query(
+        """SELECT DISTINCT ON (symbol, agent)
+                  symbol, agent, recommendation, confidence, summary,
+                  created_at, model_used, status
+           FROM watchlist_agent_results
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           ORDER BY symbol, agent, created_at DESC"""
+    ) or []
+
+    # 3. Escalations / handoffs
+    handoffs = _db_query(
+        """SELECT symbol, from_agent, to_agent, reason, escalated, created_at
+           FROM agent_handoffs
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           ORDER BY created_at DESC LIMIT 50"""
+    ) or []
+
+    # 4. Event queue (Level 3)
+    events = _db_query(
+        """SELECT id, event_type, symbol, priority, status,
+                  agents_to_notify, trigger_data::text as trigger_text,
+                  created_at, processed_at
+           FROM agent_event_queue
+           ORDER BY created_at DESC LIMIT 50"""
+    ) or []
+
+    # 5. Pending proposals
+    proposals = _db_query(
+        """SELECT symbol, action, strategy_type, confidence, status,
+                  created_at
+           FROM watchlist_proposals
+           WHERE status = 'proposed'
+           ORDER BY created_at DESC LIMIT 30"""
+    ) or []
+
+    # 6. Recent debates
+    debates = _db_query(
+        """SELECT symbol, consensus_recommendation, consensus_score,
+                  participants, created_at, provider
+           FROM agent_debate_log
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           ORDER BY created_at DESC LIMIT 20"""
+    ) or []
+
+    cj = [{k: _json_clean(v) for k, v in j.items()} for j in jobs]
+    cr = [{k: _json_clean(v) for k, v in r.items()} for r in results]
+    ch = [{k: _json_clean(v) for k, v in h.items()} for h in handoffs]
+    ce = [{k: _json_clean(v) for k, v in e.items()} for e in events]
+    cp = [{k: _json_clean(v) for k, v in p.items()} for p in proposals]
+    cd = [{k: _json_clean(v) for k, v in d.items()} for d in debates]
+
+    return {
+        "jobs": cj,
+        "results": cr,
+        "handoffs": ch,
+        "events": ce,
+        "proposals": cp,
+        "debates": cd,
+        "summary": {
+            "queued": sum(1 for j in cj if j.get("status") == "queued"),
+            "processing": sum(1 for j in cj if j.get("status") == "processing"),
+            "completed": sum(1 for j in cj if j.get("status") in ("completed", "done")),
+            "failed": sum(1 for j in cj if j.get("status") == "failed"),
+            "total_24h": len(cj),
+            "events_pending": sum(1 for e in ce if e.get("status") == "pending"),
+            "events_done": sum(1 for e in ce if e.get("status") == "done"),
+            "handoffs_24h": len(ch),
+            "analyses_24h": len(cr),
+            "proposals_pending": len(cp),
+            "debates_24h": len(cd),
+        },
+    }
+
+
+def _llm_spend():
+    """GET /api/v2/llm-spend — Full LLM spend analytics from llm_router.log."""
     import json as _j
     log_file = PROJECT_ROOT / "logs" / "llm_router.log"
     calls = []
     daily_spend = {}
     provider_spend = {}
+    task_spend = {}
+    provider_calls = {}
+    task_calls = {}
+    hourly_today = {}
+
+    today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+
     if log_file.exists():
-        for line in log_file.read_text().splitlines()[-200:]:
+        for line in log_file.read_text().splitlines()[-500:]:
             try:
                 entry = _j.loads(line)
                 calls.append(entry)
                 day = entry.get("timestamp", "")[:10]
-                cost = entry.get("cost", 0)
+                hour = entry.get("timestamp", "")[11:13]
+                cost = float(entry.get("cost") or entry.get("cost_estimate") or 0)
                 provider = entry.get("provider", "unknown")
+                task = entry.get("task_type", "unknown")
+
                 daily_spend[day] = daily_spend.get(day, 0) + cost
                 provider_spend[provider] = provider_spend.get(provider, 0) + cost
+                provider_calls[provider] = provider_calls.get(provider, 0) + 1
+                task_spend[task] = task_spend.get(task, 0) + cost
+                task_calls[task] = task_calls.get(task, 0) + 1
+
+                if day == today and hour:
+                    hourly_today[hour] = hourly_today.get(hour, 0) + cost
             except Exception:
                 pass
-    today = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+
+    # Get budget from llm_router
+    budget = 0.50
+    try:
+        from llm_router import DAILY_BUDGET_LIMIT
+        budget = DAILY_BUDGET_LIMIT
+    except Exception:
+        pass
+
+    today_total = daily_spend.get(today, 0)
+
     return {
-        "today_spend": round(daily_spend.get(today, 0), 4),
-        "budget_limit": 2.00,
-        "budget_remaining": round(2.00 - daily_spend.get(today, 0), 4),
+        "today_spend": round(today_total, 4),
+        "budget_limit": budget,
+        "budget_remaining": round(budget - today_total, 4),
+        "budget_pct_used": round((today_total / budget) * 100, 1) if budget > 0 else 0,
         "total_spend": round(sum(provider_spend.values()), 4),
-        "by_provider": {k: round(v, 4) for k, v in sorted(provider_spend.items())},
-        "by_day": {k: round(v, 4) for k, v in sorted(daily_spend.items())[-7:]},
         "total_calls": len(calls),
-        "recent_calls": [{k: v for k, v in c.items()} for c in calls[-10:]],
+        "by_provider": {k: {"spend": round(v, 4), "calls": provider_calls.get(k, 0)}
+                        for k, v in sorted(provider_spend.items())},
+        "by_task": {k: {"spend": round(v, 4), "calls": task_calls.get(k, 0)}
+                    for k, v in sorted(task_spend.items())},
+        "by_day": {k: round(v, 4) for k, v in sorted(daily_spend.items())[-7:]},
+        "hourly_today": {k: round(v, 4) for k, v in sorted(hourly_today.items())},
+        "recent_calls": [{
+            "timestamp": c.get("timestamp", ""),
+            "provider": c.get("provider", ""),
+            "task_type": c.get("task_type", ""),
+            "model": c.get("model", c.get("model_used", "")),
+            "cost": float(c.get("cost") or c.get("cost_estimate") or 0),
+            "latency": c.get("latency", 0),
+            "routing_reason": c.get("routing_reason", ""),
+            "fallbacks": c.get("fallback_reasons", []),
+        } for c in calls[-50:]],
     }
 
 
@@ -2982,6 +4091,25 @@ def _llm_health():
         return health_check()
     except Exception as e:
         return {"error": str(e), "available": False}
+
+
+def _cio_decisions_enriched():
+    """GET /api/v2/cio-decisions — enriched with account from holdings."""
+    rows = _db_query("SELECT * FROM cio_decisions ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, created_at DESC LIMIT 50") or []
+    # Build symbol→account map from holdings
+    holdings = _load_json(STATE_DIR / "holdings.json") or {}
+    acct_map = {}
+    for h in holdings.get("holdings", []):
+        sym = h.get("symbol", "")
+        if sym and sym not in acct_map:
+            acct_map[sym] = h.get("account", "")
+    decisions = []
+    for r in rows:
+        d = {k: _json_clean(v) for k, v in r.items()}
+        if not d.get("account") and d.get("symbol"):
+            d["account"] = acct_map.get(d["symbol"], "")
+        decisions.append(d)
+    return {"decisions": decisions}
 
 
 def _cio_dashboard():
@@ -3892,6 +5020,16 @@ ROUTES = {
     "/api/v2/llm/health": lambda: _llm_health(),
     "/api/v2/system-health": lambda: _system_health_dashboard(),
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),
+    "/api/v2/llm-spend": lambda: _llm_spend(),
+    "/api/v2/youtube-audit": lambda: _youtube_audit(),
+    "/api/v2/transcript-audit": lambda: _transcript_audit(),
+    "/api/v2/portfolio-intelligence": lambda: _portfolio_intelligence(),
+    "/api/v2/rewrite-note/status": lambda: _rewrite_status(),
+    "/api/v2/iris/status": lambda: _iris_status(),
+    "/api/v2/iris/hygiene-status": lambda: _iris_hygiene_status(),
+    "/api/v2/proposals-with-pnl": lambda: _proposals_with_pnl(),
+    "/api/v2/alex-hygiene/history": lambda: {"runs": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, decision_type, tier, question, agreement_score, elapsed_seconds, bypass_event, ran_at, LEFT(synthesis,500) as synthesis_preview FROM alex_hygiene_log ORDER BY ran_at DESC LIMIT 10") or [])]},
+    "/api/v2/agent-pipeline": lambda: _agent_pipeline(),
     "/api/v2/tax-situation": lambda: _tax_situation(),
     "/api/v2/trust-transfers": lambda: {"transfers": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, event_date, amount, description, trust_type, five_year_lookback_start, protected_amount, trust_notes, created_at FROM tax_events WHERE event_type='trust_transfer' ORDER BY event_date DESC") or [])]},
     "/api/v2/sec/form4": lambda: {"filings": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, filer_name, filer_relation, transaction_type, shares, price, total_value, filing_date, sec_url, quality_score, strategy_tags, agent_tags, created_at FROM sec_form4 ORDER BY filing_date DESC LIMIT 50") or [])]},
@@ -3914,7 +5052,7 @@ ROUTES = {
     "/api/v2/youtube/channels": lambda: {"channels": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM youtube_channels WHERE active=TRUE ORDER BY channel_name") or [])]},
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
-    "/api/v2/cio-decisions": lambda: {"decisions": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM cio_decisions ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, created_at DESC LIMIT 50") or [])]},
+    "/api/v2/cio-decisions": lambda: _cio_decisions_enriched(),
     "/api/v2/cio-dashboard": lambda: _cio_dashboard(),
     "/api/v2/strategy-rotations": lambda: {"rotations": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 20") or [])]},
     "/api/v2/rebalance-plans": lambda: {"plans": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM rebalance_plans ORDER BY generated_at DESC LIMIT 10") or [])]},
@@ -3972,6 +5110,105 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return journal_review_write(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/alex-hygiene/classify":
+            try:
+                from alex_hygiene import classify_decision, check_cadence
+                dt = body.get("decision_type", "")
+                q = body.get("question", "")
+                ctx = body.get("context", {})
+                cl = classify_decision(dt, q, ctx)
+                cd = check_cadence(dt)
+                return 200, {"ok": True, "data": {"classification": cl, "cadence": {
+                    "allowed": cd["allowed"], "reason": cd["reason"],
+                    "days_until_allowed": cd.get("days_until_allowed", 0)}}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/alex-hygiene/run":
+            try:
+                from alex_hygiene import run_tier3_hygiene, check_cadence
+                dt = body.get("decision_type", "quarterly_strategy_review")
+                q = body.get("question", "")
+                ctx = body.get("context", {})
+                bypass = body.get("bypass_event")
+                if not q:
+                    return 400, {"ok": False, "error": "question required"}
+                if not body.get("force"):
+                    cd = check_cadence(dt, bypass)
+                    if not cd["allowed"]:
+                        return 429, {"ok": False, "blocked": True, "reason": cd["reason"],
+                                     "days_until_allowed": cd.get("days_until_allowed", 0)}
+                r = run_tier3_hygiene(q, body.get("alex_opinion", ""), ctx, dt, bypass)
+                return 200, {"ok": True, "data": {k: _json_clean(v) if not isinstance(v, dict) else v for k, v in r.items()}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/ask":
+            try:
+                q = (body or {}).get("question", "").strip()
+                if not q:
+                    return 400, {"ok": False, "error": "question required"}
+                from iris_taxonomy_agent import ask_iris
+                answer = ask_iris(q)
+                return 200, {"ok": True, "data": {"answer": answer, "question": q}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/approve":
+            try:
+                pid = (body or {}).get("proposal_id")
+                if not pid:
+                    return 400, {"ok": False, "error": "proposal_id required"}
+                _db_write("UPDATE iris_taxonomy_proposals SET status='approved', reviewed_by='dashboard', reviewed_at=NOW() WHERE id=%s AND status='pending'", (pid,))
+                from iris_taxonomy_agent import apply_proposal
+                r = apply_proposal(int(pid))
+                return 200, {"ok": True, "data": r}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/hygiene-approve":
+            try:
+                pid = (body or {}).get("pending_id")
+                if not pid:
+                    return 400, {"ok": False, "error": "pending_id required"}
+                from iris_taxonomy_agent import handle_iris_hygiene_command
+                msg = handle_iris_hygiene_command("approve", str(pid))
+                return 200, {"ok": True, "data": {"message": msg}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/hygiene-reject":
+            try:
+                pid = (body or {}).get("pending_id")
+                if not pid:
+                    return 400, {"ok": False, "error": "pending_id required"}
+                from iris_taxonomy_agent import handle_iris_hygiene_command
+                msg = handle_iris_hygiene_command("reject", str(pid))
+                return 200, {"ok": True, "data": {"message": msg}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/hygiene-defer":
+            try:
+                pid = (body or {}).get("pending_id")
+                if not pid:
+                    return 400, {"ok": False, "error": "pending_id required"}
+                from iris_taxonomy_agent import handle_iris_hygiene_command
+                msg = handle_iris_hygiene_command("defer", str(pid))
+                return 200, {"ok": True, "data": {"message": msg}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/reject":
+            try:
+                pid = (body or {}).get("proposal_id")
+                if not pid:
+                    return 400, {"ok": False, "error": "proposal_id required"}
+                _db_write("UPDATE iris_taxonomy_proposals SET status='rejected', reviewed_by='dashboard', reviewed_at=NOW() WHERE id=%s AND status='pending'", (pid,))
+                return 200, {"ok": True, "data": {"proposal_id": pid, "status": "rejected"}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/approvals/decision":
             try:
                 return approval_decide(body or {})
@@ -4019,6 +5256,53 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "action": "evaluated", "id": outcome_id}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/tasks/<id>/resolve|defer|reject
+        import re as _re
+        _task_action_m = _re.match(r"/api/v2/tasks/(\d+)/(resolve|defer|reject)$", base_path)
+        if _task_action_m:
+            try:
+                tid = int(_task_action_m.group(1))
+                action = _task_action_m.group(2)
+                note = (body or {}).get("note", "").strip()
+                status_map = {"resolve": "decided_action", "defer": "deferred", "reject": "rejected"}
+                new_status = status_map[action]
+                # Update john_decision_queue
+                _db_write("UPDATE john_decision_queue SET status=%s, decided_at=NOW(), john_decision=%s, john_reasoning=%s, closure_note=%s WHERE id=%s",
+                          (new_status, action, note, f"{action}: {note}" if note else action, tid))
+                # Also try action_queue (may not exist for all tasks)
+                try:
+                    _db_write("UPDATE action_queue SET status=%s, reviewed_at=NOW(), reviewed_by='john' WHERE id=%s AND status='pending'",
+                              (new_status if action != "resolve" else "approved", tid))
+                except Exception:
+                    pass
+                # Log decision
+                try:
+                    _db_write("INSERT INTO john_decision_history (decision_id, old_status, new_status, decision, reasoning) VALUES (%s,'pending_john',%s,%s,%s)",
+                              (tid, new_status, action, note))
+                except Exception:
+                    pass
+                return 200, {"ok": True, "id": tid, "status": new_status}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/tasks/deduplicate":
+            try:
+                deduped = 0
+                dupes = _db_query("""
+                    SELECT symbol, category, array_agg(id ORDER BY id DESC) as ids
+                    FROM john_decision_queue WHERE status='pending_john'
+                    GROUP BY symbol, category HAVING count(*) > 1""") or []
+                for d in dupes:
+                    ids = d["ids"]
+                    keep_id = ids[0]  # most recent
+                    old_ids = ids[1:]
+                    for oid in old_ids:
+                        _db_write("UPDATE john_decision_queue SET status='closed', decided_at=NOW(), closure_note='Superseded by newer task' WHERE id=%s", (oid,))
+                        deduped += 1
+                return 200, {"ok": True, "resolved_count": deduped}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/john/decide":
             try:
                 return _john_decide(body or {})
@@ -4029,6 +5313,56 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _wl_submit(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/rewrite-note":
+            try:
+                text = (body or {}).get("text", "").strip()
+                if not text or len(text) < 5:
+                    return 400, {"ok": False, "error": "text too short"}
+                page_type = (body or {}).get("page_type", "approval")
+                PROMPTS = {"approval": "Rewrite this investment decision rationale clearly. Under 50 words.",
+                           "watchlist": "Rewrite this watchlist note concisely. Under 40 words.",
+                           "research": "Expand this into a research question. Under 60 words.",
+                           "retirement": "Expand this retirement question. Under 60 words."}
+                prompt_text = PROMPTS.get(page_type, PROMPTS["approval"])
+                provider = "local"
+                # Try local LLM first
+                rewritten = ""
+                try:
+                    from local_llm import generate
+                    rewritten = (generate(f"{prompt_text}\n\nOriginal: {text}\n\nRewritten (concise, clear):", timeout=30, fast=True) or "").strip()
+                except Exception:
+                    pass
+                # Fallback to Claude Haiku if local failed
+                if not rewritten:
+                    try:
+                        import anthropic
+                        _ak = ""
+                        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+                            if line.startswith("ANTHROPIC_API_KEY="): _ak = line.split("=", 1)[1].strip()
+                        client = anthropic.Anthropic(api_key=_ak)
+                        msg = client.messages.create(model="claude-haiku-4-5", max_tokens=150,
+                            messages=[{"role": "user", "content": f"{prompt_text}\n\nOriginal: {text}\n\nRewritten:"}])
+                        rewritten = msg.content[0].text.strip()
+                        provider = "claude-haiku"
+                    except Exception as e2:
+                        return 200, {"ok": False, "error": f"Both local LLM and Claude failed: {e2}"}
+                return 200, {"ok": True, "rewritten": rewritten, "provider": provider}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/retirement/refresh":
+            try:
+                import subprocess, threading
+                def _run():
+                    subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                                    str(PROJECT_ROOT / "scripts/alex_retirement_advisor.py"),
+                                    "--weekly-health", "--telegram"], capture_output=True,
+                                   cwd=str(PROJECT_ROOT))
+                threading.Thread(target=_run, daemon=True).start()
+                return 200, {"ok": True, "message": "Retirement refresh started (~60s)"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/ai-ask":
             try:
                 return ai_ask(body or {})
@@ -4242,6 +5576,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # Per-symbol CIO decisions
+    # Task detail (john_decision_queue items with P&L)
+    if base_path.startswith("/api/v2/task-detail/"):
+        tid_str = base_path[len("/api/v2/task-detail/"):].strip("/")
+        if tid_str.isdigit():
+            try:
+                return 200, {"ok": True, "data": _task_detail(int(tid_str))}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Watchlist symbol context
+    if base_path.startswith("/api/v2/watchlist/context/"):
+        sym = base_path[len("/api/v2/watchlist/context/"):].strip("/").upper()
+        if sym:
+            try:
+                return 200, {"ok": True, "data": _watchlist_context(sym)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Proposal detail
+    if base_path.startswith("/api/v2/proposal-detail/"):
+        pid_str = base_path[len("/api/v2/proposal-detail/"):].strip("/")
+        if pid_str.isdigit():
+            try:
+                return 200, {"ok": True, "data": _proposal_detail(int(pid_str))}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
     if base_path.startswith("/api/v2/cio-decisions/"):
         symbol = base_path[len("/api/v2/cio-decisions/"):].strip("/").upper()
         if symbol:

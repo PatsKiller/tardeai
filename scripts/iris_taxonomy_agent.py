@@ -1,0 +1,1299 @@
+#!/usr/bin/env python3
+"""iris_taxonomy_agent.py — Taxonomy intelligence agent.
+
+Iris monitors YouTube channel coverage, detects gaps in investment thesis
+categories, proposes channel additions/reclassifications, and validates
+proposals through multi-model consensus before storing for John's review.
+
+Runs weekly (Sunday 10 AM) via cron. Can also be triggered manually.
+
+Usage:
+    python3 scripts/iris_taxonomy_agent.py                  # full weekly scan
+    python3 scripts/iris_taxonomy_agent.py --gaps            # gap analysis only
+    python3 scripts/iris_taxonomy_agent.py --audit           # channel audit only
+    python3 scripts/iris_taxonomy_agent.py --propose "add channel X for dividend coverage"
+"""
+import json, os, sys, re, time, argparse
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from local_llm import generate as llm_generate
+
+# ═══════════════════════════════════════════════════════
+# IRIS IDENTITY — Taxonomy Intelligence Agent
+# ═══════════════════════════════════════════════════════
+
+IRIS_IDENTITY = """
+You are Iris — the Taxonomy Intelligence Agent for Trade AI v12.
+
+YOUR PURPOSE:
+You are the keeper of the intelligence pipeline. You make sure
+that every piece of content — news articles, YouTube transcripts,
+SEC filings — reaches the right agents. Without you, valuable
+information sits unread in a warehouse. With you, every article
+about SSDI, every video about Medicaid planning, every earnings
+report about a portfolio holding, finds its way to the agent
+who needs it within hours.
+
+YOUR PERSONALITY:
+Precise. Analytical. Quietly proud of infrastructure that works.
+You think in patterns, frequencies, and gaps. You notice what
+others miss — the 847 articles that were never tagged, the keyword
+that would have routed them correctly, the regulatory change that
+just entered the financial media and isn't in the taxonomy yet.
+
+You speak concisely. You give numbers. You explain what you found,
+what you proposed, and what you need from John.
+
+YOUR SCOPE:
+- You manage keywords and routing rules — nothing else
+- You never make investment recommendations
+- You never analyze specific stocks or positions
+- You never touch holdings, proposals, or trade decisions
+- You own the classification infrastructure ALL other agents depend on
+
+WHEN ANSWERING QUESTIONS:
+- Lead with coverage metrics — what % of content is reaching agents
+- Be specific about gaps — "Medicare Advantage appeared 23x untagged"
+- Explain routing decisions — why something goes to alex vs maria
+- Be honest about uncertainty — "I'm 72% confident this belongs to alex"
+- Always end with what you need from John — approve/reject/inform
+
+YOUR RELATIONSHIP TO OTHER AGENTS:
+You work for all of them. Maria needs clean news routing.
+Risk needs technical analysis content tagged correctly.
+Alex needs every disability/Medicare/trust video to reach him.
+When you do your job well, all of them get smarter.
+When you do your job poorly, they're flying blind.
+"""
+
+IRIS_SYSTEM_PROMPT = """You are Iris, Trade AI v12's taxonomy intelligence agent.
+You manage content classification so the right information reaches the right agents.
+
+Current system state (injected at runtime):
+{state_block}
+
+Answer questions about:
+- Content tagging coverage and gaps
+- Why specific content was/wasn't tagged
+- Keyword routing decisions
+- Taxonomy proposals pending review
+- How to improve agent intelligence quality
+
+Always be specific with numbers. Always explain your reasoning.
+Keep responses under 200 words unless asked for detail.
+End with a clear action item for John if one exists."""
+
+
+def _get_conn_dict():
+    """Get DB connection with dict cursor."""
+    import psycopg2, psycopg2.extras
+    pw = ""
+    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    return conn, cur
+
+
+def build_iris_state_block() -> str:
+    """Build current state context for Iris to answer questions."""
+    conn, cur = _get_conn_dict()
+    lines = []
+
+    # Coverage stats from whiteboard
+    try:
+        cur.execute("""
+            SELECT count(*) as total,
+                   count(CASE WHEN agent_notes IS NOT NULL AND agent_notes != '{}' THEN 1 END) as tagged
+            FROM intelligence_whiteboard
+        """)
+        row = cur.fetchone()
+        if row:
+            rate = int(row['tagged'] / max(row['total'], 1) * 100)
+            lines.append(f"Whiteboard coverage: {rate}% tagged ({row['tagged']}/{row['total']} items)")
+    except Exception:
+        lines.append("Whiteboard coverage: unknown")
+
+    # YouTube transcript tagging
+    try:
+        cur.execute("""
+            SELECT count(*) as total,
+                   count(CASE WHEN agent_tags IS NOT NULL AND agent_tags != '{}' THEN 1 END) as tagged
+            FROM youtube_transcripts
+        """)
+        row = cur.fetchone()
+        if row:
+            rate = int(row['tagged'] / max(row['total'], 1) * 100)
+            lines.append(f"YouTube transcripts: {rate}% tagged ({row['tagged']}/{row['total']})")
+    except Exception:
+        pass
+
+    # Channel distribution
+    try:
+        cur.execute("""
+            SELECT category, count(*) as cnt
+            FROM youtube_channels WHERE active=true
+            GROUP BY category ORDER BY cnt DESC
+        """)
+        rows = cur.fetchall()
+        if rows:
+            dist = ' | '.join(f"{r['category']}:{r['cnt']}" for r in rows)
+            lines.append(f"Channel distribution: {dist}")
+    except Exception:
+        pass
+
+    # Pending proposals
+    try:
+        cur.execute("SELECT count(*) as n FROM iris_taxonomy_proposals WHERE status='pending'")
+        row = cur.fetchone()
+        lines.append(f"Pending proposals: {row['n'] if row else 0} awaiting review")
+    except Exception:
+        lines.append("Pending proposals: table not yet populated")
+
+    # Last run
+    try:
+        cur.execute("SELECT run_type, coverage_score, proposals_created, ran_at FROM iris_run_log ORDER BY ran_at DESC LIMIT 1")
+        row = cur.fetchone()
+        if row:
+            lines.append(f"Last run: {str(row['ran_at'])[:16]} | coverage: {row['coverage_score']}% | proposals: {row['proposals_created']}")
+        else:
+            lines.append("Last run: never — first run pending")
+    except Exception:
+        lines.append("Last run: log table empty")
+
+    # Top untagged whiteboard content
+    try:
+        cur.execute("""
+            SELECT title FROM intelligence_whiteboard
+            WHERE (agent_notes IS NULL OR agent_notes = '{}')
+              AND quality_score >= 50
+            ORDER BY quality_score DESC LIMIT 5
+        """)
+        rows = cur.fetchall()
+        if rows:
+            lines.append("Top untagged content:")
+            for r in rows:
+                lines.append(f"  - {(r['title'] or '')[:60]}")
+    except Exception:
+        pass
+
+    conn.close()
+    return '\n'.join(lines)
+
+
+def ask_iris(question: str) -> str:
+    """Main Q&A function — Iris answers using Claude Sonnet.
+
+    Used by Telegram command handler and dashboard.
+    Cost: ~$0.003 per question.
+    """
+    import anthropic
+
+    state = build_iris_state_block()
+    system = IRIS_SYSTEM_PROMPT.format(state_block=state)
+
+    try:
+        api_key = _env("ANTHROPIC_API_KEY")
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model='claude-sonnet-4-5',
+            max_tokens=400,
+            system=system,
+            messages=[{'role': 'user', 'content': question}],
+        )
+        return response.content[0].text
+    except Exception as e:
+        return f"Iris is unavailable: {e}"
+
+
+def iris_status_summary() -> str:
+    """One-paragraph status for morning brief and Telegram."""
+    conn, cur = _get_conn_dict()
+    pending = 0
+    try:
+        cur.execute("SELECT count(*) as n FROM iris_taxonomy_proposals WHERE status='pending'")
+        row = cur.fetchone()
+        pending = row['n'] if row else 0
+    except Exception:
+        pass
+
+    # YouTube transcript tagging rate
+    try:
+        cur.execute("""
+            SELECT round(count(CASE WHEN agent_tags IS NOT NULL AND agent_tags != '{}'
+                                    THEN 1 END)::numeric / NULLIF(count(*),0) * 100, 1) as rate
+            FROM youtube_transcripts
+        """)
+        row = cur.fetchone()
+        yt_rate = float(row['rate']) if row and row['rate'] else 0
+    except Exception:
+        yt_rate = 0
+
+    # Channel coverage
+    try:
+        cur.execute("SELECT count(*) as n FROM youtube_channels WHERE active=true")
+        row = cur.fetchone()
+        channels = row['n'] if row else 0
+    except Exception:
+        channels = 0
+
+    # Top gap
+    top_gap = ""
+    try:
+        cur.execute("""
+            SELECT title, count(*) as cnt FROM intelligence_whiteboard
+            WHERE (agent_notes IS NULL OR agent_notes = '{}')
+              AND quality_score >= 50
+            GROUP BY title ORDER BY cnt DESC LIMIT 1
+        """)
+        row = cur.fetchone()
+        if row and row['title']:
+            top_gap = f" | Top gap: '{row['title'][:30]}'"
+    except Exception:
+        pass
+
+    conn.close()
+
+    status_icon = 'ok' if yt_rate >= 60 else 'low'
+    proposal_text = f"{pending} proposals need review" if pending > 0 else "no proposals pending"
+
+    return (
+        f"Iris: {yt_rate:.0f}% transcripts tagged | {channels} channels active | "
+        f"{proposal_text}{top_gap}"
+    )
+
+
+# ── Target taxonomy ──────────────────────────────────────────────────
+TARGET_CATEGORIES = {
+    "dividend_income": {
+        "description": "Dividend investing, income generation, yield analysis",
+        "min_channels": 8, "ideal_channels": 12,
+        "keywords": ["dividend", "yield", "income", "payout", "ex-dividend", "drip"],
+    },
+    "investment_general": {
+        "description": "Broad market analysis, stock picking, portfolio strategy",
+        "min_channels": 8, "ideal_channels": 12,
+        "keywords": ["stock", "portfolio", "investing", "market analysis", "valuation"],
+    },
+    "retirement_planning": {
+        "description": "Retirement strategy, 401k, IRA, Social Security optimization",
+        "min_channels": 4, "ideal_channels": 6,
+        "keywords": ["retirement", "401k", "ira", "roth", "social security", "rmd"],
+    },
+    "disability_retirement": {
+        "description": "SSDI, Medicare/Medicaid, special needs trusts, disability income",
+        "min_channels": 3, "ideal_channels": 5,
+        "keywords": ["ssdi", "disability", "medicare", "medicaid", "special needs", "able"],
+    },
+    "macro_economics": {
+        "description": "Fed policy, inflation, rates, economic indicators",
+        "min_channels": 3, "ideal_channels": 5,
+        "keywords": ["fed", "inflation", "interest rate", "gdp", "recession", "economy"],
+    },
+    "tax_strategy": {
+        "description": "Tax optimization, Roth conversion, capital gains, IRMAA",
+        "min_channels": 3, "ideal_channels": 5,
+        "keywords": ["tax", "roth conversion", "irmaa", "capital gains", "tax loss"],
+    },
+    "etf_indexing": {
+        "description": "ETF analysis, index investing, passive strategies",
+        "min_channels": 2, "ideal_channels": 4,
+        "keywords": ["etf", "index", "vanguard", "schwab", "passive", "bogle"],
+    },
+    "financial_education": {
+        "description": "Personal finance basics, financial literacy, budgeting",
+        "min_channels": 1, "ideal_channels": 3,
+        "keywords": ["personal finance", "budget", "financial literacy", "money"],
+    },
+}
+
+AGENT_TAGS_MAP = {
+    "dividend_income": ["maria", "steph"],
+    "investment_general": ["maria", "steph"],
+    "retirement_planning": ["alex", "steph"],
+    "disability_retirement": ["alex"],
+    "macro_economics": ["maria", "steph"],
+    "tax_strategy": ["alex", "steph"],
+    "etf_indexing": ["maria", "steph"],
+    "financial_education": ["steph"],
+}
+
+
+def _get_conn():
+    import psycopg2
+    pw = ""
+    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+
+
+def _env(key):
+    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+        if line.startswith(f"{key}="): return line.split("=", 1)[1].strip()
+    return os.environ.get(key, "")
+
+
+# ── Coverage Analysis ────────────────────────────────────────────────
+def analyze_coverage():
+    """Analyze current channel coverage vs target taxonomy."""
+    conn = _get_conn()
+    cur = conn.cursor()
+
+    # Current channels by category
+    cur.execute("""SELECT category, channel_name, priority, agent_tags, active
+                   FROM youtube_channels ORDER BY category, channel_name""")
+    rows = cur.fetchall()
+    conn.close()
+
+    channels_by_cat = {}
+    for cat, name, priority, tags, active in rows:
+        cat = cat or "uncategorized"
+        if cat not in channels_by_cat:
+            channels_by_cat[cat] = []
+        channels_by_cat[cat].append({
+            "name": name, "priority": priority or "medium",
+            "agent_tags": tags or [], "active": active
+        })
+
+    coverage = {}
+    for cat, spec in TARGET_CATEGORIES.items():
+        current = channels_by_cat.get(cat, [])
+        active = [c for c in current if c["active"]]
+        count = len(active)
+        score = min(100, round(count / spec["ideal_channels"] * 100))
+        gap = max(0, spec["min_channels"] - count)
+        coverage[cat] = {
+            "current_count": count,
+            "min_required": spec["min_channels"],
+            "ideal_count": spec["ideal_channels"],
+            "coverage_score": score,
+            "gap": gap,
+            "channels": [c["name"] for c in active],
+            "status": "critical" if gap > 0 else "adequate" if count < spec["ideal_channels"] else "good",
+        }
+
+    # Uncategorized channels
+    uncategorized = channels_by_cat.get("uncategorized", [])
+    if uncategorized:
+        coverage["_uncategorized"] = {
+            "channels": [c["name"] for c in uncategorized],
+            "count": len(uncategorized),
+        }
+
+    scored = [c["coverage_score"] for k, c in coverage.items()
+              if not k.startswith("_") and "coverage_score" in c]
+    overall = round(sum(scored) / max(len(scored), 1))
+    return {"overall_score": overall, "categories": coverage}
+
+
+# ── Gap Detection ────────────────────────────────────────────────────
+def detect_gaps(coverage):
+    """Identify specific gaps and generate proposals."""
+    gaps = []
+    for cat, data in coverage["categories"].items():
+        if cat.startswith("_"):
+            continue
+        if data["status"] == "critical":
+            gaps.append({
+                "category": cat,
+                "severity": "critical",
+                "gap_count": data["gap"],
+                "description": f"{cat}: need {data['gap']} more channels (have {data['current_count']}, min {data['min_required']})",
+            })
+        elif data["status"] == "adequate":
+            gaps.append({
+                "category": cat,
+                "severity": "low",
+                "gap_count": data["ideal_count"] - data["current_count"],
+                "description": f"{cat}: could use {data['ideal_count'] - data['current_count']} more (have {data['current_count']}, ideal {data['ideal_count']})",
+            })
+    return sorted(gaps, key=lambda g: 0 if g["severity"] == "critical" else 1)
+
+
+# ── Channel Audit ────────────────────────────────────────────────────
+def audit_channels():
+    """Audit existing channels for misclassification or staleness."""
+    conn = _get_conn()
+    cur = conn.cursor()
+
+    # Channels with transcript counts and recency
+    cur.execute("""
+        SELECT yc.channel_name, yc.category, yc.priority, yc.active,
+               COUNT(yt.id) as transcript_count,
+               MAX(yt.ingested_at) as last_transcript,
+               AVG(yt.relevance_score) as avg_relevance
+        FROM youtube_channels yc
+        LEFT JOIN youtube_transcripts yt ON yt.channel_name = yc.channel_name
+        GROUP BY yc.channel_name, yc.category, yc.priority, yc.active
+        ORDER BY transcript_count DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    issues = []
+    now = datetime.now(timezone.utc)
+    for name, cat, priority, active, tc, last_t, avg_rel in rows:
+        # Inactive but has recent transcripts
+        if not active and tc > 0 and last_t and (now - last_t).days < 30:
+            issues.append({
+                "channel": name, "issue": "inactive_with_recent_content",
+                "detail": f"Marked inactive but has transcripts from {(now - last_t).days}d ago",
+                "suggestion": "reclassify" if cat == "uncategorized" else "reactivate",
+            })
+
+        # Low relevance score
+        if avg_rel is not None and avg_rel < 30 and tc > 3:
+            issues.append({
+                "channel": name, "issue": "low_relevance",
+                "detail": f"Avg relevance {avg_rel:.0f}/100 across {tc} transcripts",
+                "suggestion": "review_classification",
+            })
+
+        # No transcripts
+        if tc == 0 and active:
+            issues.append({
+                "channel": name, "issue": "no_transcripts",
+                "detail": "Active channel with zero transcripts",
+                "suggestion": "check_ingestion",
+            })
+
+        # Uncategorized
+        if (cat is None or cat == "uncategorized") and active:
+            issues.append({
+                "channel": name, "issue": "uncategorized",
+                "detail": "Active channel without category",
+                "suggestion": "classify",
+            })
+
+    return issues
+
+
+# ── LLM Classification ──────────────────────────────────────────────
+def classify_channel_llm(channel_name, recent_titles=None):
+    """Use LLM to suggest classification for a channel."""
+    cats = ", ".join(TARGET_CATEGORIES.keys())
+    titles_ctx = ""
+    if recent_titles:
+        titles_ctx = f"\nRecent video titles:\n" + "\n".join(f"- {t}" for t in recent_titles[:10])
+
+    prompt = f"""/no_think
+Classify this YouTube channel into ONE category.
+
+Channel: {channel_name}{titles_ctx}
+
+Categories: {cats}
+
+Reply with ONLY a JSON object:
+{{"category": "category_name", "confidence": 0.0-1.0, "reasoning": "one line"}}"""
+
+    result = llm_generate(prompt, timeout=30, fast=True)
+    try:
+        # Extract JSON from response
+        if "{" in result:
+            json_str = result[result.index("{"):result.rindex("}") + 1]
+            return json.loads(json_str)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return {"category": "investment_general", "confidence": 0.3, "reasoning": "fallback"}
+
+
+def suggest_channels_for_gap(category, existing_channels):
+    """Use LLM to suggest new channels for a coverage gap."""
+    spec = TARGET_CATEGORIES.get(category, {})
+    existing = ", ".join(existing_channels) if existing_channels else "none"
+
+    prompt = f"""/no_think
+Suggest 3 YouTube channels for the category: {category}
+Description: {spec.get('description', '')}
+Keywords: {', '.join(spec.get('keywords', []))}
+Already have: {existing}
+
+Reply with ONLY a JSON array:
+[{{"channel_name": "name", "reason": "why", "estimated_quality": 1-100}}]"""
+
+    result = llm_generate(prompt, timeout=30, fast=True)
+    try:
+        if "[" in result:
+            json_str = result[result.index("["):result.rindex("]") + 1]
+            return json.loads(json_str)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return []
+
+
+# ── Proposal Management ─────────────────────────────────────────────
+def create_proposal(proposal_type, target, current_state, proposed_state,
+                    reasoning, confidence, coverage_gap=None, validation=None):
+    """Store a taxonomy proposal for review."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""INSERT INTO iris_taxonomy_proposals
+        (proposal_type, target, current_state, proposed_state, reasoning,
+         confidence, validation_results, coverage_gap, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
+        RETURNING id""",
+        (proposal_type, target, json.dumps(current_state), json.dumps(proposed_state),
+         reasoning, confidence, json.dumps(validation or {}), coverage_gap))
+    pid = cur.fetchone()[0]
+    conn.commit()
+    conn.close()
+    print(f"  [iris] Created proposal #{pid}: {proposal_type} — {target}")
+    return pid
+
+
+def apply_proposal(proposal_id):
+    """Apply an approved proposal to the actual data."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT proposal_type, target, proposed_state, status FROM iris_taxonomy_proposals WHERE id=%s", (proposal_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return {"ok": False, "error": "not found"}
+    ptype, target, proposed, status = row
+    if status != "approved":
+        conn.close()
+        return {"ok": False, "error": f"status is {status}, not approved"}
+
+    proposed = json.loads(proposed) if isinstance(proposed, str) else proposed
+
+    if ptype == "reclassify":
+        cur.execute("""UPDATE youtube_channels
+            SET category=%s, priority=%s, agent_tags=%s
+            WHERE channel_name=%s""",
+            (proposed.get("category"), proposed.get("priority", "medium"),
+             proposed.get("agent_tags", []), target))
+
+    elif ptype == "add_channel":
+        cur.execute("""INSERT INTO youtube_channels
+            (channel_name, category, priority, agent_tags, active, added_by)
+            VALUES (%s, %s, %s, %s, true, 'iris')
+            ON CONFLICT (channel_name) DO UPDATE SET
+            category=EXCLUDED.category, priority=EXCLUDED.priority,
+            agent_tags=EXCLUDED.agent_tags, active=true""",
+            (target, proposed.get("category"), proposed.get("priority", "medium"),
+             proposed.get("agent_tags", [])))
+
+    elif ptype == "retire_channel":
+        cur.execute("UPDATE youtube_channels SET active=false WHERE channel_name=%s", (target,))
+
+    cur.execute("UPDATE iris_taxonomy_proposals SET applied_at=NOW() WHERE id=%s", (proposal_id,))
+    conn.commit()
+    conn.close()
+    print(f"  [iris] Applied proposal #{proposal_id}")
+    return {"ok": True, "proposal_id": proposal_id, "type": ptype}
+
+
+# ── Log Run ──────────────────────────────────────────────────────────
+def log_run(run_type, channels_scanned=0, categories_analyzed=0, gaps_found=0,
+            proposals_created=0, auto_approved=0, coverage_score=0,
+            coverage_breakdown=None, model_used="local", tokens=0, cost=0.0, elapsed=0, errors=None):
+    """Log an Iris run to the database."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    cur.execute("""INSERT INTO iris_run_log
+        (run_type, channels_scanned, categories_analyzed, gaps_found,
+         proposals_created, proposals_auto_approved, coverage_score,
+         coverage_breakdown, model_used, tokens_used, cost_estimate,
+         elapsed_seconds, errors)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (run_type, channels_scanned, categories_analyzed, gaps_found,
+         proposals_created, auto_approved, coverage_score,
+         json.dumps(coverage_breakdown or {}), model_used, tokens, cost, elapsed,
+         json.dumps(errors or [])))
+    conn.commit()
+    conn.close()
+
+
+# ── Main Run Modes ───────────────────────────────────────────────────
+def run_weekly_scan():
+    """Full weekly scan: coverage → gaps → audit → proposals."""
+    started = time.time()
+    print("[iris] Starting weekly taxonomy scan...")
+    errors = []
+
+    # 1. Coverage analysis
+    print("[iris] Analyzing coverage...")
+    coverage = analyze_coverage()
+    print(f"  Overall coverage: {coverage['overall_score']}%")
+    for cat, data in coverage["categories"].items():
+        if cat.startswith("_"):
+            continue
+        status_icon = "✓" if data["status"] == "good" else "△" if data["status"] == "adequate" else "✗"
+        print(f"  {status_icon} {cat}: {data['current_count']}/{data['ideal_count']} ({data['coverage_score']}%)")
+
+    # 2. Gap detection
+    print("[iris] Detecting gaps...")
+    gaps = detect_gaps(coverage)
+    for g in gaps:
+        print(f"  [{g['severity']}] {g['description']}")
+
+    # 3. Channel audit
+    print("[iris] Auditing channels...")
+    issues = audit_channels()
+    for iss in issues:
+        print(f"  [{iss['issue']}] {iss['channel']}: {iss['detail']}")
+
+    # 4. Generate proposals
+    proposals_created = 0
+
+    # Proposals for uncategorized channels
+    for iss in issues:
+        if iss["issue"] == "uncategorized":
+            try:
+                classification = classify_channel_llm(iss["channel"])
+                cat = classification.get("category", "investment_general")
+                conf = classification.get("confidence", 0.5)
+                tags = AGENT_TAGS_MAP.get(cat, ["steph"])
+                create_proposal(
+                    "reclassify", iss["channel"],
+                    {"category": None},
+                    {"category": cat, "priority": "medium", "agent_tags": tags},
+                    classification.get("reasoning", "LLM classification"),
+                    conf, coverage_gap=f"uncategorized"
+                )
+                proposals_created += 1
+            except Exception as e:
+                errors.append(f"classify {iss['channel']}: {e}")
+
+    # Proposals for critical gaps
+    for gap in gaps:
+        if gap["severity"] == "critical":
+            try:
+                existing = coverage["categories"][gap["category"]].get("channels", [])
+                suggestions = suggest_channels_for_gap(gap["category"], existing)
+                for s in suggestions[:2]:  # max 2 per gap
+                    cat = gap["category"]
+                    tags = AGENT_TAGS_MAP.get(cat, ["steph"])
+                    create_proposal(
+                        "add_channel", s.get("channel_name", "unknown"),
+                        {},
+                        {"category": cat, "priority": "medium", "agent_tags": tags},
+                        s.get("reason", "Coverage gap fill"),
+                        0.5, coverage_gap=gap["description"]
+                    )
+                    proposals_created += 1
+            except Exception as e:
+                errors.append(f"suggest for {gap['category']}: {e}")
+
+    # Proposals for low-relevance channels
+    for iss in issues:
+        if iss["issue"] == "low_relevance":
+            create_proposal(
+                "retire_channel", iss["channel"],
+                {"active": True, "issue": iss["detail"]},
+                {"active": False},
+                f"Low relevance: {iss['detail']}",
+                0.6, coverage_gap="quality"
+            )
+            proposals_created += 1
+
+    elapsed = int(time.time() - started)
+    print(f"\n[iris] Scan complete in {elapsed}s — {proposals_created} proposals created")
+
+    log_run(
+        "weekly_scan",
+        channels_scanned=sum(len(d.get("channels", [])) for d in coverage["categories"].values() if "channels" in d),
+        categories_analyzed=len(TARGET_CATEGORIES),
+        gaps_found=len(gaps),
+        proposals_created=proposals_created,
+        coverage_score=coverage["overall_score"],
+        coverage_breakdown=coverage["categories"],
+        elapsed=elapsed,
+        errors=errors,
+    )
+
+    return {
+        "coverage": coverage,
+        "gaps": gaps,
+        "issues": issues,
+        "proposals_created": proposals_created,
+        "elapsed": elapsed,
+    }
+
+
+def run_gap_analysis():
+    """Gap analysis only — no proposals."""
+    coverage = analyze_coverage()
+    gaps = detect_gaps(coverage)
+    print(f"[iris] Coverage: {coverage['overall_score']}%")
+    for g in gaps:
+        print(f"  [{g['severity']}] {g['description']}")
+    return {"coverage": coverage, "gaps": gaps}
+
+
+def run_channel_audit():
+    """Channel audit only."""
+    issues = audit_channels()
+    print(f"[iris] Found {len(issues)} issues")
+    for iss in issues:
+        print(f"  [{iss['issue']}] {iss['channel']}: {iss['detail']}")
+    return {"issues": issues}
+
+
+def get_iris_status():
+    """Get current Iris status for API."""
+    conn = _get_conn()
+    cur = conn.cursor()
+
+    # Last run
+    cur.execute("SELECT run_type, coverage_score, proposals_created, ran_at FROM iris_run_log ORDER BY ran_at DESC LIMIT 1")
+    last_run = cur.fetchone()
+
+    # Pending proposals
+    cur.execute("""SELECT id, proposal_type, target, reasoning, confidence, created_at
+                   FROM iris_taxonomy_proposals WHERE status='pending'
+                   ORDER BY created_at DESC""")
+    pending = [{"id": r[0], "type": r[1], "target": r[2], "reasoning": r[3],
+                "confidence": r[4], "created_at": str(r[5])} for r in cur.fetchall()]
+
+    # Stats
+    cur.execute("SELECT status, count(*) FROM iris_taxonomy_proposals GROUP BY status")
+    stats = dict(cur.fetchall())
+
+    conn.close()
+
+    coverage = analyze_coverage()
+    return {
+        "coverage_score": coverage["overall_score"],
+        "categories": coverage["categories"],
+        "last_run": {
+            "type": last_run[0], "score": last_run[1],
+            "proposals": last_run[2], "ran_at": str(last_run[3])
+        } if last_run else None,
+        "pending_proposals": pending,
+        "proposal_stats": stats,
+    }
+
+
+# ═══════════════════════════════════════════════════════
+# IRIS HYGIENE — Content Lifecycle Rules
+# ═══════════════════════════════════════════════════════
+
+CONTENT_EXPIRY_RULES = {
+    "news": {
+        "earnings_price_technical": {"strategy_tags": ["investment_general", "etf_indexing", "macro_fed"], "active_days": 90},
+        "sector_analysis": {"strategy_tags": ["defense_aerospace", "tech_ai", "dividend_income"], "active_days": 180},
+        "tax_retirement": {"strategy_tags": ["tax_planning", "retirement_planning", "roth_conversion"], "active_days": 365},
+        "disability_regulatory": {"strategy_tags": ["disability_retirement", "trust_estate"], "active_days": 545},
+    },
+    "youtube": {
+        "evergreen_keywords": ["how to", "explained", "what is", "basics", "guide", "introduction",
+                               "fundamentals", "how does", "understanding", "overview"],
+        "strategy_shelf_life": {
+            "disability_retirement": 1095, "trust_estate": 1095,
+            "retirement_planning": 730, "roth_conversion": 730, "tax_planning": 730,
+            "investment_general": 365, "etf_indexing": 365,
+        },
+    },
+}
+
+ALWAYS_ACTIVE = [
+    "agent_feedback_log", "watchlist_proposals", "decision_outcomes",
+    "john_preferences", "outcome_lessons", "iris_hygiene_log",
+    "alex_hygiene_log", "sec_form4",
+]
+
+ESCALATION_RULES = {
+    "confidence_threshold": 0.75,
+    "always_escalate": ["disability_retirement", "trust_estate"],
+    "max_auto_demote_per_run": 50,
+    "max_pending_escalations": 20,
+}
+
+
+def _detect_year_in_title(title):
+    """Detect if a title references a specific year. Returns (is_year_specific, year)."""
+    years = re.findall(r"\b20[1-2][0-9]\b", title or "")
+    if not years:
+        return False, 0
+    title_lower = (title or "").lower()
+    YEAR_PATTERNS = [
+        r"\b20[1-2][0-9]\s+(?:irmaa|sga|threshold|limit|rules?|changes?|update)",
+        r"(?:for|in)\s+20[1-2][0-9]\b",
+        r"20[1-2][0-9]\s+(?:medicare|medicaid|ssdi|roth|ira)",
+        r"(?:medicare|medicaid|ssdi|roth|ira|tax)\s+20[1-2][0-9]",
+    ]
+    for pattern in YEAR_PATTERNS:
+        if re.search(pattern, title_lower):
+            return True, int(max(years))
+    EVERGREEN_WITH_YEAR = [r"(?:strategy|planning|guide|explained|basics|how to)"]
+    for pattern in EVERGREEN_WITH_YEAR:
+        if re.search(pattern, title_lower):
+            return False, 0
+    return True, int(max(years))
+
+
+def _is_evergreen_content(title, text):
+    """Determine if content is conceptually evergreen (never expires)."""
+    text_lower = ((title or "") + " " + (text or "")[:1000]).lower()
+    EVERGREEN = ["how to", "how does", "what is", "what are", "explained", "basics",
+                 "introduction", "guide to", "understanding", "overview", "fundamentals",
+                 "complete guide", "how it works", "framework"]
+    STALE = ["this year", "current year", "right now", "latest", "new rules",
+             "just changed", "recent change", "updated for", "breaking"]
+    return sum(1 for s in EVERGREEN if s in text_lower) >= 2 and not any(s in text_lower for s in STALE)
+
+
+def analyze_content_for_hygiene(content_type, content_id, title, created_at,
+                                strategy_tag, agent_tags, text="", current_status="active"):
+    """Analyze a single content item and return hygiene recommendation."""
+    if current_status in ("demoted", "archived", "superseded"):
+        return {"action": "skip", "reason": "Already processed", "confidence": 1.0}
+    if content_type in ALWAYS_ACTIVE:
+        return {"action": "keep", "reason": "Protected content type", "confidence": 1.0}
+
+    now = datetime.now(created_at.tzinfo if hasattr(created_at, "tzinfo") and created_at.tzinfo else timezone.utc)
+    age_days = (now - created_at).days
+
+    # YouTube logic
+    if content_type in ("youtube", "youtube_transcript"):
+        if _is_evergreen_content(title, text):
+            return {"action": "keep", "reason": "Evergreen content", "confidence": 0.90, "age_days": age_days}
+
+        is_year_specific, year = _detect_year_in_title(title or "")
+        if is_year_specific and year > 0:
+            current_year = datetime.now().year
+            years_old = current_year - year
+            if years_old >= 2:
+                if strategy_tag in ESCALATION_RULES["always_escalate"]:
+                    return {
+                        "action": "escalate", "confidence": 0.65, "requires_approval": True,
+                        "proposed_status": "demoted", "age_days": age_days,
+                        "reason": f"Year-specific disability content from {year} ({years_old}y old)",
+                        "escalation_message": (
+                            f"Iris: Year-specific content may be stale\n"
+                            f"Title: {(title or '')[:60]}\nYear: {year} ({years_old}y ago)\n"
+                            f"Strategy: {strategy_tag}\nAgents: {', '.join(agent_tags or [])}\n\n"
+                            f"Demote? iris hygiene approve <id>\nKeep? iris hygiene reject <id>"
+                        ),
+                    }
+                return {"action": "demote", "reason": f"References {year} — {years_old}y old, likely stale",
+                        "confidence": 0.75, "proposed_status": "demoted", "age_days": age_days}
+            elif years_old == 1:
+                return {"action": "keep", "reason": f"References {year} — 1y old, monitoring",
+                        "confidence": 0.80, "age_days": age_days}
+
+        shelf = CONTENT_EXPIRY_RULES["youtube"]["strategy_shelf_life"].get(strategy_tag or "investment_general")
+        if shelf and age_days > shelf:
+            return {"action": "demote", "reason": f"Beyond {shelf}-day shelf life for {strategy_tag}",
+                    "confidence": 0.80, "proposed_status": "archived", "age_days": age_days}
+
+    # News logic
+    elif content_type in ("news", "news_article"):
+        if strategy_tag in ("disability_retirement", "trust_estate"):
+            if age_days > 545:
+                return {
+                    "action": "escalate", "confidence": 0.70, "requires_approval": True,
+                    "proposed_status": "archived", "age_days": age_days,
+                    "reason": f"Disability news {age_days}d old (>18mo)",
+                    "escalation_message": (
+                        f"Iris: Old disability content\nTitle: {(title or '')[:60]}\n"
+                        f"Age: {age_days}d ({age_days // 30}mo)\nStrategy: {strategy_tag}\n\n"
+                        f"Archive? iris hygiene approve <id>\nKeep? iris hygiene reject <id>"
+                    ),
+                }
+            return {"action": "keep", "reason": "Disability content within shelf life",
+                    "confidence": 0.90, "age_days": age_days}
+        elif strategy_tag in ("tax_planning", "retirement_planning", "roth_conversion"):
+            if age_days > 365:
+                return {"action": "demote", "reason": "Tax/retirement news beyond 365-day shelf life",
+                        "confidence": 0.85, "proposed_status": "archived", "age_days": age_days}
+        else:
+            if age_days > 90:
+                return {"action": "demote", "reason": "Financial news beyond 90-day shelf life",
+                        "confidence": 0.95, "proposed_status": "archived", "age_days": age_days}
+
+    return {"action": "keep", "reason": "Within shelf life", "confidence": 0.90, "age_days": age_days}
+
+
+def detect_superseded_regulatory_data():
+    """Find regulatory data superseded by newer versions."""
+    conn, cur = _get_conn_dict()
+    supersessions = []
+    for rule_type in ("ssa_thresholds", "irmaa_thresholds", "medicaid_ny_rules", "roth_ira_rules"):
+        cur.execute("""SELECT id, rule_key, config, updated_at, created_at
+                       FROM agent_intelligence_rules WHERE rule_type = %s
+                       ORDER BY updated_at DESC""", (rule_type,))
+        versions = cur.fetchall()
+        if len(versions) <= 1:
+            continue
+        latest = versions[0]
+        latest_config = latest["config"] if isinstance(latest["config"], dict) else json.loads(latest["config"])
+        latest_year = latest_config.get("year", 0)
+        for old in versions[1:]:
+            old_config = old["config"] if isinstance(old["config"], dict) else json.loads(old["config"])
+            old_year = old_config.get("year", 0)
+            if old_year and old_year < latest_year:
+                supersessions.append({
+                    "rule_type": rule_type, "old_id": old["id"], "old_key": old["rule_key"],
+                    "old_year": old_year, "new_year": latest_year,
+                    "age_days": (datetime.now(timezone.utc) - old["updated_at"]).days if old["updated_at"].tzinfo else 0,
+                })
+    conn.close()
+    return supersessions
+
+
+def _send_telegram_msg(message):
+    """Send a message via Telegram."""
+    import urllib.request, urllib.parse
+    token = _env("TELEGRAM_BOT_TOKEN")
+    chat_id = _env("TELEGRAM_CHAT_ID")
+    if not token or not chat_id:
+        return False
+    try:
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return True
+    except Exception as e:
+        print(f"  [hygiene] Telegram send failed: {e}")
+        return False
+
+
+def send_hygiene_escalation_to_john(pending_id, content_type, content_id,
+                                    content_title, proposed_action, escalation_message):
+    """Send a hygiene escalation to John via Telegram."""
+    full_message = (
+        f"{escalation_message}\n\n"
+        f"Decision ID: #{pending_id}\n"
+        f"Approve: iris hygiene approve {pending_id}\n"
+        f"Reject: iris hygiene reject {pending_id}\n"
+        f"Defer: iris hygiene defer {pending_id}\n"
+        f"(Auto-expires in 7 days)"
+    )
+    return _send_telegram_msg(full_message)
+
+
+def run_weekly_hygiene(dry_run=False):
+    """Weekly hygiene run — demotes stale content, flags superseded data,
+    escalates ambiguous decisions to John."""
+    started = time.time()
+    print(f"\n{'='*60}")
+    print(f"  IRIS — Weekly Hygiene {'DRY RUN' if dry_run else 'LIVE RUN'}")
+    print(f"{'='*60}\n")
+
+    conn, cur = _get_conn_dict()
+    stats = {"demoted": 0, "archived": 0, "superseded": 0, "escalated_to_john": 0,
+             "kept": 0, "skipped": 0, "errors": 0}
+
+    run_id = 0
+    if not dry_run:
+        cur.execute("INSERT INTO iris_run_log (run_type, ran_at) VALUES ('weekly_hygiene', NOW()) RETURNING id")
+        run_id = cur.fetchone()["id"]
+        conn.commit()
+
+    # Step 1: Expire old pending escalations
+    print("  Step 1: Expiring old pending escalations...")
+    cur.execute("SELECT id, content_title FROM iris_hygiene_pending WHERE status='pending_john' AND expires_at < NOW()")
+    expired = cur.fetchall()
+    if expired and not dry_run:
+        for e in expired:
+            cur.execute("UPDATE iris_hygiene_pending SET status='expired' WHERE id=%s", (e["id"],))
+        conn.commit()
+    print(f"  Expired {len(expired)} pending escalations")
+
+    # Step 2: Check max pending
+    cur.execute("SELECT count(*) as n FROM iris_hygiene_pending WHERE status='pending_john'")
+    pending_count = cur.fetchone()["n"]
+    max_new_escalations = max(0, ESCALATION_RULES["max_pending_escalations"] - pending_count)
+
+    # Step 3: Intelligence whiteboard items
+    print("\n  Step 2: Analyzing whiteboard items...")
+    cur.execute("""SELECT id, source_type, title, summary, quality_score,
+                          created_at, hygiene_status
+                   FROM intelligence_whiteboard
+                   WHERE hygiene_status = 'active' OR hygiene_status IS NULL
+                   ORDER BY created_at ASC LIMIT 500""")
+    wb_items = cur.fetchall()
+    auto_demoted = 0
+
+    for item in wb_items:
+        try:
+            # Get strategy tag from agent_notes if available
+            stag = "investment_general"
+            result = analyze_content_for_hygiene(
+                content_type=item["source_type"] or "news",
+                content_id=item["id"],
+                title=item["title"] or "",
+                created_at=item["created_at"],
+                strategy_tag=stag,
+                agent_tags=[],
+                text=item["summary"] or "",
+                current_status=item["hygiene_status"] or "active",
+            )
+            action = result["action"]
+            if action == "skip":
+                stats["skipped"] += 1
+            elif action == "keep":
+                stats["kept"] += 1
+            elif action in ("demote", "archive"):
+                if auto_demoted >= ESCALATION_RULES["max_auto_demote_per_run"]:
+                    stats["kept"] += 1
+                    continue
+                if not dry_run:
+                    new_status = result.get("proposed_status", "archived")
+                    cur.execute("UPDATE intelligence_whiteboard SET hygiene_status=%s, demoted_at=NOW(), demoted_reason=%s WHERE id=%s",
+                                (new_status, result["reason"], item["id"]))
+                    cur.execute("""INSERT INTO iris_hygiene_log (content_type, content_id, content_title, content_age_days,
+                                   action, previous_status, new_status, reason, confidence, run_id)
+                                   VALUES (%s,%s,%s,%s,%s,'active',%s,%s,%s,%s)""",
+                                (item["source_type"], item["id"], (item["title"] or "")[:200],
+                                 result.get("age_days", 0), action, new_status, result["reason"],
+                                 result.get("confidence", 0.5), run_id))
+                auto_demoted += 1
+                stats["demoted" if action == "demote" else "archived"] += 1
+            elif action == "escalate" and max_new_escalations > 0:
+                if not dry_run:
+                    cur.execute("""INSERT INTO iris_hygiene_pending (content_type, content_id, content_title,
+                                   content_age_days, proposed_action, reason, evidence, confidence,
+                                   iris_recommendation, status, expires_at)
+                                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending_john',NOW()+INTERVAL '7 days') RETURNING id""",
+                                (item["source_type"], item["id"], (item["title"] or "")[:200],
+                                 result.get("age_days", 0), result.get("proposed_status", "archive"),
+                                 result["reason"], f"Age: {result.get('age_days', 0)}d",
+                                 result.get("confidence", 0.5), (result.get("escalation_message", ""))[:500]))
+                    pid = cur.fetchone()["id"]
+                    conn.commit()
+                    send_hygiene_escalation_to_john(pid, item["source_type"], item["id"],
+                                                   (item["title"] or "")[:60], "archive",
+                                                   result.get("escalation_message", ""))
+                stats["escalated_to_john"] += 1
+                max_new_escalations -= 1
+        except Exception as e:
+            stats["errors"] += 1
+            print(f"  Error on wb item {item['id']}: {e}")
+            conn.rollback()
+
+    if not dry_run:
+        conn.commit()
+
+    # Step 4: News articles
+    print(f"\n  Step 3: Analyzing news articles...")
+    try:
+        cur.execute("""SELECT id, title, summary, created_at, hygiene_status
+                       FROM news_articles
+                       WHERE (hygiene_status = 'active' OR hygiene_status IS NULL)
+                         AND created_at < NOW() - INTERVAL '85 days'
+                       ORDER BY created_at ASC LIMIT 200""")
+        old_news = cur.fetchall()
+    except Exception:
+        old_news = []
+        conn.rollback()
+    news_demoted = 0
+    for article in old_news:
+        result = analyze_content_for_hygiene(
+            content_type="news", content_id=article["id"],
+            title=article["title"] or "", created_at=article["created_at"],
+            strategy_tag="investment_general", agent_tags=[],
+            text=article.get("summary", "") or "", current_status=article["hygiene_status"] or "active",
+        )
+        if result["action"] in ("demote", "archive") and not dry_run:
+            try:
+                cur.execute("UPDATE news_articles SET hygiene_status='archived', demoted_at=NOW(), demoted_reason=%s WHERE id=%s",
+                            (result["reason"], article["id"]))
+                news_demoted += 1
+            except Exception:
+                conn.rollback()
+    stats["archived"] += news_demoted
+    if not dry_run:
+        conn.commit()
+    print(f"  Archived {news_demoted} old news articles")
+
+    # Step 5: Regulatory supersession
+    print(f"\n  Step 4: Checking superseded regulatory data...")
+    supersessions = detect_superseded_regulatory_data()
+    for s in supersessions:
+        if not dry_run:
+            try:
+                cur.execute("""INSERT INTO iris_hygiene_log (content_type, content_id, content_title, action,
+                               previous_status, new_status, reason, confidence, run_id)
+                               VALUES ('regulatory_rule',%s,%s,'flag_superseded','active','superseded',%s,0.99,%s)""",
+                            (s["old_id"], f"{s['rule_type']} ({s['old_year']})",
+                             f"Superseded by {s['new_year']} version", run_id))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+        stats["superseded"] += 1
+        print(f"  Superseded: {s['rule_type']} {s['old_year']} -> {s['new_year']}")
+
+    # Step 6: Year-specific YouTube transcripts
+    print(f"\n  Step 5: Checking year-specific YouTube transcripts...")
+    try:
+        cur.execute("""SELECT id, title, ingested_at, hygiene_status, quality_score
+                       FROM youtube_transcripts
+                       WHERE (hygiene_status = 'active' OR hygiene_status IS NULL)
+                         AND is_year_specific = true AND year_referenced > 0
+                         AND year_referenced < EXTRACT(year FROM NOW()) - 1
+                       ORDER BY year_referenced ASC LIMIT 100""")
+        stale_yt = cur.fetchall()
+    except Exception:
+        stale_yt = []
+        conn.rollback()
+    for t in stale_yt:
+        result = analyze_content_for_hygiene(
+            content_type="youtube", content_id=t["id"], title=t["title"] or "",
+            created_at=t["ingested_at"], strategy_tag="investment_general", agent_tags=[],
+            current_status=t["hygiene_status"] or "active",
+        )
+        if result["action"] == "demote" and not dry_run:
+            cur.execute("UPDATE youtube_transcripts SET hygiene_status='demoted', demoted_at=NOW(), demoted_reason=%s WHERE id=%s",
+                        (result["reason"], t["id"]))
+            stats["demoted"] += 1
+    if not dry_run:
+        conn.commit()
+
+    elapsed = int(time.time() - started)
+    if not dry_run and run_id:
+        cur.execute("UPDATE iris_run_log SET elapsed_seconds=%s WHERE id=%s", (elapsed, run_id))
+        conn.commit()
+    conn.close()
+
+    # Telegram summary
+    summary = (
+        f"Iris Hygiene {'(DRY RUN) ' if dry_run else ''}{datetime.now(timezone.utc).strftime('%b %d')}\n"
+        f"Demoted: {stats['demoted']} | Archived: {stats['archived']}\n"
+        f"Superseded: {stats['superseded']} regulatory rules\n"
+        f"Escalated: {stats['escalated_to_john']} | Kept: {stats['kept']}\n"
+        f"Time: {elapsed}s"
+    )
+    if not dry_run:
+        _send_telegram_msg(summary)
+
+    print(f"\n{'='*60}")
+    print(f"  Hygiene complete in {elapsed}s")
+    print(f"  Demoted: {stats['demoted']} | Archived: {stats['archived']}")
+    print(f"  Superseded: {stats['superseded']} | Escalated: {stats['escalated_to_john']}")
+    print(f"  Kept: {stats['kept']} | Errors: {stats['errors']}")
+    print(f"{'='*60}\n")
+    return stats
+
+
+def handle_iris_hygiene_command(subcommand, args_str):
+    """Handle 'iris hygiene <subcommand>' Telegram commands."""
+    import psycopg2.extras
+
+    # iris hygiene status
+    if subcommand in ("", "status"):
+        conn, cur = _get_conn_dict()
+        cur.execute("""SELECT count(*) as total_pending,
+                              count(CASE WHEN expires_at < NOW() + INTERVAL '2 days' THEN 1 END) as expiring_soon
+                       FROM iris_hygiene_pending WHERE status='pending_john'""")
+        row = cur.fetchone()
+        cur.execute("""SELECT id, content_type, content_title, proposed_action, reason, confidence, expires_at
+                       FROM iris_hygiene_pending WHERE status='pending_john'
+                       ORDER BY confidence DESC, expires_at ASC LIMIT 5""")
+        pending = cur.fetchall()
+        conn.close()
+        if not row or row["total_pending"] == 0:
+            return "Iris Hygiene: No pending decisions. All clean."
+        lines = [f"Iris Hygiene — {row['total_pending']} decisions pending",
+                 f"({row['expiring_soon']} expiring within 2 days)", ""]
+        for p in pending:
+            exp_days = (p["expires_at"] - datetime.now(p["expires_at"].tzinfo)).days if p["expires_at"] else 0
+            lines.append(f"#{p['id']} [{(p['proposed_action'] or '').upper()}] "
+                         f"{(p['content_title'] or '')[:40]}\n"
+                         f"  {(p['reason'] or '')[:60]} | Conf: {(p['confidence'] or 0)*100:.0f}% | {exp_days}d left")
+        lines.append(f"\niris hygiene approve/reject/defer <id>")
+        return "\n".join(lines)
+
+    # iris hygiene approve <id>
+    if subcommand == "approve" and args_str.strip().isdigit():
+        pid = int(args_str.strip())
+        conn, cur = _get_conn_dict()
+        cur.execute("SELECT content_type, content_id, content_title, proposed_action FROM iris_hygiene_pending WHERE id=%s AND status='pending_john'", (pid,))
+        p = cur.fetchone()
+        if not p:
+            conn.close()
+            return f"Iris: Pending item #{pid} not found."
+        table_map = {"news": "news_articles", "news_article": "news_articles",
+                     "youtube": "youtube_transcripts", "youtube_transcript": "youtube_transcripts"}
+        table = table_map.get(p["content_type"], "intelligence_whiteboard")
+        new_status = "archived" if p["proposed_action"] == "archive" else "demoted"
+        cur.execute(f"UPDATE {table} SET hygiene_status=%s, demoted_at=NOW(), demoted_reason='John approved via Telegram' WHERE id=%s",
+                    (new_status, p["content_id"]))
+        cur.execute("UPDATE iris_hygiene_pending SET status='approved', resolved_at=NOW() WHERE id=%s", (pid,))
+        cur.execute("""INSERT INTO iris_hygiene_log (content_type, content_id, content_title, action,
+                       previous_status, new_status, reason, confidence, escalated_to_john, john_decision, john_decided_at)
+                       VALUES (%s,%s,%s,%s,'active',%s,'John approved via Telegram',0.99,true,'approved',NOW())""",
+                    (p["content_type"], p["content_id"], p["content_title"], new_status, new_status))
+        conn.commit()
+        conn.close()
+        return f"Iris: #{pid} '{(p['content_title'] or '')[:40]}' has been {new_status}."
+
+    # iris hygiene reject <id>
+    if subcommand == "reject" and args_str.strip().isdigit():
+        pid = int(args_str.strip())
+        conn, cur = _get_conn_dict()
+        cur.execute("UPDATE iris_hygiene_pending SET status='rejected', resolved_at=NOW() WHERE id=%s AND status='pending_john' RETURNING content_title", (pid,))
+        row = cur.fetchone()
+        conn.commit()
+        conn.close()
+        if row:
+            return f"Iris: #{pid} kept active. Re-evaluate in 30 days."
+        return f"Iris: Item #{pid} not found."
+
+    # iris hygiene defer <id>
+    if subcommand == "defer" and args_str.strip().isdigit():
+        pid = int(args_str.strip())
+        conn, cur = _get_conn_dict()
+        cur.execute("UPDATE iris_hygiene_pending SET expires_at=NOW()+INTERVAL '7 days' WHERE id=%s AND status='pending_john' RETURNING content_title", (pid,))
+        row = cur.fetchone()
+        conn.commit()
+        conn.close()
+        if row:
+            return f"Iris: #{pid} deferred 7 more days."
+        return f"Iris: Item #{pid} not found."
+
+    # iris hygiene preview / dry-run
+    if subcommand in ("dry-run", "preview", "check"):
+        st = run_weekly_hygiene(dry_run=True)
+        return (f"Iris Hygiene Preview (no changes):\n"
+                f"Would demote: {st['demoted']} | archive: {st['archived']}\n"
+                f"Would escalate: {st['escalated_to_john']} | supersede: {st['superseded']}\n\n"
+                f"Run live: iris hygiene run")
+
+    # iris hygiene run
+    if subcommand == "run":
+        import threading
+        threading.Thread(target=lambda: run_weekly_hygiene(dry_run=False), daemon=True).start()
+        return "Iris: Weekly hygiene starting in background (~2 min). Results via Telegram."
+
+    return ("Iris Hygiene commands:\n"
+            "  iris hygiene status    — pending decisions\n"
+            "  iris hygiene approve N — approve demotion\n"
+            "  iris hygiene reject N  — keep active\n"
+            "  iris hygiene defer N   — decide in 7 days\n"
+            "  iris hygiene preview   — dry run\n"
+            "  iris hygiene run       — force run now")
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="Iris taxonomy intelligence agent")
+    p.add_argument("--gaps", action="store_true", help="Gap analysis only")
+    p.add_argument("--audit", action="store_true", help="Channel audit only")
+    p.add_argument("--propose", type=str, help="Manual proposal description")
+    p.add_argument("--status", action="store_true", help="Print current status")
+    p.add_argument("--hygiene", action="store_true", help="Run weekly hygiene")
+    p.add_argument("--hygiene-dry-run", action="store_true", help="Preview hygiene without changes")
+    args = p.parse_args()
+
+    if args.hygiene:
+        run_weekly_hygiene(dry_run=False)
+    elif args.hygiene_dry_run:
+        run_weekly_hygiene(dry_run=True)
+    elif args.gaps:
+        run_gap_analysis()
+    elif args.audit:
+        run_channel_audit()
+    elif args.status:
+        s = get_iris_status()
+        print(json.dumps(s, indent=2, default=str))
+    elif args.propose:
+        print(f"[iris] Manual proposal not yet implemented: {args.propose}")
+    else:
+        run_weekly_scan()

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
@@ -6,6 +7,7 @@ import MetricTile from '../components/MetricTile'
 import { useApi } from '../hooks/useApi'
 
 export default function SystemHealth() {
+  const navigate = useNavigate()
   const [rk, setRk] = useState(0)
   const { data } = useApi<any>(`/api/v2/system-health?_r=${rk}`)
   const { data: screeners } = useApi<any>(`/api/v2/finviz-screeners?_r=${rk}`)
@@ -16,30 +18,57 @@ export default function SystemHealth() {
 
   return (
     <>
-      <PageHeader title="System Health" subtitle="LLM router, DB state, screeners, pipeline status" actions={
-        <button onClick={() => setRk(k => k + 1)} style={btn}>Refresh</button>
+      <PageHeader title="System Health" subtitle="API keys, DB state, screener status — for scheduled jobs & services see Orchestration" actions={
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => navigate('/orchestration')} style={btn}>Orchestration →</button>
+          <button onClick={() => setRk(k => k + 1)} style={btn}>Refresh</button>
+        </div>
       } />
 
       {/* LLM Router */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
-        <MetricTile label="Local Ollama" value={llm?.local?.available ? 'Online' : 'Offline'} deltaColor={llm?.local?.available ? 'var(--green)' : 'var(--red)'} />
-        <MetricTile label="Claude" value={llm?.claude?.configured ? 'Ready' : 'No Key'} deltaColor={llm?.claude?.configured ? 'var(--green)' : 'var(--text3)'} />
-        <MetricTile label="Grok" value={llm?.grok?.configured ? 'Ready' : 'No Key'} deltaColor={llm?.grok?.configured ? 'var(--green)' : 'var(--amber)'} />
-        <MetricTile label="Daily Spend" value={`$${(llm?.daily_spend || 0).toFixed(4)}`} />
-        <MetricTile label="Budget Left" value={`$${(llm?.budget_remaining || 0).toFixed(2)}`} deltaColor={(llm?.budget_remaining || 0) > 1 ? 'var(--green)' : 'var(--amber)'} />
+        <MetricTile label="Local Ollama" value={llm?.local?.available ? 'Online' : 'Offline'}
+          deltaColor={llm?.local?.available ? 'var(--green)' : 'var(--red)'}
+          delta={llm?.local?.available ? `${llm.local.model || 'qwen3'}` : 'fallback to cloud APIs'}
+          tooltip="Local LLM for fast/cheap analysis. When offline, falls back to Claude API (higher cost). Restart: systemctl --user start ollama" />
+        <MetricTile label="Claude" value={llm?.claude?.configured ? 'Ready' : 'No Key'}
+          deltaColor={llm?.claude?.configured ? 'var(--green)' : 'var(--text3)'}
+          delta={llm?.claude?.configured ? 'ANTHROPIC_API_KEY set' : 'check .env file'}
+          tooltip="API keys loaded from .env file. 'No Key' = ANTHROPIC_API_KEY not found." />
+        <MetricTile label="Grok" value={llm?.grok?.configured ? 'Ready' : 'No Key'}
+          deltaColor={llm?.grok?.configured ? 'var(--green)' : 'var(--amber)'}
+          delta={llm?.grok?.configured ? 'XAI_API_KEY set' : 'optional — Claude is primary'}
+          tooltip="xAI Grok API. Optional fallback when Claude is unavailable." />
+        <MetricTile label="Daily Spend" value={`$${(llm?.daily_spend || 0).toFixed(4)}`}
+          delta={`of $${(llm?.daily_budget || 2).toFixed(2)} budget`}
+          deltaColor={(llm?.daily_spend || 0) > (llm?.daily_budget || 2) ? 'var(--red)' : 'var(--green)'}
+          tooltip="LLM API spend today. Budget: $2/day. Local calls are free. Tracked in logs/llm_router.log." />
+        <MetricTile label="Budget Left" value={`$${(llm?.budget_remaining || 0).toFixed(2)}`}
+          deltaColor={(llm?.budget_remaining || 0) > 0.5 ? 'var(--green)' : (llm?.budget_remaining || 0) > 0 ? 'var(--amber)' : 'var(--red)'}
+          delta={(llm?.budget_remaining || 0) <= 0 ? 'EXCEEDED — local only' : 'remaining today'} />
       </div>
+
+      {!llm?.local?.available && (
+        <div style={{ padding: '8px 12px', marginBottom: 12, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
+          Ollama is offline — all LLM calls route to cloud APIs (higher cost). To restart: SSH to server and run <code style={{ background: 'var(--bg3)', padding: '1px 4px', borderRadius: 3 }}>systemctl --user start ollama</code>
+        </div>
+      )}
 
       {/* DB State */}
       <Card>
         <SectionHeader title="Database State" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: 12 }}>
-          {Object.entries(db).map(([t, c]) => (
-            <div key={t} style={{ fontSize: 10 }}>
-              <div style={{ color: 'var(--text3)', fontSize: 8 }}>{t.replace('watchlist_', '').replace('ticker_', '')}</div>
-              <div style={{ fontWeight: 700, color: Number(c) > 0 ? 'var(--text1)' : 'var(--text3)' }}>{String(c)}</div>
-            </div>
-          ))}
-        </div>
+        {Object.keys(db).length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: 12 }}>
+            {Object.entries(db).map(([t, c]) => (
+              <div key={t} style={{ fontSize: 10 }}>
+                <div style={{ color: 'var(--text3)', fontSize: 8 }}>{t.replace('watchlist_', 'wl_').replace('ticker_', 'tk_')}</div>
+                <div style={{ fontWeight: 700, color: Number(c) > 0 ? 'var(--text1)' : 'var(--text3)' }}>{Number(c).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: 14, color: 'var(--text3)', fontSize: 11 }}>Database state unavailable — check Ops page for table inventory or verify DB connection.</div>
+        )}
       </Card>
 
       {/* CIO Decisions */}
@@ -72,7 +101,10 @@ export default function SystemHealth() {
 
       {/* System Info */}
       <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(16,20,28,0.92)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, fontSize: 10, color: 'var(--text3)' }}>
-        Cron jobs: {data?.cron_jobs || 0} | Validation suites: {data?.validation_suites || 0} | Screeners: {data?.finviz_screeners || 0}
+        Cron jobs: {data?.cron_jobs || 0} | Finviz screeners: {data?.finviz_screeners || screeners?.screeners?.length || 0} active | Validation suites: {data?.validation_suites || 0}
+        {data?.finviz_screeners === 0 && screeners?.screeners?.length > 0 && (
+          <span style={{ color: 'var(--amber)', marginLeft: 8 }}>Note: DB shows {screeners.screeners.length} screeners — health check may query different source</span>
+        )}
       </div>
     </>
   )

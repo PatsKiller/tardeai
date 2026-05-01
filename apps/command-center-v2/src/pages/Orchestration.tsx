@@ -22,12 +22,12 @@ export default function Orchestration() {
 
   return (
     <>
-      <PageHeader title="Orchestration" subtitle={`${data.timers.length} timers · ${data.services.length} services · ${data.skills.length} skills`} />
+      <PageHeader title="Orchestration" subtitle={`${data.timers.length} timers · ${data.services.length} services · ${data.skills.length} skills — for API keys & DB state see System Health`} />
 
       {/* Quick nav */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-        {(['morning-brief', 'actions', 'ops'] as const).map(p => (
-          <button key={p} onClick={() => navigate(`/${p}`)} style={{ fontSize: 9, padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg3)', color: 'var(--text1)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>{p === 'morning-brief' ? 'Morning Brief' : p === 'actions' ? 'Actions' : 'Ops'}</button>
+        {(['morning-brief', 'actions', 'ops', 'system-health'] as const).map(p => (
+          <button key={p} onClick={() => navigate(`/${p}`)} style={{ fontSize: 9, padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg3)', color: 'var(--text1)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>{p === 'morning-brief' ? 'Morning Brief' : p === 'actions' ? 'Actions' : p === 'system-health' ? 'System Health' : 'Ops'}</button>
         ))}
       </div>
 
@@ -55,7 +55,10 @@ export default function Orchestration() {
               <span style={{ fontSize: 10, color: e.ok ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>{e.ok ? '\u2713' : '\u2717'}</span>
               <div>
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text0)' }}>{e.name}</div>
-                <div style={{ fontSize: 8, color: e.ok ? 'var(--text3)' : 'var(--red)' }}>{e.ok ? e.detail : e.fix || e.detail}</div>
+                <div style={{ fontSize: 8, color: e.ok ? 'var(--text3)' : 'var(--red)' }}>
+                  {e.ok ? e.detail : e.fix || e.detail}
+                  {!e.ok && <span style={{ display: 'block', fontSize: 7, color: 'var(--amber)', marginTop: 1 }}>Pipeline will not run if this check fails</span>}
+                </div>
               </div>
             </div>
           ))}
@@ -80,8 +83,15 @@ export default function Orchestration() {
                   <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', fontWeight: 600, color: 'var(--text0)' }}>{t.name.replace('.timer', '')}</td>
                   <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: 9 }}>{t.schedule}</td>
                   <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--accent)', fontSize: 9 }}>{t.next ? t.next.slice(0, 25) : '—'}</td>
-                  <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text2)', fontSize: 9 }}>{t.last_start ? timeAgo(t.last_start) : '—'}</td>
-                  <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text3)', fontSize: 9 }}>{t.last_start && t.last_end ? (() => { try { const ms = new Date(t.last_end!).getTime() - new Date(t.last_start!).getTime(); return ms > 60000 ? `${(ms/60000).toFixed(0)}m` : `${(ms/1000).toFixed(0)}s` } catch { return '—' } })() : '—'}</td>
+                  <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', fontSize: 9 }}>
+                    {t.last_start ? (() => {
+                      const ago = timeAgo(t.last_start)
+                      const msAgo = Date.now() - new Date(t.last_start).getTime()
+                      const overdue = msAgo > 48 * 3600000
+                      return <span style={{ color: overdue ? 'var(--amber)' : 'var(--text2)' }}>{ago}{overdue ? ' ⚠️' : ''}</span>
+                    })() : <span style={{ color: 'var(--text3)' }}>—</span>}
+                  </td>
+                  <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)', fontSize: 9 }}>{t.last_start && t.last_end ? (() => { try { const ms = new Date(t.last_end!).getTime() - new Date(t.last_start!).getTime(); const dur = ms > 60000 ? `${(ms/60000).toFixed(0)}m` : `${(ms/1000).toFixed(0)}s`; const long = ms > 60 * 60000; return <span style={{ color: long ? 'var(--amber)' : 'var(--text3)' }}>{dur}{long ? ' (long)' : ''}</span> } catch { return '—' } })() : '—'}</td>
                   <td style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-subtle)' }}>
                     <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, color: t.result === 'success' ? 'var(--green)' : t.result === 'failed' ? 'var(--red)' : statusColor(t.status), background: `color-mix(in srgb, ${t.result === 'success' ? 'var(--green)' : t.result === 'failed' ? 'var(--red)' : statusColor(t.status)} 15%, transparent)` }}>{t.result || t.status}</span>
                   </td>

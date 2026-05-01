@@ -1,27 +1,45 @@
 #!/usr/bin/env python3
 """llm_router.py — Smart LLM routing with fallback hierarchy.
 
-Routes requests: local Ollama first → Grok → Claude → OpenAI.
-Task-aware: high-impact synthesis goes to Claude, routine goes local.
+Routes requests through provider chain. Task-aware routing.
 Logs everything for cost/quality tracking.
 
-Fallback thresholds:
-- Local timeout: 8 seconds → fallback
-- Confidence < 0.65 → fallback
-- Empty/malformed response → immediate fallback
-- High-impact tasks → prefer Claude directly
+═══ PROVIDER CHAIN (May 2026 — GPU testing phase) ═══════════════════════════
 
-Provider performance:
-| Provider      | Speed     | Cost/1K  | Best For                     | When to Prefer          |
-|---------------|-----------|----------|------------------------------|-------------------------|
-| Local Ollama  | Fast      | Free     | Routine agent tasks          | Always try first        |
-| Grok (xAI)   | Very fast | ~$0.20   | Agent narratives, reasoning  | Most fallback tasks     |
-| Claude Sonnet | Medium    | ~$1.00   | Deep synthesis, complex      | CIO synthesis, critical |
-| GPT-4o        | Fast      | ~$0.50   | Versatile fallback           | Last resort             |
+  LOCAL qwen3:1.7b  →  GROK (xAI)  →  CLAUDE (Anthropic)  →  OPENAI
+
+Provider   Speed      Cost/1K   Quality    Best For
+─────────  ─────────  ────────  ─────────  ────────────────────────────────
+Local      Fast       Free      Medium     Routine batch, overnight, tagging
+Grok       Very fast  ~$0.01    Good       Agent analyses, debates, sector alerts
+                                           *** PRIMARY TESTING PROVIDER ***
+Claude     Medium     ~$1.00    Best       Retirement, disability, Roth, CIO synthesis
+OpenAI     Fast       ~$0.50    Good       Last resort only
+
+═══ GPU UPGRADE FAILBACK PLAN ════════════════════════════════════════════════
+
+When qwen3:14b is installed on GPU:
+  1. Set LOCAL_MODEL = "qwen3:14b" in this file OR set in .env:
+       echo "LOCAL_MODEL=qwen3:14b" >> .env
+  2. Grok auto-demotes from primary testing → fallback (code below handles this)
+  3. Local handles: agent_narrative, agent_debate, sector_correlation, sentiment
+  4. Claude remains for: cio_synthesis, retirement, disability (always best)
+  5. Verify: python3 scripts/llm_router.py --test
+
+  REVERT if GPU fails: set LOCAL_MODEL=qwen3:1.7b — Grok auto-promotes back.
+  No other changes needed. Single-line failback.
+
+═══ TASK ROUTING ════════════════════════════════════════════════════════════
+
+  Pre-GPU (qwen3:1.7b):          local → grok → claude
+  Post-GPU (qwen3:14b):          local → claude → grok
+  Retirement/disability:         claude → grok → local (always Claude-first)
+  Sector correlation/debate:     grok → local → claude (Grok fast + good reasoning)
 
 Usage:
     from llm_router import get_llm_response
     result = get_llm_response("agent_narrative", prompt, high_impact=False)
+    result = get_llm_response("agent_debate", prompt, high_impact=True)
 """
 import json, os, sys, time, urllib.request
 from datetime import datetime
@@ -29,17 +47,25 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# ── Configuration ──────────────────────────────────────────────
+# ── Configuration ──────────────────────────────────────────────────────────
 
 LOCAL_TIMEOUT = 30      # seconds — qwen3 thinking mode needs 15-20s
 CONFIDENCE_THRESHOLD = 0.65
-LOCAL_MODEL = "qwen3:1.7b"
-LOCAL_URL = "http://127.0.0.1:11434/api/generate"
-DAILY_BUDGET_LIMIT = 2.00  # USD per day for external API calls
 
-# Task → provider preference
-_TASK_ROUTING = {
+# GPU UPGRADE: change to "qwen3:14b" when installed.
+# Can also override via .env: LOCAL_MODEL=qwen3:14b
+LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "qwen3:1.7b")
+
+LOCAL_URL = "http://127.0.0.1:11434/api/generate"
+DAILY_BUDGET_LIMIT = 0.50  # USD/day — reduced to prevent cron fallbacks burning Grok credits
+
+# ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
+
+# Pre-GPU routing: Grok is primary cloud (local quality limited)
+_TASK_ROUTING_PRE_GPU = {
     "agent_narrative":          ["local", "grok", "claude"],
+    "agent_debate":             ["local", "grok", "claude"],
+    "sector_correlation":       ["grok", "local", "claude"],
     "cio_synthesis":            ["local", "claude", "grok", "openai"],
     "catalyst_classification":  ["local", "grok"],
     "sentiment":                ["local", "grok"],
@@ -48,12 +74,34 @@ _TASK_ROUTING = {
     "default":                  ["local", "grok", "claude", "openai"],
 }
 
-# High-impact tasks skip local for critical providers
-_HIGH_IMPACT_ROUTING = {
-    "cio_synthesis":   ["claude", "grok", "openai"],
-    "agent_narrative": ["grok", "claude", "local"],
-    "default":         ["claude", "grok", "local", "openai"],
+# Post-GPU routing: local is high quality, Grok demoted to fallback
+_TASK_ROUTING_POST_GPU = {
+    "agent_narrative":          ["local", "claude", "grok"],
+    "agent_debate":             ["local", "claude", "grok"],
+    "sector_correlation":       ["local", "grok", "claude"],
+    "cio_synthesis":            ["local", "claude", "grok", "openai"],
+    "catalyst_classification":  ["local", "grok"],
+    "sentiment":                ["local"],
+    "code_generation":          ["claude", "openai"],
+    "fast_summary":             ["local"],
+    "default":                  ["local", "claude", "grok", "openai"],
 }
+
+# High-impact always prefers Claude, regardless of GPU state
+_HIGH_IMPACT_ROUTING = {
+    "cio_synthesis":        ["claude", "grok", "openai"],
+    "agent_narrative":      ["grok", "claude", "local"],
+    "agent_debate":         ["grok", "claude", "local"],
+    "sector_correlation":   ["grok", "claude", "local"],
+    "default":              ["claude", "grok", "local", "openai"],
+}
+
+# Select routing table based on current model
+_IS_GPU = LOCAL_MODEL != "qwen3:1.7b"
+_TASK_ROUTING = _TASK_ROUTING_POST_GPU if _IS_GPU else _TASK_ROUTING_PRE_GPU
+
+if _IS_GPU:
+    print(f"[llm_router] GPU mode: {LOCAL_MODEL} — Grok demoted to fallback, local is primary")
 
 
 def _load_env():
@@ -194,7 +242,8 @@ def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
     t0 = time.time()
     try:
         payload = json.dumps({
-            "model": "grok-beta",
+            "model": "grok-3-mini",  # grok-3-mini: fast + cheap for agent tasks
+            # GPU upgrade: stays as grok-3-mini even after GPU — Grok used as cloud fallback
             "max_tokens": max_tokens,
             "messages": [{"role": "user", "content": prompt}],
         }).encode()
@@ -212,10 +261,11 @@ def _call_grok(prompt: str, max_tokens: int = 2000) -> dict:
             text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             latency = round(time.time() - t0, 2)
             return {
-                "model_used": "grok-beta", "provider": "grok",
+                "model_used": "grok-3-mini", "provider": "grok",
                 "response": text.strip(), "latency": latency,
                 "success": bool(text.strip()),
-                "cost_estimate": round(0.0002 * max_tokens, 4),
+                # grok-3-mini: ~$0.30/1M input, $0.50/1M output (estimate)
+                "cost_estimate": round((max_tokens * 0.0005) / 1000, 5),
             }
     except Exception as e:
         return {"success": False, "error": str(e), "provider": "grok",
@@ -391,8 +441,10 @@ def _log_call(task_type: str, result: dict):
 # ── CLI for testing ──────────────────────────────────────────
 
 if __name__ == "__main__":
-    if "--test" in sys.argv:
+    if "--test" in sys.argv or "--test-grok" in sys.argv:
         print("=== LLM Router Test ===")
+        print(f"LOCAL_MODEL: {LOCAL_MODEL} ({'GPU mode' if _IS_GPU else 'pre-GPU mode'})")
+        print(f"DAILY_BUDGET_LIMIT: ${DAILY_BUDGET_LIMIT:.2f}")
         print()
 
         # Test 1: Local
@@ -401,25 +453,61 @@ if __name__ == "__main__":
         print(f"   Provider: {r['provider']} | Model: {r['model_used']} | Latency: {r['latency']}s | Cost: ${r.get('cost_estimate',0)}")
         print(f"   Response: {r['response'][:100]}...")
         print(f"   Fallbacks: {r.get('fallback_reasons', [])}")
-
         print()
 
-        # Test 2: High-impact (should try Claude if available)
-        print("2. Testing high-impact (cio_synthesis)...")
-        r2 = get_llm_response("cio_synthesis", "Should we trim SCHD given RSI 63 and 11.79% portfolio weight? Respond in 2 sentences.", high_impact=True, max_tokens=200)
-        print(f"   Provider: {r2['provider']} | Model: {r2['model_used']} | Latency: {r2['latency']}s | Cost: ${r2.get('cost_estimate',0)}")
-        print(f"   Response: {r2['response'][:100]}...")
-        print(f"   Fallbacks: {r2.get('fallback_reasons', [])}")
+        # Test 2: Grok (agent_debate — new task type)
+        if "--test-grok" in sys.argv or True:
+            print("2. Testing Grok (agent_debate — primary testing provider)...")
+            r2 = get_llm_response("agent_debate",
+                "Should we trim LMT given RSI 48 and stop triggered? Risk says HOLD 50%, Steph says TRIM 85%. "
+                "Portfolio heat is 6.2% (elevated). Respond as consensus moderator in 2 sentences.",
+                high_impact=True, max_tokens=200)
+            print(f"   Provider: {r2['provider']} | Model: {r2['model_used']} | Latency: {r2['latency']}s | Cost: ${r2.get('cost_estimate',0)}")
+            print(f"   Response: {r2['response'][:150]}...")
+            print(f"   Fallbacks: {r2.get('fallback_reasons', [])}")
+            print()
 
+        # Test 3: High-impact (should use Claude if available)
+        print("3. Testing high-impact (cio_synthesis)...")
+        r3 = get_llm_response("cio_synthesis",
+            "Should we trim SCHD given RSI 63 and 11.79% portfolio weight? Respond in 2 sentences.",
+            high_impact=True, max_tokens=200)
+        print(f"   Provider: {r3['provider']} | Model: {r3['model_used']} | Latency: {r3['latency']}s | Cost: ${r3.get('cost_estimate',0)}")
+        print(f"   Response: {r3['response'][:100]}...")
         print()
+
         print("=== Provider Availability ===")
         keys = _load_env()
-        for name, key_name in [("Local Ollama", None), ("Grok (xAI)", "XAI_API_KEY"), ("Claude", "ANTHROPIC_API_KEY"), ("OpenAI", "OPENAI_API_KEY")]:
+        for name, key_name in [("Local Ollama", None), ("Grok (xAI)", "XAI_API_KEY"),
+                                ("Claude", "ANTHROPIC_API_KEY"), ("OpenAI", "OPENAI_API_KEY")]:
             if key_name is None:
-                print(f"  {name}: AVAILABLE (localhost)")
+                print(f"  {name}: AVAILABLE (localhost:{LOCAL_MODEL})")
             elif keys.get(key_name):
-                print(f"  {name}: CONFIGURED")
+                print(f"  {name}: CONFIGURED ✓")
             else:
                 print(f"  {name}: NOT CONFIGURED")
+
+        print()
+        print(f"=== GPU Upgrade Status ===")
+        print(f"  Current model: {LOCAL_MODEL}")
+        if _IS_GPU:
+            print(f"  Mode: POST-GPU — local is primary, Grok is fallback")
+        else:
+            print(f"  Mode: PRE-GPU — Grok is primary cloud testing provider")
+            print(f"  To activate GPU: echo 'LOCAL_MODEL=qwen3:14b' >> .env")
+
+    elif "--routing" in sys.argv:
+        print("=== Current Task Routing ===")
+        print(f"Mode: {'POST-GPU' if _IS_GPU else 'PRE-GPU'} | LOCAL_MODEL: {LOCAL_MODEL}")
+        print()
+        for task, chain in _TASK_ROUTING.items():
+            print(f"  {task:30} {' → '.join(chain)}")
+        print()
+        print("High-impact overrides:")
+        for task, chain in _HIGH_IMPACT_ROUTING.items():
+            print(f"  {task:30} {' → '.join(chain)}")
     else:
-        print("Usage: python3 scripts/llm_router.py --test")
+        print("Usage:")
+        print("  python3 scripts/llm_router.py --test        # Test all providers")
+        print("  python3 scripts/llm_router.py --test-grok   # Test Grok specifically")
+        print("  python3 scripts/llm_router.py --routing     # Show current routing table")

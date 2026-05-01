@@ -1,0 +1,1441 @@
+# Trade AI v12 + Portfolio Intelligence — System Bible v5.3
+
+**Canonical source of truth. Claude Code uses this document as the reference spec.**  
+**Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 1, 2026  
+**SSH:** `ssh johnclaw@192.168.50.16`  
+**Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
+**Prev version:** v5.2 (May 1, 2026)  
+**Changelog:** v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 32 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
+
+---
+
+## Table of Contents
+
+1. [System Overview](#1-system-overview)
+2. [Architecture Diagram](#2-architecture-diagram)
+3. [Agent System — Current State](#3-agent-system--current-state)
+4. [Agent System — Autonomous Roadmap](#4-agent-system--autonomous-roadmap)
+5. [Autonomous Agent Ruleset Specification](#5-autonomous-agent-ruleset-specification)
+6. [Daily Pipeline Timeline](#6-daily-pipeline-timeline)
+7. [Intelligence Pipeline (5-Level Whiteboard)](#7-intelligence-pipeline-5-level-whiteboard)
+8. [Data Sources](#8-data-sources)
+9. [Scoring Model (Trade AI)](#9-scoring-model-trade-ai)
+10. [PostgreSQL Schema Summary](#10-postgresql-schema-summary)
+11. [API Endpoints](#11-api-endpoints)
+12. [Cron Schedule (67 entries)](#12-cron-schedule-67-entries)
+13. [Configuration Reference](#13-configuration-reference)
+14. [Operational Runbook](#14-operational-runbook)
+15. [Trust Matrix](#15-trust-matrix)
+16. [Maturity Score](#16-maturity-score)
+17. [Known Gaps & Roadmap](#17-known-gaps--roadmap)
+
+---
+
+## 1. System Overview
+
+Two integrated systems share a single server, codebase, and PostgreSQL database.
+
+| System | Purpose | Account Context |
+|--------|---------|-----------------|
+| **Trade AI v12** | Pre-market scalp scan — 22 Finviz screeners, 6-pillar scoring, GO/WAIT/NO GO | Taxable brokerage only |
+| **Portfolio Intelligence v1.2** | Multi-account portfolio analytics, retirement planning, autonomous agent layer | Rollover IRA, Roth IRA, 401k, Taxable |
+
+**Server:** ms01-openclaw (Ubuntu)  
+**SSH:** `ssh johnclaw@192.168.50.16`  
+**Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
+**Dashboard:** `http://192.168.50.16:7777/v2`  
+**Agent Monitor:** `http://192.168.50.16:7777/agent-monitor`  
+**Orchestration:** `http://192.168.50.16:7777/reports/agent_orchestration.html`  
+**Pipeline API:** `http://192.168.50.16:7777/api/v2/agent-pipeline`  
+**LLM Spend:** `http://192.168.50.16:7777/api/v2/llm-spend`  
+**Database:** PostgreSQL — `trade_ai` — see `/api/v2/system-health` for live table count  
+**Local LLM:** Ollama qwen3:1.7b + nomic-embed-text (768-dim embeddings)  
+**Cloud LLM:** Claude (primary) → Grok → OpenAI (fallback chain) · Budget: $0.50/day  
+
+---
+
+## 2. Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph INPUTS["📥 Data Inputs (9 active sources)"]
+        CSV["Fidelity/Schwab CSV Import"]
+        FINVIZ["Finviz Elite (22 screeners)"]
+        NEWS["News: Yahoo RSS + Finnhub + Google News\n883 articles · 50+ sources"]
+        YT["YouTube Transcripts\n651 transcripts · 44 channels"]
+        SEC["SEC EDGAR Form 4\n39 insider filings"]
+        YFINANCE["yfinance Real-time Quotes"]
+        AV["Alpha Vantage Fundamentals\n15 metrics/symbol"]
+        FMP["FMP Dividends/Yields"]
+        FRED["FRED Macro (7 series)\nDFF · CPI · VIX · T10Y2Y · UNRATE · SP500 · MORTGAGE"]
+    end
+
+    subgraph TRADEAI["⚡ Trade AI v12"]
+        ORCH["trade_ai_orchestrator.py\n23 stages"]
+        SCORE["Scoring Engine\n6 pillars · 55pts max"]
+        TPLAN["Trade Plan Generator\nSonnet — A+ only (≥48pts)"]
+        ORCH --> SCORE --> TPLAN
+    end
+
+    subgraph INTEL["🧠 Intelligence Pipeline"]
+        L1["L1 Scored\n534 whiteboard items"]
+        L2["L2 Iterating\nLocal LLM enrichment"]
+        L3["L3 Validated\nCross-source confirmed"]
+        L4["L4 Promoted\nDashboard visible"]
+        L5["L5 Synthesized\nFull agent debate"]
+        L1 --> L2 --> L3 --> L4 --> L5
+    end
+
+    subgraph AGENTS["🤖 Agent Layer"]
+        MARIA["Maria\nResearch & Fundamentals\nTwo-pass · conf 0.85"]
+        STEPH["Steph\nAllocation & Income\nconf 0.71"]
+        RISK["Risk\nTechnical Analysis\nconf 0.71"]
+        TAX["Tax\nTax Optimization\nOn-demand"]
+        ALEX["Alex (Claude)\nRetirement & Disability\n48 rules + 3-tier hygiene"]
+        AEGIS["Aegis\nMorning Intelligence Brief\nDaily 8 AM"]
+        IRIS["Iris\nTaxonomy Intelligence\nWeekly · 2 modes"]
+    end
+
+    subgraph OUTPUTS["📤 Outputs"]
+        DB["PostgreSQL\nsee /api/v2/system-health"]
+        DASH["Command Center v2\n32 pages · 14 with charts"]
+        TG["Telegram\n29 commands · Smart alerts"]
+        REPORTS["Reports\nDocx · HTML · PDF"]
+    end
+
+    INPUTS --> TRADEAI
+    INPUTS --> INTEL
+    INTEL --> AGENTS
+    AGENTS --> DB
+    AGENTS --> TG
+    DB --> DASH
+    DB --> REPORTS
+    TRADEAI --> DB
+    TRADEAI --> TG
+```
+
+---
+
+## 3. Agent System — Current State
+
+### Agent Roster
+
+| Agent | Model | Role | Analyses | Avg Confidence | Quality |
+|-------|-------|------|----------|----------------|---------|
+| **Maria** | qwen3:1.7b (local, two-pass) | Research & fundamentals | 322 | 0.85 | ✅ Two-pass: news→fundamentals (v3.8) |
+| **Steph** | qwen3:1.7b (local) | Allocation & income strategy | 314 | 0.71 | ✅ Medium — income logic works |
+| **Risk** | qwen3:1.7b (local) | Technical analysis | 309 | 0.71 | ✅ Medium — technical suits small models |
+| **Tax** | qwen3:1.7b (local) | Tax optimization | 1 | 0.85 | ⚠️ Insufficient data |
+| **Alex** | Claude Sonnet | Retirement & disability planning | On-demand | High | ✅ 48 rules, 3-tier decision hygiene, gov scrapers |
+| **Aegis** | Claude/local | Morning brief synthesis | Daily 8 AM | N/A | ✅ Live |
+| **Iris** | Claude Sonnet/local | Taxonomy intelligence + hygiene | Weekly Sunday | N/A | ✅ 2 modes: taxonomy + content lifecycle |
+
+### Agent Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Data as Data Sources
+    participant Intel as Intel Pipeline
+    participant Agent as Local Agents (Maria/Steph/Risk)
+    participant Debate as Agent Debate
+    participant Alex as Alex (Claude)
+    participant CIO as CIO Synthesis
+    participant DB as PostgreSQL
+    participant UI as Command Center
+
+    Data->>Intel: News + YouTube + SEC + FRED (batch 3x/day)
+    Intel->>Intel: Score → Tag → Embed (nomic-embed-text)
+    Intel->>Agent: Daily 6:15 AM — agent router refresh
+    Agent->>Agent: Analyze symbol against intel + portfolio context
+    Agent->>Debate: High-Q intel (Q≥75) triggers debate
+    Debate->>Debate: Maria + Steph + Risk debate (200 words each)
+    Debate->>Alex: If consensus ≥50%, queue for deep analysis
+    Alex->>CIO: Full retirement-aware synthesis
+    CIO->>DB: Store decision + trade_instructions
+    DB->>UI: Command Center dashboard refresh
+    DB->>UI: Telegram alerts (smart gates)
+```
+
+### What Agents Currently See Per Analysis
+
+Every agent prompt receives these injected contexts:
+1. **Portfolio context** — holdings, account weights, income gap, tax bracket
+2. **FRED macro** — Fed rate 3.64%, VIX 17.83, yield spread 0.52, CPI 330
+3. **Intel summary** — qualified news + YouTube key points + SEC Form 4 data + Alpha Vantage fundamentals
+4. **Outcome lessons** — up to 7 past correct/wrong decisions (e.g., "V: BUY at $295 → $311 +5.4% [CORRECT]")
+5. **SSDI/disability rules** — Medicaid lookback, IRMAA thresholds, MFS bracket ceiling
+6. **Cross-agent views** — sees what other agents think (not live, sees prior results)
+
+### Agent Handoff / Escalation Logic
+
+```mermaid
+flowchart TD
+    A[Agent Analysis Complete] --> B{Confidence ≥ 60%?}
+    B -->|No| C[Log as LOW_CONFIDENCE\nNo escalation]
+    B -->|Yes| D{Agent conflict?}
+    D -->|BUY vs SELL same symbol| E[Auto-escalate to Alex\nLog in agent_handoffs]
+    D -->|No conflict| F{Income-critical position?\n>20% of income}
+    F -->|Yes| G[Flag for HUMAN_REVIEW\nNever auto-rotate]
+    F -->|No| H{SSDI / IRMAA impact?}
+    H -->|High risk| I[Flag SSDI_REVIEW\nCompute MAGI impact first]
+    H -->|None| J[Standard proposal\nAwaits human approval]
+    E --> K[Alex synthesis with\nfull disability context]
+    K --> L[CIO decision generated]
+    L --> M{Auto-execute eligible?\nconf≥90% + ssdi=none + irmaa=false}
+    M -->|Yes — if enabled| N[Trade instruction generated\nLogs only — no actual trade]
+    M -->|No| O[Human approval required\nvia UI or Telegram]
+```
+
+---
+
+## 4. Agent System — Autonomous Roadmap
+
+### Current Autonomy Level: 3/5
+
+```
+Level 1 — Reactive:          Manual triggers only
+Level 2 — Scheduled:         Cron-triggered batch analysis                    ✅ COMPLETE
+Level 3 — Event-Driven:      Agents self-trigger on data events               ✅ COMPLETE (Phase 1-3, 10/10 events)
+Level 4 — Self-Directed:     Agents set their own research agenda             Future
+Level 5 — Closed-Loop:       Agents execute and learn from outcomes           Aspirational
+```
+
+### What's Already Autonomous (Level 2 + Level 3 Phase 1)
+
+| Behavior | Script | Schedule | Status |
+|----------|--------|----------|--------|
+| Daily intel promotion | `agent_watchlist_engine.py --daily` | 7 PM | ✅ Live |
+| Outcome evaluation | `overnight_batch.py --outcomes` | 5:30 AM | ✅ Live |
+| Proactive intel scan | `overnight_batch.py --proactive` | 6:45 AM | ✅ Live |
+| Credential monitoring | `credential_monitor.py` | 6:00 AM | ✅ Live |
+| Watchlist proposals | `agent_watchlist_engine.py` | 7 PM | ✅ Live (needs human approval) |
+| Weekly health check | `alex_retirement_advisor.py` | Sunday 10 AM | ✅ Live |
+| Embedding indexing | `overnight_batch.py --index-embeddings` | 9 PM | ✅ Live |
+| Multi-agent debate | `run_agent_debate()` | Triggered by Q≥75 intel | ✅ Live (accumulating) |
+| **Event detection (L3)** | **`event_detector.py`** | **Every 15 min** | **✅ Live — 10 event types** |
+| **Event digest in brief** | **`aegis_morning_brief_delivery.py`** | **Daily 8 AM** | **✅ Live — 24h event summary in Telegram + page** |
+| Auto-execute proposals | DB rule: `auto_execute.low_risk` | On approval | ⚠️ DISABLED (toggle to enable) |
+
+### Level 3 Status — Event-Driven Agents
+
+Level 3 means agents self-trigger when specific data events occur, rather than waiting for cron windows.
+
+**Phase 1+2 COMPLETE** (April 30, 2026): `event_detector.py` polls DB every 15 minutes, fires events into `agent_event_queue`. `agent_event_router.py` drains the queue 2 min later. All 10 event types active:
+
+| Event | Agents | Priority | Threshold | Cooldown |
+|-------|--------|----------|-----------|----------|
+| SEC_INSIDER_BUY | Maria, Risk | urgent | Form 4 purchase in 24h | 4h |
+| RSI_EXTREME | Risk | normal | Holdings RSI <25 or >75 | 4h |
+| FRED_RATE_CHANGE | Maria, Steph, Risk | urgent | DFF change >0.25% | 4h |
+| DIVIDEND_CUT | Steph, Tax | urgent | Yield drop >20% vs baseline | 4h |
+| EARNINGS_BEAT | Maria, Steph | normal | EPS beat >10% in 24h | 4h |
+| STOP_TRIGGERED | Risk, Steph | urgent | Price ≤ stop for holdings | 4h |
+| IRMAA_THRESHOLD | Alex, Tax | urgent | MAGI > $103K (MFS) | 24h |
+| INCOME_FLOOR_RISK | Steph, Alex | urgent | Position > $11K income | 24h |
+| MARKET_REGIME_CHANGE | Risk, Maria | urgent | VIX crosses 25 or 30 | 6h |
+| PORTFOLIO_FRESH_NEEDED | Risk, Steph | normal | Not analyzed >48h (max 3/run) | 4h |
+
+**Phase 2 COMPLETE** (April 30, 2026): `agent_event_router.py` drains the queue every 15 minutes (2 min after detector). Creates `watchlist_agent_jobs`, processes via existing agent infrastructure, sends Telegram for urgent events. SEC_INSIDER_BUY events auto-trigger 3-agent debate → Alex queue if consensus ≥50%.
+
+**Phase 3 — First Production Run** (April 30, 2026):
+- 8 events fired: 5× STOP_TRIGGERED (TDG, LHX, RTX, LMT, NOC) + 3× PORTFOLIO_FRESH_NEEDED (SCHD, AMANX, ARKG)
+- All 8 routed → agent jobs created → processed → status=done
+- 16 dividend yield baselines seeded (DIVIDEND_CUT first-run baseline)
+- IRMAA check: MAGI $99,187 — below $103K threshold (no fire, correct)
+- Telegram alerts: sent to both chat IDs (fixed Markdown parse_mode issue)
+- LLM budget was exceeded — agent analyses queued as failed, will succeed on next run with budget reset
+
+### Agent Sequencing and Data Quality Gate (v4.3)
+
+```
+Job Queue → Risk agent runs first
+                ↓
+        Risk result check:
+        RESEARCH_MORE <40% conf?
+                ↓ yes               ↓ no
+        check_symbol_data_quality()  → proceed to Maria + Steph
+                ↓
+        attempt_symbol_enrichment()
+        (yfinance free sources)
+                ↓
+        enriched?
+        ↓ yes          ↓ no
+        re-run context  log data_gap
+        proceed         HALT (skip Maria/Steph)
+```
+
+- **Cost gate:** enrichment uses only free sources (yfinance, Google RSS)
+- **Data gap logged:** `watchlist_events` with type `data_gap_skip`
+- **UI indicator:** "NO DATA" amber badge in watchlist price column
+
+Here is the full design spec for remaining event types:
+
+**Trigger events to implement:**
+```python
+# Event types that should auto-trigger agent analysis
+EVENT_TRIGGERS = {
+    "SEC_INSIDER_BUY":     {"agents": ["Maria", "Risk"], "threshold": "any Form 4 BUY"},
+    "DIVIDEND_CUT":         {"agents": ["Steph", "Tax"], "threshold": "yield drop >20%"},
+    "RSI_EXTREME":          {"agents": ["Risk"],          "threshold": "RSI <25 OR >75"},
+    "EARNINGS_BEAT":        {"agents": ["Maria", "Steph"],"threshold": "EPS beat >10%"},
+    "STOP_TRIGGERED":       {"agents": ["Risk", "Steph"], "threshold": "price crosses stop"},
+    "IRMAA_THRESHOLD":      {"agents": ["Alex", "Tax"],   "threshold": "MAGI projection >$103K"},
+    "INCOME_FLOOR_RISK":    {"agents": ["Steph", "Alex"], "threshold": "income position >20% weight"},
+    "FRED_RATE_CHANGE":     {"agents": ["all"],           "threshold": "DFF change >0.25%"},
+    "MARKET_REGIME_CHANGE": {"agents": ["Risk", "Maria"], "threshold": "VIX crosses 25 or 30"},
+}
+```
+
+**Implementation path:**
+1. `scripts/event_detector.py` — polls key tables every 15 min, fires events when thresholds crossed
+2. `scripts/agent_event_router.py` — maps events to agent queue entries
+3. `agent_event_queue` table — stores pending event-triggered analyses with priority
+4. Agents drain queue on their next cycle OR immediately if `priority='urgent'`
+
+---
+
+## 5. Autonomous Agent Ruleset Specification
+
+This section defines the complete ruleset for each agent. Claude Code uses this as the specification for agent behavior. Any change to agent logic must be consistent with these rules.
+
+### Global Rules (apply to ALL agents)
+
+```
+RULE G1 — DATA FRESHNESS
+  Never analyze based on data older than:
+  - News: 7 days
+  - Prices: 24 hours
+  - SEC filings: 30 days
+  - FRED macro: 7 days
+  If data is stale: log stale_data event, skip analysis, do not produce recommendation.
+
+RULE G2 — INCOME PROTECTION
+  NEVER recommend TRIM or SELL on:
+  - Any position where yield × market_value > ($55,000 × 0.20) = $11,000/yr
+  - Strategies: dividend_growth_compounder, high_yield_income_bdc, tactical_income
+  If this rule would block a needed rebalance: escalate to Alex with flag INCOME_CRITICAL.
+
+RULE G3 — SSDI AWARENESS
+  Every recommendation for IRA/401k positions must include:
+  - MAGI impact estimate: current_magi + proposed_distribution_or_conversion
+  - IRMAA flag if projected MAGI > $103,000 (MFS threshold)
+  - Bracket flag if projected MAGI > $94,300 (22% bracket ceiling)
+  - Medicaid lookback flag if IRA distribution > $50,000
+  If any flag triggers: set ssdi_review=true, require human approval.
+
+RULE G4 — CONFIDENCE GATING
+  Agent must not produce a synthesis recommendation if:
+  - Own confidence < 40%: output LOW_CONFIDENCE_SKIP, log reason
+  - Only 1 source of evidence (single news article with no corroboration): skip
+  - Decision is older than 14 days: expire, do not reuse
+
+RULE G5 — LEARNING LOOP
+  Every analysis must:
+  - Read last 7 outcome lessons from agent_intelligence_rules (rule_type='outcome_lessons')
+  - Inject lessons into prompt: "OUTCOME LESSONS — learn from these: [lessons]"
+  - Adjust confidence ±0.05 per past approval/rejection from agent_feedback_log (last 90d)
+
+RULE G6 — MACRO CONTEXT
+  Every analysis must include FRED macro context:
+  - VIX >25: append [MACRO: Elevated volatility — consider hold]
+  - T10Y2Y <0: append [MACRO: Inverted yield curve — recession risk]
+  - DFF >5%: append [MACRO: High rates — bonds competitive]
+  - DFF <2%: append [MACRO: Low rates — equity premium]
+
+RULE G7 — ESCALATION TRIGGER
+  Auto-escalate to Alex when:
+  - Agent conflict: BUY vs SELL on same symbol in same 48h window
+  - Any Roth conversion recommendation
+  - Any income-critical position flag
+  - Confidence 40–60% on a portfolio position (not watchlist)
+  Log escalation in agent_handoffs: escalated=true, reason, from_agent, to_agent='alex'
+
+RULE G8 — PROPOSAL EXPIRY
+  All watchlist_proposals expire after 14 days.
+  If not reviewed: status='expired', reason='no_human_review_14d'
+  Re-propose only if new qualifying intelligence arrives.
+
+RULE G9 — DEBATE REQUIREMENT
+  Symbols must pass 3-agent debate (Maria + Steph + Risk) before queuing for Alex.
+  Debate consensus must be ≥50% for any action recommendation.
+  If consensus <50%: status='no_consensus', skip Alex queue, log in agent_debate_log.
+
+RULE G10 — NO DIRECT EXECUTION
+  No agent may generate a trade that is executed without human approval except:
+  - auto_execute rule in agent_intelligence_rules is enabled=true
+  - AND all four conditions met: conf≥90%, ssdi_impact='none', irmaa_risk=false, income_impact='none'
+  Even then: logs as "auto_approved" in trade_instructions — no actual broker API call.
+```
+
+### Maria — Research & Fundamentals Agent
+
+```
+IDENTITY
+  Role: First responder. Reads news, SEC filings, and fundamentals.
+        Asks: "Is there new information that changes the investment thesis?"
+  Model: qwen3:1.7b (local) / Claude for Q≥70 intel
+  Triggers: Daily 6:25 AM batch + event-triggered (SEC_INSIDER_BUY, EARNINGS_BEAT)
+
+WHAT MARIA SEES
+  - News articles: last 7 days, relevance_score ≥ 0.3
+  - SEC Form 4 filings: any in last 30 days for this symbol
+  - Alpha Vantage fundamentals: PE, EPS, revenue growth, analyst target
+  - yfinance quote: current price, 52-week range
+  - Outcome lessons (Rule G5)
+  - FRED macro context (Rule G6)
+
+MARIA'S DECISION RULES
+  BUY signal conditions (ALL must be true):
+    - Positive news catalyst (earnings beat, insider buy, upgrade, M&A accretive)
+    - PE ratio below sector average OR strong growth justifies premium
+    - Analyst target > current price + 10%
+    - No negative SEC disclosures in last 30 days
+
+  SELL/TRIM signal conditions:
+    - Dividend cut OR payout ratio >100% for income positions
+    - Insider selling >$1M within 30 days (Form 4)
+    - EPS miss >10% + guidance lowered
+    - Analyst target downgrade below current price
+    - Income protection (Rule G2) overrides if income-critical
+
+  RESEARCH_MORE signal (no action):
+    - Conflicting signals (e.g., insider buy + earnings miss)
+    - Single source, low corroboration
+    - Confidence <55%
+
+OUTPUT SCHEMA
+  {
+    "symbol": "V",
+    "recommendation": "BUY | SELL | HOLD | TRIM | RESEARCH_MORE",
+    "confidence": 0.0–1.0,
+    "evidence": ["Insider buy $2M", "Q2 beat estimates by 12%"],
+    "ssdi_flags": [],
+    "income_critical": false,
+    "data_sources_used": ["sec_form4", "alpha_vantage", "finnhub_news"],
+    "expires_at": "2026-05-14T06:25:00"
+  }
+```
+
+### Steph — Allocation & Income Agent
+
+```
+IDENTITY
+  Role: Income guardian. Asks: "Does this position support the $55K income target?
+        Does the allocation make sense across all four accounts?"
+  Model: qwen3:1.7b (local)
+  Triggers: Daily 6:25 AM batch + event-triggered (DIVIDEND_CUT, INCOME_FLOOR_RISK)
+
+WHAT STEPH SEES
+  - Holdings.json: all 4 accounts, weights, income contributions
+  - dividend_calendar.json: annual income by symbol, yield, frequency
+  - personal_situation.json: income target ($55K), current gap ($40K+), SSDI ($45,600/yr)
+  - Rotation rules: strategy-aware (see v2.41 rotation rules table)
+  - Proposal history: last 90 days of approved/rejected (agent_feedback_log)
+
+STEPH'S DECISION RULES
+  Income target state:
+    - Gap = $55,000 - current_annual_income - $45,600 SSDI
+    - Flag if gap > $20,000: recommend income-building action
+    - Flag if single position > 25% of total income: concentration risk
+
+  Allocation rules:
+    - Max single position: 15% of total portfolio (hard cap)
+    - Max sector: 35% of total portfolio
+    - Roth IRA: growth focus (SCHG, SCHD), no covered calls (tax-free growth)
+    - Rollover IRA: income + growth, Roth conversion candidates
+    - Taxable: qualified dividends only (no BDC distributions — ordinary income)
+    - 401k: until 2027, constrained to 15 Omnicom plan funds only
+
+  NEVER auto-rotate (income protection — Rule G2):
+    - dividend_growth_compounder, high_yield_income_bdc, tactical_income,
+      reit_income, bond_income, retirement_planning, disability_retirement_planning
+
+  ACCOUNT-AWARE proposal format:
+    [rotate] SYMBOL in ACCOUNT: X shares → target. SSDI:impact. IRMAA:risk.
+
+OUTPUT SCHEMA
+  {
+    "symbol": "SCHG",
+    "account": "rollover_ira | roth_ira | 401k | taxable",
+    "recommendation": "ADD | TRIM | HOLD | ROTATE",
+    "income_impact": "$+450/yr if added at current yield",
+    "ssdi_impact": "none | conversion_taxable | capital_gains",
+    "irmaa_risk": false,
+    "income_critical": false,
+    "confidence": 0.71,
+    "allocation_after": "8.2% of portfolio"
+  }
+```
+
+### Risk Agent — Technical Analysis
+
+```
+IDENTITY
+  Role: Technician. Asks: "Is the price action supportive of entry/exit?
+        Is the stop set appropriately? Is the position protected?"
+  Model: qwen3:1.7b (local)
+  Triggers: Daily 6:25 AM batch + event-triggered (RSI_EXTREME, STOP_TRIGGERED)
+
+WHAT RISK SEES
+  - Finviz technical data: RSI, SMA20/50/200, ATR, Beta, 52-week range
+  - risk_management.json: current stops, stop distances, heat
+  - Portfolio heat: sum(unrealized_losses) / total_portfolio_value
+  - FRED macro: VIX level (volatility regime)
+
+RISK'S DECISION RULES
+  Stop placement rules:
+    - New position: stop = entry - (2 × ATR)
+    - Minimum stop distance: 5% from current price
+    - Maximum stop distance: 15% (positions beyond this are unprotected)
+    - 401k mutual funds: no stops (cannot be placed) → mental stop only
+
+  RSI signals:
+    - RSI >75 + no catalyst: flag OVERBOUGHT → TRIM candidate
+    - RSI <25 + positive thesis intact: flag OVERSOLD → ADD candidate
+    - RSI signal overrides income protection Rule G2 for TRIM only
+      (but only if 2+ technical confirmations)
+
+  Heat management:
+    - Portfolio heat >5%: do not add new positions
+    - Portfolio heat >8%: flag urgent — recommend stop-tightening
+    - Individual heat (position down >15%): auto-flag for review
+
+  Coverage rules:
+    - Target: ≥80% of portfolio value protected (has defined stop)
+    - Current: 50% protected — active gap
+    - Unprotected 401k positions: document as "mutual fund — no stop available"
+
+OUTPUT SCHEMA
+  {
+    "symbol": "V",
+    "recommendation": "ADD | HOLD | TRIM | SELL | TIGHTEN_STOP | SET_STOP",
+    "rsi": 66,
+    "sma_status": "above_20 | above_50 | above_200 | below_all",
+    "stop_recommended": 285.00,
+    "stop_distance_pct": 8.2,
+    "heat_contribution": 0.3,
+    "confidence": 0.75
+  }
+```
+
+### Tax Agent
+
+```
+IDENTITY
+  Role: Tax optimizer. Asks: "What is the tax-optimal execution path for this action?
+        Are there harvest opportunities? Does this affect SSDI/IRMAA/Medicaid?"
+  Model: qwen3:1.7b (local) — Claude for Roth analysis
+  Triggers: On-demand OR triggered by any proposal with ssdi_impact != 'none'
+
+WHAT TAX SEES
+  - personal_tax_history: 2025 return, bracket, filing status (MFS)
+  - personal_situation.json: current MAGI, Roth conversions YTD, bracket room
+  - tax_events: planned events for 2026
+  - Tax lots: cost basis, holding period (ST vs LT), unrealized gains/losses
+  - agent_intelligence_rules: SSDI/IRMAA thresholds
+
+TAX'S DECISION RULES
+  Tax-loss harvesting:
+    - Harvest candidate: current_value = 0 AND cost_basis > 0 (worthless)
+      → Contact Fidelity 1-800-343-3548 for disposal form. File before Dec 31.
+    - Harvest candidate: unrealized_loss > $500 AND holding_period > 30 days
+      AND no substantially identical security purchased in 30-day wash-sale window
+    - Prioritize: highest loss first, long-term losses before short-term
+
+  Roth conversion optimization:
+    - Available room: $94,300 (22% ceiling MFS) - current_MAGI
+    - Current room: ~$66,883 (verified April 2026)
+    - Optimal annual conversion: $35,000–$50,000 (fill 12% bracket)
+    - Convert FROM: Rollover IRA only (never 401k without plan permission)
+    - Golden Window: 2036–2040 (ages 68.5–73) — convert aggressively during this period
+
+  SSDI/IRMAA rules:
+    - IRA distribution > $50,000: Medicaid 5-year lookback warning
+    - MAGI > $103,000 (MFS): IRMAA Tier 1 surcharge warning
+    - MAGI > $94,300: 22% bracket jump warning
+    - Capital gains in taxable: estimate MAGI impact before proposing
+
+OUTPUT SCHEMA
+  {
+    "symbol": "LPIH",
+    "action": "HARVEST_WORTHLESS | HARVEST_LOSS | ROTH_CONVERT | HOLD_FOR_LT",
+    "tax_impact": "$-4,763 loss realized",
+    "magi_impact": "+$0 (worthless security disposal has no income impact)",
+    "irmaa_risk": false,
+    "bracket_impact": "stays in 12%",
+    "instructions": "Contact Fidelity at 1-800-343-3548...",
+    "deadline": "2026-12-31"
+  }
+```
+
+### Alex — Retirement & Disability Advisor
+
+```
+IDENTITY
+  Role: Senior advisor. The only high-quality reasoner in the system.
+        Specializes in disability retirement planning, Roth strategy, and SSDI optimization.
+  Model: Claude Sonnet (always — no local fallback for core retirement analysis)
+  Triggers: On-demand via Telegram/UI + weekly Sunday health check + monthly report
+           + auto-queued when debate consensus ≥50% + escalations from other agents
+
+WHAT ALEX SEES (everything)
+  - All portfolio context (holdings, accounts, income, tax bracket)
+  - All agent results and debate transcripts for the symbol
+  - Qualified intelligence (highest-quality news + YouTube + SEC)
+  - FRED macro context
+  - Outcome lessons
+  - Full SSDI/disability ruleset (48 disability-specific rules in alex_retirement_advisor.py)
+
+ALEX'S NON-NEGOTIABLE RULES
+  1. Never recommend an action that could trigger IRMAA surcharge without warning
+  2. Always include Medicaid 5-year lookback analysis for IRA distributions >$50K
+  3. Always check MFS filing status implications (spousal IRA, backdoor Roth, pro-rata)
+  4. Roth conversion advice: always verify with CPA disclaimer
+  5. SSDI income limit: $45,600/yr — any recommendation that increases countable income
+     above safe threshold requires explicit warning
+  6. Disability exemption: no 10% early withdrawal penalty applies (age + disability)
+  7. Golden Window: 2036–2040 is the optimal Roth conversion window — plan toward it
+
+ALEX OUTPUT
+  Full prose analysis (~400 words) covering:
+  1. Position/situation summary
+  2. Retirement impact (conservative/base/aggressive scenario)
+  3. Tax implications with SSDI/IRMAA awareness
+  4. 3–5 specific actionable recommendations with dollar amounts
+  5. Risks and what to watch for
+
+ALEX THREE-TIER DECISION HYGIENE (alex_hygiene.py)
+  Tier 1 (routine, ~$0.01): Alex alone (Sonnet) — daily monitors, stop reviews
+  Tier 2 (significant, ~$0.03): Alex + Grok second opinion — Roth, IRMAA, rebalance
+  Tier 3 (critical, ~$0.15): Alex + Grok + GPT-4o → Opus synthesis — trusts, large conversions, estate
+  
+  Cadence gate: Tier 3 decisions enforced to 30-day minimum
+  Bypass events: new_law_passed, irmaa_threshold_crossed, inheritance_received, etc.
+  Agreement scoring: measures cross-model consensus (1.0 = unanimous, 0.33 = split)
+  DB: alex_hygiene_log table
+  API: POST /api/v2/alex-hygiene/classify, /api/v2/alex-hygiene/run
+
+ALEX DISABILITY INTELLIGENCE (alex_retirement_advisor.py)
+  5 rule categories: SSDI_RULES, DUAL_ELIGIBILITY_RULES, TRUST_RULES, ROTH_WITH_DISABILITY, IRMAA_RULES
+  48 disability-specific rules injected into every Alex prompt
+  get_disability_context_for_prompt() — 1,816-char context block
+
+ALEX GOVERNMENT DATA (alex_gov_research.py)
+  4 scrapers: fetch_ssa_thresholds(), fetch_irmaa_thresholds(), fetch_medicaid_ny_rules(), fetch_roth_ira_rules()
+  30-day cache in agent_intelligence_rules table
+  Cron: Sunday 8 AM weekly refresh
+```
+
+### Aegis — Morning Intelligence Orchestrator
+
+```
+IDENTITY
+  Role: Synthesizes overnight intelligence into the morning brief.
+        Orchestrates what John sees first thing every morning.
+  Schedule: Daily 8:00 AM (after all pipelines complete)
+
+WHAT AEGIS DELIVERS (8-section brief)
+  1. Hero narrative — portfolio summary + FRED macro context
+     Color: red (triggered stops), green (positive), amber (caution)
+  2. Agent intelligence cards — Maria/Steph/Risk/Alex/Aegis with click-through modals
+  3. What to Watch For — triggered stops, danger zones, pending proposals, overdue decisions
+  4. Metric tiles — 6 key numbers (portfolio, heat, protected, proposals, tasks, escalations)
+  5. Command strip — 8 quick-action buttons
+  6. Action board — 14 items, filterable (all/urgent/review/monitor)
+  7. Risk & Exposure + Opportunity & Recovery panels
+  8. Trust Strip + Overnight Intelligence narrative
+
+AEGIS AUTONOMY RULES
+  - Never deliver a brief with portfolio value more than 1% out of sync with live holdings.json
+  - Always include FRED macro context in Hero narrative
+  - Flag any triggered stop as URGENT (red) regardless of other signals
+  - Include proposal count and review deadline in every brief
+  - Brief is stored in intelligence_events table for history
+```
+
+### Iris — Taxonomy Intelligence Agent (v4.9)
+
+```
+IDENTITY
+  Role: Keeper of the intelligence pipeline classification system.
+        Makes sure every piece of content reaches the right agent.
+  Model: Claude Sonnet (Q&A), local qwen3:1.7b (classification)
+
+TWO OPERATING MODES:
+
+MODE 1 — Taxonomy Improvement (Weekly Sunday 10 AM)
+  1. Coverage analysis — channels vs target taxonomy (8 categories)
+  2. Gap detection — identifies categories below minimum channel count
+  3. Channel audit — finds uncategorized, stale, or low-relevance channels
+  4. Proposal generation — reclassify, add_channel, retire_channel
+  5. Q&A — answers questions about content routing via Claude Sonnet
+
+MODE 2 — Content Hygiene (Weekly Sunday 6 AM)
+  Demotes stale content, flags superseded regulatory data,
+  escalates ambiguous decisions to John via Telegram.
+
+  HYGIENE RULES:
+    NEVER deleted without John's explicit approval
+    NEVER auto-demotes disability/trust content
+    NEVER exceeds 50 auto-demotions per run
+
+    Content type        | Active window  | Then
+    ────────────────────┼────────────────┼──────────────────
+    General news        | 90 days        | Auto-archive
+    Sector analysis     | 180 days       | Auto-archive
+    Tax/retirement news | 365 days       | Auto-archive
+    Disability news     | 18 months      | Escalate to John
+    YouTube: general    | 1 year         | Auto-archive
+    YouTube: retirement | 2 years        | Auto-archive
+    YouTube: disability | 3 years        | Escalate to John
+    YouTube: evergreen  | Never          | Never expires
+    YouTube: year-specif| 2yr after ref  | Escalate to John
+    Regulatory data     | Until replaced | Flag superseded
+
+TABLES
+  - iris_taxonomy_proposals (taxonomy proposals for review)
+  - iris_run_log (scan + hygiene history)
+  - iris_hygiene_log (full audit log of hygiene actions)
+  - iris_hygiene_pending (decisions awaiting John, 7-day expiry)
+
+TELEGRAM COMMANDS
+  iris status           — coverage + pending proposals
+  iris <question>       — ask about content tagging
+  iris approve <id>     — approve taxonomy proposal
+  iris reject <id>      — reject taxonomy proposal
+  iris run              — force taxonomy scan
+  iris who              — identity + help
+  iris hygiene          — pending hygiene decisions
+  iris hygiene approve N — approve content demotion
+  iris hygiene reject N  — keep content active
+  iris hygiene defer N   — decide in 7 days
+  iris hygiene preview   — dry run (no changes)
+  iris hygiene run       — force hygiene run now
+
+API ENDPOINTS
+  GET  /api/v2/iris/status          — taxonomy status + coverage
+  GET  /api/v2/iris/hygiene-status  — pending decisions + health
+  POST /api/v2/iris/ask             — Q&A (Claude Sonnet, ~$0.003)
+  POST /api/v2/iris/approve         — approve taxonomy proposal
+  POST /api/v2/iris/reject          — reject taxonomy proposal
+  POST /api/v2/iris/hygiene-approve — approve content demotion
+  POST /api/v2/iris/hygiene-reject  — keep content active
+  POST /api/v2/iris/hygiene-defer   — defer decision 7 days
+
+CLI
+  python3 scripts/iris_taxonomy_agent.py                 — weekly scan
+  python3 scripts/iris_taxonomy_agent.py --hygiene       — weekly hygiene
+  python3 scripts/iris_taxonomy_agent.py --hygiene-dry-run — preview
+
+CRON
+  0 6  * * 0  iris_taxonomy_agent.py --hygiene    — Sunday 6 AM
+  0 10 * * 0  iris_taxonomy_agent.py              — Sunday 10 AM
+
+IRIS AUTONOMY RULES
+  - Never make investment recommendations
+  - Never touch holdings, proposals, or trade decisions
+  - Only manages keywords, routing rules, and channel taxonomy
+  - Taxonomy proposals require John's approval (no auto-apply)
+  - Hygiene: disability/trust always escalated to John
+  - Appears in morning brief only when pending proposals exist
+```
+
+---
+
+## 6. Daily Pipeline Timeline
+
+```mermaid
+gantt
+    title Daily Pipeline — Cron Schedule
+    dateFormat HH:mm
+    axisFormat %H:%M
+
+    section Overnight
+    Outcome evaluation     :05:00, 15m
+    Alex daily scan        :05:00, 30m
+    Smart alerts           :06:00, 15m
+    Credential check       :06:00, 10m
+
+    section Morning Cascade
+    Agent router refresh   :06:15, 10m
+    Agent intel daily      :06:25, 15m
+    FRED macro ingest      :06:30, 10m
+    News ingestion         :06:30, 15m
+    Classify candidates    :06:35, 5m
+    Intel auto-discovery   :06:40, 5m
+    Sync watchlist         :06:45, 5m
+    Proactive scan         :06:45, 10m
+    Strategy cards         :06:50, 5m
+    Income engine          :06:55, 5m
+    CIO decisions          :07:00, 15m
+    Finviz enrichment      :07:10, 15m
+    Freshness checks       :07:15, 15m
+    Aegis brief            :08:00, 30m
+
+    section Market Hours
+    Finviz screeners open  :10:00, 30m
+    News refresh           :12:30, 10m
+    Intel discovery        :12:40, 10m
+    Enrichment refresh     :13:00, 15m
+    Finviz screeners close :16:00, 30m
+
+    section Evening
+    Evening news           :18:30, 15m
+    YouTube ingest         :19:00, 30m
+    Promote qualified intel :19:00, 20m
+    Fresh transcript proc  :19:30, 15m
+    Metrics + snapshots    :20:00, 15m
+    Embedding indexing     :21:00, 15m
+    Auto-research          :21:00, 60m
+    Transcript backlog     :22:00, 480m
+```
+
+**Overnight batch (8 PM – 5 AM):**  
+Every 5 minutes · 25 jobs/batch · 300 jobs/hour capacity  
+Covers: stale symbol refreshes, embedding backfill, transcript summarization (2/hour)
+
+**Weekly (Sunday):** Strategy review, allocation check, watchlist hygiene, autonomy summary (8 AM), weekly health check (10 AM)  
+**Monthly (1st):** Deep tax reconciliation, Roth ladder analysis, income progress, monthly report (9 AM)
+
+---
+
+## 7. Intelligence Pipeline (5-Level Whiteboard)
+
+```mermaid
+flowchart LR
+    subgraph L0["L0 Raw Ingest"]
+        N["News\n883 articles"]
+        Y["YouTube\n651 transcripts"]
+        S["SEC Form 4\n4 filings"]
+        M["Market Quotes\nyfinance + AV"]
+    end
+
+    subgraph L1["L1 Scored\n173 items"]
+        SCORE1["content_scoring.py\nQuality 0-100\nRelevance 0-1.0\nStrategy tags\nAgent tags"]
+    end
+
+    subgraph L2["L2 Iterating\n(Day 1+)"]
+        ENRICH["Local LLM enrichment\nqwen3:1.7b\nCross-reference check"]
+    end
+
+    subgraph L3["L3 Validated\n(Day 2-3)"]
+        VALID["2+ sources confirm\nOR 3+ days + Q≥75\nEmbedding similarity"]
+    end
+
+    subgraph L4["L4 Promoted\n(Day 3+)"]
+        PROMO["Dashboard visible\nQ≥70 promoted items\n534 whiteboard"]
+    end
+
+    subgraph L5["L5 Synthesized\n(Day 3+)"]
+        SYNTH["Agent debate\nconsensus ≥50%\nAlex deep analysis\nCIO decision"]
+    end
+
+    L0 --> L1 --> L2 --> L3 --> L4 --> L5
+
+    style L0 fill:#1a1a2e,color:#fff
+    style L1 fill:#16213e,color:#fff
+    style L2 fill:#0f3460,color:#fff
+    style L3 fill:#533483,color:#fff
+    style L4 fill:#e94560,color:#fff
+    style L5 fill:#f5a623,color:#1a1a2e
+```
+
+**Promotion criteria:**
+- L0 → L1: Immediate (all ingested content)
+- L1 → L2: Q≥50 + 1+ day old
+- L2 → L3: 2+ sources corroborate OR (3+ days + Q≥75) + embedding similarity confirmed
+- L3 → L4: Q≥70 + agent_tags present + no staleness flag
+- L4 → L5: Debate consensus ≥50% + Alex analysis complete
+
+**LLM tier per level:**
+
+| Level | LLM | Cost |
+|-------|-----|------|
+| L0–L1 | None (keyword scoring) | $0 |
+| L2–L4 | Local qwen3:1.7b | $0 |
+| L5 | Claude → Grok → OpenAI fallback | ~$0.02/synthesis |
+
+### Per-Transcript Deep Tagging (transcript_tagger.py)
+
+Every YouTube transcript gets individually classified based on its actual content — not just inherited channel tags.
+
+**Two layers:**
+- Layer 1 — Channel baseline: channel category assigns default agents
+- Layer 2 — Content analysis: title + full transcript text overrides Layer 1 when confidence >= 60%
+
+**Quality scoring (per transcript, 0-100):**
+- Base 50pts + content length (+3 to +12) + year in title (+4 to +8)
+- High-value keywords (irmaa +8, ssdi +10, special needs trust +12, etc.)
+- Multi-agent content bonus (+4 to +6) + channel category modifier (+3 to +10)
+- Disability/retirement content typically scores 70-95
+
+**Promotion thresholds:** alex-tagged Q>=55, retirement Q>=60, standard Q>=70
+
+**Ingest hook:** `tag_new_transcript()` called automatically on every new transcript INSERT.
+
+**CLI:** `python3 scripts/transcript_tagger.py --retag-all` (full backfill), `--id N` (single), `--test` (10 sample)
+
+**API:** `GET /api/v2/transcript-audit` — quality distribution, agent routing, strategy breakdown
+
+---
+
+## 8. Data Sources
+
+### Active Sources (9)
+
+| Source | Type | Volume | Schedule | Key |
+|--------|------|--------|----------|-----|
+| Yahoo RSS | News | 365 articles | 3× daily | None |
+| Finnhub | News | 32 articles | 3× daily | FINNHUB_API_KEY |
+| Google News RSS | News (40+ outlets) | 296 articles | 3× daily | None |
+| YouTube Data API | Transcripts | 651 stored · 44 channels | Daily 7 PM | YOUTUBE_API_KEY |
+| SEC EDGAR | Form 4 insider | 4 filings | Daily 8 PM | None |
+| yfinance | Real-time quotes | 3 quotes | Daily 7:15 AM | None |
+| Alpha Vantage | Fundamentals (15 metrics) | 15/symbol | Monday 8 AM | ALPHA_VANTAGE_API_KEY |
+| FMP | Dividends/yields | 34 symbols | Daily 7:05 AM | FMP_API_KEY |
+| FRED | Macro (7 series) | 7 series live | Daily 6:30 AM | FRED_API_KEY |
+
+### Search Fallback Chain
+
+```
+Query arrives
+  ↓
+1. BRAVE SEARCH (if: research/high_value hint + budget<5/day + cooldown>60min + not cached)
+   → 402 currently (needs $5 credit)
+  ↓ fallback
+2. FINNHUB SUPPLEMENT (first fallback — already ingested 3×/day, no API call)
+  ↓ fallback  
+3. DB COMBINED (Google News + Yahoo + all sources — 883 articles, 50+ outlets)
+  ↓ fallback
+4. CACHED EMBEDDINGS (semantic — 685 nomic-embed-text vectors, cosine similarity)
+```
+
+### FRED Live Values (April 29, 2026)
+
+| Series | Value | Interpretation | Color |
+|--------|-------|----------------|-------|
+| Federal Funds Rate | 3.64% | Normal range (3–5%) | 🔵 Blue |
+| 10Y-2Y Spread | 0.52 | Positive — curve normalizing | 🟢 Green |
+| Unemployment | 4.3% | Healthy (<4.5%) | 🟢 Green |
+| CPI | 330 | Elevated (≥310) | 🟡 Amber |
+| VIX | 17.83 | Low (<20) | 🟢 Green |
+| 30Y Mortgage | 6.23% | Manageable (<6.5%) | 🟢 Green |
+| S&P 500 | 7,138 | Neutral | 🔵 Blue |
+
+---
+
+## 9. Scoring Model (Trade AI)
+
+```mermaid
+pie title Trade AI Scoring — Max 55 Points
+    "Catalyst (15pts)" : 15
+    "RVOL (12pts)" : 12
+    "Price Action (10pts)" : 10
+    "Float (8pts)" : 8
+    "Price Range (5pts)" : 5
+    "Sector Momentum (5pts)" : 5
+```
+
+| Pillar | Max | Trigger |
+|--------|-----|---------|
+| Catalyst | 15 | FDA, earnings beat, M&A, material 8-K |
+| RVOL | 12 | ≥8× = max; ≥5× = near max |
+| Price Action | 10 | Gap% + change% + RVOL alignment |
+| Float | 8 | <5M = max; >100M = 0 |
+| Price Range | 5 | $2–$10 sweet spot |
+| Sector Momentum | 5 | Sector ETF in top 3 leaders |
+
+**Decisions:**
+- **GO** (≥40 pts) — Trade AI alert fired · Telegram alert
+- **WAIT** (30–39 pts) — On watchlist · Monitor
+- **NO GO** (<30 pts) — Filtered out
+- **A+ Setup** (≥48 pts) — Sonnet generates full trade plan with entry/stop/R1/R2/R:R
+
+---
+
+## 10. PostgreSQL Schema Summary
+
+**Database:** `trade_ai` | **Host:** localhost:5432 | **Live count:** see `/api/v2/system-health`
+
+### Core Tables
+
+| Category | Key Tables |
+|----------|-----------|
+| **Portfolio** | `holdings`, `portfolio_snapshots`, `price_cache`, `run_summary`, `trade_ai_state` |
+| **Intelligence** | `intelligence_whiteboard`, `news_articles`, `catalyst_events`, `sentiment_observations`, `content_embeddings` |
+| **Agents** | `watchlist_agent_results`, `agent_handoffs`, `agent_feedback_log`, `agent_debate_log`, `agent_intelligence_rules` |
+| **Watchlist** | `watchlist_symbol_master`, `watchlist_items`, `watchlist_proposals`, `watchlist_strategy_cards` |
+| **Decisions** | `cio_decisions`, `decision_outcomes`, `decision_inputs`, `trade_instructions` |
+| **Autonomy** | `agent_event_queue` *(Level 3 — added v3.1)* |
+| **Journal** | `trade_transactions` (raw CSV imports), `trade_closed` (FIFO matched round-trips) *(added v3.4)* |
+| **YouTube** | `youtube_channels`, `youtube_transcripts`, `youtube_backfill_status` |
+| **Retirement** | `personal_history`, `personal_tax_history`, `ai_reports`, `agent_discovery_log` |
+| **Research** | `user_research_topics`, `qualified_intelligence`, `sec_form4`, `fundamental_data` |
+| **Macro** | `fred_economic_series`, `market_quotes` |
+| **Config** | `agent_data_source_rules`, `agent_sec_rules`, `finviz_screeners` |
+
+### Key State Files (JSON — some also in DB)
+
+| File | Purpose | Freshness Target |
+|------|---------|-----------------|
+| `data/portfolios/state/holdings.json` | Live holdings, 4 accounts + raw transactions | <24h |
+| `data/portfolios/state/personal_situation.json` | 27 personal fields (22 editable) | Manual update |
+| `data/portfolios/state/risk_management.json` | Stops, distances, heat | <24h |
+| `data/portfolios/state/dividend_calendar.json` | Annual income by symbol | <24h |
+| `data/portfolios/state/retirement_roadmap.json` | 3-scenario projection | Daily |
+| `reports/*/run_summary.json` | Trade AI run results | Per run |
+
+### Trade Journal Architecture (v3.4+)
+
+```
+Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_journal[]
+                                                         ↓
+                                         portfolio_trade_journal.py (FIFO matcher)
+                                                         ↓
+                                              trade_journal.json (closed_trades)
+                                                         ↓
+                                              PostgreSQL trade_closed (122 rows)
+                                                         ↓
+                                              /api/v2/journal → Journal page
+```
+
+- **FIFO matcher** recognizes: Buy, Sell, Reinvest Shares, Security Transfer, Journaled Shares, Sell Short
+- **Same-day trades**: Buys sorted before Sells to ensure FIFO matching
+- **CSV parser**: Handles Schwab metadata lines, quoted fields with commas, "Incomplete" values
+- **V cost basis**: Original 800-share lot at $41 via Security Transfer (not the $349 reinvest lots)
+
+---
+
+## 11. API Endpoints
+
+**Base:** `http://localhost:7777/api/v2/`
+
+### Portfolio & Trading
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/overview` | GET | Portfolio value, income gap, Roth room, GO/WAIT counts, agent health |
+| `/portfolio` | GET | Holdings with decisions, tech data, account breakdown |
+| `/trade-ai` | GET | Current run results, ticker scores, trade plans |
+| `/risk` | GET | Stops, heat, protection coverage, escalation lane |
+| `/rebalance` | GET | AI rebalance recommendations, YAML health score |
+| `/recovery` | GET | Recovery watch items, capital allocation verdicts |
+
+### Intelligence & Agents
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/agent-health` | GET | Per-agent confidence, analyses count, escalations |
+| `/autonomy-progress` | GET | Learning curve, debate count, outcome lessons, maturity |
+| `/qualified-intelligence` | GET | Top 30 promoted intel items |
+| `/search-sources` | GET | All source status (Brave budget, embeddings coverage, fallback chain) |
+| `/macro-context` | GET | FRED context string |
+| `/discovery-log` | GET | Last 10 "What I Discovered" summaries |
+
+### Proposals & Decisions
+
+| Endpoint | Method | Action |
+|----------|--------|--------|
+| `/proposals` | GET | All proposals sorted by status |
+| `/proposals/decide` | POST | `{id, decision: "approved"/"rejected"}` |
+| `/proposals/history` | GET | 30-day daily breakdown for chart |
+| `/proposals/feedback` | GET | Approval/rejection stats |
+| `/trade-instructions` | GET | Pending/executed trade instructions |
+
+### System & Monitoring
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/system-health` | GET | LLM status, DB table counts, screener count |
+| `/llm-spend` | GET | Today's spend, by-provider, by-task, hourly, 7-day, last 50 calls |
+| `/agent-pipeline` | GET | Jobs, results, handoffs, events, proposals, debates (last 24h) |
+| `/cost-dashboard` | GET | Legacy — redirects to llm-spend |
+
+### Retirement & Alex
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/retirement` | GET | Full retirement dashboard data |
+| `/tax-situation` | GET | Bracket, room, Roth YTD, disability status |
+| `/forecast` | GET | 3-scenario projection with FRED adjustments |
+| `/alex/recent` | GET | Recent Alex analyses |
+| `/alex/roth-history` | GET | Recent Roth conversion analyses |
+| `/alex-hygiene/classify` | POST | Classify decision into Tier 1/2/3 |
+| `/alex-hygiene/run` | POST | Run full Tier 3 hygiene (Grok+GPT-4o+Opus) |
+| `/alex-hygiene/history` | GET | Last 10 hygiene runs with agreement scores |
+
+### Iris (Taxonomy + Hygiene)
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/iris/status` | GET | Coverage %, categories, pending proposals |
+| `/iris/ask` | POST | Q&A with Iris (Claude Sonnet, ~$0.003) |
+| `/iris/approve` | POST | Approve taxonomy proposal |
+| `/iris/reject` | POST | Reject taxonomy proposal |
+| `/iris/hygiene-status` | GET | Pending decisions, recent demotions, content health |
+| `/iris/hygiene-approve` | POST | Approve content demotion |
+| `/iris/hygiene-reject` | POST | Keep content active |
+| `/iris/hygiene-defer` | POST | Defer decision 7 days |
+
+### Content & YouTube
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/youtube-audit` | GET | Channel inventory + transcript quality |
+| `/transcript-audit` | GET | Per-transcript tagging quality, strategy distribution |
+| `/youtube/transcripts` | GET | Last 100 transcripts |
+| `/youtube/channels` | GET | All active channels |
+| `/youtube/channels/add` | POST | Add/upsert a YouTube channel `{channel_name, channel_url, strategy_focus}` |
+
+### Portfolio & Tools
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/portfolio-intelligence` | GET | 47 positions with real sectors, per-account P&L, per-sector P&L, cross-account symbols, best/worst performers, classification quality |
+| `/rewrite-note` | POST | AI rewrite via local qwen3 with Claude Haiku fallback — `{text, page_type}` → `{ok, rewritten, provider}` |
+| `/rewrite-note/status` | GET | Local LLM availability check — `{local_llm: bool, fallback: "claude-haiku-4-5"}` |
+| `/retirement/refresh` | POST | Trigger fresh Alex retirement analysis in background (~60s) |
+| `/tasks/<id>/resolve` | POST | Resolve a task — `{note}` → decided_action |
+| `/tasks/<id>/defer` | POST | Defer a task — `{note}` → deferred |
+| `/tasks/<id>/reject` | POST | Reject a task — `{note}` → rejected |
+| `/tasks/deduplicate` | POST | Remove duplicate pending tasks per symbol+category |
+
+---
+
+## 12. Cron Schedule (67 entries)
+
+### Morning Cascade (5 AM – 8 AM)
+
+| Time | Script | What |
+|------|--------|------|
+| 5:00 AM | `alex_retirement_advisor.py --daily-scan` | Alex daily scan → Telegram |
+| 5:30 AM | `overnight_batch.py --outcomes` | Score past decisions + extract lessons |
+| 6:00 AM | `smart_alerts.py` | Roth/income/conflict/stop/Medicare alerts → Telegram |
+| 6:00 AM | `credential_monitor.py` | Check all 10 credentials → alert if any fail |
+| 6:15 AM | `agent_router.py --full-refresh` | Agent router |
+| 6:25 AM | `agent_router.py --daily-intel` | Agent intel daily |
+| 6:30 AM | `fred_data_ingest.py --ingest` | FRED macro snapshot |
+| 6:30 AM | `news_ingest.py` | Yahoo + Finnhub + Google News |
+| 6:35 AM | `classify_candidates.py` | Classify new symbols |
+| 6:40 AM | `intel_auto_discovery.py` | Scan for new ticker mentions |
+| 6:45 AM | `sync_watchlist.py` | Watchlist sync |
+| 6:45 AM | `overnight_batch.py --proactive` | Auto-queue high-Q symbols |
+| 6:50 AM | `strategy_cards.py` | Materialize strategy cards |
+| 6:55 AM | `income_engine.py` | Income calculations |
+| 7:00 AM | `cio_decisions.py` | CIO synthesis + dividend sync |
+| 7:10 AM | `finviz_enrichment.py` | RSI, SMA, ATR enrichment |
+| 7:15–7:50 AM | Various | Freshness, prices, health, recovery, QA, outcomes |
+| 8:00 AM | `aegis_morning_brief_delivery.py` | Morning brief → Telegram + DB |
+
+### Market Hours / Evening
+
+| Time | Script | What |
+|------|--------|------|
+| 10:00 AM | `trade_ai_orchestrator.py` | Finviz screeners (market open) |
+| 12:30 PM | `news_ingest.py` | Midday news refresh |
+| 4:00 PM | `trade_ai_orchestrator.py` | Finviz screeners (market close) |
+| 6:30 PM | `news_ingest.py` | Evening news |
+| 7:00 PM | `youtube_transcript_ingest.py --all-channels` | YouTube ingest (44 channels × 3 videos) |
+| 7:00 PM | `agent_watchlist_engine.py --daily` | Promote intel, propose rotations, discovery summary |
+| 7:30 PM | `transcript_slow_processor.py --fresh` | Process today's new transcripts |
+| 9:00 PM | `overnight_batch.py --index-embeddings` | Index new embeddings |
+| 9:00 PM | `overnight_batch.py --auto-research` | Auto-research conflicts (via Claude) |
+
+### Continuous (Level 3)
+
+| Schedule | Script | What |
+|----------|--------|------|
+| Every 15 min | `event_detector.py` | Level 3: SEC insider buys, RSI extremes, FRED rate changes → `agent_event_queue` |
+| Every 15 min (+2m) | `agent_event_router.py` | Level 3: drain queue → create agent jobs → process → Telegram alerts |
+
+### Weekly / Monthly
+
+| Schedule | Script | What |
+|----------|--------|------|
+| Sunday 1 AM | `full_system_backup.py` | Full backup zip (4 weeks retained) |
+| Sunday 7 AM | `overnight_batch.py --research` | Re-analyze persistent research topics |
+| Sunday 8 AM | `agent_watchlist_engine.py --autonomy-summary` | Weekly autonomy report → Telegram |
+| Sunday 6 AM | `iris_taxonomy_agent.py --hygiene` | Iris content hygiene — demote stale, flag superseded |
+| Sunday 8 AM | `alex_gov_research.py --refresh` | Alex government data refresh (SSA, IRMAA, Medicaid, Roth) |
+| Sunday 10 AM | `alex_retirement_advisor.py --weekly-health` | Deep retirement health check |
+| 1st of month 9 AM | `alex_retirement_advisor.py --monthly-report` | Monthly retirement performance report |
+| 1st of month 10 AM | `youtube_channel_discovery.py --discover` | YouTube channel discovery scan |
+
+---
+
+## 13. Configuration Reference
+
+### Single Source of Truth: `.env` at project root
+
+```bash
+# NEVER use assets/.env — delete if it exists
+# If exists: rm assets/.env
+
+# Required keys
+FINVIZ_COOKIE=.ASPXAUTH=...;.AspNetCore.Session=...
+ANTHROPIC_API_KEY=sk-ant-...
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+FRED_API_KEY=...
+FINNHUB_API_KEY=...
+YOUTUBE_API_KEY=...
+ALPHA_VANTAGE_API_KEY=...
+FMP_API_KEY=...
+BRAVE_SEARCH_API_KEY=...  # present but 402 — needs $5 credit
+
+# Optional / degraded
+XAI_API_KEY=...  # Grok fallback
+OPENAI_API_KEY=...  # OpenAI fallback
+```
+
+### Key Config Files
+
+| File | Purpose |
+|------|---------|
+| `config/agents_data_sources.yaml` | Per-agent data source rules (synced to DB via config_sync.py) |
+| `config/agents_sec_interaction.yaml` | SEC trigger rules per agent |
+| `assets/screeners.yaml` | 22 Finviz screener URLs and run windows |
+| `assets/weights.yaml` | Trade AI scoring pillar weights and grade bands |
+
+### 401k Constraint
+
+```yaml
+# assets/portfolio_accounts.yaml
+fidelity_401k_constraints:
+  constraint_active: true    # Set false after 2027 rollover — that's all
+  rollover_target_date: "2027-12-31"
+```
+
+After rollover: `constraint_active: false` → AI analyst sees full Schwab universe immediately.
+
+### LLM Router Settings (critical)
+
+```python
+# scripts/llm_router.py
+LOCAL_TIMEOUT = 30      # Was 8 — qwen3 needs 15-20s for thinking mode
+LOCAL_NUM_PREDICT = max(500, max_tokens)  # Was max_tokens (could be 50 — too low)
+LOCAL_MODEL = "qwen3:1.7b"  # Was qwen3:14b (not installed)
+```
+
+---
+
+## 14. Operational Runbook
+
+### Preflight Check (run before AND after any session)
+
+```bash
+python3 scripts/system_preflight_check.py
+# Runs 23 tests. All should pass. Expected: 18/19 pass
+# (portfolio-server runs via nohup not systemd — 19th check may show SKIP)
+```
+
+### Trade AI
+
+```bash
+# Test run (any time — no alerts, no LLM cost)
+python3 scripts/trade_ai_orchestrator.py --run-label 0900 --skip-market-check --no-alerts --no-llm
+
+# Standard run (valid labels: 0400, 0700, 0900, 1000 ONLY)
+python3 scripts/trade_ai_orchestrator.py --run-label 0700
+
+# Health check
+python3 scripts/trade_ai_health.py --project-root .
+```
+
+### Portfolio Intelligence
+
+```bash
+.venv/bin/python scripts/trade_ai_orchestrator.py --run    # Daily run
+.venv/bin/python scripts/trade_ai_orchestrator.py --monthly # Monthly AI refresh
+
+# Force fresh AI analysis
+rm data/portfolios/state/ai_analysis_cache.json
+.venv/bin/python scripts/trade_ai_orchestrator.py --monthly
+```
+
+### Credentials
+
+```bash
+python3 scripts/credential_monitor.py --check    # Full check
+python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
+# Or Telegram: "check credentials"
+# Or Telegram: "update FINVIZ_COOKIE .ASPXAUTH=..."
+```
+
+### Telegram Commands (29 unique)
+
+| Command | What |
+|---------|------|
+| `status` | Full system dashboard |
+| `tax` | Bracket, room, Roth YTD |
+| `intel SCHD` | Recent intelligence for SCHD |
+| `alex V` | Full retirement analysis for V |
+| `roth ladder` | 5-year Roth conversion projection |
+| `conflicts` | Agent disagreement count |
+| `iris status` | Coverage %, pending proposals, top gap |
+| `iris <question>` | Ask Iris about content tagging (Claude Sonnet) |
+| `iris approve <id>` | Approve taxonomy proposal |
+| `iris reject <id>` | Reject taxonomy proposal |
+| `iris run` | Force taxonomy scan (~90s) |
+| `iris who` | Iris identity and command help |
+| `iris hygiene` | Pending hygiene decisions |
+| `iris hygiene approve N` | Approve content demotion |
+| `iris hygiene reject N` | Keep content active |
+| `iris hygiene defer N` | Decide in 7 days |
+| `iris hygiene preview` | Dry run — see what would change |
+| `iris hygiene run` | Force hygiene run now |
+| `research TOPIC` | Persistent research topic |
+| `monthly report` | Monthly retirement performance |
+| `check credentials` | All 10 credentials status |
+| `run screener NAME` | Run a specific screener |
+| `analyze SYMBOL` | Full LLM analysis |
+| `find WHAT` | Discovery + persist |
+| `topics` | List active research |
+| `help` | List all available commands |
+| `update KEY VALUE` | Update .env credential (allowed keys only) |
+| `/iris_approve_N` | Shortcut: approve Iris proposal #N |
+| `/iris_reject_N` | Shortcut: reject Iris proposal #N |
+
+### Operator Decision Framework
+
+**Act on a system recommendation only when ALL of these are true:**
+- `synthesis.recommendation` exists (not just agent-level)
+- `synthesis.confidence` > 60%
+- `safety_status` = safe or actionable
+- No unresolved agent conflicts
+- Not an income-critical position (>20% of income) OR manually reviewed
+- Decision is less than 7 days old
+
+**Always require human review:**
+- Income asset with TRIM/SELL
+- Agent conflict (BUY vs SELL same symbol)
+- Confidence 40–60%
+- Any Roth conversion recommendation
+- Position >5% of portfolio weight
+- Any IRMAA/SSDI flag
+
+**Ignore entirely:**
+- Confidence <40%
+- Single agent, no synthesis
+- CIO decisions in 'proposed' status
+- Decision older than 14 days
+
+---
+
+## 15. Trust Matrix
+
+### HIGH TRUST — Rely on these
+
+| System | Why |
+|--------|-----|
+| Portfolio tracking | Real broker data, 4 accounts, CSV import |
+| Tax bracket math | From 2025 return + 2026 events, verified |
+| Income gap calculation | FMP API dividends, real yield data |
+| DB infrastructure | PostgreSQL, proper indexes — check `/api/v2/system-health` for live count |
+| API layer | 120+ endpoints, all returning data |
+| Cron pipeline | 67 entries, verified paths |
+| FRED macro | 7 series live, daily refresh |
+| SEC Form 4 | Direct from data.sec.gov |
+| Preflight check | 23 tests, catches most failures before they cascade |
+
+### MEDIUM TRUST — Functional but quality-limited
+
+| System | Limitation |
+|--------|-----------|
+| Maria (Research agent) | ✅ Fixed v3.8: two-pass analysis, confidence 0.49→0.85 |
+| News ingestion | 85% of Google News articles untagged (short summaries) |
+| Content scoring | Keyword-based only — "Apple stock is rotten" scores positive for AAPL |
+| Agent debate | Limited by 1.7b quality — better than isolated but not deep reasoning |
+
+### LOW TRUST — Do not act on
+
+| System | Reality |
+|--------|---------|
+| CIO decisions | 55 proposed, 0 acted on — treat as suggestions only |
+| Decision outcomes | 88 tracked but NO accuracy evaluation yet (needs 30+ days) |
+| Signal fusion | Keyword-based sentiment — directional only |
+
+### NOT IMPLEMENTED
+
+| System | Status |
+|--------|--------|
+| Social intelligence | 3 manual test posts only. No live API |
+| MARL learning | 1 shadow run — not functional |
+| Signal clustering | 0 records |
+| Real-time news | No streaming — batch 3× daily |
+
+---
+
+## 16. Maturity Score
+
+**Live computation** by `_compute_maturity()` — displayed on Overview page.
+
+| Dimension | Max | Current | Notes |
+|-----------|-----|---------|-------|
+| Data sources active (9) | 15 | 15 | All 9 active |
+| Embedding coverage | 10 | 10 | 100% coverage |
+| Agent analyses (200+) | 10 | 10 | 1,852 results |
+| Avg confidence (>0.5) | 10 | 9 | Maria 0.85 (two-pass), Steph/Risk 0.71 |
+| Proposals reviewed | 10 | 0 | Need to approve/reject 10+ |
+| Debates active | 5 | 0 | Accumulating |
+| Outcome lessons | 5 | 0 | Needs 30+ days |
+| FRED live | 5 | 5 | ✅ |
+| Feedback loop entries | 5 | 0 | Needs proposal decisions |
+| **Total** | **75** | **~49 (65%)** | |
+
+**Path to 75%:** Review 10+ proposals (unlocks +10), let system run 30 days for outcome lessons (+5), debates will accumulate naturally (+5).
+
+---
+
+## 17. Known Gaps & Roadmap
+
+### Active Gaps
+
+| Gap | Impact | Cost to Fix |
+|-----|--------|-------------|
+| Brave Search 402 | No real-time web search | $5/mo |
+| Social APIs | No live sentiment data | $0 (StockTwits) or $100/mo (X) |
+| GPU upgrade | qwen3:1.7b → 14b agent quality | Hardware (Arc Pro B50) |
+| Decision outcome eval | 88 tracked, 0 scored | Time (30+ days running) |
+| MARL learning | Shadow mode only | Needs data accumulation |
+
+### Incident Log (April 29, 2026 — resolved)
+
+| Issue | Root Cause | Fix |
+|-------|-----------|-----|
+| 0 tickers from Finviz | URL change `/export.ashx` → `/export` | Updated all screener URLs |
+| Finviz cookie not loaded | Launcher never sourced `.env` | Added `set -a; source .env; set +a` |
+| Ollama 404 | `qwen3:14b` hardcoded but only `1.7b` installed | Fixed model name |
+| Stop briefs $0.00 | Hardcoded `price: 0` fallback | Pass real prices from alerts |
+| Morning brief crash | Path to deleted docs dir | Fixed export path |
+| Header showing 0 GO | camelCase vs snake_case mismatch | Reads both with fallback |
+
+### What to Build / Do Next
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| 1 | Top up Brave Search — $5 unlocks real-time web research | Pending |
+| 2 | GPU upgrade — qwen3:14b dramatically improves agent quality | Pending |
+| 3 | Run system 30 days — let outcome lessons accumulate | In progress |
+| 4 | Review 10+ proposals — feeds the learning loop | In progress |
+| 5 | ~~Build Level 3 event_detector.py~~ | ✅ Done (v3.1) |
+| 6 | ~~Build Level 3 agent_event_router.py~~ | ✅ Done (v3.1) |
+| 7 | ~~Add remaining 7 event types~~ | ✅ Done (v3.2) — all 10 live |
+
+---
+
+*v5.3 — Task decision endpoints (resolve/defer/reject). Duplicate task prevention + deduplicate cleanup. Mic HTTPS detection. AI rewrite Claude fallback. Auto-enrichment on RESEARCH_MORE. Data quality in task-detail. 1,852 agent results.*
+*v5.2 — Portfolio Intelligence page, task modal 10-section panel, SmartTextarea, AddYouTubeChannelModal, Iris card, retirement freshness.*
+*v5.1 — Iris identity + 2 modes (taxonomy + hygiene). Per-transcript deep tagging. Alex 3-tier decision hygiene + 48 disability rules + gov scrapers.*  
+*v5.0 — YouTube audit: 44 channels, 651 transcripts, 8 categories. Channel schema + /api/v2/youtube-audit.*  
+*v4.4 — AV NEWS_SENTIMENT + OVERVIEW fundamentals injected into agent context. FMP dead. Benzinga stub ready.*  
+*v4.3: Risk-first gate + NO DATA badge. v4.2: field name fixes. v4.1: symbol panel + conflict detection.*  
+*v4.0: proposal-detail API + approval drawer with full context.*  
+*v3.9: Orchestration dashboard v2, agent-pipeline API, Agent Monitor + Orchestration nav, Maria Pass 2 budget fix.*  
+*v3.8: Maria two-pass (0.49→0.85). Budget $0.50. Event digest. v3.6: First overnight. v3.5: Journal UX + FIFO + CSV.*  
+*v3.4: Journal migrated to PostgreSQL: trade_transactions (627) + trade_closed (122). CSV import fixed. DB count 149→151.*  
+*v3.3: Level 3 COMPLETE. Router processed 8 events. Telegram delivered. 16 dividend baselines seeded.*  
+*v3.2: All 10 event types live. Added DIVIDEND_CUT, EARNINGS_BEAT, STOP_TRIGGERED, IRMAA_THRESHOLD, INCOME_FLOOR_RISK, MARKET_REGIME_CHANGE, PORTFOLIO_FRESH_NEEDED. Per-type cooldowns (4h/6h/24h).*  
+*v3.1: event_detector.py + agent_event_router.py live. agent_event_queue table (149th). SEC debates auto-queue Alex. Cron 63→65.*  
+*v3.0: Autonomous agent ruleset, Mermaid diagrams, agent decision flowcharts, roadmap to Level 3 autonomy*  
+*Source of truth for Claude Code. Update this document when system changes. Do not modify without updating version number.*

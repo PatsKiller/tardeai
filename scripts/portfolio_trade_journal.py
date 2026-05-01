@@ -55,12 +55,12 @@ def match_trades_fifo(transactions,stops,notes):
     for t in transactions:
         if "txn_type" not in t and "action" in t:
             _a = t["action"].lower().strip()
-            if _a in ("buy","reinvest","reinvest shares","reinvest dividend"):
+            if _a in ("buy","reinvest","reinvest shares","reinvest dividend","security transfer","journal","journaled shares"):
                 t["txn_type"] = "buy"
-            elif _a in ("sell","sold"):
+            elif _a in ("sell","sold","sell short"):
                 t["txn_type"] = "sell"
     txns=sorted([t for t in transactions if t.get("txn_type") in ("buy","sell") and t.get("symbol","").strip()],
-                key=lambda x:(x.get("datetime_str") or x.get("date","")))
+                key=lambda x:((x.get("datetime_str") or x.get("date","")), 0 if x.get("txn_type")=="buy" else 1))
     lots=defaultdict(list)
     closed=[]
     for txn in txns:
@@ -116,7 +116,7 @@ def match_trades_fifo(transactions,stops,notes):
 
 def get_open_lots(transactions):
     txns=sorted([t for t in transactions if t.get("txn_type") in ("buy","sell") and t.get("symbol","").strip()],
-                key=lambda x:(x.get("datetime_str") or x.get("date","")))
+                key=lambda x:((x.get("datetime_str") or x.get("date","")), 0 if x.get("txn_type")=="buy" else 1))
     lots=defaultdict(list)
     for txn in txns:
         sym=txn.get("symbol","").upper().strip(); acct=txn.get("account","")

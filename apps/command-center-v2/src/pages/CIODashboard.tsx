@@ -4,6 +4,7 @@ import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
 import MetricTile from '../components/MetricTile'
 import { DoughnutChart, BarChartJS } from '../components/charts'
+import AccountBadge from '../components/AccountBadge'
 import { useApi } from '../hooks/useApi'
 
 interface CIODashboardData {
@@ -66,6 +67,16 @@ export default function CIODashboard() {
       <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
         Advisory only — all trades must be executed manually at your broker (Fidelity/Schwab). This app does not place or cancel orders.
       </div>
+
+      {/* Status code legend */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, padding: '6px 12px', background: 'var(--bg3)', borderRadius: 8, fontSize: 10, color: 'var(--text2)', flexWrap: 'wrap' }}>
+        <span><strong style={{ color: 'var(--green)' }}>ADD_REVIEW</strong> = AI recommends adding, awaiting your approval</span>
+        <span><strong style={{ color: 'var(--amber)' }}>HUMAN_REVIEW</strong> = AI uncertain, requires your judgment</span>
+        <span><strong style={{ color: 'var(--text1)' }}>HOLD</strong> = no change recommended</span>
+        <span><strong style={{ color: 'var(--accent)' }}>ADD_ON_PULLBACK</strong> = add only if price dips</span>
+        <span style={{ color: 'var(--text3)' }}>All counts are since system start, not active recommendations.</span>
+      </div>
+
       {/* Summary tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
         <MetricTile label="Total Decisions" value={String(decisions.length)} />
@@ -73,7 +84,7 @@ export default function CIODashboard() {
         <MetricTile label="Human Review" value={String(dashboard?.human_review_pending ?? humanReview.length)} deltaColor={humanReview.length > 0 ? 'var(--amber)' : undefined} />
         <MetricTile label="Rotations" value={String(dashboard?.pending_rotations || 0)} />
         <MetricTile label="Draft Plans" value={String(dashboard?.draft_plans || 0)} />
-        <MetricTile label="MARL Sims" value={String(dashboard?.marl_simulations || 0)} />
+        <MetricTile label="MARL Sims" value={String(dashboard?.marl_simulations || 0)} delta="shadow portfolio optimization" tooltip="Multi-Agent Reinforcement Learning shadow simulations. Agents practice allocation decisions in parallel — results inform confidence scoring but don't trigger actions." />
       </div>
 
       {/* Charts Row: Action Distribution + Priority Distribution */}
@@ -119,7 +130,7 @@ export default function CIODashboard() {
                     {a.agent.replace('_agent', '').replace(/^\w/, c => c.toUpperCase())}
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--sans)' }}>{a.total}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>decisions · avg conf: {(a.avg_confidence * 100).toFixed(0)}%</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>decisions since start · avg conf: {(a.avg_confidence * 100).toFixed(0)}%</div>
                   <div style={{ display: 'flex', height: 6, borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
                     {buyPct > 0 && <div style={{ width: `${buyPct}%`, background: 'var(--green)' }} />}
                     {holdPct > 0 && <div style={{ width: `${holdPct}%`, background: 'var(--amber)' }} />}
@@ -146,6 +157,7 @@ export default function CIODashboard() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <th style={thStyle}>Symbol</th>
+                <th style={thStyle}>Account</th>
                 <th style={thStyle}>Action</th>
                 <th style={thStyle}>Priority</th>
                 <th style={thStyle}>Status</th>
@@ -157,6 +169,7 @@ export default function CIODashboard() {
               {recentDecisions.map(d => (
                 <tr key={d.decision_id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--accent)' }}>{d.symbol || '—'}</td>
+                  <td style={tdStyle}><AccountBadge account={(d as any).account} /></td>
                   <td style={tdStyle}><ActionBadge action={d.action} /></td>
                   <td style={tdStyle}><PriorityBadge priority={d.priority} /></td>
                   <td style={{ ...tdStyle, color: 'var(--text2)' }}>{d.status}</td>

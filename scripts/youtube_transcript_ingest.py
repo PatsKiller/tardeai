@@ -315,6 +315,7 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
              quality_score, relevance_score, validation_status, matched_keywords, added_by,
              strategy_tags, agent_tags, timed_segments)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
     """, (video_id, meta["title"], meta["channel_name"], url,
           result["text"][:50000],
           result["duration_seconds"],
@@ -322,8 +323,16 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
           scores["validation_status"], json.dumps(scores["matched_keywords"]),
           added_by, json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"]),
           timed_json))
+    new_id = cur.fetchone()[0]
     conn.commit()
     conn.close()
+
+    # Tag immediately at ingest time — never leave a transcript untagged
+    try:
+        from transcript_tagger import tag_new_transcript
+        tag_new_transcript(new_id)
+    except Exception as e:
+        print(f"  [warning] Transcript tagging failed for {new_id}: {e}")
 
     return {
         "status": "ingested",

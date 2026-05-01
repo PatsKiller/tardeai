@@ -61,9 +61,9 @@ export default function Risk() {
       </div>
     )},
     { key: 'market_value', label: 'Value', width: 65, align: 'right' as const, render: (p: Position) => fmt$(p.market_value) },
-    { key: 'current_price', label: 'Price', width: 55, align: 'right' as const, render: (p: Position) => fmt$(p.current_price, 2) },
+    { key: 'current_price', label: 'Price', width: 55, align: 'right' as const, render: (p: Position) => p.current_price > 0 ? fmt$(p.current_price, 2) : <span style={{ color: 'var(--text3)' }} title="Price not available — enrichment may be stale. Run reprice via Actions.">$0</span> },
     { key: 'stop_price', label: 'Stop', width: 55, align: 'right' as const, render: (p: Position) => p.stop_price ? fmt$(p.stop_price, 2) : <span style={{ color: 'var(--text3)' }}>—</span> },
-    { key: 'distance_pct', label: 'Dist%', width: 45, align: 'right' as const, render: (p: Position) => p.distance_pct != null ? <span style={{ color: deltaColor(-Math.abs(p.distance_pct)) }}>{p.distance_pct.toFixed(1)}%</span> : <span style={{ color: 'var(--text3)' }}>—</span> },
+    { key: 'distance_pct', label: 'Dist%', width: 45, align: 'right' as const, render: (p: Position) => p.distance_pct != null ? <span title={`${Math.abs(p.distance_pct).toFixed(1)}% ${p.distance_pct < 0 ? 'below' : 'above'} stop. ${Math.abs(p.distance_pct) < 3 ? 'CLOSE — may trigger soon' : Math.abs(p.distance_pct) < 5 ? 'Approaching — monitor daily' : 'Comfortable distance'}`} style={{ color: deltaColor(-Math.abs(p.distance_pct)) }}>{p.distance_pct.toFixed(1)}%</span> : <span style={{ color: 'var(--text3)' }} title="No stop set — consider adding one via broker">—</span> },
     { key: 'max_loss', label: 'Max Loss', width: 60, align: 'right' as const, sortKey: (p: Position) => p.max_loss, render: (p: Position) => <span style={{ color: 'var(--red)' }}>{fmt$(p.max_loss)}</span> },
   ]
 

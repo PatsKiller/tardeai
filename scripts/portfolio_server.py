@@ -558,6 +558,276 @@ def serve_file(handler, path: Path) -> None:
 
 # ── Import handler ────────────────────────────────────────────────────────────
 
+def _parse_csv_to_import(body: dict) -> dict:
+    """Parse raw Schwab/Fidelity CSV text into the structured format handle_import() expects.
+
+    Schwab CSVs have metadata lines before the header:
+      "Positions for Rollover IRA ...as of 04/30/2026..."
+      ""
+      "Symbol","Description","Quantity","Price",...
+
+    The parser finds the header row by looking for a line containing 'symbol'.
+    """
+    import re
+    from datetime import date as _date
+
+    csv_text = body.get("csv_text", "")
+    import_type = body.get("import_type", "schwab_positions")
+    filename = body.get("filename", "")
+
+    # Determine account from filename or import_type
+    fname_lower = filename.lower()
+    if "rollover" in fname_lower or "roll" in fname_lower:
+        account_key = "schwab_rollover_ira"
+    elif "roth" in fname_lower:
+        account_key = "schwab_roth"
+    elif "individual" in fname_lower or "taxable" in fname_lower or "brokerage" in fname_lower:
+        account_key = "schwab_taxable"
+    elif "fidelity" in fname_lower or "401" in fname_lower or import_type == "fidelity_positions":
+        account_key = "fidelity_401k"
+    else:
+        account_key = "schwab_rollover_ira"
+
+    # ── CSV line tokenizer (handles quoted fields with embedded commas) ──
+    def parse_csv_line(line):
+        cells = []
+        cur = ""
+        in_q = False
+        for ch in line:
+            if ch == '"':
+                in_q = not in_q
+            elif ch == ',' and not in_q:
+                cells.append(cur.strip())
+                cur = ""
+            else:
+                cur += ch
+        cells.append(cur.strip())
+        return cells
+
+    lines = csv_text.replace("\ufeff", "").split("\n")
+    lines = [l.rstrip("\r") for l in lines if l.strip()]
+
+    # Extract as_of date from header metadata (e.g., "...as of 04/30/2026...")
+    as_of = str(_date.today())
+    for l in lines[:5]:
+        m = re.search(r'(\d{2})/(\d{2})/(\d{4})', l)
+        if m:
+            as_of = f"{m.group(3)}-{m.group(1)}-{m.group(2)}"
+            break
+
+    # Find header row — must contain "symbol" somewhere
+    header_idx = -1
+    for i, l in enumerate(lines):
+        low = l.replace('"', '').lower()
+        if ('symbol' in low or 'ticker' in low) and ('quantity' in low or 'shares' in low or 'description' in low):
+            header_idx = i
+            break
+
+    if header_idx < 0:
+        raise ValueError("Could not find header row. Expected columns: Symbol, Quantity, Price, Market Value")
+
+    headers = [h.lower().strip() for h in parse_csv_line(lines[header_idx])]
+    # Schwab uses verbose headers like "Qty (Quantity)", "Mkt Val (Market Value)", "Gain $ (Gain/Loss $)"
+    sym_idx = next((i for i, h in enumerate(headers) if h == 'symbol'), -1)
+    qty_idx = next((i for i, h in enumerate(headers) if 'quantity' in h or 'qty' in h), -1)
+    price_idx = next((i for i, h in enumerate(headers) if h == 'price' or h == 'last price'), -1)
+    mv_idx = next((i for i, h in enumerate(headers) if 'market value' in h or 'mkt val' in h or 'current value' in h), -1)
+    name_idx = next((i for i, h in enumerate(headers) if h == 'description' or h == 'name'), -1)
+    cb_idx = next((i for i, h in enumerate(headers) if 'cost basis' in h), -1)
+    gl_idx = next((i for i, h in enumerate(headers) if 'gain' in h and '$' in h), -1)
+
+    if sym_idx < 0:
+        raise ValueError(f"No 'Symbol' column found. Headers: {headers}")
+
+    print(f"  [csv-parse] Header at line {header_idx}: {headers[:8]}...")
+
+    def parse_num(s):
+        if not s or s in ('--', 'N/A', 'n/a', '', 'Incomplete'):
+            return 0.0
+        cleaned = re.sub(r'[$,%]', '', s).replace(',', '').strip()
+        if not cleaned or not re.match(r'^-?[\d.]+$', cleaned):
+            return 0.0
+        return float(cleaned)
+
+    _CASH_SYMS = {"CASH", "CASH & CASH INVESTMENTS", "CASH & CASH EQUIVALENTS",
+                  "SNAXX", "SWVXX", "VMFXX", "FDRXX", "SPRXX", "MMKT", "SPAXX", "FZFXX"}
+
+    holdings = []
+    total_value = 0.0
+
+    for i in range(header_idx + 1, len(lines)):
+        row = parse_csv_line(lines[i])
+        if len(row) <= sym_idx:
+            continue
+        sym = row[sym_idx].upper().strip()
+        if not sym or sym == 'SYMBOL' or sym == 'ACCOUNT TOTAL' or sym == 'POSITIONS TOTAL' or len(sym) > 20:
+            continue
+        # Skip CUSIP numbers (all digits) — not a ticker
+        if sym.isdigit():
+            continue
+
+        shares = parse_num(row[qty_idx]) if qty_idx >= 0 and qty_idx < len(row) else 0
+        price = parse_num(row[price_idx]) if price_idx >= 0 and price_idx < len(row) else 0
+        mv = parse_num(row[mv_idx]) if mv_idx >= 0 and mv_idx < len(row) else 0
+        name = row[name_idx].strip() if name_idx >= 0 and name_idx < len(row) else ""
+        cb = parse_num(row[cb_idx]) if cb_idx >= 0 and cb_idx < len(row) else 0
+        gl = parse_num(row[gl_idx]) if gl_idx >= 0 and gl_idx < len(row) else 0
+
+        is_cash = sym in _CASH_SYMS or 'CASH' in sym
+
+        if is_cash:
+            # Cash line: market_value is the cash amount
+            if mv <= 0:
+                mv = parse_num(row[price_idx]) if price_idx >= 0 and price_idx < len(row) else 0
+            if mv > 0:
+                holdings.append({
+                    "symbol": "CASH", "name": "Cash & Cash Investments",
+                    "company": "Cash & Cash Investments",
+                    "shares": mv, "price": 1.0, "market_value": mv,
+                    "day_change": 0.0, "day_change_pct": 0.0,
+                    "cost_basis": mv, "gain_loss": 0.0,
+                    "account": account_key, "is_cash": True,
+                })
+                total_value += mv
+            continue
+
+        if mv == 0 and shares > 0 and price > 0:
+            mv = round(shares * price, 2)
+
+        holdings.append({
+            "symbol": sym, "name": name, "company": name,
+            "shares": shares, "price": price, "market_value": mv,
+            "day_change": 0.0, "day_change_pct": 0.0,
+            "cost_basis": cb, "gain_loss": gl,
+            "account": account_key, "is_cash": False,
+        })
+        total_value += mv
+
+    if not holdings:
+        raise ValueError("No valid positions found in CSV")
+
+    print(f"  [csv-parse] Parsed {len(holdings)} positions, total ${total_value:,.2f}, account={account_key}")
+
+    return {
+        "account_key": account_key,
+        "as_of": as_of,
+        "holdings": holdings,
+        "total_value": round(total_value, 2),
+        "source": f"csv_import_{import_type}",
+        "import_type": import_type,
+        "filename": filename,
+    }
+
+
+def _parse_txn_csv(body: dict) -> dict:
+    """Parse raw Schwab Transactions CSV into structured format for handle_import_transactions().
+
+    Schwab transaction CSV headers:
+      "Date","Action","Symbol","Description","Quantity","Price","Fees & Comm","Amount"
+    """
+    import re
+
+    csv_text = body.get("csv_text", "")
+    filename = body.get("filename", "")
+
+    # Determine account from filename
+    fname_lower = filename.lower()
+    if "rollover" in fname_lower:
+        acct_key = "schwab_rollover_ira"
+    elif "roth" in fname_lower:
+        acct_key = "schwab_roth"
+    elif "individual" in fname_lower or "taxable" in fname_lower or "brokerage" in fname_lower:
+        acct_key = "schwab_taxable"
+    else:
+        acct_key = "schwab_rollover_ira"
+
+    def parse_csv_line(line):
+        cells = []
+        cur = ""
+        in_q = False
+        for ch in line:
+            if ch == '"':
+                in_q = not in_q
+            elif ch == ',' and not in_q:
+                cells.append(cur.strip())
+                cur = ""
+            else:
+                cur += ch
+        cells.append(cur.strip())
+        return cells
+
+    lines = csv_text.replace("\ufeff", "").split("\n")
+    lines = [l.rstrip("\r") for l in lines if l.strip()]
+
+    # Find header row
+    header_idx = -1
+    for i, l in enumerate(lines):
+        low = l.replace('"', '').lower()
+        if 'date' in low and ('action' in low or 'symbol' in low):
+            header_idx = i
+            break
+
+    if header_idx < 0:
+        raise ValueError("Could not find transaction header row. Expected: Date, Action, Symbol columns.")
+
+    headers = [h.lower().strip() for h in parse_csv_line(lines[header_idx])]
+    date_idx = next((i for i, h in enumerate(headers) if h == 'date' or 'trade date' in h), -1)
+    action_idx = next((i for i, h in enumerate(headers) if h == 'action' or h == 'type' or 'transaction' in h), -1)
+    sym_idx = next((i for i, h in enumerate(headers) if h == 'symbol' or h == 'ticker'), -1)
+    qty_idx = next((i for i, h in enumerate(headers) if 'quantity' in h or 'qty' in h or 'shares' in h), -1)
+    price_idx = next((i for i, h in enumerate(headers) if h == 'price' or 'exec price' in h), -1)
+    amt_idx = next((i for i, h in enumerate(headers) if 'amount' in h or 'total' in h or 'net' in h), -1)
+    desc_idx = next((i for i, h in enumerate(headers) if 'description' in h or 'desc' in h), -1)
+
+    def parse_num(s):
+        if not s or s in ('--', 'N/A', ''):
+            return 0.0
+        cleaned = re.sub(r'[$,+]', '', s).strip()
+        if not cleaned or not re.match(r'^-?[\d.]+$', cleaned):
+            return 0.0
+        return float(cleaned)
+
+    txns = []
+    for i in range(header_idx + 1, len(lines)):
+        row = parse_csv_line(lines[i])
+        if date_idx < 0 or date_idx >= len(row):
+            continue
+        date_raw = row[date_idx].strip()
+        if not date_raw or not re.search(r'\d', date_raw):
+            continue
+
+        # Normalize date MM/DD/YYYY → YYYY-MM-DD
+        dm = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_raw)
+        trade_date = f"{dm.group(3)}-{dm.group(1).zfill(2)}-{dm.group(2).zfill(2)}" if dm else date_raw
+
+        action = row[action_idx].strip() if action_idx >= 0 and action_idx < len(row) else ""
+        symbol = (row[sym_idx].upper().strip() if sym_idx >= 0 and sym_idx < len(row) else "").strip()
+        qty = parse_num(row[qty_idx]) if qty_idx >= 0 and qty_idx < len(row) else 0
+        price = parse_num(row[price_idx]) if price_idx >= 0 and price_idx < len(row) else 0
+        amount = parse_num(row[amt_idx]) if amt_idx >= 0 and amt_idx < len(row) else 0
+        desc = row[desc_idx].strip()[:60] if desc_idx >= 0 and desc_idx < len(row) else action
+
+        if not trade_date or not action:
+            continue
+
+        txns.append({
+            "date": trade_date,
+            "action": action,
+            "symbol": symbol or "—",
+            "quantity": abs(qty),
+            "price": price,
+            "amount": amount,
+            "description": desc,
+            "account": acct_key,
+        })
+
+    if not txns:
+        raise ValueError("No valid transactions found in CSV")
+
+    print(f"  [txn-parse] Parsed {len(txns)} transactions, account={acct_key}")
+    return {"transactions": txns, "import_type": "schwab_transactions", "filename": filename}
+
+
 def handle_import(body: dict) -> tuple:
     """
     Write imported positions to holdings.json.
@@ -582,6 +852,15 @@ def handle_import(body: dict) -> tuple:
     new_holdings = body["holdings"]
     new_total = float(body["total_value"])
     source = body.get("source", "import")
+
+    # Backup before import
+    try:
+        import shutil
+        _bak_dir = PROJECT_ROOT / "file_backups" / f"holdings_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        _bak_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(HOLDINGS_PATH, _bak_dir / "holdings.json")
+    except Exception:
+        pass
 
     # Load current state
     current = read_holdings()
@@ -789,7 +1068,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 elif _v2_sub.endswith(".ico"): _ct = "image/x-icon"
                 self.send_response(200)
                 self.send_header("Content-Type", _ct)
-                self.send_header("Cache-Control", "no-cache" if _v2_sub.endswith(".html") else "public, max-age=86400")
+                # Force no-cache on all assets to prevent stale chunk issues after builds
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
                 _body = _v2_file.read_bytes()
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
@@ -806,6 +1088,24 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Location", "/reports/command_center.html")
             self.end_headers()
+            return
+
+        # Agent monitor dashboard
+        if path == "/agent-monitor":
+            _am = PROJECT_ROOT / "reports" / "agent_monitor.html"
+            if _am.exists():
+                serve_file(self, _am)
+            else:
+                self.send_error(404, "agent_monitor.html not found")
+            return
+
+        # Agent orchestration dashboard
+        if path == "/agent-orchestration":
+            _ao = PROJECT_ROOT / "reports" / "agent_orchestration.html"
+            if _ao.exists():
+                serve_file(self, _ao)
+            else:
+                self.send_error(404, "agent_orchestration.html not found")
             return
 
         # API health check
@@ -1101,6 +1401,24 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+            # If raw CSV was sent from ImportModal, parse it into the expected format
+            if "csv_text" in body and "account_key" not in body:
+                # Log raw CSV for debugging
+                try:
+                    _csv_debug = PROJECT_ROOT / "logs" / "last_csv_upload.txt"
+                    _csv_debug.write_text(body.get("csv_text", "")[:5000])
+                    print(f"  [import] Raw CSV saved to logs/last_csv_upload.txt ({len(body.get('csv_text',''))} chars)")
+                except Exception:
+                    pass
+                try:
+                    body = _parse_csv_to_import(body)
+                    print(f"  [import] Parsed CSV → account={body.get('account_key')} holdings={len(body.get('holdings',[]))}")
+                except Exception as _csv_err:
+                    import traceback
+                    traceback.print_exc()
+                    json_response(self, 400, {"error": f"CSV parse failed: {_csv_err}"})
+                    return
+
             status, result = handle_import(body)
             print(f"  [import] Result: status={status}, ok={result.get('ok','?')}")
 
@@ -1143,6 +1461,18 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
         elif path == "/api/import-transactions":
             print(f"  [import-txn] POST /api/import-transactions received — body keys: {list(body.keys())[:10]}, size: {len(raw)} bytes")
+
+            # If raw CSV was sent, parse it
+            if "csv_text" in body and "transactions" not in body:
+                try:
+                    body = _parse_txn_csv(body)
+                    print(f"  [import-txn] Parsed CSV → {len(body.get('transactions',[]))} transactions")
+                except Exception as _e:
+                    import traceback
+                    traceback.print_exc()
+                    json_response(self, 400, {"error": f"Transaction CSV parse failed: {_e}"})
+                    return
+
             try:
                 import datetime as _imp_dt
                 _imp_log = PROJECT_ROOT / "logs" / "import_audit.log"

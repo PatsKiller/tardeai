@@ -10,6 +10,7 @@ import PeriodReturnBars from '../components/PeriodReturnBars'
 import DetailDrawer, { DrawerStat, DrawerSection } from '../components/DetailDrawer'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, fmtN, deltaColor, fmtCompact } from '../lib/format'
+import AccountBadge from '../components/AccountBadge'
 
 interface Holding {
   symbol: string; name: string; account: string; shares: number; price: number
@@ -95,14 +96,16 @@ export default function Portfolio() {
     )},
     { key: 'gain_loss', label: 'Gain $', width: 60, align: 'right' as const, sortKey: (r: Holding) => (r as unknown as Record<string,number>).gain_loss ?? 0, render: (r: Holding) => {
       const gl = (r as unknown as Record<string,number>).gain_loss
-      return gl != null && gl !== 0 ? <span style={{ color: deltaColor(gl), fontWeight: 600 }}>{gl >= 0 ? '+' : ''}{fmt$(gl)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
+      if (gl != null && gl !== 0) return <span style={{ color: deltaColor(gl), fontWeight: 600 }}>{gl >= 0 ? '+' : ''}{fmt$(gl)}</span>
+      if (r.account === 'fidelity_401k') return <span style={{ color: 'var(--text3)' }} title="401k gain/loss not tracked per-position — Fidelity reports only at account level via NetBenefits">—</span>
+      return <span style={{ color: 'var(--text3)' }}>—</span>
     }},
     { key: 'yield_pct', label: 'Yield', width: 40, align: 'right' as const, render: (r: Holding) => (
       r.yield_pct ? <span style={{ color: 'var(--green)' }}>{r.yield_pct.toFixed(1)}%</span> : <span style={{ color: 'var(--text3)' }}>—</span>
     )},
     { key: 'pi_score', label: 'PI', width: 30, align: 'right' as const, sortKey: (r: Holding) => (r as unknown as Record<string,number>).pi_score ?? 0, render: (r: Holding) => {
       const s = (r as unknown as Record<string,number>).pi_score
-      return s != null ? <span style={{ fontWeight: 600, color: s >= 65 ? 'var(--green)' : s >= 40 ? 'var(--amber)' : 'var(--red)' }}>{s}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
+      return s != null ? <span title={`Position Intelligence Score: ${s >= 65 ? 'Strong (≥65) — position well-supported by technicals/fundamentals' : s >= 40 ? 'Moderate (40-64) — mixed signals, monitor closely' : 'Weak (<40) — consider trimming or setting tighter stop'}`} style={{ fontWeight: 600, color: s >= 65 ? 'var(--green)' : s >= 40 ? 'var(--amber)' : 'var(--red)' }}>{s}</span> : <span style={{ color: 'var(--text3)' }} title="PI Score not computed — run enrichment pipeline">—</span>
     }},
     { key: 'rsi', label: 'RSI', width: 35, align: 'right' as const, render: (r: Holding) => (
       r.rsi != null ? <span style={{ color: r.rsi > 70 ? 'var(--red)' : r.rsi < 30 ? 'var(--green)' : 'var(--text1)' }}>{r.rsi.toFixed(0)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
@@ -202,6 +205,32 @@ export default function Portfolio() {
           </button>
         ))}
       </div>
+
+      {/* Account subtotals */}
+      {acctFilter === 'all' && (hd?.holdings ?? []).length > 0 && (() => {
+        const acctSums: Record<string, { value: number; count: number; gain: number; cash: number }> = {}
+        for (const p of hd?.holdings ?? []) {
+          const a = p.account || 'unknown'
+          if (!acctSums[a]) acctSums[a] = { value: 0, count: 0, gain: 0, cash: 0 }
+          acctSums[a].value += p.market_value
+          acctSums[a].count += 1
+          if (p.is_cash) acctSums[a].cash += p.market_value
+          if ((p as unknown as Record<string,number>).gain_loss) acctSums[a].gain += (p as unknown as Record<string,number>).gain_loss
+        }
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Object.keys(acctSums).length}, 1fr)`, gap: 6, marginBottom: 8 }}>
+            {Object.entries(acctSums).map(([acct, s]) => (
+              <div key={acct} onClick={() => setAcctFilter(acct)} style={{ padding: '6px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius)', cursor: 'pointer', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>{ACCT[acct] || acct}{acct === 'fidelity_401k' ? ' \uD83C\uDFE6' : ''}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(s.value)}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+                  {s.count} pos{s.cash > 0 ? ` · ${fmt$(s.cash)} cash` : ''}{s.gain !== 0 && acct !== 'fidelity_401k' ? ` · ${s.gain >= 0 ? '+' : ''}${fmt$(s.gain)}` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Holdings grid */}
       <DataGrid columns={columns} data={positions} rowKey={r => r.symbol + ':' + r.account}

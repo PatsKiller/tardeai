@@ -7,10 +7,16 @@ const F = { fontFamily: 'var(--sans)' as const }
 interface AgentResult {
   symbol: string; recommendation: string; confidence: number
   summary: string; narrative: string; next_action: string; created_at: string
+  sc_latest_price?: number | null; sc_support?: number | null; sc_resistance?: number | null
+  sc_stop_loss?: number | null; sc_target_price?: number | null; sc_risk_reward?: number | null
+  sc_account_fit?: string | null; sc_strategy_type?: string | null
+  sc_position_size_note?: string | null; sc_time_horizon?: string | null
+  held_shares?: number | null; held_value?: number | null; held?: boolean
+  held_gain_loss?: number | null; reviewed_by?: string[] | null
 }
 interface DistItem { recommendation: string; cnt: number }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AgentDetailData = { latest: any[]; distribution: any[]; top_symbols: any[] }
+export type AgentDetailData = { latest: any[]; distribution: any[]; top_symbols: any[]; risk_alerts?: any[]; macro?: Record<string, any> }
 
 interface AgentConfig {
   id: string; name: string; role: string; color: string; icon: string; dbNames: string[]

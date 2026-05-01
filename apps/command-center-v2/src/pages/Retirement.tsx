@@ -59,6 +59,19 @@ export default function Retirement() {
   const { data: historyResp } = useApi<HistoryResp>('/api/v2/proposals/history')
   const [deciding, setDeciding] = useState<Record<number, string>>({})
   const [decided, setDecided] = useState<Set<number>>(new Set())
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMsg, setRefreshMsg] = useState('')
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/v2/retirement/refresh', { method: 'POST' })
+      const d = await res.json()
+      setRefreshMsg(d.message || 'Refresh started')
+      setTimeout(() => setRefreshMsg(''), 5000)
+    } catch {}
+    finally { setRefreshing(false) }
+  }, [])
 
   const handleProposalDecision = useCallback(async (id: number, decision: 'approved' | 'rejected') => {
     setDeciding(s => ({ ...s, [id]: decision }))
@@ -104,6 +117,24 @@ export default function Retirement() {
   return (
     <>
       <PageHeader title={`Strategic Portfolio & Retirement — Age ${data.current_age?.toFixed(1)}`} subtitle={`as of ${data.as_of}`} />
+
+      {/* Freshness badge */}
+      {(() => {
+        const asOf = data.as_of ? new Date(data.as_of) : null
+        const daysSince = asOf ? Math.floor((Date.now() - asOf.getTime()) / 86400000) : 99
+        const isFresh = daysSince <= 7
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '6px 12px', background: isFresh ? 'rgba(0,255,136,.06)' : 'rgba(255,170,0,.06)', border: `1px solid ${isFresh ? 'rgba(0,255,136,.2)' : 'rgba(255,170,0,.2)'}`, borderRadius: 6 }}>
+            <span style={{ fontSize: 10, color: isFresh ? 'var(--green)' : 'var(--amber)', fontWeight: 700 }}>
+              {isFresh ? `Current as of ${data.as_of}` : `Data may be stale (${data.as_of || 'unknown'})`}
+            </span>
+            <button onClick={handleRefresh} disabled={refreshing} style={{ fontSize: 9, padding: '3px 10px', background: 'transparent', border: `1px solid ${isFresh ? 'var(--green)' : 'var(--amber)'}`, borderRadius: 4, color: isFresh ? 'var(--green)' : 'var(--amber)', cursor: refreshing ? 'wait' : 'pointer' }}>
+              {refreshing ? 'Refreshing...' : 'Refresh now'}
+            </button>
+            {refreshMsg && <span style={{ fontSize: 9, color: 'var(--accent)' }}>{refreshMsg}</span>}
+          </div>
+        )
+      })()}
 
       {/* Quick nav */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
