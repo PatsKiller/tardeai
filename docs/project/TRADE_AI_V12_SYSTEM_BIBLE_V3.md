@@ -1,11 +1,12 @@
-# Trade AI v12 + Portfolio Intelligence — System Bible v5.3
+# Trade AI v12 + Portfolio Intelligence — System Bible v5.4
 
 **Canonical source of truth. Claude Code uses this document as the reference spec.**  
 **Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 1, 2026  
 **SSH:** `ssh johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
-**Prev version:** v5.2 (May 1, 2026)  
-**Changelog:** v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 32 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
+**Prev version:** v5.3 (May 1, 2026)  
+**Changelog:** v5.4 — Complete scripts & cron cheat sheet: 67 cron entries documented by time/day, on-demand scripts, server processes, utility scripts, full verbatim crontab. Replaced old partial cron table.
+**Prev changelog:** v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 32 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
 
 ---
 
@@ -1102,64 +1103,239 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 
 ---
 
-## 12. Cron Schedule (67 entries)
+## 12. Scripts & Cron Cheat Sheet
 
-### Morning Cascade (5 AM – 8 AM)
+### Server processes (always running)
 
-| Time | Script | What |
-|------|--------|------|
-| 5:00 AM | `alex_retirement_advisor.py --daily-scan` | Alex daily scan → Telegram |
-| 5:30 AM | `overnight_batch.py --outcomes` | Score past decisions + extract lessons |
-| 6:00 AM | `smart_alerts.py` | Roth/income/conflict/stop/Medicare alerts → Telegram |
-| 6:00 AM | `credential_monitor.py` | Check all 10 credentials → alert if any fail |
-| 6:15 AM | `agent_router.py --full-refresh` | Agent router |
-| 6:25 AM | `agent_router.py --daily-intel` | Agent intel daily |
-| 6:30 AM | `fred_data_ingest.py --ingest` | FRED macro snapshot |
-| 6:30 AM | `news_ingest.py` | Yahoo + Finnhub + Google News |
-| 6:35 AM | `classify_candidates.py` | Classify new symbols |
-| 6:40 AM | `intel_auto_discovery.py` | Scan for new ticker mentions |
-| 6:45 AM | `sync_watchlist.py` | Watchlist sync |
-| 6:45 AM | `overnight_batch.py --proactive` | Auto-queue high-Q symbols |
-| 6:50 AM | `strategy_cards.py` | Materialize strategy cards |
-| 6:55 AM | `income_engine.py` | Income calculations |
-| 7:00 AM | `cio_decisions.py` | CIO synthesis + dividend sync |
-| 7:10 AM | `finviz_enrichment.py` | RSI, SMA, ATR enrichment |
-| 7:15–7:50 AM | Various | Freshness, prices, health, recovery, QA, outcomes |
-| 8:00 AM | `aegis_morning_brief_delivery.py` | Morning brief → Telegram + DB |
+| Script | How started | What it does | Port |
+|--------|-------------|--------------|------|
+| `portfolio_server.py` | nohup / systemd | Main HTTP server — serves /api/v2/*, static files, React app | 7777 |
+| `continuous_runner.py` | nohup | Continuous agent job processor (alt to cron-based) | — |
 
-### Market Hours / Evening
+### Pipeline scripts (run by cron — 67 entries)
 
-| Time | Script | What |
-|------|--------|------|
-| 10:00 AM | `trade_ai_orchestrator.py` | Finviz screeners (market open) |
-| 12:30 PM | `news_ingest.py` | Midday news refresh |
-| 4:00 PM | `trade_ai_orchestrator.py` | Finviz screeners (market close) |
-| 6:30 PM | `news_ingest.py` | Evening news |
-| 7:00 PM | `youtube_transcript_ingest.py --all-channels` | YouTube ingest (44 channels × 3 videos) |
-| 7:00 PM | `agent_watchlist_engine.py --daily` | Promote intel, propose rotations, discovery summary |
-| 7:30 PM | `transcript_slow_processor.py --fresh` | Process today's new transcripts |
-| 9:00 PM | `overnight_batch.py --index-embeddings` | Index new embeddings |
-| 9:00 PM | `overnight_batch.py --auto-research` | Auto-research conflicts (via Claude) |
+#### Morning Cascade (5:00–8:05 AM, Mon–Fri)
 
-### Continuous (Level 3)
+| Time | Script | What it does | Key args |
+|------|--------|--------------|----------|
+| 5:00 | `run_alex_daily.py` | Alex daily retirement scan → Telegram | `--daily --telegram` |
+| 5:30 | `overnight_batch.py` | Score past decisions, extract outcome lessons | `--outcomes` |
+| 6:00 | `telegram_smart_alerts.py` | Roth/income/conflict/stop/Medicare alerts → Telegram | `--check-all --telegram` |
+| 6:00 | `credential_monitor.py` | Check all 10 API credentials, alert on failure | `--check --telegram` |
+| 6:15 | `agent_router_cron.sh` | Full agent router refresh (shell wrapper) | `full` |
+| 6:25 | `agent_intelligence_cron.sh` | Daily agent intelligence pipeline | `daily` |
+| 6:30 | `fred_data_ingest.py` | FRED macro data (7 series: DFF, CPI, VIX, T10Y2Y, etc.) | `--ingest` |
+| 6:30 | `news_ingestion.py` | Yahoo RSS + Finnhub + Google News ingest | `--priority` |
+| 6:35 | `classify_candidates.py` | Classify new symbols into strategy types | — |
+| 6:40 | `intel_auto_discovery.py` | Scan for new ticker mentions in intel pipeline | `--telegram` |
+| 6:45 | `sync_watchlist_items_to_db.py` | Sync watchlist items to PostgreSQL | — |
+| 6:45 | `overnight_batch.py` | Auto-queue high-quality symbols for agent analysis | `--proactive` |
+| 6:50 | `materialize_watchlist_strategy_cards.py` | Build strategy card views for dashboard | — |
+| 6:55 | `materialize_income_engine.py` | Calculate income projections | — |
+| 7:00 | `cio_decision_engine.py` | CIO synthesis — agent consensus → decisions | `--run` |
+| 7:05 | `sync_dividend_data.py` | Dividend calendar sync from broker data | — |
+| 7:10 | `finviz_enrichment.py` | RSI, SMA, ATR, beta enrichment for all watchlist | — |
+| 7:15 | `write_state_freshness_history.py` | Record data freshness metrics to DB | — |
+| 7:15 | `external_market_data_ingest.py` | yfinance real-time quotes | `--quotes` |
+| 7:20 | `price_db_sync.py` | Sync prices from cache to DB | — |
+| 7:25 | `system_health_alerts.py` | System health check → alert on failures | — |
+| 7:30 | `recovery_watch_daily.py` | Check recovery candidates, capital allocation | — |
+| 7:40 | `portfolio_level_qa.py` | Portfolio-level quality assurance checks | — |
+| 7:50 | `record_decision_outcome.py` | Track decision outcomes for learning loop | — |
+| 8:00 | `iterate_research_topics.py` | Re-research persistent topics | `--telegram` |
+| 8:05 | `aegis_morning_brief_delivery.py` | Morning brief → Telegram + markdown export | — |
 
-| Schedule | Script | What |
-|----------|--------|------|
-| Every 15 min | `event_detector.py` | Level 3: SEC insider buys, RSI extremes, FRED rate changes → `agent_event_queue` |
-| Every 15 min (+2m) | `agent_event_router.py` | Level 3: drain queue → create agent jobs → process → Telegram alerts |
+#### Market Hours (10 AM – 6:30 PM, Mon–Fri)
 
-### Weekly / Monthly
+| Time | Script | What it does | Key args |
+|------|--------|--------------|----------|
+| 10:00 | `finviz_screener_runner.py` | Run 22 Finviz screeners (market open) | `--run` |
+| 10:00–15:00 | `agent_router_cron.sh` | Light agent router refresh (hourly) | `light` |
+| 11:30, 14:30 | `agent_intelligence_cron.sh` | Intraday agent intel refresh | `intraday` |
+| 12:10, 15:10 | `system_health_alerts.py` | Midday/afternoon health checks | — |
+| 12:30 | `news_ingestion.py` | Midday news refresh | `--priority` |
+| 12:40 | `intel_auto_discovery.py` | Midday ticker discovery scan | `--telegram` |
+| 13:00 | `finviz_enrichment.py` | Afternoon RSI/SMA update | — |
+| 16:00 | `finviz_screener_runner.py` | Run screeners (market close) | `--run` |
+| 18:30 | `news_ingestion.py` | Evening news batch | `--priority` |
 
-| Schedule | Script | What |
-|----------|--------|------|
-| Sunday 1 AM | `full_system_backup.py` | Full backup zip (4 weeks retained) |
-| Sunday 7 AM | `overnight_batch.py --research` | Re-analyze persistent research topics |
-| Sunday 8 AM | `agent_watchlist_engine.py --autonomy-summary` | Weekly autonomy report → Telegram |
-| Sunday 6 AM | `iris_taxonomy_agent.py --hygiene` | Iris content hygiene — demote stale, flag superseded |
-| Sunday 8 AM | `alex_gov_research.py --refresh` | Alex government data refresh (SSA, IRMAA, Medicaid, Roth) |
-| Sunday 10 AM | `alex_retirement_advisor.py --weekly-health` | Deep retirement health check |
-| 1st of month 9 AM | `alex_retirement_advisor.py --monthly-report` | Monthly retirement performance report |
-| 1st of month 10 AM | `youtube_channel_discovery.py --discover` | YouTube channel discovery scan |
+#### Evening Pipeline (7–9 PM, Mon–Fri)
+
+| Time | Script | What it does | Key args |
+|------|--------|--------------|----------|
+| 19:00 | `youtube_transcript_ingest.py` | Ingest from 44 channels (3 videos each) | `--all-channels` |
+| 19:00 | `agent_watchlist_engine.py` | Promote intel, propose rotations, discovery | `--daily --telegram` |
+| 19:30 | `transcript_slow_processor.py` | Process today's fresh transcripts | `--fresh --count 5` |
+| 20:00 | `overnight_batch.py` | Nightly pipeline: agents, tasks, approvals | `--telegram` |
+| 20:00 | `sec_data_ingest.py` | SEC EDGAR Form 4 insider filing ingest | `--all` |
+| 21:00 | `auto_research.py` | Auto-research conflicts via Claude | `--check --telegram` |
+| 21:00 | `overnight_batch.py` | Index new embeddings | `--index-embeddings` |
+
+#### Continuous (24/7)
+
+| Schedule | Script | What it does | Key args |
+|----------|--------|--------------|----------|
+| Every 15 min | `event_detector.py` | Level 3: 10 event types → agent_event_queue | — |
+| Every 15 min (+2m delay) | `agent_event_router.py` | Drain queue → agent jobs → process → Telegram | — |
+| Every 15 min (6–19h M-F) | `process_watchlist_agent_jobs.py` | Process queued agent analysis jobs | `--limit 10` |
+| Every 5 min (20–05h M-F) | `process_watchlist_agent_jobs.py` | Overnight batch processing | `--limit 25` |
+| Every 10 min (weekends) | `process_watchlist_agent_jobs.py` | Weekend processing | `--limit 15` |
+| Every 4 hours | `youtube_backfill_manager.py` | Backfill older YouTube transcripts | — |
+| 22:00–06:00 (hourly) | `transcript_slow_processor.py` | Slow-process transcripts overnight | `--run --count 2` |
+| 2:00 AM daily | `pg_dump` (inline) | Database backup (gzip, 7-day retention) | — |
+
+#### Weekly (Sunday)
+
+| Time | Script | What it does | Key args |
+|------|--------|--------------|----------|
+| 1:00 AM | `full_system_backup.py` | Full system backup zip (4 weeks retained) | — |
+| 3:00 AM | `find ... -delete` | Clean archive dirs older than 7 days | — |
+| 6:00 AM | `iris_taxonomy_agent.py` | Iris content hygiene — demote stale, flag superseded | `--hygiene` |
+| 7:00 AM | `overnight_batch.py` | Re-analyze persistent research topics | `--research` |
+| 7:30 AM | `agent_router_cron.sh` | Deep agent router refresh | `deep` |
+| 8:00 AM | `agent_intelligence_cron.sh` | Deep agent intelligence pipeline | `deep` |
+| 8:00 AM | `run_alex_daily.py` | Alex weekly retirement health check | `--weekly --telegram` |
+| 8:00 AM | `alex_gov_research.py` | Government data refresh (SSA, IRMAA, Medicaid, Roth) | `--refresh` |
+| 8:00 AM | `agent_watchlist_engine.py` | Weekly autonomy report → Telegram | `--autonomy-summary --telegram` |
+| 9:30 AM | `watchlist_hygiene.py` | Remove stale, flag negatives, rotation | `--telegram` |
+| 10:00 AM | `agent_watchlist_engine.py` | Weekly watchlist engine | `--weekly --telegram` |
+
+#### Monday Only
+
+| Time | Script | What it does | Key args |
+|------|--------|--------------|----------|
+| 8:00 AM | `external_market_data_ingest.py` | Weekly fundamentals refresh (Alpha Vantage) | `--fundamentals` |
+
+#### Monthly (1st)
+
+| Time | Script | What it does | Key args |
+|------|--------|--------------|----------|
+| 3:00 AM | `transcript_processor.py` | Set purge dates + purge expired transcripts | inline Python |
+| 9:00 AM | `run_alex_daily.py` | Alex monthly retirement report | `--monthly --telegram` |
+| 9:00 AM | `alex_retirement_advisor.py` | Monthly retirement performance report | `--monthly-report --telegram` |
+| 10:00 AM | `youtube_channel_discovery.py` | Discover new YouTube channels | `--discover --telegram` |
+
+### On-demand scripts (manual or API-triggered)
+
+| Script | Trigger | What it does | Key args |
+|--------|---------|--------------|----------|
+| `phase2_ticker_enrichment.py` | API / auto-enrich | Fetch fresh price, news, SEC for a symbol | `--symbol SYM` |
+| `alex_retirement_advisor.py` | Telegram `alex V` | Full retirement analysis for a symbol | `--analyze SYM` |
+| `alex_hygiene.py` | API / manual | 3-tier decision hygiene (Sonnet/Grok/GPT-4o/Opus) | `--classify` / `--run` |
+| `iris_taxonomy_agent.py` | Telegram `iris run` | Taxonomy scan: coverage gaps, channel proposals | — (default mode) |
+| `iris_taxonomy_agent.py` | Telegram `iris hygiene run` | Content hygiene: demote stale, flag superseded | `--hygiene` / `--hygiene-dry-run` |
+| `transcript_tagger.py` | Post-ingest hook | Per-transcript deep tagging (quality + strategy + agents) | `--retag-all` / `--id N` |
+| `telegram_command_handler.py` | Telegram polling | Parse and route 29 Telegram commands | `--poll` / `--process "cmd"` |
+| `system_preflight_check.py` | Manual | Verify all data sources, credentials, DB connectivity | — |
+| `trade_ai_health.py` | Manual | Full system health check | `--project-root .` |
+| `portfolio_orchestrator.py` | Manual | Full portfolio pipeline (reprice, stops, risk, reports) | — |
+| `stop_decision_brief.py` | Event-triggered | Generate stop decision brief for Telegram | — |
+| `portfolio_repricer.py` | Manual | Reprice all holdings from yfinance | — |
+| `reconcile_broker_totals.py` | Manual | Reconcile holdings vs broker CSV totals | — |
+
+### Utility / library scripts (not run directly)
+
+| Script | What it does |
+|--------|--------------|
+| `api_v2.py` | All /api/v2/* route handlers (imported by portfolio_server.py) |
+| `db_adapter.py` | PostgreSQL connection helper, query wrappers, action_queue upsert |
+| `local_llm.py` | Ollama qwen3:1.7b wrapper with OpenAI/Claude fallback chain |
+| `llm_router.py` | LLM routing: local → OpenAI → Claude with budget tracking |
+| `content_scoring.py` | Keyword-based quality/relevance scoring for news + YouTube |
+| `telegram_alert.py` | Send message via Telegram Bot API |
+| `intel_query.py` | Query intelligence_whiteboard, agent_results, market session context |
+| `scoring.py` | Trade AI 6-pillar scoring engine (55 pts max) |
+| `alert_event_writer.py` | Parse stop alerts, write to portfolio_intelligence_events |
+
+### Full crontab (verbatim)
+
+```
+PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+PY=$PROJ/.venv/bin/python
+
+# ── Morning Cascade (Mon–Fri) ──
+0 5 * * 1-5     $PY scripts/run_alex_daily.py --daily --telegram
+30 5 * * 1-5    $PY scripts/overnight_batch.py --outcomes
+0 6 * * 1-5     $PY scripts/telegram_smart_alerts.py --check-all --telegram
+0 6 * * *       $PY scripts/credential_monitor.py --check --telegram
+15 6 * * 1-5    scripts/agent_router_cron.sh full
+25 6 * * 1-5    scripts/agent_intelligence_cron.sh daily
+30 6 * * 1-5    $PY scripts/fred_data_ingest.py --ingest
+30 6 * * 1-5    $PY scripts/news_ingestion.py --priority
+35 6 * * 1-5    $PY scripts/classify_candidates.py
+40 6 * * 1-5    $PY scripts/intel_auto_discovery.py --telegram
+45 6 * * 1-5    $PY scripts/sync_watchlist_items_to_db.py
+45 6 * * 1-5    $PY scripts/overnight_batch.py --proactive
+50 6 * * 1-5    $PY scripts/materialize_watchlist_strategy_cards.py
+55 6 * * 1-5    $PY scripts/materialize_income_engine.py
+0 7 * * 1-5     $PY scripts/cio_decision_engine.py --run
+5 7 * * 1-5     $PY scripts/sync_dividend_data.py
+10 7 * * 1-5    $PY scripts/finviz_enrichment.py
+15 7 * * 1-5    $PY scripts/write_state_freshness_history.py
+15 7 * * 1-5    $PY scripts/external_market_data_ingest.py --quotes
+20 7 * * 1-5    $PY scripts/price_db_sync.py
+25 7 * * 1-5    $PY scripts/system_health_alerts.py
+30 7 * * 1-5    $PY scripts/recovery_watch_daily.py
+40 7 * * 1-5    $PY scripts/portfolio_level_qa.py
+50 7 * * 1-5    $PY scripts/record_decision_outcome.py
+0 8 * * 1-5     $PY scripts/iterate_research_topics.py --telegram
+5 8 * * 1-5     $PY scripts/aegis_morning_brief_delivery.py
+
+# ── Market Hours (Mon–Fri) ──
+0 10 * * 1-5    $PY scripts/finviz_screener_runner.py --run
+0 10-15 * * 1-5 scripts/agent_router_cron.sh light
+30 11,14 * * 1-5 scripts/agent_intelligence_cron.sh intraday
+10 12,15 * * 1-5 $PY scripts/system_health_alerts.py
+12 30 * * 1-5   $PY scripts/news_ingestion.py --priority
+40 12 * * 1-5   $PY scripts/intel_auto_discovery.py --telegram
+0 13 * * 1-5    $PY scripts/finviz_enrichment.py
+0 16 * * 1-5    $PY scripts/finviz_screener_runner.py --run
+30 18 * * *     $PY scripts/news_ingestion.py --priority
+
+# ── Evening Pipeline (Mon–Fri) ──
+0 19 * * 1-5    $PY scripts/youtube_transcript_ingest.py --all-channels
+0 19 * * 1-5    $PY scripts/agent_watchlist_engine.py --daily --telegram
+30 19 * * 1-5   $PY scripts/transcript_slow_processor.py --fresh --count 5
+0 20 * * 1-5    $PY scripts/overnight_batch.py --telegram
+0 20 * * 1-5    $PY scripts/sec_data_ingest.py --all
+0 21 * * 1-5    $PY scripts/auto_research.py --check --telegram
+0 21 * * 1-5    $PY scripts/overnight_batch.py --index-embeddings
+
+# ── Continuous (24/7) ──
+*/15 * * * *    $PY scripts/event_detector.py
+*/15 * * * *    sleep 120 && $PY scripts/agent_event_router.py
+*/15 6-19 * * 1-5  $PY scripts/process_watchlist_agent_jobs.py --limit 10
+*/5 20-23 * * 1-5  $PY scripts/process_watchlist_agent_jobs.py --limit 25
+*/5 0-5 * * 2-6    $PY scripts/process_watchlist_agent_jobs.py --limit 25
+*/10 * * * 0,6     $PY scripts/process_watchlist_agent_jobs.py --limit 15
+0 */4 * * *     $PY scripts/youtube_backfill_manager.py
+0 22-23,0-6 * * * $PY scripts/transcript_slow_processor.py --run --count 2
+
+# ── Weekly (Sunday) ──
+0 1 * * 0       $PY scripts/full_system_backup.py
+0 3 * * 0       find $PROJ/archive -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
+0 6 * * 0       $PY scripts/iris_taxonomy_agent.py --hygiene
+0 7 * * 0       $PY scripts/overnight_batch.py --research
+30 7 * * 0      scripts/agent_router_cron.sh deep
+0 8 * * 0       scripts/agent_intelligence_cron.sh deep
+0 8 * * 0       $PY scripts/run_alex_daily.py --weekly --telegram
+0 8 * * 0       $PY scripts/alex_gov_research.py --refresh
+0 8 * * 0       $PY scripts/agent_watchlist_engine.py --autonomy-summary --telegram
+30 9 * * 0      $PY scripts/watchlist_hygiene.py --telegram
+0 10 * * 0      $PY scripts/agent_watchlist_engine.py --weekly --telegram
+
+# ── Monday Only ──
+0 8 * * 1       $PY scripts/external_market_data_ingest.py --fundamentals
+
+# ── Monthly (1st) ──
+0 3 1 * *       transcript purge (inline)
+0 9 1 * *       $PY scripts/run_alex_daily.py --monthly --telegram
+0 9 1 * *       $PY scripts/alex_retirement_advisor.py --monthly-report --telegram
+0 10 1 * *      $PY scripts/youtube_channel_discovery.py --discover --telegram
+
+# ── Daily ──
+0 2 * * *       pg_dump → backups/db/ (gzip, 7-day retention)
+```
 
 ---
 
