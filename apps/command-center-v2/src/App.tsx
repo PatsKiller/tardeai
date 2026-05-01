@@ -33,6 +33,7 @@ const ActionCenter = lazy(() => import('./pages/ActionCenter'))
 const MorningBrief = lazy(() => import('./pages/MorningBrief'))
 const AIAnalyst = lazy(() => import('./pages/AIAnalyst'))
 const IntelligenceSources = lazy(() => import('./pages/IntelligenceSources'))
+const PortfolioIntelligence = lazy(() => import('./pages/PortfolioIntelligence'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -69,6 +70,7 @@ export default function App() {
           <Route index element={<SafePage><Overview /></SafePage>} />
           <Route path="trade-ai" element={<SafePage><TradeAI /></SafePage>} />
           <Route path="portfolio" element={<SafePage><Portfolio /></SafePage>} />
+          <Route path="portfolio-intelligence" element={<SafePage><PortfolioIntelligence /></SafePage>} />
           <Route path="journal" element={<SafePage><Journal /></SafePage>} />
           <Route path="returns" element={<SafePage><Returns /></SafePage>} />
           <Route path="technical" element={<SafePage><Technical /></SafePage>} />

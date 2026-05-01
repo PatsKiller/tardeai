@@ -59,11 +59,30 @@ export default function Correlation() {
           </tbody>
         </table>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
-        <Legend color="rgba(246,70,93,.28)" label="≥ 0.85" sub="Very High" />
-        <Legend color="rgba(240,185,11,.22)" label="0.70–0.85" sub="High" />
-        <Legend color="rgba(14,203,129,.18)" label="< 0.40" sub="Low / diversifying" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginTop: 12 }}>
+        <Legend color="rgba(246,70,93,.28)" label="≥ 0.85" sub="Very High — trim one" />
+        <Legend color="rgba(240,185,11,.22)" label="0.70–0.85" sub="High — monitor" />
+        <Legend color="var(--bg3)" label="0.40–0.70" sub="Moderate — acceptable" />
+        <Legend color="rgba(14,203,129,.18)" label="< 0.40" sub="Low — good diversifier" />
       </div>
+
+      {/* Diversification insights */}
+      {(() => {
+        const allPairs = data.high_correlations || []
+        const veryHigh = allPairs.filter(p => p.corr >= 0.85).length
+        const high = allPairs.filter(p => p.corr >= 0.70 && p.corr < 0.85).length
+        const hasBond = data.symbols.some(s => ['BND', 'AGG', 'SCHZ', 'TLT', 'VCIT'].includes(s))
+        return (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--bg3)', borderRadius: 8, fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--text0)' }}>Diversification Score: </strong>
+            <span style={{ color: veryHigh === 0 && high <= 2 ? 'var(--green)' : veryHigh <= 1 ? 'var(--amber)' : 'var(--red)', fontWeight: 700 }}>
+              {veryHigh === 0 && high <= 2 ? 'Good' : veryHigh <= 1 ? 'Moderate' : 'Needs Work'}
+            </span>
+            <span style={{ color: 'var(--text3)', marginLeft: 8 }}>({veryHigh} very high, {high} high correlation pairs)</span>
+            {!hasBond && <div style={{ fontSize: 10, color: 'var(--amber)', marginTop: 4 }}>Consider adding a bond ETF (BND, AGG, or SCHZ) — bonds typically have negative or low correlation with equities, improving portfolio resilience.</div>}
+          </div>
+        )
+      })()}
     </>
   )
 }

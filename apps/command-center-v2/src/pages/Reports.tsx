@@ -94,6 +94,20 @@ export default function Reports() {
     <>
       <PageHeader title="Reports & Intelligence" subtitle={cat ? `${totalFiles} outputs cataloged` : 'Loading...'} />
 
+      {/* G14: Latest Report — sticky at top, first thing visible */}
+      {(() => {
+        const latest = [...portfolioDaily, ...tradeAiDaily, ...live].sort((a, b) => (b.modified || b.date || '').localeCompare(a.modified || a.date || ''))[0]
+        return latest ? (
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, padding: '12px 16px', marginBottom: 14, background: 'rgba(14,203,129,0.08)', border: '2px solid rgba(14,203,129,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12, backdropFilter: 'blur(12px)' }}>
+            <span style={{ fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 4, background: 'var(--green)', color: '#000' }}>LATEST</span>
+            <span style={{ fontSize: 13, color: 'var(--text0)', fontWeight: 700, flex: 1 }}>{latest.name}</span>
+            <span style={{ fontSize: 10, color: 'var(--text2)' }}>{latest.date || latest.modified?.slice(0, 16)} · {latest.size_kb}KB</span>
+            <button onClick={() => setPreviewUrl(latest.path)} style={{ fontSize: 10, padding: '5px 14px', border: '1px solid var(--green)', borderRadius: 6, background: 'var(--green-dim)', color: 'var(--green)', cursor: 'pointer', fontFamily: 'var(--mono)', fontWeight: 700 }}>Preview</button>
+            <a href={latest.path} target="_blank" rel="noreferrer" style={{ fontSize: 10, padding: '5px 14px', border: '1px solid var(--accent)', borderRadius: 6, background: 'var(--accent-dim)', color: 'var(--accent)', textDecoration: 'none', fontFamily: 'var(--mono)', fontWeight: 700 }}>Open</a>
+          </div>
+        ) : null
+      })()}
+
       {/* Preview iframe */}
       {previewUrl && (
         <div style={{

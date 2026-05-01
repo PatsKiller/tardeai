@@ -41,6 +41,81 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
+def _check_symbol_data_quality(symbol: str) -> dict:
+    """Check if a symbol has minimum data for meaningful agent analysis."""
+    enrichment = {}
+    try:
+        ec_path = STATE_DIR / "ticker_enrichment_cache.json"
+        if ec_path.exists():
+            enrichment = json.loads(ec_path.read_text()).get(symbol, {})
+            if not isinstance(enrichment, dict):
+                enrichment = {}
+    except Exception:
+        pass
+
+    has_price = bool(enrichment.get("price") or enrichment.get("latest_price"))
+    has_technicals = bool(enrichment.get("rsi") and (enrichment.get("sma20_pct") or enrichment.get("sma50_pct")))
+
+    # Check news count
+    news_count = 0
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM news_articles WHERE symbol=%s AND created_at > NOW() - INTERVAL '14 days'", (symbol,))
+        news_count = cur.fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
+    has_news = news_count > 0
+
+    missing = []
+    if not has_price:
+        missing.append("price_data")
+    if not has_technicals:
+        missing.append("technical_indicators")
+    if not has_news:
+        missing.append("news_articles")
+
+    score = (40 if has_price else 0) + (40 if has_technicals else 0) + (20 if has_news else 0)
+    return {"has_price": has_price, "has_technicals": has_technicals, "has_news": has_news,
+            "quality_score": score, "enrichment_needed": missing}
+
+
+def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
+    """Try to get missing data using free sources only. Returns True if enriched."""
+    enriched = False
+
+    if "price_data" in missing or "technical_indicators" in missing:
+        try:
+            from phase2_ticker_enrichment import _optional_yfinance
+            yf_data = _optional_yfinance(symbol)
+            if yf_data:
+                # Update enrichment cache
+                ec_path = STATE_DIR / "ticker_enrichment_cache.json"
+                cache = json.loads(ec_path.read_text()) if ec_path.exists() else {}
+                if symbol not in cache or not isinstance(cache.get(symbol), dict):
+                    cache[symbol] = {}
+                for k, v in yf_data.items():
+                    if v not in (None, "", "N/A"):
+                        cache[symbol][k] = v
+                ec_path.write_text(json.dumps(cache, indent=2, default=str))
+                enriched = True
+                print(f"  [enrichment] {symbol}: yfinance → {len(yf_data)} fields updated")
+        except Exception as e:
+            print(f"  [enrichment] {symbol}: yfinance failed — {e}")
+
+    if "news_articles" in missing:
+        try:
+            from external_market_data_ingest import ingest_yfinance_quotes
+            ingest_yfinance_quotes(symbols=[symbol])
+            enriched = True
+            print(f"  [enrichment] {symbol}: price quote ingested")
+        except Exception as e:
+            print(f"  [enrichment] {symbol}: quote ingest failed — {e}")
+
+    return enriched
+
+
 def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
          high_impact: bool = False) -> str:
     """Call LLM via router with fallback hierarchy.
@@ -130,6 +205,68 @@ def _get_context(conn, symbol: str) -> dict:
     if prices:
         price_strs = [f"${float(p['close_price']):.2f}" for p in prices[:5]]
         ctx += f"Recent prices: {', '.join(price_strs)}\n"
+
+    # AV news sentiment (pre-scored — no LLM needed)
+    try:
+        cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur2.execute("""SELECT title, sentiment, sentiment_score, relevance_score, source
+                        FROM news_articles
+                        WHERE symbol=%s AND source LIKE 'av:%%'
+                        AND created_at > NOW() - INTERVAL '14 days'
+                        ORDER BY relevance_score DESC LIMIT 5""", (symbol,))
+        av_news = cur2.fetchall()
+        cur2.close()
+        if av_news:
+            avg_sent = sum(float(n.get("sentiment_score", 0)) for n in av_news) / len(av_news)
+            label = "positive" if avg_sent > 0.15 else "negative" if avg_sent < -0.15 else "neutral"
+            ctx += f"News sentiment (AV, {len(av_news)} articles): {label} (score: {avg_sent:.3f})\n"
+            for n in av_news[:3]:
+                ctx += f"  [{n.get('source','?')}] {n.get('title','')[:60]} (rel:{n.get('relevance_score',0)}%)\n"
+    except Exception:
+        pass
+
+    # AV fundamentals from fundamental_data
+    try:
+        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur3.execute("""SELECT metric_name, metric_value FROM fundamental_data
+                        WHERE symbol=%s AND source='alpha_vantage'""", (symbol,))
+        av_fund = {r["metric_name"]: r["metric_value"] for r in cur3.fetchall()}
+        cur3.close()
+        if av_fund:
+            parts = []
+            if av_fund.get("AnalystTargetPrice"):
+                parts.append(f"Analyst target: ${float(av_fund['AnalystTargetPrice']):.2f}")
+            if av_fund.get("52WeekHigh"):
+                parts.append(f"52W high: ${float(av_fund['52WeekHigh']):.2f}")
+            if av_fund.get("52WeekLow"):
+                parts.append(f"52W low: ${float(av_fund['52WeekLow']):.2f}")
+            if av_fund.get("DividendYield"):
+                parts.append(f"Div yield: {float(av_fund['DividendYield'])*100:.2f}%")
+            if parts:
+                ctx += f"Alpha Vantage: {', '.join(parts)}\n"
+    except Exception:
+        pass
+
+    # John's past decision preferences (agents learn from his notes)
+    try:
+        cur4 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur4.execute("""SELECT config FROM agent_intelligence_rules
+                        WHERE rule_type='john_preferences' AND rule_key LIKE %s
+                        ORDER BY updated_at DESC LIMIT 3""", (f"{symbol}_%",))
+        pref_rows = cur4.fetchall()
+        cur4.close()
+        if pref_rows:
+            ctx += "JOHN'S PAST DECISIONS (learn his reasoning):\n"
+            for pr in pref_rows:
+                cfg = pr.get("config", {})
+                if isinstance(cfg, str):
+                    cfg = json.loads(cfg)
+                if cfg.get("lesson"):
+                    ctx += f"  {cfg['lesson']}\n"
+                if cfg.get("note"):
+                    ctx += f"    John said: \"{cfg['note'][:100]}\"\n"
+    except Exception:
+        pass
 
     cur.close()
     return {"text": ctx, "snapshot": snapshot}
@@ -253,6 +390,105 @@ Comprehensive review of {symbol}. Cover:
 {base_instruction}""",
     }
     return prompts.get(agent, prompts["maria"])
+
+
+def _run_maria_two_pass(symbol: str, context_text: str, note: str = "") -> str:
+    """Two-pass Maria analysis for higher confidence.
+
+    Pass 1 (local): News sentiment + catalyst extraction
+    Pass 2 (local, Grok fallback if low conf): Fundamentals given Pass 1 context
+    Final: Combine both into standard Maria JSON output
+    """
+    # ── Pass 1: News & Sentiment ──
+    pass1_prompt = f"""/no_think You are Maria, a research analyst. Summarize what the last 7 days of news says about {symbol}.
+
+Context:
+{context_text[:2000]}
+
+Respond in JSON only:
+{{"sentiment": "positive" or "neutral" or "negative",
+  "catalyst": "string describing the main catalyst, or null if none",
+  "confidence": 0-100,
+  "key_headlines": ["headline 1", "headline 2", "headline 3 max"]}}"""
+
+    pass1_raw = _llm(pass1_prompt, max_tokens=400, task_type="agent_narrative")
+    pass1_model = getattr(_llm, '_last_model', 'unknown')
+
+    # Parse pass 1
+    pass1_data = {"sentiment": "neutral", "catalyst": None, "confidence": 50, "key_headlines": []}
+    if pass1_raw and not pass1_raw.startswith("LLM error"):
+        try:
+            # Extract JSON from response
+            import re
+            json_match = re.search(r'\{[^{}]*\}', pass1_raw, re.DOTALL)
+            if json_match:
+                pass1_data = json.loads(json_match.group())
+        except Exception:
+            pass
+    print(f"  [maria-p1] {symbol}: sentiment={pass1_data.get('sentiment')} catalyst={str(pass1_data.get('catalyst',''))[:40]} conf={pass1_data.get('confidence')} model={pass1_model}")
+
+    # ── Pass 2: Fundamentals given news context ──
+    pass2_prompt = f"""/no_think You are Maria, a research analyst. Given this news summary for {symbol}:
+Sentiment: {pass1_data.get('sentiment', 'neutral')}
+Catalyst: {pass1_data.get('catalyst', 'none identified')}
+News confidence: {pass1_data.get('confidence', 50)}%
+Headlines: {', '.join(pass1_data.get('key_headlines', [])[:3])}
+
+Now evaluate the fundamentals of {symbol}:
+{context_text[:1500]}
+{note or ''}
+
+Respond in JSON only:
+{{"thesis_intact": "yes" or "no" or "maybe",
+  "fundamental_signal": "BUY" or "HOLD" or "SELL",
+  "confidence": 0-100,
+  "reasoning": "1-2 sentence reasoning"}}"""
+
+    # Route: always local first — never burn cloud budget for Maria Pass 2
+    pass2_raw = _llm(pass2_prompt, max_tokens=400, task_type="agent_narrative", high_impact=False)
+    pass2_model = getattr(_llm, '_last_model', 'unknown')
+
+    pass2_data = {"thesis_intact": "maybe", "fundamental_signal": "HOLD", "confidence": 50, "reasoning": ""}
+    if pass2_raw and not pass2_raw.startswith("LLM error"):
+        try:
+            import re
+            json_match = re.search(r'\{[^{}]*\}', pass2_raw, re.DOTALL)
+            if json_match:
+                pass2_data = json.loads(json_match.group())
+        except Exception:
+            pass
+    print(f"  [maria-p2] {symbol}: signal={pass2_data.get('fundamental_signal')} thesis={pass2_data.get('thesis_intact')} conf={pass2_data.get('confidence')} model={pass2_model}")
+
+    # ── Combine into standard Maria output ──
+    news_conf = pass1_data.get("confidence", 50)
+    fund_conf = pass2_data.get("confidence", 50)
+    combined_conf = round((news_conf * 0.4 + fund_conf * 0.6) / 100, 2)  # weight fundamentals more
+
+    signal = pass2_data.get("fundamental_signal", "HOLD")
+    sentiment = pass1_data.get("sentiment", "neutral")
+    # Adjust recommendation if news and fundamentals disagree
+    if signal == "BUY" and sentiment == "negative":
+        recommendation = "RESEARCH_MORE"
+    elif signal == "SELL" and sentiment == "positive":
+        recommendation = "RESEARCH_MORE"
+    else:
+        rec_map = {"BUY": "BUY", "HOLD": "HOLD", "SELL": "AVOID"}
+        recommendation = rec_map.get(signal, "HOLD")
+
+    catalyst = pass1_data.get("catalyst") or "No catalyst identified"
+    reasoning = pass2_data.get("reasoning", "")
+    headlines = pass1_data.get("key_headlines", [])
+
+    combined = json.dumps({
+        "summary": f"{symbol}: {sentiment} sentiment, {signal} signal. {catalyst}. {reasoning}",
+        "full_narrative": f"## News Analysis (Pass 1)\nSentiment: {sentiment} ({news_conf}% conf)\nCatalyst: {catalyst}\nHeadlines: {'; '.join(headlines)}\n\n## Fundamental Analysis (Pass 2)\nSignal: {signal} ({fund_conf}% conf)\nThesis intact: {pass2_data.get('thesis_intact', '?')}\nReasoning: {reasoning}\n\nModels: P1={pass1_model}, P2={pass2_model}",
+        "recommendation": recommendation,
+        "confidence": combined_conf,
+        "reason_codes": [f"news_{sentiment}", f"fund_{signal.lower()}", f"thesis_{pass2_data.get('thesis_intact', 'unknown')}"],
+        "next_action": f"{'Review catalyst timing' if catalyst and catalyst != 'No catalyst identified' else 'Monitor for new developments'}",
+    })
+    print(f"  [maria-final] {symbol}: {recommendation} conf={combined_conf:.0%} (news={news_conf}% fund={fund_conf}%)")
+    return combined
 
 
 def _parse_result(raw: str) -> dict:
@@ -1027,13 +1263,49 @@ def process_jobs(limit: int = 10):
                     (symbol, agent, f"Started {agent} {request_type}"))
         conn.commit()
 
+        # ── Risk-first data quality gate ──
+        # If this is maria or steph, check if Risk already flagged a data gap
+        if agent in ("maria", "steph"):
+            risk_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            risk_cur.execute(
+                """SELECT recommendation, confidence FROM watchlist_agent_results
+                   WHERE symbol=%s AND agent='risk_agent'
+                   AND created_at > NOW() - INTERVAL '2 hours'
+                   ORDER BY created_at DESC LIMIT 1""", (symbol,))
+            risk_recent = risk_cur.fetchone()
+            risk_cur.close()
+
+            if (risk_recent
+                    and (risk_recent.get("recommendation") or "").upper() == "RESEARCH_MORE"
+                    and float(risk_recent.get("confidence") or 0) < 0.40):
+                # Risk had a data gap — check and try to enrich
+                quality = _check_symbol_data_quality(symbol)
+                if quality["quality_score"] < 60:
+                    print(f"  [data-gate] {symbol}: Risk data gap (Q={quality['quality_score']}). Missing: {quality['enrichment_needed']}")
+                    enriched = _attempt_symbol_enrichment(symbol, quality["enrichment_needed"])
+                    if not enriched:
+                        # Cannot enrich — skip this agent, don't waste LLM call
+                        print(f"  [data-gate] {symbol}: Enrichment failed. Skipping {agent} to avoid empty analysis.")
+                        cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))
+                        cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('data_gap_skip', %s, %s, 'skipped', %s)",
+                                    (symbol, agent, f"Skipped: Risk data gap Q={quality['quality_score']}, enrichment failed"))
+                        conn.commit()
+                        continue
+                    else:
+                        print(f"  [data-gate] {symbol}: Enrichment succeeded (Q was {quality['quality_score']}). Proceeding with {agent}.")
+
         # Build context and prompt
         context = _get_context(conn, symbol)
-        prompt = _build_prompt(agent, symbol, context["text"], note)
-        prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
 
-        # Call LLM
-        raw = _llm(prompt)
+        # Maria uses two-pass analysis for higher confidence
+        if agent == "maria":
+            raw = _run_maria_two_pass(symbol, context["text"], note)
+            prompt = f"[two-pass maria for {symbol}]"
+            prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+        else:
+            prompt = _build_prompt(agent, symbol, context["text"], note)
+            prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+            raw = _llm(prompt)
 
         if not raw or raw.startswith("LLM error"):
             cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))

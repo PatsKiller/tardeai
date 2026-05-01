@@ -14,6 +14,11 @@ RELEVANCE_KEYWORDS = {
         "bdc", "cef", "preferred", "reits", "reit", "mlp",
         "irmaa", "medicare", "social security", "rmd", "required minimum",
         "tax bracket", "capital gains", "tax loss", "conversion",
+        # Disability + Medicare + Trust (v4.6)
+        "ssdi", "disability", "medicaid", "dual eligible", "special needs trust",
+        "pooled trust", "able account", "spend down", "elder law",
+        "medicaid planning", "disability income", "sga", "trial work period",
+        "long term disability", "ltdi", "medicare supplement", "medigap",
     ],
     "medium": [
         "earnings", "guidance", "revenue", "margin", "buyback", "debt",
@@ -388,6 +393,13 @@ AGENT_TAG_RULES = {
         "social security", "rmd", "conversion", "tax bracket", "tax loss",
         "income gap", "withdrawal", "estate", "pension",
         "disability", "ssdi", "disabled", "mfs", "disability insurance",
+        # v4.6 expanded disability/trust/Medicare
+        "special needs trust", "pooled trust", "able account", "elder law",
+        "medicaid planning", "spend down", "dual eligible", "sga",
+        "trial work period", "long term disability", "ltdi", "medigap",
+        "medicare supplement", "extra help", "low income subsidy",
+        "irrevocable trust", "revocable trust", "asset protection",
+        "five year lookback", "medicaid lookback", "disability tax",
     ],
     "Maria": [
         "earnings", "revenue", "guidance", "catalyst", "upgrade", "downgrade",

@@ -69,6 +69,32 @@ def _get_morning_brief():
         return {}, ""
 
 
+def _get_event_digest():
+    """Get Level 3 event summary from the last 24h."""
+    rows = _db_query(
+        """SELECT event_type, status, array_agg(DISTINCT symbol) as symbols, count(*) as cnt
+           FROM agent_event_queue
+           WHERE created_at > NOW() - INTERVAL '24 hours'
+           GROUP BY event_type, status
+           ORDER BY cnt DESC"""
+    ) or []
+    digest = {}
+    total = 0
+    for r in rows:
+        et = r["event_type"]
+        if et not in digest:
+            digest[et] = {"symbols": [], "count": 0, "done": 0, "pending": 0}
+        syms = r.get("symbols") or []
+        digest[et]["symbols"] = list(set(digest[et]["symbols"] + [s for s in syms if s]))
+        digest[et]["count"] += r["cnt"]
+        total += r["cnt"]
+        if r["status"] == "done":
+            digest[et]["done"] += r["cnt"]
+        else:
+            digest[et]["pending"] += r["cnt"]
+    return digest, total
+
+
 def _get_steph_queue():
     """Fetch Steph review queue summary."""
     rows = _db_query(
@@ -108,6 +134,34 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
     if pending > 0 or needs_john > 0:
         lines.append(f"*Steph Queue:* {pending} pending" + (f", {needs_john} need John" if needs_john else ""))
         lines.append("")
+
+    # Event intelligence digest (Level 3)
+    event_digest, event_total = _get_event_digest()
+    if event_total > 0:
+        lines.append(f"*Event Intelligence (24h): {event_total} events*")
+        for et, d in sorted(event_digest.items()):
+            syms = ", ".join(d["symbols"][:6])
+            status = "done" if d["pending"] == 0 else f'{d["done"]} done, {d["pending"]} pending'
+            priority = "urgent" if et in ("STOP_TRIGGERED", "SEC_INSIDER_BUY", "FRED_RATE_CHANGE", "IRMAA_THRESHOLD") else ""
+            lines.append(f"  {et}: {syms} ({status}){' !!!' if priority else ''}")
+        lines.append("")
+
+    # Iris taxonomy section — only if pending proposals or low coverage
+    try:
+        from iris_taxonomy_agent import iris_status_summary
+        iris_conn = None
+        try:
+            from db_adapter import _execute
+            pending_rows = _execute("SELECT count(*) as n FROM iris_taxonomy_proposals WHERE status='pending'", fetch="one")
+            iris_pending = pending_rows["n"] if pending_rows else 0
+        except Exception:
+            iris_pending = 0
+
+        if iris_pending > 0:
+            lines.append(f"*Iris (Taxonomy):* {iris_status_summary()}")
+            lines.append("")
+    except Exception:
+        pass  # Iris is optional — never break the brief
 
     # Next actions
     if next_actions:
@@ -168,6 +222,29 @@ def write_formal_export(brief: dict, summary: str) -> str:
     if not steph:
         lines.append("- No Steph review items.")
     lines.append("")
+
+    # Event intelligence digest
+    event_digest, event_total = _get_event_digest()
+    lines.append("## Event Intelligence (Last 24h)")
+    if event_total > 0:
+        lines.append(f"**{event_total} events fired**")
+        lines.append("")
+        for et, d in sorted(event_digest.items()):
+            syms = ", ".join(d["symbols"][:8])
+            status = "all done" if d["pending"] == 0 else f'{d["done"]} done, {d["pending"]} pending'
+            lines.append(f"- **{et}**: {syms} ({d['count']} events, {status})")
+    else:
+        lines.append("- No events in the last 24 hours.")
+    lines.append("")
+
+    # Iris taxonomy section (formal export)
+    try:
+        from iris_taxonomy_agent import iris_status_summary
+        lines.append("## Iris — Taxonomy Intelligence")
+        lines.append(iris_status_summary())
+        lines.append("")
+    except Exception:
+        pass
 
     # Next actions
     lines.append("## Ranked Next Actions")

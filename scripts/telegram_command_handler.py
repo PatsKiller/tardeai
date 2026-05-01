@@ -29,6 +29,7 @@ _COMMANDS = {
     "tax": "Current tax bracket, Roth room, conversion capacity",
     "intel": "Recent intelligence for a symbol (e.g. intel SCHD)",
     "conflicts": "Show agent disagreements",
+    "iris": "Taxonomy intelligence (iris status/approve/reject/run/<question>)",
     "status": "Full system status with portfolio, income, tax, agents",
     "research": "Research a topic — saved persistently",
     "find": "Find candidates — saved for iteration",
@@ -72,6 +73,14 @@ def parse_command(text: str) -> dict:
         return {"command": "tax", "args": ""}
     if lower == "conflicts":
         return {"command": "conflicts", "args": ""}
+    if lower.startswith("iris"):
+        return {"command": "iris", "args": text[4:].strip() if len(text) > 4 else ""}
+    if lower.startswith("/iris_approve_"):
+        pid = lower.replace("/iris_approve_", "").strip()
+        return {"command": "iris", "args": f"approve {pid}"}
+    if lower.startswith("/iris_reject_"):
+        pid = lower.replace("/iris_reject_", "").strip()
+        return {"command": "iris", "args": f"reject {pid}"}
     if lower.startswith("intel"):
         return {"command": "intel", "args": text[5:].strip() if len(text) > 5 else ""}
     # Alex retirement advisor commands
@@ -99,6 +108,119 @@ def parse_command(text: str) -> dict:
     return {"command": "unknown", "args": text}
 
 
+def _handle_iris(args: str) -> str:
+    """Route Iris Telegram commands."""
+    import threading
+    parts = args.strip().split(None, 1)
+    subcommand = parts[0].lower() if parts else "status"
+    rest = parts[1] if len(parts) > 1 else ""
+
+    # iris / iris status
+    if subcommand in ("status", ""):
+        try:
+            from iris_taxonomy_agent import iris_status_summary, get_iris_status
+            summary = iris_status_summary()
+            status = get_iris_status()
+            pending = status.get("pending_proposals", [])
+            lines = ["*Iris — Taxonomy Intelligence*", "", summary, ""]
+            if pending:
+                lines.append("*Proposals:*")
+                for p in pending[:5]:
+                    lines.append(f"  [{p['id']}] {p['type']}: {p['target']} (conf:{p['confidence']:.0%})")
+                lines.append("")
+                lines.append("Approve: /iris_approve_ID | /iris_reject_ID")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Iris status error: {e}"
+
+    # iris approve <id>
+    if subcommand == "approve" and rest.strip().isdigit():
+        proposal_id = int(rest.strip())
+        try:
+            conn = _get_conn()
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""UPDATE iris_taxonomy_proposals
+                SET status='approved', reviewed_by='john_telegram', reviewed_at=NOW()
+                WHERE id=%s AND status='pending' RETURNING target, proposal_type""", (proposal_id,))
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            if row:
+                from iris_taxonomy_agent import apply_proposal
+                apply_proposal(proposal_id)
+                return f"Iris: Proposal #{proposal_id} '{row['target']}' ({row['proposal_type']}) approved and activated."
+            return f"Iris: Proposal #{proposal_id} not found or already processed."
+        except Exception as e:
+            return f"Iris approve error: {e}"
+
+    # iris reject <id>
+    if subcommand == "reject" and rest.strip().isdigit():
+        proposal_id = int(rest.strip())
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE iris_taxonomy_proposals
+                SET status='rejected', reviewed_by='john_telegram', reviewed_at=NOW()
+                WHERE id=%s AND status='pending' RETURNING target""", (proposal_id,))
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            if row:
+                return f"Iris: Proposal #{proposal_id} '{row[0]}' rejected."
+            return f"Iris: Proposal #{proposal_id} not found."
+        except Exception as e:
+            return f"Iris reject error: {e}"
+
+    # iris run
+    if subcommand == "run":
+        try:
+            from iris_taxonomy_agent import run_weekly_scan
+            def _run():
+                try:
+                    run_weekly_scan()
+                except Exception as e:
+                    print(f"[iris] Background run error: {e}")
+            threading.Thread(target=_run, daemon=True).start()
+            return "Iris: Taxonomy scan starting in background (~90s). Check results with 'iris status'."
+        except Exception as e:
+            return f"Iris run error: {e}"
+
+    # iris hygiene <subcommand>
+    if subcommand == "hygiene":
+        try:
+            from iris_taxonomy_agent import handle_iris_hygiene_command
+            hyg_parts = rest.strip().split(None, 1)
+            hyg_sub = hyg_parts[0].lower() if hyg_parts else "status"
+            hyg_args = hyg_parts[1] if len(hyg_parts) > 1 else ""
+            return handle_iris_hygiene_command(hyg_sub, hyg_args)
+        except Exception as e:
+            return f"Iris hygiene error: {e}"
+
+    # iris who / iris identity / iris help
+    if subcommand in ("who", "identity", "help"):
+        return (
+            "*Iris — Taxonomy Intelligence Agent*\n"
+            "I keep the classification system current so Maria, Risk, Steph,\n"
+            "and Alex all get the content they need.\n\n"
+            "*Commands:*\n"
+            "  iris status       — coverage + pending proposals\n"
+            "  iris approve <id> — approve a proposal\n"
+            "  iris reject <id>  — reject a proposal\n"
+            "  iris run          — force taxonomy scan\n"
+            "  iris hygiene      — content lifecycle management\n"
+            "  iris <question>   — ask me anything about content tagging"
+        )
+
+    # iris <any question> — free-form Q&A
+    full_question = (subcommand + " " + rest).strip()
+    try:
+        from iris_taxonomy_agent import ask_iris
+        return f"*Iris:*\n\n{ask_iris(full_question)}"
+    except Exception as e:
+        return f"Iris Q&A error: {e}"
+
+
 def process_command(cmd: dict) -> str:
     """Process a parsed command and return response text."""
     command = cmd["command"]
@@ -115,6 +237,8 @@ def process_command(cmd: dict) -> str:
         lines.append("  tax — bracket room + conversion capacity")
         lines.append("  intel SCHD — recent intelligence")
         lines.append("  intel — all agent intel (no symbol)")
+        lines.append("  iris status — taxonomy coverage + proposals")
+        lines.append("  iris <question> — ask Iris about content tagging")
         lines.append("  conflicts — agent disagreements")
         lines.append("  status — portfolio + income + tax + agents")
         lines.append("  check credentials — API key health check")
@@ -177,6 +301,9 @@ def process_command(cmd: dict) -> str:
             return "❌ Failed to update .env"
         except Exception as e:
             return f"Update error: {e}"
+
+    if command == "iris":
+        return _handle_iris(args)
 
     if command == "alex":
         # Route to Alex retirement advisor
@@ -428,7 +555,7 @@ def poll_and_process():
 
         # Only process messages that look like commands
         lower = text.lower().strip()
-        is_command = any(lower.startswith(c) for c in ["research ", "find ", "analyze ", "run screener ", "look for ", "alex ", "retirement ", "status", "help", "topics"])
+        is_command = any(lower.startswith(c) for c in ["research ", "find ", "analyze ", "run screener ", "look for ", "alex ", "retirement ", "iris", "/iris_", "status", "help", "topics"])
         if not is_command:
             continue
 

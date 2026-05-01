@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
 import MetricTile from '../components/MetricTile'
+import WatchlistSymbolPanel from '../components/WatchlistSymbolPanel'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../components/ToastProvider'
 
@@ -31,6 +32,9 @@ interface SymbolRow {
   latest_recommendation: string | null; research_confidence: number | null
   synthesis_recommendation: string | null; synthesis_confidence: number | null
   decision_quality_status: string | null; decision_actionable: boolean | null
+  // Runtime fields from API
+  last_recommendation: string | null; last_confidence: number | null
+  last_agent: string | null; is_curated: boolean | null; days_watched: number | null
   // Holdings
   account_holdings: AccountHolding[]; total_shares: number; total_market_value: number
   portfolio_weight: number
@@ -64,6 +68,8 @@ interface Synthesis {
   recommendation: string; confidence: number; action: string
   reason_codes?: string[]; conflicts?: string[]; unresolved?: string[]
   synthesis_narrative?: string; next_review_date?: string
+  decision_safety?: string; safety_overrides?: Record<string, string>
+  safety_reasons?: { rule: string; detail: string }[]
 }
 
 interface StrategyCard {
@@ -124,14 +130,10 @@ export default function Watchlist() {
 
   const filterBySource = (s: string) => { setSource(prev => prev === s ? '' : s); setRefreshKey(k => k + 1) }
 
-  const openDrawer = useCallback(async (sym: string) => {
+  const openDrawer = useCallback((sym: string) => {
     setDrawerSymbol(sym)
     setExpandedNarrative(null)
-    try {
-      const resp = await fetch(`/api/v2/watchlist/research-card/${sym}`)
-      const d = await resp.json()
-      setDrawerData(d.data || d)
-    } catch { setDrawerData(null) }
+    // Data loading is handled by WatchlistSymbolPanel component
   }, [])
 
   const handleSubmit = useCallback(async () => {
@@ -293,7 +295,7 @@ export default function Watchlist() {
                     </td>
                     <td style={td}><StrategyPill type={item.strategy_type} /></td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                      {item.latest_price ? `$${item.latest_price.toFixed(2)}` : <span style={{ color: 'var(--text3)' }}>—</span>}
+                      {item.latest_price ? `$${item.latest_price.toFixed(2)}` : <span title="No price data — agents may have insufficient data for technical analysis. Check after 7 PM pipeline run." style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(240,185,11,.1)', color: 'var(--amber)' }}>NO DATA</span>}
                     </td>
                     <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: item.total_market_value ? 'var(--text1)' : 'var(--text3)' }}>
                       {item.total_market_value ? `$${(item.total_market_value / 1000).toFixed(1)}K` : '—'}
@@ -319,8 +321,11 @@ export default function Watchlist() {
         </div>
       </Card>
 
-      {/* ═══ AUDIT COCKPIT DRAWER ═══ */}
-      {drawerSymbol && (
+      {/* ═══ SYMBOL CONTEXT PANEL ═══ */}
+      <WatchlistSymbolPanel symbol={drawerSymbol} onClose={() => setDrawerSymbol(null)} />
+
+      {/* Legacy drawer hidden — replaced by WatchlistSymbolPanel */}
+      {false && drawerSymbol && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1100, display: 'flex', justifyContent: 'flex-end' }} onClick={() => setDrawerSymbol(null)}>
           <div style={{ width: 620, height: '100vh', background: 'var(--bg0)', borderLeft: '1px solid var(--border)', padding: 20, overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             {/* Header */}

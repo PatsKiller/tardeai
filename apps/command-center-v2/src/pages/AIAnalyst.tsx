@@ -159,6 +159,9 @@ export default function AIAnalyst() {
   return (
     <>
       <PageHeader title="AI Analyst" subtitle={data?.generated_at ? `${data.run_type || 'daily'} · ${data.model || 'Claude'} · ${timeAgo(data.generated_at)} · Validated = confirmed OK · Monitor = watch · Action = decide today` : 'AI analysis — run daily pipeline via Actions page to generate'} />
+      <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
+        Advisory only — all trades must be executed manually at your broker (Fidelity/Schwab). This app does not place or cancel orders.
+      </div>
 
       {/* ── Ask AI ── */}
       <div style={{ background: 'rgba(16,20,28,0.92)', backdropFilter: 'blur(12px)', border: '1px solid rgba(74,144,244,0.25)', borderRadius: 12, padding: '18px 20px', marginBottom: 24 }}>

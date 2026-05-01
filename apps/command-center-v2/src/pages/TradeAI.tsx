@@ -8,7 +8,7 @@ import DetailDrawer, { DrawerStat, DrawerSection } from '../components/DetailDra
 import DataGrid from '../components/DataGrid'
 import { BarChartJS } from '../components/charts'
 import { useApi } from '../hooks/useApi'
-import { deltaColor } from '../lib/format'
+import { deltaColor, fmt$ } from '../lib/format'
 
 interface Ticker {
   symbol: string; score: number; grade: string; decision: string
@@ -103,7 +103,7 @@ export default function TradeAI() {
         <MetricTile label="WAIT" value={String(tai.wait_count)} deltaColor="var(--amber)" />
         <MetricTile label="NO GO" value={String(tai.avoid_count)} deltaColor={tai.avoid_count > 0 ? 'var(--red)' : 'var(--text3)'} />
         <MetricTile label="Top Ticker" value={tai.top_ticker || '—'} delta={`Score: ${tai.top_score}`} />
-        <MetricTile label="Deltas" value={String(tai.delta_events)} />
+        <MetricTile label="Deltas" value={String(tai.delta_events)} delta="score/decision changes vs prior run" />
       </div>
 
       {/* Decision filter */}
@@ -154,12 +154,25 @@ export default function TradeAI() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                 <DrawerStat label="Decision" value={selectedTicker.decision} color={decisionColor[selectedTicker.decision]} />
                 <DrawerStat label="Score" value={String(selectedTicker.score)} color={selectedTicker.score >= 40 ? 'var(--green)' : selectedTicker.score >= 30 ? 'var(--amber)' : 'var(--text2)'} />
-                <DrawerStat label="Grade" value={selectedTicker.grade} color={selectedTicker.grade === 'A' ? 'var(--green)' : 'var(--text2)'} />
+                <DrawerStat label="Grade" value={`${selectedTicker.grade} — ${gradeLegend[selectedTicker.grade] || 'Unknown'}`} color={selectedTicker.grade === 'A' ? 'var(--green)' : 'var(--text2)'} />
                 <DrawerStat label="RVOL" value={selectedTicker.rvol.toFixed(1) + 'x'} color={selectedTicker.rvol >= 5 ? 'var(--green)' : 'var(--text2)'} />
                 <DrawerStat label="Price" value={'$' + selectedTicker.price.toFixed(2)} />
                 <DrawerStat label="Change" value={selectedTicker.change_pct + '%'} color={selectedTicker.change_pct.startsWith('-') ? 'var(--red)' : 'var(--green)'} />
                 <DrawerStat label="Gap" value={selectedTicker.gap_pct + '%'} color={selectedTicker.gap_pct.startsWith('-') ? 'var(--red)' : 'var(--green)'} />
                 <DrawerStat label="Float" value={selectedTicker.float_m + 'M'} />
+              </div>
+            </DrawerSection>
+
+            <DrawerSection title="Position Sizing">
+              <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.6 }}>
+                <div>Risk per trade: <strong style={{ color: 'var(--text0)' }}>$150</strong> · Target: <strong style={{ color: 'var(--green)' }}>$300+</strong> (2:1 R:R minimum)</div>
+                {selectedTicker.price > 0 && (
+                  <div style={{ marginTop: 4 }}>
+                    Suggested shares: <strong style={{ color: 'var(--accent)' }}>{Math.floor(150 / (selectedTicker.price * 0.05))}</strong> (assuming 5% stop)
+                    · Max position: <strong>{fmt$(Math.floor(150 / (selectedTicker.price * 0.05)) * selectedTicker.price)}</strong>
+                  </div>
+                )}
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Execute in Taxable account only. Do not hold overnight unless A-grade with volume confirmation.</div>
               </div>
             </DrawerSection>
 

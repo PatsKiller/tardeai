@@ -414,9 +414,32 @@ def proactive_intel_scan() -> dict:
             pass
 
     conn.commit()
+
+    # Retry failed event-triggered jobs from the last 24h
+    retried = 0
+    try:
+        cur.execute("""
+            UPDATE watchlist_agent_jobs
+            SET status = 'queued', started_at = NULL, completed_at = NULL
+            WHERE status = 'failed'
+              AND submitted_from = 'event_router'
+              AND created_at > NOW() - INTERVAL '24 hours'
+            RETURNING id, symbol, requested_agent
+        """)
+        retry_rows = cur.fetchall()
+        retried = len(retry_rows)
+        if retried > 0:
+            conn.commit()
+            for r in retry_rows:
+                print(f"  [proactive] Retried event job: {r['symbol']} → {r['requested_agent']}")
+            print(f"  [proactive] Re-queued {retried} failed event-triggered jobs from last 24h")
+    except Exception as e:
+        print(f"  [proactive] Event retry error: {e}")
+        conn.rollback()
+
     conn.close()
-    print(f"[proactive] Scanned {len(hot_items)}, debated {debated}, queued {queued}, throttled {skipped}")
-    return {"scanned": len(hot_items), "debated": debated, "queued": queued, "throttled": skipped}
+    print(f"[proactive] Scanned {len(hot_items)}, debated {debated}, queued {queued}, throttled {skipped}, event-retries {retried}")
+    return {"scanned": len(hot_items), "debated": debated, "queued": queued, "throttled": skipped, "event_retries": retried}
 
 
 def refresh_research_topics() -> dict:

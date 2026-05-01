@@ -11,7 +11,7 @@ interface ImportResult {
 
 const TYPES: { key: ImportType; label: string; desc: string; endpoint: string; accept: string }[] = [
   { key: 'schwab_positions', label: 'Schwab Positions', desc: 'CSV from Schwab positions export — replaces current account holdings', endpoint: '/api/import', accept: '.csv' },
-  { key: 'schwab_transactions', label: 'Schwab Transactions', desc: 'CSV from Schwab transaction history — appends new trades to journal', endpoint: '/api/import', accept: '.csv' },
+  { key: 'schwab_transactions', label: 'Schwab Transactions', desc: 'CSV from Schwab transaction history — appends new trades to journal', endpoint: '/api/import-transactions', accept: '.csv' },
   { key: 'fidelity_positions', label: 'Fidelity Positions', desc: 'CSV from Fidelity positions export — replaces 401k holdings', endpoint: '/api/import', accept: '.csv' },
 ]
 

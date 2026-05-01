@@ -387,7 +387,7 @@ export default function MorningBrief() {
       <motion.div {...fadeUp} transition={{ delay: 0.2, duration: 0.4 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
           <MetricTile label="Portfolio" value={fmt$(ov?.portfolio_value ?? 0)} delta={`${todayPct >= 0 ? '+' : ''}${todayPct.toFixed(2)}%`} deltaColor={todayPct >= 0 ? 'var(--green)' : 'var(--red)'} />
-          <MetricTile label="Heat" value={`${(rk?.portfolio_heat_pct ?? 0).toFixed(1)}%`} deltaColor={(rk?.portfolio_heat_pct ?? 0) >= 5 ? 'var(--amber)' : 'var(--green)'} delta={(rk?.portfolio_heat_pct ?? 0) >= 5 ? 'elevated' : 'normal'} />
+          <MetricTile label="Stop-Risk Heat" value={`${(rk?.portfolio_heat_pct ?? 0).toFixed(1)}%`} deltaColor={(rk?.portfolio_heat_pct ?? 0) >= 5 ? 'var(--amber)' : 'var(--green)'} delta={(rk?.portfolio_heat_pct ?? 0) >= 5 ? 'elevated — avoid new positions' : 'normal range'} tooltip="% of portfolio at risk if all stops trigger simultaneously. >5% = elevated risk." />
           <MetricTile label="Protected" value={`${protectionPct.toFixed(0)}%`} deltaColor="var(--green)" delta={`${rk?.position_count || 0} positions`} />
           <MetricTile label="Proposals" value={String(pendingProposals.length)} deltaColor={pendingProposals.length > 0 ? 'var(--amber)' : 'var(--green)'} delta={pendingProposals.length > 0 ? 'awaiting review' : 'all clear'} />
           <MetricTile label="Tasks" value={String(tasksData?.pending || 0)} deltaColor={(tasksData?.urgent || 0) > 0 ? 'var(--red)' : 'var(--text3)'} delta={`${tasksData?.urgent || 0} urgent`} />
@@ -697,7 +697,7 @@ function RiskExposurePanel({ ov, rk, triggered, danger, warnings, unprotected, p
     <Panel title="Risk & Exposure" action={<SmallBtn label="Full View" onClick={() => onNavigate('/risk')} />}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
         <MiniMetric label="Total risk" val={compactCurrency(rk?.total_risk_dollars)} tone="red" />
-        <MiniMetric label="Heat" val={`${(rk?.portfolio_heat_pct ?? 0).toFixed(1)}%`} tone={(rk?.portfolio_heat_pct ?? 0) >= 5 ? 'amber' : 'neutral'} />
+        <MiniMetric label="Stop-Risk Heat" val={`${(rk?.portfolio_heat_pct ?? 0).toFixed(1)}%`} tone={(rk?.portfolio_heat_pct ?? 0) >= 5 ? 'amber' : 'neutral'} />
         <MiniMetric label="Protected" val={`${protectionPct.toFixed(0)}%`} tone={protectionPct >= 50 ? 'green' : 'amber'} />
         <MiniMetric label="Positions" val={String(rk?.position_count || 0)} tone="neutral" />
       </div>
@@ -730,7 +730,12 @@ function OpportunityPanel({ recovery, coveredCalls, rotations, onNavigate }: { r
       {recovery.map(r => (
         <OppRow key={r.symbol} symbol={r.symbol} badge={humanize(r.analyst_verdict)} badgeTone={r.analyst_verdict === 'reentry_candidate' ? 'green' : 'accent'} detail={`Alloc: ${humanize(r.temp_allocation_verdict)}`} />
       ))}
-      {ccReview.length > 0 && <div style={{ ...F, fontSize: 8, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text3)', marginTop: 4, marginBottom: 2 }}>Covered Calls ({ccReview.length})</div>}
+      {ccReview.length > 0 && (
+        <>
+          <div style={{ ...F, fontSize: 8, fontWeight: 800, textTransform: 'uppercase', color: 'var(--text3)', marginTop: 4, marginBottom: 2 }}>Covered Calls ({ccReview.length})</div>
+          <div style={{ ...F, fontSize: 9, color: 'var(--amber)', marginBottom: 4, lineHeight: 1.5, padding: '4px 8px', background: 'rgba(240,185,11,0.06)', borderRadius: 4, border: '1px solid rgba(240,185,11,0.12)' }}>Target: 30-delta OTM · 21–45 DTE · premium ≥0.5% of price · Execute at ThinkorSwim or Fidelity options chain</div>
+        </>
+      )}
       {ccReview.map(c => (
         <OppRow key={c.symbol} symbol={c.symbol} badge="Review" badgeTone="amber" detail={c.reasoning} />
       ))}

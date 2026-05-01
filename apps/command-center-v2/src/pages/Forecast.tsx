@@ -114,6 +114,9 @@ export default function Forecast() {
           <div><strong style={{ color: 'var(--text1)' }}>Basis:</strong> {f.assumptions.basis}</div>
           <div><strong style={{ color: 'var(--text1)' }}>Market scenarios:</strong> {f.assumptions.market_scenarios}</div>
           <div><strong style={{ color: 'var(--text1)' }}>Dividend basis:</strong> {f.assumptions.dividend_basis}</div>
+          <div><strong style={{ color: 'var(--amber)' }}>Inflation:</strong> All projections are nominal (pre-inflation). Subtract ~3%/yr for real purchasing power. A $1.5M portfolio in 5 years buys ~$1.29M in today's dollars.</div>
+          <div><strong style={{ color: 'var(--amber)' }}>RMDs:</strong> Required Minimum Distributions begin at age 73 (~2040 for you). Pre-tax accounts (401k + Rollover IRA) will require mandatory withdrawals that increase taxable income — plan Roth conversions now to reduce future RMD burden.</div>
+          <div><strong style={{ color: 'var(--text3)' }}>401k yield:</strong> Fidelity 401k mutual funds (FXAIX, FSPSX, etc.) may show lower yield than ETF equivalents due to different reporting — total return is comparable.</div>
           <div style={{ color: 'var(--amber)' }}><strong>Limitations:</strong> {f.assumptions.limitations}</div>
         </div>
       </Card>

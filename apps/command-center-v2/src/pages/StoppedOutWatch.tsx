@@ -8,6 +8,7 @@ import DetailDrawer, { DrawerStat, DrawerSection } from '../components/DetailDra
 import { useApi } from '../hooks/useApi'
 import { useFetch } from '../hooks/useFetch'
 import { fmt$, fmtPct, deltaColor, timeAgo } from '../lib/format'
+import AccountBadge from '../components/AccountBadge'
 
 interface StopConf { id: number; symbol: string; account: string; stop_status: string; stop_confirmed: boolean; stop_price_confirmed: number | null; reminder_count: number; updated_at: string }
 interface StopConfData { count: number; items: StopConf[] }
@@ -97,6 +98,7 @@ export default function StoppedOutWatch() {
         <MetricTile label="Re-entry" value={String(reentryCount)} deltaColor="var(--green)" />
         <MetricTile label="Wait / Monitor" value={String(waitCount)} deltaColor="var(--amber)" />
         <MetricTile label="Do Not Re-enter" value={String(dontCount)} deltaColor="var(--red)" />
+        <MetricTile label="Freed Capital" value={fmt$(items.reduce((s, i) => s + (i.exit_price || 0) * ((i as unknown as Record<string, number>).shares || 0), 0) || 0)} delta="stays as cash in original account" deltaColor="var(--text3)" />
       </div>
 
       {/* Portfolio context for strategic reasoning */}
@@ -127,6 +129,7 @@ export default function StoppedOutWatch() {
                 {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text0)' }}>{item.symbol}</span>
+                  <AccountBadge account={item.account} />
                   <span style={{
                     fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 3, textTransform: 'uppercase',
                     background: verdictBg[v] || 'var(--amber-dim)', color: verdictColor[v] || 'var(--amber)',
@@ -243,12 +246,14 @@ export default function StoppedOutWatch() {
                       <div style={{ padding: '8px 10px', background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 'var(--radius)', fontSize: 10 }}>
                         <div style={{ fontWeight: 600, color: 'var(--green)', marginBottom: 3 }}>Re-entry Trigger</div>
                         <div style={{ color: 'var(--text1)' }}>{item.reentry_trigger}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Monitor daily via Technical page. Aegis auto-reviews on schedule.</div>
                       </div>
                     )}
                     {item.invalidated_if && (
                       <div style={{ padding: '8px 10px', background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 'var(--radius)', fontSize: 10 }}>
                         <div style={{ fontWeight: 600, color: 'var(--red)', marginBottom: 3 }}>Invalidated If</div>
                         <div style={{ color: 'var(--text1)' }}>{item.invalidated_if}</div>
+                        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>If invalidated, capital rotates to next conviction or stays cash.</div>
                       </div>
                     )}
                   </div>

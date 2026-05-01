@@ -6,13 +6,15 @@ import SectionHeader from '../components/SectionHeader'
 import TaskDetailDrawer, { type TaskItem } from '../components/TaskDetailDrawer'
 import { useApi } from '../hooks/useApi'
 import { fmt$, timeAgo } from '../lib/format'
+import AccountBadge from '../components/AccountBadge'
+import ProposalDetailDrawer from '../components/ProposalDetailDrawer'
 
 interface JohnTask { id: number; source: string; category: string; symbol: string; title: string; description: string; priority: string; status: string; recommendation: string; confidence: number; due_by: string; linked_route: string; followup: string; decided_at: string; created_at: string; provenance: Record<string, unknown> }
 interface TasksData { count: number; tasks: JohnTask[]; urgent: number; pending: number; failed_automation: number }
 
-interface RiskPos { symbol: string; current_price: number; stop_price: number | null; distance_pct: number | null; max_loss: number; market_value: number; triggered: boolean; status: string }
+interface RiskPos { symbol: string; name?: string; current_price: number; stop_price: number | null; distance_pct: number | null; max_loss: number; market_value: number; triggered: boolean; status: string; rsi?: number | null; sma200_pct?: number | null; beta?: number | null; pnl_if_stopped?: number | null; shares?: number; total_position_value?: number }
 interface Evidence { severity?: number; trigger_rule?: string; escalation_summary?: string; yahoo_analyst?: { current_price?: string; target_mean_price?: string; recommendation_key?: string; number_of_analyst_opinions?: number }; article_context?: { article_count_7d?: number; analyst_article_count?: number; categories?: string[]; top_titles?: { title: string; source: string }[] } }
-interface RiskContext { triggered?: RiskPos[]; danger?: RiskPos[]; total_positions?: number; position?: RiskPos }
+interface RiskContext { triggered?: RiskPos[]; danger?: RiskPos[]; total_positions?: number; total_with_stops?: number; position?: RiskPos; warning?: string | string[] }
 interface QueueItem {
   id: number; recommendation_id: number; symbol: string | null; action: string
   rationale: string; confidence: number; urgency: string; status: string
@@ -45,6 +47,7 @@ export default function Approvals() {
   const [decided, setDecided] = useState<Set<number>>(new Set())
   const [taskDecided, setTaskDecided] = useState<Set<number>>(new Set())
   const [selectedDrawerTask, setSelectedDrawerTask] = useState<TaskItem | null>(null)
+  const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null)
 
   const handleDecision = useCallback(async (queueId: number, decision: 'approved' | 'rejected') => {
     const note = (notes[queueId] || '').trim()
@@ -180,6 +183,7 @@ export default function Approvals() {
                       <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 3, textTransform: 'uppercase', background: urgencyBg[item.urgency], color: urgencyColor[item.urgency] }}>{item.urgency}</span>
                       <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{item.action.replace(/_/g, ' ')}</span>
                       {sym && <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>{sym}</span>}
+                      <AccountBadge account={(item as any).account} />
                       {isStale && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: 'var(--red-dim)', color: 'var(--red)' }}>STALE</span>}
                     </div>
                     <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
@@ -311,10 +315,10 @@ export default function Approvals() {
                         ))}
                       </div>
                     )}
-                    {(rc.warning?.length ?? 0) > 0 && (
+                    {Array.isArray(rc.warning) && rc.warning.length > 0 && (
                       <div style={{ marginTop: 6 }}>
-                        <div style={{ ...lbl, marginBottom: 4, color: 'var(--text3)' }}>Warning ({rc.warning?.length})</div>
-                        {(rc.warning || []).map((p, i) => (
+                        <div style={{ ...lbl, marginBottom: 4, color: 'var(--text3)' }}>Warning ({rc.warning.length})</div>
+                        {rc.warning.map((p: any, i: number) => (
                           <div key={i} style={{ fontSize: 9, color: 'var(--text2)', padding: '2px 0' }}>{p.symbol} — {p.current_price ? fmt$(p.current_price, 2) : '—'} / stop {p.stop_price ? fmt$(p.stop_price, 2) : '—'}</div>
                         ))}
                       </div>
@@ -370,7 +374,7 @@ export default function Approvals() {
                 {/* Related risk */}
                 {(rc?.danger?.length ?? 0) + (rc?.warning?.length ?? 0) > 0 && (
                   <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
-                    Related risk: {[...(rc?.danger || []).map(d => d.symbol), ...(rc?.warning || []).slice(0, 2).map(w => w.symbol)].filter(Boolean).join(', ')} also in danger/warning tier
+                    Related risk: {[...(rc?.danger || []).map((d: any) => d.symbol), ...(Array.isArray(rc?.warning) ? rc.warning.slice(0, 2).map((w: any) => w.symbol) : [])].filter(Boolean).join(', ')} also in danger/warning tier
                   </div>
                 )}
 
@@ -385,6 +389,7 @@ export default function Approvals() {
                   <button onClick={() => navigate('/recovery')} style={linkStyle}>Recovery Watch</button>
                   {item.action === 'ALLOCATION_REVIEW' && <button onClick={() => navigate('/rebalance')} style={linkStyle}>Rebalance</button>}
                   {sym && <a href={`https://finviz.com/quote.ashx?t=${sym}`} target="_blank" rel="noreferrer" style={{ ...linkStyle, textDecoration: 'none' }}>Finviz</a>}
+                  <button onClick={() => setSelectedProposalId(item.id)} style={{ ...linkStyle, border: '1px solid var(--accent)', color: 'var(--accent)', fontWeight: 700 }}>Full Context</button>
                 </div>
 
                 {/* Decision controls */}
@@ -448,6 +453,7 @@ export default function Approvals() {
 
       {/* Task detail drawer */}
       <TaskDetailDrawer task={selectedDrawerTask} onClose={() => setSelectedDrawerTask(null)} onDecided={handleDrawerDecided} />
+      <ProposalDetailDrawer proposalId={selectedProposalId} onClose={() => setSelectedProposalId(null)} />
     </>
   )
 }

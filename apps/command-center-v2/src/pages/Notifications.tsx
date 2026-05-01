@@ -88,9 +88,13 @@ export default function Notifications() {
         <DataGrid
           columns={columns}
           data={filtered}
-          rowKey={(r: Notification) => r.sent_at + r.subject}
-          onRowClick={(r: Notification) => setSelected(r.subject === selected?.subject ? null : r)}
-          selectedKey={selected ? selected.sent_at + selected.subject : undefined}
+          rowKey={(r: Notification) => (r as any).dedupe_key || `${r.sent_at || '?'}_${r.subject?.slice(0, 20) || '?'}`}
+          onRowClick={(r: Notification) => {
+            const rk = (r as any).dedupe_key || `${r.sent_at}_${r.subject}`
+            const sk = selected ? ((selected as any).dedupe_key || `${selected.sent_at}_${selected.subject}`) : ''
+            setSelected(rk === sk ? null : r)
+          }}
+          selectedKey={selected ? ((selected as any).dedupe_key || `${selected.sent_at || '?'}_${selected.subject?.slice(0, 20) || '?'}`) : undefined}
           maxHeight={400}
         />
 
@@ -102,10 +106,18 @@ export default function Notifications() {
               <Row label="Status" value={selected.status} />
               <Row label="Date" value={selected.notification_date} />
               <Row label="Sent" value={selected.sent_at || '—'} />
-              {selected.body_summary && (
+              {(selected.body_summary || (selected as any).body) && (
                 <div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>Summary</div>
-                  <div style={{ color: 'var(--text1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{selected.body_summary}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>{(selected as any).body ? 'Full Message' : 'Summary'}</span>
+                    {(selected as any).body && selected.body_summary && (
+                      <button onClick={() => {
+                        const el = document.getElementById('notif-body')
+                        if (el) el.textContent = el.textContent === selected.body_summary ? (selected as any).body : selected.body_summary
+                      }} style={{ fontSize: 8, padding: '1px 6px', border: '1px solid var(--border)', borderRadius: 3, background: 'var(--bg3)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>Toggle Full/Summary</button>
+                    )}
+                  </div>
+                  <div id="notif-body" style={{ color: 'var(--text1)', lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 300, overflowY: 'auto' }}>{(selected as any).body || selected.body_summary}</div>
                 </div>
               )}
             </div>

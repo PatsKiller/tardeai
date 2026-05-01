@@ -764,13 +764,23 @@ def promote_failed_reviews() -> int:
             followup = "Manual review of stop adequacy when convenient."
             route = "/recovery"
 
-        # Dedupe: don't create if already exists for this symbol + today
+        # Dedupe: don't create if a pending task already exists for this symbol+category
         existing = _db_query(
             "SELECT id FROM john_decision_queue WHERE symbol=%s AND category='failed_stop_review' "
-            "AND created_at::date = %s::date LIMIT 1",
-            (sym, today), fetch="one"
+            "AND status='pending_john' LIMIT 1",
+            (sym,), fetch="one"
         )
         if existing:
+            # Update the existing task with fresh data instead of creating a duplicate
+            _db_write(
+                """UPDATE john_decision_queue SET description=%s,
+                   provenance=provenance || %s::jsonb, updated_at=NOW()
+                   WHERE id=%s""",
+                (desc, json.dumps({"last_refreshed": str(today),
+                                   "resolved_price": resolved_price,
+                                   "stop_price": stop_price}),
+                 existing["id"])
+            )
             continue
 
         ok = _db_write(

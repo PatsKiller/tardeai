@@ -47,12 +47,25 @@ export default function Attribution() {
           </div>
         </Card>
         <Card title="Benchmark Context">
-          <div style={{ color: 'var(--text2)', fontSize: 11, lineHeight: 1.6 }}>{data.note || 'Position-level attribution for understanding what drove portfolio returns.'}</div>
+          <div style={{ color: 'var(--text2)', fontSize: 11, lineHeight: 1.6 }}>
+            {data.note || 'Position-level attribution for understanding what drove portfolio returns.'}
+            <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text3)' }}>
+              Benchmark: <strong style={{ color: 'var(--text1)' }}>{data.benchmark_label || 'Blended'}</strong> — weighted blend matching your allocation (60% SPY + 25% ITA + 15% AGG). Chosen to reflect your sector tilt toward defense/income.
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>
+              Returns span all 4 accounts (401k, Roll IRA, Roth, Taxable) combined. Individual account attribution not yet available.
+            </div>
+          </div>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
             <SmallStat label="Sortino" value={data.port_sortino != null ? data.port_sortino.toFixed(2) : '—'} />
             <SmallStat label="Max Drawdown" value={data.port_maxdd != null ? fmtPct(data.port_maxdd, 1) : '—'} color="var(--red)" />
             <SmallStat label="Inception Return" value={data.inception_return != null ? fmtPct(data.inception_return, 1) : '—'} color="var(--green)" />
           </div>
+          {data.port_maxdd != null && (
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>
+              Max drawdown of {fmtPct(data.port_maxdd, 1)} means the portfolio dropped that much peak-to-trough. {Math.abs(data.port_maxdd) > 15 ? 'This is significant — review stop discipline and position sizing.' : 'Within normal range for a diversified portfolio.'}
+            </div>
+          )}
         </Card>
       </div>
     </>

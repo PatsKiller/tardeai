@@ -110,9 +110,17 @@ export default function Research() {
                   <TechRow label="52W High" value={research.technicals.week52_high_pct as number | null} />
                   <TechRow label="52W Low" value={research.technicals.week52_low_pct as number | null} />
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                   <button onClick={() => navigate(`/technical?symbol=${research.symbol}`)} style={secondaryAction}>Open Technical</button>
                   <button onClick={() => navigate(`/portfolio?symbol=${research.symbol}`)} style={secondaryAction}>Open Holdings</button>
+                  <button onClick={() => navigate(`/watchlist?symbol=${research.symbol}`)} style={secondaryAction}>Open Watchlist</button>
+                  <button onClick={async () => {
+                    try {
+                      const r = await fetch('/api/v2/watchlist/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: research.symbol, source: 'personal_watchlist' }) })
+                      const d = await r.json()
+                      alert(d.ok ? `${research.symbol} added to personal watchlist` : d.error || 'Failed')
+                    } catch { alert('Network error') }
+                  }} style={{ ...secondaryAction, border: '1px solid var(--green)', color: 'var(--green)' }}>+ Watchlist</button>
                 </div>
               </Card>
 
@@ -131,7 +139,7 @@ export default function Research() {
             <SectionHeader title="Recent Articles" count={research.articles.length} />
             <Card>
               {research.articles.length === 0 ? (
-                <div style={{ color: 'var(--text3)', fontSize: 11, padding: 8 }}>No articles for {research.symbol} in current news batch</div>
+                <div style={{ color: 'var(--text3)', fontSize: 11, padding: 8 }}>No articles for {research.symbol} in current news batch. Articles are ingested nightly from Finviz/Yahoo feeds — new tickers may take 24h to populate.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {research.articles.map((a, i) => (
@@ -168,7 +176,9 @@ export default function Research() {
 
 function TechRow({ label, value, raw }: { label: string; value?: number | null; raw?: boolean }) {
   if (value == null) return <div><div style={{ fontSize: 9, color: 'var(--text3)' }}>{label}</div><div style={{ fontSize: 12, color: 'var(--text3)' }}>—</div></div>
-  return <div><div style={{ fontSize: 9, color: 'var(--text3)' }}>{label}</div><div style={{ fontSize: 12, fontWeight: 600, color: raw ? 'var(--text0)' : deltaColor(value) }}>{raw ? value.toFixed(2) : fmtPct(value)}</div></div>
+  const isSma = label.startsWith('SMA')
+  const smaTitle = isSma ? (value > 0 ? `Price is ${value.toFixed(1)}% above ${label} — bullish` : `Price is ${Math.abs(value).toFixed(1)}% below ${label} — bearish`) : undefined
+  return <div title={smaTitle}><div style={{ fontSize: 9, color: 'var(--text3)' }}>{label}</div><div style={{ fontSize: 12, fontWeight: 600, color: raw ? 'var(--text0)' : deltaColor(value) }}>{raw ? value.toFixed(2) : fmtPct(value)}</div></div>
 }
 function num(v?: number | null, d = 1) {
   return v == null ? '—' : v.toFixed(d)
