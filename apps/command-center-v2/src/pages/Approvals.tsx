@@ -37,11 +37,13 @@ export default function Approvals() {
   const navigate = useNavigate()
   const { data: resp } = useApi<ApprovalData>('/api/v2/approvals/pending')
   const { data: histResp } = useApi<HistoryData>('/api/v2/approvals/history')
-  const { data: statesResp } = useApi<{ total: number; by_status: Record<string, number> }>('/api/v2/approvals/states')
-  const { data: tasksResp } = useApi<TasksData>('/api/v2/tasks')
+  const { data: statesResp } = useApi<{ total: number; by_status: Record<string, number>; items: QueueItem[] }>('/api/v2/approvals/states', 30000)
+  const { data: tasksResp } = useApi<TasksData>('/api/v2/tasks', 30000)
   const pending = resp?.pending ?? []
+  const allQueueItems = statesResp?.items ?? []
   const history = histResp?.decisions ?? []
   const johnTasks = (tasksResp?.tasks ?? []).filter(t => t.source === 'john_decision_queue')
+  const [statusFilter, setStatusFilter] = useState<string>('pending')
   const [notes, setNotes] = useState<Record<number, string>>({})
   const [deciding, setDeciding] = useState<Record<number, string>>({})
   const [decided, setDecided] = useState<Set<number>>(new Set())
@@ -67,8 +69,25 @@ export default function Approvals() {
     setSelectedDrawerTask(null)
   }, [])
 
-  const activePending = pending.filter(item => !decided.has(item.id))
-  const activeJohnTasks = johnTasks.filter(t => !taskDecided.has(t.id))
+  // Use allQueueItems for non-pending filters, pending list for pending
+  const filteredQueue = statusFilter === 'pending'
+    ? pending.filter(item => !decided.has(item.id))
+    : statusFilter === 'all'
+      ? allQueueItems
+      : allQueueItems.filter(item => item.status === statusFilter)
+
+  // John tasks: filter by mapped status
+  const statusMap: Record<string, string[]> = {
+    pending: ['pending_john'], approved: ['decided_action'], rejected: ['rejected'],
+    deferred: ['deferred'], resolved: ['closed', 'revisit_later'], all: [],
+  }
+  const activeJohnTasks = johnTasks.filter(t => {
+    if (taskDecided.has(t.id)) return false
+    if (statusFilter === 'all') return true
+    const allowed = statusMap[statusFilter] || []
+    return allowed.length === 0 || allowed.includes(t.status)
+  })
+  const activePending = filteredQueue
 
   return (
     <>
@@ -92,24 +111,29 @@ export default function Approvals() {
         <button onClick={() => navigate('/actions')} style={linkStyle}>Actions</button>
       </div>
 
-      {/* State summary */}
+      {/* Status filter tabs */}
       {statesResp && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          {[['pending', 'var(--amber)'], ['approved', 'var(--green)'], ['rejected', 'var(--red)'], ['expired', 'var(--text3)']].map(([status, color]) => (
-            <div key={status} style={{ padding: '4px 12px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: 10 }}>
-              <span style={{ color: color as string, fontWeight: 700 }}>{statesResp.by_status[status] || 0}</span>
-              <span style={{ color: 'var(--text3)', marginLeft: 4 }}>{status}</span>
-            </div>
-          ))}
-          <div style={{ padding: '4px 12px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: 10 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {([['pending', 'var(--amber)'], ['approved', 'var(--green)'], ['rejected', 'var(--red)'], ['deferred', 'var(--accent)'], ['resolved', 'var(--text3)']] as const).map(([st, color]) => {
+            const cnt = statesResp.by_status[st] || 0
+            if (cnt === 0 && st !== 'pending') return null
+            const active = statusFilter === st
+            return (
+              <button key={st} onClick={() => setStatusFilter(active ? 'all' : st)} style={{ padding: '4px 12px', background: active ? `color-mix(in srgb, ${color} 15%, transparent)` : 'var(--bg3)', border: `1px solid ${active ? color : 'transparent'}`, borderRadius: 'var(--radius)', fontSize: 10, cursor: 'pointer', color: 'inherit' }}>
+                <span style={{ color: color as string, fontWeight: 700 }}>{cnt}</span>
+                <span style={{ color: active ? 'var(--text0)' : 'var(--text3)', marginLeft: 4 }}>{st}</span>
+              </button>
+            )
+          })}
+          <button onClick={() => setStatusFilter('all')} style={{ padding: '4px 12px', background: statusFilter === 'all' ? 'var(--bg-card)' : 'var(--bg3)', border: `1px solid ${statusFilter === 'all' ? 'var(--accent)' : 'transparent'}`, borderRadius: 'var(--radius)', fontSize: 10, cursor: 'pointer', color: 'inherit' }}>
             <span style={{ fontWeight: 700, color: 'var(--text0)' }}>{statesResp.total}</span>
-            <span style={{ color: 'var(--text3)', marginLeft: 4 }}>total</span>
-          </div>
+            <span style={{ color: statusFilter === 'all' ? 'var(--text0)' : 'var(--text3)', marginLeft: 4 }}>all</span>
+          </button>
         </div>
       )}
 
       {/* ═══ JOHN DECISION TASKS ═══ */}
-      {activeJohnTasks.length > 0 && (
+      {(activeJohnTasks.length > 0 || statusFilter !== 'pending') && (
         <>
           <SectionHeader title="Decision Tasks" count={activeJohnTasks.length} />
           <Card>
@@ -156,7 +180,7 @@ export default function Approvals() {
       )}
 
       {/* ═══ APPROVAL QUEUE ═══ */}
-      {activePending.length > 0 && <SectionHeader title="Approval Queue" count={activePending.length} />}
+      {(activePending.length > 0 || statusFilter !== 'pending') && <SectionHeader title="Approval Queue" count={activePending.length} />}
       {activePending.length === 0 && activeJohnTasks.length === 0 ? (
         <Card><div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>No pending items. Aegis will queue new recommendations after overnight analysis.</div></Card>
       ) : (
