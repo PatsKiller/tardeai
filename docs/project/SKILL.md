@@ -478,6 +478,69 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 
 ---
 
+## Scripts & Cron Cheat Sheet
+
+### Pipeline scripts (run by cron — 67 entries)
+
+| Script | Schedule | What it does | Key args |
+|--------|----------|--------------|----------|
+| `run_alex_daily.py` | 5:00 AM M-F | Alex daily retirement scan → Telegram | `--daily --telegram` |
+| `overnight_batch.py` | 5:30 AM / 6:45 AM / 8 PM / 9 PM | Outcomes, proactive scan, nightly pipeline, embeddings | `--outcomes` / `--proactive` / `--telegram` / `--index-embeddings` |
+| `telegram_smart_alerts.py` | 6:00 AM M-F | Roth/income/conflict/stop/Medicare alerts | `--check-all --telegram` |
+| `credential_monitor.py` | 6:00 AM daily | Check 10 API credentials | `--check --telegram` |
+| `fred_data_ingest.py` | 6:30 AM M-F | FRED macro (7 series) | `--ingest` |
+| `news_ingestion.py` | 6:30 AM / 12:30 PM / 6:30 PM | Yahoo RSS + Finnhub + Google News | `--priority` |
+| `classify_candidates.py` | 6:35 AM M-F | Classify new symbols into strategies | — |
+| `intel_auto_discovery.py` | 6:40 AM + 12:40 PM M-F | Scan for new ticker mentions | `--telegram` |
+| `finviz_enrichment.py` | 7:10 AM + 1:00 PM M-F | RSI, SMA, ATR, beta enrichment | — |
+| `cio_decision_engine.py` | 7:00 AM M-F | CIO synthesis → decisions | `--run` |
+| `aegis_morning_brief_delivery.py` | 8:05 AM M-F | Morning brief → Telegram + export | — |
+| `finviz_screener_runner.py` | 10:00 AM + 4:00 PM M-F | Run 22 Finviz screeners | `--run` |
+| `youtube_transcript_ingest.py` | 7:00 PM M-F | Ingest from 44 channels | `--all-channels` |
+| `agent_watchlist_engine.py` | 7:00 PM M-F / Sun 10 AM | Daily + weekly watchlist engine | `--daily` / `--weekly --telegram` |
+| `sec_data_ingest.py` | 8:00 PM M-F | SEC EDGAR Form 4 insider filings | `--all` |
+| `event_detector.py` | Every 15 min 24/7 | Level 3: 10 event types → queue | — |
+| `agent_event_router.py` | Every 15 min 24/7 (+2m) | Drain event queue → agent jobs → Telegram | — |
+| `process_watchlist_agent_jobs.py` | Every 5–15 min 24/7 | Process queued agent analysis jobs | `--limit 10/15/25` |
+| `iris_taxonomy_agent.py` | Sunday 6 AM | Content hygiene — demote stale, flag superseded | `--hygiene` |
+| `alex_gov_research.py` | Sunday 8 AM | Government data refresh (SSA, IRMAA, Medicaid) | `--refresh` |
+| `full_system_backup.py` | Sunday 1 AM | Full system backup zip | — |
+| `youtube_channel_discovery.py` | 1st of month 10 AM | Discover new channels | `--discover --telegram` |
+
+### On-demand scripts (manual or API-triggered)
+
+| Script | Trigger | What it does | Key args |
+|--------|---------|--------------|----------|
+| `phase2_ticker_enrichment.py` | API / auto-enrich | Fresh price + news + SEC for a symbol | `--symbol SYM` |
+| `alex_retirement_advisor.py` | Telegram `alex V` | Full retirement analysis | `--analyze SYM` |
+| `alex_hygiene.py` | API | 3-tier decision hygiene (Sonnet/Grok/GPT-4o/Opus) | `--classify` / `--run` |
+| `iris_taxonomy_agent.py` | Telegram `iris run` | Taxonomy scan: coverage gaps, proposals | — (default) |
+| `transcript_tagger.py` | Post-ingest hook | Per-transcript quality + strategy + agent tagging | `--retag-all` / `--id N` |
+| `telegram_command_handler.py` | Telegram polling | Parse 29 Telegram commands | `--poll` |
+| `system_preflight_check.py` | Manual | Verify data sources, credentials, DB | — |
+| `portfolio_orchestrator.py` | Manual | Full pipeline (reprice, stops, risk, reports) | — |
+
+### Server processes
+
+| Script | Port | What it does |
+|--------|------|--------------|
+| `portfolio_server.py` | 7777 | Main HTTP server — /api/v2/*, React app, static files |
+
+### Utility / library scripts
+
+| Script | What it does |
+|--------|--------------|
+| `api_v2.py` | All /api/v2/* route handlers (imported by portfolio_server.py) |
+| `db_adapter.py` | PostgreSQL connection, query wrappers, action_queue upsert |
+| `local_llm.py` | Ollama qwen3:1.7b with OpenAI/Claude fallback chain |
+| `llm_router.py` | LLM routing with budget tracking ($0.50/day) |
+| `content_scoring.py` | Keyword quality/relevance scoring for news + YouTube |
+| `telegram_alert.py` | Send message via Telegram Bot API |
+| `intel_query.py` | Query whiteboard, agent_results, market session context |
+| `scoring.py` | Trade AI 6-pillar scoring engine (55 pts max) |
+
+---
+
 ## Trust Matrix (what to rely on)
 
 **HIGH TRUST:** Portfolio tracking, tax bracket math, income gap, DB infrastructure, FRED macro, SEC Form 4, preflight check
@@ -623,6 +686,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.3 — 163 tables, 67 cron entries, 29 Telegram commands, 7 agents, 32 pages, 47 positions ($1.19M), 651 transcripts, 44 channels, 883 news, 1852 agent results. Task decision endpoints (resolve/defer/reject). Duplicate task prevention + deduplicate cleanup. SmartTextarea mic permission handling (HTTPS detection). AI rewrite Claude Haiku fallback. Auto-enrichment on RESEARCH_MORE. Data quality warnings. Portfolio Intelligence (95.7% classified).*
+*SKILL.md v5.4 — Complete scripts & cron cheat sheet: 67 cron entries, on-demand scripts, server processes, utility scripts. 163 tables, 29 Telegram commands, 7 agents, 32 pages, 47 positions ($1.19M), 651 transcripts, 44 channels, 1852 agent results.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
