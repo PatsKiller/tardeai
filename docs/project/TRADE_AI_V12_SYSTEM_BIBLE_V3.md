@@ -1,12 +1,12 @@
-# Trade AI v12 + Portfolio Intelligence — System Bible v5.6
+# Trade AI v12 + Portfolio Intelligence — System Bible v5.7
 
 **Canonical source of truth. Claude Code uses this document as the reference spec.**  
 **Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 1, 2026  
 **SSH:** `ssh johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
-**Prev version:** v5.5 (May 1, 2026)  
-**Changelog:** v5.6 — YouTube intelligence fix: CASE-based JOIN for 6 name variants (120 tx re-routed to correct channels). 59 orphan transcripts flagged. Server-side category filtering. Content Health dashboard: mismatch + orphan tiles with one-click fix buttons. youtube-audit returns name_mismatches + orphan_tx_count. Admin endpoints: fix-channel-name-mismatches, flag-orphan-transcripts.
-**Prev changelog:** v5.5 — Content Health Dashboard (/v2/content-health): summary tiles (healthy/below/no-transcripts), collapsible scoring guide, full channel health table with quality bars + Iris flag-for-review. Fixed /api/v2/youtube/transcripts: LEFT JOIN to youtube_channels, category/channel/limit query params. POST /api/v2/iris/hygiene-flag for manual channel flagging. 33 pages.
+**Prev version:** v5.6 (May 1, 2026)  
+**Changelog:** v5.7 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 2036 agent results, 910 news articles, 651 transcripts, 44 channels, 54 SEC filings, 645 whiteboard items, 15 systemd timers. News tab on Intelligence Sources (GET /api/v2/news/articles with server-side filtering by strategy/source/relevance/search + pagination). News strategy classifier: 14 categories (added ssdi + rollover_ira), retirement_relevance column on news_articles (82 high, 85 medium, 743 low). Idempotent backfill endpoint. SEC Form 4 strategy_focus from ticker_strategy_classifications with channel-name validation guard. Aegis overnight: TimeoutStartSec=3600, per-phase SIGALRM 30-min limit, Phase 1.5 news classification. Verified: full run completed in 1429s (23.8 min). tradeai-continuous: preflight made non-fatal. systemd timer visibility: DBUS env vars passed to subprocess calls (11 timers now visible in orchestration API). Content Health dashboard: name mismatch + orphan tiles with fix buttons. Status badges: PENDING/TAGGED/VALIDATED/LOW CONF/ORPHAN.
+**Prev changelog:** v5.6 — YouTube intelligence fix. v5.5 — Content Health Dashboard (/v2/content-health): summary tiles (healthy/below/no-transcripts), collapsible scoring guide, full channel health table with quality bars + Iris flag-for-review. Fixed /api/v2/youtube/transcripts: LEFT JOIN to youtube_channels, category/channel/limit query params. POST /api/v2/iris/hygiene-flag for manual channel flagging. 33 pages.
 **Prev changelog:** v5.4 — Scripts & cron cheat sheet. v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
 
 ---
@@ -1087,7 +1087,18 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 | `/transcript-audit` | GET | Per-transcript tagging quality, strategy distribution |
 | `/youtube/transcripts` | GET | Last 100 transcripts |
 | `/youtube/channels` | GET | All active channels |
-| `/youtube/channels/add` | POST | Add/upsert a YouTube channel `{channel_name, channel_url, strategy_focus}` |
+| `/youtube/channels/add` | POST | Add/upsert a YouTube channel `{channel_name, channel_url, category, priority, agent_tags}` |
+| `/youtube/channel-lookup` | GET | Look up channel by URL — returns existing data or extracted channel_id |
+| `/youtube/ingest-all` | POST | Background ingest for all 44 channels (non-blocking Popen) |
+
+### News
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/news/articles` | GET | Paginated news with server-side filtering — `?strategy=&source=&relevance=&search=&limit=&offset=` |
+| `/admin/backfill-news-strategy` | POST | Classify all news articles (idempotent — returns 0 on second call) |
+| `/admin/fix-channel-name-mismatches` | POST | Fix 6 known YouTube channel name variants in transcripts |
+| `/admin/flag-orphan-transcripts` | POST | Flag transcripts with no matching channel as orphan |
 
 ### Portfolio & Tools
 
@@ -1551,7 +1562,7 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 |-----------|-----|---------|-------|
 | Data sources active (9) | 15 | 15 | All 9 active |
 | Embedding coverage | 10 | 10 | 100% coverage |
-| Agent analyses (200+) | 10 | 10 | 1,852 results |
+| Agent analyses (200+) | 10 | 10 | 2,036 results |
 | Avg confidence (>0.5) | 10 | 9 | Maria 0.85 (two-pass), Steph/Risk 0.71 |
 | Proposals reviewed | 10 | 0 | Need to approve/reject 10+ |
 | Debates active | 5 | 0 | Accumulating |
@@ -1601,7 +1612,9 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 
 ---
 
-*v5.3 — Task decision endpoints (resolve/defer/reject). Duplicate task prevention + deduplicate cleanup. Mic HTTPS detection. AI rewrite Claude fallback. Auto-enrichment on RESEARCH_MORE. Data quality in task-detail. 1,852 agent results.*
+*v5.7 — News tab + classifier (14 categories, retirement_relevance). Aegis overnight timeout fix (1429s successful run). systemd timer visibility. Content Health status badges.*
+*v5.6 — YouTube name mismatches + orphan flagging. v5.5 — Content Health Dashboard.*
+*v5.3 — Task decision endpoints. Auto-enrichment. SmartTextarea mic.*
 *v5.2 — Portfolio Intelligence page, task modal 10-section panel, SmartTextarea, AddYouTubeChannelModal, Iris card, retirement freshness.*
 *v5.1 — Iris identity + 2 modes (taxonomy + hygiene). Per-transcript deep tagging. Alex 3-tier decision hygiene + 48 disability rules + gov scrapers.*  
 *v5.0 — YouTube audit: 44 channels, 651 transcripts, 8 categories. Channel schema + /api/v2/youtube-audit.*  

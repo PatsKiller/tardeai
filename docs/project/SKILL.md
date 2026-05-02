@@ -660,6 +660,8 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 | `/api/v2/rewrite-note/status` | GET | Local LLM availability — `{local_llm: bool, fallback: "claude-haiku-4-5"}` |
 | `/api/v2/retirement/refresh` | POST | Trigger fresh Alex analysis in background (~60s) |
 | `/api/v2/portfolio-intelligence` | GET | 47 positions with real sectors, per-account/sector P&L, cross-account, best/worst, classification |
+| `/api/v2/news/articles` | GET | Paginated news — `?strategy=&source=&relevance=&search=&limit=&offset=` (14 categories, retirement_relevance) |
+| `/api/v2/admin/backfill-news-strategy` | POST | Classify all news articles (idempotent — 0 on second call) |
 | `/api/v2/tasks/<id>/resolve` | POST | Resolve a task — `{note}` → updates john_decision_queue status to decided_action |
 | `/api/v2/tasks/<id>/defer` | POST | Defer a task — `{note}` → updates status to deferred |
 | `/api/v2/tasks/<id>/reject` | POST | Reject a task — `{note}` → updates status to rejected |
@@ -686,6 +688,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.6 — YouTube intelligence fix: 6 name mismatches corrected (120 tx re-routed), 59 orphan transcripts flagged, CASE-based JOIN for name variants, server-side category filtering, Content Health dashboard shows mismatches + orphans + fix buttons. POST admin/fix-channel-name-mismatches + admin/flag-orphan-transcripts endpoints. youtube-audit returns name_mismatches + orphan_tx_count.*
+*SKILL.md v5.7 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 2036 agent results, 910 news articles, 651 transcripts, 44 channels, 54 SEC filings, 645 whiteboard, 15 systemd timers. News tab on Intelligence Sources (GET /api/v2/news/articles, 14 strategy categories, retirement_relevance, server-side filtering + pagination). Idempotent news classifier (ssdi + rollover_ira added). Aegis overnight: 1429s successful run, TimeoutStartSec=3600, SIGALRM per-phase. tradeai-continuous preflight non-fatal. systemd timers visible in orchestration (DBUS env fix). Content Health: status badges (PENDING/TAGGED/VALIDATED/LOW CONF/ORPHAN).*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
