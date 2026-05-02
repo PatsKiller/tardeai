@@ -1416,6 +1416,63 @@ def run_library_audit(dry_run=False):
     except Exception as e:
         print(f"  Gap check error: {e}")
 
+    # 3f. Notify agents of critical content gaps
+    CRITICAL_GAP_AGENTS = {
+        "ssdi": ["alex"], "disability_retirement": ["alex"],
+        "trust_estate": ["alex", "tax_agent"], "roth_conversion": ["alex", "tax_agent"],
+        "tax_planning": ["tax_agent", "maria"], "retirement_planning": ["alex", "steph"],
+        "dividend_income": ["steph", "maria"], "macro_fed": ["maria", "risk_agent"],
+    }
+    gap_events_fired = 0
+    if not dry_run and report.get("content_gaps"):
+        print("\n  [3f] Notifying agents of content gaps...")
+        conn2, cur2 = _get_conn_dict()
+        for gap in report["content_gaps"]:
+            cat = gap["category"]
+            agents = CRITICAL_GAP_AGENTS.get(cat, [])
+            if agents and gap.get("articles_30d", 0) == 0:
+                try:
+                    cur2.execute("""
+                        INSERT INTO agent_event_queue (event_type, symbol, agents_to_notify, priority, trigger_data, status, created_at)
+                        VALUES ('CONTENT_GAP', %s, %s, 'normal', %s, 'pending', NOW())
+                    """, (f"CATEGORY:{cat}", agents,
+                          json.dumps({"category": cat, "articles_30d": gap.get("articles_30d", 0),
+                                      "youtube_30d": gap.get("youtube_30d", 0),
+                                      "message": f"No fresh {cat.replace('_',' ')} content in 30 days. Rely on RAG embeddings + gov sources."})))
+                    gap_events_fired += 1
+                    print(f"    CONTENT_GAP event for {cat} → {agents}")
+                except Exception as e:
+                    print(f"    Event error for {cat}: {e}")
+                    conn2.rollback()
+        conn2.commit()
+        conn2.close()
+        report["gap_events_fired"] = gap_events_fired
+
+    # 3g. Auto-flag clear duplicates
+    if not dry_run:
+        print("\n  [3g] Flagging clear duplicates...")
+        try:
+            conn3, cur3 = _get_conn_dict()
+            cur3.execute("""
+                UPDATE news_articles SET is_duplicate = TRUE
+                WHERE id IN (
+                    SELECT id FROM (
+                        SELECT id, ROW_NUMBER() OVER (
+                            PARTITION BY LEFT(LOWER(TRIM(title)), 60)
+                            ORDER BY relevance_score DESC NULLS LAST, created_at ASC
+                        ) as rn
+                        FROM news_articles WHERE created_at > NOW() - INTERVAL '90 days'
+                    ) sq WHERE rn > 1
+                ) AND NOT COALESCE(is_duplicate, FALSE)
+            """)
+            flagged_dupes = cur3.rowcount
+            conn3.commit()
+            conn3.close()
+            report["dupes_flagged"] = flagged_dupes
+            print(f"    Flagged {flagged_dupes} duplicate articles")
+        except Exception as e:
+            print(f"    Dedup error: {e}")
+
     conn.close()
     elapsed = int(time.time() - started)
     print(f"\n{'='*60}")
@@ -1429,10 +1486,14 @@ def run_library_audit(dry_run=False):
             f"RAG: {report.get('rag_coverage_pct', '?')}% coverage\n"
             f"Stale: {report.get('stale_symbols', 0)} symbols need refresh\n"
             f"Unrouted: {report.get('unrouted_transcripts', 0)} transcripts\n"
-            f"Dupes: {report.get('duplicate_articles', 0)} groups\n"
-            f"Gaps: {len(report.get('content_gaps', []))} categories thin"
+            f"Dupes: {report.get('duplicate_articles', 0)} groups ({report.get('dupes_flagged', 0)} auto-flagged)\n"
+            f"Gaps: {len(report.get('content_gaps', []))} thin ({report.get('gap_events_fired', 0)} agent events fired)"
         )
         _send_telegram_msg(summary)
+        # Critical gap Telegram alerts
+        for gap in report.get("content_gaps", []):
+            if gap.get("articles_30d", 0) == 0 and gap["category"] in ("ssdi", "disability_retirement", "trust_estate"):
+                _send_telegram_msg(f"Iris Library Alert: {gap['category'].replace('_',' ')} — 0 articles + 0 YouTube in 30 days. Agents notified.")
 
     return report
 

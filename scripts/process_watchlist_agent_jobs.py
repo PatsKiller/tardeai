@@ -299,6 +299,35 @@ def _get_other_agent_views(symbol: str, current_agent: str) -> str:
         return ""
 
 
+def _get_content_gap_warnings(agent_name: str) -> str:
+    """Check if Iris flagged content gaps relevant to this agent."""
+    try:
+        import psycopg2.extras as _pxe
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+        cur.execute("""
+            SELECT trigger_data FROM agent_event_queue
+            WHERE event_type = 'CONTENT_GAP'
+              AND agents_to_notify @> ARRAY[%s]::text[]
+              AND created_at > NOW() - INTERVAL '7 days'
+              AND status = 'pending'
+            ORDER BY created_at DESC LIMIT 5
+        """, (agent_name,))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        lines = ["=== Content Gap Warnings (from Iris) ==="]
+        for r in rows:
+            td = r["trigger_data"] if isinstance(r["trigger_data"], dict) else json.loads(r["trigger_data"]) if r["trigger_data"] else {}
+            lines.append(f"  {td.get('category','?')}: {td.get('message','thin content')}")
+        lines.append("When content is thin, note lower confidence in your analysis.")
+        lines.append("=== End Gap Warnings ===")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
     """Peer notes — explicit recent conclusions from each other agent."""
     try:
@@ -369,6 +398,13 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     except Exception:
         pass
 
+    # Content gap warnings from Iris librarian
+    gap_warnings = ""
+    try:
+        gap_warnings = _get_content_gap_warnings(agent)
+    except Exception:
+        pass
+
     base_instruction = f"""Respond in JSON format with these fields:
 - "summary": 1-2 sentence executive summary
 - "full_narrative": detailed 3-5 paragraph analysis (this is the primary output)
@@ -381,6 +417,7 @@ Context:
 {context_text}
 {rag_block}
 {peer_notes}
+{gap_warnings}
 {other_views}{intel}"""
     if note:
         base_instruction += f"Additional note: {note}\n"
@@ -1399,14 +1436,15 @@ def process_jobs(limit: int = 10):
               raw,
               job.get("started_at")))
 
-        # Store RAG sources used for audit
+        # Store RAG sources + peer notes for audit
         try:
             rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
+            cur.execute("UPDATE watchlist_agent_results SET rag_sources_used=%s WHERE id=%s",
+                        (json.dumps(rag_used), result_id))
             if rag_used:
-                cur.execute("UPDATE watchlist_agent_results SET rag_sources_used=%s WHERE id=%s",
-                            (json.dumps(rag_used), result_id))
-        except Exception:
-            pass
+                print(f"  [RAG-STORE] {symbol}: {len(rag_used)} sources saved to result {result_id}")
+        except Exception as e:
+            print(f"  [RAG-STORE] ERROR saving rag_sources_used: {e}")
 
         # Update job
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
