@@ -3190,7 +3190,7 @@ def _task_detail(task_id: int):
 
     # Agent results
     agents = _db_query(
-        """SELECT DISTINCT ON (agent) agent AS agent_name, recommendation, confidence AS confidence_score, summary, created_at
+        """SELECT DISTINCT ON (agent) agent AS agent_name, recommendation, confidence AS confidence_score, summary, created_at, rag_sources_used
            FROM watchlist_agent_results WHERE symbol=%s AND created_at > NOW() - INTERVAL '14 days'
            ORDER BY agent, created_at DESC""", (symbol,)) or []
 
@@ -4190,7 +4190,8 @@ def _agent_pipeline():
     results = _db_query(
         """SELECT DISTINCT ON (symbol, agent)
                   symbol, agent, recommendation, confidence, summary,
-                  created_at, model_used, status
+                  created_at, model_used, status,
+                  rag_sources_used, peer_notes_symbols
            FROM watchlist_agent_results
            WHERE created_at > NOW() - INTERVAL '24 hours'
            ORDER BY symbol, agent, created_at DESC"""
