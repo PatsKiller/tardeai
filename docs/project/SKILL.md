@@ -692,6 +692,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.9 — 163 tables, 70 cron, 29 Telegram commands, 7 agents, 33 pages, 5159 intelligence rows 100% embedded. Intelligence Library tab (All Intel) on Intelligence Sources: unified search across all 10 source types with symbol/source/text filters + pagination. GET /api/v2/intelligence/library. RAG coverage tile on Content Health: per-source-type bars with Run Backfill button. All 5159 rows embedded (news 910, youtube 651, agent_result 2056, synthesis 553, cio 222, signals 166, outcomes 530, sec 54, fred 14, social 3).*
+*SKILL.md v6.0 — RAG injection fixed: silent except replaced with logging. rag_sources_used JSONB column on watchlist_agent_results. Peer Agent Notes injected into all agents (what Maria/Steph/Risk concluded recently). Prompt order: portfolio → FRED → RAG (5 items) → peer notes → agent rules. 5159 rows 100% embedded. Timer count: 11 project timers in API (correct — 4 system timers excluded). Intelligence Library + RAG coverage from v5.9.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
