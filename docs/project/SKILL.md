@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.5 — RAG verified: LHX→"LHX outcome: ADD", RTX→"RTX outcome: BUY" (all correct). Peer notes batch cache: _batch_results_cache{} enables same-batch peer visibility. Result cached after INSERT so 2nd agent on same symbol sees 1st agent's conclusion. Empty RAG returns [] not wrong symbols.*
+*SKILL.md v6.6 — Category-aware RAG: CATEGORY:ssdi returns 5 YouTube items (was 0). Alex/Tax get prior intelligence for disability/trust/ssdi gap events. Agent self-assessment: low conf + 0 RAG auto-creates research topics. Iris weekly channel recommendations for gaps. Keyword fallback category-aware.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
