@@ -319,6 +319,15 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     other_views = _get_other_agent_views(symbol, agent)
     intel = _get_recent_intel(symbol)
 
+    # RAG pre-context — prior intelligence from all source types
+    rag_block = ""
+    try:
+        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        rag_results = get_rag_context(symbol=symbol, agent_name=agent, limit=5)
+        rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
+    except Exception:
+        pass
+
     base_instruction = f"""Respond in JSON format with these fields:
 - "summary": 1-2 sentence executive summary
 - "full_narrative": detailed 3-5 paragraph analysis (this is the primary output)
@@ -329,6 +338,7 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
 
 Context:
 {context_text}
+{rag_block}
 {other_views}{intel}"""
     if note:
         base_instruction += f"Additional note: {note}\n"

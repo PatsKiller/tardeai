@@ -3579,6 +3579,42 @@ _YT_NAME_JOIN = """LEFT JOIN youtube_channels yc ON (
 )"""
 
 
+def _rag_status():
+    """GET /api/v2/rag/status — Embedding coverage per source type."""
+    sources = {
+        "news": "SELECT count(*) FROM news_articles",
+        "youtube": "SELECT count(*) FROM youtube_transcripts",
+        "social_post": "SELECT count(*) FROM social_posts",
+        "sec_form4": "SELECT count(*) FROM sec_form4",
+        "fred_series": "SELECT count(*) FROM fred_economic_series",
+        "agent_result": "SELECT count(*) FROM watchlist_agent_results",
+        "agent_synthesis": "SELECT count(*) FROM watchlist_final_synthesis",
+        "cio_decision": "SELECT count(*) FROM cio_decisions",
+        "fused_signal": "SELECT count(*) FROM fused_signals",
+        "decision_outcome": "SELECT count(*) FROM decision_outcomes",
+    }
+    by_source = {}
+    total_rows = 0
+    total_embedded = 0
+    for src, sql in sources.items():
+        try:
+            t = (_db_query(sql, fetch="one") or {}).get("count", 0)
+            e = (_db_query("SELECT count(*) FROM content_embeddings WHERE source_type=%s", (src,), fetch="one") or {}).get("count", 0)
+        except Exception:
+            t, e = 0, 0
+        pct = round(e / max(t, 1) * 100, 1) if t > 0 else 0
+        by_source[src] = {"total": t, "embedded": e, "pct": pct}
+        total_rows += t
+        total_embedded += e
+    last = _db_query("SELECT max(created_at) as t FROM content_embeddings", fetch="one")
+    return {
+        "total_rows": total_rows, "total_embedded": total_embedded,
+        "coverage_pct": round(total_embedded / max(total_rows, 1) * 100, 1),
+        "by_source": by_source, "model": "nomic-embed-text", "dims": 768,
+        "last_indexed": _json_clean((last or {}).get("t")),
+    }
+
+
 def _news_articles_list():
     """GET /api/v2/news/articles — filterable paginated news list."""
     q = getattr(_news_articles_list, '_query', {}) or {}
@@ -5189,6 +5225,7 @@ ROUTES = {
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
     "/api/v2/youtube/channels": lambda: {"channels": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM youtube_channels WHERE active=TRUE ORDER BY channel_name") or [])]},
     "/api/v2/news/articles": lambda: _news_articles_list(),
+    "/api/v2/rag/status": lambda: _rag_status(),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -5303,6 +5340,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from iris_taxonomy_agent import apply_proposal
                 r = apply_proposal(int(pid))
                 return 200, {"ok": True, "data": r}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/admin/rag-backfill":
+            try:
+                import subprocess, threading
+                def _run():
+                    subprocess.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                                    str(PROJECT_ROOT / "scripts/rag_indexer.py"), "--backfill", "--source", "all"],
+                                   capture_output=True, cwd=str(PROJECT_ROOT), timeout=7200)
+                threading.Thread(target=_run, daemon=True).start()
+                return 200, {"ok": True, "message": "RAG backfill started in background"}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
