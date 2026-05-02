@@ -37,8 +37,6 @@ STRATEGY_KEYWORDS = {
                   "yield curve", "economic outlook", "gdp ", "unemployment rate", "cpi "],
     "etf_indexing": ["index fund", "expense ratio", "passive investing", "total market",
                      "vanguard", "low cost fund", "s&p 500 index"],
-    "defense_thesis": ["defense contractor", "lockheed", "raytheon", "northrop", "defense stock",
-                       "military spending", "pentagon budget", "defense sector"],
 }
 
 RETIREMENT_RELEVANCE_KEYWORDS = {
