@@ -46,6 +46,10 @@ interface Channel {
   added_by: string
   active: boolean
   created_at: string
+  category?: string
+  priority?: string
+  agent_tags?: string[]
+  auto_promote_threshold?: number
 }
 
 interface SocialPost {
@@ -123,6 +127,7 @@ export default function IntelligenceSources() {
   const [ytIngesting, setYtIngesting] = useState(false)
   const [ytMsg, setYtMsg] = useState('')
   const [showAddChannel, setShowAddChannel] = useState(false)
+  const [ytCatFilter, setYtCatFilter] = useState('all')
   const [socialText, setSocialText] = useState('')
   const [socialUser, setSocialUser] = useState('')
   const [socialSaving, setSocialSaving] = useState(false)
@@ -149,14 +154,42 @@ export default function IntelligenceSources() {
   // YouTube data
   const transcripts = ytData?.transcripts || []
   const channels = chData?.channels || []
+
+  // Extract distinct categories with counts from channels
+  const ytCategories = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const ch of channels) {
+      const cat = ch.category || 'uncategorized'
+      counts[cat] = (counts[cat] || 0) + 1
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])
+  }, [channels])
+
+  // Channel name set for category-filtered channels (for transcript filtering)
+  const filteredChannelNames = useMemo(() => {
+    if (ytCatFilter === 'all') return null
+    return new Set(channels.filter(ch => (ch.category || 'uncategorized') === ytCatFilter).map(ch => ch.channel_name))
+  }, [channels, ytCatFilter])
+
+  const filteredChannels = useMemo(() => {
+    let list = channels
+    if (ytCatFilter !== 'all') list = list.filter(ch => (ch.category || 'uncategorized') === ytCatFilter)
+    if (filter) {
+      const q = filter.toLowerCase()
+      list = list.filter(ch => ch.channel_name.toLowerCase().includes(q) || (ch.category || '').toLowerCase().includes(q))
+    }
+    return list
+  }, [channels, ytCatFilter, filter])
+
   const filteredTranscripts = useMemo(() => {
-    if (!filter) return transcripts
-    const q = filter.toLowerCase()
-    return transcripts.filter(t =>
-      t.title.toLowerCase().includes(q) ||
-      t.channel_name.toLowerCase().includes(q)
-    )
-  }, [transcripts, filter])
+    let list = transcripts
+    if (filteredChannelNames) list = list.filter(t => filteredChannelNames.has(t.channel_name))
+    if (filter) {
+      const q = filter.toLowerCase()
+      list = list.filter(t => t.title.toLowerCase().includes(q) || t.channel_name.toLowerCase().includes(q))
+    }
+    return list
+  }, [transcripts, filter, filteredChannelNames])
 
   // Social data
   const socialPosts = socialData?.posts || []
@@ -383,17 +416,33 @@ export default function IntelligenceSources() {
             {ytMsg && <div style={{ fontSize: 10, color: ytMsg.startsWith('Error') ? '#f6465d' : '#0ecb81', marginTop: 4 }}>{ytMsg}</div>}
           </Card>
 
+          {/* Category filter pills */}
+          {ytCategories.length > 0 && (
+            <div style={{ display: 'flex', gap: 5, margin: '10px 0 8px', flexWrap: 'wrap' }}>
+              <button onClick={() => setYtCatFilter('all')}
+                style={{ ...btnStyle, background: ytCatFilter === 'all' ? 'rgba(0,212,255,.12)' : 'transparent', borderColor: ytCatFilter === 'all' ? 'rgba(0,212,255,.4)' : 'var(--border)', color: ytCatFilter === 'all' ? '#00d4ff' : 'var(--text3)' }}>
+                All ({channels.length})
+              </button>
+              {ytCategories.map(([cat, cnt]) => (
+                <button key={cat} onClick={() => setYtCatFilter(ytCatFilter === cat ? 'all' : cat)}
+                  style={{ ...btnStyle, background: ytCatFilter === cat ? 'rgba(0,212,255,.12)' : 'transparent', borderColor: ytCatFilter === cat ? 'rgba(0,212,255,.4)' : 'var(--border)', color: ytCatFilter === cat ? '#00d4ff' : 'var(--text3)', fontSize: 10 }}>
+                  {cat.replace(/_/g, ' ')} ({cnt})
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Tracked Channels */}
-          {channels.length > 0 && (
-            <div style={{ margin: '12px 0 8px', fontSize: 11, color: 'var(--text3)' }}>
-              <strong style={{ color: 'var(--text2)' }}>Tracked Channels:</strong>{' '}
-              {channels.map((ch, i) => (
+          {filteredChannels.length > 0 && (
+            <div style={{ margin: '4px 0 8px', fontSize: 11, color: 'var(--text3)' }}>
+              <strong style={{ color: 'var(--text2)' }}>Channels ({filteredChannels.length}):</strong>{' '}
+              {filteredChannels.map((ch, i) => (
                 <span key={ch.channel_id}>
                   {ch.channel_url ? (
                     <a href={ch.channel_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4a90f4' }}>{ch.channel_name}</a>
                   ) : ch.channel_name}
-                  {ch.strategy_focus ? ` (${ch.strategy_focus.replace(/_/g, ' ')})` : ''}
-                  {i < channels.length - 1 ? ' · ' : ''}
+                  {ch.category ? ` (${ch.category.replace(/_/g, ' ')})` : ''}
+                  {i < filteredChannels.length - 1 ? ' · ' : ''}
                 </span>
               ))}
             </div>
