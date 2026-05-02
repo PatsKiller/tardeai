@@ -22,18 +22,24 @@ const CAT_COLOR: Record<string, string> = {
   investment_general: '#7a9cc8', financial_education: '#888', trust_estate: '#aa55ff',
 }
 
+interface Mismatch { channel_name: string; tx_count: number }
+
 export default function ContentHealth() {
-  const [data, setData] = useState<{ channels: Channel[] } | null>(null)
+  const [data, setData] = useState<{ channels: Channel[]; name_mismatches?: Mismatch[]; orphan_tx_count?: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [guideOpen, setGuideOpen] = useState(false)
   const [flagged, setFlagged] = useState<Set<string>>(new Set())
   const [flagging, setFlagging] = useState<string | null>(null)
+  const [fixingNames, setFixingNames] = useState(false)
+  const [fixingOrphans, setFixingOrphans] = useState(false)
+  const [adminMsg, setAdminMsg] = useState('')
 
-  useEffect(() => {
+  const reload = () => {
     fetch('/api/v2/youtube-audit').then(r => r.json())
-      .then(d => { if (d.ok) setData(d.data) })
-      .catch(() => {}).finally(() => setLoading(false))
-  }, [])
+      .then(d => { if (d.ok) setData(d.data) }).catch(() => {})
+  }
+
+  useEffect(() => { setLoading(true); reload(); setLoading(false) }, [])
 
   const channels = data?.channels || []
 
@@ -62,6 +68,24 @@ export default function ContentHealth() {
     finally { setFlagging(null) }
   }
 
+  const handleFixNames = async () => {
+    setFixingNames(true); setAdminMsg('')
+    try {
+      const r = await fetch('/api/v2/admin/fix-channel-name-mismatches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const d = await r.json()
+      if (d.ok) { setAdminMsg(`Fixed ${d.data?.fixes_applied || d.fixes_applied || 0} name mappings`); reload() }
+    } catch {} finally { setFixingNames(false) }
+  }
+
+  const handleFixOrphans = async () => {
+    setFixingOrphans(true); setAdminMsg('')
+    try {
+      const r = await fetch('/api/v2/admin/flag-orphan-transcripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const d = await r.json()
+      if (d.ok) { setAdminMsg(`Flagged ${d.data?.rows_flagged || d.rows_flagged || 0} orphan transcripts`); reload() }
+    } catch {} finally { setFixingOrphans(false) }
+  }
+
   if (loading) return <div style={{ padding: 40, color: '#5a7fa8', textAlign: 'center' }}>Loading content health...</div>
 
   return (
@@ -70,12 +94,30 @@ export default function ContentHealth() {
       <div style={{ fontSize: 13, color: '#5a7fa8', marginBottom: 20 }}>YouTube channel quality monitoring &middot; {channels.length} channels</div>
 
       {/* Section 1: Summary tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 12 }}>
         <Tile label="Healthy" value={healthy} color="#00ff88" />
         <Tile label="Below Threshold" value={below} color="#ffaa00" />
         <Tile label="No Transcripts" value={noTx} color="#5a7fa8" />
+        <Tile label="Name Mismatches" value={data?.name_mismatches?.length || 0} color="#aa55ff" />
+        <Tile label="Orphan Transcripts" value={data?.orphan_tx_count || 0} color="#ff6644" />
         <Tile label="Total Channels" value={channels.length} color="#c8daf5" />
       </div>
+      {/* Admin actions */}
+      {((data?.name_mismatches?.length || 0) > 0 || (data?.orphan_tx_count || 0) > 0) && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+          {(data?.name_mismatches?.length || 0) > 0 && (
+            <button onClick={handleFixNames} disabled={fixingNames} style={{ fontSize: 10, padding: '5px 12px', borderRadius: 4, border: '1px solid rgba(170,85,255,.3)', background: 'rgba(170,85,255,.08)', color: '#aa55ff', cursor: 'pointer' }}>
+              {fixingNames ? 'Fixing...' : `Fix ${data?.name_mismatches?.length} Name Mismatches`}
+            </button>
+          )}
+          {(data?.orphan_tx_count || 0) > 0 && (
+            <button onClick={handleFixOrphans} disabled={fixingOrphans} style={{ fontSize: 10, padding: '5px 12px', borderRadius: 4, border: '1px solid rgba(255,102,68,.3)', background: 'rgba(255,102,68,.08)', color: '#ff6644', cursor: 'pointer' }}>
+              {fixingOrphans ? 'Flagging...' : `Flag ${data?.orphan_tx_count} Orphan Transcripts`}
+            </button>
+          )}
+          {adminMsg && <span style={{ fontSize: 10, color: '#00ff88' }}>{adminMsg}</span>}
+        </div>
+      )}
 
       {/* Section 2: Scoring guide (collapsible) */}
       <div style={{ ...card, marginBottom: 16 }}>
