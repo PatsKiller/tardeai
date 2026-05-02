@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_last_rag_sources = []  # Set by _build_prompt(), read by result saver
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_MODEL = "qwen3:1.7b"
@@ -298,6 +299,35 @@ def _get_other_agent_views(symbol: str, current_agent: str) -> str:
         return ""
 
 
+def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
+    """Peer notes — explicit recent conclusions from each other agent."""
+    try:
+        import psycopg2.extras as _pxe
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+        cur.execute("""
+            SELECT DISTINCT ON (agent) agent, recommendation, confidence,
+                   LEFT(summary, 200) as summary, created_at
+            FROM watchlist_agent_results
+            WHERE symbol = %s AND agent != %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY agent, created_at DESC
+        """, (symbol, current_agent))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        lines = ["=== Peer Agent Notes ==="]
+        for r in rows:
+            dt = r["created_at"].strftime("%Y-%m-%d") if r.get("created_at") else "?"
+            lines.append(f"  {r['agent'].upper()} [{dt}]: {r['recommendation']} (conf:{float(r['confidence'] or 0):.0%})")
+            if r.get("summary"):
+                lines.append(f"    {r['summary'][:150]}")
+        lines.append("=== End Peer Notes ===")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _get_recent_intel(symbol: str) -> str:
     """Pull recent scored intelligence + past outcome feedback for this symbol."""
     parts = []
@@ -321,10 +351,21 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
 
     # RAG pre-context — prior intelligence from all source types
     rag_block = ""
+    global _last_rag_sources
+    _last_rag_sources = []
     try:
         from rag_retrieval import get_rag_context, format_rag_context_for_prompt
         rag_results = get_rag_context(symbol=symbol, agent_name=agent, limit=5)
         rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
+        _last_rag_sources = [{"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]} for r in rag_results]
+        print(f"  [RAG] {symbol} ({agent}): {len(rag_results)} items" + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else ""))
+    except Exception as e:
+        print(f"  [RAG] {symbol} ({agent}): FAILED — {e}")
+
+    # Peer agent notes — what other agents concluded recently
+    peer_notes = ""
+    try:
+        peer_notes = _get_peer_agent_notes(symbol, agent)
     except Exception:
         pass
 
@@ -339,6 +380,7 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
 Context:
 {context_text}
 {rag_block}
+{peer_notes}
 {other_views}{intel}"""
     if note:
         base_instruction += f"Additional note: {note}\n"
@@ -1356,6 +1398,15 @@ def process_jobs(limit: int = 10):
               json.dumps(context["snapshot"], default=str),
               raw,
               job.get("started_at")))
+
+        # Store RAG sources used for audit
+        try:
+            rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
+            if rag_used:
+                cur.execute("UPDATE watchlist_agent_results SET rag_sources_used=%s WHERE id=%s",
+                            (json.dumps(rag_used), result_id))
+        except Exception:
+            pass
 
         # Update job
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
