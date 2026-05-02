@@ -1496,6 +1496,29 @@ def process_jobs(limit: int = 10):
         except Exception:
             pass
 
+        # Check if both agents complete for this symbol → send summary
+        try:
+            cur.execute("""SELECT agent, recommendation, confidence FROM watchlist_agent_results
+                          WHERE symbol=%s AND created_at > NOW() - INTERVAL '2 hours'
+                          ORDER BY created_at DESC""", (symbol,))
+            recent = cur.fetchall()
+            agents_done = set(r[0] for r in recent)
+            if len(agents_done) >= 2 and job.get("submitted_from") in ("event_router", "auto_enrichment"):
+                recs = {r[0]: r[1] for r in recent}
+                confs = {r[0]: float(r[2] or 0) for r in recent}
+                conflict = len(set(recs.values())) > 1
+                from telegram_alert import send_telegram
+                msg = f"Agent analysis complete: {symbol}\n"
+                for a, rec in recs.items():
+                    msg += f"  {a}: {rec} ({confs.get(a,0):.0%})\n"
+                if conflict:
+                    msg += "Agent conflict — review needed"
+                else:
+                    msg += f"Consensus: {list(recs.values())[0]}"
+                send_telegram(msg)
+        except Exception:
+            pass
+
         # Update job
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
 
