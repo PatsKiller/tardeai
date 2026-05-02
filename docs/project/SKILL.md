@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.6 — Category-aware RAG: CATEGORY:ssdi returns 5 YouTube items (was 0). Alex/Tax get prior intelligence for disability/trust/ssdi gap events. Agent self-assessment: low conf + 0 RAG auto-creates research topics. Iris weekly channel recommendations for gaps. Keyword fallback category-aware.*
+*SKILL.md v6.7 — Keyword fallback bug fixed: RealDictCursor dict→tuple conversion. LHX returns 3 items (was 0). Fallback chain: DB embeddings→YouTube→News→Brave. All 4 RAG paths verified: ticker (LHX→"LHX outcome"), symbol (SCHD→"SCHD dividend"), category:ssdi (3 YouTube), category:disability (3 YouTube). Coverage 99.7%.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
