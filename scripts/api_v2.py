@@ -5267,6 +5267,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 from _news_strategy_classifier import classify_and_update_all
                 updated = classify_and_update_all()
+                # Also fix defense_thesis in qualified_intelligence
+                _db_write("UPDATE qualified_intelligence SET strategy_focus='investment_general' WHERE strategy_focus='defense_thesis'")
+                _db_write("UPDATE news_articles SET strategy_type='investment_general' WHERE strategy_type='defense_thesis'")
                 return 200, {"ok": True, "updated": updated}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
