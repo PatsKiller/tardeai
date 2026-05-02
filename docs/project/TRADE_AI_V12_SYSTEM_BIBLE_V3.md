@@ -1,12 +1,12 @@
-# Trade AI v12 + Portfolio Intelligence — System Bible v5.4
+# Trade AI v12 + Portfolio Intelligence — System Bible v5.5
 
 **Canonical source of truth. Claude Code uses this document as the reference spec.**  
 **Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 1, 2026  
 **SSH:** `ssh johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
-**Prev version:** v5.3 (May 1, 2026)  
-**Changelog:** v5.4 — Complete scripts & cron cheat sheet: 67 cron entries documented by time/day, on-demand scripts, server processes, utility scripts, full verbatim crontab. Replaced old partial cron table.
-**Prev changelog:** v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 32 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
+**Prev version:** v5.4 (May 1, 2026)  
+**Changelog:** v5.5 — Content Health Dashboard (/v2/content-health): summary tiles (healthy/below/no-transcripts), collapsible scoring guide, full channel health table with quality bars + Iris flag-for-review. Fixed /api/v2/youtube/transcripts: LEFT JOIN to youtube_channels, category/channel/limit query params. POST /api/v2/iris/hygiene-flag for manual channel flagging. 33 pages.
+**Prev changelog:** v5.4 — Scripts & cron cheat sheet. v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
 
 ---
 
@@ -99,7 +99,7 @@ graph TB
 
     subgraph OUTPUTS["📤 Outputs"]
         DB["PostgreSQL\nsee /api/v2/system-health"]
-        DASH["Command Center v2\n32 pages · 14 with charts"]
+        DASH["Command Center v2\n33 pages · 14 with charts"]
         TG["Telegram\n29 commands · Smart alerts"]
         REPORTS["Reports\nDocx · HTML · PDF"]
     end

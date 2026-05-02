@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
@@ -110,6 +111,7 @@ function fmtDuration(sec: number) {
 }
 
 export default function IntelligenceSources() {
+  const nav = useNavigate()
   const { data: srcData, loading: srcLoading } = useApi<SourcesResp>('/api/v2/intelligence-sources')
   const { data: ytData, loading: ytLoading } = useApi<TranscriptsResp>('/api/v2/youtube/transcripts')
   const { data: chData } = useApi<ChannelsResp>('/api/v2/youtube/channels')
@@ -440,6 +442,7 @@ export default function IntelligenceSources() {
                 {ytIngesting ? 'Ingesting...' : 'Ingest'}
               </button>
               <button onClick={() => setShowAddChannel(true)} style={{ ...btnStyle, background: 'rgba(0,255,136,.1)', color: '#00ff88', whiteSpace: 'nowrap' }}>+ Channel</button>
+              <button onClick={() => nav('/content-health')} style={{ ...btnStyle, background: 'rgba(170,85,255,.08)', color: '#aa55ff', borderColor: 'rgba(170,85,255,.3)', whiteSpace: 'nowrap' }}>Content Health</button>
               <button onClick={handleIngestAll} disabled={ingestAllState === 'running'}
                 style={{ ...btnStyle, marginLeft: 'auto', whiteSpace: 'nowrap',
                   background: ingestAllState === 'done' ? 'rgba(0,255,136,.1)' : ingestAllState === 'error' ? 'rgba(255,68,102,.1)' : 'rgba(170,85,255,.1)',
