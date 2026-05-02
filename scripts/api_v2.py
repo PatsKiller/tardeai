@@ -3099,7 +3099,7 @@ def _search_sources_status():
         "brave_calls_today": brave_calls,
         "free_source_queries": free_queries,
         "free_pct": round(free_queries / max(1, total_queries) * 100),
-        "fallback_chain": "Brave → Finnhub → Google News RSS → Yahoo RSS → DB embeddings",
+        "fallback_chain": "DB embeddings (RAG) → YouTube transcripts → Yahoo RSS + Finnhub + Google News → Brave (paid, last resort)",
     }
     return sources
 

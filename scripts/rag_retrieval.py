@@ -156,7 +156,9 @@ def _keyword_fallback(symbol, limit, cur):
     for src, sql, params in queries:
         try:
             cur.execute(sql, params)
-            for r in cur.fetchall():
+            cols = [d[0] for d in cur.description]
+            for row in cur.fetchall():
+                r = list(row.values()) if isinstance(row, dict) else list(row)
                 results.append({
                     "source_type": src, "source_label": SOURCE_LABELS.get(src, src),
                     "source_id": r[0], "title": str(r[1] or "")[:100],
