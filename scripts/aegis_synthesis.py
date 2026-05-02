@@ -137,10 +137,21 @@ def synthesize_symbol_briefs(symbols: list[str]) -> int:
         if not has_data:
             continue
 
+        # RAG pre-context for this symbol
+        rag_block = ""
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+            rag_results = get_rag_context(symbol=sym, agent_name="aegis", limit=3)
+            rag_block = format_rag_context_for_prompt(rag_results, symbol=sym)
+        except Exception:
+            pass
+
         prompt = f"""Analyze {sym} ({company}, {sector}) for an overnight portfolio brief.
 Price: ${price}, RSI: {rsi}, SMA200: {sma200}%, Beta: {snap.get('beta','?')}, 52wk from high: {snap.get('pct_from_52wk_high','?')}%
 Social: {mentions} mentions, sentiment {sent_score}, spike={spike}
 Recent news: {news_titles or 'none'}
+{rag_block}
 
 Answer in 3 short lines:
 1. THESIS STATUS (intact/improving/weakening/broken):
@@ -629,6 +640,15 @@ def auto_generate_steph_reviews() -> int:
                 ctx_parts.append(f"stop at ${rp['stop_price']}")
         ctx = ". ".join(ctx_parts) if ctx_parts else "No position data"
 
+        # RAG context for Steph escalation
+        steph_rag = ""
+        try:
+            from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+            sr = get_rag_context(symbol=symbol, agent_name="steph", limit=3)
+            steph_rag = format_rag_context_for_prompt(sr, symbol=symbol)
+        except Exception:
+            pass
+
         # Simplified prompt for small LLMs. /no_think disables qwen3 internal reasoning.
         prompt = f"""/no_think
 Review this portfolio escalation as Steph (wealth advisor). Respond ONLY with JSON.
@@ -636,6 +656,7 @@ Review this portfolio escalation as Steph (wealth advisor). Respond ONLY with JS
 {symbol} — {category.replace('_', ' ')}
 Reason: {reason[:150]}
 Context: {ctx}
+{steph_rag}
 Question: {question[:100]}
 
 Respond with ONLY this JSON object, no other text:
