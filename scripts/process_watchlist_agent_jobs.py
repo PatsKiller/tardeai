@@ -19,6 +19,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
+_last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_MODEL = "qwen3:1.7b"
@@ -330,6 +331,8 @@ def _get_content_gap_warnings(agent_name: str) -> str:
 
 def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
     """Peer notes — explicit recent conclusions from each other agent."""
+    global _last_peer_agents
+    _last_peer_agents = []
     try:
         import psycopg2.extras as _pxe
         conn = _get_conn()
@@ -338,13 +341,14 @@ def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
             SELECT DISTINCT ON (agent) agent, recommendation, confidence,
                    LEFT(summary, 200) as summary, created_at
             FROM watchlist_agent_results
-            WHERE symbol = %s AND agent != %s AND created_at > NOW() - INTERVAL '7 days'
+            WHERE symbol = %s AND agent != %s AND created_at > NOW() - INTERVAL '30 days'
             ORDER BY agent, created_at DESC
         """, (symbol, current_agent))
         rows = cur.fetchall()
         conn.close()
         if not rows:
             return ""
+        _last_peer_agents = [r["agent"] for r in rows]
         lines = ["=== Peer Agent Notes ==="]
         for r in rows:
             dt = r["created_at"].strftime("%Y-%m-%d") if r.get("created_at") else "?"
@@ -1439,12 +1443,22 @@ def process_jobs(limit: int = 10):
         # Store RAG sources + peer notes for audit
         try:
             rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
-            cur.execute("UPDATE watchlist_agent_results SET rag_sources_used=%s WHERE id=%s",
-                        (json.dumps(rag_used), result_id))
+            peer_agents = getattr(sys.modules[__name__], '_last_peer_agents', [])
+            cur.execute("UPDATE watchlist_agent_results SET rag_sources_used=%s, peer_notes_symbols=%s WHERE id=%s",
+                        (json.dumps(rag_used), peer_agents, result_id))
             if rag_used:
-                print(f"  [RAG-STORE] {symbol}: {len(rag_used)} sources saved to result {result_id}")
+                print(f"  [RAG-STORE] {symbol}: {len(rag_used)} sources saved")
+            if peer_agents:
+                print(f"  [PEER-STORE] {symbol}: notes from {peer_agents}")
         except Exception as e:
-            print(f"  [RAG-STORE] ERROR saving rag_sources_used: {e}")
+            print(f"  [RAG-STORE] ERROR: {e}")
+
+        # Index new result embedding immediately
+        try:
+            from rag_indexer import index_source
+            index_source("agent_result", hours_back=1, conn=conn)
+        except Exception:
+            pass
 
         # Update job
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))

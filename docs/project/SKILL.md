@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.3 — RAG CONFIRMED FIRING: 7 agent results with rag_sources_used populated (5 items each). Root cause was API SELECT excluding the column — fixed in agent-pipeline + task-detail queries. DB: column exists, 7 rows populated since 10:02 today. 80 dupes flagged. 3 CONTENT_GAP events live.*
+*SKILL.md v6.4 — RAG symbol fix: strict title ILIKE (was returning wrong-symbol results via broken hashtext JOIN). Peer notes: 30-day window + stored in peer_notes_symbols. Real-time RAG indexing after each agent result. Verified: NOC→"NOC synthesis", LMT→"LMT outcome" (correct). 10 results with RAG, 99.7% coverage.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
