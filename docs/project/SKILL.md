@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.2 — Content gap → agent notification: Iris fires CONTENT_GAP events to agent_event_queue (ssdi→alex, disability→alex, trust→alex+tax). Agents see gap warnings in prompt. Auto-dedup: 80 duplicate news flagged. GET /iris/duplicates. RAG storage: rag_sources_used logging fixed. Prompt: portfolio → FRED → RAG → peers → gap warnings → rules. is_duplicate + peer_notes_symbols columns added.*
+*SKILL.md v6.3 — RAG CONFIRMED FIRING: 7 agent results with rag_sources_used populated (5 items each). Root cause was API SELECT excluding the column — fixed in agent-pipeline + task-detail queries. DB: column exists, 7 rows populated since 10:02 today. 80 dupes flagged. 3 CONTENT_GAP events live.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
