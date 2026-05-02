@@ -12,17 +12,21 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 # Strategy patterns — ordered by specificity (most specific first)
 STRATEGY_KEYWORDS = {
-    "disability_retirement": ["ssdi", "disability", "medicaid", "medicare advantage", "dual eligible",
-                              "special needs trust", "pooled trust", "able account", "spend down",
-                              "disability benefit", "disability income", "sga ", "trial work period"],
+    # Most specific first — first match wins
+    "ssdi": ["ssdi", "social security disability", "disability insurance", "sga ",
+             "trial work period", "substantial gainful activity"],
+    "disability_retirement": ["disability", "medicaid", "medicare advantage", "dual eligible",
+                              "able account", "spend down", "disability benefit",
+                              "disability income", "disability planning"],
     "trust_estate": ["special needs trust", "pooled trust", "estate planning", "irrevocable trust",
                      "probate", "elder law", "beneficiary designation", "inheritance"],
     "roth_conversion": ["roth conversion", "backdoor roth", "mega backdoor", "roth ladder",
                         "convert to roth", "roth rollover", "roth ira conversion"],
     "tax_planning": ["tax bracket", "capital gains tax", "tax loss harvest", "tax efficiency",
                      "irmaa", "magi", "tax strategy", "estimated tax", "tax bill"],
-    "401k_rollover": ["401k rollover", "401k to ira", "rollover ira", "401k distribution",
-                      "401k loan", "401k withdrawal"],
+    "rollover_ira": ["rollover ira", "ira rollover", "traditional to roth", "ira transfer"],
+    "401k_rollover": ["401k rollover", "401k to ira", "401k distribution",
+                      "401k loan", "401k withdrawal", "401(k)"],
     "retirement_planning": ["retirement income", "retirement planning", "social security",
                             "required minimum", "rmd ", "retire early", "fire movement",
                             "pension", "retirement age", "golden years"],
@@ -87,9 +91,9 @@ def classify_and_update_all() -> int:
     wcur = conn.cursor()
     for r in rows:
         strat, relevance = classify_strategy(r["title"])
-        if r["strategy_type"] != strat:
-            wcur.execute("UPDATE news_articles SET strategy_type = %s WHERE id = %s", (strat, r["id"]))
-            updated += 1
+        wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
+                     (strat, relevance, r["id"]))
+        updated += 1
 
     conn.commit()
     conn.close()
@@ -113,8 +117,9 @@ def classify_and_update_batch(article_ids: list) -> int:
 
     wcur = conn.cursor()
     for r in rows:
-        strat, _ = classify_strategy(r["title"])
-        wcur.execute("UPDATE news_articles SET strategy_type = %s WHERE id = %s", (strat, r["id"]))
+        strat, relevance = classify_strategy(r["title"])
+        wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
+                     (strat, relevance, r["id"]))
 
     conn.commit()
     conn.close()
@@ -138,8 +143,9 @@ def classify_recent_untagged() -> int:
     wcur = conn.cursor()
     updated = 0
     for r in rows:
-        strat, _ = classify_strategy(r["title"])
-        wcur.execute("UPDATE news_articles SET strategy_type = %s WHERE id = %s", (strat, r["id"]))
+        strat, relevance = classify_strategy(r["title"])
+        wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
+                     (strat, relevance, r["id"]))
         updated += 1
 
     conn.commit()
