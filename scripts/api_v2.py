@@ -858,7 +858,10 @@ def _orchestration():
     # Parse systemd timers
     timers = []
     try:
-        out = subprocess.run(["systemctl", "--user", "list-timers", "--no-pager"], capture_output=True, text=True, timeout=5)
+        env = os.environ.copy()
+        env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{os.getuid()}/bus")
+        out = subprocess.run(["systemctl", "--user", "list-timers", "--no-pager"], capture_output=True, text=True, timeout=5, env=env)
         lines = out.stdout.strip().split("\n")
         for line in lines[1:]:
             # Format: NEXT LEFT LAST PASSED UNIT ACTIVATES
@@ -900,7 +903,7 @@ def _orchestration():
             props = subprocess.run(
                 ["systemctl", "--user", "show", svc_name,
                  "--property=ExecMainStartTimestamp,ExecMainExitTimestamp,Result,ActiveState"],
-                capture_output=True, text=True, timeout=3
+                capture_output=True, text=True, timeout=3, env=env
             )
             for line in props.stdout.strip().split("\n"):
                 k, _, v = line.partition("=")
@@ -918,7 +921,8 @@ def _orchestration():
     # Filter to project-relevant timers
     relevant = {"portfolio-daily", "portfolio-weekly", "portfolio-monthly", "portfolio-backup",
                 "portfolio-price-cache", "portfolio-lookthrough", "tradeai-continuous",
-                "recovery-watch", "mcporter-token-refresh"}
+                "recovery-watch", "mcporter-token-refresh",
+                "aegis-overnight", "aegis-surveillance"}
     timers = [t for t in timers if any(r in t["name"] for r in relevant)]
 
     # Services
@@ -926,9 +930,9 @@ def _orchestration():
     svc_names = ["portfolio-server", "openclaw-gateway"]
     for sn in svc_names:
         try:
-            out = subprocess.run(["systemctl", "--user", "is-active", f"{sn}.service"], capture_output=True, text=True, timeout=3)
+            out = subprocess.run(["systemctl", "--user", "is-active", f"{sn}.service"], capture_output=True, text=True, timeout=3, env=env)
             status = out.stdout.strip() or "unknown"
-            out2 = subprocess.run(["systemctl", "--user", "show", f"{sn}.service", "--property=Description"], capture_output=True, text=True, timeout=3)
+            out2 = subprocess.run(["systemctl", "--user", "show", f"{sn}.service", "--property=Description"], capture_output=True, text=True, timeout=3, env=env)
             desc = out2.stdout.strip().replace("Description=", "")
             services.append({"name": f"{sn}.service", "status": status, "description": desc})
         except Exception:
