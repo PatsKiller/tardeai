@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.4 — RAG symbol fix: strict title ILIKE (was returning wrong-symbol results via broken hashtext JOIN). Peer notes: 30-day window + stored in peer_notes_symbols. Real-time RAG indexing after each agent result. Verified: NOC→"NOC synthesis", LMT→"LMT outcome" (correct). 10 results with RAG, 99.7% coverage.*
+*SKILL.md v6.5 — RAG verified: LHX→"LHX outcome: ADD", RTX→"RTX outcome: BUY" (all correct). Peer notes batch cache: _batch_results_cache{} enables same-batch peer visibility. Result cached after INSERT so 2nd agent on same symbol sees 1st agent's conclusion. Empty RAG returns [] not wrong symbols.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*

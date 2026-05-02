@@ -20,6 +20,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
+_batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_MODEL = "qwen3:1.7b"
@@ -330,9 +331,23 @@ def _get_content_gap_warnings(agent_name: str) -> str:
 
 
 def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
-    """Peer notes — explicit recent conclusions from each other agent."""
+    """Peer notes — check batch cache first (same-run peers), then DB for 30d history."""
     global _last_peer_agents
     _last_peer_agents = []
+
+    # 1. Batch cache — peers from same process run (available immediately)
+    cached = [p for p in _batch_results_cache.get(symbol, []) if p["agent"] != current_agent]
+    if cached:
+        _last_peer_agents = [p["agent"] for p in cached]
+        lines = ["=== Peer Agent Notes ==="]
+        for p in cached:
+            lines.append(f"  {p['agent'].upper()} [this batch]: {p['recommendation']} (conf:{float(p['confidence'] or 0):.0%})")
+            if p.get("summary"):
+                lines.append(f"    {p['summary'][:150]}")
+        lines.append("=== End Peer Notes ===")
+        return "\n".join(lines)
+
+    # 2. DB fallback — cross-run history (30 days)
     try:
         import psycopg2.extras as _pxe
         conn = _get_conn()
@@ -1452,6 +1467,14 @@ def process_jobs(limit: int = 10):
                 print(f"  [PEER-STORE] {symbol}: notes from {peer_agents}")
         except Exception as e:
             print(f"  [RAG-STORE] ERROR: {e}")
+
+        # Cache result for peer notes in same batch
+        if symbol not in _batch_results_cache:
+            _batch_results_cache[symbol] = []
+        _batch_results_cache[symbol].append({
+            "agent": agent, "recommendation": parsed["recommendation"],
+            "confidence": parsed["confidence"], "summary": parsed["summary"][:200]
+        })
 
         # Index new result embedding immediately
         try:
