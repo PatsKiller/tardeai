@@ -1272,6 +1272,263 @@ def handle_iris_hygiene_command(subcommand, args_str):
             "  iris hygiene run       — force run now")
 
 
+# ═══════════════════════════════════════════════════════
+# MODE 3 — INTELLIGENCE LIBRARIAN (Daily 7:00 AM)
+# ═══════════════════════════════════════════════════════
+
+def run_library_audit(dry_run=False):
+    """Daily librarian audit: RAG coverage, stale analyses, routing, dupes, gaps."""
+    started = time.time()
+    print(f"\n{'='*60}")
+    print(f"  IRIS — Library Audit {'(DRY RUN)' if dry_run else ''}")
+    print(f"{'='*60}\n")
+
+    conn, cur = _get_conn_dict()
+    report = {}
+
+    # 3a. RAG Coverage Audit
+    print("  [3a] RAG Coverage...")
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen("http://localhost:7777/api/v2/rag/status", timeout=10) as r:
+            rag = json.loads(r.read()).get("data", {})
+        coverage = rag.get("coverage_pct", 0)
+        low_sources = [s for s, v in rag.get("by_source", {}).items() if v.get("pct", 0) < 80]
+        report["rag_coverage_pct"] = coverage
+        report["rag_low_sources"] = low_sources
+        print(f"  Coverage: {coverage}% | Low sources: {low_sources or 'none'}")
+        if low_sources and not dry_run:
+            import subprocess
+            subprocess.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                              str(PROJECT_ROOT / "scripts/rag_indexer.py"),
+                              "--source", ",".join(low_sources), "--hours", "48"],
+                             cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"  Triggered indexer for: {', '.join(low_sources)}")
+    except Exception as e:
+        print(f"  RAG check failed: {e}")
+        report["rag_error"] = str(e)
+
+    # 3b. Stale Analysis Detection
+    print("\n  [3b] Stale Analyses...")
+    try:
+        cur.execute("""
+            SELECT h.symbol, h.name,
+                   MAX(war.created_at) as last_analysis,
+                   EXTRACT(days FROM NOW() - MAX(war.created_at)) as days_since
+            FROM (SELECT DISTINCT symbol, name FROM (
+                SELECT symbol, name FROM json_array_elements(
+                    (SELECT holdings::json FROM (SELECT holdings::text FROM
+                     json_each_text((SELECT data::json FROM
+                     (SELECT read_text FROM (VALUES (pg_read_file(%s))) v(read_text)) t(data)
+                     )) je(k,v) WHERE k='holdings') sub(holdings)
+                    )) WITH ORDINALITY AS h(val, idx),
+                    json_to_record(h.val) AS x(symbol text, name text)
+                WHERE x.symbol IS NOT NULL AND x.symbol != 'CASH'
+            ) sq) h
+            LEFT JOIN watchlist_agent_results war ON war.symbol = h.symbol
+            GROUP BY h.symbol, h.name
+            HAVING MAX(war.created_at) IS NULL OR MAX(war.created_at) < NOW() - INTERVAL '7 days'
+            ORDER BY days_since DESC NULLS FIRST
+        """, (str(PROJECT_ROOT / "data/portfolios/state/holdings.json"),))
+        stale = cur.fetchall()
+    except Exception:
+        conn.rollback()
+        # Simpler fallback query
+        cur.execute("""
+            SELECT DISTINCT na.symbol, na.symbol as name,
+                   MAX(war.created_at) as last_analysis,
+                   EXTRACT(days FROM NOW() - MAX(war.created_at))::int as days_since
+            FROM news_articles na
+            LEFT JOIN watchlist_agent_results war ON war.symbol = na.symbol
+            WHERE na.symbol IS NOT NULL AND na.symbol != ''
+            GROUP BY na.symbol
+            HAVING MAX(war.created_at) IS NULL OR MAX(war.created_at) < NOW() - INTERVAL '7 days'
+            ORDER BY days_since DESC NULLS FIRST LIMIT 20
+        """)
+        stale = cur.fetchall()
+
+    report["stale_symbols"] = len(stale)
+    if stale:
+        print(f"  {len(stale)} symbols with stale/no analysis:")
+        for s in stale[:10]:
+            days = int(s["days_since"]) if s.get("days_since") else "never"
+            print(f"    {s['symbol']}: last analyzed {days} days ago" if days != "never" else f"    {s['symbol']}: never analyzed")
+
+    # 3c. Routing Audit
+    print("\n  [3c] Intelligence Routing...")
+    try:
+        cur.execute("""
+            SELECT count(*) as n FROM youtube_transcripts
+            WHERE quality_score >= 55 AND promoted_to_whiteboard IS NOT TRUE
+              AND (agent_tags IS NULL OR agent_tags = '[]'::jsonb)
+        """)
+        unrouted = cur.fetchone()["n"]
+        report["unrouted_transcripts"] = unrouted
+        print(f"  Unrouted high-quality transcripts: {unrouted}")
+
+        cur.execute("""
+            SELECT count(*) as n FROM news_articles
+            WHERE retirement_relevance = 'high'
+              AND created_at > NOW() - INTERVAL '7 days'
+              AND symbol NOT IN (SELECT DISTINCT symbol FROM watchlist_agent_results WHERE created_at > NOW() - INTERVAL '7 days')
+        """)
+        unseen = cur.fetchone()["n"]
+        report["unseen_high_relevance"] = unseen
+        print(f"  High-relevance news unseen by agents: {unseen}")
+    except Exception as e:
+        print(f"  Routing audit error: {e}")
+
+    # 3d. Duplicate Detection
+    print("\n  [3d] Duplicate Detection...")
+    try:
+        cur.execute("""
+            SELECT LEFT(title, 80) as title, count(*) as cnt, array_agg(DISTINCT source) as sources
+            FROM news_articles
+            WHERE created_at > NOW() - INTERVAL '30 days'
+            GROUP BY LEFT(title, 80)
+            HAVING count(*) > 1
+            ORDER BY cnt DESC LIMIT 10
+        """)
+        dupes = cur.fetchall()
+        report["duplicate_articles"] = len(dupes)
+        total_dupe_rows = sum(d["cnt"] - 1 for d in dupes)
+        print(f"  {len(dupes)} duplicate title groups ({total_dupe_rows} extra rows)")
+        for d in dupes[:5]:
+            print(f"    [{d['cnt']}x] {d['title'][:60]}")
+    except Exception as e:
+        conn.rollback()
+        print(f"  Dupe check error: {e}")
+
+    # 3e. Content Gap Alerts
+    print("\n  [3e] Content Gaps...")
+    try:
+        gap_categories = []
+        for cat in ["disability_retirement", "ssdi", "trust_estate", "roth_conversion",
+                     "retirement_planning", "tax_planning", "dividend_income"]:
+            cur.execute("SELECT count(*) as n FROM news_articles WHERE strategy_type=%s AND created_at > NOW() - INTERVAL '30 days'", (cat,))
+            cnt = cur.fetchone()["n"]
+            if cnt < 3:
+                gap_categories.append({"category": cat, "articles_30d": cnt})
+                print(f"  GAP: {cat} — only {cnt} articles in last 30 days")
+        report["content_gaps"] = gap_categories
+        if not gap_categories:
+            print(f"  No critical gaps")
+    except Exception as e:
+        print(f"  Gap check error: {e}")
+
+    conn.close()
+    elapsed = int(time.time() - started)
+    print(f"\n{'='*60}")
+    print(f"  Library audit complete in {elapsed}s")
+    print(f"{'='*60}\n")
+
+    # Telegram summary
+    if not dry_run:
+        summary = (
+            f"Iris Library Audit\n"
+            f"RAG: {report.get('rag_coverage_pct', '?')}% coverage\n"
+            f"Stale: {report.get('stale_symbols', 0)} symbols need refresh\n"
+            f"Unrouted: {report.get('unrouted_transcripts', 0)} transcripts\n"
+            f"Dupes: {report.get('duplicate_articles', 0)} groups\n"
+            f"Gaps: {len(report.get('content_gaps', []))} categories thin"
+        )
+        _send_telegram_msg(summary)
+
+    return report
+
+
+def get_library_status():
+    """GET /api/v2/iris/library-status — RAG + routing audit summary."""
+    conn, cur = _get_conn_dict()
+    result = {}
+
+    # RAG coverage
+    try:
+        import urllib.request as _ur
+        with _ur.urlopen("http://localhost:7777/api/v2/rag/status", timeout=5) as r:
+            result["rag"] = json.loads(r.read()).get("data", {})
+    except Exception:
+        result["rag"] = {"coverage_pct": 0}
+
+    # Stale symbols
+    try:
+        cur.execute("""
+            SELECT symbol, MAX(created_at) as last_analysis,
+                   EXTRACT(days FROM NOW() - MAX(created_at))::int as days_since
+            FROM watchlist_agent_results GROUP BY symbol
+            HAVING MAX(created_at) < NOW() - INTERVAL '7 days'
+            ORDER BY days_since DESC LIMIT 20
+        """)
+        result["stale_symbols"] = [dict(r) for r in cur.fetchall()]
+    except Exception:
+        result["stale_symbols"] = []
+
+    # Content gaps
+    try:
+        gaps = []
+        for cat in ["disability_retirement", "ssdi", "trust_estate", "roth_conversion",
+                     "retirement_planning", "tax_planning", "dividend_income"]:
+            cur.execute("SELECT count(*) as n FROM news_articles WHERE strategy_type=%s AND created_at > NOW() - INTERVAL '30 days'", (cat,))
+            cnt = cur.fetchone()["n"]
+            if cnt < 3:
+                gaps.append({"category": cat, "articles_30d": cnt})
+        result["content_gaps"] = gaps
+    except Exception:
+        result["content_gaps"] = []
+
+    # Duplicates
+    try:
+        cur.execute("SELECT count(*) as n FROM (SELECT LEFT(title,80), count(*) FROM news_articles WHERE created_at > NOW()-INTERVAL '30 days' GROUP BY LEFT(title,80) HAVING count(*)>1) sq")
+        result["duplicate_groups"] = cur.fetchone()["n"]
+    except Exception:
+        result["duplicate_groups"] = 0
+
+    conn.close()
+    return result
+
+
+def get_stale_symbols():
+    """GET /api/v2/iris/stale-symbols — Holdings not analyzed in >7 days."""
+    conn, cur = _get_conn_dict()
+    try:
+        cur.execute("""
+            SELECT symbol, MAX(created_at) as last_analysis,
+                   EXTRACT(days FROM NOW() - MAX(created_at))::int as days_since,
+                   count(*) as total_analyses
+            FROM watchlist_agent_results
+            GROUP BY symbol
+            HAVING MAX(created_at) < NOW() - INTERVAL '7 days'
+            ORDER BY days_since DESC
+        """)
+        return [{"symbol": r["symbol"], "last_analysis": str(r["last_analysis"])[:16],
+                 "days_since": r["days_since"], "total_analyses": r["total_analyses"]}
+                for r in cur.fetchall()]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def get_content_gaps():
+    """GET /api/v2/iris/content-gaps — Categories with thin recent content."""
+    conn, cur = _get_conn_dict()
+    try:
+        gaps = []
+        for cat in ["disability_retirement", "ssdi", "trust_estate", "roth_conversion",
+                     "retirement_planning", "tax_planning", "dividend_income",
+                     "etf_indexing", "macro_fed", "bond_income"]:
+            cur.execute("SELECT count(*) as n FROM news_articles WHERE strategy_type=%s AND created_at > NOW()-INTERVAL '30 days'", (cat,))
+            cnt = cur.fetchone()["n"]
+            cur.execute("SELECT count(*) as n FROM youtube_transcripts yt JOIN youtube_channels yc ON yc.channel_name=yt.channel_name WHERE yc.category=%s AND yt.ingested_at > NOW()-INTERVAL '30 days'", (cat,))
+            yt_cnt = cur.fetchone()["n"]
+            gaps.append({"category": cat, "news_30d": cnt, "youtube_30d": yt_cnt, "thin": cnt < 3 and yt_cnt < 5})
+        return [g for g in gaps if g["thin"]]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Iris taxonomy intelligence agent")
     p.add_argument("--gaps", action="store_true", help="Gap analysis only")
@@ -1280,9 +1537,15 @@ if __name__ == "__main__":
     p.add_argument("--status", action="store_true", help="Print current status")
     p.add_argument("--hygiene", action="store_true", help="Run weekly hygiene")
     p.add_argument("--hygiene-dry-run", action="store_true", help="Preview hygiene without changes")
+    p.add_argument("--library-audit", action="store_true", help="Run library audit")
+    p.add_argument("--library-audit-dry-run", action="store_true", help="Preview library audit")
     args = p.parse_args()
 
-    if args.hygiene:
+    if args.library_audit:
+        run_library_audit(dry_run=False)
+    elif args.library_audit_dry_run:
+        run_library_audit(dry_run=True)
+    elif args.hygiene:
         run_weekly_hygiene(dry_run=False)
     elif args.hygiene_dry_run:
         run_weekly_hygiene(dry_run=True)

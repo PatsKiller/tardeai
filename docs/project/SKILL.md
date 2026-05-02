@@ -442,7 +442,7 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 
 ---
 
-## Telegram Commands (29 unique)
+## Telegram Commands (32 unique)
 
 | Command | What |
 |---------|------|
@@ -475,12 +475,15 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 | `update KEY VALUE` | Update .env credential (allowed keys only) |
 | `/iris_approve_N` | Shortcut: approve Iris proposal #N |
 | `/iris_reject_N` | Shortcut: reject Iris proposal #N |
+| `iris library` | RAG coverage + stale + dupes + gaps summary |
+| `iris stale` | Symbols not analyzed by agents in >7 days |
+| `iris gaps` | Content categories with thin recent coverage |
 
 ---
 
 ## Scripts & Cron Cheat Sheet
 
-### Pipeline scripts (run by cron — 70 entries)
+### Pipeline scripts (run by cron — 71 entries)
 
 | Script | Schedule | What it does | Key args |
 |--------|----------|--------------|----------|
@@ -692,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.0 — RAG injection fixed: silent except replaced with logging. rag_sources_used JSONB column on watchlist_agent_results. Peer Agent Notes injected into all agents (what Maria/Steph/Risk concluded recently). Prompt order: portfolio → FRED → RAG (5 items) → peer notes → agent rules. 5159 rows 100% embedded. Timer count: 11 project timers in API (correct — 4 system timers excluded). Intelligence Library + RAG coverage from v5.9.*
+*SKILL.md v6.1 — Iris MODE 3 Intelligence Librarian (daily 7 AM): RAG coverage audit, stale analysis detection, routing audit (9 unrouted transcripts found), duplicate detection (10 groups, 12 extra), content gaps (5 thin categories: ssdi, trust_estate, roth_conversion, tax_planning, disability_retirement). 3 new API: /iris/library-status, /iris/stale-symbols, /iris/content-gaps. 3 new Telegram: iris library, iris stale, iris gaps. 71 cron, 32 Telegram commands. Iris: 3 modes (taxonomy + hygiene + librarian).*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*

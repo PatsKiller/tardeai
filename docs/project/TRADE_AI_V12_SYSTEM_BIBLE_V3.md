@@ -1,11 +1,12 @@
-# Trade AI v12 + Portfolio Intelligence — System Bible v6.0
+# Trade AI v12 + Portfolio Intelligence — System Bible v6.1
 
 **Canonical source of truth. Claude Code uses this document as the reference spec.**  
 **Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 2, 2026  
 **SSH:** `ssh johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
-**Prev version:** v5.9 (May 2, 2026)  
-**Changelog:** v6.0 — RAG injection fixed: silent except:pass replaced with logging + error message. rag_sources_used JSONB column on watchlist_agent_results for audit. Peer Agent Notes injected into all agent prompts (DISTINCT ON agent from last 7 days). Prompt structure: portfolio → FRED → RAG (5 items) → peer notes → agent rules → data → task. Timer count: 11 project + 4 system = 15 total (API shows 11 project, correct). Intelligence Library + RAG coverage from v5.9 carry forward.
+**Prev version:** v6.0 (May 2, 2026)  
+**Changelog:** v6.1 — 71 cron entries. Iris MODE 3 — Intelligence Librarian (daily 7 AM): RAG coverage audit (auto-triggers indexer if <80%), stale analysis detection (symbols >7d old), intelligence routing audit (unrouted transcripts + unseen high-relevance news), duplicate news detection, content gap alerts (5 thin categories found). 3 new API endpoints: GET /iris/library-status, /iris/stale-symbols, /iris/content-gaps. 3 new Telegram commands: iris library, iris stale, iris gaps. Cron: 7 AM daily library-audit. Iris now has 3 operating modes: taxonomy (Sunday 10 AM), hygiene (Sunday 6 AM), librarian (daily 7 AM).
+**Prev changelog:** v6.0 — RAG injection fixed: silent except:pass replaced with logging + error message. rag_sources_used JSONB column on watchlist_agent_results for audit. Peer Agent Notes injected into all agent prompts (DISTINCT ON agent from last 7 days). Prompt structure: portfolio → FRED → RAG (5 items) → peer notes → agent rules → data → task. Timer count: 11 project + 4 system = 15 total (API shows 11 project, correct). Intelligence Library + RAG coverage from v5.9 carry forward.
 **Prev changelog:** v5.9 — 5159 intelligence rows 100% embedded. Intelligence Library tab (All Intel) on Intelligence Sources: unified search across all 10 source types. GET /api/v2/intelligence/library with symbol/source_type/q filters + pagination. RAG coverage tile on Content Health with per-source bars + Run Backfill button. Fixed agent_result indexer (TEXT id → hashtext), cio_decision (decision_id TEXT → hashtext). Backfill complete: all 10 source types at 100%.
 **Prev changelog:** v5.8 — 163 tables, 70 cron, 29 Telegram commands, 7 agents, 33 pages, 2056 agent results, 5159 total intelligence rows. RAG system: rag_retrieval.py (cosine sim + recency decay + source boost + keyword fallback), rag_indexer.py (10 source types, idempotent). GET /api/v2/rag/status (coverage per source). POST /api/v2/admin/rag-backfill (background). Agent wiring: RAG pre-context injected into all agents via _build_prompt(). 3 RAG cron entries (6:50 AM news/FRED, 7:20 PM YouTube, 2:30 AM agent outputs). Embedding: nomic-embed-text 768d, stored as JSONB in content_embeddings (UNIQUE source_type+source_id). Content backfill complete (337 new). Agent output backfill running. Still needed: Intelligence Library UI tab, RAG coverage tile on Content Health.
 **Prev changelog:** v5.7 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 2036 agent results, 910 news articles, 651 transcripts, 44 channels, 54 SEC filings, 645 whiteboard items, 15 systemd timers. News tab on Intelligence Sources (GET /api/v2/news/articles with server-side filtering by strategy/source/relevance/search + pagination). News strategy classifier: 14 categories (added ssdi + rollover_ira), retirement_relevance column on news_articles (82 high, 85 medium, 743 low). Idempotent backfill endpoint. SEC Form 4 strategy_focus from ticker_strategy_classifications with channel-name validation guard. Aegis overnight: TimeoutStartSec=3600, per-phase SIGALRM 30-min limit, Phase 1.5 news classification. Verified: full run completed in 1429s (23.8 min). tradeai-continuous: preflight made non-fatal. systemd timer visibility: DBUS env vars passed to subprocess calls (11 timers now visible in orchestration API). Content Health dashboard: name mismatch + orphan tiles with fix buttons. Status badges: PENDING/TAGGED/VALIDATED/LOW CONF/ORPHAN.
@@ -27,7 +28,7 @@
 9. [Scoring Model (Trade AI)](#9-scoring-model-trade-ai)
 10. [PostgreSQL Schema Summary](#10-postgresql-schema-summary)
 11. [API Endpoints](#11-api-endpoints)
-12. [Cron Schedule (70 entries)](#12-cron-schedule-70-entries)
+12. [Cron Schedule (71 entries)](#12-cron-schedule-71-entries)
 13. [Configuration Reference](#13-configuration-reference)
 14. [Operational Runbook](#14-operational-runbook)
 15. [Trust Matrix](#15-trust-matrix)
@@ -104,7 +105,7 @@ graph TB
     subgraph OUTPUTS["📤 Outputs"]
         DB["PostgreSQL\nsee /api/v2/system-health"]
         DASH["Command Center v2\n33 pages · 14 with charts"]
-        TG["Telegram\n29 commands · Smart alerts"]
+        TG["Telegram\n32 commands · Smart alerts"]
         REPORTS["Reports\nDocx · HTML · PDF"]
     end
 
@@ -666,7 +667,7 @@ IDENTITY
         Makes sure every piece of content reaches the right agent.
   Model: Claude Sonnet (Q&A), local qwen3:1.7b (classification)
 
-TWO OPERATING MODES:
+THREE OPERATING MODES:
 
 MODE 1 — Taxonomy Improvement (Weekly Sunday 10 AM)
   1. Coverage analysis — channels vs target taxonomy (8 categories)
@@ -716,6 +717,9 @@ TELEGRAM COMMANDS
   iris hygiene defer N   — decide in 7 days
   iris hygiene preview   — dry run (no changes)
   iris hygiene run       — force hygiene run now
+  iris library           — RAG coverage + stale + dupes + gaps summary
+  iris stale             — symbols not analyzed by agents in >7 days
+  iris gaps              — content categories with thin recent coverage
 
 API ENDPOINTS
   GET  /api/v2/iris/status          — taxonomy status + coverage
@@ -735,6 +739,17 @@ CLI
 CRON
   0 6  * * 0  iris_taxonomy_agent.py --hygiene    — Sunday 6 AM
   0 10 * * 0  iris_taxonomy_agent.py              — Sunday 10 AM
+
+MODE 3 — Intelligence Librarian (Daily 7:00 AM)
+  3a. RAG Coverage Audit — checks /api/v2/rag/status, triggers indexer if <80%
+  3b. Stale Analysis Detection — symbols not analyzed by any agent in >7 days
+  3c. Intelligence Routing — unrouted high-quality transcripts + unseen news
+  3d. Duplicate Detection — same-title news from different sources
+  3e. Content Gap Alerts — categories with <3 articles in 30 days
+
+  API: GET /iris/library-status, /iris/stale-symbols, /iris/content-gaps
+  Telegram: iris library, iris stale, iris gaps
+  Cron: 0 7 * * * iris_taxonomy_agent.py --library-audit
 
 IRIS AUTONOMY RULES
   - Never make investment recommendations
@@ -1178,7 +1193,7 @@ Schema notes:
 | `portfolio_server.py` | nohup / systemd | Main HTTP server — serves /api/v2/*, static files, React app | 7777 |
 | `continuous_runner.py` | nohup | Continuous agent job processor (alt to cron-based) | — |
 
-### Pipeline scripts (run by cron — 70 entries)
+### Pipeline scripts (run by cron — 71 entries)
 
 #### Morning Cascade (5:00–8:05 AM, Mon–Fri)
 
@@ -1507,7 +1522,7 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 # Or Telegram: "update FINVIZ_COOKIE .ASPXAUTH=..."
 ```
 
-### Telegram Commands (29 unique)
+### Telegram Commands (32 unique)
 
 | Command | What |
 |---------|------|
@@ -1578,7 +1593,7 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 | Income gap calculation | FMP API dividends, real yield data |
 | DB infrastructure | PostgreSQL, proper indexes — check `/api/v2/system-health` for live count |
 | API layer | 120+ endpoints, all returning data |
-| Cron pipeline | 70 entries, verified paths |
+| Cron pipeline | 71 entries, verified paths |
 | FRED macro | 7 series live, daily refresh |
 | SEC Form 4 | Direct from data.sec.gov |
 | Preflight check | 23 tests, catches most failures before they cascade |

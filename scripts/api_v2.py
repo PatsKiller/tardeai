@@ -3544,6 +3544,36 @@ def _proposal_detail(proposal_id: int):
     }
 
 
+def _iris_library_status():
+    """GET /api/v2/iris/library-status — RAG + routing audit summary."""
+    try:
+        import sys as _s; _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from iris_taxonomy_agent import get_library_status
+        return get_library_status()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _iris_stale_symbols():
+    """GET /api/v2/iris/stale-symbols — Symbols not analyzed in >7 days."""
+    try:
+        import sys as _s; _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from iris_taxonomy_agent import get_stale_symbols
+        return {"symbols": get_stale_symbols()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _iris_content_gaps():
+    """GET /api/v2/iris/content-gaps — Categories with thin content."""
+    try:
+        import sys as _s; _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from iris_taxonomy_agent import get_content_gaps
+        return {"gaps": get_content_gaps()}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def _iris_hygiene_status():
     """GET /api/v2/iris/hygiene-status — Hygiene pending decisions + recent actions."""
     pending = _db_query("""SELECT id, content_type, content_title, proposed_action,
@@ -5268,6 +5298,9 @@ ROUTES = {
     "/api/v2/rewrite-note/status": lambda: _rewrite_status(),
     "/api/v2/iris/status": lambda: _iris_status(),
     "/api/v2/iris/hygiene-status": lambda: _iris_hygiene_status(),
+    "/api/v2/iris/library-status": lambda: _iris_library_status(),
+    "/api/v2/iris/stale-symbols": lambda: _iris_stale_symbols(),
+    "/api/v2/iris/content-gaps": lambda: _iris_content_gaps(),
     "/api/v2/proposals-with-pnl": lambda: _proposals_with_pnl(),
     "/api/v2/alex-hygiene/history": lambda: {"runs": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, decision_type, tier, question, agreement_score, elapsed_seconds, bypass_event, ran_at, LEFT(synthesis,500) as synthesis_preview FROM alex_hygiene_log ORDER BY ran_at DESC LIMIT 10") or [])]},
     "/api/v2/agent-pipeline": lambda: _agent_pipeline(),

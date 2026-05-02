@@ -197,6 +197,47 @@ def _handle_iris(args: str) -> str:
         except Exception as e:
             return f"Iris hygiene error: {e}"
 
+    # iris library
+    if subcommand == "library":
+        try:
+            from iris_taxonomy_agent import get_library_status
+            ls = get_library_status()
+            rag = ls.get("rag", {})
+            lines = [f"*Iris Library*", f"RAG: {rag.get('coverage_pct', 0)}% embedded",
+                     f"Stale: {len(ls.get('stale_symbols', []))} symbols >7d old",
+                     f"Dupes: {ls.get('duplicate_groups', 0)} groups",
+                     f"Gaps: {len(ls.get('content_gaps', []))} categories thin"]
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Library error: {e}"
+
+    # iris stale / iris gaps / iris dupes
+    if subcommand == "stale":
+        try:
+            from iris_taxonomy_agent import get_stale_symbols
+            stale = get_stale_symbols()
+            if not stale:
+                return "Iris: All symbols analyzed within 7 days."
+            lines = [f"*Stale Symbols ({len(stale)}):*"]
+            for s in stale[:10]:
+                lines.append(f"  {s['symbol']}: {s['days_since']}d ago ({s['total_analyses']} total)")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Stale check error: {e}"
+
+    if subcommand == "gaps":
+        try:
+            from iris_taxonomy_agent import get_content_gaps
+            gaps = get_content_gaps()
+            if not gaps:
+                return "Iris: No critical content gaps."
+            lines = ["*Content Gaps (thin categories):*"]
+            for g in gaps:
+                lines.append(f"  {g['category']}: {g['news_30d']} news, {g['youtube_30d']} YT in 30d")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Gaps error: {e}"
+
     # iris who / iris identity / iris help
     if subcommand in ("who", "identity", "help"):
         return (
