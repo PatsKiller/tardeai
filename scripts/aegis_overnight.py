@@ -50,19 +50,34 @@ def _log(msg: str):
         pass
 
 
-def _run_phase(name: str, func, *args) -> dict:
-    """Run a phase with timing and error handling."""
+def _run_phase(name: str, func, *args, timeout_min: int = 30) -> dict:
+    """Run a phase with timing, error handling, and hard timeout."""
+    import signal
+
     _log(f"  PHASE START: {name}")
     start = time.time()
     result = {}
+
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"Phase '{name}' exceeded {timeout_min}-minute limit")
+
+    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(timeout_min * 60)
     try:
         result = func(*args) or {}
         elapsed = time.time() - start
         _log(f"  PHASE COMPLETE: {name} — {elapsed:.1f}s — {result}")
+    except TimeoutError as e:
+        elapsed = time.time() - start
+        _log(f"  PHASE TIMEOUT: {name} — {elapsed:.1f}s — {e}")
+        result = {"error": str(e), "timeout": True}
     except Exception as e:
         elapsed = time.time() - start
         _log(f"  PHASE FAILED: {name} — {elapsed:.1f}s — {e}")
         result = {"error": str(e)}
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
     return result
 
 
