@@ -150,11 +150,26 @@ def promote_qualified_intel() -> dict:
           AND symbol NOT IN (SELECT symbol FROM qualified_intelligence WHERE symbol IS NOT NULL)
         ORDER BY symbol, quality_score DESC""")
     for r in cur.fetchall():
+        # Look up strategy_focus from ticker_strategy_classifications
+        strat = None
+        if r.get("symbol"):
+            scur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            scur.execute("SELECT strategy_type FROM ticker_strategy_classifications WHERE symbol=%s AND active=true LIMIT 1", (r["symbol"],))
+            srow = scur.fetchone()
+            strat = srow["strategy_type"] if srow else "position_monitoring"
+            scur.close()
+        # Validation: strategy_focus must NOT be a YouTube channel name
+        if strat:
+            vcur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            vcur.execute("SELECT 1 FROM youtube_channels WHERE channel_name=%s LIMIT 1", (strat,))
+            if vcur.fetchone():
+                strat = "position_monitoring"  # was incorrectly set to channel name
+            vcur.close()
         ucur.execute("""INSERT INTO qualified_intelligence
-            (source_type, source_table, source_id, symbol, title, quality_score, relevance_score)
-            VALUES (%s, 'intelligence_whiteboard', %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+            (source_type, source_table, source_id, symbol, title, quality_score, relevance_score, strategy_focus)
+            VALUES (%s, 'intelligence_whiteboard', %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
             (r["source_type"], r["source_id"], r["symbol"], r["title"][:200],
-             r["quality_score"], float(r["confidence"] or 0)))
+             r["quality_score"], float(r["confidence"] or 0), strat))
         ucur.execute("UPDATE intelligence_whiteboard SET level=4, status='promoted', promoted_at=NOW(), promoted_by='curation_engine', level_changed_at=NOW() WHERE id=%s", (r["id"],))
         counts["L4_promoted"] += 1
     conn.commit()
@@ -285,50 +300,250 @@ def generate_discovery_summary(send_telegram: bool = False) -> dict:
     return {"items": len(items), "proposals": len(proposals)}
 
 
+# ── Improvement #5: Sector Correlation Detection ────────────────────
+# When 3+ events in the same batch share a sector/strategy, it's likely
+# a correlated macro move — not individual thesis breaks.
+# Example: TDG, LHX, LMT, NOC all triggering = defense sector event.
+# This fires a SECTOR_CORRELATION_ALERT so Maria investigates the macro cause.
+
+STRATEGY_SECTORS = {
+    "defense_thesis": "defense",
+    "dividend_growth_compounder": "dividend growth",
+    "high_yield_income_bdc": "high yield income",
+    "core_growth_compounder": "core growth",
+    "swing_trade": "swing trade",
+    "day_scalp": "scalp",
+    "retirement_planning": "retirement",
+    "covered_call_income": "covered call",
+    "bond_income": "bonds",
+    "reit_income": "REIT",
+}
+
+
+def get_symbol_strategy(symbol: str) -> str:
+    """Look up a symbol's strategy from watchlist or holdings."""
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT strategy_type FROM watchlist_strategy_cards
+            WHERE symbol = %s ORDER BY created_at DESC LIMIT 1
+        """, (symbol.upper(),))
+        row = cur.fetchone()
+        if not row:
+            cur.execute("""
+                SELECT strategy FROM watchlist_items
+                WHERE symbol = %s LIMIT 1
+            """, (symbol.upper(),))
+            row = cur.fetchone()
+        conn.close()
+        return (row[0] or "unknown") if row else "unknown"
+    except Exception:
+        return "unknown"
+
+
+def detect_sector_correlation(symbols: list) -> dict | None:
+    """Check if 3+ symbols in a batch share the same sector/strategy.
+
+    Returns a correlation alert dict if found, None otherwise.
+    Called by agent_event_router after collecting a batch of events.
+
+    Args:
+        symbols: List of ticker symbols from the current event batch
+
+    Returns:
+        dict with sector, symbols, count, note — or None if no correlation
+    """
+    if len(symbols) < 3:
+        return None
+
+    from collections import Counter
+    symbol_strategies = {}
+    for sym in symbols:
+        if sym:
+            symbol_strategies[sym] = get_symbol_strategy(sym)
+
+    # Count by sector
+    sector_counts = Counter(s for s in symbol_strategies.values() if s != "unknown")
+    for sector, count in sector_counts.most_common(1):
+        if count >= 3:
+            correlated_symbols = [s for s, strat in symbol_strategies.items() if strat == sector]
+            sector_label = STRATEGY_SECTORS.get(sector, sector.replace("_", " "))
+            return {
+                "event_type": "SECTOR_CORRELATION_ALERT",
+                "sector": sector,
+                "sector_label": sector_label,
+                "symbols": correlated_symbols,
+                "count": count,
+                "priority": "urgent",
+                "agents_to_notify": ["Maria", "Risk"],
+                "note": (
+                    f"{count} of today's triggered events are {sector_label} sector "
+                    f"({', '.join(correlated_symbols)}). "
+                    f"This may be a correlated macro move — not individual thesis breaks. "
+                    f"Maria: investigate the macro catalyst before individual analyses."
+                ),
+            }
+    return None
+
+
+def insert_sector_correlation_event(correlation: dict):
+    """Insert a SECTOR_CORRELATION_ALERT into agent_event_queue."""
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        import json as _json
+        cur.execute("""
+            INSERT INTO agent_event_queue
+                (event_type, symbol, trigger_data, agents_to_notify, priority, status)
+            VALUES (%s, NULL, %s, %s, 'urgent', 'pending')
+            ON CONFLICT DO NOTHING
+        """, (
+            "SECTOR_CORRELATION_ALERT",
+            _json.dumps({
+                "sector": correlation["sector"],
+                "sector_label": correlation["sector_label"],
+                "symbols": correlation["symbols"],
+                "count": correlation["count"],
+                "note": correlation["note"],
+            }),
+            correlation["agents_to_notify"],
+        ))
+        conn.commit()
+        conn.close()
+        print(f"  [sector] SECTOR_CORRELATION_ALERT: {correlation['sector_label']} "
+              f"({correlation['count']} symbols: {', '.join(correlation['symbols'])})")
+    except Exception as e:
+        print(f"  [sector] Error inserting correlation alert: {e}")
+
+
 # ── Job 3b: Multi-agent debate for high-confidence intel ─────────────
 
 def run_agent_debate(symbol: str, trigger_title: str, trigger_id: int = 0,
                      trigger_source: str = "qualified_intelligence") -> dict:
-    """Run quick Maria/Steph/Risk debate on a symbol, store transcript, return consensus."""
+    """Run Maria/Steph/Risk debate on a symbol. Two rounds when agents disagree.
+
+    Round 1: Each agent gives their independent view (original behavior).
+    Round 2: ONLY if max divergence > 0.30 — each agent responds to the
+             highest-disagreement point from Round 1. This resolves LMT-style
+             conflicts where Risk says HOLD and Steph says TRIM — Round 2 lets
+             Risk see Steph's specific heat/stop-breach argument and potentially update.
+
+    Improvement #3: Counter-argument round added May 2026.
+    Cost: 3 extra LLM calls (~$0.001) only when agents meaningfully disagree.
+    """
     try:
         from llm_router import get_llm_response
+        from intel_query import get_portfolio_heat_context, get_market_session_context
 
-        prompt = f"""/no_think You are moderating a quick debate between 3 portfolio agents about {symbol}.
+        # Inject heat + session into debate context for better decisions
+        heat_ctx = ""
+        session_ctx = ""
+        try:
+            heat_ctx = get_portfolio_heat_context()
+        except Exception:
+            pass
+        try:
+            session_ctx = get_market_session_context()
+        except Exception:
+            pass
 
-CONTEXT: "{trigger_title}"
-CLIENT: Age 58, SSDI $3,800/mo, MFS filing, $1.2M portfolio, $55K income target.
+        context_block = ""
+        if heat_ctx or session_ctx:
+            parts = [x for x in [heat_ctx, session_ctx] if x]
+            context_block = "\n" + "\n".join(parts) + "\n"
 
-Simulate brief responses from each agent (2-3 sentences each):
+        # ── Round 1: Independent views ─────────────────────────────────
+        round1_prompt = f"""/no_think You are moderating a debate between 3 portfolio agents about {symbol}.
 
-MARIA (Fundamentals): What does the research say? Catalyst strength?
-STEPH (Allocation): Does this fit the income/allocation strategy? Position sizing?
-RISK (Technical): What are the risk levels? Stop placement? RSI/volatility?
+TRIGGER: "{trigger_title}"
+CLIENT: Age 58, SSDI $3,800/mo, MFS filing, $1.2M portfolio, $55K income target.{context_block}
+Each agent gives their INDEPENDENT view (2-3 sentences, citing their specific mandate):
+
+MARIA (Fundamentals & Research): What does news/SEC/fundamentals say? Catalyst quality?
+STEPH (Allocation & Income): Does this fit income strategy? Stop vs income floor impact?
+RISK (Technical Analysis): What do RSI/SMA/stop distance say? Price action verdict?
 
 Then provide:
-CONSENSUS: BUY/HOLD/SELL/RESEARCH_MORE
+CONSENSUS: BUY/HOLD/SELL/TRIM/RESEARCH_MORE
 CONFIDENCE: 0-100%
-SSDI_IMPACT: Does this affect SSDI/Medicaid/IRMAA?
+DIVERGENCE: 0-100% (0=all agree, 100=max disagreement)
+SSDI_IMPACT: none/low/high
 
-Keep total response under 200 words."""
+Keep total under 250 words."""
 
-        result = get_llm_response("cio_synthesis", prompt, max_tokens=400)
-        debate = result.get("response", "") if result.get("success") else ""
+        r1 = get_llm_response("cio_synthesis", round1_prompt, max_tokens=500)
+        round1_text = r1.get("response", "") if r1.get("success") else ""
 
-        # Extract consensus
-        consensus_rec = "HOLD"
-        consensus_score = 50
-        for line in debate.split("\n"):
-            line_up = line.upper().strip()
-            if "CONSENSUS:" in line_up:
-                for r in ("BUY", "SELL", "HOLD", "RESEARCH_MORE"):
-                    if r in line_up:
-                        consensus_rec = r
+        # Parse round 1 results
+        r1_consensus = "HOLD"
+        r1_confidence = 50
+        r1_divergence = 0
+        import re
+        for line in round1_text.split("\n"):
+            lu = line.upper().strip()
+            if "CONSENSUS:" in lu:
+                for rec in ("BUY", "SELL", "TRIM", "HOLD", "RESEARCH_MORE"):
+                    if rec in lu:
+                        r1_consensus = rec
                         break
-            if "CONFIDENCE:" in line_up:
-                import re
+            if "CONFIDENCE:" in lu:
                 nums = re.findall(r'(\d+)', line)
                 if nums:
-                    consensus_score = min(100, int(nums[0]))
+                    r1_confidence = min(100, int(nums[0]))
+            if "DIVERGENCE:" in lu:
+                nums = re.findall(r'(\d+)', line)
+                if nums:
+                    r1_divergence = min(100, int(nums[0]))
+
+        # ── Round 2: Counter-argument (only if divergence > 30%) ───────
+        round2_text = ""
+        rounds_run = 1
+        final_consensus = r1_consensus
+        final_confidence = r1_confidence
+
+        if r1_divergence > 30 and round1_text:
+            rounds_run = 2
+            round2_prompt = f"""/no_think Round 2 counter-argument debate for {symbol}.
+
+Round 1 produced disagreement (divergence: {r1_divergence}%):
+{round1_text}
+
+The agents disagreed. Now each agent RESPONDS to the strongest opposing argument:
+
+MARIA: Do you update your Round 1 view given what Steph and Risk said?
+STEPH: Do you update your Round 1 view given what Maria and Risk said?
+RISK: Do you update your Round 1 view given what Maria and Steph said?
+
+Each agent: one sentence only. State MAINTAIN or UPDATE + why.
+
+Then provide FINAL:
+CONSENSUS: BUY/HOLD/SELL/TRIM/RESEARCH_MORE
+CONFIDENCE: 0-100%
+
+Keep total under 150 words."""
+
+            r2 = get_llm_response("cio_synthesis", round2_prompt, max_tokens=300)
+            round2_text = r2.get("response", "") if r2.get("success") else ""
+
+            # Parse round 2 — use final consensus if available
+            if round2_text:
+                for line in round2_text.split("\n"):
+                    lu = line.upper().strip()
+                    if "CONSENSUS:" in lu or "FINAL" in lu and "CONSENSUS" in lu:
+                        for rec in ("BUY", "SELL", "TRIM", "HOLD", "RESEARCH_MORE"):
+                            if rec in lu:
+                                final_consensus = rec
+                                break
+                    if ("CONFIDENCE:" in lu or "FINAL" in lu and "CONFIDENCE" in lu):
+                        nums = re.findall(r'(\d+)', line)
+                        if nums:
+                            final_confidence = min(100, int(nums[0]))
+
+        # Build full transcript
+        full_transcript = round1_text
+        if round2_text:
+            full_transcript += f"\n\n--- ROUND 2 (counter-argument, divergence={r1_divergence}%) ---\n{round2_text}"
 
         # Store in DB
         conn = _get_conn()
@@ -339,14 +554,29 @@ Keep total response under 200 words."""
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
             (symbol, trigger_source, trigger_id,
              ["Maria", "Steph", "Risk"],
-             debate[:2000], consensus_score / 100.0, consensus_rec,
-             result.get("provider", "")))
+             full_transcript[:2000],
+             final_confidence / 100.0,
+             final_consensus,
+             r1.get("provider", "")))
         conn.commit()
         conn.close()
 
-        print(f"  [debate] {symbol}: {consensus_rec} (conf:{consensus_score}%) via {result.get('provider','?')}")
-        return {"symbol": symbol, "consensus": consensus_rec, "confidence": consensus_score / 100.0,
-                "transcript": debate, "provider": result.get("provider")}
+        print(f"  [debate] {symbol}: {final_consensus} ({final_confidence}%) "
+              f"via {r1.get('provider','?')} "
+              f"[{rounds_run} round(s), divergence={r1_divergence}%]")
+
+        return {
+            "symbol": symbol,
+            "consensus": final_consensus,
+            "consensus_recommendation": final_consensus,
+            "confidence": final_confidence / 100.0,
+            "consensus_score": final_confidence,
+            "transcript": full_transcript,
+            "rounds": rounds_run,
+            "divergence": r1_divergence,
+            "provider": r1.get("provider"),
+        }
+
     except Exception as e:
         print(f"  [debate] {symbol}: error — {e}")
         return {"symbol": symbol, "error": str(e)}
