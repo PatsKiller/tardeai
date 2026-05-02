@@ -3579,6 +3579,73 @@ _YT_NAME_JOIN = """LEFT JOIN youtube_channels yc ON (
 )"""
 
 
+def _intelligence_library():
+    """GET /api/v2/intelligence/library — Unified search across all intelligence."""
+    q = getattr(_intelligence_library, '_query', {}) or {}
+    def _qp(k, default=""):
+        v = q.get(k, default)
+        return (v[0] if isinstance(v, list) else v) or default
+
+    search = _qp("q")
+    source_type = _qp("source_type")
+    symbol = _qp("symbol")
+    limit = min(int(_qp("limit", "50")), 200)
+    offset = int(_qp("offset", "0"))
+
+    # Query each source type separately then merge
+    SOURCES = [
+        ("news", "SELECT id, title, symbol, strategy_type as strategy, CAST(relevance_score AS INT) as quality, source_url as url, created_at FROM news_articles"),
+        ("youtube", "SELECT id, title, channel_name as symbol, content_category as strategy, quality_score as quality, url, ingested_at as created_at FROM youtube_transcripts"),
+        ("agent_result", "SELECT abs(hashtext(id)) as id, COALESCE(symbol,'')||' '||COALESCE(agent,'')||': '||COALESCE(recommendation,'') as title, symbol, request_type as strategy, CAST(confidence*100 AS INT) as quality, NULL as url, created_at FROM watchlist_agent_results"),
+        ("agent_synthesis", "SELECT abs(hashtext(symbol)) as id, symbol||' synthesis: '||COALESCE(recommendation,'') as title, symbol, 'synthesis' as strategy, CAST(confidence*100 AS INT) as quality, NULL as url, created_at FROM watchlist_final_synthesis"),
+        ("cio_decision", "SELECT abs(hashtext(decision_id)) as id, symbol||' CIO: '||COALESCE(action,'') as title, symbol, strategy_type as strategy, CAST(confidence_raw*100 AS INT) as quality, NULL as url, created_at FROM cio_decisions"),
+        ("fused_signal", "SELECT id, symbol||' signal: '||COALESCE(direction,'') as title, symbol, strategy_type as strategy, CAST(confidence*100 AS INT) as quality, NULL as url, created_at FROM fused_signals"),
+        ("decision_outcome", "SELECT id, symbol||' outcome: '||COALESCE(recommendation,'') as title, symbol, strategy_type as strategy, CAST(outcome_score AS INT) as quality, NULL as url, created_at FROM decision_outcomes"),
+        ("sec_form4", "SELECT id, symbol||' Form 4: '||COALESCE(filer_name,'') as title, symbol, 'sec_filing' as strategy, quality_score as quality, sec_url as url, created_at FROM sec_form4"),
+        ("social_post", "SELECT id, LEFT(text,100) as title, NULL as symbol, 'social' as strategy, quality_score as quality, url, ingested_at as created_at FROM social_posts"),
+    ]
+
+    all_rows = []
+    for src, sql in SOURCES:
+        if source_type and source_type != src:
+            continue
+        where = []
+        params = []
+        if symbol:
+            where.append("sub.symbol = %s"); params.append(symbol)
+        if search:
+            where.append("sub.title ILIKE %s"); params.append(f"%{search}%")
+        w = ("WHERE " + " AND ".join(where)) if where else ""
+        try:
+            rows = _db_query(f"SELECT sub.*, '{src}' as source_type FROM ({sql}) sub {w} ORDER BY sub.created_at DESC LIMIT 100", tuple(params) if params else None) or []
+            for r in rows:
+                all_rows.append({k: _json_clean(v) for k, v in r.items()})
+        except Exception:
+            pass
+
+    # Sort by date, paginate
+    all_rows.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    total = len(all_rows)
+    page_rows = all_rows[offset:offset + limit]
+
+    # Check embedding status
+    if page_rows:
+        embedded_set = set()
+        try:
+            ids = [(r.get("source_type"), r.get("id")) for r in page_rows]
+            for st, sid in ids:
+                er = _db_query("SELECT 1 FROM content_embeddings WHERE source_type=%s AND source_id=%s LIMIT 1", (st, sid), fetch="one")
+                if er:
+                    embedded_set.add((st, sid))
+        except Exception:
+            pass
+        for r in page_rows:
+            r["is_embedded"] = (r.get("source_type"), r.get("id")) in embedded_set
+            r["source_label"] = {"news": "News", "youtube": "YouTube", "agent_result": "Agent Memory", "agent_synthesis": "Synthesis", "cio_decision": "CIO Decision", "fused_signal": "Fused Signal", "decision_outcome": "Outcome", "sec_form4": "SEC Form 4", "social_post": "Social"}.get(r.get("source_type"), r.get("source_type"))
+
+    return {"items": page_rows, "total": total, "page": (offset // limit) + 1}
+
+
 def _rag_status():
     """GET /api/v2/rag/status — Embedding coverage per source type."""
     sources = {
@@ -5226,6 +5293,7 @@ ROUTES = {
     "/api/v2/youtube/channels": lambda: {"channels": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM youtube_channels WHERE active=TRUE ORDER BY channel_name") or [])]},
     "/api/v2/news/articles": lambda: _news_articles_list(),
     "/api/v2/rag/status": lambda: _rag_status(),
+    "/api/v2/intelligence/library": lambda: _intelligence_library(),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -5890,6 +5958,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         _youtube_channel_lookup._url = (query.get("url") or [""])[0] if isinstance(query.get("url"), list) else query.get("url", "")
         _youtube_transcripts._query = query
         _news_articles_list._query = query
+        _intelligence_library._query = query
 
     # Static routes
     handler = ROUTES.get(base_path)

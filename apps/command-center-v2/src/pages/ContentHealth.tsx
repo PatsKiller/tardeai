@@ -33,6 +33,20 @@ export default function ContentHealth() {
   const [fixingNames, setFixingNames] = useState(false)
   const [fixingOrphans, setFixingOrphans] = useState(false)
   const [adminMsg, setAdminMsg] = useState('')
+  const [ragStatus, setRagStatus] = useState<any>(null)
+  const [ragBackfilling, setRagBackfilling] = useState(false)
+
+  const loadRag = () => {
+    fetch('/api/v2/rag/status').then(r => r.json()).then(d => { if (d.ok) setRagStatus(d.data) }).catch(() => {})
+  }
+
+  const handleRagBackfill = async () => {
+    setRagBackfilling(true)
+    try {
+      await fetch('/api/v2/admin/rag-backfill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      setAdminMsg('RAG backfill started in background')
+    } catch {} finally { setRagBackfilling(false) }
+  }
 
   const reload = () => {
     fetch('/api/v2/youtube-audit').then(r => r.json())
@@ -41,7 +55,7 @@ export default function ContentHealth() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { setLoading(true); reload() }, [])
+  useEffect(() => { setLoading(true); reload(); loadRag() }, [])
 
   const channels = data?.channels || []
 
@@ -118,6 +132,29 @@ export default function ContentHealth() {
             </button>
           )}
           {adminMsg && <span style={{ fontSize: 10, color: '#00ff88' }}>{adminMsg}</span>}
+        </div>
+      )}
+
+      {/* RAG Coverage */}
+      {ragStatus && (
+        <div style={card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", textTransform: 'uppercase', letterSpacing: 2, color: '#5a7fa8' }}>RAG Embedding Coverage — {ragStatus.coverage_pct}%</span>
+            <button onClick={handleRagBackfill} disabled={ragBackfilling} style={{ fontSize: 9, padding: '4px 10px', borderRadius: 4, border: '1px solid rgba(0,212,255,.3)', background: 'rgba(0,212,255,.06)', color: '#00d4ff', cursor: 'pointer' }}>
+              {ragBackfilling ? 'Running...' : 'Run Backfill'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {Object.entries(ragStatus.by_source || {}).map(([src, v]: [string, any]) => (
+              <div key={src} style={{ flex: '1 1 120px', minWidth: 120, background: '#0a0e18', border: '1px solid #1e3050', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontSize: 9, color: '#5a7fa8', marginBottom: 4 }}>{src.replace(/_/g, ' ')}</div>
+                <div style={{ height: 4, background: '#1e3050', borderRadius: 2, overflow: 'hidden', marginBottom: 4 }}>
+                  <div style={{ height: '100%', width: `${v.pct}%`, background: v.pct >= 90 ? '#00ff88' : v.pct > 0 ? '#ffaa00' : '#3a5a80', borderRadius: 2 }} />
+                </div>
+                <div style={{ fontSize: 10, color: v.pct >= 90 ? '#00ff88' : v.pct > 0 ? '#ffaa00' : '#3a5a80', fontWeight: 700 }}>{v.embedded}/{v.total}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
