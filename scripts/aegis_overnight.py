@@ -106,6 +106,17 @@ def main():
     from aegis_transcript_discovery import main as transcript_main
     results["transcript"] = _run_phase("transcript_discovery", transcript_main)
 
+    # ── PHASE 1.5: NEWS STRATEGY CLASSIFICATION ────────────────────────
+    _log("PHASE 1.5: NEWS STRATEGY CLASSIFICATION")
+    try:
+        from _news_strategy_classifier import classify_recent_untagged
+        tagged = classify_recent_untagged()
+        results["news_strategy"] = {"classified": tagged}
+        _log(f"  Classified {tagged} recent news articles")
+    except Exception as e:
+        _log(f"  News strategy classification failed: {e}")
+        results["news_strategy"] = {"error": str(e)}
+
     # ── PHASE 2: SYNTHESIS ───────────────────────────────────────────────
     _log("PHASE 2: SYNTHESIS")
 

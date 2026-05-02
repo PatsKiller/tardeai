@@ -5259,6 +5259,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
+        if base_path == "/api/v2/admin/backfill-news-strategy":
+            try:
+                from _news_strategy_classifier import classify_and_update_all
+                updated = classify_and_update_all()
+                return 200, {"ok": True, "updated": updated}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/admin/fix-channel-name-mismatches":
             try:
                 fixes = [
