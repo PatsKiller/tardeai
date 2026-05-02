@@ -98,6 +98,14 @@ const badge = (text: string, color: string) => (
   <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: `${color}22`, color, fontWeight: 700, textTransform: 'uppercase' }}>{text}</span>
 )
 
+function statusBadge(validationStatus: string, qualityScore: number) {
+  if (validationStatus === 'orphan') return badge('ORPHAN', '#ff4466')
+  if (validationStatus === 'ai_validated') return badge('VALIDATED', '#0ecb81')
+  if (validationStatus === 'low_confidence') return badge('LOW CONF', '#ff8800')
+  if (qualityScore > 0) return badge('TAGGED', '#c4a34f')
+  return badge('PENDING', '#5a7fa8')
+}
+
 function qualityColor(score: number) {
   if (score >= 70) return '#0ecb81'
   if (score >= 40) return '#c4a34f'
@@ -530,7 +538,7 @@ export default function IntelligenceSources() {
                       <td style={td}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: qualityColor(t.relevance_score * 100) }}>{(t.relevance_score * 100).toFixed(0)}%</span>
                       </td>
-                      <td style={td}>{badge(t.validation_status, t.validation_status === 'ai_validated' ? '#0ecb81' : t.validation_status === 'low_confidence' ? '#f6465d' : '#c4a34f')}</td>
+                      <td style={td}>{statusBadge(t.validation_status, t.quality_score)}</td>
                       <td style={td}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                           {(t.matched_keywords || []).slice(0, 5).map((kw, i) => (
@@ -635,7 +643,7 @@ export default function IntelligenceSources() {
                       <td style={td}>
                         {badge(p.sentiment, p.sentiment === 'positive' ? '#0ecb81' : p.sentiment === 'negative' ? '#f6465d' : '#c4a34f')}
                       </td>
-                      <td style={td}>{badge(p.validation_status, p.validation_status === 'ai_validated' ? '#0ecb81' : p.validation_status === 'low_confidence' ? '#f6465d' : '#c4a34f')}</td>
+                      <td style={td}>{statusBadge(p.validation_status, p.quality_score)}</td>
                       <td style={td}>
                         <div style={{ fontSize: 9, color: 'var(--text3)', lineHeight: 1.6 }}>
                           {p.likes > 0 && <span>{p.likes} likes</span>}

@@ -36,10 +36,12 @@ export default function ContentHealth() {
 
   const reload = () => {
     fetch('/api/v2/youtube-audit').then(r => r.json())
-      .then(d => { if (d.ok) setData(d.data) }).catch(() => {})
+      .then(d => { if (d.ok) setData(d.data) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }
 
-  useEffect(() => { setLoading(true); reload(); setLoading(false) }, [])
+  useEffect(() => { setLoading(true); reload() }, [])
 
   const channels = data?.channels || []
 
