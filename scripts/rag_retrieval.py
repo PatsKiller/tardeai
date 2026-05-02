@@ -75,17 +75,14 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
         if query_vec is None:
             return _keyword_fallback(symbol, limit, cur)
 
-        # Get candidate embeddings that mention this symbol
+        # Get candidate embeddings that mention this symbol (strict symbol match in title)
         cur.execute("""
             SELECT id, source_type, source_id, title, embedding, created_at
             FROM content_embeddings
-            WHERE (title ILIKE %s OR source_id::text IN (
-                SELECT id::text FROM news_articles WHERE symbol = %s
-                UNION SELECT id::text FROM watchlist_agent_results WHERE symbol = %s
-            ))
-            AND created_at > NOW() - INTERVAL '365 days'
+            WHERE title ILIKE %s
+              AND created_at > NOW() - INTERVAL '365 days'
             ORDER BY created_at DESC LIMIT 200
-        """, (f"%{symbol}%", symbol, symbol))
+        """, (f"%{symbol}%",))
         candidates = cur.fetchall()
 
         if not candidates:
