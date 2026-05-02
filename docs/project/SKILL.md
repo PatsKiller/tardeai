@@ -480,7 +480,7 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 
 ## Scripts & Cron Cheat Sheet
 
-### Pipeline scripts (run by cron — 67 entries)
+### Pipeline scripts (run by cron — 70 entries)
 
 | Script | Schedule | What it does | Key args |
 |--------|----------|--------------|----------|
@@ -506,6 +506,8 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 | `alex_gov_research.py` | Sunday 8 AM | Government data refresh (SSA, IRMAA, Medicaid) | `--refresh` |
 | `full_system_backup.py` | Sunday 1 AM | Full system backup zip | — |
 | `youtube_channel_discovery.py` | 1st of month 10 AM | Discover new channels | `--discover --telegram` |
+
+| `rag_indexer.py` | 6:50 AM / 7:20 PM / 2:30 AM | RAG embedder: news+FRED / YouTube / agent outputs | `--source all --hours 2` / `--backfill` |
 
 ### On-demand scripts (manual or API-triggered)
 
@@ -662,6 +664,8 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 | `/api/v2/portfolio-intelligence` | GET | 47 positions with real sectors, per-account/sector P&L, cross-account, best/worst, classification |
 | `/api/v2/news/articles` | GET | Paginated news — `?strategy=&source=&relevance=&search=&limit=&offset=` (14 categories, retirement_relevance) |
 | `/api/v2/admin/backfill-news-strategy` | POST | Classify all news articles (idempotent — 0 on second call) |
+| `/api/v2/rag/status` | GET | RAG embedding coverage per source type (10 types, 5159 total rows) |
+| `/api/v2/admin/rag-backfill` | POST | Background backfill of all source types into content_embeddings |
 | `/api/v2/tasks/<id>/resolve` | POST | Resolve a task — `{note}` → updates john_decision_queue status to decided_action |
 | `/api/v2/tasks/<id>/defer` | POST | Defer a task — `{note}` → updates status to deferred |
 | `/api/v2/tasks/<id>/reject` | POST | Reject a task — `{note}` → updates status to rejected |
@@ -688,6 +692,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.7 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 2036 agent results, 910 news articles, 651 transcripts, 44 channels, 54 SEC filings, 645 whiteboard, 15 systemd timers. News tab on Intelligence Sources (GET /api/v2/news/articles, 14 strategy categories, retirement_relevance, server-side filtering + pagination). Idempotent news classifier (ssdi + rollover_ira added). Aegis overnight: 1429s successful run, TimeoutStartSec=3600, SIGALRM per-phase. tradeai-continuous preflight non-fatal. systemd timers visible in orchestration (DBUS env fix). Content Health: status badges (PENDING/TAGGED/VALIDATED/LOW CONF/ORPHAN).*
+*SKILL.md v5.8 — 163 tables, 70 cron, 29 Telegram commands, 7 agents, 33 pages, 2056 agent results, 5159 total intelligence rows. RAG system: rag_retrieval.py (10 source types, cosine sim + recency + source boost + keyword fallback), rag_indexer.py (idempotent embedder). GET /api/v2/rag/status. POST /api/v2/admin/rag-backfill. Agent wiring: RAG pre-context in _build_prompt() for all agents. 3 RAG cron entries. Embedding: nomic-embed-text 768d JSONB in content_embeddings. Still needed: Intelligence Library UI tab, RAG coverage tile on Content Health.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
