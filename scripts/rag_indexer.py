@@ -42,8 +42,8 @@ SOURCE_CONFIGS = {
         "date_col": "fetched_at",
     },
     "agent_result": {
-        # id is TEXT in watchlist_agent_results
-        "sql": "SELECT id::bigint, COALESCE(symbol,'')||' '||COALESCE(agent,'')||' '||COALESCE(recommendation,'')||' '||COALESCE(summary,''), COALESCE(symbol,'')||' '||COALESCE(agent,'')||': '||COALESCE(recommendation,''), created_at FROM watchlist_agent_results WHERE id ~ '^[0-9]+$'",
+        # id is TEXT (e.g. res-wl-schd-maria-20260426) — use hashtext for numeric source_id
+        "sql": "SELECT abs(hashtext(id)), COALESCE(symbol,'')||' '||COALESCE(agent,'')||' '||COALESCE(recommendation,'')||' '||LEFT(COALESCE(summary,''),500), COALESCE(symbol,'')||' '||COALESCE(agent,'')||': '||COALESCE(recommendation,''), created_at FROM watchlist_agent_results",
         "date_col": "created_at",
     },
     "agent_synthesis": {
@@ -52,7 +52,8 @@ SOURCE_CONFIGS = {
         "date_col": "created_at",
     },
     "cio_decision": {
-        "sql": "SELECT decision_id, COALESCE(symbol,'')||' CIO '||COALESCE(action,'')||' '||COALESCE(rationale,''), COALESCE(symbol,'')||' CIO: '||COALESCE(action,''), created_at FROM cio_decisions",
+        # decision_id is TEXT — use hashtext
+        "sql": "SELECT abs(hashtext(decision_id)), COALESCE(symbol,'')||' CIO '||COALESCE(action,'')||' '||LEFT(COALESCE(rationale,''),500), COALESCE(symbol,'')||' CIO: '||COALESCE(action,''), created_at FROM cio_decisions",
         "date_col": "created_at",
     },
     "fused_signal": {

@@ -1,11 +1,12 @@
-# Trade AI v12 + Portfolio Intelligence — System Bible v5.7
+# Trade AI v12 + Portfolio Intelligence — System Bible v5.8
 
 **Canonical source of truth. Claude Code uses this document as the reference spec.**  
-**Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 1, 2026  
+**Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 2, 2026  
 **SSH:** `ssh johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
-**Prev version:** v5.6 (May 1, 2026)  
-**Changelog:** v5.7 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 2036 agent results, 910 news articles, 651 transcripts, 44 channels, 54 SEC filings, 645 whiteboard items, 15 systemd timers. News tab on Intelligence Sources (GET /api/v2/news/articles with server-side filtering by strategy/source/relevance/search + pagination). News strategy classifier: 14 categories (added ssdi + rollover_ira), retirement_relevance column on news_articles (82 high, 85 medium, 743 low). Idempotent backfill endpoint. SEC Form 4 strategy_focus from ticker_strategy_classifications with channel-name validation guard. Aegis overnight: TimeoutStartSec=3600, per-phase SIGALRM 30-min limit, Phase 1.5 news classification. Verified: full run completed in 1429s (23.8 min). tradeai-continuous: preflight made non-fatal. systemd timer visibility: DBUS env vars passed to subprocess calls (11 timers now visible in orchestration API). Content Health dashboard: name mismatch + orphan tiles with fix buttons. Status badges: PENDING/TAGGED/VALIDATED/LOW CONF/ORPHAN.
+**Prev version:** v5.7 (May 1, 2026)  
+**Changelog:** v5.8 — 163 tables, 70 cron, 29 Telegram commands, 7 agents, 33 pages, 2056 agent results, 5159 total intelligence rows. RAG system: rag_retrieval.py (cosine sim + recency decay + source boost + keyword fallback), rag_indexer.py (10 source types, idempotent). GET /api/v2/rag/status (coverage per source). POST /api/v2/admin/rag-backfill (background). Agent wiring: RAG pre-context injected into all agents via _build_prompt(). 3 RAG cron entries (6:50 AM news/FRED, 7:20 PM YouTube, 2:30 AM agent outputs). Embedding: nomic-embed-text 768d, stored as JSONB in content_embeddings (UNIQUE source_type+source_id). Content backfill complete (337 new). Agent output backfill running. Still needed: Intelligence Library UI tab, RAG coverage tile on Content Health.
+**Prev changelog:** v5.7 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 2036 agent results, 910 news articles, 651 transcripts, 44 channels, 54 SEC filings, 645 whiteboard items, 15 systemd timers. News tab on Intelligence Sources (GET /api/v2/news/articles with server-side filtering by strategy/source/relevance/search + pagination). News strategy classifier: 14 categories (added ssdi + rollover_ira), retirement_relevance column on news_articles (82 high, 85 medium, 743 low). Idempotent backfill endpoint. SEC Form 4 strategy_focus from ticker_strategy_classifications with channel-name validation guard. Aegis overnight: TimeoutStartSec=3600, per-phase SIGALRM 30-min limit, Phase 1.5 news classification. Verified: full run completed in 1429s (23.8 min). tradeai-continuous: preflight made non-fatal. systemd timer visibility: DBUS env vars passed to subprocess calls (11 timers now visible in orchestration API). Content Health dashboard: name mismatch + orphan tiles with fix buttons. Status badges: PENDING/TAGGED/VALIDATED/LOW CONF/ORPHAN.
 **Prev changelog:** v5.6 — YouTube intelligence fix. v5.5 — Content Health Dashboard (/v2/content-health): summary tiles (healthy/below/no-transcripts), collapsible scoring guide, full channel health table with quality bars + Iris flag-for-review. Fixed /api/v2/youtube/transcripts: LEFT JOIN to youtube_channels, category/channel/limit query params. POST /api/v2/iris/hygiene-flag for manual channel flagging. 33 pages.
 **Prev changelog:** v5.4 — Scripts & cron cheat sheet. v5.3 — 163 tables, 67 cron, 29 Telegram commands, 7 agents, 33 pages, 1852 agent results. Task decision endpoints: POST /tasks/<id>/resolve|defer|reject. Duplicate task prevention in aegis_synthesis.py (checks pending_john before insert, updates existing). POST /tasks/deduplicate cleanup endpoint. SmartTextarea mic: getUserMedia before SpeechRecognition, HTTPS error detection, pulsing red border. AI rewrite: local qwen3 with Claude Haiku fallback. Auto-enrichment: runs phase2_ticker_enrichment when agents return RESEARCH_MORE. Data quality: enrichment_attempted, missing_data fields in task-detail API. CIO synthesis shows "INSUFFICIENT DATA" when HOLD at <60% confidence.
 
@@ -24,7 +25,7 @@
 9. [Scoring Model (Trade AI)](#9-scoring-model-trade-ai)
 10. [PostgreSQL Schema Summary](#10-postgresql-schema-summary)
 11. [API Endpoints](#11-api-endpoints)
-12. [Cron Schedule (67 entries)](#12-cron-schedule-67-entries)
+12. [Cron Schedule (70 entries)](#12-cron-schedule-70-entries)
 13. [Configuration Reference](#13-configuration-reference)
 14. [Operational Runbook](#14-operational-runbook)
 15. [Trust Matrix](#15-trust-matrix)
@@ -1113,6 +1114,56 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 | `/tasks/<id>/reject` | POST | Reject a task — `{note}` → rejected |
 | `/tasks/deduplicate` | POST | Remove duplicate pending tasks per symbol+category |
 
+### RAG (Retrieval-Augmented Generation)
+
+| Endpoint | Method | Returns |
+|----------|--------|---------|
+| `/rag/status` | GET | Coverage per source type — total rows, embedded count, pct for all 10 types |
+| `/admin/rag-backfill` | POST | Trigger background backfill of all source types |
+
+```
+RAG SYSTEM (v5.8)
+
+Scripts:
+  rag_retrieval.py — Universal RAG engine for all agents
+    get_rag_context(symbol, agent, limit=7) → top-N prior intelligence
+    Scoring: cosine_sim × quality_boost × recency_decay × source_boost × scar_factor
+    Falls back to keyword search if Ollama unavailable
+    format_rag_context_for_prompt() → "=== Prior Intelligence ===" block
+
+  rag_indexer.py — Universal embedder for all 10 source types
+    CLI: --source all --hours 2 | --backfill | --source agent_result,cio_decision
+    Idempotent: ON CONFLICT (source_type, source_id) DO NOTHING
+    Model: nomic-embed-text (768 dims, stored as JSONB)
+
+Source types indexed:
+  news (910), youtube (651), social_post (3), sec_form4 (54),
+  fred_series (14), agent_result (2056), agent_synthesis (553),
+  cio_decision (222), fused_signal (166), decision_outcome (530)
+  Total: 5,159 rows across 10 types
+
+Agent wiring:
+  process_watchlist_agent_jobs.py _build_prompt() injects RAG pre-context
+  All agents (Maria, Steph, Risk, Tax) receive top 5 RAG results per symbol
+  Context position: after portfolio/FRED data, before agent-specific rules
+
+Cron (3 entries):
+  6:50 AM M-F  — news, FRED, social, SEC (after morning ingest)
+  7:20 PM M-F  — YouTube (after evening ingest)
+  2:30 AM daily — agent outputs (after overnight batch)
+
+Table: content_embeddings
+  Columns: id, source_type, source_id, title, embedding (JSONB), embedding_model, embedding_dim
+  Unique constraint: (source_type, source_id)
+  No pgvector — cosine similarity computed in Python
+
+Schema notes:
+  watchlist_agent_results.id is TEXT — cast to bigint for embedding
+  watchlist_final_synthesis PK is symbol (text) — uses hashtext(symbol)
+  cio_decisions uses decision_id not id
+  Existing embeddings use source_type='news'/'youtube' (not 'news_article')
+```
+
 ---
 
 ## 12. Scripts & Cron Cheat Sheet
@@ -1124,7 +1175,7 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 | `portfolio_server.py` | nohup / systemd | Main HTTP server — serves /api/v2/*, static files, React app | 7777 |
 | `continuous_runner.py` | nohup | Continuous agent job processor (alt to cron-based) | — |
 
-### Pipeline scripts (run by cron — 67 entries)
+### Pipeline scripts (run by cron — 70 entries)
 
 #### Morning Cascade (5:00–8:05 AM, Mon–Fri)
 
@@ -1143,6 +1194,7 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 | 6:45 | `sync_watchlist_items_to_db.py` | Sync watchlist items to PostgreSQL | — |
 | 6:45 | `overnight_batch.py` | Auto-queue high-quality symbols for agent analysis | `--proactive` |
 | 6:50 | `materialize_watchlist_strategy_cards.py` | Build strategy card views for dashboard | — |
+| 6:50 | `rag_indexer.py` | RAG: index news + FRED + social + SEC embeddings | `--source news,fred_series,social_post,sec_form4 --hours 2` |
 | 6:55 | `materialize_income_engine.py` | Calculate income projections | — |
 | 7:00 | `cio_decision_engine.py` | CIO synthesis — agent consensus → decisions | `--run` |
 | 7:05 | `sync_dividend_data.py` | Dividend calendar sync from broker data | — |
@@ -1177,6 +1229,7 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 |------|--------|--------------|----------|
 | 19:00 | `youtube_transcript_ingest.py` | Ingest from 44 channels (3 videos each) | `--all-channels` |
 | 19:00 | `agent_watchlist_engine.py` | Promote intel, propose rotations, discovery | `--daily --telegram` |
+| 19:20 | `rag_indexer.py` | RAG: index YouTube embeddings | `--source youtube --hours 3` |
 | 19:30 | `transcript_slow_processor.py` | Process today's fresh transcripts | `--fresh --count 5` |
 | 20:00 | `overnight_batch.py` | Nightly pipeline: agents, tasks, approvals | `--telegram` |
 | 20:00 | `sec_data_ingest.py` | SEC EDGAR Form 4 insider filing ingest | `--all` |
@@ -1195,6 +1248,7 @@ Schwab CSV → ImportModal → /api/import-transactions → holdings.json trade_
 | Every 4 hours | `youtube_backfill_manager.py` | Backfill older YouTube transcripts | — |
 | 22:00–06:00 (hourly) | `transcript_slow_processor.py` | Slow-process transcripts overnight | `--run --count 2` |
 | 2:00 AM daily | `pg_dump` (inline) | Database backup (gzip, 7-day retention) | — |
+| 2:30 AM daily | `rag_indexer.py` | RAG: index agent outputs (results, synthesis, CIO, signals, outcomes) | `--source agent_result,agent_synthesis,cio_decision,fused_signal,decision_outcome --hours 8` |
 
 #### Weekly (Sunday)
 
@@ -1521,7 +1575,7 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 | Income gap calculation | FMP API dividends, real yield data |
 | DB infrastructure | PostgreSQL, proper indexes — check `/api/v2/system-health` for live count |
 | API layer | 120+ endpoints, all returning data |
-| Cron pipeline | 67 entries, verified paths |
+| Cron pipeline | 70 entries, verified paths |
 | FRED macro | 7 series live, daily refresh |
 | SEC Form 4 | Direct from data.sec.gov |
 | Preflight check | 23 tests, catches most failures before they cascade |
@@ -1562,7 +1616,7 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 |-----------|-----|---------|-------|
 | Data sources active (9) | 15 | 15 | All 9 active |
 | Embedding coverage | 10 | 10 | 100% coverage |
-| Agent analyses (200+) | 10 | 10 | 2,036 results |
+| Agent analyses (200+) | 10 | 10 | 2,056 results |
 | Avg confidence (>0.5) | 10 | 9 | Maria 0.85 (two-pass), Steph/Risk 0.71 |
 | Proposals reviewed | 10 | 0 | Need to approve/reject 10+ |
 | Debates active | 5 | 0 | Accumulating |
@@ -1612,7 +1666,8 @@ python3 scripts/credential_monitor.py --fix-finviz  # Finviz cookie guidance
 
 ---
 
-*v5.7 — News tab + classifier (14 categories, retirement_relevance). Aegis overnight timeout fix (1429s successful run). systemd timer visibility. Content Health status badges.*
+*v5.8 — RAG system: rag_retrieval.py + rag_indexer.py (10 source types, 5159 rows). Agent wiring. 3 RAG cron entries. GET /rag/status. POST /admin/rag-backfill. 70 cron entries.*
+*v5.7 — News tab + classifier. Aegis overnight timeout fix. systemd timer visibility.*
 *v5.6 — YouTube name mismatches + orphan flagging. v5.5 — Content Health Dashboard.*
 *v5.3 — Task decision endpoints. Auto-enrichment. SmartTextarea mic.*
 *v5.2 — Portfolio Intelligence page, task modal 10-section panel, SmartTextarea, AddYouTubeChannelModal, Iris card, retirement freshness.*
