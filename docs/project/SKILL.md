@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.7 — Keyword fallback bug fixed: RealDictCursor dict→tuple conversion. LHX returns 3 items (was 0). Fallback chain: DB embeddings→YouTube→News→Brave. All 4 RAG paths verified: ticker (LHX→"LHX outcome"), symbol (SCHD→"SCHD dividend"), category:ssdi (3 YouTube), category:disability (3 YouTube). Coverage 99.7%.*
+*SKILL.md v6.8 — RAG wired into aegis_synthesis.py: symbol briefs + Steph escalations get 3 RAG items per symbol. Previously nightly synthesis bypassed RAG entirely (own LLM path). Keyword fallback DictCursor fix. All RAG paths verified: tickers + categories + fallback.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
