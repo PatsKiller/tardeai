@@ -87,12 +87,19 @@ interface DiscoveryResp { entries: DiscoveryEntry[] }
 interface SearchSourceInfo { active: boolean; articles?: number; transcripts?: number; series?: number; indexed?: number; status?: string; key_present?: boolean; last?: string; model?: string; dim?: number; calls_today?: number; daily_limit?: number }
 interface SearchSourcesResp { [key: string]: SearchSourceInfo }
 
+interface NewsArticle {
+  id: number; title: string; symbol: string | null; source: string
+  source_url: string; strategy_type: string; retirement_relevance: string
+  relevance_score: number; created_at: string
+}
+interface NewsResp { articles: NewsArticle[]; total: number; page: number }
+
 interface SourcesResp { sources: Source[] }
 interface TranscriptsResp { transcripts: Transcript[] }
 interface ChannelsResp { channels: Channel[] }
 interface SocialPostsResp { posts: SocialPost[] }
 
-type Tab = 'screeners' | 'youtube' | 'social' | 'qualified' | 'discovery'
+type Tab = 'screeners' | 'youtube' | 'social' | 'news' | 'qualified' | 'discovery'
 
 const badge = (text: string, color: string) => (
   <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: `${color}22`, color, fontWeight: 700, textTransform: 'uppercase' }}>{text}</span>
@@ -130,6 +137,13 @@ export default function IntelligenceSources() {
   const { data: qualData, loading: qualLoading } = useApi<QualifiedResp>('/api/v2/qualified-intelligence')
   const { data: searchSources } = useApi<SearchSourcesResp>('/api/v2/search-sources')
   const { data: discData, loading: discLoading } = useApi<DiscoveryResp>('/api/v2/discovery-log')
+  const [newsStratFilter, setNewsStratFilter] = useState('')
+  const [newsSourceFilter, setNewsSourceFilter] = useState('')
+  const [newsRelFilter, setNewsRelFilter] = useState('')
+  const [newsSearch, setNewsSearch] = useState('')
+  const [newsPage, setNewsPage] = useState(0)
+  const newsParams = [newsStratFilter && `strategy=${newsStratFilter}`, newsSourceFilter && `source=${newsSourceFilter}`, newsRelFilter && `relevance=${newsRelFilter}`, newsSearch && `search=${encodeURIComponent(newsSearch)}`].filter(Boolean).join('&')
+  const { data: newsData, loading: newsLoading } = useApi<NewsResp>(`/api/v2/news/articles?limit=50&offset=${newsPage * 50}${newsParams ? '&' + newsParams : ''}`)
   const [tab, setTab] = useState<Tab>('screeners')
   const [filter, setFilter] = useState('')
   const [stratFilter, setStratFilter] = useState<string>('all')
@@ -347,14 +361,14 @@ export default function IntelligenceSources() {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-        {(['screeners', 'youtube', 'social', 'qualified', 'discovery'] as Tab[]).map(t => (
+        {(['screeners', 'youtube', 'social', 'news', 'qualified', 'discovery'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '8px 16px', fontSize: 11, fontWeight: 700, border: 'none',
             borderBottom: t === tab ? '2px solid #4a90f4' : '2px solid transparent',
             background: 'transparent', color: t === tab ? '#4a90f4' : 'var(--text3)',
             cursor: 'pointer', textTransform: 'uppercase',
           }}>
-            {t === 'screeners' ? `Screeners (${sources.length})` : t === 'youtube' ? `YouTube (${transcripts.length})` : t === 'social' ? `Social (${socialPosts.length})` : t === 'qualified' ? `Qualified (${qualItems.length})` : `Discovery (${discEntries.length})`}
+            {t === 'screeners' ? `Screeners (${sources.length})` : t === 'youtube' ? `YouTube (${transcripts.length})` : t === 'social' ? `Social (${socialPosts.length})` : t === 'news' ? `News (${newsData?.total ?? '...'})` : t === 'qualified' ? `Qualified (${qualItems.length})` : `Discovery (${discEntries.length})`}
           </button>
         ))}
       </div>
@@ -664,6 +678,88 @@ export default function IntelligenceSources() {
                 </tbody>
               </table>
             </div>
+          </Card>
+        </>
+      )}
+
+      {/* News Tab */}
+      {tab === 'news' && (
+        <>
+          {newsLoading && <div style={{ color: 'var(--text3)', fontSize: 12 }}>Loading news...</div>}
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input placeholder="Search title or symbol..." value={newsSearch} onChange={e => { setNewsSearch(e.target.value); setNewsPage(0) }}
+              style={{ ...inputStyle, width: 200 }} />
+            <select value={newsStratFilter} onChange={e => { setNewsStratFilter(e.target.value); setNewsPage(0) }}
+              style={{ ...inputStyle, width: 160 }}>
+              <option value="">All strategies</option>
+              {['investment_general','dividend_income','retirement_planning','macro_fed','etf_indexing','bond_income','tax_planning','roth_conversion','high_yield_income_bdc','disability_retirement','401k_rollover','rollover_ira','ssdi','trust_estate'].map(s => (
+                <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+            <select value={newsSourceFilter} onChange={e => { setNewsSourceFilter(e.target.value); setNewsPage(0) }}
+              style={{ ...inputStyle, width: 130 }}>
+              <option value="">All sources</option>
+              {['yahoo_rss','finnhub','google_news','seeking_alpha'].map(s => (
+                <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+            {['high','medium','low'].map(r => {
+              const active = newsRelFilter === r
+              const color = r === 'high' ? '#00ff88' : r === 'medium' ? '#ffaa00' : '#5a7fa8'
+              return (
+                <button key={r} onClick={() => { setNewsRelFilter(active ? '' : r); setNewsPage(0) }}
+                  style={{ ...btnStyle, background: active ? `${color}18` : 'transparent', borderColor: active ? `${color}60` : 'var(--border)', color: active ? color : 'var(--text3)', fontSize: 10 }}>
+                  {r}
+                </button>
+              )
+            })}
+            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text3)' }}>{newsData?.total ?? 0} articles</span>
+          </div>
+          {/* Table */}
+          <Card>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text3)', textAlign: 'left' }}>
+                    <th style={th}>Source</th><th style={th}>Symbol</th><th style={th}>Title</th>
+                    <th style={th}>Strategy</th><th style={th}>Relevance</th><th style={th}>Quality</th><th style={th}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(newsData?.articles || []).map(a => {
+                    const relColor = a.retirement_relevance === 'high' ? '#00ff88' : a.retirement_relevance === 'medium' ? '#ffaa00' : '#5a7fa8'
+                    const srcColor = a.source?.includes('yahoo') ? '#4a90f4' : a.source?.includes('finnhub') ? '#aa55ff' : a.source?.includes('google') ? '#00cc88' : '#7a9cc8'
+                    return (
+                      <tr key={a.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <td style={td}>{badge(a.source?.replace(/_/g, ' ').slice(0, 12) || '?', srcColor)}</td>
+                        <td style={{ ...td, fontFamily: 'var(--mono)', fontWeight: 700, color: '#c8daf5' }}>{a.symbol || '\u2014'}</td>
+                        <td style={td}>
+                          {a.source_url ? <a href={a.source_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4a90f4', textDecoration: 'none' }}>{(a.title || '').slice(0, 70)}</a> : (a.title || '').slice(0, 70)}
+                        </td>
+                        <td style={td}>{badge((a.strategy_type || '').replace(/_/g, ' ').slice(0, 18), '#7a9cc8')}</td>
+                        <td style={td}>{badge(a.retirement_relevance || 'low', relColor)}</td>
+                        <td style={{ ...td, textAlign: 'right', color: '#7a9cc8' }}>{a.relevance_score ? Number(a.relevance_score).toFixed(0) : '\u2014'}</td>
+                        <td style={{ ...td, color: '#5a7fa8', whiteSpace: 'nowrap' }}>{a.created_at?.slice(0, 10) || '\u2014'}</td>
+                      </tr>
+                    )
+                  })}
+                  {(newsData?.articles || []).length === 0 && !newsLoading && (
+                    <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No articles match filters</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {/* Pagination */}
+            {(newsData?.total || 0) > 50 && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
+                <button onClick={() => setNewsPage(p => Math.max(0, p - 1))} disabled={newsPage === 0}
+                  style={{ ...btnStyle, color: newsPage === 0 ? 'var(--text3)' : '#4a90f4' }}>&laquo; Prev</button>
+                <span style={{ fontSize: 10, color: 'var(--text3)' }}>Page {newsPage + 1} of {Math.ceil((newsData?.total || 1) / 50)}</span>
+                <button onClick={() => setNewsPage(p => p + 1)} disabled={(newsPage + 1) * 50 >= (newsData?.total || 0)}
+                  style={{ ...btnStyle, color: (newsPage + 1) * 50 >= (newsData?.total || 0) ? 'var(--text3)' : '#4a90f4' }}>Next &raquo;</button>
+              </div>
+            )}
           </Card>
         </>
       )}

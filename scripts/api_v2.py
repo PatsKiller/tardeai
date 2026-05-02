@@ -3579,6 +3579,48 @@ _YT_NAME_JOIN = """LEFT JOIN youtube_channels yc ON (
 )"""
 
 
+def _news_articles_list():
+    """GET /api/v2/news/articles — filterable paginated news list."""
+    q = getattr(_news_articles_list, '_query', {}) or {}
+    def _qp(k, default=""):
+        v = q.get(k, default)
+        return (v[0] if isinstance(v, list) else v) or default
+
+    limit = min(int(_qp("limit", "50")), 200)
+    offset = int(_qp("offset", "0"))
+    strategy = _qp("strategy")
+    source = _qp("source")
+    relevance = _qp("relevance")
+    search = _qp("search")
+
+    where = []
+    params: list = []
+    if strategy:
+        where.append("strategy_type = %s"); params.append(strategy)
+    if source:
+        where.append("source = %s"); params.append(source)
+    if relevance:
+        where.append("retirement_relevance = %s"); params.append(relevance)
+    if search:
+        where.append("(title ILIKE %s OR symbol ILIKE %s)"); params.extend([f"%{search}%", f"%{search}%"])
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    total = _db_query(f"SELECT count(*) as n FROM news_articles {where_sql}", tuple(params) if params else None, fetch="one")
+    params_with_paging = list(params) + [limit, offset]
+    rows = _db_query(f"""
+        SELECT id, title, symbol, source, source_url, strategy_type,
+               retirement_relevance, relevance_score, created_at
+        FROM news_articles {where_sql}
+        ORDER BY created_at DESC LIMIT %s OFFSET %s
+    """, tuple(params_with_paging)) or []
+
+    return {
+        "articles": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "total": (total or {}).get("n", 0),
+        "page": (offset // limit) + 1,
+    }
+
+
 def _youtube_transcripts():
     """GET /api/v2/youtube/transcripts — with category/channel filter + name-variant JOIN."""
     url_q = getattr(_youtube_transcripts, '_query', {}) or {}
@@ -5146,6 +5188,7 @@ ROUTES = {
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
     "/api/v2/youtube/channels": lambda: {"channels": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM youtube_channels WHERE active=TRUE ORDER BY channel_name") or [])]},
+    "/api/v2/news/articles": lambda: _news_articles_list(),
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
     "/api/v2/social/status": lambda: _social_api_status(),
@@ -5797,6 +5840,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if query:
         _youtube_channel_lookup._url = (query.get("url") or [""])[0] if isinstance(query.get("url"), list) else query.get("url", "")
         _youtube_transcripts._query = query
+        _news_articles_list._query = query
 
     # Static routes
     handler = ROUTES.get(base_path)
