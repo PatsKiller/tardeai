@@ -1,11 +1,12 @@
-# Trade AI v12 + Portfolio Intelligence — System Bible v6.8
+# Trade AI v12 + Portfolio Intelligence — System Bible v6.9
 
 **Canonical source of truth. Claude Code uses this document as the reference spec.**  
 **Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu) | **Updated:** May 2, 2026  
 **SSH:** `ssh johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`  
-**Prev version:** v6.7 (May 2, 2026)  
-**Changelog:** v6.8 — RAG wired into aegis_synthesis.py: symbol briefs AND Steph escalations now get RAG pre-context (3 items per symbol). Previously aegis used its own LLM call path bypassing process_watchlist_agent_jobs entirely — RAG never fired for nightly synthesis. Keyword fallback DictCursor bug fixed (row.values() conversion). Fallback chain display: DB embeddings → YouTube → News → Brave.
+**Prev version:** v6.8 (May 2, 2026)  
+**Changelog:** v6.9 — Handoff loop notifications: (1) Agent analysis Telegram after both agents complete on STOP event — shows recommendations + conflict status. (2) Aegis overnight completion Telegram with briefs/stops/escalations/evidence counts. Previously synthesis completed silently — no notification unless you checked dashboard. First RAG-in-synthesis test run started 11:40 (completing ~12:04).
+**Prev changelog:** v6.8 — RAG wired into aegis_synthesis.py: symbol briefs AND Steph escalations now get RAG pre-context (3 items per symbol). Previously aegis used its own LLM call path bypassing process_watchlist_agent_jobs entirely — RAG never fired for nightly synthesis. Keyword fallback DictCursor bug fixed (row.values() conversion). Fallback chain display: DB embeddings → YouTube → News → Brave.
 **Prev changelog:** v6.7 — Keyword fallback fix: RealDictCursor returns dicts not tuples — added `list(row.values())` conversion. LHX now returns 3 items (was 0). Fallback chain display fixed: "DB embeddings (RAG) → YouTube → Yahoo+Finnhub+Google → Brave (last resort)". All RAG paths verified: LHX→"LHX outcome: ADD", SCHD→"SCHD dividend", CATEGORY:ssdi→3 YouTube items, CATEGORY:disability→3 YouTube items. Coverage 99.7%.
 **Prev changelog:** v6.6 — Category-aware RAG: CATEGORY:ssdi/disability/trust now returns YouTube + news content (was 0 items). Alex and Tax get relevant prior intelligence for gap events. Agent self-assessment: low confidence + 0 RAG creates research topic automatically. Iris weekly channel recommendations for gap categories (LLM-generated, Sunday). Keyword fallback category-aware: searches strategy_type for categories, symbol for tickers. Verified: CATEGORY:ssdi returns 5 YouTube items (scores 0.49-0.55), CATEGORY:disability returns 5 items (scores 0.58-0.61).
 **Prev changelog:** v6.5 — RAG symbol relevance confirmed: LHX→"LHX outcome: ADD", RTX→"RTX outcome: BUY" (both correct after title ILIKE fix). Peer notes batch cache: _batch_results_cache{} stores results in-memory during batch so 2nd/3rd agents on same symbol see peer conclusions immediately. Cache checked before 30-day DB query. Result cached after each INSERT. Empty RAG = empty (never returns wrong-symbol results).

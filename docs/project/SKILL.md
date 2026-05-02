@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.8 — RAG wired into aegis_synthesis.py: symbol briefs + Steph escalations get 3 RAG items per symbol. Previously nightly synthesis bypassed RAG entirely (own LLM path). Keyword fallback DictCursor fix. All RAG paths verified: tickers + categories + fallback.*
+*SKILL.md v6.9 — Handoff loop: agent analysis Telegram after STOP event completes (shows recs + conflicts). Aegis overnight completion Telegram with synthesis stats. Previously agents analyzed silently with no notification. First RAG-in-synthesis test run 11:40.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*

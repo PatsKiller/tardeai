@@ -150,10 +150,25 @@ def main():
     from aegis_morning_brief_delivery import deliver as brief_deliver
     results["brief_delivery"] = _run_phase("morning_brief_delivery", brief_deliver)
 
-    # ── COMPLETE ─────────────────────────────────────────────────────────
+    # ── COMPLETE — Send synthesis summary to Telegram ────────────────────
     elapsed_total = time.time() - start_total
     _log(f"AEGIS OVERNIGHT COMPLETE — {run_id} — {elapsed_total:.0f}s total")
     _log(f"{'='*60}")
+
+    try:
+        synth = results.get("synthesis", {})
+        from telegram_alert import send_telegram
+        send_telegram(
+            f"Aegis Overnight Complete ({int(elapsed_total/60)}min)\n"
+            f"Briefs: {synth.get('briefs',0)} | Stops: {synth.get('stop_coverage',{}).get('total',0)}\n"
+            f"Triggered: {synth.get('stop_coverage',{}).get('triggered',0)} | "
+            f"Escalations: {synth.get('steph_escalations',0)}\n"
+            f"Steph reviews: {synth.get('steph_reviews',0)} | "
+            f"Evidence: {synth.get('evidence_entries',0)}\n"
+            f"Check: /v2/trade-ai"
+        )
+    except Exception:
+        pass
 
     # Release lock
     fcntl.flock(lock_fd, fcntl.LOCK_UN)
