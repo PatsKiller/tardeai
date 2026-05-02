@@ -1483,6 +1483,19 @@ def process_jobs(limit: int = 10):
         except Exception:
             pass
 
+        # Self-assessment: low confidence + no RAG → suggest research
+        try:
+            rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
+            if float(parsed.get("confidence", 1)) < 0.50 and len(rag_used) == 0:
+                cur.execute("""INSERT INTO user_research_topics (topic, priority, source, original_message, created_at)
+                    VALUES (%s, 'high', %s, %s, NOW()) ON CONFLICT (topic) DO UPDATE SET priority='high'""",
+                    (f"Find content covering {symbol} analysis",
+                     f"agent_self_assessment:{agent}",
+                     f"{agent} analyzed {symbol} with {parsed['confidence']:.0%} confidence and 0 RAG sources"))
+                print(f"  [SELF-ASSESS] {symbol} ({agent}): low conf + no RAG → research topic created")
+        except Exception:
+            pass
+
         # Update job
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
 

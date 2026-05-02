@@ -68,21 +68,34 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
+        # Category-aware: CATEGORY:ssdi → search by strategy, not ticker
+        is_category = symbol.startswith("CATEGORY:")
+        search_term = symbol.replace("CATEGORY:", "") if is_category else symbol
+
         if not query_text:
-            query_text = f"{symbol} {strategy_focus or ''} investment retirement income"
+            query_text = f"{search_term} {'disability retirement planning' if is_category else ''} investment retirement income"
 
         query_vec = embed_text(query_text)
         if query_vec is None:
             return _keyword_fallback(symbol, limit, cur)
 
-        # Get candidate embeddings that mention this symbol (strict symbol match in title)
-        cur.execute("""
-            SELECT id, source_type, source_id, title, embedding, created_at
-            FROM content_embeddings
-            WHERE title ILIKE %s
-              AND created_at > NOW() - INTERVAL '365 days'
-            ORDER BY created_at DESC LIMIT 200
-        """, (f"%{symbol}%",))
+        if is_category:
+            # Search by strategy/category across news + YouTube embeddings
+            cur.execute("""
+                SELECT ce.id, ce.source_type, ce.source_id, ce.title, ce.embedding, ce.created_at
+                FROM content_embeddings ce
+                WHERE (ce.title ILIKE %s OR ce.source_type IN ('news','youtube'))
+                  AND ce.created_at > NOW() - INTERVAL '365 days'
+                ORDER BY ce.created_at DESC LIMIT 200
+            """, (f"%{search_term}%",))
+        else:
+            cur.execute("""
+                SELECT id, source_type, source_id, title, embedding, created_at
+                FROM content_embeddings
+                WHERE title ILIKE %s
+                  AND created_at > NOW() - INTERVAL '365 days'
+                ORDER BY created_at DESC LIMIT 200
+            """, (f"%{symbol}%",))
         candidates = cur.fetchall()
 
         if not candidates:
@@ -124,13 +137,22 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
 
 
 def _keyword_fallback(symbol, limit, cur):
-    """Keyword fallback when Ollama unavailable."""
+    """Keyword fallback when Ollama unavailable. Category-aware."""
     results = []
-    queries = [
-        ("news", "SELECT id, title, quality_score, created_at FROM news_articles WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
-        ("agent_result", "SELECT id, agent||': '||COALESCE(recommendation,''), CAST(confidence*100 AS INT), created_at FROM watchlist_agent_results WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
-        ("cio_decision", "SELECT decision_id, symbol||' CIO: '||COALESCE(action,''), CAST(confidence_raw*100 AS INT), created_at FROM cio_decisions WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
-    ]
+    is_category = symbol.startswith("CATEGORY:")
+    search_term = symbol.replace("CATEGORY:", "") if is_category else symbol
+
+    if is_category:
+        queries = [
+            ("news", "SELECT id, title, CAST(relevance_score AS INT), created_at FROM news_articles WHERE strategy_type=%s ORDER BY created_at DESC LIMIT %s", (search_term, limit)),
+            ("youtube", "SELECT id, title, quality_score, ingested_at FROM youtube_transcripts WHERE strategy_tags::text ILIKE %s OR title ILIKE %s ORDER BY quality_score DESC LIMIT %s", (f"%{search_term}%", f"%{search_term}%", limit)),
+        ]
+    else:
+        queries = [
+            ("news", "SELECT id, title, CAST(relevance_score AS INT), created_at FROM news_articles WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
+            ("agent_result", "SELECT id, agent||': '||COALESCE(recommendation,''), CAST(confidence*100 AS INT), created_at FROM watchlist_agent_results WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
+            ("cio_decision", "SELECT decision_id, symbol||' CIO: '||COALESCE(action,''), CAST(confidence_raw*100 AS INT), created_at FROM cio_decisions WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
+        ]
     for src, sql, params in queries:
         try:
             cur.execute(sql, params)

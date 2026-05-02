@@ -1495,6 +1495,22 @@ def run_library_audit(dry_run=False):
             if gap.get("articles_30d", 0) == 0 and gap["category"] in ("ssdi", "disability_retirement", "trust_estate"):
                 _send_telegram_msg(f"Iris Library Alert: {gap['category'].replace('_',' ')} — 0 articles + 0 YouTube in 30 days. Agents notified.")
 
+        # Weekly Sunday: channel recommendations for gaps
+        if datetime.now(timezone.utc).weekday() == 6:  # Sunday
+            recs = []
+            for gap in report.get("content_gaps", []):
+                cat = gap["category"]
+                try:
+                    from local_llm import generate
+                    prompt = f"/no_think Suggest 2 real YouTube channels covering {cat.replace('_',' ')} for a disability retirement investor. Just channel names, one per line."
+                    result = generate(prompt, timeout=20, fast=True)
+                    if result:
+                        recs.append(f"  {cat.replace('_',' ')}: {result.strip()[:100]}")
+                except Exception:
+                    recs.append(f"  {cat.replace('_',' ')}: (LLM unavailable)")
+            if recs:
+                _send_telegram_msg("Iris Weekly Content Recommendations\n\nGaps found:\n" + "\n".join(recs) + "\n\nAdd channels: /v2/intelligence-sources → YouTube → + Channel")
+
     return report
 
 
