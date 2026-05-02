@@ -128,6 +128,9 @@ export default function IntelligenceSources() {
   const [ytMsg, setYtMsg] = useState('')
   const [showAddChannel, setShowAddChannel] = useState(false)
   const [ytCatFilter, setYtCatFilter] = useState('all')
+  const [ingestAllState, setIngestAllState] = useState<'idle'|'running'|'done'|'error'>('idle')
+  const [ingestAllMsg, setIngestAllMsg] = useState('')
+  const [ingestingChannel, setIngestingChannel] = useState<string | null>(null)
   const [socialText, setSocialText] = useState('')
   const [socialUser, setSocialUser] = useState('')
   const [socialSaving, setSocialSaving] = useState(false)
@@ -242,6 +245,31 @@ export default function IntelligenceSources() {
     } catch (e: unknown) {
       setYtMsg(`Failed: ${e instanceof Error ? e.message : String(e)}`)
     } finally { setYtIngesting(false) }
+  }
+
+  const handleIngestAll = async () => {
+    setIngestAllState('running'); setIngestAllMsg('')
+    try {
+      const res = await fetch('/api/v2/youtube/ingest-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const d = await res.json()
+      if (d.ok) {
+        setIngestAllState('done'); setIngestAllMsg(d.message || 'Ingest queued')
+        setTimeout(() => { setIngestAllState('idle'); setIngestAllMsg('') }, 4000)
+      } else { setIngestAllState('error'); setIngestAllMsg(d.error || 'Failed') }
+    } catch { setIngestAllState('error'); setIngestAllMsg('Network error') }
+  }
+
+  const handleIngestChannel = async (ch: Channel) => {
+    if (!ch.channel_url && !ch.channel_name) return
+    setIngestingChannel(ch.channel_id)
+    try {
+      const url = ch.channel_url || `https://www.youtube.com/@${ch.channel_name.replace(/\s+/g, '')}`
+      const res = await fetch('/api/v2/youtube/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })
+      const d = await res.json()
+      if (d.ok) setYtMsg(`Ingesting ${ch.channel_name}...`)
+      else setYtMsg(`Error: ${d.error}`)
+    } catch { setYtMsg('Network error') }
+    finally { setTimeout(() => setIngestingChannel(null), 2000) }
   }
 
   const handleSocialIngest = async () => {
@@ -412,8 +440,17 @@ export default function IntelligenceSources() {
                 {ytIngesting ? 'Ingesting...' : 'Ingest'}
               </button>
               <button onClick={() => setShowAddChannel(true)} style={{ ...btnStyle, background: 'rgba(0,255,136,.1)', color: '#00ff88', whiteSpace: 'nowrap' }}>+ Channel</button>
+              <button onClick={handleIngestAll} disabled={ingestAllState === 'running'}
+                style={{ ...btnStyle, marginLeft: 'auto', whiteSpace: 'nowrap',
+                  background: ingestAllState === 'done' ? 'rgba(0,255,136,.1)' : ingestAllState === 'error' ? 'rgba(255,68,102,.1)' : 'rgba(170,85,255,.1)',
+                  color: ingestAllState === 'done' ? '#00ff88' : ingestAllState === 'error' ? '#ff4466' : '#aa55ff',
+                  borderColor: ingestAllState === 'done' ? 'rgba(0,255,136,.3)' : ingestAllState === 'error' ? 'rgba(255,68,102,.3)' : 'rgba(170,85,255,.3)',
+                }}>
+                {ingestAllState === 'running' ? 'Running...' : ingestAllState === 'done' ? '\u2713 Done' : '\u25B6 Run Ingest'}
+              </button>
             </div>
             {ytMsg && <div style={{ fontSize: 10, color: ytMsg.startsWith('Error') ? '#f6465d' : '#0ecb81', marginTop: 4 }}>{ytMsg}</div>}
+            {ingestAllMsg && <div style={{ fontSize: 10, color: ingestAllState === 'error' ? '#f6465d' : '#0ecb81', marginTop: 4 }}>{ingestAllMsg}</div>}
           </Card>
 
           {/* Category filter pills */}
@@ -437,12 +474,18 @@ export default function IntelligenceSources() {
             <div style={{ margin: '4px 0 8px', fontSize: 11, color: 'var(--text3)' }}>
               <strong style={{ color: 'var(--text2)' }}>Channels ({filteredChannels.length}):</strong>{' '}
               {filteredChannels.map((ch, i) => (
-                <span key={ch.channel_id}>
+                <span key={ch.channel_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                   {ch.channel_url ? (
                     <a href={ch.channel_url} target="_blank" rel="noopener noreferrer" style={{ color: '#4a90f4' }}>{ch.channel_name}</a>
                   ) : ch.channel_name}
-                  {ch.category ? ` (${ch.category.replace(/_/g, ' ')})` : ''}
-                  {i < filteredChannels.length - 1 ? ' · ' : ''}
+                  <button onClick={() => handleIngestChannel(ch)} disabled={ingestingChannel === ch.channel_id}
+                    title={`Ingest latest from ${ch.channel_name}`}
+                    style={{ background: 'none', border: 'none', color: ingestingChannel === ch.channel_id ? 'var(--text3)' : 'var(--accent)', cursor: 'pointer', fontSize: 9, padding: '0 2px', opacity: 0.6 }}
+                    onMouseEnter={e => { (e.target as HTMLElement).style.opacity = '1' }}
+                    onMouseLeave={e => { (e.target as HTMLElement).style.opacity = '0.6' }}>
+                    {ingestingChannel === ch.channel_id ? '\u27F3' : '\u25B6'}
+                  </button>
+                  {i < filteredChannels.length - 1 ? ' \u00B7 ' : ''}
                 </span>
               ))}
             </div>
