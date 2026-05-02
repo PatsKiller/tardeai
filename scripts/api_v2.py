@@ -5448,6 +5448,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, {"ok": True, "action": "upserted", "screener_id": sid}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/youtube/ingest-all":
+            try:
+                import subprocess
+                log_path = str(PROJECT_ROOT / "logs" / "youtube_ingest_manual.log")
+                subprocess.Popen(
+                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                     str(PROJECT_ROOT / "scripts/youtube_transcript_ingest.py"), "--all-channels"],
+                    cwd=str(PROJECT_ROOT),
+                    stdout=open(log_path, "a"), stderr=subprocess.STDOUT
+                )
+                ch_count = _db_query("SELECT count(*) as n FROM youtube_channels WHERE active=true", fetch="one")
+                n = (ch_count or {}).get("n", 0)
+                return 200, {"ok": True, "message": f"Ingest queued for {n} channels", "log": log_path}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/youtube/ingest":
             try:
                 b = body or {}
