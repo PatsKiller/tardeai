@@ -59,6 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/agent-monitor', label: 'Agent Monitor' },
     { to: '/reports/agent_orchestration.html', label: 'Orchestration' },
     { to: '/intelligence-sources', label: 'Intel Sources' },
+    { to: '/content-health', label: 'Content Health' },
     { to: '/actions', label: 'Actions' },
     { to: '/approvals', label: 'Approvals' },
   ]},

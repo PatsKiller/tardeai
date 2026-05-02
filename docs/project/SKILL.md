@@ -686,6 +686,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.4 — Complete scripts & cron cheat sheet: 67 cron entries, on-demand scripts, server processes, utility scripts. 163 tables, 29 Telegram commands, 7 agents, 32 pages, 47 positions ($1.19M), 651 transcripts, 44 channels, 1852 agent results.*
+*SKILL.md v5.5 — Content Health Dashboard page (/v2/content-health): channel quality monitoring with summary tiles, scoring guide, health table, Iris flag-for-review. Fixed /api/v2/youtube/transcripts: JOIN to channels, category/channel/limit filters. POST /api/v2/iris/hygiene-flag endpoint. 33 pages.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*

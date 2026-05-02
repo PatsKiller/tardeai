@@ -34,6 +34,7 @@ const MorningBrief = lazy(() => import('./pages/MorningBrief'))
 const AIAnalyst = lazy(() => import('./pages/AIAnalyst'))
 const IntelligenceSources = lazy(() => import('./pages/IntelligenceSources'))
 const PortfolioIntelligence = lazy(() => import('./pages/PortfolioIntelligence'))
+const ContentHealth = lazy(() => import('./pages/ContentHealth'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -99,6 +100,7 @@ export default function App() {
           <Route path="morning-brief" element={<SafePage><MorningBrief /></SafePage>} />
           <Route path="ai-analyst" element={<SafePage><AIAnalyst /></SafePage>} />
           <Route path="intelligence-sources" element={<SafePage><IntelligenceSources /></SafePage>} />
+          <Route path="content-health" element={<SafePage><ContentHealth /></SafePage>} />
         </Route>
       </Routes>
     </BrowserRouter>

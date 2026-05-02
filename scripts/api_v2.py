@@ -3561,6 +3561,48 @@ def _iris_hygiene_status():
     }
 
 
+def _youtube_transcripts():
+    """GET /api/v2/youtube/transcripts — with category/channel filter + JOIN for channel metadata."""
+    url_q = getattr(_youtube_transcripts, '_query', {}) or {}
+    category = (url_q.get("category") or [""])[0] if isinstance(url_q.get("category"), list) else url_q.get("category", "")
+    channel = (url_q.get("channel") or [""])[0] if isinstance(url_q.get("channel"), list) else url_q.get("channel", "")
+    limit_str = (url_q.get("limit") or ["200"])[0] if isinstance(url_q.get("limit"), list) else url_q.get("limit", "200")
+    limit = min(int(limit_str) if limit_str.isdigit() else 200, 500)
+
+    where = []
+    params: list = []
+    if category:
+        where.append("yc.category = %s")
+        params.append(category)
+    if channel:
+        where.append("yt.channel_name ILIKE %s")
+        params.append(f"%{channel}%")
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    params.append(limit)
+
+    rows = _db_query(f"""
+        SELECT yt.id, yt.video_id, yt.title, yt.channel_name, yt.publish_date, yt.url,
+               yt.duration_seconds, yt.quality_score, yt.relevance_score, yt.validation_status,
+               yt.matched_keywords, yt.added_by, yt.ingested_at, yt.strategy_tags, yt.agent_tags,
+               yc.category AS channel_category, yc.priority AS channel_priority
+        FROM youtube_transcripts yt
+        LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+        {where_sql}
+        ORDER BY yt.ingested_at DESC LIMIT %s
+    """, tuple(params)) or []
+
+    total = _db_query(f"""
+        SELECT count(*) as n FROM youtube_transcripts yt
+        LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+        {where_sql}
+    """, tuple(params[:-1]) if params[:-1] else None, fetch="one")
+
+    return {
+        "transcripts": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "total": (total or {}).get("n", 0),
+    }
+
+
 def _youtube_channel_lookup():
     """GET /api/v2/youtube/channel-lookup?url= — Look up a channel by URL."""
     import re as _re, urllib.parse as _up
@@ -5073,7 +5115,7 @@ ROUTES = {
     "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
-    "/api/v2/youtube/transcripts": lambda: {"transcripts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, video_id, title, channel_name, publish_date, url, duration_seconds, quality_score, relevance_score, validation_status, matched_keywords, added_by, ingested_at, strategy_tags, agent_tags FROM youtube_transcripts ORDER BY ingested_at DESC LIMIT 100") or [])]},
+    "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
     "/api/v2/youtube/channels": lambda: {"channels": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM youtube_channels WHERE active=TRUE ORDER BY channel_name") or [])]},
     "/api/v2/youtube/channel-lookup": lambda: _youtube_channel_lookup(),
     "/api/v2/social/posts": lambda: {"posts": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, platform, post_id, username, display_name, text, post_date, url, followers, verified, likes, retweets, replies, quality_score, relevance_score, validation_status, matched_keywords, sentiment, sentiment_score, added_by, ingested_at, strategy_tags, agent_tags FROM social_posts ORDER BY quality_score DESC, ingested_at DESC LIMIT 100") or [])]},
@@ -5189,6 +5231,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from iris_taxonomy_agent import apply_proposal
                 r = apply_proposal(int(pid))
                 return 200, {"ok": True, "data": r}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/iris/hygiene-flag":
+            try:
+                b = body or {}
+                ch_name = b.get("channel_name", "").strip()
+                reason = b.get("reason", "").strip()
+                if not ch_name or not reason:
+                    return 400, {"ok": False, "error": "channel_name and reason required"}
+                # Get channel numeric id
+                ch = _db_query("SELECT id FROM youtube_channels WHERE channel_name=%s LIMIT 1", (ch_name,), fetch="one")
+                ch_id = ch["id"] if ch else 0
+                _db_write("""INSERT INTO iris_hygiene_pending
+                    (content_type, content_id, content_title, proposed_action, reason, evidence,
+                     confidence, status, expires_at)
+                    VALUES ('youtube_channel', %s, %s, 'review', %s, %s, 0.5, 'pending_john',
+                            NOW() + INTERVAL '30 days')""",
+                    (ch_id, ch_name, reason,
+                     json.dumps({"category": b.get("category", ""), "avg_quality": b.get("avg_quality", 0),
+                                 "threshold": b.get("threshold", 0), "flagged_by": "user_manual"})))
+                return 200, {"ok": True, "message": f"Channel '{ch_name}' flagged for Iris review",
+                             "next_review": "Sunday 6 AM hygiene run"}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
@@ -5652,6 +5717,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Pass query params to lookup functions that need them
     if query:
         _youtube_channel_lookup._url = (query.get("url") or [""])[0] if isinstance(query.get("url"), list) else query.get("url", "")
+        _youtube_transcripts._query = query
 
     # Static routes
     handler = ROUTES.get(base_path)
