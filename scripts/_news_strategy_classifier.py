@@ -74,7 +74,7 @@ def classify_strategy(title: str) -> tuple:
 
 
 def classify_and_update_all() -> int:
-    """Backfill all news_articles with missing strategy_type. Returns count updated."""
+    """Backfill news_articles with missing or changed strategy_type. Returns count updated."""
     import psycopg2, psycopg2.extras
     pw = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
@@ -83,17 +83,17 @@ def classify_and_update_all() -> int:
     conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Get all articles (backfill everything, even already-tagged — ensures consistency)
-    cur.execute("SELECT id, title, strategy_type FROM news_articles")
+    cur.execute("SELECT id, title, strategy_type, retirement_relevance FROM news_articles")
     rows = cur.fetchall()
 
     updated = 0
     wcur = conn.cursor()
     for r in rows:
         strat, relevance = classify_strategy(r["title"])
-        wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
-                     (strat, relevance, r["id"]))
-        updated += 1
+        if r["strategy_type"] != strat or (r.get("retirement_relevance") or "low") != relevance:
+            wcur.execute("UPDATE news_articles SET strategy_type = %s, retirement_relevance = %s WHERE id = %s",
+                         (strat, relevance, r["id"]))
+            updated += 1
 
     conn.commit()
     conn.close()
