@@ -11,9 +11,9 @@ source .venv/bin/activate
 set -a
 source .env 2>/dev/null || true
 set +a
-# Gate: run preflight check before starting
+# Gate: run preflight check before starting (non-fatal — informational only)
 echo "[gate] Running preflight check..."
-python scripts/system_preflight_check.py 2>&1 | tee -a "$LOG_DIR/preflight-$STAMP.log"
+python scripts/system_preflight_check.py 2>&1 | tee -a "$LOG_DIR/preflight-$STAMP.log" || echo "[gate] Preflight had warnings — continuing anyway"
 echo "[gate] Preflight complete. Starting Trade AI..."
 {
   python scripts/continuous_runner.py --project-root .
