@@ -3574,6 +3574,18 @@ def _iris_content_gaps():
         return {"error": str(e)}
 
 
+def _iris_duplicates():
+    """GET /api/v2/iris/duplicates — Duplicate article groups."""
+    rows = _db_query("""
+        SELECT LEFT(title, 80) as title, count(*) as cnt,
+               array_agg(DISTINCT source) as sources, MAX(relevance_score) as best_quality
+        FROM news_articles WHERE created_at > NOW() - INTERVAL '90 days' AND NOT COALESCE(is_duplicate, FALSE)
+        GROUP BY LEFT(LOWER(TRIM(title)), 60)
+        HAVING count(*) > 1 ORDER BY cnt DESC LIMIT 50
+    """) or []
+    return {"groups": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "total": len(rows)}
+
+
 def _iris_hygiene_status():
     """GET /api/v2/iris/hygiene-status — Hygiene pending decisions + recent actions."""
     pending = _db_query("""SELECT id, content_type, content_title, proposed_action,
@@ -5301,6 +5313,7 @@ ROUTES = {
     "/api/v2/iris/library-status": lambda: _iris_library_status(),
     "/api/v2/iris/stale-symbols": lambda: _iris_stale_symbols(),
     "/api/v2/iris/content-gaps": lambda: _iris_content_gaps(),
+    "/api/v2/iris/duplicates": lambda: _iris_duplicates(),
     "/api/v2/proposals-with-pnl": lambda: _proposals_with_pnl(),
     "/api/v2/alex-hygiene/history": lambda: {"runs": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, decision_type, tier, question, agreement_score, elapsed_seconds, bypass_event, ran_at, LEFT(synthesis,500) as synthesis_preview FROM alex_hygiene_log ORDER BY ran_at DESC LIMIT 10") or [])]},
     "/api/v2/agent-pipeline": lambda: _agent_pipeline(),

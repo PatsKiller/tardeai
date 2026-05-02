@@ -695,6 +695,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.1 — Iris MODE 3 Intelligence Librarian (daily 7 AM): RAG coverage audit, stale analysis detection, routing audit (9 unrouted transcripts found), duplicate detection (10 groups, 12 extra), content gaps (5 thin categories: ssdi, trust_estate, roth_conversion, tax_planning, disability_retirement). 3 new API: /iris/library-status, /iris/stale-symbols, /iris/content-gaps. 3 new Telegram: iris library, iris stale, iris gaps. 71 cron, 32 Telegram commands. Iris: 3 modes (taxonomy + hygiene + librarian).*
+*SKILL.md v6.2 — Content gap → agent notification: Iris fires CONTENT_GAP events to agent_event_queue (ssdi→alex, disability→alex, trust→alex+tax). Agents see gap warnings in prompt. Auto-dedup: 80 duplicate news flagged. GET /iris/duplicates. RAG storage: rag_sources_used logging fixed. Prompt: portfolio → FRED → RAG → peers → gap warnings → rules. is_duplicate + peer_notes_symbols columns added.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
