@@ -113,7 +113,9 @@ function fmtDuration(sec: number) {
 export default function IntelligenceSources() {
   const nav = useNavigate()
   const { data: srcData, loading: srcLoading } = useApi<SourcesResp>('/api/v2/intelligence-sources')
-  const { data: ytData, loading: ytLoading } = useApi<TranscriptsResp>('/api/v2/youtube/transcripts')
+  const [ytCatFilter, setYtCatFilter] = useState('all')
+  const ytPath = ytCatFilter !== 'all' ? `/api/v2/youtube/transcripts?limit=500&category=${ytCatFilter}` : '/api/v2/youtube/transcripts?limit=500'
+  const { data: ytData, loading: ytLoading } = useApi<TranscriptsResp>(ytPath)
   const { data: chData } = useApi<ChannelsResp>('/api/v2/youtube/channels')
   const { data: socialData, loading: socialLoading } = useApi<SocialPostsResp>('/api/v2/social/posts')
   const { data: socialStatus } = useApi<SocialStatusResp>('/api/v2/social/status')
@@ -129,7 +131,6 @@ export default function IntelligenceSources() {
   const [ytIngesting, setYtIngesting] = useState(false)
   const [ytMsg, setYtMsg] = useState('')
   const [showAddChannel, setShowAddChannel] = useState(false)
-  const [ytCatFilter, setYtCatFilter] = useState('all')
   const [ingestAllState, setIngestAllState] = useState<'idle'|'running'|'done'|'error'>('idle')
   const [ingestAllMsg, setIngestAllMsg] = useState('')
   const [ingestingChannel, setIngestingChannel] = useState<string | null>(null)

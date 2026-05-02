@@ -3561,15 +3561,29 @@ def _iris_hygiene_status():
     }
 
 
+_YT_NAME_JOIN = """LEFT JOIN youtube_channels yc ON (
+    yc.channel_name = yt.channel_name
+    OR yc.channel_name = CASE yt.channel_name
+        WHEN 'Joe F. Schmitz Jr. CFP\u00ae CKA\u00ae'          THEN 'Joe F. Schmitz Jr. CFP'
+        WHEN 'ppcian'                                  THEN 'PPC Ian'
+        WHEN 'Felix & Friends (Goat Academy)'          THEN 'Felix and Friends'
+        WHEN 'Trader Talks: Schwab Coaching Webcasts'  THEN 'Trader Talks Schwab'
+        WHEN 'Etienne Crete - Desire To TRADE'         THEN 'Desire To TRADE'
+        WHEN 'Value Investing with Sven Carlin, Ph.D.' THEN 'Sven Carlin'
+        ELSE yt.channel_name
+    END
+)"""
+
+
 def _youtube_transcripts():
-    """GET /api/v2/youtube/transcripts — with category/channel filter + JOIN for channel metadata."""
+    """GET /api/v2/youtube/transcripts — with category/channel filter + name-variant JOIN."""
     url_q = getattr(_youtube_transcripts, '_query', {}) or {}
     category = (url_q.get("category") or [""])[0] if isinstance(url_q.get("category"), list) else url_q.get("category", "")
     channel = (url_q.get("channel") or [""])[0] if isinstance(url_q.get("channel"), list) else url_q.get("channel", "")
     limit_str = (url_q.get("limit") or ["200"])[0] if isinstance(url_q.get("limit"), list) else url_q.get("limit", "200")
     limit = min(int(limit_str) if limit_str.isdigit() else 200, 500)
 
-    where = []
+    where = ["yt.validation_status != 'orphan'"]
     params: list = []
     if category:
         where.append("yc.category = %s")
@@ -3577,7 +3591,7 @@ def _youtube_transcripts():
     if channel:
         where.append("yt.channel_name ILIKE %s")
         params.append(f"%{channel}%")
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    where_sql = "WHERE " + " AND ".join(where)
     params.append(limit)
 
     rows = _db_query(f"""
@@ -3586,14 +3600,14 @@ def _youtube_transcripts():
                yt.matched_keywords, yt.added_by, yt.ingested_at, yt.strategy_tags, yt.agent_tags,
                yc.category AS channel_category, yc.priority AS channel_priority
         FROM youtube_transcripts yt
-        LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+        {_YT_NAME_JOIN}
         {where_sql}
         ORDER BY yt.ingested_at DESC LIMIT %s
     """, tuple(params)) or []
 
     total = _db_query(f"""
         SELECT count(*) as n FROM youtube_transcripts yt
-        LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+        {_YT_NAME_JOIN}
         {where_sql}
     """, tuple(params[:-1]) if params[:-1] else None, fetch="one")
 
@@ -3895,10 +3909,21 @@ def _youtube_audit():
     """) or []
     total_t = _db_query("SELECT count(*) as cnt FROM youtube_transcripts", fetch="one") or {}
     total_wb = _db_query("SELECT count(*) as cnt FROM intelligence_whiteboard WHERE source_type='youtube'", fetch="one") or {}
+    # Name mismatches: transcripts with no matching channel (excluding already-flagged orphans)
+    mismatches = _db_query("""
+        SELECT yt.channel_name, count(*) as tx_count
+        FROM youtube_transcripts yt
+        LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+        WHERE yc.channel_name IS NULL AND COALESCE(yt.validation_status,'') != 'orphan'
+        GROUP BY yt.channel_name ORDER BY count(*) DESC
+    """) or []
+    orphan_count = _db_query("SELECT count(*) as n FROM youtube_transcripts WHERE validation_status='orphan'", fetch="one") or {}
     return {
         "channels": [{k: _json_clean(v) for k, v in c.items()} for c in channels],
         "stats": {"total_transcripts": total_t.get("cnt", 0), "whiteboard_youtube": total_wb.get("cnt", 0),
                   "total_channels": len(channels)},
+        "name_mismatches": [{k: _json_clean(v) for k, v in m.items()} for m in mismatches],
+        "orphan_tx_count": orphan_count.get("n", 0),
     }
 
 
@@ -5231,6 +5256,45 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from iris_taxonomy_agent import apply_proposal
                 r = apply_proposal(int(pid))
                 return 200, {"ok": True, "data": r}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/admin/fix-channel-name-mismatches":
+            try:
+                fixes = [
+                    ("Joe F. Schmitz Jr. CFP\u00ae CKA\u00ae", "Joe F. Schmitz Jr. CFP"),
+                    ("ppcian", "PPC Ian"),
+                    ("Felix & Friends (Goat Academy)", "Felix and Friends"),
+                    ("Trader Talks: Schwab Coaching Webcasts", "Trader Talks Schwab"),
+                    ("Etienne Crete - Desire To TRADE", "Desire To TRADE"),
+                    ("Value Investing with Sven Carlin, Ph.D.", "Sven Carlin"),
+                ]
+                total = 0
+                for old, new in fixes:
+                    r = _db_write("UPDATE youtube_transcripts SET channel_name = %s WHERE channel_name = %s", (new, old))
+                    if r:
+                        cnt = _db_query(f"SELECT count(*) as n FROM youtube_transcripts WHERE channel_name = %s", (new,), fetch="one")
+                        total += (cnt or {}).get("n", 0)
+                return 200, {"ok": True, "rows_updated": total, "fixes_applied": len(fixes)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/admin/flag-orphan-transcripts":
+            try:
+                orphans = _db_query("""
+                    SELECT DISTINCT yt.channel_name FROM youtube_transcripts yt
+                    LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+                    WHERE yc.channel_name IS NULL AND COALESCE(yt.validation_status,'') != 'orphan'
+                """) or []
+                ch_names = [r["channel_name"] for r in orphans]
+                if ch_names:
+                    _db_write("""
+                        UPDATE youtube_transcripts yt SET validation_status = 'orphan'
+                        WHERE NOT EXISTS (SELECT 1 FROM youtube_channels yc WHERE yc.channel_name = yt.channel_name)
+                          AND COALESCE(yt.validation_status,'') != 'orphan'
+                    """)
+                cnt = _db_query("SELECT count(*) as n FROM youtube_transcripts WHERE validation_status='orphan'", fetch="one")
+                return 200, {"ok": True, "rows_flagged": (cnt or {}).get("n", 0), "channels": ch_names}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 

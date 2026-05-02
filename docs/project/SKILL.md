@@ -686,6 +686,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.5 — Content Health Dashboard page (/v2/content-health): channel quality monitoring with summary tiles, scoring guide, health table, Iris flag-for-review. Fixed /api/v2/youtube/transcripts: JOIN to channels, category/channel/limit filters. POST /api/v2/iris/hygiene-flag endpoint. 33 pages.*
+*SKILL.md v5.6 — YouTube intelligence fix: 6 name mismatches corrected (120 tx re-routed), 59 orphan transcripts flagged, CASE-based JOIN for name variants, server-side category filtering, Content Health dashboard shows mismatches + orphans + fix buttons. POST admin/fix-channel-name-mismatches + admin/flag-orphan-transcripts endpoints. youtube-audit returns name_mismatches + orphan_tx_count.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
