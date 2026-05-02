@@ -93,6 +93,10 @@ export default function Approvals() {
     <>
       <PageHeader title="Approvals & Tasks" subtitle={(() => {
         const total = activePending.length + activeJohnTasks.length
+        if (statusFilter !== 'all' && statusFilter !== 'pending') {
+          if (total === 0) return `No ${statusFilter} items`
+          return `Showing ${total} ${statusFilter} item${total !== 1 ? 's' : ''}`
+        }
         if (total === 0) return 'All caught up'
         const parts = []
         if (activeJohnTasks.length > 0) parts.push(`${activeJohnTasks.length} task${activeJohnTasks.length !== 1 ? 's' : ''}`)
@@ -182,7 +186,11 @@ export default function Approvals() {
       {/* ═══ APPROVAL QUEUE ═══ */}
       {(activePending.length > 0 || statusFilter !== 'pending') && <SectionHeader title="Approval Queue" count={activePending.length} />}
       {activePending.length === 0 && activeJohnTasks.length === 0 ? (
-        <Card><div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>No pending items. Aegis will queue new recommendations after overnight analysis.</div></Card>
+        <Card><div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>
+          {statusFilter !== 'all' && statusFilter !== 'pending'
+            ? `No ${statusFilter} items found.`
+            : 'No pending items. Aegis will queue new recommendations after overnight analysis.'}
+        </div></Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {activePending.map(item => {
