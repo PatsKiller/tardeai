@@ -692,6 +692,6 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v5.8 — 163 tables, 70 cron, 29 Telegram commands, 7 agents, 33 pages, 2056 agent results, 5159 total intelligence rows. RAG system: rag_retrieval.py (10 source types, cosine sim + recency + source boost + keyword fallback), rag_indexer.py (idempotent embedder). GET /api/v2/rag/status. POST /api/v2/admin/rag-backfill. Agent wiring: RAG pre-context in _build_prompt() for all agents. 3 RAG cron entries. Embedding: nomic-embed-text 768d JSONB in content_embeddings. Still needed: Intelligence Library UI tab, RAG coverage tile on Content Health.*
+*SKILL.md v5.9 — 163 tables, 70 cron, 29 Telegram commands, 7 agents, 33 pages, 5159 intelligence rows 100% embedded. Intelligence Library tab (All Intel) on Intelligence Sources: unified search across all 10 source types with symbol/source/text filters + pagination. GET /api/v2/intelligence/library. RAG coverage tile on Content Health: per-source-type bars with Run Backfill button. All 5159 rows embedded (news 910, youtube 651, agent_result 2056, synthesis 553, cio 222, signals 166, outcomes 530, sec 54, fred 14, social 3).*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
 *System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*

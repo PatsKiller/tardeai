@@ -99,7 +99,7 @@ interface TranscriptsResp { transcripts: Transcript[] }
 interface ChannelsResp { channels: Channel[] }
 interface SocialPostsResp { posts: SocialPost[] }
 
-type Tab = 'screeners' | 'youtube' | 'social' | 'news' | 'qualified' | 'discovery'
+type Tab = 'library' | 'screeners' | 'youtube' | 'social' | 'news' | 'qualified' | 'discovery'
 
 const badge = (text: string, color: string) => (
   <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: `${color}22`, color, fontWeight: 700, textTransform: 'uppercase' }}>{text}</span>
@@ -144,6 +144,13 @@ export default function IntelligenceSources() {
   const [newsPage, setNewsPage] = useState(0)
   const newsParams = [newsStratFilter && `strategy=${newsStratFilter}`, newsSourceFilter && `source=${newsSourceFilter}`, newsRelFilter && `relevance=${newsRelFilter}`, newsSearch && `search=${encodeURIComponent(newsSearch)}`].filter(Boolean).join('&')
   const { data: newsData, loading: newsLoading } = useApi<NewsResp>(`/api/v2/news/articles?limit=50&offset=${newsPage * 50}${newsParams ? '&' + newsParams : ''}`)
+  const [libSearch, setLibSearch] = useState('')
+  const [libSource, setLibSource] = useState('')
+  const [libSymbol, setLibSymbol] = useState('')
+  const [libPage, setLibPage] = useState(0)
+  const libParams = [libSource && `source_type=${libSource}`, libSymbol && `symbol=${libSymbol}`, libSearch && `q=${encodeURIComponent(libSearch)}`].filter(Boolean).join('&')
+  const { data: libData, loading: libLoading } = useApi<{items: any[]; total: number; page: number}>(`/api/v2/intelligence/library?limit=50&offset=${libPage * 50}${libParams ? '&' + libParams : ''}`)
+  const { data: ragData } = useApi<any>('/api/v2/rag/status')
   const [tab, setTab] = useState<Tab>('screeners')
   const [filter, setFilter] = useState('')
   const [stratFilter, setStratFilter] = useState<string>('all')
@@ -361,17 +368,86 @@ export default function IntelligenceSources() {
 
       {/* Tab bar */}
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '1px solid var(--border)' }}>
-        {(['screeners', 'youtube', 'social', 'news', 'qualified', 'discovery'] as Tab[]).map(t => (
+        {(['library', 'screeners', 'youtube', 'social', 'news', 'qualified', 'discovery'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '8px 16px', fontSize: 11, fontWeight: 700, border: 'none',
             borderBottom: t === tab ? '2px solid #4a90f4' : '2px solid transparent',
             background: 'transparent', color: t === tab ? '#4a90f4' : 'var(--text3)',
             cursor: 'pointer', textTransform: 'uppercase',
           }}>
-            {t === 'screeners' ? `Screeners (${sources.length})` : t === 'youtube' ? `YouTube (${transcripts.length})` : t === 'social' ? `Social (${socialPosts.length})` : t === 'news' ? `News (${newsData?.total ?? '...'})` : t === 'qualified' ? `Qualified (${qualItems.length})` : `Discovery (${discEntries.length})`}
+            {t === 'library' ? `All Intel (${ragData?.total_rows ?? '...'})` : t === 'screeners' ? `Screeners (${sources.length})` : t === 'youtube' ? `YouTube (${transcripts.length})` : t === 'social' ? `Social (${socialPosts.length})` : t === 'news' ? `News (${newsData?.total ?? '...'})` : t === 'qualified' ? `Qualified (${qualItems.length})` : `Discovery (${discEntries.length})`}
           </button>
         ))}
       </div>
+
+      {/* Intelligence Library Tab */}
+      {tab === 'library' && (
+        <>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input placeholder="Search all intelligence..." value={libSearch} onChange={e => { setLibSearch(e.target.value); setLibPage(0) }} style={{ ...inputStyle, flex: 1 }} />
+            <input placeholder="Symbol..." value={libSymbol} onChange={e => { setLibSymbol(e.target.value.toUpperCase()); setLibPage(0) }} style={{ ...inputStyle, width: 80 }} />
+            <select value={libSource} onChange={e => { setLibSource(e.target.value); setLibPage(0) }} style={{ ...inputStyle, width: 150 }}>
+              <option value="">All sources</option>
+              {['news','youtube','agent_result','agent_synthesis','cio_decision','fused_signal','decision_outcome','sec_form4','social_post'].map(s => (
+                <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+              ))}
+            </select>
+            <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 'auto' }}>{libData?.total ?? 0} items</span>
+          </div>
+          {/* RAG coverage bar */}
+          {ragData && (
+            <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+              {Object.entries(ragData.by_source || {}).map(([src, v]: [string, any]) => (
+                <div key={src} style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, background: v.pct >= 90 ? 'rgba(0,255,136,.08)' : v.pct > 0 ? 'rgba(255,170,0,.08)' : 'rgba(90,127,168,.05)', border: `1px solid ${v.pct >= 90 ? 'rgba(0,255,136,.2)' : v.pct > 0 ? 'rgba(255,170,0,.2)' : 'rgba(90,127,168,.1)'}`, color: v.pct >= 90 ? '#00ff88' : v.pct > 0 ? '#ffaa00' : '#3a5a80' }}>
+                  {src.replace(/_/g, ' ')} {v.embedded}/{v.total}
+                </div>
+              ))}
+              <span style={{ fontSize: 9, color: ragData.coverage_pct >= 90 ? '#00ff88' : '#ffaa00', fontWeight: 700, marginLeft: 'auto' }}>{ragData.coverage_pct}% embedded</span>
+            </div>
+          )}
+          {libLoading && <div style={{ color: 'var(--text3)', fontSize: 12 }}>Loading...</div>}
+          <Card>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text3)', textAlign: 'left' }}>
+                    <th style={th}>Source</th><th style={th}>Symbol</th><th style={th}>Title</th>
+                    <th style={th}>Strategy</th><th style={th}>Q</th><th style={th}>Emb</th><th style={th}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(libData?.items || []).map((item: any, i: number) => {
+                    const srcColor: Record<string,string> = {news:'#4a90f4',youtube:'#ff6644',agent_result:'#aa55ff',agent_synthesis:'#00cc88',cio_decision:'#ffaa00',fused_signal:'#00d4ff',decision_outcome:'#4ade80',sec_form4:'#ff4466',social_post:'#7a9cc8'}
+                    return (
+                      <tr key={`${item.source_type}-${item.id}-${i}`} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <td style={td}>{badge(item.source_label || item.source_type?.replace(/_/g,' ') || '?', srcColor[item.source_type] || '#5a7fa8')}</td>
+                        <td style={{ ...td, fontFamily: 'var(--mono)', fontWeight: 700, color: '#c8daf5' }}>{item.symbol || '\u2014'}</td>
+                        <td style={td}>
+                          {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ color: '#4a90f4', textDecoration: 'none' }}>{(item.title||'').slice(0,65)}</a> : (item.title||'').slice(0,65)}
+                        </td>
+                        <td style={td}><span style={{ fontSize: 9, color: '#5a7fa8' }}>{(item.strategy||'').replace(/_/g,' ').slice(0,18)}</span></td>
+                        <td style={{ ...td, textAlign: 'right', color: '#7a9cc8' }}>{item.quality ?? '\u2014'}</td>
+                        <td style={{ ...td, textAlign: 'center' }}>{item.is_embedded ? '\u2B22' : '\u25CB'}</td>
+                        <td style={{ ...td, color: '#5a7fa8', whiteSpace: 'nowrap' }}>{item.created_at?.slice(0,10) || '\u2014'}</td>
+                      </tr>
+                    )
+                  })}
+                  {(libData?.items || []).length === 0 && !libLoading && (
+                    <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: 'var(--text3)', padding: 20 }}>No items match filters</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {(libData?.total || 0) > 50 && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}>
+                <button onClick={() => setLibPage(p => Math.max(0, p - 1))} disabled={libPage === 0} style={{ ...btnStyle, color: libPage === 0 ? 'var(--text3)' : '#4a90f4' }}>&laquo; Prev</button>
+                <span style={{ fontSize: 10, color: 'var(--text3)' }}>Page {libPage + 1} of {Math.ceil((libData?.total || 1) / 50)}</span>
+                <button onClick={() => setLibPage(p => p + 1)} disabled={(libPage + 1) * 50 >= (libData?.total || 0)} style={{ ...btnStyle, color: (libPage + 1) * 50 >= (libData?.total || 0) ? 'var(--text3)' : '#4a90f4' }}>Next &raquo;</button>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
 
       {/* Shared filter */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
