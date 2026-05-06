@@ -5,12 +5,14 @@ Read-only aggregation + journal review write layer.
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+
+
 
 
 def _json_clean(obj):
@@ -28,6 +30,21 @@ def _load_json(path: Path):
     except Exception:
         return None
 
+
+_COUNTRY_FLAGS = {
+    "usa": "🇺🇸", "united states": "🇺🇸", "us": "🇺🇸",
+    "canada": "🇨🇦", "israel": "🇮🇱", "china": "🇨🇳",
+    "united kingdom": "🇬🇧", "uk": "🇬🇧", "japan": "🇯🇵",
+    "germany": "🇩🇪", "france": "🇫🇷", "south korea": "🇰🇷",
+    "australia": "🇦🇺", "brazil": "🇧🇷", "india": "🇮🇳",
+    "taiwan": "🇹🇼", "ireland": "🇮🇪", "netherlands": "🇳🇱",
+    "switzerland": "🇨🇭", "singapore": "🇸🇬", "hong kong": "🇭🇰",
+    "mexico": "🇲🇽", "malaysia": "🇲🇾", "bermuda": "🇧🇲",
+    "cayman islands": "🇰🇾", "luxembourg": "🇱🇺", "norway": "🇳🇴",
+    "sweden": "🇸🇪", "denmark": "🇩🇰", "finland": "🇫🇮",
+    "spain": "🇪🇸", "italy": "🇮🇹", "argentina": "🇦🇷",
+}
+def _country_flag(c): return _COUNTRY_FLAGS.get((c or "").strip().lower(), "🇺🇸") if c else ""
 
 def _db_query(sql, params=None, fetch="all"):
     """Run a read-only DB query. Returns list or dict or None."""
@@ -922,7 +939,7 @@ def _orchestration():
     relevant = {"portfolio-daily", "portfolio-weekly", "portfolio-monthly", "portfolio-backup",
                 "portfolio-price-cache", "portfolio-lookthrough", "tradeai-continuous",
                 "recovery-watch", "mcporter-token-refresh",
-                "aegis-overnight", "aegis-surveillance"}
+                "aegis-overnight", "aegis-surveillance", "trade-ai-news-monitor"}
     timers = [t for t in timers if any(r in t["name"] for r in relevant)]
 
     # Services
@@ -1508,6 +1525,67 @@ def _john_decisions():
     }
 
 
+def _apply_yaml_parameter_change(task_id: int, provenance: dict) -> dict:
+    """Apply an approved YAML parameter change from john_decision_queue."""
+    try:
+        import yaml
+        import shutil
+        from pathlib import Path
+
+        parameter = provenance.get('parameter', '')
+        new_value = provenance.get('proposed_value')
+        yaml_file = provenance.get('yaml_file', 'config/indicator_strategies.yaml')
+
+        yaml_path = Path(yaml_file)
+        if not yaml_path.exists():
+            return {'ok': False, 'error': f'YAML file not found: {yaml_file}'}
+
+        with open(yaml_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Navigate parameter path (e.g. 'rsi.entry_max' -> config['strategies']['rsi']['entry_max'])
+        parts = parameter.split('.')
+        obj = config
+        if parts[0] in config.get('strategies', {}):
+            obj = config['strategies'][parts[0]]
+            param_key = parts[1] if len(parts) > 1 else parts[0]
+        elif parts[0] in config.get('profiles', {}):
+            obj = config['profiles'][parts[0]]
+            param_key = parts[1] if len(parts) > 1 else parts[0]
+        else:
+            return {'ok': False, 'error': f'Parameter path not found: {parameter}'}
+
+        old_value = obj.get(param_key)
+        obj[param_key] = new_value
+
+        # Backup before write
+        backup_path = yaml_path.with_suffix(f'.yaml.bak_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+        shutil.copy(yaml_path, backup_path)
+
+        with open(yaml_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, indent=2)
+
+        # Log to agent_intelligence_rules
+        _db_write(
+            """INSERT INTO agent_intelligence_rules (rule_type, rule_key, config, changed_by, updated_at)
+               VALUES ('yaml_parameter_change', %s, %s, 'alex', NOW())
+               ON CONFLICT (rule_type, rule_key) DO UPDATE SET config=EXCLUDED.config, updated_at=NOW()""",
+            (parameter, json.dumps({
+                'old_value': old_value, 'new_value': new_value,
+                'approved_task_id': task_id,
+                'evidence': provenance.get('evidence', '')[:200],
+                'changed_at': datetime.now().isoformat(),
+            }))
+        )
+
+        logger.info(f"[YAML TUNING] {parameter}: {old_value} -> {new_value} (backup: {backup_path.name})")
+        return {'ok': True, 'parameter': parameter, 'old_value': old_value, 'new_value': new_value, 'backup': str(backup_path)}
+
+    except Exception as e:
+        logger.error(f"[YAML TUNING] apply failed: {e}")
+        return {'ok': False, 'error': str(e)}
+
+
 def _john_decide(body: dict):
     """POST /api/v2/john/decide — John makes a decision on a queue item."""
     item_id = body.get("id")
@@ -1546,6 +1624,17 @@ def _john_decide(body: dict):
            VALUES (%s, %s, %s, %s, %s)""",
         (item_id, old_status, new_status, decision, reasoning)
     )
+
+    # Auto-apply YAML parameter changes on approval
+    if new_status == "decided_action":
+        item_full = _db_query("SELECT category, provenance FROM john_decision_queue WHERE id=%s", (item_id,), fetch="one")
+        if item_full and item_full.get("category") == "yaml_parameter_change":
+            yaml_result = _apply_yaml_parameter_change(item_id, item_full.get("provenance", {}))
+            if yaml_result.get("ok"):
+                logger.info(f"[YAML TUNING] Applied: {yaml_result.get('parameter')} {yaml_result.get('old_value')} -> {yaml_result.get('new_value')}")
+                return 200, {"ok": True, "action": new_status, "id": item_id, "yaml_applied": yaml_result}
+            else:
+                logger.error(f"[YAML TUNING] Failed: {yaml_result.get('error')}")
 
     return 200, {"ok": True, "action": new_status, "id": item_id}
 
@@ -1614,6 +1703,24 @@ def _tasks_unified():
     return {
         "count": len(tasks), "tasks": tasks,
         "urgent": urgent, "pending": pending, "failed_automation": failed_auto,
+    }
+
+
+def _tasks_pending():
+    """GET /api/v2/tasks/pending — pending tasks with symbol lookup for cross-linking."""
+    rows = _db_query(
+        """SELECT id, symbol, category, title, description, priority, created_at
+           FROM john_decision_queue
+           WHERE status = 'pending_john'
+           ORDER BY
+             CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1
+                           WHEN 'normal' THEN 2 ELSE 3 END,
+             created_at DESC""",
+        fetch="all"
+    ) or []
+    return {
+        "count": len(rows),
+        "tasks": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
     }
 
 
@@ -2101,29 +2208,36 @@ def journal():
                       shares, buy_price, sell_price, cost_basis, proceeds,
                       pnl, pnl_pct, hold_days
                FROM trade_closed
+               WHERE buy_price > 0 OR pnl != 0
                ORDER BY close_date DESC, symbol
                LIMIT 500""",
             fetch="all"
         )
         if rows:
-            trades = [{k: (float(v) if isinstance(v, __import__('decimal').Decimal) else v)
-                       for k, v in r.items()} for r in rows]
+            for r in rows:
+                item = {k: (float(v) if isinstance(v, Decimal) else v) for k, v in r.items()}
+                # Construct trade_key for review linkage
+                item["trade_key"] = f"{item.get('symbol','')}:{item.get('account','')}:{item.get('close_date','')}"
+                trades.append(item)
     except Exception:
         pass
 
     # Fallback to JSON if DB empty
     if not trades:
         j = _load_json(STATE_DIR / "trade_journal.json") or {}
-        trades = j.get("closed_trades", [])
-        trades = [{
-            "symbol": t.get("symbol", ""), "account": t.get("account", ""),
-            "open_date": t.get("open_date", ""), "close_date": t.get("close_date", ""),
-            "trade_type": t.get("trade_type", ""), "shares": t.get("shares", 0),
-            "buy_price": t.get("buy_price", 0), "sell_price": t.get("sell_price", 0),
-            "cost_basis": t.get("cost_basis", 0), "proceeds": t.get("proceeds", 0),
-            "pnl": t.get("pnl", 0), "pnl_pct": t.get("pnl_pct", 0),
-            "hold_days": t.get("hold_days", 0),
-        } for t in trades[:500]]
+        raw = j.get("closed_trades", [])
+        for t in raw[:500]:
+            item = {
+                "symbol": t.get("symbol", ""), "account": t.get("account", ""),
+                "open_date": t.get("open_date", ""), "close_date": t.get("close_date", ""),
+                "trade_type": t.get("trade_type", ""), "shares": t.get("shares", 0),
+                "buy_price": t.get("buy_price", 0), "sell_price": t.get("sell_price", 0),
+                "cost_basis": t.get("cost_basis", 0), "proceeds": t.get("proceeds", 0),
+                "pnl": t.get("pnl", 0), "pnl_pct": t.get("pnl_pct", 0),
+                "hold_days": t.get("hold_days", 0),
+            }
+            item["trade_key"] = f"{item['symbol']}:{item['account']}:{item['close_date']}"
+            trades.append(item)
 
     real_trades = [t for t in trades if (t.get("pnl") or 0) != 0]
 
@@ -2395,12 +2509,13 @@ def ai_ask(body: dict):
     prompt = f"You are a portfolio analyst. Answer concisely based on this context:\n{portfolio_ctx}{context}\n\nQuestion: {question}"
     try:
         import urllib.request
-        payload = json.dumps({"model": "qwen3:1.7b", "stream": False, "prompt": f"/no_think\n{prompt}",
+        payload = json.dumps({"model": "qwen3:1.7b", "stream": False,
+                              "messages": [{"role": "user", "content": prompt}], "think": False,
                               "options": {"temperature": 0.2, "num_predict": 500}}).encode()
-        req = urllib.request.Request("http://127.0.0.1:11434/api/generate",
+        req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
                                      data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=90) as resp:
-            raw = json.loads(resp.read()).get("response", "").strip()
+            raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
             return 200, {"ok": True, "answer": raw, "model": "qwen3:1.7b", "question": question}
     except Exception as e:
         return 500, {"ok": False, "error": f"LLM unavailable: {e}"}
@@ -2748,8 +2863,52 @@ def _agents_summary():
         WHERE from_agent NOT IN ('user','system')
         GROUP BY from_agent, to_agent ORDER BY cnt DESC LIMIT 10
     """) or []
+    agents_out = [{k: _json_clean(v) for k, v in r.items()} for r in agent_counts]
+    agent_names = {a.get('agent', '') for a in agents_out}
+
+    # Add pipeline agents that don't write to watchlist_agent_results
+    extra_agents = [
+        {"agent": "scalp_critic", "display": "Scalp Critic (Iris)", "type": "trade_ai",
+         "total": 0, "buy_count": 0, "sell_count": 0, "hold_count": 0, "avg_confidence": None,
+         "latest": None, "description": "Post-Trade-AI inline critic: catalyst validation, reverse split detection, decision override"},
+        {"agent": "social_scalp", "display": "Social Scalp Scanner", "type": "trade_ai",
+         "total": 0, "buy_count": 0, "sell_count": 0, "hold_count": 0, "avg_confidence": None,
+         "latest": None, "description": "Pre-market social mention scanner: GO/WAIT/AVOID from social signals"},
+        {"agent": "iris", "display": "Iris Intelligence Librarian", "type": "intelligence",
+         "total": 0, "buy_count": 0, "sell_count": 0, "hold_count": 0, "avg_confidence": None,
+         "latest": None, "description": "Source integrity guardian: taxonomy, hygiene, RAG coverage, catalyst verification"},
+        {"agent": "aegis", "display": "Aegis Portfolio Intelligence", "type": "surveillance",
+         "total": 0, "buy_count": 0, "sell_count": 0, "hold_count": 0, "avg_confidence": None,
+         "latest": None, "description": "Portfolio surveillance, covered calls, rotation alternatives"},
+    ]
+    # Enrich scalp_critic with actual DB data
+    critic_row = _db_query("SELECT COUNT(*) as cnt, MAX(scanned_at) as latest FROM scalp_scan_results WHERE disqualified IS NOT NULL", fetch="one")
+    if critic_row:
+        for ea in extra_agents:
+            if ea["agent"] == "scalp_critic":
+                ea["total"] = int(critic_row.get("cnt", 0))
+                ea["latest"] = _json_clean(critic_row.get("latest"))
+    # Enrich social_scalp
+    scalp_row = _db_query("SELECT COUNT(*) as cnt, MAX(scanned_at) as latest FROM scalp_scan_results", fetch="one")
+    if scalp_row:
+        for ea in extra_agents:
+            if ea["agent"] == "social_scalp":
+                ea["total"] = int(scalp_row.get("cnt", 0))
+                ea["latest"] = _json_clean(scalp_row.get("latest"))
+    # Enrich iris
+    iris_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM iris_run_log", fetch="one")
+    if iris_row:
+        for ea in extra_agents:
+            if ea["agent"] == "iris":
+                ea["total"] = int(iris_row.get("cnt", 0))
+                ea["latest"] = _json_clean(iris_row.get("latest"))
+
+    for ea in extra_agents:
+        if ea["agent"] not in agent_names:
+            agents_out.append(ea)
+
     return {
-        "agents": [{k: _json_clean(v) for k, v in r.items()} for r in agent_counts],
+        "agents": agents_out,
         "handoffs": [{k: _json_clean(v) for k, v in r.items()} for r in handoff_counts],
     }
 
@@ -3335,15 +3494,125 @@ def _watchlist_context(symbol: str):
     ) or []
 
     # 8. Macro context
-    macro = ""
+    # 8. Macro context — parse FRED text into structured dict
+    macro = {}
     try:
         from external_market_data_ingest import get_macro_context
-        macro = (get_macro_context() or "")[:500]
+        raw_macro = get_macro_context() or ""
+        # Parse "Key: value (date)" lines into dict
+        import re as _re
+        for line in raw_macro.split("\n"):
+            line = line.strip()
+            m = _re.match(r"(.+?):\s*([\d.]+)", line)
+            if m:
+                key = m.group(1).strip().lower().replace(" ", "_").replace("(", "").replace(")", "")[:30]
+                macro[key] = float(m.group(2))
+        if not macro:
+            macro = {"raw": raw_macro[:500]}
     except Exception:
         pass
 
     # Detect real conflicts (opposing directions, both >40% confidence)
     conflict_info = _detect_real_conflict(agents)
+
+    # 9. Symbol master data for trade_type + strategy card
+    sym_master = _db_query(
+        """SELECT strategy_type, escalation_policy, account_fit, ideal_entry,
+                  stop_loss, target_price, risk_reward, support, resistance,
+                  latest_price
+           FROM watchlist_symbol_master WHERE symbol = %s""",
+        (sym,), fetch="one"
+    ) or {}
+
+    # 9b. Trade type — check strategy_cards first, then symbol_master
+    st = (strat or {}).get("strategy_type", "") or (sym_master.get("strategy_type") or "")
+    th = (strat or {}).get("time_horizon", "") or ""
+    ep = (sym_master.get("escalation_policy") or "")
+
+    if any(x in st.lower() for x in ['income', 'dividend', 'yield', 'bdc', 'reit']):
+        trade_type = "INCOME"
+    elif any(x in st.lower() for x in ['swing', 'momentum', 'speculative', 'scalp']):
+        trade_type = "SWING"
+    elif "short" in st.lower() or "short" in th.lower():
+        trade_type = "SHORT"
+    elif any(x in st.lower() for x in ['growth', 'growth_etf', 'value', 'core', 'long_term', 'defense', 'thesis']):
+        trade_type = "LONG"
+    elif any(x in ep.lower() for x in ['income', 'dividend']):
+        trade_type = "INCOME"
+    elif any(x in ep.lower() for x in ['growth', 'long', 'defense', 'thesis']):
+        trade_type = "LONG"
+    else:
+        trade_type = "WATCH"
+
+    # 10. Sector comparison — ticker vs sector ETF
+    sector_comparison = None
+    sector_news_items = []
+    try:
+        ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
+        sym_enrich = ec.get(sym) if isinstance(ec.get(sym), dict) else {}
+        sector = sym_enrich.get("sector", "")
+        SECTOR_ETFS = {
+            "Healthcare": "XLV", "Technology": "XLK", "Financials": "XLF",
+            "Energy": "XLE", "Industrials": "XLI", "Consumer Discretionary": "XLY",
+            "Consumer Staples": "XLP", "Materials": "XLB", "Utilities": "XLU",
+            "Real Estate": "XLRE", "Communication Services": "XLC",
+            "Aerospace & Defense": "ITA", "Defense": "ITA",
+        }
+        sector_etf = SECTOR_ETFS.get(sector, "")
+        ticker_perf = sym_enrich.get("perf_month", "")
+        etf_perf = ""
+        if sector_etf:
+            etf_data = ec.get(sector_etf) if isinstance(ec.get(sector_etf), dict) else {}
+            etf_perf = etf_data.get("perf_month", "")
+        sector_comparison = {
+            "sector": sector,
+            "sector_etf": sector_etf,
+            "ticker_perf_1m": ticker_perf,
+            "sector_perf_1m": etf_perf,
+        }
+        # Sector news (last 7 days)
+        if sector:
+            sector_key = sector.lower().replace(" ", "_").replace("&", "")
+            sn = _db_query(
+                """SELECT title, source, published_at, sentiment
+                   FROM news_articles
+                   WHERE (strategy_type ILIKE %s OR symbol IN (
+                       SELECT symbol FROM watchlist_items WHERE asset_type ILIKE %s AND status != 'removed'
+                   ))
+                   AND created_at > NOW() - INTERVAL '7 days'
+                   ORDER BY published_at DESC LIMIT 5""",
+                (f"%{sector_key}%", f"%{sector_key}%")
+            ) or []
+            sector_news_items = [{k: _json_clean(v) for k, v in n.items()} for n in sn]
+    except Exception:
+        pass
+
+    # 11. Summary verdict — one-sentence synthesis for quick scanning
+    summary_verdict = ""
+    if conflict_info.get("is_conflict"):
+        raw_buyers = conflict_info.get("buyers", [])
+        raw_sellers = conflict_info.get("sellers", [])
+        buyers = ", ".join(d["agent"] if isinstance(d, dict) else str(d) for d in raw_buyers)
+        sellers = ", ".join(d["agent"] if isinstance(d, dict) else str(d) for d in raw_sellers)
+        summary_verdict = f"Agent conflict: {buyers} bullish vs {sellers} bearish. {conflict_info.get('explanation', '')}"
+    elif synth and synth.get("recommendation"):
+        rec = synth["recommendation"]
+        conf = synth.get("confidence")
+        conf_str = f" ({int(float(conf)*100)}% confidence)" if conf else ""
+        summary_verdict = f"Consensus: {rec}{conf_str}. {(synth.get('synthesis_narrative') or '')[:120]}"
+    elif agents:
+        recs = [a.get("recommendation", "?") for a in agents if a.get("recommendation")]
+        summary_verdict = f"Agent views: {', '.join(recs)}. No synthesis yet."
+
+    # Agent agreement ratio
+    if agents:
+        recs = [a.get("recommendation") for a in agents if a.get("recommendation")]
+        from collections import Counter
+        rc = Counter(recs)
+        majority = rc.most_common(1)[0] if rc else ("?", 0)
+        agent_agree = f"{majority[1]}/{len(recs)}"
+    else:
+        agent_agree = "0/0"
 
     return {
         "symbol": sym,
@@ -3356,6 +3625,27 @@ def _watchlist_context(symbol: str):
         "outcomes": [{k: _json_clean(v) for k, v in o.items()} for o in outcomes],
         "macro": macro,
         "conflict": conflict_info,
+        "trade_type": trade_type,
+        "strategy_card": {
+            "trade_type": trade_type,
+            "strategy_label": sym_master.get("strategy_type") or sym_master.get("escalation_policy") or (strat or {}).get("strategy_type") or "uncategorized",
+            "account_fit": sym_master.get("account_fit") or (strat or {}).get("account_fit") or "",
+            "ideal_entry": _json_clean(sym_master.get("ideal_entry") or (strat or {}).get("ideal_entry")),
+            "stop_loss": _json_clean(sym_master.get("stop_loss") or (strat or {}).get("stop_loss")),
+            "target_price": _json_clean(sym_master.get("target_price") or (strat or {}).get("target_price")),
+            "risk_reward": _json_clean(sym_master.get("risk_reward") or (strat or {}).get("risk_reward")),
+            "support": _json_clean(sym_master.get("support") or (strat or {}).get("support")),
+            "resistance": _json_clean(sym_master.get("resistance") or (strat or {}).get("resistance")),
+            "why_added": "",
+            "days_watched": 0,
+        },
+        "sector_comparison": sector_comparison,
+        "sector_news": sector_news_items,
+        "summary_verdict": summary_verdict,
+        "agent_agree": agent_agree,
+        "in_portfolio": len(sym_h) > 0,
+        "portfolio_weight": sum(float(h.get("portfolio_weight", 0) or 0) for h in sym_h),
+        "portfolio_value": sum(float(h.get("market_value", 0) or 0) for h in sym_h),
     }
 
 
@@ -3584,6 +3874,66 @@ def _iris_duplicates():
         HAVING count(*) > 1 ORDER BY cnt DESC LIMIT 50
     """) or []
     return {"groups": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "total": len(rows)}
+
+
+def _iris_failures():
+    """GET /api/v2/iris/failures — Recent Iris pipeline failures and errors."""
+    rows = _db_query("""
+        SELECT id, run_type, status, error_message, started_at, finished_at,
+               symbols_processed, symbols_failed
+        FROM iris_run_log
+        WHERE status IN ('failed', 'partial_failure', 'error')
+           OR symbols_failed > 0
+        ORDER BY started_at DESC LIMIT 20
+    """) or []
+    return {
+        "failures": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "total": len(rows),
+    }
+
+
+def _iris_integrity():
+    """GET /api/v2/iris/integrity — Data integrity checks for Iris content."""
+    checks = []
+    # Orphan transcripts (no matching channel)
+    orphan_count = _db_query("""
+        SELECT COUNT(*) as cnt FROM youtube_transcripts yt
+        LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+        WHERE yc.channel_name IS NULL
+    """, fetch="one") or {}
+    checks.append({"check": "orphan_transcripts", "count": int(orphan_count.get("cnt", 0)),
+                    "status": "warn" if int(orphan_count.get("cnt", 0)) > 0 else "ok"})
+    # Duplicate articles
+    dup_count = _db_query("""
+        SELECT COUNT(*) as cnt FROM (
+            SELECT LEFT(LOWER(TRIM(title)), 60), count(*) as c
+            FROM news_articles WHERE created_at > NOW() - INTERVAL '30 days'
+            GROUP BY 1 HAVING count(*) > 1
+        ) d
+    """, fetch="one") or {}
+    checks.append({"check": "duplicate_articles", "count": int(dup_count.get("cnt", 0)),
+                    "status": "warn" if int(dup_count.get("cnt", 0)) > 10 else "ok"})
+    # Stale symbols (watchlist items not analyzed in 7+ days)
+    stale_count = _db_query("""
+        SELECT COUNT(DISTINCT wi.symbol) as cnt
+        FROM watchlist_items wi
+        LEFT JOIN watchlist_agent_results war ON war.symbol = wi.symbol
+            AND war.created_at > NOW() - INTERVAL '7 days'
+        WHERE wi.status = 'active' AND war.id IS NULL
+    """, fetch="one") or {}
+    checks.append({"check": "stale_watchlist_symbols", "count": int(stale_count.get("cnt", 0)),
+                    "status": "warn" if int(stale_count.get("cnt", 0)) > 5 else "ok"})
+    # Missing embeddings
+    embed_count = _db_query("""
+        SELECT COUNT(*) as cnt FROM news_articles na
+        LEFT JOIN content_embeddings ce ON ce.content_id = na.id::text AND ce.content_type = 'news'
+        WHERE na.created_at > NOW() - INTERVAL '7 days' AND ce.id IS NULL
+    """, fetch="one") or {}
+    checks.append({"check": "missing_embeddings", "count": int(embed_count.get("cnt", 0)),
+                    "status": "warn" if int(embed_count.get("cnt", 0)) > 20 else "ok"})
+
+    overall = "ok" if all(c["status"] == "ok" for c in checks) else "warn"
+    return {"checks": checks, "overall": overall}
 
 
 def _iris_hygiene_status():
@@ -4262,6 +4612,31 @@ def _agent_pipeline():
     }
 
 
+def _intelligence_whiteboard():
+    """GET /api/v2/intelligence-whiteboard — Full whiteboard view for standalone page."""
+    items = _db_query(
+        """SELECT id, symbol, title, summary, source_type, quality_score,
+                  confidence, status, days_on_board, hygiene_status, created_at
+           FROM intelligence_whiteboard
+           ORDER BY quality_score DESC, created_at DESC
+           LIMIT 500"""
+    ) or []
+    stats_raw = _db_query(
+        """SELECT source_type, count(*) as cnt,
+                  count(CASE WHEN hygiene_status='active' OR hygiene_status IS NULL THEN 1 END) as active,
+                  count(CASE WHEN hygiene_status='demoted' THEN 1 END) as demoted,
+                  count(CASE WHEN hygiene_status='archived' THEN 1 END) as archived
+           FROM intelligence_whiteboard GROUP BY source_type"""
+    ) or []
+    total = _db_query("SELECT count(*) as cnt FROM intelligence_whiteboard", fetch="one") or {}
+    by_source = {r["source_type"]: r["cnt"] for r in stats_raw}
+    by_status = {"active": sum(r["active"] for r in stats_raw), "demoted": sum(r["demoted"] for r in stats_raw), "archived": sum(r["archived"] for r in stats_raw)}
+    return {
+        "items": [{k: _json_clean(v) for k, v in i.items()} for i in items],
+        "stats": {"total": total.get("cnt", 0), "by_source": by_source, "by_status": by_status},
+    }
+
+
 def _llm_spend():
     """GET /api/v2/llm-spend — Full LLM spend analytics from llm_router.log."""
     import json as _j
@@ -4547,7 +4922,12 @@ def _wl_symbols(query: dict = None):
 
     # Source filter — filter by membership boolean
     src = q.get("source", [None])[0] if isinstance(q.get("source"), list) else q.get("source")
-    if src == "portfolio":
+    if src == "candidates":
+        conditions.append("(in_ai_watchlist = true OR in_personal_watchlist = true)")
+        conditions.append("in_portfolio = false")
+    elif src == "curated":
+        conditions.append("(in_ai_watchlist = true OR in_personal_watchlist = true OR in_portfolio = true)")
+    elif src == "portfolio":
         conditions.append("in_portfolio = true")
     elif src == "ai_discovered":
         conditions.append("in_ai_discovered = true")
@@ -4915,29 +5295,165 @@ def trade_ai():
 
     latest = all_runs[0] if all_runs else {}
 
-    # Parse watchlist CSV for the latest run
+    # Read tickers from DB (primary) or CSV (fallback)
     tickers = []
-    csv_pattern = latest.get("_path", "").replace("run_summary.json", "").rstrip("/")
-    if csv_pattern:
-        csvs = sorted(glob.glob(csv_pattern + "/trade_ai_*_watchlist.csv"))
-        if csvs:
-            try:
-                rows = list(csv.DictReader(io.StringIO(Path(csvs[-1]).read_text())))
-                for r in rows:
-                    tickers.append({
-                        "symbol": r.get("Symbol", ""),
-                        "score": int(r.get("Score", 0) or 0),
-                        "grade": r.get("Grade", ""),
-                        "decision": r.get("Decision", ""),
-                        "rvol": float(r.get("RVOL", 0) or 0),
-                        "price": float(r.get("Price", 0) or 0),
-                        "change_pct": r.get("Change%", ""),
-                        "gap_pct": r.get("Gap%", ""),
-                        "float_m": r.get("Float_M", ""),
-                        "catalyst": r.get("Catalyst", ""),
-                    })
-            except Exception:
-                pass
+    try:
+        # Get the most recent scan per symbol from today's latest run
+        _db_tickers = _db_query("""
+            SELECT DISTINCT ON (symbol)
+                symbol, score, grade, decision, original_decision,
+                rvol, price, change_pct, gap_pct, float_m,
+                catalyst, catalyst_verified, catalyst_confidence, catalyst_source,
+                critic_verdict, critic_confidence, critic_reasoning, decision_changed,
+                disqualified, disqualification_reason,
+                sector, industry, country, sector_etf,
+                ticker_perf_1m, sector_perf_1m, vs_sector_pct,
+                social_sentiment, social_score, social_reddit, social_stocktwits,
+                social_bullish_pct, social_wsb,
+                source, source_detail, run_type, run_label as scan_run_label,
+                intelligence_readiness,
+                scanned_at
+            FROM trade_ai_scans
+            WHERE run_date >= CURRENT_DATE - INTERVAL '1 day'
+            ORDER BY symbol, scanned_at DESC
+        """)
+        if _db_tickers:
+            for r in _db_tickers:
+                tickers.append({
+                    "symbol": r["symbol"],
+                    "score": int(r.get("score") or 0),
+                    "grade": r.get("grade") or "",
+                    "decision": r.get("decision") or "",
+                    "rvol": float(r.get("rvol") or 0),
+                    "price": float(r.get("price") or 0),
+                    "change_pct": str(round(float(r["change_pct"]), 2)) if r.get("change_pct") is not None else "",
+                    "gap_pct": str(round(float(r["gap_pct"]), 2)) if r.get("gap_pct") is not None else "",
+                    "float_m": str(round(float(r["float_m"]), 2)) if r.get("float_m") is not None else "",
+                    "catalyst": r.get("catalyst") or "",
+                    "critic_verdict": r.get("critic_verdict"),
+                    "critic_confidence": r.get("critic_confidence"),
+                    "original_decision": r.get("original_decision"),
+                    "decision_changed": bool(r.get("decision_changed")),
+                    "catalyst_verified": r.get("catalyst_verified"),
+                    "catalyst_confidence": r.get("catalyst_confidence"),
+                    "industry": r.get("industry"),
+                    "critic_reasoning": r.get("critic_reasoning"),
+                    "disqualified": bool(r.get("disqualified")),
+                    "disqualification_reason": r.get("disqualification_reason"),
+                    "critic_flags": [],
+                    "sector": r.get("sector"),
+                    "country": _country_flag(r.get("country")),
+                    "sector_etf": r.get("sector_etf"),
+                    "ticker_perf_1m": r.get("ticker_perf_1m"),
+                    "sector_perf_1m": r.get("sector_perf_1m"),
+                    "vs_sector_pct": r.get("vs_sector_pct"),
+                    # Social from DB scan record
+                    "social_sentiment": r.get("social_sentiment") or None,
+                    "social_score": r.get("social_score"),
+                    "social_reddit": r.get("social_reddit") or 0,
+                    "social_stocktwits": r.get("social_stocktwits") or 0,
+                    "social_bullish_pct": r.get("social_bullish_pct"),
+                    "social_wsb": r.get("social_wsb") or 0,
+                    "source": r.get("source") or "screener",
+                    "source_detail": r.get("source_detail") or "",
+                    "run_type": r.get("run_type"),
+                    "scan_run_label": r.get("scan_run_label"),
+                    "intelligence_readiness": r.get("intelligence_readiness"),
+                })
+    except Exception:
+        pass
+
+    # CSV fallback if DB is empty (bootstrap period)
+    if not tickers:
+        csv_pattern = latest.get("_path", "").replace("run_summary.json", "").rstrip("/")
+        if csv_pattern:
+            csvs = sorted(glob.glob(csv_pattern + "/trade_ai_*_watchlist.csv"))
+            if csvs:
+                try:
+                    rows = list(csv.DictReader(io.StringIO(Path(csvs[-1]).read_text())))
+                    for r in rows:
+                        tickers.append({
+                            "symbol": r.get("Symbol", ""), "score": int(r.get("Score", 0) or 0),
+                            "grade": r.get("Grade", ""), "decision": r.get("Decision", ""),
+                            "rvol": float(r.get("RVOL", 0) or 0), "price": float(r.get("Price", 0) or 0),
+                            "change_pct": r.get("Change%", ""), "gap_pct": r.get("Gap%", ""),
+                            "float_m": r.get("Float_M", ""), "catalyst": r.get("Catalyst", ""),
+                            "critic_verdict": r.get("CriticVerdict", "") or None,
+                            "critic_confidence": float(r.get("CriticConf", 0) or 0) if r.get("CriticConf") else None,
+                            "catalyst_verified": r.get("CatalystVerified", "").lower() == "true" if r.get("CatalystVerified") else None,
+                            "industry": r.get("Industry", "") or None,
+                            "critic_reasoning": r.get("CriticReasoning", "") or None,
+                            "disqualified": r.get("Disqualified", "").lower() == "true" if r.get("Disqualified") else False,
+                            "critic_flags": [], "sector": r.get("Sector", "") or None,
+                            "country": r.get("Country", "") or None, "sector_etf": r.get("SectorETF", "") or None,
+                            "ticker_perf_1m": float(r["TickerPerf1M"]) if r.get("TickerPerf1M") else None,
+                            "sector_perf_1m": float(r["SectorPerf1M"]) if r.get("SectorPerf1M") else None,
+                            "vs_sector_pct": float(r["VsSectorPct"]) if r.get("VsSectorPct") else None,
+                        })
+                except Exception:
+                    pass
+
+    # Enrich tickers with historical appearance data from DB
+    try:
+        _history = _db_query("""
+            SELECT symbol,
+                   COUNT(DISTINCT run_date) as days_appeared,
+                   COUNT(DISTINCT run_date) FILTER (WHERE decision = 'GO') as days_go,
+                   MIN(run_date) as first_seen,
+                   MAX(run_date) as last_seen,
+                   MAX(score) as peak_score
+            FROM trade_ai_scans
+            WHERE run_type = 'full'
+            GROUP BY symbol
+        """) or []
+        _hist_map = {r["symbol"]: r for r in _history}
+        for t in tickers:
+            h = _hist_map.get(t["symbol"])
+            if h:
+                t["history_days"] = h.get("days_appeared", 1)
+                t["history_go_days"] = h.get("days_go", 0)
+                t["history_first_seen"] = str(h.get("first_seen", ""))
+                t["history_peak_score"] = h.get("peak_score", 0)
+    except Exception:
+        pass
+
+    # Social sentiment: served from DB (populated by continuous_runner each scan cycle)
+    # No live API calls here — avoids 20-30s page load from per-ticker StockTwits lookups
+
+    # Enrich tickers with source origin (Finviz screener vs Social scalp vs portfolio)
+    try:
+        wi_sources = {}
+        for sr in (_db_query("SELECT symbol, array_agg(DISTINCT source ORDER BY source) as sources FROM watchlist_items WHERE status != 'removed' GROUP BY symbol") or []):
+            wi_sources[sr["symbol"]] = sr["sources"]
+        scalp_sources = {}
+        for sr in (_db_query("SELECT symbol, sources FROM scalp_scan_results WHERE scanned_at > NOW() - INTERVAL '48 hours' ORDER BY scanned_at DESC") or []):
+            if sr["symbol"] not in scalp_sources:
+                scalp_sources[sr["symbol"]] = sr.get("sources") or []
+        for t in tickers:
+            sym = t["symbol"]
+            ss = scalp_sources.get(sym)
+            ws = wi_sources.get(sym)
+            # Check if live social sentiment shows activity
+            has_social = (t.get("social_reddit", 0) or 0) > 0 or (t.get("social_stocktwits", 0) or 0) >= 10
+            if ss:
+                t["source"] = "social"
+                t["source_detail"] = ", ".join(str(s) for s in ss[:2]) if ss else ""
+            elif ws:
+                src = ws[0] if ws else "screener"
+                t["source"] = src
+                t["source_detail"] = ", ".join(ws[:2]) if len(ws) > 1 else ""
+            elif has_social:
+                # Finviz screener pick with social activity
+                parts = []
+                if t.get("social_reddit", 0) > 0: parts.append("Reddit")
+                if t.get("social_stocktwits", 0) >= 10: parts.append("StockTwits")
+                t["source"] = "screener"
+                t["source_detail"] = " + ".join(parts)
+            else:
+                t["source"] = "screener"
+                t["source_detail"] = ""
+    except Exception:
+        pass
 
     # Sector breakdown from tickers (basic)
     sectors: dict = {}
@@ -4960,21 +5476,59 @@ def trade_ai():
             "top_score": rs.get("top_score", 0),
         })
 
-    go_count = latest.get("go_count", 0)
-    wait_count = latest.get("wait_count", 0)
+    # Recalculate counts from actual ticker decisions (reflects live overlay)
+    go_count = sum(1 for t in tickers if t.get("decision") == "GO")
+    wait_count = sum(1 for t in tickers if t.get("decision") == "WAIT")
+    avoid_count = sum(1 for t in tickers if t.get("decision") not in ("GO", "WAIT"))
+
+    # Run health enrichment
+    _latest_run_label = latest.get("run_label", "")
+    _latest_run_timestamp = latest.get("generated_at", "")
+    _run_health_status = None
+    _today_signal_count = 0
+    try:
+        _rh = _db_query("""
+            SELECT status, symbols_scanned, go_count AS rh_go, wait_count AS rh_wait,
+                   no_go_count, reason_codes, finished_at
+            FROM screener_run_health
+            WHERE run_date = CURRENT_DATE
+            ORDER BY finished_at DESC NULLS LAST LIMIT 1
+        """, fetch="one")
+        if _rh:
+            _run_health_status = _rh.get("status")
+    except Exception:
+        pass
+    try:
+        _sig = _db_query("""
+            SELECT COUNT(*) AS cnt FROM strategy_signals
+            WHERE fired_at::date = CURRENT_DATE
+        """, fetch="one")
+        if _sig:
+            _today_signal_count = int(_sig.get("cnt") or 0)
+    except Exception:
+        pass
 
     return {
+        "ok": True,
         "run_date": latest.get("date", ""),
         "run_label": latest.get("run_label", ""),
+        "latest_run_label": _latest_run_label,
+        "latest_run_timestamp": _latest_run_timestamp,
+        "latest_run_symbols_scanned": latest.get("ticker_count", 0),
+        "latest_run_go_count": go_count,
+        "latest_run_wait_count": wait_count,
+        "latest_run_no_go_count": avoid_count,
+        "run_health_status": _run_health_status,
         "vix": latest.get("vix"),
         "breadth": latest.get("breadth", ""),
         "go_count": go_count,
         "wait_count": wait_count,
-        "avoid_count": latest.get("ticker_count", 0) - go_count - wait_count,
+        "avoid_count": avoid_count,
         "ticker_count": latest.get("ticker_count", 0),
         "top_ticker": latest.get("top_ticker", ""),
         "top_score": latest.get("top_score", 0),
         "delta_events": latest.get("delta_events", 0),
+        "today_strategy_signal_count": _today_signal_count,
         "tickers": tickers,
         "sectors": dict(sorted(sectors.items(), key=lambda x: -x[1])),
         "run_history": run_history,
@@ -5191,6 +5745,7 @@ _REVIEW_FIELDS = {
     "confidence_before", "stress_level",
     "mistake_tags", "strength_tags",
     "lesson_learned", "review_notes", "coach_notes",
+    "entry_signals", "exit_signals", "setup_types",
 }
 
 
@@ -5271,6 +5826,2299 @@ def journal_review_write(body: dict):
         return 200, {"ok": True, "action": "created", "id": result["id"] if result else None}
 
 
+# ── Journal Annotation Helpers ─────────────────────────────────────────────
+
+def _suggest_setup(t):
+    """AI-suggest setup type(s) based on trade characteristics.
+    Returns (primary, family, rationale, suggested_types_list).
+    """
+    days = t.get("hold_days", 0) or 0
+    pnl_pct = float(t.get("pnl_pct", 0) or 0)
+    shares = int(t.get("shares", 0) or 0)
+    price = float(t.get("buy_price", 0) or 0)
+    tt = (t.get("trade_type") or "").upper()
+
+    if tt == "SHORT":
+        if pnl_pct < -5:
+            return "short_momentum", "Momentum", "SHORT, strong move", ["short_momentum"]
+        if pnl_pct > 3:
+            return "short_overextended", "Mean Reversion", "SHORT stopped out", ["short_overextended"]
+        return "short_momentum", "Momentum", "SHORT trade", ["short_momentum"]
+
+    if tt == "DAY" or days == 0:
+        if pnl_pct > 5:
+            return "day_momentum", "Momentum", "Day trade, strong move", ["day_momentum"]
+        elif pnl_pct < -3:
+            return "day_failed_breakout", "Momentum", "Day trade stopped out", ["day_failed_breakout"]
+        else:
+            # Multi-tag: scalp + momentum when the trade shows both characteristics
+            # Momentum signal: decent % gain OR high share count on a low-priced stock
+            has_momentum = pnl_pct >= 2 or (price < 10 and pnl_pct >= 1 and shares >= 200)
+            if has_momentum:
+                return "day_scalp", "Scalp", "Day scalp with momentum (+%.1f%%)" % pnl_pct, ["day_scalp", "day_momentum"]
+            else:
+                return "day_scalp", "Scalp", "Day trade, small move", ["day_scalp"]
+
+    elif days <= 5:
+        tags = ["swing_momentum"]
+        if pnl_pct > 5:
+            tags.append("breakout_retest")
+        return "swing_momentum", "Swing", "Held %d days" % days, tags
+    elif days <= 30:
+        return "swing_position", "Swing", "Held %d days" % days, ["swing_position"]
+    elif pnl_pct > 100:
+        return "long_term_compounder", "Core Position", "Multi-month +%.0f%%" % pnl_pct, ["long_term_compounder"]
+    else:
+        return "position_trade", "Core Position", "Held %d days" % days, ["position_trade"]
+
+
+def _journal_unannotated():
+    """GET /api/v2/journal/unannotated — trades missing reviews with AI suggestions."""
+    rows = _db_query("""
+        SELECT (t.symbol || ':' || t.account || ':' || t.close_date::text) as trade_key,
+               t.symbol, t.account, t.open_date, t.close_date,
+               t.trade_type, t.shares, t.buy_price, t.sell_price,
+               t.cost_basis, t.proceeds, t.pnl, t.pnl_pct, t.hold_days,
+               r.id as review_id, r.setup_name, r.setup_family,
+               r.execution_quality_score as execution_score, r.followed_plan, r.lesson_learned as lessons
+        FROM trade_closed t
+        LEFT JOIN journal_trade_reviews r
+          ON r.trade_key = (t.symbol || ':' || t.account || ':' || t.close_date::text)
+        WHERE t.buy_price > 0 OR t.pnl != 0
+        ORDER BY t.close_date DESC
+    """) or []
+
+    unannotated, annotated = [], []
+    for row in rows:
+        item = {k: _json_clean(v) for k, v in row.items()}
+        if item.get("review_id"):
+            annotated.append(item)
+        else:
+            s, fam, rat, tags = _suggest_setup(item)
+            item["suggested_setup"] = s
+            item["suggested_family"] = fam
+            item["suggestion_rationale"] = rat
+            item["suggested_types"] = tags
+            unannotated.append(item)
+
+    return {
+        "unannotated": unannotated,
+        "annotated_count": len(annotated),
+        "unannotated_count": len(unannotated),
+        "total": len(rows),
+        "coverage_pct": round(len(annotated) / len(rows) * 100, 1) if rows else 0,
+    }
+
+
+def _journal_review_get(trade_key_encoded):
+    """GET /api/v2/journal/review/<encoded_key> — get review by encoded trade key."""
+    trade_key = trade_key_encoded.replace("__", ":")
+    row = _db_query(
+        "SELECT * FROM journal_trade_reviews WHERE trade_key = %s ORDER BY created_at DESC LIMIT 1",
+        (trade_key,), fetch="one"
+    )
+    return {"exists": bool(row), "review": {k: _json_clean(v) for k, v in row.items()} if row else {}}
+
+
+def _journal_bulk_suggest():
+    """POST /api/v2/journal/bulk-suggest — auto-classify all unannotated trades."""
+    rows = _db_query("""
+        SELECT t.*, (t.symbol || ':' || t.account || ':' || t.close_date::text) as trade_key
+        FROM trade_closed t
+        LEFT JOIN journal_trade_reviews r
+          ON r.trade_key = (t.symbol || ':' || t.account || ':' || t.close_date::text)
+        WHERE r.id IS NULL AND (t.buy_price > 0 OR t.pnl != 0)
+    """) or []
+
+    created = 0
+    for t in rows:
+        item = {k: _json_clean(v) for k, v in t.items()}
+        setup, family, timeframe = _suggest_setup(item)
+        _db_write("""
+            INSERT INTO journal_trade_reviews
+                (trade_key, setup_type, setup_family, timeframe,
+                 entry_reason, execution_score, sizing_score,
+                 followed_plan, well_executed, lessons, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (trade_key) DO NOTHING
+        """, [item.get("trade_key"), setup, family, timeframe,
+              "AI suggested: " + setup, 3, 3, False, False,
+              "Auto-classified. Please review and update."])
+        created += 1
+
+    return {"created": created, "total": len(rows)}
+
+
+def _journal_reminder():
+    """POST /api/v2/journal/reminder — send Telegram reminder about unannotated trades."""
+    rows = _db_query("""
+        SELECT COUNT(*) as cnt FROM trade_closed t
+        LEFT JOIN journal_trade_reviews r
+          ON r.trade_key = (t.symbol || ':' || t.account || ':' || t.close_date::text)
+        WHERE r.id IS NULL AND (t.buy_price > 0 OR t.pnl != 0)
+    """, fetch="one") or {}
+    unannotated = rows.get("cnt", 0)
+
+    total_row = _db_query("SELECT COUNT(*) as cnt FROM trade_closed", fetch="one") or {}
+    total = total_row.get("cnt", 0)
+
+    if unannotated > 0:
+        pct = round((total - unannotated) / total * 100, 1) if total else 0
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(
+                f"*Trade Journal Reminder*\n\n*{unannotated} trades* need annotation ({total} total).\n"
+                f"Coverage: {pct}%\n\nhttp://192.168.50.16:7777/v2/journal"
+            )
+        except Exception:
+            pass
+
+    return {"unannotated": unannotated, "total": total}
+
+
+def _journal_backtest_summary():
+    """GET /api/v2/journal/backtest-summary"""
+    rows = _db_query("""
+        SELECT COUNT(*) as total,
+               COUNT(CASE WHEN data_quality='full' THEN 1 END) as full_count,
+               COUNT(CASE WHEN data_quality='partial' THEN 1 END) as partial_count,
+               COUNT(CASE WHEN data_quality='insufficient' THEN 1 END) as insufficient_count,
+               SUM(left_on_table_20d) as total_left_on_table,
+               AVG(left_on_table_20d) as avg_left_on_table,
+               AVG(entry_rsi) as avg_entry_rsi,
+               COUNT(CASE WHEN exit_was_early THEN 1 END) as early_exits
+        FROM trade_backtest_results WHERE data_quality IN ('full','partial')
+    """, fetch="one") or {}
+    by_entry = _db_query("""
+        SELECT entry_grade, COUNT(*) as count, AVG(actual_pnl) as avg_pnl,
+               SUM(CASE WHEN actual_pnl>0 THEN 1 ELSE 0 END) as wins
+        FROM trade_backtest_results WHERE entry_grade IS NOT NULL AND data_quality IN ('full','partial')
+        GROUP BY entry_grade ORDER BY entry_grade
+    """) or []
+    by_exit = _db_query("""
+        SELECT exit_grade, COUNT(*) as count, SUM(left_on_table_20d) as total_left
+        FROM trade_backtest_results WHERE exit_grade IS NOT NULL AND data_quality IN ('full','partial')
+        GROUP BY exit_grade ORDER BY exit_grade
+    """) or []
+    worst_exits = _db_query("""
+        SELECT symbol, trade_key, actual_exit_price, max_price_20d_after, left_on_table_20d, actual_pnl_pct
+        FROM trade_backtest_results WHERE left_on_table_20d IS NOT NULL AND data_quality IN ('full','partial')
+        ORDER BY left_on_table_20d DESC LIMIT 5
+    """) or []
+
+    def ser(v):
+        if hasattr(v, 'isoformat'): return str(v)
+        if isinstance(v, Decimal): return float(v)
+        return v
+    return {
+        "summary": {k: ser(v) for k, v in rows.items()},
+        "by_entry_grade": [{k: ser(v) for k, v in r.items()} for r in by_entry],
+        "by_exit_grade": [{k: ser(v) for k, v in r.items()} for r in by_exit],
+        "worst_exits": [{k: ser(v) for k, v in r.items()} for r in worst_exits],
+    }
+
+
+def _journal_backtest_analytics():
+    """GET /api/v2/journal/backtest-analytics — aggregated backtest insights for coaching."""
+    by_type = _db_query("""
+        SELECT t.trade_type, COUNT(*) as count,
+               AVG(CASE b.entry_grade WHEN 'A' THEN 4 WHEN 'B' THEN 3 WHEN 'C' THEN 2 WHEN 'D' THEN 1 END) as avg_entry_score,
+               AVG(b.entry_rsi) as avg_entry_rsi, AVG(b.entry_volume_ratio) as avg_volume_ratio,
+               SUM(CASE WHEN t.pnl > 0 THEN 1 ELSE 0 END) as wins, AVG(t.pnl) as avg_pnl
+        FROM trade_backtest_results b JOIN trade_closed t ON t.symbol||':'||t.account||':'||t.close_date::text = b.trade_key
+        WHERE b.data_quality IN ('full','partial') GROUP BY t.trade_type ORDER BY count DESC
+    """) or []
+    rsi_hist = _db_query("""
+        SELECT CASE WHEN entry_rsi<30 THEN 'Oversold (<30)' WHEN entry_rsi<40 THEN 'Low (30-40)'
+                    WHEN entry_rsi<55 THEN 'Neutral (40-55)' WHEN entry_rsi<70 THEN 'Elevated (55-70)'
+                    ELSE 'Overbought (70+)' END as bucket,
+               COUNT(*) as count, AVG(actual_pnl) as avg_pnl,
+               SUM(CASE WHEN actual_pnl>0 THEN 1 ELSE 0 END) as wins
+        FROM trade_backtest_results WHERE entry_rsi IS NOT NULL AND data_quality IN ('full','partial')
+        GROUP BY 1 ORDER BY MIN(entry_rsi)
+    """) or []
+    left_by_type = _db_query("""
+        SELECT t.trade_type, SUM(b.left_on_table_20d) as total_left, AVG(b.left_on_table_20d) as avg_left, COUNT(*) as count
+        FROM trade_backtest_results b JOIN trade_closed t ON t.symbol||':'||t.account||':'||t.close_date::text = b.trade_key
+        WHERE b.left_on_table_20d IS NOT NULL AND b.data_quality IN ('full','partial')
+        GROUP BY t.trade_type ORDER BY total_left DESC NULLS LAST
+    """) or []
+
+    # Coaching bullets
+    coaching = []
+    if by_type:
+        worst = min((t for t in by_type if t.get('avg_entry_score')), key=lambda x: float(x['avg_entry_score'] or 4), default=None)
+        if worst and float(worst.get('avg_entry_rsi') or 0) > 60:
+            coaching.append(f"Your {worst['trade_type']} trades enter with avg RSI {float(worst['avg_entry_rsi']):.0f}. Entries below RSI 50 produce better risk/reward.")
+    if left_by_type and float(left_by_type[0].get('avg_left') or 0) > 500:
+        coaching.append(f"Your {left_by_type[0]['trade_type']} trades leave avg ${float(left_by_type[0]['avg_left']):.0f} on the table per trade. Consider scaling out in tranches.")
+    elevated = [b for b in rsi_hist if '55-70' in (b.get('bucket') or '') or '70+' in (b.get('bucket') or '')]
+    if elevated:
+        n = sum(int(e.get('count', 0)) for e in elevated)
+        total = sum(int(b.get('count', 1)) for b in rsi_hist)
+        if total > 0 and n / total > 0.3:
+            coaching.append(f"{n}/{total} entries ({n/total*100:.0f}%) have RSI above 55. Set RSI < 50 as a pre-condition for new entries.")
+
+    def ser(v):
+        if hasattr(v, 'isoformat'): return str(v)
+        if isinstance(v, Decimal): return float(v)
+        return v
+
+    best_entries = _db_query("""
+        SELECT b.symbol, b.trade_key, b.entry_grade, b.exit_grade,
+               b.entry_rsi, b.entry_volume_ratio, b.actual_pnl, b.actual_pnl_pct
+        FROM trade_backtest_results b
+        WHERE b.data_quality IN ('full','partial')
+        ORDER BY b.actual_pnl DESC LIMIT 10
+    """) or []
+    worst_exits = _db_query("""
+        SELECT b.symbol, b.trade_key, b.actual_exit_price,
+               b.max_price_20d_after, b.left_on_table_20d,
+               b.exit_grade, b.actual_pnl_pct
+        FROM trade_backtest_results b
+        WHERE b.left_on_table_20d IS NOT NULL AND b.data_quality IN ('full','partial')
+        ORDER BY b.left_on_table_20d DESC LIMIT 5
+    """) or []
+
+    return {
+        "by_trade_type": [{k: ser(v) for k, v in r.items()} for r in by_type],
+        "rsi_histogram": [{k: ser(v) for k, v in r.items()} for r in rsi_hist],
+        "left_on_table_by_type": [{k: ser(v) for k, v in r.items()} for r in left_by_type],
+        "best_entries": [{k: ser(v) for k, v in r.items()} for r in best_entries],
+        "worst_exits": [{k: ser(v) for k, v in r.items()} for r in worst_exits],
+        "coaching_bullets": coaching,
+        "has_data": len(by_type) > 0,
+    }
+
+
+def _journal_previously_traded():
+    """GET /api/v2/journal/previously-traded"""
+    rows = _db_query("""
+        SELECT * FROM previously_traded_watchlist
+        ORDER BY CASE reentry_signal WHEN 'IN_ZONE' THEN 0 WHEN 'WATCH' THEN 1
+                                     WHEN 'BELOW_ZONE' THEN 2 ELSE 3 END,
+                 best_pnl_pct DESC NULLS LAST
+    """) or []
+    items = []
+    for r in rows:
+        item = {}
+        for k, v in r.items():
+            if hasattr(v, 'isoformat'):
+                item[k] = str(v)
+            elif isinstance(v, Decimal):
+                item[k] = float(v)
+            else:
+                item[k] = v
+        items.append(item)
+    return {"symbols": items, "count": len(items)}
+
+
+def _journal_report():
+    """GET /api/v2/journal/report — master reporting endpoint for Journal Reports page.
+    Query params: ?account=X &from=YYYY-MM-DD &to=YYYY-MM-DD &type=DAY
+    """
+    import traceback
+    try:
+        q = getattr(_journal_report, '_query', {}) or {}
+        account_filter = q.get('account') or None
+        date_from = q.get('from') or None
+        date_to = q.get('to') or None
+        type_filter = q.get('type') or None
+
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from db_adapter import _get_conn
+        import psycopg2.extras
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        where_parts = ["1=1"]
+        params = []
+        if account_filter:
+            where_parts.append("t.account = %s")
+            params.append(account_filter)
+        if date_from:
+            where_parts.append("t.close_date >= %s")
+            params.append(date_from)
+        if date_to:
+            where_parts.append("t.close_date <= %s")
+            params.append(date_to)
+        if type_filter:
+            where_parts.append("t.trade_type = %s")
+            params.append(type_filter)
+        where = " AND ".join(where_parts)
+
+        def _f(v):
+            if isinstance(v, Decimal): return float(v)
+            if hasattr(v, 'isoformat'): return str(v)
+            return v
+
+        # ── SECTION 1: Summary stats
+        cur.execute(f"""
+            SELECT COUNT(*) as total_trades,
+                   SUM(t.pnl) as net_pnl,
+                   SUM(CASE WHEN t.pnl > 0 THEN t.pnl ELSE 0 END) as gross_profit,
+                   SUM(CASE WHEN t.pnl < 0 THEN t.pnl ELSE 0 END) as gross_loss,
+                   COUNT(CASE WHEN t.pnl > 0 THEN 1 END) as wins,
+                   COUNT(CASE WHEN t.pnl < 0 THEN 1 END) as losses,
+                   COUNT(CASE WHEN t.pnl = 0 THEN 1 END) as breakeven,
+                   AVG(CASE WHEN t.pnl > 0 THEN t.pnl END) as avg_winner,
+                   AVG(CASE WHEN t.pnl < 0 THEN t.pnl END) as avg_loser,
+                   MAX(t.pnl) as largest_win, MIN(t.pnl) as largest_loss,
+                   AVG(t.pnl) as trade_expectancy,
+                   AVG(t.hold_days) as avg_hold_days, MAX(t.hold_days) as max_hold_days,
+                   COUNT(DISTINCT t.symbol) as symbols_traded,
+                   COUNT(DISTINCT t.account) as accounts_active,
+                   STDDEV(t.pnl) as stddev_pnl
+            FROM trade_closed t WHERE {where}
+        """, params)
+        sr = dict(cur.fetchone())
+        summary = {k: _f(v) for k, v in sr.items()}
+        gp = float(sr['gross_profit'] or 0)
+        gl = abs(float(sr['gross_loss'] or 0))
+        wins = int(sr['wins'] or 0)
+        total = max(int(sr['total_trades'] or 1), 1)
+        aw = float(sr['avg_winner'] or 0)
+        al = abs(float(sr['avg_loser'] or 0))
+        wr = wins / total
+        stddev = float(sr['stddev_pnl'] or 1) or 1
+        avg_pnl = float(sr['trade_expectancy'] or 0)
+        summary['profit_factor'] = round(gp / gl, 2) if gl > 0 else 0
+        summary['win_rate_pct'] = round(wr * 100, 2)
+        summary['trade_expectancy'] = round((wr * aw) - ((1 - wr) * al), 2)
+        summary['sharpe_ratio'] = round(avg_pnl / stddev, 2) if stddev > 0 else 0
+        summary['gross_profit'] = round(gp, 2)
+        summary['gross_loss'] = round(-gl, 2)
+
+        # ── SECTION 2: Cumulative P&L curve
+        cur.execute(f"""
+            SELECT close_date, SUM(pnl) OVER (ORDER BY close_date, t.symbol) as cum_pnl,
+                   pnl, symbol, trade_type
+            FROM trade_closed t WHERE {where} ORDER BY close_date, t.symbol
+        """, params)
+        cum_curve = [{'date': str(r['close_date']), 'cum_pnl': round(float(r['cum_pnl']), 2),
+                      'trade_pnl': round(float(r['pnl']), 2), 'symbol': r['symbol'],
+                      'trade_type': r['trade_type']} for r in cur.fetchall()]
+
+        # ── SECTION 3: Monthly breakdown
+        cur.execute(f"""
+            SELECT TO_CHAR(close_date, 'YYYY-MM') as month, COUNT(*) as trades,
+                   SUM(pnl) as net_pnl, COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins,
+                   COUNT(CASE WHEN pnl < 0 THEN 1 END) as losses,
+                   AVG(pnl) as avg_pnl, MAX(pnl) as best_trade, MIN(pnl) as worst_trade
+            FROM trade_closed t WHERE {where}
+            GROUP BY TO_CHAR(close_date, 'YYYY-MM') ORDER BY month
+        """, params)
+        monthly = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 4: By trade type
+        cur.execute(f"""
+            SELECT trade_type, COUNT(*) as trades, SUM(pnl) as net_pnl,
+                   COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins, AVG(pnl) as avg_pnl,
+                   AVG(hold_days) as avg_hold_days, MAX(pnl) as best_trade, MIN(pnl) as worst_trade,
+                   SUM(CASE WHEN pnl>0 THEN pnl ELSE 0 END) as gross_profit,
+                   SUM(CASE WHEN pnl<0 THEN pnl ELSE 0 END) as gross_loss
+            FROM trade_closed t WHERE {where} GROUP BY trade_type ORDER BY net_pnl DESC NULLS LAST
+        """, params)
+        by_type = []
+        for r in cur.fetchall():
+            row = {k: _f(v) for k, v in dict(r).items()}
+            tn = int(row.get('trades') or 1)
+            wn = int(row.get('wins') or 0)
+            row['win_rate_pct'] = round(wn / tn * 100, 1) if tn > 0 else 0
+            rgp = abs(float(row.get('gross_profit') or 0))
+            rgl = abs(float(row.get('gross_loss') or 0))
+            row['profit_factor'] = round(rgp / rgl, 2) if rgl > 0 else 0
+            by_type.append(row)
+
+        # ── SECTION 5: By symbol (top 20)
+        cur.execute(f"""
+            SELECT symbol, COUNT(*) as trades, SUM(pnl) as net_pnl,
+                   COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins, AVG(pnl) as avg_pnl,
+                   MAX(pnl) as best_trade, MIN(pnl) as worst_trade, AVG(hold_days) as avg_hold_days
+            FROM trade_closed t WHERE {where} GROUP BY symbol ORDER BY net_pnl DESC NULLS LAST LIMIT 20
+        """, params)
+        by_symbol = []
+        for r in cur.fetchall():
+            row = {k: _f(v) for k, v in dict(r).items()}
+            tn = int(row.get('trades') or 1); wn = int(row.get('wins') or 0)
+            row['win_rate_pct'] = round(wn / tn * 100, 1) if tn > 0 else 0
+            by_symbol.append(row)
+
+        # ── SECTION 6: By hold duration
+        cur.execute(f"""
+            SELECT CASE WHEN hold_days = 0 THEN 'Same day'
+                        WHEN hold_days <= 5 THEN '1-5 days'
+                        WHEN hold_days <= 30 THEN '6-30 days'
+                        WHEN hold_days <= 90 THEN '31-90 days'
+                        ELSE '90+ days' END as duration_bucket,
+                   COUNT(*) as trades, SUM(pnl) as net_pnl,
+                   COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins, AVG(pnl) as avg_pnl
+            FROM trade_closed t WHERE {where} GROUP BY 1 ORDER BY MIN(hold_days)
+        """, params)
+        by_duration = []
+        for r in cur.fetchall():
+            row = {k: _f(v) for k, v in dict(r).items()}
+            tn = int(row.get('trades') or 1); wn = int(row.get('wins') or 0)
+            row['win_rate_pct'] = round(wn / tn * 100, 1) if tn > 0 else 0
+            by_duration.append(row)
+
+        # ── SECTION 7: Day of week
+        cur.execute(f"""
+            SELECT TRIM(TO_CHAR(close_date, 'Day')) as day_name,
+                   EXTRACT(DOW FROM close_date) as day_num,
+                   COUNT(*) as trades, SUM(pnl) as net_pnl,
+                   COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins, AVG(pnl) as avg_pnl
+            FROM trade_closed t WHERE {where} GROUP BY 1, 2 ORDER BY 2
+        """, params)
+        by_dow = []
+        for r in cur.fetchall():
+            row = {k: _f(v) for k, v in dict(r).items()}
+            tn = int(row.get('trades') or 1); wn = int(row.get('wins') or 0)
+            row['win_rate_pct'] = round(wn / tn * 100, 1) if tn > 0 else 0
+            by_dow.append(row)
+
+        # ── SECTION 8: By account
+        cur.execute(f"""
+            SELECT account, COUNT(*) as trades, SUM(pnl) as net_pnl,
+                   COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins, AVG(pnl) as avg_pnl
+            FROM trade_closed t WHERE {where} GROUP BY account ORDER BY net_pnl DESC
+        """, params)
+        by_account = []
+        for r in cur.fetchall():
+            row = {k: _f(v) for k, v in dict(r).items()}
+            tn = int(row.get('trades') or 1); wn = int(row.get('wins') or 0)
+            row['win_rate_pct'] = round(wn / tn * 100, 1) if tn > 0 else 0
+            by_account.append(row)
+
+        # ── SECTION 9: Streaks
+        cur.execute(f"""
+            SELECT pnl FROM trade_closed t WHERE {where} ORDER BY close_date, t.symbol
+        """, params)
+        max_win = max_loss = cw = cl = 0
+        for r in cur.fetchall():
+            if float(r['pnl']) > 0:
+                cw += 1; cl = 0; max_win = max(max_win, cw)
+            else:
+                cl += 1; cw = 0; max_loss = max(max_loss, cl)
+        streaks = {'max_win_streak': max_win, 'max_loss_streak': max_loss}
+
+        # ── SECTION 10: Backtest grades
+        cur.execute(f"""
+            SELECT b.entry_grade, b.exit_grade, COUNT(*) as trades,
+                   AVG(b.entry_rsi) as avg_entry_rsi,
+                   AVG(b.entry_volume_ratio) as avg_volume_ratio,
+                   SUM(b.left_on_table_20d) as total_left_on_table,
+                   COUNT(CASE WHEN b.exit_was_early THEN 1 END) as early_exits
+            FROM trade_backtest_results b
+            JOIN trade_closed t ON (t.symbol || ':' || t.account || ':' || t.close_date::text) = b.trade_key
+            WHERE b.data_quality IN ('full','partial') AND {where}
+            GROUP BY b.entry_grade, b.exit_grade ORDER BY b.entry_grade, b.exit_grade
+        """, params)
+        backtest_grades = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 11: Top trades
+        cur.execute(f"""
+            SELECT symbol, trade_type, account, open_date, close_date,
+                   buy_price, sell_price, pnl, pnl_pct, hold_days, shares
+            FROM trade_closed t WHERE {where} ORDER BY pnl DESC LIMIT 5
+        """, params)
+        top_winners = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+        cur.execute(f"""
+            SELECT symbol, trade_type, account, open_date, close_date,
+                   buy_price, sell_price, pnl, pnl_pct, hold_days, shares
+            FROM trade_closed t WHERE {where} ORDER BY pnl ASC LIMIT 5
+        """, params)
+        top_losers = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 12: RSI histogram
+        cur.execute("""
+            SELECT bucket, count, avg_pnl, wins FROM (
+              SELECT CASE WHEN b.entry_rsi < 30 THEN 'Oversold <30'
+                          WHEN b.entry_rsi < 40 THEN '30-40'
+                          WHEN b.entry_rsi < 50 THEN '40-50'
+                          WHEN b.entry_rsi < 60 THEN '50-60'
+                          WHEN b.entry_rsi < 70 THEN '60-70'
+                          WHEN b.entry_rsi < 80 THEN '70-80'
+                          ELSE 'Overbought 80+' END as bucket,
+                     COUNT(*) as count, AVG(t.pnl) as avg_pnl,
+                     SUM(CASE WHEN t.pnl > 0 THEN 1 ELSE 0 END) as wins,
+                     MIN(b.entry_rsi) as bucket_min
+              FROM trade_backtest_results b
+              JOIN trade_closed t ON (t.symbol || ':' || t.account || ':' || t.close_date::text) = b.trade_key
+              WHERE b.entry_rsi IS NOT NULL AND b.data_quality IN ('full','partial')
+              GROUP BY 1
+            ) sub ORDER BY bucket_min
+        """)
+        rsi_histogram = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 13: Annotation coverage
+        cur.execute("""
+            SELECT COUNT(DISTINCT (t.symbol || ':' || t.account || ':' || t.close_date::text)) as total_trades,
+                   COUNT(DISTINCT r.trade_key) as reviewed,
+                   COUNT(CASE WHEN r.setup_types IS NOT NULL AND array_length(r.setup_types,1) > 0 THEN 1 END) as human_annotated,
+                   COUNT(CASE WHEN r.execution_quality_score IS NOT NULL THEN 1 END) as has_execution_score,
+                   COUNT(CASE WHEN r.lesson_learned IS NOT NULL AND r.lesson_learned != ''
+                               AND r.lesson_learned != 'Auto-classified. Please review and update.' THEN 1 END) as has_lessons
+            FROM trade_closed t
+            LEFT JOIN journal_trade_reviews r ON r.trade_key = (t.symbol || ':' || t.account || ':' || t.close_date::text)
+        """)
+        annotation = {k: int(v) if v is not None else 0 for k, v in dict(cur.fetchone()).items()}
+
+        # ── SECTION 14: Coaching insights
+        coaching = []
+        cur.execute("SELECT SUM(pnl) as v_pnl FROM trade_closed WHERE symbol='V'")
+        v_pnl = float((cur.fetchone() or {}).get('v_pnl') or 0)
+        total_pnl = float(sr.get('net_pnl') or 1)
+        v_pct = (v_pnl / total_pnl * 100) if total_pnl > 0 else 0
+        if v_pct > 80:
+            coaching.append({'type': 'concentration_risk', 'severity': 'high',
+                'title': 'Extreme P&L Concentration',
+                'body': f'V (Visa) accounts for {v_pct:.0f}% of total P&L (+${v_pnl:,.0f}). Remove V from the dataset to see your actual trading performance. Without V, this journal is approximately break-even.',
+                'action': 'Evaluate performance with V excluded using the account/type filters.'})
+
+        cur.execute("""
+            SELECT AVG(entry_rsi) as avg_rsi,
+                   COUNT(CASE WHEN entry_rsi > 65 THEN 1 END) as high_rsi_count, COUNT(*) as total
+            FROM trade_backtest_results WHERE data_quality IN ('full','partial')
+        """)
+        rsi_row = dict(cur.fetchone())
+        avg_rsi = float(rsi_row.get('avg_rsi') or 0)
+        high_rsi_pct = (int(rsi_row.get('high_rsi_count') or 0) / max(int(rsi_row.get('total') or 1), 1)) * 100
+        if avg_rsi > 60:
+            coaching.append({'type': 'entry_quality', 'severity': 'high',
+                'title': 'Entering Overbought Consistently',
+                'body': f'Average RSI at entry: {avg_rsi:.0f}. {high_rsi_pct:.0f}% of backtested entries had RSI above 65. You are typically chasing price, not buying pullbacks.',
+                'action': 'Set RSI < 55 as a hard entry filter for new swing/position trades.'})
+
+        cur.execute("""
+            SELECT SUM(left_on_table_20d) as total_left, AVG(left_on_table_20d) as avg_left,
+                   COUNT(CASE WHEN exit_was_early THEN 1 END) as early_exits, COUNT(*) as total
+            FROM trade_backtest_results WHERE data_quality IN ('full','partial')
+        """)
+        exit_row = dict(cur.fetchone())
+        early_pct = (int(exit_row.get('early_exits') or 0) / max(int(exit_row.get('total') or 1), 1)) * 100
+        total_left = float(exit_row.get('total_left') or 0)
+        avg_left = float(exit_row.get('avg_left') or 0)
+        if early_pct > 40:
+            coaching.append({'type': 'exit_timing', 'severity': 'medium',
+                'title': 'Exiting Too Early',
+                'body': f'{early_pct:.0f}% of trades had significant upside in the 5 days after exit. Total money left on table (20-day window): ${total_left:,.0f}. Average per trade: ${avg_left:,.0f}.',
+                'action': 'Implement partial exits: sell 50% at +15%, trail stop on remainder.'})
+
+        cur.execute("""
+            SELECT TRIM(TO_CHAR(close_date, 'Day')) as day_name, AVG(pnl) as avg_pnl,
+                   COUNT(CASE WHEN pnl > 0 THEN 1 END) as wins, COUNT(*) as total
+            FROM trade_closed GROUP BY 1 HAVING COUNT(*) >= 3 ORDER BY avg_pnl ASC LIMIT 1
+        """)
+        worst_day = cur.fetchone()
+        if worst_day:
+            wd = dict(worst_day)
+            wd_wr = int(wd.get('wins', 0)) / max(int(wd.get('total', 1)), 1) * 100
+            if float(wd.get('avg_pnl', 0)) < 0:
+                coaching.append({'type': 'timing_pattern', 'severity': 'low',
+                    'title': f'{wd["day_name"].strip()} is Your Worst Trading Day',
+                    'body': f'{wd["day_name"].strip()} shows avg P&L of ${float(wd["avg_pnl"]):.0f} with {wd_wr:.0f}% win rate across {wd["total"]} trades.',
+                    'action': f'Track {wd["day_name"].strip()} trades separately for 30 days.'})
+
+        # ── SECTION 15: Daily P&L for calendar
+        cur.execute(f"""
+            SELECT close_date::text as date, SUM(pnl) as daily_pnl,
+                   COUNT(*) as trade_count, COUNT(CASE WHEN pnl>0 THEN 1 END) as wins,
+                   MAX(pnl) as best_trade_pnl
+            FROM trade_closed t WHERE {where} GROUP BY close_date ORDER BY close_date
+        """, params)
+        daily_pnl = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 16: Signal analytics
+        cur.execute("""
+            SELECT UNNEST(r.entry_signals) as signal, COUNT(*) as count,
+                   AVG(t.pnl) as avg_pnl, SUM(CASE WHEN t.pnl>0 THEN 1 ELSE 0 END) as wins
+            FROM journal_trade_reviews r JOIN trade_closed t ON (t.symbol || ':' || t.account || ':' || t.close_date::text) = r.trade_key
+            WHERE r.entry_signals IS NOT NULL AND array_length(r.entry_signals,1) > 0
+            GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY avg_pnl DESC
+        """)
+        signal_perf = []
+        for r in cur.fetchall():
+            row = {k: _f(v) for k, v in dict(r).items()}
+            row['win_rate_pct'] = round(int(row['wins']) / max(int(row['count']), 1) * 100, 1)
+            signal_perf.append(row)
+
+        # ── SECTION 17: Setup type performance
+        cur.execute("""
+            SELECT UNNEST(r.setup_types) as setup, COUNT(*) as count,
+                   AVG(t.pnl) as avg_pnl, SUM(CASE WHEN t.pnl>0 THEN 1 ELSE 0 END) as wins,
+                   AVG(r.execution_quality_score) as avg_execution,
+                   AVG(r.realized_r) as avg_realized_r
+            FROM journal_trade_reviews r JOIN trade_closed t ON (t.symbol || ':' || t.account || ':' || t.close_date::text) = r.trade_key
+            WHERE r.setup_types IS NOT NULL AND array_length(r.setup_types,1) > 0
+            GROUP BY 1 ORDER BY avg_pnl DESC
+        """)
+        setup_perf = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 18: Psychology correlation
+        cur.execute("""
+            SELECT r.emotion_before, COUNT(*) as count, AVG(t.pnl) as avg_pnl,
+                   SUM(CASE WHEN t.pnl>0 THEN 1 ELSE 0 END) as wins,
+                   AVG(r.execution_quality_score) as avg_execution
+            FROM journal_trade_reviews r JOIN trade_closed t ON (t.symbol || ':' || t.account || ':' || t.close_date::text) = r.trade_key
+            WHERE r.emotion_before IS NOT NULL GROUP BY 1 HAVING COUNT(*) >= 2 ORDER BY avg_pnl DESC
+        """)
+        emotion_perf = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # ── SECTION 19: R-multiple tracking
+        cur.execute("""
+            SELECT AVG(r.planned_r) as avg_planned_r, AVG(r.realized_r) as avg_realized_r,
+                   COUNT(CASE WHEN r.realized_r >= r.planned_r THEN 1 END) as met_target,
+                   COUNT(CASE WHEN r.planned_r IS NOT NULL THEN 1 END) as has_plan,
+                   AVG(r.execution_quality_score) as avg_execution,
+                   AVG(r.risk_management_score) as avg_risk_mgmt
+            FROM journal_trade_reviews r JOIN trade_closed t ON (t.symbol || ':' || t.account || ':' || t.close_date::text) = r.trade_key
+        """)
+        r_multiple = {k: _f(v) for k, v in dict(cur.fetchone() or {}).items()}
+
+        # ── SECTION 20: Mistake / strength frequency
+        cur.execute("""
+            SELECT UNNEST(mistake_tags) as tag, COUNT(*) as count
+            FROM journal_trade_reviews WHERE mistake_tags IS NOT NULL AND array_length(mistake_tags,1) > 0
+            GROUP BY 1 ORDER BY count DESC LIMIT 10
+        """)
+        mistake_freq = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+        cur.execute("""
+            SELECT UNNEST(strength_tags) as tag, COUNT(*) as count
+            FROM journal_trade_reviews WHERE strength_tags IS NOT NULL AND array_length(strength_tags,1) > 0
+            GROUP BY 1 ORDER BY count DESC LIMIT 10
+        """)
+        strength_freq = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        conn.close()
+
+        return {
+            'summary': summary, 'cumulative_pnl': cum_curve, 'monthly': monthly,
+            'by_trade_type': by_type, 'by_symbol': by_symbol,
+            'by_hold_duration': by_duration, 'by_day_of_week': by_dow,
+            'by_account': by_account, 'streaks': streaks,
+            'backtest_grades': backtest_grades, 'top_winners': top_winners,
+            'top_losers': top_losers, 'rsi_histogram': rsi_histogram,
+            'annotation_coverage': annotation, 'coaching_insights': coaching,
+            'daily_pnl': daily_pnl, 'signal_performance': signal_perf,
+            'setup_performance': setup_perf, 'emotion_performance': emotion_perf,
+            'r_multiple_tracking': r_multiple,
+            'mistake_frequency': mistake_freq, 'strength_frequency': strength_freq,
+            'filters_applied': {'account': account_filter, 'date_from': date_from,
+                               'date_to': date_to, 'trade_type': type_filter}
+        }
+    except Exception as e:
+        import traceback as _tb
+        raise RuntimeError(f"journal_report error: {e}\n{_tb.format_exc()}")
+
+_journal_report._query = {}
+
+
+def _tradeai_critique_status():
+    """GET /api/v2/trade-ai/critique — latest critique results from CSV data."""
+    # The critique data is embedded in the trade_ai CSV. Return a summary.
+    import csv, io, glob
+    results = []
+    for pattern in ["reports/2026-*/*/run_summary.json"]:
+        for fp in sorted(glob.glob(str(PROJECT_ROOT / pattern)), reverse=True)[:2]:
+            csv_dir = str(Path(fp).parent)
+            csvs = sorted(glob.glob(csv_dir + "/trade_ai_*_watchlist.csv"))
+            if csvs:
+                try:
+                    rows = list(csv.DictReader(io.StringIO(Path(csvs[-1]).read_text())))
+                    for r in rows:
+                        if r.get("CriticVerdict"):
+                            results.append({
+                                "symbol": r.get("Symbol", ""),
+                                "decision": r.get("Decision", ""),
+                                "original_decision": r.get("OrigDecision", ""),
+                                "critic_verdict": r.get("CriticVerdict", ""),
+                                "decision_changed": r.get("DecisionChanged", "").lower() == "true",
+                                "disqualified": r.get("Disqualified", "").lower() == "true",
+                                "catalyst_verified": r.get("CatalystVerified", ""),
+                                "industry": r.get("Industry", ""),
+                                "reasoning": r.get("CriticReasoning", ""),
+                            })
+                except Exception:
+                    pass
+            if results: break
+    blocked = sum(1 for r in results if r.get("disqualified"))
+    changed = sum(1 for r in results if r.get("decision_changed"))
+    return {"results": results, "count": len(results), "blocked": blocked, "changed": changed}
+
+
+def _tradeai_history():
+    """GET /api/v2/trade-ai/history — historical scan data for trend analysis."""
+    try:
+        # Per-symbol aggregated history
+        symbols = _db_query("""
+            SELECT symbol,
+                   COUNT(DISTINCT run_date) as days_appeared,
+                   COUNT(DISTINCT run_date) FILTER (WHERE decision = 'GO') as go_days,
+                   COUNT(DISTINCT run_date) FILTER (WHERE decision = 'WAIT') as wait_days,
+                   COUNT(*) as total_scans,
+                   MAX(score) as peak_score,
+                   ROUND(AVG(score)::numeric, 1) as avg_score,
+                   MIN(run_date) as first_seen,
+                   MAX(run_date) as last_seen,
+                   MAX(rvol) as peak_rvol,
+                   ROUND(AVG(rvol)::numeric, 1) as avg_rvol
+            FROM trade_ai_scans
+            WHERE run_type = 'full'
+            GROUP BY symbol
+            ORDER BY days_appeared DESC, peak_score DESC
+        """) or []
+
+        # Recent daily summary (last 30 days)
+        daily = _db_query("""
+            SELECT run_date,
+                   COUNT(DISTINCT symbol) as tickers,
+                   COUNT(DISTINCT symbol) FILTER (WHERE decision = 'GO') as go_count,
+                   COUNT(DISTINCT symbol) FILTER (WHERE decision = 'WAIT') as wait_count,
+                   MAX(score) as top_score
+            FROM trade_ai_scans
+            WHERE run_type = 'full'
+              AND run_date >= CURRENT_DATE - INTERVAL '30 days'
+            GROUP BY run_date
+            ORDER BY run_date DESC
+        """) or []
+
+        # Recurring symbols (appeared 3+ days)
+        recurring = [s for s in symbols if (s.get("days_appeared") or 0) >= 3]
+
+        return {
+            "symbols": [{k: _json_clean(v) for k, v in s.items()} for s in symbols],
+            "daily_summary": [{k: _json_clean(v) for k, v in d.items()} for d in daily],
+            "recurring_count": len(recurring),
+            "total_symbols_tracked": len(symbols),
+            "total_scans": sum(s.get("total_scans", 0) for s in symbols),
+        }
+    except Exception as e:
+        return {"error": str(e), "symbols": [], "daily_summary": []}
+
+
+def _tradeai_symbol_history():
+    """GET /api/v2/trade-ai/history/<symbol> — detailed history for one symbol."""
+    return {"error": "Use query param: /api/v2/trade-ai/history?symbol=RLYB"}
+
+
+def _journal_agent_coaching():
+    """GET /api/v2/journal/agent-coaching — cached agent coaching insights."""
+    try:
+        rows = _db_query("""
+            SELECT id, agent_name, coaching_type, severity, title, body,
+                   action_item, supporting_trades, model_used,
+                   trades_analyzed, created_at
+            FROM journal_agent_coaching
+            WHERE expires_at > NOW()
+            ORDER BY
+                CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+                created_at DESC
+        """) or []
+        items = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+        last_row = _db_query("SELECT MAX(created_at) as lr FROM journal_agent_coaching", fetch="one")
+        return {
+            'insights': items,
+            'count': len(items),
+            'last_run': str(last_row['lr']) if last_row and last_row.get('lr') else None,
+            'agents': list(set(r.get('agent_name', '') for r in items))
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def _paper_proposals_enriched():
+    """GET /api/v2/paper-proposals — enriched decision packet proposals."""
+    try:
+        # Read portfolio value for risk %
+        portfolio_value = 1000000.0
+        try:
+            _hpath = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+            if _hpath.exists():
+                _hd = json.loads(_hpath.read_text())
+                portfolio_value = float(_hd.get('portfolio_totals', {}).get('total_value', 1000000))
+        except Exception:
+            pass
+
+        rows = _db_query("""
+            SELECT ptp.*,
+                   -- Scan data
+                   scan.score as scan_score, scan.decision as scan_decision,
+                   scan.grade as scan_grade, scan.price as scan_price,
+                   scan.rvol as scan_rvol, scan.float_m as scan_float_m,
+                   scan.gap_pct as scan_gap_pct, scan.change_pct as scan_change_pct,
+                   scan.catalyst as scan_catalyst,
+                   scan.catalyst_verified as scan_catalyst_verified,
+                   scan.catalyst_confidence as scan_catalyst_confidence,
+                   scan.critic_verdict as scan_critic_verdict,
+                   scan.critic_confidence as scan_critic_confidence,
+                   scan.critic_reasoning as scan_critic_reasoning,
+                   scan.sector as scan_sector, scan.industry as scan_industry,
+                   scan.country as scan_country, scan.sector_etf as scan_sector_etf,
+                   scan.ticker_perf_1m, scan.sector_perf_1m, scan.vs_sector_pct,
+                   scan.intelligence_readiness as scan_intel,
+                   scan.source as scan_source, scan.screener_label as scan_screener,
+                   -- Indicator data
+                   ind.atr as ind_atr, ind.confluence_score, ind.confluence_tier,
+                   ind.adx_regime, ind.entry_quality,
+                   ind.full_result as ind_full_result,
+                   -- News
+                   news_agg.headlines as recent_headlines,
+                   -- Proposal analysis
+                   pa.summary as pa_summary, pa.approve_case as pa_approve_case,
+                   pa.reject_case as pa_reject_case, pa.invalidation as pa_invalidation,
+                   pa.narrative_source as pa_narrative_source,
+                   pa.confidence as pa_confidence,
+                   pa.missing_data as pa_missing_data
+            FROM paper_trade_proposals ptp
+            LEFT JOIN LATERAL (
+                SELECT * FROM trade_ai_scans
+                WHERE symbol = ptp.symbol
+                ORDER BY scanned_at DESC LIMIT 1
+            ) scan ON true
+            LEFT JOIN LATERAL (
+                SELECT * FROM indicator_confluence_cache
+                WHERE symbol = ptp.symbol
+                ORDER BY computed_at DESC LIMIT 1
+            ) ind ON true
+            LEFT JOIN LATERAL (
+                SELECT json_agg(json_build_object(
+                    'title', title, 'source', source,
+                    'published_at', published_at,
+                    'sentiment', sentiment
+                ) ORDER BY published_at DESC) as headlines
+                FROM (
+                    SELECT title, source, published_at, sentiment
+                    FROM news_articles
+                    WHERE symbol = ptp.symbol
+                    AND published_at > NOW() - INTERVAL '3 days'
+                    ORDER BY published_at DESC LIMIT 3
+                ) sub
+            ) news_agg ON true
+            LEFT JOIN LATERAL (
+                SELECT * FROM paper_proposal_analysis
+                WHERE proposal_id = ptp.id
+                ORDER BY created_at DESC LIMIT 1
+            ) pa ON true
+            ORDER BY
+                CASE ptp.status WHEN 'PENDING' THEN 0 ELSE 1 END,
+                ptp.created_at DESC
+            LIMIT 50
+        """) or []
+
+        proposals = []
+        for r in rows:
+            p = {k: _json_clean(v) for k, v in r.items()}
+
+            # Merge scan data into proposal where proposal is empty
+            rvol = p.get('rvol') or p.get('scan_rvol')
+            float_m = p.get('float_m') or p.get('scan_float_m')
+            gap_pct = p.get('gap_pct') or p.get('scan_gap_pct')
+            catalyst = p.get('catalyst') or p.get('scan_catalyst')
+            catalyst_verified = p.get('scan_catalyst_verified') if p.get('scan_catalyst_verified') else p.get('catalyst_verified')
+            catalyst_confidence = p.get('catalyst_confidence') or p.get('scan_catalyst_confidence')
+            critic_verdict = p.get('critic_verdict') or p.get('scan_critic_verdict')
+            critic_confidence = p.get('critic_confidence') or p.get('scan_critic_confidence')
+            critic_reasoning = p.get('critic_reasoning') or p.get('scan_critic_reasoning')
+            sector = p.get('sector') or p.get('scan_sector')
+            industry = p.get('industry') or p.get('scan_industry')
+            country = p.get('country') or p.get('scan_country')
+            intel = p.get('intel_readiness') or p.get('scan_intel')
+            signal_grade = p.get('signal_grade') or p.get('scan_grade')
+            signal_score = p.get('signal_score') or p.get('scan_score')
+
+            entry = float(p.get('proposed_entry') or 0)
+            stop = float(p.get('proposed_stop') or 0)
+            t1 = float(p.get('proposed_target1') or 0)
+            t2 = float(p.get('proposed_target2') or 0)
+            shares = int(p.get('proposed_shares') or 0)
+
+            # Risk/reward math
+            dollar_risk = abs(entry - stop) * shares if entry and stop and shares else 0
+            t1_reward = (t1 - entry) * shares if t1 and entry and shares else 0
+            t2_reward = (t2 - entry) * shares if t2 and entry and shares else 0
+            risk_pct = (dollar_risk / portfolio_value * 100) if dollar_risk and portfolio_value else 0
+            rr_t1 = (t1 - entry) / (entry - stop) if entry > stop and t1 > entry else 0
+            rr_t2 = (t2 - entry) / (entry - stop) if entry > stop and t2 > entry else 0
+
+            # Technical state from indicators
+            atr = p.get('atr') or p.get('ind_atr')
+            atr_pct = (float(atr) / entry * 100) if atr and entry else None
+
+            # Extract RSI/VWAP from indicator full_result
+            rsi = p.get('rsi')
+            vwap_dist = p.get('vwap_distance')
+            above_vwap = p.get('above_vwap')
+            sma20_dist = None
+            squeeze = None
+            fib_ctx = p.get('fib_context')
+
+            ind_result = p.get('ind_full_result')
+            if isinstance(ind_result, dict):
+                signals = ind_result.get('signals', {})
+                if 'rsi' in signals:
+                    rsi = rsi or signals['rsi'].get('value')
+                if 'vwap' in signals:
+                    vwap_dist = vwap_dist or signals['vwap'].get('distance_pct')
+                    if vwap_dist is not None:
+                        above_vwap = float(vwap_dist) >= 0
+                if 'sma20' in signals:
+                    sma20_dist = signals['sma20'].get('distance_pct')
+                if 'squeeze' in signals:
+                    squeeze = signals['squeeze'].get('state')
+                if 'fib' in signals:
+                    fib_ctx = signals['fib']
+
+            # RSI state
+            rsi_state = None
+            if rsi is not None:
+                rsi_val = float(rsi)
+                if rsi_val >= 70: rsi_state = 'overbought'
+                elif rsi_val >= 60: rsi_state = 'near_overbought'
+                elif rsi_val <= 30: rsi_state = 'oversold'
+                elif rsi_val <= 40: rsi_state = 'near_oversold'
+                else: rsi_state = 'neutral'
+
+            # Technical state label
+            tech_parts = []
+            if rsi is not None:
+                tech_parts.append(f"RSI {float(rsi):.1f} ({rsi_state})")
+            if vwap_dist is not None:
+                tech_parts.append(f"VWAP {float(vwap_dist):+.1f}%")
+            if atr is not None:
+                tech_parts.append(f"ATR ${float(atr):.2f}")
+            if p.get('adx_regime'):
+                tech_parts.append(f"ADX: {p['adx_regime']}")
+            technical_state = " | ".join(tech_parts) if tech_parts else None
+
+            # Missing data detection
+            missing = []
+            if atr is None: missing.append('ATR')
+            if rsi is None: missing.append('RSI')
+            if vwap_dist is None: missing.append('VWAP')
+            if not fib_ctx: missing.append('Fib context')
+            if not p.get('recent_headlines'): missing.append('News')
+            if not p.get('pa_summary') and not catalyst: missing.append('LLM narrative')
+            if not sector: missing.append('Sector')
+            if not critic_verdict: missing.append('Critic verdict')
+
+            # Fib context
+            if not fib_ctx:
+                fib_ctx = {'available': False, 'summary': 'Fib context unavailable — no fib indicator data populated'}
+
+            # Deterministic narrative fallback
+            narrative = p.get('pa_summary')
+            narrative_source = p.get('pa_narrative_source')
+            if not narrative:
+                # Build deterministic fallback
+                parts = []
+                parts.append(f"{p.get('symbol')} is a {p.get('strategy_id') or 'unknown'} proposal")
+                if p.get('scan_source'):
+                    parts.append(f"sourced from {p['scan_source']}")
+                scan_parts = []
+                if rvol: scan_parts.append(f"RVOL {float(rvol):.1f}x")
+                if float_m: scan_parts.append(f"float {float(float_m):.1f}M")
+                if gap_pct: scan_parts.append(f"gap {float(gap_pct):+.1f}%")
+                if catalyst_verified: scan_parts.append("verified catalyst")
+                elif catalyst: scan_parts.append("unverified catalyst")
+                if signal_grade and signal_score:
+                    scan_parts.append(f"{signal_grade}-grade score {signal_score}")
+                if scan_parts:
+                    parts.append(f"showing {', '.join(scan_parts)}")
+                if critic_verdict and critic_verdict != 'PASS':
+                    parts.append(f"Critic: {critic_verdict}")
+                    if critic_reasoning:
+                        parts.append(str(critic_reasoning)[:120])
+                vs = p.get('vs_sector_pct')
+                if vs is not None:
+                    direction = "outperforming" if float(vs) > 0 else "underperforming"
+                    parts.append(f"Sector: {direction} by {abs(float(vs)):.1f}%")
+                narrative = ". ".join(parts) + "."
+                narrative_source = 'deterministic_fallback'
+
+            # Approve/reject case
+            # Use LLM case text only if it's actually text (not bool from bad LLM parse)
+            _pa_approve = p.get('pa_approve_case')
+            _pa_reject = p.get('pa_reject_case')
+            approve_case = _pa_approve if isinstance(_pa_approve, str) and len(_pa_approve) > 5 else None
+            reject_case = _pa_reject if isinstance(_pa_reject, str) and len(_pa_reject) > 5 else None
+            if not approve_case:
+                if catalyst_verified and (not critic_verdict or critic_verdict == 'PASS'):
+                    approve_case = f"Verified catalyst with {signal_grade or '?'}-grade setup. Risk ${dollar_risk:.0f} ({risk_pct:.3f}% portfolio)."
+                elif catalyst_verified:
+                    approve_case = f"Verified catalyst exists but critic flags concerns. Consider as cautious paper test only."
+                else:
+                    approve_case = f"Limited conviction — unverified catalyst. Paper test only if testing system handling of this setup type."
+            if not reject_case:
+                reasons = []
+                if critic_verdict == 'BLOCK': reasons.append("Critic BLOCKED this idea")
+                if critic_verdict == 'DOWNGRADE': reasons.append(f"Critic downgraded: {str(critic_reasoning)[:80]}")
+                if len(missing) >= 4: reasons.append(f"Too much missing data ({len(missing)} fields)")
+                vs = p.get('vs_sector_pct')
+                if vs is not None and float(vs) < -5: reasons.append(f"Weak sector relative: {float(vs):.1f}%")
+                reject_case = ". ".join(reasons) if reasons else "No strong rejection signals detected."
+
+            # Conviction label
+            conviction = 'CAUTIOUS PAPER TEST'
+            if critic_verdict == 'BLOCK':
+                conviction = 'REJECT / DO NOT TEST'
+            elif len(missing) >= 4:
+                conviction = 'MISSING-DATA PROPOSAL'
+            elif critic_verdict == 'DOWNGRADE':
+                conviction = 'CAUTIOUS PAPER TEST'
+            elif signal_grade in ('A', 'A+') and catalyst_verified and critic_verdict != 'DOWNGRADE':
+                conviction = 'HIGH-CONVICTION PAPER TEST'
+
+            # Decision state computation
+            decision_state_computed = None
+            if conviction == 'REJECT / DO NOT TEST':
+                decision_state_computed = 'REJECT_RECOMMENDED'
+            elif conviction == 'MISSING-DATA PROPOSAL':
+                decision_state_computed = 'RESEARCH_INCOMPLETE'
+            elif conviction == 'HIGH-CONVICTION PAPER TEST':
+                decision_state_computed = 'APPROVE_READY_PAPER_TEST'
+            else:
+                decision_state_computed = 'CAUTIOUS_PAPER_TEST'
+            # Override with stored decision state if available
+            stored_ds = p.get('research_packet_id')  # has research packet
+            if p.get('approval_blocked_reason'):
+                if 'Risk gate' in str(p.get('approval_blocked_reason', '')):
+                    decision_state_computed = 'BLOCKED_BY_RISK_GATE'
+            if p.get('agent_review_status') == 'complete' and p.get('research_score') is not None:
+                rs = float(p.get('research_score') or 0)
+                cs = float(p.get('confidence_score') or 0)
+                if rs >= 85 and cs >= 75:
+                    decision_state_computed = 'APPROVE_READY_PAPER_TEST'
+                elif rs >= 75:
+                    decision_state_computed = 'CAUTIOUS_PAPER_TEST'
+                else:
+                    decision_state_computed = 'RESEARCH_INCOMPLETE'
+
+            # Technical summary from stored context
+            tech_ctx = p.get('technical_context')
+            technical_summary_computed = technical_state
+            if isinstance(tech_ctx, dict):
+                parts = []
+                if tech_ctx.get('atr'):
+                    parts.append(f"ATR ${float(tech_ctx['atr']):.2f} ({tech_ctx.get('atr_state', '?')})")
+                if tech_ctx.get('rsi'):
+                    parts.append(f"RSI {float(tech_ctx['rsi']):.1f} ({tech_ctx.get('rsi_state', '?')})")
+                if tech_ctx.get('vwap_state'):
+                    parts.append(f"VWAP: {tech_ctx['vwap_state']}")
+                if parts:
+                    technical_summary_computed = " | ".join(parts)
+
+            # Agent votes placeholder (enriched in post-processing)
+            agent_votes_json = None
+
+            # Minutes remaining
+            mins_remaining = None
+            if p.get('expires_at'):
+                try:
+                    from datetime import datetime, timezone
+                    exp = datetime.fromisoformat(str(p['expires_at']))
+                    mins_remaining = max(0, int((exp - datetime.now(timezone.utc)).total_seconds() / 60))
+                except Exception:
+                    pass
+
+            proposals.append({
+                'id': p.get('id'),
+                'symbol': p.get('symbol'),
+                'strategy_id': p.get('strategy_id'),
+                'setup_type': p.get('setup_type'),
+                'setup_description': p.get('setup_description'),
+                'source_table': p.get('source_table') or p.get('scan_source'),
+                'screener_name': p.get('screener_name') or p.get('scan_screener'),
+                'discovery_source': p.get('discovery_source') or p.get('scan_source'),
+                'proposed_by': p.get('proposed_by'),
+                'proposed_account': p.get('proposed_account'),
+                'proposed_entry': entry, 'proposed_stop': stop,
+                'proposed_target1': t1, 'proposed_target2': t2,
+                'proposed_shares': shares,
+                'proposed_dollar_size': round(entry * shares, 2) if entry and shares else 0,
+                'proposed_dollar_risk': round(dollar_risk, 2),
+                'risk_pct_portfolio': round(risk_pct, 4),
+                'target1_dollar_reward': round(t1_reward, 2),
+                'target2_dollar_reward': round(t2_reward, 2),
+                'proposed_rr': round(rr_t1, 2) if rr_t1 else p.get('proposed_rr'),
+                'rr_t2': round(rr_t2, 2) if rr_t2 else None,
+                'minutes_remaining': mins_remaining,
+                'signal_grade': signal_grade,
+                'signal_score': signal_score,
+                'rvol': float(rvol) if rvol else None,
+                'float_m': float(float_m) if float_m else None,
+                'gap_pct': float(gap_pct) if gap_pct else None,
+                'change_pct': p.get('scan_change_pct'),
+                'catalyst': catalyst,
+                'catalyst_verified': catalyst_verified,
+                'catalyst_confidence': float(catalyst_confidence) if catalyst_confidence else None,
+                'critic_verdict': critic_verdict,
+                'critic_confidence': float(critic_confidence) if critic_confidence else None,
+                'critic_reasoning': str(critic_reasoning)[:300] if critic_reasoning else None,
+                'sector': sector,
+                'industry': industry,
+                'country': country,
+                'sector_etf': p.get('scan_sector_etf'),
+                'ticker_perf_1m': p.get('ticker_perf_1m'),
+                'sector_perf_1m': p.get('sector_perf_1m'),
+                'vs_sector_pct': p.get('vs_sector_pct'),
+                'intel_readiness': intel,
+                'atr': float(atr) if atr else None,
+                'atr_pct': round(atr_pct, 2) if atr_pct else None,
+                'rsi': float(rsi) if rsi else None,
+                'rsi_state': rsi_state,
+                'vwap_distance': float(vwap_dist) if vwap_dist is not None else None,
+                'above_vwap': above_vwap,
+                'sma20_distance': float(sma20_dist) if sma20_dist is not None else None,
+                'squeeze_momentum': squeeze,
+                'fib_context': fib_ctx,
+                'technical_state': technical_state,
+                'confluence_score': p.get('confluence_score'),
+                'confluence_tier': p.get('confluence_tier'),
+                'entry_quality': p.get('entry_quality'),
+                'adx_regime': p.get('adx_regime'),
+                'normal_pattern_summary': p.get('normal_pattern_summary') or 'Pattern comparison unavailable — no historical pattern data for this symbol/setup yet',
+                'news': p.get('recent_headlines'),
+                'agent_narrative': narrative,
+                'narrative_source': narrative_source,
+                'approve_case': approve_case,
+                'reject_case': reject_case,
+                'invalidation': p.get('pa_invalidation'),
+                'missing_data': missing,
+                'conviction_label': conviction,
+                'risk_gate_result': p.get('risk_gate_result'),
+                'risk_gate_codes': p.get('risk_gate_codes'),
+                'tos_order_string': p.get('tos_order_string'),
+                'quality_pass': p.get('quality_pass'),
+                'quality_reason_codes': p.get('quality_reason_codes'),
+                'status': p.get('status'),
+                'expires_at': p.get('expires_at'),
+                'created_at': p.get('created_at'),
+                # Session 17v3 research packet fields
+                'decision_state': p.get('decision_state_computed'),
+                'research_score': _json_clean(p.get('research_score')),
+                'confidence_score': _json_clean(p.get('confidence_score')),
+                'live_readiness_score': _json_clean(p.get('live_readiness_score')) or 0,
+                'agent_review_status': p.get('agent_review_status') or 'not reviewed',
+                'local_llm_review_status': p.get('local_llm_review_status') or 'not run',
+                'backtest_status': p.get('backtest_status') or 'not run',
+                'approval_allowed': p.get('approval_allowed'),
+                'approval_blocked_reason': p.get('approval_blocked_reason'),
+                'required_reviews': p.get('required_reviews'),
+                'completed_reviews': p.get('completed_reviews'),
+                'agent_votes': p.get('agent_votes_json'),
+                'data_completeness_score': p.get('research_score'),
+                'technical_summary': p.get('technical_summary_computed'),
+                'stock_history_summary': p.get('stock_history_summary'),
+                'backtest_summary': p.get('backtest_summary'),
+                'source_lineage': {
+                    'source': p.get('scan_source'),
+                    'screener': p.get('scan_screener'),
+                    'discovery_source': p.get('discovery_source'),
+                },
+                'risk_reward': {
+                    'dollar_risk': round(dollar_risk, 2),
+                    'dollar_reward_t1': round(t1_reward, 2),
+                    'dollar_reward_t2': round(t2_reward, 2),
+                    'rr': round(rr_t1, 2) if rr_t1 else p.get('proposed_rr'),
+                    'risk_pct_portfolio': round(risk_pct, 4),
+                },
+            })
+
+        # Enrich with agent votes from proposal_agent_reviews
+        try:
+            for prop in proposals:
+                pid = prop.get('id')
+                if pid:
+                    agent_rows = _db_query("""
+                        SELECT agent_name, vote, confidence, summary, reviewed_by_model, reviewed_at
+                        FROM proposal_agent_reviews
+                        WHERE proposal_id = %s ORDER BY agent_name
+                    """, [pid]) or []
+                    votes = {}
+                    for ar in agent_rows:
+                        votes[ar['agent_name']] = {
+                            'vote': ar.get('vote'),
+                            'confidence': _json_clean(ar.get('confidence')),
+                            'summary': (ar.get('summary') or '')[:120],
+                            'model': ar.get('reviewed_by_model'),
+                        }
+                    prop['agent_votes'] = votes
+
+                    # Decision state from research packet
+                    rp = _db_query("""
+                        SELECT packet_status, research_score, confidence_score
+                        FROM proposal_research_packets
+                        WHERE proposal_id = %s
+                        ORDER BY updated_at DESC LIMIT 1
+                    """, [pid], fetch="one")
+                    if rp:
+                        prop['decision_state'] = rp.get('packet_status') or prop.get('decision_state')
+                        if not prop.get('research_score'):
+                            prop['research_score'] = _json_clean(rp.get('research_score'))
+                        if not prop.get('confidence_score'):
+                            prop['confidence_score'] = _json_clean(rp.get('confidence_score'))
+
+                    # Technical summary
+                    tech_ctx = prop.get('technical_context') or prop.get('technical_summary')
+                    if isinstance(tech_ctx, str):
+                        try: tech_ctx = json.loads(tech_ctx)
+                        except: tech_ctx = None
+                    if isinstance(tech_ctx, dict):
+                        parts = []
+                        if tech_ctx.get('atr'):
+                            parts.append(f"ATR ${float(tech_ctx['atr']):.2f} ({tech_ctx.get('atr_state', '?')})")
+                        if tech_ctx.get('rsi'):
+                            parts.append(f"RSI {float(tech_ctx['rsi']):.1f} ({tech_ctx.get('rsi_state', '?')})")
+                        if tech_ctx.get('vwap_state'):
+                            parts.append(f"VWAP: {tech_ctx['vwap_state']}")
+                        prop['technical_summary'] = " | ".join(parts) if parts else None
+        except Exception as e:
+            pass  # non-critical enrichment
+
+        return 200, {
+            "ok": True,
+            "proposals": proposals,
+            "pending_count": sum(1 for p in proposals if p.get('status') == 'PENDING'),
+            "count": len(proposals),
+            "portfolio_value": round(portfolio_value, 2),
+        }
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)}
+
+
+def _open_trade_monitor_api():
+    """GET /api/v2/open-trade-monitor — open trade status and alerts."""
+    try:
+        open_trades = _db_query("""
+            SELECT id, symbol, strategy_id, entry_price, shares, stop_loss, target_1,
+                   current_price, unrealized_pnl, r_multiple, account,
+                   entry_time, monitored_at, last_alert_at, stale_flag
+            FROM paper_trades WHERE status='open'
+            ORDER BY entry_time DESC
+        """) or []
+        alerts = _db_query("""
+            SELECT id, paper_trade_id, symbol, alert_type, severity, title, message, created_at
+            FROM open_trade_alerts
+            WHERE created_at > NOW() - INTERVAL '24 hours'
+            ORDER BY created_at DESC LIMIT 50
+        """) or []
+        total_unreal = sum(float(t.get('unrealized_pnl') or 0) for t in open_trades)
+        total_risk = sum(float(t.get('dollar_risk') or 0) for t in open_trades if t.get('dollar_risk'))
+        return {
+            'ok': True,
+            'open_trades': [{k: _json_clean(v) for k, v in t.items()} for t in open_trades],
+            'alerts': [{k: _json_clean(v) for k, v in a.items()} for a in alerts],
+            'summary': {
+                'open_count': len(open_trades),
+                'critical_alerts': sum(1 for a in alerts if a.get('severity') == 'CRITICAL'),
+                'warn_alerts': sum(1 for a in alerts if a.get('severity') == 'WARN'),
+                'stale_trades': sum(1 for t in open_trades if t.get('stale_flag')),
+                'total_unrealized_pnl': round(total_unreal, 2),
+                'total_open_risk': round(total_risk, 2),
+            },
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _paper_trade_analysis_api():
+    """GET /api/v2/paper-trade-analysis — recent LLM analyses."""
+    try:
+        analyses = _db_query("""
+            SELECT id, paper_trade_id, symbol, strategy_id, model_used,
+                   analysis_type, summary, worked_reasons, failed_reasons,
+                   lessons, suggested_rule_changes, confidence, created_by, created_at
+            FROM paper_trade_analysis
+            ORDER BY created_at DESC LIMIT 30
+        """) or []
+        awaiting = _db_query("""
+            SELECT COUNT(*) as cnt FROM paper_trades
+            WHERE status='closed' AND (post_trade_analyzed IS NOT TRUE)
+        """, fetch="one") or {}
+        return {
+            'ok': True,
+            'analyses': [{k: _json_clean(v) for k, v in a.items()} for a in analyses],
+            'count': len(analyses),
+            'awaiting_analysis': awaiting.get('cnt', 0),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _agent_curation_events_api():
+    """GET /api/v2/agent-curation-events — recent Iris/Aegis/LLM events."""
+    try:
+        events = _db_query("""
+            SELECT id, paper_trade_id, proposal_id, symbol, strategy_id,
+                   agent_name, event_type, event_summary, created_at
+            FROM agent_curation_events
+            ORDER BY created_at DESC LIMIT 50
+        """) or []
+        return {
+            'ok': True,
+            'events': [{k: _json_clean(v) for k, v in e.items()} for e in events],
+            'count': len(events),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _local_llm_status_api():
+    """GET /api/v2/local-llm-status — local LLM availability and run history."""
+    try:
+        # Check Ollama availability
+        ollama_available = False
+        ollama_model = None
+        try:
+            import urllib.request as _ur
+            req = _ur.Request("http://127.0.0.1:11434/api/tags", method="GET")
+            with _ur.urlopen(req, timeout=5) as resp:
+                import json as _j
+                data = _j.loads(resp.read())
+                models = [m.get('name', '') for m in data.get('models', [])]
+                ollama_available = True
+                ollama_model = models[0] if models else None
+        except Exception:
+            pass
+
+        # Last run
+        last_run = _db_query("""
+            SELECT id, model_name, status, run_type, started_at, finished_at,
+                   duration_sec, items_processed, items_failed, last_error
+            FROM local_llm_runs ORDER BY started_at DESC LIMIT 1
+        """, fetch="one")
+
+        # Awaiting analysis
+        awaiting_trades = _db_query("""
+            SELECT COUNT(*) as cnt FROM paper_trades
+            WHERE status='closed' AND (post_trade_analyzed IS NOT TRUE)
+        """, fetch="one") or {}
+
+        awaiting_proposals = _db_query("""
+            SELECT COUNT(*) as cnt FROM paper_trade_proposals
+            WHERE status IN ('EXPIRED', 'REJECTED')
+        """, fetch="one") or {}
+
+        result = {
+            'ok': True,
+            'available': ollama_available,
+            'model': ollama_model,
+            'ollama_host': 'http://localhost:11434',
+            'trades_awaiting_analysis': awaiting_trades.get('cnt', 0),
+            'proposals_awaiting_analysis': awaiting_proposals.get('cnt', 0),
+        }
+        if not ollama_available:
+            result['reason'] = 'Ollama not reachable'
+        if last_run:
+            result['last_run'] = _json_clean(last_run.get('started_at'))
+            result['last_status'] = last_run.get('status')
+            result['items_processed_last_run'] = last_run.get('items_processed', 0)
+        return result
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _strategy_desk():
+    """GET /api/v2/strategy-desk — full strategy desk view with per-strategy signals."""
+    try:
+        # Strategy registry with today's signals + new metadata columns
+        strategies = _db_query("""
+            SELECT sr.strategy_id, sr.strategy_type, sr.display_name,
+                   sr.status, sr.min_win_rate, sr.target_win_rate,
+                   sr.total_signals, sr.trades_taken, sr.active,
+                   sr.objective, sr.description, sr.timeframe,
+                   sr.account_fit, sr.min_price, sr.max_price,
+                   sr.max_float_m, sr.min_rvol, sr.risk_per_trade,
+                   sr.scoring_profile,
+                   COUNT(DISTINCT ss.id) as signals_today,
+                   COUNT(DISTINCT CASE WHEN ss.signal_grade = 'A+' THEN ss.id END) as aplus_today,
+                   COUNT(DISTINCT CASE WHEN ss.signal_grade IN ('A+','A') THEN ss.id END) as high_grade_today
+            FROM strategy_registry sr
+            LEFT JOIN strategy_signals ss ON ss.strategy_id = sr.strategy_id
+                AND ss.fired_at > NOW() - INTERVAL '24 hours'
+                AND ss.status = 'active'
+            WHERE sr.strategy_id IS NOT NULL AND sr.active = true
+            GROUP BY sr.strategy_id, sr.strategy_type, sr.display_name,
+                     sr.status, sr.min_win_rate, sr.target_win_rate,
+                     sr.total_signals, sr.trades_taken, sr.active,
+                     sr.objective, sr.description, sr.timeframe,
+                     sr.account_fit, sr.min_price, sr.max_price,
+                     sr.max_float_m, sr.min_rvol, sr.risk_per_trade,
+                     sr.scoring_profile
+            ORDER BY
+                CASE sr.status
+                    WHEN 'SCALING' THEN 0 WHEN 'VALIDATED' THEN 1
+                    WHEN 'TESTING' THEN 2 WHEN 'UNVALIDATED' THEN 3
+                    WHEN 'WATCHLIST' THEN 4 WHEN 'KILLING_REVIEW' THEN 5
+                    WHEN 'KILLED' THEN 6 ELSE 7
+                END
+        """) or []
+
+        # Performance summary (30d)
+        perf_rows = _db_query("""
+            SELECT strategy_type,
+                   COUNT(*) as trade_count,
+                   COUNT(CASE WHEN verdict='CORRECT' THEN 1 END) as wins,
+                   ROUND(AVG(realized_pnl)::numeric, 2) as avg_pnl,
+                   ROUND(SUM(realized_pnl)::numeric, 2) as total_pnl
+            FROM agent_recommendation_outcomes
+            WHERE scored_at > NOW() - INTERVAL '30 days'
+            AND verdict IN ('CORRECT', 'WRONG')
+            GROUP BY strategy_type
+        """) or []
+        perf_by_strategy = {}
+        for r in perf_rows:
+            sid = r.get('strategy_type')
+            tc = r.get('trade_count', 0) or 0
+            w = r.get('wins', 0) or 0
+            perf_by_strategy[sid] = {
+                'trade_count': tc, 'wins': w,
+                'win_rate': round(w / tc, 3) if tc > 0 else None,
+                'avg_pnl': r.get('avg_pnl'),
+                'total_pnl': r.get('total_pnl'),
+            }
+
+        # Recent lifecycle transitions
+        transitions = _db_query("""
+            SELECT strategy_id, from_status, to_status, reason,
+                   triggered_by, created_at
+            FROM strategy_state_transitions
+            WHERE created_at > NOW() - INTERVAL '30 days'
+            ORDER BY created_at DESC LIMIT 10
+        """) or []
+
+        # Pattern library — full per-strategy
+        pattern_rows = _db_query("""
+            SELECT strategy_id, pattern_name, pattern_type,
+                   win_rate, trade_count, expectancy
+            FROM pattern_library
+            ORDER BY strategy_id, trade_count DESC
+        """) or []
+        patterns_by_strategy = {}
+        for r in pattern_rows:
+            sid = r.get('strategy_id')
+            if sid not in patterns_by_strategy:
+                patterns_by_strategy[sid] = []
+            patterns_by_strategy[sid].append({k: _json_clean(v) for k, v in r.items() if k != 'strategy_id'})
+
+        # Pattern summary counts
+        pattern_summary = {
+            'proven': sum(1 for pp in patterns_by_strategy.values()
+                         for p in pp if p.get('pattern_type') == 'PROVEN'),
+            'killed': sum(1 for pp in patterns_by_strategy.values()
+                         for p in pp if p.get('pattern_type') == 'KILLED'),
+        }
+
+        # Today's signals WITH trade plan data, grouped by strategy
+        all_signals = _db_query("""
+            SELECT ss.id, ss.strategy_id, ss.symbol,
+                   ss.signal_type, ss.signal_grade, ss.signal_score,
+                   ss.price, ss.rvol, ss.float_m, ss.gap_pct,
+                   ss.catalyst, ss.catalyst_verified,
+                   ss.entry_low, ss.entry_high,
+                   ss.stop_loss, ss.target_1, ss.target_2,
+                   ss.risk_reward, ss.shares, ss.dollar_risk,
+                   ss.vix_at_signal, ss.market_regime, ss.sector,
+                   ss.intel_readiness, ss.setup_description,
+                   ss.status, ss.fired_at
+            FROM strategy_signals ss
+            WHERE ss.fired_at > NOW() - INTERVAL '24 hours'
+            AND ss.status IN ('active', 'watch')
+            ORDER BY ss.strategy_id,
+                     CASE ss.signal_grade WHEN 'A+' THEN 0 WHEN 'A' THEN 1
+                         WHEN 'B' THEN 2 ELSE 3 END,
+                     ss.signal_score DESC NULLS LAST
+        """) or []
+
+        signals_by_strategy = {}
+        top_signals = []
+        for r in all_signals:
+            row = {k: _json_clean(v) for k, v in r.items()}
+            sid = row.get('strategy_id')
+            if sid not in signals_by_strategy:
+                signals_by_strategy[sid] = []
+            signals_by_strategy[sid].append(row)
+            top_signals.append(row)
+
+        return {
+            'ok': True,
+            'strategies': [{k: _json_clean(v) for k, v in r.items()} for r in strategies],
+            'signals_by_strategy': signals_by_strategy,
+            'top_signals': top_signals[:20],
+            'performance_30d': perf_by_strategy,
+            'recent_transitions': [{k: _json_clean(v) for k, v in r.items()} for r in transitions],
+            'pattern_summary': pattern_summary,
+            'patterns_by_strategy': patterns_by_strategy,
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _strategy_registry_api():
+    """GET /api/v2/strategy-registry — all strategies with status."""
+    rows = _db_query("""
+        SELECT strategy_type, display_name, active, version,
+               target_accounts, objective, is_income_strategy, is_tactical
+        FROM strategy_registry
+        ORDER BY strategy_type""") or []
+    return {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            "count": len(rows)}
+
+
+def _system_controls_api():
+    """GET /api/v2/system-controls — all halt flags."""
+    rows = _db_query("SELECT key, value, updated_at, updated_by FROM system_controls ORDER BY key") or []
+    return {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+
+
+def _scalp_live_poll():
+    """Return recent scalp signals from ringbuffer file for HTTP polling."""
+    sig_file = PROJECT_ROOT / "data" / "scalp_live_signals.json"
+    if not sig_file.exists():
+        return {"signals": [], "count": 0}
+    try:
+        signals = json.loads(sig_file.read_text())
+        return {"signals": signals[:30], "count": len(signals)}
+    except Exception:
+        return {"signals": [], "count": 0}
+
+
+# ── Indicator Engine Endpoints ─────────────────────────────────────────────
+
+def _indicator_confluence_handler(query: dict) -> tuple:
+    """GET /api/v2/indicators/confluence?symbol=X&profile=swing&force=true"""
+    symbol = (query.get("symbol") or "").upper()
+    if not symbol:
+        return 400, {"ok": False, "error": "symbol required"}
+    profile = query.get("profile", "swing")
+    force = query.get("force", "false").lower() in ("true", "1", "yes")
+
+    # Check cache first (unless force)
+    if not force:
+        cached = _db_query(
+            "SELECT full_result FROM indicator_confluence_cache "
+            "WHERE symbol=%s AND profile=%s AND expires_at > NOW()",
+            (symbol, profile), fetch="one"
+        )
+        if cached and cached.get("full_result"):
+            return 200, {"ok": True, "data": cached["full_result"], "cached": True}
+
+    # Compute fresh
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from indicator_engine import analyze_confluence
+        result = analyze_confluence(symbol, profile)
+        if not result.get("ok"):
+            return 200, {"ok": False, "error": result.get("error", "analysis failed"), "symbol": symbol}
+
+        # UPSERT into cache
+        try:
+            _db_write(
+                """INSERT INTO indicator_confluence_cache
+                   (symbol, profile, confluence_score, confluence_tier,
+                    signals_bullish, signals_bearish, signals_neutral,
+                    strategy_badges, bearish_badges, key_levels,
+                    stop_price, target_price, atr, adx_regime, entry_quality,
+                    full_result, computed_at, expires_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW()+INTERVAL '15 minutes')
+                   ON CONFLICT (symbol, profile) DO UPDATE SET
+                     confluence_score=EXCLUDED.confluence_score,
+                     confluence_tier=EXCLUDED.confluence_tier,
+                     signals_bullish=EXCLUDED.signals_bullish,
+                     signals_bearish=EXCLUDED.signals_bearish,
+                     signals_neutral=EXCLUDED.signals_neutral,
+                     strategy_badges=EXCLUDED.strategy_badges,
+                     bearish_badges=EXCLUDED.bearish_badges,
+                     key_levels=EXCLUDED.key_levels,
+                     stop_price=EXCLUDED.stop_price,
+                     target_price=EXCLUDED.target_price,
+                     atr=EXCLUDED.atr,
+                     adx_regime=EXCLUDED.adx_regime,
+                     entry_quality=EXCLUDED.entry_quality,
+                     full_result=EXCLUDED.full_result,
+                     computed_at=NOW(),
+                     expires_at=NOW()+INTERVAL '15 minutes'""",
+                (symbol, profile,
+                 result.get("confluence_score", 0), result.get("confluence_tier"),
+                 result.get("signals_bullish", 0), result.get("signals_bearish", 0),
+                 result.get("signals_neutral", 0),
+                 result.get("strategy_badges", []), result.get("bearish_badges", []),
+                 json.dumps(result.get("key_levels", {})),
+                 result.get("stop_price"), result.get("target_price"),
+                 result.get("atr"), result.get("adx_regime"), result.get("entry_quality"),
+                 json.dumps(result))
+            )
+
+            # Log signals to history
+            for strat_name, sig_data in result.get("signals", {}).items():
+                _db_write(
+                    "INSERT INTO indicator_signal_history (symbol, strategy_name, signal, value, details) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (symbol, strat_name, sig_data.get("signal", "NEUTRAL"),
+                     sig_data.get("value"), json.dumps(sig_data.get("details", {})))
+                )
+        except Exception as cache_err:
+            print(f"  [indicators] Cache write failed (non-fatal): {cache_err}")
+
+        return 200, {"ok": True, "data": result, "cached": False}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)}
+
+
+def _indicator_batch_handler(body: dict) -> tuple:
+    """POST /api/v2/indicators/batch — batch confluence for up to 20 symbols."""
+    symbols = body.get("symbols", [])
+    profile = body.get("profile", "swing")
+    if not symbols:
+        return 400, {"ok": False, "error": "symbols list required"}
+    symbols = symbols[:20]  # cap at 20
+
+    import sys as _sys, time as _time
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from indicator_engine import analyze_confluence
+
+    results = {}
+    for sym in symbols:
+        try:
+            r = analyze_confluence(sym.upper(), profile)
+            results[sym.upper()] = r
+            # Cache result
+            if r.get("ok"):
+                try:
+                    _db_write(
+                        """INSERT INTO indicator_confluence_cache
+                           (symbol, profile, confluence_score, confluence_tier,
+                            signals_bullish, signals_bearish, signals_neutral,
+                            strategy_badges, bearish_badges, key_levels,
+                            stop_price, target_price, atr, adx_regime, entry_quality,
+                            full_result, computed_at, expires_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW()+INTERVAL '15 minutes')
+                           ON CONFLICT (symbol, profile) DO UPDATE SET
+                             confluence_score=EXCLUDED.confluence_score,
+                             confluence_tier=EXCLUDED.confluence_tier,
+                             signals_bullish=EXCLUDED.signals_bullish,
+                             strategy_badges=EXCLUDED.strategy_badges,
+                             full_result=EXCLUDED.full_result,
+                             computed_at=NOW(), expires_at=NOW()+INTERVAL '15 minutes'""",
+                        (sym.upper(), profile,
+                         r.get("confluence_score", 0), r.get("confluence_tier"),
+                         r.get("signals_bullish", 0), r.get("signals_bearish", 0),
+                         r.get("signals_neutral", 0),
+                         r.get("strategy_badges", []), r.get("bearish_badges", []),
+                         json.dumps(r.get("key_levels", {})),
+                         r.get("stop_price"), r.get("target_price"),
+                         r.get("atr"), r.get("adx_regime"), r.get("entry_quality"),
+                         json.dumps(r))
+                    )
+                except Exception:
+                    pass
+            _time.sleep(0.3)  # avoid yfinance rate limits
+        except Exception as e:
+            results[sym.upper()] = {"ok": False, "error": str(e)}
+
+    return 200, {"ok": True, "results": results, "count": len(results)}
+
+
+def _indicator_history_handler(query: dict) -> tuple:
+    """GET /api/v2/indicators/history?symbol=X&strategy=rsi&days=7"""
+    symbol = (query.get("symbol") or "").upper()
+    if not symbol:
+        return 400, {"ok": False, "error": "symbol required"}
+    strategy = query.get("strategy")
+    days = int(query.get("days", 7))
+
+    if strategy:
+        rows = _db_query(
+            "SELECT strategy_name, signal, value, details, computed_at "
+            "FROM indicator_signal_history "
+            "WHERE symbol=%s AND strategy_name=%s AND computed_at > NOW()-make_interval(days => %s) "
+            "ORDER BY computed_at DESC LIMIT 100",
+            (symbol, strategy, days)
+        )
+    else:
+        rows = _db_query(
+            "SELECT strategy_name, signal, value, details, computed_at "
+            "FROM indicator_signal_history "
+            "WHERE symbol=%s AND computed_at > NOW()-make_interval(days => %s) "
+            "ORDER BY computed_at DESC LIMIT 200",
+            (symbol, days)
+        )
+
+    return 200, {"ok": True, "data": {
+        "symbol": symbol,
+        "history": [{k: _json_clean(v) for k, v in r.items()} for r in (rows or [])]
+    }}
+
+
+def _indicator_levels_handler(query: dict) -> tuple:
+    """GET /api/v2/indicators/levels?symbol=X — key price levels for dashboard."""
+    symbol = (query.get("symbol") or "").upper()
+    if not symbol:
+        return 400, {"ok": False, "error": "symbol required"}
+
+    # Try cache first
+    cached = _db_query(
+        "SELECT key_levels, stop_price, target_price FROM indicator_confluence_cache "
+        "WHERE symbol=%s AND expires_at > NOW() ORDER BY computed_at DESC LIMIT 1",
+        (symbol,), fetch="one"
+    )
+
+    levels_list = []
+
+    if cached and cached.get("key_levels"):
+        kl = cached["key_levels"]
+        if isinstance(kl, str):
+            kl = json.loads(kl)
+
+        # Fibonacci levels
+        fib = kl.get("fibonacci", {})
+        for key, price in fib.items():
+            if price:
+                pct = key.replace("ret_", "").replace("ext_", "Ext ")
+                levels_list.append({"type": f"fib_{pct}", "price": float(price),
+                                    "label": f"Fib {float(pct)*100:.1f}%" if "ext" not in key else f"Ext {pct}",
+                                    "color": "#F59E0B"})
+
+        # Pivot levels
+        for pivot_type in ("pivots_daily", "pivots_weekly", "pivots_fibonacci"):
+            pdata = kl.get(pivot_type, {})
+            prefix = {"pivots_daily": "D", "pivots_weekly": "W", "pivots_fibonacci": "F"}.get(pivot_type, "")
+            for key, price in pdata.items():
+                if price and key != "nearest":
+                    color = "#EF4444" if key.startswith("r") else "#10B981" if key.startswith("s") else "#6B7280"
+                    levels_list.append({"type": f"pivot_{prefix}_{key}", "price": float(price),
+                                        "label": f"{prefix}{key.upper()}", "color": color})
+
+        # Bollinger
+        bb = kl.get("bollinger", {})
+        if bb.get("upper"):
+            levels_list.append({"type": "bb_upper", "price": float(bb["upper"]), "label": "BB Upper", "color": "#3B82F6"})
+        if bb.get("lower"):
+            levels_list.append({"type": "bb_lower", "price": float(bb["lower"]), "label": "BB Lower", "color": "#3B82F6"})
+        if bb.get("middle"):
+            levels_list.append({"type": "bb_middle", "price": float(bb["middle"]), "label": "BB Mid", "color": "#60A5FA"})
+
+        # Stop / Target
+        if cached.get("stop_price"):
+            levels_list.append({"type": "stop", "price": float(cached["stop_price"]), "label": "Stop", "color": "#EF4444"})
+        if cached.get("target_price"):
+            levels_list.append({"type": "target", "price": float(cached["target_price"]), "label": "Target", "color": "#10B981"})
+    else:
+        # Compute fresh
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from indicator_engine import analyze_confluence
+            result = analyze_confluence(symbol, "swing")
+            if result.get("ok"):
+                # Recursively call with cache now populated
+                return _indicator_levels_handler(query)
+        except Exception:
+            pass
+
+    return 200, {"ok": True, "symbol": symbol, "levels": levels_list}
+
+
+# ── Prospects Endpoint ─────────────────────────────────────────────────────
+
+def _prospects_handler(query: dict) -> tuple:
+    """GET /api/v2/prospects?type=scalp&min_price=2&max_price=50&min_score=20&limit=50"""
+    ptype = (query.get("type") or "all").lower()
+    min_price = float(query.get("min_price") or 0) if query.get("min_price") else None
+    max_price = float(query.get("max_price") or 9999) if query.get("max_price") else None
+    min_score = int(query.get("min_score") or 0)
+    limit = min(int(query.get("limit") or 50), 200)
+
+    sql = """
+        WITH latest_scans AS (
+            SELECT DISTINCT ON (symbol)
+                symbol, score, decision, price, rvol, float_m,
+                gap_pct, change_pct, sector, industry,
+                social_reddit, social_stocktwits, social_score,
+                social_sentiment, mention_count, social_sources,
+                source, screener_label, scanned_at,
+                catalyst, catalyst_verified, catalyst_confidence,
+                disqualified
+            FROM trade_ai_scans
+            WHERE scanned_at > NOW() - INTERVAL '3 days'
+            AND (disqualified = false OR disqualified IS NULL)
+            ORDER BY symbol, scanned_at DESC
+        ),
+        proposals AS (
+            SELECT symbol, action, strategy_type as prop_strategy,
+                   proposed_by, confidence, status
+            FROM watchlist_proposals
+            WHERE status = 'pending'
+        ),
+        confluence AS (
+            SELECT DISTINCT ON (symbol)
+                symbol, confluence_tier, confluence_score,
+                strategy_badges, stop_price as conf_stop,
+                target_price as conf_target, entry_quality, atr
+            FROM indicator_confluence_cache
+            WHERE profile = 'scalp'
+            ORDER BY symbol, computed_at DESC
+        )
+        SELECT
+            s.symbol, s.score, s.decision, s.price, s.rvol, s.float_m,
+            s.gap_pct, s.change_pct, s.sector, s.industry,
+            s.social_reddit, s.social_stocktwits, s.mention_count,
+            s.catalyst, s.catalyst_verified, s.scanned_at,
+            s.source, s.screener_label,
+            ARRAY_REMOVE(ARRAY[
+                CASE WHEN s.source = 'screener' OR s.source LIKE '%%screener%%' THEN 'screener' END,
+                CASE WHEN s.source = 'social' OR s.source LIKE '%%social%%'
+                     OR COALESCE(s.social_reddit,0) > 0 OR COALESCE(s.social_stocktwits,0) > 0
+                     THEN 'social' END,
+                CASE WHEN p.symbol IS NOT NULL THEN 'agent' END,
+                CASE WHEN w.in_ai_watchlist = true OR w.in_personal_watchlist = true THEN 'watchlist' END
+            ], NULL) AS pipeline_sources,
+            w.strategy_type, w.ideal_entry, w.stop_loss, w.target_price, w.risk_reward,
+            w.in_portfolio, w.in_ai_watchlist,
+            c.confluence_tier, c.confluence_score, c.strategy_badges,
+            c.conf_stop, c.conf_target, c.entry_quality, c.atr,
+            p.action AS proposal_action, p.proposed_by AS proposal_agent,
+            p.confidence AS proposal_confidence
+        FROM latest_scans s
+        LEFT JOIN watchlist_symbol_master w ON s.symbol = w.symbol
+        LEFT JOIN confluence c ON s.symbol = c.symbol
+        LEFT JOIN proposals p ON s.symbol = p.symbol
+        WHERE s.price IS NOT NULL
+        ORDER BY s.score DESC, c.confluence_score DESC NULLS LAST
+    """
+    rows = _db_query(sql) or []
+
+    # Apply type/price/score filters in Python
+    filtered = []
+    for r in rows:
+        d = {k: _json_clean(v) for k, v in r.items()}
+        price = float(d.get("price") or 0)
+        score = int(d.get("score") or 0)
+
+        if score < min_score:
+            continue
+        if min_price is not None and price < min_price:
+            continue
+        if max_price is not None and price > max_price:
+            continue
+
+        if ptype == "scalp" and (price < 2 or price > 50 or (d.get("float_m") and float(d["float_m"]) > 500)):
+            continue
+        elif ptype == "swing" and (price < 10 or price > 200):
+            continue
+        elif ptype == "income" and d.get("strategy_type") not in (None, "income", "growth_etf", "income_etf"):
+            continue
+        elif ptype == "position" and (price < 10 or price > 500):
+            continue
+
+        # Serialize dates
+        for k in ("scanned_at",):
+            if d.get(k):
+                d[k] = str(d[k])
+        filtered.append(d)
+        if len(filtered) >= limit:
+            break
+
+    # Get latest scan timestamp for freshness
+    last_scan_info = _db_query("""
+        SELECT scanned_at, run_label
+        FROM trade_ai_scans
+        WHERE (scanned_at AT TIME ZONE 'America/New_York')::date =
+              (NOW() AT TIME ZONE 'America/New_York')::date
+        ORDER BY scanned_at DESC LIMIT 1
+    """, fetch="one")
+
+    if not last_scan_info:
+        last_scan_info = _db_query("""
+            SELECT scanned_at, run_label
+            FROM trade_ai_scans
+            ORDER BY scanned_at DESC LIMIT 1
+        """, fetch="one")
+        scan_freshness_label = "stale_no_scan_today"
+    else:
+        scan_freshness_label = "fresh"
+
+    last_scan = str(last_scan_info.get('scanned_at')) if last_scan_info else None
+    run_label_val = last_scan_info.get('run_label') if last_scan_info else None
+
+    # Compute data age and run health
+    is_stale = scan_freshness_label != "fresh"
+    stale_reason = None
+    data_age_minutes = None
+    symbols_scanned = 0
+    go_count = 0
+    wait_count = 0
+    run_health_status = None
+    run_health_reason_codes = []
+
+    if last_scan:
+        try:
+            from datetime import datetime as _dt
+            scan_ts = _dt.fromisoformat(str(last_scan).replace("+00:00", "+00:00"))
+            data_age_minutes = int((datetime.now(timezone.utc) - scan_ts.astimezone(timezone.utc)).total_seconds() / 60)
+        except Exception:
+            pass
+
+    if is_stale:
+        stale_reason = "NO_CURRENT_DAY_SCAN"
+
+    # Get today's scan stats
+    _today_stats = _db_query("""
+        SELECT COUNT(DISTINCT symbol) AS symbols,
+               COUNT(CASE WHEN decision='GO' THEN 1 END) AS go_cnt,
+               COUNT(CASE WHEN decision='WAIT' THEN 1 END) AS wait_cnt
+        FROM trade_ai_scans
+        WHERE (scanned_at AT TIME ZONE 'America/New_York')::date =
+              (NOW() AT TIME ZONE 'America/New_York')::date
+    """, fetch="one")
+    if _today_stats:
+        symbols_scanned = int(_today_stats.get("symbols") or 0)
+        go_count = int(_today_stats.get("go_cnt") or 0)
+        wait_count = int(_today_stats.get("wait_cnt") or 0)
+        if symbols_scanned < 40 and symbols_scanned > 0:
+            is_stale = True
+            stale_reason = "RUN_UNDERFILLED"
+
+    # Get run health from screener_run_health
+    try:
+        _health = _db_query("""
+            SELECT status, reason_codes FROM screener_run_health
+            WHERE run_date = CURRENT_DATE
+            ORDER BY finished_at DESC NULLS LAST LIMIT 1
+        """, fetch="one")
+        if _health:
+            run_health_status = _health.get("status")
+            run_health_reason_codes = _health.get("reason_codes") or []
+    except Exception:
+        pass
+
+    return 200, {
+        "ok": True, "data": filtered, "count": len(filtered), "type": ptype,
+        "last_scan": last_scan,
+        "latest_scan": last_scan,
+        "latest_scan_date": str(datetime.now(timezone.utc).date()),
+        "scan_date": str(datetime.now(timezone.utc).date()),
+        "run_label": run_label_val,
+        "scan_freshness_label": scan_freshness_label,
+        "data_age_minutes": data_age_minutes,
+        "is_stale": is_stale,
+        "stale_reason": stale_reason,
+        "symbols_scanned": symbols_scanned,
+        "go_count": go_count,
+        "wait_count": wait_count,
+        "run_health_status": run_health_status,
+        "run_health_reason_codes": run_health_reason_codes,
+    }
+
+
+def _prospects_add_to_watchlist(body: dict) -> tuple:
+    """POST /api/v2/prospects/add-to-watchlist"""
+    symbol = (body.get("symbol") or "").upper()
+    strategy_type = body.get("strategy_type", "scalp")
+    source = body.get("source", "prospects")
+    if not symbol:
+        return 400, {"ok": False, "error": "symbol required"}
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # Insert into watchlist_items if not exists
+        cur.execute("""
+            INSERT INTO watchlist_items (symbol, source, status)
+            SELECT %s, %s, 'active'
+            WHERE NOT EXISTS (SELECT 1 FROM watchlist_items WHERE symbol = %s)
+        """, [symbol, source, symbol])
+        # Update or insert into watchlist_symbol_master
+        cur.execute("""
+            INSERT INTO watchlist_symbol_master (symbol, strategy_type, sources, in_ai_watchlist, updated_at)
+            VALUES (%s, %s, ARRAY[%s], true, NOW())
+            ON CONFLICT (symbol) DO UPDATE SET
+                strategy_type = COALESCE(NULLIF(watchlist_symbol_master.strategy_type, ''), EXCLUDED.strategy_type),
+                in_ai_watchlist = true,
+                sources = array_cat(watchlist_symbol_master.sources, ARRAY[%s]),
+                updated_at = NOW()
+        """, [symbol, strategy_type, source, source])
+        conn.commit()
+        conn.close()
+        return 200, {"ok": True, "data": {"symbol": symbol, "strategy_type": strategy_type, "added": True}}
+    except Exception as e:
+        return 500, {"ok": False, "error": str(e)}
+
+
+def _intelligence_entities():
+    """GET /api/v2/intelligence-entities — browse all intelligence entity records."""
+    rows = _db_query("""
+        SELECT entity_id, entity_type, entity_subtype, display_name,
+               intelligence_score, intelligence_grade,
+               iris_freshness, iris_coverage, iris_notes, iris_action_needed,
+               signal_count, pipeline_sources,
+               current_price, rvol, confluence_tier, confluence_score,
+               screener_decision, screener_score, social_mentions,
+               last_enriched, last_agent_analysis, last_agent_verdict,
+               rag_item_count,
+               john_risk_level, john_impact, john_action_needed,
+               thresholds_updated, strategy_type, sector
+        FROM intelligence_entities
+        WHERE active = true
+        ORDER BY intelligence_score DESC NULLS LAST
+        LIMIT 200
+    """) or []
+
+    stats = _db_query("""
+        SELECT
+            COUNT(*) as total,
+            COUNT(CASE WHEN entity_type='market' THEN 1 END) as market,
+            COUNT(CASE WHEN entity_type='subject' THEN 1 END) as subject,
+            COUNT(CASE WHEN iris_freshness='CRITICAL' THEN 1 END) as critical,
+            COUNT(CASE WHEN iris_freshness='STALE' THEN 1 END) as stale,
+            COUNT(CASE WHEN iris_coverage IN ('THIN','EMPTY') THEN 1 END) as thin,
+            ROUND(AVG(intelligence_score)::numeric, 1) as avg_score
+        FROM intelligence_entities WHERE active = true
+    """, fetch="one") or {}
+
+    return {
+        "entities": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "stats": {k: _json_clean(v) for k, v in stats.items()} if stats else {},
+        "count": len(rows),
+    }
+
+
+def _pipeline_health():
+    """GET /api/v2/pipeline-health — pipeline execution status last 24hr."""
+    runs = _db_query("""SELECT script_name, status, rows_processed,
+        ROUND(duration_sec::numeric,1) as duration_sec, error_message, run_type, triggered_by, started_at, completed_at
+        FROM pipeline_runs WHERE started_at > NOW()-INTERVAL '24 hours' ORDER BY started_at DESC LIMIT 100""") or []
+    actions = _db_query("""SELECT action_type, target, reason, success, result, created_at
+        FROM watchdog_actions WHERE created_at > NOW()-INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 50""") or []
+    stats = _db_query("""SELECT COUNT(*) as total, COUNT(CASE WHEN status='success' THEN 1 END) as success,
+        COUNT(CASE WHEN status='failed' THEN 1 END) as failed, COUNT(CASE WHEN run_type='retry' THEN 1 END) as retries
+        FROM pipeline_runs WHERE started_at > NOW()-INTERVAL '24 hours'""", fetch="one") or {}
+    schedule = _db_query("""SELECT ps.script_name, ps.display_name, ps.critical, ps.expected_hour, ps.expected_min,
+        (SELECT status FROM pipeline_runs WHERE script_name=ps.script_name ORDER BY started_at DESC LIMIT 1) as last_status,
+        (SELECT started_at FROM pipeline_runs WHERE script_name=ps.script_name ORDER BY started_at DESC LIMIT 1) as last_run
+        FROM pipeline_schedule ps WHERE ps.active=true ORDER BY ps.expected_hour, ps.expected_min""") or []
+    return {
+        "stats": {k: _json_clean(v) for k, v in stats.items()} if stats else {},
+        "runs": [{k: _json_clean(v) for k, v in r.items()} for r in runs],
+        "watchdog_actions": [{k: _json_clean(v) for k, v in r.items()} for r in actions],
+        "schedule": [{k: _json_clean(v) for k, v in r.items()} for r in schedule],
+    }
+
+
+def _pipeline_run_health():
+    """GET /api/v2/pipeline-run-health — comprehensive pipeline run health status."""
+    # Latest run from screener_run_health
+    latest_run = {}
+    try:
+        _rh = _db_query("""
+            SELECT run_label, run_date, status, symbols_scanned, expected_min_symbols,
+                   go_count, wait_count, no_go_count, reason_codes, finished_at
+            FROM screener_run_health
+            WHERE run_date = CURRENT_DATE
+            ORDER BY finished_at DESC NULLS LAST LIMIT 1
+        """, fetch="one")
+        if _rh:
+            data_age = None
+            if _rh.get("finished_at"):
+                try:
+                    data_age = int((datetime.now(timezone.utc) - _rh["finished_at"].astimezone(timezone.utc)).total_seconds() / 60)
+                except Exception:
+                    pass
+            latest_run = {
+                "run_label": _rh.get("run_label"),
+                "run_date": str(_rh.get("run_date")),
+                "status": _rh.get("status"),
+                "symbols_scanned": _rh.get("symbols_scanned"),
+                "expected_min_symbols": _rh.get("expected_min_symbols"),
+                "go_count": _rh.get("go_count"),
+                "wait_count": _rh.get("wait_count"),
+                "no_go_count": _rh.get("no_go_count"),
+                "reason_codes": _rh.get("reason_codes") or [],
+                "data_age_minutes": data_age,
+                "latest_scan": str(_rh.get("finished_at")) if _rh.get("finished_at") else None,
+            }
+    except Exception:
+        pass
+
+    # If no run health record, fall back to trade_ai_scans
+    if not latest_run:
+        _scan = _db_query("""
+            SELECT run_label, MAX(scanned_at) AS latest,
+                   COUNT(DISTINCT symbol) AS symbols,
+                   COUNT(CASE WHEN decision='GO' THEN 1 END) AS go_cnt,
+                   COUNT(CASE WHEN decision='WAIT' THEN 1 END) AS wait_cnt
+            FROM trade_ai_scans
+            WHERE (scanned_at AT TIME ZONE 'America/New_York')::date =
+                  (NOW() AT TIME ZONE 'America/New_York')::date
+            GROUP BY run_label ORDER BY latest DESC LIMIT 1
+        """, fetch="one")
+        if _scan:
+            latest_run = {
+                "run_label": _scan.get("run_label"),
+                "run_date": str(datetime.now(timezone.utc).date()),
+                "status": "RUN_HEALTHY" if (_scan.get("symbols") or 0) >= 40 else "RUN_UNDERFILLED",
+                "symbols_scanned": _scan.get("symbols") or 0,
+                "expected_min_symbols": 40,
+                "go_count": _scan.get("go_cnt") or 0,
+                "wait_count": _scan.get("wait_cnt") or 0,
+            }
+
+    # Prospects
+    _prospects_info = _db_query("""
+        SELECT COUNT(DISTINCT symbol) AS cnt, MAX(scanned_at) AS last_scan
+        FROM trade_ai_scans
+        WHERE (scanned_at AT TIME ZONE 'America/New_York')::date =
+              (NOW() AT TIME ZONE 'America/New_York')::date
+    """, fetch="one") or {}
+    _is_stale = (_prospects_info.get("cnt") or 0) == 0
+    prospects = {
+        "count": _prospects_info.get("cnt") or 0,
+        "is_stale": _is_stale,
+        "last_scan": str(_prospects_info.get("last_scan")) if _prospects_info.get("last_scan") else None,
+    }
+
+    # Strategy signals
+    _signals = _db_query("""
+        SELECT strategy_id, COUNT(*) AS cnt
+        FROM strategy_signals
+        WHERE fired_at::date = CURRENT_DATE
+        GROUP BY strategy_id
+    """) or []
+    strategy_signals = {
+        "today_count": sum(r.get("cnt", 0) for r in _signals),
+        "by_strategy": {r["strategy_id"]: r["cnt"] for r in _signals},
+    }
+
+    # Trade plans
+    _plans = _db_query("""
+        SELECT COUNT(*) AS proposal_worthy,
+               COUNT(CASE WHEN entry_high IS NOT NULL AND stop_loss IS NOT NULL
+                          AND target_1 IS NOT NULL AND shares IS NOT NULL THEN 1 END) AS planned
+        FROM strategy_signals
+        WHERE fired_at::date = CURRENT_DATE
+        AND (signal_grade IN ('A','A+') OR signal_score >= 40)
+    """, fetch="one") or {}
+    pw = int(_plans.get("proposal_worthy") or 0)
+    pl = int(_plans.get("planned") or 0)
+    trade_plans = {
+        "proposal_worthy": pw,
+        "planned": pl,
+        "coverage_pct": round(pl / pw * 100, 1) if pw > 0 else 0,
+    }
+
+    # Paper proposals
+    _pp = _db_query("""
+        SELECT COUNT(CASE WHEN status='pending' THEN 1 END) AS pending,
+               COUNT(CASE WHEN status='eligible' THEN 1 END) AS eligible
+        FROM paper_proposals
+        WHERE created_at::date = CURRENT_DATE
+    """, fetch="one") or {}
+
+    paper_proposals = {
+        "pending": int(_pp.get("pending") or 0),
+        "eligible_not_created": 0,
+        "blocked_reasons": [],
+    }
+    if not latest_run.get("status") or latest_run.get("status") in ("RUN_UNDERFILLED", "RUN_FAILED"):
+        paper_proposals["blocked_reasons"].append(f"Latest run is {latest_run.get('status', 'UNKNOWN')}")
+    if trade_plans["coverage_pct"] < 50 and pw > 0:
+        paper_proposals["blocked_reasons"].append(f"Trade plan coverage only {trade_plans['coverage_pct']}%")
+
+    # Auto-proposal diagnostics
+    auto_proposals = {}
+    try:
+        _ap = _db_query("""
+            SELECT run_label, status, signals_checked, proposals_created, proposals_skipped,
+                   duplicates_skipped, risk_rejected, quality_rejected, source_cap_rejected,
+                   sizing_adjusted, reason_summary, finished_at
+            FROM auto_proposal_runs
+            WHERE run_date = CURRENT_DATE
+            ORDER BY finished_at DESC NULLS LAST LIMIT 1
+        """, fetch="one")
+        if _ap:
+            auto_proposals = {k: _json_clean(v) for k, v in _ap.items()}
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "latest_run": {k: _json_clean(v) for k, v in latest_run.items()} if latest_run else None,
+        "prospects": prospects,
+        "strategy_signals": strategy_signals,
+        "trade_plans": trade_plans,
+        "paper_proposals": paper_proposals,
+        "auto_proposals": auto_proposals if auto_proposals else None,
+    }
+
+
+def _auto_proposal_diagnostics():
+    """GET /api/v2/auto-proposal-diagnostics — latest auto-proposal run details."""
+    runs = _db_query("""
+        SELECT id, run_label, run_date, status, signals_checked, proposals_created,
+               proposals_skipped, duplicates_skipped, risk_rejected, quality_rejected,
+               source_cap_rejected, sizing_adjusted, reason_summary, finished_at
+        FROM auto_proposal_runs
+        WHERE run_date >= CURRENT_DATE - INTERVAL '7 days'
+        ORDER BY finished_at DESC NULLS LAST LIMIT 10
+    """) or []
+    decisions = _db_query("""
+        SELECT symbol, strategy_id, decision, reason_codes, proposal_id,
+               original_shares, adjusted_shares, risk_gate_result, risk_gate_codes
+        FROM auto_proposal_decisions
+        WHERE created_at >= CURRENT_DATE
+        ORDER BY created_at DESC LIMIT 50
+    """) or []
+    summary = {}
+    for d in decisions:
+        dec = d.get("decision", "UNKNOWN")
+        summary[dec] = summary.get(dec, 0) + 1
+    return {
+        "ok": True,
+        "runs": [{k: _json_clean(v) for k, v in r.items()} for r in runs],
+        "decisions": [{k: _json_clean(v) for k, v in d.items()} for d in decisions],
+        "summary": summary,
+    }
+
+
+def _agent_calibration():
+    """GET /api/v2/agent-calibration — agent accuracy and source performance."""
+    calibration = _db_query("""
+        SELECT agent_name, strategy_type, window_days,
+               accuracy_pct, correct_count, wrong_count,
+               total_recommendations, trending, avg_pnl_pct, total_pnl,
+               recent_accuracy_30d, computed_at
+        FROM agent_calibration
+        ORDER BY agent_name, window_days, strategy_type NULLS FIRST
+    """) or []
+
+    outcomes = _db_query("""
+        SELECT agent_name, symbol, recommendation, verdict, verdict_score,
+               pnl_pct, recommendation_date, exit_date, delta_days
+        FROM agent_recommendation_outcomes
+        ORDER BY scored_at DESC LIMIT 30
+    """) or []
+
+    sources = _db_query("""
+        SELECT source_type, source_id, win_rate, scar_factor,
+               trades_matched, total_signals, avg_pnl_pct
+        FROM source_performance ORDER BY source_type, win_rate DESC NULLS LAST LIMIT 50
+    """) or []
+
+    total_outcomes = (_db_query("SELECT COUNT(*) as cnt FROM agent_recommendation_outcomes", fetch="one") or {}).get("cnt", 0)
+    total_trades = (_db_query("SELECT COUNT(*) as cnt FROM trade_closed", fetch="one") or {}).get("cnt", 0)
+
+    return {
+        "has_data": len(calibration) > 0,
+        "total_outcomes_scored": total_outcomes,
+        "total_trades": total_trades,
+        "calibration": [{k: _json_clean(v) for k, v in r.items()} for r in calibration],
+        "recent_outcomes": [{k: _json_clean(v) for k, v in r.items()} for r in outcomes],
+        "source_performance": [{k: _json_clean(v) for k, v in r.items()} for r in sources],
+    }
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -5312,12 +8160,20 @@ ROUTES = {
     "/api/v2/iris/status": lambda: _iris_status(),
     "/api/v2/iris/hygiene-status": lambda: _iris_hygiene_status(),
     "/api/v2/iris/library-status": lambda: _iris_library_status(),
+    "/api/v2/intelligence-entities": lambda: _intelligence_entities(),
+    "/api/v2/agent-calibration": lambda: _agent_calibration(),
+    "/api/v2/pipeline-health": lambda: _pipeline_health(),
+    "/api/v2/pipeline-run-health": lambda: _pipeline_run_health(),
+    "/api/v2/auto-proposal-diagnostics": lambda: _auto_proposal_diagnostics(),
     "/api/v2/iris/stale-symbols": lambda: _iris_stale_symbols(),
     "/api/v2/iris/content-gaps": lambda: _iris_content_gaps(),
     "/api/v2/iris/duplicates": lambda: _iris_duplicates(),
+    "/api/v2/iris/failures": lambda: _iris_failures(),
+    "/api/v2/iris/integrity": lambda: _iris_integrity(),
     "/api/v2/proposals-with-pnl": lambda: _proposals_with_pnl(),
     "/api/v2/alex-hygiene/history": lambda: {"runs": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, decision_type, tier, question, agreement_score, elapsed_seconds, bypass_event, ran_at, LEFT(synthesis,500) as synthesis_preview FROM alex_hygiene_log ORDER BY ran_at DESC LIMIT 10") or [])]},
     "/api/v2/agent-pipeline": lambda: _agent_pipeline(),
+    "/api/v2/intelligence-whiteboard": lambda: _intelligence_whiteboard(),
     "/api/v2/tax-situation": lambda: _tax_situation(),
     "/api/v2/trust-transfers": lambda: {"transfers": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, event_date, amount, description, trust_type, five_year_lookback_start, protected_amount, trust_notes, created_at FROM tax_events WHERE event_type='trust_transfer' ORDER BY event_date DESC") or [])]},
     "/api/v2/sec/form4": lambda: {"filings": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT id, symbol, filer_name, filer_relation, transaction_type, shares, price, total_value, filing_date, sec_url, quality_score, strategy_tags, agent_tags, created_at FROM sec_form4 ORDER BY filing_date DESC LIMIT 50") or [])]},
@@ -5359,6 +8215,7 @@ ROUTES = {
     "/api/v2/strategy-rules": lambda: _strategy_rules_list(),
     "/api/v2/income-dashboard": lambda: _income_dashboard(),
     "/api/v2/tasks": lambda: _tasks_unified(),
+    "/api/v2/tasks/pending": lambda: _tasks_pending(),
     "/api/v2/tasks/history": lambda: _tasks_history(),
     "/api/v2/aegis/outcomes": lambda: _aegis_outcomes(),
     "/api/v2/ops/last-import": lambda: _last_import(),
@@ -5370,6 +8227,8 @@ ROUTES = {
     "/api/v2/stop-confirmations": lambda: _stop_confirmations_list(),
     "/api/v2/ops/summary": ops_summary,
     "/api/v2/trade-ai": trade_ai,
+    "/api/v2/trade-ai/critique": _tradeai_critique_status,
+    "/api/v2/trade-ai/history": _tradeai_history,
     "/api/v2/forecast": lambda: _forecast(),
     "/api/v2/dividends": dividends,
     "/api/v2/retirement": retirement,
@@ -5382,11 +8241,25 @@ ROUTES = {
     "/api/v2/agents/performance-history": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 20") or [])]},
     "/api/v2/attribution": attribution,
     "/api/v2/journal": journal,
+    "/api/v2/journal/unannotated": _journal_unannotated,
+    "/api/v2/journal/previously-traded": _journal_previously_traded,
+    "/api/v2/journal/backtest-summary": _journal_backtest_summary,
+    "/api/v2/journal/backtest-analytics": _journal_backtest_analytics,
     "/api/v2/journal/analytics": journal_analytics,
+    "/api/v2/journal/report": _journal_report,
+    "/api/v2/journal/agent-coaching": _journal_agent_coaching,
     "/api/v2/risk": risk,
     "/api/v2/tax-lots": tax_lots,
     "/api/v2/correlation": correlation,
     "/api/v2/rebalance": rebalance,
+    "/api/v2/scalp/live": lambda: _scalp_live_poll(),
+    "/api/v2/strategy-desk": lambda: _strategy_desk(),
+    "/api/v2/open-trade-monitor": lambda: _open_trade_monitor_api(),
+    "/api/v2/paper-trade-analysis": lambda: _paper_trade_analysis_api(),
+    "/api/v2/agent-curation-events": lambda: _agent_curation_events_api(),
+    "/api/v2/local-llm-status": lambda: _local_llm_status_api(),
+    "/api/v2/strategy-registry": lambda: _strategy_registry_api(),
+    "/api/v2/system-controls": lambda: _system_controls_api(),
 }
 
 
@@ -5397,9 +8270,30 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/journal/agent-coaching/run":
+            try:
+                import subprocess as _sp
+                _sp.Popen(
+                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/journal_agent_coach.py")],
+                    cwd=str(PROJECT_ROOT), stdout=open(str(PROJECT_ROOT / "logs/agent_coach.log"), "w"),
+                    stderr=_sp.STDOUT
+                )
+                return 200, {"ok": True, "data": {"status": "started"}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/journal/review":
             try:
                 return journal_review_write(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/bulk-suggest":
+            try:
+                return 200, {"ok": True, "data": _journal_bulk_suggest()}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if base_path == "/api/v2/journal/reminder":
+            try:
+                return 200, {"ok": True, "data": _journal_reminder()}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/alex-hygiene/classify":
@@ -5700,6 +8594,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return _wl_submit(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
+        # POST /api/v2/watchlist/<SYMBOL>/requeue — re-queue analysis for LLM failures
+        if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/requeue"):
+            sym = base_path[len("/api/v2/watchlist/"):-len("/requeue")].strip("/").upper()
+            if sym:
+                try:
+                    queued = 0
+                    for agent in ['maria_research', 'steph_allocation', 'risk_agent']:
+                        _db_query(
+                            """INSERT INTO watchlist_agent_jobs
+                                (symbol, requested_agent, task_type, priority, status, submitted_from)
+                               VALUES (%s, %s, 'requeue_llm_error', 'high', 'pending', 'watchlist_requeue')
+                               ON CONFLICT DO NOTHING""",
+                            (sym, agent), fetch="none"
+                        )
+                        queued += 1
+                    return 200, {"ok": True, "symbol": sym, "queued": queued}
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/rewrite-note":
             try:
                 text = (body or {}).get("text", "").strip()
@@ -5988,7 +8900,158 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return stopped_out_watch_update_verdict(body or {})
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
-        return None
+
+        # Escalate symbol to Alex from watchlist panel
+        if base_path.startswith("/api/v2/watchlist/") and base_path.endswith("/escalate-alex"):
+            sym = base_path.replace("/api/v2/watchlist/", "").replace("/escalate-alex", "").strip("/").upper()
+            if not sym:
+                return 400, {"ok": False, "error": "symbol required"}
+            try:
+                b = body or {}
+                import uuid as _uuid
+                _db_write("""INSERT INTO watchlist_agent_jobs
+                    (id, symbol, requested_agent, request_type, priority, status,
+                     submitted_from, payload, created_at)
+                    VALUES (%s, %s, 'alex', 'user_escalation', 1, 'queued',
+                            'watchlist_panel', %s, NOW())""",
+                    (str(_uuid.uuid4()), sym, json.dumps({
+                        "reason": b.get("reason", "user_interest"),
+                        "note": b.get("note", ""),
+                        "source": "watchlist_panel"
+                    })))
+                try:
+                    import sys as _sys2
+                    _sys2.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                    from telegram_alert import send_telegram
+                    send_telegram(f"\u2b50 *{sym}* escalated to Alex from watchlist\nReason: {b.get('note', 'User flagged as interesting')}")
+                except Exception:
+                    pass
+                return 200, {"ok": True, "symbol": sym, "queued": True}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # Trigger manual debate for a symbol
+        if base_path == "/api/v2/debates/trigger":
+            try:
+                b = body or {}
+                sym = (b.get("symbol") or "").upper()
+                if not sym:
+                    return 400, {"ok": False, "error": "symbol required"}
+                _db_write("""INSERT INTO agent_debate_log
+                    (symbol, trigger_source, status, created_at)
+                    VALUES (%s, 'manual_watchlist', 'pending', NOW())""",
+                    (sym,))
+                return 200, {"ok": True, "symbol": sym, "status": "pending"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/trade-ai/run":
+            try:
+                import subprocess as _sp
+                _sp.Popen(
+                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/continuous_runner.py"), "--test"],
+                    cwd=str(PROJECT_ROOT), stdout=open(str(PROJECT_ROOT / "logs/tradeai_manual.log"), "w"),
+                    stderr=_sp.STDOUT
+                )
+                return 200, {"ok": True, "data": {"status": "started", "mode": "live_cycle"}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/trade-ai/critique/run":
+            try:
+                import subprocess as _sp
+                _sp.Popen(
+                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/trade_ai_orchestrator.py"),
+                     "--run-label", "0900", "--date", __import__('datetime').datetime.now().strftime("%Y-%m-%d"),
+                     "--skip-market-check", "--no-alerts"],
+                    cwd=str(PROJECT_ROOT), stdout=open(str(PROJECT_ROOT / "logs/critic_manual.log"), "w"),
+                    stderr=_sp.STDOUT
+                )
+                return 200, {"ok": True, "data": {"status": "started", "mode": "full_pipeline_with_critic"}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if base_path == "/api/v2/indicators/batch":
+            try:
+                return _indicator_batch_handler(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # from-signal proposal creation
+        if base_path == "/api/v2/paper-proposals/from-signal":
+            try:
+                body = body or {}
+                signal_id = int(body.get('signal_id', 0))
+                if not signal_id:
+                    return 400, {"ok": False, "error": "signal_id required"}
+                # Duplicate check
+                dup = _db_query("""
+                    SELECT id, status FROM paper_trade_proposals
+                    WHERE source_signal_id = %s
+                    AND status IN ('PENDING','APPROVED','MODIFIED','BROKER_SUBMITTED')
+                    ORDER BY created_at DESC LIMIT 1
+                """, [signal_id], fetch="one")
+                if dup:
+                    return 400, {"ok": False, "error": "Proposal already exists for this signal",
+                                 "proposal_id": dup.get('id'), "status": dup.get('status')}
+                sig = _db_query("SELECT * FROM strategy_signals WHERE id = %s", [signal_id], fetch="one")
+                if not sig:
+                    return 404, {"ok": False, "error": f"Signal {signal_id} not found"}
+                symbol = sig.get('symbol')
+                strategy_id = sig.get('strategy_id') or 'UNKNOWN'
+                entry  = float(sig.get('entry_high') or sig.get('price') or 0)
+                stop   = float(sig.get('stop_loss') or 0)
+                target = float(sig.get('target_1') or 0)
+                shares = int(sig.get('shares') or 0)
+                if entry <= 0 or stop <= 0 or shares <= 0:
+                    return 400, {"ok": False, "error": f"{symbol} missing trade plan (entry={entry:.2f} stop={stop:.2f} shares={shares})"}
+                import sys as _sys
+                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                from paper_trade_logger import create_manual_proposal
+                result = create_manual_proposal(
+                    symbol=symbol, shares=shares, entry=entry,
+                    stop=stop, target=target, account='TOS_PAPER')
+                pid = result.get('proposal_id')
+                if result.get('success') and pid:
+                    # Backfill strategy attribution
+                    try:
+                        from session13_db import get_conn as _get_s13_conn
+                        _attr_conn = _get_s13_conn()
+                        _attr_cur = _attr_conn.cursor()
+                        _attr_cur.execute("""
+                            UPDATE paper_trade_proposals
+                            SET strategy_id = COALESCE(NULLIF(%s, ''), strategy_id),
+                                setup_type = COALESCE(%s, setup_type),
+                                source_signal_id = %s,
+                                signal_grade = COALESCE(%s, signal_grade),
+                                signal_score = COALESCE(%s::numeric, signal_score),
+                                rvol = COALESCE(%s::numeric, rvol),
+                                float_m = COALESCE(%s::numeric, float_m),
+                                gap_pct = COALESCE(%s::numeric, gap_pct),
+                                catalyst = COALESCE(%s, catalyst),
+                                catalyst_verified = COALESCE(%s, catalyst_verified),
+                                intel_readiness = COALESCE(%s::integer, intel_readiness)
+                            WHERE id = %s
+                        """, [strategy_id, sig.get('setup_type'), signal_id,
+                              sig.get('signal_grade'), sig.get('signal_score'),
+                              sig.get('rvol'), sig.get('float_m'), sig.get('gap_pct'),
+                              sig.get('catalyst'), sig.get('catalyst_verified'),
+                              sig.get('intel_readiness'), pid])
+                        _attr_conn.commit()
+                        _attr_conn.close()
+                    except Exception as _attr_e:
+                        print(f"  [from-signal] Attribution backfill failed: {_attr_e}")
+                return (200 if result.get('success') else 400), {
+                    "ok": result.get('success', False),
+                    "proposal_id": pid,
+                    "symbol": symbol,
+                    "strategy_id": strategy_id,
+                    "message": result.get('message', '')[:300],
+                }
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # Fall through to routes defined after POST block (paper-proposals/approve, etc.)
 
     # GET: journal review read (with query param)
     if base_path == "/api/v2/journal/review":
@@ -6000,7 +9063,58 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # GET: journal review by encoded key (path param)
+    if base_path.startswith("/api/v2/journal/review/"):
+        key_encoded = base_path[len("/api/v2/journal/review/"):].strip("/")
+        if key_encoded:
+            try:
+                return 200, {"ok": True, "data": _journal_review_get(key_encoded)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # GET: entry signals for a trade (what intelligence existed at entry time)
+    if base_path.startswith("/api/v2/journal/entry-signals/"):
+        key_encoded = base_path[len("/api/v2/journal/entry-signals/"):].strip("/")
+        if key_encoded:
+            trade_key = key_encoded.replace("__", ":")
+            try:
+                parts = trade_key.split(":")
+                sym = parts[0] if parts else ""
+                entry_date = parts[2] if len(parts) > 2 else ""
+                news = _db_query("""
+                    SELECT title, published_at, sentiment, source
+                    FROM news_articles WHERE symbol = %s AND created_at::date BETWEEN %s::date - 7 AND %s::date
+                    ORDER BY created_at DESC LIMIT 10
+                """, (sym, entry_date, entry_date)) or []
+                agents = _db_query("""
+                    SELECT agent, recommendation, confidence, summary, created_at
+                    FROM watchlist_agent_results WHERE symbol = %s AND created_at::date <= %s::date
+                    ORDER BY created_at DESC LIMIT 5
+                """, (sym, entry_date)) or []
+                return 200, {"ok": True, "data": {
+                    "symbol": sym, "entry_date": entry_date,
+                    "news_before_entry": [{k: (str(v) if hasattr(v, 'isoformat') else v) for k, v in n.items()} for n in news],
+                    "agent_analyses": [{k: (str(v) if hasattr(v, 'isoformat') else float(v) if isinstance(v, Decimal) else v) for k, v in a.items()} for a in agents],
+                    "signal_count": len(news) + len(agents),
+                }}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # GET: backtest for a specific trade
+    if base_path.startswith("/api/v2/journal/backtest/"):
+        key_encoded = base_path[len("/api/v2/journal/backtest/"):].strip("/")
+        if key_encoded:
+            trade_key = key_encoded.replace("__", ":")
+            try:
+                row = _db_query("SELECT * FROM trade_backtest_results WHERE trade_key = %s", (trade_key,), fetch="one")
+                if not row:
+                    return 404, {"ok": False, "error": "No backtest data"}
+                return 200, {"ok": True, "data": {k: (float(v) if isinstance(v, Decimal) else str(v) if hasattr(v, 'isoformat') else v) for k, v in row.items()}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
     # Pass query params to lookup functions that need them
+    _journal_report._query = query or {}
     if query:
         _youtube_channel_lookup._url = (query.get("url") or [""])[0] if isinstance(query.get("url"), list) else query.get("url", "")
         _youtube_transcripts._query = query
@@ -6150,5 +9264,686 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # /api/v2/reports/catalog delegates to existing handler
     if base_path == "/api/v2/reports/catalog":
         return None  # let existing handler take it
+
+    if base_path == "/api/v2/weekly-report":
+        try:
+            # Last 7 days: agent results, proposals acted on, debates, feedback
+            agent_activity = _db_query("""
+                SELECT agent, COUNT(*) as analyses, AVG(confidence)::numeric(3,2) as avg_conf
+                FROM watchlist_agent_results WHERE created_at > NOW() - INTERVAL '7 days'
+                GROUP BY agent ORDER BY analyses DESC""") or []
+            proposals_acted = _db_query("""
+                SELECT id, symbol, action, status, reviewed_at
+                FROM watchlist_proposals WHERE reviewed_at > NOW() - INTERVAL '7 days'
+                ORDER BY reviewed_at DESC LIMIT 20""") or []
+            debates = _db_query("""
+                SELECT symbol, consensus_recommendation, consensus_score, trigger_source, created_at
+                FROM agent_debate_log WHERE created_at > NOW() - INTERVAL '7 days'
+                ORDER BY created_at DESC""") or []
+            feedback = _db_query("""
+                SELECT symbol, decision, reviewer, created_at
+                FROM agent_feedback_log WHERE created_at > NOW() - INTERVAL '7 days'
+                ORDER BY created_at DESC LIMIT 20""") or []
+            social = _db_query("""
+                SELECT platform, COUNT(*) as posts FROM social_posts
+                WHERE ingested_at > NOW() - INTERVAL '7 days' GROUP BY platform""") or []
+            tasks_resolved = _db_query("""
+                SELECT symbol, john_decision, decided_at
+                FROM john_decision_queue WHERE decided_at > NOW() - INTERVAL '7 days'
+                ORDER BY decided_at DESC LIMIT 10""") or []
+            return 200, {"ok": True, "data": {
+                "period": "weekly",
+                "generated_at": datetime.now().isoformat(),
+                "agent_activity": [{k: _json_clean(v) for k, v in r.items()} for r in agent_activity],
+                "proposals_acted": [{k: _json_clean(v) for k, v in r.items()} for r in proposals_acted],
+                "debates": [{k: _json_clean(v) for k, v in r.items()} for r in debates],
+                "feedback_entries": [{k: _json_clean(v) for k, v in r.items()} for r in feedback],
+                "social_ingested": [{k: _json_clean(v) for k, v in r.items()} for r in social],
+                "tasks_resolved": [{k: _json_clean(v) for k, v in r.items()} for r in tasks_resolved],
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/monthly-report":
+        try:
+            agent_activity = _db_query("""
+                SELECT agent, COUNT(*) as analyses, AVG(confidence)::numeric(3,2) as avg_conf
+                FROM watchlist_agent_results WHERE created_at > NOW() - INTERVAL '30 days'
+                GROUP BY agent ORDER BY analyses DESC""") or []
+            proposals_summary = _db_query("""
+                SELECT status, COUNT(*) as cnt FROM watchlist_proposals
+                WHERE created_at > NOW() - INTERVAL '30 days' OR reviewed_at > NOW() - INTERVAL '30 days'
+                GROUP BY status""") or []
+            debates = _db_query("""
+                SELECT symbol, consensus_recommendation, consensus_score, created_at
+                FROM agent_debate_log WHERE created_at > NOW() - INTERVAL '30 days'
+                ORDER BY created_at DESC""") or []
+            feedback_summary = _db_query("""
+                SELECT decision, COUNT(*) as cnt FROM agent_feedback_log
+                WHERE created_at > NOW() - INTERVAL '30 days' GROUP BY decision""") or []
+            social_summary = _db_query("""
+                SELECT platform, COUNT(*) as posts FROM social_posts
+                WHERE ingested_at > NOW() - INTERVAL '30 days' GROUP BY platform""") or []
+            tasks_summary = _db_query("""
+                SELECT status, COUNT(*) as cnt FROM john_decision_queue
+                WHERE decided_at > NOW() - INTERVAL '30 days' OR (status='pending_john')
+                GROUP BY status""") or []
+            return 200, {"ok": True, "data": {
+                "period": "monthly",
+                "generated_at": datetime.now().isoformat(),
+                "agent_activity": [{k: _json_clean(v) for k, v in r.items()} for r in agent_activity],
+                "proposals_summary": [{k: _json_clean(v) for k, v in r.items()} for r in proposals_summary],
+                "debates": [{k: _json_clean(v) for k, v in r.items()} for r in debates],
+                "feedback_summary": [{k: _json_clean(v) for k, v in r.items()} for r in feedback_summary],
+                "social_summary": [{k: _json_clean(v) for k, v in r.items()} for r in social_summary],
+                "tasks_summary": [{k: _json_clean(v) for k, v in r.items()} for r in tasks_summary],
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Autonomy Enhancement Endpoints (v7.7) ────────────────────────────
+
+    # Outcome lessons — what agents have learned from past decisions
+    if base_path == "/api/v2/outcome-lessons":
+        try:
+            lessons = _db_query("""
+                SELECT changed_by, rule_key, config, updated_at
+                FROM agent_intelligence_rules
+                WHERE rule_type = 'outcome_lessons'
+                ORDER BY updated_at DESC LIMIT 20""") or []
+            return 200, {"ok": True, "data": {
+                "lessons": [{k: _json_clean(v) for k, v in r.items()} for r in lessons],
+                "count": len(lessons),
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Scalp stats — 30-day hit rate for the scalp pipeline
+    if base_path == "/api/v2/scalp-stats":
+        try:
+            summary = _db_query("""
+                SELECT count(*) as total,
+                       count(*) FILTER (WHERE outcome_status LIKE 'profit%%') as wins,
+                       count(*) FILTER (WHERE outcome_status LIKE 'loss%%') as losses,
+                       count(*) FILTER (WHERE outcome_status = 'flat') as flat,
+                       round(avg(pct_move_24h)::numeric, 2) as avg_move
+                FROM scalp_decision_outcomes
+                WHERE scored_at > NOW() - INTERVAL '30 days'""") or [{}]
+            by_grade = _db_query("""
+                SELECT grade, count(*) as cnt,
+                       round(avg(pct_move_24h)::numeric, 2) as avg_move
+                FROM scalp_decision_outcomes
+                WHERE scored_at > NOW() - INTERVAL '30 days'
+                GROUP BY grade ORDER BY grade""") or []
+            return 200, {"ok": True, "data": {
+                "summary": {k: _json_clean(v) for k, v in summary[0].items()} if summary else {},
+                "by_grade": [{k: _json_clean(v) for k, v in r.items()} for r in by_grade],
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Active debates — unresolved agent disagreements
+    if base_path == "/api/v2/debates/active":
+        try:
+            debates = _db_query("""
+                SELECT symbol, consensus_recommendation, consensus_score,
+                       trigger_source, created_at
+                FROM agent_debate_log
+                ORDER BY created_at DESC LIMIT 20""") or []
+            return 200, {"ok": True, "data": {
+                "debates": [{k: _json_clean(v) for k, v in r.items()} for r in debates],
+                "count": len(debates),
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # RAG context for a symbol — shows what agents see
+    if base_path.startswith("/api/v2/rag/context/"):
+        symbol = base_path[len("/api/v2/rag/context/"):].strip("/").upper()
+        if not symbol:
+            return 400, {"ok": False, "error": "symbol required"}
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from rag_retrieval import get_rag_context
+            rag_items = get_rag_context(symbol, limit=7)
+            return 200, {"ok": True, "data": {
+                "symbol": symbol,
+                "rag_items": [{k: _json_clean(v) for k, v in r.items()} for r in rag_items] if rag_items else [],
+                "count": len(rag_items) if rag_items else 0,
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Prospects ──────────────────────────────────────────────────────────
+    if base_path == "/api/v2/prospects":
+        if method == "GET":
+            try:
+                return _prospects_handler(query or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/prospects/add-to-watchlist":
+        if method == "POST":
+            try:
+                return _prospects_add_to_watchlist(body or {})
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # ── Indicator Engine GET routes ───────────────────────────────────────
+    if base_path == "/api/v2/indicators/confluence":
+        try:
+            return _indicator_confluence_handler(query or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/indicators/history":
+        try:
+            return _indicator_history_handler(query or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/indicators/levels":
+        try:
+            return _indicator_levels_handler(query or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 11: Prop Desk Governance endpoints ────────────────────────
+
+    if base_path == "/api/v2/risk-gate-log":
+        try:
+            sym_filter = (query or {}).get("symbol", [""])[0] if isinstance((query or {}).get("symbol"), list) else (query or {}).get("symbol", "")
+            where = "WHERE symbol = %s" if sym_filter else ""
+            params = [sym_filter] if sym_filter else []
+            rows = _db_query(f"""
+                SELECT id, symbol, strategy_id, mode, action_context,
+                       result, approved, reason_codes, reason_text, created_at
+                FROM risk_gate_results
+                {where}
+                ORDER BY created_at DESC LIMIT 100""", params) or []
+            summary_rows = _db_query("""
+                SELECT result, COUNT(*) as cnt FROM risk_gate_results
+                WHERE created_at > NOW() - INTERVAL '24 hours'
+                GROUP BY result""") or []
+            summary = {r["result"]: r["cnt"] for r in summary_rows}
+            return 200, {"ok": True,
+                "summary": {
+                    "approved": summary.get("APPROVED", 0),
+                    "rejected": summary.get("REJECTED", 0),
+                    "paper_only": summary.get("PAPER_ONLY", 0),
+                    "risk_gate_error": summary.get("RISK_GATE_ERROR", 0),
+                    "total": sum(summary.values()),
+                },
+                "decisions": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-trades":
+        try:
+            rows = _db_query("""
+                SELECT id, signal_id, strategy_id, symbol, account,
+                       entry_price, entry_time, shares, dollar_size,
+                       stop_loss, target_1, target_2, dollar_risk,
+                       exit_price, exit_time, pnl, pnl_pct,
+                       outcome_verdict, status, created_at
+                FROM paper_trades
+                ORDER BY created_at DESC LIMIT 100""") or []
+            return 200, {"ok": True,
+                "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "count": len(rows)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-trades/open":
+        try:
+            rows = _db_query("""
+                SELECT id, strategy_id, symbol, account, entry_price, entry_time,
+                       shares, dollar_size, stop_loss, target_1, dollar_risk,
+                       current_price, unrealized_pnl, opened_via, created_at
+                FROM paper_trades
+                WHERE status = 'open'
+                ORDER BY created_at DESC""") or []
+            return 200, {"ok": True,
+                "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "count": len(rows)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-analytics":
+        try:
+            # Overall stats
+            overall = _db_query("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status='closed') as total_trades,
+                    COUNT(*) FILTER (WHERE status='open') as open_trades,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl < 0) as losses,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed' AND pnl > 0)::numeric, 2) as gross_profit,
+                    ROUND(ABS(SUM(pnl) FILTER (WHERE status='closed' AND pnl < 0))::numeric, 2) as gross_loss,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as total_realized_pnl,
+                    ROUND(SUM(unrealized_pnl) FILTER (WHERE status='open')::numeric, 2) as total_unrealized_pnl,
+                    ROUND(AVG(pnl) FILTER (WHERE status='closed' AND pnl > 0)::numeric, 2) as avg_winner,
+                    ROUND(AVG(ABS(pnl)) FILTER (WHERE status='closed' AND pnl < 0)::numeric, 2) as avg_loser
+                FROM paper_trades
+            """, fetch="one") or {}
+            tc = overall.get('total_trades') or 0
+            w = overall.get('wins') or 0
+            gp = float(overall.get('gross_profit') or 0)
+            gl = float(overall.get('gross_loss') or 0)
+            overall['win_rate'] = round(w / tc, 3) if tc > 0 else None
+            overall['profit_factor'] = round(gp / gl, 2) if gl > 0 else None
+            wr = overall['win_rate']
+            aw = float(overall.get('avg_winner') or 0)
+            al = float(overall.get('avg_loser') or 0)
+            overall['expectancy'] = round((wr * aw) - ((1 - wr) * al), 2) if wr is not None else None
+
+            # By strategy
+            by_strategy = _db_query("""
+                SELECT strategy_id,
+                    COUNT(*) FILTER (WHERE status='closed') as trades,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as pnl
+                FROM paper_trades GROUP BY strategy_id
+            """) or []
+
+            # Validation gates per strategy
+            validation = {}
+            strat_rows = _db_query("""
+                SELECT strategy_id, min_win_rate, target_win_rate
+                FROM strategy_registry
+                WHERE strategy_id IN ('momentum_scalp','gap_and_go','swing_breakout','sector_rotation','earnings_catalyst','income_add')
+            """) or []
+            for sr in strat_rows:
+                sid = sr['strategy_id']
+                bs = next((s for s in by_strategy if s.get('strategy_id') == sid), {})
+                done = bs.get('trades') or 0
+                bw = bs.get('wins') or 0
+                bwr = round(bw / done, 3) if done > 0 else None
+                validation[sid] = {
+                    'trades_needed': 30, 'trades_done': done,
+                    'win_rate_needed': float(sr.get('min_win_rate') or 0.50),
+                    'win_rate_current': bwr,
+                    'gate_passed': done >= 30 and bwr is not None and bwr >= float(sr.get('min_win_rate') or 0.50),
+                }
+
+            # Recent closed
+            recent = _db_query("""
+                SELECT id, symbol, strategy_id, account, entry_price, exit_price,
+                       pnl, pnl_pct, outcome_verdict, exit_reason, closed_at
+                FROM paper_trades WHERE status='closed'
+                ORDER BY closed_at DESC LIMIT 20
+            """) or []
+
+            return 200, {"ok": True,
+                "overall": {k: _json_clean(v) for k, v in overall.items()},
+                "by_strategy": [{k: _json_clean(v) for k, v in r.items()} for r in by_strategy],
+                "validation_gates": validation,
+                "recent_closed": [{k: _json_clean(v) for k, v in r.items()} for r in recent],
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 14: Paper Command Center endpoints ──
+
+    if base_path == "/api/v2/paper-status":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from alpaca_paper_adapter import AlpacaPaperAdapter
+            adapter = AlpacaPaperAdapter(dry_run=True)
+            alpaca_status = adapter.get_alpaca_paper_status()
+
+            pt_stats = _db_query("""
+                SELECT
+                    COUNT(*) FILTER (WHERE status='open') as open_trades,
+                    COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE AND status='open') as today_opened,
+                    COUNT(*) FILTER (WHERE closed_at::date = CURRENT_DATE) as today_closed,
+                    COALESCE(SUM(pnl) FILTER (WHERE closed_at::date = CURRENT_DATE), 0) as today_realized,
+                    COALESCE(SUM(unrealized_pnl) FILTER (WHERE status='open'), 0) as today_unrealized
+                FROM paper_trades
+            """, fetch="one") or {}
+
+            pending = _db_query("SELECT COUNT(*) as cnt FROM paper_trade_proposals WHERE status='PENDING' AND expires_at > NOW()", fetch="one") or {}
+            halts = _db_query("SELECT key, value FROM system_controls WHERE key LIKE 'halt%'") or []
+
+            return 200, {"ok": True,
+                "alpaca": alpaca_status,
+                "paper_trading": {k: _json_clean(v) for k, v in pt_stats.items()},
+                "pending_proposals": pending.get('cnt', 0),
+                "risk": {r['key']: r['value'] for r in halts},
+            }
+        except Exception as e:
+            return 200, {"ok": True, "alpaca": {"connected": False, "last_error": str(e)},
+                         "paper_trading": {}, "risk": {}}
+
+    if base_path == "/api/v2/paper-proposals":
+        try:
+            return _paper_proposals_enriched()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/approve":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            confirmed = body.get('confirmed', False)
+            approval_mode = body.get('approval_mode', 'approve_ready')
+
+            # Check decision state before approving
+            rp = _db_query("""
+                SELECT packet_status, research_score, confidence_score
+                FROM proposal_research_packets WHERE proposal_id = %s
+                ORDER BY updated_at DESC LIMIT 1
+            """, [int(pid)], fetch="one")
+
+            if rp:
+                ds = rp.get('packet_status', '')
+                blocked_states = ('BLOCKED_BY_RISK_GATE', 'RESEARCH_INCOMPLETE', 'AI_REVIEW_MISSING', 'DATA_STALE', 'REJECT_RECOMMENDED')
+                if ds in blocked_states and not confirmed:
+                    return 400, {"ok": False, "error": f"Cannot approve: {ds}. Run research first or use confirmation.", "decision_state": ds}
+                cautious_states = ('CAUTIOUS_PAPER_TEST', 'BACKTEST_INSUFFICIENT')
+                if ds in cautious_states and not confirmed:
+                    return 400, {"ok": False, "error": f"Requires confirmation: {ds}", "decision_state": ds, "needs_confirmation": True}
+                if ds in cautious_states:
+                    approval_mode = 'cautious_confirmed' if ds == 'CAUTIOUS_PAPER_TEST' else 'first_sample_learning_confirmed'
+
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from paper_trade_logger import approve_proposal
+            result = approve_proposal(int(pid),
+                override_shares=body.get('shares'),
+                override_entry=body.get('entry'),
+                override_stop=body.get('stop'),
+                override_target=body.get('target'))
+
+            # Store research packet metadata on the paper trade
+            if result.get('success') and result.get('paper_trade_id') and rp:
+                try:
+                    votes = _db_query("""
+                        SELECT json_object_agg(agent_name, json_build_object('vote', vote, 'confidence', confidence))
+                        FROM proposal_agent_reviews WHERE proposal_id = %s
+                    """, [int(pid)], fetch="one")
+                    _db_query("""
+                        UPDATE paper_trades SET
+                            research_packet_id = (SELECT id FROM proposal_research_packets WHERE proposal_id = %s LIMIT 1),
+                            decision_state = %s,
+                            confidence_score = %s,
+                            agent_votes = %s,
+                            backtest_quality = (SELECT backtest_quality FROM proposal_backtest_snapshots WHERE proposal_id = %s LIMIT 1),
+                            approval_mode = %s
+                        WHERE id = %s
+                    """, [int(pid), ds if rp else None,
+                          rp.get('confidence_score') if rp else None,
+                          json.dumps(votes.get('json_object_agg') if votes else None),
+                          int(pid), approval_mode, result['paper_trade_id']])
+                except Exception:
+                    pass
+
+            return 200 if result.get('success') else 400, {"ok": result.get('success', False), "data": result}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/reject":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from paper_trade_logger import reject_proposal
+            result = reject_proposal(int(pid), body.get('reason', 'dashboard'))
+            return 200 if result.get('success') else 400, {"ok": result.get('success', False), "data": result}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 17v3: Research packet endpoints ──
+
+    if base_path == "/api/v2/paper-proposals/research-packet":
+        try:
+            q = query or {}
+            pid = q.get('proposal_id', [None])[0] if isinstance(q.get('proposal_id'), list) else q.get('proposal_id')
+            # Also try parsing from path query string
+            if not pid and '?' in path:
+                from urllib.parse import parse_qs
+                qs = parse_qs(path.split('?', 1)[1])
+                pid = qs.get('proposal_id', [None])[0]
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            rp = _db_query("""
+                SELECT * FROM proposal_research_packets
+                WHERE proposal_id = %s ORDER BY updated_at DESC LIMIT 1
+            """, [int(pid)], fetch="one")
+            if not rp:
+                return 404, {"ok": False, "error": f"No research packet for proposal {pid}"}
+            packet = rp.get('packet') or {}
+            return 200, {"ok": True, "packet": {k: _json_clean(v) for k, v in packet.items()} if isinstance(packet, dict) else packet}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-research":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_research_packet_builder import build_research_packet
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                packet = build_research_packet(conn, int(pid), refresh=body.get('refresh', True))
+                return 200, {"ok": True, "packet": {
+                    "decision_state": packet.get('final_summary', {}).get('decision_state'),
+                    "research_score": packet.get('final_summary', {}).get('research_score'),
+                    "confidence_score": packet.get('final_summary', {}).get('confidence_score'),
+                    "missing_data_count": packet.get('final_summary', {}).get('missing_data_count'),
+                }}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-agent-review":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_agent_review import review_proposal
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = review_proposal(conn, int(pid))
+                return 200, {"ok": True, "data": {
+                    "agent_review_status": result.get('agent_review_status'),
+                    "agent_votes": result.get('agent_votes'),
+                }}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-backtest":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_backtest_engine import backtest_proposal
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = backtest_proposal(conn, int(pid))
+                return 200, {"ok": True, "data": {
+                    "backtest_quality": result.get('backtest_quality'),
+                    "sample_size": result.get('sample_size'),
+                    "win_rate": result.get('win_rate'),
+                    "similar_setup_summary": result.get('similar_setup_summary'),
+                }}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/refresh-data":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_technical_snapshot import generate_snapshot
+            from proposal_backtest_engine import backtest_proposal
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                tech = generate_snapshot(conn, proposal_id=int(pid))
+                bt = backtest_proposal(conn, int(pid))
+                return 200, {"ok": True, "data": {
+                    "technical_refreshed": bool(tech),
+                    "backtest_refreshed": bool(bt),
+                }}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-journal":
+        try:
+            trades = _db_query("""
+                SELECT id, symbol, strategy_id, setup_type, signal_grade, score_at_entry,
+                       account, opened_via, automation_source, broker_order_id, broker_status,
+                       entry_price, exit_price, current_price, shares, stop_loss, target_1,
+                       dollar_risk, pnl, unrealized_pnl, r_multiple, pnl_pct,
+                       status, outcome_verdict, exit_reason, catalyst_at_entry, catalyst_verified,
+                       risk_gate_result, entry_time, exit_time, created_at, closed_at, proposal_id,
+                       post_trade_analyzed, iris_curated, aegis_summarized
+                FROM paper_trades
+                ORDER BY created_at DESC LIMIT 200
+            """) or []
+            open_t = [t for t in trades if t.get('status') == 'open']
+            closed_t = [t for t in trades if t.get('status') == 'closed']
+            wins = sum(1 for t in closed_t if (t.get('pnl') or 0) > 0)
+            losses = sum(1 for t in closed_t if (t.get('pnl') or 0) < 0)
+            total_pnl = sum(float(t.get('pnl') or 0) for t in closed_t)
+            wr = round(wins / len(closed_t), 3) if closed_t else None
+            return 200, {"ok": True,
+                "stats": {"closed": len(closed_t), "open": len(open_t), "wins": wins, "losses": losses,
+                          "win_rate": wr, "total_pnl": round(total_pnl, 2)},
+                "trades": [{k: _json_clean(v) for k, v in t.items()} for t in trades],
+                "open_trades": [{k: _json_clean(v) for k, v in t.items()} for t in open_t],
+                "closed_trades": [{k: _json_clean(v) for k, v in t.items()} for t in closed_t],
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-automation-performance":
+        try:
+            by_source = _db_query("""
+                SELECT COALESCE(opened_via, 'unknown') as source,
+                    COUNT(*) FILTER (WHERE status='closed') as closed,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as pnl
+                FROM paper_trades GROUP BY opened_via
+            """) or []
+            overall = _db_query("""
+                SELECT COUNT(*) FILTER (WHERE status='closed') as closed_trades,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as total_pnl
+                FROM paper_trades
+            """, fetch="one") or {}
+            tc = overall.get('closed_trades') or 0
+            w = overall.get('wins') or 0
+            overall['win_rate'] = round(w / tc, 3) if tc > 0 else None
+            return 200, {"ok": True,
+                "overall": {k: _json_clean(v) for k, v in overall.items()},
+                "by_opened_via": [{k: _json_clean(v) for k, v in r.items()} for r in by_source],
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/strategy-cards":
+        try:
+            sym_filter = (query or {}).get("symbol", [""])[0] if isinstance((query or {}).get("symbol"), list) else (query or {}).get("symbol", "")
+            where = "WHERE symbol = %s" if sym_filter else ""
+            params = [sym_filter] if sym_filter else []
+            rows = _db_query(f"""
+                SELECT id, symbol, strategy_id, setup_type, grade, score,
+                       confidence, recommendation, recommendation_reason,
+                       risk_gate_result, risk_gate_reason_codes,
+                       required_evidence_present, missing_evidence,
+                       disqualifiers, agent_votes, account_fit,
+                       final_action, explanation, created_at
+                FROM strategy_cards
+                {where}
+                ORDER BY created_at DESC LIMIT 100""", params) or []
+            return 200, {"ok": True,
+                "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "count": len(rows)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/strategy-signals":
+        try:
+            rows = _db_query("""
+                SELECT id, strategy_id, symbol, signal_type, signal_grade,
+                       signal_score, price, rvol, float_m, gap_pct,
+                       catalyst, catalyst_verified, status, fired_at
+                FROM strategy_signals
+                WHERE fired_at > NOW() - INTERVAL '48 hours'
+                ORDER BY signal_score DESC NULLS LAST
+                LIMIT 100""") or []
+            by_strategy = _db_query("""
+                SELECT strategy_id, COUNT(*) as count,
+                       COUNT(CASE WHEN signal_grade='A+' THEN 1 END) as aplus
+                FROM strategy_signals
+                WHERE fired_at > NOW() - INTERVAL '48 hours'
+                GROUP BY strategy_id""") or []
+            return 200, {"ok": True,
+                "signals": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "by_strategy": {r["strategy_id"]: {"count": r["count"], "aplus": r["aplus"]} for r in by_strategy},
+                "total": len(rows)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # POST: system-controls update
+    if method == "POST" and base_path == "/api/v2/system-controls":
+        try:
+            body = body or {}
+            key = body.get("key", "")
+            value = body.get("value", "")
+            updated_by = body.get("updated_by", "api")
+            allowed_keys = {
+                'halt_all_trading', 'halt_live_only',
+                'halt_momentum_scalp_strategy', 'halt_gap_and_go_strategy',
+                'halt_swing_breakout_strategy', 'halt_sector_rotation_strategy',
+                'halt_earnings_catalyst_strategy', 'halt_income_add_strategy',
+            }
+            if key not in allowed_keys:
+                return 400, {"ok": False, "error": f"Invalid key: {key}. Allowed: {sorted(allowed_keys)}"}
+            if value not in ('true', 'false'):
+                return 400, {"ok": False, "error": "Value must be 'true' or 'false'"}
+            from db_adapter import _execute as _db_exec
+            _db_exec("""
+                UPDATE system_controls SET value = %s, updated_at = NOW(), updated_by = %s
+                WHERE key = %s
+            """, [value, updated_by, key])
+            _db_exec("""
+                INSERT INTO audit_log (event_type, decision, reason_text, actor)
+                VALUES (%s, %s, %s, %s)
+            """, ['halt' if value == 'true' else 'resume', key, f'{key} set to {value}', updated_by])
+            return 200, {"ok": True, "data": {"key": key, "value": value, "updated_by": updated_by}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
 
     return None

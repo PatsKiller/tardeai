@@ -1,19 +1,31 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
+import ScalpLiveFeed from '../components/ScalpLiveFeed'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
 import MetricTile from '../components/MetricTile'
 import DetailDrawer, { DrawerStat, DrawerSection } from '../components/DetailDrawer'
 import DataGrid from '../components/DataGrid'
 import { BarChartJS } from '../components/charts'
+import { ConfluenceBadge } from '../components/ConfluenceBadge'
 import { useApi } from '../hooks/useApi'
 import { deltaColor, fmt$ } from '../lib/format'
 
 interface Ticker {
   symbol: string; score: number; grade: string; decision: string
   rvol: number; price: number; change_pct: string; gap_pct: string
-  float_m: string; catalyst: string
+  float_m: string; catalyst: string; source?: string; source_detail?: string
+  disqualified?: boolean; disqualification_reason?: string
+  catalyst_verified?: boolean | null; industry?: string
+  critic_verdict?: string | null; critic_confidence?: number | null
+  original_decision?: string | null; decision_changed?: boolean
+  critic_reasoning?: string | null; critic_flags?: string[]
+  sector?: string | null; country?: string | null; sector_etf?: string | null
+  ticker_perf_1m?: number | null; sector_perf_1m?: number | null; vs_sector_pct?: number | null
+  social_sentiment?: string | null; social_score?: number | null
+  social_reddit?: number | null; social_stocktwits?: number | null; social_bullish_pct?: number | null
+  intelligence_readiness?: number | null
 }
 
 interface RunHistoryItem {
@@ -22,9 +34,12 @@ interface RunHistoryItem {
 }
 
 interface TradeAIData {
-  run_date: string; run_label: string; vix: number | null; breadth: string
+  ok?: boolean; run_date: string; run_label: string; vix: number | null; breadth: string
   go_count: number; wait_count: number; avoid_count: number; ticker_count: number
   top_ticker: string; top_score: number; delta_events: number
+  latest_run_label?: string; latest_run_timestamp?: string; latest_run_symbols_scanned?: number
+  latest_run_go_count?: number; latest_run_wait_count?: number; latest_run_no_go_count?: number
+  run_health_status?: string; today_strategy_signal_count?: number
   tickers: Ticker[]; sectors: Record<string, number>; run_history: RunHistoryItem[]
 }
 
@@ -38,6 +53,26 @@ export default function TradeAI() {
   const [filter, setFilter] = useState<string>('ALL')
   const [selectedTicker, setSelectedTicker] = useState<Ticker | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [irisStatus, setIrisStatus] = useState<any>(null)
+  const [confluenceData, setConfluenceData] = useState<Record<string, any>>({})
+
+  useEffect(() => {
+    fetch('/api/v2/iris/integrity').then(r => r.json())
+      .then(d => { if (d.ok) setIrisStatus(d.data) }).catch(() => {})
+  }, [])
+
+  // Load confluence for GO/WAIT tickers (non-fatal)
+  useEffect(() => {
+    const goWait = (tai?.tickers || []).filter(t => t.decision === 'GO' || t.decision === 'WAIT').map(t => t.symbol).slice(0, 20)
+    if (goWait.length === 0) return
+    fetch('/api/v2/indicators/batch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: goWait, profile: 'scalp' })
+    })
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.results) setConfluenceData(d.results) })
+      .catch(() => {})
+  }, [tai])
 
   useEffect(() => {
     const symbol = params.get('symbol')?.toUpperCase()
@@ -55,11 +90,30 @@ export default function TradeAI() {
   const regimeEmoji = tai.breadth?.includes('Bull') ? '\u{1f7e2}' : tai.breadth?.includes('Bear') ? '\u{1f534}' : '\u{1f7e1}'
 
   const columns = [
-    { key: 'decision', label: 'Signal', width: 55, render: (r: Ticker) => (
-      <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 3, background: decisionBg[r.decision] || 'var(--bg3)', color: decisionColor[r.decision] || 'var(--text3)' }}>
-        {r.decision}
+    { key: 'decision', label: 'Signal', width: 70, render: (r: Ticker) => (
+      <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 3, background: decisionBg[r.decision] || 'var(--bg3)', color: decisionColor[r.decision] || 'var(--text3)' }}>
+          {r.decision}
+        </span>
+        {r.decision_changed && r.original_decision && (
+          <span style={{ fontSize: 8, color: '#64748B', textDecoration: 'line-through' }}>{r.original_decision}</span>
+        )}
       </span>
     )},
+    { key: 'source', label: 'Source', width: 70, render: (r: Ticker) => {
+      const src = r.source || 'screener'
+      const detail = r.source_detail || ''
+      const cfg: Record<string, { icon: string; color: string; label: string }> = {
+        social: { icon: '\uD83D\uDCAC', color: '#d97706', label: detail ? `Social ${detail}` : 'Social' },
+        portfolio: { icon: '\uD83D\uDCBC', color: '#6366f1', label: 'Portfolio' },
+        personal_watchlist: { icon: '\uD83D\uDC64', color: '#6366f1', label: 'Personal' },
+        ai_discovered: { icon: '\uD83E\uDD16', color: '#059669', label: 'AI' },
+        ai_watchlist: { icon: '\uD83D\uDD0D', color: '#059669', label: 'AI Watch' },
+        screener: { icon: '\uD83D\uDCCA', color: '#0891b2', label: 'Finviz' },
+      }
+      const c = cfg[src] || cfg.screener
+      return <span style={{ fontSize: 8, fontWeight: 600, padding: '1px 5px', borderRadius: 3, border: `1px solid ${c.color}40`, color: c.color, whiteSpace: 'nowrap' }}>{c.icon} {c.label}</span>
+    }},
     { key: 'symbol', label: 'Symbol', width: 60, render: (r: Ticker) => <span style={{ fontWeight: 700, color: 'var(--text0)' }}>{r.symbol}</span> },
     { key: 'score', label: 'Score', width: 50, align: 'right' as const, sortKey: (r: Ticker) => r.score, render: (r: Ticker) => (
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
@@ -69,6 +123,12 @@ export default function TradeAI() {
         <span style={{ fontWeight: 600, color: r.score >= 40 ? 'var(--green)' : r.score >= 30 ? 'var(--amber)' : 'var(--text2)' }}>{r.score}</span>
       </div>
     )},
+    { key: 'intelligence_readiness', label: 'Intel', width: 35, align: 'right' as const, sortKey: (r: Ticker) => r.intelligence_readiness || 0, render: (r: Ticker) => {
+      const ir = r.intelligence_readiness;
+      if (ir == null) return <span style={{ color: 'var(--text3)' }}>—</span>;
+      const color = ir >= 75 ? '#10B981' : ir >= 50 ? '#F59E0B' : ir >= 25 ? '#F97316' : '#EF4444';
+      return <span style={{ fontFamily: 'monospace', fontSize: 11, color }}>{ir}</span>;
+    }},
     { key: 'grade', label: 'Grd', width: 30, render: (r: Ticker) => <span style={{ fontWeight: 600, color: r.grade === 'A' ? 'var(--green)' : 'var(--text2)' }}>{r.grade}</span> },
     { key: 'rvol', label: 'RVOL', width: 45, align: 'right' as const, sortKey: (r: Ticker) => r.rvol, render: (r: Ticker) => (
       <span style={{ color: r.rvol >= 5 ? 'var(--green)' : 'var(--text2)' }}>{r.rvol.toFixed(1)}x</span>
@@ -81,16 +141,70 @@ export default function TradeAI() {
       <span style={{ color: r.gap_pct.startsWith('-') ? 'var(--red)' : 'var(--green)' }}>{r.gap_pct}%</span>
     )},
     { key: 'float_m', label: 'Float', width: 45, align: 'right' as const, render: (r: Ticker) => <span style={{ color: 'var(--text2)' }}>{r.float_m}M</span> },
+    { key: 'sector', label: 'Sector', width: 80, render: (r: Ticker) => {
+      const country = r.country || ''
+      const flag = (!country || country === '🇺🇸' || country === 'United States') ? '' : country
+      return (
+        <span style={{ fontSize: 9, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontWeight: 600, color: 'var(--text1)' }}>{flag}{flag ? ' ' : ''}{r.sector || '—'}</span>
+          {r.vs_sector_pct != null && (
+            <span style={{ fontSize: 8, color: r.vs_sector_pct >= 0 ? '#4ADE80' : '#F87171' }}>
+              vs {r.sector_etf || 'sector'}: {r.vs_sector_pct >= 0 ? '+' : ''}{r.vs_sector_pct}%
+            </span>
+          )}
+        </span>
+      )
+    }},
+    { key: 'social', label: 'Social', width: 75, render: (r: Ticker) => {
+      const label = r.social_sentiment || ''
+      const color = label.includes('Very Bullish') ? '#4ADE80' : label.includes('Bullish') ? '#86EFAC' : label.includes('Bearish') ? '#F87171' : '#64748B'
+      const bull = r.social_bullish_pct != null ? `${Math.round(r.social_bullish_pct)}%` : ''
+      return label ? (
+        <span style={{ fontSize: 9, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontWeight: 600, color }}>{label.includes('Very') ? '🟢🟢' : label.includes('Bullish') ? '🟢' : label.includes('Bearish') ? '🔴' : '⚪'} {label}</span>
+          {(r.social_reddit || r.social_stocktwits) ? (
+            <span style={{ fontSize: 8, color: '#64748B' }}>
+              R:{r.social_reddit || 0} ST:{r.social_stocktwits || 0}{bull ? ` (${bull} bull)` : ''}
+            </span>
+          ) : null}
+        </span>
+      ) : <span style={{ fontSize: 9, color: '#475569' }}>—</span>
+    }},
+    { key: 'confluence', label: 'Confluence', width: 90, render: (r: Ticker) => {
+      const cd = confluenceData[r.symbol]
+      if (!cd?.confluence_tier) return <span style={{ fontSize: 9, color: '#475569' }}>--</span>
+      return <ConfluenceBadge tier={cd.confluence_tier} bullishCount={cd.signals_bullish || 0} badges={cd.strategy_badges || []} compact />
+    }},
     { key: 'catalyst', label: 'Catalyst', render: (r: Ticker) => (
-      <span style={{ fontSize: 10, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 280 }}>{r.catalyst}</span>
+      <span style={{ fontSize: 10, color: r.disqualified ? '#FCA5A5' : r.catalyst_verified === false ? '#F59E0B' : 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4, maxWidth: 280 }}>
+        {r.disqualified && <span style={{ fontSize: 8, background: '#7F1D1D', color: '#FCA5A5', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>DQ</span>}
+        {!r.disqualified && r.catalyst_verified === false && <span style={{ fontSize: 8, background: '#78350F', color: '#FCD34D', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>?</span>}
+        {!r.disqualified && r.catalyst_verified === true && <span style={{ fontSize: 8, background: '#052E16', color: '#86EFAC', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>✓</span>}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.catalyst}</span>
+      </span>
     )},
   ]
 
   return (
     <>
       <PageHeader title="Trade AI" subtitle={`Run ${tai.run_label} | ${tai.run_date} | ${tai.ticker_count} tickers scanned`} />
+      {/* Run health banner */}
+      {tai.run_health_status && (
+        <div style={{
+          padding: '6px 14px', marginBottom: 8, borderRadius: 6, fontSize: 11, fontWeight: 600,
+          background: tai.run_health_status === 'RUN_HEALTHY' ? 'rgba(34,197,94,0.08)' :
+                      tai.run_health_status === 'RUN_UNDERFILLED' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.08)',
+          border: `1px solid ${tai.run_health_status === 'RUN_HEALTHY' ? 'rgba(34,197,94,0.25)' :
+                   tai.run_health_status === 'RUN_UNDERFILLED' ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}`,
+          color: tai.run_health_status === 'RUN_HEALTHY' ? '#4ADE80' :
+                 tai.run_health_status === 'RUN_UNDERFILLED' ? '#F87171' : '#FBBF24',
+        }}>
+          Run {tai.latest_run_label || tai.run_label} &middot; {tai.run_date} &middot; {tai.latest_run_symbols_scanned ?? tai.ticker_count} symbols &middot; {tai.run_health_status}
+          {tai.today_strategy_signal_count != null && ` · ${tai.today_strategy_signal_count} signals today`}
+        </div>
+      )}
       <div style={{ padding: '8px 14px', marginBottom: 12, background: 'rgba(74,144,244,0.08)', border: '1px solid rgba(74,144,244,0.2)', borderRadius: 8, fontSize: 11, color: '#4a90f4' }}>
-        📋 Scalp trades only — execute in <strong>Taxable account</strong> (Fidelity cash account) or paper-trade. Do NOT use IRA accounts. Position size: risk $150/trade, target $300+. Grade: A = score ≥45 (all criteria met), B = 35-44 (marginal), C = &lt;35. Deltas = tickers whose score changed vs previous run.
+        Scalp trades only — execute in <strong>Taxable account</strong> (Fidelity cash account) or paper-trade. Do NOT use IRA accounts. Position size: risk $150/trade, target $300+. Grade: A = score &ge;45 (all criteria met), B = 35-44 (marginal), C = &lt;35. Deltas = tickers whose score changed vs previous run.
       </div>
 
       {/* Regime + VIX banner */}
@@ -104,6 +218,14 @@ export default function TradeAI() {
         <MetricTile label="NO GO" value={String(tai.avoid_count)} deltaColor={tai.avoid_count > 0 ? 'var(--red)' : 'var(--text3)'} />
         <MetricTile label="Top Ticker" value={tai.top_ticker || '—'} delta={`Score: ${tai.top_score}`} />
         <MetricTile label="Deltas" value={String(tai.delta_events)} delta="score/decision changes vs prior run" />
+        <MetricTile label="Iris" value={irisStatus?.overall === 'ok' ? 'CLEAN' : `${(irisStatus?.checks || []).filter((c: any) => c.status === 'warn').length} WARN`}
+          deltaColor={irisStatus?.overall === 'ok' ? 'var(--green)' : 'var(--amber)'}
+          delta={irisStatus?.overall === 'ok' ? 'source integrity OK' : 'click to review'} />
+      </div>
+
+      {/* Live scalp feed */}
+      <div style={{ marginBottom: 14 }}>
+        <ScalpLiveFeed />
       </div>
 
       {/* Decision filter */}
@@ -176,10 +298,109 @@ export default function TradeAI() {
               </div>
             </DrawerSection>
 
+            {/* Disqualification warning */}
+            {selectedTicker.disqualified && (
+              <div style={{ background: '#450A0A', border: '1px solid #DC2626', borderRadius: 6, padding: '10px 14px', margin: '8px 0', color: '#FCA5A5' }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>AUTO-DISQUALIFIED</div>
+                <div style={{ fontSize: 12 }}>{selectedTicker.disqualification_reason}</div>
+              </div>
+            )}
+
             <DrawerSection title="Catalyst">
               <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5 }}>
                 {selectedTicker.catalyst || 'No catalyst data available'}
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                {selectedTicker.catalyst_verified === false && (
+                  <span style={{ background: '#450A0A', color: '#FCA5A5', fontSize: 10, padding: '2px 8px', borderRadius: 3, fontWeight: 700 }}>
+                    CATALYST UNVERIFIED — headline may not relate to this ticker
+                  </span>
+                )}
+                {selectedTicker.catalyst_verified === true && (
+                  <span style={{ background: '#052E16', color: '#86EFAC', fontSize: 10, padding: '2px 8px', borderRadius: 3 }}>
+                    Catalyst verified
+                  </span>
+                )}
+              </div>
+            </DrawerSection>
+
+            {/* Industry */}
+            <DrawerSection title="Industry">
+              {selectedTicker.industry && selectedTicker.industry !== 'Unclassified' ? (
+                <span style={{ fontSize: 11, color: 'var(--text1)' }}>{selectedTicker.industry}</span>
+              ) : (
+                <span style={{ fontSize: 11, color: '#F59E0B' }}>Industry unclassified</span>
+              )}
+            </DrawerSection>
+
+            {/* Agent Critique */}
+            {selectedTicker.critic_verdict && (
+              <DrawerSection title="Agent Critique">
+                <div style={{
+                  padding: '10px 14px', borderRadius: 6, marginBottom: 8,
+                  background: selectedTicker.critic_verdict === 'BLOCK' ? '#450A0A' :
+                              selectedTicker.critic_verdict === 'DOWNGRADE' ? '#431407' : '#052E16',
+                  border: `1px solid ${
+                    selectedTicker.critic_verdict === 'BLOCK' ? '#DC2626' :
+                    selectedTicker.critic_verdict === 'DOWNGRADE' ? '#EA580C' : '#16A34A'}`
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color:
+                    selectedTicker.critic_verdict === 'BLOCK' ? '#FCA5A5' :
+                    selectedTicker.critic_verdict === 'DOWNGRADE' ? '#FED7AA' : '#86EFAC'
+                  }}>
+                    {selectedTicker.critic_verdict === 'BLOCK' ? 'BLOCKED' :
+                     selectedTicker.critic_verdict === 'DOWNGRADE' ? 'DOWNGRADED' : 'CONFIRMED'}
+                    {selectedTicker.critic_confidence != null && (
+                      <span style={{ fontWeight: 400, fontSize: 11, opacity: 0.8, marginLeft: 6 }}>
+                        {Math.round(selectedTicker.critic_confidence * 100)}% confidence
+                      </span>
+                    )}
+                  </div>
+                  {selectedTicker.critic_reasoning && (
+                    <div style={{ fontSize: 12, color: '#CBD5E1', lineHeight: 1.4, marginTop: 4 }}>
+                      {selectedTicker.critic_reasoning}
+                    </div>
+                  )}
+                </div>
+                {selectedTicker.decision_changed && selectedTicker.original_decision && (
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>
+                    Original decision: <span style={{ textDecoration: 'line-through' }}>{selectedTicker.original_decision}</span> → {selectedTicker.decision}
+                  </div>
+                )}
+              </DrawerSection>
+            )}
+
+            {/* Context: sector, country, performance */}
+            <DrawerSection title="Context">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>SECTOR</div>
+                  <div style={{ fontSize: 12, color: 'var(--text0)', fontWeight: 600 }}>{selectedTicker.sector || selectedTicker.industry || 'Unknown'}</div>
+                  {selectedTicker.sector_etf && <div style={{ fontSize: 10, color: '#64748B' }}>{selectedTicker.sector_etf}</div>}
+                </div>
+                <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>COUNTRY</div>
+                  <div style={{ fontSize: 12, color: 'var(--text0)', fontWeight: 600 }}>{selectedTicker.country || 'US'}</div>
+                </div>
+                <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>1M PERF</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: selectedTicker.ticker_perf_1m != null ? (selectedTicker.ticker_perf_1m >= 0 ? '#4ADE80' : '#F87171') : '#64748B' }}>
+                    {selectedTicker.ticker_perf_1m != null ? `${selectedTicker.ticker_perf_1m >= 0 ? '+' : ''}${selectedTicker.ticker_perf_1m}%` : '—'}
+                  </div>
+                </div>
+                <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>VS {selectedTicker.sector_etf || 'SECTOR'}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: selectedTicker.vs_sector_pct != null ? (selectedTicker.vs_sector_pct >= 0 ? '#4ADE80' : '#F87171') : '#64748B' }}>
+                    {selectedTicker.vs_sector_pct != null ? `${selectedTicker.vs_sector_pct >= 0 ? '+' : ''}${selectedTicker.vs_sector_pct}%` : '—'}
+                  </div>
+                  {selectedTicker.sector_perf_1m != null && <div style={{ fontSize: 10, color: '#64748B' }}>{selectedTicker.sector_etf}: {selectedTicker.sector_perf_1m >= 0 ? '+' : ''}{selectedTicker.sector_perf_1m}%</div>}
+                </div>
+              </div>
+              {selectedTicker.country && selectedTicker.country !== 'United States' && selectedTicker.country !== '🇺🇸' && selectedTicker.country !== '' && (
+                <div style={{ marginTop: 6, padding: '5px 8px', borderRadius: 4, background: '#1C1300', border: '1px solid #78350F', fontSize: 11, color: '#FCD34D' }}>
+                  Foreign issuer ({selectedTicker.country}) — additional regulatory and liquidity risks
+                </div>
+              )}
             </DrawerSection>
 
             <DrawerSection title="Links & Drillthrough">
