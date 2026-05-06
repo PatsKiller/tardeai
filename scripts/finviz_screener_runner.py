@@ -166,16 +166,37 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
 
 
 if __name__ == "__main__":
-    dry = "--dry-run" in sys.argv
-    sid = None
-    if "--screener" in sys.argv:
-        sid = sys.argv[sys.argv.index("--screener") + 1]
+    _run_id = None
+    try:
+        from pipeline_registry import run_start, run_complete, run_fail
+        _run_id = run_start('finviz_screener_runner')
+    except Exception:
+        pass
 
-    result = run_screener(screener_id=sid, dry_run=dry)
+    try:
+        dry = "--dry-run" in sys.argv
+        sid = None
+        if "--screener" in sys.argv:
+            sid = sys.argv[sys.argv.index("--screener") + 1]
 
-    if "--json" in sys.argv:
-        print(json.dumps(result, indent=2, default=str))
-    else:
-        for r in result.get("results", []):
-            if r["new_tickers"] > 0:
-                print(f"  {r['screener_id']:>25}: {r['total_found']} found, {r['new_tickers']} NEW → {r['sample'][:5]}")
+        result = run_screener(screener_id=sid, dry_run=dry)
+
+        if "--json" in sys.argv:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            for r in result.get("results", []):
+                if r["new_tickers"] > 0:
+                    print(f"  {r['screener_id']:>25}: {r['total_found']} found, {r['new_tickers']} NEW → {r['sample'][:5]}")
+
+        try:
+            if _run_id:
+                total_new = sum(r.get('new_tickers', 0) for r in result.get('results', []))
+                run_complete(_run_id, rows_processed=total_new)
+        except Exception:
+            pass
+    except Exception as _e:
+        try:
+            if _run_id: run_fail(_run_id, str(_e))
+        except Exception:
+            pass
+        raise

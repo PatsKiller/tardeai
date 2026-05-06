@@ -111,15 +111,15 @@ def _warmup_ollama():
     """Ping Ollama with a tiny prompt to warm up the model before pipeline starts."""
     try:
         import urllib.request, json
-        payload = json.dumps({"model":"qwen3:1.7b","stream":False,"prompt":"hi","options":{"num_predict":1}}).encode()
-        req = urllib.request.Request("http://127.0.0.1:11434/api/generate",data=payload,headers={"Content-Type":"application/json"},method="POST")
+        payload = json.dumps({"model":"qwen3:1.7b","stream":False,"messages":[{"role":"user","content":"hi"}],"think":False,"options":{"num_predict":1}}).encode()
+        req = urllib.request.Request("http://127.0.0.1:11434/api/chat",data=payload,headers={"Content-Type":"application/json"},method="POST")
         with urllib.request.urlopen(req, timeout=60) as resp:
             json.loads(resp.read())
             print("  [ollama] Model warmed up")
     except Exception as e:
         print(f"  [ollama] Warm-up skipped: {e}")
 
-def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip_market_check=False, institutional=False):
+def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip_market_check=False, institutional=False, min_symbols=40, allow_underfilled=False):
     print(f"\n{'='*66}")
     print(f"  \u26a1 Trade AI v12  |  Run {run_label}  |  {date_str}")
     print(f"{'='*66}\n")
@@ -235,7 +235,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
 
         # Pass 1: pre-score all tickers with no API calls
         candidate_syms, tickers = filter_candidates(
-            tickers, project_root=str(root), min_pre_score=8
+            tickers, project_root=str(root), min_pre_score=5
         )
         _ok("pre_score_filter",
             f"{len(candidate_syms)} candidates from {len(tickers)} tickers "
@@ -323,6 +323,70 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _ok("scoring", f"GO={go_count}  WAIT={wait_count}  AVOID={len(scored)-go_count-wait_count}  {'[LLM ON]' if use_llm else '[LLM OFF]'}")
     except Exception as exc:
         _err("scoring", str(exc)); traceback.print_exc(); return 1
+
+    # 10a Scalp Critic — agent review of scored results
+    critic_summary: dict = {}
+    try:
+        from scalp_critic_agent import critique_scored_tickers, send_telegram_summary
+        critic_summary = critique_scored_tickers(scored, only_go_wait=True)
+        blocked = critic_summary.get('blocked', 0)
+        downgraded = critic_summary.get('downgraded', 0)
+        confirmed = critic_summary.get('confirmed', 0)
+        _ok("scalp_critic",
+            f"Confirmed={confirmed}  Blocked={blocked}  Downgraded={downgraded}  "
+            f"Changes={len(critic_summary.get('changes', []))}")
+        if blocked or downgraded:
+            try:
+                send_telegram_summary(critic_summary)
+            except Exception:
+                pass
+        # Recount after critic overrides
+        go_count   = sum(1 for t in scored if t.get("decision") == "GO")
+        wait_count = sum(1 for t in scored if t.get("decision") == "WAIT")
+        _ok("scoring_post_critic", f"GO={go_count}  WAIT={wait_count}  (after critic review)")
+    except Exception as exc:
+        _err("scalp_critic", f"{exc}  — continuing without critique")
+
+    # 10a-ws: Broadcast scored tickers to live WS feed — non-fatal
+    try:
+        from scalp_ws_client import broadcast_scalp_update
+        for t in scored:
+            if t.get("decision") in ("GO", "WAIT"):
+                broadcast_scalp_update({
+                    "symbol": t.get("symbol", ""),
+                    "grade": t.get("grade", ""),
+                    "score": t.get("score", 0),
+                    "decision": t.get("decision", ""),
+                    "change_percent": str(t.get("change_pct", "")),
+                    "rvol": float(t.get("rvol") or 0),
+                    "catalyst_verified": bool(t.get("catalyst_verified")),
+                    "critic_verdict": t.get("critic_verdict", ""),
+                    "source": "screener",
+                })
+    except Exception as e:
+        print(f"  [ws] WS broadcast from orchestrator failed (non-fatal): {e}")
+
+    # 10a-enrich: Multi-source enrichment for GO symbols — non-fatal
+    try:
+        from symbol_enrichment import enrich_symbol as _enrich
+        from db_adapter import get_connection as _get_enrich_conn
+        _enrich_conn = _get_enrich_conn()
+        _prior_syms = set()
+        try:
+            _enrich_cur = _enrich_conn.cursor()
+            _enrich_cur.execute("""SELECT DISTINCT symbol FROM trade_ai_scans
+                          WHERE decision IN ('GO','WAIT') AND run_date = CURRENT_DATE - 1""")
+            _prior_syms = {r[0] for r in _enrich_cur.fetchall()}
+        except Exception:
+            pass
+        for t in scored:
+            if t.get("decision") == "GO":
+                _is_new = t["symbol"] not in _prior_syms
+                if _is_new or t.get("score", 0) >= 55:
+                    _enrich(t["symbol"], t.get("score", 0), _enrich_conn, force_full=_is_new)
+        _enrich_conn.close()
+    except Exception as e:
+        _err("symbol_enrichment", f"{e}  — continuing without enrichment")
 
     # 10b Options flow — only on GO-tier tickers after scoring
     try:
@@ -467,6 +531,197 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         except Exception as exc:
             _err("tos_exporter", str(exc))
 
+    # 18b. Persist to trade_ai_scans DB (historical record)
+    try:
+        from db_adapter import _execute
+        _run_id = f"{date_str}_{run_label}"
+        _inserted = 0
+        for t in scored:
+            sym = t.get("symbol", "")
+            soc = social_data.get(sym, {}) if social_data else {}
+            _execute("""
+                INSERT INTO trade_ai_scans (
+                    run_id, run_date, run_label, run_type, symbol, score, grade, decision,
+                    original_decision, rvol, price, change_pct, gap_pct, float_m,
+                    catalyst, catalyst_verified, catalyst_confidence, catalyst_source,
+                    critic_verdict, critic_confidence, critic_reasoning, decision_changed,
+                    disqualified, disqualification_reason,
+                    sector, industry, country, sector_etf,
+                    ticker_perf_1m, sector_perf_1m, vs_sector_pct,
+                    social_sentiment, social_score, social_reddit, social_stocktwits,
+                    social_bullish_pct, social_wsb, source
+                ) VALUES (
+                    %s, %s, %s, 'full', %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+            """, (
+                _run_id, date_str, run_label, sym,
+                t.get("score", 0), t.get("grade", ""), t.get("decision", ""),
+                t.get("original_decision"), t.get("relative_volume"), t.get("price"),
+                t.get("change_percent"), t.get("gap_percent"), t.get("float_m"),
+                (t.get("top_catalyst") or {}).get("title", "")[:200],
+                t.get("catalyst_verified"), t.get("catalyst_confidence"),
+                (t.get("top_catalyst") or {}).get("provider", ""),
+                t.get("critic_verdict"), t.get("critic_confidence"),
+                (t.get("critic_reasoning") or "")[:500],
+                t.get("decision_changed", False),
+                t.get("disqualified", False), t.get("disqualification_reason", ""),
+                t.get("sector", ""), t.get("industry", ""), t.get("country", ""),
+                t.get("sector_etf", ""),
+                t.get("ticker_perf_1m"), t.get("sector_perf_1m"), t.get("vs_sector_pct"),
+                soc.get("sentiment_label", ""), soc.get("sentiment_score"),
+                soc.get("reddit_mentions", 0), soc.get("stocktwits_messages", 0),
+                soc.get("stocktwits_bullish_pct"), soc.get("wsb_mentions", 0),
+                "screener",
+            ))
+            _inserted += 1
+        _ok("db_persist", f"{_inserted} rows → trade_ai_scans")
+    except Exception as exc:
+        _err("db_persist", str(exc))
+
+    # 18b2 Run health recording
+    _run_go = sum(1 for t in scored if t.get("decision") == "GO")
+    _run_wait = sum(1 for t in scored if t.get("decision") == "WAIT")
+    _run_nogo = len(scored) - _run_go - _run_wait
+    try:
+        from screener_run_health import record_screener_run_finish, get_conn as _health_conn
+        _hconn = _health_conn()
+        _health_stats = {
+            "symbols_scanned": len(scored),
+            "go_count": _run_go,
+            "wait_count": _run_wait,
+            "no_go_count": _run_nogo,
+            "raw_rows": len(tickers),
+            "normalized_rows": len(tickers),
+            "deduped_symbols": len(scored),
+            "expected_min_symbols": min_symbols,
+            "target_symbols": 60,
+            "source": "finviz",
+            "screener_count": len(live.get("downloads", [])) if 'live' in dir() else 0,
+            "has_cookie": bool(os.getenv("FINVIZ_COOKIE")),
+        }
+        _health_result = record_screener_run_finish(_hconn, run_label, _health_stats)
+        _health_status = _health_result["status"]
+        _health_reasons = _health_result["reason_codes"]
+        _hconn.close()
+        if _health_status == "RUN_HEALTHY":
+            _ok("run_health", f"{_health_status} — {len(scored)} symbols scanned (min {min_symbols})")
+        elif _health_status == "RUN_PARTIAL":
+            _err("run_health", f"{_health_status} — {len(scored)} symbols (min {min_symbols}) — {_health_reasons}")
+        else:
+            _err("run_health", f"{_health_status} — {len(scored)} symbols (min {min_symbols}) — {_health_reasons}")
+            if not allow_underfilled:
+                print(f"\n  ⚠️  Run is {_health_status}. Use --allow-underfilled to proceed anyway.\n")
+    except Exception as exc:
+        _err("run_health", str(exc))
+
+    # 18c Risk gate — annotate GO/WAIT tickers with prop desk governance (non-fatal)
+    try:
+        from risk_gate import RiskGate
+        _rg = RiskGate(conn)
+        _rg_approved = 0
+        _rg_rejected = 0
+        for t in scored:
+            if t.get("decision") not in ("GO", "WAIT"):
+                continue
+            _plan = t.get("trade_plan") or {}
+            _rd = _rg.check(
+                symbol=t.get("symbol", ""),
+                strategy_id="momentum_scalp",
+                trade_plan=_plan,
+                account="taxable",
+                mode="paper",
+                action_context="discovery",
+                extra={
+                    "sector": t.get("sector"),
+                    "source": t.get("source", "screener"),
+                    "catalyst_verified": bool(t.get("catalyst_verified")),
+                    "intel_readiness": t.get("intelligence_readiness", 0),
+                    "vix": market_snapshot.get("vix"),
+                }
+            )
+            t["risk_gate_result"] = _rd.result
+            t["risk_gate_reason_codes"] = _rd.reason_codes
+            if _rd.approved:
+                _rg_approved += 1
+            else:
+                _rg_rejected += 1
+        _ok("risk_gate", f"{_rg_approved} approved  {_rg_rejected} flagged  (discovery context)")
+    except Exception as exc:
+        _err("risk_gate", f"{exc}  — continuing without risk gate")
+
+    # 18d Strategy signal sync — GO/A+ scans → strategy_signals (non-fatal)
+    try:
+        from strategy_signal_sync import sync_strategy_signals, get_conn as _sync_get_conn
+        _sync_conn = _sync_get_conn()
+        sync_result = sync_strategy_signals(_sync_conn, run_label=run_label, dry_run=False)
+        _sync_conn.close()
+        _sync_inserted = sync_result.get("inserted", 0)
+        _sync_total = sync_result.get("strategy_signals_after", 0)
+        _sync_go = sync_result.get("go_count", 0) + sync_result.get("aplus_count", 0)
+        _ok("strategy_signal_sync", f"{_sync_inserted} inserted  {_sync_total} total  ({_sync_go} GO/A+ scans)")
+        # Health alert if GO scans exist but no signals written
+        if _sync_go > 0 and _sync_total == 0:
+            try:
+                from telegram_alert import send_alert
+                send_alert(f"⚠️ Signal flow warning: {_sync_go} GO/A+ scans but 0 strategy_signals written. Strategy Desk will be empty.")
+            except Exception:
+                print(f"  ⚠️ ALERT: {_sync_go} GO/A+ scans but 0 strategy_signals — Strategy Desk empty!")
+    except Exception as exc:
+        _err("strategy_signal_sync", f"{exc}  — continuing without signal sync")
+        # Fallback: try subprocess
+        try:
+            import subprocess as _sp
+            _sp.run(
+                [str(root / ".venv/bin/python"), str(root / "scripts/strategy_signal_sync.py"),
+                 "--run-label", run_label],
+                timeout=180, cwd=str(root),
+            )
+        except Exception:
+            pass
+
+    # 18e Trade plan backfill — ensure proposal-worthy signals have plans (non-fatal)
+    try:
+        from backfill_trade_plans_for_signals import backfill_plans, get_conn as _plan_get_conn
+        _plan_conn = _plan_get_conn()
+        _plan_result = backfill_plans(_plan_conn, run_label=run_label)
+        _plan_conn.close()
+        _plan_updated = _plan_result.get("updated", 0)
+        _plan_total = _plan_result.get("total", 0)
+        _ok("trade_plan_backfill", f"{_plan_updated}/{_plan_total} signals got trade plans")
+    except Exception as exc:
+        _err("trade_plan_backfill", f"{exc}  — continuing without plan backfill")
+
+    # 18f Auto paper proposal generation (non-fatal)
+    if not getattr(args, '_skip_auto_proposals', False) if 'args' in dir() else True:
+        try:
+            from auto_proposal_generator import run_auto_proposals, get_conn as _ap_get_conn
+            # Only auto-propose on healthy/partial runs
+            if len(scored) >= min_symbols or allow_underfilled:
+                _ap_conn = _ap_get_conn()
+                _ap_dry = getattr(args, '_auto_proposals_dry_run', False) if 'args' in dir() else False
+                _ap_result = run_auto_proposals(
+                    _ap_conn, run_label=run_label,
+                    min_score=40, limit=20, dry_run=_ap_dry,
+                    execution_label="orchestrator",
+                )
+                _ap_conn.close()
+                _ap_created = _ap_result.get("proposals_created", 0)
+                _ap_skipped = _ap_result.get("proposals_skipped", 0)
+                _ap_checked = _ap_result.get("signals_checked", 0)
+                _ok("auto_proposals", f"{_ap_created} created  {_ap_skipped} skipped  ({_ap_checked} checked)")
+            else:
+                _skip("auto_proposals", f"Run underfilled ({len(scored)} < {min_symbols}) — skipping auto proposals")
+        except Exception as exc:
+            _err("auto_proposals", f"{exc}  — continuing without auto proposals")
+
     # 19 Save state
     try:
         from delta_tracker import save_state
@@ -585,6 +840,14 @@ def _parse():
     ap.add_argument("--skip-market-check", action="store_true")
     ap.add_argument("--no-llm",            action="store_true")
     ap.add_argument("--no-alerts",         action="store_true")
+    ap.add_argument("--min-symbols",       type=int, default=40,
+                    help="Minimum symbols for healthy run (default 40)")
+    ap.add_argument("--allow-underfilled", action="store_true",
+                    help="Allow pipeline to complete even if universe is underfilled")
+    ap.add_argument("--skip-auto-proposals", action="store_true",
+                    help="Skip auto paper proposal generation (stage 18f)")
+    ap.add_argument("--auto-proposals-dry-run", action="store_true",
+                    help="Dry-run auto proposals (preview only)")
     return ap.parse_args()
 
 def main():
@@ -599,7 +862,9 @@ def main():
                         use_llm=not args.no_llm,
                         send_alerts=not args.no_alerts,
                         skip_market_check=args.skip_market_check,
-                        institutional=args.institutional)
+                        institutional=args.institutional,
+                        min_symbols=args.min_symbols,
+                        allow_underfilled=args.allow_underfilled)
 
 if __name__ == "__main__":
     raise SystemExit(main())

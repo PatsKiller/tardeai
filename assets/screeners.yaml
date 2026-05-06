@@ -1,7 +1,7 @@
 # ⚠️  CRITICAL: finviz_url MUST use v=152 (custom view), NOT v=111 (overview).
 # v=111 ignores &c= columns and silently returns only default fields (no RVOL, Gap, Float).
 # Column IDs: 25=Float, 61=Gap, 63=AvgVol, 64=RelVol, 65=Price, 66=Change, 67=Volume
-version: '12.1d'
+version: '12.2'
 name: trade-ai-v12-screeners
 timezone: America/New_York
 
@@ -25,16 +25,16 @@ storage:
 run_windows:
   '0400':
     label: pre_market_initial
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [prime_setups, watchlist_setups, unusual_volume, gap_momentum, high_rvol_broad]
   '0700':
     label: pre_market_update
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [prime_setups, watchlist_setups, unusual_volume, gap_momentum, high_rvol_broad]
   '0900':
     label: open_prep_final
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [prime_setups, watchlist_setups, unusual_volume, gap_momentum, high_rvol_broad]
   '1000':
     label: first_hour_read
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [prime_setups, watchlist_setups, unusual_volume, gap_momentum, high_rvol_broad]
 
 screeners:
 
@@ -53,3 +53,27 @@ screeners:
     strategy_class: day_scalp
     description: RVOL>3x + gap>5% + price $1-$30 + float<100M. All markets.
     finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u100,sh_price_1to30,sh_relvol_o3,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  unusual_volume:
+    display_name: Unusual Volume (Tier 3)
+    group: expansion
+    status: active
+    strategy_class: day_scalp
+    description: RVOL>2x + price $1-$50 + avg volume>200k. Broader net, no gap requirement.
+    finviz_url: "https://elite.finviz.com/export?v=152&f=sh_avgvol_o200,sh_price_1to50,sh_relvol_o2,ta_change_u&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  gap_momentum:
+    display_name: Gap Momentum (Tier 3)
+    group: expansion
+    status: active
+    strategy_class: day_scalp
+    description: Gap>3% + price $1-$30 + avg volume>100k. Lower RVOL threshold for gappers.
+    finviz_url: "https://elite.finviz.com/export?v=152&f=sh_avgvol_o100,sh_price_1to30,ta_change_u3,ta_gap_u3&ft=3&o=-gap&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  high_rvol_broad:
+    display_name: High RVOL Broad (Tier 3)
+    group: expansion
+    status: active
+    strategy_class: day_scalp
+    description: RVOL>5x + price $1-$100 + any cap. Catches mid/large cap momentum too.
+    finviz_url: "https://elite.finviz.com/export?v=152&f=sh_avgvol_o100,sh_price_1to100,sh_relvol_o5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"

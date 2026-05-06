@@ -1,0 +1,602 @@
+#!/usr/bin/env python3
+"""strategy_signal_sync.py — Sync GO/A+ scans into strategy_signals.
+
+Bridges the gap between trade_ai_scans (screener output) and strategy_signals
+(Strategy Desk input). Ensures GO/A+ decisions become actionable signals.
+
+Usage:
+    .venv/bin/python scripts/strategy_signal_sync.py --today
+    .venv/bin/python scripts/strategy_signal_sync.py --run-label 0700
+    .venv/bin/python scripts/strategy_signal_sync.py --date 2026-05-06
+    .venv/bin/python scripts/strategy_signal_sync.py --symbols BDSX,BLZE
+    .venv/bin/python scripts/strategy_signal_sync.py --dry-run --today
+"""
+import argparse
+import json
+import logging
+import os
+import sys
+import uuid
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / ".env")
+
+log = logging.getLogger("signal_sync")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
+
+
+def get_conn():
+    import psycopg2
+    password = os.getenv("DB_PASSWORD")
+    if not password:
+        raise RuntimeError("DB_PASSWORD missing from .env")
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        port=os.getenv("DB_PORT", "5432"),
+        dbname=os.getenv("DB_NAME", "trade_ai"),
+        user=os.getenv("DB_USER", "trade_ai"),
+        password=password,
+    )
+
+
+def _get_strategy_signals_columns(conn):
+    """Get actual column names in strategy_signals for schema-adaptive insert."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'strategy_signals'
+        ORDER BY ordinal_position
+    """)
+    return {row[0] for row in cur.fetchall()}
+
+
+def get_today_go_scans(conn, run_label=None, symbols=None, target_date=None):
+    """Get today's GO/A+ scans from trade_ai_scans."""
+    cur = conn.cursor()
+    date_clause = "CURRENT_DATE" if not target_date else f"'{target_date}'::date"
+
+    sql = f"""
+        SELECT DISTINCT ON (symbol)
+            id, symbol, score, grade, decision, rvol, float_m, gap_pct, price,
+            catalyst, catalyst_verified, catalyst_confidence,
+            critic_verdict, critic_confidence, critic_reasoning,
+            sector, industry, country, sector_etf,
+            source, screener_label, run_label, scanned_at,
+            intelligence_readiness, change_pct,
+            ticker_perf_1m, sector_perf_1m, vs_sector_pct
+        FROM trade_ai_scans
+        WHERE decision IN ('GO', 'A+')
+        AND (scanned_at AT TIME ZONE 'America/New_York')::date = {date_clause}
+        {"AND run_label = %s" if run_label else ""}
+        {"AND symbol = ANY(%s)" if symbols else ""}
+        ORDER BY symbol, score DESC, scanned_at DESC
+    """
+    params = []
+    if run_label:
+        params.append(run_label)
+    if symbols:
+        params.append(symbols)
+
+    cur.execute(sql, params or None)
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+
+def _load_strategy_configs() -> dict:
+    """Load all strategy YAML configs from config/strategies/."""
+    import yaml
+    configs = {}
+    strat_dir = PROJECT_ROOT / "config" / "strategies"
+    if not strat_dir.exists():
+        return configs
+    for f in strat_dir.glob("*.yaml"):
+        if f.name in ("shared_risk_rules.yaml", "recommendation_schema.yaml"):
+            continue
+        try:
+            cfg = yaml.safe_load(f.read_text()) or {}
+            sid = cfg.get("strategy_id")
+            if sid:
+                configs[sid] = cfg
+        except Exception:
+            pass
+    return configs
+
+
+def candidate_matches_strategy(scan: dict, cfg: dict) -> tuple:
+    """Check if a scan candidate matches a strategy's YAML criteria.
+    Returns (matches: bool, match_reasons: list, reject_reasons: list).
+    """
+    filters = cfg.get("screen_filters", {})
+    match_reasons = []
+    reject_reasons = []
+
+    price = float(scan.get("price") or 0)
+    rvol = float(scan.get("rvol") or 0)
+    float_m = float(scan.get("float_m") or 0)
+    gap = abs(float(scan.get("gap_pct") or 0))
+
+    # Price range
+    min_price = float(filters.get("min_price", 0))
+    max_price = float(filters.get("max_price", 99999))
+    if price < min_price:
+        reject_reasons.append(f"price {price:.2f} < min {min_price}")
+    elif price > max_price:
+        reject_reasons.append(f"price {price:.2f} > max {max_price}")
+    else:
+        match_reasons.append(f"price {price:.2f} in [{min_price}-{max_price}]")
+
+    # RVOL
+    min_rvol = float(filters.get("min_rvol", 0))
+    if min_rvol > 0 and rvol < min_rvol:
+        reject_reasons.append(f"rvol {rvol:.1f} < min {min_rvol}")
+    elif min_rvol > 0:
+        match_reasons.append(f"rvol {rvol:.1f} >= {min_rvol}")
+
+    # Float
+    max_float = float(filters.get("max_float_m", 99999))
+    if float_m > 0 and float_m > max_float:
+        reject_reasons.append(f"float {float_m:.0f}M > max {max_float}M")
+    elif float_m > 0:
+        match_reasons.append(f"float {float_m:.0f}M <= {max_float}M")
+
+    # Gap (gap_and_go requires minimum gap)
+    min_gap = float(filters.get("min_gap_pct", 0))
+    if min_gap > 0 and gap < min_gap:
+        reject_reasons.append(f"gap {gap:.1f}% < min {min_gap}%")
+    elif min_gap > 0:
+        match_reasons.append(f"gap {gap:.1f}% >= {min_gap}%")
+
+    matches = len(reject_reasons) == 0
+    return matches, match_reasons, reject_reasons
+
+
+def route_candidate_to_strategies(scan: dict, configs: dict) -> list:
+    """Route a candidate to all matching strategies.
+    Returns list of (strategy_id, match_reasons, reject_reasons) tuples.
+    """
+    # Day-scalp strategies that apply to screener GO candidates
+    DAY_SCALP_STRATEGIES = ["momentum_scalp", "gap_and_go", "swing_breakout", "earnings_catalyst"]
+    matches = []
+    for sid in DAY_SCALP_STRATEGIES:
+        cfg = configs.get(sid)
+        if not cfg:
+            continue
+        ok, match_r, reject_r = candidate_matches_strategy(scan, cfg)
+        if ok:
+            matches.append((sid, match_r, reject_r))
+    return matches
+
+
+def infer_strategy_id(scan: dict) -> str:
+    """Legacy single-strategy inference. Used as fallback."""
+    screener = (scan.get('screener_label') or '').lower()
+    gap = float(scan.get('gap_pct') or 0)
+    price = float(scan.get('price') or 0)
+    rvol = float(scan.get('rvol') or 0)
+
+    if 'gap' in screener or gap > 8:
+        return 'gap_and_go'
+    if price < 50 and rvol >= 2:
+        return 'momentum_scalp'
+    return 'momentum_scalp'
+
+
+def find_trade_plan(conn, symbol: str, scan_time=None) -> dict:
+    """Find the best trade plan for a symbol."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, symbol, strategy_id, entry_low, entry_high, stop_loss,
+               target_1, target_2, shares, dollar_risk, risk_reward_1,
+               generated_at
+        FROM trade_plans
+        WHERE symbol = %s
+        AND NOT COALESCE(disqualified, false)
+        ORDER BY generated_at DESC
+        LIMIT 1
+    """, [symbol])
+    cols = [d[0] for d in cur.description]
+    row = cur.fetchone()
+    return dict(zip(cols, row)) if row else None
+
+
+def validate_long_trade_plan(entry, stop, target) -> tuple:
+    """Validate a long trade plan. Returns (valid, issues)."""
+    issues = []
+    if entry is None or entry <= 0:
+        issues.append("entry missing or zero")
+        return False, issues
+    if stop is None:
+        issues.append("stop_loss missing")
+    elif stop >= entry:
+        issues.append(f"stop_loss ${stop:.2f} >= entry ${entry:.2f} (inverted)")
+    if target is None:
+        issues.append("target_1 missing")
+    elif target <= entry:
+        issues.append(f"target_1 ${target:.2f} <= entry ${entry:.2f} (no upside)")
+    return len(issues) == 0, issues
+
+
+def build_setup_description(scan: dict, plan: dict) -> str:
+    """Build human-readable setup description."""
+    parts = []
+    rvol = scan.get('rvol')
+    if rvol:
+        parts.append(f"RVOL {float(rvol):.1f}x")
+    float_m = scan.get('float_m')
+    if float_m:
+        parts.append(f"Float {float(float_m):.0f}M")
+    gap = scan.get('gap_pct')
+    if gap:
+        parts.append(f"Gap {float(gap):+.1f}%")
+    if scan.get('catalyst_verified'):
+        parts.append("Verified catalyst")
+    elif scan.get('catalyst'):
+        parts.append("Unverified catalyst")
+    grade = scan.get('grade', '')
+    score = scan.get('score', 0)
+    if grade and score:
+        parts.append(f"{grade} {score}pts")
+    source = scan.get('source', '')
+    if source:
+        parts.append(f"Source {source}")
+    return " | ".join(parts)
+
+
+def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
+                           sync_run_id: str, dry_run=False, route_data: dict = None) -> dict:
+    """Insert or update a strategy_signal row. Returns status dict."""
+    symbol = scan['symbol']
+    strategy_id = scan.get('strategy_id') or infer_strategy_id(scan)
+    cur = conn.cursor()
+
+    # Check idempotency — existing signal for same symbol/strategy/date
+    cur.execute("""
+        SELECT id FROM strategy_signals
+        WHERE symbol = %s AND strategy_id = %s
+        AND fired_at::date = %s
+        AND status IN ('active','pending','PENDING','ACTIVE')
+        LIMIT 1
+    """, [symbol, strategy_id, datetime.now(timezone.utc).strftime('%Y-%m-%d')])
+    existing = cur.fetchone()
+
+    if existing:
+        return {"status": "skipped", "reason": "duplicate", "signal_id": existing[0]}
+
+    # Get entry/stop/target from plan or scan price
+    price = float(scan.get('price') or 0)
+    entry = price
+    stop = None
+    target = None
+    shares = 0
+    dollar_risk = 0
+    rr = 0
+
+    if plan:
+        entry = float(plan.get('entry_high') or plan.get('entry_low') or price)
+        stop = float(plan['stop_loss']) if plan.get('stop_loss') else None
+        target = float(plan['target_1']) if plan.get('target_1') else None
+        shares = int(plan.get('shares') or 0)
+        dollar_risk = float(plan.get('dollar_risk') or 0)
+        rr = float(plan.get('risk_reward_1') or 0)
+    else:
+        # Generate basic plan from price
+        atr_est = price * 0.05  # rough 5% ATR estimate
+        stop = round(price - atr_est, 2)
+        target = round(price + atr_est * 1.5, 2)
+        shares = max(1, int(2000 / price)) if price > 0 else 0
+        dollar_risk = round(abs(price - stop) * shares, 2)
+        rr = round((target - price) / (price - stop), 2) if price > stop else 0
+
+    # Validate long trade plan
+    valid, issues = validate_long_trade_plan(entry, stop, target)
+    if not valid:
+        log.warning(f"  {symbol}: invalid plan — {', '.join(issues)}")
+        # Auto-fix inverted stop for long
+        if stop is not None and stop >= entry:
+            stop = round(entry - max(entry * 0.05, 0.20), 2)
+            log.info(f"  {symbol}: auto-fixed stop to ${stop:.2f}")
+        if target is not None and target <= entry:
+            target = round(entry + (entry - stop) * 1.5, 2)
+            log.info(f"  {symbol}: auto-fixed target to ${target:.2f}")
+        # Re-validate
+        valid, issues = validate_long_trade_plan(entry, stop, target)
+        if not valid:
+            return {"status": "skipped", "reason": f"invalid_plan: {', '.join(issues)}"}
+
+    # Recalculate risk/reward after any fix
+    if stop and target and entry:
+        rr = round((target - entry) / (entry - stop), 2) if entry > stop else 0
+        if shares == 0 and price > 0:
+            shares = max(1, int(2000 / price))
+        dollar_risk = round(abs(entry - stop) * shares, 2)
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "symbol": symbol,
+            "strategy_id": strategy_id,
+            "entry": entry,
+            "stop": stop,
+            "target": target,
+            "shares": shares,
+            "dollar_risk": dollar_risk,
+            "rr": rr,
+        }
+
+    # Build column/value pairs adaptively
+    data = {
+        "strategy_id": strategy_id,
+        "symbol": symbol,
+        "signal_type": "GO",
+        "signal_grade": scan.get('grade'),
+        "signal_score": scan.get('score'),
+        "price": price,
+        "rvol": scan.get('rvol'),
+        "float_m": scan.get('float_m'),
+        "gap_pct": scan.get('gap_pct'),
+        "catalyst": (scan.get('catalyst') or '')[:200],
+        "catalyst_verified": scan.get('catalyst_verified', False),
+        "setup_description": build_setup_description(scan, plan),
+        "entry_low": float(plan.get('entry_low') or entry) if plan else entry,
+        "entry_high": entry,
+        "stop_loss": stop,
+        "target_1": target,
+        "target_2": float(plan.get('target_2')) if plan and plan.get('target_2') else None,
+        "risk_reward": rr,
+        "shares": shares,
+        "dollar_risk": dollar_risk,
+        "sector": scan.get('sector'),
+        "intel_readiness": scan.get('intelligence_readiness'),
+        "status": "active",
+        "fired_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=8),
+    }
+
+    # Lineage columns (only if they exist in schema)
+    lineage = {
+        "source_table": "trade_ai_scans",
+        "source_record_id": str(scan.get('id', '')),
+        "scan_run_label": scan.get('run_label'),
+        "screener_label": scan.get('screener_label'),
+        "discovery_source": scan.get('source'),
+        "sync_created_by": "strategy_signal_sync",
+        "sync_run_id": sync_run_id,
+    }
+
+    for k, v in lineage.items():
+        if k in available_cols:
+            data[k] = v
+
+    # Route tracking columns
+    if route_data:
+        route_cols = {
+            "route_match_reasons": json.dumps(route_data.get("route_match_reasons", [])),
+            "route_reject_reasons": json.dumps(route_data.get("route_reject_reasons", [])),
+        }
+        for k, v in route_cols.items():
+            if k in available_cols:
+                data[k] = v
+
+    # Filter to only existing columns
+    insert_data = {k: v for k, v in data.items() if k in available_cols}
+
+    cols_str = ", ".join(insert_data.keys())
+    placeholders = ", ".join(["%s"] * len(insert_data))
+
+    cur.execute(
+        f"INSERT INTO strategy_signals ({cols_str}) VALUES ({placeholders}) RETURNING id",
+        list(insert_data.values())
+    )
+    signal_id = cur.fetchone()[0]
+
+    return {"status": "inserted", "signal_id": signal_id, "symbol": symbol, "strategy_id": strategy_id}
+
+
+def sync_strategy_signals(conn, run_label=None, symbols=None, target_date=None, dry_run=False) -> dict:
+    """Main sync function. Returns audit dict."""
+    cur = conn.cursor()
+    sync_run_id = f"sync_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+    # Get available columns for schema-adaptive insert
+    available_cols = _get_strategy_signals_columns(conn)
+
+    # Count strategy_signals before
+    cur.execute("""
+        SELECT COUNT(*) FROM strategy_signals
+        WHERE fired_at::date = CURRENT_DATE
+    """)
+    signals_before = cur.fetchone()[0] or 0
+
+    # Get GO/A+ scans
+    scans = get_today_go_scans(conn, run_label=run_label, symbols=symbols, target_date=target_date)
+    go_count = sum(1 for s in scans if s.get('decision') == 'GO')
+    aplus_count = sum(1 for s in scans if s.get('decision') == 'A+')
+
+    log.info(f"Found {len(scans)} GO/A+ scans (GO={go_count}, A+={aplus_count})")
+    log.info(f"strategy_signals before: {signals_before}")
+
+    # Load strategy YAML configs for multi-strategy routing
+    strategy_configs = _load_strategy_configs()
+    log.info(f"Loaded {len(strategy_configs)} strategy configs: {list(strategy_configs.keys())}")
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+    errors = 0
+    invalid_plans = 0
+    no_strategy_match = 0
+    route_summary = {}
+    details = []
+
+    for scan in scans:
+        symbol = scan['symbol']
+        try:
+            plan = find_trade_plan(conn, symbol)
+
+            # Multi-strategy routing: evaluate against all strategy YAMLs
+            routes = route_candidate_to_strategies(scan, strategy_configs)
+
+            if not routes:
+                # Fallback: use legacy single-strategy inference
+                fallback_sid = infer_strategy_id(scan)
+                routes = [(fallback_sid, ["fallback_inference"], [])]
+                no_strategy_match += 1
+                log.info(f"  {symbol}: no YAML match, fallback to {fallback_sid}")
+
+            for strategy_id, match_reasons, reject_reasons in routes:
+                # Override strategy_id for this insertion
+                scan_copy = dict(scan)
+                scan_copy['strategy_id'] = strategy_id
+
+                # Store route reasons
+                route_data = {
+                    "route_match_reasons": match_reasons,
+                    "route_reject_reasons": reject_reasons,
+                }
+
+                result = insert_strategy_signal(
+                    conn, scan_copy, plan, available_cols, sync_run_id,
+                    dry_run=dry_run, route_data=route_data,
+                )
+
+                status = result.get('status')
+                if status == 'inserted':
+                    inserted += 1
+                    route_summary[strategy_id] = route_summary.get(strategy_id, 0) + 1
+                    log.info(f"  {symbol}: inserted → {strategy_id} (signal #{result.get('signal_id')}) [{', '.join(match_reasons[:3])}]")
+                elif status == 'skipped' and result.get('reason') == 'duplicate':
+                    skipped += 1
+                    log.info(f"  {symbol}: skipped {strategy_id} (already exists)")
+                elif status == 'skipped':
+                    if 'invalid_plan' in str(result.get('reason', '')):
+                        invalid_plans += 1
+                    else:
+                        skipped += 1
+                    log.warning(f"  {symbol}: skipped {strategy_id} — {result.get('reason')}")
+                elif status == 'dry_run':
+                    route_summary[strategy_id] = route_summary.get(strategy_id, 0) + 1
+                    log.info(f"  [dry-run] {symbol}: would insert {strategy_id} entry=${result.get('entry'):.2f} stop=${result.get('stop'):.2f} target=${result.get('target'):.2f}")
+
+                details.append(result)
+
+        except Exception as e:
+            errors += 1
+            log.error(f"  {symbol}: error — {e}")
+            details.append({"status": "error", "symbol": symbol, "error": str(e)})
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+    # Print routing summary
+    log.info(f"\nStrategy routing summary:")
+    for sid, cnt in sorted(route_summary.items(), key=lambda x: -x[1]):
+        log.info(f"  {sid}: {cnt} signals")
+    if no_strategy_match:
+        log.info(f"  no_strategy_match (fallback): {no_strategy_match}")
+
+    if not dry_run:
+        try:
+            conn.commit()
+        except Exception as e:
+            log.error(f"Commit failed: {e}")
+            conn.rollback()
+
+    # Count after
+    cur.execute("""
+        SELECT COUNT(*) FROM strategy_signals
+        WHERE fired_at::date = CURRENT_DATE
+    """)
+    signals_after = cur.fetchone()[0] or 0
+
+    # Write audit
+    audit_status = "OK"
+    if go_count + aplus_count > 0 and signals_after == 0:
+        audit_status = "CRITICAL"
+    elif signals_after < (go_count + aplus_count) * 0.5:
+        audit_status = "WARN"
+
+    if not dry_run:
+        try:
+            cur.execute("""
+                INSERT INTO signal_flow_audit
+                    (run_label, run_date, source_component,
+                     go_count, aplus_count,
+                     strategy_signals_before, strategy_signals_after,
+                     inserted_count, updated_count, skipped_count, error_count,
+                     status, details)
+                VALUES (%s, CURRENT_DATE, 'strategy_signal_sync',
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, [
+                run_label or 'manual',
+                go_count, aplus_count,
+                signals_before, signals_after,
+                inserted, updated, skipped, errors,
+                audit_status,
+                json.dumps({"details": [d.get('symbol', '?') + ':' + d.get('status', '?') for d in details]})
+            ])
+            conn.commit()
+        except Exception as e:
+            log.warning(f"Audit write failed: {e}")
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+    result = {
+        "go_count": go_count,
+        "aplus_count": aplus_count,
+        "strategy_signals_before": signals_before,
+        "strategy_signals_after": signals_after,
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "invalid_plans": invalid_plans,
+        "errors": errors,
+        "no_strategy_match": no_strategy_match,
+        "route_summary": route_summary,
+        "status": audit_status,
+        "dry_run": dry_run,
+        "sync_run_id": sync_run_id,
+    }
+
+    log.info(f"Sync complete: {json.dumps(result)}")
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Strategy signal sync — GO/A+ scans → strategy_signals")
+    parser.add_argument("--today", action="store_true", help="Sync today's GO/A+ scans")
+    parser.add_argument("--run-label", type=str, help="Filter by run label (0400, 0700, 0900, 1000)")
+    parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD)")
+    parser.add_argument("--symbols", type=str, help="Comma-separated symbols")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be inserted")
+    args = parser.parse_args()
+
+    if not args.today and not args.run_label and not args.date and not args.symbols:
+        print("Usage: --today or --run-label 0700 or --date 2026-05-06 or --symbols BDSX,BLZE")
+        print("       Add --dry-run to preview without inserting")
+        sys.exit(1)
+
+    conn = get_conn()
+    try:
+        symbols = args.symbols.upper().split(',') if args.symbols else None
+        result = sync_strategy_signals(
+            conn,
+            run_label=args.run_label,
+            symbols=symbols,
+            target_date=args.date,
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2, default=str))
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()
