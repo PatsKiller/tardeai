@@ -13,7 +13,7 @@ description: >
   "show proposals", "run monthly", "event detector", "level 3", "autonomous", or any variation.
 ---
 
-# Trade AI v12 + Portfolio Intelligence v1.2 — System Skill
+# Trade AI v12 + Portfolio Intelligence v1.2 — System Skill v7.7
 
 **Server:** ms01-openclaw (Ubuntu Linux, NOT Windows)
 **SSH:** `ssh johnclaw@192.168.50.16`
@@ -214,16 +214,21 @@ crontab -l | wc -l            # Count entries
 
 # Key cron timing reference
 # 5:00 AM  - Alex daily scan
-# 5:30 AM  - Outcome evaluation
+# 5:30 AM  - Outcome evaluation + agent_outcome_scorer
+# 5:30-9:30 - Pre-market watcher (every 15 min, 17 slots)
 # 6:00 AM  - Smart alerts + credential check
 # 6:15 AM  - Agent router refresh
 # 6:25 AM  - Agent intel daily
 # 6:30 AM  - FRED ingest + news ingestion
-# 7:00 AM  - CIO decisions
+# 6-20h/5m - Pipeline watchdog (retry + queue + IER)
+# 7:00 AM  - CIO decisions + pipeline_health_monitor
 # 8:00 AM  - Aegis morning brief → Telegram
+# 10:15 AM - Pipeline health monitor (2nd run)
 # 7:00 PM  - YouTube ingest + agent watchlist engine
+# 8:00 PM  - Overnight batch (main)
 # 9:00 PM  - Embedding indexing
 # 10PM-6AM - Transcript backlog (2/hour)
+# */4 hours - YouTube backfill manager + video queue
 # */15 min  - Event detector + router (Level 3)
 # Sunday 8AM  - Autonomy summary
 # Sunday 10AM - Weekly retirement health check
@@ -255,6 +260,10 @@ Live confidence: `SELECT agent, round(avg(confidence)::numeric,2) FROM watchlist
 4. Outcome lessons (last 7 correct/wrong decisions from `agent_intelligence_rules`)
 5. SSDI rules (Medicaid lookback, IRMAA thresholds, MFS bracket ceiling)
 6. Cross-agent views (prior results from other agents on same symbol)
+7. Scan intelligence (`get_scan_intelligence()` — trade_ai_scans data for GO tickers)
+8. RAG context (`get_rag_context()` — relevant prior intelligence from embeddings)
+9. Calibration context (`get_calibration_context()` — accuracy stats or "accumulating" message)
+10. Scalp instructions (for price<$100, float<200M GO tickers only)
 
 ### Non-negotiable agent rules
 - **G2 — Income Protection:** NEVER auto-rotate income-critical positions (>$11K/yr income contribution)
@@ -327,6 +336,27 @@ python3 scripts/transcript_tagger.py --retag-all    # force re-tag all
 python3 scripts/transcript_tagger.py --id 123       # tag single
 ```
 
+### Catalyst Pipeline (automated — no agent involvement)
+
+```
+catalyst_enrichment.py  → fetches from 7 APIs: Finnhub, NewsAPI, Polygon,
+                          FMP, AlphaVantage, Finviz CSV, Yahoo RSS
+                          7-day fallback window for small caps
+                          Generic roundup filter (14 blocked patterns)
+                          Ticker-mention validation before accepting headline
+scoring.py              → validate_catalyst_relevance(), picks top headline
+                          is_disqualified_ticker(): reverse split, micro-float
+continuous_runner.py    → runs every 15min, builds + sends Telegram alerts
+trade_ai_news_monitor.py → market hours, every 30min via systemd timer
+                          checks GO tickers for breaking news (Finnhub + Yahoo)
+                          re-runs Scalp Critic on significant news
+                          Telegrams only when verdict changes
+```
+
+**IMPORTANT:** Iris does NOT curate live catalysts. Iris is the library agent
+(RAG coverage, taxonomy, transcript routing, content gaps). The catalyst
+pipeline above is fully automated without agent involvement.
+
 **API:** `GET /api/v2/transcript-audit`
 
 ---
@@ -371,8 +401,8 @@ Fallback chain: v=152 → v=151 → v=141 → v=111.
 | Price Range | 5 | $2–$10 sweet spot |
 | Sector Momentum | 5 | Sector ETF top 3 |
 
-GO ≥40 · WAIT 30-39 · NO GO <30 · A+ ≥48 (Sonnet trade plan)
-**All Trade AI setups execute in Taxable account only.**
+A+ ≥48 (Telegram + Sonnet trade plan) · GO ≥40 (Telegram alert) · WAIT 30-39 (soft Telegram — "watching, not acting") · AVOID <30 (stored only, dashboard visible)
+**All tiers apply to both Finviz and social scalp pipelines. All Trade AI setups execute in Taxable account only.**
 
 ---
 
@@ -412,6 +442,17 @@ Live spend: `http://192.168.50.16:7777/api/v2/llm-spend`
 | `scripts/intel_query.py` | Agent intel context builder (injects FRED + lessons) |
 | `scripts/portfolio_trade_journal.py` | FIFO trade matcher — builds closed_trades from raw transactions |
 | `scripts/portfolio_server.py` | HTTP server — serves dashboard + APIs |
+| `scripts/symbol_enrichment.py` | 4-tier multi-source enrichment. enrich_symbol(symbol, score, decision). Brave last resort only |
+| `scripts/agent_outcome_scorer.py` | Nightly 5:30 AM. Scores agent recs vs trade_closed. Writes to agent_calibration |
+| `scripts/premarket_watcher.py` | Every 15 min 5:30-9:30 AM weekdays. EDGAR 8-K + StockTwits surge detection |
+| `scripts/pipeline_health_monitor.py` | 7 AM + 10:15 AM. Checks pipeline steps + auto-heals GO tickers |
+| `scripts/pipeline_watchdog.py` | Every 5 min weekdays. Retry failed scripts. Queue missing agent jobs. IER actions |
+| `scripts/pipeline_registry.py` | PipelineRun context manager. Non-fatal. Used by 8+ scripts |
+| `scripts/intelligence_entity_manager.py` | upsert_entity() + get_entity() + get_entity_context_for_prompt() |
+| `scripts/indicator_engine.py` | 20 indicators, 5 profiles, TTM squeeze, pure pandas, ~0.4s |
+| `scripts/backfill_go_enrichment.py` | One-time backfill script for recent GO symbols |
+| `scripts/rag_retrieval.py` | get_rag_context() + format_rag_context_for_prompt(). RAG query layer |
+| `scripts/agent_collab.py` | Cross-agent context, calibration, escalation, peer notes |
 
 ---
 
@@ -442,7 +483,7 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 
 ---
 
-## Telegram Commands (32 unique)
+## Telegram Commands (21 defined in telegram_command_handler.py)
 
 | Command | What |
 |---------|------|
@@ -452,6 +493,13 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 | `alex V` | Full retirement analysis for V |
 | `roth ladder` | 5-year Roth conversion projection |
 | `conflicts` | Agent disagreement count |
+| **`proposals`** | **List pending watchlist proposals (v7.3)** |
+| **`tasks`** | **List pending tasks needing decision (v7.3)** |
+| **`debates`** | **List recent agent debates (v7.3)** |
+| **`approve proposal <id> [reason]`** | **Approve watchlist proposal → agent_feedback_log (v7.3)** |
+| **`reject proposal <id> [reason]`** | **Reject watchlist proposal → agent_feedback_log (v7.3)** |
+| **`approve task <id> [decision]`** | **Resolve task in john_decision_queue (v7.3)** |
+| **`reject task <id> [reason]`** | **Reject task (v7.3)** |
 | `iris status` | Coverage %, pending proposals, top gap |
 | `iris <question>` | Ask Iris anything about content tagging |
 | `iris approve <id>` | Approve a keyword proposal — activates immediately |
@@ -479,19 +527,30 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 | `iris stale` | Symbols not analyzed by agents in >7 days |
 | `iris gaps` | Content categories with thin recent coverage |
 
+### Approval Flow (v7.3 — verified working)
+
+```
+Telegram "approve proposal 5" → watchlist_proposals.status='approved' + agent_feedback_log INSERT
+Telegram "reject task 20"     → john_decision_queue.status='rejected' + john_decision_history INSERT
+```
+
+**Key fact:** Tasks live in `john_decision_queue` table (NOT `tasks`). Endpoint is `POST /api/v2/john/decide`.
+
 ---
 
 ## Scripts & Cron Cheat Sheet
 
-### Pipeline scripts (run by cron — 71 entries)
+### Pipeline scripts (run by cron — 75 entries)
 
 | Script | Schedule | What it does | Key args |
 |--------|----------|--------------|----------|
 | `run_alex_daily.py` | 5:00 AM M-F | Alex daily retirement scan → Telegram | `--daily --telegram` |
 | `overnight_batch.py` | 5:30 AM / 6:45 AM / 8 PM / 9 PM | Outcomes, proactive scan, nightly pipeline, embeddings | `--outcomes` / `--proactive` / `--telegram` / `--index-embeddings` |
+| **`overnight_batch.py`** | **6:35 AM M-F** | **Tax agent sweep: harvest candidates + SSDI proposals (v7.3)** | **`--tax-sweep`** |
 | `telegram_smart_alerts.py` | 6:00 AM M-F | Roth/income/conflict/stop/Medicare alerts | `--check-all --telegram` |
 | `credential_monitor.py` | 6:00 AM daily | Check 10 API credentials | `--check --telegram` |
 | `fred_data_ingest.py` | 6:30 AM M-F | FRED macro (7 series) | `--ingest` |
+| **`social_ingest.py`** | **7:30 AM M-F** | **Social: holdings + StockTwits discovery + Reddit discovery (v7.3)** | **`--source all`** |
 | `news_ingestion.py` | 6:30 AM / 12:30 PM / 6:30 PM | Yahoo RSS + Finnhub + Google News | `--priority` |
 | `classify_candidates.py` | 6:35 AM M-F | Classify new symbols into strategies | — |
 | `intel_auto_discovery.py` | 6:40 AM + 12:40 PM M-F | Scan for new ticker mentions | `--telegram` |
@@ -511,6 +570,11 @@ Agents self-trigger on 10 data events every 15 minutes. Event digest in Aegis br
 | `youtube_channel_discovery.py` | 1st of month 10 AM | Discover new channels | `--discover --telegram` |
 
 | `rag_indexer.py` | 6:50 AM / 7:20 PM / 2:30 AM | RAG embedder: news+FRED / YouTube / agent outputs | `--source all --hours 2` / `--backfill` |
+| `agent_outcome_scorer.py` | 5:30 AM M-F | Score agent recs vs closed trades → agent_calibration | — |
+| `premarket_watcher.py` | Every 15 min 5:30-9:30 AM M-F | EDGAR 8-K + StockTwits surge for GO symbols | — |
+| `pipeline_health_monitor.py` | 7:00 AM + 10:15 AM M-F | Check pipeline steps + auto-heal missing GO enrichment | — |
+| `pipeline_watchdog.py` | Every 5 min 6-20h M-F | Retry failed scripts, queue missing agent jobs, IER actions | — |
+| `youtube_backfill_manager.py` | Every 4 hours | Channel backfill + video queue processing | `--status` / `--queue` |
 
 ### On-demand scripts (manual or API-triggered)
 
@@ -657,7 +721,7 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 | Iris Card | `src/pages/Overview.tsx` | Coverage bar + pending proposals + Ask Iris Q&A |
 | Freshness Badge | `src/pages/Retirement.tsx` | Green/amber based on data age + Refresh button |
 
-### Additional API Endpoints (v5.3)
+### Additional API Endpoints (v5.3 + v7.3)
 
 | Endpoint | Method | What |
 |----------|--------|------|
@@ -667,18 +731,34 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 | `/api/v2/portfolio-intelligence` | GET | 47 positions with real sectors, per-account/sector P&L, cross-account, best/worst, classification |
 | `/api/v2/news/articles` | GET | Paginated news — `?strategy=&source=&relevance=&search=&limit=&offset=` (14 categories, retirement_relevance) |
 | `/api/v2/admin/backfill-news-strategy` | POST | Classify all news articles (idempotent — 0 on second call) |
-| `/api/v2/rag/status` | GET | RAG embedding coverage per source type (10 types, 5159 total rows) |
+| `/api/v2/intelligence-whiteboard` | GET | Full whiteboard: 500 items with quality/confidence/source_type/hygiene_status, stats by source + status |
+| `/api/v2/rag/status` | GET | RAG embedding coverage per source type (12 types, 5,610 total rows) |
 | `/api/v2/admin/rag-backfill` | POST | Background backfill of all source types into content_embeddings |
+| `/api/v2/proposals/decide` | POST | **Approve/reject proposal — `{id, decision, reason}` → watchlist_proposals + agent_feedback_log (v7.3)** |
+| `/api/v2/john/decide` | POST | **Resolve task — `{id, status, decision, reasoning}` → john_decision_queue + history (v7.3)** |
 | `/api/v2/tasks/<id>/resolve` | POST | Resolve a task — `{note}` → updates john_decision_queue status to decided_action |
 | `/api/v2/tasks/<id>/defer` | POST | Defer a task — `{note}` → updates status to deferred |
 | `/api/v2/tasks/<id>/reject` | POST | Reject a task — `{note}` → updates status to rejected |
 | `/api/v2/tasks/deduplicate` | POST | Remove duplicate pending tasks (keeps newest per symbol+category) |
+| **`/api/v2/weekly-report`** | **GET** | **7-day summary: agent activity, proposals acted, debates, feedback, social, tasks (v7.3)** |
+| **`/api/v2/monthly-report`** | **GET** | **30-day summary: same categories aggregated monthly (v7.3)** |
+| **`/api/v2/debates`** | **GET** | **Agent debate log — conflicts, consensus, escalations (v7.3)** |
+| `/api/v2/intelligence-entities` | GET | 90 IER entities, freshness scores, market + subject types |
+| `/api/v2/confluence` | GET | Confluence scores for symbol — `?symbol=SYM` |
+| `/api/v2/batch` | POST | Batch confluence for multiple symbols |
+| `/api/v2/prospects` | GET | Scalp/swing/income/position candidates with scores |
+| `/api/v2/agent-calibration` | GET | Per-agent accuracy stats (30/90/365d windows) |
+| `/api/v2/pipeline-health` | GET | Last 24h pipeline runs, watchdog actions, schedule status |
 
-### Key Pages (v5.2)
+### Key Pages (37 total)
 
 | Page | Path | What |
 |------|------|------|
 | Portfolio Intelligence | `/v2/portfolio-intelligence` | Sector breakdown with P&L bars, cross-account analysis, performance rankings, full sortable/filterable position table |
+| Agent Pipeline | `/v2/agent-pipeline` | Jobs, results, handoffs, debates, events, proposals — last 24h. Polls every 30s. Paginated at 50 rows. |
+| Intelligence Whiteboard | `/v2/intelligence-whiteboard` | Full whiteboard: source-type filter chips, quality/confidence display, status badges. Polls every 60s. |
+| Prospects | `/v2/prospects` | Scalp/swing/income/position tabs with candidate scores |
+| Intel Entities | `/v2/intelligence-entities` | IER: 90 entities, Iris freshness scores, market + subject types |
 
 ### Additional Diagnostics (v5.3)
 
@@ -695,6 +775,144 @@ Avoid: WM-BLAIR (weak perf), OMC (company stock), STABLE-VALUE
 
 ---
 
-*SKILL.md v6.9 — Handoff loop: agent analysis Telegram after STOP event completes (shows recs + conflicts). Aegis overnight completion Telegram with synthesis stats. Previously agents analyzed silently with no notification. First RAG-in-synthesis test run 11:40.*
+---
+
+## Social Intelligence Pipeline (v7.3 — two-way discovery)
+
+**443 posts total** (StockTwits 279, Reddit 161, X 3). RAG-embedded: all 443.
+
+### How it works
+
+`scripts/social_ingest.py --source all` runs 3 modes in sequence:
+
+| Mode | Source | What it discovers | Symbols |
+|------|--------|-------------------|---------|
+| Holdings | StockTwits | Sentiment on current positions | Top 15 from holdings.json |
+| Discovery | StockTwits trending + 5 strategy watchlists | What's hot across markets | Trending + dividend_growth, defense_aerospace, growth_tech, retirement_income, sector_rotation |
+| Reddit | r/dividends, r/investing, r/retirement, r/financialindependence, r/stocks, r/ValueInvesting | Ticker extraction from hot posts | Auto-extracted $TICKER mentions |
+
+### Strategy discovery watchlists
+
+| Strategy | Symbols |
+|----------|---------|
+| dividend_growth | SCHD, VYM, DGRO, VIG, HDV, DIVO, JEPI, JEPQ, O, MAIN |
+| defense_aerospace | LMT, NOC, RTX, LHX, GD, BA, HII, TDG, LDOS, BAH |
+| growth_tech | NVDA, MSFT, AAPL, GOOGL, META, AMZN, TSM, AVGO, AMD, CRM |
+| retirement_income | SCHD, VZ, T, MO, PM, KO, PEP, JNJ, PG, MMM |
+| sector_rotation | XLF, XLE, XLK, XLV, XLI, XLU, XLP, XLB, XLRE, XLC |
+
+### Reddit ticker extraction
+
+Posts from hot feeds are scanned for `$TICKER` mentions and bare uppercase tickers (with common-word filter). Extracted tickers are stored in `symbols_mentioned` JSONB column and tagged with the subreddit's strategy. This surfaces tickers the portfolio doesn't hold yet.
+
+### Cron
+
+```
+30 7 * * 1-5 cd $PROJ && $PY scripts/social_ingest.py --source all >> logs/social_ingest.log 2>&1
+```
+
+### Manual runs
+
+```bash
+# Full run (all 3 modes)
+python3 scripts/social_ingest.py --source all
+
+# Just portfolio holdings
+python3 scripts/social_ingest.py --source stocktwits --holdings
+
+# Discovery only (trending + strategy lists)
+python3 scripts/social_ingest.py --source stocktwits --discover
+
+# Reddit with ticker extraction
+python3 scripts/social_ingest.py --source reddit --discover
+
+# Specific symbols
+python3 scripts/social_ingest.py --source stocktwits --symbols "NVDA,META,AAPL"
+```
+
+---
+
+## Agent Skills Registry (v7.4)
+
+**Table: `agent_skills`** — 8 registered agents.
+
+| Agent | Skill Name | Model | Schedule |
+|-------|-----------|-------|----------|
+| maria | maria-research-analyst | qwen3:1.7b | Daily 6:25 AM + SEC/earnings events |
+| steph | steph-wealth-advisor | qwen3:1.7b | Daily 6:25 AM + events |
+| risk_agent | risk-technical-analyst | qwen3:1.7b | Daily 6:25 AM + RSI/STOP events |
+| tax_agent | tax-optimizer | qwen3:1.7b | On-demand + SSDI-triggered + 6:35 AM sweep |
+| alex | alex-retirement-disability-advisor | claude-sonnet-4-6 | On-demand + weekly + debate escalation |
+| aegis | aegis-overnight-orchestrator | qwen3:1.7b | Daily 20:00 |
+| iris | iris-taxonomy-intelligence | claude-sonnet-4-6 | Sunday 6+10 AM + daily 7 AM |
+| social_scalp | social-scalp-scanner | rules-based | 0,30 6-9 (pre-market) + hourly 10-16 M-F | 4-tier: A+/GO/WAIT/AVOID |
+
+---
+
+## Debate System (v7.3)
+
+**Table: `agent_debate_log`** — auto-triggers when risk_agent and steph disagree.
+
+**Trigger:** `process_watchlist_agent_jobs.py` line 1514 — after 2+ agents complete on same symbol from event_router, if recommendations differ → calls `run_agent_debate()` in `agent_watchlist_engine.py`.
+
+**Debate format:** 2-round LLM moderation. Round 1: independent views. Round 2: counter-arguments (only if divergence > 30%).
+
+**Current debates:**
+- LHX: Risk=HOLD vs Steph=TRIM → **Consensus: SELL 85%** (2 rounds)
+- LMT: Risk=RESEARCH_MORE vs Steph=TRIM → **Consensus: SELL 75%** (2 rounds)
+
+---
+
+## New DB Tables (Sessions 3–8)
+
+| Table | Purpose |
+|-------|---------|
+| `intelligence_entities` | 68 cols, 90 entities. Market + subject types. IER canonical registry |
+| `indicator_confluence_cache` | Confluence scores per symbol per profile |
+| `indicator_signal_history` | Historical indicator signals |
+| `agent_recommendation_outcomes` | Rec → trade pairs, verdicts |
+| `agent_calibration` | Per-agent accuracy stats 30/90/365d windows |
+| `source_performance` | Per-screener + per-channel win rates + scar factors |
+| `symbol_enrichment_queue` | On-demand enrichment job queue |
+| `pipeline_runs` | Every script execution heartbeat |
+| `watchdog_actions` | Watchdog interventions log |
+| `pipeline_schedule` | Expected pipeline schedule (9 entries) |
+| `youtube_backfill_queue` | Videos to download from GO signal discovery |
+
+### New columns on trade_ai_scans
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `intelligence_readiness` | int 0-100 | Intel completeness score |
+| `intel_components` | JSONB | Breakdown of readiness components |
+| `mention_count` | int | Social mention aggregation |
+| `social_sources` | text[] | Array of social source names |
+| `screener_label` | text | Which screener caught this symbol |
+
+---
+
+## Architecture Decisions (Sessions 3–8)
+
+- **ENRICHMENT TIER ORDER:** DB check → Yahoo/Google/StockTwits/Reddit/Finnhub/YouTube (free) → Alpha Vantage/Polygon (rate-limited) → Brave (A+ only, 3/day max, graceful 402)
+- **SCAN INTELLIGENCE FIRST:** `get_scan_intelligence()` injected FIRST in all agent prompts. trade_ai_scans IS the primary intelligence for micro-cap scalps
+- **SCALP AGENTS:** `get_scalp_agent_instructions()` injected for price<$100, float<200M GO tickers
+- **PIPELINE REGISTRY:** All critical scripts use PipelineRun() context manager. Never blocks calling script. Watchdog reads pipeline_runs every 5 min
+- **CALIBRATION:** `get_calibration_context()` injected into all agent prompts. Shows "accumulating" until 3+ outcomes per strategy type
+- **IER ENTITIES:** `upsert_entity()` called after every enrichment from 6 pipelines. Both market entities (tickers) and subject entities (SSDI/IRMAA/etc)
+- **WATCHDOG ACTIONS:** pipeline_watchdog.py every 5 min weekdays. F1: retry failed scripts (3x). F2: queue GO tickers missing agent analysis. F3: trigger enrichment for CRITICAL/STALE IER entities
+- **PRE-MARKET:** premarket_watcher.py every 15 min 5:30-9:30 AM. Checks EDGAR overnight 8-K + StockTwits surge for known GO symbols
+
+---
+
+*SKILL.md v7.9 — Session 18 (B/C/D): Screener universe expansion, run health tracking, auto-proposal pipeline, end-to-end paper trade smoke test.*
+*Session 18B: Expanded screeners (2→5, 10→385 tickers). screener_run_health table. Prospects/TradeAI freshness fields. /api/v2/pipeline-run-health. Run health banners on 4 pages. screener_run_health.py, backfill_trade_plans_for_signals.py.*
+*Session 18C: Auto-proposal stage 18f (auto_proposal_generator.py). Multi-strategy YAML routing. Sizing normalization, dup prevention, risk gate, quality filter. auto_proposal_runs + auto_proposal_decisions tables. /api/v2/auto-proposal-diagnostics.*
+*Session 18D: Fixed POST route fallthrough bug. E2E smoke test: screener→scans→signals→plans→auto-proposals→approval→paper trade. Run label lineage.*
+*Prev: v7.8 — Session 15+16: Open trade monitor, agent curation hooks, local LLM post-trade analysis, proposal quality filter, Strategy Desk deep fix.*
+*Session 15 added: scripts/open_trade_monitor.py, scripts/agent_curation_hooks.py, scripts/paper_trade_analyzer.py, /api/v2/open-trade-monitor, /api/v2/local-llm-status, /api/v2/paper-trade-analysis, /api/v2/agent-curation-events, Iris/Aegis curation events, local LLM overnight trade analysis, proposal quality filter (score>=45, intel>=50, catalyst/RVOL gate), PaperStatus monitor/LLM/curation tiles, PaperJournal expandable trade rows, PaperProposals inline editing + countdown.*
+*Session 16 added: Strategy Desk clickable cards + detail panel, strategy metadata from YAML (6 strategies), trade plan backfill (26 signals), POST /api/v2/paper-proposals/from-signal, StrategyDesk.tsx full rewrite.*
+*Prev: v7.7 — Session 9 gap closure: pipeline registry wired to 8+ scripts, calibration accumulating state, Aegis pipeline health, Alex calibration+IER context, YouTube queue processor, premarket cron fixed, SKILL updated.*
+*Prev: v7.6 — Agent soul enhancements: Alex RAG+peers, Maria BUY/SELL criteria, Steph income thresholds, agent_identity DB rows (5/5). 8/8 full soul.*
+*Prev: v7.5 — Soul audit (Tax/G1-G10/Maria RAG/Risk). v7.4.1 — Social scalp WAIT/AVOID. v7.3 — All 6 gaps fixed.*
 *SSH: johnclaw@192.168.50.16 — see /api/v2/system-health for live stats*
-*System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md — check there for full detail on any section.*
+*System Bible: TRADE_AI_V12_SYSTEM_BIBLE_V3.md v7.6 — check there for full detail on any section.*
