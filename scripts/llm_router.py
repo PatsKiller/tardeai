@@ -52,12 +52,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCAL_TIMEOUT = 30      # seconds — qwen3 thinking mode needs 15-20s
 CONFIDENCE_THRESHOLD = 0.65
 
-# GPU UPGRADE: change to "qwen3:14b" when installed.
-# Can also override via .env: LOCAL_MODEL=qwen3:14b
-LOCAL_MODEL = os.environ.get("LOCAL_MODEL", "qwen3:1.7b")
+from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_ollama_runtime_env
 
-LOCAL_URL = "http://127.0.0.1:11434/api/generate"
-DAILY_BUDGET_LIMIT = 0.50  # USD/day — reduced to prevent cron fallbacks burning Grok credits
+apply_ollama_runtime_env()
+
+LOCAL_MODEL = get_local_llm_model()
+
+LOCAL_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+DAILY_BUDGET_LIMIT = 1.50  # USD/day — allows cloud fallback when Ollama offline (typical spend ~$0.02/day)
 
 # ── Task routing — auto-adjusts based on LOCAL_MODEL ─────────────────────
 
@@ -97,7 +99,7 @@ _HIGH_IMPACT_ROUTING = {
 }
 
 # Select routing table based on current model
-_IS_GPU = LOCAL_MODEL != "qwen3:1.7b"
+_IS_GPU = LOCAL_MODEL != "qwen3:1.7b" and "1.7b" not in LOCAL_MODEL  # GPU mode if model upgraded from 1.7b
 _TASK_ROUTING = _TASK_ROUTING_POST_GPU if _IS_GPU else _TASK_ROUTING_PRE_GPU
 
 if _IS_GPU:
@@ -125,14 +127,14 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
     try:
         payload = json.dumps({
             "model": LOCAL_MODEL, "stream": False, "think": False,
-            "prompt": prompt,
+            "messages": [{"role": "user", "content": prompt}],
             "options": {"temperature": 0.3, "num_predict": max(500, max_tokens)}
         }).encode()
         req = urllib.request.Request(LOCAL_URL, data=payload,
                                      headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=max(30, _timeout + 20)) as resp:
             result = json.loads(resp.read())
-            text = result.get("response", "").strip()
+            text = result.get("message", {}).get("content", "").strip()
             latency = round(time.time() - t0, 2)
             return {
                 "model_used": LOCAL_MODEL, "provider": "local",
@@ -494,7 +496,7 @@ if __name__ == "__main__":
             print(f"  Mode: POST-GPU — local is primary, Grok is fallback")
         else:
             print(f"  Mode: PRE-GPU — Grok is primary cloud testing provider")
-            print(f"  To activate GPU: echo 'LOCAL_MODEL=qwen3:14b' >> .env")
+            print(f"  To activate GPU: echo 'LOCAL_LLM_MODEL=qwen3:14b' >> .env")
 
     elif "--routing" in sys.argv:
         print("=== Current Task Routing ===")
