@@ -1,12 +1,12 @@
 /**
  * trade_ai_skill.js — Trade AI v12 + Portfolio Intelligence Skill
- * OpenClaw / ClawHub compatible
+ * Bible v7.4 | OpenClaw / ClawHub compatible | May 6, 2026
  *
  * Actions:
- *   run          — Full 23-stage Trade AI pipeline
+ *   run          — Full 23-stage Trade AI pipeline (Finviz → scoring → GO/WAIT)
  *   status       — Last run summary (with macro context on zero-GO days)
  *   brief        — One-paragraph summary of last run
- *   institutional — Run with institutional flag (generates _institutional.html alongside)
+ *   institutional — Run with institutional flag (generates _institutional.html)
  *   portfolio    — Run portfolio intelligence pipeline
  *
  * Parameters:
@@ -16,10 +16,84 @@
  *   date          : "YYYY-MM-DD" (defaults to today)
  *   skipMarketCheck: true = run outside market hours (testing)
  *
- * Paths:
- *   BASE    = /home/john/trade-ai-v12-rebuild
- *   PYTHON  = /home/john/skills-env/venv/bin/python3
+ * ─── SYSTEM STATE (verified May 2, 2026) ───────────────────────────────────
+ *
+ *   Server:  ms01-openclaw (Ubuntu) | SSH johnclaw@192.168.50.16
+ *   Root:    /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ *   Port:    7777 (portfolio_server.py)
+ *   DB:      PostgreSQL trade_ai — 164 tables (user: trade_ai)
+ *   API:     116+ endpoints (api_v2.py)
+ *   Agents:  7 registered (maria, steph, risk_agent, tax_agent, alex, aegis, iris)
+ *   Models:  qwen3:14b (local, Intel Arc B50 Vulkan) + Claude Sonnet (alex/iris) + Grok fallback
+ *   Crons:   75 entries (incl. tax-sweep 6:35, social 7:30, RAG 6:50)
+ *   RAG:     5,610 items embedded (99.98%)
+ *   Social:  443 posts (StockTwits 279, Reddit 161, X 3)
+ *   Holdings: $1,193,911 / 47 positions
+ *
+ * ─── KEY ENDPOINTS (verified working) ──────────────────────────────────────
+ *
+ *   POST /api/v2/proposals/decide    — approve/reject watchlist proposals
+ *     Body: {id, decision: "approved"/"rejected", reason, reviewer}
+ *     Updates: watchlist_proposals + agent_feedback_log
+ *
+ *   POST /api/v2/john/decide         — resolve tasks (john_decision_queue)
+ *     Body: {id, status, decision, reasoning, revisit_on, followup}
+ *     Valid statuses: decided_action, deferred, rejected, revisit_later, closed
+ *     Updates: john_decision_queue + john_decision_history
+ *
+ *   GET /api/v2/weekly-report        — 7-day agent activity + decisions + social
+ *   GET /api/v2/monthly-report       — 30-day summary
+ *   GET /api/v2/debates              — agent_debate_log (conflict resolutions)
+ *
+ * ─── TELEGRAM COMMANDS (21 total) ──────────────────────────────────────────
+ *
+ *   approve proposal <id> [reason]   — approve watchlist proposal → feedback_log
+ *   reject proposal <id> [reason]    — reject watchlist proposal → feedback_log
+ *   approve task <id> [decision]     — resolve john_decision_queue item
+ *   reject task <id> [reason]        — reject task
+ *   proposals                        — list pending proposals
+ *   tasks                            — list pending tasks
+ *   debates                          — list agent debates
+ *   (+ 14 existing: status, tax, intel, alex, iris, conflicts, etc.)
+ *
+ * ─── AUTONOMOUS PIPELINE ───────────────────────────────────────────────────
+ *
+ *   6:25 AM  — agent batch (maria + steph + risk on all holdings)
+ *   6:35 AM  — tax sweep (harvest candidates + SSDI proposals)
+ *   6:50 AM  — RAG indexer (news, FRED, social, SEC)
+ *   7:30 AM  — social_ingest.py --source all (holdings + StockTwits discovery + Reddit discovery)
+ *   8:00 PM  — aegis overnight (synthesis + stops + escalations + proposals)
+ *   Conflict detected → auto-debate (run_agent_debate) → Telegram alert
+ *
+ * ─── SOCIAL DISCOVERY (two-way) ────────────────────────────────────────────
+ *
+ *   Mode 1: Portfolio holdings — fetch sentiment for current positions
+ *   Mode 2: StockTwits trending — what's hot across all markets
+ *   Mode 3: Strategy discovery — 5 watchlists:
+ *     dividend_growth: SCHD, VYM, DGRO, VIG, HDV, DIVO, JEPI, JEPQ, O, MAIN
+ *     defense_aerospace: LMT, NOC, RTX, LHX, GD, BA, HII, TDG, LDOS, BAH
+ *     growth_tech: NVDA, MSFT, AAPL, GOOGL, META, AMZN, TSM, AVGO, AMD, CRM
+ *     retirement_income: SCHD, VZ, T, MO, PM, KO, PEP, JNJ, PG, MMM
+ *     sector_rotation: XLF, XLE, XLK, XLV, XLI, XLU, XLP, XLB, XLRE, XLC
+ *   Mode 4: Reddit ticker extraction — finds $TICKER mentions in hot posts
+ *     Subreddits: r/dividends, r/investing, r/retirement, r/financialindependence,
+ *                 r/stocks, r/ValueInvesting
+ *
+ * ─── OPERATIONS ────────────────────────────────────────────────────────────
+ *
+ *   Bible: docs/project/TRADE_AI_V12_SYSTEM_BIBLE_V3.md (v7.3)
+ *   Restart: pkill -f portfolio_server.py; nohup .venv/bin/python scripts/portfolio_server.py > logs/portfolio_server.log 2>&1 &
+ *   Safety: python3 -c "import json; d=json.load(open('data/portfolios/state/holdings.json')); assert d['portfolio_totals']['total_value']>1000000"
+ *   Preflight: python3 scripts/system_preflight_check.py
+ *
+ * Paths (Linux — ms01-openclaw):
+ *   BASE    = /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ *   PYTHON  = {BASE}/.venv/bin/python
  *   REPORTS = {BASE}/reports/{date}/{runLabel}/run_summary.json
+ *
+ * NOTE: The skill's BASE/PYTHON below still point to old Windows paths
+ * (/home/john/) because OpenClaw gateway reads from that location.
+ * The actual live system is at /home/johnclaw/... — see above.
  */
 
 "use strict";

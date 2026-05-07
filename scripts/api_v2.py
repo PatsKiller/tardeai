@@ -12,6 +12,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
+try:
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url, get_local_llm_status
+except ImportError:
+    def get_local_llm_model(): return os.environ.get("LOCAL_LLM_MODEL", "qwen3:14b")
+    def get_local_llm_base_url(): return os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434")
+    def get_local_llm_status(): return {"provider": "ollama", "model": get_local_llm_model()}
+
 
 
 
@@ -2498,6 +2505,7 @@ def ai_analyst():
 
 def ai_ask(body: dict):
     """POST /api/v2/ai-ask — live AI query via local Ollama."""
+    _local_model = get_local_llm_model()
     question = (body.get("question") or "").strip()
     if not question:
         return 400, {"ok": False, "error": "question required"}
@@ -2509,14 +2517,14 @@ def ai_ask(body: dict):
     prompt = f"You are a portfolio analyst. Answer concisely based on this context:\n{portfolio_ctx}{context}\n\nQuestion: {question}"
     try:
         import urllib.request
-        payload = json.dumps({"model": "qwen3:1.7b", "stream": False,
+        payload = json.dumps({"model": _local_model, "stream": False,
                               "messages": [{"role": "user", "content": prompt}], "think": False,
                               "options": {"temperature": 0.2, "num_predict": 500}}).encode()
         req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
                                      data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=90) as resp:
             raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
-            return 200, {"ok": True, "answer": raw, "model": "qwen3:1.7b", "question": question}
+            return 200, {"ok": True, "answer": raw, "model": _local_model, "question": question}
     except Exception as e:
         return 500, {"ok": False, "error": f"LLM unavailable: {e}"}
 
@@ -4184,15 +4192,17 @@ def _youtube_channel_lookup():
 def _rewrite_status():
     """GET /api/v2/rewrite-note/status — Check local LLM availability."""
     local_up = False
+    _cfg_model = get_local_llm_model()
     try:
         import urllib.request
-        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3) as r:
+        _base = get_local_llm_base_url().rstrip("/")
+        with urllib.request.urlopen(f"{_base}/api/tags", timeout=3) as r:
             import json as _j
             models = [m["name"] for m in _j.loads(r.read()).get("models", [])]
-            local_up = any("qwen3" in m for m in models)
+            local_up = any(_cfg_model.split(":")[0] in m for m in models)
     except Exception:
         pass
-    return {"local_llm": local_up, "fallback": "claude-haiku-4-5"}
+    return {"local_llm": local_up, "model": _cfg_model, "fallback": "claude-haiku-4-5"}
 
 
 def _portfolio_intelligence():
@@ -7168,20 +7178,25 @@ def _agent_curation_events_api():
 def _local_llm_status_api():
     """GET /api/v2/local-llm-status — local LLM availability and run history."""
     try:
+        # Central config
+        _cfg_model = get_local_llm_model()
+        _cfg_base = get_local_llm_base_url().rstrip("/")
+        _llm_status = get_local_llm_status()
+
         # Check Ollama availability
         ollama_available = False
-        ollama_model = None
+        ollama_models = []
+        last_error = None
         try:
             import urllib.request as _ur
-            req = _ur.Request("http://127.0.0.1:11434/api/tags", method="GET")
+            req = _ur.Request(f"{_cfg_base}/api/tags", method="GET")
             with _ur.urlopen(req, timeout=5) as resp:
                 import json as _j
                 data = _j.loads(resp.read())
-                models = [m.get('name', '') for m in data.get('models', [])]
+                ollama_models = [m.get('name', '') for m in data.get('models', [])]
                 ollama_available = True
-                ollama_model = models[0] if models else None
-        except Exception:
-            pass
+        except Exception as _e:
+            last_error = str(_e)
 
         # Last run
         last_run = _db_query("""
@@ -7203,9 +7218,20 @@ def _local_llm_status_api():
 
         result = {
             'ok': True,
+            'local_llm': {
+                'provider': _llm_status.get('provider', 'ollama'),
+                'model': _cfg_model,
+                'base_url': _cfg_base,
+                'backend': _llm_status.get('backend', 'vulkan'),
+                'require_gpu': _llm_status.get('require_gpu', True),
+                'runtime_env': _llm_status.get('runtime_env', {}),
+                'available': ollama_available,
+                'loaded_models': ollama_models,
+                'last_error': last_error,
+            },
             'available': ollama_available,
-            'model': ollama_model,
-            'ollama_host': 'http://localhost:11434',
+            'model': _cfg_model,
+            'ollama_host': _cfg_base,
             'trades_awaiting_analysis': awaiting_trades.get('cnt', 0),
             'proposals_awaiting_analysis': awaiting_proposals.get('cnt', 0),
         }
@@ -7216,6 +7242,121 @@ def _local_llm_status_api():
             result['last_status'] = last_run.get('status')
             result['items_processed_last_run'] = last_run.get('items_processed', 0)
         return result
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _incubator_api():
+    """GET /api/v2/incubator — incubator universe with lifecycle state."""
+    try:
+        rows = _db_query("""
+            SELECT id, symbol, strategy_id, status, lifecycle_state,
+                   first_seen_at, last_seen_at, source_first_seen, source_latest,
+                   source_run_label, baseline_score, latest_score, best_score,
+                   score_delta, rvol_baseline, rvol_latest, gap_baseline, gap_latest,
+                   catalyst, catalyst_verified, sector, industry,
+                   days_active, promoted_to_signal_at, promoted_to_proposal_at,
+                   last_paper_trade_id, last_outcome, rolloff_reason, notes,
+                   created_at, updated_at
+            FROM incubator_universe
+            ORDER BY
+                CASE status WHEN 'ACTIVE' THEN 0 ELSE 1 END,
+                latest_score DESC NULLS LAST,
+                updated_at DESC
+            LIMIT 200
+        """) or []
+        return {
+            'ok': True,
+            'universe': [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            'total': len(rows),
+            'active': sum(1 for r in rows if r.get('status') == 'ACTIVE'),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _incubator_events_api():
+    """GET /api/v2/incubator-events — recent incubator lifecycle events."""
+    try:
+        rows = _db_query("""
+            SELECT id, symbol, strategy_id, event_type,
+                   reason_codes, old_score, new_score, payload, created_at
+            FROM incubator_events
+            ORDER BY created_at DESC
+            LIMIT 100
+        """) or []
+        return {
+            'ok': True,
+            'events': [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            'count': len(rows),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _incubator_health_api():
+    """GET /api/v2/incubator-health — incubator summary stats."""
+    try:
+        stats = _db_query("""
+            SELECT
+                COUNT(*) FILTER (WHERE status='ACTIVE') as active,
+                COUNT(*) FILTER (WHERE status='ROLLED_OFF') as rolled_off_total,
+                COUNT(*) FILTER (WHERE lifecycle_state='ROLLED_ON' AND status='ACTIVE') as rolled_on,
+                COUNT(*) FILTER (WHERE lifecycle_state='IMPROVED' AND status='ACTIVE') as improved,
+                COUNT(*) FILTER (WHERE lifecycle_state='DEGRADED' AND status='ACTIVE') as degraded,
+                COUNT(*) FILTER (WHERE lifecycle_state='PROMOTED_TO_SIGNAL') as promoted_to_signal,
+                COUNT(*) FILTER (WHERE lifecycle_state='PROMOTED_TO_PROPOSAL') as promoted_to_proposal
+            FROM incubator_universe
+        """, fetch="one") or {}
+
+        today_events = _db_query("""
+            SELECT event_type, COUNT(*) as cnt
+            FROM incubator_events
+            WHERE created_at > NOW() - INTERVAL '24 hours'
+            GROUP BY event_type
+        """) or []
+
+        last_build = _db_query("""
+            SELECT MAX(created_at) as ts FROM incubator_events WHERE event_type='ROLLED_ON'
+        """, fetch="one") or {}
+        last_refresh = _db_query("""
+            SELECT MAX(created_at) as ts FROM incubator_events WHERE event_type IN ('IMPROVED', 'DEGRADED', 'STAYED_ACTIVE')
+        """, fetch="one") or {}
+
+        return {
+            'ok': True,
+            'active': stats.get('active', 0),
+            'rolled_on': stats.get('rolled_on', 0),
+            'improved': stats.get('improved', 0),
+            'degraded': stats.get('degraded', 0),
+            'promoted_to_signal': stats.get('promoted_to_signal', 0),
+            'promoted_to_proposal': stats.get('promoted_to_proposal', 0),
+            'rolled_off_total': stats.get('rolled_off_total', 0),
+            'today_events': {e.get('event_type', ''): e.get('cnt', 0) for e in today_events},
+            'last_weekly_build': _json_clean(last_build.get('ts')),
+            'last_daily_refresh': _json_clean(last_refresh.get('ts')),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _proposal_quality_review_api():
+    """GET /api/v2/proposal-quality-review — proposal quality reviews."""
+    try:
+        rows = _db_query("""
+            SELECT pqr.id, pqr.proposal_id, pqr.symbol, pqr.strategy_id,
+                   pqr.review_state, pqr.quality_score, pqr.approve_case,
+                   pqr.reject_case, pqr.missing_data, pqr.source_evidence,
+                   pqr.llm_model, pqr.narrative_source, pqr.created_at
+            FROM proposal_quality_reviews pqr
+            ORDER BY pqr.created_at DESC
+            LIMIT 50
+        """) or []
+        return {
+            'ok': True,
+            'reviews': [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            'count': len(rows),
+        }
     except Exception as e:
         return {'ok': False, 'error': str(e)}
 
@@ -8260,6 +8401,10 @@ ROUTES = {
     "/api/v2/local-llm-status": lambda: _local_llm_status_api(),
     "/api/v2/strategy-registry": lambda: _strategy_registry_api(),
     "/api/v2/system-controls": lambda: _system_controls_api(),
+    "/api/v2/incubator": lambda: _incubator_api(),
+    "/api/v2/incubator-events": lambda: _incubator_events_api(),
+    "/api/v2/incubator-health": lambda: _incubator_health_api(),
+    "/api/v2/proposal-quality-review": lambda: _proposal_quality_review_api(),
 }
 
 
