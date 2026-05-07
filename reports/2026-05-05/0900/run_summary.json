@@ -1,0 +1,32 @@
+{
+  "version": "12.0",
+  "date": "2026-05-05",
+  "run_label": "0900",
+  "generated_at": "2026-05-05T10:00:19",
+  "ticker_count": 23,
+  "go_count": 7,
+  "wait_count": 7,
+  "aplus_count": 1,
+  "trade_plans_count": 1,
+  "new_tickers": [
+    "HSHP"
+  ],
+  "faded_tickers": [],
+  "delta_events": 35,
+  "top_ticker": "BDSX",
+  "top_score": 52,
+  "breadth": "Bearish",
+  "vix": 17.39,
+  "options_sweeps": 0,
+  "high_squeeze": 0,
+  "halted": 0,
+  "resumed": 0,
+  "social_tickers_scanned": 14,
+  "social_bullish_count": 10,
+  "social_wsb_spikes": [],
+  "html_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-05-05/0900/dashboard_2026-05-05_0900.html",
+  "pdf_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-05-05/0900/trade_ai_2026-05-05_0900.pdf",
+  "docx_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-05-05/0900/trade_ai_2026-05-05_0900.docx",
+  "tos_path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/reports/2026-05-05/0900/trade_ai_0900.tst",
+  "llm_enabled": true
+}

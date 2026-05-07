@@ -59,7 +59,14 @@ def send_telegram(message: str) -> bool:
                     timeout=10,
                 )
                 if not resp.ok:
-                    print(f"[telegram] Error to {cid}: {resp.status_code}")
+                    # Markdown parse failure — retry without parse_mode
+                    resp2 = requests.post(
+                        TELEGRAM_API.format(token=token),
+                        json={"chat_id": cid, "text": chunk},
+                        timeout=10,
+                    )
+                    if not resp2.ok:
+                        print(f"[telegram] Error to {cid}: {resp2.status_code}")
         return True
     except Exception as e:
         print(f"[telegram] Error: {e}")
@@ -78,7 +85,11 @@ def build_telegram_message(
     short_summary: Optional[Dict] = None,
 ) -> str:
     """Build the full Telegram message. Mirrors WhatsApp format but adds v12 extras."""
-    go_tickers  = [t for t in scored_tickers if t.get("decision") == "GO"]
+    # Iris-aware categorization
+    blocked     = [t for t in scored_tickers if t.get("disqualified")]
+    downgraded  = [t for t in scored_tickers if t.get("decision_changed") and not t.get("disqualified")
+                   and t.get("original_decision") == "GO"]
+    go_tickers  = [t for t in scored_tickers if t.get("decision") == "GO" and not t.get("disqualified")]
     events      = delta.get("events", [])
     new_count   = len(delta.get("new_tickers", []))
     fade_count  = len(delta.get("faded", []))
@@ -147,6 +158,25 @@ def build_telegram_message(
         lines.append(f"🔥 *Short squeeze fuel:* {sq_str}")
         lines.append("")
 
+    # Iris: blocked tickers (most critical — always first)
+    if blocked:
+        lines.append("🚫 *BLOCKED BY IRIS:*")
+        for t in blocked:
+            reason = (t.get("disqualification_reason") or t.get("critic_reasoning") or "flagged")[:90]
+            orig = t.get("original_decision", "GO")
+            lines.append(f"  ❌ *{t['symbol']}* (was {orig})")
+            lines.append(f"     _{reason}_")
+        lines.append("")
+
+    # Iris: downgraded tickers
+    if downgraded:
+        lines.append("⬇ *DOWNGRADED BY IRIS:*")
+        for t in downgraded:
+            reason = (t.get("critic_reasoning") or "risk flag")[:80]
+            lines.append(f"  ↓ *{t['symbol']}*: {t.get('original_decision','GO')} → {t['decision']}")
+            lines.append(f"     _{reason}_")
+        lines.append("")
+
     # GO-tier picks
     if go_tickers:
         lines.append("*🎯 GO-Tier Picks:*")
@@ -203,5 +233,18 @@ def build_telegram_message(
     if fade_count: parts.append(f"👻 {fade_count} faded")
     if parts:
         lines += ["─" * 18, "  ".join(parts)]
+
+    # Iris footer — only if critique ran
+    critiqued = [t for t in scored_tickers if t.get("critic_verdict")]
+    if critiqued:
+        confirmed = sum(1 for t in critiqued if t.get("critic_verdict") == "CONFIRM")
+        cat_replaced = sum(1 for t in scored_tickers if t.get("catalyst_verified") is False)
+        iris_parts = [f"🔍 Iris: {len(critiqued)}/{len(scored_tickers)} reviewed"]
+        iris_parts.append(f"{confirmed} confirmed")
+        if blocked: iris_parts.append(f"{len(blocked)} blocked")
+        if downgraded: iris_parts.append(f"{len(downgraded)} downgraded")
+        if cat_replaced: iris_parts.append(f"{cat_replaced} catalyst replaced")
+        lines.append("─" * 18)
+        lines.append(" · ".join(iris_parts))
 
     return "\n".join(lines)

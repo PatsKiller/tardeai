@@ -22,7 +22,11 @@ def _get_api_key():
 
 HAIKU  = os.getenv("CLAUDE_CHEAP_MODEL",    "claude-haiku-4-5-20251001")
 SONNET = os.getenv("CLAUDE_ESCALATION_MODEL","claude-sonnet-4-20250514")
-OLLAMA_MODEL = "qwen3:1.7b"  # 1.7b for weekly AI sections (fast, no think tokens)
+try:
+    from local_llm_config import get_local_llm_model as _get_llm_model
+    OLLAMA_MODEL = _get_llm_model()
+except ImportError:
+    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
 _USE_OLLAMA = False  # set True when run_type=="weekly"
 
 _AI_RULES = """/no_think
@@ -58,12 +62,13 @@ def _ollama(prompt: str, max_tokens: int = 500) -> str:
     import re as _re, requests as _req
     if len(prompt) > 6000: prompt = prompt[:6000] + "\n[Be concise.]"
     try:
-        r = _req.post("http://127.0.0.1:11434/api/generate",
-            json={"model":"qwen3:1.7b","stream":False,"prompt":prompt,
+        r = _req.post("http://127.0.0.1:11434/api/chat",
+            json={"model":OLLAMA_MODEL,"stream":False,
+                  "messages":[{"role":"user","content":prompt}],
                   "think":False,
                   "options":{"temperature":0.3,"num_predict":800,"num_ctx":4096}},
             timeout=120)
-        text = r.json().get("response","").strip()
+        text = r.json().get("message",{}).get("content","").strip()
         return _re.sub(r"<think>.*?</think>","",text,flags=_re.DOTALL).strip()
     except Exception as e:
         return f"Ollama error: {e}"
@@ -946,7 +951,7 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     _self_mod._CURRENT_ROOT = str(root)
     global _USE_OLLAMA
     _USE_OLLAMA = (run_type == "weekly")
-    print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Claude Sonnet'})...")
+    print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Claude Sonnet'})...")
 
     # ── Freshness check (Phase 0) ────────────────────────────────────────────
     _freshness_warning = ""
@@ -1008,7 +1013,7 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     personal = _load_personal_situation()
 
     # Daily: executive summary (Haiku, cheap)
-    print(f"  [ai] Executive summary ({'Ollama qwen3:1.7b' if _USE_OLLAMA else 'Haiku'})...")
+    print(f"  [ai] Executive summary ({'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Haiku'})...")
     results["executive_summary"] = _exec_summary(portfolio, analysis, rebalancing, personal)
     if _freshness_warning:
         results["executive_summary"] = _freshness_warning + results["executive_summary"]
@@ -1026,7 +1031,7 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
         ]
         for key, label, fn, n_args in sections:
             if force_refresh or _should_refresh(state_dir, key, 30):
-                print(f"  [ai] {label} ({'Ollama qwen3:14b' if _USE_OLLAMA else 'Sonnet 4.6'})...")
+                print(f"  [ai] {label} ({'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Sonnet 4.6'})...")
                 try:
                     if n_args == 3: text = fn(portfolio, analysis, rebalancing)
                     elif n_args == 2:

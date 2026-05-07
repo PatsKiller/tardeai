@@ -82,51 +82,62 @@ def _get_env_var(key: str, project_root: Path) -> str:
 
 
 def _send_telegram(message: str, project_root: Path) -> bool:
-    """Send Telegram message."""
+    """Send Telegram message to all configured chat IDs."""
     bot_token = _get_env_var("TELEGRAM_BOT_TOKEN", project_root)
-    chat_id = _get_env_var("TELEGRAM_CHAT_ID", project_root)
+    chat_ids_raw = _get_env_var("TELEGRAM_CHAT_ID", project_root)
 
-    if not bot_token or not chat_id:
+    if not bot_token or not chat_ids_raw:
         print("  [digest] No Telegram creds — printing only")
         print(message)
         return False
 
-    try:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        data = urllib.parse.urlencode({
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML"
-        }).encode()
-        req = urllib.request.Request(url, data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read())
-            if result.get("ok"):
-                print("  [digest] Telegram sent OK")
-                return True
-    except Exception as e:
-        print(f"  [digest] Telegram error: {e}")
-    return False
+    success = False
+    for cid in chat_ids_raw.split(","):
+        cid = cid.strip()
+        if not cid:
+            continue
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            data = urllib.parse.urlencode({
+                "chat_id": cid,
+                "text": message,
+                "parse_mode": "HTML"
+            }).encode()
+            req = urllib.request.Request(url, data=data, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read())
+                if result.get("ok"):
+                    print(f"  [digest] Telegram sent to {cid}")
+                    success = True
+        except Exception as e:
+            print(f"  [digest] Telegram error for {cid}: {e}")
+    return success
 
 
 def _ollama_narrative(prompt: str, timeout: int = 90) -> str:
     """Generate narrative via Ollama."""
     try:
+        try:
+            from local_llm_config import get_local_llm_model
+            _model = get_local_llm_model()
+        except ImportError:
+            _model = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
         payload = json.dumps({
-            "model": "qwen3:14b",
+            "model": _model,
             "stream": False,
-            "prompt": prompt,
+            "messages": [{"role": "user", "content": prompt}],
+            "think": False,
             "options": {"temperature": 0.3}
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
+            "http://127.0.0.1:11434/api/chat",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST"
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
-            return data.get("response", "").strip()
+            return data.get("message", {}).get("content", "").strip()
     except Exception as e:
         print(f"  [digest] Ollama error: {e}")
         return ""

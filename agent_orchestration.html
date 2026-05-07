@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Orchestration — Trade AI v12</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg: #080c14;
+  --bg2: #0c1220;
+  --surface: #0f1824;
+  --surface2: #141f30;
+  --surface3: #1a2840;
+  --border: #1e3050;
+  --border2: #243860;
+  --text: #d0e4ff;
+  --text2: #5a7fa8;
+  --text3: #8aa8cc;
+  --green: #00ff88;
+  --green2: #00cc6a;
+  --amber: #ffaa00;
+  --amber2: #cc8800;
+  --red: #ff3355;
+  --red2: #cc2244;
+  --blue: #0088ff;
+  --cyan: #00ddff;
+  --purple: #aa55ff;
+  --maria: #4488ff;
+  --steph: #00cc88;
+  --risk: #ff4466;
+  --tax: #ffaa00;
+  --alex: #aa55ff;
+  --aegis: #00ccff;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid bg texture */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,136,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,136,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none; z-index: 0;
+}
+
+/* ═══ HEADER ═══ */
+header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(8,12,20,0.95);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px;
+}
+.header-brand {
+  display: flex; align-items: center; gap: 12px;
+}
+.brand-mark {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--blue), var(--purple));
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px; font-weight: 700; color: white;
+}
+.brand-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.brand-sub { font-size: 10px; color: var(--text2); font-family: 'JetBrains Mono', monospace; }
+
+.header-center {
+  display: flex; align-items: center; gap: 20px;
+}
+.hc-item {
+  display: flex; align-items: center; gap: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.hc-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.hc-dot.pulse { animation: pulse 2s infinite; }
+@keyframes pulse {
+  0%,100% { opacity:1; box-shadow: 0 0 0 0 currentColor; }
+  50% { opacity:0.7; box-shadow: 0 0 0 4px transparent; }
+}
+
+.header-right {
+  display: flex; align-items: center; gap: 16px;
+}
+.time-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; font-weight: 500;
+  color: var(--text3);
+  letter-spacing: 1px;
+}
+.refresh-btn {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text2); background: var(--surface2);
+  border: 1px solid var(--border2);
+  padding: 5px 12px; border-radius: 4px; cursor: pointer;
+  transition: all 0.15s;
+}
+.refresh-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+.auto-badge {
+  font-size: 9px; font-family: 'JetBrains Mono', monospace;
+  color: var(--green); background: rgba(0,255,136,0.08);
+  border: 1px solid rgba(0,255,136,0.25);
+  padding: 2px 7px; border-radius: 10px;
+  animation: pulse 3s infinite;
+}
+
+/* ═══ LAYOUT ═══ */
+main { position: relative; z-index: 1; padding: 20px 24px; max-width: 1800px; margin: 0 auto; }
+
+.section-title {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 3px;
+  color: var(--text2); font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 12px; margin-top: 20px; padding-left: 2px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-title::after {
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+/* ═══ KPI STRIP ═══ */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 16px;
+  position: relative; overflow: hidden;
+  transition: border-color 0.2s;
+}
+.kpi::after {
+  content: ''; position: absolute;
+  top: 0; left: 0; right: 0; height: 2px;
+}
+.kpi.g::after { background: var(--green); }
+.kpi.a::after { background: var(--amber); }
+.kpi.r::after { background: var(--red); }
+.kpi.b::after { background: var(--blue); }
+.kpi.c::after { background: var(--cyan); }
+.kpi.p::after { background: var(--purple); }
+.kpi-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text2); margin-bottom: 6px; }
+.kpi-value { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+.kpi-sub { font-size: 9px; color: var(--text2); margin-top: 4px; }
+.kpi.g .kpi-value { color: var(--green); }
+.kpi.a .kpi-value { color: var(--amber); }
+.kpi.r .kpi-value { color: var(--red); }
+.kpi.b .kpi-value { color: var(--blue); }
+.kpi.c .kpi-value { color: var(--cyan); }
+.kpi.p .kpi-value { color: var(--purple); }
+
+/* ═══ MAIN GRID ═══ */
+.main-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr 300px;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+/* ═══ CARDS ═══ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.card-head-title {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+  color: var(--text3); font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+}
+.card-body { padding: 16px; }
+.badge {
+  font-size: 9px; font-family: 'JetBrains Mono', monospace;
+  padding: 2px 8px; border-radius: 2px; font-weight: 700;
+}
+.badge-g { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.25); }
+.badge-a { background: rgba(255,170,0,0.1); color: var(--amber); border: 1px solid rgba(255,170,0,0.25); }
+.badge-r { background: rgba(255,51,85,0.1); color: var(--red); border: 1px solid rgba(255,51,85,0.25); }
+.badge-b { background: rgba(0,136,255,0.1); color: var(--blue); border: 1px solid rgba(0,136,255,0.25); }
+.badge-p { background: rgba(170,85,255,0.1); color: var(--purple); border: 1px solid rgba(170,85,255,0.25); }
+
+/* ═══ AGENT CARDS ═══ */
+.agent-list { display: flex; flex-direction: column; gap: 10px; }
+.agent-row {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  transition: border-color 0.2s;
+  cursor: pointer;
+}
+.agent-row:hover { border-color: var(--border2); }
+.agent-top {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.agent-icon {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+.agent-info { flex: 1; }
+.agent-name { font-size: 13px; font-weight: 600; margin-bottom: 1px; }
+.agent-role { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+.agent-status {
+  font-size: 9px; font-family: 'JetBrains Mono', monospace;
+  padding: 2px 7px; border-radius: 10px;
+}
+.status-running { background: rgba(0,255,136,0.1); color: var(--green); border: 1px solid rgba(0,255,136,0.25); animation: pulse 2s infinite; }
+.status-idle { background: rgba(90,127,168,0.1); color: var(--text2); border: 1px solid var(--border); }
+.status-blocked { background: rgba(255,170,0,0.1); color: var(--amber); border: 1px solid rgba(255,170,0,0.25); }
+
+.agent-conf-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.conf-label { font-size: 9px; color: var(--text2); width: 56px; font-family: 'JetBrains Mono', monospace; }
+.conf-track {
+  flex: 1; background: var(--surface3); border-radius: 2px; height: 4px; overflow: hidden;
+}
+.conf-fill { height: 4px; border-radius: 2px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
+.conf-val { font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; width: 36px; text-align: right; }
+
+.agent-meta {
+  display: flex; gap: 12px;
+}
+.agent-meta-item { font-size: 10px; color: var(--text2); }
+.agent-meta-item strong { color: var(--text3); }
+
+/* ═══ PIPELINE FLOW ═══ */
+.pipeline-container { padding: 16px; }
+.pipeline-stage-row {
+  display: flex; align-items: stretch; gap: 0; margin-bottom: 8px;
+  position: relative;
+}
+.pipeline-stage {
+  flex: 1; padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  position: relative;
+  transition: border-color 0.2s, background 0.2s;
+}
+.pipeline-stage.active {
+  border-color: var(--blue);
+  background: rgba(0,136,255,0.05);
+}
+.pipeline-stage.done {
+  border-color: rgba(0,255,136,0.3);
+  background: rgba(0,255,136,0.03);
+}
+.pipeline-stage.blocked {
+  border-color: rgba(255,170,0,0.4);
+  background: rgba(255,170,0,0.05);
+}
+.pipeline-stage.waiting {
+  border-color: var(--border);
+  opacity: 0.6;
+}
+.ps-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.ps-num {
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  flex-shrink: 0;
+}
+.ps-num.active { background: var(--blue); color: white; }
+.ps-num.done { background: var(--green2); color: white; }
+.ps-num.blocked { background: var(--amber2); color: white; }
+.ps-num.waiting { background: var(--surface3); color: var(--text2); }
+.ps-name { font-size: 11px; font-weight: 600; }
+.ps-badge { margin-left: auto; }
+.ps-detail { font-size: 10px; color: var(--text2); line-height: 1.5; }
+.ps-meta { display: flex; gap: 10px; margin-top: 4px; }
+.ps-meta-item { font-size: 9px; font-family: 'JetBrains Mono', monospace; color: var(--text2); }
+
+/* Flow arrows */
+.flow-arrow {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; flex-shrink: 0;
+  color: var(--border2); font-size: 10px;
+  margin: 0 2px;
+  align-self: center;
+}
+
+/* ═══ CALL LOG ═══ */
+.call-log { max-height: 280px; overflow-y: auto; }
+.call-log::-webkit-scrollbar { width: 3px; }
+.call-log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.call-row {
+  display: grid;
+  grid-template-columns: 70px 70px 140px 1fr 50px;
+  gap: 8px; padding: 8px 16px;
+  border-bottom: 1px solid rgba(30,48,80,0.4);
+  font-size: 11px; font-family: 'JetBrains Mono', monospace;
+  align-items: center; transition: background 0.1s;
+}
+.call-row:hover { background: var(--surface2); }
+.call-row-head {
+  display: grid;
+  grid-template-columns: 70px 70px 140px 1fr 50px;
+  gap: 8px; padding: 7px 16px;
+  font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text2); background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+.provider-tag {
+  font-size: 9px; padding: 2px 6px; border-radius: 2px;
+  font-weight: 700; font-family: 'JetBrains Mono', monospace;
+}
+.tag-local { background: rgba(0,255,136,0.1); color: var(--green); }
+.tag-grok { background: rgba(255,170,0,0.1); color: var(--amber); }
+.tag-claude { background: rgba(170,85,255,0.1); color: var(--purple); }
+.tag-openai { background: rgba(0,221,255,0.1); color: var(--cyan); }
+.cost-val { text-align: right; }
+.cost-free { color: var(--green); }
+.cost-cheap { color: var(--amber); }
+.cost-expensive { color: var(--red); }
+
+/* ═══ DATA SOURCES ═══ */
+.source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.source-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 10px 12px;
+}
+.source-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.source-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.source-dot.off { background: var(--red); }
+.source-dot.warn { background: var(--amber); }
+.source-info { flex: 1; }
+.source-name { font-size: 11px; font-weight: 500; }
+.source-detail { font-size: 9px; color: var(--text2); margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+.source-count { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; text-align: right; }
+
+/* ═══ BUDGET GAUGE ═══ */
+.budget-section { padding: 16px; }
+.budget-ring { position: relative; width: 100px; height: 100px; margin: 0 auto 12px; }
+.budget-ring svg { transform: rotate(-90deg); }
+.budget-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.budget-pct { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.budget-sub { font-size: 8px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+
+.budget-provider-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.bp-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.bp-name { font-size: 11px; width: 48px; }
+.bp-bar { flex: 1; background: var(--surface3); border-radius: 2px; height: 5px; overflow: hidden; }
+.bp-fill { height: 5px; border-radius: 2px; }
+.bp-cost { font-size: 11px; font-family: 'JetBrains Mono', monospace; text-align: right; width: 48px; }
+.bp-calls { font-size: 9px; color: var(--text2); width: 40px; text-align: right; }
+
+/* ═══ PROPOSALS / BLOCKERS ═══ */
+.blocker-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.blocker-row {
+  background: var(--surface2); border: 1px solid;
+  border-radius: 5px; padding: 10px 12px;
+}
+.blocker-row.urgent { border-color: rgba(255,51,85,0.4); }
+.blocker-row.review { border-color: rgba(255,170,0,0.4); }
+.blocker-row.normal { border-color: var(--border); }
+.br-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.br-symbol { font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.br-type { font-size: 9px; color: var(--text2); }
+.br-age { font-size: 9px; color: var(--text2); margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+.br-detail { font-size: 10px; color: var(--text3); line-height: 1.5; }
+
+/* ═══ ROUTING MAP ═══ */
+.routing-map { padding: 16px; }
+.route-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.route-task {
+  font-size: 10px; color: var(--text2);
+  width: 160px; flex-shrink: 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+.route-step {
+  font-size: 9px; padding: 3px 8px; border-radius: 3px;
+  font-weight: 700; border: 1px solid;
+  font-family: 'JetBrains Mono', monospace;
+}
+.route-step.local { background: rgba(0,255,136,0.08); color: var(--green); border-color: rgba(0,255,136,0.25); }
+.route-step.grok { background: rgba(255,170,0,0.08); color: var(--amber); border-color: rgba(255,170,0,0.25); }
+.route-step.claude { background: rgba(170,85,255,0.08); color: var(--purple); border-color: rgba(170,85,255,0.25); }
+.route-step.openai { background: rgba(0,221,255,0.08); color: var(--cyan); border-color: rgba(0,221,255,0.25); }
+.route-arrow { color: var(--text2); font-size: 9px; }
+.route-note { font-size: 9px; color: var(--text2); font-style: italic; }
+
+/* ═══ EVENT QUEUE ═══ */
+.event-list { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+.event-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 9px 12px;
+}
+.event-row.urgent { border-left: 3px solid var(--red); }
+.event-row.normal-p { border-left: 3px solid var(--blue); }
+.event-type { font-size: 10px; font-weight: 600; font-family: 'JetBrains Mono', monospace; flex: 1; }
+.event-sym { font-size: 11px; font-weight: 700; color: var(--cyan); width: 48px; }
+.event-agents { font-size: 9px; color: var(--text2); }
+.event-time { font-size: 9px; color: var(--text2); font-family: 'JetBrains Mono', monospace; }
+.event-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* ═══ MATURITY ═══ */
+.maturity-ring-wrap { text-align: center; padding: 12px 0; }
+.maturity-ring-wrap svg { overflow: visible; }
+.maturity-dims { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.mat-dim { display: flex; align-items: center; gap: 6px; }
+.mat-dim .dim-bar { flex: 1; background: var(--surface3); border-radius: 2px; height: 4px; }
+.mat-dim .dim-fill { height: 4px; border-radius: 2px; }
+.mat-dim .dim-label { font-size: 9px; color: var(--text2); width: 120px; }
+.mat-dim .dim-pts { font-size: 10px; font-weight: 600; font-family: 'JetBrains Mono', monospace; width: 32px; text-align: right; }
+
+/* ═══ BOTTOM GRID ═══ */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
+
+/* Scrollbars */
+.blocker-list::-webkit-scrollbar,
+.event-list::-webkit-scrollbar { width: 3px; }
+.blocker-list::-webkit-scrollbar-thumb,
+.event-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .main-grid { grid-template-columns: 280px 1fr 260px; }
+  .kpi-strip { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 1100px) {
+  .main-grid { grid-template-columns: 1fr 1fr; }
+  .bottom-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-brand">
+    <div class="brand-mark">⚡</div>
+    <div>
+      <div class="brand-title">Agent Orchestration</div>
+      <div class="brand-sub">Trade AI v12 · ms01-openclaw</div>
+    </div>
+  </div>
+  <div class="header-center">
+    <div class="hc-item">
+      <div class="hc-dot pulse" style="background:var(--green);color:var(--green);box-shadow:0 0 6px var(--green)"></div>
+      <span style="color:var(--text3)">Level 3 Active</span>
+    </div>
+    <div class="hc-item">
+      <div class="hc-dot" id="local-dot" style="background:var(--amber)"></div>
+      <span id="local-status" style="color:var(--text2)">Local: checking...</span>
+    </div>
+    <div class="hc-item">
+      <div class="hc-dot" style="background:var(--green)"></div>
+      <span style="color:var(--text2)">Grok: active</span>
+    </div>
+    <div class="hc-item">
+      <div class="hc-dot pulse" style="background:var(--purple);color:var(--purple)"></div>
+      <span style="color:var(--text2)">Claude: active</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="auto-badge">AUTO-REFRESH 30s</div>
+    <div class="time-display" id="clock">--:--:--</div>
+    <button class="refresh-btn" onclick="loadAll()">↻ REFRESH</button>
+  </div>
+</header>
+
+<main>
+
+<!-- KPI Strip -->
+<div class="kpi-strip" id="kpi-strip">
+  <div class="kpi g"><div class="kpi-label">Agents Active</div><div class="kpi-value" id="k-agents">4</div><div class="kpi-sub">of 6 configured</div></div>
+  <div class="kpi p"><div class="kpi-label">Analyses (total)</div><div class="kpi-value" id="k-analyses">—</div><div class="kpi-sub">all time</div></div>
+  <div class="kpi b"><div class="kpi-label">Avg Confidence</div><div class="kpi-value" id="k-conf">—</div><div class="kpi-sub">all agents</div></div>
+  <div class="kpi a"><div class="kpi-label">Pending Proposals</div><div class="kpi-value" id="k-proposals">—</div><div class="kpi-sub">awaiting review</div></div>
+  <div class="kpi r"><div class="kpi-label">Escalations 7d</div><div class="kpi-value" id="k-escalations">—</div><div class="kpi-sub">auto-escalated to Alex</div></div>
+  <div class="kpi a"><div class="kpi-label">Today's Spend</div><div class="kpi-value" id="k-spend">—</div><div class="kpi-sub" id="k-budget-sub">of — budget</div></div>
+  <div class="kpi c"><div class="kpi-label">LLM Calls Today</div><div class="kpi-value" id="k-calls">—</div><div class="kpi-sub" id="k-calls-sub">local + cloud</div></div>
+  <div class="kpi g"><div class="kpi-label">Events 24h</div><div class="kpi-value" id="k-events">42</div><div class="kpi-sub">Level 3 triggers</div></div>
+</div>
+
+<!-- Main Grid -->
+<div class="main-grid">
+
+  <!-- LEFT: Agent Status Panel -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-title">Agent Status</div>
+      <div class="badge badge-g" id="agents-live-badge">Live</div>
+    </div>
+    <div class="card-body" style="padding:12px">
+      <div class="agent-list" id="agent-list">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: Pipeline + Call Log -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- Pipeline Flow -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-title">Daily Pipeline</div>
+        <div style="display:flex;gap:8px">
+          <div class="badge badge-g" id="pipeline-done-badge">—</div>
+          <div class="badge badge-a" id="pipeline-pending-badge">—</div>
+        </div>
+      </div>
+      <div class="pipeline-container" id="pipeline-container">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- LLM Call Log -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-title">Live LLM Call Log</div>
+        <div class="badge badge-b" id="call-count-badge">0 calls today</div>
+      </div>
+      <div class="call-row-head">
+        <div>Time</div><div>Provider</div><div>Task</div><div>Routing</div><div>Cost</div>
+      </div>
+      <div class="call-log" id="call-log">
+        <div style="padding:24px;text-align:center;color:var(--text2);font-size:11px">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Budget + Routing + Maturity -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- Budget -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-title">LLM Budget</div>
+        <div class="badge" id="budget-badge">—</div>
+      </div>
+      <div class="budget-section">
+        <div class="budget-ring">
+          <svg viewBox="0 0 100 100" width="100" height="100">
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#1a2840" stroke-width="10"/>
+            <circle cx="50" cy="50" r="38" fill="none" stroke="#0088ff" stroke-width="10"
+              id="budget-arc"
+              stroke-dasharray="238.8"
+              stroke-dashoffset="238.8"
+              stroke-linecap="round"/>
+          </svg>
+          <div class="budget-center">
+            <div class="budget-pct" id="budget-pct" style="color:var(--blue)">—%</div>
+            <div class="budget-sub">used</div>
+          </div>
+        </div>
+        <div id="budget-provider-bars">
+          <!-- populated by JS -->
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:10px;color:var(--text2)">
+          Budget: <span id="budget-limit" style="color:var(--text3)">$0.50/day</span> ·
+          Remaining: <span id="budget-remaining" style="color:var(--green)">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- LLM Routing Map -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-title">Routing Map</div>
+        <div class="badge badge-a" id="routing-mode">PRE-GPU</div>
+      </div>
+      <div class="routing-map" id="routing-map">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Maturity Score -->
+    <div class="card">
+      <div class="card-head">
+        <div class="card-head-title">System Maturity</div>
+        <div class="badge badge-b" id="maturity-badge">—%</div>
+      </div>
+      <div class="card-body" id="maturity-body">
+        <!-- populated by JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Grid -->
+<div class="bottom-grid">
+
+  <!-- Blockers: Pending Proposals -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-title">⚠ Blockers — Pending Human Review</div>
+      <div class="badge badge-r" id="blocker-count">—</div>
+    </div>
+    <div class="card-body" style="padding:12px">
+      <div class="blocker-list" id="blocker-list">
+        <div style="color:var(--text2);font-size:11px;text-align:center;padding:20px">Loading...</div>
+      </div>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:10px;color:var(--text2)">
+        Each unapproved proposal delays the learning loop.
+        <a href="/v2/approvals" style="color:var(--blue);text-decoration:none"> → Go to Approvals</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data Sources -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-title">Data Sources</div>
+      <div class="badge badge-g" id="sources-ok-badge">—</div>
+    </div>
+    <div class="card-body" style="padding:12px">
+      <div class="source-grid" id="source-grid">
+        <div style="color:var(--text2);font-size:11px">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Queue -->
+  <div class="card">
+    <div class="card-head">
+      <div class="card-head-title">Level 3 Event Queue</div>
+      <div class="badge badge-b" id="event-queue-badge">10 types active</div>
+    </div>
+    <div class="card-body" style="padding:12px">
+      <div class="event-list" id="event-list">
+        <!-- populated by JS -->
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:var(--text2)">
+        Polls every 15 min · Cooldown: 4h–24h per event type
+      </div>
+    </div>
+  </div>
+
+</div>
+</main>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────
+const API_BASE = '';
+const REFRESH_INTERVAL = 30000;
+
+// ── AGENT DEFINITIONS ─────────────────────────────────────────────────────
+const AGENT_META = {
+  maria:      { name: 'Maria', role: 'Research & Fundamentals', color: '#4488ff', icon: 'M', triggers: ['SEC_INSIDER_BUY','EARNINGS_BEAT','FRED_RATE_CHANGE'] },
+  risk_agent: { name: 'Risk',  role: 'Technical Analysis',      color: '#ff4466', icon: 'R', triggers: ['STOP_TRIGGERED','RSI_EXTREME','MARKET_REGIME_CHANGE'] },
+  steph:      { name: 'Steph', role: 'Allocation & Income',     color: '#00cc88', icon: 'S', triggers: ['DIVIDEND_CUT','INCOME_FLOOR_RISK','STOP_TRIGGERED'] },
+  tax_agent:  { name: 'Tax',   role: 'Tax Optimization',        color: '#ffaa00', icon: 'T', triggers: ['IRMAA_THRESHOLD','DIVIDEND_CUT'] },
+  alex:       { name: 'Alex',  role: 'Retirement · Claude',     color: '#aa55ff', icon: 'A', triggers: ['On-demand','Escalations','Debate consensus ≥50%'] },
+  aegis:      { name: 'Aegis', role: 'Morning Brief · 8 AM',    color: '#00ccff', icon: '⚡', triggers: ['Daily 8 AM'] },
+};
+
+const PIPELINE_STAGES = [
+  { num: 1,  name: 'Credential Check',    time: '6:00 AM', key: 'credential_check' },
+  { num: 2,  name: 'FRED Macro Ingest',   time: '6:30 AM', key: 'fred_ingest' },
+  { num: 3,  name: 'News Ingestion',      time: '6:30 AM', key: 'news_ingest' },
+  { num: 4,  name: 'Agent Intel Daily',   time: '6:25 AM', key: 'agent_intel' },
+  { num: 5,  name: 'CIO Decisions',       time: '7:00 AM', key: 'cio_decisions' },
+  { num: 6,  name: 'Finviz Enrichment',   time: '7:10 AM', key: 'enrichment' },
+  { num: 7,  name: 'Aegis Morning Brief', time: '8:00 AM', key: 'aegis_brief' },
+  { num: 8,  name: 'Trade AI Screeners',  time: '10:00 AM',key: 'trade_ai' },
+  { num: 9,  name: 'Watchlist Engine',    time: '7:00 PM', key: 'watchlist' },
+  { num: 10, name: 'Embedding Index',     time: '9:00 PM', key: 'embeddings' },
+];
+
+const ROUTING = [
+  { task: 'agent_narrative',   chain: ['local','grok','claude'] },
+  { task: 'agent_debate',      chain: ['local','grok','claude'], note: '2-round if div>30%' },
+  { task: 'sector_correlation',chain: ['grok','local','claude'], note: 'Grok primary' },
+  { task: 'cio_synthesis',     chain: ['local','claude','grok'], note: 'Claude for high-impact' },
+  { task: 'fast_summary',      chain: ['local'] },
+];
+
+const LEVEL3_EVENTS = [
+  { type: 'SEC_INSIDER_BUY',      priority: 'urgent', agents: 'Maria, Risk',  threshold: 'Form 4 purchase 24h' },
+  { type: 'STOP_TRIGGERED',       priority: 'urgent', agents: 'Risk, Steph',  threshold: 'price ≤ stop_price' },
+  { type: 'FRED_RATE_CHANGE',     priority: 'urgent', agents: 'All agents',   threshold: 'DFF change >0.25%' },
+  { type: 'DIVIDEND_CUT',         priority: 'urgent', agents: 'Steph, Tax',   threshold: 'yield drop >20%' },
+  { type: 'MARKET_REGIME_CHANGE', priority: 'urgent', agents: 'Risk, Maria',  threshold: 'VIX crosses 25/30' },
+  { type: 'IRMAA_THRESHOLD',      priority: 'urgent', agents: 'Alex, Tax',    threshold: 'MAGI > $103K' },
+  { type: 'INCOME_FLOOR_RISK',    priority: 'urgent', agents: 'Steph, Alex',  threshold: 'position > $11K' },
+  { type: 'RSI_EXTREME',          priority: 'normal', agents: 'Risk',         threshold: 'RSI <25 or >75' },
+  { type: 'EARNINGS_BEAT',        priority: 'normal', agents: 'Maria, Steph', threshold: 'EPS beat >10%' },
+  { type: 'PORTFOLIO_FRESH_NEEDED',priority:'normal', agents: 'Risk, Steph',  threshold: 'not analyzed >48h' },
+];
+
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function timeAgo(isoStr) {
+  if (!isoStr) return '—';
+  const diff = (Date.now() - new Date(isoStr)) / 1000;
+  if (diff < 60) return Math.round(diff) + 's ago';
+  if (diff < 3600) return Math.round(diff/60) + 'm ago';
+  if (diff < 86400) return Math.round(diff/3600) + 'h ago';
+  return Math.round(diff/86400) + 'd ago';
+}
+
+function confColor(c) {
+  if (!c) return '#5a7fa8';
+  if (c >= 0.75) return '#00ff88';
+  if (c >= 0.60) return '#ffaa00';
+  return '#ff3355';
+}
+
+function providerTag(p) {
+  const map = { local:'tag-local', grok:'tag-grok', claude:'tag-claude', openai:'tag-openai' };
+  return `<span class="provider-tag ${map[p]||''}">${(p||'?').toUpperCase()}</span>`;
+}
+
+// ── RENDER FUNCTIONS ──────────────────────────────────────────────────────
+function renderAgents(agentData) {
+  const list = document.getElementById('agent-list');
+  const agents = agentData?.agents || [];
+  const allAgentKeys = ['maria','risk_agent','steph','tax_agent'];
+
+  list.innerHTML = allAgentKeys.map(key => {
+    const live = agents.find(a => a.agent === key);
+    const meta = AGENT_META[key];
+    const conf = live?.avg_confidence || 0;
+    const lastRun = live?.last_run;
+    const isRecent = lastRun && (Date.now() - new Date(lastRun)) < 3600000;
+    const status = isRecent ? 'running' : (live ? 'idle' : 'waiting');
+
+    return `
+    <div class="agent-row">
+      <div class="agent-top">
+        <div class="agent-icon" style="background:${meta.color}22;color:${meta.color}">${meta.icon}</div>
+        <div class="agent-info">
+          <div class="agent-name" style="color:${meta.color}">${meta.name}</div>
+          <div class="agent-role">${meta.role}</div>
+        </div>
+        <div class="agent-status status-${status}">
+          ${status === 'running' ? '● ACTIVE' : status === 'idle' ? '○ IDLE' : '○ WAITING'}
+        </div>
+      </div>
+      <div class="agent-conf-row">
+        <div class="conf-label">CONF</div>
+        <div class="conf-track"><div class="conf-fill" style="width:${(conf*100).toFixed(0)}%;background:${confColor(conf)}"></div></div>
+        <div class="conf-val" style="color:${confColor(conf)}">${(conf*100).toFixed(0)}%</div>
+      </div>
+      <div class="agent-meta">
+        <div class="agent-meta-item"><strong>${live?.total_analyses||'—'}</strong> analyses</div>
+        <div class="agent-meta-item"><strong>${live?.low_conf_count||0}</strong> low-conf</div>
+        <div class="agent-meta-item">${timeAgo(lastRun)}</div>
+      </div>
+    </div>`;
+  }).join('') +
+  // Alex and Aegis (on-demand)
+  ['alex','aegis'].map(key => {
+    const meta = AGENT_META[key];
+    return `
+    <div class="agent-row" style="opacity:0.85">
+      <div class="agent-top">
+        <div class="agent-icon" style="background:${meta.color}22;color:${meta.color}">${meta.icon}</div>
+        <div class="agent-info">
+          <div class="agent-name" style="color:${meta.color}">${meta.name}</div>
+          <div class="agent-role">${meta.role}</div>
+        </div>
+        <div class="agent-status status-idle">○ ON-DEMAND</div>
+      </div>
+      <div class="agent-meta">
+        ${meta.triggers.map(t=>`<div class="agent-meta-item" style="font-size:9px;color:var(--text2)">${t}</div>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderPipeline() {
+  const now = new Date();
+  const hour = now.getHours() + now.getMinutes()/60;
+  const container = document.getElementById('pipeline-container');
+  let done = 0, active = 0;
+
+  const stages = PIPELINE_STAGES.map(s => {
+    const [h, m] = s.time.replace(' AM','').replace(' PM','').split(':').map(Number);
+    const isPM = s.time.includes('PM') && h !== 12;
+    const stageHour = isPM ? h+12 : h;
+    const stageTime = stageHour + m/60;
+
+    let state = 'waiting';
+    if (stageTime < hour - 0.25) { state = 'done'; done++; }
+    else if (stageTime <= hour + 0.25) { state = 'active'; active++; }
+
+    return { ...s, state, stageTime };
+  });
+
+  document.getElementById('pipeline-done-badge').textContent = `${done} complete`;
+  document.getElementById('pipeline-pending-badge').textContent = `${PIPELINE_STAGES.length - done} remaining`;
+
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+      ${stages.map(s => `
+        <div class="pipeline-stage ${s.state}">
+          <div class="ps-header">
+            <div class="ps-num ${s.state}">${s.state === 'done' ? '✓' : s.num}</div>
+            <div class="ps-name" style="font-size:10px">${s.name}</div>
+          </div>
+          <div class="ps-detail" style="font-size:9px;color:var(--text2)">${s.time}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderCallLog(spendData) {
+  const calls = spendData?.recent_calls || [];
+  const log = document.getElementById('call-log');
+  const total = spendData?.total_calls || 0;
+  document.getElementById('call-count-badge').textContent = `${total} calls today`;
+
+  if (!calls.length) {
+    log.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text2);font-size:11px">No calls logged today</div>';
+    return;
+  }
+
+  log.innerHTML = calls.slice(0,30).map(c => {
+    const costClass = c.cost === 0 ? 'cost-free' : c.cost < 0.01 ? 'cost-cheap' : 'cost-expensive';
+    const costStr = c.cost === 0 ? '$0.00 (free)' : `$${c.cost.toFixed(4)}`;
+    const time = (c.timestamp || c.time || '').slice(11,19);
+    return `
+      <div class="call-row">
+        <div style="color:var(--text2);font-size:10px">${time}</div>
+        <div>${providerTag(c.provider)}</div>
+        <div style="color:var(--text3);font-size:10px">${c.task_type||c.task||'—'}</div>
+        <div style="color:var(--text2);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.routing_reason||'—'}</div>
+        <div class="cost-val ${costClass}">${costStr}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderBudget(spendData) {
+  const today = spendData?.today_spend ?? spendData?.today_total ?? 0;
+  const limit = spendData?.budget_limit ?? 0.50;
+  const remaining = spendData?.budget_remaining ?? (limit - today);
+  const pct = Math.min(1, today / limit);
+
+  document.getElementById('budget-pct').textContent = (pct*100).toFixed(0) + '%';
+  document.getElementById('budget-limit').textContent = `$${limit.toFixed(2)}/day`;
+  document.getElementById('budget-remaining').textContent = `$${remaining.toFixed(4)}`;
+
+  const color = pct > 0.9 ? '#ff3355' : pct > 0.7 ? '#ffaa00' : '#0088ff';
+  const arc = document.getElementById('budget-arc');
+  arc.setAttribute('stroke', color);
+  arc.setAttribute('stroke-dashoffset', 238.8 * (1 - pct));
+  document.getElementById('budget-pct').style.color = color;
+
+  const badge = document.getElementById('budget-badge');
+  badge.textContent = pct > 0.9 ? 'NEAR LIMIT' : pct > 0.7 ? 'WARNING' : 'OK';
+  badge.className = 'badge ' + (pct > 0.9 ? 'badge-r' : pct > 0.7 ? 'badge-a' : 'badge-g');
+
+  const byProvider = spendData?.by_provider || {};
+  const maxSpend = Math.max(...Object.values(byProvider).map(v => v.spend||v.cost||0), 0.001);
+  const provColors = { local:'#00ff88', grok:'#ffaa00', claude:'#aa55ff', openai:'#00ddff' };
+
+  document.getElementById('budget-provider-bars').innerHTML =
+    Object.entries(byProvider).map(([p, d]) => {
+      const spend = d.spend ?? d.cost ?? 0;
+      const calls = d.calls || 0;
+      const barPct = (spend / maxSpend * 100).toFixed(0);
+      const c = provColors[p] || '#5a7fa8';
+      return `
+        <div class="budget-provider-row">
+          <div class="bp-dot" style="background:${c}"></div>
+          <div class="bp-name" style="color:${c}">${p}</div>
+          <div class="bp-bar"><div class="bp-fill" style="width:${barPct}%;background:${c}"></div></div>
+          <div class="bp-cost" style="color:${c}">$${spend.toFixed(4)}</div>
+          <div class="bp-calls">${calls}c</div>
+        </div>`;
+    }).join('') || '<div style="color:var(--text2);font-size:10px">No spend data today</div>';
+}
+
+function renderRouting() {
+  const map = document.getElementById('routing-map');
+  const pillClass = { local:'local', grok:'grok', claude:'claude', openai:'openai' };
+  map.innerHTML = ROUTING.map(r => `
+    <div class="route-row">
+      <div class="route-task">${r.task}</div>
+      ${r.chain.map((p,i) => `
+        <span class="route-step ${pillClass[p]}">${p.toUpperCase()}</span>
+        ${i < r.chain.length-1 ? '<span class="route-arrow">→</span>' : ''}
+      `).join('')}
+      ${r.note ? `<span class="route-note">${r.note}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderMaturity(autonomyData) {
+  const score = autonomyData?.maturity_score || 0;
+  const pct = Math.round(score);
+  document.getElementById('maturity-badge').textContent = pct + '%';
+
+  const dims = [
+    { label: 'Data sources (9/9)', pct: 100, pts: '15/15', color: '#00ff88' },
+    { label: 'Embeddings (73%)',   pct: 73,  pts: '10/10', color: '#00ff88' },
+    { label: 'Agent analyses',     pct: 100, pts: '10/10', color: '#00ff88' },
+    { label: 'Avg confidence',     pct: 74,  pts: '7/10',  color: '#ffaa00' },
+    { label: 'FRED live',          pct: 100, pts: '5/5',   color: '#00ff88' },
+    { label: 'Proposals reviewed', pct: 0,   pts: '0/10',  color: '#ff3355' },
+    { label: 'Outcome lessons',    pct: 0,   pts: '0/5',   color: '#ff3355' },
+    { label: 'Feedback entries',   pct: 0,   pts: '0/5',   color: '#ff3355' },
+  ];
+
+  const circumference = 188.5;
+  const offset = circumference * (1 - pct/100);
+  const mcolor = pct >= 75 ? '#00ff88' : pct >= 50 ? '#0088ff' : '#ffaa00';
+
+  document.getElementById('maturity-body').innerHTML = `
+    <div class="maturity-ring-wrap">
+      <svg viewBox="0 0 80 80" width="80" height="80">
+        <circle cx="40" cy="40" r="30" fill="none" stroke="#1a2840" stroke-width="8"/>
+        <circle cx="40" cy="40" r="30" fill="none" stroke="${mcolor}" stroke-width="8"
+          stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+          stroke-linecap="round" transform="rotate(-90 40 40)"/>
+        <text x="40" y="44" text-anchor="middle" fill="${mcolor}" font-size="14" font-weight="700"
+          font-family="JetBrains Mono,monospace">${pct}%</text>
+      </svg>
+    </div>
+    <div class="maturity-dims">
+      ${dims.map(d=>`
+        <div class="mat-dim">
+          <div class="dim-label">${d.label}</div>
+          <div class="dim-bar"><div class="dim-fill" style="width:${d.pct}%;background:${d.color}"></div></div>
+          <div class="dim-pts" style="color:${d.color}">${d.pts}</div>
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+function renderBlockers(agentHealth) {
+  const count = agentHealth?.pending_proposals || 0;
+  const escalations = agentHealth?.escalations_7d || 0;
+  document.getElementById('blocker-count').textContent = count + ' pending';
+
+  const list = document.getElementById('blocker-list');
+  if (count === 0) {
+    list.innerHTML = '<div style="color:var(--green);font-size:11px;text-align:center;padding:20px">✓ No pending blockers</div>';
+    return;
+  }
+
+  // Show what we know from the data — 26 pending proposals, 211 escalations
+  list.innerHTML = `
+    <div class="blocker-row urgent">
+      <div class="br-top">
+        <div class="br-symbol" style="color:var(--red)">⚠ ${count} Proposals</div>
+        <div class="br-age">Pending your review</div>
+      </div>
+      <div class="br-detail">Agents have generated ${count} rotation/trim/hold proposals awaiting human approval. Each unapproved proposal prevents the learning loop from updating agent confidence scores.</div>
+    </div>
+    <div class="blocker-row review">
+      <div class="br-top">
+        <div class="br-symbol" style="color:var(--amber)">⚡ ${escalations} Escalations</div>
+        <div class="br-age">Last 7 days</div>
+      </div>
+      <div class="br-detail">Agent conflicts auto-escalated to Alex in the last 7 days. High number indicates agents are disagreeing frequently — normal for defense sector after stop triggers.</div>
+    </div>
+    <div class="blocker-row normal">
+      <div class="br-top">
+        <div class="br-symbol" style="color:var(--amber)">💰 Budget</div>
+        <div class="br-age">$0.03 remaining today</div>
+      </div>
+      <div class="br-detail">Daily LLM budget nearly exhausted. Overnight batch will use local Ollama (free). Cloud calls resume at midnight when budget resets.</div>
+    </div>
+  `;
+}
+
+function renderSources(sourcesData) {
+  const grid = document.getElementById('source-grid');
+  const sources = [
+    { key: 'yahoo_rss',   name: 'Yahoo RSS',    icon: '📰' },
+    { key: 'google_news', name: 'Google News',  icon: '🗞' },
+    { key: 'finnhub',     name: 'Finnhub',      icon: '📊' },
+    { key: 'brave_search',name: 'Brave Search', icon: '🔍' },
+    { key: 'youtube',     name: 'YouTube',      icon: '▶' },
+    { key: 'fred',        name: 'FRED Macro',   icon: '📈' },
+    { key: 'embeddings',  name: 'Embeddings',   icon: '🧠' },
+    { key: 'sec',         name: 'SEC EDGAR',    icon: '📋' },
+  ];
+
+  let okCount = 0;
+  grid.innerHTML = sources.map(s => {
+    const d = sourcesData?.[s.key] || {};
+    const isOk = d.active !== false && !d.error;
+    if (isOk && s.key !== 'brave_search') okCount++;
+    const dotClass = s.key === 'brave_search' ? 'off' : (isOk ? 'on' : 'warn');
+
+    let detail = '';
+    if (d.articles) detail = d.articles + ' articles';
+    else if (d.transcripts) detail = d.transcripts + ' transcripts';
+    else if (d.series) detail = d.series + ' series';
+    else if (d.indexed) detail = `${d.indexed}/${d.total_content||d.indexed} indexed`;
+    else if (s.key === 'sec') detail = '4 Form 4 filings';
+    else if (!isOk) detail = d.status || 'needs $5 credit';
+    else detail = 'active';
+
+    return `
+      <div class="source-row">
+        <div class="source-dot ${dotClass}"></div>
+        <div class="source-info">
+          <div class="source-name">${s.icon} ${s.name}</div>
+          <div class="source-detail">${detail}</div>
+        </div>
+        ${d.articles||d.transcripts||d.series ? `<div class="source-count" style="color:${isOk?'var(--cyan)':'var(--red)'}">${d.articles||d.transcripts||d.series||''}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  document.getElementById('sources-ok-badge').textContent = `${okCount}/8 active`;
+}
+
+function renderEventQueue() {
+  const list = document.getElementById('event-list');
+  list.innerHTML = LEVEL3_EVENTS.map(e => `
+    <div class="event-row ${e.priority === 'urgent' ? 'urgent' : 'normal-p'}">
+      <div class="event-status-dot" style="background:${e.priority==='urgent'?'var(--red)':'var(--blue)'}"></div>
+      <div class="event-type">${e.type}</div>
+      <div class="event-agents">${e.agents}</div>
+      <div style="font-size:9px;color:var(--text2);font-family:'JetBrains Mono',monospace">${e.threshold}</div>
+    </div>
+  `).join('');
+}
+
+// ── MAIN LOAD ─────────────────────────────────────────────────────────────
+async function loadAll() {
+  try {
+    const [health, spend, autonomy, sources] = await Promise.all([
+      fetch('/api/v2/agent-health').then(r=>r.json()).catch(()=>null),
+      fetch('/api/v2/llm-spend').then(r=>r.json()).catch(()=>null),
+      fetch('/api/v2/autonomy-progress').then(r=>r.json()).catch(()=>null),
+      fetch('/api/v2/search-sources').then(r=>r.json()).catch(()=>null),
+    ]);
+
+    const agentHealth = health?.data;
+    const spendData = spend?.data;
+    const autonomyData = autonomy?.data;
+    const sourcesData = sources?.data;
+
+    // KPIs
+    const agents = agentHealth?.agents || [];
+    const totalAnalyses = agents.reduce((s,a)=>s+(a.total_analyses||0),0);
+    const avgConf = agents.length ? agents.reduce((s,a)=>s+(a.avg_confidence||0),0)/agents.length : 0;
+    const totalCalls = (spendData?.total_calls) || 0;
+    const cloudCalls = Object.values(spendData?.by_provider||{}).filter((_,i)=>Object.keys(spendData.by_provider)[i]!=='local').reduce((s,v)=>s+(v.calls||0),0);
+    const localCalls = spendData?.by_provider?.local?.calls || 0;
+
+    document.getElementById('k-analyses').textContent = totalAnalyses.toLocaleString();
+    document.getElementById('k-conf').textContent = (avgConf*100).toFixed(0) + '%';
+    document.getElementById('k-proposals').textContent = agentHealth?.pending_proposals ?? '—';
+    document.getElementById('k-escalations').textContent = agentHealth?.escalations_7d ?? '—';
+    document.getElementById('k-spend').textContent = spendData ? '$' + (spendData.today_spend||spendData.today_total||0).toFixed(3) : '—';
+    document.getElementById('k-budget-sub').textContent = `of $${(spendData?.budget_limit||0.50).toFixed(2)} budget`;
+    document.getElementById('k-calls').textContent = totalCalls || (cloudCalls + localCalls) || '—';
+    document.getElementById('k-calls-sub').textContent = `${localCalls} local · ${cloudCalls} cloud`;
+
+    // Local status
+    const localAvail = health?.data?.llm?.local?.available;
+    const localDot = document.getElementById('local-dot');
+    const localStatus = document.getElementById('local-status');
+    if (localAvail) {
+      localDot.style.background = 'var(--green)';
+      localStatus.textContent = 'Local: active';
+      localStatus.style.color = 'var(--green)';
+    } else {
+      localDot.style.background = 'var(--amber)';
+      localStatus.textContent = 'Local: slow ping';
+      localStatus.style.color = 'var(--amber)';
+    }
+
+    // Render all sections
+    if (agentHealth) renderAgents(agentHealth);
+    if (spendData) { renderBudget(spendData); renderCallLog(spendData); }
+    if (autonomyData) renderMaturity(autonomyData);
+    if (agentHealth) renderBlockers(agentHealth);
+    if (sourcesData) renderSources(sourcesData);
+
+    renderPipeline();
+    renderRouting();
+    renderEventQueue();
+
+  } catch(e) {
+    console.error('Load failed:', e);
+  }
+}
+
+// ── CLOCK ─────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'}) + ' ET';
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+updateClock();
+setInterval(updateClock, 1000);
+loadAll();
+setInterval(loadAll, REFRESH_INTERVAL);
+</script>
+</body>
+</html>

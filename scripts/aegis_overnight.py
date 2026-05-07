@@ -139,6 +139,114 @@ def main():
     from aegis_synthesis import main as synthesis_main
     results["synthesis"] = _run_phase("synthesis", synthesis_main)
 
+    # ── PHASE 2b: DATA HEALTH ────────────────────────────────────────────
+    _log("PHASE 2b: DATA HEALTH — watchlist quality check")
+    try:
+        import psycopg2, psycopg2.extras
+        pw = ""
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+        hconn = psycopg2.connect(host='localhost', dbname='trade_ai', user='trade_ai', password=pw)
+        hcur = hconn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Find LLM errors in synthesis for curated symbols
+        hcur.execute("""
+            SELECT DISTINCT wsm.symbol FROM watchlist_symbol_master wsm
+            JOIN watchlist_final_synthesis wfs ON wsm.symbol = wfs.symbol
+            WHERE (wsm.in_ai_watchlist = true OR wsm.in_personal_watchlist = true)
+              AND (wfs.synthesis_narrative ILIKE '%%LLM error%%'
+                   OR wfs.synthesis_narrative ILIKE '%%All providers failed%%')
+        """)
+        llm_broken = [r['symbol'] for r in hcur.fetchall()]
+
+        # Find stale curated (no analysis in 48h)
+        hcur.execute("""
+            SELECT wsm.symbol FROM watchlist_symbol_master wsm
+            WHERE (wsm.in_ai_watchlist = true OR wsm.in_personal_watchlist = true)
+              AND wsm.updated_at < NOW() - INTERVAL '48 hours'
+            LIMIT 10
+        """)
+        stale = [r['symbol'] for r in hcur.fetchall()]
+
+        # Queue re-analysis
+        health_queued = 0
+        for sym in llm_broken:
+            for agent in ['maria_research', 'steph_allocation', 'risk_agent']:
+                hcur.execute("""
+                    INSERT INTO watchlist_agent_jobs
+                        (symbol, requested_agent, task_type, priority, status, submitted_from)
+                    VALUES (%s, %s, 'health_requeue', 'high', 'pending', 'aegis_health')
+                    ON CONFLICT DO NOTHING
+                """, [sym, agent])
+                health_queued += 1
+        for sym in stale:
+            hcur.execute("""
+                INSERT INTO watchlist_agent_jobs
+                    (symbol, requested_agent, task_type, priority, status, submitted_from)
+                VALUES (%s, 'maria_research', 'stale_refresh', 'normal', 'pending', 'aegis_health')
+                ON CONFLICT DO NOTHING
+            """, [sym])
+            health_queued += 1
+
+        hconn.commit()
+        hconn.close()
+
+        results["data_health"] = {"llm_errors": len(llm_broken), "stale": len(stale), "queued": health_queued}
+        _log(f"  LLM errors: {len(llm_broken)} | Stale: {len(stale)} | Queued: {health_queued} jobs")
+
+        if llm_broken or stale:
+            try:
+                from telegram_alert import send_telegram
+                send_telegram(
+                    f"*Watchlist Health — {len(llm_broken) + len(stale)} issues*\n"
+                    f"LLM errors: {len(llm_broken)} | Stale (48h+): {len(stale)}\n"
+                    f"Auto-queued: {health_queued} jobs for re-analysis"
+                )
+            except Exception:
+                pass
+    except Exception as e:
+        _log(f"  Data health check failed (non-fatal): {e}")
+        results["data_health"] = {"error": str(e)}
+
+    # ── PHASE 2c: RE-ENTRY SCAN ──────────────────────────────────────────
+    _log("PHASE 2c: RE-ENTRY SCAN — previously traded watchlist")
+    try:
+        import subprocess
+        subprocess.run([sys.executable, str(PROJECT_ROOT / 'scripts' / 'previously_traded_watchlist.py')],
+                       capture_output=True, cwd=str(PROJECT_ROOT), timeout=120)
+
+        # Alert on NEW IN_ZONE signals (not alerted within 7 days)
+        hconn2 = psycopg2.connect(host='localhost', dbname='trade_ai', user='trade_ai', password=pw)
+        hcur2 = hconn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        hcur2.execute("""
+            SELECT symbol, current_price, reentry_zone_low, reentry_zone_high,
+                   best_pnl_pct, last_exit_price, last_exit_date
+            FROM previously_traded_watchlist
+            WHERE reentry_signal = 'IN_ZONE' AND is_currently_held = false AND current_price IS NOT NULL
+              AND (last_alerted_date IS NULL OR last_alerted_date < CURRENT_DATE - INTERVAL '7 days')
+            ORDER BY best_pnl_pct DESC
+        """)
+        new_alerts = hcur2.fetchall()
+        if new_alerts:
+            from telegram_alert import send_telegram
+            for s in new_alerts:
+                send_telegram(
+                    f"*Re-entry Signal: {s['symbol']}*\n"
+                    f"Price: ${float(s['current_price']):.2f} (zone ${float(s['reentry_zone_low']):.2f}-${float(s['reentry_zone_high']):.2f})\n"
+                    f"Last exit: ${float(s['last_exit_price']):.2f} on {s['last_exit_date']}\n"
+                    f"Best trade: +{float(s['best_pnl_pct']):.0f}%"
+                )
+                hcur2.execute("UPDATE previously_traded_watchlist SET last_alerted_date=CURRENT_DATE WHERE symbol=%s", [s['symbol']])
+            hconn2.commit()
+            _log(f"  Alerted on {len(new_alerts)} re-entry signals")
+        else:
+            _log("  No new re-entry signals")
+        hconn2.close()
+        results["reentry_scan"] = {"alerted": len(new_alerts)}
+    except Exception as e:
+        _log(f"  Re-entry scan failed (non-fatal): {e}")
+        results["reentry_scan"] = {"error": str(e)}
+
     # ── PHASE 3: REFINEMENT ──────────────────────────────────────────────
     _log("PHASE 3: REFINEMENT")
 

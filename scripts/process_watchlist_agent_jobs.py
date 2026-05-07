@@ -22,8 +22,13 @@ _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "qwen3:1.7b"
+try:
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url
+    OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+    OLLAMA_MODEL = get_local_llm_model()
+except ImportError:
+    OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
+    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
 
 # Agent name normalization (risk_agent/tax_agent → risk/tax for maturity tracking)
 AGENT_TO_MATURITY = {
@@ -145,12 +150,12 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
         # Fallback to direct Ollama if router not available
         try:
             payload = json.dumps({"model": OLLAMA_MODEL, "stream": False, "think": False,
-                                  "prompt": prompt,
+                                  "messages": [{"role": "user", "content": prompt}],
                                   "options": {"temperature": 0.3, "num_predict": max_tokens}}).encode()
             req = urllib.request.Request(OLLAMA_URL, data=payload,
                                          headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req, timeout=120) as resp:
-                return json.loads(resp.read()).get("response", "").strip()
+                return json.loads(resp.read()).get("message", {}).get("content", "").strip()
         except Exception as e:
             return f"LLM error: {e}"
 
@@ -393,6 +398,18 @@ def _get_recent_intel(symbol: str) -> str:
 
 
 def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") -> str:
+    # === SCAN INTELLIGENCE — primary context for scalp candidates ===
+    scan_block = ""
+    scalp_instructions = ""
+    try:
+        from agent_collab import get_scan_intelligence, get_scalp_agent_instructions
+        _sc = _get_conn()
+        scan_block = get_scan_intelligence(symbol, _sc)
+        scalp_instructions = get_scalp_agent_instructions(symbol, _sc)
+        _sc.close()
+    except Exception:
+        pass
+
     # Inject cross-agent views and intel
     other_views = _get_other_agent_views(symbol, agent)
     intel = _get_recent_intel(symbol)
@@ -424,6 +441,81 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     except Exception:
         pass
 
+    # Confluence + pipeline context injection
+    confluence_block = ""
+    prospects_block = ""
+    calibration_block = ""
+    try:
+        from agent_collab import get_confluence_context, get_prospects_context, get_calibration_context
+        _conn = _get_conn()
+        confluence_block = get_confluence_context(symbol, _conn, profile='swing')
+        prospects_block = get_prospects_context(symbol, _conn)
+        calibration_block = get_calibration_context(agent, _conn)
+        _conn.close()
+    except Exception:
+        pass
+
+    # Strategy playbook context — agents know which strategy applies
+    strategy_playbook_block = ""
+    try:
+        import yaml as _yaml
+        _proj = Path(__file__).resolve().parent.parent
+        # Infer strategy from scan data or job context
+        _strat_id = None
+        try:
+            _sconn = _get_conn()
+            _scur = _sconn.cursor()
+            _scur.execute("""
+                SELECT rvol, float_m, gap_pct, decision FROM trade_ai_scans
+                WHERE symbol = %s ORDER BY scanned_at DESC LIMIT 1
+            """, [symbol])
+            _srow = _scur.fetchone()
+            _sconn.close()
+            if _srow:
+                _rvol = float(_srow[0] or 0)
+                _flt = float(_srow[1] or 999)
+                _gap = float(_srow[2] or 0)
+                if _rvol >= 5 and _flt <= 100:
+                    _strat_id = 'momentum_scalp'
+                elif _gap >= 5:
+                    _strat_id = 'gap_and_go'
+        except Exception:
+            pass
+
+        if _strat_id:
+            _ypath = _proj / 'config' / 'strategies' / f'{_strat_id}.yaml'
+            if _ypath.exists():
+                with open(_ypath) as _yf:
+                    _strat = _yaml.safe_load(_yf)
+                _lines = [f"\n=== STRATEGY PLAYBOOK: {_strat.get('display_name', _strat_id)} ==="]
+                _lines.append(f"Purpose: {str(_strat.get('purpose', ''))[:200]}")
+                _lines.append(f"Timeframe: {_strat.get('timeframe', 'unknown')}")
+                _eligible = _strat.get('eligible_accounts', [])
+                _forbidden = _strat.get('forbidden_accounts', [])
+                if _forbidden:
+                    _lines.append(f"FORBIDDEN accounts: {', '.join(_forbidden)}")
+                _agent_roles = _strat.get('agent_responsibilities', {})
+                _role = _agent_roles.get(agent)
+                if _role:
+                    _role_str = _role if isinstance(_role, str) else str(_role)
+                    _lines.append(f"Your role ({agent}): {_role_str[:200]}")
+                _lines.append("=" * 40)
+                strategy_playbook_block = '\n'.join(_lines)
+    except Exception:
+        pass
+
+    # Global rules G1-G10 (apply to ALL agents — Bible §5)
+    global_rules = """=== GLOBAL RULES (mandatory — apply to every analysis) ===
+G1 DATA FRESHNESS: Never analyze with stale data (news >7d, prices >24h, SEC >30d, FRED >7d). If stale: log stale_data, skip, no recommendation.
+G2 INCOME PROTECTION: NEVER recommend TRIM/SELL on positions where yield × market_value > $11,000/yr or strategies: dividend_growth_compounder, high_yield_income_bdc, tactical_income. If blocked: escalate to Alex with INCOME_CRITICAL.
+G3 SSDI AWARENESS: For IRA/401k positions include: MAGI impact estimate, IRMAA flag if MAGI >$103K (MFS), bracket flag if >$94,300, Medicaid lookback flag if distribution >$50K. If any flag: set ssdi_review=true.
+G4 CONFIDENCE GATING: If confidence <40%: output LOW_CONFIDENCE_SKIP. If only 1 source: skip. Decisions >14 days old: expire.
+G5 LEARNING LOOP: Read outcome lessons below and adjust confidence ±0.05 per past approval/rejection.
+G6 MACRO CONTEXT: Check FRED data in context. VIX >25: elevated volatility. T10Y2Y <0: recession risk. DFF >5%: bonds competitive. DFF <2%: equity premium.
+G7 ESCALATION: Auto-escalate to Alex when: agent conflict (BUY vs SELL same symbol 48h), any Roth conversion rec, income-critical flag, confidence 40-60% on portfolio position.
+G10 NO DIRECT EXECUTION: No trade executes without human approval.
+=== END GLOBAL RULES ==="""
+
     base_instruction = f"""Respond in JSON format with these fields:
 - "summary": 1-2 sentence executive summary
 - "full_narrative": detailed 3-5 paragraph analysis (this is the primary output)
@@ -432,11 +524,19 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
 - "reason_codes": array of short reason tags (e.g. ["strong_dividend", "overvalued", "technical_support"])
 - "next_action": what should happen next
 
+{global_rules}
+
 Context:
+{scan_block}
 {context_text}
 {rag_block}
 {peer_notes}
 {gap_warnings}
+{confluence_block}
+{prospects_block}
+{calibration_block}
+{strategy_playbook_block}
+{scalp_instructions}
 {other_views}{intel}"""
     if note:
         base_instruction += f"Additional note: {note}\n"
@@ -453,36 +553,85 @@ Analyze {symbol}. Cover:
 
 {base_instruction}""",
 
-        "steph": f"""/no_think You are Steph, a senior wealth advisor managing a ~$1.2M multi-account portfolio. Your job is to evaluate allocation and account fit.
+        "steph": f"""/no_think You are Steph, the income guardian for John's ~$1.2M multi-account portfolio. Your question: "Does this position support the $55K income target? Does the allocation make sense across all four accounts?"
+
+INCOME ANALYSIS FRAMEWORK:
+- Portfolio income target: $55,000/yr from investments
+- SSDI income: $45,600/yr (stable — do NOT count toward portfolio income target)
+- Income gap: $55,000 - current_annual_portfolio_income
+- FLAG if: gap > $20,000 → recommend income-building action
+- FLAG if: single position > 25% of total portfolio income → concentration risk
+- FLAG if: single position > 15% of total portfolio value → hard cap breach
+
+ACCOUNT RULES (non-negotiable):
+- Roth IRA: growth focus ONLY (SCHG, SCHD) — no covered calls — tax-free growth
+- Rollover IRA: income + growth + Roth conversion candidates
+- Taxable: qualified dividends ONLY — no BDC distributions (ordinary income = SSDI MAGI risk)
+- 401k (until 2027): constrained to 15 Omnicom plan funds only
+
+NEVER AUTO-ROTATE (income protection — Rule G2):
+  dividend_growth_compounder, high_yield_income_bdc, tactical_income,
+  reit_income, bond_income, retirement_planning, disability_retirement_planning
+  If rotation needed: flag INCOME_CRITICAL, escalate to Alex.
 
 Review {symbol}. Cover:
-1. Current allocation vs target — is it overweight/underweight?
-2. Account location optimization (taxable vs IRA vs Roth)
-3. Rebalance recommendation — add, hold, or trim?
-4. How this fits the broader portfolio construction
-5. Income vs growth classification and its role
+1. Current allocation vs target — overweight/underweight? Flag if >15%.
+2. Account location — is it in the right account per rules above?
+3. Income contribution — how much does it add to the $55K target?
+4. Rebalance recommendation — add, hold, trim, or rotate?
+5. Proposal format: [action] SYMBOL in ACCOUNT: shares → target. Income impact: $+/-N/yr. SSDI impact. IRMAA risk.
 
 {base_instruction}""",
 
-        "risk_agent": f"""/no_think You are a risk analyst. Your job is to evaluate technical risk and position management.
+        "risk_agent": f"""/no_think You are the Risk Analyst for John's portfolio. Your question: "Is the price action supportive of entry/exit? Is the stop set appropriately? Is the position protected?"
+
+RISK RULES:
+- Stop placement: new position = entry - (2 × ATR). Min 5%, max 15% distance.
+- 401k mutual funds: no stops (cannot be placed) → mental stop only.
+- RSI >75 + no catalyst: flag OVERBOUGHT → TRIM candidate.
+- RSI <25 + thesis intact: flag OVERSOLD → ADD candidate.
+- Portfolio heat >5%: do not add new positions. >8%: urgent stop-tightening.
+- Target: ≥80% of portfolio value protected (has defined stop).
 
 Assess {symbol}. Cover:
-1. Technical trend — above/below key moving averages
-2. RSI and momentum signals
+1. Technical trend — above/below key moving averages (SMA20/50/200)
+2. RSI and momentum signals (flag extremes per rules above)
 3. Support/resistance levels and current price position
-4. Stop loss recommendation with reasoning
+4. Stop loss recommendation with reasoning (use ATR rule)
 5. Position sizing guidance based on volatility (ATR, beta)
+6. Heat contribution — how much risk does this position add?
 
 {base_instruction}""",
 
-        "tax_agent": f"""/no_think You are a tax-aware investment advisor. Your job is to optimize after-tax returns.
+        "tax_agent": f"""/no_think You are the Tax Optimizer for John's portfolio. Your question: "What is the tax-optimal execution path? Are there harvest opportunities? Does this affect SSDI/IRMAA/Medicaid?"
+
+JOHN'S TAX SITUATION:
+- Filing status: MFS (Married Filing Separately) — lived apart from spouse
+- SSDI income: $45,600/yr — counts toward MAGI but NOT SGA (unearned)
+- Current MAGI room: ~$66,883 (verified April 2026)
+- IRMAA threshold (MFS): $103,000 — NEVER breach without explicit IRMAA warning
+- 22% bracket ceiling: $94,300 (MFS)
+- Roth conversions done 2026: $35,000
+- Golden Window: ages 68.5–73 (2036–2040) — convert aggressively then
+- Disability exemption: no 10% early withdrawal penalty
+- LTD disability insurance: pretax employer policy — ordinary income, NOT earned income
+
+TAX HARVEST RULES:
+- Worthless securities: current_value = 0, cost_basis > 0 → contact Fidelity 1-800-343-3548 for disposal form before Dec 31
+- Loss harvest: unrealized_loss > $500, holding_period > 30 days, no wash sale in 30-day window
+- Prioritize: highest loss first, long-term losses before short-term
+- Roth conversion: available room = $94,300 - current_MAGI. Convert FROM Rollover IRA only.
+- IRA distribution > $50,000: Medicaid 5-year lookback warning required
+- Capital gains in taxable: estimate MAGI impact before proposing
 
 Review {symbol}. Cover:
-1. Optimal account location for this holding
-2. Tax-loss harvesting opportunities
-3. Dividend tax implications
-4. Capital gains considerations
-5. Any wash sale concerns
+1. Optimal account location (taxable = qualified divs only, no BDC; Roth = growth; IRA = income + conversion candidates)
+2. Tax-loss harvesting opportunities with wash sale check
+3. MAGI impact of any recommended action
+4. IRMAA risk assessment (will this push MAGI > $103K?)
+5. Roth conversion candidacy (if IRA position)
+
+Output MUST include: tax_impact, magi_impact, irmaa_risk (bool), bracket_impact, deadline if applicable.
 
 {base_instruction}""",
 
@@ -504,17 +653,59 @@ def _run_maria_two_pass(symbol: str, context_text: str, note: str = "") -> str:
     """Two-pass Maria analysis for higher confidence.
 
     Pass 1 (local): News sentiment + catalyst extraction
-    Pass 2 (local, Grok fallback if low conf): Fundamentals given Pass 1 context
+    Pass 2 (local, Grok fallback if low conf): Fundamentals given Pass 1 context + RAG + intel
     Final: Combine both into standard Maria JSON output
     """
-    # ── Pass 1: News & Sentiment ──
-    pass1_prompt = f"""/no_think You are Maria, a research analyst. Summarize what the last 7 days of news says about {symbol}.
+    # ── Inject RAG, intel, peer notes for Pass 2 ──
+    global _last_rag_sources, _last_peer_agents
+    _last_rag_sources = []
+    _last_peer_agents = []
+    rag_block = ""
+    try:
+        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        rag_results = get_rag_context(symbol=symbol, agent_name="maria", limit=5)
+        rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
+        _last_rag_sources = [{"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]} for r in rag_results]
+        print(f"  [RAG] {symbol} (maria-2pass): {len(rag_results)} items" + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else ""))
+    except Exception as e:
+        print(f"  [RAG] {symbol} (maria-2pass): FAILED — {e}")
 
-Context:
+    intel = ""
+    try:
+        intel = _get_recent_intel(symbol)
+    except Exception:
+        pass
+
+    peer_notes = ""
+    try:
+        peer_notes = _get_peer_agent_notes(symbol, "maria")
+    except Exception:
+        pass
+
+    # ── Pass 1: News & Sentiment ──
+    pass1_prompt = f"""/no_think You are Maria, a senior research analyst. Your question: "Is there new information that changes the investment thesis for {symbol}?"
+
+CATALYST CRITERIA — mark catalyst_present=true if ANY of:
+- Earnings beat >10% + guidance raised
+- SEC Form 4: insider purchase >$500K (not options exercise)
+- M&A accretive announcement
+- Analyst upgrade with target >15% above current price
+- FDA approval or positive Phase 3 trial
+- Material positive 8-K
+
+BEARISH CATALYST — mark sentiment="negative" if ANY of:
+- Insider selling >$1M within 30 days (Form 4)
+- EPS miss >10% + guidance cut
+- Analyst target downgrade below current price
+- Payout ratio >100% for income positions
+- SEC investigation or material weakness disclosure
+
+Context (last 7 days):
 {context_text[:2000]}
 
 Respond in JSON only:
 {{"sentiment": "positive" or "neutral" or "negative",
+  "catalyst_present": true or false,
   "catalyst": "string describing the main catalyst, or null if none",
   "confidence": 0-100,
   "key_headlines": ["headline 1", "headline 2", "headline 3 max"]}}"""
@@ -536,21 +727,33 @@ Respond in JSON only:
     print(f"  [maria-p1] {symbol}: sentiment={pass1_data.get('sentiment')} catalyst={str(pass1_data.get('catalyst',''))[:40]} conf={pass1_data.get('confidence')} model={pass1_model}")
 
     # ── Pass 2: Fundamentals given news context ──
-    pass2_prompt = f"""/no_think You are Maria, a research analyst. Given this news summary for {symbol}:
+    pass2_prompt = f"""/no_think You are Maria, a senior research analyst. Given this news summary for {symbol}:
 Sentiment: {pass1_data.get('sentiment', 'neutral')}
 Catalyst: {pass1_data.get('catalyst', 'none identified')}
+Catalyst present: {pass1_data.get('catalyst_present', False)}
 News confidence: {pass1_data.get('confidence', 50)}%
 Headlines: {', '.join(pass1_data.get('key_headlines', [])[:3])}
 
-Now evaluate the fundamentals of {symbol}:
+DECISION RULES:
+BUY (ALL must be true): catalyst_present=true, PE below sector avg OR growth justifies premium, analyst target >10% above price, no negative SEC in 30d.
+SELL/TRIM: bearish catalyst confirmed OR RSI>75 with no new catalyst. NEVER SELL income-critical positions unless Rule G2 breach.
+HOLD: mixed signals, confidence <55%, or no new material catalyst in 7 days.
+RESEARCH_MORE (use sparingly): conflicting signals AND confidence <45%.
+
+Fundamentals for {symbol}:
 {context_text[:1500]}
+{rag_block}
+{peer_notes}
+{intel}
 {note or ''}
 
 Respond in JSON only:
 {{"thesis_intact": "yes" or "no" or "maybe",
-  "fundamental_signal": "BUY" or "HOLD" or "SELL",
+  "fundamental_signal": "BUY" or "HOLD" or "SELL" or "TRIM" or "RESEARCH_MORE",
   "confidence": 0-100,
-  "reasoning": "1-2 sentence reasoning"}}"""
+  "reasoning": "1-2 sentence reasoning",
+  "income_critical": false,
+  "evidence": ["key fact 1", "key fact 2"]}}"""
 
     # Route: always local first — never burn cloud budget for Maria Pass 2
     pass2_raw = _llm(pass2_prompt, max_tokens=400, task_type="agent_narrative", high_impact=False)
@@ -1483,6 +1686,20 @@ def process_jobs(limit: int = 10):
         except Exception:
             pass
 
+        # === IER WRITE-BACK (non-fatal) ===
+        try:
+            from intelligence_entity_manager import upsert_entity as _iem_upsert
+            from datetime import datetime as _dt, timezone as _tz
+            _iem_upsert(conn, symbol, 'market', {
+                'last_agent': agent,
+                'last_agent_verdict': f"{parsed['recommendation']} ({parsed['confidence']}) — {parsed['summary'][:150]}",
+                'last_agent_analysis': _dt.now(_tz.utc),
+                'agent_chain_status': 'complete',
+            }, source='agent_jobs')
+        except Exception:
+            pass
+        # === END WRITE-BACK ===
+
         # Self-assessment: low confidence + no RAG → suggest research
         try:
             rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
@@ -1513,6 +1730,16 @@ def process_jobs(limit: int = 10):
                     msg += f"  {a}: {rec} ({confs.get(a,0):.0%})\n"
                 if conflict:
                     msg += "Agent conflict — review needed"
+                    # Auto-trigger debate if not already pending for this symbol
+                    try:
+                        cur.execute("""SELECT id FROM agent_debate_log
+                                      WHERE symbol=%s AND created_at > NOW() - INTERVAL '48 hours'""", (symbol,))
+                        if not cur.fetchone():
+                            from agent_watchlist_engine import run_agent_debate
+                            run_agent_debate(symbol, f"conflict: {recs}", trigger_id=0, trigger_source="conflict_auto")
+                            msg += "\nDebate triggered automatically."
+                    except Exception as e:
+                        print(f"  [debate-trigger] {symbol}: {e}")
                 else:
                     msg += f"Consensus: {list(recs.values())[0]}"
                 send_telegram(msg)

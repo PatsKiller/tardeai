@@ -103,6 +103,45 @@ def _get_steph_queue():
     return {r["review_status"]: r["cnt"] for r in rows}
 
 
+def _get_pipeline_health_for_brief() -> str:
+    """One-line pipeline status for the morning brief."""
+    try:
+        rows = _db_query("""
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN status='success' THEN 1 END) as ok,
+                COUNT(CASE WHEN status='failed' THEN 1 END) as failed,
+                COUNT(CASE WHEN run_type='retry' THEN 1 END) as retries
+            FROM pipeline_runs
+            WHERE started_at > NOW() - INTERVAL '12 hours'
+        """, fetch="one")
+        if not rows or not rows.get("total"):
+            return ''
+
+        total = rows["total"]
+        ok = rows["ok"]
+        failed = rows["failed"]
+        retries = rows["retries"]
+
+        if failed == 0 and retries == 0:
+            return f"\u2705 *Pipeline:* {ok}/{total} steps OK overnight"
+        elif failed > 0:
+            failed_rows = _db_query("""
+                SELECT DISTINCT script_name FROM pipeline_runs
+                WHERE status='failed'
+                AND started_at > NOW() - INTERVAL '12 hours'
+            """) or []
+            failed_names = [r["script_name"] for r in failed_rows[:2]]
+            extra = f", {retries} retries" if retries else ""
+            return (f"\u26a0\ufe0f *Pipeline:* {ok}/{total} OK, {failed} FAILED "
+                    f"({', '.join(failed_names)}){extra}")
+        elif retries > 0:
+            return f"\u21ba *Pipeline:* {ok}/{total} OK ({retries} needed retry)"
+        return ''
+    except Exception:
+        return ''
+
+
 # ── D1: Telegram delivery ────────────────────────────────────────────────
 
 def send_telegram_brief(brief: dict, summary: str) -> bool:
@@ -162,6 +201,15 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
             lines.append("")
     except Exception:
         pass  # Iris is optional — never break the brief
+
+    # Pipeline health (overnight status)
+    try:
+        pipeline_line = _get_pipeline_health_for_brief()
+        if pipeline_line:
+            lines.append(pipeline_line)
+            lines.append("")
+    except Exception:
+        pass
 
     # Next actions
     if next_actions:

@@ -559,7 +559,10 @@ export default function PaperProposals() {
               )}
             </div>
           ) : (
-            <div style={{ marginTop: 6, fontSize: 10, color: '#94A3B8' }}>Waiting for pipeline run health data...</div>
+            <div style={{ marginTop: 6, fontSize: 10, color: '#94A3B8' }}>
+            The system generates proposals automatically when GO signals appear in the morning scan.{' '}
+            <a href="/v2/strategy-desk" style={{ color: '#60A5FA' }}>View Strategy Desk</a>
+          </div>
           )}
         </div>
       ) : displayed.map((p: any) => (

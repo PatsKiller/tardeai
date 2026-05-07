@@ -173,20 +173,26 @@ def send_telegram(text):
         return {"sent": False, "reason": "missing Telegram token/chat id in .env"}
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    data = urllib.parse.urlencode({
-        "chat_id": chat_id,
-        "text": text[:3900],
-        "parse_mode": "HTML",
-        "disable_web_page_preview": "true",
-    }).encode()
+    chat_ids = [c.strip() for c in chat_id.split(",") if c.strip()]
+    last_result = {"sent": False, "reason": "no chat IDs"}
 
-    try:
-        req = urllib.request.Request(url, data=data)
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-        return {"sent": True, "response": body[:500]}
-    except Exception as exc:
-        return {"sent": False, "reason": str(exc)}
+    for cid in chat_ids:
+        data = urllib.parse.urlencode({
+            "chat_id": cid,
+            "text": text[:3900],
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        }).encode()
+
+        try:
+            req = urllib.request.Request(url, data=data)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                body = resp.read().decode("utf-8", errors="replace")
+            last_result = {"sent": True, "response": body[:500]}
+        except Exception as exc:
+            last_result = {"sent": False, "reason": f"chat_id {cid}: {exc}"}
+
+    return last_result
 
 
 def build_alert():

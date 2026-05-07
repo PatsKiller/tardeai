@@ -1,0 +1,93 @@
+strategy_id: swing_breakout
+display_name: Swing Breakout
+version: "1.0"
+purpose: "Technical breakout from multi-week consolidation base. 20+ day base, volume dry-up, then expansion."
+
+eligible_accounts: [taxable, rollover_ira, roth_ira]
+forbidden_accounts: [fidelity_401k]
+timeframe: swing_3_to_21d
+universe: breakout_candidates
+
+primary_data_sources:
+  - finviz_screener
+  - indicator_engine
+  - news_articles
+
+screen_filters:
+  min_price: 5.00
+  max_price: 150.00
+  max_float_m: 500
+  min_rvol: 1.5
+  min_score: 35
+
+setup_qualification:
+  min_base_days: 15
+  max_base_days: 90
+  volume_dry_up_days: 3
+  volume_dry_up_threshold: 0.7
+  breakout_volume_ratio: 1.5
+  sector_rank_max: 3
+  entry_within_breakout_pct: 3.0
+  stop_below_base_low: true
+  manual_chart_review_during_testing: true
+  no_entry_if_earnings_within_days: 7
+
+auto_disqualifiers:
+  - id: BASE_TOO_SHORT
+    condition: "base_days < 15"
+  - id: NO_VOLUME_CONFIRMATION
+    condition: "breakout_volume_ratio < 1.5"
+  - id: EXTENDED_FROM_BREAKOUT
+    condition: "price > breakout_level * 1.03"
+  - id: EARNINGS_WITHIN_7D
+    condition: "earnings_date within 7 days"
+
+scoring_weights:
+  technical_setup: 25
+  volume_pattern: 20
+  sector_momentum: 15
+  fundamental_quality: 15
+  catalyst: 10
+  price_range: 15
+
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+
+minimum_evidence:
+  required:
+    - price_data
+    - base_duration
+    - volume_pattern
+    - breakout_level
+    - stop_below_base
+    - trade_plan
+  preferred:
+    - sector_rank
+    - institutional_activity
+    - options_activity
+
+agent_responsibilities:
+  maria: "Verify fundamental quality and news flow."
+  risk: "Verify base structure, breakout level, stop placement."
+  steph: "Verify account fit and position sizing for multi-day hold."
+
+paper_trade_rules:
+  chart_review_required: true
+  max_hold_days: 21
+  auto_exit_at_max_hold: true
+
+live_trade_rules:
+  max_dollar_risk: 200
+  max_hold_days: 21
+  ira_max_risk: 500
+
+outcome_learning_fields:
+  - base_duration
+  - base_tightness
+  - breakout_volume_ratio
+  - sector_rank
+  - hold_duration
+  - max_favorable_excursion

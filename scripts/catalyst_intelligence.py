@@ -23,9 +23,13 @@ from typing import Any, Dict, List, Optional
 # Add scripts dir to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL_FAST = "qwen3:1.7b"
-OLLAMA_MODEL = "qwen3:14b"
+from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_ollama_runtime_env
+
+apply_ollama_runtime_env()
+
+OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+OLLAMA_MODEL_FAST = get_local_llm_model()
+OLLAMA_MODEL = get_local_llm_model()
 OLLAMA_TIMEOUT = 120  # seconds per ticker — fail fast, don't block pipeline
 
 # Dilution/trap keywords — Ollama confirms but we pre-flag these
@@ -102,7 +106,8 @@ Output valid JSON only, no other text:
     payload = json.dumps({
         "model": OLLAMA_MODEL,
         "stream": False,
-        "prompt": prompt,
+        "messages": [{"role": "user", "content": prompt}],
+        "think": False,
         "options": {"temperature": 0.1}
     }).encode()
 
@@ -120,7 +125,7 @@ Output valid JSON only, no other text:
             )
             with urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT) as resp:
                 data = json.loads(resp.read())
-                text = data.get("response", "").strip()
+                text = data.get("message", {}).get("content", "").strip()
         if True:
             # Strip thinking tags from qwen3 responses
             import re as _re
@@ -213,8 +218,8 @@ def analyze_all_catalysts(tickers: List[Dict], enrichments: Dict,
     # Ensure model is warm before batch
     try:
         import urllib.request as _ur, json as _j
-        _p = _j.dumps({"model":"qwen3:14b","stream":False,"prompt":"ready","options":{"num_predict":1}}).encode()
-        _r = _ur.Request("http://127.0.0.1:11434/api/generate",data=_p,headers={"Content-Type":"application/json"},method="POST")
+        _p = _j.dumps({"model":OLLAMA_MODEL,"stream":False,"messages":[{"role":"user","content":"ready"}],"think":False,"options":{"num_predict":1}}).encode()
+        _r = _ur.Request("http://127.0.0.1:11434/api/chat",data=_p,headers={"Content-Type":"application/json"},method="POST")
         with _ur.urlopen(_r, timeout=60): pass
     except Exception: pass
     print(f"  [catalyst-intel] Analyzing {len(candidates)} tickers with catalysts...")

@@ -19,8 +19,13 @@ from typing import Dict, List, Optional, Any
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════
 HISTORY_DAYS = 90
-OLLAMA_MODEL = "qwen3:1.7b"
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+try:
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url
+    OLLAMA_MODEL = get_local_llm_model()
+    OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+except ImportError:
+    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
+    OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
 BRAVE_SCORE_THRESHOLD = 70  # Only Brave-enrich catalysts scoring >= this
 MAX_PORTFOLIO_TICKERS = 40
 FIDELITY_PREFIXES = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-")
@@ -46,11 +51,12 @@ def _ollama(prompt, max_tokens=500):
     import re as _re
     try:
         r = requests.post(OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "stream": False, "prompt": prompt,
+            json={"model": OLLAMA_MODEL, "stream": False,
+                  "messages": [{"role": "user", "content": prompt}],
                   "think": False,
                   "options": {"temperature": 0.2, "num_predict": max_tokens, "num_ctx": 4096}},
             timeout=60)
-        text = r.json().get("response", "").strip()
+        text = r.json().get("message", {}).get("content", "").strip()
         return _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
     except Exception as e:
         return f"LLM error: {e}"

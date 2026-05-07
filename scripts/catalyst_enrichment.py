@@ -98,6 +98,36 @@ def _is_noise(title: str, summary: str = "") -> bool:
     text = (title + " " + summary).lower()
     return any(kw in text for kw in NOISE_KEYWORDS)
 
+
+# Generic multi-stock / roundup patterns that are never ticker-specific catalysts
+_GENERIC_ROUNDUP_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in [
+        r"\d+\s+\w+\s+stocks?\s+moving",        # "12 Industrials Stocks Moving..."
+        r"top gainers and losers",
+        r"after.hours?\s+session",
+        r"pre.?market\s+movers",
+        r"biggest\s+movers",
+        r"most\s+active\s+stocks",
+        r"stocks?\s+experiencing",
+        r"unusual\s+volume\s+in\s+today",         # "These stocks have an unusual volume..."
+        r"these\s+stocks\s+have\s+an?\s+unusual",
+        r"top\s+(?:midday|morning|afternoon)\s+(?:gainers|losers)",
+        r"curious\s+about\s+the\s+stocks",
+        r"stocks?\s+that\s+are\s+showing\s+activity",
+        r"discover\s+the\s+top\s+movers",
+        r"market\s+wrap",
+        r"morning\s+bell",
+        r"weekly\s+roundup",
+        r"here.s how much \$\d+",                 # "Here's How Much $100 Invested..."
+        r"invested.*\d+\s+years?\s+ago",
+    ]
+]
+
+
+def _is_generic_roundup(title: str) -> bool:
+    """Detect generic multi-stock / roundup articles that aren't real catalysts."""
+    return any(pat.search(title) for pat in _GENERIC_ROUNDUP_PATTERNS)
+
 def _classify_impact(title: str, summary: str = "") -> str:
     text = (title + " " + summary).lower()
     if any(kw in text for kw in HIGH_IMPACT_KEYWORDS):
@@ -328,25 +358,49 @@ def _fetch_finviz_news(symbol: str) -> List[Dict]:
             url = f"https://elite.finviz.com/news_export.ashx?t={symbol}&auth={token}"
             headers = {
                 "User-Agent": _env("FINVIZ_USER_AGENT", "Mozilla/5.0"),
-                "Accept": "application/json,*/*",
+                "Accept": "*/*",
             }
             resp = requests.get(url, headers=headers, timeout=(5, 10))
             if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                    if not isinstance(data, list):
-                        data = data.get("news", data.get("articles", []))
-                except Exception:
-                    data = []
+                data = []
+                content_type = resp.headers.get("content-type", "")
+
+                # Handle CSV response (Finviz returns CSV with columns: Title,Source,Date,Url,Category)
+                if "csv" in content_type or resp.text.startswith('"Title"'):
+                    import csv, io
+                    reader = csv.DictReader(io.StringIO(resp.text))
+                    for row in reader:
+                        data.append({
+                            "title": row.get("Title", "").strip(),
+                            "source": row.get("Source", "Finviz"),
+                            "date": row.get("Date", ""),
+                            "url": row.get("Url", ""),
+                            "category": row.get("Category", ""),
+                        })
+                else:
+                    # Try JSON fallback
+                    try:
+                        data = resp.json()
+                        if not isinstance(data, list):
+                            data = data.get("news", data.get("articles", []))
+                    except Exception:
+                        data = []
 
                 results = []
+                sym_lower = symbol.lower()
+                company_lower = (_env("_FINVIZ_COMPANY") or "").lower()  # not available here
                 for item in (data or []):
                     headline = (item.get("headline") or item.get("title") or "").strip()
                     if not headline:
                         continue
+                    # Finviz news_export returns market-wide news regardless of ?t= param.
+                    # Only keep articles that actually mention the ticker symbol.
+                    hl_lower = headline.lower()
+                    if sym_lower not in hl_lower:
+                        continue
                     date_str = item.get("date") or item.get("datetime") or ""
                     pub_ts = 0
-                    for fmt in ("%b-%d-%y %I:%M%p", "%b-%d-%Y %I:%M%p", "%Y-%m-%d %H:%M:%S"):
+                    for fmt in ("%Y-%m-%d %H:%M:%S", "%b-%d-%y %I:%M%p", "%b-%d-%Y %I:%M%p"):
                         try:
                             dt = datetime.strptime(date_str, fmt).replace(tzinfo=timezone.utc)
                             pub_ts = int(dt.timestamp())
@@ -531,6 +585,8 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
             continue
         if _is_noise(title, summary):
             continue
+        if _is_generic_roundup(title):
+            continue
         fp = _fingerprint(title)
         if fp in seen_fingerprints:
             continue
@@ -539,6 +595,21 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
         dt    = _parse_iso(published_at)
         hours = _hours_old(dt)
         if hours > LOOKBACK_MAX_HOURS:
+            # Keep as extended-window fallback if nothing within 72h
+            if hours <= 168:  # 7-day extended window
+                impact = _classify_impact(title, summary)
+                if impact != "noise":
+                    enriched.append({
+                        **article,
+                        "symbol": symbol,
+                        "impact_tier": impact,
+                        "hours_old": round(hours, 2),
+                        "recency_tier": "extended",
+                        "recency_multiplier": 0.3,
+                        "is_fresh": False,
+                        "is_extended": True,
+                        "sort_key": (3, hours),  # rank below all fresh articles
+                    })
             continue
         impact = _classify_impact(title, summary)
         if impact == "noise":
@@ -552,6 +623,7 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
             "recency_tier": recency_tier,
             "recency_multiplier": _recency_multiplier(recency_tier),
             "is_fresh": hours <= PREFERRED_MAX_HOURS,
+            "is_extended": False,
             # sort_key: lower = better (high impact + more recent wins)
             "sort_key": (
                 0 if impact == "high_impact" else (1 if impact == "medium_impact" else 2),
@@ -561,7 +633,9 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
 
     enriched.sort(key=lambda x: x["sort_key"])
 
-    top      = enriched[0] if enriched else None
+    # If only extended-window articles found, use them; otherwise prefer fresh
+    fresh_articles = [a for a in enriched if not a.get("is_extended")]
+    top = fresh_articles[0] if fresh_articles else (enriched[0] if enriched else None)
     top_tier = top["impact_tier"] if top else "none"
     has_fresh = any(a["is_fresh"] for a in enriched)
 

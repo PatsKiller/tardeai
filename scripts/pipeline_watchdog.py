@@ -1,0 +1,237 @@
+"""
+pipeline_watchdog.py — The nervous system. Runs every 5 min weekdays.
+1. Detects missed/failed pipeline runs, retries critical scripts
+2. Detects GO tickers with no agent analysis, auto-queues
+3. Acts on stale IER entities
+4. Daily summary at 8:30 AM
+"""
+import json, logging, os, subprocess, sys, time
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+import psycopg2, requests
+
+log = logging.getLogger(__name__)
+PROJECT_ROOT = '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild'
+MAX_RETRIES = 3
+
+def _load_env():
+    for line in Path(PROJECT_ROOT, '.env').read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith('#') and '=' in line:
+            k, v = line.split('=', 1)
+            if k.strip() not in os.environ:
+                os.environ[k.strip()] = v.strip()
+
+_load_env()
+
+DB_CONFIG = dict(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai',
+                 password=os.getenv('DB_PASSWORD', ''))
+
+
+def send_telegram(message, urgent=False):
+    try:
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
+        chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
+        if not bot_token or not chat_ids: return
+        prefix = '🚨' if urgent else '⚠️'
+        for cid in chat_ids:
+            requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                         json={'chat_id': cid, 'text': f"{prefix} WATCHDOG: {message}"}, timeout=8)
+    except Exception:
+        pass
+
+
+def log_action(conn, action_type, target, reason, success, result=''):
+    try:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at) VALUES (%s,%s,%s,%s,%s,NOW())",
+                   [action_type, target, reason, success, result[:200]])
+        conn.commit()
+    except Exception:
+        pass
+
+
+def was_alerted_recently(conn, target, hours=1.0):
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM watchdog_actions WHERE action_type='alert' AND target=%s AND created_at > NOW() - INTERVAL '%s hours'", [target, hours])
+        return (cur.fetchone()[0] or 0) > 0
+    except Exception:
+        return False
+
+
+# ── FUNCTION 1: Pipeline Execution Monitor ──
+
+def check_pipeline_execution(conn):
+    issues = []
+    now = datetime.now()
+    if now.weekday() >= 5: return []
+    cur = conn.cursor()
+    cur.execute("""SELECT script_name, display_name, expected_hour, expected_min,
+        max_latency_min, min_rows, critical, command FROM pipeline_schedule WHERE active=true""")
+    for (script, display, exp_h, exp_m, latency, min_rows, critical, command) in cur.fetchall():
+        if exp_h is None: continue
+        expected = now.replace(hour=exp_h, minute=exp_m, second=0, microsecond=0)
+        deadline = expected + timedelta(minutes=latency)
+        if now < deadline: continue  # Not yet overdue
+
+        window_start = expected - timedelta(minutes=5)
+        cur.execute("""SELECT id, status, rows_processed FROM pipeline_runs
+            WHERE script_name=%s AND started_at BETWEEN %s AND NOW()
+            ORDER BY started_at DESC LIMIT 1""", [script, window_start])
+        run = cur.fetchone()
+
+        if not run:
+            issues.append({'script': script, 'display': display, 'issue': 'not_started',
+                          'critical': critical, 'command': command})
+        elif run[1] == 'failed':
+            issues.append({'script': script, 'display': display, 'issue': 'failed',
+                          'critical': critical, 'command': command})
+    return issues
+
+
+def handle_pipeline_issues(conn, issues, no_telegram=False):
+    for issue in issues:
+        script = issue['script']
+        if not issue.get('critical'): continue
+
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM pipeline_runs WHERE script_name=%s AND run_type='retry' AND started_at>NOW()-INTERVAL '24 hours'", [script])
+        retries_today = cur.fetchone()[0] or 0
+
+        if retries_today < MAX_RETRIES and issue.get('command'):
+            log.info(f"[watchdog] Retrying {script} (attempt {retries_today+1})")
+            try:
+                from pipeline_registry import run_start, run_complete, run_fail
+                rid = run_start(script, run_label=f'retry_{retries_today+1}', triggered_by='watchdog')
+                result = subprocess.run(issue['command'], shell=True, timeout=300,
+                                       capture_output=True, text=True, cwd=PROJECT_ROOT)
+                if result.returncode == 0:
+                    run_complete(rid)
+                    log_action(conn, 'retry', script, issue['issue'], True, 'success')
+                else:
+                    run_fail(rid, result.stderr[-200:])
+                    log_action(conn, 'retry', script, issue['issue'], False, result.stderr[-100:])
+                    if retries_today + 1 >= MAX_RETRIES and not no_telegram:
+                        if not was_alerted_recently(conn, script):
+                            send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
+                            log_action(conn, 'alert', script, 'max_retries', True, '')
+            except Exception as e:
+                log.error(f"[watchdog] Retry failed for {script}: {e}")
+
+
+# ── FUNCTION 2: GO Signal Coverage ──
+
+def check_go_coverage(conn):
+    now = datetime.now()
+    if now.hour < 10 or now.hour >= 18 or now.weekday() >= 5: return 0
+
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT ON (t.symbol) t.symbol, t.score, t.decision, t.scanned_at, t.intelligence_readiness
+        FROM trade_ai_scans t
+        WHERE t.decision IN ('GO','WAIT') AND t.scanned_at > NOW()-INTERVAL '48 hours'
+        AND NOT EXISTS (SELECT 1 FROM watchlist_agent_jobs j WHERE j.symbol=t.symbol
+            AND j.created_at > t.scanned_at - INTERVAL '30 minutes'
+            AND j.status IN ('pending','running','completed'))
+        ORDER BY t.symbol, t.score DESC LIMIT 20
+    """)
+    missing = cur.fetchall()
+    fixed = 0
+
+    for (symbol, score, decision, scanned_at, readiness) in missing:
+        age_h = (datetime.now(timezone.utc) - scanned_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+        try:
+            cur.execute("""INSERT INTO watchlist_agent_jobs
+                (symbol, requested_agent, task_type, priority, status, submitted_from, context_data, created_at)
+                VALUES (%s,'maria_research','scalp_discovery','high','pending','pipeline_watchdog',%s::jsonb,NOW())
+                ON CONFLICT DO NOTHING""",
+                [symbol, json.dumps({'score': score, 'trigger': 'watchdog_coverage', 'age_h': round(age_h, 1)})])
+            conn.commit()
+            fixed += 1
+            log_action(conn, 'queue_agent', symbol, f'GO {score}pts {age_h:.1f}hr no analysis', True, '')
+
+            if age_h > 4 and not was_alerted_recently(conn, f'go_{symbol}', hours=4):
+                send_telegram(f"{symbol} {decision} {score}pts for {age_h:.1f}hr with 0 analyses. Queued.")
+                log_action(conn, 'alert', f'go_{symbol}', f'{age_h:.1f}hr gap', True, '')
+        except Exception:
+            pass
+
+    return fixed
+
+
+# ── FUNCTION 3: IER Action Engine ──
+
+def run_ier_engine(conn):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT entity_id, entity_type, intelligence_score, iris_freshness, screener_decision
+        FROM intelligence_entities WHERE active=true
+        AND (iris_freshness IN ('CRITICAL','STALE') OR intelligence_score < 25)
+        AND (last_enriched IS NULL OR last_enriched < NOW()-INTERVAL '4 hours')
+        ORDER BY intelligence_score NULLS FIRST LIMIT 15
+    """)
+    actions = 0
+    for (eid, etype, score, freshness, decision) in cur.fetchall():
+        if was_alerted_recently(conn, f'ier_{eid}', hours=4): continue
+
+        if etype == 'market':
+            try:
+                subprocess.Popen([sys.executable, 'scripts/symbol_enrichment.py', eid, str(int(score or 0))],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=PROJECT_ROOT)
+                cur.execute("UPDATE intelligence_entities SET last_enriched=NOW() WHERE entity_id=%s", [eid])
+                conn.commit()
+                log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', True, '')
+                actions += 1
+            except Exception:
+                pass
+        elif etype == 'subject' and freshness == 'CRITICAL':
+            try:
+                cur.execute("""INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
+                    VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""", [eid])
+                conn.commit()
+                actions += 1
+            except Exception:
+                pass
+    return actions
+
+
+# ── MAIN ──
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--no-telegram', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
+    args = parser.parse_args()
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = True  # Prevent transaction state issues between functions
+    try:
+        # Function 1: Pipeline monitoring
+        issues = check_pipeline_execution(conn)
+        if issues and not args.dry_run:
+            handle_pipeline_issues(conn, issues, no_telegram=args.no_telegram)
+        elif issues:
+            for i in issues: log.info(f"[DRY] Would handle: {i['script']} ({i['issue']})")
+
+        # Function 2: GO coverage
+        if not args.dry_run:
+            fixed = check_go_coverage(conn)
+            if fixed: log.info(f"[watchdog] GO coverage: fixed {fixed}")
+
+        # Function 3: IER engine
+        if not args.dry_run:
+            actions = run_ier_engine(conn)
+            if actions: log.info(f"[watchdog] IER: {actions} actions")
+
+    finally:
+        conn.close()
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
+                       handlers=[logging.FileHandler(os.path.join(PROJECT_ROOT, 'logs/pipeline_watchdog.log')),
+                                 logging.StreamHandler()])
+    main()

@@ -389,6 +389,32 @@ def enrich_tickers(
         save_cache(cache, root)
         print(f"  [finviz-enrich] Cache saved — {len(cache)} tickers total")
 
+        # === IER WRITE-BACK (non-fatal) ===
+        try:
+            import psycopg2 as _pg2
+            from intelligence_entity_manager import upsert_entity as _iem_upsert
+            from datetime import datetime as _dt, timezone as _tz
+            _pw = ""
+            for _l in (root / ".env").read_text().splitlines():
+                if _l.startswith("DB_PASSWORD="): _pw = _l.split("=", 1)[1].strip()
+            _iem_conn = _pg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=_pw)
+            for _sym in stale:
+                _d = cache.get(_sym, {})
+                if _d.get("price"):
+                    _iem_upsert(_iem_conn, _sym, 'market', {
+                        'current_price': float(_d['price']),
+                        'rvol': float(_d['rvol']) if _d.get('rvol') else None,
+                        'float_m': float(_d['float_m']) if _d.get('float_m') else None,
+                        'atr_value': float(_d['atr']) if _d.get('atr') else None,
+                        'sector': _d.get('sector'),
+                        'industry': _d.get('industry'),
+                        'price_updated_at': _dt.now(_tz.utc),
+                    }, source='finviz')
+            _iem_conn.close()
+        except Exception:
+            pass
+        # === END WRITE-BACK ===
+
     # Return requested symbols from cache
     return {s: cache.get(s, {"symbol": s}) for s in symbols}
 
@@ -468,6 +494,26 @@ if __name__ == "__main__":
     import sys
     symbols = sys.argv[1:] if len(sys.argv) > 1 else ["MAMO", "ACHV", "V", "SCHD"]
     print(f"Testing finviz_enrichment.py with {symbols}")
-    results = enrich_tickers(symbols, project_root=".")
-    for sym in symbols:
-        print_enriched(sym)
+
+    _run_id = None
+    try:
+        from pipeline_registry import run_start, run_complete, run_fail
+        _run_id = run_start('finviz_enrichment')
+    except Exception:
+        pass
+
+    try:
+        results = enrich_tickers(symbols, project_root=".")
+        _enriched = sum(1 for v in results.values() if v) if isinstance(results, dict) else len(symbols)
+        for sym in symbols:
+            print_enriched(sym)
+        try:
+            if _run_id: run_complete(_run_id, rows_processed=_enriched)
+        except Exception:
+            pass
+    except Exception as _e:
+        try:
+            if _run_id: run_fail(_run_id, str(_e))
+        except Exception:
+            pass
+        raise

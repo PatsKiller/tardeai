@@ -1,0 +1,145 @@
+strategy_id: momentum_scalp
+display_name: Momentum Scalp
+version: "1.0"
+purpose: "Micro-cap momentum — RVOL surge + verified catalyst. Intraday hold, exit same day."
+
+eligible_accounts: [taxable]
+forbidden_accounts: [rollover_ira, roth_ira, fidelity_401k]
+timeframe: intraday
+universe: micro_cap_momentum
+
+primary_data_sources:
+  - finviz_screener
+  - trade_ai_scans
+  - social_posts
+  - news_articles
+  - sec_form4
+
+screen_filters:
+  min_price: 1.00
+  max_price: 25.00
+  preferred_max_price: 10.00
+  min_rvol: 5.0
+  premium_rvol: 8.0
+  max_float_m: 100
+  preferred_max_float_m: 20
+  min_score: 40
+  aplus_score: 48
+
+setup_qualification:
+  catalyst_present: required
+  catalyst_verified_for_aplus: true
+  catalyst_verified_for_live: true
+  social_only_max_grade: WATCH
+  price_data_max_age_minutes: 15
+  rvol_data_required: true
+  float_data_required: true
+
+auto_disqualifiers:
+  - id: PRICE_OVER_25
+    condition: "price > 25"
+  - id: FLOAT_OVER_100M
+    condition: "float_m > 100"
+  - id: STOP_OVER_15_PCT
+    condition: "stop_pct > 0.15"
+  - id: POSITION_OVER_2000
+    condition: "dollar_size > 2000"
+  - id: SAME_SECTOR_OPEN
+    condition: "open_position_in_same_sector"
+  - id: AFTER_130PM
+    condition: "current_time > 13:30 ET"
+  - id: REVERSE_SPLIT_RECENT
+    condition: "reverse_split_within_90d"
+  - id: TRADING_HALTED
+    condition: "trading_halt_active"
+  - id: WIDE_SPREAD
+    condition: "spread_pct > 5"
+  - id: DILUTION_RISK
+    condition: "recent_offering_or_shelf"
+
+scoring_weights:
+  catalyst: 15
+  rvol: 12
+  price_action: 10
+  float: 8
+  price_range: 5
+  sector_momentum: 5
+
+grade_thresholds:
+  aplus: 48
+  a: 42
+  b: 35
+  c: 28
+
+minimum_evidence:
+  required:
+    - price_data
+    - rvol_data
+    - float_data
+    - trade_plan
+    - stop_defined
+  preferred:
+    - catalyst_verified
+    - intel_readiness_score
+    - sector_data
+
+recommendation_rules:
+  social_only_catalyst: WATCH
+  unverified_catalyst_max: WAIT
+  verified_catalyst_high_rvol: GO
+  all_evidence_present_aplus: APPROVAL_REQUIRED
+
+agent_responsibilities:
+  maria: "Verify catalyst source and relevance. Check for contrary news."
+  risk: "Verify entry zone, stop placement, R:R ratio. Check for technical traps."
+  steph: "Verify position sizing and account fit. Confirm no wash sale risk."
+
+paper_trade_rules:
+  use_same_plan_as_live: true
+  log_entry_slippage: true
+  log_max_adverse_excursion: true
+  auto_exit_at_close: true
+
+live_trade_rules:
+  max_position_size: 2000
+  max_dollar_risk: 200
+  no_overnight_hold: true
+  require_risk_gate_approved: true
+
+outcome_learning_fields:
+  - entry_slippage
+  - stop_hit_before_target
+  - target_hit_time
+  - max_adverse_excursion
+  - catalyst_type
+  - rvol_at_entry
+  - float_at_entry
+  - time_of_entry
+  - sector
+  - vix_at_entry
+
+sub_strategies:
+  high_rvol_verified:
+    description: "RVOL >8x + verified catalyst"
+    expected_win_rate: 0.65
+    filters:
+      min_rvol: 8.0
+      catalyst_verified: true
+  moderate_rvol_verified:
+    description: "RVOL 5-8x + verified catalyst"
+    expected_win_rate: 0.55
+    filters:
+      min_rvol: 5.0
+      max_rvol: 8.0
+      catalyst_verified: true
+  high_rvol_unverified:
+    description: "RVOL >8x + unverified catalyst"
+    expected_win_rate: 0.45
+    filters:
+      min_rvol: 8.0
+      catalyst_verified: false
+  social_confirmed:
+    description: "Social surge + Finviz confirmation"
+    expected_win_rate: 0.50
+    filters:
+      source: social_confirmed

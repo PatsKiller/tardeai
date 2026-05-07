@@ -1,347 +1,381 @@
-import { useNavigate } from 'react-router-dom'
-import PageHeader from '../components/PageHeader'
-import Card from '../components/Card'
-import SectionHeader from '../components/SectionHeader'
-import MetricTile from '../components/MetricTile'
-import { DoughnutChart, BarChartJS } from '../components/charts'
-import { useApi } from '../hooks/useApi'
+import React, { useEffect, useState, useMemo } from 'react'
+import { Bar } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js'
 
-interface SetupRow { setup_name: string; n: number; avg_r: number | null; avg_exec: number | null; avg_sizing: number | null; well_exec_rate: number | null; plan_follow_rate: number | null }
-interface TagRow { tag: string; n: number }
-interface EmotionRow { emotion_before?: string; emotion_during?: string; n: number }
-interface TfRow { timeframe: string; n: number; avg_exec: number | null; well_exec_rate: number | null }
-interface MonthRow { month: string; n: number; avg_exec: number | null; avg_sizing: number | null; well_exec_rate: number | null }
-interface FamilyRow { family: string; n: number; avg_exec: number | null; well_exec_rate: number | null }
-interface SymbolRow { symbol: string; review_count: number; avg_exec: number | null; well_exec_rate: number | null; setups_used: string[] | null }
-interface AnalyticsData {
-  total_reviews: number; avg_execution: number | null; avg_sizing: number | null
-  well_executed_rate: number | null; plan_follow_rate: number | null; has_data: boolean
-  by_setup: SetupRow[]; by_timeframe: TfRow[]
-  emotion_before: EmotionRow[]; emotion_during: EmotionRow[]
-  mistake_tags: TagRow[]; strength_tags: TagRow[]
-  monthly_trend: MonthRow[]; by_setup_family: FamilyRow[]; reviewed_symbols: SymbolRow[]
-  by_catalyst: { catalyst_type: string; n: number; avg_exec: number | null; well_exec_rate: number | null }[]
-  insights: { type: string; text: string }[]
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip)
+
+const GREEN = '#4ADE80'
+const RED = '#F87171'
+const AMBER = '#F59E0B'
+const BLUE = '#60A5FA'
+const GREY = '#475569'
+const BORDER = '#1E293B'
+const BG = '#0D1626'
+
+const tooltipOpts = { backgroundColor: '#0F172A', titleColor: '#E2E8F0', bodyColor: '#94A3B8', borderColor: BORDER, borderWidth: 1 }
+
+function StatCard({ label, value, sub, color = '#E2E8F0' }: { label: string; value: string | number; sub?: string; color?: string }) {
+  return (
+    <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px' }}>
+      <div style={{ fontSize: '9px', color: GREY, letterSpacing: '0.1em', fontWeight: 600, marginBottom: '6px' }}>{label}</div>
+      <div style={{ fontSize: '20px', fontWeight: 700, color }}>{value}</div>
+      {sub && <div style={{ fontSize: '11px', color: '#475569', marginTop: '4px' }}>{sub}</div>}
+    </div>
+  )
 }
 
-const lbl: React.CSSProperties = { fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }
+function MiniBar({ value, max, color = '#2E86D4', label = '', count = 0 }: { value: number; max: number; color?: string; label?: string; count?: number }) {
+  const pct = max > 0 ? (value / max * 100) : 0
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '5px 0' }}>
+      <span style={{ minWidth: '140px', fontSize: '12px', color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <div style={{ flex: 1, height: '6px', background: BORDER, borderRadius: '3px', overflow: 'hidden' }}>
+        <div style={{ width: `${Math.min(Math.abs(pct), 100)}%`, height: '100%', background: color, borderRadius: '3px' }} />
+      </div>
+      <span style={{ fontSize: '11px', color: GREY, minWidth: '30px', textAlign: 'right' }}>{count}</span>
+      <span style={{ fontSize: '11px', color, minWidth: '44px', textAlign: 'right', fontWeight: 600 }}>
+        {value >= 0 ? '+' : ''}${Math.abs(value) >= 1000 ? (Math.abs(value) / 1000).toFixed(1) + 'K' : Math.abs(value).toFixed(0)}
+      </span>
+    </div>
+  )
+}
 
-function pct(v: number | null | undefined): string { return v != null ? `${(v * 100).toFixed(0)}%` : '—' }
-function num(v: number | null | undefined, d = 1): string { return v != null ? v.toFixed(d) : '—' }
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: '11px', color: GREY, letterSpacing: '0.1em', fontWeight: 600, marginBottom: '14px' }}>{children}</div>
+}
+
+const fmt$ = (v: number | null | undefined) => {
+  if (v == null) return '—'
+  const abs = Math.abs(v)
+  const sign = v >= 0 ? '+' : '-'
+  if (abs >= 1000) return `${sign}$${(abs / 1000).toFixed(1)}K`
+  return `${sign}$${abs.toFixed(0)}`
+}
 
 export default function JournalAnalytics() {
-  const navigate = useNavigate()
-  const { data } = useApi<AnalyticsData>('/api/v2/journal/analytics')
+  const [report, setReport] = useState<any>(null)
+  const [unannotated, setUnannotated] = useState<any>(null)
+  const [btAnalytics, setBtAnalytics] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  if (!data) return <div style={{ color: 'var(--text3)', padding: 40 }}>Loading analytics...</div>
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/v2/journal/report').then(r => r.json()),
+      fetch('/api/v2/journal/unannotated').then(r => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/v2/journal/backtest-analytics').then(r => r.json()).catch(() => ({ ok: false }))
+    ]).then(([r, u, bt]) => {
+      if (r.ok) setReport(r.data)
+      if (u.ok) setUnannotated(u.data)
+      if (bt.ok) setBtAnalytics(bt.data)
+    }).finally(() => setLoading(false))
+  }, [])
 
-  if (!data.has_data) {
-    return (
-      <>
-        <PageHeader title="Journal Analytics" subtitle="Trade review intelligence — requires 3+ reviewed trades per setup type for pattern insights" />
-        <Card>
-          <div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: 14, marginBottom: 8 }}>No reviewed trades yet</div>
-            <div style={{ fontSize: 11 }}>Open a trade in the Journal, click the Review or Psychology tab, and save your assessment. Analytics will appear here as reviews accumulate.</div>
-          </div>
-        </Card>
-      </>
-    )
+  const coveragePct = unannotated ? unannotated.coverage_pct : (report?.annotation_coverage ? Math.round(report.annotation_coverage.reviewed / Math.max(report.annotation_coverage.total_trades, 1) * 100) : 0)
+  const reviewedCount = unannotated?.annotated_count ?? report?.annotation_coverage?.reviewed ?? 0
+  const totalCount = unannotated?.total ?? report?.annotation_coverage?.total_trades ?? 0
+
+  if (loading) return <div style={{ padding: '40px', color: BLUE, fontSize: '14px' }}>Loading Journal Analytics...</div>
+
+  const s = report?.summary
+  if (!s) return <div style={{ padding: '40px', color: RED }}>Failed to load analytics data</div>
+
+  const gradeColors: Record<string, string> = { A: GREEN, B: BLUE, C: AMBER, D: RED }
+
+  // Build grade counts from backtest_grades
+  const gradeCount = (type: 'entry_grade' | 'exit_grade') => {
+    const counts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 }
+    for (const g of (report?.backtest_grades || [])) {
+      const grade = g[type]
+      if (grade && counts[grade] !== undefined) counts[grade] += g.trades
+    }
+    return counts
   }
+  const entryGrades = gradeCount('entry_grade')
+  const exitGrades = gradeCount('exit_grade')
 
   return (
-    <>
-      <PageHeader title="Journal Analytics" subtitle={`${data.total_reviews} trade${data.total_reviews !== 1 ? 's' : ''} reviewed · ${data.total_reviews < 10 ? 'Need 10+ reviews for reliable patterns' : data.total_reviews < 30 ? 'Good sample — patterns becoming meaningful' : 'Strong sample — patterns are statistically useful'}`} />
-
-      {/* CTA to review unreviewed trades */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, padding: '8px 14px', background: 'rgba(74,144,244,0.06)', border: '1px solid rgba(74,144,244,0.15)', borderRadius: 10, fontSize: 11 }}>
-        <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Improve your edge:</span>
-        <span style={{ color: 'var(--text2)' }}>Review untagged trades in the Journal — the more reviews, the better the pattern detection.</span>
-        <button onClick={() => navigate('/journal')} style={{ marginLeft: 'auto', padding: '3px 12px', fontSize: 10, border: '1px solid var(--accent)', borderRadius: 'var(--radius)', background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>Open Journal</button>
+    <div style={{ padding: '24px', color: '#E2E8F0', maxWidth: '1400px', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#F1F5F9', marginBottom: '4px' }}>Journal Analytics</h1>
+          <p style={{ color: GREY, fontSize: '13px' }}>
+            {s.total_trades} closed trades · {reviewedCount} annotated ({coveragePct}% coverage)
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <a href="/v2/journal-reports" style={{ background: '#1E3A5F', border: '1px solid #2E86D4', color: BLUE, padding: '9px 18px', borderRadius: '6px', fontSize: '12px', textDecoration: 'none', fontWeight: 600 }}>
+            Full Reports
+          </a>
+          <a href="/v2/journal" style={{ background: '#0F172A', border: `1px solid ${BORDER}`, color: '#94A3B8', padding: '9px 18px', borderRadius: '6px', fontSize: '12px', textDecoration: 'none', fontWeight: 600 }}>
+            Back to Journal
+          </a>
+        </div>
       </div>
 
-      {/* Summary strip */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <MetricTile label="Reviews" value={String(data.total_reviews)} />
-        <MetricTile label="Avg Execution" value={num(data.avg_execution)} delta="1-5 scale · entry/exit/plan" deltaColor={data.avg_execution != null && data.avg_execution >= 4 ? 'var(--green)' : data.avg_execution != null && data.avg_execution >= 3 ? 'var(--amber)' : 'var(--text2)'} />
-        <MetricTile label="Avg Sizing" value={num(data.avg_sizing)} deltaColor={data.avg_sizing != null && data.avg_sizing >= 4 ? 'var(--green)' : 'var(--text2)'} />
-        <MetricTile label="Well Executed" value={pct(data.well_executed_rate)} deltaColor={data.well_executed_rate != null && data.well_executed_rate >= 0.7 ? 'var(--green)' : 'var(--amber)'} />
-        <MetricTile label="Followed Plan" value={pct(data.plan_follow_rate)} deltaColor={data.plan_follow_rate != null && data.plan_follow_rate >= 0.7 ? 'var(--green)' : 'var(--amber)'} />
-      </div>
-
-      {/* Visual Charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-        {/* Emotion Before - Doughnut */}
-        {data.emotion_before.length > 0 && (
-          <div>
-            <SectionHeader title="Emotion Distribution (Before Trade)" />
-            <Card>
-              <DoughnutChart
-                labels={data.emotion_before.map(e => e.emotion_before || 'unknown')}
-                data={data.emotion_before.map(e => e.n)}
-                height={180}
-              />
-            </Card>
-          </div>
-        )}
-
-        {/* Mistake Tags - Bar */}
-        {data.mistake_tags.length > 0 && (
-          <div>
-            <SectionHeader title="Most Common Mistakes" />
-            <Card>
-              <BarChartJS
-                labels={data.mistake_tags.slice(0, 8).map(m => m.tag)}
-                data={data.mistake_tags.slice(0, 8).map(m => m.n)}
-                colors={data.mistake_tags.slice(0, 8).map(() => '#f6465d')}
-                height={180}
-              />
-            </Card>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-        {/* Setup Type Distribution - Doughnut */}
-        {data.by_setup.length > 0 && (
-          <div>
-            <SectionHeader title="Setup Type Distribution" />
-            <Card>
-              <DoughnutChart
-                labels={data.by_setup.map(s => s.setup_name)}
-                data={data.by_setup.map(s => s.n)}
-                height={180}
-              />
-            </Card>
-          </div>
-        )}
-
-        {/* Trades by Timeframe - Bar */}
-        {data.by_timeframe.length > 0 && (
-          <div>
-            <SectionHeader title="Trades by Timeframe" />
-            <Card>
-              <BarChartJS
-                labels={data.by_timeframe.map(t => t.timeframe)}
-                data={data.by_timeframe.map(t => t.n)}
-                colors={data.by_timeframe.map(() => '#4a90f4')}
-                height={180}
-              />
-            </Card>
-          </div>
-        )}
-      </div>
-
-      {/* Pattern insights */}
-      {(data.insights?.length ?? 0) > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <SectionHeader title="Pattern Insights" count={data.insights.length} />
-          <Card>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {data.insights.map((ins, i) => {
-                const iconMap: Record<string, string> = { guidance: '\u{1f4a1}', setup: '\u{1f3af}', discipline: '\u26a0\ufe0f', strength: '\u2705', warning: '\u{1f6d1}', mistake: '\u274c', timeframe: '\u23f0', gap: '\u{1f50d}', keep: '\u{1f7e2}', stop: '\u{1f534}', review: '\u{1f4cb}' }
-                const colorMap: Record<string, string> = { guidance: 'var(--accent)', setup: 'var(--text1)', discipline: 'var(--amber)', strength: 'var(--green)', warning: 'var(--red)', mistake: 'var(--red)', timeframe: 'var(--accent)', gap: 'var(--amber)', keep: 'var(--green)', stop: 'var(--red)', review: 'var(--accent)' }
-                return (
-                  <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 8px', borderRadius: 'var(--radius)', background: 'var(--bg3)', borderLeft: `3px solid ${colorMap[ins.type] || 'var(--text3)'}` }}>
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{iconMap[ins.type] || '\u{1f4cb}'}</span>
-                    <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5 }}>{ins.text}</div>
-                  </div>
-                )
-              })}
+      {/* Annotation Coverage Warning */}
+      {coveragePct < 50 && (
+        <div style={{ background: '#1A1000', border: '1px solid #854D0E', borderRadius: '8px', padding: '14px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#FCD34D', marginBottom: '3px' }}>
+              Low annotation coverage ({coveragePct}%) — pattern data is incomplete
             </div>
-          </Card>
+            <div style={{ fontSize: '12px', color: '#92400E' }}>
+              {unannotated?.unannotated_count} trades need review. Setup analysis, emotion patterns, and execution coaching require annotated data.
+            </div>
+          </div>
+          <a href="/v2/journal" style={{ background: '#92400E', border: '1px solid #B45309', color: '#FCD34D', padding: '8px 16px', borderRadius: '6px', fontSize: '12px', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            Review Now
+          </a>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-        {/* By Setup */}
-        <div>
-          <SectionHeader title="Performance by Setup" count={data.by_setup.length} />
-          <Card>
-            {data.by_setup.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {data.by_setup.map(s => (
-                  <div key={s.setup_name} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center', opacity: s.n < 3 ? 0.5 : 1 }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text0)', width: 100 }}>{s.setup_name}</span>
-                    <span style={{ color: s.n < 3 ? 'var(--amber)' : 'var(--text3)' }}>{s.n} trade{s.n !== 1 ? 's' : ''}{s.n < 3 ? ' (needs 3+)' : ''}</span>
-                    {s.avg_r != null && <span>Avg R: <strong style={{ color: s.avg_r >= 0 ? 'var(--green)' : 'var(--red)' }}>{s.avg_r.toFixed(2)}</strong></span>}
-                    {s.avg_exec != null && <span>Exec: <strong>{s.avg_exec.toFixed(1)}</strong>/5</span>}
-                    {s.well_exec_rate != null && <span style={{ color: s.well_exec_rate >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{pct(s.well_exec_rate)} well</span>}
-                  </div>
-                ))}
-              </div>
-            ) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No setup data yet. Tag trades with setup names in the Journal Review tab.</div>}
-          </Card>
+      {/* Coverage bar */}
+      <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '14px 20px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ fontSize: '11px', color: GREY, letterSpacing: '0.08em', fontWeight: 600 }}>ANNOTATION COVERAGE</span>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: coveragePct >= 80 ? GREEN : coveragePct >= 40 ? AMBER : RED }}>{reviewedCount}/{totalCount} ({coveragePct}%)</span>
         </div>
-
-        {/* By Timeframe */}
-        <div>
-          <SectionHeader title="Performance by Timeframe" count={data.by_timeframe.length} />
-          <Card>
-            {data.by_timeframe.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {data.by_timeframe.map(t => (
-                  <div key={t.timeframe} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text0)', width: 100 }}>{t.timeframe}</span>
-                    <span style={{ color: 'var(--text3)' }}>{t.n} trade{t.n !== 1 ? 's' : ''}</span>
-                    {t.avg_exec != null && <span>Exec: <strong>{t.avg_exec.toFixed(1)}</strong>/5</span>}
-                    {t.well_exec_rate != null && <span style={{ color: t.well_exec_rate >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{pct(t.well_exec_rate)} well</span>}
-                  </div>
-                ))}
-              </div>
-            ) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No timeframe data yet.</div>}
-          </Card>
+        <div style={{ height: '8px', background: BORDER, borderRadius: '4px', overflow: 'hidden' }}>
+          <div style={{ width: `${coveragePct}%`, height: '100%', background: coveragePct >= 80 ? GREEN : coveragePct >= 40 ? AMBER : '#EF4444', borderRadius: '4px', transition: 'width 1s ease' }} />
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-        {/* Emotions */}
-        <div>
-          <SectionHeader title="Emotion Before Trade" count={data.emotion_before.length} />
-          <Card>
-            {data.emotion_before.length > 0 ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {data.emotion_before.map(e => (
-                  <div key={e.emotion_before} style={{ padding: '4px 10px', borderRadius: 'var(--radius)', background: 'var(--bg3)', fontSize: 10 }}>
-                    <span style={{ color: 'var(--text1)' }}>{e.emotion_before}</span>
-                    <span style={{ marginLeft: 4, fontWeight: 700, color: 'var(--text0)' }}>{e.n}</span>
-                  </div>
-                ))}
-              </div>
-            ) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No emotion data yet. Tag emotions in the Journal Psychology tab.</div>}
-          </Card>
-        </div>
+      {/* Core metrics */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginBottom: '20px' }}>
+        <StatCard label="NET P&L" value={fmt$(s.net_pnl)} color={s.net_pnl >= 0 ? GREEN : RED} sub={`${s.total_trades} trades`} />
+        <StatCard label="WIN RATE" value={`${s.win_rate_pct}%`} color={BLUE} sub={`${s.wins}W / ${s.losses}L`} />
+        <StatCard label="PROFIT FACTOR" value={s.profit_factor} color={s.profit_factor >= 2 ? GREEN : s.profit_factor >= 1 ? AMBER : RED} sub="gross win / gross loss" />
+        <StatCard label="EXPECTANCY" value={`${fmt$(s.trade_expectancy)}/trade`} color={s.trade_expectancy >= 0 ? GREEN : RED} sub="avg $ per trade" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginBottom: '24px' }}>
+        <StatCard label="AVG WINNER" value={fmt$(s.avg_winner)} color={GREEN} />
+        <StatCard label="AVG LOSER" value={fmt$(s.avg_loser)} color={RED} />
+        <StatCard label="LARGEST WIN" value={fmt$(s.largest_win)} color={GREEN} />
+        <StatCard label="LARGEST LOSS" value={fmt$(s.largest_loss)} color={RED} />
+      </div>
 
-        <div>
-          <SectionHeader title="Emotion During Trade" count={data.emotion_during.length} />
-          <Card>
-            {data.emotion_during.length > 0 ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {data.emotion_during.map(e => (
-                  <div key={e.emotion_during} style={{ padding: '4px 10px', borderRadius: 'var(--radius)', background: 'var(--bg3)', fontSize: 10 }}>
-                    <span style={{ color: 'var(--text1)' }}>{e.emotion_during}</span>
-                    <span style={{ marginLeft: 4, fontWeight: 700, color: 'var(--text0)' }}>{e.n}</span>
-                  </div>
-                ))}
-              </div>
-            ) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No emotion data yet.</div>}
-          </Card>
+      {/* Trade Type + Symbol */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px' }}>
+          <SectionTitle>P&L BY TRADE TYPE</SectionTitle>
+          {(report?.by_trade_type || []).map((t: any) => (
+            <MiniBar key={t.trade_type} label={t.trade_type} value={t.net_pnl}
+              max={Math.max(...(report?.by_trade_type || []).map((v: any) => Math.abs(v.net_pnl)))}
+              color={t.net_pnl >= 0 ? GREEN : RED} count={t.trades} />
+          ))}
+        </div>
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px' }}>
+          <SectionTitle>P&L BY SYMBOL (TOP 10)</SectionTitle>
+          {(report?.by_symbol || []).slice(0, 10).map((s: any) => (
+            <MiniBar key={s.symbol} label={`${s.symbol} (${s.win_rate_pct?.toFixed(0)}% WR)`}
+              value={s.net_pnl}
+              max={Math.max(...(report?.by_symbol || []).slice(0, 10).map((v: any) => Math.abs(v.net_pnl)))}
+              color={s.net_pnl >= 0 ? GREEN : RED} count={s.trades} />
+          ))}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* Mistakes */}
-        <div>
-          <SectionHeader title="Top Mistake Tags" count={data.mistake_tags.length} />
-          <Card>
-            {data.mistake_tags.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {data.mistake_tags.map(m => {
-                  const maxN = Math.max(...data.mistake_tags.map(t => t.n), 1)
-                  return (
-                    <div key={m.tag} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
-                      <span style={{ width: 90, color: 'var(--red)', fontWeight: 600 }}>{m.tag}</span>
-                      <div style={{ flex: 1, height: 8, background: 'var(--bg3)', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{ width: `${(m.n / maxN) * 100}%`, height: '100%', background: 'var(--red)', opacity: 0.6, borderRadius: 4 }} />
-                      </div>
-                      <span style={{ width: 20, textAlign: 'right', fontWeight: 700 }}>{m.n}</span>
+      {/* Monthly P&L */}
+      <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+        <SectionTitle>MONTHLY P&L</SectionTitle>
+        <div style={{ height: '180px' }}>
+          <Bar
+            data={{
+              labels: (report?.monthly || []).map((m: any) => m.month),
+              datasets: [{ data: (report?.monthly || []).map((m: any) => m.net_pnl),
+                backgroundColor: (report?.monthly || []).map((m: any) => m.net_pnl >= 0 ? GREEN : RED),
+                borderRadius: 3, maxBarThickness: 36 }],
+            }}
+            options={{
+              responsive: true, maintainAspectRatio: false,
+              plugins: { legend: { display: false }, tooltip: { ...tooltipOpts, callbacks: { label: (ctx: any) => `P&L: ${fmt$((report?.monthly || [])[ctx.dataIndex]?.net_pnl)} | ${(report?.monthly || [])[ctx.dataIndex]?.trades} trades` } } },
+              scales: {
+                x: { ticks: { color: GREY, font: { size: 9 } }, grid: { display: false }, border: { display: false } },
+                y: { ticks: { color: GREY, font: { size: 9 }, callback: (v: any) => `$${(v / 1000).toFixed(0)}K` }, grid: { color: BORDER }, border: { display: false } },
+              },
+            }}
+          />
+        </div>
+      </div>
+
+      {/* RSI Histogram */}
+      {(report?.rsi_histogram || []).length > 0 && (
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+          <SectionTitle>ENTRY RSI DISTRIBUTION (BACKTEST)</SectionTitle>
+          <div style={{ height: '180px' }}>
+            <Bar
+              data={{
+                labels: report.rsi_histogram.map((b: any) => b.bucket),
+                datasets: [{ data: report.rsi_histogram.map((b: any) => b.count),
+                  backgroundColor: report.rsi_histogram.map((b: any) => b.avg_pnl >= 0 ? GREEN : RED),
+                  borderRadius: 3, maxBarThickness: 48 }],
+              }}
+              options={{
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { ...tooltipOpts, callbacks: { label: (ctx: any) => { const b = report.rsi_histogram[ctx.dataIndex]; return `${b?.count} entries | Avg P&L: ${fmt$(b?.avg_pnl)}` } } } },
+                scales: {
+                  x: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { display: false }, border: { display: false } },
+                  y: { ticks: { color: GREY, font: { size: 9 } }, grid: { color: BORDER }, border: { display: false } },
+                },
+              }}
+            />
+          </div>
+          <div style={{ fontSize: '11px', color: AMBER, marginTop: '8px' }}>
+            {(() => {
+              const total = report.rsi_histogram.reduce((s: number, b: any) => s + b.count, 0)
+              const highRsi = report.rsi_histogram.filter((b: any) => b.bucket.includes('70') || b.bucket.includes('80') || b.bucket.includes('Overbought')).reduce((s: number, b: any) => s + b.count, 0)
+              return total > 0 ? `${((highRsi / total) * 100).toFixed(0)}% of entries had RSI above 65` : ''
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Grade Distribution */}
+      {(report?.backtest_grades || []).length > 0 && (
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+          <SectionTitle>ENTRY & EXIT GRADE DISTRIBUTION</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            {[{ title: 'Entry Grades', grades: entryGrades }, { title: 'Exit Grades', grades: exitGrades }].map(({ title, grades }) => (
+              <div key={title}>
+                <div style={{ fontSize: '12px', color: '#94A3B8', fontWeight: 600, marginBottom: '10px' }}>{title}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                  {['A', 'B', 'C', 'D'].map(g => (
+                    <div key={g} style={{
+                      background: `${gradeColors[g]}15`, border: `1px solid ${gradeColors[g]}40`,
+                      borderRadius: '6px', padding: '10px', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '18px', fontWeight: 700, color: gradeColors[g] }}>{grades[g]}</div>
+                      <div style={{ fontSize: '10px', color: GREY, marginTop: '2px' }}>Grade {g}</div>
                     </div>
-                  )
-                })}
+                  ))}
+                </div>
               </div>
-            ) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No mistake tags yet. Tag mistakes in the Journal Psychology tab.</div>}
-          </Card>
+            ))}
+          </div>
+          {entryGrades.D > 0 && (
+            <div style={{ fontSize: '11px', color: RED, marginTop: '10px' }}>
+              {entryGrades.D} D-grade entries ({Math.round(entryGrades.D / Math.max(Object.values(entryGrades).reduce((a, b) => a + b, 0), 1) * 100)}%) — entering overbought, no volume confirmation
+            </div>
+          )}
         </div>
+      )}
 
-        {/* Strengths */}
-        <div>
-          <SectionHeader title="Top Strength Tags" count={data.strength_tags.length} />
-          <Card>
-            {data.strength_tags.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {data.strength_tags.map(s => {
-                  const maxN = Math.max(...data.strength_tags.map(t => t.n), 1)
-                  return (
-                    <div key={s.tag} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
-                      <span style={{ width: 90, color: 'var(--green)', fontWeight: 600 }}>{s.tag}</span>
-                      <div style={{ flex: 1, height: 8, background: 'var(--bg3)', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{ width: `${(s.n / maxN) * 100}%`, height: '100%', background: 'var(--green)', opacity: 0.6, borderRadius: 4 }} />
-                      </div>
-                      <span style={{ width: 20, textAlign: 'right', fontWeight: 700 }}>{s.n}</span>
+      {/* Coaching Insights from API */}
+      {(report?.coaching_insights || []).length > 0 && (
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+          <SectionTitle>DATA-DRIVEN COACHING</SectionTitle>
+          <div style={{ display: 'grid', gap: '10px' }}>
+            {report.coaching_insights.map((c: any, i: number) => {
+              const borderColor = c.severity === 'high' ? RED : c.severity === 'medium' ? AMBER : BLUE
+              return (
+                <div key={i} style={{ background: '#0F172A', borderLeft: `3px solid ${borderColor}`, borderRadius: '4px', padding: '12px 16px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '3px',
+                      background: c.severity === 'high' ? '#1F0D0D' : c.severity === 'medium' ? '#1F1800' : '#0D1426',
+                      color: borderColor, letterSpacing: '0.08em', flexShrink: 0, marginTop: '2px' }}>
+                      {c.severity.toUpperCase()}
+                    </span>
+                    <div>
+                      <div style={{ color: '#E2E8F0', fontWeight: 700, fontSize: '13px' }}>{c.title}</div>
+                      <div style={{ color: '#94A3B8', fontSize: '12px', marginTop: '4px', lineHeight: '1.5' }}>{c.body}</div>
+                      <div style={{ color: BLUE, fontSize: '11px', marginTop: '6px', fontStyle: 'italic' }}>{c.action}</div>
                     </div>
-                  )
-                })}
-              </div>
-            ) : <div style={{ color: 'var(--text3)', fontSize: 10, padding: 8 }}>No strength tags yet.</div>}
-          </Card>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Monthly execution trend */}
-      {(data.monthly_trend?.length ?? 0) > 0 && (
-        <>
-          <SectionHeader title="Monthly Execution Trend" count={data.monthly_trend.length} />
-          <Card>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {data.monthly_trend.map(m => (
-                <div key={m.month} style={{ padding: '8px 12px', background: 'var(--bg3)', borderRadius: 'var(--radius)', minWidth: 100, textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text0)' }}>{m.month}</div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{m.n} review{m.n !== 1 ? 's' : ''}</div>
-                  {m.avg_exec != null && <div style={{ fontSize: 12, fontWeight: 700, color: m.avg_exec >= 4 ? 'var(--green)' : m.avg_exec >= 3 ? 'var(--amber)' : 'var(--red)', marginTop: 4 }}>{m.avg_exec.toFixed(1)}</div>}
-                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>exec avg</div>
-                  {m.well_exec_rate != null && <div style={{ fontSize: 9, color: m.well_exec_rate >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{pct(m.well_exec_rate)} well</div>}
+      {/* Backtest Coaching Bullets */}
+      {btAnalytics?.coaching_bullets?.length > 0 && (
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+          <SectionTitle>BACKTEST INSIGHTS</SectionTitle>
+          <div style={{ display: 'grid', gap: '10px' }}>
+            {btAnalytics.coaching_bullets.map((bullet: string, i: number) => (
+              <div key={i} style={{ background: '#0F172A', borderLeft: `3px solid ${AMBER}`, borderRadius: '4px', padding: '12px 16px' }}>
+                <div style={{ color: '#E2E8F0', fontSize: '12px', lineHeight: '1.6' }}>{bullet}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Best Entries & Worst Exits */}
+      {btAnalytics?.has_data && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+          {(btAnalytics.best_entries || []).length > 0 && (
+            <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px' }}>
+              <SectionTitle>TOP TRADES BY P&L</SectionTitle>
+              {btAnalytics.best_entries.slice(0, 8).map((e: any) => (
+                <div key={e.trade_key} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', borderBottom: '1px solid #0F172A', fontSize: '11px' }}>
+                  <span style={{ fontWeight: 700, color: BLUE, minWidth: '50px' }}>{e.symbol}</span>
+                  <span style={{ padding: '1px 6px', borderRadius: '3px', fontWeight: 700, fontSize: '10px',
+                    background: e.entry_grade === 'A' ? '#0D1F0D' : e.entry_grade === 'B' ? '#0D1A2F' : e.entry_grade === 'C' ? '#1A1500' : '#1F0D0D',
+                    color: e.entry_grade === 'A' ? GREEN : e.entry_grade === 'B' ? BLUE : e.entry_grade === 'C' ? AMBER : RED
+                  }}>{e.entry_grade}</span>
+                  <span style={{ color: GREY }}>RSI {e.entry_rsi?.toFixed(0) ?? '?'}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: e.actual_pnl >= 0 ? GREEN : RED }}>{fmt$(e.actual_pnl)}</span>
                 </div>
               ))}
             </div>
-          </Card>
-        </>
-      )}
-
-      {/* Setup family rollups */}
-      {(data.by_setup_family?.length ?? 0) > 0 && (
-        <>
-          <SectionHeader title="By Setup Family" count={data.by_setup_family.length} />
-          <Card>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {data.by_setup_family.map(f => (
-                <div key={f.family} style={{ display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--text0)', width: 120 }}>{f.family}</span>
-                  <span style={{ color: 'var(--text3)' }}>{f.n} trade{f.n !== 1 ? 's' : ''}</span>
-                  {f.avg_exec != null && <span>Exec: <strong>{f.avg_exec.toFixed(1)}</strong>/5</span>}
-                  {f.well_exec_rate != null && <span style={{ color: f.well_exec_rate >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{pct(f.well_exec_rate)} well executed</span>}
+          )}
+          {(btAnalytics.worst_exits || []).length > 0 && (
+            <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px' }}>
+              <SectionTitle>MOST LEFT ON TABLE (20D)</SectionTitle>
+              {btAnalytics.worst_exits.map((e: any) => (
+                <div key={e.trade_key} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', borderBottom: '1px solid #0F172A', fontSize: '11px' }}>
+                  <span style={{ fontWeight: 700, color: BLUE, minWidth: '50px' }}>{e.symbol}</span>
+                  <span style={{ padding: '1px 6px', borderRadius: '3px', fontWeight: 700, fontSize: '10px',
+                    background: '#1F0D0D', color: RED }}>{e.exit_grade}</span>
+                  <span style={{ color: GREY }}>exit ${e.actual_exit_price?.toFixed(2)} → max ${e.max_price_20d_after?.toFixed(2)}</span>
+                  <span style={{ marginLeft: 'auto', fontWeight: 700, color: RED }}>{fmt$(e.left_on_table_20d)}</span>
                 </div>
               ))}
             </div>
-          </Card>
-        </>
+          )}
+        </div>
       )}
 
-      {/* Symbol review history (for recovery cross-reference) */}
-      {(data.reviewed_symbols?.length ?? 0) > 0 && (
-        <>
-          <SectionHeader title="Reviewed Symbols" count={data.reviewed_symbols.length} />
-          <Card compact>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {data.reviewed_symbols.map(s => (
-                <button key={s.symbol} onClick={() => navigate(`/journal?symbol=${s.symbol}`)} style={{ padding: '4px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius)', fontSize: 10, border: '1px solid var(--border-subtle)', cursor: 'pointer', textAlign: 'left' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{s.symbol}</span>
-                  <span style={{ marginLeft: 4, color: 'var(--text3)' }}>{s.review_count}x</span>
-                  {s.avg_exec != null && <span style={{ marginLeft: 4, color: s.avg_exec >= 4 ? 'var(--green)' : 'var(--text2)' }}>exec {s.avg_exec.toFixed(1)}</span>}
-                  {s.setups_used && s.setups_used.length > 0 && <span style={{ marginLeft: 4, color: 'var(--text3)', fontSize: 8 }}>{s.setups_used.join(', ')}</span>}
-                </button>
-              ))}
+      {/* Left on Table by Type */}
+      {btAnalytics?.left_on_table_by_type?.length > 0 && (
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+          <SectionTitle>$ LEFT ON TABLE BY TRADE TYPE</SectionTitle>
+          {btAnalytics.left_on_table_by_type.map((t: any) => (
+            <MiniBar key={t.trade_type} label={`${t.trade_type} (${t.count} trades)`}
+              value={t.total_left || 0}
+              max={Math.max(...btAnalytics.left_on_table_by_type.map((v: any) => Math.abs(v.total_left || 0)))}
+              color={RED} count={t.count} />
+          ))}
+        </div>
+      )}
+
+      {/* Setup Performance — only if annotated data exists */}
+      {(report?.setup_performance || []).length >= 2 ? (
+        <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+          <SectionTitle>SETUP PERFORMANCE ({reviewedCount} annotated trades)</SectionTitle>
+          {report.setup_performance.map((s: any) => (
+            <div key={s.setup} style={{ display: 'flex', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #0F172A' }}>
+              <span style={{ minWidth: '180px', fontSize: '12px', color: '#94A3B8', textTransform: 'capitalize' }}>{s.setup?.replace(/_/g, ' ')}</span>
+              <span style={{ minWidth: '50px', fontSize: '11px', color: GREY }}>{s.count} trades</span>
+              <span style={{ minWidth: '60px', fontSize: '11px', color: BLUE }}>{Math.round(s.wins / Math.max(s.count, 1) * 100)}% WR</span>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: s.avg_pnl >= 0 ? GREEN : RED, marginLeft: 'auto' }}>
+                {fmt$(s.avg_pnl)} avg
+              </span>
             </div>
-          </Card>
-        </>
+          ))}
+        </div>
+      ) : (
+        <div style={{ background: '#0F172A', border: `1px dashed ${BORDER}`, borderRadius: '8px', padding: '24px', textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', color: GREY, marginBottom: '8px' }}>Setup analysis unlocks at 5+ annotated trades</div>
+          <div style={{ fontSize: '12px', color: '#475569' }}>Currently {reviewedCount} annotated</div>
+          <a href="/v2/journal" style={{ display: 'inline-block', marginTop: '12px', background: '#1E3A5F', color: BLUE, textDecoration: 'none', padding: '8px 20px', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>
+            Annotate trades
+          </a>
+        </div>
       )}
-
-      {data.total_reviews < 5 && (
-        <Card compact>
-          <div style={{ color: 'var(--text3)', fontSize: 10, textAlign: 'center', padding: 8 }}>
-            Analytics improve with more reviewed trades. You have {data.total_reviews} review{data.total_reviews !== 1 ? 's' : ''} — aim for 10+ to see meaningful patterns. Open trades in the Journal and use the Review/Psychology tabs.
-          </div>
-        </Card>
-      )}
-    </>
+    </div>
   )
 }

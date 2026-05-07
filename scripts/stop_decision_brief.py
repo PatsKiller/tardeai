@@ -10,8 +10,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL = "qwen3:1.7b"
+try:
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url
+    OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+    OLLAMA_MODEL = get_local_llm_model()
+except ImportError:
+    OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
+    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
 
 
 def _env(key, default=""):
@@ -31,11 +36,12 @@ def _ollama(prompt, max_tokens=800):
     import re
     try:
         r = requests.post(OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "stream": False, "prompt": prompt,
+            json={"model": OLLAMA_MODEL, "stream": False,
+                  "messages": [{"role": "user", "content": prompt}],
                   "think": False,
                   "options": {"temperature": 0.2, "num_predict": max_tokens, "num_ctx": 4096}},
             timeout=90)
-        text = r.json().get("response", "").strip()
+        text = r.json().get("message", {}).get("content", "").strip()
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     except Exception as e:
         return f"LLM unavailable: {e}"

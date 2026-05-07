@@ -1,4 +1,4 @@
-"""scoring.py — 5-pillar hybrid scoring engine.
+"""scoring.py — 7-pillar hybrid scoring engine.
 
 Pipeline per ticker:
   1. Keyword rules score each pillar from Finviz data + catalyst enrichment
@@ -15,21 +15,26 @@ import threading
 # Ollama serialization lock — one call at a time, no timeout pile-up
 _ollama_lock = threading.Lock()
 
-def _ollama_serialized(prompt: str, num_predict: int = 500, timeout: int = 90, model: str = "qwen3:14b") -> str:
+def _ollama_serialized(prompt: str, num_predict: int = 500, timeout: int = 90, model: str = None) -> str:
     """Serialized Ollama call — acquires lock, runs, releases. No pile-up."""
     import urllib.request
     import json as _json
+    if model is None:
+        from local_llm_config import get_local_llm_model
+        model = get_local_llm_model()
     payload = _json.dumps({
-        "model": model, "stream": False, "prompt": prompt,
+        "model": model, "stream": False,
+        "messages": [{"role": "user", "content": prompt}],
+        "think": False,
         "options": {"temperature": 0.1, "num_predict": num_predict}
     }).encode()
     req = urllib.request.Request(
-        "http://127.0.0.1:11434/api/generate",
+        "http://127.0.0.1:11434/api/chat",
         data=payload, headers={"Content-Type": "application/json"}, method="POST"
     )
     with _ollama_lock:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return _json.loads(resp.read()).get("response", "").strip()
+            return _json.loads(resp.read()).get("message", {}).get("content", "").strip()
 import yaml
 
 # ── Load weights ──────────────────────────────────────────────────────────────
@@ -120,20 +125,16 @@ def _ollama_preplan(symbol: str, score: int, decision: str,
     import urllib.request
     catalyst_title = (top_catalyst or {}).get("title", "No catalyst")
     prompt = (
-        f"Scalp trade pre-plan for {symbol}. Score: {score}/55 ({decision}).\n"
+        f"Scalp trade pre-plan for {symbol}. Score: {score}/65 ({decision}).\n"
         f"Price: ${price} | Change: {change_pct:+.1f}% | RVOL: {rvol:.1f}x\n"
         f"Catalyst: {catalyst_title[:100]}\n\n"
         f"Write 2 sentences: key level to watch and main risk. Be specific. No disclaimers."
     )
     try:
-        payload = json.dumps({
-            "model": "qwen3:14b",
-            "stream": False,
-            "prompt": prompt,
-            "options": {"temperature": 0.2}
-        }).encode()
+        from local_llm_config import get_local_llm_model
+        _model = get_local_llm_model()
         data = _ollama_call_serialized({
-            "model": "qwen3:14b",
+            "model": _model,
             "stream": False,
             "prompt": prompt,
             "options": {"temperature": 0.2, "num_predict": 80}
@@ -143,6 +144,209 @@ def _ollama_preplan(symbol: str, score: int, decision: str,
         return f"[pre-plan unavailable: {e}]"
 
 
+
+
+# ── Data Quality Hardening ────────────────────────────────────────────────────
+
+import re as _re
+
+def is_disqualified_ticker(symbol: str, ticker_row: Dict[str, Any]) -> tuple[bool, str]:
+    """Pre-scoring disqualification for dangerous tickers.
+    Returns (True, reason) if ticker should be auto-excluded.
+    Checks: reverse splits, micro-float + spike, sub-$2 + high move.
+    """
+    reasons = []
+
+    # Check 1: Reverse split in last 60 days via yfinance
+    try:
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        import pandas as pd
+        actions = yf.Ticker(symbol).actions
+        if actions is not None and not actions.empty and 'Stock Splits' in actions.columns:
+            cutoff = pd.Timestamp.now(tz=actions.index.tz) - timedelta(days=60) if actions.index.tz else pd.Timestamp.now() - timedelta(days=60)
+            recent = actions[
+                (actions.index >= cutoff) &
+                (actions['Stock Splits'] > 0) &
+                (actions['Stock Splits'] < 1.0)
+            ]
+            if not recent.empty:
+                ratio = recent['Stock Splits'].iloc[-1]
+                dt = recent.index[-1].strftime('%Y-%m-%d')
+                reasons.append(f"REVERSE_SPLIT: {ratio:.2f}:1 on {dt} — delisting avoidance")
+    except Exception:
+        pass
+
+    # Check 2: Sub-$2 price + >30% spike = post-split distortion or pump
+    try:
+        price = float(ticker_row.get("price", 0) or 0)
+        change = abs(float(str(ticker_row.get("change_percent", ticker_row.get("change_pct", 0)) or 0).replace('%', '')))
+        if price < 2.0 and change > 30:
+            reasons.append(f"LOW_PRICE_SPIKE: ${price:.2f} up {change:.0f}% — pump or split distortion")
+    except Exception:
+        pass
+
+    # Check 3: Micro-float (<1M) + high RVOL (>5x) = manipulation
+    try:
+        float_m = float(ticker_row.get("float_m", 0) or 0)
+        rvol = float(ticker_row.get("relative_volume", 0) or 0)
+        if 0 < float_m < 1.0 and rvol > 5.0:
+            reasons.append(f"MICRO_FLOAT_RVOL: {float_m:.1f}M float with {rvol:.1f}x RVOL — manipulation risk")
+    except Exception:
+        pass
+
+    return (len(reasons) > 0, ' | '.join(reasons))
+
+
+_COMPANY_NAME_CACHE: dict = {}
+
+def _get_company_name(symbol: str) -> str:
+    """Get company name with yfinance, cached to avoid repeated API calls."""
+    if symbol in _COMPANY_NAME_CACHE:
+        return _COMPANY_NAME_CACHE[symbol]
+    try:
+        import yfinance as _yf
+        _info = _yf.Ticker(symbol).info
+        name = _info.get("shortName") or _info.get("longName") or symbol
+        _COMPANY_NAME_CACHE[symbol] = name
+        return name
+    except Exception:
+        _COMPANY_NAME_CACHE[symbol] = symbol
+        return symbol
+
+
+_GENERIC_CATALYST_PATTERNS = [
+    _re.compile(p, _re.IGNORECASE) for p in [
+        r"top gainers and losers",
+        r"after.hours session",
+        r"get insights into",
+        r"stocks experiencing",
+        r"biggest movers",
+        r"market wrap",
+        r"most active stocks",
+        r"pre.?market movers",
+        r"morning bell",
+        r"weekly roundup",
+    ]
+]
+
+def validate_catalyst_relevance(symbol: str, company_name: str, headline: str) -> tuple[bool, float, str]:
+    """Check if a catalyst headline actually relates to this ticker.
+    Returns (is_relevant, confidence, reason).
+    """
+    if not headline or not headline.strip():
+        return False, 0.0, "empty_headline"
+
+    # Strip source tags like [Yahoo], [Yahoo Finance], [Finnhub] before matching
+    clean_headline = _re.sub(r'\s*\[.*?\]\s*$', '', headline).strip()
+    hl = clean_headline.lower()
+    sym_lower = symbol.lower()
+
+    # Generic placeholder detection
+    for pat in _GENERIC_CATALYST_PATTERNS:
+        if pat.search(hl):
+            return False, 0.1, f"generic_placeholder: {pat.pattern}"
+
+    score = 0.0
+    parts = []
+
+    # Direct ticker mention
+    if _re.search(r'\b' + _re.escape(sym_lower) + r'\b', hl):
+        score += 0.6
+        parts.append("ticker_in_headline")
+
+    # First word of company name (handles "Rallybio Corporation" → "rallybio")
+    company_first = _re.split(r'\s+', company_name.strip())[0].lower() if company_name else ""
+    company_first = _re.sub(r'[^a-z]', '', company_first)
+    if len(company_first) >= 3 and company_first not in ('the', 'inc', 'ltd') and company_first in hl:
+        score += 0.5
+        parts.append(f"company_first_word({company_first})")
+
+    # Company name words (additional multi-word matching)
+    company_words = [_re.sub(r'[^a-z]', '', w) for w in company_name.lower().split()]
+    company_words = [w for w in company_words
+                     if len(w) > 3 and w not in ('inc', 'corp', 'ltd', 'llc', 'the', 'and', 'for', 'holdings', 'group', 'corporation', 'technologies', 'limited')]
+    matches = sum(1 for w in company_words if w in hl)
+    if matches > 0 and score < 0.5:
+        # Only add if first-word match didn't already cover it
+        if company_words and matches == len(company_words):
+            score += 0.4
+        else:
+            score += min(0.4, matches * 0.2)
+        parts.append(f"company_match({matches}/{len(company_words)})")
+
+    reason = ', '.join(parts) if parts else 'no_match'
+    return score >= 0.3, score, reason
+
+
+def get_verified_catalyst_fallback(symbol: str, company_name: str) -> str:
+    """Fetch a verified headline from Yahoo Finance RSS when primary fails."""
+    try:
+        import feedparser
+        feed = feedparser.parse(f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US")
+        if feed.entries:
+            title = feed.entries[0].get('title', '')
+            ok, _, _ = validate_catalyst_relevance(symbol, company_name, title)
+            if ok:
+                return f"{title} [Yahoo Finance]"
+    except Exception:
+        pass
+    return "No verified catalyst — data quality check failed"
+
+
+def get_industry_with_fallback(symbol: str, finviz_data: Dict[str, Any]) -> str:
+    """Industry with yfinance fallback. Never returns empty."""
+    industry = str(finviz_data.get('industry', '') or finviz_data.get('sector', '') or
+                   finviz_data.get('Industry', '') or finviz_data.get('Sector', '') or '').strip()
+    if industry and industry.lower() not in ('', 'unknown', 'n/a', '-'):
+        return industry
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info
+        yf_ind = info.get('industry', '') or info.get('sector', '')
+        if yf_ind and yf_ind.lower() not in ('', 'unknown'):
+            return yf_ind
+    except Exception:
+        pass
+    return 'Unclassified'
+
+
+_SECTOR_ETF_MAP = {
+    'Technology': 'XLK', 'Financial Services': 'XLF', 'Healthcare': 'XLV',
+    'Consumer Cyclical': 'XLY', 'Consumer Defensive': 'XLP', 'Industrials': 'XLI',
+    'Energy': 'XLE', 'Utilities': 'XLU', 'Real Estate': 'XLRE',
+    'Basic Materials': 'XLB', 'Communication Services': 'XLC',
+}
+
+def get_sector_context(symbol: str, industry: str) -> Dict[str, Any]:
+    """Get sector, country, and 1M performance. Called during scoring (cached per run)."""
+    result: Dict[str, Any] = {'country': '', 'sector': '', 'sector_etf': '',
+              'ticker_perf_1m': None, 'sector_perf_1m': None, 'vs_sector_pct': None}
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info
+        result['country'] = info.get('country', '')
+        sector = info.get('sector', '')
+        result['sector'] = sector
+        result['sector_etf'] = _SECTOR_ETF_MAP.get(sector, '')
+
+        hist = yf.Ticker(symbol).history(period='1mo')
+        if len(hist) >= 2:
+            s = float(hist['Close'].iloc[0]); e = float(hist['Close'].iloc[-1])
+            if s > 0: result['ticker_perf_1m'] = round((e - s) / s * 100, 1)
+
+        etf = result['sector_etf']
+        if etf:
+            eh = yf.Ticker(etf).history(period='1mo')
+            if len(eh) >= 2:
+                es = float(eh['Close'].iloc[0]); ee = float(eh['Close'].iloc[-1])
+                if es > 0: result['sector_perf_1m'] = round((ee - es) / es * 100, 1)
+
+        if result['ticker_perf_1m'] is not None and result['sector_perf_1m'] is not None:
+            result['vs_sector_pct'] = round(result['ticker_perf_1m'] - result['sector_perf_1m'], 1)
+    except Exception:
+        pass
+    return result
 
 
 # ── Pillar scorers ────────────────────────────────────────────────────────────
@@ -167,7 +371,10 @@ def _score_catalyst_keywords(catalyst_tier: str, catalyst_count: int,
         return min(15, int(base * recency_mult)), False
     return 0, False
 
-def _score_rvol(rvol: float) -> int:
+def _score_rvol(rvol: float, float_m: float = 0) -> int:
+    # FIX 4: Cap RVOL score on micro-float to prevent manipulation-driven GO signals
+    if 0 < float_m < 2.0 and rvol > 5.0:
+        rvol = min(rvol, 3.0)  # cap contribution
     if rvol >= 8:   return 12
     if rvol >= 5:   return 10
     if rvol >= 3:   return 7
@@ -267,7 +474,11 @@ def score_ticker(
     elif use_llm and is_ambiguous and headlines:
         cat_score = _haiku_score_catalyst(symbol, headlines, (top_catalyst or {}).get("summary", ""))
 
-    rvol_score   = _score_rvol(rvol)
+    # RAG catalyst confirmation bonus (+3, capped at pillar max 15)
+    if enrichment.get("rag_catalyst_confirmed"):
+        cat_score = min(cat_score + 3, 15)
+
+    rvol_score   = _score_rvol(rvol, float_m)
     pa_score     = _score_price_action(change_pct, gap_pct, rvol)
     float_score  = _score_float(float_m)
     price_score  = _score_price_range(price)
@@ -279,7 +490,29 @@ def score_ticker(
     sector_mom_score = max(0, min(5, sector_mom_score))
 
     total = cat_score + rvol_score + pa_score + float_score + price_score + sector_mom_score
-    total = max(0, min(55, total))   # new max is 55
+
+    # Scar factor: penalize symbols with poor scalp history (needs 3+ outcomes)
+    scar = enrichment.get("scar_factor", 1.0)
+    if scar < 1.0:
+        total = int(total * scar)
+
+    # ── 7th pillar: technical confluence (max 10 pts) ─────────────────────
+    # Non-fatal — Trade AI pipeline must never fail due to indicator engine issues
+    confluence_score = 0
+    confluence_tier = None
+    strategy_badges = []
+    try:
+        from indicator_engine import analyze_confluence
+        conf_result = analyze_confluence(symbol, profile='scalp')
+        if conf_result.get('ok'):
+            confluence_score = conf_result.get('confluence_score', 0)
+            confluence_tier = conf_result.get('confluence_tier')
+            strategy_badges = conf_result.get('strategy_badges', [])
+    except Exception as e:
+        logger.warning(f"Confluence pillar skipped for {symbol} (non-fatal): {e}")
+
+    total = total + confluence_score
+    total = max(0, min(65, total))   # new max is 65 (was 55)
 
     pillar_breakdown = {
         "catalyst":          cat_score,
@@ -288,6 +521,7 @@ def score_ticker(
         "float":             float_score,
         "price_range":       price_score,
         "sector_momentum":   sector_mom_score,
+        "confluence":        confluence_score,
     }
 
     grade, decision = _grade(total, weights)
@@ -307,9 +541,9 @@ def score_ticker(
     criteria_met = sum(criteria.values())
     criteria_total = len(criteria)
 
-    # Ollama pre-plan for WAIT/developing tickers (score 25-47)
+    # Ollama pre-plan for WAIT/developing tickers (score 25-54)
     ollama_preplan = ""
-    if use_llm and 25 <= total < 48 and decision in ("WAIT", "GO"):
+    if use_llm and 25 <= total < 55 and decision in ("WAIT", "GO"):
         try:
             ollama_preplan = _ollama_preplan(
                 symbol, total, decision, top_catalyst,
@@ -366,6 +600,10 @@ def score_ticker(
         "source_count":      ticker_row.get("source_count", 1),
         "source_lists":      ticker_row.get("source_lists", ""),
         "run_window":        ticker_row.get("run_window", ""),
+        # Technical confluence pillar
+        "confluence_score":  confluence_score,
+        "confluence_tier":   confluence_tier,
+        "strategy_badges":   strategy_badges,
     }
 
 
@@ -400,17 +638,97 @@ def score_all(
     project_root: str = ".",
     use_llm: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Score all tickers, return sorted list (highest score first)."""
+    """Score all tickers, return sorted list (highest score first).
+    Includes data quality hardening: disqualification, catalyst validation,
+    industry fallback, RVOL micro-float cap.
+    """
     weights = _load_weights(project_root)
     results = []
+    disqualified_count = 0
+    unverified_count = 0
+
     for row in tickers:
         sym = str(row.get("symbol", "")).upper()
         enrichment = enrichments.get(sym, {
             "catalyst_tier": "none", "catalyst_count": 0,
             "has_fresh_catalyst": False, "top_catalyst": None, "catalysts": [],
         })
+
+        # ── FIX 1: Auto-disqualification (reverse split, micro-float spike) ──
+        is_disq, disq_reason = is_disqualified_ticker(sym, row)
+        if is_disq:
+            disqualified_count += 1
+            print(f"  [scoring] DISQUALIFIED {sym}: {disq_reason}")
+            results.append({
+                "symbol": sym, "score": 0, "grade": "DISQUALIFIED", "decision": "AVOID",
+                "disqualified": True, "disqualification_reason": disq_reason,
+                "catalyst": f"DISQUALIFIED: {disq_reason}",
+                "catalyst_verified": False,
+                "industry": get_industry_with_fallback(sym, row),
+                "pillar_breakdown": {}, "criteria": {}, "criteria_met": 0, "criteria_total": 0,
+                "price": float(row.get("price", 0) or 0),
+                "change_pct": str(row.get("change_percent", row.get("change_pct", ""))),
+                "gap_pct": str(row.get("gap_percent", row.get("gap_pct", ""))),
+                "rvol": float(row.get("relative_volume", 0) or 0),
+                "float_m": float(row.get("float_m", 0) or 0),
+                "top_catalyst": enrichment.get("top_catalyst"),
+            })
+            continue
+
+        # ── FIX 2: Catalyst relevance validation ──
+        top_cat = enrichment.get("top_catalyst") or {}
+        raw_headline = top_cat.get("title", "")
+        company_name = (row.get("company") or row.get("Company Name") or "")
+        if isinstance(company_name, str):
+            company_name = company_name.strip()
+        else:
+            company_name = ""
+        # If company name is missing or just the symbol, use yfinance cache
+        if not company_name or company_name == sym or company_name == "None" or len(company_name) <= 5:
+            company_name = _get_company_name(sym)
+        catalyst_verified = None
+        catalyst_confidence = None
+
+        if raw_headline:
+            is_rel, conf, rel_reason = validate_catalyst_relevance(sym, company_name, raw_headline)
+            catalyst_verified = is_rel
+            catalyst_confidence = conf
+            if not is_rel:
+                unverified_count += 1
+                print(f"  [scoring] CATALYST_UNVERIFIED {sym}: conf={conf:.2f} reason={rel_reason} headline='{raw_headline[:60]}'")
+                # Try Yahoo fallback
+                fallback = get_verified_catalyst_fallback(sym, company_name)
+                if fallback and "No verified" not in fallback:
+                    top_cat["title"] = fallback
+                    enrichment["top_catalyst"] = top_cat
+                    catalyst_verified = True
+                    print(f"  [scoring]   → Yahoo fallback: {fallback[:60]}")
+
+        # ── FIX 3: Industry fallback ──
+        industry = get_industry_with_fallback(sym, row)
+        row["industry"] = industry
+
+        # Sector context (country, 1M perf, vs sector)
+        sector_ctx = get_sector_context(sym, industry)
+
+        # Score normally
         scored = score_ticker(row, enrichment, weights, use_llm=use_llm)
+        scored["disqualified"] = False
+        scored["disqualification_reason"] = ""
+        scored["catalyst_verified"] = catalyst_verified
+        scored["catalyst_confidence"] = catalyst_confidence
+        scored["industry"] = industry
+        scored["country"] = sector_ctx.get("country", "")
+        scored["sector"] = sector_ctx.get("sector", row.get("sector", ""))
+        scored["sector_etf"] = sector_ctx.get("sector_etf", "")
+        scored["ticker_perf_1m"] = sector_ctx.get("ticker_perf_1m")
+        scored["sector_perf_1m"] = sector_ctx.get("sector_perf_1m")
+        scored["vs_sector_pct"] = sector_ctx.get("vs_sector_pct")
         results.append(scored)
+
+    if disqualified_count:
+        print(f"  [scoring] Data quality: {disqualified_count} disqualified, {unverified_count} catalyst unverified")
+
     results.sort(key=lambda x: x["score"], reverse=True)
     return results
 

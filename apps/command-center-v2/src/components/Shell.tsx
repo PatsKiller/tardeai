@@ -32,6 +32,10 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: 'Analysis', items: [
     { to: '/trade-ai', label: '⚡ Trade AI' },
+    { to: '/prospects', label: 'Prospects' },
+    { to: '/strategy-desk', label: 'Strategy Desk' },
+    { to: '/paper-proposals', label: 'Paper Proposals' },
+    { to: '/incubator', label: 'Incubator' },
     { to: '/technical', label: 'Technical' },
     { to: '/risk', label: 'Risk' },
     { to: '/correlation', label: 'Correlation' },
@@ -40,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: 'Strategy', items: [
     { to: '/watchlist', label: 'Watchlist' },
+    { to: '/portfolio-monitor', label: 'Portfolio Monitor' },
     { to: '/cio', label: 'CIO Dashboard' },
     { to: '/rebalance', label: 'Rebalance' },
     { to: '/recovery', label: 'Recovery Watch' },
@@ -52,13 +57,19 @@ const NAV_GROUPS: NavGroup[] = [
   { label: 'Journal', items: [
     { to: '/journal', label: 'Journal' },
     { to: '/journal-analytics', label: 'Analytics' },
+    { to: '/journal-reports', label: 'Reports' },
+    { to: '/paper-journal', label: 'Paper Journal' },
   ]},
   { label: 'System', items: [
     { to: '/hub', label: 'System Hub' },
     { to: '/system-health', label: 'System Health' },
+    { to: '/paper-status', label: 'Paper Status' },
     { to: '/agent-monitor', label: 'Agent Monitor' },
     { to: '/reports/agent_orchestration.html', label: 'Orchestration' },
     { to: '/intelligence-sources', label: 'Intel Sources' },
+    { to: '/intelligence-entities', label: 'Intel Entities' },
+    { to: '/intelligence-whiteboard', label: 'Whiteboard' },
+    { to: '/agent-pipeline', label: 'Agent Pipeline' },
     { to: '/content-health', label: 'Content Health' },
     { to: '/actions', label: 'Actions' },
     { to: '/approvals', label: 'Approvals' },

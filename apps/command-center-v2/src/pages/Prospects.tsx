@@ -79,6 +79,7 @@ export default function Prospects() {
   const [minScore, setMinScore] = useState('')
   const [selected, setSelected] = useState<Prospect | null>(null)
   const [addedSymbols, setAddedSymbols] = useState<Set<string>>(new Set())
+  const [incubatorMap, setIncubatorMap] = useState<Record<string, any>>({})
   const [runHealth, setRunHealth] = useState<{
     run_label?: string; latest_scan?: string; is_stale?: boolean; stale_reason?: string;
     symbols_scanned?: number; go_count?: number; wait_count?: number;
@@ -109,6 +110,15 @@ export default function Prospects() {
   }, [activeTab, minPrice, maxPrice, minScore])
 
   useEffect(() => { fetchProspects() }, [fetchProspects])
+
+  useEffect(() => {
+    fetch('/api/v2/incubator').then(r => r.json()).then(d => {
+      const items = (d.data || d).universe || []
+      const map: Record<string, any> = {}
+      items.forEach((i: any) => { map[i.symbol] = i })
+      setIncubatorMap(map)
+    }).catch(() => {})
+  }, [])
 
   const switchTab = (tab: ProspectType) => {
     setActiveTab(tab)
@@ -239,6 +249,23 @@ export default function Prospects() {
                           <span style={{ fontWeight: 700, color: '#60A5FA', fontFamily: 'monospace' }}>{p.symbol}</span>
                           <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '3px', background: dc.bg, color: dc.text }}>{p.decision}</span>
                           {p.in_portfolio && <span style={{ fontSize: '8px', color: '#4ADE80', background: '#0D1F0D', padding: '1px 4px', borderRadius: '2px' }}>HELD</span>}
+                          {incubatorMap[p.symbol] && (() => {
+                            const inc = incubatorMap[p.symbol]
+                            const st = inc.lifecycle_state || 'STAYED_ACTIVE'
+                            const stColors: Record<string, { bg: string; text: string }> = {
+                              ROLLED_ON: { bg: '#422006', text: '#F59E0B' },
+                              IMPROVED: { bg: '#052E16', text: '#10B981' },
+                              DEGRADED: { bg: '#450A0A', text: '#EF4444' },
+                              STAYED_ACTIVE: { bg: '#0F2235', text: '#60A5FA' },
+                            }
+                            const c = stColors[st] || stColors.STAYED_ACTIVE
+                            return (
+                              <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: c.bg, color: c.text, fontFamily: 'monospace' }}>
+                                {st === 'ROLLED_ON' ? 'NEW' : st === 'STAYED_ACTIVE' ? 'TRACK' : st.replace(/_/g, ' ')}
+                                {(inc.days_active || 0) > 0 ? ` ${inc.days_active}d` : ''}
+                              </span>
+                            )
+                          })()}
                         </div>
                       </td>
                       <td style={{ padding: '8px', fontFamily: 'monospace', color: '#E2E8F0' }}>${p.price?.toFixed(2)}</td>
@@ -369,6 +396,31 @@ export default function Prospects() {
                 ))}
               </div>
             </div>
+
+            {/* Incubator Track Record */}
+            {incubatorMap[selected.symbol] && (() => {
+              const inc = incubatorMap[selected.symbol]
+              return (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, color: '#64748B', letterSpacing: '0.1em', fontWeight: 600, marginBottom: 8 }}>INCUBATOR</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6 }}>
+                    {[
+                      { label: 'Baseline', val: inc.baseline_score?.toFixed(0) || '-' },
+                      { label: 'Latest', val: inc.latest_score?.toFixed(0) || '-' },
+                      { label: 'Best', val: inc.best_score?.toFixed(0) || '-' },
+                      { label: 'Days', val: inc.days_active || 0 },
+                      { label: 'Delta', val: (inc.score_delta || 0) >= 0 ? `+${(inc.score_delta || 0).toFixed(0)}` : (inc.score_delta || 0).toFixed(0) },
+                      { label: 'State', val: (inc.lifecycle_state || 'ACTIVE').replace(/_/g, ' ') },
+                    ].map(({ label, val }) => (
+                      <div key={label} style={{ background: '#0A1628', borderRadius: 4, padding: '5px 7px' }}>
+                        <div style={{ color: '#475569', fontSize: 9 }}>{label}</div>
+                        <div style={{ color: '#CBD5E1', fontSize: 12, fontWeight: 600, fontFamily: 'monospace' }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Actions */}
             <div>

@@ -1,0 +1,213 @@
+# indicator_strategies.yaml
+# Trade AI v12 — Technical Indicator Engine Configuration
+# Edit thresholds here. No Python changes needed for tuning.
+# Version: 1.0 | May 2026
+
+confluence:
+  min_signals_for_pillar: 3       # minimum BULLISH signals to add pillar score
+  strong_threshold: 8             # 8+ bullish signals = STRONG confluence
+  moderate_threshold: 5           # 5-7 bullish signals = MODERATE
+  weak_threshold: 3               # 3-4 bullish signals = WEAK
+  score_strong: 10                # points added to Trade AI score (max 65 now)
+  score_moderate: 5
+  score_weak: 0
+
+strategies:
+
+  rsi:
+    enabled: true
+    weight: 1.5                   # Extra weight — backtest proved RSI is #1 factor
+    period: 14
+    oversold: 30
+    overbought: 70
+    entry_max: 55                 # Your backtest rule: avg entry RSI 68 = bad outcome
+    divergence_window: 5          # bars to check for RSI divergence with price
+
+  stochastic:
+    enabled: true
+    weight: 1.2
+    k_period: 14
+    d_period: 3
+    smooth: 3
+    oversold: 20
+    overbought: 80
+
+  macd:
+    enabled: true
+    weight: 1.0
+    fast: 12
+    slow: 26
+    signal: 9
+    histogram_flip: true          # detect histogram direction change (momentum shift)
+
+  williams_r:
+    enabled: true
+    weight: 0.8
+    period: 14
+    oversold: -80
+    overbought: -20
+
+  ema:
+    enabled: true
+    weight: 1.0
+    periods: [9, 21, 50, 200]
+    crossover_pairs:
+      - [9, 21]                   # short-term momentum
+      - [50, 200]                 # Golden Cross / Death Cross
+
+  sma:
+    enabled: true
+    weight: 0.8
+    periods: [20, 50, 200]
+
+  vwap:
+    enabled: true
+    weight: 1.3                   # Best intraday anchor — highest weight in scalp
+    proximity_pct: 0.5            # within 0.5% of VWAP = at-level signal
+
+  bollinger:
+    enabled: true
+    weight: 1.2
+    period: 20
+    std_dev: 2.0
+    squeeze_threshold: 0.02       # bandwidth < 2% of price = squeeze active
+
+  keltner:
+    enabled: true
+    weight: 1.0
+    period: 20
+    atr_multiple: 2.0             # Keltner = EMA +/- 2*ATR
+
+  atr:
+    enabled: true
+    weight: 1.0
+    period: 14
+    scalp_stop_multiple: 0.5      # scalp stop = entry - 0.5*ATR
+    scalp_target_multiple: 1.5    # scalp target = entry + 1.5*ATR
+    swing_stop_multiple: 1.5
+    swing_target_multiple: 3.0
+    volatility_percentile_low: 25  # vs 90-day ATR history
+    volatility_percentile_high: 75
+
+  fibonacci:
+    enabled: true
+    weight: 1.4
+    retracement_levels: [0.236, 0.382, 0.5, 0.618, 0.786]
+    extension_levels: [1.272, 1.618, 2.618]
+    proximity_pct: 2.0            # within 2% of level = at-level signal
+    lookback_swing: 20            # days to find recent swing high/low
+    lookback_annual: 252          # days for 52-week high/low
+
+  pivots_daily:
+    enabled: true
+    weight: 1.1
+    proximity_pct: 0.5            # within 0.5% of pivot = at-level
+
+  pivots_weekly:
+    enabled: true
+    weight: 0.9
+    proximity_pct: 0.5
+
+  pivots_fibonacci:
+    enabled: true
+    weight: 1.0
+    proximity_pct: 1.0
+
+  volume_profile:
+    enabled: true
+    weight: 0.8
+    lookback: 20
+    node_threshold: 1.5           # volume 1.5x average = high-volume node
+
+  obv:
+    enabled: true
+    weight: 1.0
+    divergence_window: 5
+
+  volume_roc:
+    enabled: true
+    weight: 0.9
+    period: 20
+    breakout_threshold: 2.0       # 2x avg volume = breakout confirmation
+    institutional_threshold: 5.0  # 5x avg = institutional event
+
+  cmf:
+    enabled: true
+    weight: 1.0
+    period: 20
+    accumulation: 0.1
+    distribution: -0.1
+
+  adx:
+    enabled: true
+    weight: 1.1
+    period: 14
+    trending: 25                  # ADX > 25 = trending, use trend signals
+    strong_trend: 40
+    ranging: 20                   # ADX < 20 = ranging, use mean-reversion
+
+  aroon:
+    enabled: true
+    weight: 0.8
+    period: 25
+    strong: 70
+    weak: 30
+
+# Trade style profiles — each uses a subset of indicators weighted for that style
+profiles:
+
+  scalp:
+    description: "Intraday 2-4 hour holds. VWAP + pivot confluence primary."
+    active_strategies:
+      [rsi, stochastic, vwap, bollinger, keltner, pivots_daily, pivots_fibonacci,
+       atr, volume_roc, macd, adx]
+    min_confluence: 3
+    rsi_max_entry: 55
+    stop_multiple: 0.5
+    target_multiple: 1.5
+
+  swing:
+    description: "2-10 day holds. Fibonacci + EMA structure primary."
+    active_strategies:
+      [rsi, macd, ema, sma, fibonacci, bollinger, keltner, adx, obv, cmf,
+       pivots_weekly, atr, stochastic]
+    min_confluence: 4
+    rsi_max_entry: 60
+    stop_multiple: 1.5
+    target_multiple: 3.0
+
+  position:
+    description: "Weeks to months. Trend confirmation primary."
+    active_strategies:
+      [ema, sma, macd, adx, obv, fibonacci, aroon, cmf, volume_profile, atr]
+    min_confluence: 5
+    rsi_max_entry: 65
+    stop_multiple: 2.0
+    target_multiple: 6.0
+
+  income:
+    description: "Entry timing for dividend/income adds. Less strict on confluence."
+    active_strategies: [rsi, macd, ema, bollinger, obv, adx, atr]
+    min_confluence: 3
+    rsi_max_entry: 65
+    stop_multiple: 2.0
+    target_multiple: 4.0
+
+  full:
+    description: "All indicators — used for deep analysis and agent queries."
+    active_strategies:
+      [rsi, stochastic, macd, williams_r, ema, sma, vwap, bollinger, keltner,
+       atr, fibonacci, pivots_daily, pivots_weekly, pivots_fibonacci,
+       volume_profile, obv, volume_roc, cmf, adx, aroon]
+    min_confluence: 3
+    rsi_max_entry: 70
+    stop_multiple: 1.0
+    target_multiple: 2.0
+
+# Cache settings
+cache:
+  ttl_market_hours: 900           # 15 min during market hours (9:30-16:00 ET)
+  ttl_overnight: 3600             # 1 hour overnight
+  ttl_weekend: 14400              # 4 hours weekend
+  lookback_days: 90               # OHLCV lookback for indicator computation
+  lookback_days_annual: 252       # for 52-week / annual metrics

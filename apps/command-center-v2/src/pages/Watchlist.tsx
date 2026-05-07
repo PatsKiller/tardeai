@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
 import MetricTile from '../components/MetricTile'
 import WatchlistSymbolPanel from '../components/WatchlistSymbolPanel'
+import { ConfluenceBadge } from '../components/ConfluenceBadge'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../components/ToastProvider'
 
@@ -35,6 +36,7 @@ interface SymbolRow {
   // Runtime fields from API
   last_recommendation: string | null; last_confidence: number | null
   last_agent: string | null; is_curated: boolean | null; days_watched: number | null
+  added_by: string | null; why_added: string | null; all_sources: string[] | null
   // Holdings
   account_holdings: AccountHolding[]; total_shares: number; total_market_value: number
   portfolio_weight: number
@@ -106,7 +108,7 @@ export default function Watchlist() {
   const { showToast } = useToast()
   const [, setParams] = useSearchParams()
 
-  const [source, setSource] = useState('')
+  const [source, setSource] = useState('candidates')
   const [stageFilter, setStageFilter] = useState('')
   const [strategyFilter, setStrategyFilter] = useState('')
   const [search, setSearch] = useState('')
@@ -120,6 +122,7 @@ export default function Watchlist() {
   const [drawerData, setDrawerData] = useState<DrawerData | null>(null)
   const [expandedNarrative, setExpandedNarrative] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [confluenceData, setConfluenceData] = useState<Record<string, any>>({})
 
   // Default: symbol master (deduped)
   const queryStr = [source && `source=${source}`, stageFilter && `stage=${stageFilter}`, strategyFilter && `strategy=${strategyFilter}`, sort && `sort=${sort}`].filter(Boolean).join('&')
@@ -127,6 +130,20 @@ export default function Watchlist() {
   const { data: symbolsResp } = useApi<{ count: number; symbols: SymbolRow[] }>(`/api/v2/watchlist/symbols?${queryStr}&_r=${refreshKey}`)
 
   const symbols = (symbolsResp?.symbols || []).filter(i => !search || i.symbol.toLowerCase().includes(search.toLowerCase()))
+
+  // Load confluence data for visible symbols (non-fatal)
+  useEffect(() => {
+    const syms = (symbolsResp?.symbols || []).map(s => s.symbol).slice(0, 20)
+    if (syms.length === 0) return
+    fetch('/api/v2/indicators/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: syms, profile: 'swing' })
+    })
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.results) setConfluenceData(d.results) })
+      .catch(() => {})
+  }, [symbolsResp])
 
   const filterBySource = (s: string) => { setSource(prev => prev === s ? '' : s); setRefreshKey(k => k + 1) }
 
@@ -164,7 +181,7 @@ export default function Watchlist() {
 
       {/* Summary tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
-        <MetricTile label="Unique Symbols" value={String(symbolsResp?.count || 0)} onClick={() => { setSource(''); setStageFilter(''); setRefreshKey(k => k + 1) }} />
+        <MetricTile label="Unique Symbols" value={String(symbolsResp?.count || 0)} onClick={() => { setSource('candidates'); setStageFilter(''); setRefreshKey(k => k + 1) }} />
         <MetricTile label="Portfolio" value={String(summary?.by_source?.portfolio || 0)} deltaColor={source === 'portfolio' ? 'var(--green)' : undefined} onClick={() => filterBySource('portfolio')} />
         <MetricTile label="AI Discovered" value={String(summary?.by_source?.ai_discovered || 0)} deltaColor={source === 'ai_discovered' ? 'var(--purple)' : undefined} onClick={() => filterBySource('ai_discovered')} />
         <MetricTile label="AI Watchlist" value={String(summary?.by_source?.ai_watchlist || 0)} deltaColor={source === 'ai_watchlist' ? 'var(--accent)' : undefined} onClick={() => filterBySource('ai_watchlist')} />
@@ -193,9 +210,12 @@ export default function Watchlist() {
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search symbol..." style={{ ...selStyle, width: 130 }} />
         <select value={source} onChange={e => setSource(e.target.value)} style={selStyle}>
-          <option value="">All sources</option><option value="portfolio">Portfolio</option>
-          <option value="ai_discovered">AI Discovered</option><option value="ai_watchlist">AI Watchlist</option>
+          <option value="candidates">Candidates (not held)</option>
+          <option value="ai_watchlist">AI Watchlist</option>
           <option value="personal_watchlist">Personal</option>
+          <option value="curated">All Curated (incl. held)</option>
+          <option value="ai_discovered">AI Discovered</option>
+          <option value="">All Sources</option>
         </select>
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} style={selStyle}>
           <option value="">All stages</option>
@@ -218,8 +238,8 @@ export default function Watchlist() {
           <option value="symbol">A-Z</option><option value="price">Price</option>
           <option value="rr">R:R</option>
         </select>
-        {(source || stageFilter || strategyFilter) && (
-          <button onClick={() => { setSource(''); setStageFilter(''); setStrategyFilter(''); setRefreshKey(k => k + 1) }}
+        {(source !== 'candidates' || stageFilter || strategyFilter) && (
+          <button onClick={() => { setSource('candidates'); setStageFilter(''); setStrategyFilter(''); setRefreshKey(k => k + 1) }}
             style={{ padding: '3px 10px', fontSize: 9, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: 'rgba(255,255,255,0.04)', color: 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--sans)' }}>
             Clear
           </button>
@@ -243,6 +263,7 @@ export default function Watchlist() {
                 <th style={{ ...th, textAlign: 'right' }}>Weight</th>
                 <th style={{ ...th, textAlign: 'center' }}>R:R</th>
                 <th style={th}>Stage</th>
+                <th style={th}>Confluence</th>
                 <th style={th}>Analysts</th>
                 <th style={th}>Decision</th>
               </tr>
@@ -286,6 +307,18 @@ export default function Watchlist() {
                         )}
                         <SourceBadges sources={item.sources || []} onFilter={filterBySource} />
                         {item.is_curated && <span style={{ fontSize: 7, fontWeight: 700, color: '#0ecb81', background: '#0ecb8118', padding: '1px 4px', borderRadius: 3, width: 'fit-content' }}>CURATED</span>}
+                        {item.added_by && (() => {
+                          const cfg: Record<string, { icon: string; color: string; label: string }> = {
+                            portfolio: { icon: '\uD83D\uDCBC', color: '#6366f1', label: 'Portfolio' },
+                            personal_watchlist: { icon: '\uD83D\uDC64', color: '#6366f1', label: 'Personal' },
+                            ai_discovered: { icon: '\uD83E\uDD16', color: '#059669', label: 'AI Discover' },
+                            ai_watchlist: { icon: '\uD83D\uDD0D', color: '#059669', label: 'AI Watch' },
+                            screener: { icon: '\uD83D\uDCCA', color: '#0891b2', label: 'Screener' },
+                          }
+                          const c = cfg[item.added_by!] || { icon: '\u2022', color: '#6b7280', label: item.added_by }
+                          return <span style={{ fontSize: 7, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${c.color}40`, color: c.color, whiteSpace: 'nowrap' }}>{c.icon} {c.label}</span>
+                        })()}
+                        {item.in_portfolio && item.portfolio_weight > 0 && <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: 'rgba(220,38,38,.12)', color: '#DC2626', border: '1px solid rgba(220,38,38,.3)', whiteSpace: 'nowrap' }}>{'\u26a0\ufe0f'} HELD {item.portfolio_weight.toFixed(1)}%</span>}
                       </div>
                     </td>
                     <td style={{ ...td, textAlign: 'center' }}>
@@ -307,6 +340,16 @@ export default function Watchlist() {
                       {rr ? <span style={{ fontSize: 11, fontWeight: 700, color: rrColor, padding: '1px 6px', borderRadius: 6, background: `color-mix(in srgb, ${rrColor} 10%, transparent)` }}>{rr.toFixed(1)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>}
                     </td>
                     <td style={td}><StageBadge stage={item.analysis_stage} /></td>
+                    <td style={td}>
+                      {confluenceData[item.symbol]?.confluence_tier ? (
+                        <ConfluenceBadge
+                          tier={confluenceData[item.symbol].confluence_tier}
+                          bullishCount={confluenceData[item.symbol].signals_bullish || 0}
+                          badges={confluenceData[item.symbol].strategy_badges || []}
+                          compact
+                        />
+                      ) : <span style={{ color: 'var(--text3)', fontSize: 9 }}>--</span>}
+                    </td>
                     <td style={td}>
                       <AgentBadges maria={item.maria_status} steph={item.steph_status}
                         risk={item.risk_status} tax={item.tax_status} synthesis={item.final_synthesis_status} />

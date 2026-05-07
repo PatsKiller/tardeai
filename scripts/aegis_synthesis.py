@@ -38,7 +38,11 @@ if _env_path.exists():
 
 AGENT = "aegis"
 RUN_ID = f"aegis-synthesis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-OLLAMA_MODEL = "qwen3:1.7b"
+try:
+    from local_llm_config import get_local_llm_model
+    OLLAMA_MODEL = get_local_llm_model()
+except ImportError:
+    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
 
 
 def _load_json(p: Path):
@@ -84,15 +88,16 @@ def _llm(prompt: str, max_tokens: int = 400) -> str:
     try:
         payload = json.dumps({
             "model": OLLAMA_MODEL, "stream": False,
-            "prompt": prompt,
+            "messages": [{"role": "user", "content": prompt}],
+            "think": False,
             "options": {"temperature": 0.2, "num_predict": max_tokens}
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
+            "http://127.0.0.1:11434/api/chat",
             data=payload, headers={"Content-Type": "application/json"}, method="POST"
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
-            return json.loads(resp.read()).get("response", "").strip()
+            return json.loads(resp.read()).get("message", {}).get("content", "").strip()
     except Exception as e:
         print(f"  [llm] Failed: {e}")
         return ""
@@ -147,11 +152,23 @@ def synthesize_symbol_briefs(symbols: list[str]) -> int:
         except Exception:
             pass
 
+        # Confluence context for this symbol
+        confluence_block = ""
+        try:
+            from agent_collab import get_confluence_context
+            from db_adapter import _get_conn as _gc
+            _c = _gc()
+            confluence_block = get_confluence_context(sym, _c, profile='swing')
+            _c.close()
+        except Exception:
+            pass
+
         prompt = f"""Analyze {sym} ({company}, {sector}) for an overnight portfolio brief.
 Price: ${price}, RSI: {rsi}, SMA200: {sma200}%, Beta: {snap.get('beta','?')}, 52wk from high: {snap.get('pct_from_52wk_high','?')}%
 Social: {mentions} mentions, sentiment {sent_score}, spike={spike}
 Recent news: {news_titles or 'none'}
 {rag_block}
+{confluence_block}
 
 Answer in 3 short lines:
 1. THESIS STATUS (intact/improving/weakening/broken):
@@ -520,15 +537,16 @@ def _steph_llm(prompt: str, attempt: int = 1, max_tokens: int = 250) -> str:
         temp = 0.15 + (attempt - 1) * 0.15  # 0.15 → 0.30 → 0.45
         payload = json.dumps({
             "model": OLLAMA_MODEL, "stream": False,
-            "prompt": prompt,
+            "messages": [{"role": "user", "content": prompt}],
+            "think": False,
             "options": {"temperature": temp, "num_predict": max_tokens}
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
+            "http://127.0.0.1:11434/api/chat",
             data=payload, headers={"Content-Type": "application/json"}, method="POST"
         )
         with urllib.request.urlopen(req, timeout=90) as resp:
-            raw = json.loads(resp.read()).get("response", "").strip()
+            raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
             if not raw:
                 return ""
             return raw

@@ -289,7 +289,9 @@ def full_audit() -> dict:
 if __name__ == "__main__":
     if "--full-audit" in sys.argv:
         r = full_audit()
-        if "--strategies" in sys.argv:
+        # llm_review already calls show_strategy_matrix internally,
+        # so only show it standalone if --llm-review is NOT present
+        if "--strategies" in sys.argv and "--llm-review" not in sys.argv:
             show_strategy_matrix()
         if "--llm-review" in sys.argv:
             llm_review_strategies()

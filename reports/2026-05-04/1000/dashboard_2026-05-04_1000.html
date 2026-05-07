@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta http-equiv="refresh" content="60">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade AI v12 · 1000 · 2026-05-04</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d1a;color:#e0e0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5}
+.top-nav{background:#12122a;border-bottom:2px solid #1A73E8;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:999;gap:12px;flex-wrap:wrap}
+.brand{font-size:17px;font-weight:800;color:#fff}.brand span{color:#1A73E8}
+.run-meta{font-size:10px;color:#9A9AB0;margin-top:1px}
+.nav-pills{display:flex;gap:5px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;border:1.5px solid #2a2a4e;color:#ccc;cursor:pointer;transition:all .15s;background:none;white-space:nowrap}
+.pill:hover{background:#1A73E8;color:#fff;border-color:#1A73E8}
+.pill.tos-pill{border-color:#F4B400;color:#F4B400}
+.pill.tos-pill:hover{background:#F4B400;color:#1e1e35}
+.session-banner{display:flex;align-items:center;gap:10px;padding:6px 16px;font-size:12px;font-weight:600;border-bottom:1px solid #2a2a4e}
+.sentiment-bar{display:flex;align-items:center;gap:12px;padding:7px 16px;border-bottom:1px solid #2a2a4e;flex-wrap:wrap}
+.sent-badge{border-radius:20px;padding:4px 14px;font-size:12px;font-weight:800}
+.sent-bull{background:#0d3a22;color:#0F9D58;border:1px solid #0F9D58}
+.sent-bear{background:#3a0d0d;color:#DB4437;border:1px solid #DB4437}
+.sent-neut{background:#1e1e35;color:#9A9AB0;border:1px solid #3a3a5e}
+.sent-detail{font-size:11px;color:#9A9AB0}
+.stats-bar{display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px}
+.stat{background:#12122a;border-radius:8px;padding:8px 14px;text-align:center;min-width:76px;border:1px solid #2a2a4e;cursor:pointer;transition:all .15s}
+.stat:hover,.stat.active{border-color:#1A73E8;background:#1e1e35}
+.stat.go-chip:hover,.stat.go-chip.active{border-color:#0F9D58}
+.stat.top-chip{border-color:#1A73E8}
+.stat-val{font-size:19px;font-weight:800}
+.stat-lbl{font-size:9px;color:#9A9AB0;text-transform:uppercase;margin-top:1px}
+.section{background:#12122a;border-radius:10px;padding:14px;margin:0 10px 10px}
+.section-hdr{font-size:11px;font-weight:700;color:#1A73E8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.badge{background:#1e1e35;border-radius:10px;padding:1px 8px;font-size:10px;font-weight:400;text-transform:none;color:#ccc}
+.collapse-btn{cursor:pointer;color:#9A9AB0;font-size:10px;margin-left:auto;padding:2px 8px;border:1px solid #2a2a4e;border-radius:10px;white-space:nowrap}
+.tos-box{background:#0d1a2a;border:2px solid #1A73E8;border-radius:10px;padding:14px;margin:0 10px 10px}
+.tos-title{font-size:13px;font-weight:800;color:#1A73E8;margin-bottom:10px}
+.tos-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;flex-wrap:wrap}
+.tos-grp{flex:1;min-width:200px}
+.tos-lbl{font-size:9px;color:#9A9AB0;font-weight:700;text-transform:uppercase;margin-bottom:3px}
+.tos-input{width:100%;background:#1e1e35;font-family:monospace;font-size:12px;font-weight:700;border:1.5px solid #3a3a5e;border-radius:6px;padding:6px 9px;cursor:text}
+.tos-input.go-color{color:#0F9D58}.tos-input.all-color{color:#F4B400}
+.copybtn{padding:7px 14px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;border:none;white-space:nowrap}
+.copybtn.go{background:#0F9D58;color:#fff}.copybtn.wait{background:#1A73E8;color:#fff}.copybtn.all{background:#F4B400;color:#1e1e35}
+.copybtn:hover{opacity:.85}
+.tos-steps{background:#0d0d1a;border-radius:8px;padding:10px;font-size:10px;color:#9A9AB0;line-height:1.9}
+.tos-steps b{color:#ccc}.tos-steps code{background:#1e1e35;padding:1px 5px;border-radius:3px;color:#1A73E8}
+.heatmap-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:6px}
+@media(max-width:700px){.heatmap-grid{grid-template-columns:repeat(3,1fr)}}
+.tile{border-radius:8px;padding:9px 5px;text-align:center;cursor:pointer;transition:transform .15s}
+.tile:hover{transform:scale(1.06)}
+.t-flat{background:#252540;color:#9A9AB0}.t-sup{background:#0d6e3f;color:#fff}
+.t-up{background:#1a9e5c;color:#fff}.t-dn{background:#c0392b;color:#fff}.t-sdn{background:#7b0d0d;color:#fff}
+.t-sym{font-weight:800;font-size:12px}.t-pct{font-size:11px;margin:1px 0;font-weight:600}.t-name{font-size:9px;opacity:.8;margin-top:1px}
+.delta-item{border-radius:6px;padding:7px 12px;margin-bottom:4px;cursor:pointer}
+.delta-item .delta-detail{display:none;margin-top:6px;font-size:11px;color:#9A9AB0;border-top:1px solid rgba(255,255,255,.08);padding-top:6px}
+.delta-item.open .delta-detail{display:block}
+.d-arrow{float:right;color:#9A9AB0;font-size:10px;margin-top:1px}
+.d-up{background:#0d2a1a;border-left:3px solid #0F9D58}.d-dn{background:#2a0d0d;border-left:3px solid #DB4437}
+.d-cat{background:#1a150d;border-left:3px solid #F4B400}.d-crit{background:#0d0d2a;border-left:3px solid #1A73E8}
+.d-new{background:#0d2a0d;border-left:3px solid #34a853}.d-fade{background:#1a1a1a;border-left:3px solid #9A9AB0}
+.ticker-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.ticker-tbl th{color:#9A9AB0;text-align:left;padding:5px 8px;border-bottom:1px solid #2a2a4e;font-size:9px;text-transform:uppercase;cursor:pointer;white-space:nowrap;font-weight:600}
+.ticker-tbl th:hover{color:#fff}
+.ticker-tbl td{padding:5px 8px;border-bottom:1px solid #1a1a2e;vertical-align:middle}
+.ticker-tbl tr.data-row{cursor:pointer;transition:background .1s}
+.ticker-tbl tr.data-row:hover{background:#1e1e35}
+.ticker-tbl tr.expanded td{background:#1a1a30}
+.dec-go{color:#0F9D58;font-weight:800}.dec-wait{color:#F4B400;font-weight:800}.dec-avoid{color:#DB4437}
+.up{color:#0F9D58}.dn{color:#DB4437}.nt{color:#9A9AB0}
+.sym-link{color:#fff;font-weight:800;font-size:13px}
+.sym-link:hover{color:#1A73E8;text-decoration:underline}
+.fv-btn{background:#1A73E8;color:#fff;border:none;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer}
+.fv-btn:hover{background:#1557b0}
+.sbar-wrap{background:#252540;border-radius:2px;height:4px;width:70px;display:inline-block;vertical-align:middle;margin-left:4px}
+.sbar-fill{height:4px;border-radius:2px;background:linear-gradient(90deg,#1A73E8,#0F9D58)}
+.crit-dots{display:inline-flex;gap:2px;vertical-align:middle}
+.crit-dot{width:5px;height:10px;border-radius:2px}
+.detail-row{display:none}.detail-row td{padding:0}
+.detail-inner{background:#161630;border-radius:8px;margin:3px 6px 6px;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.dg{background:#1e1e35;border-radius:6px;padding:9px 11px}
+.dg-lbl{font-size:9px;color:#9A9AB0;text-transform:uppercase;font-weight:700;margin-bottom:5px}
+.pm-row{display:flex;align-items:center;gap:4px;margin-bottom:2px}
+.pm-name{font-size:9px;color:#9A9AB0;width:68px;flex-shrink:0}
+.pm-wrap{flex:1;background:#252540;border-radius:2px;height:5px}
+.pm-bar{height:5px;border-radius:2px}
+.pm-pts{font-size:9px;color:#9A9AB0;width:24px;text-align:right;flex-shrink:0}
+.crit-wrap{display:flex;flex-wrap:wrap;gap:3px}
+.crit{font-size:10px;border-radius:10px;padding:2px 7px}
+.crit.met{background:#0d3a22;color:#0F9D58}.crit.unmet{background:#1e1e35;color:#9A9AB0}
+.chart-container img{width:100%;border-radius:4px;display:block;max-width:300px}
+.chart-fallback{padding:16px;color:#9A9AB0;font-size:11px;text-align:center}
+.cat-item{border-bottom:1px solid #1a1a2e;padding:6px 0;cursor:pointer}
+.cat-item:last-child{border-bottom:none}
+.cat-time{font-size:9px;color:#9A9AB0;margin-bottom:1px}
+.cat-title-text{font-size:11px;font-weight:500;line-height:1.4}
+.cat-summary{font-size:10px;color:#a0a0c0;font-style:italic;margin-top:3px;display:none;padding-left:8px;border-left:2px solid #3a3a5e}
+.cat-item.open .cat-summary{display:block}
+.tag-hi{color:#DB4437;font-weight:700}.tag-med{color:#F4B400;font-weight:700}.tag-low{color:#9A9AB0}
+.social-chip{background:#1e1e35;border-radius:6px;padding:3px 8px;font-size:10px;margin-right:4px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 10px 10px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+.cal-table,.opt-table{width:100%;border-collapse:collapse;font-size:11px}
+.cal-table th,.opt-table th{color:#9A9AB0;padding:4px 6px;border-bottom:1px solid #2a2a4e;text-align:left;font-size:9px;text-transform:uppercase}
+.cal-table td,.opt-table td{padding:4px 6px;border-bottom:1px solid #1a1a2e}
+.tape-sym{font-weight:700;color:#1A73E8;margin-top:10px;margin-bottom:3px;font-size:12px}
+.tape-row{font-size:11px;margin-left:8px;margin-bottom:3px;color:#ccc}
+.tape-row a{color:inherit}.tape-row a:hover{color:#1A73E8}
+footer{text-align:center;color:#9A9AB0;font-size:10px;padding:14px;border-top:1px solid #1e1e35;margin-top:10px}
+.exec-strip{background:#0a1628;border-bottom:2px solid #1A73E8;padding:6px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;font-size:11px}
+.exec-item{display:flex;flex-direction:column;gap:1px;min-width:70px}
+.exec-label{font-size:9px;color:#9A9AB0;text-transform:uppercase;letter-spacing:.4px}
+.exec-value{font-size:13px;font-weight:800;color:#e0e0f0}
+.exec-value.warn{color:#F4B400}.exec-value.danger{color:#DB4437}.exec-value.ok{color:#0F9D58}
+.regime-banner{background:#1a1500;border-left:4px solid #F4B400;border-radius:6px;padding:10px 16px;margin:6px 10px;font-size:11px;line-height:1.6}
+.regime-title{font-weight:800;color:#F4B400;font-size:12px;margin-bottom:4px}
+.regime-body{color:#ccc}
+.sf-btn{background:#1e1e35;border:1px solid #2a2a4e;border-radius:10px;padding:2px 10px;font-size:10px;color:#ccc;cursor:pointer}
+.sf-btn.active{background:#1A73E8;color:#fff;border-color:#1A73E8}
+</style></head><body>
+<div class="top-nav"><div><div class="brand">Trade AI <span>v12</span></div>
+<div class="run-meta">Run 1000 · 2026-05-04 · 09:28:59 ET</div></div>
+<div class="nav-pills">
+<span class="pill tos-pill" onclick="jumpTo('tos')">🎯 TOS</span>
+<span class="pill" onclick="jumpTo('market')">📊 Market</span>
+<span class="pill" onclick="jumpTo('delta')">📡 Changes</span>
+<span class="pill" onclick="jumpTo('setups')">🃏 Setups</span>
+<span class="pill" onclick="jumpTo('catalysts')">📰 Catalysts</span>
+</div></div>
+<div class="session-banner" style="background:#1a1500"><span>🌅</span>
+<span style="font-weight:700">Pre-Market</span>
+<span style="color:#9A9AB0;font-size:11px">Market opens in 6 min (9:30 AM ET)</span></div>
+<div class="sentiment-bar"><span class="sent-badge sent-bull">🟢 Bullish</span>
+<div class="sent-detail">SPY <b>+1.27%</b> · QQQ <b>+1.91%</b> · VIX <b>17.7</b> · 3 GO · Pre-Market</div></div>
+<div class='exec-strip'><div class='exec-item'><span class='exec-label'>VIX</span><span class='exec-value ok'>17.7</span></div><div class='exec-item'><span class='exec-label'>Breadth</span><span class='exec-value'>Bullish</span></div><div class='exec-item'><span class='exec-label'>Scanned</span><span class='exec-value'>14</span></div><div class='exec-item'><span class='exec-label'>GO Tier</span><span class='exec-value ok'>3</span></div><div style='margin-left:auto;font-size:9px;color:#9A9AB0'>Run 1000 &middot; 2026-05-04 &middot; 09:28:59 ET</div></div>
+
+<div class="stats-bar">
+<div class="stat" onclick="filterBy('all')" id="s-all"><div class="stat-val">14</div><div class="stat-lbl">Scanned</div></div>
+<div class="stat go-chip" onclick="filterBy('GO')" id="s-go"><div class="stat-val up">3</div><div class="stat-lbl">GO Tier</div></div>
+<div class="stat" onclick="filterBy('WAIT')" id="s-wait"><div class="stat-val" style="color:#F4B400">5</div><div class="stat-lbl">WAIT</div></div>
+<div class="stat" onclick="filterBy('AVOID')" id="s-av"><div class="stat-val nt">6</div><div class="stat-lbl">Avoid</div></div>
+<div class="stat" onclick="jumpTo('delta')"><div class="stat-val">12</div><div class="stat-lbl">Δ Events</div></div>
+<div class="stat top-chip"><div class="stat-val" style="color:#1A73E8">RLYB</div><div class="stat-lbl">Top (44)</div></div>
+<div class="stat" onclick="filterBy('catalyst')"><div class="stat-val" style="color:#F4B400">9</div><div class="stat-lbl">Catalysts</div></div>
+<div class="stat"><div class="stat-val nt">17.7</div><div class="stat-lbl">VIX</div></div>
+</div>
+<div style="padding:0 12px 6px;font-size:11px;color:#9A9AB0">
+<span id="filter-lbl" style="background:#1A73E8;color:#fff;border-radius:10px;padding:2px 8px;font-size:10px">Showing: All</span>
+&nbsp; Click stats to filter · Click row to expand · FV opens Finviz Elite</div>
+<div class="tos-box" id="tos"><div class="tos-title">🎯 ThinkorSwim Export</div>
+<div class="tos-row"><div class="tos-grp"><div class="tos-lbl">GO-Tier Symbols</div>
+<input type="text" class="tos-input go-color" id="go-syms" readonly value="RLYB FTCI CELU" placeholder="— no GO tickers —"></div>
+<button class="copybtn go" onclick="doCopy('go-syms',this)">Copy GO</button></div>
+<div class="tos-row"><div class="tos-grp"><div class="tos-lbl">WAIT-Tier Symbols</div>
+<input type="text" class="tos-input" id="wait-syms" readonly value="BCHT MRAM ATOS FGL GCTS" placeholder="— no WAIT tickers —"></div>
+<button class="copybtn wait" onclick="doCopy('wait-syms',this)">Copy WAIT</button></div>
+<div class="tos-row"><div class="tos-grp"><div class="tos-lbl">All Qualified (GO + WAIT)</div>
+<input type="text" class="tos-input all-color" id="all-syms" readonly value="RLYB FTCI CELU BCHT MRAM ATOS FGL GCTS" placeholder="— no qualified tickers —"></div>
+<button class="copybtn all" onclick="doCopy('all-syms',this)">📋 Copy All</button></div>
+<div class="tos-steps"><b>Import .tst:</b> TOS → Watchlists → Gear ⚙ → <b>Import Watchlist</b> → <code>reports\2026-05-04\1000\trade_ai_1000.tst</code><br>
+<b>Paste:</b> Click <b>Copy All</b> → TOS → New Watchlist → Paste
+</div></div>
+<div class="section" id="market">
+<div class="section-hdr">📊 Sector Heatmap <span class="badge">🌅 Pre-Market</span>
+<span class="collapse-btn" onclick="tog('heatmap-body',this)">▲ hide</span></div>
+<div id="heatmap-body"><div class="heatmap-grid" id="heatmap-grid"></div>
+<div style="font-size:11px;color:#9A9AB0;display:flex;gap:16px;flex-wrap:wrap;margin-top:4px">
+<span>▲ Leaders: <span style="color:#0F9D58" id="leaders-txt">—</span></span>
+<span>▼ Laggards: <span style="color:#DB4437" id="laggards-txt">—</span></span></div></div></div>
+<div class="two-col">
+<div class="section" style="margin:0"><div class="section-hdr">📅 Economic Calendar
+<span class="badge">0 high-impact</span>
+<span class="collapse-btn" onclick="tog('cal-body',this)">▲ hide</span></div>
+<div id="cal-body"><table class="cal-table"><thead><tr><th>Time</th><th>Impact</th><th>Event</th><th>Fcst</th><th>Prior</th></tr></thead>
+<tbody><tr><td colspan="5" class="nt" style="padding:8px">No high-impact events today</td></tr></tbody></table>
+<div style="margin-top:8px;font-size:11px;color:#9A9AB0;font-weight:700">Earnings Today/Tomorrow</div>
+<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">
+<span class="nt" style="font-size:11px">None scheduled</span></div></div></div>
+<div class="section" style="margin:0"><div class="section-hdr">⚡ Options Flow
+<span class="badge">0 sweeps · 0🟢/0🔴</span>
+<span class="collapse-btn" onclick="tog('opt-body',this)">▲ hide</span></div>
+<div id="opt-body"><table class="opt-table"><thead><tr><th>Ticker</th><th>Type</th><th>Strike</th><th>Expiry</th><th>Vol</th><th>Premium</th><th>Dir</th><th></th></tr></thead>
+<tbody><tr><td colspan="8" class="nt" style="padding:8px">No unusual flow detected</td></tr></tbody></table></div></div></div>
+<div class="section" id="delta"><div class="section-hdr">📡 What Changed
+<span class="badge">12 events · click to expand</span>
+<span class="collapse-btn" onclick="tog('delta-body',this)">▲ hide</span></div>
+<div id="delta-body"></div></div>
+<div style="padding:4px 12px 2px;display:flex;align-items:center;gap:8px"><button class="sf-btn active" id="sf-btn" onclick="toggleScoreFilter()">Score ≥15 Active (click for all)</button></div>
+<div class="section" id="setups"><div class="section-hdr">🃏 Setups
+<span class="badge" id="setups-count">14 tickers</span>
+<span class="collapse-btn" onclick="tog('setups-body',this)">▲ hide</span></div>
+<div id="setups-body" style="overflow-x:auto"><table class="ticker-tbl">
+<thead><tr>
+<th onclick="srt('sym')">Symbol ↕</th><th onclick="srt('score')">Score ↕</th>
+<th onclick="srt('dec')">Decision ↕</th><th onclick="srt('rvol')">RVOL ↕</th>
+<th onclick="srt('price')">Price ↕</th><th onclick="srt('chg')">Chg% ↕</th>
+<th onclick="srt('gap')">Gap% ↕</th><th onclick="srt('float_m')">Float ↕</th>
+<th>Country</th><th>Sector</th><th>Criteria</th><th>Social</th><th>Catalyst</th><th>Chart</th>
+</tr></thead><tbody id="tbl-body"></tbody></table></div></div>
+<div class="section" id="catalysts"><div class="section-hdr">📰 Catalyst Tape
+<span class="collapse-btn" onclick="tog('cat-body',this)">▲ hide</span></div>
+<div id="cat-body"></div></div>
+<footer>Trade AI v12 · Run 1000 · 2026-05-04 · 14 tickers · Auto-refresh 60s · 09:28:59 ET</footer>
+<script>
+var TICKERS=[{"sym": "RLYB", "co": "Rallybio Corp", "country": "🇺🇸", "sector": "Healthcare", "score": 44, "grade": "A", "dec": "GO", "rvol": 4.4, "price": 14.05, "chg": 49.3, "gap": 14.8, "float_m": 3.2, "vol": 6268030, "criteria_met": 8, "criteria_total": 9, "catalyst_count": 1, "catalyst_tier": "high_impact", "criteria": {"has_catalyst": true, "has_high_impact": true, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": true}, "pillars": {"catalyst": 14, "rvol": 7, "pa": 8, "float": 8, "price": 4, "sector": 3}, "top_cat": {"title": "Rallybio to acquire Candid Therapeutics [Yahoo]", "source": "Finnhub", "age": 5.4, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=f3380f69b263fdac5fa0479088a77b3b35bb7c436397d438ac84d05579c11558"}, "cats": [{"title": "Rallybio to acquire Candid Therapeutics [Yahoo]", "source": "Finnhub", "age": 5.4, "tier": "high_impact", "url": "https://finnhub.io/api/news?id=f3380f69b263fdac5fa0479088a77b3b35bb7c436397d438ac84d05579c11558", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "FTCI", "co": "FTC Solar Inc", "country": "🇺🇸", "sector": "Technology", "score": 42, "grade": "A", "dec": "GO", "rvol": 9.0, "price": 4.96, "chg": 0.6, "gap": 179.9, "float_m": 11.9, "vol": 200507, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 1, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 8, "rvol": 12, "pa": 6, "float": 6, "price": 5, "sector": 5}, "top_cat": {"title": "FTC Solar to Announce First Quarter 2026 Financial Results Tuesday, May 5, 2026", "source": "Yahoo Finance", "age": 89.3, "tier": "low_impact", "url": "https://finance.yahoo.com/sectors/energy/articles/ftc-solar-announce-first-quarter-200200256.html"}, "cats": [{"title": "FTC Solar to Announce First Quarter 2026 Financial Results Tuesday, May 5, 2026", "source": "Yahoo Finance", "age": 89.3, "tier": "low_impact", "url": "https://finance.yahoo.com/sectors/energy/articles/ftc-solar-announce-first-quarter-200200256.html", "summary": ""}], "ollama_flag": "GO", "ollama_risk": "Market volatility due to oil prices", "ollama_summary": "Earnings announcement", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "earnings", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "CELU", "co": "Celularity Inc", "country": "🇺🇸", "sector": "Healthcare", "score": 40, "grade": "A", "dec": "GO", "rvol": 6.9, "price": 1.03, "chg": 7.6, "gap": 7.6, "float_m": 14.5, "vol": 59615, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 3, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 15, "rvol": 10, "pa": 3, "float": 6, "price": 3, "sector": 3}, "top_cat": {"title": "Celularity Announces Filing of Form 10-K, Regains Nasdaq Compliance and Highlights Continued Strategic Transformation [Yahoo]", "source": "Yahoo Finance", "age": 64.5, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/celularity-regains-nasdaq-listing-compliance-205305848.html"}, "cats": [{"title": "Celularity Announces Filing of Form 10-K, Regains Nasdaq Compliance and Highlights Continued Strategic Transformation [Yahoo]", "source": "Yahoo Finance", "age": 64.5, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/celularity-regains-nasdaq-listing-compliance-205305848.html", "summary": ""}, {"title": "12 Health Care Stocks Moving In Friday's After-Market Session", "source": "Benzinga", "age": 68.3, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=a3e7c390ca0ff4296b7ccb668fa8618cf48a6fa5ec14b8641e6511e8844c4d50", "summary": ""}, {"title": "Celularity Announces Filing of Form 10-K, Regains Nasdaq Compliance and Highlights Continued Strategic Transformation", "source": "Finnhub", "age": 68.9, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=ef750a81f0a1349f3db57cab98dc267928ea0ab4804ae2c6b5ee7c0f87b74d5a", "summary": ""}], "ollama_flag": "DILUTION", "ollama_risk": "Phase 3 Trial Results and FDA Filing", "ollama_summary": "Trial meets endpoint, sets up FDA filing", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "fda", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "BCHT", "co": "Birchtech Corp", "country": "🇺🇸", "sector": "Industrials", "score": 37, "grade": "B", "dec": "WAIT", "rvol": 9.7, "price": 1.82, "chg": 14.5, "gap": 11.3, "float_m": 19.7, "vol": 170350, "criteria_met": 7, "criteria_total": 9, "catalyst_count": 1, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": true}, "pillars": {"catalyst": 1, "rvol": 12, "pa": 10, "float": 6, "price": 3, "sector": 5}, "top_cat": {"title": "Birchtech Corp. to Host First Quarter 2026 Earnings Call on May 13 at 5:00 p.m. Eastern Time [Yahoo]", "source": "Yahoo Finance", "age": 120.8, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/birchtech-corp-host-first-quarter-123600618.html"}, "cats": [{"title": "Birchtech Corp. to Host First Quarter 2026 Earnings Call on May 13 at 5:00 p.m. Eastern Time [Yahoo]", "source": "Yahoo Finance", "age": 120.8, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/birchtech-corp-host-first-quarter-123600618.html", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "MRAM", "co": "Everspin Technologies Inc", "country": "🇺🇸", "sector": "Technology", "score": 37, "grade": "B", "dec": "WAIT", "rvol": 8.0, "price": 22.17, "chg": 3.1, "gap": 12.4, "float_m": 18.8, "vol": 259093, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 6, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 8, "rvol": 10, "pa": 6, "float": 6, "price": 2, "sector": 5}, "top_cat": {"title": "Everspin Executes $40M Agreement for Mil-Aero MRAM Applications", "source": "Yahoo Finance", "age": 96.4, "tier": "low_impact", "url": "https://finance.yahoo.com/sectors/technology/articles/everspin-executes-40m-agreement-mil-130000884.html"}, "cats": [{"title": "Everspin Executes $40M Agreement for Mil-Aero MRAM Applications", "source": "Yahoo Finance", "age": 96.4, "tier": "low_impact", "url": "https://finance.yahoo.com/sectors/technology/articles/everspin-executes-40m-agreement-mil-130000884.html", "summary": ""}, {"title": "Everspin Technologies, Inc. Q1 2026 Earnings Call Summary", "source": "Yahoo Finance", "age": 96.9, "tier": "low_impact", "url": "https://finance.yahoo.com/m/9895b3ea-df1c-364a-8171-2cc63cd64884/everspin-technologies%2C-inc..html", "summary": ""}, {"title": "Everspin Technologies Inc (MRAM) Q1 2026 Earnings Call Highlights: Strong MRAM Sales and ...", "source": "Yahoo Finance", "age": 102.1, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/everspin-technologies-inc-mram-q1-071809889.html", "summary": ""}, {"title": "Everspin Tech Q1 Earnings Call Highlights", "source": "Yahoo Finance", "age": 108.9, "tier": "low_impact", "url": "https://finance.yahoo.com/m/bcbdc9d0-5949-3e0a-8734-efa1033ce05c/everspin-tech-q1-earnings.html", "summary": ""}, {"title": "Everspin (MRAM) Q1 2026 Earnings Transcript", "source": "Yahoo Finance", "age": 111.2, "tier": "low_impact", "url": "https://finance.yahoo.com/m/4140c44b-d715-3923-9e8c-135640fd5a32/everspin-%28mram%29-q1-2026.html", "summary": ""}], "ollama_flag": "PARTNERSHIP", "ollama_risk": "market uncertainty due to industry competition", "ollama_summary": "Agreement with Mil-Aero and earnings call", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "earnings", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "ATOS", "co": "Atossa Therapeutics Inc", "country": "🇺🇸", "sector": "Healthcare", "score": 32, "grade": "B", "dec": "WAIT", "rvol": 6.7, "price": 5.3, "chg": -0.6, "gap": 6.8, "float_m": 8.5, "vol": 16755, "criteria_met": 7, "criteria_total": 9, "catalyst_count": 2, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 4, "rvol": 10, "pa": 3, "float": 7, "price": 5, "sector": 3}, "top_cat": {"title": "Atossa Therapeutics Receives FDA Rare Pediatric Disease Designation for (Z)-Endoxifen for McCune-Albright Syndrome [Yahoo Finance]", "source": "Finnhub", "age": 4.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=03e102c6b22b25d9194536b5dd9267e70bdbd626be8596f005460d81a528d3aa"}, "cats": [{"title": "Atossa Therapeutics Receives FDA Rare Pediatric Disease Designation for (Z)-Endoxifen for McCune-Albright Syndrome [Yahoo Finance]", "source": "Finnhub", "age": 4.2, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=03e102c6b22b25d9194536b5dd9267e70bdbd626be8596f005460d81a528d3aa", "summary": ""}, {"title": "Atossa Therapeutics receives FDA rare pediatric disease designation for (Z)-endoxifen for McCune-Albright Syndrome", "source": "Finnhub", "age": 4.6, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=ac6d7a611cb86f5c80e2cff4eb4509ada6561a08a0c538303f328cf0cf4d26d7", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "FGL", "co": "Founder Group Ltd", "country": "🇺🇸", "sector": "Industrials", "score": 31, "grade": "B", "dec": "WAIT", "rvol": 14.8, "price": 2.06, "chg": 1.0, "gap": 7.8, "float_m": 10.6, "vol": 110394, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 0, "catalyst_tier": "none", "criteria": {"has_catalyst": false, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 0, "rvol": 12, "pa": 3, "float": 6, "price": 5, "sector": 5}, "top_cat": null, "cats": [], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "GCTS", "co": "GCT Semiconductor Holding Inc", "country": "🇺🇸", "sector": "Technology", "score": 31, "grade": "B", "dec": "WAIT", "rvol": 7.2, "price": 1.72, "chg": 8.2, "gap": 6.3, "float_m": 55.9, "vol": 1111488, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 2, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": false, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 8, "rvol": 10, "pa": 3, "float": 2, "price": 3, "sector": 5}, "top_cat": {"title": "GCT Semiconductor Holding, Inc. to Give Business Update and Announce First Quarter 2026 Financial Results on May 12, 2026", "source": "Yahoo Finance", "age": 145.4, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/gct-semiconductor-holding-inc-business-120000229.html"}, "cats": [{"title": "GCT Semiconductor Holding, Inc. to Give Business Update and Announce First Quarter 2026 Financial Results on May 12, 2026", "source": "Yahoo Finance", "age": 145.4, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/gct-semiconductor-holding-inc-business-120000229.html", "summary": ""}, {"title": "As SOX Crosses 10,000 for the First Time, Atomera and GCT Semiconductor Are the 2 Top-Rated Chip Stocks to Buy Now", "source": "Yahoo Finance", "age": 145.9, "tier": "low_impact", "url": "https://finance.yahoo.com/m/c2c96b09-b325-3f08-b097-320f90c1ca07/as-sox-crosses-10%2C000-for-the.html", "summary": ""}], "ollama_flag": "GO", "ollama_risk": "Earnings release could impact stock price", "ollama_summary": "Earnings release expected", "ollama_preplan": "[pre-plan unavailable: name '_ollama_call_serialized' is not defined]", "catalyst_type": "earnings", "social": {"sentiment_label": "Very Bullish", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "ATNM", "co": "Actinium Pharmaceuticals Inc", "country": "🇺🇸", "sector": "Healthcare", "score": 28, "grade": "C", "dec": "AVOID", "rvol": 8.2, "price": 1.13, "chg": 0.0, "gap": 28.3, "float_m": 30.4, "vol": 33560, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 0, "catalyst_tier": "none", "criteria": {"has_catalyst": false, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 0, "rvol": 12, "pa": 6, "float": 4, "price": 3, "sector": 3}, "top_cat": null, "cats": [], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "CXDO", "co": "Crexendo Inc", "country": "🇺🇸", "sector": "Communication Services", "score": 28, "grade": "C", "dec": "AVOID", "rvol": 4.6, "price": 7.9, "chg": 4.7, "gap": 6.4, "float_m": 17.4, "vol": 31171, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 3, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": false, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 6, "rvol": 7, "pa": 3, "float": 6, "price": 5, "sector": 1}, "top_cat": {"title": "Crexendo (CXDO) Stock Jumps 15.3%: Will It Continue to Soar?", "source": "Yahoo Finance", "age": 1.8, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/crexendo-cxdo-stock-jumps-15-113300562.html"}, "cats": [{"title": "Crexendo (CXDO) Stock Jumps 15.3%: Will It Continue to Soar?", "source": "Yahoo Finance", "age": 1.8, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/crexendo-cxdo-stock-jumps-15-113300562.html", "summary": ""}, {"title": "How The Estech Deal Is Rewriting The Crexendo (CXDO) Growth And Valuation Story", "source": "Yahoo Finance", "age": 10.2, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/estech-deal-rewriting-crexendo-cxdo-030926804.html", "summary": ""}, {"title": "Crexendo, Inc. to Issue First Quarter 2026 Financial Results on May 5, 2026, at 4:30 PM ET", "source": "Yahoo Finance", "age": 161.7, "tier": "low_impact", "url": "https://finance.yahoo.com/markets/stocks/articles/crexendo-inc-issue-first-quarter-194000836.html", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "DRTS", "co": "Alpha Tau Medical Ltd", "country": "🇺🇸", "sector": "Healthcare", "score": 27, "grade": "C", "dec": "AVOID", "rvol": 6.0, "price": 8.93, "chg": 4.6, "gap": 6.2, "float_m": 69.6, "vol": 53292, "criteria_met": 6, "criteria_total": 9, "catalyst_count": 1, "catalyst_tier": "low_impact", "criteria": {"has_catalyst": true, "has_high_impact": false, "has_fresh_catalyst": true, "rvol_3": true, "rvol_5": true, "float_50": false, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 4, "rvol": 10, "pa": 3, "float": 2, "price": 5, "sector": 3}, "top_cat": {"title": "Alpha Tau Announces 100% Local Disease Control Rate and Favorable Safety Profile Observed in Alpha DaRT® Pancreatic Cancer Trials Presented at DDW 202", "source": "Finnhub", "age": 4.1, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0fd0e79462ea073fe405a3763924db5949eda444877a2bea06512b14bf2acd29"}, "cats": [{"title": "Alpha Tau Announces 100% Local Disease Control Rate and Favorable Safety Profile Observed in Alpha DaRT® Pancreatic Cancer Trials Presented at DDW 2026", "source": "Finnhub", "age": 4.1, "tier": "low_impact", "url": "https://finnhub.io/api/news?id=0fd0e79462ea073fe405a3763924db5949eda444877a2bea06512b14bf2acd29", "summary": ""}], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "IQST", "co": "iQSTEL Inc", "country": "🇺🇸", "sector": "Communication Services", "score": 27, "grade": "C", "dec": "AVOID", "rvol": 13.2, "price": 1.38, "chg": -2.8, "gap": 9.2, "float_m": 4.7, "vol": 207969, "criteria_met": 5, "criteria_total": 9, "catalyst_count": 0, "catalyst_tier": "none", "criteria": {"has_catalyst": false, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": true, "rvol_5": true, "float_50": true, "price_ok": true, "gap_5": true, "chg_10": false}, "pillars": {"catalyst": 0, "rvol": 12, "pa": 3, "float": 8, "price": 3, "sector": 1}, "top_cat": null, "cats": [], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "ADVB", "co": "", "country": "🇺🇸", "sector": "", "score": 0, "grade": "DISQUALIFIED", "dec": "AVOID", "rvol": 0.0, "price": 6.3, "chg": 0.0, "gap": 0.0, "float_m": 0.6, "vol": 0, "criteria_met": 0, "criteria_total": 9, "catalyst_count": 0, "catalyst_tier": "none", "criteria": {"has_catalyst": false, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": false, "rvol_5": false, "float_50": false, "price_ok": false, "gap_5": false, "chg_10": false}, "pillars": {"catalyst": 0, "rvol": 0, "pa": 0, "float": 0, "price": 0, "sector": 0}, "top_cat": null, "cats": [], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}, {"sym": "PN", "co": "", "country": "🇺🇸", "sector": "", "score": 0, "grade": "DISQUALIFIED", "dec": "AVOID", "rvol": 0.0, "price": 5.7, "chg": 0.0, "gap": 0.0, "float_m": 1.1, "vol": 0, "criteria_met": 0, "criteria_total": 9, "catalyst_count": 0, "catalyst_tier": "none", "criteria": {"has_catalyst": false, "has_high_impact": false, "has_fresh_catalyst": false, "rvol_3": false, "rvol_5": false, "float_50": false, "price_ok": false, "gap_5": false, "chg_10": false}, "pillars": {"catalyst": 0, "rvol": 0, "pa": 0, "float": 0, "price": 0, "sector": 0}, "top_cat": {"title": "Stock Market Today: Dow, S&P 500 Futures Trip Amid Trump's 'Project Freedom' To Escort Stranded Vessels At Hormuz— eBay, Nebius In Focus (UPDATED)", "source": "Benzinga", "age": 0.8, "tier": "high_impact", "url": "https://www.benzinga.com/markets/equities/26/05/52241127/stock-market-today-dow-futures-tumble-sp-500-rises-after-trumps-project-freedom-to-escort-strand?utm_source=benzinga_taxonomy&utm_medium=rss_feed_free&utm_content=taxonomy_rss&utm_campaign=channel"}, "cats": [], "ollama_flag": "", "ollama_risk": "", "ollama_summary": "", "ollama_preplan": "", "catalyst_type": "", "social": {"sentiment_label": "Neutral", "stocktwits": {"count": 0, "bullish_pct": 50}, "reddit": {"count": 0}}}];
+var DELTAS=[{"type": "d-dn", "icon": "📉", "text": "<b>RLYB</b> — GRADE_DOWN", "detail": ""}, {"type": "d-up", "icon": "📈", "text": "<b>FTCI</b> — 34 → 42 (+8)", "detail": "Grade: B → A"}, {"type": "d-up", "icon": "📈", "text": "<b>CELU</b> — 26 → 40 (+14)", "detail": "Grade: C → A"}, {"type": "d-new", "icon": "🆕", "text": "<b>ATOS</b> — First seen · Score 32 · WAIT", "detail": ""}, {"type": "d-up", "icon": "📈", "text": "<b>GCTS</b> — 25 → 31 (+6)", "detail": "Grade: C → B"}, {"type": "d-up", "icon": "📈", "text": "<b>ATNM</b> — 20 → 28 (+8)", "detail": "Grade: C → C"}, {"type": "d-cat", "icon": "🔥", "text": "<b>CXDO</b> — 1 new catalyst(s): Crexendo, Inc. to Issue First Quarter 2026 Financial Results on May 5, 2026, at ", "detail": "Crexendo, Inc. to Issue First Quarter 2026 Financial Results on May 5, 2026, at 4:30 PM ET"}, {"type": "d-up", "icon": "📈", "text": "<b>DRTS</b> — 17 → 27 (+10)", "detail": "Grade: D → C"}, {"type": "d-cat", "icon": "🔥", "text": "<b>DRTS</b> — 1 new catalyst(s): Alpha Tau Announces 100% Local Disease Control Rate and Favorable Safety Profile", "detail": "Alpha Tau Announces 100% Local Disease Control Rate and Favorable Safety Profile Observed in Alpha DaRT® Pancreatic Cancer Trials Presented at DDW 2026"}, {"type": "d-rvol", "icon": "🚀", "text": "<b>DRTS</b> — RVOL crossed 5.0x", "detail": ""}, {"type": "d-crit", "icon": "✅", "text": "<b>DRTS</b> — New criteria: has_fresh_catalyst, rvol_above_5, has_catalyst", "detail": "Total: 6/9"}, {"type": "d-dn", "icon": "📉", "text": "<b>ADVB</b> — GRADE_DOWN", "detail": ""}];
+var SECTORS=[{"sym": "XLK", "name": "Technology", "pct": 1.73, "tier": "t-up"}, {"sym": "XLF", "name": "Financials", "pct": 0.0, "tier": "t-flat"}, {"sym": "XLE", "name": "Energy", "pct": -0.3, "tier": "t-flat"}, {"sym": "XLV", "name": "Healthcare", "pct": 1.62, "tier": "t-up"}, {"sym": "XLY", "name": "Consumer Disc.", "pct": 1.53, "tier": "t-up"}, {"sym": "XLI", "name": "Industrials", "pct": 1.78, "tier": "t-up"}, {"sym": "XLP", "name": "Consumer Stapl.", "pct": 1.51, "tier": "t-up"}, {"sym": "XLU", "name": "Utilities", "pct": 1.9, "tier": "t-up"}, {"sym": "XLRE", "name": "Real Estate", "pct": 1.56, "tier": "t-up"}, {"sym": "XLB", "name": "Materials", "pct": 0.77, "tier": "t-up"}, {"sym": "XLC", "name": "Comm. Services", "pct": 1.24, "tier": "t-up"}];
+var PC={catalyst:"#DB4437",rvol:"#F4B400",pa:"#1A73E8",float:"#9c27b0",price:"#00bcd4",sector:"#0F9D58"};
+var PM={catalyst:15,rvol:12,pa:10,float:8,price:5,sector:5};
+var PL={catalyst:"Catalyst",rvol:"RVOL",pa:"Price Act.",float:"Float",price:"Px Range",sector:"Sector"};
+var cf='all';
+function init(){buildHeatmap();buildDeltas();buildTable(TICKERS,true);buildCatTape();}
+var sfMode=true;
+function toggleScoreFilter(){
+  sfMode=!sfMode;
+  var btn=document.getElementById('sf-btn');
+  btn.textContent=sfMode?'Score ≥15 Active (click for all)':'Showing All (click for ≥15)';
+  btn.className=sfMode?'sf-btn active':'sf-btn';
+  buildTable(TICKERS,sfMode);
+}
+function buildHeatmap(){
+  var g=document.getElementById('heatmap-grid');
+  var s=SECTORS.slice().sort(function(a,b){return b.pct-a.pct});
+  document.getElementById('leaders-txt').textContent=s.slice(0,3).map(function(x){return x.sym+" "+(x.pct>=0?"+":"")+x.pct.toFixed(2)+"%"}).join(" · ")||"—";
+  document.getElementById('laggards-txt').textContent=s.slice(-3).map(function(x){return x.sym+" "+x.pct.toFixed(2)+"%"}).join(" · ")||"—";
+  g.innerHTML=SECTORS.map(function(s){
+    return '<div class="tile '+s.tier+'" onclick="window.open(\'https://elite.finviz.com/quote.ashx?t='+s.sym+'\',\'_blank\')" title="'+s.name+'">'+
+      '<div class="t-sym">'+s.sym+'</div><div class="t-pct">'+(s.pct>=0?"+":"")+s.pct.toFixed(2)+'%</div><div class="t-name">'+s.name+'</div></div>';
+  }).join('');
+}
+function buildDeltas(){
+  var el=document.getElementById('delta-body');
+  el.innerHTML=DELTAS.map(function(d,i){
+    return '<div class="delta-item '+d.type+'" onclick="tgD('+i+',this)">'+
+      (d.detail?'<span class="d-arrow" id="da'+i+'">▼</span>':'')+d.icon+' '+d.text+
+      (d.detail?'<div class="delta-detail" id="dd'+i+'">'+d.detail+'</div>':'')+
+    '</div>';
+  }).join('');
+}
+function tgD(i,el){
+  var dd=document.getElementById('dd'+i);
+  if(!dd)return;
+  el.classList.toggle('open');
+  document.getElementById('da'+i).textContent=el.classList.contains('open')?'▲':'▼';
+}
+function buildTable(tickers,scoreFilter){
+  var tb=document.getElementById('tbl-body');
+  tb.innerHTML='';
+  var n=0;
+  tickers.forEach(function(t){
+    var show=(cf==='all'||cf===t.dec||(cf==='catalyst'&&t.catalyst_count>0))&&(!scoreFilter||t.score>=15);
+    if(!show)return;n++;
+    var dc='dec-'+(t.dec==='GO'?'go':t.dec==='WAIT'?'wait':'avoid');
+    var cc=t.chg>0?'up':t.chg<0?'dn':'nt',gc=t.gap>0?'up':t.gap<0?'dn':'nt';
+    var sp=Math.round(t.score/55*100);
+    var dots='<div class="crit-dots">';
+    for(var j=0;j<t.criteria_total;j++)dots+='<div class="crit-dot" style="background:'+(j<t.criteria_met?'#0F9D58':'#2a2a4e')+'"></div>';
+    dots+='</div><span class="nt" style="font-size:10px">'+t.criteria_met+'/'+t.criteria_total+'</span>';
+    var sl=(t.social&&t.social.sentiment_label)||'—';
+    var sc=sl.includes('Bull')?'up':sl.includes('Bear')?'dn':'nt';
+    var stc=(t.social&&t.social.stocktwits&&t.social.stocktwits.count)||0;
+    var soc='<span class="'+sc+'" style="font-size:11px">'+sl+'</span>'+(stc?'<span class="nt" style="font-size:10px"> '+stc+'</span>':'');
+    var cath=t.top_cat?
+      '<span class="'+(t.catalyst_tier==='high_impact'?'tag-hi':t.catalyst_tier==='medium_impact'?'tag-med':'tag-low')+'">'+(t.catalyst_tier==='high_impact'?'🔥':t.catalyst_tier==='medium_impact'?'⚡':'📰')+'</span> '+
+      (t.top_cat.title||'').substring(0,40)+((t.top_cat.title||'').length>40?'…':''):'—';
+    var fu='https://elite.finviz.com/quote.ashx?t='+t.sym;
+    tb.innerHTML+=
+      '<tr class="data-row" onclick="tgR(\''+t.sym+'\',this)" id="row-'+t.sym+'">'+
+      '<td><a class="sym-link" href="'+fu+'" target="_blank" onclick="event.stopPropagation()">'+t.sym+'</a></td>'+
+      '<td><span style="font-weight:700">'+t.score+'</span><div class="sbar-wrap"><div class="sbar-fill" style="width:'+sp+'%"></div></div></td>'+
+      '<td class="'+dc+'">'+t.dec+'</td>'+
+      '<td class="'+(t.rvol>=5?'up':'nt')+'">'+t.rvol.toFixed(1)+'x</td>'+
+      '<td>$'+t.price.toFixed(2)+'</td>'+
+      '<td class="'+cc+'">'+(t.chg>=0?'+':'')+t.chg.toFixed(1)+'%</td>'+
+      '<td class="'+gc+'">'+(t.gap>=0?'+':'')+t.gap.toFixed(1)+'%</td>'+
+      '<td class="'+(t.float_m<10?'up':'nt')+'">'+t.float_m.toFixed(1)+'M</td>'+
+      '<td>'+t.country+'</td>'+
+      '<td style="font-size:11px;color:#9A9AB0">'+t.sector+'</td>'+
+      '<td>'+dots+'</td>'+
+      '<td>'+soc+'</td>'+
+      '<td style="font-size:11px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+cath+'</td>'+
+      '<td><a href="'+fu+'" target="_blank" onclick="event.stopPropagation()"><button class="fv-btn">FV</button></a></td>'+
+      '</tr>'+
+      '<tr class="detail-row" id="dr-'+t.sym+'"><td colspan="14">'+buildDet(t)+'</td></tr>';
+  });
+  document.getElementById('setups-count').textContent=n+' tickers';
+}
+function buildDet(t){
+  var fu='https://elite.finviz.com/quote.ashx?t='+t.sym;
+  var cu='https://elite.finviz.com/chart.ashx?t='+t.sym+'&ty=c&ta=1&p=d&s=m';
+  var ph='<div class="dg"><div class="dg-lbl">Pillars</div>';
+  ['catalyst','rvol','pa','float','price','sector'].forEach(function(k){
+    var pts=t.pillars[k]||0,max=PM[k],pct=max>0?Math.round(pts/max*100):0;
+    ph+='<div class="pm-row"><span class="pm-name">'+PL[k]+'</span><div class="pm-wrap"><div class="pm-bar" style="width:'+pct+'%;background:'+PC[k]+'"></div></div><span class="pm-pts">'+pts+'/'+max+'</span></div>';
+  });ph+='</div>';
+  var clab={has_catalyst:'Catalyst',has_high_impact:'High Impact',has_fresh_catalyst:'Fresh <12h',rvol_3:'RVOL≥3x',rvol_5:'RVOL≥5x',float_50:'Float≤50M',price_ok:'Price OK',gap_5:'Gap≥5%',chg_10:'Chg≥10%'};
+  var ch='<div class="dg"><div class="dg-lbl">Criteria</div><div class="crit-wrap">';
+  Object.keys(clab).forEach(function(k){var m=t.criteria[k];ch+='<span class="crit '+(m?'met':'unmet')+'">'+(m?'✅':'⬜')+' '+clab[k]+'</span>';});ch+='</div></div>';
+  var chart='<div class="dg"><div class="dg-lbl">Daily Chart (login to Finviz Elite)</div>'+
+    '<div class="chart-container"><a href="'+fu+'" target="_blank">'+
+    '<img src="'+cu+'" alt="'+t.sym+'" onerror="this.parentElement.parentElement.innerHTML=\'<div class=chart-fallback><a href='+fu+' target=_blank style=color:#1A73E8>Open '+t.sym+' on Finviz Elite →</a></div>\">'+
+    '</a></div></div>';
+  var cath='<div class="dg" style="grid-column:span 2;min-width:200px"><div class="dg-lbl">Catalysts (click headline for summary)</div>';
+  if(t.cats&&t.cats.length){
+    t.cats.slice(0,5).forEach(function(c){
+      var tc=c.tier==='high_impact'?'tag-hi':c.tier==='medium_impact'?'tag-med':'tag-low';
+      var te=c.tier==='high_impact'?'🔥':c.tier==='medium_impact'?'⚡':'📰';
+      cath+='<div class="cat-item" onclick="this.classList.toggle(\'open\')">'+
+        '<div class="cat-time"><span class="'+tc+'">'+te+' '+c.tier.replace('_impact',' impact')+'</span> · '+c.age.toFixed(1)+'h · '+c.source+'</div>'+
+        '<div class="cat-title-text">'+(c.url?'<a href="'+c.url+'" target="_blank" onclick="event.stopPropagation()" style="color:inherit">'+c.title+'</a>':c.title)+'</div>'+
+        (c.summary?'<div class="cat-summary">💡 '+c.summary+'</div>':'')+
+      '</div>';
+    });
+  }else{cath+='<div style="color:#9A9AB0;font-size:11px">No catalysts found</div>';}
+  cath+='</div>';
+  var soc=t.social||{},st=soc.stocktwits||{},rd=soc.reddit||{},sl=soc.sentiment_label||'Neutral';
+  var sc=sl.includes('Bull')?'up':sl.includes('Bear')?'dn':'nt';
+  var sh='<div class="dg"><div class="dg-lbl">Social Sentiment</div>'+
+    '<div style="font-size:14px;font-weight:800" class="'+sc+'">'+sl+'</div>'+
+    '<div style="margin-top:6px"><span class="social-chip">💬 '+((st.count)||0)+'</span>'+
+    '<span class="social-chip '+(st.bullish_pct>=60?'up':st.bullish_pct<=40?'dn':'nt')+'">'+((st.bullish_pct)||50)+'% bull</span>'+
+    (rd.count?'<span class="social-chip">📱 Reddit: '+rd.count+'</span>':'')+
+    '</div><a href="https://stocktwits.com/symbol/'+t.sym+'" target="_blank" style="font-size:10px;color:#1A73E8;display:block;margin-top:5px">StockTwits →</a></div>';
+  var mk='<div class="dg"><div class="dg-lbl">Market Data</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11px">'+
+    '<span class="nt">Price</span><span>$'+t.price.toFixed(2)+'</span>'+
+    '<span class="nt">Chg</span><span class="'+(t.chg>=0?'up':'dn')+'">'+(t.chg>=0?'+':'')+t.chg.toFixed(1)+'%</span>'+
+    '<span class="nt">Gap</span><span class="'+(t.gap>=0?'up':'dn')+'">'+(t.gap>=0?'+':'')+t.gap.toFixed(1)+'%</span>'+
+    '<span class="nt">RVOL</span><span>'+t.rvol.toFixed(1)+'x</span>'+
+    '<span class="nt">Float</span><span class="'+(t.float_m<10?'up':'nt')+'">'+t.float_m.toFixed(1)+'M</span>'+
+    '<span class="nt">Volume</span><span>'+t.vol.toLocaleString()+'</span></div></div>';
+  var lk='<div class="dg"><div class="dg-lbl">Links</div>'+
+    '<div style="display:flex;flex-direction:column;gap:5px">'+
+    '<a href="'+fu+'" target="_blank" style="background:#1A73E8;color:#fff;border-radius:6px;padding:6px;font-size:11px;font-weight:700;text-align:center;display:block">📊 Finviz Elite Chart</a>'+
+    '<a href="https://elite.finviz.com/news.ashx?t='+t.sym+'" target="_blank" style="background:#252540;color:#ccc;border-radius:6px;padding:5px;font-size:11px;text-align:center;display:block">📰 Finviz News</a>'+
+    '<a href="https://stocktwits.com/symbol/'+t.sym+'" target="_blank" style="background:#252540;color:#ccc;border-radius:6px;padding:5px;font-size:11px;text-align:center;display:block">💬 StockTwits</a>'+
+    '</div></div>';
+  return '<div class="detail-inner">'+ph+ch+chart+cath+sh+mk+lk+'</div>';
+}
+function tgR(sym,row){
+  var dr=document.getElementById('dr-'+sym);
+  var open=dr.style.display==='table-row';
+  document.querySelectorAll('.detail-row').forEach(function(r){r.style.display='none'});
+  document.querySelectorAll('.data-row').forEach(function(r){r.classList.remove('expanded')});
+  if(!open){dr.style.display='table-row';row.classList.add('expanded');}
+}
+function buildCatTape(){
+  var el=document.getElementById('cat-body');
+  el.innerHTML=TICKERS.filter(function(t){return t.cats&&t.cats.length>0}).map(function(t){
+    var rows=t.cats.map(function(c){
+      var tc=c.tier==='high_impact'?'tag-hi':c.tier==='medium_impact'?'tag-med':'tag-low';
+      var te=c.tier==='high_impact'?'🔥':c.tier==='medium_impact'?'⚡':'📰';
+      return '<div class="tape-row"><span class="'+tc+'">'+te+' ['+c.tier.replace('_impact','').toUpperCase()+' · '+c.age.toFixed(1)+'h · '+c.source+']</span> '+
+        (c.url?'<a href="'+c.url+'" target="_blank">'+c.title+'</a>':c.title)+
+        (c.summary?'<div style="font-size:10px;color:#9A9AB0;margin-left:14px;font-style:italic">💡 '+c.summary+'</div>':'')+
+      '</div>';
+    }).join('');
+    return '<div class="tape-sym">'+t.country+' '+t.sym+' · '+t.co+'</div>'+rows;
+  }).join('');
+}
+function filterBy(f){
+  cf=f;
+  var lbl={all:'All',GO:'GO Only',WAIT:'WAIT Only',AVOID:'Avoid Only',catalyst:'Has Catalyst'};
+  document.getElementById('filter-lbl').textContent='Showing: '+lbl[f];
+  document.querySelectorAll('.stat').forEach(function(s){s.classList.remove('active')});
+  var m={all:'s-all',GO:'s-go',WAIT:'s-wait',AVOID:'s-av'};
+  if(m[f])document.getElementById(m[f]).classList.add('active');
+  buildTable(TICKERS,sfMode);
+  jumpTo('setups');
+}
+function srt(k){
+  TICKERS.sort(function(a,b){var av=a[k]||0,bv=b[k]||0;return typeof av==='string'?av.localeCompare(bv):bv-av});
+  buildTable(TICKERS,sfMode);
+}
+function tog(id,btn){
+  var el=document.getElementById(id),h=el.style.display==='none';
+  el.style.display=h?'':'none';btn.textContent=h?'▲ hide':'▼ show';
+}
+function jumpTo(id){var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}
+function doCopy(id,btn){
+  var el=document.getElementById(id),txt=el.value.trim(),orig=btn.textContent;
+  if(!txt||txt.startsWith('—')){btn.textContent='Nothing to copy';setTimeout(function(){btn.textContent=orig},1500);return}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){
+      btn.textContent='✅ Copied!';setTimeout(function(){btn.textContent=orig},2000);
+    }).catch(function(){_fallbackCopy(el,btn,orig)});
+  }else{_fallbackCopy(el,btn,orig)}
+}
+function _fallbackCopy(el,btn,orig){
+  var ta=document.createElement('textarea');ta.value=el.value;ta.style.position='fixed';ta.style.left='-9999px';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand('copy');btn.textContent='✅ Copied!'}catch(e){btn.textContent='⚠ Select & Ctrl+C'}
+  document.body.removeChild(ta);setTimeout(function(){btn.textContent=orig},2000);
+}
+init();
+</script></body></html>

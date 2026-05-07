@@ -138,12 +138,17 @@ class CycleState:
         for t in scored:
             sym  = t["symbol"]
             rvol = t.get("relative_volume", 0) or 0
+            _cat = (t.get("top_catalyst") or {}).get("title", "")[:55]
+            _dec = t.get("decision", "")
+            _sc  = t.get("score", 0)
             if rvol >= RVOL_8X_THRESHOLD and sym not in self.rvol8x_seen:
                 self.rvol8x_seen.add(sym)
-                triggers.append({"type": "RVOL_8X", "symbol": sym, "rvol": rvol})
+                triggers.append({"type": "RVOL_8X", "symbol": sym, "rvol": rvol,
+                                 "cat": _cat, "decision": _dec, "score": _sc})
             elif rvol >= RVOL_5X_THRESHOLD and sym not in self.rvol5x_seen:
                 self.rvol5x_seen.add(sym)
-                triggers.append({"type": "RVOL_5X", "symbol": sym, "rvol": rvol})
+                triggers.append({"type": "RVOL_5X", "symbol": sym, "rvol": rvol,
+                                 "cat": _cat, "decision": _dec, "score": _sc})
 
             prev  = self.prev_score.get(sym, 0)
             delta = t.get("score", 0) - prev
@@ -158,6 +163,7 @@ class CycleState:
         self.prev_go    = {t["symbol"] for t in scored if t.get("decision") == "GO"}
         self.prev_rvol  = {t["symbol"]: t.get("relative_volume",0) or 0 for t in scored}
         self.prev_score = {t["symbol"]: t.get("score",0) for t in scored}
+        self.last_scored = scored  # Keep for news-triggered re-critique
 
 
 # "   "    Alert builder "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
@@ -170,27 +176,85 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
     for t in triggers:
         if t["type"] == "NEW_GO":
             sym = t["symbol"]
+            _cat = t.get("cat", "")
+            _sc = t["score"]; _rv = t.get("rvol",0)
+
+            # Inline Scalp Critic check
+            critic_line = ""
+            _verdict = ""
+            try:
+                from scalp_critic_agent import check_danger_flags, validate_catalyst, llm_critique, industry_fallback
+                _ticker = {"symbol": sym, "catalyst": _cat, "decision": "GO",
+                           "price": 0, "relative_volume": _rv, "float_m": 0}
+                _flags = check_danger_flags(sym, _ticker)
+                _cv, _cs, _ = validate_catalyst(sym, sym, _cat)
+                _ind = industry_fallback(sym) or ""
+                _crit = llm_critique(_ticker, _flags, _cv, _cs, _ind)
+                _verdict = _crit.get("verdict", "?")
+                _reasoning = _crit.get("reasoning", "")[:60]
+                if _verdict == "BLOCK":
+                    critic_line = f"\n  \U0001f6ab Critic: *BLOCK* — _{_reasoning}_"
+                elif _verdict == "DOWNGRADE":
+                    critic_line = f"\n  \u26a0\ufe0f Critic: *DOWNGRADE* — _{_reasoning}_"
+                elif _verdict == "CONFIRM":
+                    critic_line = f"\n  \u2705 Critic: CONFIRM"
+            except Exception:
+                pass
+
+            # Quick social sentiment
+            social_line = ""
+            try:
+                from social_scalp_scanner import get_social_sentiment
+                _sent = get_social_sentiment(sym)
+                if _sent and _sent.get("label"):
+                    social_line = f"\n  \U0001f4ca Social: {_sent['label']}"
+            except Exception:
+                pass
+
+            # Ollama one-liner
             ai_line = ""
             try:
                 import sys as _sys, re as _re
-                _sys.path.insert(0, str(root / "scripts"))
                 from scoring import _ollama_serialized
-                _p = f"/no_think\nOne sentence why {sym} is a scalp GO. Score={t['score']} RVOL={t.get('rvol',0):.1f}x. Max 12 words."
-                _r = _ollama_serialized(_p, num_predict=50, timeout=20, model="qwen3:1.7b")
+                _p = f"/no_think\nOne sentence why {sym} is a scalp GO. Score={_sc} RVOL={_rv:.1f}x. Max 12 words."
+                _r = _ollama_serialized(_p, num_predict=50, timeout=20)
                 _r = _re.sub(r"<think>.*?</think>", "", _r, flags=_re.DOTALL).strip()
                 if _r: ai_line = "\n  \U0001f916 _" + _r[:80] + "_"
             except Exception: pass
-            _cat = t.get("cat", "")
-            _sc = t["score"]; _rv = t.get("rvol",0)
-            lines.append(f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x\n  _{_cat}_" + ai_line)
+
+            lines.append(f"\U0001f3af *NEW GO* \u2014 *{sym}* score={_sc} RVOL {_rv:.1f}x\n  _{_cat}_" + critic_line + social_line + ai_line)
+
+            # Live WS broadcast — non-fatal
+            try:
+                from scalp_ws_client import broadcast_scalp_update
+                broadcast_scalp_update({
+                    "symbol": sym,
+                    "grade": t.get("grade", ""),
+                    "score": _sc,
+                    "decision": "GO",
+                    "change_percent": str(t.get("change_pct", "")),
+                    "rvol": _rv,
+                    "critic_verdict": _verdict,
+                    "catalyst_verified": True,
+                    "source": "continuous",
+                })
+            except Exception:
+                pass
+
         elif t["type"] == "HALT":
             lines.append(f"\U0001f6a8 *HALT* \u2014 *{t['symbol']}*  {t.get('reason','')}")
         elif t["type"] == "RESUMED":
             lines.append(f"\u2705 *RESUMED* \u2014 *{t['symbol']}*")
         elif t["type"] == "RVOL_8X":
-            lines.append(f"\U0001f680 *RVOL 8x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x")
+            _rl = f"\U0001f680 *RVOL 8x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
+            if t.get("decision"): _rl += f"  [{t['decision']}]"
+            if t.get("cat"): _rl += f"\n  _{t['cat']}_"
+            lines.append(_rl)
         elif t["type"] == "RVOL_5X":
-            lines.append(f"\U0001f680 *RVOL 5x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x")
+            _rl = f"\U0001f680 *RVOL 5x* \u2014 *{t['symbol']}*  {t['rvol']:.1f}x"
+            if t.get("decision"): _rl += f"  [{t['decision']}]"
+            if t.get("cat"): _rl += f"\n  _{t['cat']}_"
+            lines.append(_rl)
         elif t["type"] == "SCORE_JUMP":
             lines.append(f"\U0001f4c8 *+{t['delta']}pts* \u2014 *{t['symbol']}*  {t['prev']}\u2192{t['score']} ({t['decision']})")
     return "\n".join(lines)
@@ -213,6 +277,48 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
         print(f"  [live] {len(tickers)} tickers")
     except Exception as e:
         print(f"  [live] ingestion error: {e}"); return
+
+    # Inject social/news candidates from scalp_scan_results (scored by social_scalp_scanner)
+    try:
+        from db_adapter import _execute
+        _existing_syms = {t.get("symbol","") for t in tickers}
+        _social = _execute("""
+            SELECT DISTINCT ON (symbol)
+                symbol, score, rvol, price, change_pct, gap_pct, float_m,
+                sector, industry, country, sources
+            FROM scalp_scan_results
+            WHERE scanned_at > NOW() - INTERVAL '4 hours'
+              AND score >= 25
+            ORDER BY symbol, scanned_at DESC
+        """) or []
+        _injected = 0
+        for sr in _social:
+            sym = sr.get("symbol","")
+            if sym in _existing_syms:
+                continue
+            tickers.append({
+                "symbol": sym,
+                "price": float(sr.get("price") or 0),
+                "change_percent": float(sr.get("change_pct") or 0),
+                "gap_percent": float(sr.get("gap_pct") or 0),
+                "relative_volume": float(sr.get("rvol") or 0),
+                "float_m": float(sr.get("float_m") or 0),
+                "float_shares": 0,
+                "sector": sr.get("sector") or "",
+                "industry": sr.get("industry") or "",
+                "country": sr.get("country") or "",
+                "volume": 0, "avg_volume": 0,
+                "source_count": 1,
+                "source_lists": ",".join(sr.get("sources") or []),
+                "run_window": run_label,
+                "_source": "social",
+            })
+            _existing_syms.add(sym)
+            _injected += 1
+        if _injected:
+            print(f"  [live] +{_injected} social/news candidates injected")
+    except Exception as e:
+        print(f"  [live] social inject warning: {e}")
 
     market: Dict = {}
     try:
@@ -297,6 +403,57 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
     triggers = state.detect_triggers(scored, halt_data)
     state.update(scored)
 
+    # Write live scores so API/command center stays in sync
+    try:
+        import json as _json
+        _live_state = {
+            "date": date_str, "run_label": run_label, "time": time_str,
+            "tickers": [{
+                "symbol": t.get("symbol",""), "score": t.get("score",0),
+                "decision": t.get("decision",""), "relative_volume": t.get("relative_volume",0),
+                "catalyst": (t.get("top_catalyst") or {}).get("title","")[:80],
+                "catalyst_verified": t.get("catalyst_verified"),
+                "industry": t.get("industry",""), "sector": t.get("sector",""),
+            } for t in scored if t.get("decision") in ("GO","WAIT")]
+        }
+        (root / "data" / "live_run_state.json").write_text(_json.dumps(_live_state, indent=2))
+    except Exception as _e:
+        print(f"  [live] state write error: {_e}")
+
+    # Persist GO/WAIT tickers to trade_ai_scans DB
+    try:
+        from db_adapter import _execute
+        _run_id = f"{date_str}_{run_label}_live_{time_str.replace(':','')}"
+        _go_wait = [t for t in scored if t.get("decision") in ("GO", "WAIT")]
+        for t in _go_wait:
+            _execute("""
+                INSERT INTO trade_ai_scans (
+                    run_id, run_date, run_label, run_type, symbol, score, grade, decision,
+                    rvol, price, change_pct, gap_pct, float_m,
+                    catalyst, catalyst_verified, catalyst_confidence,
+                    disqualified, sector, industry, country, source
+                ) VALUES (
+                    %s, %s, %s, 'live', %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s
+                )
+            """, (
+                _run_id, date_str, run_label, t.get("symbol",""),
+                t.get("score",0), t.get("grade",""), t.get("decision",""),
+                t.get("relative_volume"), t.get("price"),
+                t.get("change_percent"), t.get("gap_percent"), t.get("float_m"),
+                (t.get("top_catalyst") or {}).get("title","")[:200],
+                t.get("catalyst_verified"), t.get("catalyst_confidence"),
+                t.get("disqualified", False),
+                t.get("sector",""), t.get("industry",""), t.get("country",""),
+                t.get("_source", "screener"),
+            ))
+        if _go_wait:
+            print(f"  [live] {len(_go_wait)} tickers → trade_ai_scans")
+    except Exception as _e:
+        print(f"  [live] db persist error: {_e}")
+
     if triggers:
         print(f"  [live] {len(triggers)} trigger(s): {[t['type'] for t in triggers]}")
         msg = _build_live_alert(triggers, time_str, market)
@@ -344,7 +501,61 @@ def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
         print(f"  [FULL]            Pipeline error: {e}")
 
 
-# "   "    Schedule helpers "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
+# ─── News-triggered re-critique ───────────────────────────────────────────────
+
+def _check_news_and_recritique(root: Path, state, date_str: str) -> None:
+    """Check GO/WAIT tickers for new breaking news. If found, re-run Scalp Critic
+    and Telegram only if verdict changes. Called after each live cycle."""
+    from trade_ai_news_monitor import check_significant_news, re_critique_ticker, send_verdict_change_telegram, is_market_hours
+
+    if not is_market_hours():
+        return
+
+    # Get active tickers from state
+    scored = state.last_scored if hasattr(state, 'last_scored') else []
+    if not scored:
+        return
+
+    active = [t for t in scored if t.get("decision") in ("GO", "WAIT")]
+    if not active:
+        return
+
+    # Track last news check time per ticker in state
+    if not hasattr(state, '_news_check_times'):
+        state._news_check_times = {}
+
+    now_ts = time.time()
+    changes = []
+
+    for t in active:
+        sym = t.get("symbol", "")
+        if not sym:
+            continue
+
+        # Skip if checked < 14 min ago
+        last = state._news_check_times.get(sym, 0)
+        if (now_ts - last) < 840:  # 14 min
+            continue
+
+        state._news_check_times[sym] = now_ts
+        news = check_significant_news(sym, since_minutes=16)
+
+        if not news:
+            continue
+
+        print(f"  [news] {sym}: new headline — {news[0]['headline'][:60]}")
+        result = re_critique_ticker(sym, news[0]['headline'])
+
+        if result.get('verdict_changed'):
+            print(f"  [news] {sym}: VERDICT CHANGED → {result['new_verdict']}")
+            changes.append(result)
+
+    if changes:
+        send_verdict_change_telegram(changes)
+        print(f"  [news] {len(changes)} verdict change(s) — Telegram sent")
+
+
+# "   "    Schedule helpers "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "
 
 def _hm_to_min(hm: str) -> int:
     h, m = hm.split(":")
@@ -516,6 +727,12 @@ def main() -> int:
                         print(f"  [runner] {_dtype} digest fired")
                     except Exception as _e:
                         print(f"  [runner] digest error: {_e}")
+        # News-triggered re-critique on active tickers
+        try:
+            _check_news_and_recritique(root, state, date_str)
+        except Exception as _ne:
+            print(f"  [runner] news check error (non-fatal): {_ne}")
+
         # Sleep until next interval boundary
         elapsed = (datetime.now() - now).total_seconds()
         sleep   = max(10, interval * 60 - elapsed)

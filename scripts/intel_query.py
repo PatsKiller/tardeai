@@ -14,11 +14,218 @@ Usage:
 
     # Get a text summary for injection into LLM prompts
     summary = get_intel_summary(agent="Alex", symbol="V", max_chars=800)
+
+Agent Improvements (v3.7):
+    #4 — Portfolio heat injected into every prompt via get_portfolio_heat_context()
+    #6 — Market session context injected via get_market_session_context()
+    #2 — Cross-agent reasoning (not just verdict) via get_cross_agent_context()
 """
 import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+# ── Improvement #6: Market Session Context ──────────────────────────────────
+# Injected into every agent prompt so agents know if they're analyzing
+# a pre-market gap, live market move, after-hours print, or overnight trigger.
+
+def get_market_session_context() -> str:
+    """Return current market session as a one-line context string for agent prompts.
+
+    Agents need to know session because:
+    - PRE-MARKET stop: may reverse at open — wait for confirmation
+    - MARKET HOURS stop: confirmed move — act with conviction
+    - AFTER-HOURS stop: illiquid, may gap opposite — hold until open
+    - OVERNIGHT: triggered while market closed — confirm at open before acting
+    """
+    from datetime import datetime, timezone
+    try:
+        import pytz
+        et = datetime.now(pytz.timezone("US/Eastern"))
+    except ImportError:
+        # Fallback if pytz not installed: use UTC offset -4 or -5
+        import time as _time
+        utc_now = datetime.now(timezone.utc)
+        # EST = UTC-5, EDT = UTC-4 (rough: EDT Mar-Nov)
+        month = utc_now.month
+        offset_hours = -4 if 3 <= month <= 11 else -5
+        from datetime import timedelta
+        et = utc_now + timedelta(hours=offset_hours)
+
+    h, m = et.hour, et.minute
+    mins_since_midnight = h * 60 + m
+    time_str = et.strftime("%I:%M %p ET") if hasattr(et, 'strftime') else f"{h:02d}:{m:02d} ET"
+
+    # Market hours: 9:30 AM – 4:00 PM ET = minutes 570–960
+    if 570 <= mins_since_midnight < 960:
+        mins_to_close = 960 - mins_since_midnight
+        return (f"MARKET SESSION: MARKET HOURS ({time_str}, {mins_to_close}min to close). "
+                f"Live prices confirmed. Volume-backed moves. Act with normal conviction.")
+    # Pre-market: 4:00 AM – 9:30 AM ET = minutes 240–570
+    elif 240 <= mins_since_midnight < 570:
+        mins_to_open = 570 - mins_since_midnight
+        return (f"MARKET SESSION: PRE-MARKET ({time_str}, {mins_to_open}min to open). "
+                f"Low liquidity — prices may gap at open. Bias toward waiting for "
+                f"market-hours confirmation before acting on stop triggers.")
+    # After-hours: 4:00 PM – 8:00 PM ET = minutes 960–1200
+    elif 960 <= mins_since_midnight < 1200:
+        return (f"MARKET SESSION: AFTER-HOURS ({time_str}). "
+                f"Illiquid — stop triggers here may reverse at next open. "
+                f"Do NOT recommend immediate action. Flag for morning review.")
+    # Overnight: 8:00 PM – 4:00 AM ET = minutes 1200–1440 or 0–240
+    else:
+        return (f"MARKET SESSION: OVERNIGHT ({time_str}). "
+                f"Market closed. Any price triggers are after-hours/futures data. "
+                f"Flag for morning confirmation — do not act on overnight prices alone.")
+
+
+# ── Improvement #4: Portfolio Heat Context ──────────────────────────────────
+# Portfolio heat = sum(unrealized losses) / total_portfolio_value.
+# Agents must know heat level because:
+# - Heat >8%: CRITICAL — honor ALL stops, no new positions
+# - Heat >5%: elevated — bias toward stops over holds on borderline cases
+# - Heat >3%: moderate — normal stop discipline
+# - Heat <3%: low — can hold borderline stops, consider adding on dips
+
+def get_portfolio_heat_context() -> str:
+    """Read current portfolio heat from risk_management.json and return as context string.
+
+    This single injection changes agent behavior on borderline stop decisions.
+    LMT (HOLD 50% vs TRIM 85%) would have resolved faster if Risk saw heat=6.2%.
+    """
+    risk_files = [
+        PROJECT_ROOT / "data" / "portfolios" / "state" / "risk_management.json",
+        PROJECT_ROOT / "data" / "risk_management.json",
+    ]
+    for rf in risk_files:
+        if rf.exists():
+            try:
+                data = json.loads(rf.read_text())
+                heat = float(data.get("portfolio_heat_pct",
+                             data.get("heat_pct",
+                             data.get("heat", 0))) or 0)
+                protected_pct = data.get("protected_pct", data.get("coverage_pct", 0))
+
+                if heat > 8:
+                    level = "CRITICAL"
+                    directive = ("HONOR ALL STOPS IMMEDIATELY. "
+                                 "Do not hold borderline positions. "
+                                 "No new position entries under any circumstances.")
+                elif heat > 5:
+                    level = "ELEVATED"
+                    directive = ("Bias toward honoring stops over holding. "
+                                 "When in doubt on a borderline stop, TRIM. "
+                                 "Do not add to existing positions.")
+                elif heat > 3:
+                    level = "MODERATE"
+                    directive = "Normal stop discipline applies. Review stops ≥2× ATR from entry."
+                else:
+                    level = "LOW"
+                    directive = ("Normal analysis. Can hold borderline stops if thesis intact. "
+                                 "May consider adding on dips for high-conviction positions.")
+
+                protection_note = f" Portfolio coverage: {protected_pct:.0f}% protected." if protected_pct else ""
+                return (f"PORTFOLIO HEAT: {heat:.1f}% [{level}].{protection_note} "
+                        f"Directive: {directive}")
+            except Exception:
+                pass
+
+    # Fallback: try DB
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COALESCE(
+                (SELECT (SUM(CASE WHEN unrealized_gain_loss < 0
+                             THEN ABS(unrealized_gain_loss) ELSE 0 END)
+                         / NULLIF(SUM(market_value), 0)) * 100
+                 FROM holdings WHERE account_type != '401k'),
+                0
+            ) as heat_pct
+        """)
+        row = cur.fetchone()
+        conn.close()
+        if row and row[0]:
+            heat = float(row[0])
+            level = "CRITICAL" if heat > 8 else "ELEVATED" if heat > 5 else "MODERATE" if heat > 3 else "LOW"
+            return f"PORTFOLIO HEAT: {heat:.1f}% [{level}]. Use heat level to calibrate stop decisions."
+    except Exception:
+        pass
+
+    return "PORTFOLIO HEAT: unavailable (use normal stop discipline)."
+
+
+# ── Improvement #2: Cross-Agent Reasoning Context ───────────────────────────
+# Previously agents only saw: "Steph: TRIM (85%)"
+# Now agents see: "Steph (85%): TRIM — stop breach + elevated heat, income not at risk"
+# This lets Risk respond to Steph's ACTUAL argument, not just the label.
+# Fewer conflicts, higher consensus quality, better LMT-style decisions.
+
+def get_cross_agent_context(symbol: str, exclude_agent: str = None,
+                            hours: int = 48) -> str:
+    """Get recent agent analyses for a symbol, including their reasoning.
+
+    Returns formatted string showing what other agents said AND WHY,
+    so the current agent can respond to their arguments not just their verdicts.
+
+    Args:
+        symbol: The ticker to look up
+        exclude_agent: The current agent (don't show their own prior result)
+        hours: How far back to look (default 48h — catches same-day analyses)
+    """
+    try:
+        import psycopg2.extras
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT agent_name, recommendation, confidence_score,
+                   summary, created_at
+            FROM watchlist_agent_results
+            WHERE symbol = %s
+              AND created_at > NOW() - INTERVAL '%s hours'
+              AND status = 'completed'
+            ORDER BY created_at DESC
+        """, (symbol.upper(), hours))
+        rows = cur.fetchall()
+        conn.close()
+
+        if not rows:
+            return ""
+
+        seen = set()
+        lines = [f"OTHER AGENT VIEWS ON {symbol} (read these before forming your own view):"]
+        for r in rows:
+            agent = r.get("agent_name", "?")
+            if exclude_agent and agent.lower() == exclude_agent.lower():
+                continue
+            if agent in seen:
+                continue
+            seen.add(agent)
+
+            rec = r.get("recommendation", "?")
+            conf = int(float(r.get("confidence_score") or 0) * 100)
+            # Include summary/reasoning — this is the key improvement over just the label
+            reasoning = (r.get("summary") or "").strip()
+            if reasoning and len(reasoning) > 200:
+                reasoning = reasoning[:200].rsplit(" ", 1)[0] + "..."
+
+            agent_display = agent.upper().replace("_AGENT", "").replace("RISK_AGENT", "RISK")
+            line = f"  {agent_display} ({conf}%): {rec}"
+            if reasoning:
+                line += f" — {reasoning}"
+            else:
+                line += " — (no reasoning recorded)"
+            lines.append(line)
+
+        if len(lines) == 1:  # Only the header, no actual results
+            return ""
+
+        lines.append("Consider whether these views change your analysis. You may agree, disagree, or note a conflict.")
+        return "\n".join(lines)
+
+    except Exception:
+        return ""
 
 
 def _get_conn():
@@ -296,6 +503,37 @@ def get_intel_summary(agent: str = None, symbol: str = None,
             extra_context.append(macro)
     except Exception:
         pass
+
+    # ── IMPROVEMENT #4: Portfolio heat context ──────────────────────────
+    # Agents need live heat level to calibrate stop decisions.
+    # At 6.2% heat, borderline holds become trims. Prevents LMT-style conflicts.
+    try:
+        heat_ctx = get_portfolio_heat_context()
+        if heat_ctx:
+            extra_context.append(heat_ctx)
+    except Exception:
+        pass
+
+    # ── IMPROVEMENT #6: Market session context ──────────────────────────
+    # Agents need to know if this is a pre-market trigger (may reverse),
+    # confirmed market-hours move, or overnight trigger (wait for open).
+    try:
+        session_ctx = get_market_session_context()
+        if session_ctx:
+            extra_context.append(session_ctx)
+    except Exception:
+        pass
+
+    # ── IMPROVEMENT #2: Cross-agent reasoning context ───────────────────
+    # Show other agents' verdicts AND their reasoning, not just the label.
+    # "Steph (85%): TRIM — stop breach + heat" lets Risk respond to the argument.
+    if symbol:
+        try:
+            cross_ctx = get_cross_agent_context(symbol, exclude_agent=agent)
+            if cross_ctx:
+                extra_context.append(cross_ctx)
+        except Exception:
+            pass
 
     # Qualified intelligence highlights (top items across all sources)
     try:
