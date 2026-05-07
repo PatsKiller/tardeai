@@ -779,7 +779,12 @@ def create_proposal(symbol: str, strategy_id: str = 'momentum_scalp',
         }
         q_pass, q_codes = proposal_quality_check(quality_candidate, conn)
 
-        expires = datetime.now(timezone.utc) + timedelta(hours=4)
+        # Session 24A: Strategy-aware expiry
+        try:
+            from proposal_lifecycle import get_expiry_datetime
+            expires = get_expiry_datetime(strategy_id)
+        except Exception:
+            expires = datetime.now(timezone.utc) + timedelta(hours=4)
 
         cur = conn.cursor()
         cur.execute("""
@@ -886,7 +891,13 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
             proposal_warning = f"Latest scan: {scan_decision or 'unknown'}, critic: {critic or 'N/A'}. Manual override — requires dashboard confirmation."
             decision_state = 'CAUTIOUS_MANUAL_TEST'
 
-        expires = datetime.now(timezone.utc) + timedelta(hours=4)
+        # Session 24A: Strategy-aware expiry
+        try:
+            from proposal_lifecycle import get_expiry_datetime
+            _strat = strategy_id or 'momentum_scalp'
+            expires = get_expiry_datetime(_strat)
+        except Exception:
+            expires = datetime.now(timezone.utc) + timedelta(hours=4)
 
         cur = conn.cursor()
 
@@ -1119,18 +1130,31 @@ def get_pending_proposals() -> list:
 
 
 def expire_old_proposals():
-    """Expire proposals past their expiry time."""
+    """Expire proposals past their expiry time. Session 24A: strategy-aware."""
     conn = get_conn()
     try:
         cur = conn.cursor()
+        # Intraday: expire at EOD / past expires_at
         cur.execute("""
             UPDATE paper_trade_proposals
-            SET status='EXPIRED', updated_at=NOW()
+            SET status='EXPIRED', lifecycle_status='EXPIRED_INTRADAY', updated_at=NOW()
             WHERE status='PENDING' AND expires_at < NOW()
+            AND strategy_id IN ('momentum_scalp', 'gap_and_go')
         """)
-        expired = cur.rowcount
+        intraday_expired = cur.rowcount
+
+        # Overnight: only expire if past max_expires_at (or expires_at if no max set)
+        cur.execute("""
+            UPDATE paper_trade_proposals
+            SET status='EXPIRED', lifecycle_status='EXPIRED_MAX_WINDOW', updated_at=NOW()
+            WHERE status='PENDING'
+            AND strategy_id NOT IN ('momentum_scalp', 'gap_and_go')
+            AND COALESCE(max_expires_at, expires_at) < NOW()
+        """)
+        overnight_expired = cur.rowcount
+
         conn.commit(); conn.close()
-        return expired
+        return intraday_expired + overnight_expired
     except Exception:
         conn.close()
         return 0

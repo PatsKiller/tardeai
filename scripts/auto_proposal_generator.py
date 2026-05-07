@@ -435,7 +435,23 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
     target = float(signal.get("target_1") or 0)
     target2 = float(signal.get("target_2") or 0) if signal.get("target_2") else None
     shares = sizing["adjusted_shares"]
-    expires = datetime.now(timezone.utc) + timedelta(hours=4)
+    # Session 24A: Strategy-aware expiry
+    _strat = signal.get("strategy_id", "momentum_scalp")
+    try:
+        from proposal_lifecycle import (get_expiry_datetime, get_max_expiry_datetime,
+                                        get_timeframe_class, is_overnight)
+        _now = datetime.now(timezone.utc)
+        expires = get_expiry_datetime(_strat, _now)
+        _max_expires = get_max_expiry_datetime(_strat, _now)
+        _base_expires = expires
+        _timeframe_class = get_timeframe_class(_strat)
+        _overnight = is_overnight(_strat)
+    except Exception:
+        expires = datetime.now(timezone.utc) + timedelta(hours=4)
+        _max_expires = expires
+        _base_expires = expires
+        _timeframe_class = "intraday"
+        _overnight = False
 
     data = {
         "symbol": signal["symbol"],
@@ -466,6 +482,11 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "proposed_by": "auto_proposal_generator",
         "status": "PENDING",
         "expires_at": expires,
+        "base_expires_at": _base_expires,
+        "max_expires_at": _max_expires,
+        "lifecycle_status": "ACTIVE",
+        "proposal_timeframe_class": _timeframe_class,
+        "overnight_monitoring_enabled": _overnight,
         "auto_created": True,
         "auto_proposal_run_id": auto_run_id,
         "sizing_adjusted": sizing.get("sizing_adjusted", False),

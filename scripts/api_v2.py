@@ -7005,6 +7005,20 @@ def _paper_proposals_enriched():
                 'status': p.get('status'),
                 'expires_at': p.get('expires_at'),
                 'created_at': p.get('created_at'),
+                # Session 24A: Lifecycle fields
+                'lifecycle_status': p.get('lifecycle_status'),
+                'lifecycle_message': p.get('lifecycle_message'),
+                'entry_zone_status': p.get('entry_zone_status'),
+                'entry_zone_valid': p.get('entry_zone_valid'),
+                'current_price': _json_clean(p.get('current_price')),
+                'price_drift_pct': _json_clean(p.get('price_drift_pct')),
+                'last_price_source': p.get('last_price_source'),
+                'base_expires_at': _json_clean(p.get('base_expires_at')),
+                'max_expires_at': _json_clean(p.get('max_expires_at')),
+                'expiry_extended_count': p.get('expiry_extended_count') or 0,
+                'proposal_timeframe_class': p.get('proposal_timeframe_class'),
+                'overnight_monitoring_enabled': p.get('overnight_monitoring_enabled'),
+                'manual_review_required': p.get('manual_review_required'),
                 # Session 17v3 research packet fields
                 'decision_state': p.get('decision_state_computed'),
                 'research_score': _json_clean(p.get('research_score')),
@@ -7055,7 +7069,11 @@ def _paper_proposals_enriched():
                 er = _db_query("""
                     SELECT readiness_state, readiness_score, bracket_order_supported,
                            alpaca_account_mode, alpaca_base_url_type, market_hours,
-                           paper_submit_test_result, bracket_dry_run_payload
+                           paper_submit_test_result, bracket_dry_run_payload,
+                           quote_provider, quote_price, quote_timestamp,
+                           quote_is_delayed, quote_execution_eligible,
+                           bid, ask, spread_pct, volume_source, spread_source,
+                           quote_age_seconds, blockers, warnings
                     FROM proposal_execution_readiness
                     WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 1
                 """, [proposals[-1]['id']], fetch="one")
@@ -10460,6 +10478,130 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "diagnostics": [
                 {k: _json_clean(v) for k, v in d.items()} for d in diags
             ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 24A: Lifecycle + governance endpoints ─────────────────────
+
+    if method == "GET" and base_path.startswith("/api/v2/paper-proposals/live-price/"):
+        try:
+            sym = base_path.split("/")[-1].upper()
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from market_quote_provider import get_best_quote
+            from proposal_lifecycle import evaluate_lifecycle_status, get_timeframe_class
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT id, strategy_id, proposed_entry, created_at, expires_at,
+                           max_expires_at, expiry_extended_count
+                    FROM paper_trade_proposals WHERE symbol=%s AND status='PENDING'
+                    ORDER BY created_at DESC LIMIT 1
+                """, [sym])
+                row = cur.fetchone()
+                if not row:
+                    return 404, {"ok": False, "error": f"No pending proposal for {sym}"}
+                pid, strat, entry, created, exp, max_exp, ext_count = row
+                q = get_best_quote(sym)
+                cp = q.get("last_price") or (q.get("bid") if q.get("bid") else None)
+                lc = evaluate_lifecycle_status(strat, cp, float(entry or 0), created, exp, max_exp, q)
+                # news count
+                cur.execute("SELECT COUNT(*) FROM news_articles WHERE symbol=%s AND published_at > NOW()-INTERVAL '24 hours'", [sym])
+                nc = cur.fetchone()[0]
+                cur.close()
+                return 200, {"ok": True, "symbol": sym, "strategy_id": strat,
+                    "current_price": cp, "entry_price": float(entry or 0),
+                    "drift_pct": lc.get("price_drift_pct"),
+                    "lifecycle_status": lc.get("lifecycle_status"),
+                    "entry_zone_status": lc.get("entry_zone_status"),
+                    "message": lc.get("message"),
+                    "quote_provider": q.get("provider"),
+                    "quote_is_delayed": q.get("is_delayed"),
+                    "quote_execution_eligible": q.get("is_execution_eligible"),
+                    "news_count": nc,
+                    "expires_at": _json_clean(exp), "max_expires_at": _json_clean(max_exp),
+                    "expiry_extended_count": ext_count or 0,
+                    "timeframe_class": get_timeframe_class(strat)}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/monitor":
+        try:
+            body = body or {}
+            import subprocess as _sp
+            args = [str(PROJECT_ROOT / ".venv/bin/python"),
+                    str(PROJECT_ROOT / "scripts/proposal_monitor.py"),
+                    "--pending", "--apply"]
+            if body.get("include_intraday"):
+                args.append("--include-intraday")
+            r = _sp.run(args, capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": True, "output": r.stdout[-2000:] if r.stdout else "", "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-proposals/lifecycle-events":
+        try:
+            events = _db_query("""
+                SELECT id, proposal_id, symbol, strategy_id, event_type,
+                       lifecycle_status, current_price, entry_price, price_drift_pct,
+                       quote_provider, news_count, expiry_before, expiry_after,
+                       message, created_at
+                FROM proposal_lifecycle_events
+                ORDER BY created_at DESC LIMIT 100
+            """) or []
+            return 200, {"ok": True, "events": [
+                {k: _json_clean(v) for k, v in e.items()} for e in events
+            ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/execution-quality":
+        try:
+            rows = _db_query("""
+                SELECT * FROM paper_execution_quality ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/broker-reconciliation":
+        try:
+            runs = _db_query("SELECT * FROM broker_reconciliation_runs ORDER BY started_at DESC LIMIT 10") or []
+            items = _db_query("SELECT * FROM broker_reconciliation_items ORDER BY created_at DESC LIMIT 50") or []
+            return 200, {"ok": True, "runs": [{k: _json_clean(v) for k, v in r.items()} for r in runs],
+                         "items": [{k: _json_clean(v) for k, v in i.items()} for i in items]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-performance-governance":
+        try:
+            rows = _db_query("SELECT * FROM paper_performance_governance ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-reconciliation/run":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/alpaca_paper_reconciler.py"), "--apply"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": True, "output": r.stdout[-1000:], "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/execution-quality/run":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/paper_execution_quality_analyzer.py"),
+                         "--recent", "--apply"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": True, "output": r.stdout[-1000:], "returncode": r.returncode}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
