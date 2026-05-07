@@ -36,6 +36,31 @@ _COMMANDS = {
     "analyze": "Analyze a symbol or sector",
     "run screener": "Run a named Finviz screener",
     "topics": "List active research topics",
+    "proposals": "List pending watchlist proposals",
+    "tasks": "List pending tasks needing your decision",
+    "debates": "List recent agent debates",
+    "approve proposal <id>": "Approve a watchlist proposal",
+    "reject proposal <id>": "Reject a watchlist proposal",
+    "approve task <id>": "Approve/resolve a pending task",
+    "reject task <id>": "Reject a pending task",
+    "lessons": "Show outcome lessons learned by agents",
+    "scalp stats": "30-day scalp hit rate + best/worst symbols",
+    "rag <symbol>": "Show what agents see in RAG for symbol",
+    "confidence <agent>": "Agent confidence trend last 30 days",
+    "learning": "Learning loop status — lessons, outcomes, RAG",
+    "watchlist health": "Watchlist data quality: LLM errors, stale analyses, missing entries",
+    "/pt SYMBOL auto": "Open paper trade from plan (e.g. /pt FTCI auto)",
+    "/pt SYMBOL SHARES ENTRY STOP TARGET": "Open paper trade manually",
+    "/ptclose SYMBOL PRICE": "Close paper trade at price",
+    "/ptopen": "Show open paper trades",
+    "/ptpnl": "Paper trading P&L summary",
+    "halt trading": "Global halt — block all strategies",
+    "resume trading": "Resume all trading",
+    "halt live": "Block live trades only (paper continues)",
+    "resume live": "Resume live trading",
+    "halt strategy <id>": "Halt a specific strategy",
+    "resume strategy <id>": "Resume a specific strategy",
+    "risk status": "Show halt flags and risk gate summary",
     "help": "List available commands",
 }
 
@@ -104,6 +129,69 @@ def parse_command(text: str) -> dict:
         return {"command": "find", "args": text[5:].strip()}
     if lower.startswith("analyze "):
         return {"command": "analyze", "args": text[8:].strip()}
+    # Proposal/task approval commands
+    if lower.startswith("approve proposal "):
+        return {"command": "approve_proposal", "args": text[17:].strip()}
+    if lower.startswith("reject proposal "):
+        return {"command": "reject_proposal", "args": text[16:].strip()}
+    if lower.startswith("approve task "):
+        return {"command": "approve_task", "args": text[13:].strip()}
+    if lower.startswith("reject task "):
+        return {"command": "reject_task", "args": text[12:].strip()}
+    if lower == "proposals":
+        return {"command": "list_proposals", "args": ""}
+    if lower == "tasks":
+        return {"command": "list_tasks", "args": ""}
+    if lower == "debates":
+        return {"command": "list_debates", "args": ""}
+    # v7.7 autonomy commands
+    if lower == "lessons":
+        return {"command": "lessons", "args": ""}
+    if lower in ("scalp stats", "scalp", "scalp status"):
+        return {"command": "scalp_stats", "args": ""}
+    if lower.startswith("rag "):
+        return {"command": "rag", "args": text[4:].strip()}
+    if lower.startswith("confidence "):
+        return {"command": "confidence", "args": text[11:].strip()}
+    if lower == "learning":
+        return {"command": "learning", "args": ""}
+    if lower in ("watchlist health", "wl health"):
+        return {"command": "watchlist_health", "args": ""}
+    # Session 13/14: paper trade commands (order matters — specific before general)
+    if lower in ("/ptpending", "ptpending"):
+        return {"command": "pt_pending", "args": ""}
+    if lower.startswith("/ptapprove ") or lower.startswith("ptapprove "):
+        pt_text = text[10:].strip() if lower.startswith("/ptapprove") else text[9:].strip()
+        return {"command": "pt_approve", "args": pt_text}
+    if lower.startswith("/ptreject ") or lower.startswith("ptreject "):
+        pt_text = text[9:].strip() if lower.startswith("/ptreject") else text[8:].strip()
+        return {"command": "pt_reject", "args": pt_text}
+    if lower.startswith("/ptclose ") or lower.startswith("ptclose "):
+        pt_text = text[8:].strip() if lower.startswith("/ptclose") else text[7:].strip()
+        return {"command": "pt_close", "args": pt_text}
+    if lower in ("/ptopen", "ptopen"):
+        return {"command": "pt_positions", "args": ""}
+    if lower in ("/ptpnl", "ptpnl"):
+        return {"command": "pt_pnl", "args": ""}
+    if lower.startswith("/pt ") or lower.startswith("pt "):
+        pt_text = text[3:].strip() if lower.startswith("/pt") else text[2:].strip()
+        return {"command": "pt_open", "args": pt_text}
+
+    # Session 11: halt/resume trading commands
+    if lower == "halt trading":
+        return {"command": "halt_trading", "args": "all"}
+    if lower == "resume trading":
+        return {"command": "resume_trading", "args": "all"}
+    if lower == "halt live":
+        return {"command": "halt_trading", "args": "live"}
+    if lower == "resume live":
+        return {"command": "resume_trading", "args": "live"}
+    if lower.startswith("halt strategy "):
+        return {"command": "halt_trading", "args": f"strategy:{text[14:].strip()}"}
+    if lower.startswith("resume strategy "):
+        return {"command": "resume_trading", "args": f"strategy:{text[16:].strip()}"}
+    if lower in ("risk status", "risk"):
+        return {"command": "risk_status", "args": ""}
 
     return {"command": "unknown", "args": text}
 
@@ -366,6 +454,29 @@ def process_command(cmd: dict) -> str:
         except Exception as e:
             return f"Alex error: {e}"
 
+    if command in ("calibration", "accuracy"):
+        try:
+            import psycopg2.extras
+            conn = _get_conn()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT agent_name, accuracy_pct, correct_count, wrong_count, trending
+                FROM agent_calibration WHERE window_days=90 AND strategy_type IS NULL
+                ORDER BY agent_name
+            """)
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No calibration data yet — need more closed trades (≥3 per agent)"
+            lines = ["*Agent Accuracy (90 days):*"]
+            for r in rows:
+                acc = f"{r['accuracy_pct']:.0f}%" if r['accuracy_pct'] else "N/A"
+                trend = {'IMPROVING': '↑', 'DECLINING': '↓', 'STABLE': '→'}.get(r.get('trending') or '', '')
+                lines.append(f"• {r['agent_name']}: {acc} ({r.get('correct_count',0)}✓/{r.get('wrong_count',0)}✗) {trend}")
+            return '\n'.join(lines)
+        except Exception as e:
+            return f"Calibration error: {e}"
+
     if command == "status":
         import psycopg2.extras
         conn = _get_conn()
@@ -558,6 +669,523 @@ def process_command(cmd: dict) -> str:
                 return f"LLM failed: {result.get('error', 'unknown')}"
         except Exception as e:
             return f"Error: {e}"
+
+    # ── Proposal approval/rejection ──
+    if command == "approve_proposal":
+        try:
+            pid = int(args.split()[0])
+            reason = " ".join(args.split()[1:]) or "approved via Telegram"
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE watchlist_proposals SET status='approved', reviewed_by='john_telegram', reviewed_at=NOW() WHERE id=%s AND status='proposed' RETURNING id, symbol, action", (pid,))
+            row = cur.fetchone()
+            if not row:
+                conn.close()
+                return f"Proposal #{pid} not found or already processed."
+            cur.execute("""INSERT INTO agent_feedback_log (proposal_id, symbol, action, decision, reviewer, reason, created_at)
+                          VALUES (%s, %s, %s, 'approved', 'john_telegram', %s, NOW())""",
+                        (row[0], row[1], row[2], reason))
+            conn.commit()
+            conn.close()
+            return f"Proposal #{pid} approved: {row[1]} {row[2]}"
+        except ValueError:
+            return "Usage: approve proposal <id> [reason]"
+        except Exception as e:
+            return f"Approve error: {e}"
+
+    if command == "reject_proposal":
+        try:
+            pid = int(args.split()[0])
+            reason = " ".join(args.split()[1:]) or "rejected via Telegram"
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE watchlist_proposals SET status='rejected', reviewed_by='john_telegram', reviewed_at=NOW() WHERE id=%s AND status='proposed' RETURNING id, symbol, action", (pid,))
+            row = cur.fetchone()
+            if not row:
+                conn.close()
+                return f"Proposal #{pid} not found or already processed."
+            cur.execute("""INSERT INTO agent_feedback_log (proposal_id, symbol, action, decision, reviewer, reason, created_at)
+                          VALUES (%s, %s, %s, 'rejected', 'john_telegram', %s, NOW())""",
+                        (row[0], row[1], row[2], reason))
+            conn.commit()
+            conn.close()
+            return f"Proposal #{pid} rejected: {row[1]} {row[2]}"
+        except ValueError:
+            return "Usage: reject proposal <id> [reason]"
+        except Exception as e:
+            return f"Reject error: {e}"
+
+    # ── Task approval/rejection ──
+    if command == "approve_task":
+        try:
+            tid = int(args.split()[0])
+            decision = " ".join(args.split()[1:]) or "approved via Telegram"
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE john_decision_queue SET status='decided_action', john_decision=%s,
+                          john_reasoning='approved via Telegram', decided_at=NOW()
+                          WHERE id=%s AND status='pending_john' RETURNING id, symbol, title""", (decision, tid))
+            row = cur.fetchone()
+            if not row:
+                conn.close()
+                return f"Task #{tid} not found or already resolved."
+            cur.execute("""INSERT INTO john_decision_history (decision_id, old_status, new_status, decision, reasoning)
+                          VALUES (%s, 'pending_john', 'decided_action', %s, 'Telegram approval')""", (row[0], decision))
+            conn.commit()
+            conn.close()
+            return f"Task #{tid} approved: {row[1]} — {row[2]}"
+        except ValueError:
+            return "Usage: approve task <id> [decision]"
+        except Exception as e:
+            return f"Task approve error: {e}"
+
+    if command == "reject_task":
+        try:
+            tid = int(args.split()[0])
+            reason = " ".join(args.split()[1:]) or "rejected via Telegram"
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE john_decision_queue SET status='rejected', john_decision=%s,
+                          john_reasoning='rejected via Telegram', decided_at=NOW()
+                          WHERE id=%s AND status='pending_john' RETURNING id, symbol, title""", (reason, tid))
+            row = cur.fetchone()
+            if not row:
+                conn.close()
+                return f"Task #{tid} not found or already resolved."
+            cur.execute("""INSERT INTO john_decision_history (decision_id, old_status, new_status, decision, reasoning)
+                          VALUES (%s, 'pending_john', 'rejected', %s, 'Telegram rejection')""", (row[0], reason))
+            conn.commit()
+            conn.close()
+            return f"Task #{tid} rejected: {row[1]} — {row[2]}"
+        except ValueError:
+            return "Usage: reject task <id> [reason]"
+        except Exception as e:
+            return f"Task reject error: {e}"
+
+    # ── List pending proposals ──
+    if command == "list_proposals":
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT id, symbol, action, confidence FROM watchlist_proposals WHERE status='proposed' ORDER BY id LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No pending proposals."
+            lines = ["*Pending Proposals:*"]
+            for r in rows:
+                lines.append(f"  #{r[0]} {r[1]} → {r[2]} (conf:{r[3]:.0%})" if r[3] else f"  #{r[0]} {r[1]} → {r[2]}")
+            lines.append(f"\n_approve proposal <id>_ or _reject proposal <id>_")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    # ── List pending tasks ──
+    if command == "list_tasks":
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT id, symbol, title, priority FROM john_decision_queue WHERE status='pending_john' ORDER BY priority, id LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No pending tasks."
+            lines = ["*Pending Tasks:*"]
+            for r in rows:
+                lines.append(f"  #{r[0]} [{r[3]}] {r[1]} — {r[2][:60]}")
+            lines.append(f"\n_approve task <id>_ or _reject task <id>_")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    # ── List debates ──
+    if command == "list_debates":
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT id, symbol, trigger_source, consensus_recommendation, consensus_score, created_at FROM agent_debate_log ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No debates recorded."
+            lines = ["*Recent Debates:*"]
+            for r in rows:
+                score = f"{float(r[4]):.0%}" if r[4] else "?"
+                lines.append(f"  #{r[0]} {r[1]} — {r[3] or 'pending'} ({score}) via {r[2]}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    # ── Outcome lessons ──
+    if command == "lessons":
+        try:
+            conn = _get_conn()
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT config FROM agent_intelligence_rules WHERE rule_type='outcome_lessons' AND rule_key='latest'")
+            row = cur.fetchone()
+            conn.close()
+            if row and row.get("config"):
+                cfg = row["config"]
+                if isinstance(cfg, str):
+                    cfg = json.loads(cfg)
+                lt = cfg.get("text", "")
+                if lt:
+                    return f"\U0001f4da *Outcome Lessons (latest)*\n\n{lt}"
+            return "\U0001f4da No outcome lessons yet (accumulating — need 7+ days of decisions)."
+        except Exception as e:
+            return f"Lessons error: {e}"
+
+    # ── Scalp stats ──
+    if command == "scalp_stats":
+        try:
+            conn = _get_conn()
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT count(*) as total,
+                       count(*) FILTER (WHERE outcome_status LIKE 'profit%%') as wins,
+                       count(*) FILTER (WHERE outcome_status LIKE 'loss%%') as losses,
+                       count(*) FILTER (WHERE outcome_status = 'flat') as flat,
+                       round(avg(pct_move_24h)::numeric, 2) as avg_move
+                FROM scalp_decision_outcomes
+                WHERE scored_at > NOW() - INTERVAL '30 days'
+            """)
+            r = cur.fetchone()
+            conn.close()
+            if not r or r["total"] == 0:
+                return "\U0001f4ca No scalp outcomes scored yet (need 24h of alerts first)."
+            win_rate = r["wins"] / r["total"] * 100
+            return (f"\U0001f4ca *Scalp 30-day stats*\n"
+                    f"Total alerts: {r['total']}\n"
+                    f"Wins: {r['wins']} ({win_rate:.1f}%)\n"
+                    f"Flat: {r['flat']}\n"
+                    f"Losses: {r['losses']}\n"
+                    f"Avg 24h move: {float(r['avg_move'] or 0):.2f}%")
+        except Exception as e:
+            return f"Scalp stats error: {e}"
+
+    # ── RAG context for a symbol ──
+    if command == "rag":
+        sym = args.strip().upper() if args else None
+        if not sym:
+            return "Usage: `rag SCHD` — show what agents see in RAG for a symbol."
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+            conn = _get_conn()
+            items = get_rag_context(sym, limit=7, conn=conn)
+            conn.close()
+            if items:
+                return f"*RAG Context for {sym}*\n\n{format_rag_context_for_prompt(items, sym)}"
+            return f"No RAG context found for {sym}."
+        except Exception as e:
+            return f"RAG error: {e}"
+
+    # ── Agent confidence trend ──
+    if command == "confidence":
+        agent = args.strip().lower() if args else None
+        if not agent:
+            return "Usage: `confidence maria` — 30-day confidence trend for an agent."
+        try:
+            conn = _get_conn()
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT date_trunc('day', created_at)::date as day,
+                       round(avg(confidence)::numeric, 3) as avg_conf, count(*) as cnt
+                FROM watchlist_agent_results
+                WHERE agent ILIKE %s AND created_at > NOW() - INTERVAL '30 days'
+                GROUP BY 1 ORDER BY 1 DESC LIMIT 10
+            """, (f"%{agent}%",))
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return f"No results for agent '{agent}' in last 30 days."
+            lines = [f"\U0001f4c8 *Confidence: {agent}* (last 30d)", ""]
+            for r in rows:
+                bar = "\u2588" * int(float(r["avg_conf"]) * 20)
+                lines.append(f"  {r['day']} | {float(r['avg_conf']):.3f} ({r['cnt']}x) {bar}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Confidence error: {e}"
+
+    # ── Learning loop status ──
+    if command == "learning":
+        try:
+            conn = _get_conn()
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT count(*) as cnt FROM agent_intelligence_rules WHERE rule_type='outcome_lessons'")
+            lessons = cur.fetchone()["cnt"]
+            cur.execute("SELECT count(*) as total, count(*) FILTER (WHERE outcome_score IS NOT NULL) as scored FROM decision_outcomes")
+            outcomes = cur.fetchone()
+            cur.execute("SELECT count(*) FROM content_embeddings")
+            rag_total = cur.fetchone()["count"]
+            cur.execute("SELECT count(*) FROM scalp_decision_outcomes")
+            scalp_scored = cur.fetchone()["count"]
+            conn.close()
+            return (f"\U0001f9e0 *Learning Loop Status*\n\n"
+                    f"Outcome lessons: {lessons} rules written\n"
+                    f"Decision outcomes: {outcomes['scored']}/{outcomes['total']} scored\n"
+                    f"RAG items indexed: {rag_total}\n"
+                    f"Scalp outcomes scored: {scalp_scored}\n\n"
+                    f"_Lessons feed into all agent prompts at 5:30 AM._")
+        except Exception as e:
+            return f"Learning status error: {e}"
+
+    # ── Watchlist health ──
+    if command == "watchlist_health":
+        try:
+            conn = _get_conn()
+            import psycopg2.extras
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("""
+                SELECT count(*) as cnt FROM watchlist_final_synthesis wfs
+                JOIN watchlist_symbol_master wsm ON wfs.symbol = wsm.symbol
+                WHERE (wsm.in_ai_watchlist = true OR wsm.in_personal_watchlist = true)
+                  AND (wfs.synthesis_narrative ILIKE '%%LLM error%%'
+                       OR wfs.synthesis_narrative ILIKE '%%All providers failed%%')
+            """)
+            llm_errors = cur.fetchone()['cnt']
+            cur.execute("""
+                SELECT count(*) as cnt FROM watchlist_symbol_master
+                WHERE (in_ai_watchlist = true OR in_personal_watchlist = true)
+                  AND updated_at < NOW() - INTERVAL '48 hours'
+            """)
+            stale = cur.fetchone()['cnt']
+            cur.execute("""
+                SELECT count(*) as cnt FROM watchlist_symbol_master
+                WHERE (in_ai_watchlist = true OR in_personal_watchlist = true)
+                  AND ideal_entry IS NULL
+            """)
+            no_entry = cur.fetchone()['cnt']
+            conn.close()
+            ok = llm_errors == 0 and stale == 0
+            icon = "\u2705" if ok else "\u26a0\ufe0f"
+            return (
+                f"{icon} *Watchlist Health*\n\n"
+                f"LLM errors: {llm_errors}\n"
+                f"Stale (48h+): {stale}\n"
+                f"Missing entry levels: {no_entry}\n\n"
+                f"{'All clean.' if ok else 'Aegis will auto-fix tonight at 8PM.'}"
+            )
+        except Exception as e:
+            return f"Watchlist health error: {e}"
+
+    # Session 11: halt/resume/risk commands
+    if command == "halt_trading":
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            target = args
+            if target == "all":
+                cur.execute("UPDATE system_controls SET value='true', updated_at=NOW(), updated_by='telegram' WHERE key='halt_all_trading'")
+                cur.execute("INSERT INTO audit_log (event_type, decision, reason_text, actor) VALUES ('halt', 'halt_all_trading', 'Global halt via Telegram', 'john')")
+                conn.commit(); conn.close()
+                return "\U0001f6d1 GLOBAL TRADING HALT ENABLED\nAll strategies blocked until `resume trading`."
+            elif target == "live":
+                cur.execute("UPDATE system_controls SET value='true', updated_at=NOW(), updated_by='telegram' WHERE key='halt_live_only'")
+                cur.execute("INSERT INTO audit_log (event_type, decision, reason_text, actor) VALUES ('halt', 'halt_live_only', 'Live halt via Telegram', 'john')")
+                conn.commit(); conn.close()
+                return "\U0001f6d1 LIVE TRADING HALT ENABLED\nPaper trading continues. Live blocked until `resume live`."
+            elif target.startswith("strategy:"):
+                sid = target.split(":", 1)[1].strip()
+                key = f"halt_{sid}_strategy"
+                cur.execute("UPDATE system_controls SET value='true', updated_at=NOW(), updated_by='telegram' WHERE key=%s", [key])
+                if cur.rowcount == 0:
+                    conn.close()
+                    return f"Unknown strategy: {sid}"
+                cur.execute("INSERT INTO audit_log (event_type, decision, reason_text, actor) VALUES ('halt', %s, %s, 'john')", [key, f'Strategy halt via Telegram: {sid}'])
+                conn.commit(); conn.close()
+                return f"\U0001f6d1 STRATEGY HALT: {sid}\nBlocked until `resume strategy {sid}`."
+            conn.close()
+            return "Unknown halt target"
+        except Exception as e:
+            return f"Halt error: {e}"
+
+    if command == "resume_trading":
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            target = args
+            if target == "all":
+                cur.execute("UPDATE system_controls SET value='false', updated_at=NOW(), updated_by='telegram' WHERE key='halt_all_trading'")
+                cur.execute("INSERT INTO audit_log (event_type, decision, reason_text, actor) VALUES ('resume', 'halt_all_trading', 'Global resume via Telegram', 'john')")
+                conn.commit(); conn.close()
+                return "\u2705 GLOBAL TRADING RESUMED\nAll strategies active."
+            elif target == "live":
+                cur.execute("UPDATE system_controls SET value='false', updated_at=NOW(), updated_by='telegram' WHERE key='halt_live_only'")
+                cur.execute("INSERT INTO audit_log (event_type, decision, reason_text, actor) VALUES ('resume', 'halt_live_only', 'Live resume via Telegram', 'john')")
+                conn.commit(); conn.close()
+                return "\u2705 LIVE TRADING RESUMED"
+            elif target.startswith("strategy:"):
+                sid = target.split(":", 1)[1].strip()
+                key = f"halt_{sid}_strategy"
+                cur.execute("UPDATE system_controls SET value='false', updated_at=NOW(), updated_by='telegram' WHERE key=%s", [key])
+                cur.execute("INSERT INTO audit_log (event_type, decision, reason_text, actor) VALUES ('resume', %s, %s, 'john')", [key, f'Strategy resume via Telegram: {sid}'])
+                conn.commit(); conn.close()
+                return f"\u2705 STRATEGY RESUMED: {sid}"
+            conn.close()
+            return "Unknown resume target"
+        except Exception as e:
+            return f"Resume error: {e}"
+
+    if command == "risk_status":
+        try:
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT key, value, updated_at FROM system_controls ORDER BY key")
+            rows = cur.fetchall()
+            lines = ["*\U0001f6e1 Risk Gate Status*", ""]
+            active_halts = 0
+            for key, value, updated_at in rows:
+                icon = "\U0001f534" if value == 'true' else "\U0001f7e2"
+                lines.append(f"{icon} `{key}`: {value}")
+                if value == 'true':
+                    active_halts += 1
+            # Risk gate summary (24h)
+            cur.execute("""
+                SELECT result, COUNT(*) FROM risk_gate_results
+                WHERE created_at > NOW() - INTERVAL '24 hours'
+                GROUP BY result
+            """)
+            rg_rows = cur.fetchall()
+            if rg_rows:
+                lines.append("")
+                lines.append("*Risk Gate (24h):*")
+                for result, cnt in rg_rows:
+                    lines.append(f"  {result}: {cnt}")
+            conn.close()
+            if active_halts > 0:
+                lines.insert(1, f"\u26a0\ufe0f {active_halts} active halt(s)")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Risk status error: {e}"
+
+    # Session 13: paper trade commands
+    if command == "pt_open":
+        try:
+            from paper_trade_logger import parse_pt_command, create_proposal, create_manual_proposal
+            ok, params, err = parse_pt_command(args)
+            if not ok:
+                return f"\u274c {err}"
+            if params.get('auto'):
+                result = create_proposal(params['symbol'], account=params.get('account', 'TOS_PAPER'))
+            else:
+                result = create_manual_proposal(
+                    params['symbol'], params['shares'], params['entry'],
+                    params['stop'], params['target'], params.get('account', 'TOS_PAPER'))
+            if result.get('success'):
+                pid = result['proposal_id']
+                sym = result['symbol']
+                e, s, t = result.get('entry', 0), result.get('stop', 0), result.get('target', 0)
+                sh = result.get('shares', 0)
+                dr = result.get('dollar_risk', 0)
+                rr = result.get('rr', 0)
+                rg = result.get('risk_gate_result', '?')
+                return (f"\U0001f4dd PAPER PROPOSAL #{pid}\n"
+                        f"{sym} | {result.get('account', 'TOS_PAPER')}\n"
+                        f"Entry: ${e:.2f} x {sh} = ${e*sh:.0f}\n"
+                        f"Stop: ${s:.2f} | Target: ${t:.2f}\n"
+                        f"Risk: ${dr:.0f} | R:R {rr:.1f}\n"
+                        f"Risk gate: {rg}\n\n"
+                        f"Approve: /ptapprove {pid}\n"
+                        f"Reject: /ptreject {pid} reason\n"
+                        f"View all: /ptpending")
+            return f"\u274c {result.get('message', 'Proposal failed')}"
+        except Exception as e:
+            return f"\u274c Paper proposal error: {e}"
+
+    if command == "pt_pending":
+        try:
+            from paper_trade_logger import get_pending_proposals
+            proposals = get_pending_proposals()
+            if not proposals:
+                return "\U0001f4cb No pending paper proposals.\nCreate one: /pt SYMBOL auto"
+            lines = [f"\U0001f4cb PENDING PAPER PROPOSALS ({len(proposals)})\n"]
+            for p in proposals[:10]:
+                lines.append(
+                    f"#{p['id']} {p['symbol']} {p.get('signal_grade','?')} "
+                    f"${float(p.get('proposed_entry',0)):.2f} x {p.get('proposed_shares',0)} "
+                    f"risk=${float(p.get('proposed_dollar_risk',0)):.0f} "
+                    f"RG:{p.get('risk_gate_result','?')}")
+            lines.append(f"\nApprove: /ptapprove ID\nReject: /ptreject ID reason")
+            return '\n'.join(lines)
+        except Exception as e:
+            return f"\u274c Pending proposals error: {e}"
+
+    if command == "pt_approve":
+        try:
+            from paper_trade_logger import approve_proposal
+            parts = args.split()
+            if not parts:
+                return "\u274c Usage: /ptapprove ID [shares entry stop target]"
+            pid = int(parts[0])
+            overrides = {}
+            if len(parts) >= 5:
+                overrides = {'override_shares': int(parts[1]), 'override_entry': float(parts[2]),
+                             'override_stop': float(parts[3]), 'override_target': float(parts[4])}
+            result = approve_proposal(pid, **overrides)
+            if result.get('success'):
+                return (f"\u2705 PAPER TRADE #{result['paper_trade_id']} OPENED\n"
+                        f"{result['symbol']} | {result.get('account','TOS_PAPER')}\n"
+                        f"Entry: ${result['entry']:.2f} x {result['shares']}\n"
+                        f"Stop: ${result['stop']:.2f} | Target: ${result['target']:.2f}\n"
+                        f"Risk: ${result['dollar_risk']:.0f}\n"
+                        f"Risk gate: {result.get('risk_gate','?')}\n"
+                        f"Close: /ptclose {result['symbol']} PRICE")
+            return f"\u274c {result.get('message', 'Approval failed')}"
+        except Exception as e:
+            return f"\u274c Approve error: {e}"
+
+    if command == "pt_reject":
+        try:
+            from paper_trade_logger import reject_proposal
+            parts = args.split(maxsplit=1)
+            if not parts:
+                return "\u274c Usage: /ptreject ID [reason]"
+            pid = int(parts[0])
+            reason = parts[1] if len(parts) > 1 else 'manual'
+            result = reject_proposal(pid, reason)
+            return f"\u2705 {result['message']}" if result.get('success') else f"\u274c {result['message']}"
+        except Exception as e:
+            return f"\u274c Reject error: {e}"
+
+    if command == "pt_close":
+        try:
+            from paper_trade_logger import close_paper_trade, format_close_response
+            parts = args.split()
+            if len(parts) < 2:
+                return "\u274c Usage: /ptclose SYMBOL PRICE [reason]"
+            symbol = parts[0].upper()
+            try:
+                exit_price = float(parts[1])
+            except ValueError:
+                return "\u274c Invalid price. Usage: /ptclose SYMBOL PRICE [reason]"
+            reason = parts[2] if len(parts) > 2 else 'manual'
+            result = close_paper_trade(symbol, exit_price, reason)
+            if result.get('success'):
+                return format_close_response(result)
+            return f"\u274c {result.get('message', 'Close failed')}"
+        except Exception as e:
+            return f"\u274c Paper close error: {e}"
+
+    if command == "pt_positions":
+        try:
+            from paper_trade_logger import get_open_positions, format_positions_response
+            positions = get_open_positions()
+            return format_positions_response(positions)
+        except Exception as e:
+            return f"\u274c Paper positions error: {e}"
+
+    if command == "pt_pnl":
+        try:
+            from paper_trade_logger import get_pnl_summary, format_pnl_response
+            summary = get_pnl_summary()
+            return format_pnl_response(summary)
+        except Exception as e:
+            return f"\u274c Paper P&L error: {e}"
 
     return f"Unknown command: {cmd['args'][:50]}\nType `help` for available commands."
 

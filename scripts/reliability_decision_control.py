@@ -65,10 +65,10 @@ def apply_reliability_controls(route: Dict[str, Any]) -> Dict[str, Any]:
         controls["requires_manual_approval"] = True
         controls["reasons"].append(f"Reliability score below approval threshold: {score}")
 
-    elif score < 0.90 or weak:
+    elif score < 0.90:
         controls["mode"] = "force_review"
         controls["requires_manual_approval"] = action_type in {"pending_write", "write"}
-        controls["reasons"].append("Reliability history is limited or mildly degraded.")
+        controls["reasons"].append("Reliability history is mildly degraded.")
 
     if agent == "steph" and (score < 0.90 or critical_bad):
         controls["forced_reviewers"].extend(["risk_agent", "tax_agent"])

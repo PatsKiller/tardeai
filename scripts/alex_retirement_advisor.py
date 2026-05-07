@@ -20,12 +20,132 @@ Usage:
     python3 scripts/alex_retirement_advisor.py --analyze SYMBOL [--json]
     python3 scripts/alex_retirement_advisor.py --scan-portfolio [--telegram] [--json]
 """
-import json, os, sys
+import json, logging, os, sys
 from datetime import datetime
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+
+# ══════════════════════════════════════════════════════════════════════
+# COMPREHENSIVE DISABILITY + BENEFITS RULESET (v4.6)
+# Non-negotiable facts about John's specific situation.
+# Every Alex analysis prompt receives this context automatically.
+# ══════════════════════════════════════════════════════════════════════
+
+SSDI_RULES = {
+    "ssdi_annual_benefit": 45600,
+    "ssdi_is_not_earned_income": True,
+    "ssdi_sga_2026": 1550,
+    "trial_work_period_monthly": 1110,
+    "counts_toward_sga": ["wages", "self_employment_net"],
+    "does_NOT_count_toward_sga": [
+        "investment_income", "roth_conversions", "ltd_disability_insurance",
+        "social_security_benefits", "pension_income", "rental_income", "ira_distributions",
+    ],
+    "ltd_pretax_facts": {
+        "taxability": "ordinary_income_when_received",
+        "counts_as_earned_income": False,
+        "counts_toward_ssdi_sga": False,
+        "magi_impact": "YES_counts_toward_MAGI",
+        "irmaa_impact": "YES_if_pushes_MAGI_over_threshold",
+        "roth_conversion_ok": True,
+    },
+}
+
+DUAL_ELIGIBILITY_RULES = {
+    "dual_eligible": True,
+    "medicare_primary": True,
+    "medicaid_secondary": True,
+    "medicare_part_b_premium_2026": 185.00,
+    "irmaa_part_b_tier1_threshold_mfs": 103000,
+    "irmaa_part_b_tier1_surcharge": 74.00,
+    "medicaid_resource_limit_individual": 2000,
+    "medicaid_state": "new_york",
+    "roth_conversion_medicaid_impact": {
+        "counts_as_income": True,
+        "counts_as_resource": False,
+        "safe_annual_conversion": 35000,
+        "max_without_medicaid_review": 50000,
+    },
+    "lookback_period_years": 5,
+}
+
+TRUST_RULES = {
+    "revocable_trust": {
+        "medicaid_treatment": "COUNTED_RESOURCE",
+        "recommendation": "good_for_probate_avoidance_NOT_medicaid_protection",
+    },
+    "pooled_special_needs_trust": {
+        "medicaid_treatment": "EXEMPT_RESOURCE",
+        "best_for": "protecting_assets_over_2000_medicaid_limit",
+        "action_item": "CONSULT_ELDER_LAW_ATTORNEY_TO_ESTABLISH",
+        "ny_providers": ["NYSARC_Trust_Services", "Jewish_Federations_Community_Trust"],
+    },
+    "able_account": {
+        "annual_contribution_limit_2026": 18000,
+        "medicaid_exempt_up_to": 100000,
+        "eligible": "disability_onset_before_age_26",
+    },
+}
+
+ROTH_WITH_DISABILITY = {
+    "roth_is_not_medicaid_resource_ny": True,
+    "roth_conversion_counts_as_magi": True,
+    "roth_conversion_counts_as_medicaid_income": True,
+    "ssdi_sga_impact": False,
+    "optimal_annual_conversion": {
+        "minimum": 20000, "target": 35000,
+        "maximum_safe": 50000, "absolute_maximum": 66883,
+    },
+    "golden_window": "2036-2040",
+}
+
+
+def get_disability_context_for_prompt() -> str:
+    """Build comprehensive disability/trust/Medicare context for every Alex prompt."""
+    return """═══ JOHN'S DISABILITY + BENEFITS SITUATION ═══
+SSDI: $45,600/yr — unearned income, NEVER counts as SGA
+LTD disability insurance: pretax employer policy — ordinary income, NOT earned income, does NOT affect SSDI SGA
+Dual eligible: Medicare primary + Medicaid secondary
+Medicare IRMAA threshold (MFS): $103,000 MAGI — surcharge $74/mo if exceeded
+Medicaid resource limit: $2,000 (primary home + one car + Roth IRA exempt in NY)
+Roth conversions: DO count as Medicaid income (spend-down risk above $50K/yr) but do NOT affect SSDI SGA
+
+TRUST GUIDANCE:
+  Revocable trust → probate avoidance ONLY, NOT Medicaid protection
+  Pooled SNT → EXEMPT from Medicaid $2K resource limit (consult elder law attorney — NYSARC or Jewish Fed in NY)
+  ABLE account → $18K/yr contribution, first $100K Medicaid exempt
+  First-party SNT → funded by John's assets, Medicaid payback on death
+  Third-party SNT → funded by family, NO Medicaid payback (best for inheritances)
+
+INVESTMENT INCOME NOTE:
+  Dividends, capital gains, interest → DO NOT affect SSDI SGA
+  ALL investment income → DOES affect MAGI → check IRMAA $103K threshold
+  Portfolio growth → DOES count as Medicaid resource (non-exempt assets above $2K)
+
+SAFE ZONES:
+  Roth conversion target: $35K (safe) → $50K (max before Medicaid review)
+  MAGI 2026: ~$99K (approaching IRMAA — monitor carefully)
+  Primary home: exempt while occupied (NY equity limit $713K)
+
+CRITICAL RULES FOR EVERY RECOMMENDATION:
+  1. NEVER recommend action that pushes MAGI above $103K without explicit IRMAA warning
+  2. Flag any capital gain realization >$5K for MAGI impact
+  3. Flag any dividend increase >$2K/yr for MAGI impact
+  4. Investment income does NOT affect SSDI — but DOES affect Medicaid and IRMAA
+  5. Roth IRA is NOT a Medicaid resource in NY — conversions are tax-smart for disability"""
+
+
+def _get_gov_context() -> str:
+    """Get cached government thresholds for Alex's prompt."""
+    try:
+        from alex_gov_research import format_gov_data_for_alex_prompt
+        return format_gov_data_for_alex_prompt()
+    except Exception:
+        return ""
 
 
 def _get_conn():
@@ -216,6 +336,17 @@ def _get_intel_context(symbol: str = None) -> str:
     except Exception:
         pass
 
+    # RAG pre-context — prior intelligence from all source types
+    if symbol:
+        try:
+            from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+            rag_results = get_rag_context(symbol=symbol, agent_name="alex", limit=5)
+            if rag_results:
+                parts.append(format_rag_context_for_prompt(rag_results, symbol=symbol))
+                logger.info("Alex RAG: %d items for %s", len(rag_results), symbol)
+        except Exception as e:
+            logger.warning("Alex RAG fetch failed for %s: %s", symbol, e)
+
     # Cross-agent context (Maria, Steph, Risk latest analysis)
     if symbol:
         try:
@@ -229,6 +360,66 @@ def _get_intel_context(symbol: str = None) -> str:
                 parts.append(f"ESCALATION FLAG: {'; '.join(esc['reasons'])}")
         except Exception:
             pass
+
+    # Peer agent notes — recent conclusions from other agents (30d)
+    if symbol:
+        try:
+            import psycopg2.extras as _pxe
+            conn = _get_conn()
+            cur = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+            cur.execute("""
+                SELECT DISTINCT ON (agent) agent, recommendation, confidence,
+                       LEFT(summary, 200) as summary, created_at
+                FROM watchlist_agent_results
+                WHERE symbol = %s
+                  AND agent IN ('maria', 'steph', 'risk_agent', 'tax_agent')
+                  AND created_at > NOW() - INTERVAL '30 days'
+                ORDER BY agent, created_at DESC
+            """, [symbol])
+            peers = cur.fetchall()
+            cur.close()
+            conn.close()
+            if peers:
+                peer_lines = ["=== Peer Agent Views ==="]
+                for p in peers:
+                    dt = p["created_at"].strftime("%Y-%m-%d") if p.get("created_at") else "?"
+                    peer_lines.append(
+                        f"  {p['agent'].upper()} [{dt}]: {p['recommendation']} "
+                        f"(conf:{float(p['confidence'] or 0):.0%})"
+                    )
+                    if p.get("summary"):
+                        peer_lines.append(f"    {p['summary']}")
+                peer_lines.append("=== End Peer Views ===")
+                parts.append("\n".join(peer_lines))
+        except Exception as e:
+            logger.warning("Alex peer notes failed for %s: %s", symbol, e)
+
+    # Calibration context — Alex's accuracy tracking
+    try:
+        from agent_collab import get_calibration_context
+        conn = _get_conn()
+        cal_ctx = get_calibration_context('alex', conn)
+        conn.close()
+        if cal_ctx:
+            parts.append(cal_ctx)
+    except Exception:
+        pass
+
+    # IER subject entity context for retirement topics
+    try:
+        from intelligence_entity_manager import get_entity_context_for_prompt
+        conn = _get_conn()
+        for subject_id in ['SSDI', 'IRMAA', 'Roth_Conversion', 'Golden_Window']:
+            try:
+                entity_ctx = get_entity_context_for_prompt(conn, subject_id)
+                if entity_ctx and len(entity_ctx) > 50:
+                    parts.append(entity_ctx)
+                    break  # just add the most relevant one
+            except Exception:
+                continue
+        conn.close()
+    except Exception:
+        pass
 
     return "\n\n".join(parts)
 
@@ -251,13 +442,9 @@ def analyze_for_retirement(symbol: str, trigger: str = "manual") -> dict:
 
 TRIGGER: {trigger}
 
-CLIENT DISABILITY PROFILE (PERMANENT — APPLIES TO EVERY ANALYSIS):
-- Status: On SSDI (Social Security Disability Insurance), $3,800/mo (~$45,600/yr)
-- Private disability insurance: continues to age 68.5 (recertify 2x/year)
-- Filing status: MFS (Married Filing Separately, lived apart)
-- SSDI converts to SS retirement at FRA age 67
-- No 10% early withdrawal penalty (age 58.5+ AND disability exemption under IRC §72(t)(2)(A)(iii))
-- IRA contributions: CAN contribute to IRA while on SSDI if have earned income (Schedule C ~$20K/yr)
+{get_disability_context_for_prompt()}
+
+{_get_gov_context()}
 - Roth conversions: DO count as MAGI — can affect Medicaid eligibility and IRMAA
 - MFS special rules: Roth contribution income limit is $0 for MFS (CANNOT contribute directly to Roth)
 - MFS workaround: Backdoor Roth (contribute to Traditional IRA → convert) IS allowed for MFS filers

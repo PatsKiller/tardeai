@@ -4,12 +4,15 @@
 Creates a self-contained backup with everything needed to restore from bare metal:
 - Database dump (full PostgreSQL)
 - Crontab
-- OpenClaw configs (gateway, agents, cron jobs, SOULs)
+- OpenClaw configs (gateway, agents, cron jobs, SOULs, workspaces, skills)
 - Systemd services
 - .env (API keys, passwords)
 - Screener configs
 - Agent YAML configs
+- All Python scripts (automation pipeline)
+- Command Center UI source
 - Key state files (holdings, enrichment, dividends)
+- Full data/portfolios directory
 - Restore instructions (embedded in zip)
 
 Output: docs/backups/trade_ai_backup_YYYYMMDD.zip
@@ -45,7 +48,7 @@ def create_backup(dry_run=False):
         print(f"=== Full System Backup — {today} ===\n")
 
         # 1. Database dump
-        print("[1/10] Database dump...")
+        print("[1/16] Database dump...")
         db_dir = staging / "database"
         db_dir.mkdir()
         db_pw = ""
@@ -63,7 +66,7 @@ def create_backup(dry_run=False):
             print(f"  {'DRY RUN' if dry_run else 'No DB password'}")
 
         # 2. Environment file
-        print("[2/10] Environment variables...")
+        print("[2/16] Environment variables...")
         env_dir = staging / "env"
         env_dir.mkdir()
         if not dry_run:
@@ -83,7 +86,7 @@ def create_backup(dry_run=False):
         print(f"  .env backed up (+ sanitized version)")
 
         # 3. Crontab
-        print("[3/10] Crontab...")
+        print("[3/16] Crontab...")
         cron_dir = staging / "crontab"
         cron_dir.mkdir()
         if not dry_run:
@@ -92,91 +95,189 @@ def create_backup(dry_run=False):
             lines = len(crontab.split("\n"))
             print(f"  {lines} lines")
 
-        # 4. OpenClaw configs
-        print("[4/10] OpenClaw configs...")
+        # 4. OpenClaw configs (full — gateway, workspaces, skills, agents, credentials)
+        print("[4/16] OpenClaw configs...")
         oc_dir = staging / "openclaw"
         oc_dir.mkdir()
-        oc_files = [
-            (HOME / ".openclaw" / "openclaw.json", "openclaw.json"),
-            (HOME / ".openclaw" / "cron" / "jobs.json", "cron_jobs.json"),
-            (HOME / ".openclaw" / "agents" / "steph" / "agent" / "SOUL.md", "steph_SOUL.md"),
-            (HOME / ".openclaw" / "agents" / "aegis" / "SOUL.md", "aegis_SOUL.md"),
-        ]
-        for src, dst in oc_files:
-            if src.exists() and not dry_run:
-                shutil.copy2(src, oc_dir / dst)
-                print(f"  {dst}")
+        oc_root = HOME / ".openclaw"
+        if oc_root.exists() and not dry_run:
+            # Core config
+            for f in ["openclaw.json"]:
+                src = oc_root / f
+                if src.exists():
+                    shutil.copy2(src, oc_dir / f)
+            # Cron jobs
+            cron_src = oc_root / "cron"
+            if cron_src.exists():
+                cron_dst = oc_dir / "cron"
+                shutil.copytree(cron_src, cron_dst, dirs_exist_ok=True)
+            # All workspaces (main, aegis, steph, alex, admin)
+            for ws in oc_root.glob("workspace*"):
+                if ws.is_dir():
+                    ws_dst = oc_dir / ws.name
+                    shutil.copytree(ws, ws_dst, dirs_exist_ok=True,
+                                    ignore=shutil.ignore_patterns("*.log", "__pycache__"))
+                    print(f"  workspace: {ws.name}")
+            # All custom skills
+            skills_src = oc_root / "skills"
+            if skills_src.exists():
+                shutil.copytree(skills_src, oc_dir / "skills", dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns("node_modules", "__pycache__"))
+                skill_count = sum(1 for _ in skills_src.rglob("SKILL.md"))
+                print(f"  skills: {skill_count} custom skills")
+            # Agents directory
+            agents_src = oc_root / "agents"
+            if agents_src.exists():
+                shutil.copytree(agents_src, oc_dir / "agents", dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns("sessions", "*.log"))
+                print(f"  agents dir backed up")
+            # Credentials (encrypted tokens)
+            creds_src = oc_root / "credentials"
+            if creds_src.exists():
+                shutil.copytree(creds_src, oc_dir / "credentials", dirs_exist_ok=True)
+                print(f"  credentials backed up")
+        print(f"  OpenClaw full backup complete")
 
-        # 5. Systemd services
-        print("[5/10] Systemd services...")
+        # 5. Systemd services (all user services)
+        print("[5/16] Systemd services...")
         sd_dir = staging / "systemd"
         sd_dir.mkdir()
         svc_path = HOME / ".config" / "systemd" / "user"
         if svc_path.exists() and not dry_run:
-            for f in svc_path.glob("tradeai-*"):
-                shutil.copy2(f, sd_dir / f.name)
-                print(f"  {f.name}")
-            for f in svc_path.glob("aegis-*"):
-                shutil.copy2(f, sd_dir / f.name)
-                print(f"  {f.name}")
-            for f in svc_path.glob("portfolio-*"):
-                shutil.copy2(f, sd_dir / f.name)
-                print(f"  {f.name}")
-            for f in svc_path.glob("recovery-*"):
-                shutil.copy2(f, sd_dir / f.name)
-                print(f"  {f.name}")
+            for f in svc_path.iterdir():
+                if f.is_file() and (f.suffix in (".service", ".timer")):
+                    shutil.copy2(f, sd_dir / f.name)
+                    print(f"  {f.name}")
 
-        # 6. Config files
-        print("[6/10] Config files...")
+        # 6. Config files (all YAML, JSON configs)
+        print("[6/16] Config files...")
         cfg_dir = staging / "config"
         cfg_dir.mkdir()
-        configs = [
-            PROJECT_ROOT / "assets" / "screeners.yaml",
-            PROJECT_ROOT / "config" / "agents_sec_interaction.yaml",
-        ]
-        for c in configs:
-            if c.exists() and not dry_run:
-                shutil.copy2(c, cfg_dir / c.name)
-                print(f"  {c.name}")
+        # Assets directory
+        assets_src = PROJECT_ROOT / "assets"
+        if assets_src.exists() and not dry_run:
+            shutil.copytree(assets_src, cfg_dir / "assets", dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("__pycache__"))
+        # Config directory
+        config_src = PROJECT_ROOT / "config"
+        if config_src.exists() and not dry_run:
+            shutil.copytree(config_src, cfg_dir / "config", dirs_exist_ok=True)
+        print(f"  assets/ + config/ backed up")
 
         # 7. Launcher scripts
-        print("[7/10] Launcher scripts...")
+        print("[7/16] Launcher scripts...")
         launch_dir = staging / "launchers"
         launch_dir.mkdir()
         ll = PROJECT_ROOT / "linux_launchers"
         if ll.exists() and not dry_run:
             for f in ll.glob("*.sh"):
                 shutil.copy2(f, launch_dir / f.name)
-                print(f"  {f.name}")
+            print(f"  {sum(1 for _ in ll.glob('*.sh'))} launcher scripts")
 
-        # 8. Key state files
-        print("[8/10] State files...")
-        state_dir = staging / "state"
-        state_dir.mkdir()
-        state_src = PROJECT_ROOT / "data" / "portfolios" / "state"
-        state_files = ["holdings.json", "ticker_enrichment_cache.json", "dividend_calendar.json",
-                       "retirement_roadmap.json", "risk_management.json", "stops.json"]
-        for f in state_files:
-            p = state_src / f
-            if p.exists() and not dry_run:
-                shutil.copy2(p, state_dir / f)
-                print(f"  {f} ({p.stat().st_size / 1e3:.0f} KB)")
+        # 8. All Python scripts (core automation)
+        print("[8/16] Python scripts...")
+        scripts_dir = staging / "scripts"
+        scripts_dir.mkdir()
+        scripts_src = PROJECT_ROOT / "scripts"
+        if scripts_src.exists() and not dry_run:
+            for f in scripts_src.iterdir():
+                if f.is_file() and f.suffix in (".py", ".sh"):
+                    shutil.copy2(f, scripts_dir / f.name)
+            count = sum(1 for _ in scripts_src.glob("*.py"))
+            print(f"  {count} Python scripts backed up")
 
-        # 9. Documentation
-        print("[9/10] Documentation...")
+        # 9. Full data directory (portfolios, state, cached data)
+        print("[9/16] Data directory...")
+        data_dir = staging / "data"
+        data_src = PROJECT_ROOT / "data"
+        if data_src.exists() and not dry_run:
+            shutil.copytree(data_src, data_dir, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.log"))
+            size = sum(f.stat().st_size for f in data_dir.rglob("*") if f.is_file())
+            print(f"  data/ backed up ({size / 1e6:.1f} MB)")
+
+        # 10. Command Center UI source + built dist
+        print("[10/16] Command Center UI...")
+        apps_dir = staging / "apps"
+        apps_src = PROJECT_ROOT / "apps"
+        if apps_src.exists() and not dry_run:
+            shutil.copytree(apps_src, apps_dir, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("node_modules", ".next", "__pycache__"))
+            # dist/ is now INCLUDED for instant restore without npm build
+            dist_path = apps_dir / "command-center-v2" / "dist"
+            if dist_path.exists():
+                dist_size = sum(f.stat().st_size for f in dist_path.rglob("*") if f.is_file())
+                print(f"  apps/ backed up (incl dist/ {dist_size/1e6:.1f} MB)")
+            else:
+                print(f"  apps/ backed up (dist/ not found — run npm build after restore)")
+
+        # 11. Skills directory (Trade AI skill)
+        print("[11/16] Trade AI skills...")
+        skills_dir = staging / "skills"
+        skills_src = PROJECT_ROOT / "skills"
+        if skills_src.exists() and not dry_run:
+            shutil.copytree(skills_src, skills_dir, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("node_modules", "__pycache__"))
+            print(f"  skills/ backed up")
+
+        # 12. SQL schema files
+        print("[12/16] SQL schemas...")
+        sql_dir = staging / "sql"
+        sql_src = PROJECT_ROOT / "sql"
+        if sql_src.exists() and not dry_run:
+            shutil.copytree(sql_src, sql_dir, dirs_exist_ok=True)
+            print(f"  sql/ backed up")
+
+        # 13. Package files (dependencies)
+        print("[13/16] Package definitions...")
+        pkg_dir = staging / "packages"
+        pkg_dir.mkdir()
+        for f in ["package.json", "package-lock.json", "requirements.txt"]:
+            src = PROJECT_ROOT / f
+            if src.exists() and not dry_run:
+                shutil.copy2(src, pkg_dir / f)
+                print(f"  {f}")
+        # CC v2 package files
+        cc_pkg = PROJECT_ROOT / "apps" / "command-center-v2"
+        for f in ["package.json", "package-lock.json", "tsconfig.json", "vite.config.ts", "index.html"]:
+            src = cc_pkg / f
+            if src.exists() and not dry_run:
+                shutil.copy2(src, pkg_dir / f"cc-v2-{f}")
+                print(f"  cc-v2/{f}")
+        # gog CLI config (Google Drive access)
+        gog_dir = staging / "gog"
+        gog_dir.mkdir()
+        gog_cfg = HOME / ".config" / "gogcli"
+        if gog_cfg.exists() and not dry_run:
+            for f in gog_cfg.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, gog_dir / f.name)
+            print(f"  gog config backed up ({sum(1 for _ in gog_cfg.iterdir())} files)")
+        gog_kr = HOME / ".openclaw" / "credentials" / "gog_keyring_password"
+        if gog_kr.exists() and not dry_run:
+            shutil.copy2(gog_kr, gog_dir / "gog_keyring_password")
+            print(f"  gog keyring password backed up")
+
+        # 14. Documentation (all docs)
+        print("[14/16] Documentation...")
         docs_dir = staging / "docs"
-        docs_dir.mkdir()
-        for f in (PROJECT_ROOT / "docs").glob("TRADE_AI_V12_SYSTEM_BIBLE*.md"):
-            if not dry_run:
-                shutil.copy2(f, docs_dir / f.name)
-        if (PROJECT_ROOT / "docs" / "RESTORE_GUIDE.md").exists() and not dry_run:
-            shutil.copy2(PROJECT_ROOT / "docs" / "RESTORE_GUIDE.md", docs_dir / "RESTORE_GUIDE.md")
-        print(f"  Bible + Restore Guide")
+        docs_src = PROJECT_ROOT / "docs"
+        if docs_src.exists() and not dry_run:
+            shutil.copytree(docs_src, docs_dir, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("backups", "__pycache__"))
+            print(f"  docs/ backed up (excluding old backup zips)")
 
-        # 10. Restore instructions (embedded)
-        print("[10/10] Generating restore instructions...")
+        # 15. OpenClaw gateway service file
+        print("[15/16] OpenClaw gateway service...")
+        oc_svc = HOME / ".config" / "systemd" / "user" / "openclaw-gateway.service"
+        if oc_svc.exists() and not dry_run:
+            shutil.copy2(oc_svc, sd_dir / "openclaw-gateway.service")
+            print(f"  openclaw-gateway.service")
+
+        # 16. Restore instructions (embedded)
+        print("[16/16] Generating restore instructions...")
         if not dry_run:
-            (staging / "RESTORE_FROM_THIS_BACKUP.md").write_text(f"""# Trade AI v12 — Restore from Backup
+            (staging / "RESTORE_FROM_THIS_BACKUP.md").write_text(f"""# Trade AI v12 — Full Restore from Backup
 
 **Backup date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
 **System:** ms01-openclaw
@@ -185,14 +286,16 @@ def create_backup(dry_run=False):
 - Ubuntu/Debian server with Python 3.11+
 - PostgreSQL installed (`sudo apt install postgresql`)
 - Ollama installed with qwen3:1.7b model
-- Node.js 18+ (for Command Center UI)
+- Node.js 18+ (for Command Center UI and OpenClaw)
+- OpenClaw npm package (`npm install -g openclaw`)
 
-## Step-by-Step Restore
+## Step-by-Step Full Recovery
 
-### 1. Clone the git repo
+### 1. Create project directory
 ```bash
-git clone <repo_url> ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+mkdir -p ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 cd ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# Unzip this backup into a temp folder, then restore from it
 ```
 
 ### 2. Restore .env (API keys + passwords)
@@ -201,62 +304,82 @@ cp env/dot_env ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
 # OR manually recreate from env/dot_env_SANITIZED.txt
 ```
 
-### 3. Create Python virtual environment
+### 3. Restore all Python scripts
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install psycopg2-binary yfinance requests pyyaml youtube-transcript-api
+cp -r scripts/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/
 ```
 
-### 4. Restore PostgreSQL database
+### 4. Restore config, assets, sql, skills
+```bash
+cp -r config/assets/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/assets/
+cp -r config/config/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/
+cp -r sql/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/sql/
+cp -r skills/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/skills/
+cp -r data/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/
+cp -r docs/ ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/
+```
+
+### 5. Restore package definitions and install deps
+```bash
+cp packages/package.json packages/package-lock.json ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/
+cp packages/requirements.txt ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+npm install
+```
+
+### 6. Restore PostgreSQL database
 ```bash
 sudo -u postgres createuser trade_ai
 sudo -u postgres createdb trade_ai -O trade_ai
-sudo -u postgres psql -c "ALTER USER trade_ai PASSWORD '<password_from_env>';"
 DB_PW=$(grep '^DB_PASSWORD=' .env | cut -d= -f2)
+sudo -u postgres psql -c "ALTER USER trade_ai PASSWORD '$DB_PW';"
 gunzip < database/trade_ai.sql.gz | PGPASSWORD="$DB_PW" psql -h localhost -U trade_ai trade_ai
 ```
 
-### 5. Restore crontab
+### 7. Restore crontab
 ```bash
 crontab crontab/crontab.txt
 ```
 
-### 6. Restore OpenClaw configs
+### 8. Restore OpenClaw (full — workspaces, skills, agents, credentials)
 ```bash
-mkdir -p ~/.openclaw/cron ~/.openclaw/agents/steph/agent ~/.openclaw/agents/aegis
-cp openclaw/openclaw.json ~/.openclaw/
-cp openclaw/cron_jobs.json ~/.openclaw/cron/jobs.json
-cp openclaw/steph_SOUL.md ~/.openclaw/agents/steph/agent/SOUL.md
-cp openclaw/aegis_SOUL.md ~/.openclaw/agents/aegis/SOUL.md
+# Install OpenClaw
+npm install -g openclaw
+
+# Restore full config directory
+cp -r openclaw/openclaw.json ~/.openclaw/
+cp -r openclaw/cron/ ~/.openclaw/cron/
+cp -r openclaw/workspace* ~/.openclaw/
+cp -r openclaw/skills/ ~/.openclaw/skills/
+cp -r openclaw/agents/ ~/.openclaw/agents/
+cp -r openclaw/credentials/ ~/.openclaw/credentials/
 ```
 
-### 7. Restore systemd services
+### 9. Restore systemd services
 ```bash
+mkdir -p ~/.config/systemd/user/
 cp systemd/* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now tradeai-continuous.timer
+systemctl --user enable --now openclaw-gateway.service
 ```
 
-### 8. Restore config files
-```bash
-cp config/screeners.yaml ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/assets/
-cp config/agents_sec_interaction.yaml ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/config/
-```
-
-### 9. Restore launcher scripts
+### 10. Restore launcher scripts
 ```bash
 cp launchers/*.sh ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/
 chmod +x ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/*.sh
 ```
 
-### 10. Restore state files (optional — will regenerate on next pipeline run)
+### 11. Build Command Center UI
 ```bash
-mkdir -p ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state
-cp state/*.json ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/portfolios/state/
+cd ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/apps/command-center-v2
+npm install
+npx vite build
 ```
 
-### 11. Start services
+### 12. Start services
 ```bash
 cd ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 source .venv/bin/activate
@@ -264,32 +387,34 @@ nohup .venv/bin/python scripts/portfolio_server.py > /dev/null 2>&1 &
 openclaw gateway restart
 ```
 
-### 12. Verify
+### 13. Verify
 ```bash
 python3 scripts/system_preflight_check.py
 ```
 Should pass 21+ of 23 checks.
 
-### 13. Build Command Center UI
-```bash
-cd apps/command-center-v2
-npm install
-npx vite build
-```
-
 ## What's in this backup
 
 | Directory | Contents |
 |---|---|
-| `database/` | Full PostgreSQL dump (143 tables, ~105 MB uncompressed) |
+| `database/` | Full PostgreSQL dump (all tables, full data) |
 | `env/` | .env file + sanitized version |
-| `crontab/` | Full crontab (46 active entries) |
-| `openclaw/` | Gateway config, cron jobs, agent SOULs |
-| `systemd/` | Service + timer files |
-| `config/` | Screener YAML, agent YAML |
+| `crontab/` | Full crontab (all scheduled jobs) |
+| `openclaw/` | Gateway config, workspaces (Maria/Aegis/Steph/Alex), all custom skills, agents, credentials |
+| `systemd/` | All service + timer files (including openclaw-gateway) |
+| `config/` | assets/ + config/ (screeners, agent YAML, all configs) |
 | `launchers/` | Shell scripts for service launchers |
-| `state/` | Current portfolio state files |
-| `docs/` | System Bible + Restore Guide |
+| `scripts/` | All Python automation scripts (full pipeline code) |
+| `data/` | Full data directory (portfolios, state, cached data) |
+| `apps/` | Command Center UI source (excluding node_modules) |
+| `skills/` | Trade AI skill source |
+| `sql/` | Database schema files |
+| `packages/` | package.json, requirements.txt (dependency lists) |
+| `docs/` | System Bible, Reference Architecture, all documentation |
+
+## This backup is self-contained
+No git clone required. All source code, configs, and data are included.
+If the NVMe dies tomorrow, this zip + a fresh Ubuntu install = full recovery.
 """)
 
         # Create zip
@@ -299,7 +424,7 @@ npx vite build
             print(f"\n{'='*50}")
             print(f"BACKUP COMPLETE: {zip_path}")
             print(f"Size: {size_mb:.1f} MB")
-            print(f"Contains: DB dump + .env + crontab + OpenClaw + systemd + configs + state + docs + restore instructions")
+            print(f"Contains: DB + .env + crontab + OpenClaw (full) + systemd + scripts + data + apps + skills + sql + configs + docs")
 
             # Cleanup old backups (keep 4 weeks)
             for old in sorted(BACKUP_DIR.glob("trade_ai_backup_*.zip"))[:-4]:
@@ -312,6 +437,37 @@ npx vite build
             return None
 
 
+def _notify_telegram(message):
+    """Send backup status to all Telegram recipients."""
+    import urllib.request, urllib.parse
+    token, chat_ids_raw = "", ""
+    try:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("TELEGRAM_BOT_TOKEN="): token = line.split("=", 1)[1].strip()
+            if line.startswith("TELEGRAM_CHAT_ID="): chat_ids_raw = line.split("=", 1)[1].strip()
+    except Exception:
+        return
+    if not token or not chat_ids_raw:
+        return
+    for cid in chat_ids_raw.split(","):
+        cid = cid.strip()
+        if not cid:
+            continue
+        try:
+            data = urllib.parse.urlencode({"chat_id": cid, "text": message}).encode()
+            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+            urllib.request.urlopen(req, timeout=10)
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
-    create_backup(dry_run=dry)
+    try:
+        result = create_backup(dry_run=dry)
+        if result and not dry:
+            size_mb = os.path.getsize(result) / 1e6
+            _notify_telegram(f"Backup complete: {Path(result).name} ({size_mb:.1f} MB)")
+    except Exception as e:
+        _notify_telegram(f"BACKUP FAILED: {e}")
+        raise

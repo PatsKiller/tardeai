@@ -16,9 +16,13 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL_FAST = "qwen3:1.7b"   # fast classification, short tasks (8-14s)
-OLLAMA_MODEL = "qwen3:1.7b"          # narratives, analysis (22-57s)
+from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_ollama_runtime_env
+
+apply_ollama_runtime_env()
+
+OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+OLLAMA_MODEL_FAST = get_local_llm_model()
+OLLAMA_MODEL = get_local_llm_model()
 FALLBACK_OPENAI = "gpt-5.4-mini"
 FALLBACK_ANTHROPIC = "claude-sonnet-4-6"
 DEFAULT_TIMEOUT = 120
@@ -30,7 +34,8 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL) -> str | N
     payload = json.dumps({
         "model": model,
         "stream": False,
-        "prompt": prompt,
+        "messages": [{"role": "user", "content": prompt}],
+        "think": False,
         "options": {"temperature": 0.3, "num_predict": 500}
     }).encode()
 
@@ -43,7 +48,7 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL) -> str | N
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
-            text = data.get("response", "").strip()
+            text = data.get("message", {}).get("content", "").strip()
             duration = round(data.get("total_duration", 0) / 1e9, 1)
             tokens = data.get("eval_count", 0)
             print(f"  [local-llm] Ollama OK — {duration}s, {tokens} tokens")
@@ -128,23 +133,23 @@ def _try_anthropic(prompt: str) -> str | None:
 
 def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
              fallback: bool = True, fast: bool = True) -> str:
-    """4-tier chain: qwen3:1.7b -> qwen3:1.7b -> OpenAI -> Anthropic"""
+    """4-tier chain: local model -> OpenAI -> Anthropic"""
     global model_used
     model_used = None
-    # Tier 1: qwen3:1.7b (fast, 8-14s)
+    # Tier 1: local model (fast)
     if fast:
         result = _try_ollama(prompt, min(timeout, 30), model=OLLAMA_MODEL_FAST)
         if result:
             model_used = OLLAMA_MODEL_FAST
             return result
-    # Tier 2: qwen3:1.7b (full, 22-57s)
+    # Tier 2: local model (full)
     result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL)
     if result:
         model_used = OLLAMA_MODEL
         return result
         return result
 
-    # Tier 2: try qwen3:1.7b if fast model failed
+    # Tier 2: try full model if fast model failed
     if model_used != OLLAMA_MODEL:
         result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL)
         if result:

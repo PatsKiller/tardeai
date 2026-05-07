@@ -8,6 +8,23 @@ from typing import Any, Dict, List, Optional
 def _e(s) -> str: return html_lib.escape(str(s or ""))
 def _sign(v: float) -> str: return f"+{v:.2f}" if v >= 0 else f"{v:.2f}"
 def _pct_color(v: float) -> str: return "#0F9D58" if v > 0 else ("#DB4437" if v < 0 else "#9A9AB0")
+
+_COUNTRY_FLAGS = {
+    "usa": "🇺🇸", "united states": "🇺🇸", "us": "🇺🇸",
+    "canada": "🇨🇦", "israel": "🇮🇱", "china": "🇨🇳",
+    "united kingdom": "🇬🇧", "uk": "🇬🇧", "japan": "🇯🇵",
+    "germany": "🇩🇪", "france": "🇫🇷", "south korea": "🇰🇷",
+    "australia": "🇦🇺", "brazil": "🇧🇷", "india": "🇮🇳",
+    "taiwan": "🇹🇼", "ireland": "🇮🇪", "netherlands": "🇳🇱",
+    "switzerland": "🇨🇭", "singapore": "🇸🇬", "hong kong": "🇭🇰",
+    "mexico": "🇲🇽", "malaysia": "🇲🇾", "bermuda": "🇧🇲",
+    "cayman islands": "🇰🇾", "luxembourg": "🇱🇺", "norway": "🇳🇴",
+    "sweden": "🇸🇪", "denmark": "🇩🇰", "finland": "🇫🇮",
+    "spain": "🇪🇸", "italy": "🇮🇹", "argentina": "🇦🇷",
+}
+def _country_flag(country: str) -> str:
+    if not country: return "🇺🇸"
+    return _COUNTRY_FLAGS.get(country.strip().lower(), "🌐")
 def _js(obj) -> str: return json.dumps(obj, default=str, ensure_ascii=False)
 
 CSS = """
@@ -334,7 +351,7 @@ def _ticker_to_js(t):
                      "url": str(c.get("url","")), "summary": str(c.get("llm_summary",""))})
     return {
         "sym": str(t.get("symbol","")), "co": str(t.get("company","")),
-        "country": "🇺🇸", "sector": str(t.get("sector","")),
+        "country": _country_flag(t.get("country", "")), "sector": str(t.get("sector","")),
         "score": int(t.get("score",0)), "grade": str(t.get("grade","D")),
         "dec": str(t.get("decision","AVOID")),
         "rvol": round(float(t.get("relative_volume") or 0), 1),

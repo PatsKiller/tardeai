@@ -1,0 +1,87 @@
+strategy_id: earnings_catalyst
+display_name: Earnings Catalyst
+version: "1.0"
+purpose: "Pre-earnings buildup + post-earnings momentum. Two sub-strategies tracked independently."
+
+eligible_accounts: [taxable, rollover_ira, roth_ira]
+forbidden_accounts: []
+timeframe: swing_1_to_5d
+universe: earnings_candidates
+
+primary_data_sources:
+  - news_articles
+  - finviz_screener
+  - sec_edgar
+
+sub_strategies:
+  pre_earnings_buildup:
+    description: "Enter 3-5 days before earnings on institutional activity."
+    entry_window_days_before: [3, 5]
+    exit_before_announcement: true
+    never_hold_through_earnings_in_taxable: true
+    required_evidence:
+      - options_activity_surge
+      - analyst_revision_up_30d
+  post_earnings_momentum:
+    description: "Enter 1-2 days after earnings if beat >10% and price gaps."
+    entry_window_days_after: [1, 2]
+    min_beat_pct: 10
+    gap_hold_30min_required: true
+    hold_ok_in_ira_when_validated: true
+
+screen_filters:
+  min_price: 5.00
+  max_price: 200.00
+  min_rvol: 1.5
+  max_float_m: 200
+
+setup_qualification:
+  earnings_date_required: true
+  catalyst_verification: required
+
+auto_disqualifiers:
+  - id: NO_EARNINGS_DATE
+    condition: "earnings_date not available"
+  - id: HOLD_THROUGH_IN_TAXABLE
+    condition: "pre_earnings and account == taxable and hold_through"
+
+scoring_weights:
+  earnings_quality: 25
+  options_activity: 20
+  technical_setup: 20
+  analyst_sentiment: 15
+  catalyst: 10
+  float: 10
+
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+
+minimum_evidence:
+  required:
+    - earnings_date
+    - price_data
+    - trade_plan
+  preferred:
+    - options_volume
+    - analyst_estimates
+    - revenue_data
+
+agent_responsibilities:
+  maria: "Verify earnings/catalyst data. Check beat magnitude and guidance."
+  risk: "Verify gap levels, entry timing, stop placement."
+  tax: "Verify account rules for hold-through-earnings scenarios."
+
+live_trade_rules:
+  max_dollar_risk: 200
+  max_hold_days: 5
+
+outcome_learning_fields:
+  - sub_strategy_type
+  - beat_magnitude
+  - guidance_direction
+  - gap_magnitude
+  - entry_timing
+  - sector_alignment

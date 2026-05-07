@@ -1,0 +1,9 @@
+# Trade AI v10 | 2026-05-06 | Run 0700
+
+DGXX
+EVC
+AVTX
+EZGO
+POET
+QMCO
+LFVN

@@ -32,14 +32,121 @@ def _send_tg(msg: str):
         pass
 
 
-def queue_stale_symbols():
-    """Queue agent jobs for symbols not analyzed in 7+ days."""
+def queue_holdings_batch():
+    """Tier 1: Every night. All 3 agents. All portfolio holdings that need refresh."""
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Find portfolio symbols with stale or missing analysis (7+ days old)
-    # Queue up to 20 per night — overnight processor handles 25/5min = 300/hour
+    # Get portfolio symbols from holdings.json
+    holdings_file = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    portfolio_symbols = set()
+    try:
+        h = json.loads(holdings_file.read_text())
+        for pos in h.get("holdings", []):
+            sym = pos.get("symbol", "")
+            # Skip CASH and fund names with hyphens (401k fund codes)
+            if sym and sym != "CASH" and "-" not in sym:
+                portfolio_symbols.add(sym)
+    except Exception as e:
+        print(f"[overnight] Error reading holdings: {e}")
+        conn.close()
+        return {"tier": 1, "symbols": 0, "total_holdings": 0, "jobs_queued": 0}
+
+    # Filter to symbols not analyzed in last 24h
+    if portfolio_symbols:
+        cur.execute("""
+            SELECT DISTINCT symbol FROM watchlist_agent_results
+            WHERE symbol = ANY(%s) AND created_at > NOW() - INTERVAL '24 hours'
+        """, (list(portfolio_symbols),))
+        recent = {r["symbol"] for r in cur.fetchall()}
+        stale_holdings = portfolio_symbols - recent
+    else:
+        stale_holdings = set()
+
+    # Queue all 3 agents for each stale holding
+    agents = ["maria", "steph", "risk_agent"]
+    queued = 0
+    for symbol in sorted(stale_holdings):
+        for agent in agents:
+            job_id = f"t1_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
+            cur.execute("""
+                INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
+                VALUES (%s, %s, %s, 'full_analysis', 1, 'Tier 1: Holdings nightly refresh', 'queued', 'command_center')
+                ON CONFLICT DO NOTHING
+            """, (job_id, symbol, agent))
+            queued += 1
+
+    conn.commit()
+    conn.close()
+    print(f"[overnight] Tier 1 (holdings): {len(stale_holdings)}/{len(portfolio_symbols)} symbols stale → {queued} jobs queued")
+    return {"tier": 1, "symbols": len(stale_holdings), "total_holdings": len(portfolio_symbols), "jobs_queued": queued}
+
+
+def queue_screener_batch():
+    """Tier 2: Mon/Wed/Fri only. Maria only. GO/WAIT screener hits."""
+    import psycopg2.extras
+    today = datetime.now().weekday()  # 0=Mon, 2=Wed, 4=Fri
+    if today not in [0, 2, 4]:
+        print(f"[overnight] Tier 2 (screener): skipping — not Mon/Wed/Fri (today={today})")
+        return {"tier": 2, "symbols": 0, "jobs_queued": 0, "skipped": True}
+
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Get portfolio symbols to exclude
+    holdings_file = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    portfolio_symbols = set()
+    try:
+        h = json.loads(holdings_file.read_text())
+        for pos in h.get("holdings", []):
+            sym = pos.get("symbol", "")
+            if sym and sym != "CASH" and "-" not in sym:
+                portfolio_symbols.add(sym)
+    except Exception:
+        pass
+
+    # Get active screener symbols scored GO/WAIT (>=30) in last 48h
+    cur.execute("""
+        SELECT DISTINCT wi.symbol
+        FROM watchlist_items wi
+        WHERE wi.status = 'active'
+          AND wi.score >= 30
+          AND wi.updated_at > NOW() - INTERVAL '48 hours'
+          AND wi.symbol NOT IN (
+              SELECT DISTINCT symbol FROM watchlist_agent_results
+              WHERE created_at > NOW() - INTERVAL '48 hours'
+          )
+        ORDER BY wi.symbol
+        LIMIT 40
+    """)
+    screener_symbols = [r["symbol"] for r in cur.fetchall()]
+    # Exclude holdings (they're already in Tier 1)
+    screener_symbols = [s for s in screener_symbols if s not in portfolio_symbols]
+
+    # Queue Maria only for screener candidates
+    queued = 0
+    for symbol in screener_symbols:
+        job_id = f"t2_{symbol.lower()}_maria_{uuid.uuid4().hex[:6]}"
+        cur.execute("""
+            INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
+            VALUES (%s, %s, 'maria', 'full_analysis', 2, 'Tier 2: Screener MWF — Maria only', 'queued', 'command_center')
+            ON CONFLICT DO NOTHING
+        """, (job_id, symbol))
+        queued += 1
+
+    conn.commit()
+    conn.close()
+    print(f"[overnight] Tier 2 (screener): {len(screener_symbols)} symbols → {queued} jobs queued (Maria only, MWF)")
+    return {"tier": 2, "symbols": len(screener_symbols), "jobs_queued": queued, "skipped": False}
+
+
+def _queue_stale_symbols_legacy():
+    """LEGACY — Queue agent jobs for symbols not analyzed in 7+ days. Replaced by tiered approach."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
     cur.execute("""
         WITH latest_analysis AS (
             SELECT symbol, max(created_at) as last_analyzed
@@ -191,6 +298,14 @@ def record_agent_performance():
     return {"agents": len(agents)}
 
 
+
+    # ── Sunday 9 AM — Journal annotation reminder ──────────────────────────
+    if now.weekday() == 6 and now.hour == 9 and now.minute < 5:
+        print("[cron] Running journal reminder...")
+        send_journal_reminder()
+
+# End of reminder
+
 def run(send_telegram: bool = False):
     """Run the full overnight batch."""
     print(f"[overnight] {datetime.now().isoformat()} — Starting overnight batch")
@@ -199,9 +314,11 @@ def run(send_telegram: bool = False):
     metrics = record_daily_metrics()
     print(f"[overnight] Metrics recorded: portfolio=${metrics['portfolio_value']:,.0f}, income=${metrics['annual_income']:,.0f} ({metrics['income_pct_of_target']}%)")
 
-    # 2. Queue stale symbols for refresh
-    stale = queue_stale_symbols()
-    print(f"[overnight] Queued {stale['jobs_queued']} jobs for {stale['stale_symbols']} stale symbols")
+    # 2. Queue agent jobs — tiered approach
+    tier1 = queue_holdings_batch()
+    tier2 = queue_screener_batch()
+    total_queued = tier1["jobs_queued"] + tier2["jobs_queued"]
+    print(f"[overnight] Tier1={tier1['jobs_queued']} (holdings/nightly) Tier2={tier2['jobs_queued']} (screener/MWF) Total={total_queued}")
 
     # 3. Record agent performance (weekly)
     perf = record_agent_performance()
@@ -221,8 +338,9 @@ def run(send_telegram: bool = False):
             f"  Intel events: {metrics['events_today']}\n"
             f"  News ingested: {metrics['news_today']}\n\n"
             f"\U0001F504 *Refresh Queue:*\n"
-            f"  {stale['stale_symbols']} stale symbols re-queued\n"
-            f"  {stale['jobs_queued']} agent jobs created\n"
+            f"  Tier 1 (holdings): {tier1['symbols']}/{tier1['total_holdings']} stale → {tier1['jobs_queued']} jobs\n"
+            f"  Tier 2 (screener): {tier2['symbols']} symbols → {tier2['jobs_queued']} jobs {'(MWF only)' if not tier2.get('skipped') else '(skipped — not MWF)'}\n"
+            f"  Total: {total_queued} jobs queued\n"
             f"  (will process over next 1-2 hours)\n\n"
             f"{divider}\n"
             f"_Next: Alex daily scan at 5:00 AM_"
@@ -246,8 +364,22 @@ def run(send_telegram: bool = False):
     except Exception as e:
         print(f"[overnight] Snapshot error: {e}")
 
+    # 5. Populate watchlist price levels from support/resistance data
+    try:
+        from watchlist_price_levels import populate_price_levels
+        import psycopg2
+        pw = ""
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+        pconn = psycopg2.connect(host='localhost', dbname='trade_ai', user='trade_ai', password=pw)
+        price_count = populate_price_levels(pconn)
+        pconn.close()
+        print(f"[overnight] Price levels populated: {price_count} symbols")
+    except Exception as e:
+        print(f"[overnight] Price levels (non-fatal): {e}")
+
     print(f"[overnight] Done")
-    return {"metrics": metrics, "stale": stale}
+    return {"metrics": metrics, "tier1": tier1, "tier2": tier2}
 
 
 def evaluate_past_decisions() -> dict:
@@ -259,9 +391,9 @@ def evaluate_past_decisions() -> dict:
 
     # Fill in 7-day prices for decisions made 7+ days ago
     cur.execute("""
-        SELECT do.id, do.symbol, do.price_at_decision, do.recommendation, do.created_at
-        FROM decision_outcomes do
-        WHERE do.price_7d IS NULL AND do.created_at < NOW() - INTERVAL '7 days'
+        SELECT d.id, d.symbol, d.price_at_decision, d.recommendation, d.created_at
+        FROM decision_outcomes d
+        WHERE d.price_7d IS NULL AND d.created_at < NOW() - INTERVAL '7 days'
         LIMIT 50
     """)
     for row in cur.fetchall():
@@ -495,17 +627,154 @@ def refresh_research_topics() -> dict:
     return {"refreshed": refreshed, "total": len(topics)}
 
 
+
+def send_journal_reminder():
+    """Weekly reminder: unannotated trade count via Telegram."""
+    try:
+        import psycopg2, os
+        from psycopg2.extras import RealDictCursor
+        conn = psycopg2.connect(
+            host=os.getenv('DB_HOST','localhost'), port=int(os.getenv('DB_PORT',5432)),
+            dbname=os.getenv('DB_NAME','trade_ai'), user=os.getenv('DB_USER',''),
+            password=os.getenv('DB_PASSWORD','')
+        )
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM trade_closed t
+            LEFT JOIN journal_trade_reviews r ON r.trade_key = t.trade_key
+            WHERE r.id IS NULL
+        """)
+        unannotated = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM trade_closed")
+        total = cur.fetchone()[0]
+        conn.close()
+
+        if unannotated > 0:
+            pct = round((total - unannotated) / total * 100, 1) if total else 0
+            msg = (
+                f"📓 *Weekly Journal Reminder*\n\n"
+                f"*{unannotated} trades* still need annotation ({total} total).\n"
+                f"Coverage: {pct}% complete\n\n"
+                f"Unannotated trades have no setup type, entry reason, or lessons.\n"
+                f"👉 http://192.168.50.16:7777/v2/journal"
+            )
+            import requests
+            token = os.getenv('TELEGRAM_BOT_TOKEN','')
+            for chat_id in ['6993102664', '8797974247']:
+                try:
+                    requests.post(
+                        f'https://api.telegram.org/bot{token}/sendMessage',
+                        json={'chat_id': chat_id, 'text': msg, 'parse_mode': 'Markdown'},
+                        timeout=10
+                    )
+                except Exception:
+                    pass
+            print(f"[journal_reminder] Sent: {unannotated} unannotated trades")
+        else:
+            print("[journal_reminder] All trades annotated — no reminder sent")
+    except Exception as e:
+        print(f"[journal_reminder] Error: {e}")
+
+
+def run_tax_sweep():
+    """Queue tax_agent for holdings with loss > $500 + SSDI-impacted proposals."""
+    conn = _get_conn()
+    cur = conn.cursor()
+    jobs_queued = 0
+
+    # 1. Holdings with unrealized loss > $500 not analyzed by tax_agent in 24h
+    holdings_file = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    if holdings_file.exists():
+        data = json.loads(holdings_file.read_text())
+        loss_symbols = [
+            h["symbol"] for h in data.get("holdings", [])
+            if h.get("gain_loss") is not None and h["gain_loss"] < -500 and h.get("symbol")
+        ]
+        if loss_symbols:
+            # Exclude symbols already analyzed by tax_agent in last 24h
+            cur.execute("""SELECT DISTINCT symbol FROM watchlist_agent_results
+                          WHERE agent = 'tax_agent' AND created_at > NOW() - INTERVAL '24 hours'""")
+            recent = {r[0] for r in cur.fetchall()}
+            for sym in loss_symbols[:10]:
+                if sym not in recent:
+                    cur.execute("""INSERT INTO watchlist_agent_jobs
+                        (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, created_at)
+                        VALUES (%s, %s, 'tax_agent', 'full_analysis', 'tax harvest review — loss > $500', 'pending', 1, 'tax_sweep', NOW())
+                    """, (str(uuid.uuid4()), sym))
+                    jobs_queued += 1
+
+    # 2. Proposals with SSDI impact not yet reviewed by tax_agent
+    cur.execute("""SELECT id, symbol FROM watchlist_proposals
+                   WHERE ssdi_impact IS NOT NULL AND ssdi_impact != 'none' AND status = 'proposed' LIMIT 5""")
+    ssdi_proposals = cur.fetchall()
+    for pid, sym in ssdi_proposals:
+        cur.execute("""INSERT INTO watchlist_agent_jobs
+            (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, created_at)
+            VALUES (%s, %s, 'tax_agent', 'full_analysis', %s, 'pending', 1, 'tax_sweep', NOW())
+            ON CONFLICT DO NOTHING
+        """, (str(uuid.uuid4()), sym, f"SSDI-impacted proposal #{pid}"))
+        jobs_queued += 1
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"[tax-sweep] Queued {jobs_queued} jobs for tax_agent")
+    return jobs_queued
+
+
 if __name__ == "__main__":
     tg = "--telegram" in sys.argv
+
+    # Determine mode for pipeline registry
     if "--outcomes" in sys.argv:
-        evaluate_past_decisions()
+        _mode = 'overnight_batch_outcomes'
     elif "--proactive" in sys.argv:
-        proactive_intel_scan()
+        _mode = 'overnight_batch_proactive'
     elif "--research" in sys.argv:
-        refresh_research_topics()
+        _mode = 'overnight_batch_research'
     elif "--index-embeddings" in sys.argv:
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from content_scoring import batch_index_all
-        batch_index_all(batch_size=100)
+        _mode = 'overnight_batch_embeddings'
+    elif "--tax-sweep" in sys.argv:
+        _mode = 'overnight_batch_tax'
     else:
-        run(send_telegram=tg)
+        _mode = 'overnight_batch'
+
+    _run_id = None
+    try:
+        from pipeline_registry import run_start, run_complete, run_fail
+        _run_id = run_start(_mode)
+    except Exception:
+        pass
+
+    try:
+        if "--outcomes" in sys.argv:
+            _result = evaluate_past_decisions()
+            _count = _result.get('scored', 0) if isinstance(_result, dict) else 0
+        elif "--proactive" in sys.argv:
+            _result = proactive_intel_scan()
+            _count = _result.get('queued', 0) if isinstance(_result, dict) else 0
+        elif "--research" in sys.argv:
+            _result = refresh_research_topics()
+            _count = _result.get('refreshed', 0) if isinstance(_result, dict) else 0
+        elif "--index-embeddings" in sys.argv:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from content_scoring import batch_index_all
+            batch_index_all(batch_size=100)
+            _count = 0
+        elif "--tax-sweep" in sys.argv:
+            run_tax_sweep()
+            _count = 0
+        else:
+            run(send_telegram=tg)
+            _count = 0
+
+        try:
+            if _run_id: run_complete(_run_id, rows_processed=_count)
+        except Exception:
+            pass
+    except Exception as _e:
+        try:
+            if _run_id: run_fail(_run_id, str(_e))
+        except Exception:
+            pass
+        raise

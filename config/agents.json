@@ -42,8 +42,8 @@
         ],
         "min_amount": 10000,
         "reviewers": [
-          "steph",
-          "maria",
+          "steph_allocation",
+          "maria_research",
           "risk_agent"
         ]
       },
@@ -63,7 +63,7 @@
           "SCHG"
         ],
         "reviewers": [
-          "steph",
+          "steph_allocation",
           "tax_agent",
           "risk_agent"
         ]
@@ -78,7 +78,53 @@
         ],
         "reviewers": [
           "risk_agent",
-          "maria"
+          "maria_research"
+        ]
+      },
+      {
+        "name": "roth_conversion",
+        "when_any": [
+          "roth",
+          "convert",
+          "conversion",
+          "rollover"
+        ],
+        "reviewers": [
+          "alex",
+          "tax_agent",
+          "steph_allocation"
+        ]
+      },
+      {
+        "name": "ssdi_irmaa_impact",
+        "when_any": [
+          "ssdi",
+          "irmaa",
+          "magi",
+          "medicaid",
+          "disability"
+        ],
+        "reviewers": [
+          "alex",
+          "tax_agent"
+        ]
+      },
+      {
+        "name": "income_asset_sell",
+        "when_any": [
+          "sell",
+          "trim",
+          "reduce"
+        ],
+        "strategies": [
+          "dividend_growth_compounder",
+          "high_yield_income_bdc",
+          "tactical_income"
+        ],
+        "reviewers": [
+          "steph_allocation",
+          "alex",
+          "risk_agent"
         ]
       }
     ]
@@ -102,8 +148,8 @@
       "required_context": [],
       "write_allowed": false
     },
-    "maria": {
-      "title": "Market Research Agent",
+    "maria_research": {
+      "title": "Market Research Agent (Backend)",
       "owns": [
         "ETF and fund comparison",
         "market research",
@@ -139,13 +185,13 @@
       "source_required": true,
       "write_allowed": false,
       "routes_to": {
-        "portfolio_allocation": "steph",
+        "portfolio_allocation": "steph_allocation",
         "tax_or_roth": "tax_agent",
         "stop_decision": "risk_agent"
       }
     },
-    "steph": {
-      "title": "Portfolio Allocation Agent",
+    "steph_allocation": {
+      "title": "Portfolio Allocation Agent (Backend)",
       "owns": [
         "portfolio allocation",
         "account placement",
@@ -179,7 +225,7 @@
       "source_required": true,
       "write_allowed": true,
       "routes_to": {
-        "market_research": "maria",
+        "market_research": "maria_research",
         "tax_or_roth": "tax_agent",
         "stop_decision": "risk_agent"
       }
@@ -218,8 +264,8 @@
       "source_required": true,
       "write_allowed": true,
       "routes_to": {
-        "market_research": "maria",
-        "portfolio_allocation": "steph",
+        "market_research": "maria_research",
+        "portfolio_allocation": "steph_allocation",
         "tax_or_roth": "tax_agent"
       }
     },
@@ -254,15 +300,163 @@
       "source_required": true,
       "write_allowed": true,
       "routes_to": {
-        "market_research": "maria",
-        "portfolio_allocation": "steph",
+        "market_research": "maria_research",
+        "portfolio_allocation": "steph_allocation",
         "stop_decision": "risk_agent"
+      }
+    },
+    "alex": {
+      "title": "Retirement & Disability Advisor",
+      "owns": [
+        "retirement planning",
+        "disability benefit optimization",
+        "SSDI strategy",
+        "IRMAA threshold management",
+        "Medicaid lookback analysis",
+        "Golden Window Roth conversion",
+        "agent debate escalation",
+        "high-stakes portfolio decisions"
+      ],
+      "keywords": [
+        "retirement",
+        "disability",
+        "ssdi",
+        "irmaa",
+        "medicare",
+        "medicaid",
+        "golden window",
+        "401k rollover",
+        "roth ladder",
+        "early withdrawal",
+        "disability exemption",
+        "filing status",
+        "mfs",
+        "sga",
+        "escalate"
+      ],
+      "required_context": [
+        "holdings.json",
+        "personal_situation.json",
+        "risk_management.json",
+        "dividend_calendar.json"
+      ],
+      "source_required": true,
+      "write_allowed": false,
+      "model_override": "claude-sonnet-4-6",
+      "routes_to": {
+        "portfolio_allocation": "steph_allocation",
+        "tax_or_roth": "tax_agent",
+        "stop_decision": "risk_agent",
+        "market_research": "maria_research"
+      },
+      "escalation_target": true,
+      "receives_from": ["steph_allocation", "risk_agent", "tax_agent", "orchestrator"]
+    },
+    "iris": {
+      "title": "Taxonomy Intelligence Agent",
+      "owns": [
+        "content classification",
+        "taxonomy gap detection",
+        "content hygiene",
+        "library audit",
+        "YouTube channel coverage",
+        "RAG quality assurance",
+        "agent content routing rules"
+      ],
+      "keywords": [
+        "taxonomy",
+        "classification",
+        "content gap",
+        "library",
+        "hygiene",
+        "stale content",
+        "coverage",
+        "youtube channel",
+        "rag",
+        "embedding",
+        "tagging"
+      ],
+      "required_context": [],
+      "source_required": false,
+      "write_allowed": true,
+      "model_override": "claude-sonnet-4-6",
+      "routes_to": {},
+      "feeds_agents": ["maria_research", "steph_allocation", "risk_agent", "alex", "aegis"]
+    },
+    "aegis_core": {
+      "title": "Overnight Surveillance Engine",
+      "owns": [
+        "overnight portfolio monitoring",
+        "stop integrity verification",
+        "covered call evaluation",
+        "rotation alternative analysis",
+        "Steph escalation generation",
+        "evidence ledger",
+        "morning brief generation"
+      ],
+      "keywords": [
+        "overnight",
+        "surveillance",
+        "morning brief",
+        "stop coverage",
+        "covered call",
+        "rotation",
+        "recovery watch",
+        "escalation",
+        "evidence"
+      ],
+      "required_context": [
+        "holdings.json",
+        "risk_management.json",
+        "ticker_enrichment_cache.json",
+        "dividend_calendar.json"
+      ],
+      "source_required": true,
+      "write_allowed": true,
+      "operates_window": "20:00-06:00",
+      "routes_to": {
+        "portfolio_allocation": "steph_allocation",
+        "retirement_disability": "alex"
+      },
+      "feeds_agents": ["steph_allocation", "aegis"]
+    },
+    "social_scalp": {
+      "title": "Social Scalp Scanner",
+      "owns": [
+        "social mention aggregation",
+        "scalp candidate scoring",
+        "pre-market momentum detection",
+        "Finviz enrichment for social picks"
+      ],
+      "keywords": [
+        "social",
+        "scalp",
+        "mention",
+        "momentum",
+        "pre-market",
+        "stocktwits",
+        "reddit trending",
+        "rvol",
+        "gap"
+      ],
+      "required_context": [],
+      "source_required": false,
+      "write_allowed": true,
+      "model_override": "rules-based",
+      "routes_to": {
+        "portfolio_allocation": "steph_allocation"
+      },
+      "alert_tiers": {
+        "aplus": {"min_score": 48, "action": "telegram_alert_with_trade_plan"},
+        "go": {"min_score": 40, "action": "telegram_alert"},
+        "wait": {"min_score": 30, "action": "telegram_soft_notification"},
+        "avoid": {"min_score": 0, "action": "store_only"}
       }
     }
   },
   "intents": {
     "market_research": {
-      "agent": "maria",
+      "agent": "maria_research",
       "keywords": [
         "compare",
         "analyst",
@@ -279,7 +473,7 @@
       ]
     },
     "portfolio_allocation": {
-      "agent": "steph",
+      "agent": "steph_allocation",
       "keywords": [
         "which portfolio",
         "which account",
@@ -330,6 +524,61 @@
         "email me",
         "send",
         "gmail"
+      ]
+    },
+    "retirement_disability": {
+      "agent": "alex",
+      "keywords": [
+        "retirement",
+        "disability",
+        "ssdi",
+        "irmaa",
+        "medicare",
+        "medicaid",
+        "golden window",
+        "401k rollover",
+        "roth ladder",
+        "early withdrawal",
+        "disability exemption",
+        "mfs",
+        "filing status"
+      ]
+    },
+    "taxonomy_intelligence": {
+      "agent": "iris",
+      "keywords": [
+        "taxonomy",
+        "content gap",
+        "library audit",
+        "hygiene",
+        "stale content",
+        "coverage",
+        "tagging",
+        "classification"
+      ]
+    },
+    "portfolio_surveillance": {
+      "agent": "aegis_core",
+      "keywords": [
+        "overnight",
+        "surveillance",
+        "morning brief",
+        "stop coverage",
+        "covered call",
+        "rotation",
+        "recovery",
+        "evidence"
+      ]
+    },
+    "scalp_discovery": {
+      "agent": "social_scalp",
+      "keywords": [
+        "scalp",
+        "social mention",
+        "momentum",
+        "pre-market",
+        "rvol",
+        "gap play"
       ]
     }
   }

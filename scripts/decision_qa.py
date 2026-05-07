@@ -175,11 +175,21 @@ def assess_symbol(symbol: str) -> dict:
         human_review = True
 
     if "UNCERTAIN" in groups_seen and synthesis:
-        uncertain_agents = [a for a, v in agent_groups.items() if v["group"] == "UNCERTAIN"]
-        conflicts.append({
-            "type": "uncertain_agent_with_synthesis",
-            "description": f"{', '.join(uncertain_agents)} say RESEARCH_MORE but synthesis produced final recommendation",
-        })
+        # Only flag as conflict if the uncertain agent had >40% confidence
+        # RESEARCH_MORE at <40% confidence = data gap, not a disagreement
+        uncertain_high_conf = [a for a, v in agent_groups.items()
+                               if v["group"] == "UNCERTAIN" and float(v.get("confidence", 0)) >= 0.4]
+        uncertain_low_conf = [a for a, v in agent_groups.items()
+                              if v["group"] == "UNCERTAIN" and float(v.get("confidence", 0)) < 0.4]
+        if uncertain_high_conf:
+            conflicts.append({
+                "type": "uncertain_agent_with_synthesis",
+                "description": f"{', '.join(uncertain_high_conf)} say RESEARCH_MORE (>40% conf) but synthesis produced final recommendation — genuine uncertainty",
+            })
+        # Low-confidence RESEARCH_MORE is just a data gap — log but don't flag as conflict
+        if uncertain_low_conf and not uncertain_high_conf:
+            # Not a conflict — just note for audit
+            gating_reasons.append(f"{', '.join(uncertain_low_conf)} returned RESEARCH_MORE due to insufficient data (not a conflict)")
 
     # 3. Data quality
     if dq_issue_count > 0:

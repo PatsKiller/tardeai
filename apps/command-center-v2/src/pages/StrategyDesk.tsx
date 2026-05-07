@@ -466,6 +466,7 @@ export default function StrategyDesk() {
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [runHealth, setRunHealth] = useState<any>(null)
+  const [incubatorCount, setIncubatorCount] = useState(0)
 
   const fetchData = useCallback(async () => {
     try {
@@ -481,6 +482,11 @@ export default function StrategyDesk() {
       const rh = await fetch('/api/v2/pipeline-run-health')
       const rhj = await rh.json()
       if (rhj.ok) setRunHealth(rhj)
+    } catch {}
+    try {
+      const ih = await fetch('/api/v2/incubator-health')
+      const ihj = await ih.json()
+      setIncubatorCount((ihj.data || ihj).active || 0)
     } catch {}
   }, [])
 
@@ -530,6 +536,7 @@ export default function StrategyDesk() {
         </h1>
         <span style={{ color: '#475569', fontSize: 13 }}>
           {strategies.length} strategies {'\u00B7'} {totalSignals} signals today
+          {incubatorCount > 0 && <span style={{ color: '#475569' }}> {'\u00B7'} {incubatorCount} incubating</span>}
           {data.recent_transitions && data.recent_transitions.length > 0 && (
             <span style={{ color: '#F59E0B', marginLeft: 8 }}>
               {'\u00B7'} {data.recent_transitions.length} lifecycle changes

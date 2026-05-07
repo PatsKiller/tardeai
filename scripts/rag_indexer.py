@@ -127,6 +127,28 @@ def index_source(source_type, hours_back=None, backfill=False, conn=None):
 
         conn.commit()
         logger.info(f"  {source_type}: {indexed} new, {len(rows)-indexed} skipped")
+
+        # === IER WRITE-BACK: update RAG coverage counts (non-fatal) ===
+        if indexed > 0:
+            try:
+                from intelligence_entity_manager import upsert_entity as _iem_upsert
+                from datetime import datetime as _dt, timezone as _tz
+                # Find symbols/entities mentioned in indexed titles
+                _seen = set()
+                for _, _, preview, _ in rows[:100]:
+                    if preview:
+                        # Check for uppercase symbols (3-5 chars)
+                        import re as _re
+                        _syms = _re.findall(r'\b([A-Z]{2,5})\b', str(preview)[:200])
+                        _seen.update(_syms[:3])
+                for _s in list(_seen)[:20]:
+                    _iem_upsert(conn, _s, 'market', {
+                        'rag_last_indexed': _dt.now(_tz.utc),
+                    }, source='rag_indexer')
+            except Exception:
+                pass
+        # === END WRITE-BACK ===
+
         return indexed, len(rows) - indexed
 
     except Exception as e:
@@ -163,4 +185,21 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    main()
+    _run_id = None
+    try:
+        from pipeline_registry import run_start, run_complete, run_fail
+        _run_id = run_start('rag_indexer')
+    except Exception:
+        pass
+    try:
+        main()
+        try:
+            if _run_id: run_complete(_run_id)
+        except Exception:
+            pass
+    except Exception as _e:
+        try:
+            if _run_id: run_fail(_run_id, str(_e))
+        except Exception:
+            pass
+        raise

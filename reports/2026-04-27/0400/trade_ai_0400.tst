@@ -1,7 +1,0 @@
-# Trade AI v10 | 2026-04-27 | Run 0400
-
-MX
-ATOM
-SMX
-CAST
-ELPW

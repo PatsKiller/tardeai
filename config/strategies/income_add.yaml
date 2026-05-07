@@ -1,0 +1,95 @@
+strategy_id: income_add
+display_name: Income Position Add
+version: "1.0"
+purpose: "Adding to or initiating income positions. Triggered by pullbacks to support, ex-div opportunities, or rebalancing."
+
+eligible_accounts: [rollover_ira, roth_ira, taxable]
+forbidden_accounts: []
+timeframe: position_long
+universe: income_candidates
+
+primary_data_sources:
+  - portfolio_holdings
+  - finviz_enrichment
+  - alex_retirement_advisor
+  - fred_data
+
+screen_filters:
+  min_yield: 3.0
+  max_payout_ratio: 0.85
+  min_dividend_growth_years: 3
+  entry_rsi_max: 50
+  entry_below_sma_50: true
+
+setup_qualification:
+  ssdi_check_required: true
+  irmaa_check_required: true
+  golden_window_impact_check: true
+  alex_analysis_required: true
+  steph_analysis_required: true
+
+auto_disqualifiers:
+  - id: DIVIDEND_CUT
+    condition: "dividend_cut_within_12m"
+  - id: PAYOUT_UNSUSTAINABLE
+    condition: "payout_ratio > 0.85"
+  - id: SSDI_NOT_CHECKED
+    condition: "ssdi_check not completed"
+  - id: IRMAA_BREACH_RISK
+    condition: "projected MAGI exceeds IRMAA threshold"
+  - id: BDC_IN_TAXABLE
+    condition: "asset_type == BDC and account == taxable"
+  - id: REIT_IN_TAXABLE_UNAPPROVED
+    condition: "asset_type == REIT and account == taxable and not specifically_approved"
+
+scoring_weights:
+  dividend_safety: 30
+  yield_quality: 25
+  technical_entry: 20
+  income_gap_impact: 15
+  ssdi_impact: 10
+
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+
+minimum_evidence:
+  required:
+    - dividend_data
+    - ssdi_impact_assessment
+    - irmaa_projection
+    - portfolio_income_impact
+    - alex_analysis
+    - steph_analysis
+  preferred:
+    - golden_window_impact
+    - tax_lot_optimization
+
+recommendation_outputs:
+  - ADD
+  - WATCH
+  - HOLD
+  - DO_NOT_ADD
+
+agent_responsibilities:
+  alex: "Full retirement-aware analysis. SSDI/IRMAA/MAGI check. Golden Window impact."
+  steph: "Portfolio fit, income gap impact, allocation limits."
+  tax: "Tax lot optimization. Wash sale check. Account placement."
+
+paper_trade_rules:
+  track_income_yield_on_cost: true
+  benchmark_comparison_12m: true
+
+live_trade_rules:
+  dollar_risk: 500
+  preferred_accounts: [rollover_ira, roth_ira]
+
+outcome_learning_fields:
+  - yield_on_cost
+  - income_contribution
+  - ssdi_impact
+  - irmaa_impact
+  - hold_duration
+  - benchmark_relative_performance

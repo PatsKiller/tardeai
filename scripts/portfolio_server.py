@@ -1738,6 +1738,22 @@ class ReusableHTTPServer(http.server.HTTPServer):
 
 
 if __name__ == "__main__":
+    # Guard: kill any stray process holding our port before binding
+    import subprocess
+    try:
+        result = subprocess.run(["fuser", f"{PORT}/tcp"], capture_output=True, text=True)
+        if result.stdout.strip():
+            pids = result.stdout.strip().split()
+            my_pid = str(os.getpid())
+            for pid in pids:
+                pid = pid.strip()
+                if pid and pid != my_pid:
+                    print(f"[guard] Killing stray process {pid} on port {PORT}")
+                    subprocess.run(["kill", pid], capture_output=True)
+            import time; time.sleep(1)
+    except Exception:
+        pass
+
     server = ReusableHTTPServer(("", PORT), PortfolioHandler)
     print(f"Portfolio server → http://localhost:{PORT}")
     print(f"Project root: {PROJECT_ROOT}")

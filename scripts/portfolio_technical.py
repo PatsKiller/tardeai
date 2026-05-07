@@ -356,13 +356,18 @@ def _finviz_api_batch(
                     continue
                 results[sym] = {
                     "symbol":       sym,
-                    # COL-FIX: indices updated to match current Finviz v=152 layout
-                    # Actual: No[0] Ticker[1] Company[2] Sector[3] Industry[4] Country[5] MCap[6] PE[7] Vol[8] Price[9] Change[10]
-                    "price":        _f(parts[9]  if len(parts) > 9  else (parts[45] if len(parts) > 45 else "")),
-                    "change_pct":   _f((parts[10] if len(parts) > 10 else (parts[46] if len(parts) > 46 else "")).replace("%","")),
-                    "analyst":      parts[43] if len(parts) > 43 else "",
-                    "target":       _f(parts[44]) if len(parts) > 44 else 0.0,
-                    "volume":       _f(parts[8]  if len(parts) > 8  else (parts[47] if len(parts) > 47 else "")),
+                    # COL-FIX 2026-05-06: Finviz v=152 now returns 15 cols
+                    # No[0] Ticker[1] Company[2] Sector[3] Industry[4] Country[5]
+                    # MCap[6] PE[7] SharesFloat[8] Gap[9] AvgVol[10] RelVol[11]
+                    # Price[12] Change[13] Volume[14]
+                    "price":        _f(parts[12] if len(parts) > 12 else ""),
+                    "change_pct":   _f((parts[13] if len(parts) > 13 else "").replace("%","")),
+                    "analyst":      "",
+                    "target":       0.0,
+                    "volume":       _f(parts[14] if len(parts) > 14 else ""),
+                    "gap_pct":      _f((parts[9] if len(parts) > 9 else "").replace("%","")),
+                    "relative_volume": _f(parts[11] if len(parts) > 11 else ""),
+                    "shares_float": _f(parts[8] if len(parts) > 8 else ""),
                     "data_source":  "api_v152",
                 }
         except Exception as e:

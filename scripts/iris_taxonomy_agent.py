@@ -939,20 +939,25 @@ def detect_superseded_regulatory_data():
 
 
 def _send_telegram_msg(message):
-    """Send a message via Telegram."""
+    """Send a message via Telegram to all configured chat IDs."""
     import urllib.request, urllib.parse
     token = _env("TELEGRAM_BOT_TOKEN")
-    chat_id = _env("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
+    chat_ids_raw = _env("TELEGRAM_CHAT_ID")
+    if not token or not chat_ids_raw:
         return False
-    try:
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": message}).encode()
-        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
-        with urllib.request.urlopen(req, timeout=10) as r:
-            return True
-    except Exception as e:
-        print(f"  [hygiene] Telegram send failed: {e}")
-        return False
+    success = False
+    for cid in chat_ids_raw.split(","):
+        cid = cid.strip()
+        if not cid:
+            continue
+        try:
+            data = urllib.parse.urlencode({"chat_id": cid, "text": message}).encode()
+            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+            with urllib.request.urlopen(req, timeout=10) as r:
+                success = True
+        except Exception as e:
+            print(f"  [hygiene] Telegram send to {cid} failed: {e}")
+    return success
 
 
 def send_hygiene_escalation_to_john(pending_id, content_type, content_id,
@@ -1511,7 +1516,115 @@ def run_library_audit(dry_run=False):
             if recs:
                 _send_telegram_msg("Iris Weekly Content Recommendations\n\nGaps found:\n" + "\n".join(recs) + "\n\nAdd channels: /v2/intelligence-sources → YouTube → + Channel")
 
+    # 3h. Intelligence Entity Curation
+    print("\n  [3h] Intelligence Entity Curation...")
+    try:
+        ier_summary = curate_intelligence_entities(conn if not conn.closed else _get_conn_dict()[0])
+        report["ier_summary"] = ier_summary
+        print(f"  {ier_summary}")
+    except Exception as e:
+        print(f"  Entity curation error: {e}")
+        report["ier_error"] = str(e)
+
     return report
+
+
+def curate_intelligence_entities(conn):
+    """
+    Iris entity curation — audits all intelligence_entities for freshness,
+    coverage, and agent staleness. Writes iris_freshness/iris_coverage back.
+    Returns summary string.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    try:
+        from intelligence_entity_manager import upsert_entity
+    except ImportError:
+        from scripts.intelligence_entity_manager import upsert_entity
+
+    cur = conn.cursor()
+    now = _dt.now(_tz.utc)
+
+    issues = {'critical': [], 'stale': [], 'thin': []}
+
+    cur.execute("SELECT * FROM intelligence_entities WHERE active = true")
+    cols = [d[0] for d in cur.description]
+    entities = [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    for entity in entities:
+        eid = entity['entity_id']
+        etype = entity['entity_type']
+        freshness = 'FRESH'
+        coverage = 'ADEQUATE'
+        notes = []
+        action = None
+
+        # === FRESHNESS CHECKS ===
+        if etype == 'market':
+            if entity.get('price_updated_at'):
+                price_age_hr = (now - entity['price_updated_at']).total_seconds() / 3600
+                if price_age_hr > 24:
+                    freshness = 'STALE'
+                    notes.append(f'Price {price_age_hr:.0f}hr old')
+                    issues['stale'].append(eid)
+                elif price_age_hr > 6:
+                    freshness = 'AGING'
+            else:
+                freshness = 'CRITICAL'
+                notes.append('No price data')
+                issues['critical'].append(eid)
+                action = 'Run finviz_enrichment for this symbol'
+        else:  # subject
+            if entity.get('thresholds_updated'):
+                thresh_age_days = (now - entity['thresholds_updated']).total_seconds() / 86400
+                if thresh_age_days > 90:
+                    freshness = 'CRITICAL'
+                    notes.append(f'Thresholds {thresh_age_days:.0f}d old')
+                    issues['critical'].append(eid)
+                    action = f'Run alex_gov_research --refresh for {eid}'
+                elif thresh_age_days > 30:
+                    freshness = 'STALE'
+                    notes.append(f'Thresholds {thresh_age_days:.0f}d old')
+                    issues['stale'].append(eid)
+            else:
+                if not entity.get('john_impact'):
+                    freshness = 'CRITICAL'
+                    notes.append('No threshold data')
+                    issues['critical'].append(eid)
+
+        # === COVERAGE CHECKS ===
+        rag_count = entity.get('rag_item_count', 0) or 0
+        if rag_count == 0:
+            coverage = 'EMPTY'
+            notes.append('No RAG coverage')
+            issues['thin'].append(eid)
+        elif rag_count < 3:
+            coverage = 'THIN'
+            notes.append(f'Only {rag_count} RAG items')
+            issues['thin'].append(eid)
+        elif rag_count > 20:
+            coverage = 'RICH'
+
+        # Write Iris assessment back
+        upsert_entity(conn, eid, etype, {
+            'iris_freshness': freshness,
+            'iris_coverage': coverage,
+            'iris_notes': ' | '.join(notes) if notes else None,
+            'iris_action_needed': action,
+            'iris_last_audit': now,
+        }, source='iris_librarian')
+
+    # Summary
+    if issues['critical'] or issues['stale']:
+        parts = [f"[IRIS ENTITY AUDIT] {len(entities)} entities"]
+        if issues['critical']:
+            parts.append(f"CRITICAL({len(issues['critical'])}): {', '.join(issues['critical'][:5])}")
+        if issues['stale']:
+            parts.append(f"Stale({len(issues['stale'])}): {', '.join(issues['stale'][:5])}")
+        if issues['thin']:
+            parts.append(f"Thin({len(issues['thin'])}): {', '.join(issues['thin'][:5])}")
+        return ' | '.join(parts)
+
+    return f"[IRIS ENTITY AUDIT] {len(entities)} entities — all OK"
 
 
 def get_library_status():
@@ -1606,6 +1719,91 @@ def get_content_gaps():
         conn.close()
 
 
+def run_discovery_mode(send_telegram=False):
+    """Mode 4: Identify symbols mentioned heavily in intelligence but not on watchlist."""
+    import psycopg2.extras
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Find symbols mentioned in YouTube/news matched_keywords that aren't on watchlist or in positions
+    cur.execute("""
+        WITH keyword_mentions AS (
+            SELECT kw, count(*) as mention_count,
+                   array_agg(DISTINCT content_category) FILTER (WHERE content_category IS NOT NULL) as themes,
+                   max(ingested_at) as latest_mention
+            FROM youtube_transcripts,
+                 jsonb_array_elements_text(matched_keywords) as kw
+            WHERE ingested_at > NOW() - INTERVAL '30 days'
+              AND matched_keywords IS NOT NULL
+              AND jsonb_typeof(matched_keywords) = 'array'
+            GROUP BY 1
+            HAVING count(*) >= 5
+        ),
+        news_mentions AS (
+            SELECT symbol as kw, count(*) as news_count
+            FROM news_articles
+            WHERE created_at > NOW() - INTERVAL '30 days'
+              AND symbol IS NOT NULL
+            GROUP BY 1
+            HAVING count(*) >= 3
+        )
+        SELECT k.kw as symbol, k.mention_count,
+               COALESCE(n.news_count, 0) as news_mentions,
+               k.themes, k.latest_mention
+        FROM keyword_mentions k
+        LEFT JOIN news_mentions n ON k.kw = n.kw
+        WHERE k.kw ~ '^[A-Z]{1,5}$'
+          AND k.kw NOT IN (SELECT symbol FROM watchlist_items)
+          AND k.kw NOT IN ('ETF', 'NYSE', 'CEO', 'IPO', 'SEC', 'FED', 'GDP', 'CPI', 'FOMC', 'AI', 'US', 'USA', 'IRA')
+        ORDER BY k.mention_count + COALESCE(n.news_count, 0) DESC
+        LIMIT 10
+    """)
+    candidates = cur.fetchall()
+
+    if not candidates:
+        print("[iris-discovery] No new symbol candidates found.")
+        conn.close()
+        return {"candidates": 0}
+
+    proposals_created = 0
+    for c in candidates:
+        total = c["mention_count"] + c.get("news_mentions", 0)
+        themes = c.get("themes") or []
+        cur.execute("""
+            INSERT INTO iris_taxonomy_proposals
+                (proposal_type, target, current_state, proposed_state, reasoning,
+                 confidence, status, created_at)
+            VALUES ('discovery', %s, '{}'::jsonb, %s, %s, %s, 'pending', NOW())
+            ON CONFLICT DO NOTHING
+        """, [
+            c["symbol"],
+            json.dumps({"action": "add_to_watchlist", "themes": themes[:5]}),
+            f"Iris detected {c['mention_count']} YouTube + {c.get('news_mentions', 0)} news mentions in 30 days across {len(themes)} themes",
+            min(0.9, 0.5 + (total / 50)),
+        ])
+        proposals_created += 1
+
+    conn.commit()
+    print(f"[iris-discovery] {proposals_created} discovery proposals created from {len(candidates)} candidates")
+
+    if send_telegram and candidates:
+        try:
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from telegram_alert import send_telegram as _tg
+            msg = f"\U0001f50d *Iris Discovery Mode*\n\nFound {len(candidates)} potential watchlist additions:\n"
+            for c in candidates[:5]:
+                total = c["mention_count"] + c.get("news_mentions", 0)
+                themes = c.get("themes") or []
+                msg += f"\u2022 {c['symbol']} \u2014 {total} mentions ({', '.join(str(t) for t in themes[:2])})\n"
+            msg += f"\nApprove via: `iris approve <id>`"
+            _tg(msg)
+        except Exception as e:
+            print(f"[iris-discovery] Telegram failed: {e}")
+
+    conn.close()
+    return {"candidates": len(candidates), "proposals_created": proposals_created}
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Iris taxonomy intelligence agent")
     p.add_argument("--gaps", action="store_true", help="Gap analysis only")
@@ -1616,9 +1814,13 @@ if __name__ == "__main__":
     p.add_argument("--hygiene-dry-run", action="store_true", help="Preview hygiene without changes")
     p.add_argument("--library-audit", action="store_true", help="Run library audit")
     p.add_argument("--library-audit-dry-run", action="store_true", help="Preview library audit")
+    p.add_argument("--discovery", action="store_true", help="Discovery mode — find symbols in intel not on watchlist")
+    p.add_argument("--telegram", action="store_true", help="Send results to Telegram")
     args = p.parse_args()
 
-    if args.library_audit:
+    if args.discovery:
+        run_discovery_mode(send_telegram=args.telegram)
+    elif args.library_audit:
         run_library_audit(dry_run=False)
     elif args.library_audit_dry_run:
         run_library_audit(dry_run=True)

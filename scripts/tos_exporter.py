@@ -46,10 +46,16 @@ def export_tos(
     tst_path.write_text(tst_content, encoding="utf-8")
 
     # ── CSV annotated watchlist ───────────────────────────────────────────────
-    csv_lines = ["Symbol,Score,Grade,Decision,RVOL,Price,Change%,Gap%,Float_M,Catalyst"]
+    csv_lines = ["Symbol,Score,Grade,Decision,RVOL,Price,Change%,Gap%,Float_M,Catalyst,CriticVerdict,CriticConf,OrigDecision,DecisionChanged,CatalystVerified,Industry,CriticReasoning,Disqualified,Sector,Country,SectorETF,TickerPerf1M,SectorPerf1M,VsSectorPct"]
     for t in filtered:
         top = t.get("top_catalyst") or {}
-        cat_title = (top.get("title") or "")[:80].replace(",", ";")
+        cat_title = (top.get("title") or "")[:80].replace(",", ";").replace('"', "'")
+        critic_reason = str(t.get("critic_reasoning") or "")[:80].replace(",", ";").replace('"', "'")
+        conf = t.get('critic_confidence')
+        conf_str = f"{conf:.2f}" if conf is not None else ""
+        tp = t.get('ticker_perf_1m')
+        sp = t.get('sector_perf_1m')
+        vs = t.get('vs_sector_pct')
         csv_lines.append(
             f"{t['symbol']},"
             f"{t['score']},"
@@ -60,7 +66,21 @@ def export_tos(
             f"{t.get('change_percent', 0):+.1f},"
             f"{t.get('gap_percent', 0):+.1f},"
             f"{t.get('float_m', 0):.1f},"
-            f"\"{cat_title}\""
+            f"\"{cat_title}\","
+            f"{t.get('critic_verdict', '')},"
+            f"{conf_str},"
+            f"{t.get('original_decision', '')},"
+            f"{t.get('decision_changed', '')},"
+            f"{t.get('catalyst_verified', '')},"
+            f"\"{t.get('industry_resolved', t.get('industry', '')) or ''}\","
+            f"\"{critic_reason}\","
+            f"{t.get('disqualified', False)},"
+            f"\"{t.get('sector', '') or ''}\","
+            f"\"{t.get('country', '') or ''}\","
+            f"{t.get('sector_etf', '')},"
+            f"{tp if tp is not None else ''},"
+            f"{sp if sp is not None else ''},"
+            f"{vs if vs is not None else ''}"
         )
     csv_path = output_dir / f"trade_ai_{run_label}_watchlist.csv"
     csv_path.write_text("\n".join(csv_lines) + "\n", encoding="utf-8")

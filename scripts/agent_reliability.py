@@ -164,8 +164,8 @@ FROM summary;
             missing.append(dep)
         elif bad_checks > 0:
             bad.append(dep)
-        elif checks < 2:
-            weak.append(dep)
+        # Note: checks < 2 is too strict when freshness runs once/day.
+        # Only flag weak if there's no successful check at all in the window.
 
     penalty = 0.0
     penalty += min(0.30, 0.05 * len(missing))

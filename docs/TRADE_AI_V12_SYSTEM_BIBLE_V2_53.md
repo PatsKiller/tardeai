@@ -1,6 +1,6 @@
-# Trade AI v12 System Bible v2.53.5
+# Trade AI v12 System Bible v2.54
 
-**April 30, 2026 | ms01-openclaw | 22 Elite Screeners + 5-Level Whiteboard + 149 Tables + 63 Crons**
+**May 2, 2026 | ms01-openclaw | 22 Elite Screeners + 5-Level Whiteboard + 149 Tables + 63 Crons**
 
 All numbers verified against live system. Includes April 29 incident response + SEC EDGAR + yfinance + Alpha Vantage.
 See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
@@ -47,12 +47,14 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 
 ### Not Yet Active
 
-| Source | Why | Cost |
-|---|---|---|
-| Brave Search | 402 Payment Required | $5/mo |
-| Social (X/StockTwits) | No API keys | $100/mo (X) or free (StockTwits) |
-| SEC 13F | Schema ready, quarterly parser TBD | Free |
-| SEC XBRL | Schema ready, XBRL parser TBD | Free |
+| Source | Why | Cost | Priority |
+|---|---|---|---|
+| **StockTwits** | No ingest script — public API, no auth needed | Free | **HIGH — implement now** |
+| **Reddit RSS** | No ingest — r/dividends, r/investing have JSON feeds | Free | HIGH |
+| Brave Search | 402 Payment Required | $5/mo | Medium |
+| X/Twitter | Enterprise API cost unjustified at current scale | $100+/mo | LOW — defer |
+| SEC 13F | Schema ready, quarterly parser TBD | Free | Low |
+| SEC XBRL | Schema ready, XBRL parser TBD | Free | Low |
 
 ---
 
@@ -98,12 +100,14 @@ See `TRADE_AI_V12_SYSTEM_BIBLE_V2_26_AUDIT.md` for original audit evidence.
 
 ### NOT IMPLEMENTED / EMPTY
 
-| System | Status |
-|---|---|
-| Social intelligence | 3 manual test posts. No API keys (X: $100/mo, StockTwits: free) |
-| Signal clustering | 0 records in signal_clusters |
-| MARL learning | 1 simulation run, shadow mode only |
-| Real-time news monitoring | No streaming — batch 3x daily |
+| System | Status | Audit Finding (May 2) |
+|---|---|---|
+| Social intelligence | 3 manual test posts. No API connections | StockTwits free API available, no auth needed. Script needed: `social_ingest.py` |
+| Weekly/Monthly report endpoints | `/api/v2/weekly-report` and `/api/v2/monthly-report` return 404 | Aegis synthesis runs Sunday but no DOCX/JSON report endpoint exists |
+| Proposal approval sync | 39 proposals all in `proposed` status — 0 approved/rejected | Dashboard endpoint exists (`/api/v2/proposals/decide`) but NO Telegram command for watchlist proposals. Telegram only handles Iris proposals |
+| Signal clustering | 0 records in signal_clusters | Not implemented |
+| MARL learning | 1 simulation run, shadow mode only | Not functional |
+| Real-time news monitoring | No streaming — batch 3x daily | Acceptable for current scale |
 
 ### RECENTLY FIXED (code deployed, awaiting production validation)
 
@@ -479,6 +483,17 @@ Placeholder in `.env`. No API key configured. Will activate with `BENZINGA_API_K
 | `analyze SYMBOL` | analyze SYMBOL | VERIFIED — LLM analysis |
 | `run screener NAME` | run screener NAME | VERIFIED |
 | `topics` | topics | VERIFIED — list active research |
+| `iris approve ID` | /iris_approve_ID | VERIFIED — approves Iris taxonomy proposals only |
+| `iris reject ID` | /iris_reject_ID | VERIFIED — rejects Iris taxonomy proposals only |
+
+### Telegram Commands — MISSING (May 2 audit)
+
+| Needed Command | Purpose | Why Missing |
+|---|---|---|
+| `approve ID` / `reject ID` | Approve/reject **watchlist proposals** | Only Iris proposals have Telegram handlers. `watchlist_proposals` has dashboard endpoint only |
+| CIO decision notification | Notify when CIO makes a decision | No trigger exists |
+| Weekly report delivery | Send DOCX attachment on Sunday | Aegis sends summary text but no document |
+| RAG coverage alert | Alert when embedding coverage drops | No threshold monitor exists |
 
 ---
 
@@ -557,16 +572,19 @@ MONTHLY (1st): Deep tax reconciliation + Roth ladder + income progress
 
 ---
 
-## 7. Remaining Gaps (Honest — updated April 29)
+## 7. Remaining Gaps (Honest — updated May 2)
 
-| Gap | Impact | Cost to Fix |
-|---|---|---|
-| Agent quality (qwen3:1.7b) | Maria confidence 0.49, shallow reasoning | GPU → qwen3:14b (hardware pending) |
-| Brave Search API | Wired but 402 Payment Required | $5/mo |
-| Social APIs | 3 manual test posts, no live data | $100/mo (X) or free (StockTwits) |
-| Decision outcome evaluation | 88 tracked but 0 accuracy scored | Needs 30+ days |
-| Signal clustering | 0 records | Not implemented |
-| MARL | 1 shadow run | Not functional |
+| Gap | Impact | Cost to Fix | Priority |
+|---|---|---|---|
+| **Watchlist proposal approval via Telegram** | 39 proposals stuck in `proposed` — John can't approve from phone | Code only (add handler) | **CRITICAL** |
+| **Social intelligence (StockTwits/Reddit)** | 3 manual posts, no live ticker sentiment | Free (StockTwits public API, Reddit RSS) | **HIGH** |
+| **Weekly/Monthly report endpoints** | No `/api/v2/weekly-report` or `/api/v2/monthly-report` | Code only | **HIGH** |
+| **Corrupt proposals** | `THIS`, `MAY`, `COULD` parsed as tickers | Delete + add validation | HIGH |
+| Agent quality (qwen3:1.7b) | Maria confidence 0.49, shallow reasoning | GPU → qwen3:14b (hardware pending) | Medium |
+| Brave Search API | Wired but 402 Payment Required | $5/mo | Medium |
+| Decision outcome evaluation | 88 tracked but 0 accuracy scored | Needs 30+ days | Low (time) |
+| Signal clustering | 0 records | Not implemented | Low |
+| MARL | 1 shadow run | Not functional | Low |
 
 ### Gaps CLOSED (April 28-29)
 
@@ -709,6 +727,7 @@ python3 scripts/system_preflight_check.py
 | v2.37 | Complete 9/9 structured JSON schema. timestamped_highlights from timed segment analysis |
 | v2.38 | 37 YouTube channels, 47 trusted scores, manual backfill mode |
 | v2.39 | Automated backfill manager: processes 5 channels/batch every 4 hours until all 37 complete. Rate limit detection + 4h cooldown + auto-retry. State tracking in youtube_backfill_status table. Retirement/SSDI channels prioritized. ~3 days to complete.** |
+| v2.54 | May 2 audit: proposal approval sync broken (Telegram→watchlist gap), social intelligence plan (StockTwits free), weekly/monthly report 404s documented, corrupt tickers (THIS/MAY/COULD), execution checklist |
 
 ### What Alex Sees in Every Analysis (v2.33 — verified)
 
@@ -939,8 +958,10 @@ Stored in `ai_reports` (type='weekly_health') + `agent_discovery_log` + Telegram
 ### Still Needed
 
 - Brave Search: needs $5 credit top-up
-- Social APIs: X ($100/mo) or StockTwits (free)
+- Social APIs: StockTwits (free, public, no auth — **implement first**), Reddit RSS (free), X ($100/mo — defer)
 - GPU upgrade: qwen3:1.7b → 14b for better agent reasoning
+- Telegram `/approve` `/reject` for watchlist proposals (currently only Iris proposals have Telegram handlers)
+- Weekly/Monthly report API endpoints + DOCX generation pipeline
 
 ---
 
@@ -2757,3 +2778,248 @@ DB screeners:   20/20 OK (all Elite v=152)
 Total issues:    0
 LLM review:      ✅ Succeeded (overlaps, gaps, SSDI analysis produced)
 ```
+
+---
+
+## v2.54 — May 2, 2026: Full Autonomous Loop Audit + 7 Gap Fix Plan
+
+### Critical Findings (May 2 Deep Audit)
+
+| # | Issue | Root Cause | Impact | Priority |
+|---|---|---|---|---|
+| 1 | **TWO tables stuck: 30 proposals + 10 tasks — zero resolved** | `watchlist_proposals` (30 rows, all `proposed`) AND `tasks` (10 rows, all `pending_john`) — Telegram only handles Iris taxonomy proposals. Dashboard endpoint exists but may have silent failures | All agent recommendations wasted. Zero decisions feeding back into learning loop | **CRITICAL** |
+| 2 | **Agent debates never trigger** | LMT: risk=RESEARCH_MORE vs steph=TRIM — never debated. `agent_debates` table may not exist. No conflict detection wired in `process_watchlist_agent_jobs.py` | Agent disagreements go unnoticed. No escalation path | **HIGH** |
+| 3 | **5 agents missing from OpenClaw registry** | Only aegis, main, steph registered. Maria, risk_agent, tax_agent, alex, iris have NO .md agent files | Can't invoke agents by name via OpenClaw orchestration | HIGH |
+| 4 | **tax_agent + alex critically underused** | tax_agent: 2 total analyses. alex: 3 total analyses. Not in nightly batch | Tax implications and retirement context missing from daily intelligence | HIGH |
+| 5 | **Human decisions don't feed back into RAG** | John's approve/reject never writes to `decision_outcomes`. Future agents never see human judgment | Learning loop broken — agents can't learn from John's corrections | **CRITICAL** |
+| 6 | **Synthesis doesn't use approval feedback** | aegis_overnight.py doesn't query `decision_outcomes WHERE decided_by='john'` | Weekly reports miss human intelligence. No "decisions you made" summary | Medium |
+| 7 | **Telegram command parity incomplete** | Missing: /tasks, /proposals, /debate, /agents, /rag, /weekly, /approve (for watchlist) | John can't operate system fully from phone | HIGH |
+
+### Two-Table Approval Architecture (Diagnosed)
+
+```
+TABLE 1: watchlist_proposals (30 rows — rotation/strategy proposals)
+  ├─ Fields: id, symbol, action, strategy_type, reason, account_name,
+  │          shares_to_sell, target_symbol, confidence, status,
+  │          ssdi_impact, income_impact, irmaa_risk, reviewed_at, reviewed_by
+  ├─ All 30 rows: status='proposed', reviewed_at=NULL, reviewed_by=NULL
+  ├─ Dashboard API: POST /api/v2/proposals/decide ← EXISTS, writes correctly
+  ├─ Telegram: NO HANDLER for watchlist_proposals ← ROOT CAUSE
+  └─ Corrupt rows: THIS, MAY, COULD parsed as tickers (text fragments)
+
+TABLE 2: tasks (10 rows — stop-triggered manual reviews)
+  ├─ Fields: id, source, category, symbol, title, description, priority,
+  │          status, recommendation, confidence, due_by, linked_route,
+  │          followup, decided_at, created_at, provenance
+  ├─ All 10 rows: status='pending_john', decided_at=NULL
+  ├─ Symbols: LMT, LHX, RTX, NOC, TDG (2 tasks each — stop events)
+  ├─ API: POST /api/v2/tasks/<id>/resolve ← MAY NOT EXIST
+  └─ Telegram: NO HANDLER ← ROOT CAUSE
+
+TABLE 3: action_queue (separate older system)
+  ├─ API: POST /api/v2/approvals/decision ← EXISTS, writes to action_queue only
+  └─ Does NOT update tasks or watchlist_proposals
+
+TABLE 4: iris_taxonomy_proposals (Iris-specific)
+  ├─ Telegram: /iris_approve_<id>, /iris_reject_<id> ← WORKS
+  └─ Only table with functioning Telegram approval flow
+```
+
+**Diagnosis:** John's approval actions went to Iris taxonomy (Table 4) or action_queue (Table 3).
+Tables 1 and 2 (the ones agents actually read) were never updated.
+
+### The Full Closed Loop (Target Architecture)
+
+```
+STOP FIRES → agents analyze → risk+steph complete → CONFLICT DETECTED
+    ↓                                                      ↓
+  task created                                    agent_debate created
+  (pending_john)                                  Telegram alert sent
+    ↓                                                      ↓
+JOHN APPROVES via Telegram (/approve 37)          /debate LHX → see conflict
+    ↓
+  tasks.status = 'approved'
+  tasks.decided_at = NOW()
+    ↓
+  decision_outcomes INSERT (symbol, outcome='CORRECT', decided_by='john')
+    ↓
+  RAG indexes decision_outcome IMMEDIATELY
+    ↓
+  NEXT AGENT RUN sees: "John confirmed HOLD on LMT [date]" in RAG context
+    ↓
+  Agent confidence adjusts based on human confirmation pattern
+    ↓
+  Weekly synthesis surfaces: "3 decisions this week, all aligned with risk_agent"
+```
+
+### Endpoints Required (Fix/Create)
+
+| Endpoint | Method | Table | Status |
+|---|---|---|---|
+| `/api/v2/tasks/<id>/resolve` | POST | tasks | **CREATE** — body: `{decision, notes}` |
+| `/api/v2/proposals/<id>/resolve` | POST | watchlist_proposals | **VERIFY** — `/api/v2/proposals/decide` exists but may differ |
+| `/api/v2/weekly-report` | GET | (composite) | **CREATE** — 404 currently |
+| `/api/v2/monthly-report` | GET | (composite) | **CREATE** — 404 currently |
+| `/api/v2/agent-debates` | GET | agent_debates | **CREATE** — table may not exist |
+
+### Agent Registration Gap
+
+| Agent | Role | Analyses | OpenClaw .md file |
+|---|---|---|---|
+| aegis | Overnight synthesis orchestrator | daily | `~/.openclaw/agents/aegis.md` ✅ |
+| steph | Wealth advisor, TRIM/HOLD/BUY | 100+ | `~/.openclaw/agents/steph.md` ✅ |
+| main | System router | — | `~/.openclaw/agents/main.md` ✅ |
+| **maria** | Fundamental research + discovery | 100+ | **MISSING** ❌ |
+| **risk_agent** | Stop-loss, drawdown, position sizing | 80+ | **MISSING** ❌ |
+| **tax_agent** | SSDI, Roth, IRMAA, bracket math | **2 total** | **MISSING** ❌ |
+| **alex** | Retirement planning, disability context | **3 total** | **MISSING** ❌ |
+| **iris** | Taxonomy, content gaps, RAG hygiene | 50+ | **MISSING** ❌ |
+
+### Social Intelligence Plan (Prioritized)
+
+| Phase | Source | Auth | Cost | Value |
+|---|---|---|---|---|
+| **1 (NOW)** | StockTwits | None — public API | Free | Best ticker-specific retail sentiment |
+| **2 (next)** | Reddit RSS | None — JSON feeds | Free | r/dividends, r/investing retirement content |
+| **3 (defer)** | X/Twitter | Enterprise API | $100+/mo | Not justified at current scale |
+
+StockTwits API: `https://api.stocktwits.com/api/2/streams/symbol/{SYMBOL}.json`
+- No authentication required for public streams
+- Returns: messages with body, sentiment (bullish/bearish/neutral), timestamp
+- Rate limit: 200 requests/hour (sufficient for daily portfolio scan)
+
+Reddit RSS: `https://www.reddit.com/r/{subreddit}/new/.json?limit=25`
+- No authentication required
+- Parse as news_articles with source_type='reddit'
+- Target subreddits: r/dividends, r/investing, r/retirement, r/financialindependence
+
+### Telegram Commands — Full Parity Target
+
+| Command | Purpose | Status |
+|---|---|---|
+| `/approve <task_id> [notes]` | Approve task → feeds back to RAG | **MISSING** |
+| `/reject <task_id> [notes]` | Reject task → feeds back to RAG | **MISSING** |
+| `/defer <task_id>` | Defer for later review | **MISSING** |
+| `/tasks` | List all pending_john tasks | **MISSING** |
+| `/proposals` | List all proposed watchlist items | **MISSING** |
+| `/debate <SYMBOL>` | Show agent conflict + decide | **MISSING** |
+| `/agents` | All 7 agents status + last run | **MISSING** |
+| `/rag` | RAG coverage summary (items, %, gaps) | **MISSING** |
+| `/weekly` | Weekly intelligence summary | **MISSING** |
+| `iris approve <id>` | Approve Iris taxonomy proposal | ✅ Working |
+| `iris reject <id>` | Reject Iris taxonomy proposal | ✅ Working |
+
+### Data Quality Fix: Ticker Validation
+
+Corrupt proposals found: `THIS`, `MAY`, `COULD` — text fragments parsed as symbols.
+
+```python
+import re
+VALID_TICKER = re.compile(r'^[A-Z]{1,5}$')
+INVALID_WORDS = {'THIS', 'MAY', 'COULD', 'WOULD', 'SHOULD', 'WILL', 'THAT', 'WITH', 'FROM', 'HAVE', 'BEEN'}
+
+def validate_symbol(sym: str) -> bool:
+    if not VALID_TICKER.match(sym):
+        return False
+    if sym in INVALID_WORDS:
+        return False
+    return True
+```
+
+Delete bad rows: `DELETE FROM watchlist_proposals WHERE symbol IN ('THIS','MAY','COULD') AND action='rotate';`
+
+### Phased Execution Plan (Hard Checkpoints — No Phase Skipping)
+
+```
+PHASE 1 — APPROVALS PERSIST (nothing else proceeds until this passes)
+  1. Find/create POST /api/v2/tasks/<id>/resolve
+  2. Verify POST /api/v2/proposals/decide works for watchlist_proposals
+  3. Wire Telegram /approve, /reject, /defer for both tables
+  4. Delete corrupt proposals (THIS, MAY, COULD)
+  ✅ CHECKPOINT 1: curl → DB shows status changed, decided_at NOT NULL
+
+PHASE 2 — DECISIONS FEED BACK INTO RAG
+  5. On task resolve: INSERT decision_outcomes (decided_by='john')
+  6. Immediately index new outcome into RAG embeddings
+  7. Add john_decisions context to aegis synthesis prompts
+  ✅ CHECKPOINT 2: approve task → decision_outcome row exists → RAG embedded
+
+PHASE 3 — DEBATE WIRING
+  8. CREATE TABLE agent_debates (if missing)
+  9. Add _check_and_trigger_debate() after agent job completion
+  10. Telegram alert on conflict detection
+  ✅ CHECKPOINT 3: agent_debates table exists, conflict triggers debate row
+
+PHASE 4 — AGENT REGISTRATION
+  11. Create maria.md, risk_agent.md, tax_agent.md, alex.md, iris.md
+  12. Restart OpenClaw gateway
+  ✅ CHECKPOINT 4: all 7 agents visible in /api/v2/orchestration
+
+PHASE 5 — UNDERUSED AGENTS
+  13. Add tax_agent + alex to Tier 1 nightly holdings batch
+  14. Run tonight's aegis cycle
+  ✅ CHECKPOINT 5: tax_agent >= 6 analyses, alex >= 6 analyses
+
+PHASE 6 — TELEGRAM COMMAND PARITY
+  15. Add /tasks, /proposals, /debate, /agents, /rag, /weekly
+  ✅ CHECKPOINT 6: /tasks returns list of pending tasks via Telegram
+
+PHASE 7 — CIO AUTO-TRIGGER + WEEKLY REPORT
+  16. Auto-CIO decision after consensus STOP resolution
+  17. GET /api/v2/weekly-report endpoint
+  ✅ CHECKPOINT 7: /api/v2/weekly-report returns structured JSON
+
+PHASE 8 — BUILD + RESTART + VALIDATE
+  18. npm run build (0 TypeScript errors)
+  19. systemctl --user restart tradeai-portfolio-server.service
+  20. Full validation suite (all checkpoints re-verified)
+```
+
+### Friday Autonomy Readiness Criteria
+
+| Criterion | Required | How to Verify |
+|---|---|---|
+| Approvals persist to DB | ✅ Both tables update on resolve | curl + psql |
+| Human decisions in RAG | ✅ decision_outcomes written + embedded | Query content_embeddings |
+| Agent conflicts detected | ✅ Debates auto-created on disagreement | Check agent_debates after next STOP event |
+| All 7 agents callable | ✅ OpenClaw orchestration lists all | /api/v2/orchestration |
+| Tax + Alex running nightly | ✅ >= 6 analyses each | watchlist_agent_results count |
+| Telegram full control | ✅ /approve, /tasks, /debate all work | Send commands from phone |
+| Weekly report available | ✅ GET /api/v2/weekly-report returns JSON | curl test |
+
+### Final Validation Suite
+
+```bash
+# APPROVAL LOOP
+curl -X POST http://localhost:7777/api/v2/tasks/37/resolve \
+  -d '{"decision":"approved","notes":"hold through defense cycle"}' -H "Content-Type: application/json"
+psql trade_ai -c "SELECT status, decided_at FROM tasks WHERE id=37;"
+# → status='approved', decided_at NOT NULL
+
+# DECISION → RAG LOOP
+psql trade_ai -c "SELECT symbol, outcome, decided_by FROM decision_outcomes WHERE decided_by='john' ORDER BY created_at DESC LIMIT 3;"
+# → LMT row with decided_by='john'
+psql trade_ai -c "SELECT COUNT(*) FROM content_embeddings WHERE source_type='decision_outcome';"
+# → COUNT > 0
+
+# DEBATES
+psql trade_ai -c "SELECT COUNT(*) FROM agent_debates;"
+# → >= 1
+
+# ALL 7 AGENTS
+curl -s http://localhost:7777/api/v2/orchestration | python3 -m json.tool | grep -c '"agent"'
+# → 7
+
+# TAX + ALEX ACTIVE
+psql trade_ai -c "SELECT agent, COUNT(*) FROM watchlist_agent_results WHERE agent IN ('tax_agent','alex') GROUP BY agent;"
+# → both >= 6
+
+# TELEGRAM: /tasks → returns pending tasks list
+# TELEGRAM: /approve 37 → "✅ Task approved: LMT..."
+```
+
+### Version History Entry
+
+| Version | Key Changes |
+|---|---|
+| v2.54 | May 2 deep audit: TWO tables stuck (tasks + proposals), debate never triggers, 5 agents unregistered, tax/alex underused (2-3 analyses), human decisions don't feed RAG, 8-phase fix plan with hard checkpoints, Friday autonomy target |

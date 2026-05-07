@@ -34,25 +34,29 @@ def _load_env(root: Path):
 
 
 def _telegram_alert(msg: str, root: Path):
-    """Send Telegram alert for stale data."""
-    try:
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-        if not token or not chat_id:
-            print(f"  [telegram] no credentials — alert: {msg}")
-            return
-        import urllib.request, urllib.parse
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        data = urllib.parse.urlencode({
-            "chat_id": chat_id,
-            "text": f"📊 Portfolio Look-Through Alert\n{msg}",
-            "parse_mode": "HTML"
-        }).encode()
-        req = urllib.request.Request(url, data=data, method="POST")
-        urllib.request.urlopen(req, timeout=10)
-        print(f"  [telegram] sent: {msg[:60]}")
-    except Exception as e:
-        print(f"  [telegram] failed: {e}")
+    """Send Telegram alert for stale data to all configured chat IDs."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    chat_ids_raw = os.getenv("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_ids_raw:
+        print(f"  [telegram] no credentials — alert: {msg}")
+        return
+    import urllib.request, urllib.parse
+    for cid in chat_ids_raw.split(","):
+        cid = cid.strip()
+        if not cid:
+            continue
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            data = urllib.parse.urlencode({
+                "chat_id": cid,
+                "text": f"📊 Portfolio Look-Through Alert\n{msg}",
+                "parse_mode": "HTML"
+            }).encode()
+            req = urllib.request.Request(url, data=data, method="POST")
+            urllib.request.urlopen(req, timeout=10)
+            print(f"  [telegram] sent to {cid}: {msg[:60]}")
+        except Exception as e:
+            print(f"  [telegram] failed for {cid}: {e}")
 
 
 def _days_old(date_str: str) -> int:

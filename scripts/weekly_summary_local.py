@@ -101,14 +101,14 @@ Mention YTD context. Flag if cash is unusually high (>5% of portfolio)."""
 
 
 def send_telegram(message: str):
-    """Send message via Telegram."""
+    """Send message via Telegram to all configured chat IDs."""
     import urllib.request
     import urllib.parse
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    chat_ids_raw = os.getenv("TELEGRAM_CHAT_ID", "")
 
-    if not bot_token or not chat_id:
+    if not bot_token or not chat_ids_raw:
         # Try reading from .env
         env_path = PROJECT_ROOT / ".env"
         if env_path.exists():
@@ -116,25 +116,29 @@ def send_telegram(message: str):
                 if line.startswith("TELEGRAM_BOT_TOKEN="):
                     bot_token = line.split("=", 1)[1].strip().strip('"')
                 elif line.startswith("TELEGRAM_CHAT_ID="):
-                    chat_id = line.split("=", 1)[1].strip().strip('"')
+                    chat_ids_raw = line.split("=", 1)[1].strip().strip('"')
 
-    if not bot_token or not chat_id:
+    if not bot_token or not chat_ids_raw:
         print("  [weekly-summary] No Telegram credentials — printing only")
         print(message)
         return
 
-    try:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        data = urllib.parse.urlencode({
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "HTML"
-        }).encode()
-        req = urllib.request.Request(url, data=data, method="POST")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            print("  [weekly-summary] Telegram sent OK")
-    except Exception as e:
-        print(f"  [weekly-summary] Telegram error: {e}")
+    for cid in chat_ids_raw.split(","):
+        cid = cid.strip()
+        if not cid:
+            continue
+        try:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            data = urllib.parse.urlencode({
+                "chat_id": cid,
+                "text": message,
+                "parse_mode": "HTML"
+            }).encode()
+            req = urllib.request.Request(url, data=data, method="POST")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print(f"  [weekly-summary] Telegram sent to {cid}")
+        except Exception as e:
+            print(f"  [weekly-summary] Telegram error for {cid}: {e}")
 
 
 # Global for use in prompt builder

@@ -1,0 +1,88 @@
+strategy_id: sector_rotation
+display_name: Sector Rotation
+version: "1.0"
+purpose: "Trade leading sector ETF surges and lagging sector weakness. Weekly rebalance."
+
+eligible_accounts: [taxable, rollover_ira, roth_ira]
+forbidden_accounts: []
+timeframe: position_2_to_8w
+universe: sector_etfs
+
+primary_data_sources:
+  - price_cache
+  - fred_data
+  - indicator_engine
+
+etf_universe:
+  - XLF
+  - XLE
+  - XLK
+  - XLV
+  - XLI
+  - XLU
+  - XLP
+  - XLB
+  - XLRE
+  - XLC
+
+screen_filters:
+  min_relative_strength_vs_spy: 0.02
+  top_n_sectors: 3
+  rebalance_frequency: weekly
+  max_hold_weeks: 8
+
+setup_qualification:
+  outperform_spy_5d_pct: 2.0
+  must_be_top_3: true
+  exit_when_drops_to_bottom_5: true
+  macro_alignment_check: true
+
+auto_disqualifiers:
+  - id: NOT_IN_ETF_UNIVERSE
+    condition: "symbol not in etf_universe"
+  - id: BELOW_SPY_PERFORMANCE
+    condition: "5d performance < SPY + 2%"
+
+scoring_weights:
+  relative_strength: 30
+  momentum: 25
+  breadth: 20
+  macro_alignment: 15
+  volume: 10
+
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+
+minimum_evidence:
+  required:
+    - sector_performance_data
+    - spy_comparison
+    - fred_context
+  preferred:
+    - breadth_data
+    - options_flow
+
+agent_responsibilities:
+  steph: "Verify sector allocation fit with portfolio. Check IRA eligibility."
+  risk: "Verify relative strength calculation and exit rules."
+  alex: "Check macro alignment with FRED context and retirement impact."
+
+paper_trade_rules:
+  weekly_rebalance: true
+  log_sector_ranks_at_entry: true
+
+live_trade_rules:
+  dollar_risk: 500
+  max_hold_weeks: 8
+
+fidelity_401k_note: "Limited to available 401k funds. Map sector to closest available fund."
+
+outcome_learning_fields:
+  - sector_rank_at_entry
+  - spy_relative_performance
+  - fred_context_at_entry
+  - hold_duration_weeks
+  - rebalance_count

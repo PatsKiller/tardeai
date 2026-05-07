@@ -152,6 +152,39 @@ def refresh_all_gov_data(force=False):
     r["medicaid_ny"] = fetch_medicaid_ny_rules()
     r["roth_irs"] = fetch_roth_ira_rules()
     print(f"[alex_gov_research] Done — {len(r)} sources refreshed")
+
+    # === IER WRITE-BACK (non-fatal) ===
+    try:
+        from intelligence_entity_manager import upsert_entity as _iem_upsert
+        from datetime import datetime as _dt, timezone as _tz
+        _conn = _get_conn()
+        now = _dt.now(_tz.utc)
+        _iem_upsert(_conn, 'SSDI', 'subject', {
+            'current_thresholds': r.get('ssa', {}),
+            'thresholds_updated': now,
+            'thresholds_source': 'ssa.gov',
+        }, source='alex_gov_research')
+        _iem_upsert(_conn, 'IRMAA', 'subject', {
+            'current_thresholds': r.get('irmaa', {}),
+            'thresholds_updated': now,
+            'thresholds_source': 'cms.gov',
+        }, source='alex_gov_research')
+        _iem_upsert(_conn, 'Medicaid_Lookback', 'subject', {
+            'current_thresholds': r.get('medicaid_ny', {}),
+            'thresholds_updated': now,
+            'thresholds_source': 'health.ny.gov',
+            'regulatory_notes': 'NY Medicaid 5yr lookback. Roth EXEMPT. IRA COUNTABLE.',
+        }, source='alex_gov_research')
+        _iem_upsert(_conn, 'Roth_Conversion', 'subject', {
+            'current_thresholds': r.get('roth_irs', {}),
+            'thresholds_updated': now,
+            'thresholds_source': 'irs.gov',
+        }, source='alex_gov_research')
+        _conn.close()
+    except Exception:
+        pass
+    # === END WRITE-BACK ===
+
     return r
 
 

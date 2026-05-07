@@ -1,22 +1,21 @@
-version: "11.0"
+version: "12.0"
 description: >
-  Expert-tuned weights for low-float scalping with sector momentum context.
-  Total max score: 55 points (50 from v10 + 5 sector momentum pillar).
-  New in v11: 6th pillar (sector_momentum) rewards tickers whose sector
-  is leading the market intraday — a genuine tailwind for momentum setups.
+  Expert-tuned weights for low-float scalping with sector momentum + technical confluence.
+  Total max score: 65 points (55 from v11 + 10 technical confluence pillar).
+  New in v12: 7th pillar (confluence) adds up to 10 pts from 17-indicator engine.
 
 score_scale:
   min: 0
-  max: 55
+  max: 65
 
 grade_bands:
   A_plus:
-    min: 48
-    max: 55
+    min: 55
+    max: 65
     label: "Elite Setup"
   A:
     min: 40
-    max: 47
+    max: 54
     label: "Strong Setup"
   B:
     min: 30

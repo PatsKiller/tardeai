@@ -28,6 +28,7 @@ const Reports = lazy(() => import('./pages/Reports'))
 const Ops = lazy(() => import('./pages/Ops'))
 const StoppedOutWatch = lazy(() => import('./pages/StoppedOutWatch'))
 const JournalAnalytics = lazy(() => import('./pages/JournalAnalytics'))
+const JournalReports = lazy(() => import('./pages/JournalReports'))
 const Orchestration = lazy(() => import('./pages/Orchestration'))
 const ActionCenter = lazy(() => import('./pages/ActionCenter'))
 const MorningBrief = lazy(() => import('./pages/MorningBrief'))
@@ -35,6 +36,17 @@ const AIAnalyst = lazy(() => import('./pages/AIAnalyst'))
 const IntelligenceSources = lazy(() => import('./pages/IntelligenceSources'))
 const PortfolioIntelligence = lazy(() => import('./pages/PortfolioIntelligence'))
 const ContentHealth = lazy(() => import('./pages/ContentHealth'))
+const IntelligenceEntities = lazy(() => import('./pages/IntelligenceEntities'))
+const AgentPipeline = lazy(() => import('./pages/AgentPipeline'))
+const IntelligenceWhiteboard = lazy(() => import('./pages/IntelligenceWhiteboard'))
+const WatchlistSymbolPage = lazy(() => import('./pages/WatchlistSymbolPage'))
+const PortfolioMonitor = lazy(() => import('./pages/PortfolioMonitor'))
+const Prospects = lazy(() => import('./pages/Prospects'))
+const StrategyDesk = lazy(() => import('./pages/StrategyDesk'))
+const PaperStatus = lazy(() => import('./pages/PaperStatus'))
+const PaperProposals = lazy(() => import('./pages/PaperProposals'))
+const PaperJournal = lazy(() => import('./pages/PaperJournal'))
+const Incubator = lazy(() => import('./pages/Incubator'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -70,6 +82,12 @@ export default function App() {
         <Route element={<Shell />}>
           <Route index element={<SafePage><Overview /></SafePage>} />
           <Route path="trade-ai" element={<SafePage><TradeAI /></SafePage>} />
+          <Route path="prospects" element={<SafePage><Prospects /></SafePage>} />
+          <Route path="strategy-desk" element={<SafePage><StrategyDesk /></SafePage>} />
+          <Route path="paper-status" element={<SafePage><PaperStatus /></SafePage>} />
+          <Route path="paper-proposals" element={<SafePage><PaperProposals /></SafePage>} />
+          <Route path="paper-journal" element={<SafePage><PaperJournal /></SafePage>} />
+          <Route path="incubator" element={<SafePage><Incubator /></SafePage>} />
           <Route path="portfolio" element={<SafePage><Portfolio /></SafePage>} />
           <Route path="portfolio-intelligence" element={<SafePage><PortfolioIntelligence /></SafePage>} />
           <Route path="journal" element={<SafePage><Journal /></SafePage>} />
@@ -87,6 +105,8 @@ export default function App() {
           <Route path="alerts" element={<SafePage><AlertsActions /></SafePage>} />
           <Route path="notifications" element={<SafePage><Notifications /></SafePage>} />
           <Route path="watchlist" element={<SafePage><Watchlist /></SafePage>} />
+          <Route path="watchlist/:symbol" element={<SafePage><WatchlistSymbolPage /></SafePage>} />
+          <Route path="portfolio-monitor" element={<SafePage><PortfolioMonitor /></SafePage>} />
           <Route path="cio" element={<SafePage><CIODashboard /></SafePage>} />
           <Route path="system-health" element={<SafePage><SystemHealth /></SafePage>} />
           <Route path="hub" element={<SafePage><SystemHub /></SafePage>} />
@@ -95,12 +115,30 @@ export default function App() {
           <Route path="ops" element={<SafePage><Ops /></SafePage>} />
           <Route path="recovery" element={<SafePage><StoppedOutWatch /></SafePage>} />
           <Route path="journal-analytics" element={<SafePage><JournalAnalytics /></SafePage>} />
+          <Route path="journal-reports" element={<SafePage><JournalReports /></SafePage>} />
           <Route path="orchestration" element={<SafePage><Orchestration /></SafePage>} />
           <Route path="actions" element={<SafePage><ActionCenter /></SafePage>} />
           <Route path="morning-brief" element={<SafePage><MorningBrief /></SafePage>} />
           <Route path="ai-analyst" element={<SafePage><AIAnalyst /></SafePage>} />
           <Route path="intelligence-sources" element={<SafePage><IntelligenceSources /></SafePage>} />
+          <Route path="intelligence-entities" element={<SafePage><IntelligenceEntities /></SafePage>} />
           <Route path="content-health" element={<SafePage><ContentHealth /></SafePage>} />
+          <Route path="agent-pipeline" element={<SafePage><AgentPipeline /></SafePage>} />
+          <Route path="intelligence-whiteboard" element={<SafePage><IntelligenceWhiteboard /></SafePage>} />
+          <Route path="*" element={
+            <div style={{ padding: 40, color: 'var(--text2)' }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Page not found</div>
+              <div style={{ fontSize: 12, marginBottom: 16 }}>This route doesn't exist in the Command Center SPA.</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 12 }}>
+                Some pages are served outside the SPA:
+                <ul style={{ marginTop: 4 }}>
+                  <li><a href="/agent-monitor" style={{ color: 'var(--accent)' }}>Agent Monitor</a> → /agent-monitor</li>
+                  <li><a href="/reports/agent_orchestration.html" style={{ color: 'var(--accent)' }}>Agent Orchestration</a> → /reports/agent_orchestration.html</li>
+                </ul>
+              </div>
+              <a href="/v2/" style={{ color: 'var(--accent)', fontSize: 12 }}>← Back to Command Center</a>
+            </div>
+          } />
         </Route>
       </Routes>
     </BrowserRouter>

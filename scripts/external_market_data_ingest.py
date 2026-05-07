@@ -168,6 +168,100 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
     return {"source": "alpha_vantage", "fetched": fetched}
 
 
+def ingest_av_news_sentiment(symbols: list = None, limit: int = 10) -> dict:
+    """Fetch pre-scored news sentiment via Alpha Vantage NEWS_SENTIMENT endpoint.
+
+    Free tier: 25 calls/day total (shared with OVERVIEW).
+    Each call returns up to 50 articles with per-ticker sentiment scores.
+    Stores in news_articles table with sentiment_score from AV (not LLM-generated).
+    """
+    import urllib.request
+    api_key = _env("ALPHA_VANTAGE_API_KEY")
+    if not api_key:
+        return {"source": "av_news_sentiment", "fetched": 0, "reason": "no_key"}
+
+    if not symbols:
+        # Top portfolio positions by market value
+        h = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text()) if (PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").exists() else {}
+        by_mv = sorted([p for p in h.get("holdings", []) if p.get("symbol") and not p.get("is_cash") and "-" not in p.get("symbol", "") and len(p.get("symbol", "")) <= 5],
+                       key=lambda x: x.get("market_value", 0), reverse=True)
+        symbols = [p["symbol"] for p in by_mv[:limit]]
+
+    conn = _get_conn()
+    cur = conn.cursor()
+    fetched = 0
+    articles_stored = 0
+
+    for sym in symbols[:limit]:
+        try:
+            url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={sym}&limit=20&apikey={api_key}"
+            req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+
+            feed = data.get("feed", [])
+            if not feed:
+                continue
+
+            for article in feed[:15]:
+                title = article.get("title", "")[:200]
+                summary = article.get("summary", "")[:500]
+                source = article.get("source", "")[:50]
+                url_link = article.get("url", "")
+                published = article.get("time_published", "")
+                overall_sentiment = float(article.get("overall_sentiment_score", 0))
+                overall_label = article.get("overall_sentiment_label", "Neutral")
+
+                # Get ticker-specific sentiment
+                ticker_sentiment = 0.0
+                relevance = 0.0
+                for ts in article.get("ticker_sentiment", []):
+                    if ts.get("ticker") == sym:
+                        ticker_sentiment = float(ts.get("ticker_sentiment_score", 0))
+                        relevance = float(ts.get("relevance_score", 0))
+                        break
+
+                if relevance < 0.3:
+                    continue  # Skip low-relevance articles
+
+                # Normalize published date
+                pub_date = None
+                if published:
+                    try:
+                        pub_date = datetime.strptime(published[:8], "%Y%m%d").date()
+                    except Exception:
+                        pass
+
+                try:
+                    cur.execute("""
+                        INSERT INTO news_articles (symbol, title, summary, source, source_url,
+                                                   published_at, relevance_score, sentiment,
+                                                   sentiment_score, strategy_tags)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                        ON CONFLICT DO NOTHING
+                    """, (sym, title, summary, f"av:{source}", url_link,
+                          pub_date, round(relevance * 100), overall_label.lower(),
+                          round(ticker_sentiment, 3),
+                          json.dumps([f"av_sentiment_{overall_label.lower()}"])))
+                    articles_stored += 1
+                except Exception:
+                    conn.rollback()
+
+            fetched += 1
+            print(f"  [av-news] {sym}: {len(feed)} articles, {articles_stored} stored")
+
+            # Rate limit: 5 calls/min for free tier
+            import time
+            time.sleep(12)
+
+        except Exception as e:
+            print(f"  [av-news] {sym}: {e}")
+
+    conn.commit()
+    conn.close()
+    return {"source": "av_news_sentiment", "symbols": fetched, "articles": articles_stored}
+
+
 # ── FRED ─────────────────────────────────────────────────────────────
 
 FRED_SERIES = {
@@ -326,11 +420,14 @@ if __name__ == "__main__":
         ingest_yfinance_quotes()
     elif "--fundamentals" in sys.argv:
         ingest_alpha_vantage()
+    elif "--news-sentiment" in sys.argv:
+        ingest_av_news_sentiment()
     elif "--fred" in sys.argv:
         ingest_fred()
     elif "--all" in sys.argv:
         ingest_yfinance_quotes()
         ingest_alpha_vantage()
+        ingest_av_news_sentiment()
         ingest_fred()
     else:
-        print("Usage: --test | --quotes | --fundamentals | --fred | --all")
+        print("Usage: --test | --quotes | --fundamentals | --news-sentiment | --fred | --all")

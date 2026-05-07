@@ -312,11 +312,81 @@ def reset():
     conn.close()
 
 
+def process_video_queue(limit: int = 10) -> int:
+    """Process pending entries in youtube_backfill_queue.
+
+    These are individual videos discovered via symbol_enrichment GO signal search.
+    Download their transcripts using the same ingest_video() used for channel backfill.
+    """
+    from youtube_transcript_ingest import ingest_video
+
+    conn = _get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, video_id, channel_id, symbol_trigger, priority
+        FROM youtube_backfill_queue
+        WHERE status = 'pending'
+        ORDER BY
+            CASE priority WHEN 'high' THEN 0 ELSE 1 END,
+            created_at ASC
+        LIMIT %s
+    """, [limit])
+    pending = cur.fetchall()
+
+    if not pending:
+        conn.close()
+        return 0
+
+    processed = 0
+    for queue_id, video_id, channel_id, symbol_trigger, priority in pending:
+        cur.execute("""
+            UPDATE youtube_backfill_queue
+            SET status = 'processing', updated_at = NOW()
+            WHERE id = %s
+        """, [queue_id])
+        conn.commit()
+
+        try:
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            result = ingest_video(url, added_by=f"backfill_queue:{symbol_trigger}")
+
+            if result.get("status") in ("ingested", "already_exists"):
+                status = "completed"
+                processed += 1
+            else:
+                status = "failed"
+
+            cur.execute("""
+                UPDATE youtube_backfill_queue
+                SET status = %s, completed_at = NOW(), updated_at = NOW()
+                WHERE id = %s
+            """, [status, queue_id])
+            conn.commit()
+        except Exception as e:
+            cur.execute("""
+                UPDATE youtube_backfill_queue
+                SET status = 'failed', error = %s, updated_at = NOW()
+                WHERE id = %s
+            """, [str(e)[:200], queue_id])
+            conn.commit()
+
+        time.sleep(0.5)
+
+    conn.close()
+    print(f"[backfill-queue] Processed {processed}/{len(pending)} videos")
+    return processed
+
+
 if __name__ == "__main__":
     if "--status" in sys.argv:
         ensure_backfill_table()
         show_status()
     elif "--reset" in sys.argv:
         reset()
+    elif "--queue" in sys.argv:
+        process_video_queue(limit=20)
     else:
+        # Process channel backfill AND video queue
         run()
+        process_video_queue(limit=10)

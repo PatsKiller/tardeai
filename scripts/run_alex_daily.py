@@ -302,12 +302,170 @@ Keep it under 250 words. Warm, professional tone."""
         msg_lines.append(f"\n_via {provider} \u2022 http://ms01-openclaw:7777/v2/ai-analyst_")
         _send_tg("\n".join(msg_lines))
 
+    # YAML threshold analysis — propose changes if patterns found
+    try:
+        import psycopg2 as _pg
+        _pw = ""
+        for _line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if _line.startswith("DB_PASSWORD="): _pw = _line.split("=", 1)[1].strip()
+        _conn = _pg.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=_pw)
+        proposals = analyze_indicator_thresholds(_conn)
+        if proposals:
+            propose_yaml_changes(_conn, proposals)
+            _send_tg(
+                f"[ALEX WEEKLY] Indicator threshold analysis: "
+                f"{len(proposals)} YAML change proposal(s) submitted. "
+                f"Use 'tasks' command to review."
+            )
+        _conn.close()
+    except Exception as e:
+        print(f"[alex-weekly] Threshold analysis error: {e}")
+
     # Save to DB for AI Analyst page
     _save_report("weekly", f"Weekly Review — {datetime.now().strftime('%b %d, %Y')}",
                  review, provider=result.get("provider", ""), cost=result.get("cost_estimate", 0))
 
     print(f"[alex-weekly] Done via {result.get('provider', '?')}")
     return {"mode": "weekly", "provider": result.get("provider")}
+
+
+def analyze_indicator_thresholds(conn) -> list:
+    """Weekly analysis: find indicator thresholds producing bad entries.
+
+    Reads trade_backtest_results — looks for patterns where:
+    - RSI at entry > current entry_max and outcome Grade D/F
+    - Left too much on table (exit too early)
+
+    Returns list of proposals for YAML parameter changes.
+    """
+    proposals = []
+
+    try:
+        import yaml
+        config = yaml.safe_load(open(str(PROJECT_ROOT / 'config' / 'indicator_strategies.yaml')))
+        rsi_entry_max = config['strategies']['rsi']['entry_max']
+
+        cur = conn.cursor()
+
+        # Pattern 1: High RSI entries performing poorly
+        cur.execute("""
+            SELECT COUNT(*) as trade_count,
+                   AVG(entry_rsi) as avg_entry_rsi,
+                   AVG(actual_pnl_pct) as avg_pnl_pct
+            FROM trade_backtest_results
+            WHERE entry_grade IN ('D', 'F')
+            AND entry_rsi > %s
+            AND computed_at > NOW() - INTERVAL '90 days'
+            AND data_quality = 'good'
+        """, [rsi_entry_max - 5])
+        row = cur.fetchone()
+
+        if row and row[0] and int(row[0]) >= 5:
+            trade_count = int(row[0])
+            avg_rsi = float(row[1]) if row[1] else 0
+            avg_pnl = float(row[2]) if row[2] else 0
+
+            proposals.append({
+                'parameter': 'rsi.entry_max',
+                'current_value': rsi_entry_max,
+                'proposed_value': max(45, rsi_entry_max - 3),
+                'evidence': (
+                    f"{trade_count} Grade D/F entries with RSI>{rsi_entry_max - 5} in last 90 days. "
+                    f"Avg entry RSI: {avg_rsi:.1f}. Avg P&L: {avg_pnl:+.1f}%. "
+                    f"Tightening RSI entry_max from {rsi_entry_max} to "
+                    f"{max(45, rsi_entry_max - 3)} may filter weakest setups."
+                ),
+                'trade_count': trade_count,
+                'avg_grade': 'D/F',
+                'confidence': min(0.9, 0.5 + (trade_count / 20)),
+            })
+
+        # Pattern 2: Early exits leaving money on table
+        cur.execute("""
+            SELECT COUNT(*), AVG(left_on_table_20d)
+            FROM trade_backtest_results
+            WHERE exit_grade IN ('D', 'F')
+            AND left_on_table_20d > 15
+            AND computed_at > NOW() - INTERVAL '90 days'
+            AND data_quality = 'good'
+        """)
+        row = cur.fetchone()
+        if row and row[0] and int(row[0]) >= 5:
+            atr_target = config['strategies'].get('atr', {}).get('target_multiple_scalp', 1.5)
+            proposals.append({
+                'parameter': 'atr.target_multiple_scalp',
+                'current_value': atr_target,
+                'proposed_value': 2.0,
+                'evidence': (
+                    f"{int(row[0])} Grade D/F exits with avg {float(row[1]):.0f}% left on table (20d). "
+                    f"Increasing ATR target multiple from {atr_target}x to 2.0x may capture more upside."
+                ),
+                'trade_count': int(row[0]),
+                'avg_grade': 'D/F',
+                'confidence': 0.6,
+            })
+
+    except Exception as e:
+        print(f"[alex-weekly] Indicator threshold analysis failed: {e}")
+
+    return proposals
+
+
+def propose_yaml_changes(conn, proposals: list):
+    """Submit YAML parameter change proposals to john_decision_queue.
+
+    Each proposal becomes one pending task for John to approve/reject.
+    """
+    if not proposals:
+        return
+
+    cur = conn.cursor()
+    for p in proposals:
+        # Check if similar proposal already pending
+        cur.execute("""
+            SELECT id FROM john_decision_queue
+            WHERE category = 'yaml_parameter_change'
+            AND title LIKE %s
+            AND status = 'pending_john'
+            LIMIT 1
+        """, [f"%{p['parameter']}%"])
+
+        if cur.fetchone():
+            continue  # Already has pending proposal for this parameter
+
+        provenance = {
+            'parameter': p['parameter'],
+            'current_value': p['current_value'],
+            'proposed_value': p['proposed_value'],
+            'evidence': p['evidence'],
+            'trade_count': p['trade_count'],
+            'confidence': p['confidence'],
+            'yaml_file': 'config/indicator_strategies.yaml',
+        }
+
+        cur.execute("""
+            INSERT INTO john_decision_queue
+                (category, title, description, priority, status, provenance, created_at)
+            VALUES (
+                'yaml_parameter_change',
+                %s,
+                %s,
+                'normal',
+                'pending_john',
+                %s::jsonb,
+                NOW()
+            )
+        """, [
+            f"[YAML TUNING] {p['parameter']}: {p['current_value']} -> {p['proposed_value']}",
+            (
+                f"Confidence: {p['confidence']:.0%}. {p['trade_count']} trades analyzed.\n\n"
+                f"{p['evidence']}"
+            ),
+            json.dumps(provenance)
+        ])
+
+    conn.commit()
+    print(f"[alex-weekly] {len(proposals)} YAML proposals submitted to john_decision_queue")
 
 
 def run_monthly(send_telegram: bool = False):

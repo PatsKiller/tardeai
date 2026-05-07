@@ -290,7 +290,26 @@ def ingest(priority_only: bool = False) -> dict:
 
 
 if __name__ == "__main__":
-    priority = "--priority" in sys.argv
-    result = ingest(priority_only=priority)
-    if "--json" in sys.argv:
-        print(json.dumps(result, indent=2, default=str))
+    # Pipeline registry heartbeat
+    _run_id = None
+    try:
+        from pipeline_registry import run_start, run_complete, run_fail
+        _run_id = run_start('news_ingestion')
+    except Exception:
+        pass
+
+    try:
+        priority = "--priority" in sys.argv
+        result = ingest(priority_only=priority)
+        if "--json" in sys.argv:
+            print(json.dumps(result, indent=2, default=str))
+        try:
+            if _run_id: run_complete(_run_id, rows_processed=result.get('new_articles', 0))
+        except Exception:
+            pass
+    except Exception as _e:
+        try:
+            if _run_id: run_fail(_run_id, str(_e))
+        except Exception:
+            pass
+        raise

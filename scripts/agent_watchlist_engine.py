@@ -448,10 +448,22 @@ def run_agent_debate(symbol: str, trigger_title: str, trigger_id: int = 0,
         except Exception:
             pass
 
+        # Confluence + pipeline context
+        confluence_ctx = ""
+        prospects_ctx = ""
+        try:
+            from agent_collab import get_confluence_context, get_prospects_context
+            _conn = _get_conn()
+            confluence_ctx = get_confluence_context(symbol, _conn, profile='swing')
+            prospects_ctx = get_prospects_context(symbol, _conn)
+            _conn.close()
+        except Exception:
+            pass
+
         context_block = ""
-        if heat_ctx or session_ctx:
-            parts = [x for x in [heat_ctx, session_ctx] if x]
-            context_block = "\n" + "\n".join(parts) + "\n"
+        ctx_parts = [x for x in [heat_ctx, session_ctx, confluence_ctx, prospects_ctx] if x]
+        if ctx_parts:
+            context_block = "\n" + "\n".join(ctx_parts) + "\n"
 
         # ── Round 1: Independent views ─────────────────────────────────
         round1_prompt = f"""/no_think You are moderating a debate between 3 portfolio agents about {symbol}.
@@ -551,14 +563,31 @@ Keep total under 150 words."""
         cur.execute("""INSERT INTO agent_debate_log
             (symbol, trigger_source, trigger_id, participants, debate_transcript,
              consensus_score, consensus_recommendation, provider)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id""",
             (symbol, trigger_source, trigger_id,
              ["Maria", "Steph", "Risk"],
              full_transcript[:2000],
              final_confidence / 100.0,
              final_consensus,
              r1.get("provider", "")))
+        debate_id = cur.fetchone()[0]
         conn.commit()
+
+        # Auto-escalate to Alex if consensus >= 50%
+        if final_confidence >= 50:
+            try:
+                import uuid as _uuid
+                cur.execute("""INSERT INTO watchlist_agent_jobs
+                    (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, payload, created_at)
+                    VALUES (%s, %s, 'alex', 'full_analysis', %s, 'pending', 0, 'debate_escalation', %s, NOW())""",
+                    (str(_uuid.uuid4()), symbol,
+                     f"Debate escalation: {final_consensus} at {final_confidence}%",
+                     json.dumps({"debate_id": debate_id, "consensus": final_consensus, "score": final_confidence / 100.0})))
+                cur.execute("UPDATE agent_debate_log SET escalated_to_alex=true, status='escalated' WHERE id=%s", (debate_id,))
+                conn.commit()
+            except Exception:
+                pass
         conn.close()
 
         print(f"  [debate] {symbol}: {final_consensus} ({final_confidence}%) "

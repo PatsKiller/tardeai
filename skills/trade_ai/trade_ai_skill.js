@@ -1,6 +1,6 @@
 /**
  * trade_ai_skill.js — Trade AI v12 + Portfolio Intelligence Skill
- * Bible v7.4 | OpenClaw / ClawHub compatible | May 6, 2026
+ * Bible v7.5 | OpenClaw / ClawHub compatible | May 7, 2026
  *
  * Actions:
  *   run          — Full 23-stage Trade AI pipeline (Finviz → scoring → GO/WAIT)
@@ -22,7 +22,7 @@
  *   Root:    /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
  *   Port:    7777 (portfolio_server.py)
  *   DB:      PostgreSQL trade_ai — 164 tables (user: trade_ai)
- *   API:     116+ endpoints (api_v2.py)
+ *   API:     120+ endpoints (api_v2.py) — incl. incubator, proposal-quality-review
  *   Agents:  7 registered (maria, steph, risk_agent, tax_agent, alex, aegis, iris)
  *   Models:  qwen3:14b (local, Intel Arc B50 Vulkan) + Claude Sonnet (alex/iris) + Grok fallback
  *   Crons:   75 entries (incl. tax-sweep 6:35, social 7:30, RAG 6:50)
