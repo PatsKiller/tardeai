@@ -257,7 +257,44 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply", action="store_true", help="Write reviews to DB")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--proposal-id", type=int, default=None, help="Review specific proposal ID")
     args = parser.parse_args()
     dry = not args.apply
-    result = run(limit=args.limit, dry_run=dry)
-    print(json.dumps(result, indent=2))
+    if args.proposal_id:
+        # Run for a single proposal by temporarily overriding the query
+        conn = get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ptp.id, ptp.symbol, ptp.strategy_id, ptp.setup_type,
+                       ptp.proposed_entry, ptp.proposed_stop, ptp.proposed_target1,
+                       ptp.proposed_shares, ptp.proposed_dollar_risk,
+                       ptp.proposed_rr, ptp.signal_grade, ptp.signal_score,
+                       ptp.rvol, ptp.float_m, ptp.gap_pct, ptp.catalyst, ptp.catalyst_verified,
+                       ptp.risk_gate_result, ptp.risk_gate_codes,
+                       scan.critic_verdict, scan.critic_reasoning, scan.sector, scan.industry,
+                       scan.ticker_perf_1m, scan.sector_perf_1m, scan.vs_sector_pct,
+                       scan.change_pct
+                FROM paper_trade_proposals ptp
+                LEFT JOIN LATERAL (
+                    SELECT * FROM trade_ai_scans WHERE symbol=ptp.symbol
+                    ORDER BY scanned_at DESC LIMIT 1
+                ) scan ON true
+                WHERE ptp.id = %s
+            """, [args.proposal_id])
+            cols = [d[0] for d in cur.description]
+            row = cur.fetchone()
+            if row:
+                p = dict(zip(cols, row))
+                result = review_proposal(conn, p, _get_llm(), dry)
+                if not dry:
+                    conn.commit()
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                print(f"Proposal {args.proposal_id} not found")
+                sys.exit(1)
+        finally:
+            conn.close()
+    else:
+        result = run(limit=args.limit, dry_run=dry)
+        print(json.dumps(result, indent=2))

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """proposal_technical_snapshot.py — Technical intelligence snapshot for paper proposals.
 
-Generates ATR/RSI/VWAP/Fib/ORB/float rotation context for a proposal.
+Generates ATR/RSI/VWAP/EMA/Fib/ORB/float rotation context for a proposal.
+Session 23D: Integrates OHLCV-based EMA extraction, fib_swing_engine, opening_range_engine.
 
 Usage:
     .venv/bin/python scripts/proposal_technical_snapshot.py --proposal-id 2
     .venv/bin/python scripts/proposal_technical_snapshot.py --symbol SEAT
+    .venv/bin/python scripts/proposal_technical_snapshot.py --pending --apply
 """
 import argparse
 import json
@@ -93,8 +95,74 @@ def classify_gap(gap_pct):
     return "flat open"
 
 
-def get_fib_context(conn, symbol):
-    """Try to get fib context from indicator cache."""
+def compute_emas_from_bars(conn, symbol, current_price=None):
+    """Compute EMA 8/21/50/200 from daily OHLCV bars in market_ohlcv_bars."""
+    try:
+        import pandas as pd
+        import pandas_ta as ta
+    except ImportError:
+        return {}
+
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT bar_time, close FROM market_ohlcv_bars
+        WHERE symbol = %s AND timeframe = 'daily'
+        ORDER BY bar_time ASC
+    """, [symbol])
+    rows = cur.fetchall()
+    if not rows or len(rows) < 8:
+        return {"ema_data_status": "INSUFFICIENT_BARS", "bars_available": len(rows)}
+
+    df = pd.DataFrame(rows, columns=["bar_time", "close"])
+    df["close"] = df["close"].astype(float)
+
+    if current_price is None:
+        current_price = float(df["close"].iloc[-1])
+
+    result = {"bars_available": len(rows), "ema_data_status": "OK"}
+    for period in [8, 21, 50, 200]:
+        if len(df) >= period:
+            ema_series = ta.ema(df["close"], length=period)
+            if ema_series is not None and not ema_series.dropna().empty:
+                val = float(ema_series.dropna().iloc[-1])
+                result[f"ema_{period}"] = round(val, 2)
+                dist = ((current_price - val) / val * 100) if val > 0 else 0
+                result[f"ema_{period}_distance_pct"] = round(dist, 2)
+        else:
+            result[f"ema_{period}"] = None
+            result[f"ema_{period}_distance_pct"] = None
+
+    # Classify alignment
+    e8 = result.get("ema_8")
+    e21 = result.get("ema_21")
+    e50 = result.get("ema_50")
+    e200 = result.get("ema_200")
+
+    if e8 and e21 and e50 and current_price > e8 > e21 > e50:
+        result["ema_alignment"] = "BULL_STACKED"
+    elif e8 and e21 and current_price > e21 and e8 > e21:
+        result["ema_alignment"] = "BULLISH"
+    elif e8 and e21 and (current_price < e21 or e8 < e21):
+        result["ema_alignment"] = "BEARISH"
+    elif e200 and current_price < e200:
+        result["ema_alignment"] = "LONG_TERM_OVERHEAD"
+    else:
+        result["ema_alignment"] = "MIXED"
+
+    return result
+
+
+def get_fib_context(conn, symbol, current_price=None):
+    """Get fib context from fib_swing_engine if OHLCV bars exist, else from indicator cache."""
+    try:
+        from fib_swing_engine import process_symbol
+        result = process_symbol(conn, symbol, days=60, current_price=current_price)
+        if result.get("available"):
+            return result
+    except Exception as e:
+        log.debug(f"fib_swing_engine failed for {symbol}: {e}")
+
+    # Fallback to indicator cache
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -109,13 +177,22 @@ def get_fib_context(conn, symbol):
                 fib = signals['fib']
                 if fib.get('available', True):
                     return fib
-        return {"available": False, "summary": f"Fib context unavailable — no fib cache populated for {symbol}"}
+        return {"available": False, "summary": f"Fib context unavailable — no daily bars or fib cache for {symbol}"}
     except Exception:
-        return {"available": False, "summary": f"Fib context unavailable — no fib cache populated for {symbol}"}
+        return {"available": False, "summary": f"Fib context unavailable — no daily bars or fib cache for {symbol}"}
 
 
-def get_orb_context(conn, symbol):
-    """Try to get ORB/intraday context."""
+def get_orb_context(conn, symbol, current_price=None):
+    """Get ORB/premarket context from opening_range_engine if intraday bars exist."""
+    try:
+        from opening_range_engine import process_symbol
+        result = process_symbol(conn, symbol, date_str="today", current_price=current_price)
+        if result.get("opening_range_status") != "NO_INTRADAY_DATA":
+            return result
+    except Exception as e:
+        log.debug(f"opening_range_engine failed for {symbol}: {e}")
+
+    # Fallback to indicator cache
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -128,9 +205,11 @@ def get_orb_context(conn, symbol):
             signals = result.get('signals', {})
             if 'orb' in signals:
                 return signals['orb']
-        return {"available": False, "summary": "ORB context unavailable — no intraday candle data"}
+        return {"available": False, "opening_range_status": "NO_INTRADAY_DATA",
+                "summary": "ORB context unavailable — no intraday bars"}
     except Exception:
-        return {"available": False, "summary": "ORB context unavailable — no intraday candle data"}
+        return {"available": False, "opening_range_status": "NO_INTRADAY_DATA",
+                "summary": "ORB context unavailable — no intraday bars"}
 
 
 def build_overbought_oversold_summary(rsi_state, vwap_state, atr_state):
@@ -257,8 +336,11 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
         float_shares = float(float_m) * 1_000_000
         float_rotation_ratio, float_rotation_state = classify_float_rotation(volume, float_shares)
 
-    fib_context = get_fib_context(conn, symbol)
-    orb_context = get_orb_context(conn, symbol)
+    # Session 23D: EMA extraction from OHLCV bars
+    ema_data = compute_emas_from_bars(conn, symbol, current_price or proposed_entry)
+
+    fib_context = get_fib_context(conn, symbol, current_price or proposed_entry)
+    orb_context = get_orb_context(conn, symbol, current_price or proposed_entry)
 
     ob_os_summary = build_overbought_oversold_summary(rsi_state, vwap_state, atr_state)
 
@@ -329,6 +411,43 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
     if rsi is None:
         concerns.append("RSI missing — indicator engine pending")
 
+    # Session 23D: Technical grade scoring
+    tech_score = 0
+    if rsi is not None and rsi_state not in ('overbought', 'extremely overbought'):
+        tech_score += 20
+    if vwap_state and 'above' in vwap_state and 'extended' not in vwap_state:
+        tech_score += 20
+    elif vwap_state and 'extended' in vwap_state:
+        tech_score += 5
+    ema_align = ema_data.get("ema_alignment", "")
+    if ema_align == "BULL_STACKED":
+        tech_score += 20
+    elif ema_align == "BULLISH":
+        tech_score += 15
+    elif ema_align == "MIXED":
+        tech_score += 5
+    if fib_context.get("available") and fib_context.get("distance_pct", 99) < 3:
+        tech_score += 15
+    elif fib_context.get("available"):
+        tech_score += 5
+    if atr and atr_pct:
+        tech_score += 15
+    if orb_context.get("opening_range_status") == "ORB_BREAKOUT_CONFIRMED":
+        tech_score += 10
+    elif orb_context.get("opening_range_status") != "NO_INTRADAY_DATA":
+        tech_score += 5
+
+    if tech_score >= 80:
+        technical_grade = "TECH_STRONG"
+    elif tech_score >= 60:
+        technical_grade = "TECH_OK"
+    elif tech_score >= 40:
+        technical_grade = "TECH_MIXED"
+    elif tech_score >= 20:
+        technical_grade = "TECH_WEAK"
+    else:
+        technical_grade = "TECH_INCOMPLETE"
+
     snapshot = {
         "symbol": symbol,
         "proposal_id": proposal_id,
@@ -358,8 +477,25 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
         "float_rotation_state": float_rotation_state or "Float rotation unavailable",
         "gap_pct": round(float(gap_pct), 2) if gap_pct else None,
         "gap_state": gap_state if gap_pct else "No gap data",
+        # Session 23D: EMA stack
+        "ema_8": ema_data.get("ema_8"),
+        "ema_21": ema_data.get("ema_21"),
+        "ema_50": ema_data.get("ema_50"),
+        "ema_200": ema_data.get("ema_200"),
+        "ema_8_distance_pct": ema_data.get("ema_8_distance_pct"),
+        "ema_21_distance_pct": ema_data.get("ema_21_distance_pct"),
+        "ema_50_distance_pct": ema_data.get("ema_50_distance_pct"),
+        "ema_200_distance_pct": ema_data.get("ema_200_distance_pct"),
+        "ema_alignment": ema_data.get("ema_alignment"),
+        "ema_data_status": ema_data.get("ema_data_status"),
+        # Fib / ORB
         "fib_context": fib_context,
         "orb_context": orb_context,
+        "opening_range_status": orb_context.get("opening_range_status"),
+        "premarket_status": orb_context.get("premarket_status"),
+        # Technical grade
+        "technical_grade": technical_grade,
+        "technical_score": tech_score,
         "overbought_oversold_summary": ob_os_summary,
         "normal_trading_pattern": normal_pattern,
         "technical_vote": technical_vote,
@@ -369,7 +505,7 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    # Store on proposal
+    # Store on proposal + write to proposal_technical_snapshots table
     if proposal_id:
         try:
             conn.rollback()  # clear any prior aborted transaction
@@ -381,6 +517,67 @@ def generate_snapshot(conn, proposal_id=None, symbol=None):
                 SET technical_context = %s, updated_at = NOW()
                 WHERE id = %s
             """, [json.dumps(snapshot, default=str), proposal_id])
+
+            # Session 23C+23D: write to proposal_technical_snapshots with EMA/Fib/ORB
+            cur.execute("""
+                INSERT INTO proposal_technical_snapshots
+                    (proposal_id, symbol, timeframe, rsi_14, atr_14, atr_pct,
+                     vwap, vwap_distance_pct, above_vwap,
+                     ema_8, ema_21, ema_50, ema_200,
+                     ema_8_distance_pct, ema_21_distance_pct, ema_50_distance_pct, ema_200_distance_pct,
+                     ema_alignment,
+                     swing_high, swing_low, swing_high_date, swing_low_date,
+                     fib_236, fib_382, fib_500, fib_618, fib_786, fib_1272, fib_1618,
+                     nearest_fib_level, nearest_fib_distance_pct,
+                     fib_context,
+                     opening_range_high, opening_range_low,
+                     premarket_high, premarket_low,
+                     opening_range_minutes, opening_range_status, premarket_status,
+                     intraday_data_source, ohlcv_data_status,
+                     confluence_score, technical_grade,
+                     missing_data, source, computed_at)
+                VALUES (%s,%s,'daily',%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,'proposal_technical_snapshot',NOW())
+            """, [
+                proposal_id, symbol,
+                snapshot.get('rsi'), snapshot.get('atr'), snapshot.get('atr_pct'),
+                snapshot.get('vwap'), snapshot.get('vwap_distance_pct'),
+                snapshot.get('vwap_state') is not None and 'above' in str(snapshot.get('vwap_state', '')),
+                # EMAs
+                snapshot.get('ema_8'), snapshot.get('ema_21'), snapshot.get('ema_50'), snapshot.get('ema_200'),
+                snapshot.get('ema_8_distance_pct'), snapshot.get('ema_21_distance_pct'),
+                snapshot.get('ema_50_distance_pct'), snapshot.get('ema_200_distance_pct'),
+                snapshot.get('ema_alignment'),
+                # Fib swing
+                fib_context.get('swing_high') if fib_context.get('available') else None,
+                fib_context.get('swing_low') if fib_context.get('available') else None,
+                fib_context.get('swing_high_date') if fib_context.get('available') else None,
+                fib_context.get('swing_low_date') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('fib_236') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('fib_382') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('fib_500') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('fib_618') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('fib_786') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('ext_1272') if fib_context.get('available') else None,
+                fib_context.get('levels', {}).get('ext_1618') if fib_context.get('available') else None,
+                fib_context.get('nearest') if fib_context.get('available') else None,
+                fib_context.get('distance_pct') if fib_context.get('available') else None,
+                json.dumps(fib_context, default=str) if fib_context else None,
+                # ORB
+                orb_context.get('orb_15_high'), orb_context.get('orb_15_low'),
+                orb_context.get('premarket_high'), orb_context.get('premarket_low'),
+                15, orb_context.get('opening_range_status'), orb_context.get('premarket_status'),
+                orb_context.get('intraday_data_source'),
+                ema_data.get('ema_data_status', 'UNAVAILABLE') if ema_data.get('bars_available', 0) > 0
+                    else 'UNAVAILABLE',
+                # Grade
+                ind.get('confluence_score') or 0,
+                snapshot.get('technical_grade', 'TECH_INCOMPLETE'),
+                json.dumps(snapshot.get('technical_concerns')) if snapshot.get('technical_concerns') else None,
+            ])
             conn.commit()
         except Exception as e:
             log.warning(f"Failed to update proposal {proposal_id}: {e}")
@@ -395,16 +592,24 @@ def main():
     parser.add_argument("--proposal-id", type=int)
     parser.add_argument("--symbol", type=str)
     parser.add_argument("--all-pending", action="store_true")
+    parser.add_argument("--pending", action="store_true", help="Alias for --all-pending")
+    parser.add_argument("--apply", action="store_true", help="Write to DB (default is display only)")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     conn = get_conn()
     try:
-        if args.all_pending:
+        if args.all_pending or args.pending:
             cur = conn.cursor()
             cur.execute("SELECT id FROM paper_trade_proposals WHERE status='PENDING' ORDER BY created_at DESC")
+            results = []
             for (pid,) in cur.fetchall():
                 snap = generate_snapshot(conn, proposal_id=pid)
                 log.info(f"  {snap.get('symbol')} (#{pid}): ATR={snap.get('atr')} RSI={snap.get('rsi')} VWAP={snap.get('vwap_state')}")
+                results.append({"proposal_id": pid, "symbol": snap.get("symbol"),
+                                "atr": snap.get("atr"), "rsi": snap.get("rsi"),
+                                "vote": snap.get("technical_vote")})
+            print(json.dumps({"processed": len(results), "results": results}, indent=2, default=str))
         elif args.proposal_id:
             snap = generate_snapshot(conn, proposal_id=args.proposal_id)
             print(json.dumps(snap, indent=2, default=str))
@@ -412,7 +617,7 @@ def main():
             snap = generate_snapshot(conn, symbol=args.symbol.upper())
             print(json.dumps(snap, indent=2, default=str))
         else:
-            print("Usage: --proposal-id N or --symbol TICK or --all-pending")
+            print("Usage: --proposal-id N or --symbol TICK or --pending --apply")
     finally:
         conn.close()
 

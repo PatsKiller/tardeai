@@ -183,7 +183,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
   } : null
 
   const canApprove = p.decision_state === 'APPROVE_READY_PAPER_TEST'
-  const canApproveWithConfirm = ['CAUTIOUS_PAPER_TEST', 'BACKTEST_INSUFFICIENT'].includes(p.decision_state)
+  const canApproveWithConfirm = ['CAUTIOUS_PAPER_TEST', 'BACKTEST_INSUFFICIENT'].includes(p.decision_state) || p.paper_ready
   const approveDisabled = !canApprove && !canApproveWithConfirm
 
   const handleApprove = () => {
@@ -199,10 +199,12 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     act(p.id, 'approve', isModified ? { shares, entry, stop, target, confirmed: true, approval_mode: 'cautious_confirmed' } : { confirmed: true, approval_mode: 'cautious_confirmed' })
   }
 
-  const runAction = async (actionName: string, endpoint: string) => {
+  const runAction = async (actionName: string, endpoint: string, extras?: Record<string, any>) => {
     setRunningAction(actionName)
     try {
-      const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proposal_id: p.id }) })
+      const payload: any = { proposal_id: p.id, ...extras }
+      if (actionName === 'submitPaper') payload.confirmed = true
+      const r = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const d = await r.json()
       if (!d.ok) alert(d.error || `${actionName} failed`)
       window.location.reload()
@@ -213,13 +215,14 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
   const tabs = [
     { key: 'summary', label: 'Summary' },
     { key: 'technical', label: 'Technical' },
-    { key: 'catalyst', label: 'Catalyst / News' },
-    { key: 'sector', label: 'Sector' },
-    { key: 'history', label: 'History' },
+    { key: 'tech_map', label: 'Tech Map' },
+    { key: 'catalyst', label: 'Catalyst' },
+    { key: 'strategy_fit', label: 'Strategy Fit' },
     { key: 'backtest', label: 'Backtest' },
     { key: 'risk', label: 'Risk / Reward' },
-    { key: 'agents', label: 'Agent Notes' },
-    { key: 'missing', label: 'Missing Data' },
+    { key: 'execution', label: 'Execution' },
+    { key: 'agents', label: 'Agents' },
+    { key: 'missing', label: 'Missing' },
   ]
 
   return (
@@ -270,17 +273,76 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         {/* ── Summary Tab ── */}
         {activeTab === 'summary' && (
           <>
+            {/* Rejection / Cooldown Warning */}
+            {p.recently_rejected && (
+              <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
+                Recently rejected: {p.rejection_reason || 'Unknown reason'}{p.rejection_cooldown_until && ` — cooldown until ${new Date(p.rejection_cooldown_until).toLocaleString()}`}
+              </div>
+            )}
+
+            {/* Intelligence Readiness + Quality Review badges */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              {p.intelligence ? (
+                <span style={pill(p.intelligence.intelligence_readiness >= 70 ? 'green' : p.intelligence.intelligence_readiness >= 50 ? 'amber' : 'red')}>
+                  Intel: {p.intelligence.intelligence_readiness}/100 ({p.intelligence.readiness_source || 'unknown'})
+                </span>
+              ) : (
+                <span style={pill('amber')}>Intel: not computed</span>
+              )}
+              {p.quality_review ? (
+                <span style={pill(p.quality_review.review_state === 'HIGH_QUALITY_TEST' ? 'green' : p.quality_review.review_state === 'CAUTIOUS_TEST' ? 'amber' : p.quality_review.review_state === 'REJECT_RECOMMENDED' || p.quality_review.review_state === 'BLOCKED_BY_RISK_GATE' ? 'red' : 'blue')}>
+                  Quality: {p.quality_review.review_state} ({(p.quality_review.quality_score * 100).toFixed(0)}%)
+                </span>
+              ) : (
+                <span style={pill('amber')}>Quality review not run yet</span>
+              )}
+            </div>
+
             <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, marginBottom: 8 }}>
               {p.agent_narrative || 'No narrative available.'}
               {p.narrative_source && <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 8 }}>({p.narrative_source})</span>}
             </div>
 
-            {/* AI / Agent Review */}
-            <div style={secLbl}>AI / Agent Review</div>
-            <AgentReviewPanel votes={p.agent_votes} />
-            {p.local_llm_review_status && (
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
-                Local LLM: {p.local_llm_review_status}
+            {/* Agent Reviews (Maria / Risk / Steph) */}
+            <div style={secLbl}>Agent Reviews (Maria / Risk / Steph)</div>
+            {p.agent_reviews && p.agent_reviews.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {p.agent_reviews.filter((ar: any) => ['maria','risk_agent','steph','Maria','Risk','Steph'].includes(ar.agent_name)).map((ar: any, i: number) => {
+                  const voteColor = ar.verdict === 'APPROVE_TEST' || ar.verdict === 'BUY' ? 'green'
+                    : ar.verdict === 'REJECT' || ar.verdict === 'BLOCK' || ar.verdict === 'AVOID' || ar.verdict === 'SELL' ? 'red'
+                    : ar.verdict === 'WAIT_FOR_DATA' ? 'blue' : 'amber'
+                  return (
+                    <div key={i} style={{ padding: '4px 8px', background: 'var(--bg0)', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', minWidth: 70, ...mono }}>{ar.agent_name}</span>
+                      <span style={pill(voteColor)}>{ar.verdict} {ar.confidence != null ? `${Math.round(Number(ar.confidence) * (Number(ar.confidence) > 1 ? 1 : 100))}%` : ''}</span>
+                      <span style={{ fontSize: 9, color: 'var(--text2)', flex: 1 }}>{(ar.summary || '').slice(0, 120)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, color: 'var(--amber)', fontStyle: 'italic' }}>
+                Agent reviews not run yet
+              </div>
+            )}
+
+            {/* qwen3:14b LLM Analysis */}
+            <div style={secLbl}>LLM Analysis (qwen3:14b)</div>
+            {p.llm_analysis ? (
+              <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, lineHeight: 1.5 }}>
+                <div style={{ color: 'var(--text1)', marginBottom: 4 }}>{p.llm_analysis.summary}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                  <span style={pill(p.llm_analysis.narrative_source === 'local_llm' ? 'green' : 'amber')}>
+                    {p.llm_analysis.narrative_source === 'local_llm' ? `LLM: ${p.llm_analysis.model_used || 'qwen3:14b'}` : 'Deterministic fallback'}
+                  </span>
+                  {p.llm_analysis.confidence != null && (
+                    <span style={{ fontSize: 9, color: 'var(--text2)', ...mono }}>conf: {(Number(p.llm_analysis.confidence) * 100).toFixed(0)}%</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, color: 'var(--amber)', fontStyle: 'italic' }}>
+                LLM analysis not run yet
               </div>
             )}
 
@@ -289,16 +351,26 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               <div>
                 <div style={secLbl}>Approve Case</div>
                 <div style={{ fontSize: 10, color: 'var(--green)', lineHeight: 1.5, padding: '6px 8px', background: 'rgba(34,197,94,0.05)', borderRadius: 4, border: '1px solid rgba(34,197,94,0.15)' }}>
-                  {p.approve_case || 'No approve rationale.'}
+                  {p.llm_analysis?.approve_case || p.approve_case || 'No approve rationale.'}
                 </div>
               </div>
               <div>
                 <div style={secLbl}>Reject Case</div>
                 <div style={{ fontSize: 10, color: 'var(--red)', lineHeight: 1.5, padding: '6px 8px', background: 'rgba(239,68,68,0.05)', borderRadius: 4, border: '1px solid rgba(239,68,68,0.15)' }}>
-                  {p.reject_case || 'No rejection signals.'}
+                  {p.llm_analysis?.reject_case || p.reject_case || 'No rejection signals.'}
                 </div>
               </div>
             </div>
+
+            {/* Refresh Analysis button */}
+            {(!p.agent_reviews?.length || !p.llm_analysis || !p.quality_review) && (
+              <div style={{ marginTop: 10, textAlign: 'center' }}>
+                <button onClick={() => runAction('refresh', '/api/v2/paper-proposals/refresh-data')} disabled={!!runningAction}
+                  style={btnStyle('rgba(59,130,246,0.2)', '#60A5FA')}>
+                  {runningAction === 'refresh' ? '...' : 'Refresh Analysis'}
+                </button>
+              </div>
+            )}
           </>
         )}
 
@@ -312,6 +384,104 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                 {p.technical_summary}
               </div>
             )}
+            {/* Session 23D: Technical grade */}
+            {p.technical_snapshot?.technical_grade && (
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={pill(p.technical_snapshot.technical_grade === 'TECH_STRONG' ? 'green' : p.technical_snapshot.technical_grade === 'TECH_OK' ? 'blue' : 'amber')}>
+                  {p.technical_snapshot.technical_grade}
+                </span>
+                {p.technical_snapshot.ohlcv_data_status && (
+                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>OHLCV: {p.technical_snapshot.ohlcv_data_status}</span>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+              <button onClick={() => runAction('techSnap', '/api/v2/paper-proposals/run-technical-snapshot')}
+                disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
+                {runningAction === 'techSnap' ? '...' : 'Run Technical Snapshot'}
+              </button>
+              <button onClick={() => runAction('runFib', '/api/v2/paper-proposals/run-fib')}
+                disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
+                {runningAction === 'runFib' ? '...' : 'Run Fib'}
+              </button>
+              <button onClick={() => runAction('runOrb', '/api/v2/paper-proposals/run-opening-range')}
+                disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
+                {runningAction === 'runOrb' ? '...' : 'Run Opening Range'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Tech Map Tab (Session 23D) ── */}
+        {activeTab === 'tech_map' && (
+          <>
+            <div style={secLbl}>EMA Stack</div>
+            {(() => {
+              const ts = p.technical_snapshot || {}
+              const alignColor = ts.ema_alignment === 'BULL_STACKED' ? 'green'
+                : ts.ema_alignment === 'BULLISH' ? 'green'
+                : ts.ema_alignment === 'BEARISH' ? 'red' : 'amber'
+              return (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('EMA 8', ts.ema_8 != null ? `$${Number(ts.ema_8).toFixed(2)}` : '--')}
+                    {kv('EMA 21', ts.ema_21 != null ? `$${Number(ts.ema_21).toFixed(2)}` : '--')}
+                    {kv('EMA 50', ts.ema_50 != null ? `$${Number(ts.ema_50).toFixed(2)}` : '--')}
+                    {kv('EMA 200', ts.ema_200 != null ? `$${Number(ts.ema_200).toFixed(2)}` : '--')}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('EMA 8 Dist', ts.ema_8_distance_pct != null ? `${Number(ts.ema_8_distance_pct).toFixed(1)}%` : '--')}
+                    {kv('EMA 21 Dist', ts.ema_21_distance_pct != null ? `${Number(ts.ema_21_distance_pct).toFixed(1)}%` : '--')}
+                    {kv('EMA 50 Dist', ts.ema_50_distance_pct != null ? `${Number(ts.ema_50_distance_pct).toFixed(1)}%` : '--')}
+                    {kv('EMA 200 Dist', ts.ema_200_distance_pct != null ? `${Number(ts.ema_200_distance_pct).toFixed(1)}%` : '--')}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <span style={pill(alignColor)}>{ts.ema_alignment || 'N/A'}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>EMA Alignment</span>
+                  </div>
+                </>
+              )
+            })()}
+
+            <div style={secLbl}>Fibonacci Levels</div>
+            {(() => {
+              const ts = p.technical_snapshot || {}
+              const fc = typeof p.fib_context === 'object' ? p.fib_context : (ts.fib_context || {})
+              if (!fc || fc.available === false) {
+                return <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>{fc?.summary || 'Fib data unavailable'}</div>
+              }
+              return (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('Swing High', ts.swing_high != null ? `$${Number(ts.swing_high).toFixed(2)}` : fc.swing_high ? `$${Number(fc.swing_high).toFixed(2)}` : '--')}
+                    {kv('Swing Low', ts.swing_low != null ? `$${Number(ts.swing_low).toFixed(2)}` : fc.swing_low ? `$${Number(fc.swing_low).toFixed(2)}` : '--')}
+                    {kv('Nearest Fib', ts.nearest_fib_level || fc.nearest || '--')}
+                    {kv('Fib Distance', ts.nearest_fib_distance_pct != null ? `${Number(ts.nearest_fib_distance_pct).toFixed(1)}%` : fc.distance_pct != null ? `${Number(fc.distance_pct).toFixed(1)}%` : '--')}
+                  </div>
+                  {fc.interpretation && <div style={{ fontSize: 10, color: 'var(--text2)', padding: '4px 8px', background: 'var(--bg0)', borderRadius: 4 }}>{fc.interpretation}</div>}
+                </>
+              )
+            })()}
+
+            <div style={secLbl}>Opening Range / Premarket</div>
+            {(() => {
+              const ts = p.technical_snapshot || {}
+              const orbColor = ts.opening_range_status === 'ORB_BREAKOUT_CONFIRMED' ? 'green'
+                : ts.opening_range_status === 'ORB_BREAKOUT_FAILED' ? 'red'
+                : ts.opening_range_status === 'INSIDE_OPENING_RANGE' ? 'blue' : 'amber'
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                  {kv('ORB 15 High', ts.opening_range_high != null ? `$${Number(ts.opening_range_high).toFixed(2)}` : '--')}
+                  {kv('ORB 15 Low', ts.opening_range_low != null ? `$${Number(ts.opening_range_low).toFixed(2)}` : '--')}
+                  {kv('PM High', ts.premarket_high != null ? `$${Number(ts.premarket_high).toFixed(2)}` : '--')}
+                  {kv('PM Low', ts.premarket_low != null ? `$${Number(ts.premarket_low).toFixed(2)}` : '--')}
+                  {kv('ORB Status', <span style={pill(orbColor)}>{ts.opening_range_status || 'N/A'}</span>)}
+                  {kv('PM Status', ts.premarket_status || 'N/A')}
+                  {kv('Tech Grade', ts.technical_grade || 'N/A')}
+                  {kv('OHLCV', ts.ohlcv_data_status || 'N/A')}
+                </div>
+              )
+            })()}
           </>
         )}
 
@@ -324,6 +494,16 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               {p.catalyst || 'No catalyst data'}
               {p.catalyst_confidence != null && <span style={{ color: 'var(--text3)', fontSize: 9, marginLeft: 6 }}>{(p.catalyst_confidence * 100).toFixed(0)}% confidence</span>}
             </div>
+            {/* Catalyst Quality Assessment */}
+            {p.catalyst_quality && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8, padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4 }}>
+                {kv('Quality', `${p.catalyst_quality.catalyst_quality_score}/100`,
+                  p.catalyst_quality.catalyst_quality_score >= 70 ? 'var(--green)' : p.catalyst_quality.catalyst_quality_score >= 50 ? 'var(--amber)' : 'var(--red)')}
+                {kv('Grade', p.catalyst_quality.catalyst_grade)}
+                {kv('Type', p.catalyst_quality.catalyst_type)}
+                {kv('Duration', p.catalyst_quality.duration_estimate)}
+              </div>
+            )}
             {p.critic_verdict && (
               <div style={{ marginBottom: 8 }}>
                 <span style={pill(p.critic_verdict === 'PASS' ? 'green' : p.critic_verdict === 'BLOCK' ? 'red' : 'amber')}>
@@ -341,10 +521,52 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           </>
         )}
 
-        {/* ── Sector Tab ── */}
-        {activeTab === 'sector' && (
+        {/* ── Strategy Fit Tab ── */}
+        {activeTab === 'strategy_fit' && (
           <>
-            <div style={secLbl}>Sector Context</div>
+            <div style={secLbl}>Strategy Fit — {p.strategy_id}</div>
+            {p.strategy_fit ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                  {kv('Fit Score', `${p.strategy_fit.fit_score}/100`,
+                    p.strategy_fit.fit_score >= 80 ? 'var(--green)' : p.strategy_fit.fit_score >= 60 ? 'var(--amber)' : 'var(--red)')}
+                  {kv('Grade', p.strategy_fit.fit_grade,
+                    p.strategy_fit.fit_grade === 'STRONG_FIT' ? 'var(--green)' : p.strategy_fit.fit_grade === 'GOOD_FIT' ? '#60A5FA' : 'var(--amber)')}
+                  {kv('Setup Class', p.strategy_fit.setup_class || 'unclassified')}
+                  {kv('Strategy', p.strategy_fit.strategy_id)}
+                </div>
+                {p.strategy_fit.criteria_met?.length > 0 && (
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>CRITERIA MET</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {p.strategy_fit.criteria_met.map((c: string, i: number) => (
+                        <span key={i} style={{ ...pill('green'), fontSize: 8 }}>{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {p.strategy_fit.criteria_failed?.length > 0 && (
+                  <div style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>CRITERIA FAILED</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {p.strategy_fit.criteria_failed.map((c: string, i: number) => (
+                        <span key={i} style={{ ...pill('red'), fontSize: 8 }}>{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {p.strategy_fit.narrative && (
+                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5, marginTop: 6, padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4 }}>
+                    {p.strategy_fit.narrative}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>Strategy fit not computed yet</div>
+            )}
+
+            {/* Sector context inline */}
+            <div style={{ ...secLbl, marginTop: 12 }}>Sector Context</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {kv('Sector', p.sector)}
               {kv('Industry', p.industry)}
@@ -352,14 +574,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               {kv('vs Sector', p.vs_sector_pct != null ? `${Number(p.vs_sector_pct) > 0 ? '+' : ''}${Number(p.vs_sector_pct).toFixed(1)}%` : null,
                 p.vs_sector_pct != null ? (Number(p.vs_sector_pct) > 0 ? 'var(--green)' : 'var(--red)') : undefined)}
             </div>
-          </>
-        )}
-
-        {/* ── History Tab ── */}
-        {activeTab === 'history' && (
-          <>
-            <div style={secLbl}>Stock History — {p.symbol}</div>
-            <StockHistoryPanel p={p} />
           </>
         )}
 
@@ -416,6 +630,116 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           </>
         )}
 
+        {/* ── Execution Readiness Tab ── */}
+        {activeTab === 'execution' && (
+          <>
+            <div style={secLbl}>Execution Readiness</div>
+            {p.execution_readiness ? (() => {
+              const er = p.execution_readiness
+              const stateColor = er.readiness_state === 'READY_FOR_PAPER_SUBMIT' ? 'green'
+                : er.readiness_state === 'CAUTION_EXECUTABLE' ? 'amber' : 'red'
+              return (
+                <>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                    <span style={pill(stateColor)}>{er.readiness_state}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text2)', ...mono }}>Score: {er.readiness_score}/100</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('Quote Price', er.quote_price ? `$${Number(er.quote_price).toFixed(2)}` : null)}
+                    {kv('Quote Age', er.quote_age_seconds != null ? `${Math.round(Number(er.quote_age_seconds))}s` : null,
+                      Number(er.quote_age_seconds) > 300 ? 'var(--red)' : 'var(--green)')}
+                    {kv('Price vs Entry', er.price_vs_entry_pct != null ? `${Number(er.price_vs_entry_pct) > 0 ? '+' : ''}${Number(er.price_vs_entry_pct).toFixed(2)}%` : null,
+                      Math.abs(Number(er.price_vs_entry_pct)) > 2 ? 'var(--red)' : 'var(--green)')}
+                    {kv('Spread', er.spread_pct != null ? `${Number(er.spread_pct).toFixed(3)}%` : 'N/A')}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('Quote Fresh', er.quote_fresh ? 'YES' : 'NO', er.quote_fresh ? 'var(--green)' : 'var(--red)')}
+                    {kv('Price OK', er.price_ok ? 'YES' : 'NO', er.price_ok ? 'var(--green)' : 'var(--red)')}
+                    {kv('Risk Gate', er.risk_gate_ok ? 'PASS' : 'FAIL', er.risk_gate_ok ? 'var(--green)' : 'var(--red)')}
+                    {kv('No Duplicate', er.duplicate_ok ? 'OK' : 'DUP', er.duplicate_ok ? 'var(--green)' : 'var(--red)')}
+                  </div>
+                  {er.blockers && er.blockers.length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 9, color: 'var(--red)', fontWeight: 600, marginBottom: 4 }}>BLOCKERS</div>
+                      {er.blockers.map((b: string, i: number) => (
+                        <div key={i} style={{ fontSize: 10, color: 'var(--red)', padding: '2px 0' }}>{b}</div>
+                      ))}
+                    </div>
+                  )}
+                  {er.warnings && er.warnings.length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 9, color: 'var(--amber)', fontWeight: 600, marginBottom: 4 }}>WARNINGS</div>
+                      {er.warnings.map((w: string, i: number) => (
+                        <div key={i} style={{ fontSize: 9, color: 'var(--amber)', padding: '2px 0' }}>{w}</div>
+                      ))}
+                    </div>
+                  )}
+                  {er.execution_plan && (
+                    <>
+                      <div style={secLbl}>Execution Plan</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                        {kv('Order Type', er.execution_plan.order_type)}
+                        {kv('Limit', er.execution_plan.limit_price ? `$${Number(er.execution_plan.limit_price).toFixed(2)}` : null)}
+                        {kv('Stop', er.execution_plan.stop_price ? `$${Number(er.execution_plan.stop_price).toFixed(2)}` : null)}
+                        {kv('Target', er.execution_plan.take_profit_price ? `$${Number(er.execution_plan.take_profit_price).toFixed(2)}` : null)}
+                        {kv('TIF', er.execution_plan.time_in_force)}
+                        {kv('Shares', er.execution_plan.shares)}
+                      </div>
+                    </>
+                  )}
+                  {/* Session 23D: Bracket validation */}
+                  <div style={secLbl}>Alpaca Paper Bracket</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('Bracket Supported', er.bracket_order_supported ? 'YES' : 'NO',
+                      er.bracket_order_supported ? 'var(--green)' : 'var(--red)')}
+                    {kv('Alpaca Mode', er.alpaca_account_mode || 'N/A',
+                      er.alpaca_account_mode === 'paper' ? 'var(--green)' : 'var(--red)')}
+                    {kv('Market Hours', er.market_hours ? 'OPEN' : 'CLOSED',
+                      er.market_hours ? 'var(--green)' : 'var(--amber)')}
+                    {kv('Submit Result', er.paper_submit_test_result || 'not tested')}
+                  </div>
+                  {er.bracket_dry_run_payload && (
+                    <details style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+                      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Bracket Payload</summary>
+                      <pre style={{ fontSize: 9, padding: 6, background: 'var(--bg0)', borderRadius: 4, overflow: 'auto', maxHeight: 120, margin: '4px 0' }}>
+                        {JSON.stringify(er.bracket_dry_run_payload, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button onClick={() => runAction('dryBracket', '/api/v2/paper-proposals/dry-run-alpaca-bracket')}
+                      disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
+                      {runningAction === 'dryBracket' ? '...' : 'Dry Run Alpaca Bracket'}
+                    </button>
+                    <button onClick={() => {
+                      if (!confirm(`Submit PAPER bracket order for ${p.symbol}?`)) return
+                      runAction('submitBracket', '/api/v2/paper-proposals/submit-alpaca-paper-bracket',
+                        { confirmed: true })
+                    }}
+                      disabled={!!runningAction || er.readiness_state?.includes('BLOCKED')}
+                      style={btnStyle(
+                        er.readiness_state === 'READY_FOR_PAPER_SUBMIT' || er.readiness_state === 'READY_ORB_CONFIRMED'
+                          ? 'rgba(34,197,94,0.2)' : 'rgba(148,163,184,0.15)',
+                        er.readiness_state === 'READY_FOR_PAPER_SUBMIT' || er.readiness_state === 'READY_ORB_CONFIRMED'
+                          ? 'var(--green)' : '#94A3B8'
+                      )}>
+                      {runningAction === 'submitBracket' ? '...' : 'Submit Alpaca Paper Bracket'}
+                    </button>
+                  </div>
+                </>
+              )
+            })() : (
+              <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>
+                Execution readiness not checked yet.
+                <button onClick={() => runAction('execReady', '/api/v2/paper-proposals/check-execution-readiness')}
+                  disabled={!!runningAction} style={{ ...btnStyle('rgba(59,130,246,0.15)', '#60A5FA'), marginLeft: 8 }}>
+                  {runningAction === 'execReady' ? '...' : 'Check Now'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
         {/* ── Missing Data Tab ── */}
         {activeTab === 'missing' && (
           <>
@@ -453,16 +777,42 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
           {runningAction === 'backtest' ? '...' : 'Run Backtest'}
         </button>
-        <button onClick={() => runAction('refresh', '/api/v2/paper-proposals/refresh-data')} disabled={!!runningAction}
+        <button onClick={() => runAction('refresh', '/api/v2/paper-proposals/refresh-packet')} disabled={!!runningAction}
           style={btnStyle('rgba(148,163,184,0.15)', '#94A3B8')}>
-          {runningAction === 'refresh' ? '...' : 'Refresh Data'}
+          {runningAction === 'refresh' ? '...' : 'Refresh Full Packet'}
+        </button>
+        <button onClick={() => runAction('execReady', '/api/v2/paper-proposals/check-execution-readiness')} disabled={!!runningAction}
+          style={btnStyle('rgba(148,163,184,0.15)', '#94A3B8')}>
+          {runningAction === 'execReady' ? '...' : 'Check Execution'}
         </button>
 
         <div style={{ flex: 1 }} />
 
+        {/* Submit to Alpaca Paper */}
+        <button
+          onClick={() => {
+            if (confirm('Submit to Alpaca PAPER trading? This is NOT a live trade.')) {
+              runAction('submitPaper', '/api/v2/paper-proposals/submit-alpaca-paper')
+            }
+          }}
+          disabled={!!runningAction || !p.execution_readiness || !['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state)}
+          title={!p.execution_readiness ? 'Run execution readiness check first' : p.execution_readiness?.readiness_state}
+          style={{
+            ...btnStyle(
+              ['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? '#065F46' : 'rgba(34,197,94,0.1)',
+              ['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? '#10B981' : '#44403C'
+            ),
+            opacity: !p.execution_readiness || !['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? 0.4 : 1,
+            cursor: !p.execution_readiness || !['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? 'not-allowed' : 'pointer',
+            border: '1px solid #047857',
+          }}>
+          {runningAction === 'submitPaper' ? '...' : 'Submit to Alpaca Paper'}
+        </button>
+
         <button onClick={handleApprove} disabled={!!acting[p.id] || approveDisabled}
+          title={approveDisabled ? (p.approval_blocked_reason || 'Missing data') : 'Approve for paper trading'}
           style={{ ...btnStyle(approveDisabled ? 'rgba(34,197,94,0.1)' : canApproveWithConfirm ? 'var(--amber)' : 'var(--green)'), opacity: approveDisabled ? 0.4 : 1, cursor: approveDisabled ? 'not-allowed' : 'pointer' }}>
-          {acting[p.id] === 'approve' ? '...' : approveDisabled ? 'Cannot Approve' : canApproveWithConfirm ? 'Approve (confirm)' : isModified ? 'Approve*' : 'Approve'}
+          {acting[p.id] === 'approve' ? '...' : approveDisabled ? (p.approval_blocked_reason?.slice(0,20) || 'Cannot Approve') : canApproveWithConfirm ? 'Approve (confirm)' : isModified ? 'Approve*' : 'Approve'}
         </button>
         <button onClick={() => act(p.id, 'reject')} disabled={!!acting[p.id]}
           style={btnStyle('var(--red)')}>

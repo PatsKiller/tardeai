@@ -144,12 +144,20 @@ def candidate_matches_strategy(scan: dict, cfg: dict) -> tuple:
     elif float_m > 0:
         match_reasons.append(f"float {float_m:.0f}M <= {max_float}M")
 
-    # Gap (gap_and_go requires minimum gap)
+    # Gap
     min_gap = float(filters.get("min_gap_pct", 0))
     if min_gap > 0 and gap < min_gap:
         reject_reasons.append(f"gap {gap:.1f}% < min {min_gap}%")
     elif min_gap > 0:
         match_reasons.append(f"gap {gap:.1f}% >= {min_gap}%")
+
+    # Min score
+    score = float(scan.get("score") or 0)
+    min_score = float(filters.get("min_score", 0))
+    if min_score > 0 and score < min_score:
+        reject_reasons.append(f"score {score:.0f} < min {min_score}")
+    elif min_score > 0:
+        match_reasons.append(f"score {score:.0f} >= {min_score}")
 
     matches = len(reject_reasons) == 0
     return matches, match_reasons, reject_reasons
@@ -173,17 +181,32 @@ def route_candidate_to_strategies(scan: dict, configs: dict) -> list:
 
 
 def infer_strategy_id(scan: dict) -> str:
-    """Legacy single-strategy inference. Used as fallback."""
-    screener = (scan.get('screener_label') or '').lower()
-    gap = float(scan.get('gap_pct') or 0)
+    """Legacy single-strategy inference. Used as fallback when no YAML matches."""
+    gap = abs(float(scan.get('gap_pct') or 0))
     price = float(scan.get('price') or 0)
     rvol = float(scan.get('rvol') or 0)
+    float_m = float(scan.get('float_m') or 0)
+    cat_v = bool(scan.get('catalyst_verified', False))
 
-    if 'gap' in screener or gap > 8:
-        return 'gap_and_go'
-    if price < 50 and rvol >= 2:
+    # Strict momentum_scalp: ALL hard criteria must pass
+    if (1.0 <= price <= 25.0 and 0 < float_m <= 100.0
+            and rvol >= 5.0 and gap >= 5.0):
         return 'momentum_scalp'
-    return 'momentum_scalp'
+
+    # gap_and_go: meaningful gap + volume
+    if gap >= 5.0 and rvol >= 2.0 and 1.0 <= price <= 50.0:
+        return 'gap_and_go'
+
+    # earnings_catalyst: verified catalyst, any size
+    if cat_v and rvol >= 1.5:
+        return 'earnings_catalyst'
+
+    # swing_breakout: catch-all for GO signals
+    if rvol >= 1.5 and price >= 2.0:
+        return 'swing_breakout'
+
+    # Default to gap_and_go rather than momentum_scalp
+    return 'gap_and_go'
 
 
 def find_trade_plan(conn, symbol: str, scan_time=None) -> dict:

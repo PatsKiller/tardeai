@@ -1,7 +1,0 @@
-# Trade AI v10 | 2026-05-06 | Run 0400
-
-DGXX
-LFVN
-AVTX
-EZGO
-EVC

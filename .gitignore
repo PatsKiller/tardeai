@@ -98,3 +98,17 @@ temp/
 # cleanup_ms01.sh    # keep if you want to version your cleanup scripts
 
 apps/command-center-v2-backup-*
+
+# Generated Trade AI reports and run artifacts
+reports/
+logs/
+backups/
+*.bak
+*.bak_session*
+docs/project/docx_patch_*.json
+*.tst
+
+# Local/private state
+.env
+data/portfolios/state/holdings.json
+data/portfolios/state/performance_history.json

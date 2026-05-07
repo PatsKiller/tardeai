@@ -19,6 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from session13_db import get_conn
+from local_llm_config import get_local_llm_model
 
 log = logging.getLogger("proposal_analyzer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -71,15 +72,31 @@ def build_prompt(p):
     entry = float(p.get('proposed_entry') or 0)
     stop = float(p.get('proposed_stop') or 0)
     t1 = float(p.get('proposed_target1') or 0)
+    t2 = float(p.get('proposed_target2') or 0)
     shares = int(p.get('proposed_shares') or 0)
     risk = abs(entry - stop) * shares if entry and stop and shares else 0
     reward = (t1 - entry) * shares if t1 and entry and shares else 0
+    risk_r = round(risk / entry * 100, 2) if entry else 0
 
-    # Extract RSI from indicator
-    rsi = None
+    # Extract indicators from full_result
     ind = p.get('ind_full')
+    rsi = None
+    vwap = None
+    vwap_dist = None
+    atr_pct = None
+    macd_state = None
+    adx = None
+    squeeze = None
     if isinstance(ind, dict):
-        rsi = ind.get('signals', {}).get('rsi', {}).get('value')
+        sigs = ind.get('signals', ind)
+        rsi = sigs.get('rsi', {}).get('value')
+        vwap = sigs.get('vwap', {}).get('value')
+        vwap_dist = sigs.get('vwap', {}).get('details', {}).get('distance_pct')
+        atr_pct = sigs.get('atr', {}).get('details', {}).get('atr_pct')
+        macd_state = sigs.get('macd', {}).get('signal')
+        adx = sigs.get('adx', {}).get('value')
+        kc = sigs.get('keltner', {}).get('details', {})
+        squeeze = "SQUEEZE_ON" if kc.get('squeeze_on') else "FIRED" if kc.get('squeeze_fired') else "none"
 
     news_str = "None"
     if p.get('news'):
@@ -88,36 +105,37 @@ def build_prompt(p):
     missing = []
     if not p.get('atr'): missing.append('ATR')
     if rsi is None: missing.append('RSI')
+    if vwap is None: missing.append('VWAP')
     if not p.get('news'): missing.append('News')
 
-    return f"""Analyze this paper trade proposal for TESTING only. Be concise (under 250 words).
+    vs_sector = p.get('vs_sector_pct')
+    vs_sector_str = f"{float(vs_sector):+.1f}%" if vs_sector is not None else "N/A"
 
-Symbol: {p.get('symbol')}
-Strategy: {p.get('strategy_id')}
-Setup: {p.get('setup_type') or 'N/A'}
-Entry: ${entry:.2f}
-Stop: ${stop:.2f}
-Target 1: ${t1:.2f}
-Shares: {shares}
-Risk dollars: ${risk:.2f}
-Reward dollars: ${reward:.2f}
-R:R: {p.get('proposed_rr') or 'N/A'}
-RVOL: {p.get('rvol') or 'N/A'}
-Float: {p.get('float_m') or 'N/A'}M
-Gap: {p.get('gap_pct') or 'N/A'}%
-ATR: {f"${float(p['atr']):.2f}" if p.get('atr') else 'missing'}
-RSI: {f"{rsi:.1f}" if rsi else 'missing'}
-Sector: {p.get('sector') or 'N/A'}
-Sector perf: {p.get('sector_perf_1m') or 'N/A'}%
-Ticker perf: {p.get('ticker_perf_1m') or 'N/A'}%
-Catalyst: {str(p.get('catalyst') or 'None')[:100]}
-Catalyst verified: {p.get('catalyst_verified')}
+    return f"""You are an institutional prop desk analyst. Analyze this paper trade proposal.
+Be specific. Reference at least 5 numeric facts. Identify 2+ kill conditions.
+If your answer could apply to any ticker, rewrite it. Under 300 words.
+
+=== TRADE SETUP ===
+Symbol: {p.get('symbol')} | Strategy: {p.get('strategy_id')} | Setup: {p.get('setup_type') or 'N/A'}
+Entry: ${entry:.2f} | Stop: ${stop:.2f} | Target: ${t1:.2f} | T2: ${t2:.2f}
+Shares: {shares} | Risk: ${risk:.0f} | Reward: ${reward:.0f} | R:R: {p.get('proposed_rr') or 'N/A'}
+
+=== TECHNICAL MAP ===
+RSI: {f"{rsi:.1f}" if rsi else 'N/A'} | ATR: {f"${float(p['atr']):.2f} ({atr_pct:.1f}%)" if p.get('atr') and atr_pct else 'N/A'}
+VWAP: {f"${float(vwap):.2f} ({float(vwap_dist):+.1f}%)" if vwap and vwap_dist else 'N/A'}
+MACD: {macd_state or 'N/A'} | ADX: {f"{float(adx):.0f}" if adx else 'N/A'} | Squeeze: {squeeze or 'N/A'}
+
+=== CATALYST + CONTEXT ===
+RVOL: {p.get('rvol') or 'N/A'}x | Float: {p.get('float_m') or 'N/A'}M | Gap: {p.get('gap_pct') or 'N/A'}%
+Sector: {p.get('sector') or 'N/A'} | vs Sector: {vs_sector_str}
+Catalyst: {str(p.get('catalyst') or 'None')[:150]}
+Verified: {p.get('catalyst_verified')} | Confidence: {p.get('catalyst_confidence') or 'N/A'}
 Critic: {p.get('critic_verdict') or 'N/A'} — {str(p.get('critic_reasoning') or '')[:100]}
 News: {news_str}
-Missing data: {', '.join(missing) if missing else 'None'}
+Missing: {', '.join(missing) if missing else 'None'}
 
 Answer as JSON:
-{{"summary":"...","approve_case":"...","reject_case":"...","invalidation":"what would invalidate this","confidence":0.0-1.0}}"""
+{{"setup_narrative":"what this trade is and why it exists (reference numbers)","strategy_fit_assessment":"how well setup matches strategy criteria","technical_assessment":"RSI/VWAP/ATR interpretation for this specific setup","catalyst_assessment":"catalyst quality and expected duration","risk_assessment":"what could go wrong, be specific","kill_conditions":["condition 1 that invalidates in first 30-60 min","condition 2"],"approve_case":"bull case with numbers","reject_case":"bear case with numbers","verdict":"APPROVE_PAPER_TEST or CAUTIOUS_PAPER_TEST or REJECT","conviction":"HIGH or MEDIUM or LOW","confidence":0.0-1.0}}"""
 
 
 def build_deterministic_analysis(p):
@@ -191,15 +209,7 @@ def analyze_proposal(conn, p, generate_fn=None, dry_run=False):
                     end = raw.rfind('}') + 1
                     if start >= 0 and end > start:
                         analysis = json.loads(raw[start:end])
-                        try:
-                            from local_llm import model_used
-                            model = model_used
-                        except Exception:
-                            try:
-                                from local_llm_config import get_local_llm_model
-                                model = get_local_llm_model()
-                            except Exception:
-                                model = 'unknown'
+                        model = get_local_llm_model()
                         narrative_source = 'local_llm'
                 except Exception:
                     pass
@@ -215,13 +225,17 @@ def analyze_proposal(conn, p, generate_fn=None, dry_run=False):
     cur.execute("""
         INSERT INTO paper_proposal_analysis
             (proposal_id, symbol, strategy_id, model_used, narrative_source,
-             summary, approve_case, reject_case, invalidation, confidence)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             summary, approve_case, reject_case, invalidation, confidence,
+             catalyst_summary, risk_summary, technical_summary)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT DO NOTHING
     """, [pid, symbol, p.get('strategy_id'), model, narrative_source,
           analysis.get('summary'), analysis.get('approve_case'),
           analysis.get('reject_case'), analysis.get('invalidation'),
-          analysis.get('confidence')])
+          analysis.get('confidence'),
+          json.dumps({"quality": analysis.get('catalyst_quality')}) if analysis.get('catalyst_quality') else None,
+          json.dumps({"quality": analysis.get('risk_reward_quality')}) if analysis.get('risk_reward_quality') else None,
+          json.dumps({"condition": analysis.get('technical_condition')}) if analysis.get('technical_condition') else None])
 
     log.info(f"  {symbol} (#{pid}): {narrative_source} — confidence {analysis.get('confidence')}")
     return {'success': True, 'symbol': symbol, 'source': narrative_source}
@@ -250,10 +264,133 @@ def run(limit=10, dry_run=False):
         conn.close()
 
 
+def expire_stale_proposals(dry_run=False):
+    """Expire PENDING proposals that are past expiry or too old for intraday strategies."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+
+        # Expire intraday proposals older than 8 hours
+        cur.execute("""
+            SELECT id, symbol, strategy_id, created_at
+            FROM paper_trade_proposals
+            WHERE status = 'PENDING'
+            AND strategy_id IN ('momentum_scalp', 'gap_and_go')
+            AND created_at < NOW() - INTERVAL '8 hours'
+        """)
+        old_proposals = cur.fetchall()
+
+        if dry_run:
+            log.info(f"[dry-run] Would expire {len(old_proposals)} intraday proposals (>8hr)")
+            for pid, sym, sid, created in old_proposals:
+                log.info(f"  [dry-run] #{pid} {sym} ({sid}) created {created}")
+        else:
+            cur.execute("""
+                UPDATE paper_trade_proposals
+                SET status = 'EXPIRED',
+                    rejection_reason = 'EOD cleanup: intraday proposal too old (>8hr)',
+                    rejected_at = NOW(), updated_at = NOW()
+                WHERE status = 'PENDING'
+                AND strategy_id IN ('momentum_scalp', 'gap_and_go')
+                AND created_at < NOW() - INTERVAL '8 hours'
+            """)
+            expired_age = cur.rowcount
+            log.info(f"Expired {expired_age} intraday proposals by age (>8hr)")
+
+        # Expire proposals past their expires_at
+        cur.execute("""
+            SELECT id, symbol, strategy_id, expires_at
+            FROM paper_trade_proposals
+            WHERE status = 'PENDING' AND expires_at < NOW()
+        """)
+        past_expiry = cur.fetchall()
+
+        if dry_run:
+            log.info(f"[dry-run] Would expire {len(past_expiry)} proposals past expiry time")
+        else:
+            cur.execute("""
+                UPDATE paper_trade_proposals
+                SET status = 'EXPIRED',
+                    rejection_reason = 'Passed expiry time',
+                    rejected_at = NOW(), updated_at = NOW()
+                WHERE status = 'PENDING' AND expires_at < NOW()
+            """)
+            expired_time = cur.rowcount
+            log.info(f"Expired {expired_time} proposals past expiry time")
+
+        if not dry_run:
+            conn.commit()
+
+        total = (len(old_proposals) + len(past_expiry)) if dry_run else ((expired_age if 'expired_age' in dir() else 0) + (expired_time if 'expired_time' in dir() else 0))
+        return {'expired': total, 'dry_run': dry_run}
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proposal intelligence analyzer")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--pending", action="store_true", help="Process pending proposals")
+    parser.add_argument("--apply", action="store_true", help="Write to DB (default is dry-run)")
+    parser.add_argument("--expire-stale", action="store_true", help="Expire old/past-expiry proposals")
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--proposal-id", type=int, default=None, help="Analyze specific proposal ID")
     args = parser.parse_args()
-    result = run(limit=args.limit, dry_run=args.dry_run)
-    print(json.dumps(result, indent=2))
+
+    if args.expire_stale:
+        dry = not args.apply
+        result = expire_stale_proposals(dry_run=dry)
+        print(json.dumps(result, indent=2))
+    elif args.proposal_id:
+        # Targeted single-proposal analysis
+        dry = not args.apply
+        log.info(f"Model configured: {get_local_llm_model()}")
+        generate_fn = _get_llm()
+        conn = get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT ptp.id, ptp.symbol, ptp.strategy_id, ptp.setup_type,
+                       ptp.proposed_entry, ptp.proposed_stop, ptp.proposed_target1,
+                       ptp.proposed_target2, ptp.proposed_shares, ptp.proposed_dollar_risk,
+                       ptp.proposed_rr, ptp.signal_grade, ptp.signal_score,
+                       ptp.rvol, ptp.float_m, ptp.gap_pct, ptp.catalyst, ptp.catalyst_verified,
+                       ptp.intel_readiness, ptp.risk_gate_result,
+                       scan.critic_verdict, scan.critic_reasoning, scan.sector, scan.industry,
+                       scan.ticker_perf_1m, scan.sector_perf_1m, scan.vs_sector_pct,
+                       scan.catalyst_confidence, scan.change_pct,
+                       ind.atr, ind.full_result as ind_full,
+                       NULL as news
+                FROM paper_trade_proposals ptp
+                LEFT JOIN LATERAL (
+                    SELECT * FROM trade_ai_scans WHERE symbol=ptp.symbol
+                    ORDER BY scanned_at DESC LIMIT 1
+                ) scan ON true
+                LEFT JOIN LATERAL (
+                    SELECT * FROM indicator_confluence_cache WHERE symbol=ptp.symbol
+                    ORDER BY computed_at DESC LIMIT 1
+                ) ind ON true
+                WHERE ptp.id = %s
+            """, [args.proposal_id])
+            cols = [d[0] for d in cur.description]
+            row = cur.fetchone()
+            if row:
+                p = dict(zip(cols, row))
+                result = analyze_proposal(conn, p, generate_fn, dry)
+                if not dry:
+                    conn.commit()
+                print(json.dumps(result, indent=2, default=str))
+            else:
+                print(f"Proposal {args.proposal_id} not found")
+                sys.exit(1)
+        finally:
+            conn.close()
+    else:
+        dry = not args.apply if args.apply or args.pending else args.dry_run
+        if args.pending and not args.apply:
+            dry = True
+        if args.apply:
+            dry = False
+        log.info(f"Model configured: {get_local_llm_model()}")
+        result = run(limit=args.limit, dry_run=dry)
+        print(json.dumps(result, indent=2))

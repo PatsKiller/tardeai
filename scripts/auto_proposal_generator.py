@@ -32,6 +32,80 @@ DEFAULT_MAX_DOLLAR_RISK = 150
 DEFAULT_RISK_PER_TRADE = 150
 STRATEGY_PRIORITY = ["momentum_scalp", "gap_and_go", "swing_breakout", "earnings_catalyst", "sector_rotation"]
 
+BASE = str(PROJECT_ROOT)
+PYTHON = str(PROJECT_ROOT / ".venv" / "bin" / "python")
+
+
+def _enrich_proposal_async(proposal_id: int, symbol: str):
+    """Kick off enrichment pipeline for a new proposal in a background thread.
+
+    Sequence: queue agent reviews → warm Ollama → LLM analysis → quality review.
+    Non-blocking — runs in a daemon thread so it doesn't delay proposal creation.
+    """
+    import threading
+
+    def _run():
+        import subprocess, time
+
+        log.info(f"Starting async enrichment for proposal #{proposal_id} ({symbol})")
+
+        # Step 1: Queue agent reviews
+        try:
+            r = subprocess.run(
+                [PYTHON, f'{BASE}/scripts/queue_proposal_agent_reviews.py',
+                 '--proposal-id', str(proposal_id), '--apply'],
+                capture_output=True, text=True, timeout=60, cwd=BASE
+            )
+            log.info(f"Agent reviews queued for #{proposal_id}: "
+                     f"{r.stdout.strip()[-100:] if r.stdout else 'done'}")
+        except Exception as e:
+            log.warning(f"Agent review queue failed for #{proposal_id}: {e}")
+
+        # Brief pause to let agent processor pick up jobs
+        time.sleep(10)
+
+        # Step 2: Warm up Ollama
+        try:
+            subprocess.run(
+                ['ollama', 'run', 'qwen3:14b', 'ready'],
+                capture_output=True, text=True, timeout=30, cwd=BASE
+            )
+        except Exception:
+            pass  # non-fatal
+
+        # Step 3: LLM analysis
+        try:
+            r = subprocess.run(
+                [PYTHON, f'{BASE}/scripts/proposal_intelligence_analyzer.py',
+                 '--proposal-id', str(proposal_id), '--apply'],
+                capture_output=True, text=True, timeout=180, cwd=BASE
+            )
+            log.info(f"LLM analysis for #{proposal_id}: "
+                     f"{'OK' if r.returncode == 0 else 'FAILED'}")
+            if r.returncode != 0 and r.stderr:
+                log.warning(f"Analyzer stderr: {r.stderr[-200:]}")
+        except subprocess.TimeoutExpired:
+            log.warning(f"LLM analysis timed out for #{proposal_id}")
+        except Exception as e:
+            log.warning(f"LLM analysis failed for #{proposal_id}: {e}")
+
+        # Step 4: Quality review
+        try:
+            subprocess.run(
+                [PYTHON, f'{BASE}/scripts/proposal_quality_reviewer.py',
+                 '--proposal-id', str(proposal_id), '--apply'],
+                capture_output=True, text=True, timeout=60, cwd=BASE
+            )
+            log.info(f"Quality review complete for #{proposal_id}")
+        except Exception as e:
+            log.warning(f"Quality review failed for #{proposal_id}: {e}")
+
+        log.info(f"Enrichment complete for proposal #{proposal_id} ({symbol})")
+
+    t = threading.Thread(target=_run, daemon=True, name=f'enrich-{proposal_id}')
+    t.start()
+    return t
+
 
 def get_conn():
     import psycopg2
@@ -67,6 +141,48 @@ def _load_shared_risk_rules() -> dict:
     if path.exists():
         return yaml.safe_load(path.read_text()) or {}
     return {}
+
+
+def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple:
+    """Hard-validate a signal against its strategy YAML criteria.
+    Returns (passes: bool, fail_reason: str, fallback_strategy: str|None).
+    """
+    cfg = _load_strategy_config(strategy_id)
+    if not cfg:
+        return True, '', None
+
+    filters = cfg.get('screen_filters', {})
+    rvol = float(signal.get('rvol') or 0)
+    price = float(signal.get('price') or signal.get('entry_high') or 0)
+    float_m = float(signal.get('float_m') or 0)
+    gap_pct = abs(float(signal.get('gap_pct') or 0))
+
+    min_rvol = float(filters.get('min_rvol', 0))
+    min_price = float(filters.get('min_price', 0))
+    max_price = float(filters.get('max_price', 99999))
+    max_float = float(filters.get('max_float_m', 99999))
+    min_gap = float(filters.get('min_gap_pct', 0))
+
+    reasons = []
+    if min_rvol > 0 and rvol < min_rvol:
+        reasons.append(f"RVOL {rvol:.1f}x < {min_rvol}x")
+    if price < min_price or price > max_price:
+        reasons.append(f"Price ${price:.2f} outside ${min_price}-${max_price}")
+    if max_float < 99999 and float_m > 0 and float_m > max_float:
+        reasons.append(f"Float {float_m:.0f}M > {max_float}M")
+    if min_gap > 0 and gap_pct < min_gap:
+        reasons.append(f"Gap {gap_pct:.1f}% < {min_gap}%")
+
+    if reasons:
+        # Suggest fallback based on strategy type
+        fallback = None
+        if strategy_id == 'momentum_scalp':
+            fallback = 'gap_and_go'
+        elif strategy_id == 'gap_and_go':
+            fallback = 'swing_breakout'
+        return False, ' | '.join(reasons), fallback
+
+    return True, '', None
 
 
 def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> list:
@@ -132,6 +248,62 @@ def check_open_paper_trade(conn, symbol: str, strategy_id: str) -> dict | None:
     """, [symbol, strategy_id])
     row = cur.fetchone()
     return {"id": row[0], "status": row[1]} if row else None
+
+
+def check_rejection_cooldown(conn, symbol: str, force: bool = False) -> dict | None:
+    """Check if symbol was recently rejected (24h cooldown). Returns skip reason or None."""
+    if force:
+        return None
+    cur = conn.cursor()
+    # Recent rejection or risk-gate rejection in last 24h
+    cur.execute("""
+        SELECT id, status, rejection_reason, risk_gate_result, rejected_at
+        FROM paper_trade_proposals
+        WHERE symbol = %s
+        AND (
+            (status = 'REJECTED' AND rejected_at > NOW() - INTERVAL '24 hours')
+            OR (risk_gate_result ILIKE '%%BLOCK%%' AND created_at > NOW() - INTERVAL '24 hours')
+        )
+        ORDER BY created_at DESC LIMIT 1
+    """, [symbol])
+    row = cur.fetchone()
+    if row:
+        return {
+            "reason": "SKIPPED_RECENTLY_REJECTED",
+            "detail": f"proposal #{row[0]} {row[1]} — {row[2] or row[3] or 'unknown reason'}",
+            "cooldown_until": str(row[4] + timedelta(hours=24)) if row[4] else None,
+        }
+    return None
+
+
+def check_scan_decision(conn, symbol: str) -> dict | None:
+    """Check if latest scan decision is not GO. Returns skip reason or None."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT decision, score, grade, critic_verdict
+        FROM trade_ai_scans
+        WHERE symbol = %s AND scanned_at::date = CURRENT_DATE
+        ORDER BY scanned_at DESC LIMIT 1
+    """, [symbol])
+    row = cur.fetchone()
+    if not row:
+        return None  # no scan today, let other checks handle
+
+    decision, score, grade, critic = row
+
+    if decision in ('WAIT', 'NO_GO', 'AVOID'):
+        return {"reason": "SKIPPED_NOT_GO", "detail": f"scan decision={decision}"}
+
+    if grade not in ('A', 'A+') and (score is None or score < 40):
+        return {"reason": "SKIPPED_LOW_SCORE", "detail": f"grade={grade} score={score}"}
+
+    if critic == 'DOWNGRADE':
+        return {"reason": "SKIPPED_CRITIC_DOWNGRADE", "detail": f"critic={critic}"}
+
+    if critic == 'BLOCK':
+        return {"reason": "SKIPPED_CRITIC_BLOCK", "detail": f"critic={critic}"}
+
+    return None
 
 
 def normalize_size(signal: dict, strategy_cfg: dict, shared_rules: dict) -> dict:
@@ -353,7 +525,8 @@ def record_decision(conn, run_label: str, signal: dict, decision: str,
 def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                        min_score: int = 40, limit: int = 20,
                        dry_run: bool = True,
-                       execution_label: str = "manual") -> dict:
+                       execution_label: str = "manual",
+                       force: bool = False) -> dict:
     """Main auto-proposal generation. Returns audit summary."""
     shared_rules = _load_shared_risk_rules()
     proposal_cols = _get_available_cols(conn, "paper_trade_proposals")
@@ -434,6 +607,54 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 stats["details"].append({"symbol": sym, "decision": "SKIPPED_OPEN_TRADE", "reason": reason})
                 continue
 
+            # 2b. Rejection cooldown check (24h)
+            cooldown = check_rejection_cooldown(conn, sym, force=force)
+            if cooldown:
+                stats["proposals_skipped"] += 1
+                reason = f"{cooldown['reason']} ({cooldown['detail']})"
+                log.info(f"  {sym}: {reason}")
+                if not dry_run:
+                    record_decision(conn, run_label, sig, cooldown["reason"], [cooldown["detail"]], None, None, None)
+                stats["details"].append({"symbol": sym, "decision": cooldown["reason"], "reason": reason})
+                continue
+
+            # 2c. Scan decision gate
+            scan_block = check_scan_decision(conn, sym)
+            if scan_block:
+                stats["proposals_skipped"] += 1
+                reason = f"{scan_block['reason']} ({scan_block['detail']})"
+                log.info(f"  {sym}: {reason}")
+                if not dry_run:
+                    record_decision(conn, run_label, sig, scan_block["reason"], [scan_block["detail"]], None, None, None)
+                stats["details"].append({"symbol": sym, "decision": scan_block["reason"], "reason": reason})
+                continue
+
+            # 2d. Strategy criteria hard validation
+            passes, fail_reason, fallback_sid = _validate_against_strategy_criteria(sid, sig)
+            if not passes:
+                if fallback_sid:
+                    passes2, _, _ = _validate_against_strategy_criteria(fallback_sid, sig)
+                    if passes2:
+                        log.info(f"  {sym}: {sid} fails ({fail_reason}), reassigned to {fallback_sid}")
+                        sid = fallback_sid
+                        sig['strategy_id'] = fallback_sid
+                    else:
+                        stats["proposals_skipped"] += 1
+                        reason = f"SKIPPED_STRATEGY_CRITERIA ({sid}: {fail_reason})"
+                        log.info(f"  {sym}: {reason}")
+                        if not dry_run:
+                            record_decision(conn, run_label, sig, "SKIPPED_STRATEGY_CRITERIA", [fail_reason], None, None, None)
+                        stats["details"].append({"symbol": sym, "decision": "SKIPPED_STRATEGY_CRITERIA", "reason": reason})
+                        continue
+                else:
+                    stats["proposals_skipped"] += 1
+                    reason = f"SKIPPED_STRATEGY_CRITERIA ({sid}: {fail_reason})"
+                    log.info(f"  {sym}: {reason}")
+                    if not dry_run:
+                        record_decision(conn, run_label, sig, "SKIPPED_STRATEGY_CRITERIA", [fail_reason], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_STRATEGY_CRITERIA", "reason": reason})
+                    continue
+
             # 3. Normalize sizing
             strategy_cfg = _load_strategy_config(sid)
             sizing = normalize_size(sig, strategy_cfg, shared_rules)
@@ -503,6 +724,9 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 stats["details"].append({"symbol": sym, "decision": "CREATED", "proposal_id": proposal_id,
                                          "strategy_id": sid, "shares": sizing["adjusted_shares"]})
 
+                # Session 23: kick off enrichment pipeline in background
+                _enrich_proposal_async(proposal_id, sym)
+
         except Exception as e:
             stats["errors"] += 1
             stats["proposals_skipped"] += 1
@@ -554,6 +778,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Preview only (default)")
     parser.add_argument("--limit", type=int, default=20, help="Max proposals to create")
     parser.add_argument("--min-score", type=int, default=40, help="Minimum signal score")
+    parser.add_argument("--force", action="store_true", help="Override rejection cooldown")
     args = parser.parse_args()
 
     if not args.run_label and not args.today and not args.symbol:
@@ -571,6 +796,7 @@ def main():
             min_score=args.min_score,
             limit=args.limit,
             dry_run=dry_run,
+            force=args.force,
         )
         print(json.dumps({k: v for k, v in result.items() if k != "details"}, indent=2, default=str))
         if result.get("details"):

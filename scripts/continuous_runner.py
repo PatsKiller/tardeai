@@ -46,6 +46,9 @@ SCHEDULE = [
     ("06:00", "09:00", 15, True),   # pre-market: 15-min cycles, full at :00
     ("09:00", "10:00", 10, True),   # market open: 10-min cycles
     ("10:00", "11:00", 15, True),   # first-hour wind-down
+    ("11:30", "12:15", 15, True),   # midday: post-morning momentum continuation
+    ("13:30", "14:15", 15, True),   # afternoon: pre-close setups forming
+    ("15:15", "16:00", 15, True),   # final window: last 45min entry window
 ]
 
 # Digest trigger times (HH:MM)
@@ -54,7 +57,8 @@ DIGEST_PREOPEN_TIME   = "09:25"   # Pre-open brief
 
 # Windows within which a Full run fires at the top of every hour
 ANCHOR_WINDOW_MIN = 7  # fire FULL if within this many min of an anchor
-HOURLY_FULL_ANCHORS = {"04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00"}
+HOURLY_FULL_ANCHORS = {"04:00", "05:00", "06:00", "07:00", "08:00", "09:00", "10:00",
+                        "12:00", "14:00", "15:30"}
 
 # Alert thresholds
 SCORE_JUMP_THRESHOLD  = 10
@@ -141,18 +145,22 @@ class CycleState:
             _cat = (t.get("top_catalyst") or {}).get("title", "")[:55]
             _dec = t.get("decision", "")
             _sc  = t.get("score", 0)
+            # Only send RVOL/score alerts for GO and WAIT — suppress AVOID noise
+            _actionable = _dec in ("GO", "WAIT")
             if rvol >= RVOL_8X_THRESHOLD and sym not in self.rvol8x_seen:
                 self.rvol8x_seen.add(sym)
-                triggers.append({"type": "RVOL_8X", "symbol": sym, "rvol": rvol,
-                                 "cat": _cat, "decision": _dec, "score": _sc})
+                if _actionable:
+                    triggers.append({"type": "RVOL_8X", "symbol": sym, "rvol": rvol,
+                                     "cat": _cat, "decision": _dec, "score": _sc})
             elif rvol >= RVOL_5X_THRESHOLD and sym not in self.rvol5x_seen:
                 self.rvol5x_seen.add(sym)
-                triggers.append({"type": "RVOL_5X", "symbol": sym, "rvol": rvol,
-                                 "cat": _cat, "decision": _dec, "score": _sc})
+                if _actionable:
+                    triggers.append({"type": "RVOL_5X", "symbol": sym, "rvol": rvol,
+                                     "cat": _cat, "decision": _dec, "score": _sc})
 
             prev  = self.prev_score.get(sym, 0)
             delta = t.get("score", 0) - prev
-            if prev > 0 and delta >= SCORE_JUMP_THRESHOLD:
+            if prev > 0 and delta >= SCORE_JUMP_THRESHOLD and _actionable:
                 triggers.append({"type": "SCORE_JUMP", "symbol": sym,
                                  "score": t.get("score",0), "prev": prev, "delta": delta,
                                  "decision": t.get("decision","")})
