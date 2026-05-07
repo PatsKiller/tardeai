@@ -270,6 +270,33 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       </div>
 
       <div style={{ padding: '12px 16px' }}>
+        {/* ── Session 24A: Lifecycle bar (always visible) ── */}
+        {(() => {
+          const lc = p.lifecycle_status || p.technical_snapshot?.lifecycle_status
+          const ez = p.entry_zone_status || p.technical_snapshot?.entry_zone_status
+          const drift = p.price_drift_pct
+          const cp = p.current_price
+          const tc = p.proposal_timeframe_class
+          const lcColor = lc === 'ENTRY_ZONE_VALID' ? 'green' : lc === 'ACTIVE' ? 'blue'
+            : lc === 'NEEDS_REVIEW' || lc === 'ENTRY_MISSED' ? 'amber'
+            : lc === 'STALE' ? 'amber' : lc?.includes('EXPIRED') ? 'red' : 'blue'
+          return (lc || cp) ? (
+            <div style={{ display: 'flex', gap: 6, padding: '6px 16px', borderBottom: '1px solid var(--border)', alignItems: 'center', flexWrap: 'wrap', fontSize: 10 }}>
+              {lc && <span style={pill(lcColor)}>{lc}</span>}
+              {ez && <span style={{ color: 'var(--text3)', ...mono }}>Zone: {ez}</span>}
+              {cp != null && <span style={{ color: 'var(--text1)', ...mono }}>Price: ${Number(cp).toFixed(2)}</span>}
+              {drift != null && <span style={{ color: Math.abs(Number(drift)) > 5 ? 'var(--red)' : 'var(--text2)', ...mono }}>Drift: {Number(drift) > 0 ? '+' : ''}{Number(drift).toFixed(1)}%</span>}
+              {tc && <span style={{ color: 'var(--text3)' }}>{tc}</span>}
+              {p.expiry_extended_count > 0 && <span style={pill('blue')}>Extended x{p.expiry_extended_count}</span>}
+              {p.last_price_source && <span style={{ color: 'var(--text3)' }}>via {p.last_price_source}</span>}
+              <button onClick={() => runAction('monitor', '/api/v2/paper-proposals/monitor')}
+                disabled={!!runningAction} style={{ ...btnStyle('rgba(59,130,246,0.15)', '#60A5FA'), padding: '2px 8px', fontSize: 9 }}>
+                {runningAction === 'monitor' ? '...' : 'Refresh'}
+              </button>
+            </div>
+          ) : null
+        })()}
+
         {/* ── Summary Tab ── */}
         {activeTab === 'summary' && (
           <>
@@ -687,6 +714,33 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       </div>
                     </>
                   )}
+                  {/* Session 23E: Quote provider info */}
+                  <div style={secLbl}>Quote Source</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('Provider', er.quote_provider || 'none',
+                      er.quote_provider === 'alpaca' || er.quote_provider === 'polygon' ? 'var(--green)'
+                        : er.quote_provider === 'none' ? 'var(--red)' : 'var(--amber)')}
+                    {kv('Exec Eligible', er.quote_execution_eligible ? 'YES' : 'NO',
+                      er.quote_execution_eligible ? 'var(--green)' : 'var(--red)')}
+                    {kv('Delayed', er.quote_is_delayed ? 'YES' : 'NO',
+                      er.quote_is_delayed ? 'var(--amber)' : 'var(--green)')}
+                    {kv('Volume Source', er.volume_source || 'N/A')}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                    {kv('Bid', er.bid != null ? `$${Number(er.bid).toFixed(2)}` : 'N/A',
+                      er.bid != null ? 'var(--green)' : 'var(--red)')}
+                    {kv('Ask', er.ask != null ? `$${Number(er.ask).toFixed(2)}` : 'N/A',
+                      er.ask != null ? 'var(--green)' : 'var(--red)')}
+                    {kv('Spread', er.spread_pct != null ? `${Number(er.spread_pct).toFixed(3)}%` : 'N/A',
+                      er.spread_pct == null ? 'var(--red)' : Number(er.spread_pct) > 1 ? 'var(--red)' : 'var(--green)')}
+                    {kv('Spread Source', er.spread_source || 'N/A')}
+                  </div>
+                  {!er.quote_execution_eligible && er.quote_provider && er.quote_provider !== 'none' && (
+                    <div style={{ fontSize: 9, color: 'var(--amber)', padding: '4px 8px', background: 'rgba(251,191,36,0.06)', borderRadius: 4, marginBottom: 8 }}>
+                      Blocked: {er.quote_provider} provides display-only data. Execution-grade quote requires Alpaca or Polygon with bid/ask.
+                    </div>
+                  )}
+
                   {/* Session 23D: Bracket validation */}
                   <div style={secLbl}>Alpaca Paper Bracket</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
