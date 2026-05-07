@@ -29,8 +29,34 @@ DEFAULT_TIMEOUT = 120
 model_used = None  # tracks which model last responded  # seconds before fallback
 
 
-def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL) -> str | None:
-    """Try Ollama. Returns text or None on failure/timeout."""
+def warmup_ollama(model: str = None) -> bool:
+    """Ping Ollama to ensure model is loaded before batch analysis."""
+    model = model or OLLAMA_MODEL
+    payload = json.dumps({
+        "model": model,
+        "stream": False,
+        "messages": [{"role": "user", "content": "ready"}],
+        "think": False,
+        "options": {"num_predict": 5}
+    }).encode()
+    try:
+        req = urllib.request.Request(
+            OLLAMA_URL, data=payload,
+            headers={"Content-Type": "application/json"}, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+            print(f"  [local-llm] Ollama warmup OK — model {model} loaded")
+            return True
+    except Exception as e:
+        print(f"  [local-llm] Ollama warmup failed: {e}")
+        return False
+
+
+def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
+                retries: int = 1) -> str | None:
+    """Try Ollama with retry logic. Returns text or None on failure/timeout."""
+    import time as _time
     payload = json.dumps({
         "model": model,
         "stream": False,
@@ -39,29 +65,39 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL) -> str | N
         "options": {"temperature": 0.3, "num_predict": 500}
     }).encode()
 
-    try:
-        req = urllib.request.Request(
-            OLLAMA_URL,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
-            text = data.get("message", {}).get("content", "").strip()
-            duration = round(data.get("total_duration", 0) / 1e9, 1)
-            tokens = data.get("eval_count", 0)
-            print(f"  [local-llm] Ollama OK — {duration}s, {tokens} tokens")
-            return text if text else None
-    except urllib.error.URLError as e:
-        print(f"  [local-llm] Ollama unavailable: {e}")
-        return None
-    except TimeoutError:
-        print(f"  [local-llm] Ollama timeout after {timeout}s — falling back")
-        return None
-    except Exception as e:
-        print(f"  [local-llm] Ollama error: {e} — falling back")
-        return None
+    for attempt in range(retries + 1):
+        try:
+            req = urllib.request.Request(
+                OLLAMA_URL,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read())
+                text = data.get("message", {}).get("content", "").strip()
+                duration = round(data.get("total_duration", 0) / 1e9, 1)
+                tokens = data.get("eval_count", 0)
+                print(f"  [local-llm] Ollama OK — {duration}s, {tokens} tokens")
+                return text if text else None
+        except urllib.error.URLError as e:
+            print(f"  [local-llm] Ollama unavailable: {e}")
+            return None  # no point retrying if server is down
+        except TimeoutError:
+            print(f"  [local-llm] Ollama timeout after {timeout}s "
+                  f"(attempt {attempt+1}/{retries+1})")
+            if attempt < retries:
+                _time.sleep(5)
+                continue
+            return None
+        except Exception as e:
+            print(f"  [local-llm] Ollama error: {e} "
+                  f"(attempt {attempt+1}/{retries+1})")
+            if attempt < retries:
+                _time.sleep(3)
+                continue
+            return None
+    return None
 
 
 def _try_openai(prompt: str) -> str | None:
@@ -142,18 +178,11 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
         if result:
             model_used = OLLAMA_MODEL_FAST
             return result
-    # Tier 2: local model (full)
-    result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL)
+    # Tier 2: local model (full) with retry
+    result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL, retries=1)
     if result:
         model_used = OLLAMA_MODEL
         return result
-        return result
-
-    # Tier 2: try full model if fast model failed
-    if model_used != OLLAMA_MODEL:
-        result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL)
-        if result:
-            return result
 
     # Tier 3: OpenAI fallback
     if fallback:

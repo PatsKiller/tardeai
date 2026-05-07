@@ -23,6 +23,7 @@ screen_filters:
   premium_rvol: 8.0
   max_float_m: 100
   preferred_max_float_m: 20
+  min_gap_pct: 5.0
   min_score: 40
   aplus_score: 48
 

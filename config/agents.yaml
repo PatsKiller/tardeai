@@ -67,6 +67,7 @@ agents:
       - news and social sentiment
       - Reddit, Stocktwits, and market blog context
       - holdings and sector overlap
+      - paper proposal catalyst/fundamental review (2-pass: news + fundamentals)
     keywords:
       - "compare"
       - "analyst"
@@ -105,6 +106,7 @@ agents:
       - add trim hold recommendations
       - portfolio fit
       - account-specific implementation
+      - paper proposal sizing/allocation review
     keywords:
       - "which portfolio"
       - "which account"
@@ -141,6 +143,7 @@ agents:
       - honor or override stop decisions
       - portfolio heat
       - escalation lane
+      - paper proposal technical/risk review
     keywords:
       - "stop"
       - "stop level"

@@ -350,26 +350,74 @@ def backtest_proposal(conn, proposal_id):
     return result
 
 
+def _write_strategy_backtest_result(conn, result):
+    """Session 23C: Also write to strategy_backtest_results table."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO strategy_backtest_results
+                (strategy_id, symbol, setup_type, sector, timeframe,
+                 sample_size, wins, losses, win_rate, avg_r, expectancy_r,
+                 profit_factor, confidence_level, sample_warning, parameters)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, [
+            result.get("strategy_id"), result.get("symbol"),
+            result.get("setup_type"), result.get("sector"),
+            result.get("timeframe", "mixed"),
+            result.get("sample_size", 0),
+            result.get("wins", 0), result.get("losses", 0),
+            result.get("win_rate"), result.get("avg_r"),
+            result.get("expectancy"), result.get("profit_factor"),
+            result.get("backtest_quality"),
+            "Backtest sample insufficient — learning mode only" if (result.get("sample_size") or 0) < 20 else None,
+            json.dumps({"limitations": result.get("limitations", [])}, default=str),
+        ])
+        conn.commit()
+    except Exception as e:
+        log.warning(f"Failed to write strategy_backtest_results: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Proposal backtest engine")
     parser.add_argument("--proposal-id", type=int)
     parser.add_argument("--all-pending", action="store_true")
+    parser.add_argument("--pending", action="store_true", help="Alias for --all-pending")
+    parser.add_argument("--strategy", type=str, help="Filter by strategy_id")
+    parser.add_argument("--apply", action="store_true", help="Write to DB")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     conn = get_conn()
     try:
-        if args.all_pending:
+        if args.all_pending or args.pending:
             cur = conn.cursor()
-            cur.execute("SELECT id FROM paper_trade_proposals WHERE status='PENDING' ORDER BY created_at DESC")
+            if args.strategy:
+                cur.execute("""SELECT id FROM paper_trade_proposals
+                             WHERE status='PENDING' AND strategy_id=%s
+                             ORDER BY created_at DESC""", [args.strategy])
+            else:
+                cur.execute("SELECT id FROM paper_trade_proposals WHERE status='PENDING' ORDER BY created_at DESC")
+            results = []
             for (pid,) in cur.fetchall():
                 result = backtest_proposal(conn, pid)
                 if result.get('error'):
                     log.error(f"  #{pid}: {result['error']}")
+                else:
+                    _write_strategy_backtest_result(conn, result)
+                    results.append({"proposal_id": pid, "symbol": result.get("symbol"),
+                                    "quality": result.get("backtest_quality"),
+                                    "samples": result.get("sample_size")})
+            print(json.dumps({"processed": len(results), "results": results}, indent=2, default=str))
         elif args.proposal_id:
             result = backtest_proposal(conn, args.proposal_id)
+            _write_strategy_backtest_result(conn, result)
             print(json.dumps(result, indent=2, default=str))
         else:
-            print("Usage: --proposal-id N or --all-pending")
+            print("Usage: --proposal-id N or --pending --apply or --strategy swing_breakout --pending --apply")
     finally:
         conn.close()
 

@@ -1,4 +1,0 @@
-# Trade AI v10 | 2026-05-04 | Run 0400
-
-FTCI
-RLYB

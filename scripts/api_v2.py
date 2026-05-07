@@ -7036,17 +7036,58 @@ def _paper_proposals_enriched():
                 },
             })
 
-        # Enrich with agent votes from proposal_agent_reviews
+            # Session 23D: Enrich with technical snapshot + execution readiness from DB
+            try:
+                ts = _db_query("""
+                    SELECT ema_8, ema_21, ema_50, ema_200,
+                           ema_8_distance_pct, ema_21_distance_pct,
+                           ema_50_distance_pct, ema_200_distance_pct,
+                           ema_alignment, technical_grade,
+                           swing_high, swing_low, nearest_fib_level, nearest_fib_distance_pct,
+                           opening_range_high, opening_range_low,
+                           opening_range_status, premarket_status, premarket_high, premarket_low,
+                           ohlcv_data_status
+                    FROM proposal_technical_snapshots
+                    WHERE proposal_id = %s ORDER BY computed_at DESC LIMIT 1
+                """, [proposals[-1]['id']], fetch="one")
+                if ts:
+                    proposals[-1]['technical_snapshot'] = {k: _json_clean(v) for k, v in ts.items()}
+                er = _db_query("""
+                    SELECT readiness_state, readiness_score, bracket_order_supported,
+                           alpaca_account_mode, alpaca_base_url_type, market_hours,
+                           paper_submit_test_result, bracket_dry_run_payload
+                    FROM proposal_execution_readiness
+                    WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 1
+                """, [proposals[-1]['id']], fetch="one")
+                if er:
+                    proposals[-1]['execution_readiness'] = {k: _json_clean(v) for k, v in er.items()}
+            except Exception:
+                pass
+
+        # Set defaults for enrichment fields
+        for prop in proposals:
+            prop.setdefault('agent_reviews', [])
+            prop.setdefault('llm_analysis', None)
+            prop.setdefault('quality_review', None)
+            prop.setdefault('intelligence', None)
+            prop.setdefault('recently_rejected', False)
+            prop.setdefault('rejection_cooldown_until', None)
+            prop.setdefault('rejection_reason', None)
+
+        # Enrich with agent votes, LLM analysis, quality review, intelligence, cooldown
         try:
             for prop in proposals:
                 pid = prop.get('id')
+                symbol = prop.get('symbol')
                 if pid:
+                    # --- Agent reviews (detailed) ---
                     agent_rows = _db_query("""
-                        SELECT agent_name, vote, confidence, summary, reviewed_by_model, reviewed_at
+                        SELECT agent_name, vote, confidence, summary, reviewed_by_model, reviewed_at, status
                         FROM proposal_agent_reviews
                         WHERE proposal_id = %s ORDER BY agent_name
                     """, [pid]) or []
                     votes = {}
+                    agent_reviews_list = []
                     for ar in agent_rows:
                         votes[ar['agent_name']] = {
                             'vote': ar.get('vote'),
@@ -7054,7 +7095,96 @@ def _paper_proposals_enriched():
                             'summary': (ar.get('summary') or '')[:120],
                             'model': ar.get('reviewed_by_model'),
                         }
+                        agent_reviews_list.append({
+                            'agent_name': ar.get('agent_name'),
+                            'verdict': ar.get('vote'),
+                            'confidence': _json_clean(ar.get('confidence')),
+                            'summary': (ar.get('summary') or '')[:200],
+                            'created_at': _json_clean(ar.get('reviewed_at')),
+                        })
                     prop['agent_votes'] = votes
+                    prop['agent_reviews'] = agent_reviews_list
+
+                    # --- LLM analysis ---
+                    pa = _db_query("""
+                        SELECT model_used, narrative_source, summary, approve_case, reject_case,
+                               invalidation, confidence, catalyst_summary, risk_summary, technical_summary,
+                               created_at
+                        FROM paper_proposal_analysis
+                        WHERE proposal_id = %s
+                        ORDER BY created_at DESC LIMIT 1
+                    """, [pid], fetch="one")
+                    if pa:
+                        prop['llm_analysis'] = {
+                            'model_used': pa.get('model_used'),
+                            'narrative_source': pa.get('narrative_source'),
+                            'summary': pa.get('summary'),
+                            'approve_case': pa.get('approve_case'),
+                            'reject_case': pa.get('reject_case'),
+                            'confidence': _json_clean(pa.get('confidence')),
+                        }
+                    else:
+                        prop['llm_analysis'] = None
+
+                    # --- Quality review ---
+                    qr = _db_query("""
+                        SELECT review_state, quality_score, missing_data, source_evidence,
+                               llm_model, narrative_source, created_at
+                        FROM proposal_quality_reviews
+                        WHERE proposal_id = %s
+                        ORDER BY created_at DESC LIMIT 1
+                    """, [pid], fetch="one")
+                    if qr:
+                        prop['quality_review'] = {
+                            'review_state': qr.get('review_state'),
+                            'quality_score': _json_clean(qr.get('quality_score')),
+                            'missing_data': qr.get('missing_data'),
+                            'source_evidence': qr.get('source_evidence'),
+                            'created_at': _json_clean(qr.get('created_at')),
+                        }
+                    else:
+                        prop['quality_review'] = None
+
+                    # --- Intelligence readiness ---
+                    intel_row = _db_query("""
+                        SELECT intelligence_readiness, intelligence_readiness_source,
+                               intelligence_readiness_updated_at, intel_components
+                        FROM trade_ai_scans
+                        WHERE symbol = %s
+                        ORDER BY scanned_at DESC LIMIT 1
+                    """, [symbol], fetch="one")
+                    if intel_row:
+                        prop['intelligence'] = {
+                            'intelligence_readiness': intel_row.get('intelligence_readiness'),
+                            'readiness_source': intel_row.get('intelligence_readiness_source'),
+                            'readiness_updated_at': _json_clean(intel_row.get('intelligence_readiness_updated_at')),
+                        }
+                    else:
+                        prop['intelligence'] = None
+
+                    # --- Rejection cooldown ---
+                    rej_row = _db_query("""
+                        SELECT id, status, rejection_reason, rejected_at, risk_gate_result
+                        FROM paper_trade_proposals
+                        WHERE symbol = %s AND status = 'REJECTED'
+                        AND rejected_at > NOW() - INTERVAL '24 hours'
+                        ORDER BY rejected_at DESC LIMIT 1
+                    """, [symbol], fetch="one")
+                    if rej_row:
+                        from datetime import timedelta
+                        cooldown_until = None
+                        if rej_row.get('rejected_at'):
+                            try:
+                                cooldown_until = _json_clean(rej_row['rejected_at'] + timedelta(hours=24))
+                            except Exception:
+                                pass
+                        prop['recently_rejected'] = True
+                        prop['rejection_cooldown_until'] = cooldown_until
+                        prop['rejection_reason'] = rej_row.get('rejection_reason') or rej_row.get('risk_gate_result')
+                    else:
+                        prop['recently_rejected'] = False
+                        prop['rejection_cooldown_until'] = None
+                        prop['rejection_reason'] = None
 
                     # Decision state from research packet
                     rp = _db_query("""
@@ -7086,6 +7216,152 @@ def _paper_proposals_enriched():
                         prop['technical_summary'] = " | ".join(parts) if parts else None
         except Exception as e:
             pass  # non-critical enrichment
+
+        # Session 23: Paper trading approval gate override
+        # Paper trades approve when: trade plan exists + intel >= 50
+        # Live Ready gate only applies to live trading (not yet implemented)
+        for prop in proposals:
+            trade_plan_exists = bool(
+                prop.get('proposed_entry') and
+                prop.get('proposed_stop') and
+                prop.get('proposed_shares')
+            )
+            intel = int(prop.get('intel_readiness') or 0)
+            has_agent_reviews = len(prop.get('agent_reviews', [])) > 0
+            has_llm = prop.get('llm_analysis') is not None
+
+            paper_ready = trade_plan_exists and intel >= 50
+            prop['paper_ready'] = paper_ready
+
+            # Override approval_allowed for paper trading
+            if paper_ready and not prop.get('approval_allowed'):
+                prop['approval_allowed'] = True
+            # Assign decision_state if missing but paper-ready
+            if not prop.get('decision_state') and paper_ready:
+                prop['decision_state'] = 'CAUTIOUS_PAPER_TEST'
+            # Update blocked reason
+            if not prop.get('approval_allowed'):
+                if not trade_plan_exists:
+                    prop['approval_blocked_reason'] = 'Missing trade plan (entry/stop/shares)'
+                elif intel < 50:
+                    prop['approval_blocked_reason'] = f'Intel {intel}/100 below minimum 50'
+
+        # Session 23C: Enrich with institutional packet fields
+        try:
+            for prop in proposals:
+                pid = prop.get('id')
+                symbol = prop.get('symbol')
+                if not pid:
+                    continue
+
+                # Technical snapshot (from proposal_technical_snapshots or technical_context)
+                tech_row = _db_query("""
+                    SELECT rsi_14, atr_14, atr_pct, vwap, vwap_distance_pct, above_vwap,
+                           ema_alignment, macd_state, bollinger_position, squeeze_state,
+                           support_1, support_2, resistance_1, resistance_2,
+                           fib_context, confluence_score, technical_grade, missing_data,
+                           computed_at
+                    FROM proposal_technical_snapshots
+                    WHERE proposal_id = %s ORDER BY computed_at DESC LIMIT 1
+                """, [pid], fetch="one")
+                if tech_row:
+                    prop['technical_snapshot'] = {k: _json_clean(v) for k, v in tech_row.items()}
+                else:
+                    # Fallback to technical_context JSON on proposal
+                    tc = prop.get('technical_context') or prop.get('technical_summary')
+                    if isinstance(tc, str):
+                        try:
+                            tc = json.loads(tc)
+                        except Exception:
+                            tc = None
+                    prop['technical_snapshot'] = tc
+
+                # Strategy fit (from file)
+                try:
+                    import os as _os
+                    fit_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                             '..', 'data', 'proposal_fit_results.json')
+                    if _os.path.exists(fit_path):
+                        fits = json.loads(open(fit_path).read())
+                        for f in fits:
+                            if f.get('proposal_id') == pid:
+                                prop['strategy_fit'] = f
+                                break
+                except Exception:
+                    pass
+                prop.setdefault('strategy_fit', None)
+
+                # Scan history
+                scan_rows = _db_query("""
+                    SELECT decision, signal_score, price, rvol, gap_pct, change_pct,
+                           catalyst_verified, scanned_at
+                    FROM trade_ai_scans WHERE symbol = %s
+                    ORDER BY scanned_at DESC LIMIT 5
+                """, [symbol]) or []
+                prop['scan_history'] = [
+                    {k: _json_clean(v) for k, v in r.items()} for r in scan_rows
+                ]
+
+                # Catalyst quality
+                cat_row = _db_query("""
+                    SELECT catalyst_quality_score, catalyst_grade, catalyst_type,
+                           company_specific, duration_estimate, risk_note,
+                           contradictory_signals
+                    FROM catalyst_quality_results
+                    WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 1
+                """, [pid], fetch="one")
+                prop['catalyst_quality'] = {k: _json_clean(v) for k, v in cat_row.items()} if cat_row else None
+
+                # Backtest summary
+                bt_row = _db_query("""
+                    SELECT backtest_quality, sample_size, win_rate, profit_factor,
+                           expectancy, avg_r, similar_setup_summary,
+                           repeat_pattern_detected, limitations
+                    FROM proposal_backtest_snapshots
+                    WHERE proposal_id = %s ORDER BY id DESC LIMIT 1
+                """, [pid], fetch="one")
+                prop['backtest_summary'] = {k: _json_clean(v) for k, v in bt_row.items()} if bt_row else None
+
+                # Execution readiness
+                er_row = _db_query("""
+                    SELECT readiness_state, readiness_score, quote_price, quote_age_seconds,
+                           spread_pct, price_vs_entry_pct, liquidity_ok, spread_ok,
+                           quote_fresh, price_ok, risk_gate_ok, duplicate_ok,
+                           blockers, warnings, execution_plan, created_at
+                    FROM proposal_execution_readiness
+                    WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 1
+                """, [pid], fetch="one")
+                prop['execution_readiness'] = {k: _json_clean(v) for k, v in er_row.items()} if er_row else None
+
+                # Paper submit state
+                prop['paper_submit_state'] = {
+                    'alpaca_mode': 'paper',
+                    'live_blocked': True,
+                    'live_blocked_reason': 'Live trading disabled pending six-month paper validation',
+                    'readiness_state': (er_row or {}).get('readiness_state', 'NOT_CHECKED'),
+                }
+
+                # Missing data summary
+                missing = []
+                if not prop.get('technical_snapshot'):
+                    missing.append('technical_snapshot')
+                if not prop.get('strategy_fit'):
+                    missing.append('strategy_fit')
+                if not prop.get('catalyst_quality'):
+                    missing.append('catalyst_quality')
+                if not prop.get('backtest_summary'):
+                    missing.append('backtest_summary')
+                if not prop.get('execution_readiness'):
+                    missing.append('execution_readiness')
+                if not prop.get('llm_analysis'):
+                    missing.append('llm_analysis')
+                if not prop.get('agent_reviews') or len(prop.get('agent_reviews', [])) == 0:
+                    missing.append('agent_reviews')
+                prop['missing_data'] = missing
+                prop['institutional_packet_ready'] = len(missing) == 0
+
+        except Exception:
+            pass  # non-critical institutional enrichment
 
         return 200, {
             "ok": True,
@@ -9960,6 +10236,276 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 }}
             finally:
                 conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 23C: Additional institutional packet endpoints
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-indicators":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_technical_snapshot import generate_snapshot
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                snap = generate_snapshot(conn, proposal_id=int(pid))
+                return 200, {"ok": True, "data": {
+                    "rsi": snap.get('rsi'),
+                    "atr": snap.get('atr'),
+                    "vwap_state": snap.get('vwap_state'),
+                    "technical_vote": snap.get('technical_vote'),
+                }}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-ai-review":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import subprocess as _sp
+            _sp.Popen(
+                [str(PROJECT_ROOT / ".venv/bin/python"),
+                 str(PROJECT_ROOT / "scripts/proposal_intelligence_analyzer.py"),
+                 "--proposal-id", str(pid), "--apply"],
+                cwd=str(PROJECT_ROOT),
+                stdout=open(str(PROJECT_ROOT / "logs/ai_review.log"), "a"),
+                stderr=_sp.STDOUT
+            )
+            return 200, {"ok": True, "message": f"AI review started for proposal #{pid}"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/check-execution-readiness":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import subprocess as _sp
+            result = _sp.run(
+                [str(PROJECT_ROOT / ".venv/bin/python"),
+                 str(PROJECT_ROOT / "scripts/proposal_execution_readiness.py"),
+                 "--proposal-id", str(pid), "--apply"],
+                capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT)
+            )
+            try:
+                data = json.loads(result.stdout) if result.stdout else {}
+            except Exception:
+                data = {"raw": result.stdout[-500:] if result.stdout else ""}
+            return 200, {"ok": True, "data": data}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/submit-alpaca-paper":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            confirmed = body.get('confirmed', False)
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            if not confirmed:
+                return 400, {"ok": False, "error": "Must confirm paper submission (confirmed=true)"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_paper_submitter import submit_paper
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = submit_paper(conn, int(pid), dry_run=False)
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 23D: Technical level and bracket endpoints ────────────────
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-fib":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            symbol = body.get('symbol')
+            if not pid and not symbol:
+                return 400, {"ok": False, "error": "proposal_id or symbol required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from fib_swing_engine import process_symbol
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                if pid and not symbol:
+                    row = _db_query("SELECT symbol FROM paper_trade_proposals WHERE id=%s", [int(pid)], fetch="one")
+                    symbol = row.get("symbol") if row else None
+                result = process_symbol(conn, symbol, days=60, apply=True) if symbol else {"error": "no symbol"}
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-opening-range":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            symbol = body.get('symbol')
+            if not pid and not symbol:
+                return 400, {"ok": False, "error": "proposal_id or symbol required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from opening_range_engine import process_symbol
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                if pid and not symbol:
+                    row = _db_query("SELECT symbol FROM paper_trade_proposals WHERE id=%s", [int(pid)], fetch="one")
+                    symbol = row.get("symbol") if row else None
+                result = process_symbol(conn, symbol, apply=True) if symbol else {"error": "no symbol"}
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-technical-snapshot":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_technical_snapshot import generate_snapshot
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = generate_snapshot(conn, proposal_id=int(pid))
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/dry-run-alpaca-bracket":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_paper_submitter import dry_run_bracket
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = dry_run_bracket(conn, int(pid))
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/submit-alpaca-paper-bracket":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            confirmed = body.get('confirmed', False)
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            if not confirmed:
+                return 400, {"ok": False, "error": "Must confirm bracket submission (confirmed=true)"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_paper_submitter import submit_paper_bracket
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = submit_paper_bracket(conn, int(pid),
+                                              allow_after_hours=body.get('allow_after_hours', False))
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-proposals/technical-diagnostics":
+        try:
+            diags = _db_query("""
+                SELECT pts.proposal_id, pts.symbol,
+                       pts.ema_8, pts.ema_21, pts.ema_50, pts.ema_200,
+                       pts.ema_alignment, pts.technical_grade,
+                       pts.fib_context, pts.nearest_fib_level, pts.nearest_fib_distance_pct,
+                       pts.opening_range_high, pts.opening_range_low,
+                       pts.opening_range_status, pts.premarket_status,
+                       pts.ohlcv_data_status,
+                       per.readiness_state, per.bracket_order_supported,
+                       per.alpaca_account_mode, per.market_hours,
+                       per.paper_submit_test_result
+                FROM proposal_technical_snapshots pts
+                LEFT JOIN proposal_execution_readiness per
+                    ON per.proposal_id = pts.proposal_id
+                    AND per.id = (SELECT MAX(id) FROM proposal_execution_readiness WHERE proposal_id = pts.proposal_id)
+                WHERE pts.id IN (
+                    SELECT MAX(id) FROM proposal_technical_snapshots GROUP BY proposal_id
+                )
+                ORDER BY pts.computed_at DESC
+            """) or []
+            return 200, {"ok": True, "diagnostics": [
+                {k: _json_clean(v) for k, v in d.items()} for d in diags
+            ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/refresh-packet":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import subprocess as _sp
+            results = {}
+            for script, key in [
+                ("proposal_technical_snapshot.py", "technical"),
+                ("proposal_strategy_fit.py", "strategy_fit"),
+                ("proposal_backtest_engine.py", "backtest"),
+                ("proposal_catalyst_quality.py", "catalyst"),
+                ("proposal_execution_readiness.py", "execution"),
+            ]:
+                try:
+                    r = _sp.run(
+                        [str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts" / script),
+                         "--proposal-id", str(pid), "--apply"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT)
+                    )
+                    results[key] = "ok" if r.returncode == 0 else "failed"
+                except Exception as e:
+                    results[key] = f"error: {e}"
+            return 200, {"ok": True, "proposal_id": pid,
+                         "packet_ready": all(v == "ok" for v in results.values()),
+                         "results": results,
+                         "message": "Institutional packet refreshed"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-proposals/events":
+        try:
+            events = _db_query("""
+                SELECT id, proposal_id, paper_trade_id, symbol, event_type,
+                       event_source, payload, created_at
+                FROM proposal_event_log
+                ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "events": [
+                {k: _json_clean(v) for k, v in e.items()} for e in events
+            ]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
