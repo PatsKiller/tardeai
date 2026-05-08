@@ -140,3 +140,34 @@ Live trading remains DISABLED. The path to enablement requires:
 9. Human governance review and approval
 
 Current status: PAPER_ONLY for all 20 strategies.
+
+## Session 24C: Execution Gate Enforcement
+
+### Gap Fixed
+Pre-24C, RSI/ATR/EMA/VWAP/Fib/R:R were display-only. The system would submit a paper order
+for a proposal with RSI 95, bearish EMA, and 1:1 R:R if the quote was fresh.
+
+### New Hard Blocks (6 added, total now 16)
+- BLOCKED_BEARISH_EMA: bearish/long-term overhead blocks long entries
+- BLOCKED_RSI_OVERBOUGHT: RSI above strategy threshold (85 scalp, 90 swing, 95 position)
+- BLOCKED_EXTENDED_ABOVE_VWAP: VWAP above strategy threshold (10% scalp, 15% swing, 25% position)
+- BLOCKED_ORB_FAILED: failed opening range breakout blocks momentum_scalp
+- BLOCKED_TARGET_UNREALISTIC: target > 3x ATR
+- BLOCKED_RR_TOO_LOW: R:R < 1.5
+
+### Strategy-Aware Thresholds
+| Threshold | Intraday | Short Swing | Medium Swing | Position |
+|-----------|----------|-------------|-------------|----------|
+| Max price drift | 2% | 5% | 8% | 12% |
+| Max spread | 1% | 3% | 3% | 5% |
+| Max quote age | 300s | 24h | 24h | 24h |
+| RSI block above | 85 | 90 | 90 | 95 |
+| VWAP block above | 10% | 15% | 20% | 25% |
+| Min volume | 100K | 50K | 50K | 25K |
+
+### R:R Calculation Fix
+Target multiplier changed from 1.5x ATR to 2.0x ATR. All proposals updated to 2:1 minimum.
+
+### Data Trace Documentation
+See: `docs/project/TRADE_AI_EXECUTION_GATE_ARCHITECTURE.md`
+Complete signal-to-decision trace with every field mapped to enforcement tier.

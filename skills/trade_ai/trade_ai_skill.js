@@ -104,6 +104,22 @@
  *   LLM Timeout:    llm_router LOCAL_TIMEOUT 30s → 90s for agent prompts
  *   Telegram:       WAIT/AVOID alerts suppressed (GO only)
  *
+ * ─── SESSION 24C: EXECUTION GATE ENFORCEMENT ──────────────────────────────
+ *
+ *   Gap Fixed:      Pre-24C: RSI/ATR/EMA/VWAP/Fib/R:R were display-only, not gates
+ *   New Blocks:     BLOCKED_BEARISH_EMA, BLOCKED_RSI_OVERBOUGHT, BLOCKED_EXTENDED_ABOVE_VWAP,
+ *                   BLOCKED_ORB_FAILED, BLOCKED_TARGET_UNREALISTIC, BLOCKED_RR_TOO_LOW
+ *   Strategy-Aware: Thresholds now vary by strategy class:
+ *                   Intraday: 2% drift, 1% spread, RSI>85, VWAP>10%
+ *                   Short swing: 5% drift, 3% spread, RSI>90, VWAP>15%
+ *                   Position: 12% drift, 5% spread, RSI>95, VWAP>25%
+ *   R:R Fix:        Target multiplier 1.5x → 2.0x ATR (all proposals updated)
+ *   Indicators:     ATR/RSI/EMA/Fib backfilled for all 9 pending symbols
+ *   API Fix:        technical_snapshot query expanded with ema/fib/orb/ohlcv fields
+ *   UI Fix:         Technical tab merges fresh snapshot data, metric tiles clickable
+ *   Documentation:  TRADE_AI_EXECUTION_GATE_ARCHITECTURE.md — complete data-to-decision trace
+ *   Total Gates:    16 hard blocks (was 10), covering quote + technical + risk quality
+ *
  * ─── KEY ENDPOINTS (verified working) ──────────────────────────────────────
  *
  *   POST /api/v2/proposals/decide    — approve/reject watchlist proposals
