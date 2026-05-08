@@ -21,8 +21,11 @@ export function useApi<T>(path: string, intervalMs?: number) {
     setLoading(true)
 
     const doFetch = () => {
-      fetch(path)
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
+      fetch(path, { signal: controller.signal })
         .then(r => {
+          clearTimeout(timeout)
           if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
           return r.json()
         })
@@ -38,13 +41,14 @@ export function useApi<T>(path: string, intervalMs?: number) {
           setLoading(false)
         })
         .catch(e => {
+          clearTimeout(timeout)
           if (cancelled) return
           if (!retried.current) {
             retried.current = true
             setTimeout(() => { if (!cancelled) doFetch() }, 2000)
             return
           }
-          setError(e.message)
+          setError(e.name === 'AbortError' ? 'Request timed out — try refreshing' : e.message)
           setLoading(false)
         })
     }
