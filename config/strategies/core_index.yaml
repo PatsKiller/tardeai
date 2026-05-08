@@ -87,7 +87,10 @@ prompt_context:
     - "Which account is optimal for this purchase from a tax perspective?"
 
 screen_filters:
-  min_price: 10.00
+  min_price: 50.00
   max_price: 1000.00
+  min_market_cap_b: 50.0
+  max_beta: 1.1
+  max_div_yield_pct: 3.0
   asset_type: [etf, index_fund]
   min_score: 0

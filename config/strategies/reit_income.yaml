@@ -96,8 +96,10 @@ prompt_context:
     - "Should this be placed in IRA to avoid unfavorable tax treatment?"
 
 screen_filters:
-  min_price: 10.00
+  min_price: 5.00
   max_price: 200.00
-  min_yield: 3.0
+  min_div_yield_pct: 3.5
+  max_div_yield_pct: 15.0
+  sector_include: [Real Estate]
   sector_filter: [reit, real_estate]
   min_score: 0

@@ -96,8 +96,9 @@ prompt_context:
     - "Is this being placed in a tax-advantaged account to avoid ordinary income taxation?"
 
 screen_filters:
-  min_price: 5.00
-  max_price: 100.00
-  min_yield: 7.0
+  min_price: 3.00
+  max_price: 50.00
+  min_div_yield_pct: 7.0
+  max_div_yield_pct: 20.0
   asset_type: [bdc, high_yield, cef]
   min_score: 0

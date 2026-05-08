@@ -96,8 +96,9 @@ prompt_context:
     - "Is the dividend sustainable given the local economic and political environment?"
 
 screen_filters:
-  min_price: 10.00
+  min_price: 5.00
   max_price: 300.00
-  min_yield: 2.5
+  min_div_yield_pct: 2.0
+  max_div_yield_pct: 10.0
   country_filter: [non_us, international, adr]
   min_score: 0

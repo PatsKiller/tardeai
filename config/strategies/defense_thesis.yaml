@@ -96,8 +96,11 @@ prompt_context:
     - "What is current defense thesis allocation as percentage of total portfolio?"
 
 screen_filters:
-  min_price: 20.00
+  min_price: 5.00
   max_price: 1000.00
+  min_market_cap_b: 0.5
+  sector_include: [Industrials, Technology]
   sector_filter: [defense, aerospace, cybersecurity]
+  industry_keywords: [defense, aerospace, government, military, security]
   thesis_driven: true
   min_score: 0
