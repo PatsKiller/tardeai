@@ -396,13 +396,9 @@ Rules:
 def _call_ollama(prompt: str, timeout: int = 360) -> str:
     """Call local qwen3:14b via Ollama."""
     import urllib.request
-    try:
-        from local_llm_config import get_local_llm_model, get_local_llm_base_url
-        model = get_local_llm_model()
-        base = get_local_llm_base_url().rstrip("/")
-    except ImportError:
-        model = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
-        base = "http://127.0.0.1:11434"
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url
+    model = get_local_llm_model()
+    base = get_local_llm_base_url().rstrip("/")
 
     payload = json.dumps({
         "model": model,

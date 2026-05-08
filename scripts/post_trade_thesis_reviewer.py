@@ -206,7 +206,9 @@ def generate_llm_review(trade, proposal, evidence, technical, thesis_result):
     """Generate LLM narrative review if available."""
     try:
         import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:11434/api/tags", method="GET")
+        from local_llm_config import get_local_llm_base_url
+        _base = get_local_llm_base_url().rstrip("/")
+        req = urllib.request.Request(f"{_base}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=3):
             pass
     except Exception:
@@ -245,7 +247,7 @@ Provide a 2-3 sentence review covering: (1) Was the thesis setup valid? (2) What
             "options": {"temperature": 0.3, "num_predict": 200},
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/generate",
+            f"{_base}/api/generate",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",

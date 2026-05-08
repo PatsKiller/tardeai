@@ -111,13 +111,11 @@ def _warmup_ollama():
     """Ping Ollama with a tiny prompt to warm up the model before pipeline starts."""
     try:
         import urllib.request, json
-        try:
-            from local_llm_config import get_local_llm_model
-            _warmup_model = get_local_llm_model()
-        except ImportError:
-            _warmup_model = os.environ.get("LOCAL_LLM_MODEL", "qwen3:14b")
+        from local_llm_config import get_local_llm_model, get_local_llm_base_url
+        _warmup_model = get_local_llm_model()
+        _warmup_base = get_local_llm_base_url().rstrip("/")
         payload = json.dumps({"model":_warmup_model,"stream":False,"messages":[{"role":"user","content":"hi"}],"think":False,"options":{"num_predict":1}}).encode()
-        req = urllib.request.Request("http://127.0.0.1:11434/api/chat",data=payload,headers={"Content-Type":"application/json"},method="POST")
+        req = urllib.request.Request(f"{_warmup_base}/api/chat",data=payload,headers={"Content-Type":"application/json"},method="POST")
         with urllib.request.urlopen(req, timeout=60) as resp:
             json.loads(resp.read())
             print("  [ollama] Model warmed up")

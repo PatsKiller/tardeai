@@ -38,11 +38,9 @@ if _env_path.exists():
 
 AGENT = "aegis"
 RUN_ID = f"aegis-synthesis-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-try:
-    from local_llm_config import get_local_llm_model
-    OLLAMA_MODEL = get_local_llm_model()
-except ImportError:
-    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
+from local_llm_config import get_local_llm_model, get_local_llm_base_url
+OLLAMA_MODEL = get_local_llm_model()
+_BASE = get_local_llm_base_url().rstrip("/")
 
 
 def _load_json(p: Path):
@@ -93,7 +91,7 @@ def _llm(prompt: str, max_tokens: int = 400) -> str:
             "options": {"temperature": 0.2, "num_predict": max_tokens}
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/chat",
+            f"{_BASE}/api/chat",
             data=payload, headers={"Content-Type": "application/json"}, method="POST"
         )
         with urllib.request.urlopen(req, timeout=60) as resp:
@@ -542,7 +540,7 @@ def _steph_llm(prompt: str, attempt: int = 1, max_tokens: int = 250) -> str:
             "options": {"temperature": temp, "num_predict": max_tokens}
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/chat",
+            f"{_BASE}/api/chat",
             data=payload, headers={"Content-Type": "application/json"}, method="POST"
         )
         with urllib.request.urlopen(req, timeout=90) as resp:

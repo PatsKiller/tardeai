@@ -19,13 +19,9 @@ from typing import Dict, List, Optional, Any
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════
 HISTORY_DAYS = 90
-try:
-    from local_llm_config import get_local_llm_model, get_local_llm_base_url
-    OLLAMA_MODEL = get_local_llm_model()
-    OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
-except ImportError:
-    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
-    OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
+from local_llm_config import get_local_llm_model, get_local_llm_base_url
+OLLAMA_MODEL = get_local_llm_model()
+OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
 BRAVE_SCORE_THRESHOLD = 70  # Only Brave-enrich catalysts scoring >= this
 MAX_PORTFOLIO_TICKERS = 40
 FIDELITY_PREFIXES = ("FID-", "SS-", "TRP-", "JPM-", "VANG-", "WM-", "AB-", "SP500-")

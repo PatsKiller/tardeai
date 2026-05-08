@@ -1503,16 +1503,14 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
                 "SUMMARY:"
             )
             # Call Ollama (think=False disables qwen3 thinking mode)
-            try:
-                from local_llm_config import get_local_llm_model
-                _orch_model = get_local_llm_model()
-            except ImportError:
-                _orch_model = os.environ.get("LOCAL_LLM_MODEL", "qwen3:14b")
+            from local_llm_config import get_local_llm_model, get_local_llm_base_url
+            _orch_model = get_local_llm_model()
+            _orch_base = get_local_llm_base_url().rstrip("/")
             _payload = json.dumps({"model": _orch_model, "stream": False,
                                    "messages": [{"role": "user", "content": _prompt}],
                                    "think": False,
                                    "options": {"temperature": 0.3, "num_predict": 200}}).encode()
-            _req = _ur.Request("http://127.0.0.1:11434/api/chat", data=_payload,
+            _req = _ur.Request(f"{_orch_base}/api/chat", data=_payload,
                                headers={"Content-Type": "application/json"})
             _resp = _ur.urlopen(_req, timeout=30)
             _result = json.loads(_resp.read().decode())

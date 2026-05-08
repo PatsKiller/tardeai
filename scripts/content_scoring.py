@@ -479,7 +479,8 @@ from pathlib import Path as _Path_emb
 
 _EMBED_MODEL = "nomic-embed-text"
 _EMBED_DIM = 768
-_OLLAMA_URL = "http://127.0.0.1:11434/api/embed"
+from local_llm_config import get_local_llm_base_url as _get_llm_base
+_OLLAMA_URL = _get_llm_base().rstrip("/") + "/api/embed"
 
 _STOP_WORDS = frozenset("the a an is are was were be been being have has had do does did will would shall should "
     "may might can could of in to for on with at by from as into through during before after above below between "

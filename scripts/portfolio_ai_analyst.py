@@ -22,11 +22,9 @@ def _get_api_key():
 
 HAIKU  = os.getenv("CLAUDE_CHEAP_MODEL",    "claude-haiku-4-5-20251001")
 SONNET = os.getenv("CLAUDE_ESCALATION_MODEL","claude-sonnet-4-20250514")
-try:
-    from local_llm_config import get_local_llm_model as _get_llm_model
-    OLLAMA_MODEL = _get_llm_model()
-except ImportError:
-    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
+from local_llm_config import get_local_llm_model as _get_llm_model, get_local_llm_base_url as _get_llm_base_url
+OLLAMA_MODEL = _get_llm_model()
+_OLLAMA_BASE = _get_llm_base_url().rstrip("/")
 _USE_OLLAMA = False  # set True when run_type=="weekly"
 
 _AI_RULES = """/no_think
@@ -62,7 +60,7 @@ def _ollama(prompt: str, max_tokens: int = 500) -> str:
     import re as _re, requests as _req
     if len(prompt) > 6000: prompt = prompt[:6000] + "\n[Be concise.]"
     try:
-        r = _req.post("http://127.0.0.1:11434/api/chat",
+        r = _req.post(f"{_OLLAMA_BASE}/api/chat",
             json={"model":OLLAMA_MODEL,"stream":False,
                   "messages":[{"role":"user","content":prompt}],
                   "think":False,

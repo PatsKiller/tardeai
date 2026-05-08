@@ -10,13 +10,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
-try:
-    from local_llm_config import get_local_llm_model, get_local_llm_base_url
-    OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
-    OLLAMA_MODEL = get_local_llm_model()
-except ImportError:
-    OLLAMA_URL = "http://127.0.0.1:11434/api/chat"
-    OLLAMA_MODEL = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
+from local_llm_config import get_local_llm_model, get_local_llm_base_url
+OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+OLLAMA_MODEL = get_local_llm_model()
 
 
 def _env(key, default=""):

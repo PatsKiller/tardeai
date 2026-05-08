@@ -28,8 +28,10 @@ def _ollama_serialized(prompt: str, num_predict: int = 500, timeout: int = 90, m
         "think": False,
         "options": {"temperature": 0.1, "num_predict": num_predict}
     }).encode()
+    from local_llm_config import get_local_llm_base_url
+    _base = get_local_llm_base_url().rstrip("/")
     req = urllib.request.Request(
-        "http://127.0.0.1:11434/api/chat",
+        f"{_base}/api/chat",
         data=payload, headers={"Content-Type": "application/json"}, method="POST"
     )
     with _ollama_lock:
