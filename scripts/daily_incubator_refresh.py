@@ -191,22 +191,26 @@ def main():
         try:
             from catalyst_enrichment import enrich_ticker
             cur.execute("""
-                SELECT DISTINCT iu.symbol, iu.id
-                FROM incubator_universe iu
-                WHERE iu.status = 'ACTIVE'
-                  AND iu.latest_score >= 35
-                  AND NOT EXISTS (
-                      SELECT 1 FROM trade_ai_scans s
-                      WHERE s.symbol = iu.symbol
-                      AND s.scanned_at > NOW() - INTERVAL '3 days'
-                  )
-                ORDER BY iu.latest_score DESC
+                SELECT symbol, id, latest_score FROM (
+                    SELECT DISTINCT ON (iu.symbol) iu.symbol, iu.id, iu.latest_score
+                    FROM incubator_universe iu
+                    WHERE iu.status = 'ACTIVE'
+                      AND iu.latest_score >= 35
+                      AND NOT EXISTS (
+                          SELECT 1 FROM trade_ai_scans s
+                          WHERE s.symbol = iu.symbol
+                          AND s.scanned_at > NOW() - INTERVAL '3 days'
+                      )
+                    ORDER BY iu.symbol, iu.latest_score DESC
+                ) sub
+                ORDER BY latest_score DESC
                 LIMIT 30
             """)
             stale_symbols = cur.fetchall()
             log.info("Found %d incubator symbols with stale catalyst (no scan in 3d)", len(stale_symbols))
 
-            for sym, inc_id in stale_symbols:
+            for row in stale_symbols:
+                sym, inc_id = row[0], row[1]
                 if args.dry_run:
                     log.info("[DRY-RUN] Would refresh catalyst for %s", sym)
                     catalyst_refreshed += 1
