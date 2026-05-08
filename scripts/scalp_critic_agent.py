@@ -126,11 +126,9 @@ def industry_fallback(symbol: str) -> str:
 
 def _call_ollama(prompt: str, timeout: int = 60) -> str:
     import urllib.request
-    try:
-        from local_llm_config import get_local_llm_model
-        _model = get_local_llm_model()
-    except ImportError:
-        _model = os.getenv("LOCAL_LLM_MODEL", "qwen3:14b")
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url
+    _model = get_local_llm_model()
+    _base = get_local_llm_base_url().rstrip("/")
     payload = json.dumps({
         "model": _model, "stream": False,
         "messages": [{"role": "user", "content": prompt}],
@@ -138,7 +136,7 @@ def _call_ollama(prompt: str, timeout: int = 60) -> str:
         "options": {"temperature": 0.1, "num_predict": 300}
     }).encode()
     try:
-        req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
+        req = urllib.request.Request(f"{_base}/api/chat",
                                      data=payload, headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read()).get("message", {}).get("content", "")

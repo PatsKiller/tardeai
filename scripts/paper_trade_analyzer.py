@@ -42,7 +42,9 @@ def _check_ollama_available():
     """Quick check if Ollama is reachable."""
     try:
         import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:11434/api/tags", method="GET")
+        from local_llm_config import get_local_llm_base_url
+        _base = get_local_llm_base_url().rstrip("/")
+        req = urllib.request.Request(f"{_base}/api/tags", method="GET")
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             models = [m.get('name', '') for m in data.get('models', [])]

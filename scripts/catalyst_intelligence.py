@@ -219,7 +219,7 @@ def analyze_all_catalysts(tickers: List[Dict], enrichments: Dict,
     try:
         import urllib.request as _ur, json as _j
         _p = _j.dumps({"model":OLLAMA_MODEL,"stream":False,"messages":[{"role":"user","content":"ready"}],"think":False,"options":{"num_predict":1}}).encode()
-        _r = _ur.Request("http://127.0.0.1:11434/api/chat",data=_p,headers={"Content-Type":"application/json"},method="POST")
+        _r = _ur.Request(OLLAMA_URL,data=_p,headers={"Content-Type":"application/json"},method="POST")
         with _ur.urlopen(_r, timeout=60): pass
     except Exception: pass
     print(f"  [catalyst-intel] Analyzing {len(candidates)} tickers with catalysts...")

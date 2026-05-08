@@ -57,13 +57,11 @@ def run():
     # 2. Ollama
     print("\nOLLAMA:")
     try:
-        try:
-            from local_llm_config import get_local_llm_model
-            _model = get_local_llm_model()
-        except ImportError:
-            _model = os.environ.get("LOCAL_LLM_MODEL", "qwen3:14b")
+        from local_llm_config import get_local_llm_model, get_local_llm_base_url
+        _model = get_local_llm_model()
+        _base = get_local_llm_base_url().rstrip("/")
         payload = json.dumps({"model": _model, "stream": False, "prompt": "hi", "options": {"num_predict": 1}}).encode()
-        req = urllib.request.Request("http://127.0.0.1:11434/api/generate", data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        req = urllib.request.Request(f"{_base}/api/generate", data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=30) as resp:
             check(f"Ollama {_model} responds", True)
     except Exception as e:

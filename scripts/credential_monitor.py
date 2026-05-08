@@ -220,7 +220,8 @@ def check_db() -> dict:
 def check_ollama() -> dict:
     """Check Ollama LLM server."""
     try:
-        url = "http://127.0.0.1:11434/api/tags"
+        from local_llm_config import get_local_llm_base_url
+        url = get_local_llm_base_url().rstrip("/") + "/api/tags"
         with urllib.request.urlopen(url, timeout=5) as resp:
             data = json.loads(resp.read())
             models = [m["name"] for m in data.get("models", [])]

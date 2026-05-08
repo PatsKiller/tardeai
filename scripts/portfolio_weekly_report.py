@@ -76,12 +76,9 @@ def _load_data() -> Dict:
 def _ollama(prompt: str, timeout: int = 180) -> str:
     """Call Ollama local model for narrative generation."""
     import urllib.request
-    try:
-        from local_llm_config import get_local_llm_model
-        _model = get_local_llm_model()
-    except ImportError:
-        from local_llm_config import get_local_llm_model
-        _model = get_local_llm_model()
+    from local_llm_config import get_local_llm_model, get_local_llm_base_url
+    _model = get_local_llm_model()
+    _base = get_local_llm_base_url().rstrip("/")
     payload = json.dumps({
         "model": _model,
         "stream": False,
@@ -91,7 +88,7 @@ def _ollama(prompt: str, timeout: int = 180) -> str:
     }).encode()
     try:
         req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/chat",
+            f"{_base}/api/chat",
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST"

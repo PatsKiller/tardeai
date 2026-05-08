@@ -12,12 +12,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
-try:
-    from local_llm_config import get_local_llm_model, get_local_llm_base_url, get_local_llm_status
-except ImportError:
-    def get_local_llm_model(): return os.environ.get("LOCAL_LLM_MODEL", "qwen3:14b")
-    def get_local_llm_base_url(): return os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434")
-    def get_local_llm_status(): return {"provider": "ollama", "model": get_local_llm_model()}
+from local_llm_config import get_local_llm_model, get_local_llm_base_url, get_local_llm_status
 
 
 
@@ -2520,7 +2515,8 @@ def ai_ask(body: dict):
         payload = json.dumps({"model": _local_model, "stream": False,
                               "messages": [{"role": "user", "content": prompt}], "think": False,
                               "options": {"temperature": 0.2, "num_predict": 500}}).encode()
-        req = urllib.request.Request("http://127.0.0.1:11434/api/chat",
+        _base = get_local_llm_base_url().rstrip("/")
+        req = urllib.request.Request(f"{_base}/api/chat",
                                      data=payload, headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req, timeout=90) as resp:
             raw = json.loads(resp.read()).get("message", {}).get("content", "").strip()
