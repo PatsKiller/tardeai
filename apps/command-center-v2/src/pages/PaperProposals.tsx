@@ -323,6 +323,13 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     <div style={{
       background: 'var(--bg1)', borderRadius: 8, marginBottom: 14,
       border: `1px solid ${ac.border}`,
+      borderLeft: `4px solid ${
+        (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_ZONE_VALID' ? '#10B981'
+        : (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_MISSED' ? '#F59E0B'
+        : norm.actionState === 'BLOCKED' ? '#EF4444'
+        : norm.actionState === 'PAPER_READY' ? '#10B981'
+        : '#334155'
+      }`,
     }}>
       {showConfirm && <ConfirmModal p={p} onConfirm={handleConfirmApprove} onCancel={() => setShowConfirm(false)} />}
 
@@ -394,6 +401,55 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             {norm.strategyMismatch && (
               <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
                 Strategy mismatch: strategy_id="{p.strategy_id}" but primary_strategy_id="{p.primary_strategy_id}". Using strategy_id as primary.
+              </div>
+            )}
+
+            {/* Decision Summary — 3 tiles */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+              <div style={{ padding: '10px 12px', borderRadius: 6, textAlign: 'center',
+                background: (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_ZONE_VALID' ? '#052E16' : (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_MISSED' ? '#1C0A00' : '#0A1628',
+                border: `1px solid ${(p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_ZONE_VALID' ? '#065F46' : (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_MISSED' ? '#92400E' : '#1E293B'}` }}>
+                <div style={{ color: '#64748B', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1 }}>Entry Zone</div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4,
+                  color: (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_ZONE_VALID' ? '#10B981' : (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_MISSED' ? '#F59E0B' : '#60A5FA' }}>
+                  {(p.entry_zone_status || p.lifecycle_status || '')?.replace(/_/g, ' ') || 'Unknown'}
+                </div>
+                {p.price_drift_pct != null && <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>{p.price_drift_pct > 0 ? '+' : ''}{p.price_drift_pct.toFixed(1)}% from entry</div>}
+              </div>
+              <div style={{ padding: '10px 12px', borderRadius: 6, textAlign: 'center',
+                background: (p.proposed_rr || 0) >= 2.0 ? '#052E16' : '#1C0A00',
+                border: `1px solid ${(p.proposed_rr || 0) >= 2.0 ? '#065F46' : '#92400E'}` }}>
+                <div style={{ color: '#64748B', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1 }}>Risk / Reward</div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4,
+                  color: (p.proposed_rr || 0) >= 2.0 ? '#10B981' : '#F59E0B' }}>
+                  {p.proposed_rr ? `${Number(p.proposed_rr).toFixed(1)}:1` : '--'}
+                </div>
+                <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>{(p.proposed_rr || 0) < 2.0 ? 'Below 2:1 minimum' : 'Meets minimum'}</div>
+              </div>
+              <div style={{ padding: '10px 12px', borderRadius: 6, textAlign: 'center', background: '#0A1628', border: '1px solid #1E293B' }}>
+                <div style={{ color: '#64748B', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1 }}>Agent Consensus</div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4, color: '#818CF8' }}>
+                  {(() => {
+                    const revs = (p.agent_reviews || []).filter((r: any) => r.verdict)
+                    return revs.length > 0 ? `${revs.length} reviews` : 'None yet'
+                  })()}
+                </div>
+                <div style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>
+                  {(p.agent_reviews || []).filter((r: any) => r.verdict?.includes('CAUTIOUS') || r.verdict?.includes('APPROVE')).length} cautious/approve
+                </div>
+              </div>
+            </div>
+
+            {/* AI Review Needed banner */}
+            {(!p.llm_analysis?.conviction || p.narrative_source === 'deterministic_fallback') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', marginBottom: 8,
+                background: '#1C1917', border: '1px solid #44403C', borderRadius: 4 }}>
+                <span style={{ color: '#78716C', fontSize: 11 }}>AI analysis is fallback — not yet reviewed by qwen3:14b</span>
+                <button onClick={() => runAction('agent', '/api/v2/paper-proposals/run-agent-review')}
+                  disabled={!!runningAction} style={{ background: '#422006', color: '#F59E0B', border: '1px solid #92400E',
+                  borderRadius: 3, padding: '2px 10px', cursor: 'pointer', fontSize: 11 }}>
+                  {runningAction === 'agent' ? '...' : 'Run AI Review'}
+                </button>
               </div>
             )}
 

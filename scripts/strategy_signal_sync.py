@@ -307,10 +307,10 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
         dollar_risk = float(plan.get('dollar_risk') or 0)
         rr = float(plan.get('risk_reward_1') or 0)
     else:
-        # Generate basic plan from price
+        # Generate basic plan from price — 2:1 minimum R:R
         atr_est = price * 0.05  # rough 5% ATR estimate
         stop = round(price - atr_est, 2)
-        target = round(price + atr_est * 1.5, 2)
+        target = round(price + atr_est * 2.0, 2)  # 2:1 R:R minimum
         shares = max(1, int(2000 / price)) if price > 0 else 0
         dollar_risk = round(abs(price - stop) * shares, 2)
         rr = round((target - price) / (price - stop), 2) if price > stop else 0
