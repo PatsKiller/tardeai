@@ -297,7 +297,7 @@ def expire_stale_proposals(dry_run=False):
             SELECT id, symbol, strategy_id, created_at
             FROM paper_trade_proposals
             WHERE status = 'PENDING'
-            AND strategy_id IN ('momentum_scalp', 'gap_and_go')
+            AND proposal_timeframe_class = 'intraday'
             AND created_at < NOW() - INTERVAL '8 hours'
         """)
         old_proposals = cur.fetchall()
@@ -313,7 +313,7 @@ def expire_stale_proposals(dry_run=False):
                     rejection_reason = 'EOD cleanup: intraday proposal too old (>8hr)',
                     rejected_at = NOW(), updated_at = NOW()
                 WHERE status = 'PENDING'
-                AND strategy_id IN ('momentum_scalp', 'gap_and_go')
+                AND proposal_timeframe_class = 'intraday'
                 AND created_at < NOW() - INTERVAL '8 hours'
             """)
             expired_age = cur.rowcount

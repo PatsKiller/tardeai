@@ -3,7 +3,7 @@ seed_intelligence_entities.py — One-time bootstrap of intelligence_entities ta
 Reads existing data from multiple sources and creates IER records.
 Idempotent (uses upsert_entity which handles ON CONFLICT).
 """
-import sys, json, psycopg2
+import os, sys, json, psycopg2
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,12 +11,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / ".env")
+
 from scripts.intelligence_entity_manager import upsert_entity, SUBJECT_ENTITIES, SUBJECT_DISPLAY_NAMES
 
 conn = psycopg2.connect(
-    host='127.0.0.1', port=5432,
-    dbname='trade_ai', user='trade_ai',
-    password='1AHC_w9F-zvOrGAcTmi7'
+    host=os.getenv('DB_HOST', 'localhost'),
+    port=int(os.getenv('DB_PORT', 5432)),
+    dbname=os.getenv('DB_NAME', 'trade_ai'),
+    user=os.getenv('DB_USER', 'trade_ai'),
+    password=os.getenv('DB_PASSWORD', '')
 )
 cur = conn.cursor()
 

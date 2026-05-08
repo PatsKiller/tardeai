@@ -1139,7 +1139,7 @@ def expire_old_proposals():
             UPDATE paper_trade_proposals
             SET status='EXPIRED', lifecycle_status='EXPIRED_INTRADAY', updated_at=NOW()
             WHERE status='PENDING' AND expires_at < NOW()
-            AND strategy_id IN ('momentum_scalp', 'gap_and_go')
+            AND proposal_timeframe_class = 'intraday'
         """)
         intraday_expired = cur.rowcount
 

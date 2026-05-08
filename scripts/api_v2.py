@@ -10204,7 +10204,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             strat_rows = _db_query("""
                 SELECT strategy_id, min_win_rate, target_win_rate
                 FROM strategy_registry
-                WHERE strategy_id IN ('momentum_scalp','gap_and_go','swing_breakout','sector_rotation','earnings_catalyst','income_add')
+                WHERE status = 'TESTING'
             """) or []
             for sr in strat_rows:
                 sid = sr['strategy_id']
