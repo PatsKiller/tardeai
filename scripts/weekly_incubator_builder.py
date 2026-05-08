@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from session13_db import get_conn
-from multi_strategy_classifier import load_all_strategies, classify_symbol
+from multi_strategy_classifier import load_all_strategies, classify_symbol, load_enrichment_cache
 
 log = logging.getLogger("weekly_incubator_builder")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -229,9 +229,11 @@ def main():
         log.error("Must specify --dry-run or --apply")
         sys.exit(1)
 
-    # Load all strategies dynamically
+    # Load all strategies + enrichment data dynamically
     all_strategies = load_all_strategies()
-    log.info("Loaded %d strategies for multi-strategy matching", len(all_strategies))
+    enrichment = load_enrichment_cache()
+    log.info("Loaded %d strategies, %d enriched symbols for matching",
+             len(all_strategies), len(enrichment))
 
     conn = get_conn()
     try:
@@ -244,8 +246,9 @@ def main():
         multi_match_count = 0
 
         for tick in tickers:
-            # Multi-strategy classification: each symbol can match multiple strategies
-            matches = classify_symbol(tick, all_strategies, use_llm=args.llm)
+            # Multi-strategy classification with full enrichment data
+            matches = classify_symbol(tick, all_strategies, use_llm=args.llm,
+                                      enrichment_cache=enrichment)
 
             if not matches:
                 # Fallback: still insert as 'screener' so nothing is lost

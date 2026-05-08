@@ -37,6 +37,43 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 # Schema/utility files to exclude
 _SKIP_YAMLS = {'strategy_schema', 'recommendation_schema', 'shared_risk_rules'}
 
+ENRICHMENT_CACHE_PATH = PROJECT_ROOT / "data" / "state" / "ticker_enrichment_cache.json"
+
+
+def load_enrichment_cache() -> dict[str, dict]:
+    """Load the Finviz enrichment cache (60+ fields per symbol)."""
+    try:
+        with open(ENRICHMENT_CACHE_PATH) as f:
+            cache = json.load(f)
+        log.info("Loaded enrichment cache: %d symbols", len(cache))
+        return cache
+    except Exception as e:
+        log.warning("Cannot load enrichment cache: %s", e)
+        return {}
+
+
+def merge_scan_with_enrichment(scan: dict, enrichment: dict) -> dict:
+    """Merge scan data with enrichment cache data for richer classification.
+
+    Enrichment data provides: div_yield_pct, market_cap_b, rsi, sma20_pct,
+    sma50_pct, sma200_pct, week52_high_pct, week52_low_pct, roe_pct,
+    pe, beta, atr, short_float_pct, sector, industry, perf_month_pct, etc.
+    """
+    merged = dict(scan)  # start with scan data
+    sym = scan.get("symbol", "").upper()
+    enrich = enrichment.get(sym, {})
+    if not enrich:
+        return merged
+
+    # Only fill in fields the scan doesn't already have
+    for key in enrich:
+        if key in ('cached_at', 'ticker', 'symbol'):
+            continue
+        if key not in merged or merged[key] is None:
+            merged[key] = enrich[key]
+
+    return merged
+
 
 # ── Dynamic strategy loading ──────────────────────────────────────────
 
@@ -61,21 +98,41 @@ def load_all_strategies() -> dict[str, dict]:
 # ── Phase 1: Deterministic filter matching ────────────────────────────
 
 def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]]:
-    """Check scan data against screen_filters. Returns (match, reasons, rejects).
+    """Check scan data against screen_filters using ALL available enrichment data.
 
-    Requires at least 2 positive match criteria to avoid false positives
-    from overly broad filters (e.g. price-only).
+    Uses: price, rvol, float, gap, score (from screener)
+    Plus: div_yield, market_cap, rsi, sma50, week52_high_pct, roe, pe, sector,
+          beta, short_float_pct, etc. (from Finviz enrichment cache)
+
+    Requires at least 2 positive match criteria to avoid false positives.
     """
     match_reasons = []
     reject_reasons = []
 
+    # ── Core screener fields ──
     price = float(scan.get("price") or 0)
     rvol = float(scan.get("rvol") or 0)
     float_m = float(scan.get("float_m") or 0)
     gap = abs(float(scan.get("gap_pct") or 0))
     score = float(scan.get("score") or 0)
 
-    # Price range
+    # ── Enrichment fields (from Finviz cache) ──
+    div_yield = scan.get("div_yield_pct")
+    market_cap_b = scan.get("market_cap_b")
+    rsi = scan.get("rsi")
+    sma20_pct = scan.get("sma20_pct")
+    sma50_pct = scan.get("sma50_pct")
+    sma200_pct = scan.get("sma200_pct")
+    week52_high_pct = scan.get("week52_high_pct")
+    week52_low_pct = scan.get("week52_low_pct")
+    roe_pct = scan.get("roe_pct")
+    pe = scan.get("pe")
+    beta = scan.get("beta")
+    sector = scan.get("sector")
+    industry = scan.get("industry")
+    short_float_pct = scan.get("short_float_pct")
+
+    # ── Price range ──
     min_price = float(filters.get("min_price", 0))
     max_price = float(filters.get("max_price", 99999))
     if price > 0:
@@ -86,7 +143,7 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
         else:
             match_reasons.append(f"price ${price:.2f} in range")
 
-    # RVOL
+    # ── RVOL ──
     min_rvol = float(filters.get("min_rvol", 0))
     if min_rvol > 0:
         if rvol > 0 and rvol < min_rvol:
@@ -94,7 +151,7 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
         elif rvol >= min_rvol:
             match_reasons.append(f"rvol {rvol:.1f}x")
 
-    # Float
+    # ── Float ──
     max_float_m = float(filters.get("max_float_m", 99999))
     if max_float_m < 99999 and float_m > 0:
         if float_m > max_float_m:
@@ -102,7 +159,7 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
         else:
             match_reasons.append(f"float {float_m:.0f}M")
 
-    # Gap
+    # ── Gap ──
     min_gap = float(filters.get("min_gap_pct", 0))
     if min_gap > 0:
         if gap > 0 and gap < min_gap:
@@ -110,7 +167,7 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
         elif gap >= min_gap:
             match_reasons.append(f"gap {gap:.1f}%")
 
-    # Score
+    # ── Score ──
     min_score = float(filters.get("min_score", 0))
     if min_score > 0:
         if score < min_score:
@@ -118,24 +175,134 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
         else:
             match_reasons.append(f"score {score:.0f}")
 
-    # Strategies that require specific data not available from screener scans
-    # reject early so position strategies don't match random day-trade candidates
+    # ── Dividend yield (income strategies) ──
+    min_yield = filters.get("min_yield")
+    if min_yield is not None:
+        min_yield = float(min_yield)
+        if div_yield is not None:
+            div_yield_f = float(div_yield)
+            if div_yield_f < min_yield:
+                reject_reasons.append(f"yield {div_yield_f:.1f}% < min {min_yield}%")
+            else:
+                match_reasons.append(f"yield {div_yield_f:.1f}%")
+        else:
+            reject_reasons.append(f"yield data unavailable (need {min_yield}%)")
+
+    # ── Market cap (core/large-cap strategies) ──
+    min_cap = filters.get("min_market_cap_b")
+    if min_cap is not None:
+        min_cap = float(min_cap)
+        if market_cap_b is not None:
+            cap_f = float(market_cap_b)
+            if cap_f < min_cap:
+                reject_reasons.append(f"cap ${cap_f:.1f}B < min ${min_cap}B")
+            else:
+                match_reasons.append(f"cap ${cap_f:.1f}B")
+        else:
+            reject_reasons.append("market cap data unavailable")
+
+    # ── RSI (entry timing) ──
+    entry_rsi_max = filters.get("entry_rsi_max")
+    if entry_rsi_max is not None and rsi is not None:
+        rsi_f = float(rsi)
+        if rsi_f > float(entry_rsi_max):
+            reject_reasons.append(f"RSI {rsi_f:.0f} > max {entry_rsi_max}")
+        else:
+            match_reasons.append(f"RSI {rsi_f:.0f}")
+
+    # ── SMA50 (below SMA = dip buy entry) ──
+    if filters.get("entry_below_sma_50") and sma50_pct is not None:
+        sma50_f = float(sma50_pct)
+        if sma50_f > 0:
+            reject_reasons.append(f"price above SMA50 ({sma50_f:+.1f}%)")
+        else:
+            match_reasons.append(f"below SMA50 ({sma50_f:+.1f}%)")
+
+    # ── 52-week high distance (recovery candidates) ──
+    max_pct_52w = filters.get("max_pct_from_52w_high")
+    if max_pct_52w is not None and week52_high_pct is not None:
+        w52_f = float(week52_high_pct)
+        thresh = float(max_pct_52w)
+        if w52_f > thresh:  # thresh is negative, e.g. -30
+            reject_reasons.append(f"only {w52_f:.0f}% from 52w high (need {thresh}%+)")
+        else:
+            match_reasons.append(f"{w52_f:.0f}% from 52w high")
+
+    # ── Sector filter ──
+    sector_filter = filters.get("sector_filter")
+    if sector_filter and isinstance(sector_filter, list):
+        scan_sector = (sector or "").lower()
+        scan_industry = (industry or "").lower()
+        sector_match = any(
+            sf.lower() in scan_sector or sf.lower() in scan_industry
+            for sf in sector_filter
+        )
+        if sector_match:
+            match_reasons.append(f"sector match: {sector}")
+        else:
+            reject_reasons.append(f"sector '{sector}' not in {sector_filter}")
+
+    # ── Dividend growth years (from fundamental_data, not in cache — skip if missing) ──
+    min_div_years = filters.get("min_dividend_growth_years")
+    if min_div_years is not None:
+        # Not available from Finviz enrichment — don't reject, just note
+        # LLM phase can assess this
+        pass
+
+    # ── IV rank (for options strategies — not in Finviz cache) ──
+    min_iv_rank = filters.get("min_iv_rank")
+    if min_iv_rank is not None:
+        # Not available — skip deterministic, defer to LLM
+        pass
+
+    # ── Quality focus (core growth) ──
+    if filters.get("quality_focus") and roe_pct is not None:
+        roe_f = float(roe_pct)
+        if roe_f > 15:
+            match_reasons.append(f"ROE {roe_f:.0f}%")
+        elif roe_f < 0:
+            reject_reasons.append(f"ROE {roe_f:.0f}% negative")
+
+    # ── Payout ratio (income strategies) ──
+    max_payout = filters.get("max_payout_ratio")
+    if max_payout is not None:
+        # Not directly in Finviz cache — defer to LLM
+        pass
+
+    # ── Strategies requiring portfolio context (not from scan data) ──
     if filters.get("requires_shares_owned"):
         reject_reasons.append("requires existing position")
     if filters.get("requires_unrealized_loss"):
         reject_reasons.append("requires unrealized loss")
     if filters.get("thesis_driven"):
-        # Only match via LLM, not deterministic
         reject_reasons.append("thesis-driven: requires LLM classification")
+
+    # ── Asset type filter (ETF/fund strategies) ──
     if filters.get("asset_type"):
-        # ETF/fund filters — only match if scan indicates asset type
         allowed = filters["asset_type"]
         scan_type = scan.get("asset_type", "equity")
         if scan_type not in allowed:
             reject_reasons.append(f"asset_type {scan_type} not in {allowed}")
 
-    # Must have rejections = 0 AND at least 2 positive criteria
-    # to prevent broad price-only strategies from matching everything
+    # ── Relative strength (sector rotation) ──
+    min_rs = filters.get("min_relative_strength_vs_spy")
+    if min_rs is not None:
+        vs_sector = scan.get("vs_sector_pct")
+        perf_month = scan.get("perf_month_pct")
+        if vs_sector is not None:
+            vs_f = float(vs_sector)
+            if vs_f >= float(min_rs) * 100:
+                match_reasons.append(f"relative strength +{vs_f:.1f}%")
+            else:
+                reject_reasons.append(f"relative strength {vs_f:.1f}% too low")
+        elif perf_month is not None:
+            # Fallback: use 1m performance as proxy
+            perf_f = float(perf_month)
+            if perf_f > float(min_rs) * 100:
+                match_reasons.append(f"1m perf {perf_f:.1f}%")
+
+    # ── Final verdict ──
+    # Must have zero rejections AND at least 2 positive criteria
     has_rejections = len(reject_reasons) > 0
     has_enough_criteria = len(match_reasons) >= 2
     matches = not has_rejections and has_enough_criteria
@@ -315,14 +482,20 @@ def classify_with_llm(scan: dict, strategies: dict,
 # ── Combined classifier ──────────────────────────────────────────────
 
 def classify_symbol(scan: dict, strategies: dict,
-                    use_llm: bool = False) -> list[dict]:
+                    use_llm: bool = False,
+                    enrichment_cache: dict | None = None) -> list[dict]:
     """Full multi-strategy classification for a single symbol.
 
-    Phase 1: Deterministic filter matching
+    Phase 0: Merge scan with enrichment cache (60+ Finviz fields + indicators)
+    Phase 1: Deterministic filter matching using ALL available data
     Phase 2 (optional): LLM-assisted for additional matches
 
     Returns combined list of all matching strategies, sorted by confidence.
     """
+    # Phase 0: Enrich scan data
+    if enrichment_cache:
+        scan = merge_scan_with_enrichment(scan, enrichment_cache)
+
     # Phase 1
     det_matches = classify_deterministic(scan, strategies)
 
@@ -342,7 +515,10 @@ def classify_symbol(scan: dict, strategies: dict,
 # ── Batch classification ─────────────────────────────────────────────
 
 def classify_batch_from_db(limit: int = 50, use_llm: bool = False) -> list[dict]:
-    """Classify symbols from trade_ai_scans in batch."""
+    """Classify symbols from trade_ai_scans in batch.
+
+    Merges scan data with enrichment cache for full technical+fundamental context.
+    """
     from session13_db import get_conn
     conn = get_conn()
     cur = conn.cursor()
@@ -361,14 +537,54 @@ def classify_batch_from_db(limit: int = 50, use_llm: bool = False) -> list[dict]
 
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    # Also pull indicator_confluence_cache for RSI/ATR/ADX
+    indicator_data = {}
+    try:
+        cur.execute("""
+            SELECT DISTINCT ON (symbol) symbol, atr, adx_regime, entry_quality,
+                   confluence_score, confluence_tier, full_result
+            FROM indicator_confluence_cache
+            WHERE computed_at > NOW() - INTERVAL '7 days'
+            ORDER BY symbol, computed_at DESC
+        """)
+        for row in cur.fetchall():
+            icols = [d[0] for d in cur.description]
+            irow = dict(zip(icols, row))
+            sym = irow.pop("symbol")
+            # Extract signals from full_result
+            fr = irow.get("full_result") or {}
+            if isinstance(fr, dict):
+                sigs = fr.get("signals", {})
+                if "rsi" in sigs:
+                    irow["indicator_rsi"] = sigs["rsi"].get("value")
+                if "vwap" in sigs:
+                    irow["indicator_vwap_dist"] = sigs["vwap"].get("distance_pct")
+                if "fib" in sigs:
+                    irow["fib_context"] = sigs["fib"]
+                if "sma20" in sigs:
+                    irow["indicator_sma20_dist"] = sigs["sma20"].get("distance_pct")
+            indicator_data[sym] = irow
+    except Exception as e:
+        log.warning("Could not load indicator data: %s", e)
+
     conn.close()
 
     strategies = load_all_strategies()
+    enrichment = load_enrichment_cache()
+
+    # Merge indicator data into enrichment
+    for sym, idata in indicator_data.items():
+        if sym not in enrichment:
+            enrichment[sym] = {}
+        enrichment[sym].update(idata)
+
     results = []
 
     for scan in rows:
         sym = scan["symbol"]
-        matches = classify_symbol(scan, strategies, use_llm=use_llm)
+        matches = classify_symbol(scan, strategies, use_llm=use_llm,
+                                  enrichment_cache=enrichment)
         if matches:
             results.append({
                 "symbol": sym,
@@ -405,7 +621,7 @@ def main():
     strategies = load_all_strategies()
 
     if args.symbol:
-        # Single symbol — fetch from DB
+        # Single symbol — fetch from DB + enrichment
         from session13_db import get_conn
         conn = get_conn()
         cur = conn.cursor()
@@ -423,7 +639,9 @@ def main():
             print(f"No scan data for {args.symbol}")
             return
         scan = dict(zip(cols, row))
-        matches = classify_symbol(scan, strategies, use_llm=args.llm)
+        enrichment = load_enrichment_cache()
+        matches = classify_symbol(scan, strategies, use_llm=args.llm,
+                                  enrichment_cache=enrichment)
         print(f"\n{scan['symbol']} — {len(matches)} strategy matches:")
         for m in matches:
             src = m.get("match_source", "?")
