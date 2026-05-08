@@ -31,7 +31,7 @@ def _get_conn():
 
 
 def _get_symbols(priority_only: bool = False) -> list:
-    """Get symbols to scan from DB classifications."""
+    """Get symbols to scan from DB classifications + incubator ACTIVE symbols."""
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -47,6 +47,24 @@ def _get_symbols(priority_only: bool = False) -> list:
     else:
         cur.execute("SELECT symbol, strategy_type FROM ticker_strategy_classifications WHERE active=TRUE")
     symbols = [(r["symbol"], r["strategy_type"]) for r in cur.fetchall()]
+
+    # Also include incubator ACTIVE symbols (top 50 by score to avoid overloading)
+    existing = {s[0] for s in symbols}
+    try:
+        cur.execute("""
+            SELECT DISTINCT symbol, COALESCE(strategy_id, 'screener') as strategy_type
+            FROM incubator_universe
+            WHERE status = 'ACTIVE' AND latest_score >= 35
+            ORDER BY latest_score DESC
+            LIMIT 50
+        """)
+        for r in cur.fetchall():
+            if r["symbol"] not in existing:
+                symbols.append((r["symbol"], r["strategy_type"]))
+                existing.add(r["symbol"])
+    except Exception:
+        pass  # non-fatal — incubator table may not exist
+
     conn.close()
     return symbols
 
