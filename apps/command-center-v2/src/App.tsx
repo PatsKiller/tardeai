@@ -52,6 +52,7 @@ const BrokerReconciliation = lazy(() => import('./pages/BrokerReconciliation'))
 const PaperOutcomes = lazy(() => import('./pages/PaperOutcomes'))
 const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
 const LiveGovernance = lazy(() => import('./pages/LiveGovernance'))
+const PipelineHealthMaster = lazy(() => import('./pages/PipelineHealthMaster'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -134,6 +135,7 @@ export default function App() {
           <Route path="intelligence-entities" element={<SafePage><IntelligenceEntities /></SafePage>} />
           <Route path="content-health" element={<SafePage><ContentHealth /></SafePage>} />
           <Route path="agent-pipeline" element={<SafePage><AgentPipeline /></SafePage>} />
+          <Route path="pipeline-health-master" element={<SafePage><PipelineHealthMaster /></SafePage>} />
           <Route path="intelligence-whiteboard" element={<SafePage><IntelligenceWhiteboard /></SafePage>} />
           <Route path="*" element={
             <div style={{ padding: 40, color: 'var(--text2)' }}>

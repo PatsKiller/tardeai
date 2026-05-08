@@ -388,36 +388,24 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             {p.signal_grade && <span style={pill(p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'green' : p.signal_grade === 'B' ? 'amber' : 'red')}>{p.signal_grade}</span>}
             {p.signal_score != null && <span style={{ fontSize: 10, color: 'var(--text2)', ...mono }}>{p.signal_score}pts</span>}
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{norm.primaryStrategy}</span>
-            {p.proposal_timeframe_class && <span style={{ fontSize: 9, color: 'var(--text3)', ...mono }}>{p.proposal_timeframe_class}</span>}
+            {p.proposal_timeframe_class && (() => {
+              const tc = TIMEFRAME_COLORS[p.proposal_timeframe_class] || { bg: 'rgba(148,163,184,0.12)', text: '#94A3B8' }
+              return <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: tc.bg, color: tc.text }}>{p.proposal_timeframe_class.replace(/_/g, ' ')}</span>
+            })()}
+            {p.screener_display_name && <span style={{ fontSize: 9, color: 'var(--text3)' }}>{p.screener_display_name}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: ac.bg, color: ac.text }}>{norm.actionState.replace(/_/g, ' ')}</span>
-            {p.lifecycle_status && p.lifecycle_status !== 'ACTIVE' && (
-              <span style={pill(
-                p.lifecycle_status === 'ENTRY_ZONE_VALID' ? 'green' :
-                p.lifecycle_status === 'ENTRY_MISSED' ? 'amber' :
-                p.lifecycle_status === 'NEEDS_REVIEW' ? 'red' : 'blue'
-              )}>{p.lifecycle_status.replace(/_/g, ' ')}</span>
-            )}
-            {cd && <span style={{ fontSize: 9, fontWeight: 600, color: cd.color, ...mono }}>{cd.text}</span>}
+            <LifecycleBadge status={p.lifecycle_status || p.entry_zone_status || 'ACTIVE'} riskGateResult={p.risk_gate_result} />
+            <span style={{ fontSize: 9, color: 'var(--text3)', ...mono }}>{ageStr(p.created_at)}</span>
           </div>
-        </div>
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
-          Top blocker: <span style={{ color: norm.topBlocker !== 'None' ? 'var(--red)' : 'var(--green)', fontWeight: 600 }}>{norm.topBlocker}</span>
-          <span style={{ marginLeft: 8, color: 'var(--text3)' }}>#{p.id}</span>
         </div>
       </div>
 
-      {/* ── Decision banner ── */}
-      <div style={{
-        padding: '8px 16px',
-        background: ac.bg,
-        borderBottom: `1px solid ${ac.border}`,
-        display: 'flex', flexDirection: 'column', gap: 2,
-      }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: ac.text }}>{bannerText}</div>
-        {bannerDetail && <div style={{ fontSize: 9, color: ac.text, opacity: 0.8 }}>{bannerDetail}</div>}
-      </div>
+      {/* ── Pipeline chevron (always visible) ── */}
+      <PipelineChevron stages={p.pipeline_stages || []} />
+
+      {/* ── Blocker/status banner ── */}
+      <BlockerBanner p={p} norm={norm} />
 
       {/* ── Metric tiles row ── */}
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
@@ -1354,10 +1342,108 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
   )
 }
 
-// ── Sort priority map ──────────────────────────────────────────────────
+// ── Lifecycle sort priority (IN ZONE first, ENTRY MISSED last) ─────────
+const LIFECYCLE_PRIORITY: Record<string, number> = {
+  ENTRY_ZONE_VALID: 1, ACTIVE: 2, ACTIVE_MONITORING: 2,
+  NEEDS_REVIEW: 3, ENTRY_MISSED: 4, STALE: 5, EXPIRED: 6, UNKNOWN: 7,
+}
 const ACTION_SORT: Record<string, number> = {
   PAPER_READY: 1, CAUTION: 2, LEARNING_MODE: 3,
   NEEDS_REVIEW: 4, MISSING_DATA: 5, BLOCKED: 6,
+}
+
+// ── Timeframe pill colors ─────────────────────────────────────────────
+const TIMEFRAME_COLORS: Record<string, { bg: string; text: string }> = {
+  intraday: { bg: 'rgba(249,115,22,0.15)', text: '#F97316' },
+  short_swing: { bg: 'rgba(59,130,246,0.15)', text: '#60A5FA' },
+  event_window: { bg: 'rgba(168,85,247,0.15)', text: '#A855F7' },
+  position: { bg: 'rgba(34,197,94,0.15)', text: '#22C55E' },
+}
+
+// ── Lifecycle badge ───────────────────────────────────────────────────
+function LifecycleBadge({ status, riskGateResult, isBlocked }: { status: string; riskGateResult?: string; isBlocked?: boolean }) {
+  // Red BLOCKED only when risk gate rejected or explicit is_blocked
+  if (riskGateResult === 'REJECTED' || riskGateResult === 'FAIL' || isBlocked) {
+    return <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>BLOCKED</span>
+  }
+  const map: Record<string, { label: string; bg: string; color: string }> = {
+    ENTRY_ZONE_VALID: { label: 'IN ZONE', bg: 'rgba(34,197,94,0.15)', color: '#22C55E' },
+    ACTIVE: { label: 'ACTIVE', bg: 'rgba(20,184,166,0.15)', color: '#14B8A6' },
+    ACTIVE_MONITORING: { label: 'ACTIVE', bg: 'rgba(20,184,166,0.15)', color: '#14B8A6' },
+    ENTRY_MISSED: { label: 'ENTRY MISSED', bg: 'rgba(251,191,36,0.15)', color: '#F59E0B' },
+    NEEDS_REVIEW: { label: 'NEEDS REVIEW', bg: 'rgba(251,191,36,0.15)', color: '#F59E0B' },
+    STALE: { label: 'STALE', bg: 'rgba(148,163,184,0.12)', color: '#94A3B8' },
+    EXPIRED: { label: 'EXPIRED', bg: 'rgba(148,163,184,0.12)', color: '#94A3B8' },
+  }
+  const m = map[status] || { label: status?.replace(/_/g, ' ') || 'UNKNOWN', bg: 'rgba(148,163,184,0.12)', color: '#94A3B8' }
+  return <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: m.bg, color: m.color }}>{m.label}</span>
+}
+
+// ── Pipeline chevron (8 stages) ───────────────────────────────────────
+function PipelineChevron({ stages }: { stages: any[] }) {
+  if (!stages || stages.length === 0) return null
+  const statusIcon: Record<string, { icon: string; color: string }> = {
+    DONE: { icon: '\u2713', color: '#22C55E' },
+    ISSUE: { icon: '\u26A0', color: '#F59E0B' },
+    PENDING: { icon: '\u25CB', color: '#14B8A6' },
+    SKIPPED: { icon: '\u2014', color: '#64748B' },
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 16px', borderBottom: '1px solid var(--border)', overflowX: 'auto' }}>
+      {stages.map((s: any, i: number) => {
+        const si = statusIcon[s.status] || statusIcon.PENDING
+        return (
+          <React.Fragment key={s.id}>
+            {i > 0 && <span style={{ fontSize: 8, color: 'var(--text3)', margin: '0 1px', flexShrink: 0 }}>{'\u2192'}</span>}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 60, flexShrink: 0, padding: '2px 4px', borderRadius: 4, border: `1px solid ${si.color}30` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontSize: 10, color: si.color }}>{si.icon}</span>
+                <span style={{ fontSize: 9, fontWeight: 600, color: si.color }}>{s.label}</span>
+              </div>
+              {s.detail && <span style={{ fontSize: 8, color: 'var(--text3)', marginTop: 1, whiteSpace: 'nowrap', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.detail}</span>}
+            </div>
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Blocker banner ────────────────────────────────────────────────────
+function BlockerBanner({ p, norm }: { p: any; norm: any }) {
+  const lc = p.lifecycle_status || p.entry_zone_status || ''
+  const rg = p.risk_gate_result
+  if (rg === 'REJECTED' || rg === 'FAIL') {
+    return (
+      <div style={{ padding: '6px 16px', background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.2)', fontSize: 10, fontWeight: 600, color: '#EF4444' }}>
+        RISK GATE REJECTED — {p.risk_gate_codes ? JSON.stringify(p.risk_gate_codes) : 'Review risk parameters'}
+      </div>
+    )
+  }
+  if (lc === 'ENTRY_MISSED') {
+    return (
+      <div style={{ padding: '6px 16px', background: 'rgba(251,191,36,0.08)', borderBottom: '1px solid rgba(251,191,36,0.2)', fontSize: 10, fontWeight: 600, color: '#F59E0B' }}>
+        ENTRY MISSED — price moved {p.price_drift_pct != null ? `${Math.abs(p.price_drift_pct).toFixed(1)}%` : '?'} from zone (${p.proposed_entry?.toFixed(2)} entry, ${p.current_price?.toFixed(2) || '?'} current). Review or dismiss.
+      </div>
+    )
+  }
+  if (lc === 'ENTRY_ZONE_VALID' && norm.actionState !== 'BLOCKED') {
+    return (
+      <div style={{ padding: '6px 16px', background: 'rgba(34,197,94,0.06)', borderBottom: '1px solid rgba(34,197,94,0.15)', fontSize: 10, fontWeight: 600, color: '#22C55E' }}>
+        IN ENTRY ZONE — current price ${p.current_price?.toFixed(2) || '?'} is within range
+      </div>
+    )
+  }
+  return null
+}
+
+// ── Age display ───────────────────────────────────────────────────────
+function ageStr(createdAt: string | null): string {
+  if (!createdAt) return ''
+  const ms = Date.now() - new Date(createdAt).getTime()
+  const h = Math.floor(ms / 3600000)
+  if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h`
+  return `${h}h`
 }
 
 // ── Main page ──────────────────────────────────────────────────────────
@@ -1427,8 +1513,34 @@ export default function PaperProposals() {
     }
   }
 
+  const [promoteState, setPromoteState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [promoteResult, setPromoteResult] = useState<string>('')
+
+  const runPromote = async () => {
+    setPromoteState('running')
+    try {
+      const r = await fetch('/api/v2/paper-proposals/promote-from-incubator', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      const d = await r.json()
+      if (d.ok) {
+        setPromoteState('done')
+        setPromoteResult(`Promoted ${d.promoted_count} symbols`)
+        refetch()
+        setTimeout(() => setPromoteState('idle'), 5000)
+      } else {
+        setPromoteState('error')
+        setPromoteResult(d.error || 'Failed')
+        setTimeout(() => setPromoteState('idle'), 5000)
+      }
+    } catch {
+      setPromoteState('error')
+      setPromoteResult('Network error')
+      setTimeout(() => setPromoteState('idle'), 5000)
+    }
+  }
+
+  const summary = data?.summary || {}
   const allProposals = data?.proposals ?? []
-  const pending = allProposals.filter((p: any) => p.status === 'PENDING')
+  const pending = allProposals
 
   // Collect unique strategies for filter dropdown
   const strategies = Array.from(new Set(pending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
@@ -1446,12 +1558,11 @@ export default function PaperProposals() {
     filtered = filtered.filter((p: any) => (p.symbol || '').toUpperCase().includes(q))
   }
 
-  // Sort by action state priority, then score
+  // Sort by lifecycle priority, then score
   const sorted = [...filtered].sort((a, b) => {
-    const na = normalizeProposal(a)
-    const nb = normalizeProposal(b)
-    const sd = (ACTION_SORT[na.actionState] || 5) - (ACTION_SORT[nb.actionState] || 5)
-    if (sd !== 0) return sd
+    const la = LIFECYCLE_PRIORITY[a.lifecycle_status || a.entry_zone_status || 'UNKNOWN'] || 7
+    const lb = LIFECYCLE_PRIORITY[b.lifecycle_status || b.entry_zone_status || 'UNKNOWN'] || 7
+    if (la !== lb) return la - lb
     return Number(b.signal_score || 0) - Number(a.signal_score || 0)
   })
 
@@ -1465,8 +1576,8 @@ export default function PaperProposals() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', overflow: 'visible' }}>
-      <PageHeader title="Paper Proposals" subtitle={`${pending.length} pending`} actions={
+    <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 40 }}>
+      <PageHeader title="Paper Proposals" subtitle={`${pending.length} pending${summary.expired_today ? ` \u00b7 ${summary.expired_today} expired today` : ''}${summary.incubator_ready_count ? ` \u00b7 ${summary.incubator_ready_count} incubator ready` : ''}`} actions={
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowAll(!showAll)} style={{ padding: '4px 10px', fontSize: 10, background: showAll ? 'rgba(59,130,246,0.2)' : 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: showAll ? '#60A5FA' : 'var(--text2)', cursor: 'pointer' }}>
             {showAll ? `All (${filtered.length})` : 'Top 5'}
@@ -1479,6 +1590,14 @@ export default function PaperProposals() {
               color: enrichState === 'running' ? '#60A5FA' : enrichState === 'done' ? 'var(--green)' : enrichState === 'error' ? 'var(--red)' : 'var(--green)',
               minWidth: 90 }}>
             {enrichState === 'running' ? `Running: ${enrichStep}` : enrichState === 'done' ? 'Done' : enrichState === 'error' ? 'Issues' : 'Enrich All'}
+          </button>
+          <button onClick={runPromote} disabled={promoteState === 'running'}
+            style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: promoteState === 'running' ? 'wait' : 'pointer',
+              background: promoteState === 'running' ? 'rgba(168,85,247,0.2)' : promoteState === 'done' ? 'rgba(34,197,94,0.2)' : promoteState === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(168,85,247,0.15)',
+              border: `1px solid ${promoteState === 'running' ? 'rgba(168,85,247,0.4)' : promoteState === 'done' ? 'rgba(34,197,94,0.4)' : promoteState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(168,85,247,0.3)'}`,
+              color: promoteState === 'running' ? '#A855F7' : promoteState === 'done' ? 'var(--green)' : promoteState === 'error' ? 'var(--red)' : '#A855F7',
+              minWidth: 140 }}>
+            {promoteState === 'running' ? 'Promoting...' : promoteState === 'done' ? promoteResult : promoteState === 'error' ? promoteResult : 'Promote from Incubator'}
           </button>
         </div>
       } />

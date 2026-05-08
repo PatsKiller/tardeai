@@ -4535,7 +4535,12 @@ def _proposals_with_pnl():
 def _agent_pipeline():
     """GET /api/v2/agent-pipeline — Live agent job pipeline for orchestration dashboard.
     Returns: jobs, results, handoffs, events, proposals, debates, summary.
+    Reads ?limit= from _agent_pipeline._query (default 50).
     """
+    _q = getattr(_agent_pipeline, '_query', None) or {}
+    _lim_raw = (_q.get('limit') or [50])
+    lim = min(max(int(_lim_raw[0] if isinstance(_lim_raw, list) else _lim_raw), 10), 500)
+
     # 1. Active + recent agent jobs (last 24h)
     jobs = _db_query(
         """SELECT id, symbol, requested_agent, request_type, status,
@@ -4543,7 +4548,7 @@ def _agent_pipeline():
                   payload::text as payload_text
            FROM watchlist_agent_jobs
            WHERE created_at > NOW() - INTERVAL '24 hours'
-           ORDER BY created_at DESC LIMIT 200"""
+           ORDER BY created_at DESC LIMIT %s""", [lim * 4]
     ) or []
 
     # 2. Recent agent analyses
@@ -4562,7 +4567,7 @@ def _agent_pipeline():
         """SELECT symbol, from_agent, to_agent, reason, escalated, created_at
            FROM agent_handoffs
            WHERE created_at > NOW() - INTERVAL '24 hours'
-           ORDER BY created_at DESC LIMIT 50"""
+           ORDER BY created_at DESC LIMIT %s""", [lim]
     ) or []
 
     # 4. Event queue (Level 3)
@@ -4571,7 +4576,7 @@ def _agent_pipeline():
                   agents_to_notify, trigger_data::text as trigger_text,
                   created_at, processed_at
            FROM agent_event_queue
-           ORDER BY created_at DESC LIMIT 50"""
+           ORDER BY created_at DESC LIMIT %s""", [lim]
     ) or []
 
     # 5. Pending proposals
@@ -4580,7 +4585,7 @@ def _agent_pipeline():
                   created_at
            FROM watchlist_proposals
            WHERE status = 'proposed'
-           ORDER BY created_at DESC LIMIT 30"""
+           ORDER BY created_at DESC LIMIT %s""", [lim]
     ) or []
 
     # 6. Recent debates
@@ -4589,7 +4594,7 @@ def _agent_pipeline():
                   participants, created_at, provider
            FROM agent_debate_log
            WHERE created_at > NOW() - INTERVAL '24 hours'
-           ORDER BY created_at DESC LIMIT 20"""
+           ORDER BY created_at DESC LIMIT %s""", [lim]
     ) or []
 
     cj = [{k: _json_clean(v) for k, v in j.items()} for j in jobs]
@@ -6638,9 +6643,163 @@ def _journal_agent_coaching():
         return {'error': str(e)}
 
 
+_SCREENER_DISPLAY = {
+    'day_scalp': 'Finviz Day Scalp (RVOL + Float)',
+    'swing_trade': 'Finviz Swing Trade (Momentum)',
+    'speculative_growth': 'Finviz Speculative Growth',
+    'dividend_growth': 'Finviz Dividend Growth',
+    'covered_call': 'Finviz Covered Call Income',
+    'high_yield': 'Finviz High Yield BDC',
+    'income_etf': 'Finviz Income ETF',
+    'core_growth': 'Finviz Core Growth Compounder',
+    'defense_thesis': 'Finviz Defense / Aerospace',
+    'core_holding': 'Finviz Core Holding',
+    'core_index': 'Finviz Core Index',
+    'recovery': 'Finviz Recovery Watch',
+    'international': 'Finviz International Dividend',
+    'reit': 'Finviz REIT Income',
+    'bond': 'Finviz Bond Income',
+    'social_scalp': 'Social Scalp Scanner',
+    'screener': 'Finviz Multi-Screener',
+}
+
+
+def _resolve_screener_display(screener_name, source_table=None):
+    if source_table and 'incubator' in source_table.lower():
+        return screener_name or 'Incubator'
+    if screener_name:
+        return _SCREENER_DISPLAY.get(screener_name, f"Screener: {screener_name}")
+    return 'Orchestrator Auto-Scan'
+
+
+def _expire_stale_proposals(conn):
+    """Expire stale pending proposals: intraday>8h, past expires_at, entry missed>15%."""
+    INTRADAY = ['gap_and_go', 'momentum_scalp']
+    try:
+        cur = conn.cursor()
+        # 1. Intraday > 8 hours old
+        cur.execute("""
+            UPDATE paper_trade_proposals
+            SET status='expired', lifecycle_status='EXPIRED',
+                lifecycle_message='Intraday proposal: expired after market close'
+            WHERE status='PENDING'
+              AND (strategy_id = ANY(%s) OR proposal_timeframe_class='intraday')
+              AND created_at < NOW() - INTERVAL '8 hours'
+        """, [INTRADAY])
+        # 2. expires_at for non-intraday
+        cur.execute("""
+            UPDATE paper_trade_proposals
+            SET status='expired', lifecycle_status='EXPIRED',
+                lifecycle_message='Proposal expired — past scheduled expiry window'
+            WHERE status='PENDING'
+              AND expires_at IS NOT NULL AND expires_at < NOW()
+              AND strategy_id != ALL(%s)
+        """, [INTRADAY])
+        # 3. ENTRY_MISSED > 15% drift
+        cur.execute("""
+            UPDATE paper_trade_proposals
+            SET status='expired', lifecycle_status='EXPIRED',
+                lifecycle_message='Entry missed — price drifted beyond recovery (>15%%)'
+            WHERE status='PENDING'
+              AND entry_zone_status='ENTRY_MISSED'
+              AND ABS(price_drift_pct) > 15
+        """)
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        logging.getLogger(__name__).warning(f"[expiry] {e}")
+
+
+def _derive_pipeline_stages(prop):
+    """Derive 8-stage pipeline status for a proposal."""
+    source_table = prop.get('source_table') or ''
+    stages = []
+    # 1. Screener
+    stages.append({
+        'id': 'screener', 'label': 'Screened',
+        'status': 'DONE',  # All proposals come from some screening process
+        'detail': prop.get('screener_display_name') or 'Auto',
+        'timestamp': _json_clean(prop.get('created_at')),
+    })
+    # 2. Incubator
+    _from_incubator = 'incubator' in source_table.lower()
+    stages.append({
+        'id': 'incubator', 'label': 'Incubated',
+        'status': 'DONE' if _from_incubator else 'SKIPPED',
+        'detail': 'From incubator' if _from_incubator else 'Direct from screener',
+        'timestamp': None,
+    })
+    # 3. Score
+    stages.append({
+        'id': 'score', 'label': 'Scored',
+        'status': 'DONE' if prop.get('signal_score') else 'PENDING',
+        'detail': f"{prop.get('signal_grade', '?')} {prop.get('signal_score', '?')}pts" if prop.get('signal_score') else None,
+        'timestamp': None,
+    })
+    # 4. Catalyst
+    cat = prop.get('catalyst_verified')
+    stages.append({
+        'id': 'catalyst', 'label': 'Catalyst',
+        'status': 'DONE' if cat else ('ISSUE' if cat is False else 'PENDING'),
+        'detail': 'Verified' if cat else ('Unverified' if cat is False else 'Not checked'),
+        'timestamp': None,
+    })
+    # 5. Risk gate
+    rg = prop.get('risk_gate_result')
+    stages.append({
+        'id': 'risk_gate', 'label': 'Risk Gate',
+        'status': 'DONE' if rg in ('PASS', 'APPROVED') else ('ISSUE' if rg in ('FAIL', 'REJECTED') else 'PENDING'),
+        'detail': rg or 'Not checked',
+        'timestamp': None,
+    })
+    # 6. LLM Review
+    llm = prop.get('llm_analysis')
+    ns = prop.get('narrative_source', '')
+    stages.append({
+        'id': 'llm_review', 'label': 'AI Review',
+        'status': 'DONE' if llm and 'fallback' not in str(ns).lower() and 'deterministic' not in str(ns).lower()
+                  else ('ISSUE' if 'fallback' in str(ns).lower() or 'deterministic' in str(ns).lower() else 'PENDING'),
+        'detail': str(ns)[:30] if ns else 'Not run',
+        'timestamp': None,
+    })
+    # 7. Execution
+    er = prop.get('execution_readiness') or {}
+    rs = er.get('readiness_state', '')
+    stages.append({
+        'id': 'execution', 'label': 'Execution',
+        'status': 'DONE' if rs in ('READY_FOR_PAPER_SUBMIT', 'READY_ORB_CONFIRMED', 'CAUTION_EXECUTABLE')
+                  else ('ISSUE' if 'BLOCKED' in str(rs) else 'PENDING'),
+        'detail': rs.replace('BLOCKED_', '').replace('_', ' ')[:25] if rs else 'Not checked',
+        'timestamp': None,
+    })
+    # 8. Ready
+    lc = prop.get('lifecycle_status', '')
+    ez = prop.get('entry_zone_status', '')
+    stages.append({
+        'id': 'ready', 'label': 'Ready',
+        'status': 'DONE' if ez == 'ENTRY_ZONE_VALID' else ('ISSUE' if lc in ('ENTRY_MISSED', 'STALE', 'EXPIRED') else 'PENDING'),
+        'detail': (ez or lc or 'Unknown').replace('_', ' '),
+        'timestamp': None,
+    })
+    return stages
+
+
 def _paper_proposals_enriched():
     """GET /api/v2/paper-proposals — enriched decision packet proposals."""
     try:
+        # Expire stale proposals before reading
+        try:
+            from db_adapter import _get_conn as _gc
+            _conn = _gc()
+            if _conn:
+                _expire_stale_proposals(_conn)
+                _conn.close()
+        except Exception:
+            pass
+
         # Read portfolio value for risk %
         portfolio_value = 1000000.0
         try:
@@ -7398,10 +7557,50 @@ def _paper_proposals_enriched():
         except Exception:
             pass  # non-critical institutional enrichment
 
+        # Session 25: Add screener_display_name and pipeline_stages to each proposal
+        for prop in proposals:
+            prop['screener_display_name'] = _resolve_screener_display(
+                prop.get('screener_name'), prop.get('source_table'))
+            prop['pipeline_stages'] = _derive_pipeline_stages(prop)
+
+        # Session 25: Expired today + summary
+        expired_today = []
+        incubator_ready_count = 0
+        last_promotion_run = None
+        try:
+            _exp_rows = _db_query("""
+                SELECT id, symbol, strategy_id, lifecycle_status, lifecycle_message, created_at
+                FROM paper_trade_proposals
+                WHERE status='expired' AND (rejected_at > NOW() - INTERVAL '24 hours'
+                      OR created_at > NOW() - INTERVAL '24 hours')
+                ORDER BY created_at DESC LIMIT 10
+            """) or []
+            expired_today = [{k: _json_clean(v) for k, v in r.items()} for r in _exp_rows]
+            _ic = _db_query("""
+                SELECT COUNT(*) as cnt FROM incubator_universe
+                WHERE status='ACTIVE' AND latest_score>=38 AND promoted_to_proposal_at IS NULL
+            """, fetch="one")
+            incubator_ready_count = int((_ic or {}).get('cnt', 0))
+            _lp = _db_query("""
+                SELECT MAX(completed_at) as last_run FROM pipeline_runs
+                WHERE script_name='incubator_proposal_promoter'
+            """, fetch="one")
+            last_promotion_run = _json_clean((_lp or {}).get('last_run'))
+        except Exception:
+            pass
+
+        pending_list = [p for p in proposals if p.get('status') == 'PENDING']
         return 200, {
             "ok": True,
-            "proposals": proposals,
-            "pending_count": sum(1 for p in proposals if p.get('status') == 'PENDING'),
+            "proposals": pending_list,
+            "expired_today": expired_today,
+            "summary": {
+                "pending": len(pending_list),
+                "expired_today": len(expired_today),
+                "incubator_ready_count": incubator_ready_count,
+                "last_promotion_run": last_promotion_run,
+            },
+            "pending_count": len(pending_list),
             "count": len(proposals),
             "portfolio_value": round(portfolio_value, 2),
         }
@@ -9576,6 +9775,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         _youtube_transcripts._query = query
         _news_articles_list._query = query
         _intelligence_library._query = query
+        _agent_pipeline._query = query
 
     # Static routes
     handler = ROUTES.get(base_path)
@@ -10506,19 +10706,37 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from strategy_config_loader import load_all_strategy_configs
             configs = load_all_strategy_configs()
+            # Derive expiry display for TESTING strategies
+            _EXPIRY_DISPLAY = {
+                'gap_and_go': '8h (intraday)', 'momentum_scalp': '8h (intraday)',
+                'swing_breakout': '120h (5d swing)', 'earnings_catalyst': '120h (5d swing)',
+                'swing_trade': '168h (7d)',
+            }
             result = {}
             for sid, c in sorted(configs.items()):
+                risk = c.get("risk") or {}
+                status = c.get("status")
+                # Derive risk display for TESTING strategies with NULL risk_pct_portfolio
+                risk_display = risk.get("risk_pct_portfolio")
+                if risk_display is None and status == "TESTING":
+                    risk_display = "Paper only"
+                # Derive expiry display
+                expiry_display = c.get("lifecycle", {}).get("expiry_hours") if c.get("lifecycle") else None
+                if expiry_display is None:
+                    expiry_display = _EXPIRY_DISPLAY.get(sid, '168h (7d)' if status == 'TESTING' else None)
                 result[sid] = {
                     "strategy_id": sid,
                     "display_name": c.get("display_name"),
                     "version": c.get("version"),
-                    "status": c.get("status"),
+                    "status": status,
                     "timeframe": c.get("timeframe"),
                     "timeframe_class": c.get("timeframe_class"),
                     "purpose": c.get("purpose"),
                     "eligible_accounts": c.get("eligible_accounts"),
                     "config_hash": c.get("_config_hash"),
-                    "risk": c.get("risk"),
+                    "risk": risk,
+                    "risk_display": risk_display,
+                    "expiry_display": expiry_display,
                     "lifecycle": c.get("lifecycle"),
                     "co_enables": c.get("co_enables"),
                 }
@@ -10802,6 +11020,170 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "events": [
                 {k: _json_clean(v) for k, v in e.items()} for e in events
             ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 25: Promote from incubator
+    if method == "POST" and base_path == "/api/v2/paper-proposals/promote-from-incubator":
+        try:
+            import subprocess as _sp
+            r = _sp.run(
+                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                 str(PROJECT_ROOT / "scripts/incubator_proposal_promoter.py"), "--run", "--limit", "15"],
+                capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            promoted = [l for l in r.stdout.splitlines() if l.startswith("PROMOTED:")]
+            return 200, {"ok": r.returncode == 0,
+                         "promoted": promoted,
+                         "promoted_count": len(promoted),
+                         "stdout": r.stdout[-2000:],
+                         "stderr": r.stderr[-500:] if r.returncode != 0 else ""}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 25: Pipeline health master
+    if method == "GET" and base_path == "/api/v2/pipeline-health-master":
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            STAGE_REGISTRY = {
+                'data_collection': [
+                    ('finviz_screener_runner', 'Finviz Screener', 6),
+                    ('social_ingest', 'Social Ingest', 24),
+                    ('news_ingestion', 'News Ingestion', 6),
+                    ('fred_data_ingest', 'FRED Data', 24),
+                    ('sec_data_ingest', 'SEC Data', 24),
+                ],
+                'enrichment': [
+                    ('finviz_enrichment', 'Finviz Enrichment', 6),
+                    ('catalyst_enrichment', 'Catalyst Enrichment', 6),
+                    ('symbol_enrichment', 'Symbol Enrichment', 12),
+                    ('rag_indexer', 'RAG Indexer', 8),
+                ],
+                'scoring': [
+                    ('trade_ai_orchestrator', 'Orchestrator', 3),
+                    ('indicator_engine', 'Indicators', 24),
+                    ('premarket_watcher', 'Premarket', 1),
+                    ('agent_router', 'Agent Router', 24),
+                ],
+                'intelligence': [
+                    ('process_watchlist_agent_jobs', 'Agent Jobs', 0.25),
+                    ('agent_watchlist_engine', 'Watchlist Engine', 24),
+                    ('cio_decision_engine', 'CIO Engine', 24),
+                    ('pipeline_watchdog', 'Watchdog', 0.083),
+                ],
+                'proposals': [
+                    ('weekly_incubator_builder', 'Incubator Builder', 168),
+                    ('daily_incubator_refresh', 'Incubator Refresh', 24),
+                    ('incubator_rolloff_engine', 'Rolloff Engine', 24),
+                    ('incubator_proposal_promoter', 'Proposal Promoter', 12),
+                    ('proposal_enrichment_loop', 'Enrichment Loop', 0.083),
+                    ('proposal_lifecycle', 'Lifecycle', 0.5),
+                ],
+                'execution': [
+                    ('risk_gate', 'Risk Gate', 0),
+                    ('alpaca_paper', 'Alpaca Paper', 0),
+                    ('broker_reconciliation', 'Broker Recon', 24),
+                    ('execution_quality', 'Exec Quality', 24),
+                ],
+                'overnight': [
+                    ('overnight_batch', 'Overnight Batch', 24),
+                    ('agent_outcome_scorer', 'Outcome Scorer', 24),
+                    ('strategy_weekly_review', 'Weekly Review', 168),
+                    ('overnight_batch_embeddings', 'Embeddings', 24),
+                ],
+            }
+            GROUP_LABELS = {
+                'data_collection': ('Data Collection', '6-7 AM M-F'),
+                'enrichment': ('Enrichment', '7-8 AM M-F'),
+                'scoring': ('Scoring', '8-9 AM M-F'),
+                'intelligence': ('Intelligence', 'Continuous'),
+                'proposals': ('Proposal Pipeline', 'The bridge'),
+                'execution': ('Execution', 'Market hours'),
+                'overnight': ('Overnight', '8 PM - 6 AM'),
+            }
+            now = _dt.now(tz=_tz.utc)
+            groups = []
+            total_stages = 0
+            healthy = 0
+            warnings = 0
+            critical = 0
+            for group_id, stages in STAGE_REGISTRY.items():
+                label, desc = GROUP_LABELS[group_id]
+                stage_list = []
+                for script_name, display, cadence_h in stages:
+                    total_stages += 1
+                    row = _db_query("""
+                        SELECT status, started_at, completed_at, rows_processed, duration_sec, error_message
+                        FROM pipeline_runs WHERE script_name=%s ORDER BY started_at DESC LIMIT 1
+                    """, [script_name], fetch="one")
+                    last_run_at = None
+                    last_status = None
+                    rows_processed = 0
+                    duration_sec = None
+                    error_msg = None
+                    minutes_ago = None
+                    if row:
+                        last_run_at = _json_clean(row.get('started_at'))
+                        last_status = row.get('status')
+                        rows_processed = row.get('rows_processed') or 0
+                        duration_sec = _json_clean(row.get('duration_sec'))
+                        error_msg = row.get('error_message')
+                        if row.get('started_at'):
+                            td = now - row['started_at']
+                            minutes_ago = int(td.total_seconds() / 60)
+                    # Derive color
+                    if last_status == 'running':
+                        color = 'blue'
+                    elif last_status == 'failed':
+                        color = 'red'
+                        critical += 1
+                    elif last_run_at is None:
+                        color = 'gray'
+                    elif cadence_h == 0:
+                        color = 'green' if last_status == 'success' else 'red'
+                        if color == 'green':
+                            healthy += 1
+                        else:
+                            critical += 1
+                    else:
+                        hours_since = (minutes_ago or 99999) / 60
+                        if hours_since > cadence_h * 2:
+                            color = 'red'
+                            critical += 1
+                        elif hours_since > cadence_h * 1.5:
+                            color = 'amber'
+                            warnings += 1
+                        else:
+                            color = 'green'
+                            healthy += 1
+                    stage_list.append({
+                        'id': script_name,
+                        'label': display,
+                        'status_color': color,
+                        'last_run_at': last_run_at,
+                        'last_status': last_status,
+                        'rows_processed': rows_processed,
+                        'duration_sec': duration_sec,
+                        'error_message': error_msg,
+                        'cadence_h': cadence_h,
+                        'minutes_ago': minutes_ago,
+                    })
+                groups.append({
+                    'id': group_id,
+                    'label': label,
+                    'description': desc,
+                    'stages': stage_list,
+                })
+            return 200, {
+                "ok": True,
+                "summary": {
+                    "healthy": healthy,
+                    "warnings": warnings,
+                    "critical": critical,
+                    "total_stages": total_stages,
+                    "last_full_cycle": now.strftime("%I:%M %p"),
+                },
+                "groups": groups,
+            }
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

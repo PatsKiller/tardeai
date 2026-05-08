@@ -112,7 +112,7 @@ function parseContentGapSymbol(symbol: string, triggerText: string | null): stri
 type JobFilter = 'all' | 'completed' | 'failed' | 'queued'
 
 export default function AgentPipeline() {
-  const { data, error } = useApi<PipelineData>('/api/v2/agent-pipeline', 30000)
+  const { data, error } = useApi<PipelineData>('/api/v2/agent-pipeline?limit=50', 30000)
   const { data: healthData } = useApi<SystemHealth>('/api/v2/system-health', 60000)
   const { data: agentHealthData } = useApi<AgentHealthData>('/api/v2/agent-health', 60000)
   const [jobLimit, setJobLimit] = useState(50)
