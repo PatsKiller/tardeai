@@ -332,7 +332,7 @@ def assess_proposal(conn, proposal: dict) -> dict:
             blockers.append(f"BLOCKED_NO_VOLUME: No volume data for {symbol}")
 
     # -----------------------------------------------------------------------
-    # 8. Technical snapshot gates (Session 23D)
+    # 8. Technical snapshot gates (Session 23D + 24C enforcement upgrade)
     # -----------------------------------------------------------------------
     strategy_id = proposal.get("strategy_id", "")
     ts_orb_status = None
@@ -340,25 +340,46 @@ def assess_proposal(conn, proposal: dict) -> dict:
         ts_ema_align, ts_grade, ts_orb_status, ts_pm_status, \
             ts_vwap_dist, ts_atr, ts_fib_level, ts_fib_dist, ts_ohlcv_status, ts_computed = ts_row
 
-        if ts_ema_align in ("BEARISH", "LONG_TERM_OVERHEAD"):
-            warnings.append(f"CAUTION_EMA: EMA alignment is {ts_ema_align}")
+        # --- HARD BLOCKS (prevent paper submit) ---
 
+        # EMA alignment: BEARISH or LONG_TERM_OVERHEAD blocks long entries
+        if ts_ema_align in ("BEARISH", "LONG_TERM_OVERHEAD"):
+            blockers.append(f"BLOCKED_BEARISH_EMA: EMA alignment {ts_ema_align} — do not enter long")
+
+        # RSI overbought > 80: block entry on exhausted momentum
+        try:
+            cur2 = conn.cursor()
+            cur2.execute("SELECT rsi_14 FROM proposal_technical_snapshots WHERE symbol=%s ORDER BY computed_at DESC LIMIT 1", (symbol,))
+            rsi_row = cur2.fetchone()
+            cur2.close()
+            if rsi_row and rsi_row[0] is not None and float(rsi_row[0]) > 80:
+                blockers.append(f"BLOCKED_RSI_OVERBOUGHT: RSI {float(rsi_row[0]):.1f} > 80 — exhausted momentum")
+        except Exception:
+            pass
+
+        # VWAP extension > 10%: block — too extended for safe entry
+        if ts_vwap_dist is not None and float(ts_vwap_dist) > 10:
+            blockers.append(f"BLOCKED_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP — chasing risk")
+        elif ts_vwap_dist is not None and float(ts_vwap_dist) > 5:
+            warnings.append(f"CAUTION_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP")
+
+        # ORB requirement for momentum_scalp
         if strategy_id in STRATEGY_REQUIRES_ORB:
             if ts_orb_status == "NO_INTRADAY_DATA":
                 blockers.append("BLOCKED_MISSING_INTRADAY_REQUIRED: momentum_scalp requires intraday data")
             elif ts_orb_status == "ORB_BREAKOUT_FAILED":
-                warnings.append("CAUTION_ORB_FAILED: Opening range breakout failed")
+                blockers.append("BLOCKED_ORB_FAILED: Opening range breakout failed — do not chase")
 
-        if ts_vwap_dist is not None and float(ts_vwap_dist) > 5:
-            warnings.append(f"CAUTION_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP")
-
+        # ATR target feasibility: block if target > 3x ATR (unrealistic)
         proposed_target1_val = float(proposal.get("proposed_target1") or 0)
         proposed_entry_val = float(proposal.get("proposed_entry") or 0)
         if ts_atr and proposed_entry_val and proposed_target1_val:
             target_distance = abs(proposed_target1_val - proposed_entry_val)
             atr_val = float(ts_atr)
             if atr_val > 0 and target_distance > 3 * atr_val:
-                warnings.append(f"CAUTION_ATR_TARGET_TOO_FAR: Target {target_distance:.2f} > 3x ATR {atr_val:.2f}")
+                blockers.append(f"BLOCKED_TARGET_UNREALISTIC: Target {target_distance:.2f} > 3x ATR {atr_val:.2f}")
+
+        # --- WARNINGS (caution, do not block) ---
 
         if ts_fib_level and ts_fib_dist is not None and float(ts_fib_dist) < 2:
             warnings.append(f"INFO_NEAR_FIB: Near {ts_fib_level} ({ts_fib_dist}% away)")
@@ -367,9 +388,18 @@ def assess_proposal(conn, proposal: dict) -> dict:
             warnings.append("CAUTION_BELOW_PREMARKET_HIGH: Rejected at premarket high")
 
         if ts_grade == "TECH_WEAK":
-            warnings.append("CAUTION_TECH_WEAK: Technical grade is WEAK")
+            warnings.append("CAUTION_TECH_WEAK: Technical grade is WEAK — thin evidence")
         elif ts_grade == "TECH_INCOMPLETE":
-            warnings.append("CAUTION_TECH_INCOMPLETE: Technical data incomplete")
+            warnings.append("CAUTION_TECH_INCOMPLETE: Technical data still populating")
+
+    # -----------------------------------------------------------------------
+    # 9. R:R gate (Session 24C — enforce minimum)
+    # -----------------------------------------------------------------------
+    proposed_rr = float(proposal.get("proposed_rr") or 0)
+    if proposed_rr > 0 and proposed_rr < 1.5:
+        blockers.append(f"BLOCKED_RR_TOO_LOW: R:R {proposed_rr:.1f} below 1.5 minimum")
+    elif proposed_rr > 0 and proposed_rr < 2.0:
+        warnings.append(f"CAUTION_RR_BELOW_TARGET: R:R {proposed_rr:.1f} below 2.0 target")
 
     # -----------------------------------------------------------------------
     # Paper-only warning (always)

@@ -1,6 +1,6 @@
 /**
  * trade_ai_skill.js — Trade AI v12 + Portfolio Intelligence Skill
- * Bible v7.5 | OpenClaw / ClawHub compatible | May 8, 2026 | Session 24B.1
+ * Bible v7.5 | OpenClaw / ClawHub compatible | May 8, 2026 | Session 24C
  *
  * Actions:
  *   run          — Full 23-stage Trade AI pipeline (Finviz → scoring → GO/WAIT)

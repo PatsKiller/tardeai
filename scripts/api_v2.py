@@ -7284,9 +7284,17 @@ def _paper_proposals_enriched():
                 # Technical snapshot (from proposal_technical_snapshots or technical_context)
                 tech_row = _db_query("""
                     SELECT rsi_14, atr_14, atr_pct, vwap, vwap_distance_pct, above_vwap,
+                           ema_8, ema_21, ema_50, ema_200,
+                           ema_8_distance_pct, ema_21_distance_pct, ema_50_distance_pct, ema_200_distance_pct,
                            ema_alignment, macd_state, bollinger_position, squeeze_state,
                            support_1, support_2, resistance_1, resistance_2,
+                           swing_high, swing_low, swing_high_date, swing_low_date,
+                           fib_236, fib_382, fib_500, fib_618, fib_786, fib_1272, fib_1618,
+                           nearest_fib_level, nearest_fib_distance_pct,
                            fib_context, confluence_score, technical_grade, missing_data,
+                           opening_range_high, opening_range_low, opening_range_status,
+                           premarket_high, premarket_low, premarket_status,
+                           ohlcv_data_status, intraday_data_source,
                            computed_at
                     FROM proposal_technical_snapshots
                     WHERE proposal_id = %s ORDER BY computed_at DESC LIMIT 1
