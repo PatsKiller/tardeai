@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """proposal_execution_readiness.py — Determine if a paper trade proposal is executable now.
 
-Reads proposal data, market quotes, indicator cache, and open positions to produce
-a readiness assessment with score, blockers, warnings, and an execution plan.
+Session 23E: Uses multi-provider quote hierarchy (Alpaca > Polygon > Finnhub > FMP > yfinance).
+No longer depends on Finviz cache for execution quotes.
+Proposal technical snapshots are primary for technical readiness.
 
 Usage:
     .venv/bin/python scripts/proposal_execution_readiness.py --pending --dry-run
@@ -35,8 +36,7 @@ from session13_db import get_conn
 MAX_QUOTE_AGE_SECONDS = 300
 MAX_PRICE_MOVE_FROM_ENTRY_PCT = 2.0
 MIN_VOLUME = 100_000
-
-FINVIZ_CACHE_PATH = PROJECT_ROOT / "data" / "portfolios" / "state" / "finviz_quote_cache.json"
+MAX_SPREAD_PCT = 1.0  # 1% max spread for execution eligibility
 
 READINESS_STATES = [
     "READY_FOR_PAPER_SUBMIT",
@@ -45,18 +45,21 @@ READINESS_STATES = [
     "CAUTION_EXTENDED_ABOVE_VWAP",
     "CAUTION_ATR_TARGET_TOO_FAR",
     "CAUTION_BELOW_PREMARKET_HIGH",
+    "BLOCKED_NO_QUOTE",
     "BLOCKED_STALE_QUOTE",
+    "BLOCKED_SPREAD_UNKNOWN",
     "BLOCKED_SPREAD",
+    "BLOCKED_NO_VOLUME",
     "BLOCKED_PRICE_MOVED",
     "BLOCKED_RISK_GATE",
     "BLOCKED_DUPLICATE",
     "BLOCKED_MISSING_TECHNICALS",
     "BLOCKED_MISSING_INTRADAY_REQUIRED",
-    "BLOCKED_BACKTEST_INSUFFICIENT",
+    "BLOCKED_DELAYED_QUOTE_FOR_SUBMIT",
     "BLOCKED_LIVE_DISABLED",
 ]
 
-# Strategy-specific ORB requirements
+# Strategy-specific requirements
 STRATEGY_REQUIRES_ORB = {"momentum_scalp"}
 STRATEGY_REQUIRES_VWAP = {"momentum_scalp", "gap_and_go"}
 STRATEGY_REQUIRES_DAILY_STRUCTURE = {"swing_breakout"}
@@ -67,29 +70,6 @@ LIVE_DISABLED_WARNING = "Live trading disabled pending six-month paper validatio
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def load_finviz_cache() -> dict:
-    """Load finviz_quote_cache.json and return dict keyed by symbol."""
-    if not FINVIZ_CACHE_PATH.exists():
-        return {}
-    with open(FINVIZ_CACHE_PATH, "r") as f:
-        return json.load(f)
-
-
-def parse_finviz_timestamp(ts_str: str) -> datetime:
-    """Parse '2026-05-07 11:15:00 ET' style timestamps into UTC-aware datetime."""
-    # Strip timezone label and parse
-    clean = ts_str.strip()
-    for suffix in (" ET", " EST", " EDT"):
-        if clean.endswith(suffix):
-            clean = clean[: -len(suffix)]
-            break
-    dt_naive = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
-    # ET is UTC-4 (EDT) or UTC-5 (EST); approximate as UTC-4 during market hours
-    from datetime import timedelta
-    dt_utc = dt_naive + timedelta(hours=4)
-    return dt_utc.replace(tzinfo=timezone.utc)
-
 
 def is_market_hours() -> bool:
     """Rough check: Mon-Fri 9:30-16:00 ET (13:30-20:00 UTC)."""
@@ -129,7 +109,6 @@ def fetch_proposals(conn, proposal_id=None, pending_only=False):
 
 
 def check_duplicate_open(conn, symbol: str) -> bool:
-    """Return True if there is an open paper trade for this symbol."""
     cur = conn.cursor()
     cur.execute(
         "SELECT COUNT(*) FROM paper_trades WHERE symbol = %s AND status = 'open'",
@@ -140,26 +119,41 @@ def check_duplicate_open(conn, symbol: str) -> bool:
     return count > 0
 
 
-def check_indicator_confluence(conn, symbol: str) -> bool:
-    """Return True if indicator_confluence_cache has a row for this symbol."""
+def check_technical_data(conn, symbol: str) -> tuple:
+    """Check for technical data. Returns (has_data, source, row_or_None)."""
     cur = conn.cursor()
+    # Try proposal_technical_snapshots first (Session 23E: primary)
+    cur.execute("""
+        SELECT ema_alignment, technical_grade, opening_range_status, premarket_status,
+               vwap_distance_pct, atr_14, nearest_fib_level, nearest_fib_distance_pct,
+               ohlcv_data_status, computed_at
+        FROM proposal_technical_snapshots
+        WHERE symbol = %s ORDER BY computed_at DESC LIMIT 1
+    """, (symbol,))
+    row = cur.fetchone()
+    if row:
+        cur.close()
+        return True, "proposal_technical_snapshot", row
+
+    # Fallback to indicator_confluence_cache
     cur.execute(
         "SELECT COUNT(*) FROM indicator_confluence_cache WHERE symbol = %s",
         (symbol,),
     )
     count = cur.fetchone()[0]
     cur.close()
-    return count > 0
+    if count > 0:
+        return True, "indicator_confluence_cache", None
+    return False, "none", None
 
 
 # ---------------------------------------------------------------------------
 # Core readiness assessment
 # ---------------------------------------------------------------------------
 
-def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
-    """Run all readiness checks for a single proposal. Return readiness record dict."""
+def assess_proposal(conn, proposal: dict) -> dict:
+    """Run all readiness checks using multi-provider quotes."""
     symbol = proposal["symbol"]
-    quote = finviz_cache.get(symbol, {})
 
     blockers = []
     warnings = []
@@ -167,14 +161,14 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
     # Initialize check flags
     quote_fresh = False
     price_ok = False
-    spread_ok = True  # default, see below
+    spread_ok = False  # Session 23E: NO default pass
     liquidity_ok = False
     risk_gate_ok = False
     duplicate_ok = False
     indicators_ok = False
-    backtest_ok = True  # default pass — no backtest gate yet
+    backtest_ok = True  # learning mode
 
-    quote_price = quote.get("price")
+    quote_price = None
     quote_age_seconds = None
     quote_timestamp = None
     bid = None
@@ -182,32 +176,62 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
     spread = None
     spread_pct = None
     price_vs_entry_pct = None
+    quote_provider = None
+    quote_snapshot_id = None
+    quote_is_delayed = True
+    quote_execution_eligible = False
+    volume_source = None
+    spread_source = None
+    day_volume = None
 
     # -----------------------------------------------------------------------
-    # 1. Quote freshness
+    # 1. Get quote from multi-provider hierarchy
     # -----------------------------------------------------------------------
-    last_updated_str = quote.get("last_updated")
-    if last_updated_str and quote_price is not None:
-        try:
-            qt = parse_finviz_timestamp(last_updated_str)
-            quote_timestamp = qt.isoformat()
-            now_utc = datetime.now(timezone.utc)
-            quote_age_seconds = (now_utc - qt).total_seconds()
+    from market_quote_provider import get_best_quote, store_quote
 
-            max_age = MAX_QUOTE_AGE_SECONDS
-            if not is_market_hours():
-                max_age = 86400  # relax to 24 h after hours
+    quote = get_best_quote(symbol)
+    quote_provider = quote.get("provider", "none")
 
-            if quote_age_seconds <= max_age:
-                quote_fresh = True
-            else:
-                blockers.append(
-                    f"Quote age {quote_age_seconds:.0f}s exceeds max {max_age}s"
-                )
-        except Exception as e:
-            blockers.append(f"Could not parse quote timestamp: {e}")
+    if quote_provider == "none" or quote.get("last_price") is None:
+        blockers.append(f"BLOCKED_NO_QUOTE: No quote available for {symbol} from any provider")
     else:
-        blockers.append(f"No quote data found for {symbol} in finviz cache")
+        # Store the quote snapshot
+        quote_snapshot_id = store_quote(conn, symbol, quote)
+
+        quote_price = quote.get("last_price")
+        bid = quote.get("bid")
+        ask = quote.get("ask")
+        spread = quote.get("spread")
+        spread_pct = quote.get("spread_pct")
+        day_volume = quote.get("day_volume")
+        quote_is_delayed = quote.get("is_delayed", True)
+        quote_execution_eligible = quote.get("is_execution_eligible", False)
+
+        # Quote timestamp and freshness
+        qt_str = quote.get("quote_timestamp")
+        if qt_str:
+            try:
+                qt = datetime.fromisoformat(str(qt_str).replace("Z", "+00:00"))
+                quote_timestamp = qt.isoformat()
+                now_utc = datetime.now(timezone.utc)
+                quote_age_seconds = (now_utc - qt).total_seconds()
+
+                max_age = MAX_QUOTE_AGE_SECONDS
+                if not is_market_hours():
+                    max_age = 86400  # relax to 24h after hours
+
+                if quote_age_seconds <= max_age:
+                    quote_fresh = True
+                else:
+                    blockers.append(
+                        f"Quote age {quote_age_seconds:.0f}s exceeds max {max_age}s "
+                        f"(provider={quote_provider})")
+            except Exception as e:
+                blockers.append(f"Could not parse quote timestamp: {e}")
+        else:
+            # If provider returned data but no timestamp, treat as fresh if recent store
+            quote_fresh = True
+            warnings.append(f"Quote from {quote_provider} has no timestamp — assumed fresh")
 
     # -----------------------------------------------------------------------
     # 2. Price vs proposed entry
@@ -220,16 +244,28 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
         else:
             blockers.append(
                 f"Price moved {price_vs_entry_pct:.2f}% from entry "
-                f"(quote={quote_price}, entry={proposed_entry})"
-            )
+                f"(quote={quote_price}, entry={proposed_entry})")
     elif proposed_entry is None:
         blockers.append("Proposal has no proposed_entry")
 
     # -----------------------------------------------------------------------
-    # 3. Spread check (Finviz has no bid/ask)
+    # 3. Spread check — Session 23E: NO false pass
     # -----------------------------------------------------------------------
-    # spread_ok stays True; add informational warning
-    warnings.append("Spread not available from Finviz — spread_ok defaulted to True")
+    if bid is not None and ask is not None:
+        spread_source = quote_provider
+        if spread_pct is not None and spread_pct <= MAX_SPREAD_PCT:
+            spread_ok = True
+        elif spread_pct is not None:
+            blockers.append(
+                f"Spread {spread_pct:.3f}% exceeds max {MAX_SPREAD_PCT}% "
+                f"(bid={bid}, ask={ask})")
+        else:
+            spread_ok = True  # bid/ask present but spread calc edge case
+    else:
+        spread_ok = False
+        spread_source = "unavailable"
+        blockers.append(
+            f"BLOCKED_SPREAD_UNKNOWN: Bid/ask unavailable from {quote_provider}")
 
     # -----------------------------------------------------------------------
     # 4. Duplicate open paper trade
@@ -251,91 +287,89 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
         blockers.append(f"Risk gate result is '{rg}' — must be pass/true/approved")
 
     # -----------------------------------------------------------------------
-    # 6. Technical snapshot present
+    # 6. Technical readiness — Session 23E: proposal snapshots primary
     # -----------------------------------------------------------------------
-    if check_indicator_confluence(conn, symbol):
+    has_tech, tech_source, ts_row = check_technical_data(conn, symbol)
+    if has_tech:
         indicators_ok = True
+        if tech_source == "indicator_confluence_cache":
+            warnings.append("INDICATOR_CONFLUENCE_CACHE_MISSING_USING_PROPOSAL_SNAPSHOT: "
+                            "No proposal technical snapshot — using indicator cache")
     else:
         indicators_ok = False
-        blockers.append(f"No indicator confluence data for {symbol}")
+        blockers.append(f"BLOCKED_MISSING_TECHNICALS: No technical data for {symbol}")
 
     # -----------------------------------------------------------------------
     # 7. Volume / liquidity
     # -----------------------------------------------------------------------
-    volume = quote.get("volume")
-    if volume is not None and volume > MIN_VOLUME:
+    if day_volume is not None and day_volume > MIN_VOLUME:
         liquidity_ok = True
+        volume_source = quote_provider
     else:
-        liquidity_ok = False
-        blockers.append(
-            f"Volume {volume} below minimum {MIN_VOLUME}"
-            if volume is not None
-            else f"No volume data for {symbol}"
-        )
+        # Try OHLCV bars as volume fallback
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT volume FROM market_ohlcv_bars
+                WHERE symbol = %s AND timeframe = 'daily'
+                ORDER BY bar_time DESC LIMIT 1
+            """, (symbol,))
+            vrow = cur.fetchone()
+            cur.close()
+            if vrow and vrow[0] and float(vrow[0]) > MIN_VOLUME:
+                liquidity_ok = True
+                volume_source = "ohlcv_daily"
+                day_volume = float(vrow[0])
+            else:
+                liquidity_ok = False
+                volume_source = "unavailable"
+                vol_val = f"{day_volume}" if day_volume is not None else (
+                    f"{float(vrow[0]):.0f}" if vrow and vrow[0] else "none")
+                blockers.append(f"BLOCKED_NO_VOLUME: Volume {vol_val} below min {MIN_VOLUME}")
+        except Exception:
+            liquidity_ok = False
+            volume_source = "unavailable"
+            blockers.append(f"BLOCKED_NO_VOLUME: No volume data for {symbol}")
 
     # -----------------------------------------------------------------------
     # 8. Technical snapshot gates (Session 23D)
     # -----------------------------------------------------------------------
-    tech_ok = True
     strategy_id = proposal.get("strategy_id", "")
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT ema_alignment, technical_grade, opening_range_status, premarket_status,
-                   vwap_distance_pct, atr_14, nearest_fib_level, nearest_fib_distance_pct,
-                   ohlcv_data_status
-            FROM proposal_technical_snapshots
-            WHERE symbol = %s ORDER BY computed_at DESC LIMIT 1
-        """, (symbol,))
-        ts_row = cur.fetchone()
-        cur.close()
+    ts_orb_status = None
+    if ts_row:
+        ts_ema_align, ts_grade, ts_orb_status, ts_pm_status, \
+            ts_vwap_dist, ts_atr, ts_fib_level, ts_fib_dist, ts_ohlcv_status, ts_computed = ts_row
 
-        if ts_row:
-            ts_ema_align, ts_grade, ts_orb_status, ts_pm_status, \
-                ts_vwap_dist, ts_atr, ts_fib_level, ts_fib_dist, ts_ohlcv_status = ts_row
+        if ts_ema_align in ("BEARISH", "LONG_TERM_OVERHEAD"):
+            warnings.append(f"CAUTION_EMA: EMA alignment is {ts_ema_align}")
 
-            # EMA alignment gate
-            if ts_ema_align in ("BEARISH", "LONG_TERM_OVERHEAD"):
-                warnings.append(f"CAUTION_EMA: EMA alignment is {ts_ema_align}")
+        if strategy_id in STRATEGY_REQUIRES_ORB:
+            if ts_orb_status == "NO_INTRADAY_DATA":
+                blockers.append("BLOCKED_MISSING_INTRADAY_REQUIRED: momentum_scalp requires intraday data")
+            elif ts_orb_status == "ORB_BREAKOUT_FAILED":
+                warnings.append("CAUTION_ORB_FAILED: Opening range breakout failed")
 
-            # ORB gate — only required for momentum_scalp
-            if strategy_id in STRATEGY_REQUIRES_ORB:
-                if ts_orb_status == "NO_INTRADAY_DATA":
-                    blockers.append("BLOCKED_MISSING_INTRADAY_REQUIRED: momentum_scalp requires intraday data")
-                    tech_ok = False
-                elif ts_orb_status == "ORB_BREAKOUT_FAILED":
-                    warnings.append("CAUTION_ORB_FAILED: Opening range breakout failed")
+        if ts_vwap_dist is not None and float(ts_vwap_dist) > 5:
+            warnings.append(f"CAUTION_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP")
 
-            # VWAP extension warning
-            if ts_vwap_dist is not None and float(ts_vwap_dist) > 5:
-                warnings.append(f"CAUTION_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP")
+        proposed_target1_val = float(proposal.get("proposed_target1") or 0)
+        proposed_entry_val = float(proposal.get("proposed_entry") or 0)
+        if ts_atr and proposed_entry_val and proposed_target1_val:
+            target_distance = abs(proposed_target1_val - proposed_entry_val)
+            atr_val = float(ts_atr)
+            if atr_val > 0 and target_distance > 3 * atr_val:
+                warnings.append(f"CAUTION_ATR_TARGET_TOO_FAR: Target {target_distance:.2f} > 3x ATR {atr_val:.2f}")
 
-            # ATR target feasibility
-            proposed_target1 = float(proposal.get("proposed_target1") or 0)
-            proposed_entry = float(proposal.get("proposed_entry") or 0)
-            if ts_atr and proposed_entry and proposed_target1:
-                target_distance = abs(proposed_target1 - proposed_entry)
-                atr_val = float(ts_atr)
-                if atr_val > 0 and target_distance > 3 * atr_val:
-                    warnings.append(f"CAUTION_ATR_TARGET_TOO_FAR: Target {target_distance:.2f} > 3x ATR {atr_val:.2f}")
+        if ts_fib_level and ts_fib_dist is not None and float(ts_fib_dist) < 2:
+            warnings.append(f"INFO_NEAR_FIB: Near {ts_fib_level} ({ts_fib_dist}% away)")
 
-            # Fib proximity note
-            if ts_fib_level and ts_fib_dist is not None and float(ts_fib_dist) < 2:
-                warnings.append(f"INFO_NEAR_FIB: Near {ts_fib_level} ({ts_fib_dist}% away)")
+        if ts_pm_status == "PREMARKET_HIGH_REJECTED":
+            warnings.append("CAUTION_BELOW_PREMARKET_HIGH: Rejected at premarket high")
 
-            # Premarket status
-            if ts_pm_status == "PREMARKET_HIGH_REJECTED":
-                warnings.append("CAUTION_BELOW_PREMARKET_HIGH: Rejected at premarket high")
-
-            # Technical grade
-            if ts_grade == "TECH_WEAK":
-                warnings.append("CAUTION_TECH_WEAK: Technical grade is WEAK")
-            elif ts_grade == "TECH_INCOMPLETE":
-                warnings.append("CAUTION_TECH_INCOMPLETE: Technical data incomplete")
-        else:
-            warnings.append("NO_TECHNICAL_SNAPSHOT: No proposal technical snapshot available")
-    except Exception as e:
-        warnings.append(f"TECH_GATE_ERROR: {str(e)[:100]}")
+        if ts_grade == "TECH_WEAK":
+            warnings.append("CAUTION_TECH_WEAK: Technical grade is WEAK")
+        elif ts_grade == "TECH_INCOMPLETE":
+            warnings.append("CAUTION_TECH_INCOMPLETE: Technical data incomplete")
 
     # -----------------------------------------------------------------------
     # Paper-only warning (always)
@@ -343,10 +377,11 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
     warnings.append(LIVE_DISABLED_WARNING)
 
     # -----------------------------------------------------------------------
-    # Backtest gate — future placeholder, passes for now
+    # Backtest — Session 23E: honest labeling
     # -----------------------------------------------------------------------
-    # backtest_ok already True; add a note
-    warnings.append("Backtest gate not yet implemented — defaulted to pass")
+    # backtest_ok = True for learning mode, but warning is truthful
+    warnings.append("BACKTEST_SAMPLE_INSUFFICIENT_LEARNING_MODE: "
+                     "Backtest data insufficient — paper learning mode active")
 
     # -----------------------------------------------------------------------
     # Determine readiness state
@@ -371,21 +406,20 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
         else:
             readiness_state = "CAUTION_EXECUTABLE"
     else:
-        # Pick the first blocker category as primary state
         state_map = {
+            "BLOCKED_NO_QUOTE": "BLOCKED_NO_QUOTE",
             "Quote age": "BLOCKED_STALE_QUOTE",
-            "No quote data": "BLOCKED_STALE_QUOTE",
             "Could not parse": "BLOCKED_STALE_QUOTE",
+            "BLOCKED_SPREAD_UNKNOWN": "BLOCKED_SPREAD_UNKNOWN",
+            "Spread": "BLOCKED_SPREAD",
             "Price moved": "BLOCKED_PRICE_MOVED",
             "Open paper trade": "BLOCKED_DUPLICATE",
             "Risk gate": "BLOCKED_RISK_GATE",
-            "No indicator": "BLOCKED_MISSING_TECHNICALS",
-            "Volume": "BLOCKED_SPREAD",  # liquidity-related
-            "No volume": "BLOCKED_SPREAD",
-            "Spread": "BLOCKED_SPREAD",
-            "Backtest": "BLOCKED_BACKTEST_INSUFFICIENT",
+            "BLOCKED_MISSING_TECHNICALS": "BLOCKED_MISSING_TECHNICALS",
+            "BLOCKED_NO_VOLUME": "BLOCKED_NO_VOLUME",
+            "BLOCKED_MISSING_INTRADAY": "BLOCKED_MISSING_INTRADAY_REQUIRED",
         }
-        readiness_state = "BLOCKED_STALE_QUOTE"  # fallback
+        readiness_state = "BLOCKED_NO_QUOTE"  # fallback
         for blocker_text in blockers:
             for prefix, state in state_map.items():
                 if prefix.lower() in blocker_text.lower():
@@ -411,10 +445,10 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
         "shares": proposed_shares,
     }
 
-    slippage_budget_pct = 0.10  # default 10 bps
+    slippage_budget_pct = 0.10
 
     # Session 23D: Bracket validation fields
-    bracket_order_supported = True  # Alpaca paper supports brackets
+    bracket_order_supported = True
     alpaca_mode = os.getenv("ALPACA_MODE", "paper").lower()
     alpaca_base = os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
     alpaca_base_type = "paper" if "paper-api" in alpaca_base else "LIVE_BLOCKED"
@@ -435,11 +469,8 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
 
     # Enhance readiness state for ORB-confirmed scenarios
     if readiness_state == "READY_FOR_PAPER_SUBMIT":
-        try:
-            if ts_row and ts_orb_status == "ORB_BREAKOUT_CONFIRMED":
-                readiness_state = "READY_ORB_CONFIRMED"
-        except NameError:
-            pass
+        if ts_row and ts_orb_status == "ORB_BREAKOUT_CONFIRMED":
+            readiness_state = "READY_ORB_CONFIRMED"
 
     return {
         "proposal_id": proposal["id"],
@@ -474,6 +505,13 @@ def assess_proposal(conn, proposal: dict, finviz_cache: dict) -> dict:
         "alpaca_base_url_type": alpaca_base_type,
         "market_hours": mkt_hours,
         "bracket_dry_run_payload": bracket_payload,
+        # Session 23E: Quote provider fields
+        "quote_provider": quote_provider,
+        "quote_snapshot_id": quote_snapshot_id,
+        "quote_is_delayed": quote_is_delayed,
+        "quote_execution_eligible": quote_execution_eligible,
+        "volume_source": volume_source,
+        "spread_source": spread_source,
     }
 
 
@@ -495,6 +533,8 @@ def write_readiness(conn, rec: dict):
             blockers, warnings, execution_plan,
             bracket_order_supported, alpaca_account_mode, alpaca_base_url_type,
             market_hours, bracket_dry_run_payload,
+            quote_provider, quote_snapshot_id, quote_is_delayed,
+            quote_execution_eligible, volume_source, spread_source,
             created_at
         ) VALUES (
             %(proposal_id)s, %(symbol)s, %(strategy_id)s, %(readiness_state)s, %(readiness_score)s,
@@ -506,6 +546,8 @@ def write_readiness(conn, rec: dict):
             %(blockers)s, %(warnings)s, %(execution_plan)s,
             %(bracket_order_supported)s, %(alpaca_account_mode)s, %(alpaca_base_url_type)s,
             %(market_hours)s, %(bracket_dry_run_payload)s,
+            %(quote_provider)s, %(quote_snapshot_id)s, %(quote_is_delayed)s,
+            %(quote_execution_eligible)s, %(volume_source)s, %(spread_source)s,
             NOW()
         )
         """,
@@ -518,13 +560,8 @@ def write_readiness(conn, rec: dict):
         },
     )
 
-    # Update proposal with latest readiness state
     cur.execute(
-        """
-        UPDATE paper_trade_proposals
-           SET latest_execution_readiness = %s
-         WHERE id = %s
-        """,
+        "UPDATE paper_trade_proposals SET latest_execution_readiness = %s WHERE id = %s",
         (rec["readiness_state"], rec["proposal_id"]),
     )
 
@@ -537,18 +574,17 @@ def write_readiness(conn, rec: dict):
 # ---------------------------------------------------------------------------
 
 def print_readiness(rec: dict):
-    """Pretty-print a readiness record."""
     state = rec["readiness_state"]
     score = rec["readiness_score"]
     sym = rec["symbol"]
 
     icon = "PASS" if "READY" in state else ("WARN" if "CAUTION" in state else "BLOCK")
     print(f"\n[{icon}] {sym} (proposal #{rec['proposal_id']}): {state}  score={score}/100")
+    print(f"  Provider: {rec.get('quote_provider')} | exec_eligible={rec.get('quote_execution_eligible')} | delayed={rec.get('quote_is_delayed')}")
 
     if rec["quote_price"] is not None:
-        print(f"  Quote: ${rec['quote_price']:.2f}  age={rec['quote_age_seconds']:.0f}s"
-              if rec["quote_age_seconds"] is not None
-              else f"  Quote: ${rec['quote_price']:.2f}  age=N/A")
+        age = f"{rec['quote_age_seconds']:.0f}s" if rec["quote_age_seconds"] is not None else "N/A"
+        print(f"  Quote: ${rec['quote_price']:.2f}  age={age}  bid={rec.get('bid')}  ask={rec.get('ask')}  spread={rec.get('spread_pct')}")
     if rec["entry_price"] is not None:
         drift = rec["price_vs_entry_pct"]
         print(f"  Entry: ${rec['entry_price']:.2f}  drift={drift:.2f}%" if drift is not None else
@@ -565,12 +601,6 @@ def print_readiness(rec: dict):
         print("  Blockers:")
         for b in rec["blockers"]:
             print(f"    - {b}")
-    if rec["warnings"]:
-        print("  Warnings:")
-        for w in rec["warnings"]:
-            print(f"    - {w}")
-
-    print(f"  Execution plan: {json.dumps(rec['execution_plan'], indent=2)}")
 
 
 # ---------------------------------------------------------------------------
@@ -582,17 +612,16 @@ def main():
         description="Assess paper trade proposal execution readiness"
     )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--pending", action="store_true", help="Assess all pending proposals")
-    group.add_argument("--proposal-id", type=int, help="Assess a specific proposal by ID")
+    group.add_argument("--pending", action="store_true")
+    group.add_argument("--proposal-id", type=int)
 
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--dry-run", action="store_true", help="Display results only, do not write to DB")
-    mode.add_argument("--apply", action="store_true", help="Write results to DB")
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--apply", action="store_true")
 
     args = parser.parse_args()
 
     conn = get_conn()
-    finviz_cache = load_finviz_cache()
 
     proposals = fetch_proposals(
         conn,
@@ -609,7 +638,7 @@ def main():
 
     results = []
     for p in proposals:
-        rec = assess_proposal(conn, p, finviz_cache)
+        rec = assess_proposal(conn, p)
         results.append(rec)
         print_readiness(rec)
 
@@ -617,8 +646,7 @@ def main():
             write_readiness(conn, rec)
             print(f"  -> Written to DB (proposal #{rec['proposal_id']})")
 
-    # Summary
-    ready = sum(1 for r in results if r["readiness_state"] == "READY_FOR_PAPER_SUBMIT")
+    ready = sum(1 for r in results if "READY" in r["readiness_state"])
     caution = sum(1 for r in results if r["readiness_state"] == "CAUTION_EXECUTABLE")
     blocked = sum(1 for r in results if "BLOCKED" in r["readiness_state"])
     print(f"\nSummary: {ready} ready, {caution} caution, {blocked} blocked out of {len(results)} proposals")

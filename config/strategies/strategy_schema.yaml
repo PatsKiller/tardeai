@@ -1,0 +1,57 @@
+required_fields:
+  - strategy_id
+  - display_name
+  - version
+  - status
+  - purpose
+  - eligible_accounts
+  - timeframe
+  - timeframe_class
+  - universe
+  - entry_criteria
+  - auto_disqualifiers
+  - exit_rules
+  - risk
+  - scoring
+  - lifecycle
+  - execution
+  - agent_responsibilities
+  - co_enables
+  - validation_gate
+  - prompt_context
+
+valid_statuses:
+  - UNVALIDATED
+  - TESTING
+  - VALIDATED
+  - PAUSED
+  - KILLED
+
+valid_timeframe_classes:
+  - INTRADAY
+  - SHORT_SWING
+  - MEDIUM_SWING
+  - POSITION
+  - CASH
+
+valid_operators:
+  - gte
+  - lte
+  - gt
+  - lt
+  - eq
+  - neq
+  - in
+  - exists
+
+valid_actions:
+  - PASS
+  - WAIT
+  - CAUTION
+  - BLOCK
+  - PAPER_ONLY
+
+valid_missing_data_actions:
+  - WARN
+  - BLOCK
+  - IGNORE

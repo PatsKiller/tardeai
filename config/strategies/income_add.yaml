@@ -1,11 +1,13 @@
 strategy_id: income_add
 display_name: Income Position Add
 version: "1.0"
+status: TESTING
 purpose: "Adding to or initiating income positions. Triggered by pullbacks to support, ex-div opportunities, or rebalancing."
 
 eligible_accounts: [rollover_ira, roth_ira, taxable]
 forbidden_accounts: []
 timeframe: position_long
+timeframe_class: POSITION
 universe: income_candidates
 
 primary_data_sources:

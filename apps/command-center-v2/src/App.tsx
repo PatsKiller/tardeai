@@ -47,6 +47,11 @@ const PaperStatus = lazy(() => import('./pages/PaperStatus'))
 const PaperProposals = lazy(() => import('./pages/PaperProposals'))
 const PaperJournal = lazy(() => import('./pages/PaperJournal'))
 const Incubator = lazy(() => import('./pages/Incubator'))
+const ExecutionQuality = lazy(() => import('./pages/ExecutionQuality'))
+const BrokerReconciliation = lazy(() => import('./pages/BrokerReconciliation'))
+const PaperOutcomes = lazy(() => import('./pages/PaperOutcomes'))
+const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
+const LiveGovernance = lazy(() => import('./pages/LiveGovernance'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -88,6 +93,11 @@ export default function App() {
           <Route path="paper-proposals" element={<SafePage><PaperProposals /></SafePage>} />
           <Route path="paper-journal" element={<SafePage><PaperJournal /></SafePage>} />
           <Route path="incubator" element={<SafePage><Incubator /></SafePage>} />
+          <Route path="execution-quality" element={<SafePage><ExecutionQuality /></SafePage>} />
+          <Route path="broker-reconciliation" element={<SafePage><BrokerReconciliation /></SafePage>} />
+          <Route path="paper-outcomes" element={<SafePage><PaperOutcomes /></SafePage>} />
+          <Route path="strategy-admin" element={<SafePage><StrategyAdmin /></SafePage>} />
+          <Route path="live-governance" element={<SafePage><LiveGovernance /></SafePage>} />
           <Route path="portfolio" element={<SafePage><Portfolio /></SafePage>} />
           <Route path="portfolio-intelligence" element={<SafePage><PortfolioIntelligence /></SafePage>} />
           <Route path="journal" element={<SafePage><Journal /></SafePage>} />

@@ -1,11 +1,13 @@
 strategy_id: sector_rotation
 display_name: Sector Rotation
 version: "1.0"
+status: TESTING
 purpose: "Trade leading sector ETF surges and lagging sector weakness. Weekly rebalance."
 
 eligible_accounts: [taxable, rollover_ira, roth_ira]
 forbidden_accounts: []
 timeframe: position_2_to_8w
+timeframe_class: MEDIUM_SWING
 universe: sector_etfs
 
 primary_data_sources:

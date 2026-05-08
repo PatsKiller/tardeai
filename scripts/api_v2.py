@@ -7019,6 +7019,15 @@ def _paper_proposals_enriched():
                 'proposal_timeframe_class': p.get('proposal_timeframe_class'),
                 'overnight_monitoring_enabled': p.get('overnight_monitoring_enabled'),
                 'manual_review_required': p.get('manual_review_required'),
+                'last_price_checked_at': _json_clean(p.get('last_price_checked_at')),
+                'last_lifecycle_check_at': _json_clean(p.get('last_lifecycle_check_at')),
+                'quote_provider': p.get('last_price_source'),
+                'source_run_label': p.get('source_run_label'),
+                # Session 24B: Strategy config + setup stack
+                'primary_strategy_id': p.get('primary_strategy_id'),
+                'secondary_strategy_ids': _json_clean(p.get('secondary_strategy_ids')),
+                'setup_stack': _json_clean(p.get('setup_stack')),
+                'strategy_config_hash': p.get('strategy_config_hash'),
                 # Session 17v3 research packet fields
                 'decision_state': p.get('decision_state_computed'),
                 'research_score': _json_clean(p.get('research_score')),
@@ -10481,6 +10490,82 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 24B: Strategy config + multi-setup endpoints ──────────────
+
+    if method == "GET" and base_path == "/api/v2/strategy-configs":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from strategy_config_loader import load_all_strategy_configs
+            configs = load_all_strategy_configs()
+            result = {}
+            for sid, c in sorted(configs.items()):
+                result[sid] = {
+                    "strategy_id": sid,
+                    "display_name": c.get("display_name"),
+                    "version": c.get("version"),
+                    "status": c.get("status"),
+                    "timeframe": c.get("timeframe"),
+                    "timeframe_class": c.get("timeframe_class"),
+                    "purpose": c.get("purpose"),
+                    "eligible_accounts": c.get("eligible_accounts"),
+                    "config_hash": c.get("_config_hash"),
+                    "risk": c.get("risk"),
+                    "lifecycle": c.get("lifecycle"),
+                    "co_enables": c.get("co_enables"),
+                }
+            return 200, {"ok": True, "strategies": result, "count": len(result)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path.startswith("/api/v2/strategy-configs/"):
+        try:
+            sid = base_path.split("/")[-1]
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from strategy_config_loader import load_strategy_config, get_strategy_prompt_context
+            config = load_strategy_config(sid)
+            ctx = get_strategy_prompt_context(sid)
+            return 200, {"ok": True, "config": {k: v for k, v in config.items() if not k.startswith("_")},
+                         "config_hash": config.get("_config_hash"), "prompt_context": ctx}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/strategy-setup-matches":
+        try:
+            rows = _db_query("""
+                SELECT id, symbol, proposal_id, strategy_id, match_score,
+                       match_status, criteria_met, criteria_failed, disqualifiers_hit,
+                       is_primary, priority_rank, reason, created_at
+                FROM strategy_setup_matches
+                ORDER BY created_at DESC LIMIT 100
+            """) or []
+            return 200, {"ok": True, "matches": [
+                {k: _json_clean(v) for k, v in r.items()} for r in rows
+            ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/strategy-configs/validate":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/strategy_config_loader.py"), "--validate"],
+                        capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": r.returncode == 0, "output": r.stdout[-2000:]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/strategy-configs/sync-db":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/strategy_config_loader.py"), "--sync-db"],
+                        capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": r.returncode == 0, "output": r.stdout[-1000:]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 24A: Lifecycle + governance endpoints ─────────────────────
 
     if method == "GET" and base_path.startswith("/api/v2/paper-proposals/live-price/"):
@@ -10602,6 +10687,67 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                          "--recent", "--apply"],
                         capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
             return 200, {"ok": True, "output": r.stdout[-1000:], "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/enrich-all":
+        try:
+            import subprocess as _sp
+            import threading as _thr
+            import time as _time
+
+            # Status file for async tracking
+            _status_file = PROJECT_ROOT / "logs" / "enrich_all_status.json"
+
+            def _run_pipeline():
+                steps = [
+                    ("tech_snapshot", "proposal_technical_snapshot.py", ["--pending", "--apply"], 60),
+                    ("queue_reviews", "queue_proposal_agent_reviews.py", ["--apply"], 30),
+                    ("agent_jobs", "process_watchlist_agent_jobs.py", ["--limit", "20"], 600),
+                    ("llm_analysis", "proposal_intelligence_analyzer.py", ["--pending", "--apply"], 600),
+                    ("backtest", "proposal_backtest_engine.py", ["--pending", "--apply"], 60),
+                    ("quality", "proposal_quality_reviewer.py", ["--apply"], 30),
+                    ("readiness", "proposal_execution_readiness.py", ["--pending", "--apply"], 120),
+                    ("monitor", "proposal_monitor.py", ["--pending", "--include-intraday", "--apply"], 120),
+                ]
+                results = {}
+                for key, script, args, timeout in steps:
+                    results[key] = "running"
+                    try:
+                        _status_file.write_text(json.dumps({"state": "running", "current_step": key, "steps": results}))
+                    except Exception:
+                        pass
+                    try:
+                        r = _sp.run(
+                            [str(PROJECT_ROOT / ".venv/bin/python"),
+                             str(PROJECT_ROOT / "scripts" / script)] + args,
+                            capture_output=True, text=True, timeout=timeout, cwd=str(PROJECT_ROOT))
+                        results[key] = "ok" if r.returncode == 0 else f"exit:{r.returncode}"
+                    except Exception as e:
+                        results[key] = f"error: {str(e)[:60]}"
+                all_ok = all(v == "ok" for v in results.values())
+                try:
+                    _status_file.write_text(json.dumps({
+                        "state": "done" if all_ok else "done_with_issues",
+                        "all_passed": all_ok, "steps": results,
+                        "finished_at": _time.strftime("%H:%M:%S")}))
+                except Exception:
+                    pass
+
+            # Launch in background thread
+            t = _thr.Thread(target=_run_pipeline, daemon=True)
+            t.start()
+            return 200, {"ok": True, "state": "started",
+                         "message": "Enrichment pipeline started in background. Poll /api/v2/paper-proposals/enrich-status for progress."}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-proposals/enrich-status":
+        try:
+            _status_file = PROJECT_ROOT / "logs" / "enrich_all_status.json"
+            if _status_file.exists():
+                return 200, {"ok": True, **json.loads(_status_file.read_text())}
+            return 200, {"ok": True, "state": "idle", "message": "No enrichment running"}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

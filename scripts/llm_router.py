@@ -49,7 +49,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
-LOCAL_TIMEOUT = 30      # seconds — qwen3 thinking mode needs 15-20s
+LOCAL_TIMEOUT = 90      # seconds — qwen3:14b agent prompts with RAG context need 60-90s on Intel Arc B580
 CONFIDENCE_THRESHOLD = 0.65
 
 from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_ollama_runtime_env

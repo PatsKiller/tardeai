@@ -1,11 +1,13 @@
 strategy_id: earnings_catalyst
 display_name: Earnings Catalyst
 version: "1.0"
+status: TESTING
 purpose: "Pre-earnings buildup + post-earnings momentum. Two sub-strategies tracked independently."
 
 eligible_accounts: [taxable, rollover_ira, roth_ira]
 forbidden_accounts: []
 timeframe: swing_1_to_5d
+timeframe_class: SHORT_SWING
 universe: earnings_candidates
 
 primary_data_sources:

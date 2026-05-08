@@ -61,13 +61,7 @@ sandbox/
 data/
 
 # ── Generated reports (regenerable from code + state) ──────────────────────
-reports/monthly/
-reports/weekly/
-reports/daily/
-reports/audit/
-!reports/command_center.html
-!reports/*.js
-!reports/*.css
+reports/
 
 # ── OS ──────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -99,16 +93,8 @@ temp/
 
 apps/command-center-v2-backup-*
 
-# Generated Trade AI reports and run artifacts
-reports/
-logs/
-backups/
-*.bak
+# ── Additional artifact exclusions ─────────────────────────────────────────
 *.bak_session*
 docs/project/docx_patch_*.json
+docs/project/docx_patch_*.py
 *.tst
-
-# Local/private state
-.env
-data/portfolios/state/holdings.json
-data/portfolios/state/performance_history.json

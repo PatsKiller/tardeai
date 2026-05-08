@@ -455,52 +455,54 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     except Exception:
         pass
 
-    # Strategy playbook context — agents know which strategy applies
+    # Session 24B: Strategy playbook context from YAML config loader
     strategy_playbook_block = ""
     try:
-        import yaml as _yaml
-        _proj = Path(__file__).resolve().parent.parent
-        # Infer strategy from scan data or job context
+        from strategy_config_loader import get_strategy_prompt_context, load_strategy_config
+        # Infer strategy from scan data or proposals
         _strat_id = None
         try:
             _sconn = _get_conn()
             _scur = _sconn.cursor()
+            # Check proposals first
             _scur.execute("""
-                SELECT rvol, float_m, gap_pct, decision FROM trade_ai_scans
-                WHERE symbol = %s ORDER BY scanned_at DESC LIMIT 1
+                SELECT strategy_id FROM paper_trade_proposals
+                WHERE symbol=%s AND status='PENDING'
+                ORDER BY created_at DESC LIMIT 1
             """, [symbol])
-            _srow = _scur.fetchone()
+            _prow = _scur.fetchone()
+            if _prow:
+                _strat_id = _prow[0]
+            else:
+                # Fallback to scan-based inference
+                _scur.execute("""
+                    SELECT rvol, float_m, gap_pct FROM trade_ai_scans
+                    WHERE symbol=%s ORDER BY scanned_at DESC LIMIT 1
+                """, [symbol])
+                _srow = _scur.fetchone()
+                if _srow:
+                    _rvol = float(_srow[0] or 0)
+                    _flt = float(_srow[1] or 999)
+                    _gap = float(_srow[2] or 0)
+                    if _rvol >= 5 and _flt <= 100:
+                        _strat_id = 'momentum_scalp'
+                    elif _gap >= 5:
+                        _strat_id = 'gap_and_go'
             _sconn.close()
-            if _srow:
-                _rvol = float(_srow[0] or 0)
-                _flt = float(_srow[1] or 999)
-                _gap = float(_srow[2] or 0)
-                if _rvol >= 5 and _flt <= 100:
-                    _strat_id = 'momentum_scalp'
-                elif _gap >= 5:
-                    _strat_id = 'gap_and_go'
         except Exception:
             pass
 
         if _strat_id:
-            _ypath = _proj / 'config' / 'strategies' / f'{_strat_id}.yaml'
-            if _ypath.exists():
-                with open(_ypath) as _yf:
-                    _strat = _yaml.safe_load(_yf)
-                _lines = [f"\n=== STRATEGY PLAYBOOK: {_strat.get('display_name', _strat_id)} ==="]
-                _lines.append(f"Purpose: {str(_strat.get('purpose', ''))[:200]}")
-                _lines.append(f"Timeframe: {_strat.get('timeframe', 'unknown')}")
-                _eligible = _strat.get('eligible_accounts', [])
-                _forbidden = _strat.get('forbidden_accounts', [])
-                if _forbidden:
-                    _lines.append(f"FORBIDDEN accounts: {', '.join(_forbidden)}")
-                _agent_roles = _strat.get('agent_responsibilities', {})
-                _role = _agent_roles.get(agent)
-                if _role:
-                    _role_str = _role if isinstance(_role, str) else str(_role)
-                    _lines.append(f"Your role ({agent}): {_role_str[:200]}")
-                _lines.append("=" * 40)
-                strategy_playbook_block = '\n'.join(_lines)
+            ctx = get_strategy_prompt_context(_strat_id)
+            # Add agent-specific role
+            try:
+                cfg = load_strategy_config(_strat_id)
+                role = (cfg.get('agent_responsibilities') or {}).get(agent)
+                if role:
+                    ctx += f"\nYour role ({agent}): {role if isinstance(role, str) else str(role)[:200]}"
+            except Exception:
+                pass
+            strategy_playbook_block = f"\n{ctx}\n"
     except Exception:
         pass
 
