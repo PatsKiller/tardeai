@@ -1,11 +1,13 @@
 strategy_id: swing_breakout
 display_name: Swing Breakout
 version: "1.0"
+status: TESTING
 purpose: "Technical breakout from multi-week consolidation base. 20+ day base, volume dry-up, then expansion."
 
 eligible_accounts: [taxable, rollover_ira, roth_ira]
 forbidden_accounts: [fidelity_401k]
 timeframe: swing_3_to_21d
+timeframe_class: SHORT_SWING
 universe: breakout_candidates
 
 primary_data_sources:

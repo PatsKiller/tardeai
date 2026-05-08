@@ -145,8 +145,8 @@ class CycleState:
             _cat = (t.get("top_catalyst") or {}).get("title", "")[:55]
             _dec = t.get("decision", "")
             _sc  = t.get("score", 0)
-            # Only send RVOL/score alerts for GO and WAIT — suppress AVOID noise
-            _actionable = _dec in ("GO", "WAIT")
+            # Only send RVOL/score alerts for GO — suppress WAIT/AVOID noise
+            _actionable = _dec == "GO"
             if rvol >= RVOL_8X_THRESHOLD and sym not in self.rvol8x_seen:
                 self.rvol8x_seen.add(sym)
                 if _actionable:

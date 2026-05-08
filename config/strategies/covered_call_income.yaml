@@ -1,0 +1,96 @@
+strategy_id: covered_call_income
+display_name: Covered Call Income
+version: "1.0.0"
+status: UNVALIDATED
+purpose: "Write covered calls on existing share positions to generate premium income. Requires 100+ shares owned in the underlying."
+
+eligible_accounts: [taxable, rollover_ira, roth_ira]
+timeframe: position_long
+timeframe_class: POSITION
+
+universe:
+  price:
+    min: 10.00
+    max: null
+  float_m:
+    max: null
+  rvol:
+    min: null
+
+entry_criteria:
+  - id: SHARES_OWNED
+    description: "Must own at least 100 shares of the underlying in the target account"
+    metric: shares_held
+    operator: gte
+    value: 100
+  - id: IV_RANK_ELEVATED
+    description: "Implied volatility rank above 30 for acceptable premium"
+    metric: iv_rank
+    operator: gte
+    value: 30
+  - id: STRIKE_ABOVE_COST_BASIS
+    description: "Call strike price above average cost basis to avoid called-away loss"
+    metric: strike_vs_cost_basis
+    operator: gte
+    value: 1.0
+  - id: DTE_RANGE
+    description: "Days to expiration between 21 and 45 for optimal theta decay"
+    metric: dte
+    operator: gte
+    value: 21
+
+auto_disqualifiers:
+  - id: NO_SHARES_HELD
+    description: "No existing position of 100+ shares in the underlying"
+  - id: EARNINGS_BEFORE_EXPIRY
+    description: "Earnings date falls before option expiration"
+  - id: STRIKE_BELOW_BASIS
+    description: "Call strike below cost basis would lock in a loss if assigned"
+  - id: WASH_SALE_RISK
+    description: "Assignment would trigger wash sale with recent loss in same security"
+
+exit_rules:
+  stop_method: fixed_pct
+  target_method: level_based
+
+risk:
+  risk_per_trade_pct: 0.005
+  max_position_size: 10000
+  max_daily_trades: null
+  target_rr: 1.5
+
+scoring:
+  min_score_go: 40
+  min_score_wait: 25
+
+lifecycle:
+  proposal_expiry_hours: 720
+  overnight_allowed: true
+  max_hold_days: 45
+
+execution:
+  paper_allowed: true
+  live_allowed: false
+
+agent_responsibilities:
+  maria: "Verify underlying thesis intact and no upcoming catalysts that warrant keeping upside."
+  risk: "Validate strike selection, DTE, and assignment risk vs cost basis."
+  steph: "Confirm account-level options approval, tax implications of assignment, and income impact."
+
+co_enables:
+  promotes_to: []
+  strengthens: [core_growth_compounder, dividend_growth_compounder, reit_income]
+
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+
+prompt_context:
+  summary: "Covered call income strategy for generating premium on existing 100+ share positions. Targets elevated IV rank with strikes above cost basis and 21-45 DTE. Requires existing share ownership as prerequisite."
+  key_questions:
+    - "Is the underlying thesis still intact or should shares be sold outright instead?"
+    - "Does IV rank justify writing calls now vs waiting for higher premium?"
+    - "Will assignment at the selected strike result in a net gain above cost basis?"

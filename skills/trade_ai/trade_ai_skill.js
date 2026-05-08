@@ -1,6 +1,6 @@
 /**
  * trade_ai_skill.js — Trade AI v12 + Portfolio Intelligence Skill
- * Bible v7.5 | OpenClaw / ClawHub compatible | May 7, 2026
+ * Bible v7.5 | OpenClaw / ClawHub compatible | May 8, 2026 | Session 24B.1
  *
  * Actions:
  *   run          — Full 23-stage Trade AI pipeline (Finviz → scoring → GO/WAIT)
@@ -21,14 +21,88 @@
  *   Server:  ms01-openclaw (Ubuntu) | SSH johnclaw@192.168.50.16
  *   Root:    /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
  *   Port:    7777 (portfolio_server.py)
- *   DB:      PostgreSQL trade_ai — 164 tables (user: trade_ai)
- *   API:     120+ endpoints (api_v2.py) — incl. incubator, proposal-quality-review
+ *   DB:      PostgreSQL trade_ai — 219 tables (user: trade_ai)
+ *   API:     ~125 endpoints (api_v2.py) — incl. strategy-configs, lifecycle, TCA, governance
  *   Agents:  7 registered (maria, steph, risk_agent, tax_agent, alex, aegis, iris)
- *   Models:  qwen3:14b (local, Intel Arc B50 Vulkan) + Claude Sonnet (alex/iris) + Grok fallback
- *   Crons:   75 entries (incl. tax-sweep 6:35, social 7:30, RAG 6:50)
+ *   Models:  qwen3:14b (local, Intel Arc B50 Vulkan, 90s timeout) + Claude Sonnet + Grok fallback
+ *   Crons:   127 entries (incl. proposal_monitor 4x/day, TCA, reconciler, governance)
  *   RAG:     5,610 items embedded (99.98%)
  *   Social:  443 posts (StockTwits 279, Reddit 161, X 3)
- *   Holdings: $1,193,911 / 47 positions
+ *   Scripts: 290 Python files
+ *   YAMLs:   23 strategy config files (20 strategies + schema + shared rules + recommendation)
+ *   Holdings: $1,189,220 / 47 positions
+ *
+ * ─── SESSION 23D ADDITIONS ─────────────────────────────────────────────────
+ *
+ *   OHLCV Cache:  market_ohlcv_bars table (55K+ bars, yfinance + Polygon)
+ *   EMA Engine:   EMA 8/21/50/200 from daily bars, alignment classification
+ *   Fib Engine:   fib_swing_engine.py — 60-day swing high/low, 7 retracement/extension levels
+ *   ORB Engine:   opening_range_engine.py — 5/15/30min ORB + premarket levels
+ *   Tech Grade:   TECH_STRONG/OK/MIXED/WEAK/INCOMPLETE scoring
+ *   Bracket:      Alpaca paper bracket dry-run + submit with full gate validation
+ *   API:          6 new endpoints (run-fib, run-opening-range, run-technical-snapshot,
+ *                 dry-run-alpaca-bracket, submit-alpaca-paper-bracket, technical-diagnostics)
+ *   UI:           Tech Map tab (EMA stack, Fib, ORB/premarket), bracket controls
+ *
+ * ─── SESSION 23E ADDITIONS ─────────────────────────────────────────────────
+ *
+ *   Quote Provider: market_quote_provider.py — multi-provider hierarchy:
+ *                   Alpaca snapshot > Polygon > Finnhub > FMP > yfinance > Finviz cache
+ *   Quote Table:    market_quote_snapshots (bid/ask/spread/volume/exec_eligible per provider)
+ *   Readiness Fix:  Finviz cache removed as execution quote source
+ *                   Spread no longer defaults to pass when bid/ask missing
+ *                   BLOCKED_SPREAD_UNKNOWN / BLOCKED_NO_QUOTE / BLOCKED_NO_VOLUME states
+ *   Tech Primary:   proposal_technical_snapshots is now primary for indicators_ok
+ *                   indicator_confluence_cache is fallback only
+ *   Backtest Label: BACKTEST_SAMPLE_INSUFFICIENT_LEARNING_MODE (honest, no false pass)
+ *   UI:             Quote Source section (provider, bid/ask, spread, exec eligible, volume)
+ *   Git Hygiene:    Removed 82 tracked artifacts (reports/, .bak, docx_patch_)
+ *
+ * ─── SESSION 24A/24B/24B.1 ADDITIONS ──────────────────────────────────────
+ *
+ *   Lifecycle:      proposal_lifecycle.py — 20-strategy expiry map (8h-720h)
+ *                   intraday (scalp/gap) expire EOD, swing/position monitored overnight
+ *                   entry zone tracking, price drift, extension rules (max 2x, capped 720h)
+ *   Monitor:        proposal_monitor.py — AH/PM/market checks (4:30PM, 6PM, 6AM, 6:30AM)
+ *                   price drift, entry zone validity, expiry extension, lifecycle events
+ *   TCA:            paper_execution_quality_analyzer.py — slippage, fill quality (EXCELLENT-UNKNOWN)
+ *   Reconciler:     alpaca_paper_reconciler.py — Alpaca vs local paper_trades matching
+ *   Thesis:         post_trade_thesis_reviewer.py — expected vs actual entry/exit/R comparison
+ *   Governance:     paper_performance_governance.py — per-strategy win rate, expectancy, PF
+ *                   States: PAPER_ONLY → WATCHLIST → CANDIDATE_FOR_REVIEW → LIVE_ELIGIBLE
+ *                   Live always blocked: "Requires six months of validated paper results"
+ *   Schema:         6 new tables (lifecycle_events, execution_quality, recon_runs/items,
+ *                   thesis_outcomes, performance_governance) + 17 lifecycle columns
+ *   API:            8 new endpoints (live-price, monitor, lifecycle-events, execution-quality,
+ *                   broker-reconciliation, governance, reconciliation/run, execution-quality/run)
+ *   UI:             Lifecycle bar on every proposal card (status, zone, drift, class, provider)
+ *   Crons:          proposal_monitor 4x/day, reconciler 4:15PM, TCA 4:30PM, governance monthly
+ *
+ * ─── SESSION 24B: STRATEGY PLAYBOOK ────────────────────────────────────────
+ *
+ *   Playbook:       docs/project/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md + config/ copy
+ *   YAMLs:          20 strategy configs in config/strategies/ + shared_risk_rules + schema
+ *   Config Loader:  strategy_config_loader.py — validate, sync to DB, prompt context builder
+ *   Multi-Setup:    multi_setup_router.py — evaluates all 20 strategies per symbol, setup stacks
+ *   DB Tables:      strategy_config_versions, strategy_setup_matches, strategy_prompt_context_cache
+ *   Agent Prompts:  Strategy context injected into Maria/Risk/Steph + qwen3:14b LLM prompts
+ *   API:            GET /api/v2/strategy-configs, GET /api/v2/strategy-setup-matches,
+ *                   POST /api/v2/strategy-configs/validate, POST /api/v2/strategy-configs/sync-db
+ *   UI Pages:       Strategy Admin (/v2/strategy-admin), Live Governance (/v2/live-governance)
+ *
+ * ─── SESSION 24B.1: COMMAND CENTER REDESIGN ────────────────────────────────
+ *
+ *   PaperProposals: Complete rewrite as institutional command center (1465 lines)
+ *   Normalizer:     normalizeProposal() computes actionState, topBlocker, nextActions, dataQuality
+ *   Card Design:    Decision banner, 8 metric tiles, strategy-first header, color-coded states
+ *   Data Fixes:     Strategy mismatch detection, EMA alignment guard, confidence clamping,
+ *                   quote freshness override, spread unknown handling, missing data by section
+ *   Filters:        Strategy dropdown, action state, symbol search, show all/top 5
+ *   Enrich All:     Async 8-step pipeline with live status polling
+ *   New Pages:      Execution Quality, Broker Reconciliation, Paper Outcomes
+ *   Scroll Fix:     theme.css height:100% → min-height:100vh
+ *   LLM Timeout:    llm_router LOCAL_TIMEOUT 30s → 90s for agent prompts
+ *   Telegram:       WAIT/AVOID alerts suppressed (GO only)
  *
  * ─── KEY ENDPOINTS (verified working) ──────────────────────────────────────
  *

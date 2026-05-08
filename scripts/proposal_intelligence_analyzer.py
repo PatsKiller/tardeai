@@ -111,14 +111,36 @@ def build_prompt(p):
     vs_sector = p.get('vs_sector_pct')
     vs_sector_str = f"{float(vs_sector):+.1f}%" if vs_sector is not None else "N/A"
 
+    # Session 24B: Inject strategy context from YAML
+    strategy_ctx = ""
+    try:
+        from strategy_config_loader import get_strategy_prompt_context
+        strategy_ctx = get_strategy_prompt_context(p.get('strategy_id', 'momentum_scalp'), p)
+    except Exception:
+        strategy_ctx = f"Strategy: {p.get('strategy_id', 'unknown')} (no YAML config loaded)"
+
+    # Session 24B: Setup stack context
+    setup_stack_ctx = ""
+    if p.get('setup_stack'):
+        stack = p['setup_stack'] if isinstance(p['setup_stack'], list) else []
+        if stack:
+            setup_stack_ctx = "\n=== SETUP STACK ===\n" + "\n".join(
+                f"  {m.get('strategy_id','?')}: score={m.get('match_score',0)} "
+                f"status={m.get('match_status','?')} {'[PRIMARY]' if m.get('is_primary') else ''}"
+                for m in stack[:5])
+
     return f"""You are an institutional prop desk analyst. Analyze this paper trade proposal.
 Be specific. Reference at least 5 numeric facts. Identify 2+ kill conditions.
+Your analysis MUST explicitly state: (1) primary strategy and why, (2) secondary setups if any,
+(3) 3+ criteria met, (4) any criteria failed, (5) whether auto-disqualifiers were checked.
 If your answer could apply to any ticker, rewrite it. Under 300 words.
 
 === TRADE SETUP ===
 Symbol: {p.get('symbol')} | Strategy: {p.get('strategy_id')} | Setup: {p.get('setup_type') or 'N/A'}
 Entry: ${entry:.2f} | Stop: ${stop:.2f} | Target: ${t1:.2f} | T2: ${t2:.2f}
 Shares: {shares} | Risk: ${risk:.0f} | Reward: ${reward:.0f} | R:R: {p.get('proposed_rr') or 'N/A'}
+
+=== {strategy_ctx} ==={setup_stack_ctx}
 
 === TECHNICAL MAP ===
 RSI: {f"{rsi:.1f}" if rsi else 'N/A'} | ATR: {f"${float(p['atr']):.2f} ({atr_pct:.1f}%)" if p.get('atr') and atr_pct else 'N/A'}

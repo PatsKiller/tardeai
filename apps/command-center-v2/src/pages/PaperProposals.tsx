@@ -3,147 +3,156 @@ import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
 
 const mono: React.CSSProperties = { fontFamily: 'monospace' }
+
+// ── Style helpers ──────────────────────────────────────────────────────
 const lbl: React.CSSProperties = { fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }
+const secLbl: React.CSSProperties = { fontSize: 10, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, marginTop: 14 }
 const pill = (color: string): React.CSSProperties => ({
   fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
   background: color === 'green' ? 'rgba(34,197,94,0.15)' : color === 'red' ? 'rgba(239,68,68,0.15)' : color === 'blue' ? 'rgba(59,130,246,0.15)' : 'rgba(251,191,36,0.15)',
   color: color === 'green' ? 'var(--green)' : color === 'red' ? 'var(--red)' : color === 'blue' ? '#60A5FA' : 'var(--amber)',
 })
-const warnChip: React.CSSProperties = { fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(251,191,36,0.12)', color: '#F59E0B', fontWeight: 600, whiteSpace: 'nowrap' }
+const btnStyle = (bg: string, color: string = '#fff'): React.CSSProperties => ({
+  padding: '5px 12px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 5, cursor: 'pointer', color, background: bg,
+})
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '3px 5px', fontSize: 11, ...mono,
   background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 4,
   color: 'var(--text0)', fontWeight: 600, textAlign: 'right',
 }
-const secLbl: React.CSSProperties = { fontSize: 10, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, marginTop: 14 }
 const kv = (label: string, value: any, color?: string) => (
   <div key={label}>
     <div style={lbl}>{label}</div>
     <div style={{ fontSize: 11, color: color || 'var(--text0)', fontWeight: 600, ...mono }}>{value ?? '--'}</div>
   </div>
 )
-const btnStyle = (bg: string, color: string = '#fff'): React.CSSProperties => ({
-  padding: '5px 12px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 5, cursor: 'pointer', color, background: bg,
-})
 
-// Decision state colors
-const dsColors: Record<string, { bg: string; text: string; label: string }> = {
-  APPROVE_READY_PAPER_TEST: { bg: 'rgba(34,197,94,0.15)', text: 'var(--green)', label: 'APPROVE READY' },
-  CAUTIOUS_PAPER_TEST: { bg: 'rgba(251,191,36,0.12)', text: '#F59E0B', label: 'CAUTIOUS TEST' },
-  RESEARCH_INCOMPLETE: { bg: 'rgba(148,163,184,0.15)', text: '#94A3B8', label: 'RESEARCH INCOMPLETE' },
-  AI_REVIEW_MISSING: { bg: 'rgba(59,130,246,0.15)', text: '#60A5FA', label: 'AI REVIEW MISSING' },
-  DATA_STALE: { bg: 'rgba(251,191,36,0.12)', text: '#F59E0B', label: 'DATA STALE' },
-  BACKTEST_INSUFFICIENT: { bg: 'rgba(148,163,184,0.15)', text: '#94A3B8', label: 'BACKTEST INSUFFICIENT' },
-  REJECT_RECOMMENDED: { bg: 'rgba(239,68,68,0.15)', text: 'var(--red)', label: 'REJECT RECOMMENDED' },
-  BLOCKED_BY_RISK_GATE: { bg: 'rgba(239,68,68,0.15)', text: 'var(--red)', label: 'BLOCKED — RISK GATE' },
+// ── Action-state color map ─────────────────────────────────────────────
+const ACTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  PAPER_READY:   { bg: 'rgba(34,197,94,0.15)',  text: 'var(--green)', border: 'rgba(34,197,94,0.35)' },
+  CAUTION:       { bg: 'rgba(251,191,36,0.12)', text: '#F59E0B',     border: 'rgba(251,191,36,0.3)' },
+  BLOCKED:       { bg: 'rgba(239,68,68,0.15)',  text: 'var(--red)',   border: 'rgba(239,68,68,0.3)' },
+  NEEDS_REVIEW:  { bg: 'rgba(59,130,246,0.15)', text: '#60A5FA',     border: 'rgba(59,130,246,0.3)' },
+  MISSING_DATA:  { bg: 'rgba(148,163,184,0.15)',text: '#94A3B8',     border: 'rgba(148,163,184,0.3)' },
+  LEARNING_MODE: { bg: 'rgba(251,191,36,0.12)', text: '#F59E0B',     border: 'rgba(251,191,36,0.3)' },
 }
 
-function AgentReviewPanel({ votes }: { votes: Record<string, any> }) {
-  if (!votes || Object.keys(votes).length === 0) {
-    return (
-      <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>
-        No agent reviews completed yet
-      </div>
-    )
+// ── Normalizer ─────────────────────────────────────────────────────────
+const KEY_FIELDS = [
+  'catalyst', 'catalyst_confidence', 'technical_context', 'technical_snapshot',
+  'agent_reviews', 'llm_analysis', 'backtest_summary', 'execution_readiness',
+  'strategy_fit', 'proposed_entry', 'proposed_stop', 'proposed_target1',
+  'proposed_shares', 'signal_score', 'signal_grade', 'news',
+]
+
+const MISSING_SECTIONS: Record<string, string> = {
+  catalyst: 'Catalyst', catalyst_confidence: 'Catalyst', catalyst_quality: 'Catalyst',
+  technical_context: 'Technical', technical_snapshot: 'Technical', technical_summary: 'Technical',
+  agent_reviews: 'Agent/LLM', llm_analysis: 'Agent/LLM', agent_votes: 'Agent/LLM',
+  backtest_summary: 'Backtest', execution_readiness: 'Execution',
+  strategy_fit: 'Execution', proposed_entry: 'Critical', proposed_stop: 'Critical',
+  proposed_target1: 'Critical', proposed_shares: 'Critical',
+  signal_score: 'Critical', signal_grade: 'Critical', news: 'Catalyst',
+}
+
+function normalizeProposal(p: any) {
+  const er = p.execution_readiness || {}
+  const missingData: string[] = Array.isArray(p.missing_data) ? p.missing_data : []
+  const blockers: string[] = Array.isArray(er.blockers) ? er.blockers : []
+
+  // actionState
+  let actionState = 'CAUTION'
+  const readinessState = String(er.readiness_state || '').toUpperCase()
+  if (readinessState.includes('BLOCKED')) {
+    actionState = 'BLOCKED'
+  } else if (missingData.length >= 4 && !readinessState.includes('BLOCKED')) {
+    actionState = 'MISSING_DATA'
+  } else if (readinessState === 'READY_FOR_PAPER_SUBMIT' || readinessState === 'READY_ORB_CONFIRMED') {
+    // Check all gates
+    const riskOk = er.risk_gate_ok !== false
+    const priceOk = er.price_ok !== false
+    const quoteOk = er.quote_fresh !== false
+    const dupOk = er.duplicate_ok !== false
+    if (riskOk && priceOk && quoteOk && dupOk && blockers.length === 0) {
+      actionState = 'PAPER_READY'
+    }
+  } else if (p.lifecycle_status === 'NEEDS_REVIEW' || p.decision_state === 'AI_REVIEW_MISSING') {
+    actionState = 'NEEDS_REVIEW'
+  } else if (p.decision_state === 'CAUTIOUS_PAPER_TEST' && p.paper_ready) {
+    actionState = 'LEARNING_MODE'
   }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {Object.entries(votes).map(([name, v]: [string, any]) => {
-        const vote = v?.vote || 'not reviewed'
-        const conf = v?.confidence != null ? `${Math.round(Number(v.confidence))}%` : ''
-        const summary = v?.summary || ''
-        const model = v?.model || ''
-        const voteColor = vote === 'APPROVE_TEST' ? 'green' : vote === 'REJECT' || vote === 'BLOCK' ? 'red' : vote === 'WAIT_FOR_DATA' ? 'blue' : 'amber'
-        return (
-          <div key={name} style={{ padding: '4px 8px', background: 'var(--bg0)', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', minWidth: 40, ...mono }}>{name}</span>
-            <span style={pill(voteColor)}>{vote} {conf}</span>
-            <span style={{ fontSize: 9, color: 'var(--text2)', flex: 1 }}>{summary.slice(0, 100)}</span>
-            {model && <span style={{ fontSize: 8, color: 'var(--text3)' }}>{model}</span>}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
-function TechPanel({ p }: { p: any }) {
+  // topBlocker
+  const topBlocker = blockers.length > 0 ? blockers[0] : 'None'
+
+  // primaryStrategy: use strategy_id
+  const primaryStrategy = p.strategy_id || 'unknown'
+  const strategyMismatch = p.primary_strategy_id != null && p.primary_strategy_id !== p.strategy_id
+
+  // nextActions
+  const nextActions: string[] = []
   const tc = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-      {kv('ATR', tc.atr ? `$${Number(tc.atr).toFixed(2)} / ${tc.atr_pct || '?'}%` : null, !tc.atr ? 'var(--amber)' : undefined)}
-      {kv('ATR State', tc.atr_state || (tc.atr ? undefined : 'ATR missing — indicator engine has not populated'))}
-      {kv('RSI', tc.rsi != null ? `${Number(tc.rsi).toFixed(1)}` : null, tc.rsi_state?.includes('overbought') ? 'var(--red)' : tc.rsi_state === 'oversold' ? 'var(--green)' : !tc.rsi ? 'var(--amber)' : undefined)}
-      {kv('RSI State', tc.rsi_state || 'RSI missing — indicator engine pending')}
-      {kv('VWAP', tc.vwap_distance_pct != null ? `${Number(tc.vwap_distance_pct) > 0 ? '+' : ''}${Number(tc.vwap_distance_pct).toFixed(1)}%` : null)}
-      {kv('VWAP State', tc.vwap_state || 'VWAP missing')}
-      {kv('ADX', tc.adx != null ? `${Number(tc.adx).toFixed(1)}` : null)}
-      {kv('Trend', tc.trend_strength || 'ADX missing')}
-      {kv('RVOL', tc.rvol ? `${Number(tc.rvol).toFixed(1)}x` : null, tc.rvol >= 10 ? 'var(--green)' : tc.rvol >= 5 ? '#60A5FA' : undefined)}
-      {kv('RVOL State', tc.rvol_state || 'RVOL missing')}
-      {kv('Float Rotation', tc.float_rotation_state || 'unavailable')}
-      {kv('Gap', tc.gap_pct != null ? `${Number(tc.gap_pct).toFixed(1)}% (${tc.gap_state || '?'})` : null)}
-    </div>
-  )
-}
+  if (!tc.rsi && !tc.atr) nextActions.push('Run Technical Snapshot')
+  if (!p.agent_reviews?.length && !p.llm_analysis) nextActions.push('Run AI Review')
+  if (!p.catalyst || !p.news?.length) nextActions.push('Run Research')
+  if (!p.execution_readiness) nextActions.push('Check Execution Readiness')
+  if (er.quote_age_seconds != null && Number(er.quote_age_seconds) > 300) nextActions.push('Check Execution during market hours')
+  if (!p.backtest_summary) nextActions.push('Run Backtest')
 
-function BacktestPanel({ p }: { p: any }) {
-  const bt = typeof p.backtest_summary === 'string' ? JSON.parse(p.backtest_summary || '{}') : (p.backtest_summary || {})
-  if (!bt.quality && !bt.sample_size) {
-    return <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>Backtest not run yet</div>
+  // dataCompleteness
+  let filledCount = 0
+  for (const f of KEY_FIELDS) {
+    const v = p[f]
+    if (v != null && v !== '' && !(Array.isArray(v) && v.length === 0) && !(typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)) {
+      filledCount++
+    }
   }
-  const qualColor = bt.quality === 'SUFFICIENT' ? 'green' : bt.quality === 'LIMITED' ? 'amber' : 'red'
-  return (
-    <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-        {kv('Quality', bt.quality, qualColor === 'green' ? 'var(--green)' : qualColor === 'amber' ? 'var(--amber)' : 'var(--red)')}
-        {kv('Samples', bt.sample_size)}
-        {kv('Win Rate', bt.win_rate != null ? `${(Number(bt.win_rate) * 100).toFixed(1)}%` : null)}
-        {kv('Profit Factor', bt.profit_factor != null ? `${Number(bt.profit_factor).toFixed(2)}` : null)}
-        {kv('Expectancy', bt.expectancy != null ? `$${Number(bt.expectancy).toFixed(2)}` : null)}
-        {kv('Avg R', bt.avg_r != null ? `${Number(bt.avg_r).toFixed(2)}R` : null)}
-        {kv('Repeat Pattern', bt.repeat_pattern ? 'Yes' : 'No')}
-      </div>
-      {bt.similar_summary && <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 6 }}>{bt.similar_summary}</div>}
-      {bt.limitations && bt.limitations.length > 0 && (
-        <div style={{ fontSize: 9, color: 'var(--amber)', marginTop: 4 }}>
-          Limitations: {bt.limitations.join('; ')}
-        </div>
-      )}
-    </div>
-  )
-}
+  const dataCompleteness = Math.round((filledCount / KEY_FIELDS.length) * 100)
 
-function StockHistoryPanel({ p }: { p: any }) {
-  const hist = typeof p.stock_history_summary === 'string' ? JSON.parse(p.stock_history_summary || '{}') : (p.stock_history_summary || {})
-  if (!hist.prior_scans && hist.prior_scans !== 0) {
-    return <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>No stock history available</div>
+  // missingBySection
+  const missingBySection: Record<string, string[]> = {}
+  for (const item of missingData) {
+    // Try to match to a known section
+    let section = 'Other'
+    const lower = item.toLowerCase()
+    if (lower.includes('catalyst') || lower.includes('news')) section = 'Catalyst'
+    else if (lower.includes('technical') || lower.includes('atr') || lower.includes('rsi') || lower.includes('vwap') || lower.includes('ema')) section = 'Technical'
+    else if (lower.includes('agent') || lower.includes('llm') || lower.includes('review')) section = 'Agent/LLM'
+    else if (lower.includes('backtest')) section = 'Backtest'
+    else if (lower.includes('execution') || lower.includes('quote') || lower.includes('readiness')) section = 'Execution'
+    else if (lower.includes('entry') || lower.includes('stop') || lower.includes('target') || lower.includes('shares') || lower.includes('score') || lower.includes('grade')) section = 'Critical'
+    if (!missingBySection[section]) missingBySection[section] = []
+    missingBySection[section].push(item)
   }
+
+  return { actionState, topBlocker, primaryStrategy, strategyMismatch, nextActions, dataCompleteness, missingBySection }
+}
+
+// ── Metric tile component ──────────────────────────────────────────────
+function MetricTile({ label, value, status, tileColor }: { label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray' }) {
+  const colors = {
+    green: { bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.25)', text: 'var(--green)' },
+    amber: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.25)', text: '#F59E0B' },
+    red:   { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)',  text: 'var(--red)' },
+    gray:  { bg: 'rgba(148,163,184,0.06)',border: 'rgba(148,163,184,0.15)',text: '#94A3B8' },
+  }
+  const c = colors[tileColor]
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-      {kv('Prior Scans', hist.prior_scans)}
-      {kv('GO Count', hist.go_count)}
-      {kv('WAIT Count', hist.wait_count)}
-      {kv('A+ Count', hist.aplus_count)}
-      {kv('Paper Trades', hist.paper_trades)}
-      {kv('Paper Wins', hist.paper_wins)}
-      {kv('Paper PnL', hist.paper_pnl != null ? `$${Number(hist.paper_pnl).toFixed(2)}` : null)}
-      {kv('Last Result', hist.last_result || 'None')}
+    <div style={{ padding: '6px 8px', background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6, textAlign: 'center', minWidth: 0 }}>
+      <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: c.text, ...mono }}>{value}</div>
+      <div style={{ fontSize: 7, color: 'var(--text3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status}</div>
     </div>
   )
 }
 
+// ── Confirm modal ──────────────────────────────────────────────────────
 function ConfirmModal({ p, onConfirm, onCancel }: { p: any; onConfirm: () => void; onCancel: () => void }) {
-  const ds = dsColors[p.decision_state] || dsColors.CAUTIOUS_PAPER_TEST
   const reasons = p.approval_blocked_reason ? p.approval_blocked_reason.split(';').map((r: string) => r.trim()) : ['Non-standard approval']
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: 'var(--bg1)', borderRadius: 12, padding: 24, maxWidth: 420, width: '90%', border: '1px solid var(--border)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>This is not an approve-ready proposal.</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ ...mono, fontSize: 11 }}>State:</span>
-          <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: ds.bg, color: ds.text }}>{ds.label}</span>
-        </div>
         <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 8, fontWeight: 600 }}>Reasons:</div>
         <ul style={{ margin: 0, paddingLeft: 16, marginBottom: 16 }}>
           {reasons.map((r: string, i: number) => <li key={i} style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4 }}>{r}</li>)}
@@ -160,6 +169,7 @@ function ConfirmModal({ p, onConfirm, onCancel }: { p: any; onConfirm: () => voi
   )
 }
 
+// ── Proposal card ──────────────────────────────────────────────────────
 function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string> }) {
   const [editing, setEditing] = useState(false)
   const [shares, setShares] = useState(p.proposed_shares || 0)
@@ -169,17 +179,20 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
   const [activeTab, setActiveTab] = useState('summary')
   const [showConfirm, setShowConfirm] = useState(false)
   const [runningAction, setRunningAction] = useState<string | null>(null)
+  const [showAllSetups, setShowAllSetups] = useState(false)
+
+  const norm = normalizeProposal(p)
+  const ac = ACTION_COLORS[norm.actionState] || ACTION_COLORS.CAUTION
 
   const riskPS = Math.abs(entry - stop)
   const computedRisk = riskPS * shares
   const computedRR = riskPS > 0 ? (target - entry) / riskPS : 0
   const computedReward = (target - entry) * shares
-  const isModified = shares !== (p.proposed_shares||0) || entry !== (p.proposed_entry||0) || stop !== (p.proposed_stop||0) || target !== (p.proposed_target1||0)
+  const isModified = shares !== (p.proposed_shares || 0) || entry !== (p.proposed_entry || 0) || stop !== (p.proposed_stop || 0) || target !== (p.proposed_target1 || 0)
 
-  const ds = dsColors[p.decision_state] || dsColors.CAUTIOUS_PAPER_TEST
   const cd = p.minutes_remaining != null ? {
     color: p.minutes_remaining > 90 ? 'var(--green)' : p.minutes_remaining > 30 ? 'var(--amber)' : 'var(--red)',
-    text: p.minutes_remaining > 60 ? `${Math.floor(p.minutes_remaining/60)}h ${p.minutes_remaining%60}m` : `${p.minutes_remaining}m`,
+    text: p.minutes_remaining > 60 ? `${Math.floor(p.minutes_remaining / 60)}h ${p.minutes_remaining % 60}m` : `${p.minutes_remaining}m`,
   } : null
 
   const canApprove = p.decision_state === 'APPROVE_READY_PAPER_TEST'
@@ -217,46 +230,144 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     { key: 'technical', label: 'Technical' },
     { key: 'tech_map', label: 'Tech Map' },
     { key: 'catalyst', label: 'Catalyst' },
-    { key: 'strategy_fit', label: 'Strategy Fit' },
-    { key: 'backtest', label: 'Backtest' },
-    { key: 'risk', label: 'Risk / Reward' },
+    { key: 'strategy', label: 'Strategy' },
+    { key: 'risk', label: 'Risk/Reward' },
     { key: 'execution', label: 'Execution' },
     { key: 'agents', label: 'Agents' },
     { key: 'missing', label: 'Missing' },
   ]
 
+  // ── Build metric tiles ──
+  const er = p.execution_readiness || {}
+  const tc = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
+  const bt = typeof p.backtest_summary === 'string' ? JSON.parse(p.backtest_summary || '{}') : (p.backtest_summary || {})
+  const sf = p.strategy_fit || {}
+  const agentReviews = (p.agent_reviews || []).filter((ar: any) => ar.verdict)
+  const rr = p.proposed_rr || (riskPS > 0 ? (target - entry) / riskPS : 0)
+
+  const tiles: { label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray' }[] = [
+    {
+      label: 'Strategy Fit',
+      value: sf.fit_score != null ? `${sf.fit_score}` : '--',
+      status: sf.fit_grade || 'Not computed',
+      tileColor: sf.fit_score >= 80 ? 'green' : sf.fit_score >= 60 ? 'amber' : sf.fit_score != null ? 'red' : 'gray',
+    },
+    {
+      label: 'Execution',
+      value: er.readiness_score != null ? `${er.readiness_score}` : '--',
+      status: er.readiness_state ? er.readiness_state.replace(/_/g, ' ').slice(0, 20) : 'Not checked',
+      tileColor: er.readiness_state === 'READY_FOR_PAPER_SUBMIT' || er.readiness_state === 'READY_ORB_CONFIRMED' ? 'green' : er.readiness_state === 'CAUTION_EXECUTABLE' ? 'amber' : er.readiness_state ? 'red' : 'gray',
+    },
+    {
+      label: 'Technical',
+      value: p.technical_snapshot?.technical_grade || (tc.rsi != null ? 'OK' : '--'),
+      status: tc.rsi != null ? `RSI ${Number(tc.rsi).toFixed(0)}` : 'Missing',
+      tileColor: p.technical_snapshot?.technical_grade === 'TECH_STRONG' ? 'green' : p.technical_snapshot?.technical_grade === 'TECH_OK' ? 'amber' : tc.rsi != null ? 'amber' : 'gray',
+    },
+    {
+      label: 'Catalyst',
+      value: p.catalyst_quality?.catalyst_quality_score != null ? `${p.catalyst_quality.catalyst_quality_score}` : p.catalyst_confidence != null ? `${Math.min(100, Math.max(0, Math.round(p.catalyst_confidence * 100)))}%` : '--',
+      status: p.catalyst_quality?.catalyst_grade || (p.catalyst_verified ? 'Verified' : 'Unverified'),
+      tileColor: p.catalyst_quality?.catalyst_quality_score >= 70 ? 'green' : p.catalyst_quality?.catalyst_quality_score >= 50 ? 'amber' : p.catalyst ? 'amber' : 'gray',
+    },
+    {
+      label: 'R:R',
+      value: rr > 0 ? Number(rr).toFixed(1) : '--',
+      status: rr >= 2 ? 'Meets min' : rr > 0 ? 'Below 2.0 min' : 'Not set',
+      tileColor: rr >= 3 ? 'green' : rr >= 2 ? 'amber' : rr > 0 ? 'red' : 'gray',
+    },
+    {
+      label: 'Agents',
+      value: agentReviews.length > 0 ? `${agentReviews.length}` : '--',
+      status: agentReviews.length > 0 ? `${agentReviews.filter((a: any) => a.verdict === 'APPROVE_TEST' || a.verdict === 'BUY').length} approve` : 'None',
+      tileColor: agentReviews.length >= 2 ? 'green' : agentReviews.length > 0 ? 'amber' : 'gray',
+    },
+    {
+      label: 'Backtest',
+      value: bt.quality || '--',
+      status: bt.win_rate != null ? `${(Number(bt.win_rate) * 100).toFixed(0)}% WR` : 'Not run',
+      tileColor: bt.quality === 'SUFFICIENT' ? 'green' : bt.quality === 'LIMITED' ? 'amber' : bt.quality ? 'red' : 'gray',
+    },
+    {
+      label: 'Data',
+      value: `${norm.dataCompleteness}%`,
+      status: `${(p.missing_data || []).length} missing`,
+      tileColor: norm.dataCompleteness >= 85 ? 'green' : norm.dataCompleteness >= 60 ? 'amber' : norm.dataCompleteness > 0 ? 'red' : 'gray',
+    },
+  ]
+
+  // ── Build decision banner text ──
+  let bannerText = ''
+  let bannerDetail = ''
+  if (norm.actionState === 'BLOCKED') {
+    bannerText = `BLOCKED — ${norm.topBlocker}`
+    bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
+  } else if (norm.actionState === 'PAPER_READY') {
+    bannerText = 'PAPER READY — All gates pass. Review thesis before submitting.'
+    bannerDetail = ''
+  } else if (norm.actionState === 'MISSING_DATA') {
+    bannerText = `MISSING DATA — ${(p.missing_data || []).length} fields missing`
+    bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions.join(', ')}` : ''
+  } else if (norm.actionState === 'NEEDS_REVIEW') {
+    bannerText = 'NEEDS REVIEW — Agent or data review pending'
+    bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
+  } else if (norm.actionState === 'LEARNING_MODE') {
+    bannerText = 'LEARNING MODE — Cautious paper test, not fully validated'
+    bannerDetail = ''
+  } else {
+    bannerText = `CAUTION — ${norm.topBlocker !== 'None' ? norm.topBlocker : 'Review data before proceeding'}`
+    bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
+  }
+
   return (
     <div style={{
       background: 'var(--bg1)', borderRadius: 8, marginBottom: 14,
-      border: `1px solid ${p.decision_state === 'REJECT_RECOMMENDED' || p.decision_state === 'BLOCKED_BY_RISK_GATE' ? 'rgba(239,68,68,0.3)' : isModified ? 'rgba(59,130,246,0.5)' : 'var(--border)'}`,
+      border: `1px solid ${ac.border}`,
     }}>
       {showConfirm && <ConfirmModal p={p} onConfirm={handleConfirmApprove} onCancel={() => setShowConfirm(false)} />}
 
-      {/* ── Header ── */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      {/* ── Header (compact, high-contrast) ── */}
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
             {p.signal_grade && <span style={pill(p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'green' : p.signal_grade === 'B' ? 'amber' : 'red')}>{p.signal_grade}</span>}
-            {p.signal_score && <span style={{ fontSize: 10, color: 'var(--text2)', ...mono }}>{p.signal_score}pts</span>}
-            <span style={{ fontSize: 9, color: 'var(--text3)' }}>{p.strategy_id}</span>
-            <span style={{ fontSize: 9, color: 'var(--text3)' }}>#{p.id}</span>
+            {p.signal_score != null && <span style={{ fontSize: 10, color: 'var(--text2)', ...mono }}>{p.signal_score}pts</span>}
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{norm.primaryStrategy}</span>
+            {p.proposal_timeframe_class && <span style={{ fontSize: 9, color: 'var(--text3)', ...mono }}>{p.proposal_timeframe_class}</span>}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: ds.bg, color: ds.text }}>{ds.label}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: ac.bg, color: ac.text }}>{norm.actionState.replace(/_/g, ' ')}</span>
+            {p.lifecycle_status && p.lifecycle_status !== 'ACTIVE' && (
+              <span style={pill(
+                p.lifecycle_status === 'ENTRY_ZONE_VALID' ? 'green' :
+                p.lifecycle_status === 'ENTRY_MISSED' ? 'amber' :
+                p.lifecycle_status === 'NEEDS_REVIEW' ? 'red' : 'blue'
+              )}>{p.lifecycle_status.replace(/_/g, ' ')}</span>
+            )}
             {cd && <span style={{ fontSize: 9, fontWeight: 600, color: cd.color, ...mono }}>{cd.text}</span>}
           </div>
         </div>
-        {/* Scores row */}
-        <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-          {kv('Research', p.research_score != null ? `${Math.round(p.research_score)}/100` : 'not run')}
-          {kv('Confidence', p.confidence_score != null ? `${Math.round(p.confidence_score)}/100` : 'not run')}
-          {kv('Live Ready', `${p.live_readiness_score || 0}/100 — PAPER ONLY`)}
-          {kv('Agent Review', p.agent_review_status || 'not reviewed')}
-          {kv('LLM', p.local_llm_review_status || 'not run')}
-          {kv('Backtest', p.backtest_status || 'not run')}
-          {kv('Source', p.source_lineage?.source || p.discovery_source || '—')}
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+          Top blocker: <span style={{ color: norm.topBlocker !== 'None' ? 'var(--red)' : 'var(--green)', fontWeight: 600 }}>{norm.topBlocker}</span>
+          <span style={{ marginLeft: 8, color: 'var(--text3)' }}>#{p.id}</span>
         </div>
+      </div>
+
+      {/* ── Decision banner ── */}
+      <div style={{
+        padding: '8px 16px',
+        background: ac.bg,
+        borderBottom: `1px solid ${ac.border}`,
+        display: 'flex', flexDirection: 'column', gap: 2,
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: ac.text }}>{bannerText}</div>
+        {bannerDetail && <div style={{ fontSize: 9, color: ac.text, opacity: 0.8 }}>{bannerDetail}</div>}
+      </div>
+
+      {/* ── Metric tiles row ── */}
+      <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+        {tiles.map(t => <MetricTile key={t.label} {...t} />)}
       </div>
 
       {/* ── Tabs ── */}
@@ -270,48 +381,78 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       </div>
 
       <div style={{ padding: '12px 16px' }}>
-        {/* ── Session 24A: Lifecycle bar (always visible) ── */}
-        {(() => {
-          const lc = p.lifecycle_status || p.technical_snapshot?.lifecycle_status
-          const ez = p.entry_zone_status || p.technical_snapshot?.entry_zone_status
-          const drift = p.price_drift_pct
-          const cp = p.current_price
-          const tc = p.proposal_timeframe_class
-          const lcColor = lc === 'ENTRY_ZONE_VALID' ? 'green' : lc === 'ACTIVE' ? 'blue'
-            : lc === 'NEEDS_REVIEW' || lc === 'ENTRY_MISSED' ? 'amber'
-            : lc === 'STALE' ? 'amber' : lc?.includes('EXPIRED') ? 'red' : 'blue'
-          return (lc || cp) ? (
-            <div style={{ display: 'flex', gap: 6, padding: '6px 16px', borderBottom: '1px solid var(--border)', alignItems: 'center', flexWrap: 'wrap', fontSize: 10 }}>
-              {lc && <span style={pill(lcColor)}>{lc}</span>}
-              {ez && <span style={{ color: 'var(--text3)', ...mono }}>Zone: {ez}</span>}
-              {cp != null && <span style={{ color: 'var(--text1)', ...mono }}>Price: ${Number(cp).toFixed(2)}</span>}
-              {drift != null && <span style={{ color: Math.abs(Number(drift)) > 5 ? 'var(--red)' : 'var(--text2)', ...mono }}>Drift: {Number(drift) > 0 ? '+' : ''}{Number(drift).toFixed(1)}%</span>}
-              {tc && <span style={{ color: 'var(--text3)' }}>{tc}</span>}
-              {p.expiry_extended_count > 0 && <span style={pill('blue')}>Extended x{p.expiry_extended_count}</span>}
-              {p.last_price_source && <span style={{ color: 'var(--text3)' }}>via {p.last_price_source}</span>}
-              <button onClick={() => runAction('monitor', '/api/v2/paper-proposals/monitor')}
-                disabled={!!runningAction} style={{ ...btnStyle('rgba(59,130,246,0.15)', '#60A5FA'), padding: '2px 8px', fontSize: 9 }}>
-                {runningAction === 'monitor' ? '...' : 'Refresh'}
-              </button>
-            </div>
-          ) : null
-        })()}
 
-        {/* ── Summary Tab ── */}
+        {/* ── Summary tab ── */}
         {activeTab === 'summary' && (
           <>
-            {/* Rejection / Cooldown Warning */}
             {p.recently_rejected && (
               <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
-                Recently rejected: {p.rejection_reason || 'Unknown reason'}{p.rejection_cooldown_until && ` — cooldown until ${new Date(p.rejection_cooldown_until).toLocaleString()}`}
+                Recently rejected: {p.rejection_reason || 'Unknown reason'}{p.rejection_cooldown_until && ` -- cooldown until ${new Date(p.rejection_cooldown_until).toLocaleString()}`}
               </div>
             )}
 
-            {/* Intelligence Readiness + Quality Review badges */}
+            {norm.strategyMismatch && (
+              <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
+                Strategy mismatch: strategy_id="{p.strategy_id}" but primary_strategy_id="{p.primary_strategy_id}". Using strategy_id as primary.
+              </div>
+            )}
+
+            {/* Setup thesis */}
+            <div style={secLbl}>Setup Thesis</div>
+            <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, marginBottom: 8, position: 'relative' }}>
+              {(p.agent_narrative || 'No narrative available.').replace(/\s*\(deterministic_fallback\)/g, '').replace(/\s*\(auto-generated\)/g, '')}
+              <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                {p.narrative_source === 'deterministic_fallback' && (
+                  <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>Deterministic fallback</span>
+                )}
+                {p.narrative_source === 'local_llm' && (
+                  <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(34,197,94,0.1)', color: 'var(--green)', fontWeight: 600 }}>qwen3:14b</span>
+                )}
+                {p.narrative_source && p.narrative_source !== 'deterministic_fallback' && p.narrative_source !== 'local_llm' && (
+                  <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>{p.narrative_source}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Support case / Reject case */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+              <div>
+                <div style={secLbl}>Support Case</div>
+                <div style={{ fontSize: 10, color: 'var(--green)', lineHeight: 1.5, padding: '6px 8px', background: 'rgba(34,197,94,0.05)', borderRadius: 4, border: '1px solid rgba(34,197,94,0.15)' }}>
+                  {(() => {
+                    const raw = p.llm_analysis?.approve_case || p.approve_case || 'No support rationale.'
+                    const cleaned = raw.replace(/\s*\(deterministic_fallback\)/g, '').replace(/\s*\(auto-generated\)/g, '')
+                    const bullets = cleaned.split(/[.;]/).filter((s: string) => s.trim())
+                    return bullets.length > 1 ? (
+                      <ul style={{ margin: 0, paddingLeft: 14 }}>
+                        {bullets.map((b: string, i: number) => <li key={i} style={{ marginBottom: 2 }}>{b.trim()}</li>)}
+                      </ul>
+                    ) : cleaned
+                  })()}
+                </div>
+              </div>
+              <div>
+                <div style={secLbl}>Reject Case</div>
+                <div style={{ fontSize: 10, color: 'var(--red)', lineHeight: 1.5, padding: '6px 8px', background: 'rgba(239,68,68,0.05)', borderRadius: 4, border: '1px solid rgba(239,68,68,0.15)' }}>
+                  {(() => {
+                    const raw = p.llm_analysis?.reject_case || p.reject_case || 'No rejection signals.'
+                    const cleaned = raw.replace(/\s*\(deterministic_fallback\)/g, '').replace(/\s*\(auto-generated\)/g, '')
+                    const bullets = cleaned.split(/[.;]/).filter((s: string) => s.trim())
+                    return bullets.length > 1 ? (
+                      <ul style={{ margin: 0, paddingLeft: 14 }}>
+                        {bullets.map((b: string, i: number) => <li key={i} style={{ marginBottom: 2 }}>{b.trim()}</li>)}
+                      </ul>
+                    ) : cleaned
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Intelligence + Quality badges */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
               {p.intelligence ? (
                 <span style={pill(p.intelligence.intelligence_readiness >= 70 ? 'green' : p.intelligence.intelligence_readiness >= 50 ? 'amber' : 'red')}>
-                  Intel: {p.intelligence.intelligence_readiness}/100 ({p.intelligence.readiness_source || 'unknown'})
+                  Intel: {p.intelligence.intelligence_readiness}/100
                 </span>
               ) : (
                 <span style={pill('amber')}>Intel: not computed</span>
@@ -321,75 +462,30 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                   Quality: {p.quality_review.review_state} ({(p.quality_review.quality_score * 100).toFixed(0)}%)
                 </span>
               ) : (
-                <span style={pill('amber')}>Quality review not run yet</span>
+                <span style={pill('amber')}>Quality review not run</span>
               )}
             </div>
 
-            <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.6, padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, marginBottom: 8 }}>
-              {p.agent_narrative || 'No narrative available.'}
-              {p.narrative_source && <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 8 }}>({p.narrative_source})</span>}
-            </div>
-
-            {/* Agent Reviews (Maria / Risk / Steph) */}
-            <div style={secLbl}>Agent Reviews (Maria / Risk / Steph)</div>
-            {p.agent_reviews && p.agent_reviews.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {p.agent_reviews.filter((ar: any) => ['maria','risk_agent','steph','Maria','Risk','Steph'].includes(ar.agent_name)).map((ar: any, i: number) => {
-                  const voteColor = ar.verdict === 'APPROVE_TEST' || ar.verdict === 'BUY' ? 'green'
-                    : ar.verdict === 'REJECT' || ar.verdict === 'BLOCK' || ar.verdict === 'AVOID' || ar.verdict === 'SELL' ? 'red'
-                    : ar.verdict === 'WAIT_FOR_DATA' ? 'blue' : 'amber'
-                  return (
-                    <div key={i} style={{ padding: '4px 8px', background: 'var(--bg0)', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', minWidth: 70, ...mono }}>{ar.agent_name}</span>
-                      <span style={pill(voteColor)}>{ar.verdict} {ar.confidence != null ? `${Math.round(Number(ar.confidence) * (Number(ar.confidence) > 1 ? 1 : 100))}%` : ''}</span>
-                      <span style={{ fontSize: 9, color: 'var(--text2)', flex: 1 }}>{(ar.summary || '').slice(0, 120)}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, color: 'var(--amber)', fontStyle: 'italic' }}>
-                Agent reviews not run yet
-              </div>
+            {/* LLM Analysis */}
+            {p.llm_analysis && (
+              <>
+                <div style={secLbl}>LLM Analysis</div>
+                <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, lineHeight: 1.5 }}>
+                  <div style={{ color: 'var(--text1)', marginBottom: 4 }}>{p.llm_analysis.summary}</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                    {p.llm_analysis.narrative_source === 'local_llm' ? (
+                      <span style={pill('green')}>LLM: {p.llm_analysis.model_used || 'qwen3:14b'}</span>
+                    ) : (
+                      <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>Fallback analysis</span>
+                    )}
+                    {p.llm_analysis.confidence != null && (
+                      <span style={{ fontSize: 9, color: 'var(--text2)', ...mono }}>conf: {(Number(p.llm_analysis.confidence) * 100).toFixed(0)}%</span>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
-            {/* qwen3:14b LLM Analysis */}
-            <div style={secLbl}>LLM Analysis (qwen3:14b)</div>
-            {p.llm_analysis ? (
-              <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, lineHeight: 1.5 }}>
-                <div style={{ color: 'var(--text1)', marginBottom: 4 }}>{p.llm_analysis.summary}</div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                  <span style={pill(p.llm_analysis.narrative_source === 'local_llm' ? 'green' : 'amber')}>
-                    {p.llm_analysis.narrative_source === 'local_llm' ? `LLM: ${p.llm_analysis.model_used || 'qwen3:14b'}` : 'Deterministic fallback'}
-                  </span>
-                  {p.llm_analysis.confidence != null && (
-                    <span style={{ fontSize: 9, color: 'var(--text2)', ...mono }}>conf: {(Number(p.llm_analysis.confidence) * 100).toFixed(0)}%</span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10, color: 'var(--amber)', fontStyle: 'italic' }}>
-                LLM analysis not run yet
-              </div>
-            )}
-
-            {/* Approve / Reject Cases */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
-              <div>
-                <div style={secLbl}>Approve Case</div>
-                <div style={{ fontSize: 10, color: 'var(--green)', lineHeight: 1.5, padding: '6px 8px', background: 'rgba(34,197,94,0.05)', borderRadius: 4, border: '1px solid rgba(34,197,94,0.15)' }}>
-                  {p.llm_analysis?.approve_case || p.approve_case || 'No approve rationale.'}
-                </div>
-              </div>
-              <div>
-                <div style={secLbl}>Reject Case</div>
-                <div style={{ fontSize: 10, color: 'var(--red)', lineHeight: 1.5, padding: '6px 8px', background: 'rgba(239,68,68,0.05)', borderRadius: 4, border: '1px solid rgba(239,68,68,0.15)' }}>
-                  {p.llm_analysis?.reject_case || p.reject_case || 'No rejection signals.'}
-                </div>
-              </div>
-            </div>
-
-            {/* Refresh Analysis button */}
             {(!p.agent_reviews?.length || !p.llm_analysis || !p.quality_review) && (
               <div style={{ marginTop: 10, textAlign: 'center' }}>
                 <button onClick={() => runAction('refresh', '/api/v2/paper-proposals/refresh-data')} disabled={!!runningAction}
@@ -401,19 +497,12 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           </>
         )}
 
-        {/* ── Technical Tab ── */}
+        {/* ── Technical tab ── */}
         {activeTab === 'technical' && (
           <>
-            <div style={secLbl}>Technical Intelligence</div>
-            <TechPanel p={p} />
-            {p.technical_summary && (
-              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 8, padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4 }}>
-                {p.technical_summary}
-              </div>
-            )}
-            {/* Session 23D: Technical grade */}
+            {/* Technical grade badge */}
             {p.technical_snapshot?.technical_grade && (
-              <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                 <span style={pill(p.technical_snapshot.technical_grade === 'TECH_STRONG' ? 'green' : p.technical_snapshot.technical_grade === 'TECH_OK' ? 'blue' : 'amber')}>
                   {p.technical_snapshot.technical_grade}
                 </span>
@@ -422,6 +511,42 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                 )}
               </div>
             )}
+
+            {/* Momentum */}
+            <div style={secLbl}>Momentum</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+              {kv('RSI', tc.rsi != null ? `${Number(tc.rsi).toFixed(1)}` : null,
+                tc.rsi == null ? 'var(--amber)' : tc.rsi_state?.includes('overbought') ? 'var(--red)' : tc.rsi_state === 'oversold' ? 'var(--green)' : undefined)}
+              {kv('RSI State', tc.rsi != null ? (tc.rsi_state || 'neutral') : 'Missing -- run technical snapshot', tc.rsi == null ? 'var(--amber)' : undefined)}
+              {kv('RVOL', tc.rvol ? `${Number(tc.rvol).toFixed(1)}x` : null, tc.rvol >= 10 ? 'var(--green)' : tc.rvol >= 5 ? '#60A5FA' : undefined)}
+              {kv('RVOL State', tc.rvol_state || (tc.rvol == null ? 'Missing -- run technical snapshot' : 'unknown'), tc.rvol == null ? 'var(--amber)' : undefined)}
+            </div>
+
+            {/* Trend */}
+            <div style={secLbl}>Trend</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+              {kv('ADX', tc.adx != null ? `${Number(tc.adx).toFixed(1)}` : null, tc.adx == null ? 'var(--amber)' : undefined)}
+              {kv('Trend Strength', tc.trend_strength || (tc.adx == null ? 'Missing -- run technical snapshot' : 'unknown'), tc.adx == null ? 'var(--amber)' : undefined)}
+              {kv('VWAP', tc.vwap_distance_pct != null ? `${Number(tc.vwap_distance_pct) > 0 ? '+' : ''}${Number(tc.vwap_distance_pct).toFixed(1)}%` : null,
+                tc.vwap_distance_pct == null ? 'var(--amber)' : undefined)}
+              {kv('VWAP State', tc.vwap_state || (tc.vwap_distance_pct == null ? 'Missing -- run technical snapshot' : 'unknown'), tc.vwap_distance_pct == null ? 'var(--amber)' : undefined)}
+            </div>
+
+            {/* Volatility */}
+            <div style={secLbl}>Volatility</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+              {kv('ATR', tc.atr ? `$${Number(tc.atr).toFixed(2)} / ${tc.atr_pct || '?'}%` : null, !tc.atr ? 'var(--amber)' : undefined)}
+              {kv('ATR State', tc.atr_state || (tc.atr == null ? 'Missing -- run technical snapshot' : 'unknown'), tc.atr == null ? 'var(--amber)' : undefined)}
+              {kv('Float Rotation', tc.float_rotation_state || 'unavailable')}
+              {kv('Gap', tc.gap_pct != null ? `${Number(tc.gap_pct).toFixed(1)}% (${tc.gap_state || '?'})` : null)}
+            </div>
+
+            {p.technical_summary && (
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4 }}>
+                {p.technical_summary}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
               <button onClick={() => runAction('techSnap', '/api/v2/paper-proposals/run-technical-snapshot')}
                 disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
@@ -439,31 +564,39 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           </>
         )}
 
-        {/* ── Tech Map Tab (Session 23D) ── */}
+        {/* ── Tech Map tab ── */}
         {activeTab === 'tech_map' && (
           <>
             <div style={secLbl}>EMA Stack</div>
             {(() => {
               const ts = p.technical_snapshot || {}
-              const alignColor = ts.ema_alignment === 'BULL_STACKED' ? 'green'
-                : ts.ema_alignment === 'BULLISH' ? 'green'
+              const allNull = ts.ema_8 == null && ts.ema_21 == null && ts.ema_50 == null && ts.ema_200 == null
+              const alignColor = ts.ema_alignment === 'BULL_STACKED' || ts.ema_alignment === 'BULLISH' ? 'green'
                 : ts.ema_alignment === 'BEARISH' ? 'red' : 'amber'
               return (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
-                    {kv('EMA 8', ts.ema_8 != null ? `$${Number(ts.ema_8).toFixed(2)}` : '--')}
-                    {kv('EMA 21', ts.ema_21 != null ? `$${Number(ts.ema_21).toFixed(2)}` : '--')}
-                    {kv('EMA 50', ts.ema_50 != null ? `$${Number(ts.ema_50).toFixed(2)}` : '--')}
-                    {kv('EMA 200', ts.ema_200 != null ? `$${Number(ts.ema_200).toFixed(2)}` : '--')}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
-                    {kv('EMA 8 Dist', ts.ema_8_distance_pct != null ? `${Number(ts.ema_8_distance_pct).toFixed(1)}%` : '--')}
-                    {kv('EMA 21 Dist', ts.ema_21_distance_pct != null ? `${Number(ts.ema_21_distance_pct).toFixed(1)}%` : '--')}
-                    {kv('EMA 50 Dist', ts.ema_50_distance_pct != null ? `${Number(ts.ema_50_distance_pct).toFixed(1)}%` : '--')}
-                    {kv('EMA 200 Dist', ts.ema_200_distance_pct != null ? `${Number(ts.ema_200_distance_pct).toFixed(1)}%` : '--')}
-                  </div>
+                  {allNull && ts.ema_alignment ? (
+                    <div style={{ fontSize: 10, color: 'var(--amber)', padding: '6px 8px', background: 'rgba(251,191,36,0.06)', borderRadius: 4, marginBottom: 8 }}>
+                      EMA alignment shows {ts.ema_alignment} but individual EMA values are unavailable. Run technical snapshot to populate.
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                        {kv('EMA 8', ts.ema_8 != null ? `$${Number(ts.ema_8).toFixed(2)}` : 'Missing', ts.ema_8 == null ? 'var(--amber)' : undefined)}
+                        {kv('EMA 21', ts.ema_21 != null ? `$${Number(ts.ema_21).toFixed(2)}` : 'Missing', ts.ema_21 == null ? 'var(--amber)' : undefined)}
+                        {kv('EMA 50', ts.ema_50 != null ? `$${Number(ts.ema_50).toFixed(2)}` : 'Missing', ts.ema_50 == null ? 'var(--amber)' : undefined)}
+                        {kv('EMA 200', ts.ema_200 != null ? `$${Number(ts.ema_200).toFixed(2)}` : 'Missing', ts.ema_200 == null ? 'var(--amber)' : undefined)}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
+                        {kv('EMA 8 Dist', ts.ema_8_distance_pct != null ? `${Number(ts.ema_8_distance_pct).toFixed(1)}%` : '--')}
+                        {kv('EMA 21 Dist', ts.ema_21_distance_pct != null ? `${Number(ts.ema_21_distance_pct).toFixed(1)}%` : '--')}
+                        {kv('EMA 50 Dist', ts.ema_50_distance_pct != null ? `${Number(ts.ema_50_distance_pct).toFixed(1)}%` : '--')}
+                        {kv('EMA 200 Dist', ts.ema_200_distance_pct != null ? `${Number(ts.ema_200_distance_pct).toFixed(1)}%` : '--')}
+                      </div>
+                    </>
+                  )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                    <span style={pill(alignColor)}>{ts.ema_alignment || 'N/A'}</span>
+                    <span style={pill(alignColor)}>{ts.ema_alignment || 'Unknown'}</span>
                     <span style={{ fontSize: 9, color: 'var(--text3)' }}>EMA Alignment</span>
                   </div>
                 </>
@@ -474,8 +607,9 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             {(() => {
               const ts = p.technical_snapshot || {}
               const fc = typeof p.fib_context === 'object' ? p.fib_context : (ts.fib_context || {})
-              if (!fc || fc.available === false) {
-                return <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>{fc?.summary || 'Fib data unavailable'}</div>
+              const hasData = fc && fc.available !== false && (fc.swing_high || fc.swing_low || ts.swing_high || ts.swing_low || ts.nearest_fib_level)
+              if (!hasData) {
+                return <div style={{ fontSize: 10, color: 'var(--amber)', padding: '6px 8px', background: 'rgba(251,191,36,0.06)', borderRadius: 4 }}>Fib data unavailable -- run Fib analysis to populate</div>
               }
               return (
                 <>
@@ -502,26 +636,29 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                   {kv('ORB 15 Low', ts.opening_range_low != null ? `$${Number(ts.opening_range_low).toFixed(2)}` : '--')}
                   {kv('PM High', ts.premarket_high != null ? `$${Number(ts.premarket_high).toFixed(2)}` : '--')}
                   {kv('PM Low', ts.premarket_low != null ? `$${Number(ts.premarket_low).toFixed(2)}` : '--')}
-                  {kv('ORB Status', <span style={pill(orbColor)}>{ts.opening_range_status || 'N/A'}</span>)}
-                  {kv('PM Status', ts.premarket_status || 'N/A')}
-                  {kv('Tech Grade', ts.technical_grade || 'N/A')}
-                  {kv('OHLCV', ts.ohlcv_data_status || 'N/A')}
+                  {kv('ORB Status', <span style={pill(orbColor)}>{ts.opening_range_status || 'Unknown'}</span>)}
+                  {kv('PM Status', ts.premarket_status || 'Unknown')}
+                  {kv('Tech Grade', ts.technical_grade || 'Unknown')}
+                  {kv('OHLCV', ts.ohlcv_data_status || 'Unknown')}
                 </div>
               )
             })()}
           </>
         )}
 
-        {/* ── Catalyst / News Tab ── */}
+        {/* ── Catalyst tab ── */}
         {activeTab === 'catalyst' && (
           <>
             <div style={secLbl}>Catalyst</div>
             <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.4, marginBottom: 8 }}>
               {p.catalyst_verified ? <span style={{ color: 'var(--green)', marginRight: 4 }}>&#10003;</span> : <span style={{ color: 'var(--amber)', marginRight: 4 }}>?</span>}
               {p.catalyst || 'No catalyst data'}
-              {p.catalyst_confidence != null && <span style={{ color: 'var(--text3)', fontSize: 9, marginLeft: 6 }}>{(p.catalyst_confidence * 100).toFixed(0)}% confidence</span>}
+              {p.catalyst_confidence != null && (
+                <span style={{ color: 'var(--text3)', fontSize: 9, marginLeft: 6 }}>
+                  {Math.min(100, Math.max(0, Math.round(p.catalyst_confidence * 100)))}% confidence
+                </span>
+              )}
             </div>
-            {/* Catalyst Quality Assessment */}
             {p.catalyst_quality && (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8, padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4 }}>
                 {kv('Quality', `${p.catalyst_quality.catalyst_quality_score}/100`,
@@ -534,65 +671,152 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             {p.critic_verdict && (
               <div style={{ marginBottom: 8 }}>
                 <span style={pill(p.critic_verdict === 'PASS' ? 'green' : p.critic_verdict === 'BLOCK' ? 'red' : 'amber')}>
-                  {p.critic_verdict} {p.critic_confidence != null ? `${(p.critic_confidence * 100).toFixed(0)}%` : ''}
+                  {p.critic_verdict} {p.critic_confidence != null ? `${Math.min(100, Math.max(0, Math.round(p.critic_confidence * 100)))}%` : ''}
                 </span>
                 {p.critic_reasoning && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, lineHeight: 1.4 }}>{p.critic_reasoning}</div>}
               </div>
             )}
-            <div style={secLbl}>Recent News</div>
+            <div style={secLbl}>Recent News ({p.news && Array.isArray(p.news) ? p.news.length : 0} articles)</div>
             {p.news && Array.isArray(p.news) && p.news.length > 0 ? p.news.slice(0, 5).map((n: any, i: number) => (
               <div key={i} style={{ fontSize: 10, color: 'var(--text2)', padding: '2px 0' }}>
                 {n.title} <span style={{ color: 'var(--text3)', marginLeft: 6, fontSize: 9 }}>{n.source}</span>
               </div>
-            )) : <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>No recent news articles found</div>}
+            )) : (
+              <div style={{ fontSize: 10, color: 'var(--amber)', padding: '6px 8px', background: 'rgba(251,191,36,0.06)', borderRadius: 4 }}>
+                No recent articles -- run research to populate news data
+              </div>
+            )}
           </>
         )}
 
-        {/* ── Strategy Fit Tab ── */}
-        {activeTab === 'strategy_fit' && (
+        {/* ── Strategy tab ── */}
+        {activeTab === 'strategy' && (
           <>
-            <div style={secLbl}>Strategy Fit — {p.strategy_id}</div>
-            {p.strategy_fit ? (
+            <div style={secLbl}>Primary Strategy</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', ...mono }}>{p.strategy_id}</span>
+              {p.strategy_config_hash && <span style={{ fontSize: 9, color: 'var(--text3)' }}>hash: {String(p.strategy_config_hash).slice(0, 8)}</span>}
+            </div>
+
+            {norm.strategyMismatch && (
+              <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
+                WARNING: primary_strategy_id ("{p.primary_strategy_id}") differs from strategy_id ("{p.strategy_id}"). The setup router may have assigned a different primary. Using strategy_id as canonical.
+              </div>
+            )}
+
+            {/* Strategy fit details */}
+            {sf.fit_score != null && (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
-                  {kv('Fit Score', `${p.strategy_fit.fit_score}/100`,
-                    p.strategy_fit.fit_score >= 80 ? 'var(--green)' : p.strategy_fit.fit_score >= 60 ? 'var(--amber)' : 'var(--red)')}
-                  {kv('Grade', p.strategy_fit.fit_grade,
-                    p.strategy_fit.fit_grade === 'STRONG_FIT' ? 'var(--green)' : p.strategy_fit.fit_grade === 'GOOD_FIT' ? '#60A5FA' : 'var(--amber)')}
-                  {kv('Setup Class', p.strategy_fit.setup_class || 'unclassified')}
-                  {kv('Strategy', p.strategy_fit.strategy_id)}
+                  {kv('Fit Score', `${sf.fit_score}/100`,
+                    sf.fit_score >= 80 ? 'var(--green)' : sf.fit_score >= 60 ? 'var(--amber)' : 'var(--red)')}
+                  {kv('Grade', sf.fit_grade,
+                    sf.fit_grade === 'STRONG_FIT' ? 'var(--green)' : sf.fit_grade === 'GOOD_FIT' ? '#60A5FA' : 'var(--amber)')}
+                  {kv('Setup Class', sf.setup_class || 'unclassified')}
+                  {kv('Criteria', `${(sf.criteria_met || []).length} met / ${(sf.criteria_failed || []).length} failed`)}
                 </div>
-                {p.strategy_fit.criteria_met?.length > 0 && (
+                {sf.criteria_met?.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>CRITERIA MET</div>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>CRITERIA MET ({sf.criteria_met.length})</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {p.strategy_fit.criteria_met.map((c: string, i: number) => (
+                      {sf.criteria_met.map((c: string, i: number) => (
                         <span key={i} style={{ ...pill('green'), fontSize: 8 }}>{c}</span>
                       ))}
                     </div>
                   </div>
                 )}
-                {p.strategy_fit.criteria_failed?.length > 0 && (
+                {sf.criteria_failed?.length > 0 && (
                   <div style={{ marginBottom: 6 }}>
-                    <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>CRITERIA FAILED</div>
+                    <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>CRITERIA FAILED ({sf.criteria_failed.length})</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                      {p.strategy_fit.criteria_failed.map((c: string, i: number) => (
+                      {sf.criteria_failed.map((c: string, i: number) => (
                         <span key={i} style={{ ...pill('red'), fontSize: 8 }}>{c}</span>
                       ))}
                     </div>
                   </div>
                 )}
-                {p.strategy_fit.narrative && (
+                {sf.narrative && (
                   <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5, marginTop: 6, padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4 }}>
-                    {p.strategy_fit.narrative}
+                    {sf.narrative}
                   </div>
                 )}
               </>
-            ) : (
-              <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>Strategy fit not computed yet</div>
             )}
 
-            {/* Sector context inline */}
+            {/* Secondary strategies */}
+            {p.secondary_strategy_ids && Array.isArray(p.secondary_strategy_ids) && p.secondary_strategy_ids.length > 0 && (
+              <>
+                <div style={secLbl}>Secondary Setups ({p.secondary_strategy_ids.length})</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                  {p.secondary_strategy_ids.slice(0, 8).map((s: string) => (
+                    <span key={s} style={pill('blue')}>{s}</span>
+                  ))}
+                  {p.secondary_strategy_ids.length > 8 && <span style={{ fontSize: 9, color: 'var(--text3)' }}>+{p.secondary_strategy_ids.length - 8} more</span>}
+                </div>
+              </>
+            )}
+
+            {/* Setup stack: filter to STRONG + MODERATE by default */}
+            {p.setup_stack && Array.isArray(p.setup_stack) && p.setup_stack.length > 0 && (
+              <>
+                {(() => {
+                  const strongModerate = p.setup_stack.filter((m: any) => m.match_status === 'STRONG_MATCH' || m.match_status === 'MODERATE_MATCH')
+                  const weakOther = p.setup_stack.filter((m: any) => m.match_status !== 'STRONG_MATCH' && m.match_status !== 'MODERATE_MATCH' && m.match_status !== 'NO_MATCH')
+                  const displayed = showAllSetups ? [...strongModerate, ...weakOther] : strongModerate
+                  return (
+                    <>
+                      <div style={secLbl}>Setup Stack ({strongModerate.length} strong/moderate{weakOther.length > 0 ? `, ${weakOther.length} other` : ''})</div>
+                      {displayed.length > 0 ? (
+                        <div style={{ background: 'var(--bg0)', borderRadius: 6, overflow: 'auto', marginBottom: 6 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, ...mono }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                {['Strategy', 'Score', 'Status', 'Primary', 'Met', 'Disqualified'].map(h => (
+                                  <th key={h} style={{ padding: '5px 8px', textAlign: 'left', fontSize: 8, color: 'var(--text3)', fontWeight: 600 }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {displayed.map((m: any, i: number) => (
+                                <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: m.is_primary ? 'rgba(34,197,94,0.04)' : undefined }}>
+                                  <td style={{ padding: '4px 8px', fontWeight: m.is_primary ? 700 : 400 }}>{m.strategy_id}</td>
+                                  <td style={{ padding: '4px 8px' }}>{m.match_score}</td>
+                                  <td style={{ padding: '4px 8px' }}>
+                                    <span style={pill(m.match_status === 'STRONG_MATCH' ? 'green' : m.match_status === 'BLOCKED' ? 'red' : m.match_status === 'MODERATE_MATCH' ? 'blue' : 'amber')}>
+                                      {m.match_status}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '4px 8px', color: m.is_primary ? 'var(--green)' : 'var(--text3)' }}>{m.is_primary ? 'PRIMARY' : ''}</td>
+                                  <td style={{ padding: '4px 8px', color: 'var(--text3)', fontSize: 9 }}>{(m.criteria_met || []).length}</td>
+                                  <td style={{ padding: '4px 8px', color: (m.disqualifiers_hit || []).length > 0 ? 'var(--red)' : 'var(--text3)', fontSize: 9 }}>
+                                    {(m.disqualifiers_hit || []).length > 0 ? (m.disqualifiers_hit || []).join(', ') : '--'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>No strong or moderate matches</div>
+                      )}
+                      {weakOther.length > 0 && (
+                        <button onClick={() => setShowAllSetups(!showAllSetups)}
+                          style={{ ...btnStyle('rgba(148,163,184,0.1)', '#94A3B8'), fontSize: 9, padding: '3px 8px' }}>
+                          {showAllSetups ? 'Hide weak matches' : `View all ${weakOther.length} weak matches`}
+                        </button>
+                      )}
+                    </>
+                  )
+                })()}
+              </>
+            )}
+            {(!p.setup_stack || !Array.isArray(p.setup_stack) || p.setup_stack.length === 0) && !sf.fit_score && (
+              <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic', marginTop: 4 }}>
+                Strategy data not computed yet. Run multi-setup router to populate.
+              </div>
+            )}
+
+            {/* Sector context */}
             <div style={{ ...secLbl, marginTop: 12 }}>Sector Context</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {kv('Sector', p.sector)}
@@ -604,18 +828,29 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           </>
         )}
 
-        {/* ── Backtest Tab ── */}
-        {activeTab === 'backtest' && (
-          <>
-            <div style={secLbl}>Backtest / Historical Evidence</div>
-            <BacktestPanel p={p} />
-          </>
-        )}
-
-        {/* ── Risk / Reward Tab ── */}
+        {/* ── Risk/Reward tab ── */}
         {activeTab === 'risk' && (
           <>
-            <div style={secLbl}>Risk / Reward</div>
+            {/* Three status badges */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+              <span style={pill(p.risk_gate_result === 'PASS' ? 'green' : p.risk_gate_result === 'FAIL' ? 'red' : 'amber')}>
+                Risk Gate: {p.risk_gate_result || 'Not checked'}
+              </span>
+              <span style={pill(sf.fit_grade === 'STRONG_FIT' ? 'green' : sf.fit_grade === 'GOOD_FIT' ? 'blue' : sf.fit_score != null ? 'amber' : 'amber')}>
+                Strategy Quality: {sf.fit_grade || 'Not computed'}
+              </span>
+              <span style={pill(er.readiness_state === 'READY_FOR_PAPER_SUBMIT' || er.readiness_state === 'READY_ORB_CONFIRMED' ? 'green' : er.readiness_state ? 'amber' : 'amber')}>
+                Execution: {er.readiness_state ? er.readiness_state.replace(/_/g, ' ') : 'Not checked'}
+              </span>
+            </div>
+
+            {rr > 0 && rr < 2.0 && (
+              <div style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171' }}>
+                R:R {Number(rr).toFixed(2)} is below strategy minimum of 2.0
+              </div>
+            )}
+
+            <div style={secLbl}>Position Sizing</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 6 }}>
               <div>
                 <div style={lbl}>Entry</div>
@@ -641,30 +876,47 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
               {kv('Risk $', `$${(isModified ? computedRisk : p.proposed_dollar_risk || 0).toFixed(0)}`, 'var(--red)')}
               {kv('Reward T1 $', `$${(isModified ? computedReward : p.target1_dollar_reward || 0).toFixed(0)}`, 'var(--green)')}
-              {kv('R:R', (isModified ? computedRR : p.proposed_rr || 0).toFixed(2))}
+              {kv('R:R', (isModified ? computedRR : rr).toFixed(2))}
               {kv('Risk % Portfolio', `${(p.risk_pct_portfolio || 0).toFixed(3)}%`)}
               {kv('Gate', p.risk_gate_result || '--')}
             </div>
-            {isModified && <div style={{ fontSize: 9, color: '#60A5FA', marginTop: 8, fontWeight: 600 }}>Modified — will approve with overrides</div>}
+            {isModified && <div style={{ fontSize: 9, color: '#60A5FA', marginTop: 8, fontWeight: 600 }}>Modified -- will approve with overrides</div>}
+
+            {/* Backtest inline */}
+            <div style={secLbl}>Backtest Evidence</div>
+            {bt.quality || bt.sample_size ? (
+              <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                  {kv('Quality', bt.quality, bt.quality === 'SUFFICIENT' ? 'var(--green)' : bt.quality === 'LIMITED' ? 'var(--amber)' : 'var(--red)')}
+                  {kv('Samples', bt.sample_size)}
+                  {kv('Win Rate', bt.win_rate != null ? `${(Number(bt.win_rate) * 100).toFixed(1)}%` : null)}
+                  {kv('Profit Factor', bt.profit_factor != null ? `${Number(bt.profit_factor).toFixed(2)}` : null)}
+                  {kv('Expectancy', bt.expectancy != null ? `$${Number(bt.expectancy).toFixed(2)}` : null)}
+                  {kv('Avg R', bt.avg_r != null ? `${Number(bt.avg_r).toFixed(2)}R` : null)}
+                  {kv('Repeat Pattern', bt.repeat_pattern ? 'Yes' : 'No')}
+                </div>
+                {bt.similar_summary && <div style={{ fontSize: 9, color: 'var(--text2)', marginTop: 6 }}>{bt.similar_summary}</div>}
+                {bt.limitations && bt.limitations.length > 0 && (
+                  <div style={{ fontSize: 9, color: 'var(--amber)', marginTop: 4 }}>
+                    Limitations: {bt.limitations.join('; ')}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>Backtest not run yet</div>
+            )}
           </>
         )}
 
-        {/* ── Agent Notes Tab ── */}
-        {activeTab === 'agents' && (
-          <>
-            <div style={secLbl}>Agent Reviews</div>
-            <AgentReviewPanel votes={p.agent_votes} />
-          </>
-        )}
-
-        {/* ── Execution Readiness Tab ── */}
+        {/* ── Execution tab ── */}
         {activeTab === 'execution' && (
           <>
             <div style={secLbl}>Execution Readiness</div>
             {p.execution_readiness ? (() => {
-              const er = p.execution_readiness
-              const stateColor = er.readiness_state === 'READY_FOR_PAPER_SUBMIT' ? 'green'
+              const stateColor = er.readiness_state === 'READY_FOR_PAPER_SUBMIT' || er.readiness_state === 'READY_ORB_CONFIRMED' ? 'green'
                 : er.readiness_state === 'CAUTION_EXECUTABLE' ? 'amber' : 'red'
+              // Override quote_fresh if quote_age > 300 during market hours
+              const effectiveQuoteFresh = (er.quote_age_seconds != null && Number(er.quote_age_seconds) > 300 && er.market_hours) ? false : er.quote_fresh
               return (
                 <>
                   <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
@@ -677,14 +929,16 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       Number(er.quote_age_seconds) > 300 ? 'var(--red)' : 'var(--green)')}
                     {kv('Price vs Entry', er.price_vs_entry_pct != null ? `${Number(er.price_vs_entry_pct) > 0 ? '+' : ''}${Number(er.price_vs_entry_pct).toFixed(2)}%` : null,
                       Math.abs(Number(er.price_vs_entry_pct)) > 2 ? 'var(--red)' : 'var(--green)')}
-                    {kv('Spread', er.spread_pct != null ? `${Number(er.spread_pct).toFixed(3)}%` : 'N/A')}
+                    {kv('Spread', er.bid != null && er.ask != null ? (er.spread_pct != null ? `${Number(er.spread_pct).toFixed(3)}%` : 'Calculating') : 'Unknown',
+                      er.bid == null || er.ask == null ? 'var(--amber)' : Number(er.spread_pct) > 1 ? 'var(--red)' : 'var(--green)')}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
-                    {kv('Quote Fresh', er.quote_fresh ? 'YES' : 'NO', er.quote_fresh ? 'var(--green)' : 'var(--red)')}
+                    {kv('Quote Fresh', effectiveQuoteFresh ? 'YES' : 'NO', effectiveQuoteFresh ? 'var(--green)' : 'var(--red)')}
                     {kv('Price OK', er.price_ok ? 'YES' : 'NO', er.price_ok ? 'var(--green)' : 'var(--red)')}
                     {kv('Risk Gate', er.risk_gate_ok ? 'PASS' : 'FAIL', er.risk_gate_ok ? 'var(--green)' : 'var(--red)')}
                     {kv('No Duplicate', er.duplicate_ok ? 'OK' : 'DUP', er.duplicate_ok ? 'var(--green)' : 'var(--red)')}
                   </div>
+
                   {er.blockers && er.blockers.length > 0 && (
                     <div style={{ marginBottom: 6 }}>
                       <div style={{ fontSize: 9, color: 'var(--red)', fontWeight: 600, marginBottom: 4 }}>BLOCKERS</div>
@@ -701,6 +955,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       ))}
                     </div>
                   )}
+
                   {er.execution_plan && (
                     <>
                       <div style={secLbl}>Execution Plan</div>
@@ -714,7 +969,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       </div>
                     </>
                   )}
-                  {/* Session 23E: Quote provider info */}
+
                   <div style={secLbl}>Quote Source</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
                     {kv('Provider', er.quote_provider || 'none',
@@ -724,16 +979,16 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       er.quote_execution_eligible ? 'var(--green)' : 'var(--red)')}
                     {kv('Delayed', er.quote_is_delayed ? 'YES' : 'NO',
                       er.quote_is_delayed ? 'var(--amber)' : 'var(--green)')}
-                    {kv('Volume Source', er.volume_source || 'N/A')}
+                    {kv('Volume Source', er.volume_source || 'Unknown')}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
-                    {kv('Bid', er.bid != null ? `$${Number(er.bid).toFixed(2)}` : 'N/A',
+                    {kv('Bid', er.bid != null ? `$${Number(er.bid).toFixed(2)}` : 'Unavailable',
                       er.bid != null ? 'var(--green)' : 'var(--red)')}
-                    {kv('Ask', er.ask != null ? `$${Number(er.ask).toFixed(2)}` : 'N/A',
+                    {kv('Ask', er.ask != null ? `$${Number(er.ask).toFixed(2)}` : 'Unavailable',
                       er.ask != null ? 'var(--green)' : 'var(--red)')}
-                    {kv('Spread', er.spread_pct != null ? `${Number(er.spread_pct).toFixed(3)}%` : 'N/A',
-                      er.spread_pct == null ? 'var(--red)' : Number(er.spread_pct) > 1 ? 'var(--red)' : 'var(--green)')}
-                    {kv('Spread Source', er.spread_source || 'N/A')}
+                    {kv('Spread', er.bid != null && er.ask != null ? (er.spread_pct != null ? `${Number(er.spread_pct).toFixed(3)}%` : 'Calculating') : 'Unknown',
+                      er.bid == null || er.ask == null ? 'var(--amber)' : Number(er.spread_pct) > 1 ? 'var(--red)' : 'var(--green)')}
+                    {kv('Spread Source', er.spread_source || 'Unknown')}
                   </div>
                   {!er.quote_execution_eligible && er.quote_provider && er.quote_provider !== 'none' && (
                     <div style={{ fontSize: 9, color: 'var(--amber)', padding: '4px 8px', background: 'rgba(251,191,36,0.06)', borderRadius: 4, marginBottom: 8 }}>
@@ -741,12 +996,11 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                     </div>
                   )}
 
-                  {/* Session 23D: Bracket validation */}
                   <div style={secLbl}>Alpaca Paper Bracket</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
                     {kv('Bracket Supported', er.bracket_order_supported ? 'YES' : 'NO',
                       er.bracket_order_supported ? 'var(--green)' : 'var(--red)')}
-                    {kv('Alpaca Mode', er.alpaca_account_mode || 'N/A',
+                    {kv('Alpaca Mode', er.alpaca_account_mode ? (er.alpaca_account_mode === 'paper' ? 'PAPER' : er.alpaca_account_mode) : 'Not checked',
                       er.alpaca_account_mode === 'paper' ? 'var(--green)' : 'var(--red)')}
                     {kv('Market Hours', er.market_hours ? 'OPEN' : 'CLOSED',
                       er.market_hours ? 'var(--green)' : 'var(--amber)')}
@@ -794,17 +1048,124 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           </>
         )}
 
-        {/* ── Missing Data Tab ── */}
+        {/* ── Agents tab ── */}
+        {activeTab === 'agents' && (
+          <>
+            <div style={secLbl}>Agent Reviews</div>
+            {(() => {
+              const reviewed = (p.agent_reviews || []).filter((ar: any) => ar.verdict && ar.agent_name)
+              if (reviewed.length === 0) {
+                // Check agent_votes too
+                const votes = p.agent_votes || {}
+                const votedEntries = Object.entries(votes).filter(([, v]: [string, any]) => v?.vote)
+                if (votedEntries.length === 0) {
+                  return (
+                    <div style={{ padding: '16px', background: 'var(--bg0)', borderRadius: 6, textAlign: 'center' }}>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>No agent reviews with verdicts</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Run AI Review to generate Maria, Risk, and Steph analyses</div>
+                      <button onClick={() => runAction('agent', '/api/v2/paper-proposals/run-agent-review')} disabled={!!runningAction}
+                        style={btnStyle('rgba(59,130,246,0.2)', '#60A5FA')}>
+                        {runningAction === 'agent' ? '...' : 'Run AI Review'}
+                      </button>
+                    </div>
+                  )
+                }
+                // Show from agent_votes
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {votedEntries.map(([name, v]: [string, any]) => {
+                      const vote = v?.vote || ''
+                      const conf = v?.confidence != null ? `${Math.round(Number(v.confidence))}%` : ''
+                      const summary = v?.summary || ''
+                      const model = v?.model || ''
+                      const voteColor = vote === 'APPROVE_TEST' ? 'green' : vote === 'REJECT' || vote === 'BLOCK' ? 'red' : vote === 'WAIT_FOR_DATA' ? 'blue' : 'amber'
+                      return (
+                        <div key={name} style={{ padding: '4px 8px', background: 'var(--bg0)', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', minWidth: 40, ...mono }}>{name}</span>
+                          <span style={pill(voteColor)}>{vote} {conf}</span>
+                          <span style={{ fontSize: 9, color: 'var(--text2)', flex: 1 }}>{summary.slice(0, 100)}</span>
+                          {model === 'deterministic_fallback' ? (
+                            <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>Fallback analysis</span>
+                          ) : model ? (
+                            <span style={{ fontSize: 8, color: 'var(--text3)' }}>{model}</span>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              }
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {reviewed.map((ar: any, i: number) => {
+                    const voteColor = ar.verdict === 'APPROVE_TEST' || ar.verdict === 'BUY' ? 'green'
+                      : ar.verdict === 'REJECT' || ar.verdict === 'BLOCK' || ar.verdict === 'AVOID' || ar.verdict === 'SELL' ? 'red'
+                      : ar.verdict === 'WAIT_FOR_DATA' ? 'blue' : 'amber'
+                    const isFallback = ar.model === 'deterministic_fallback' || ar.narrative_source === 'deterministic_fallback'
+                    return (
+                      <div key={i} style={{ padding: '4px 8px', background: 'var(--bg0)', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text1)', minWidth: 70, ...mono }}>{ar.agent_name}</span>
+                        <span style={pill(voteColor)}>{ar.verdict} {ar.confidence != null ? `${Math.round(Number(ar.confidence) * (Number(ar.confidence) > 1 ? 1 : 100))}%` : ''}</span>
+                        <span style={{ fontSize: 9, color: 'var(--text2)', flex: 1 }}>{(ar.summary || '').slice(0, 120)}</span>
+                        {isFallback && (
+                          <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>Fallback analysis</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </>
+        )}
+
+        {/* ── Missing tab ── */}
         {activeTab === 'missing' && (
           <>
-            <div style={secLbl}>Missing Data</div>
-            {p.missing_data && p.missing_data.length > 0 ? (
+            <div style={secLbl}>Missing Data by Section</div>
+            {Object.keys(norm.missingBySection).length > 0 ? (
+              <>
+                {['Critical', 'Technical', 'Catalyst', 'Execution', 'Backtest', 'Agent/LLM', 'Other'].filter(
+                  sec => norm.missingBySection[sec]?.length > 0
+                ).map(section => {
+                  const items = norm.missingBySection[section]
+                  const sectionColor = section === 'Critical' ? 'var(--red)' : section === 'Technical' ? 'var(--amber)' : 'var(--text2)'
+                  const actionMap: Record<string, { label: string; action: string; endpoint: string }> = {
+                    'Critical':  { label: 'Refresh Packet', action: 'refresh', endpoint: '/api/v2/paper-proposals/refresh-packet' },
+                    'Technical': { label: 'Run Tech Snapshot', action: 'techSnap', endpoint: '/api/v2/paper-proposals/run-technical-snapshot' },
+                    'Catalyst':  { label: 'Run Research', action: 'research', endpoint: '/api/v2/paper-proposals/run-research' },
+                    'Execution': { label: 'Check Execution', action: 'execReady', endpoint: '/api/v2/paper-proposals/check-execution-readiness' },
+                    'Backtest':  { label: 'Run Backtest', action: 'backtest', endpoint: '/api/v2/paper-proposals/run-backtest' },
+                    'Agent/LLM': { label: 'Run AI Review', action: 'agent', endpoint: '/api/v2/paper-proposals/run-agent-review' },
+                  }
+                  const sectionAction = actionMap[section]
+                  return (
+                    <div key={section} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: sectionColor, textTransform: 'uppercase' }}>{section} ({items.length})</div>
+                        {sectionAction && (
+                          <button onClick={() => runAction(sectionAction.action, sectionAction.endpoint)}
+                            disabled={!!runningAction} style={{ ...btnStyle('rgba(59,130,246,0.15)', '#60A5FA'), fontSize: 9, padding: '2px 8px' }}>
+                            {runningAction === sectionAction.action ? '...' : sectionAction.label}
+                          </button>
+                        )}
+                      </div>
+                      {items.map((m: string, i: number) => (
+                        <div key={i} style={{ fontSize: 10, color: 'var(--amber)', padding: '3px 8px', marginBottom: 2, background: 'rgba(251,191,36,0.06)', borderRadius: 4 }}>{m}</div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </>
+            ) : (p.missing_data || []).length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {p.missing_data.map((m: string, i: number) => (
                   <div key={i} style={{ fontSize: 10, color: 'var(--amber)', padding: '4px 8px', background: 'rgba(251,191,36,0.06)', borderRadius: 4 }}>{m}</div>
                 ))}
               </div>
-            ) : <div style={{ fontSize: 10, color: 'var(--green)' }}>All required data populated</div>}
+            ) : (
+              <div style={{ fontSize: 10, color: 'var(--green)' }}>All required data populated</div>
+            )}
             {p.approval_blocked_reason && (
               <>
                 <div style={{ ...secLbl, color: 'var(--red)' }}>Approval Blockers</div>
@@ -817,7 +1178,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         )}
       </div>
 
-      {/* ── Actions ── */}
+      {/* ── Actions footer ── */}
       <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <button onClick={() => runAction('research', '/api/v2/paper-proposals/run-research')} disabled={!!runningAction}
           style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
@@ -839,10 +1200,13 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           style={btnStyle('rgba(148,163,184,0.15)', '#94A3B8')}>
           {runningAction === 'execReady' ? '...' : 'Check Execution'}
         </button>
+        <button onClick={() => runAction('monitor', '/api/v2/paper-proposals/monitor')} disabled={!!runningAction}
+          style={btnStyle('rgba(148,163,184,0.15)', '#94A3B8')}>
+          {runningAction === 'monitor' ? '...' : 'Refresh Price'}
+        </button>
 
         <div style={{ flex: 1 }} />
 
-        {/* Submit to Alpaca Paper */}
         <button
           onClick={() => {
             if (confirm('Submit to Alpaca PAPER trading? This is NOT a live trade.')) {
@@ -866,13 +1230,13 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         <button onClick={handleApprove} disabled={!!acting[p.id] || approveDisabled}
           title={approveDisabled ? (p.approval_blocked_reason || 'Missing data') : 'Approve for paper trading'}
           style={{ ...btnStyle(approveDisabled ? 'rgba(34,197,94,0.1)' : canApproveWithConfirm ? 'var(--amber)' : 'var(--green)'), opacity: approveDisabled ? 0.4 : 1, cursor: approveDisabled ? 'not-allowed' : 'pointer' }}>
-          {acting[p.id] === 'approve' ? '...' : approveDisabled ? (p.approval_blocked_reason?.slice(0,20) || 'Cannot Approve') : canApproveWithConfirm ? 'Approve (confirm)' : isModified ? 'Approve*' : 'Approve'}
+          {acting[p.id] === 'approve' ? '...' : approveDisabled ? (p.approval_blocked_reason?.slice(0, 20) || 'Cannot Approve') : canApproveWithConfirm ? 'Approve (confirm)' : isModified ? 'Approve*' : 'Approve'}
         </button>
         <button onClick={() => act(p.id, 'reject')} disabled={!!acting[p.id]}
           style={btnStyle('var(--red)')}>
           {acting[p.id] === 'reject' ? '...' : 'Reject'}
         </button>
-        <button onClick={() => { if (editing) { setShares(p.proposed_shares||0); setEntry(p.proposed_entry||0); setStop(p.proposed_stop||0); setTarget(p.proposed_target1||0) } setEditing(!editing) }}
+        <button onClick={() => { if (editing) { setShares(p.proposed_shares || 0); setEntry(p.proposed_entry || 0); setStop(p.proposed_stop || 0); setTarget(p.proposed_target1 || 0) } setEditing(!editing) }}
           style={{ ...btnStyle(editing ? 'rgba(251,191,36,0.15)' : 'var(--bg0)', editing ? 'var(--amber)' : 'var(--text2)'), border: `1px solid ${editing ? 'var(--amber)' : 'var(--border)'}` }}>
           {editing ? 'Reset' : 'Edit'}
         </button>
@@ -887,11 +1251,22 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
   )
 }
 
+// ── Sort priority map ──────────────────────────────────────────────────
+const ACTION_SORT: Record<string, number> = {
+  PAPER_READY: 1, CAUTION: 2, LEARNING_MODE: 3,
+  NEEDS_REVIEW: 4, MISSING_DATA: 5, BLOCKED: 6,
+}
+
+// ── Main page ──────────────────────────────────────────────────────────
 export default function PaperProposals() {
   const { data, refetch } = useApi<any>('/api/v2/paper-proposals', 30000)
   const [acting, setActing] = useState<Record<number, string>>({})
-  const [showAll, setShowAll] = useState(false)
+  const [showAll, setShowAll] = useState(true)
+  const [strategyFilter, setStrategyFilter] = useState('ALL')
+  const [stateFilter, setStateFilter] = useState('ALL')
+  const [symbolSearch, setSymbolSearch] = useState('')
   const [runHealth, setRunHealth] = React.useState<any>(null)
+
   React.useEffect(() => {
     fetch('/api/v2/pipeline-run-health').then(r => r.json()).then(d => {
       const inner = d.data || d
@@ -913,20 +1288,137 @@ export default function PaperProposals() {
     setActing(s => { const n = { ...s }; delete n[id]; return n })
   }, [refetch])
 
+  const [enrichState, setEnrichState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [enrichResult, setEnrichResult] = useState<any>(null)
+  const [enrichStep, setEnrichStep] = useState<string>('')
+
+  const runEnrichAll = async () => {
+    setEnrichState('running')
+    setEnrichResult(null)
+    setEnrichStep('starting...')
+    try {
+      await fetch('/api/v2/paper-proposals/enrich-all', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      })
+      const poll = setInterval(async () => {
+        try {
+          const sr = await fetch('/api/v2/paper-proposals/enrich-status')
+          const sd = await sr.json()
+          if (sd.state === 'running') {
+            setEnrichStep(sd.current_step || 'processing...')
+          } else if (sd.state === 'done' || sd.state === 'done_with_issues') {
+            clearInterval(poll)
+            setEnrichResult(sd)
+            setEnrichState(sd.all_passed ? 'done' : 'error')
+            setEnrichStep(sd.all_passed ? 'Complete' : 'Issues found')
+            refetch()
+            setTimeout(() => setEnrichState('idle'), 5000)
+          }
+        } catch { /* keep polling */ }
+      }, 3000)
+      setTimeout(() => { clearInterval(poll); if (enrichState === 'running') { setEnrichState('idle'); refetch() } }, 300000)
+    } catch {
+      setEnrichState('error')
+      setEnrichStep('Failed to start')
+      setTimeout(() => setEnrichState('idle'), 5000)
+    }
+  }
+
   const allProposals = data?.proposals ?? []
   const pending = allProposals.filter((p: any) => p.status === 'PENDING')
-  const displayed = showAll ? pending : pending.slice(0, 5)
+
+  // Collect unique strategies for filter dropdown
+  const strategies = Array.from(new Set(pending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
+
+  // Apply filters
+  let filtered = pending
+  if (strategyFilter !== 'ALL') {
+    filtered = filtered.filter((p: any) => p.strategy_id === strategyFilter)
+  }
+  if (stateFilter !== 'ALL') {
+    filtered = filtered.filter((p: any) => normalizeProposal(p).actionState === stateFilter)
+  }
+  if (symbolSearch.trim()) {
+    const q = symbolSearch.trim().toUpperCase()
+    filtered = filtered.filter((p: any) => (p.symbol || '').toUpperCase().includes(q))
+  }
+
+  // Sort by action state priority, then score
+  const sorted = [...filtered].sort((a, b) => {
+    const na = normalizeProposal(a)
+    const nb = normalizeProposal(b)
+    const sd = (ACTION_SORT[na.actionState] || 5) - (ACTION_SORT[nb.actionState] || 5)
+    if (sd !== 0) return sd
+    return Number(b.signal_score || 0) - Number(a.signal_score || 0)
+  })
+
+  const displayed = showAll ? sorted : sorted.slice(0, 5)
+
+  // Count by state for filter labels
+  const stateCounts: Record<string, number> = {}
+  for (const p of pending) {
+    const s = normalizeProposal(p).actionState
+    stateCounts[s] = (stateCounts[s] || 0) + 1
+  }
 
   return (
-    <>
+    <div style={{ minHeight: '100vh', overflow: 'visible' }}>
       <PageHeader title="Paper Proposals" subtitle={`${pending.length} pending`} actions={
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowAll(!showAll)} style={{ padding: '4px 10px', fontSize: 10, background: showAll ? 'rgba(59,130,246,0.2)' : 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: showAll ? '#60A5FA' : 'var(--text2)', cursor: 'pointer' }}>
-            {showAll ? `All (${pending.length})` : `Top 5`}
+            {showAll ? `All (${filtered.length})` : 'Top 5'}
           </button>
           <button onClick={refetch} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
+          <button onClick={runEnrichAll} disabled={enrichState === 'running'}
+            style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: enrichState === 'running' ? 'wait' : 'pointer',
+              background: enrichState === 'running' ? 'rgba(59,130,246,0.2)' : enrichState === 'done' ? 'rgba(34,197,94,0.2)' : enrichState === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+              border: `1px solid ${enrichState === 'running' ? 'rgba(59,130,246,0.4)' : enrichState === 'done' ? 'rgba(34,197,94,0.4)' : enrichState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
+              color: enrichState === 'running' ? '#60A5FA' : enrichState === 'done' ? 'var(--green)' : enrichState === 'error' ? 'var(--red)' : 'var(--green)',
+              minWidth: 90 }}>
+            {enrichState === 'running' ? `Running: ${enrichStep}` : enrichState === 'done' ? 'Done' : enrichState === 'error' ? 'Issues' : 'Enrich All'}
+          </button>
         </div>
       } />
+
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)}
+          style={{ fontSize: 10, padding: '4px 8px', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 4, ...mono }}>
+          <option value="ALL">All Strategies</option>
+          {strategies.sort().map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={stateFilter} onChange={e => setStateFilter(e.target.value)}
+          style={{ fontSize: 10, padding: '4px 8px', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 4, ...mono }}>
+          <option value="ALL">All States</option>
+          {['PAPER_READY', 'CAUTION', 'NEEDS_REVIEW', 'BLOCKED', 'MISSING_DATA', 'LEARNING_MODE'].map(s => (
+            <option key={s} value={s}>{s.replace(/_/g, ' ')} ({stateCounts[s] || 0})</option>
+          ))}
+        </select>
+        <input
+          type="text" placeholder="Search symbol..."
+          value={symbolSearch} onChange={e => setSymbolSearch(e.target.value)}
+          style={{ fontSize: 10, padding: '4px 8px', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 4, width: 110, ...mono }}
+        />
+        <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+          Showing {displayed.length} of {pending.length}
+        </span>
+      </div>
+
+      {/* Enrichment status bar */}
+      {enrichState !== 'idle' && (
+        <div style={{ padding: '6px 14px', marginBottom: 8, borderRadius: 6, fontSize: 11, fontWeight: 600,
+          background: enrichState === 'running' ? 'rgba(59,130,246,0.08)' : enrichState === 'done' ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${enrichState === 'running' ? 'rgba(59,130,246,0.25)' : enrichState === 'done' ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
+          color: enrichState === 'running' ? '#60A5FA' : enrichState === 'done' ? '#4ADE80' : '#F87171' }}>
+          {enrichState === 'running' && `Running enrichment pipeline... current step: ${enrichStep}`}
+          {enrichState === 'done' && enrichResult && (
+            <>Pipeline complete: {Object.entries(enrichResult.steps || {}).map(([k, v]) => `${k}=${v}`).join(' | ')}</>
+          )}
+          {enrichState === 'error' && enrichResult && (
+            <>Pipeline finished with issues: {Object.entries(enrichResult.steps || {}).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k}=${v}`).join(' | ')}</>
+          )}
+        </div>
+      )}
 
       {/* Run health banner */}
       {runHealth?.latest_run && (
@@ -942,36 +1434,32 @@ export default function PaperProposals() {
           )}
         </div>
       )}
-      {displayed.length === 0 ? (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-          No pending proposals.
-          {runHealth?.latest_run ? (
-            <div style={{ marginTop: 8, fontSize: 10, color: '#64748B', lineHeight: 1.6 }}>
-              <div>Latest run: {runHealth.latest_run.run_label} &middot; {runHealth.latest_run.status} &middot; {runHealth.latest_run.symbols_scanned} scanned &middot; {runHealth.latest_run.go_count} GO &middot; {runHealth.strategy_signals?.today_count ?? 0} signals &middot; {runHealth.trade_plans?.planned ?? 0} planned</div>
-              {runHealth.auto_proposals ? (
-                <div style={{ marginTop: 4 }}>
-                  Auto proposal stage: {runHealth.auto_proposals.proposals_created ?? 0} created &middot; {runHealth.auto_proposals.proposals_skipped ?? 0} skipped
-                  {runHealth.auto_proposals.reason_summary && Object.keys(runHealth.auto_proposals.reason_summary).length > 0 && (
-                    <span> &middot; {Object.entries(runHealth.auto_proposals.reason_summary).map(([k, v]) => `${v} ${k}`).join(', ')}</span>
-                  )}
-                </div>
-              ) : (
-                <div style={{ marginTop: 4, color: '#94A3B8' }}>Auto proposal stage has not run yet. Use Strategy Desk to create proposals manually.</div>
-              )}
-              {runHealth.paper_proposals?.blocked_reasons?.length > 0 && (
-                <div style={{ color: '#F59E0B', marginTop: 4 }}>{runHealth.paper_proposals.blocked_reasons.join('. ')}</div>
-              )}
-            </div>
-          ) : (
-            <div style={{ marginTop: 6, fontSize: 10, color: '#94A3B8' }}>
-            The system generates proposals automatically when GO signals appear in the morning scan.{' '}
-            <a href="/v2/strategy-desk" style={{ color: '#60A5FA' }}>View Strategy Desk</a>
+
+      {/* Proposal list */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflow: 'visible' }}>
+        {displayed.length === 0 ? (
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 24, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
+            {pending.length === 0 ? (
+              <>
+                No pending proposals.
+                {runHealth?.latest_run ? (
+                  <div style={{ marginTop: 8, fontSize: 10, color: '#64748B', lineHeight: 1.6 }}>
+                    <div>Latest run: {runHealth.latest_run.run_label} &middot; {runHealth.latest_run.status} &middot; {runHealth.latest_run.symbols_scanned} scanned &middot; {runHealth.latest_run.go_count} GO</div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 6, fontSize: 10, color: '#94A3B8' }}>
+                    The system generates proposals automatically when GO signals appear in the morning scan.
+                  </div>
+                )}
+              </>
+            ) : (
+              <>No proposals match current filters. {pending.length} pending total.</>
+            )}
           </div>
-          )}
-        </div>
-      ) : displayed.map((p: any) => (
-        <ProposalCard key={p.id} p={p} act={act} acting={acting} />
-      ))}
-    </>
+        ) : displayed.map((p: any) => (
+          <ProposalCard key={p.id} p={p} act={act} acting={acting} />
+        ))}
+      </div>
+    </div>
   )
 }

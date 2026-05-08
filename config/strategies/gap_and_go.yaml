@@ -1,11 +1,13 @@
 strategy_id: gap_and_go
 display_name: Gap & Go
 version: "1.0"
+status: TESTING
 purpose: "Pre-market gap >5% with volume confirmation at open. Enter on first candle close above gap high."
 
 eligible_accounts: [taxable]
 forbidden_accounts: [rollover_ira, roth_ira, fidelity_401k]
 timeframe: intraday
+timeframe_class: INTRADAY
 universe: gap_candidates
 
 primary_data_sources:

@@ -1,11 +1,13 @@
 strategy_id: momentum_scalp
 display_name: Momentum Scalp
 version: "1.0"
+status: TESTING
 purpose: "Micro-cap momentum — RVOL surge + verified catalyst. Intraday hold, exit same day."
 
 eligible_accounts: [taxable]
 forbidden_accounts: [rollover_ira, roth_ira, fidelity_401k]
 timeframe: intraday
+timeframe_class: INTRADAY
 universe: micro_cap_momentum
 
 primary_data_sources:
