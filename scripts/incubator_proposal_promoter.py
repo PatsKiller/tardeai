@@ -48,7 +48,7 @@ TIMEFRAME_MAP = {
     'dividend_growth_compounder': ('position', 720),
     'defense_thesis': ('position', 720),
     'recovery_watch': ('position', 720),
-    'sector_rotation': ('position', 720),
+    'sector_rotation': ('swing', 120),
 }
 DEFAULT_TIMEFRAME = ('short_swing', 120)
 
@@ -207,15 +207,37 @@ def run(dry_run=True, limit=10, force_symbol=None):
         timeframe_class, expires_hours = TIMEFRAME_MAP.get(strategy_key, DEFAULT_TIMEFRAME)
         expires_at = datetime.now(tz=__import__('datetime').timezone.utc) + timedelta(hours=expires_hours)
 
-        # Screener name for display
+        # Screener name: use actual screener_label from scans, with incubator context
+        display_screener = screener_label or None
+        screener_display_name = SCREENER_DISPLAY.get(screener_label, None) if screener_label else None
         screener_name = f"Incubator ({days_active}d active)"
+        if display_screener:
+            screener_name = f"Incubator ({days_active}d) via {display_screener}"
+
+        # Signal grade from score
+        if score is not None:
+            if score >= 48:
+                signal_grade = 'A+'
+            elif score >= 40:
+                signal_grade = 'A'
+            elif score >= 30:
+                signal_grade = 'B'
+            else:
+                signal_grade = 'C'
+        else:
+            signal_grade = None
+
+        # Setup type display
+        setup_display = strategy_key.replace('_', ' ').title()
+
+        overnight = timeframe_class != 'intraday'
 
         # Source run label
         source_run_label = f"incubator_promote_{datetime.now(tz=__import__('datetime').timezone.utc).strftime('%Y%m%d_%H%M')}"
 
         if dry_run:
             results.append(
-                f"WOULD PROMOTE: {symbol} ({strategy_key}, score={score}, {screener_name})"
+                f"WOULD PROMOTE: {symbol} ({strategy_key}, score={score}, grade={signal_grade}, {screener_name})"
             )
             promoted += 1
             continue
@@ -225,13 +247,21 @@ def run(dry_run=True, limit=10, force_symbol=None):
             INSERT INTO paper_trade_proposals
                 (symbol, strategy_id, proposed_entry, proposed_stop, proposed_target1,
                  proposed_shares, status, expires_at, lifecycle_status,
-                 proposal_timeframe_class, screener_name, source_table,
-                 discovery_source, source_run_label)
+                 entry_zone_status, proposal_timeframe_class,
+                 screener_name, source_table, discovery_source, source_run_label,
+                 signal_score, signal_grade, catalyst, catalyst_verified,
+                 setup_type, proposed_by, overnight_monitoring_enabled)
             VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', %s, 'ACTIVE',
-                    %s, %s, 'incubator_universe', 'incubator', %s)
+                    'NEEDS_PRICE_CHECK', %s,
+                    %s, 'incubator_universe', 'incubator', %s,
+                    %s, %s, %s, %s,
+                    %s, 'incubator_promoter', %s)
         """, [
             symbol, strategy_id, entry, stop, target, shares,
-            expires_at, timeframe_class, screener_name, source_run_label,
+            expires_at, timeframe_class,
+            screener_name, source_run_label,
+            score, signal_grade, c.get('catalyst'), catalyst_verified,
+            setup_display, overnight,
         ])
 
         # Mark as promoted
