@@ -343,20 +343,26 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     },
   ]
 
+  // Session 26: Use server-side action_state when available
+  const effectiveActionState = p.action_state || norm.actionState
+  const effectiveTopBlocker = p.top_blocker || norm.topBlocker
+  const effectiveNextActions: string[] = p.next_actions || norm.nextActions
+  const packetPct = p.packet_completion_pct || norm.dataCompleteness
+
   // ── Build decision banner text ──
   let bannerText = ''
   let bannerDetail = ''
-  if (norm.actionState === 'BLOCKED') {
-    bannerText = `BLOCKED — ${norm.topBlocker}`
-    bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
-  } else if (norm.actionState === 'PAPER_READY') {
+  if (effectiveActionState === 'BLOCKED') {
+    bannerText = `BLOCKED — ${effectiveTopBlocker}`
+    bannerDetail = effectiveNextActions.length > 0 ? `Next: ${effectiveNextActions[0]}` : ''
+  } else if (effectiveActionState === 'PAPER_READY') {
     bannerText = 'PAPER READY — All gates pass. Review thesis before submitting.'
     bannerDetail = ''
-  } else if (norm.actionState === 'MISSING_DATA') {
-    bannerText = `MISSING DATA — ${(p.missing_data || []).length} fields missing`
-    bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions.join(', ')}` : ''
-  } else if (norm.actionState === 'NEEDS_REVIEW') {
-    bannerText = 'NEEDS REVIEW — Agent or data review pending'
+  } else if (effectiveActionState === 'MISSING_DATA') {
+    bannerText = `MISSING DATA — ${p.action_label || `${(p.missing_data || []).length} fields missing`}`
+    bannerDetail = effectiveNextActions.length > 0 ? `Next: ${effectiveNextActions.join(', ')}` : ''
+  } else if (effectiveActionState === 'NEEDS_REVIEW') {
+    bannerText = `NEEDS REVIEW — ${p.action_label || 'Agent or data review pending'}`
     bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
   } else if (norm.actionState === 'LEARNING_MODE') {
     bannerText = 'LEARNING MODE — Cautious paper test, not fully validated'
@@ -403,6 +409,21 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
 
       {/* ── Pipeline chevron (always visible) ── */}
       <PipelineChevron stages={p.pipeline_stages || []} />
+
+      {/* Session 26: Packet progress bar */}
+      {packetPct > 0 && (
+        <div style={{ padding: '4px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', minWidth: 55 }}>Packet {packetPct}%</span>
+          <div style={{ flex: 1, height: 4, background: 'var(--bg0)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(packetPct, 100)}%`, height: '100%', borderRadius: 2,
+              background: packetPct >= 80 ? '#22C55E' : packetPct >= 50 ? '#F59E0B' : '#EF4444',
+              transition: 'width 0.3s' }} />
+          </div>
+          {p.llm_review_status && p.llm_review_status !== 'COMPLETE' && (
+            <span style={{ fontSize: 8, color: '#A855F7', fontWeight: 600 }}>LLM: {p.llm_review_status}</span>
+          )}
+        </div>
+      )}
 
       {/* ── Blocker/status banner ── */}
       <BlockerBanner p={p} norm={norm} />
@@ -1271,6 +1292,10 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
 
       {/* ── Actions footer ── */}
       <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <button onClick={() => runAction('enrich', '/api/v2/paper-proposals/enrich', { proposal_id: p.id })} disabled={!!runningAction}
+          style={btnStyle('rgba(168,85,247,0.15)', '#A855F7')}>
+          {runningAction === 'enrich' ? '...' : 'Enrich'}
+        </button>
         <button onClick={() => runAction('research', '/api/v2/paper-proposals/run-research')} disabled={!!runningAction}
           style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
           {runningAction === 'research' ? '...' : 'Run Research'}
@@ -1656,6 +1681,37 @@ export default function PaperProposals() {
           )}
         </div>
       )}
+
+      {/* Session 26: Packet health summary */}
+      {pending.length > 0 && (() => {
+        const avgPct = pending.reduce((s: number, p: any) => s + (p.packet_completion_pct || 0), 0) / pending.length
+        const states: Record<string, number> = {}
+        for (const p of pending) {
+          const s = p.action_state || 'UNKNOWN'
+          states[s] = (states[s] || 0) + 1
+        }
+        const llmPending = pending.filter((p: any) => (p.llm_review_status || 'NOT_REQUESTED') !== 'COMPLETE').length
+        const agentsPending = pending.filter((p: any) => (p.agent_review_status || 'NOT_REQUESTED') !== 'COMPLETE' && p.agent_review_status !== 'complete').length
+        return (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', padding: '6px 0' }}>
+            {[
+              { label: 'Pending', value: pending.length, color: '#60A5FA' },
+              { label: 'Paper Ready', value: states.PAPER_READY || 0, color: '#22C55E' },
+              { label: 'Blocked', value: states.BLOCKED || 0, color: '#EF4444' },
+              { label: 'Missing Data', value: states.MISSING_DATA || 0, color: '#F59E0B' },
+              { label: 'Needs Review', value: states.NEEDS_REVIEW || 0, color: '#F59E0B' },
+              { label: 'Avg Packet', value: `${avgPct.toFixed(0)}%`, color: avgPct >= 70 ? '#22C55E' : '#F59E0B' },
+              { label: 'LLM Pending', value: llmPending, color: llmPending > 0 ? '#A855F7' : '#22C55E' },
+              { label: 'Agent Pending', value: agentsPending, color: agentsPending > 0 ? '#A855F7' : '#22C55E' },
+            ].map(m => (
+              <div key={m.label} style={{ padding: '3px 8px', borderRadius: 4, background: 'var(--bg1)', border: '1px solid var(--border)', textAlign: 'center', minWidth: 60 }}>
+                <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{m.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: m.color, fontFamily: 'monospace' }}>{m.value}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* Proposal list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflow: 'visible' }}>

@@ -7212,6 +7212,17 @@ def _paper_proposals_enriched():
                     'rr': round(rr_t1, 2) if rr_t1 else p.get('proposed_rr'),
                     'risk_pct_portfolio': round(risk_pct, 4),
                 },
+                # Session 26: Packet state fields
+                'packet_state': p.get('packet_state') or 'NEW',
+                'packet_completion_pct': _json_clean(p.get('packet_completion_pct')) or 0,
+                'packet_last_enriched_at': _json_clean(p.get('packet_last_enriched_at')),
+                'missing_data_by_section': _json_clean(p.get('missing_data_by_section')),
+                'action_state': p.get('action_state'),
+                'action_label': p.get('action_label'),
+                'top_blocker': p.get('top_blocker'),
+                'next_actions': _json_clean(p.get('next_actions')),
+                'llm_review_status': p.get('llm_review_status') or 'NOT_REQUESTED',
+                'enrichment_attempt_count': p.get('enrichment_attempt_count') or 0,
             })
 
             # Session 23D: Enrich with technical snapshot + execution readiness from DB
@@ -11016,6 +11027,100 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "events": [
                 {k: _json_clean(v) for k, v in e.items()} for e in events
             ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 26: Packet health
+    if method == "GET" and base_path == "/api/v2/paper-proposals/packet-health":
+        try:
+            rows = _db_query("""
+                SELECT action_state, packet_state, packet_completion_pct,
+                       llm_review_status, agent_review_status, entry_zone_status,
+                       latest_execution_readiness
+                FROM paper_trade_proposals
+                WHERE status = 'PENDING'
+            """) or []
+            from collections import Counter
+            states = Counter(r.get('action_state') or 'UNKNOWN' for r in rows)
+            llm_pending = sum(1 for r in rows if (r.get('llm_review_status') or 'NOT_REQUESTED') not in ('COMPLETE',))
+            agents_pending = sum(1 for r in rows if (r.get('agent_review_status') or 'NOT_REQUESTED') not in ('COMPLETE', 'complete'))
+            exec_pending = sum(1 for r in rows if not r.get('latest_execution_readiness'))
+            avg_pct = round(sum(float(r.get('packet_completion_pct') or 0) for r in rows) / max(len(rows), 1), 1)
+            return 200, {"ok": True, "summary": {
+                "pending": len(rows),
+                "paper_ready": states.get('PAPER_READY', 0),
+                "blocked": states.get('BLOCKED', 0),
+                "missing_data": states.get('MISSING_DATA', 0),
+                "needs_review": states.get('NEEDS_REVIEW', 0),
+                "caution": states.get('CAUTION', 0),
+                "learning_mode": states.get('LEARNING_MODE', 0),
+                "avg_completion_pct": avg_pct,
+                "llm_pending": llm_pending,
+                "agents_pending": agents_pending,
+                "execution_pending": exec_pending,
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 26: Enrich proposals
+    if method == "POST" and base_path == "/api/v2/paper-proposals/enrich":
+        try:
+            import subprocess as _sp
+            pid_arg = []
+            body = {}
+            try:
+                body = json.loads(environ.get('wsgi.input', b'').read() if hasattr(environ.get('wsgi.input', b''), 'read') else b'{}')
+            except Exception:
+                pass
+            if body.get('proposal_id'):
+                pid_arg = ['--proposal-id', str(body['proposal_id'])]
+            r = _sp.run(
+                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                 str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"), "--run", "--limit", "10"] + pid_arg,
+                capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": r.returncode == 0,
+                         "stdout": r.stdout[-2000:],
+                         "stderr": r.stderr[-500:] if r.returncode != 0 else ""}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 26: Queue LLM reviews
+    if method == "POST" and base_path == "/api/v2/paper-proposals/queue-llm-review":
+        try:
+            import subprocess as _sp
+            r = _sp.run(
+                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                 str(PROJECT_ROOT / "scripts/proposal_enrichment_loop.py"), "--run", "--queue-llm-only", "--limit", "20"],
+                capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": r.returncode == 0,
+                         "stdout": r.stdout[-2000:],
+                         "stderr": r.stderr[-500:] if r.returncode != 0 else ""}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 26: Run LLM review
+    if method == "POST" and base_path == "/api/v2/paper-proposals/run-llm-review":
+        try:
+            import subprocess as _sp
+            r = _sp.run(
+                [str(PROJECT_ROOT / ".venv/bin/python3"),
+                 str(PROJECT_ROOT / "scripts/proposal_llm_review_worker.py"), "--run", "--limit", "2"],
+                capture_output=True, text=True, timeout=600, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": r.returncode == 0,
+                         "stdout": r.stdout[-2000:],
+                         "stderr": r.stderr[-500:] if r.returncode != 0 else ""}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Session 26: Enrichment events
+    if method == "GET" and base_path == "/api/v2/paper-proposals/enrichment-events":
+        try:
+            events = _db_query("""
+                SELECT id, proposal_id, symbol, event_type, stage, status, message, created_at
+                FROM proposal_enrichment_events
+                ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "events": [{k: _json_clean(v) for k, v in e.items()} for e in events]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
