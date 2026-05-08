@@ -91,8 +91,9 @@ function normalizeProposal(p: any) {
 
   // nextActions
   const nextActions: string[] = []
-  const tc = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
-  if (!tc.rsi && !tc.atr) nextActions.push('Run Technical Snapshot')
+  const _nTc = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
+  const _nTs = p.technical_snapshot || {}
+  if (!(_nTs.rsi_14 ?? _nTc.rsi) && !(_nTs.atr_14 ?? _nTc.atr)) nextActions.push('Run Technical Snapshot')
   if (!p.agent_reviews?.length && !p.llm_analysis) nextActions.push('Run AI Review')
   if (!p.catalyst || !p.news?.length) nextActions.push('Run Research')
   if (!p.execution_readiness) nextActions.push('Check Execution Readiness')
@@ -129,19 +130,32 @@ function normalizeProposal(p: any) {
 }
 
 // ── Metric tile component ──────────────────────────────────────────────
-function MetricTile({ label, value, status, tileColor }: { label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray' }) {
+function MetricTile({ label, value, status, tileColor, onClick }: {
+  label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray'; onClick?: () => void
+}) {
   const colors = {
-    green: { bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.25)', text: 'var(--green)' },
-    amber: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.25)', text: '#F59E0B' },
-    red:   { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)',  text: 'var(--red)' },
-    gray:  { bg: 'rgba(148,163,184,0.06)',border: 'rgba(148,163,184,0.15)',text: '#94A3B8' },
+    green: { bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.25)', text: 'var(--green)', hover: 'rgba(34,197,94,0.14)' },
+    amber: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.25)', text: '#F59E0B', hover: 'rgba(251,191,36,0.14)' },
+    red:   { bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)',  text: 'var(--red)', hover: 'rgba(239,68,68,0.14)' },
+    gray:  { bg: 'rgba(148,163,184,0.06)',border: 'rgba(148,163,184,0.15)',text: '#94A3B8', hover: 'rgba(148,163,184,0.12)' },
   }
   const c = colors[tileColor]
+  const [hovered, setHovered] = React.useState(false)
   return (
-    <div style={{ padding: '6px 8px', background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6, textAlign: 'center', minWidth: 0 }}>
-      <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: c.text, ...mono }}>{value}</div>
-      <div style={{ fontSize: 7, color: 'var(--text3)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status}</div>
+    <div
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        padding: '6px 8px', background: hovered ? c.hover : c.bg,
+        border: `1px solid ${hovered ? c.text : c.border}`,
+        borderRadius: 6, textAlign: 'center', minWidth: 0,
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'background 0.15s, border-color 0.15s',
+      }}>
+      <div style={{ fontSize: 7, color: hovered ? c.text : 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px', marginBottom: 2, transition: 'color 0.15s' }}>{label}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: c.text, ...mono }}>{value}</div>
+      <div style={{ fontSize: 8, color: hovered ? 'var(--text2)' : 'var(--text3)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', transition: 'color 0.15s' }}>{status}</div>
     </div>
   )
 }
@@ -239,60 +253,93 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
 
   // ── Build metric tiles ──
   const er = p.execution_readiness || {}
-  const tc = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
+  const _tcRaw = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
+  const _tsSnap = p.technical_snapshot || {}
+  // Merge: technical_snapshot has fresher data than technical_context
+  const tc = {
+    ..._tcRaw,
+    rsi: _tsSnap.rsi_14 ?? _tcRaw.rsi,
+    rsi_state: _tsSnap.rsi_14 != null ? (Number(_tsSnap.rsi_14) >= 70 ? 'overbought' : Number(_tsSnap.rsi_14) <= 30 ? 'oversold' : Number(_tsSnap.rsi_14) >= 55 ? 'bullish momentum' : 'neutral') : _tcRaw.rsi_state,
+    atr: _tsSnap.atr_14 ?? _tcRaw.atr,
+    atr_pct: _tsSnap.atr_pct ?? _tcRaw.atr_pct,
+    vwap: _tsSnap.vwap ?? _tcRaw.vwap,
+    vwap_distance_pct: _tsSnap.vwap_distance_pct ?? _tcRaw.vwap_distance_pct,
+    vwap_state: _tsSnap.vwap_distance_pct != null ? (Number(_tsSnap.vwap_distance_pct) > 3 ? 'extended above VWAP' : Number(_tsSnap.vwap_distance_pct) > 0 ? 'above VWAP' : 'below VWAP') : _tcRaw.vwap_state,
+    adx: _tsSnap.adx ?? _tcRaw.adx,
+    adx_regime: _tsSnap.adx_regime ?? _tcRaw.adx_regime,
+    trend_strength: _tsSnap.adx_regime ?? _tcRaw.trend_strength,
+    rvol: _tcRaw.rvol ?? p.rvol,
+    rvol_state: _tcRaw.rvol_state ?? (p.rvol ? (Number(p.rvol) >= 5 ? 'explosive' : Number(p.rvol) >= 2 ? 'high' : 'normal') : undefined),
+    ema_alignment: _tsSnap.ema_alignment ?? _tcRaw.ema_alignment,
+    technical_grade: _tsSnap.technical_grade ?? _tcRaw.technical_grade,
+    float_rotation_state: _tcRaw.float_rotation_state,
+    gap_pct: _tcRaw.gap_pct ?? p.gap_pct,
+    gap_state: _tcRaw.gap_state,
+  }
   const bt = typeof p.backtest_summary === 'string' ? JSON.parse(p.backtest_summary || '{}') : (p.backtest_summary || {})
   const sf = p.strategy_fit || {}
   const agentReviews = (p.agent_reviews || []).filter((ar: any) => ar.verdict)
   const rr = p.proposed_rr || (riskPS > 0 ? (target - entry) / riskPS : 0)
 
-  const tiles: { label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray' }[] = [
+  const ts = p.technical_snapshot || {}
+  const tiles: { label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray'; tab: string }[] = [
     {
       label: 'Strategy Fit',
       value: sf.fit_score != null ? `${sf.fit_score}` : '--',
-      status: sf.fit_grade || 'Not computed',
+      status: sf.fit_grade || (sf.fit_score != null ? (sf.fit_score >= 80 ? 'Strong fit' : sf.fit_score >= 60 ? 'Good fit' : 'Weak fit') : 'Run analysis'),
       tileColor: sf.fit_score >= 80 ? 'green' : sf.fit_score >= 60 ? 'amber' : sf.fit_score != null ? 'red' : 'gray',
+      tab: 'strategy',
     },
     {
       label: 'Execution',
       value: er.readiness_score != null ? `${er.readiness_score}` : '--',
-      status: er.readiness_state ? er.readiness_state.replace(/_/g, ' ').slice(0, 20) : 'Not checked',
+      status: er.readiness_state ? er.readiness_state.replace(/^BLOCKED_/, '').replace(/_/g, ' ').slice(0, 18) : 'Check readiness',
       tileColor: er.readiness_state === 'READY_FOR_PAPER_SUBMIT' || er.readiness_state === 'READY_ORB_CONFIRMED' ? 'green' : er.readiness_state === 'CAUTION_EXECUTABLE' ? 'amber' : er.readiness_state ? 'red' : 'gray',
+      tab: 'execution',
     },
     {
       label: 'Technical',
-      value: p.technical_snapshot?.technical_grade || (tc.rsi != null ? 'OK' : '--'),
-      status: tc.rsi != null ? `RSI ${Number(tc.rsi).toFixed(0)}` : 'Missing',
-      tileColor: p.technical_snapshot?.technical_grade === 'TECH_STRONG' ? 'green' : p.technical_snapshot?.technical_grade === 'TECH_OK' ? 'amber' : tc.rsi != null ? 'amber' : 'gray',
+      value: ts.technical_grade || (ts.rsi_14 != null ? 'OK' : '--'),
+      status: ts.rsi_14 != null ? `RSI ${Number(ts.rsi_14).toFixed(0)} ATR $${Number(ts.atr_14 || 0).toFixed(2)}` : 'Run snapshot',
+      tileColor: ts.technical_grade === 'TECH_STRONG' ? 'green' : ts.technical_grade === 'TECH_OK' || ts.technical_grade === 'TECH_MIXED' ? 'amber' : ts.rsi_14 != null ? 'amber' : 'gray',
+      tab: 'technical',
     },
     {
       label: 'Catalyst',
-      value: p.catalyst_quality?.catalyst_quality_score != null ? `${p.catalyst_quality.catalyst_quality_score}` : p.catalyst_confidence != null ? `${Math.min(100, Math.max(0, Math.round(p.catalyst_confidence * 100)))}%` : '--',
-      status: p.catalyst_quality?.catalyst_grade || (p.catalyst_verified ? 'Verified' : 'Unverified'),
-      tileColor: p.catalyst_quality?.catalyst_quality_score >= 70 ? 'green' : p.catalyst_quality?.catalyst_quality_score >= 50 ? 'amber' : p.catalyst ? 'amber' : 'gray',
+      value: p.catalyst_quality?.catalyst_quality_score != null ? `${p.catalyst_quality.catalyst_quality_score}%` : p.catalyst_verified ? 'Yes' : '--',
+      status: p.catalyst_quality?.catalyst_grade || (p.catalyst_verified ? `Verified${p.catalyst ? '' : ''}` : 'Unverified'),
+      tileColor: p.catalyst_quality?.catalyst_quality_score >= 70 ? 'green' : p.catalyst_verified ? 'green' : p.catalyst ? 'amber' : 'gray',
+      tab: 'catalyst',
     },
     {
       label: 'R:R',
-      value: rr > 0 ? Number(rr).toFixed(1) : '--',
-      status: rr >= 2 ? 'Meets min' : rr > 0 ? 'Below 2.0 min' : 'Not set',
-      tileColor: rr >= 3 ? 'green' : rr >= 2 ? 'amber' : rr > 0 ? 'red' : 'gray',
+      value: rr > 0 ? `${Number(rr).toFixed(1)}:1` : '--',
+      status: rr >= 2.5 ? 'Excellent' : rr >= 2 ? 'Meets 2:1 min' : rr > 0 ? 'Below 2:1 min' : 'Not set',
+      tileColor: rr >= 2.5 ? 'green' : rr >= 2 ? 'green' : rr > 0 ? 'red' : 'gray',
+      tab: 'risk',
     },
     {
       label: 'Agents',
       value: agentReviews.length > 0 ? `${agentReviews.length}` : '--',
-      status: agentReviews.length > 0 ? `${agentReviews.filter((a: any) => a.verdict === 'APPROVE_TEST' || a.verdict === 'BUY').length} approve` : 'None',
-      tileColor: agentReviews.length >= 2 ? 'green' : agentReviews.length > 0 ? 'amber' : 'gray',
+      status: agentReviews.length > 0
+        ? `${agentReviews.filter((a: any) => a.verdict?.includes('CAUTIOUS') || a.verdict?.includes('APPROVE')).length}/${agentReviews.length} cautious+`
+        : 'Run AI review',
+      tileColor: agentReviews.length >= 3 ? 'green' : agentReviews.length > 0 ? 'amber' : 'gray',
+      tab: 'agents',
     },
     {
       label: 'Backtest',
-      value: bt.quality || '--',
-      status: bt.win_rate != null ? `${(Number(bt.win_rate) * 100).toFixed(0)}% WR` : 'Not run',
-      tileColor: bt.quality === 'SUFFICIENT' ? 'green' : bt.quality === 'LIMITED' ? 'amber' : bt.quality ? 'red' : 'gray',
+      value: bt.sample_size ? `n=${bt.sample_size}` : '--',
+      status: bt.sample_size >= 20 ? `${(Number(bt.win_rate || 0) * 100).toFixed(0)}% WR` : bt.sample_size ? 'Learning mode' : 'Run backtest',
+      tileColor: bt.sample_size >= 20 && Number(bt.win_rate || 0) >= 0.55 ? 'green' : bt.sample_size ? 'amber' : 'gray',
+      tab: 'risk',
     },
     {
       label: 'Data',
       value: `${norm.dataCompleteness}%`,
-      status: `${(p.missing_data || []).length} missing`,
-      tileColor: norm.dataCompleteness >= 85 ? 'green' : norm.dataCompleteness >= 60 ? 'amber' : norm.dataCompleteness > 0 ? 'red' : 'gray',
+      status: (p.missing_data || []).length > 0 ? `${(p.missing_data || []).length} gaps` : 'Complete',
+      tileColor: norm.dataCompleteness >= 90 ? 'green' : norm.dataCompleteness >= 70 ? 'amber' : norm.dataCompleteness > 0 ? 'red' : 'gray',
+      tab: 'missing',
     },
   ]
 
@@ -374,7 +421,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
 
       {/* ── Metric tiles row ── */}
       <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
-        {tiles.map(t => <MetricTile key={t.label} {...t} />)}
+        {tiles.map(t => <MetricTile key={t.label} label={t.label} value={t.value} status={t.status} tileColor={t.tileColor} onClick={() => setActiveTab(t.tab)} />)}
       </div>
 
       {/* ── Tabs ── */}
