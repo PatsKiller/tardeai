@@ -185,6 +185,54 @@ def main():
             result = refresh_ticker(conn, inc, dry_run=args.dry_run)
             counts[result] = counts.get(result, 0) + 1
 
+        # ── Catalyst refresh for stale incubator symbols ──
+        # Symbols with no scan in 3+ days get fresh catalyst enrichment
+        catalyst_refreshed = 0
+        try:
+            from catalyst_enrichment import enrich_ticker
+            cur.execute("""
+                SELECT DISTINCT iu.symbol, iu.id
+                FROM incubator_universe iu
+                WHERE iu.status = 'ACTIVE'
+                  AND iu.latest_score >= 35
+                  AND NOT EXISTS (
+                      SELECT 1 FROM trade_ai_scans s
+                      WHERE s.symbol = iu.symbol
+                      AND s.scanned_at > NOW() - INTERVAL '3 days'
+                  )
+                ORDER BY iu.latest_score DESC
+                LIMIT 30
+            """)
+            stale_symbols = cur.fetchall()
+            log.info("Found %d incubator symbols with stale catalyst (no scan in 3d)", len(stale_symbols))
+
+            for sym, inc_id in stale_symbols:
+                if args.dry_run:
+                    log.info("[DRY-RUN] Would refresh catalyst for %s", sym)
+                    catalyst_refreshed += 1
+                    continue
+                try:
+                    result = enrich_ticker(sym)
+                    if result.get("has_fresh_catalyst"):
+                        cur.execute("""
+                            UPDATE incubator_universe
+                            SET catalyst = %s, catalyst_verified = %s, updated_at = NOW()
+                            WHERE id = %s
+                        """, [
+                            result.get("catalyst_summary", "")[:500],
+                            result.get("catalyst_verified", False),
+                            inc_id,
+                        ])
+                        catalyst_refreshed += 1
+                        log.info("  Catalyst refreshed: %s verified=%s",
+                                 sym, result.get("catalyst_verified"))
+                except Exception as e:
+                    log.warning("  Catalyst refresh failed for %s: %s", sym, e)
+        except ImportError:
+            log.warning("catalyst_enrichment not available — skipping catalyst refresh")
+        except Exception as e:
+            log.warning("Catalyst refresh pass failed: %s", e)
+
         if args.apply:
             conn.commit()
             log.info("Committed changes to database")
@@ -192,12 +240,13 @@ def main():
             conn.rollback()
 
         log.info("=== SUMMARY ===")
-        log.info("Improved:       %d", counts["improved"])
-        log.info("Degraded:       %d", counts["degraded"])
-        log.info("Stayed active:  %d", counts["stayed_active"])
-        log.info("No data:        %d", counts["no_data"])
-        log.info("Total processed: %d", len(active))
-        log.info("Mode:           %s", "DRY-RUN" if args.dry_run else "APPLIED")
+        log.info("Improved:           %d", counts["improved"])
+        log.info("Degraded:           %d", counts["degraded"])
+        log.info("Stayed active:      %d", counts["stayed_active"])
+        log.info("No data:            %d", counts["no_data"])
+        log.info("Catalyst refreshed: %d", catalyst_refreshed)
+        log.info("Total processed:    %d", len(active))
+        log.info("Mode:               %s", "DRY-RUN" if args.dry_run else "APPLIED")
 
     except Exception:
         conn.rollback()
