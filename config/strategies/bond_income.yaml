@@ -94,8 +94,9 @@ prompt_context:
     - "Should munis be favored in taxable accounts for after-tax yield?"
 
 screen_filters:
-  min_price: 15.00
+  min_price: 20.00
   max_price: 200.00
-  min_yield: 3.5
+  min_div_yield_pct: 2.5
+  max_beta: 0.5
   asset_type: [etf, bond_fund, preferred]
   min_score: 0

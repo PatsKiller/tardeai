@@ -75,6 +75,33 @@ SCREENER_DISPLAY = {
 RISK_BUDGET = 150  # dollars per trade
 
 
+def _queue_llm_review(conn, proposal_id: int, symbol: str, strategy_id: str):
+    """Queue a proposal for LLM review via proposal_llm_reviewer.py.
+
+    Inserts a row into proposal_agent_reviews with status='pending' so
+    the enrichment pipeline or manual trigger picks it up.
+    """
+    try:
+        with conn.cursor() as cur:
+            # Queue via the existing agent review infrastructure
+            cur.execute("""
+                INSERT INTO proposal_agent_reviews
+                    (proposal_id, agent_name, status, created_at)
+                VALUES (%s, 'scalp_critic', 'pending', NOW())
+                ON CONFLICT DO NOTHING
+            """, [proposal_id])
+            # Also try watchlist_agent_jobs if table exists
+            cur.execute("""
+                INSERT INTO watchlist_agent_jobs
+                    (symbol, requested_agent, request_type, priority, status, note, created_at)
+                VALUES (%s, 'scalp_critic', 'proposal_review', 1, 'queued',
+                        %s, NOW())
+                ON CONFLICT DO NOTHING
+            """, [symbol, f"proposal_id={proposal_id} strategy={strategy_id}"])
+    except Exception as e:
+        log.warning(f"[llm_queue] non-fatal: {e}")
+
+
 def get_conn():
     return psycopg2.connect(
         host=os.getenv('DB_HOST', 'localhost'),
@@ -256,6 +283,7 @@ def run(dry_run=True, limit=10, force_symbol=None):
                     %s, 'incubator_universe', 'incubator', %s,
                     %s, %s, %s, %s,
                     %s, 'incubator_promoter', %s)
+            RETURNING id
         """, [
             symbol, strategy_id, entry, stop, target, shares,
             expires_at, timeframe_class,
@@ -263,6 +291,7 @@ def run(dry_run=True, limit=10, force_symbol=None):
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
         ])
+        new_id = cur.fetchone()[0]
 
         # Mark as promoted
         cur.execute("""
@@ -270,6 +299,9 @@ def run(dry_run=True, limit=10, force_symbol=None):
             SET promoted_to_proposal_at = NOW()
             WHERE id = %s
         """, [c['id']])
+
+        # Queue LLM review for the new proposal
+        _queue_llm_review(conn, new_id, symbol, strategy_id)
 
         conn.commit()
         promoted += 1

@@ -96,8 +96,11 @@ prompt_context:
     - "Will assignment at the selected strike result in a net gain above cost basis?"
 
 screen_filters:
-  min_price: 10.00
+  min_price: 15.00
   max_price: 500.00
   min_iv_rank: 30
+  min_market_cap_b: 1.0
+  max_beta: 1.5
   requires_shares_owned: true
+  min_shares_owned: 100
   min_score: 0

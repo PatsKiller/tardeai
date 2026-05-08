@@ -96,8 +96,11 @@ prompt_context:
     - "What is the IRMAA and SSDI income impact of adding this position?"
 
 screen_filters:
-  min_price: 15.00
+  min_price: 10.00
   max_price: 500.00
-  min_yield: 1.5
+  min_div_yield_pct: 1.0
+  max_div_yield_pct: 6.0
+  min_market_cap_b: 5.0
+  max_beta: 1.2
   min_dividend_growth_years: 5
   min_score: 0
