@@ -301,6 +301,31 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
             if perf_f > float(min_rs) * 100:
                 match_reasons.append(f"1m perf {perf_f:.1f}%")
 
+    # ── Social sentiment (from trade_ai_scans social columns) ──
+    social_score = scan.get("social_score")
+    social_sentiment = scan.get("social_sentiment")
+    social_bullish_pct = scan.get("social_bullish_pct")
+    social_reddit = scan.get("social_reddit") or 0
+    social_stocktwits = scan.get("social_stocktwits") or 0
+    social_wsb = scan.get("social_wsb") or 0
+    total_social = int(social_reddit) + int(social_stocktwits) + int(social_wsb)
+
+    if total_social > 0:
+        match_reasons.append(f"social {total_social} mentions")
+    if social_bullish_pct is not None and float(social_bullish_pct) >= 70:
+        match_reasons.append(f"social {float(social_bullish_pct):.0f}% bullish")
+
+    # ── Social volume spikes ──
+    spike_ratio = scan.get("social_spike_ratio")
+    if spike_ratio is not None and float(spike_ratio) >= 2.0:
+        match_reasons.append(f"social spike {float(spike_ratio):.1f}x")
+
+    # ── YouTube transcript mentions ──
+    yt_mentions = scan.get("youtube_mentions")
+    yt_count = scan.get("youtube_mention_count") or 0
+    if yt_count > 0:
+        match_reasons.append(f"YouTube {yt_count} transcript mentions")
+
     # ── Final verdict ──
     # Must have zero rejections AND at least 2 positive criteria
     has_rejections = len(reject_reasons) > 0
@@ -364,8 +389,23 @@ def _build_llm_prompt(scan: dict, strategies: dict,
         f"Industry: {scan.get('industry', '?')}\n"
         f"Catalyst: {scan.get('catalyst', 'none')}\n"
         f"Catalyst verified: {scan.get('catalyst_verified', False)}\n"
-        f"Change %: {scan.get('change_pct', '?')}"
+        f"Change %: {scan.get('change_pct', '?')}\n"
+        f"Dividend Yield: {scan.get('div_yield_pct', 'N/A')}%\n"
+        f"Market Cap: ${scan.get('market_cap_b', 'N/A')}B\n"
+        f"RSI: {scan.get('rsi', 'N/A')}\n"
+        f"52w High %: {scan.get('week52_high_pct', 'N/A')}%\n"
+        f"ROE: {scan.get('roe_pct', 'N/A')}%\n"
+        f"Social Sentiment: {scan.get('social_sentiment', 'none')} (score={scan.get('social_score', 0)}, "
+        f"reddit={scan.get('social_reddit', 0)}, stocktwits={scan.get('social_stocktwits', 0)}, wsb={scan.get('social_wsb', 0)})\n"
+        f"Social Bullish %: {scan.get('social_bullish_pct', 'N/A')}\n"
+        f"YouTube Transcript Mentions: {scan.get('youtube_mention_count', 0)}"
     )
+
+    # Add YouTube context if available
+    yt = scan.get("youtube_mentions")
+    if yt and len(yt) > 0:
+        yt_lines = [f"  - \"{m.get('title','')}\" ({m.get('channel','')}, quality={m.get('quality',0)})" for m in yt[:3]]
+        scan_info += "\nYouTube Transcript Sources:\n" + "\n".join(yt_lines)
 
     det_info = ", ".join(det_strats) if det_strats else "none"
 
@@ -525,7 +565,9 @@ def classify_batch_from_db(limit: int = 50, use_llm: bool = False) -> list[dict]
         SELECT DISTINCT ON (symbol)
             symbol, price, rvol, float_m, gap_pct, change_pct,
             score, decision, grade, catalyst, catalyst_verified,
-            sector, industry, screener_label, run_label
+            sector, industry, screener_label, run_label,
+            social_sentiment, social_score, social_reddit,
+            social_stocktwits, social_wsb, social_bullish_pct
         FROM trade_ai_scans
         WHERE scanned_at > NOW() - INTERVAL '7 days'
           AND (score >= 30 OR decision IN ('GO','WAIT') OR catalyst_verified = true)
@@ -566,6 +608,59 @@ def classify_batch_from_db(limit: int = 50, use_llm: bool = False) -> list[dict]
     except Exception as e:
         log.warning("Could not load indicator data: %s", e)
 
+    # Pull YouTube transcript mentions (symbols mentioned in recent transcripts)
+    youtube_intel = {}
+    try:
+        cur.execute("""
+            SELECT id, title, channel_name, quality_score, strategy_tags,
+                   matched_keywords, publish_date
+            FROM youtube_transcripts
+            WHERE ingested_at > NOW() - INTERVAL '14 days'
+              AND quality_score >= 40
+            ORDER BY quality_score DESC
+            LIMIT 200
+        """)
+        for row in cur.fetchall():
+            tcols = [d[0] for d in cur.description]
+            trow = dict(zip(tcols, row))
+            keywords = trow.get("matched_keywords") or []
+            if isinstance(keywords, str):
+                try:
+                    keywords = json.loads(keywords)
+                except Exception:
+                    keywords = []
+            # Extract $SYMBOL mentions from matched_keywords
+            for kw in keywords:
+                if isinstance(kw, str) and kw.startswith("$") and len(kw) <= 6:
+                    sym = kw[1:].upper()
+                    if sym not in youtube_intel:
+                        youtube_intel[sym] = []
+                    youtube_intel[sym].append({
+                        "title": trow.get("title", "")[:100],
+                        "channel": trow.get("channel_name", ""),
+                        "quality": trow.get("quality_score", 0),
+                        "strategy_tags": trow.get("strategy_tags", []),
+                    })
+        log.info("Loaded YouTube intel: %d symbols mentioned in transcripts", len(youtube_intel))
+    except Exception as e:
+        log.warning("Could not load YouTube transcript data: %s", e)
+
+    # Pull social volume spikes
+    social_spikes = {}
+    try:
+        cur.execute("""
+            SELECT symbol, mention_count_24h, spike_ratio, dominant_sentiment
+            FROM social_volume_spikes
+            WHERE created_at > NOW() - INTERVAL '7 days'
+            ORDER BY spike_ratio DESC
+        """)
+        for row in cur.fetchall():
+            scols = [d[0] for d in cur.description]
+            srow = dict(zip(scols, row))
+            social_spikes[srow["symbol"]] = srow
+    except Exception as e:
+        log.warning("Could not load social volume spikes: %s", e)
+
     conn.close()
 
     strategies = load_all_strategies()
@@ -576,6 +671,21 @@ def classify_batch_from_db(limit: int = 50, use_llm: bool = False) -> list[dict]
         if sym not in enrichment:
             enrichment[sym] = {}
         enrichment[sym].update(idata)
+
+    # Merge YouTube transcript intel into enrichment
+    for sym, mentions in youtube_intel.items():
+        if sym not in enrichment:
+            enrichment[sym] = {}
+        enrichment[sym]["youtube_mentions"] = mentions
+        enrichment[sym]["youtube_mention_count"] = len(mentions)
+
+    # Merge social volume spikes into enrichment
+    for sym, spike in social_spikes.items():
+        if sym not in enrichment:
+            enrichment[sym] = {}
+        enrichment[sym]["social_spike_ratio"] = spike.get("spike_ratio")
+        enrichment[sym]["social_spike_sentiment"] = spike.get("dominant_sentiment")
+        enrichment[sym]["social_spike_mentions"] = spike.get("mention_count_24h")
 
     results = []
 
