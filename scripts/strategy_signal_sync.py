@@ -112,6 +112,8 @@ def candidate_matches_strategy(scan: dict, cfg: dict) -> tuple:
     Returns (matches: bool, match_reasons: list, reject_reasons: list).
     """
     filters = cfg.get("screen_filters", {})
+    if not filters:
+        return False, [], ["no screen_filters defined"]
     match_reasons = []
     reject_reasons = []
 
@@ -167,12 +169,10 @@ def route_candidate_to_strategies(scan: dict, configs: dict) -> list:
     """Route a candidate to all matching strategies.
     Returns list of (strategy_id, match_reasons, reject_reasons) tuples.
     """
-    # Day-scalp strategies that apply to screener GO candidates
-    DAY_SCALP_STRATEGIES = ["momentum_scalp", "gap_and_go", "swing_breakout", "earnings_catalyst"]
+    # Route against ALL loaded strategy configs, not just day-scalp
     matches = []
-    for sid in DAY_SCALP_STRATEGIES:
-        cfg = configs.get(sid)
-        if not cfg:
+    for sid, cfg in configs.items():
+        if not cfg or sid.startswith('_'):
             continue
         ok, match_r, reject_r = candidate_matches_strategy(scan, cfg)
         if ok:

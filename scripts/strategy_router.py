@@ -26,10 +26,11 @@ log = logging.getLogger(__name__)
 
 STRATEGIES_DIR = PROJECT_ROOT / 'config' / 'strategies'
 
-STRATEGY_IDS = [
-    'momentum_scalp', 'gap_and_go', 'swing_breakout',
-    'sector_rotation', 'earnings_catalyst', 'income_add',
-]
+# Dynamically discover all strategy YAMLs
+STRATEGY_IDS = sorted([
+    p.stem for p in (PROJECT_ROOT / 'config' / 'strategies').glob('*.yaml')
+    if p.stem not in ('strategy_schema', 'recommendation_schema', 'shared_risk_rules')
+])
 
 
 class StrategyRouter:
