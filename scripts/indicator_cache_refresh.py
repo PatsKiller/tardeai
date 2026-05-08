@@ -37,12 +37,28 @@ try:
         password=os.getenv('DB_PASSWORD', ''),
     )
     cur = conn.cursor()
+    # Portfolio + watchlist symbols
     cur.execute(
         "SELECT DISTINCT symbol FROM watchlist_symbol_master "
         "WHERE in_ai_watchlist=true OR in_personal_watchlist=true OR in_portfolio=true"
     )
     symbols = [r[0] for r in cur.fetchall()]
-    logger.info(f"Refreshing {len(symbols)} symbols...")
+
+    # Also include recent screener GO/WAIT candidates and incubator ACTIVE symbols
+    # so they have indicator data BEFORE strategy classification
+    cur.execute("""
+        SELECT DISTINCT symbol FROM trade_ai_scans
+        WHERE scanned_at > NOW() - INTERVAL '3 days'
+        AND decision IN ('GO', 'WAIT')
+        UNION
+        SELECT DISTINCT symbol FROM incubator_universe
+        WHERE status = 'ACTIVE'
+    """)
+    screener_symbols = [r[0] for r in cur.fetchall()]
+    existing = set(symbols)
+    added = [s for s in screener_symbols if s not in existing]
+    symbols.extend(added)
+    logger.info(f"Refreshing {len(symbols)} symbols ({len(existing)} watchlist + {len(added)} screener/incubator)...")
 
     success = 0
     for s in symbols:
