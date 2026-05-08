@@ -31,12 +31,59 @@ load_dotenv(PROJECT_ROOT / ".env")
 from session13_db import get_conn
 
 # ---------------------------------------------------------------------------
-# Constants / thresholds
 # ---------------------------------------------------------------------------
-MAX_QUOTE_AGE_SECONDS = 300
-MAX_PRICE_MOVE_FROM_ENTRY_PCT = 2.0
-MIN_VOLUME = 100_000
-MAX_SPREAD_PCT = 1.0  # 1% max spread for execution eligibility
+# Strategy-aware thresholds (Session 24C fix)
+# ---------------------------------------------------------------------------
+# Intraday strategies need tight execution windows.
+# Swing/position strategies have wider tolerances because they execute
+# over days/weeks — the spread and drift at 10pm don't matter if the
+# trade is submitted at 9:35am when spreads are tight.
+# ---------------------------------------------------------------------------
+INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}
+
+THRESHOLDS_BY_CLASS = {
+    "intraday": {
+        "max_quote_age": 300,
+        "max_price_drift_pct": 2.0,
+        "max_spread_pct": 1.0,
+        "min_volume": 100_000,
+        "rsi_block_above": 85,       # scalps are momentum — higher RSI tolerated
+        "vwap_block_above_pct": 10,
+    },
+    "short_swing": {
+        "max_quote_age": 86400,       # 24h — swing can wait for market open
+        "max_price_drift_pct": 5.0,   # 5% drift allowed for multi-day holds
+        "max_spread_pct": 3.0,        # AH spread acceptable, will re-check at submit
+        "min_volume": 50_000,         # lower volume ok for less liquid swing names
+        "rsi_block_above": 90,        # only block extreme overbought
+        "vwap_block_above_pct": 15,   # swing entries can be extended
+    },
+    "medium_swing": {
+        "max_quote_age": 86400,
+        "max_price_drift_pct": 8.0,
+        "max_spread_pct": 3.0,
+        "min_volume": 50_000,
+        "rsi_block_above": 90,
+        "vwap_block_above_pct": 20,
+    },
+    "position": {
+        "max_quote_age": 86400,
+        "max_price_drift_pct": 12.0,
+        "max_spread_pct": 5.0,
+        "min_volume": 25_000,
+        "rsi_block_above": 95,        # position rarely blocked by RSI
+        "vwap_block_above_pct": 25,
+    },
+}
+
+def _get_thresholds(strategy_id: str) -> dict:
+    """Get strategy-aware thresholds."""
+    try:
+        from proposal_lifecycle import get_timeframe_class
+        tc = get_timeframe_class(strategy_id)
+    except Exception:
+        tc = "intraday" if strategy_id in INTRADAY_STRATEGIES else "short_swing"
+    return THRESHOLDS_BY_CLASS.get(tc, THRESHOLDS_BY_CLASS["short_swing"])
 
 READINESS_STATES = [
     "READY_FOR_PAPER_SUBMIT",
@@ -183,6 +230,14 @@ def assess_proposal(conn, proposal: dict) -> dict:
     volume_source = None
     spread_source = None
     day_volume = None
+
+    # Strategy-aware thresholds
+    strategy_id_raw = proposal.get("strategy_id", "momentum_scalp")
+    th = _get_thresholds(strategy_id_raw)
+    MAX_QUOTE_AGE_SECONDS = th["max_quote_age"]
+    MAX_PRICE_MOVE_FROM_ENTRY_PCT = th["max_price_drift_pct"]
+    MAX_SPREAD_PCT = th["max_spread_pct"]
+    MIN_VOLUME = th["min_volume"]
 
     # -----------------------------------------------------------------------
     # 1. Get quote from multi-provider hierarchy
@@ -346,22 +401,30 @@ def assess_proposal(conn, proposal: dict) -> dict:
         if ts_ema_align in ("BEARISH", "LONG_TERM_OVERHEAD"):
             blockers.append(f"BLOCKED_BEARISH_EMA: EMA alignment {ts_ema_align} — do not enter long")
 
-        # RSI overbought > 80: block entry on exhausted momentum
+        # RSI overbought: strategy-aware threshold
+        rsi_block = th["rsi_block_above"]
         try:
             cur2 = conn.cursor()
             cur2.execute("SELECT rsi_14 FROM proposal_technical_snapshots WHERE symbol=%s ORDER BY computed_at DESC LIMIT 1", (symbol,))
             rsi_row = cur2.fetchone()
             cur2.close()
-            if rsi_row and rsi_row[0] is not None and float(rsi_row[0]) > 80:
-                blockers.append(f"BLOCKED_RSI_OVERBOUGHT: RSI {float(rsi_row[0]):.1f} > 80 — exhausted momentum")
+            if rsi_row and rsi_row[0] is not None:
+                rsi_val = float(rsi_row[0])
+                if rsi_val > rsi_block:
+                    blockers.append(f"BLOCKED_RSI_OVERBOUGHT: RSI {rsi_val:.1f} > {rsi_block} threshold for {strategy_id_raw}")
+                elif rsi_val > 70:
+                    warnings.append(f"CAUTION_RSI_ELEVATED: RSI {rsi_val:.1f} — momentum extended")
         except Exception:
             pass
 
-        # VWAP extension > 10%: block — too extended for safe entry
-        if ts_vwap_dist is not None and float(ts_vwap_dist) > 10:
-            blockers.append(f"BLOCKED_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP — chasing risk")
-        elif ts_vwap_dist is not None and float(ts_vwap_dist) > 5:
-            warnings.append(f"CAUTION_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP")
+        # VWAP extension: strategy-aware threshold
+        vwap_block = th["vwap_block_above_pct"]
+        if ts_vwap_dist is not None:
+            vwap_val = float(ts_vwap_dist)
+            if vwap_val > vwap_block:
+                blockers.append(f"BLOCKED_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP (max {vwap_block}% for {strategy_id_raw})")
+            elif vwap_val > 5:
+                warnings.append(f"CAUTION_EXTENDED_ABOVE_VWAP: {ts_vwap_dist}% above VWAP")
 
         # ORB requirement for momentum_scalp
         if strategy_id in STRATEGY_REQUIRES_ORB:

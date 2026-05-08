@@ -30,13 +30,27 @@ pass all gates and be submitted to Alpaca paper if the quote was fresh.
 
 ## The Fix (Session 24C)
 
+### Strategy-Aware Thresholds
+
+Different strategy classes have different tolerance windows. A momentum scalp
+needs a tight spread NOW. A swing breakout can wait until market open.
+
+| Threshold | Intraday | Short Swing | Medium Swing | Position |
+|-----------|----------|-------------|-------------|----------|
+| Max quote age | 300s | 24h | 24h | 24h |
+| Max price drift | 2% | 5% | 8% | 12% |
+| Max spread | 1% | 3% | 3% | 5% |
+| Min volume | 100K | 50K | 50K | 25K |
+| RSI block above | 85 | 90 | 90 | 95 |
+| VWAP block above | 10% | 15% | 20% | 25% |
+
 ### New Hard Blocks Added
 
 | Gate | Threshold | Rationale |
 |------|-----------|-----------|
 | BLOCKED_BEARISH_EMA | EMA alignment = BEARISH or LONG_TERM_OVERHEAD | Do not enter long against trend |
-| BLOCKED_RSI_OVERBOUGHT | RSI > 80 | Exhausted momentum, mean reversion risk |
-| BLOCKED_EXTENDED_ABOVE_VWAP | VWAP distance > 10% | Chasing extended price, high reversion probability |
+| BLOCKED_RSI_OVERBOUGHT | RSI > strategy threshold (85-95) | Exhausted momentum, strategy-aware |
+| BLOCKED_EXTENDED_ABOVE_VWAP | VWAP > strategy threshold (10-25%) | Chasing risk, strategy-aware |
 | BLOCKED_ORB_FAILED | ORB breakout failed (momentum_scalp only) | Failed breakout = failed setup |
 | BLOCKED_TARGET_UNREALISTIC | Target > 3x ATR | Unrealistic profit target given volatility |
 | BLOCKED_RR_TOO_LOW | R:R < 1.5 | Unacceptable risk/reward |
