@@ -94,3 +94,10 @@ prompt_context:
     - "Is the trend confirmed on daily and weekly timeframes?"
     - "Does volume support the breakout or is it suspect?"
     - "Are there any earnings or macro events that could disrupt the hold period?"
+
+screen_filters:
+  min_price: 5.00
+  max_price: 200.00
+  min_rvol: 1.5
+  max_float_m: 500
+  min_score: 35

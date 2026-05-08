@@ -94,3 +94,11 @@ prompt_context:
     - "Is revenue growth accelerating or decelerating?"
     - "What is the dilution risk from shelf registrations or convertible notes?"
     - "Does institutional ownership trend support the momentum thesis?"
+
+screen_filters:
+  min_price: 2.00
+  max_price: 50.00
+  min_rvol: 2.0
+  max_float_m: 200
+  min_score: 35
+  high_risk: true

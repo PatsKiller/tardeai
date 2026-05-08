@@ -94,3 +94,10 @@ prompt_context:
     - "Is this a genuine recovery catalyst or a dead-cat bounce?"
     - "What is the bankruptcy or further downside risk from current levels?"
     - "Is insider behavior aligned with the recovery thesis?"
+
+screen_filters:
+  min_price: 1.00
+  max_price: 100.00
+  max_pct_from_52w_high: -30
+  recovery_candidate: true
+  min_score: 0

@@ -94,3 +94,10 @@ prompt_context:
     - "Is the competitive moat widening or narrowing?"
     - "Does the current valuation offer acceptable long-term return potential?"
     - "How does this position fit within overall portfolio growth allocation?"
+
+screen_filters:
+  min_price: 50.00
+  max_price: 5000.00
+  min_market_cap_b: 50
+  min_score: 0
+  quality_focus: true

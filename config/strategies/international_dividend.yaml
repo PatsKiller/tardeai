@@ -94,3 +94,10 @@ prompt_context:
     - "Does the foreign withholding tax make this better suited for taxable (FTC) or IRA?"
     - "What is the currency risk and does it provide meaningful diversification?"
     - "Is the dividend sustainable given the local economic and political environment?"
+
+screen_filters:
+  min_price: 10.00
+  max_price: 300.00
+  min_yield: 2.5
+  country_filter: [non_us, international, adr]
+  min_score: 0

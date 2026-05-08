@@ -94,3 +94,10 @@ prompt_context:
     - "Is the geopolitical catalyst thesis strengthening or weakening?"
     - "Does the company have durable contract backlog and margin stability?"
     - "What is current defense thesis allocation as percentage of total portfolio?"
+
+screen_filters:
+  min_price: 20.00
+  max_price: 1000.00
+  sector_filter: [defense, aerospace, cybersecurity]
+  thesis_driven: true
+  min_score: 0

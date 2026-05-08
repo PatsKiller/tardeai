@@ -94,3 +94,10 @@ prompt_context:
     - "Is the underlying thesis still intact or should shares be sold outright instead?"
     - "Does IV rank justify writing calls now vs waiting for higher premium?"
     - "Will assignment at the selected strike result in a net gain above cost basis?"
+
+screen_filters:
+  min_price: 10.00
+  max_price: 500.00
+  min_iv_rank: 30
+  requires_shares_owned: true
+  min_score: 0

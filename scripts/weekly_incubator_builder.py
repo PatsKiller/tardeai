@@ -19,23 +19,19 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from session13_db import get_conn
+from multi_strategy_classifier import load_all_strategies, classify_symbol
 
 log = logging.getLogger("weekly_incubator_builder")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 QUALIFYING_QUERY = """
 SELECT DISTINCT ON (s.symbol)
-    s.symbol, COALESCE(ss.strategy_id, 'screener') as strategy_id,
+    s.symbol,
     s.score, s.decision, s.grade,
     s.rvol, s.float_m, s.gap_pct, s.change_pct,
     s.catalyst, s.catalyst_verified, s.sector, s.industry,
-    s.run_label, s.run_type, s.scanned_at
+    s.run_label, s.run_type, s.scanned_at, s.screener_label, s.price
 FROM trade_ai_scans s
-LEFT JOIN LATERAL (
-    SELECT strategy_id FROM strategy_signals
-    WHERE symbol = s.symbol
-    ORDER BY fired_at DESC NULLS LAST, id DESC LIMIT 1
-) ss ON true
 WHERE s.scanned_at > NOW() - INTERVAL '7 days'
 AND (
     s.score >= 30
@@ -171,24 +167,26 @@ def build_evidence(tick, multi_source_map):
     }
 
 
-def upsert_ticker(conn, tick, multi_source_map, dry_run=False):
-    """Upsert a single ticker into incubator_universe and write event."""
+def upsert_ticker(conn, tick, multi_source_map, strategy_id=None, match_info=None, dry_run=False):
+    """Upsert a single ticker+strategy into incubator_universe and write event."""
     symbol = tick["symbol"]
-    strategy_id = tick.get("strategy_id") or ""
+    strategy_id = strategy_id or tick.get("strategy_id") or "screener"
     score = float(tick.get("score") or 0)
     rvol = float(tick.get("rvol") or 0)
     gap_pct = float(tick.get("gap_pct") or 0)
     source = tick.get("run_type") or "trade_ai_scans"
     run_label = tick.get("run_label")
     evidence = build_evidence(tick, multi_source_map)
+    if match_info:
+        evidence["strategy_match"] = match_info
 
     existing = get_existing(conn, symbol, strategy_id)
 
     if dry_run:
         action = "UPDATE" if existing else "INSERT"
-        log.info("[DRY-RUN] %s %s strategy=%s score=%.1f rvol=%.1f reasons=%s",
-                 action, symbol, strategy_id, score, rvol,
-                 evidence["qualification_reasons"])
+        src = match_info.get("match_source", "?") if match_info else "legacy"
+        log.info("[DRY-RUN] %s %s strategy=%s score=%.1f src=%s",
+                 action, symbol, strategy_id, score, src)
         return "stayed" if existing else "rolled_on"
 
     cur = conn.cursor()
@@ -224,11 +222,16 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing to DB")
     parser.add_argument("--apply", action="store_true", help="Write changes to DB")
     parser.add_argument("--limit", type=int, default=200, help="Max tickers to process (default 200)")
+    parser.add_argument("--llm", action="store_true", help="Enable LLM-assisted classification via qwen3:14b")
     args = parser.parse_args()
 
     if not args.dry_run and not args.apply:
         log.error("Must specify --dry-run or --apply")
         sys.exit(1)
+
+    # Load all strategies dynamically
+    all_strategies = load_all_strategies()
+    log.info("Loaded %d strategies for multi-strategy matching", len(all_strategies))
 
     conn = get_conn()
     try:
@@ -237,13 +240,37 @@ def main():
 
         rolled_on = 0
         stayed = 0
+        total_strategy_matches = 0
+        multi_match_count = 0
 
         for tick in tickers:
-            result = upsert_ticker(conn, tick, multi_source_map, dry_run=args.dry_run)
-            if result == "rolled_on":
-                rolled_on += 1
+            # Multi-strategy classification: each symbol can match multiple strategies
+            matches = classify_symbol(tick, all_strategies, use_llm=args.llm)
+
+            if not matches:
+                # Fallback: still insert as 'screener' so nothing is lost
+                result = upsert_ticker(conn, tick, multi_source_map,
+                                       strategy_id="screener", dry_run=args.dry_run)
+                if result == "rolled_on":
+                    rolled_on += 1
+                else:
+                    stayed += 1
+                total_strategy_matches += 1
             else:
-                stayed += 1
+                if len(matches) > 1:
+                    multi_match_count += 1
+                for match in matches:
+                    result = upsert_ticker(
+                        conn, tick, multi_source_map,
+                        strategy_id=match["strategy_id"],
+                        match_info=match,
+                        dry_run=args.dry_run,
+                    )
+                    if result == "rolled_on":
+                        rolled_on += 1
+                    else:
+                        stayed += 1
+                    total_strategy_matches += 1
 
         if args.apply:
             conn.commit()
@@ -256,12 +283,29 @@ def main():
         cur.execute("SELECT COUNT(*) FROM incubator_universe WHERE status = 'ACTIVE'")
         total_active = cur.fetchone()[0]
 
+        # Strategy distribution
+        cur.execute("""
+            SELECT strategy_id, COUNT(*) as cnt
+            FROM incubator_universe WHERE status = 'ACTIVE'
+            GROUP BY strategy_id ORDER BY cnt DESC
+        """)
+        dist = cur.fetchall()
+
         log.info("=== SUMMARY ===")
+        log.info("Symbols processed: %d", len(tickers))
+        log.info("Strategy matches:  %d (%.1f avg per symbol)",
+                 total_strategy_matches, total_strategy_matches / max(1, len(tickers)))
+        log.info("Multi-strategy:    %d symbols matched 2+ strategies", multi_match_count)
         log.info("Rolled on (new):   %d", rolled_on)
         log.info("Stayed active:     %d", stayed)
         log.info("Total active:      %d", total_active)
+        log.info("LLM enabled:       %s", "YES" if args.llm else "NO")
         log.info("Run label:         %s", args.run_label)
         log.info("Mode:              %s", "DRY-RUN" if args.dry_run else "APPLIED")
+        if dist:
+            log.info("Strategy distribution:")
+            for sid, cnt in dist:
+                log.info("  %-30s %d", sid, cnt)
 
     except Exception:
         conn.rollback()
