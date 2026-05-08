@@ -189,7 +189,7 @@ def compute_levels(price):
 # Main
 # ---------------------------------------------------------------------------
 
-def run(dry_run=True, limit=10, force_symbol=None):
+def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -197,10 +197,18 @@ def run(dry_run=True, limit=10, force_symbol=None):
     promoted = 0
     skipped = 0
     results = []
+    symbol_counts = {}  # track promotions per symbol this run
 
     for c in candidates:
         symbol = c['symbol']
         strategy_id = c['strategy_id']
+
+        # Duplicate control: max proposals per symbol per run
+        symbol_counts.setdefault(symbol, 0)
+        if symbol_counts[symbol] >= max_per_symbol:
+            results.append(f"SKIPPED: {symbol} (max_per_symbol={max_per_symbol} reached)")
+            skipped += 1
+            continue
         score = c['latest_score']
         days_active = c['days_active'] or 0
         catalyst_verified = c['catalyst_verified']
@@ -272,21 +280,29 @@ def run(dry_run=True, limit=10, force_symbol=None):
         # INSERT proposal
         cur.execute("""
             INSERT INTO paper_trade_proposals
-                (symbol, strategy_id, proposed_entry, proposed_stop, proposed_target1,
+                (symbol, strategy_id, primary_strategy_id,
+                 proposed_entry, proposed_stop, proposed_target1,
                  proposed_shares, status, expires_at, lifecycle_status,
                  entry_zone_status, proposal_timeframe_class,
                  screener_name, source_table, discovery_source, source_run_label,
                  signal_score, signal_grade, catalyst, catalyst_verified,
-                 setup_type, proposed_by, overnight_monitoring_enabled)
-            VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', %s, 'ACTIVE',
+                 setup_type, proposed_by, overnight_monitoring_enabled,
+                 packet_state, packet_completion_pct,
+                 llm_review_status, agent_review_status)
+            VALUES (%s, %s, %s,
+                    %s, %s, %s,
+                    %s, 'PENDING', %s, 'ACTIVE',
                     'NEEDS_PRICE_CHECK', %s,
                     %s, 'incubator_universe', 'incubator', %s,
                     %s, %s, %s, %s,
-                    %s, 'incubator_promoter', %s)
+                    %s, 'incubator_promoter', %s,
+                    'NEW', 0,
+                    'NOT_REQUESTED', 'NOT_REQUESTED')
             RETURNING id
         """, [
-            symbol, strategy_id, entry, stop, target, shares,
-            expires_at, timeframe_class,
+            symbol, strategy_id, strategy_id,
+            entry, stop, target,
+            shares, expires_at, timeframe_class,
             screener_name, source_run_label,
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
@@ -305,6 +321,7 @@ def run(dry_run=True, limit=10, force_symbol=None):
 
         conn.commit()
         promoted += 1
+        symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
         results.append(f"PROMOTED: {symbol} ({strategy_key}, score={score}, {screener_name})")
 
     cur.close()
@@ -319,6 +336,7 @@ def main():
     mode.add_argument('--run', action='store_true', help='Execute promotions')
     parser.add_argument('--limit', type=int, default=10, help='Max promotions per run (default 10)')
     parser.add_argument('--force-symbol', type=str, default=None, help='Promote regardless of score gate')
+    parser.add_argument('--max-proposals-per-symbol', type=int, default=2, help='Max proposals per symbol per run')
     args = parser.parse_args()
 
     dry_run = args.dry_run
@@ -328,6 +346,7 @@ def main():
             dry_run=dry_run,
             limit=args.limit,
             force_symbol=args.force_symbol,
+            max_per_symbol=args.max_proposals_per_symbol,
         )
         pipe.rows(promoted)
 
