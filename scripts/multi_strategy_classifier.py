@@ -393,7 +393,7 @@ Rules:
 - JSON only, no other text"""
 
 
-def _call_ollama(prompt: str, timeout: int = 45) -> str:
+def _call_ollama(prompt: str, timeout: int = 300) -> str:
     """Call local qwen3:14b via Ollama."""
     import urllib.request
     try:
@@ -496,12 +496,13 @@ def classify_symbol(scan: dict, strategies: dict,
     if enrichment_cache:
         scan = merge_scan_with_enrichment(scan, enrichment_cache)
 
-    # Phase 1
+    # Phase 1: Deterministic — fast, no external calls
     det_matches = classify_deterministic(scan, strategies)
 
-    # Phase 2 (if enabled and LLM available)
+    # Phase 2: LLM — only for symbols with <2 deterministic matches (throttled)
+    # Symbols that already match 2+ strategies deterministically don't need LLM
     llm_matches = []
-    if use_llm:
+    if use_llm and len(det_matches) < 2:
         llm_matches = classify_with_llm(scan, strategies, det_matches)
 
     # Combine and sort
