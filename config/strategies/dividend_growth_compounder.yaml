@@ -94,3 +94,10 @@ prompt_context:
     - "Is the dividend growth rate accelerating or decelerating?"
     - "Can the company sustain the dividend through a recession scenario?"
     - "What is the IRMAA and SSDI income impact of adding this position?"
+
+screen_filters:
+  min_price: 15.00
+  max_price: 500.00
+  min_yield: 1.5
+  min_dividend_growth_years: 5
+  min_score: 0

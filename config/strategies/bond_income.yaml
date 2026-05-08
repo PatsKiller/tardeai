@@ -92,3 +92,10 @@ prompt_context:
     - "Is duration positioning appropriate for the current rate cycle?"
     - "What is the credit spread environment signaling about risk appetite?"
     - "Should munis be favored in taxable accounts for after-tax yield?"
+
+screen_filters:
+  min_price: 15.00
+  max_price: 200.00
+  min_yield: 3.5
+  asset_type: [etf, bond_fund, preferred]
+  min_score: 0

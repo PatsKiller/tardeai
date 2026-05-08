@@ -85,3 +85,9 @@ prompt_context:
     - "Is portfolio allocation drifting from target index weighting?"
     - "Does current market valuation support adding or should DCA be paused?"
     - "Which account is optimal for this purchase from a tax perspective?"
+
+screen_filters:
+  min_price: 10.00
+  max_price: 1000.00
+  asset_type: [etf, index_fund]
+  min_score: 0

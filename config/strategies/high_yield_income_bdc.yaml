@@ -94,3 +94,10 @@ prompt_context:
     - "Is the distribution covered by net investment income or is it return of capital?"
     - "What is the non-accrual trend and credit quality trajectory?"
     - "Is this being placed in a tax-advantaged account to avoid ordinary income taxation?"
+
+screen_filters:
+  min_price: 5.00
+  max_price: 100.00
+  min_yield: 7.0
+  asset_type: [bdc, high_yield, cef]
+  min_score: 0

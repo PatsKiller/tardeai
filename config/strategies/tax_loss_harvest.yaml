@@ -94,3 +94,10 @@ prompt_context:
     - "Is the loss likely permanent or is this a temporary drawdown worth holding?"
     - "Is there a suitable non-substantially-identical substitute to maintain market exposure?"
     - "Are there any wash sale conflicts across taxable, IRA, or Roth accounts?"
+
+screen_filters:
+  min_price: 1.00
+  max_price: 5000.00
+  max_pct_from_cost_basis: -10
+  requires_unrealized_loss: true
+  min_score: 0

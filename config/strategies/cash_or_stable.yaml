@@ -87,3 +87,9 @@ prompt_context:
     - "Is the current cash allocation appropriate for the market regime?"
     - "Are yields competitive or should cash be redeployed into short-duration bonds?"
     - "Is there sufficient liquidity across accounts for upcoming needs or opportunities?"
+
+screen_filters:
+  min_price: 1.00
+  max_price: 200.00
+  asset_type: [money_market, treasury, stable_value]
+  min_score: 0
