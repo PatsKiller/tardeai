@@ -25,6 +25,7 @@ CALLING PATTERN:
 
 import logging
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -370,10 +371,14 @@ if __name__ == '__main__':
     import sys
     import psycopg2
 
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     conn = psycopg2.connect(
-        host='127.0.0.1', port=5432,
-        dbname='trade_ai', user='trade_ai',
-        password='***REMOVED***'
+        host=os.getenv('DB_HOST', 'localhost'),
+        port=int(os.getenv('DB_PORT', 5432)),
+        dbname=os.getenv('DB_NAME', 'trade_ai'),
+        user=os.getenv('DB_USER', 'trade_ai'),
+        password=os.getenv('DB_PASSWORD', '')
     )
 
     if len(sys.argv) > 1:

@@ -8,6 +8,7 @@ Usage:
     from scripts.proposal_lifecycle import get_expiry_hours, is_overnight, evaluate_lifecycle_status
 """
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 # ── Strategy Expiry Map ────────────────────────────────────────────────────
 
@@ -39,20 +40,29 @@ STRATEGY_EXPIRY_HOURS = {
 }
 DEFAULT_EXPIRY_HOURS = 48
 
-INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}
+# Derive timeframe class map and intraday set from strategy YAML configs
+# No hardcoded strategy lists — scales automatically to 40+ strategies
+def _load_timeframe_class_map():
+    """Load timeframe_class from all config/strategies/*.yaml files."""
+    import yaml as _yaml
+    _skip = {'strategy_schema', 'recommendation_schema', 'shared_risk_rules'}
+    _dir = Path(__file__).resolve().parent.parent / "config" / "strategies"
+    _map = {}
+    for p in _dir.glob("*.yaml"):
+        if p.stem in _skip:
+            continue
+        try:
+            with open(p) as f:
+                cfg = _yaml.safe_load(f) or {}
+            tc = cfg.get("timeframe_class", "").upper()
+            if tc:
+                _map[p.stem] = tc.lower()
+        except Exception:
+            pass
+    return _map
 
-TIMEFRAME_CLASS_MAP = {
-    "momentum_scalp": "intraday",
-    "gap_and_go": "intraday",
-    "earnings_catalyst": "short_swing",
-    "swing_breakout": "short_swing",
-    "swing_trade": "short_swing",
-    "speculative_growth": "short_swing",
-    "sector_rotation": "medium_swing",
-    "income_add": "position",
-    "recovery_watch": "medium_swing",
-    "tax_loss_harvest": "short_swing",
-}
+TIMEFRAME_CLASS_MAP = _load_timeframe_class_map()
+INTRADAY_STRATEGIES = {sid for sid, tc in TIMEFRAME_CLASS_MAP.items() if tc == "intraday"}
 
 # Drift thresholds by timeframe class
 PRICE_DRIFT_THRESHOLDS = {

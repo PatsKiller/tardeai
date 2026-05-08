@@ -39,7 +39,11 @@ from session13_db import get_conn
 # over days/weeks — the spread and drift at 10pm don't matter if the
 # trade is submitted at 9:35am when spreads are tight.
 # ---------------------------------------------------------------------------
-INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}
+# Derive intraday strategies from YAML configs — no hardcoded list
+try:
+    from proposal_lifecycle import INTRADAY_STRATEGIES
+except ImportError:
+    INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}  # safe fallback
 
 THRESHOLDS_BY_CLASS = {
     "intraday": {
@@ -106,10 +110,24 @@ READINESS_STATES = [
     "BLOCKED_LIVE_DISABLED",
 ]
 
-# Strategy-specific requirements
-STRATEGY_REQUIRES_ORB = {"momentum_scalp"}
-STRATEGY_REQUIRES_VWAP = {"momentum_scalp", "gap_and_go"}
-STRATEGY_REQUIRES_DAILY_STRUCTURE = {"swing_breakout"}
+# Strategy-specific requirements — derived from timeframe class, not hardcoded lists
+# Intraday strategies require VWAP; momentum scalps require ORB
+STRATEGY_REQUIRES_VWAP = INTRADAY_STRATEGIES  # all intraday strategies need VWAP
+STRATEGY_REQUIRES_ORB = {s for s in INTRADAY_STRATEGIES if 'scalp' in s}  # scalps need ORB
+STRATEGY_REQUIRES_DAILY_STRUCTURE = set()  # populated from YAML if setup_qualification.min_base_days exists
+try:
+    import yaml as _yaml
+    _strat_dir = Path(__file__).resolve().parent.parent / "config" / "strategies"
+    for _p in _strat_dir.glob("*.yaml"):
+        try:
+            with open(_p) as _f:
+                _cfg = _yaml.safe_load(_f) or {}
+            if _cfg.get("setup_qualification", {}).get("min_base_days"):
+                STRATEGY_REQUIRES_DAILY_STRUCTURE.add(_p.stem)
+        except Exception:
+            pass
+except Exception:
+    STRATEGY_REQUIRES_DAILY_STRUCTURE = {"swing_breakout"}  # safe fallback
 
 LIVE_DISABLED_WARNING = "Live trading disabled pending six-month paper validation"
 

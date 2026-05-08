@@ -38,7 +38,11 @@ EXECUTION_STRATEGIES = {
     "sector_rotation", "income_add", "recovery_watch", "tax_loss_harvest",
 }
 
-INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}
+# Derive from YAML configs — no hardcoded list
+try:
+    from proposal_lifecycle import INTRADAY_STRATEGIES
+except ImportError:
+    INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}  # safe fallback
 
 
 def evaluate_strategy_match(config: dict, signal: dict) -> dict:
