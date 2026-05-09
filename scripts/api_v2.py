@@ -10421,9 +10421,26 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 except Exception:
                     pass
 
-            return 200 if result.get('success') else 400, {"ok": result.get('success', False), "data": result}
+            # Get updated status
+            new_status = None
+            try:
+                _ns = _db_query("SELECT status FROM paper_trade_proposals WHERE id=%s", [int(pid)], fetch="one")
+                new_status = _ns.get('status') if _ns else None
+            except Exception:
+                pass
+
+            return 200 if result.get('success') else 400, {
+                "ok": result.get('success', False),
+                "proposal_id": int(pid),
+                "old_status": "PENDING",
+                "new_status": new_status or "APPROVED",
+                "message": result.get('message', 'Approved for paper test' if result.get('success') else 'Approval failed'),
+                "paper_trade_id": result.get('paper_trade_id'),
+                "blockers": result.get('blockers', []),
+                "data": result,
+            }
         except Exception as e:
-            return 500, {"ok": False, "error": str(e)}
+            return 500, {"ok": False, "error": str(e), "message": str(e)}
 
     if method == "POST" and base_path == "/api/v2/paper-proposals/reject":
         try:

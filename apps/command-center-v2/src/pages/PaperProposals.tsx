@@ -1584,7 +1584,12 @@ export default function PaperProposals() {
       if (action === 'reject') body.reason = 'dashboard'
       const r = await fetch(`/api/v2/paper-proposals/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
-      if (!(d.data || d).ok) alert((d.data || d).error || `${action} failed`)
+      if (!d.ok) {
+        alert(d.message || d.error || `${action} failed`)
+      } else if (d.message) {
+        // Show success message for approve (e.g. "Approved for paper test")
+        console.log(`[${action}] ${d.message}`)
+      }
       refetch()
     } catch { alert('Network error') }
     setActing(s => { const n = { ...s }; delete n[id]; return n })
