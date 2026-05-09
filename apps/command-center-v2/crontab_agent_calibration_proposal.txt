@@ -1,0 +1,10 @@
+# PROPOSED: Agent Calibration cron entries
+# Do NOT install automatically.
+#
+# Daily normalization + linking:
+# 0 21 * * * cd $PROJ && $PY scripts/agent_recommendation_normalizer.py --apply --json >> logs/agent_calibration.log 2>&1
+# 5 21 * * * cd $PROJ && $PY scripts/agent_outcome_linker.py --apply --json >> logs/agent_calibration.log 2>&1
+#
+# Weekly calibration + disagreements:
+# 0 22 * * 0 cd $PROJ && $PY scripts/agent_calibration_engine.py --apply --json >> logs/agent_calibration.log 2>&1
+# 10 22 * * 0 cd $PROJ && $PY scripts/agent_disagreement_scorer.py --apply --json >> logs/agent_calibration.log 2>&1

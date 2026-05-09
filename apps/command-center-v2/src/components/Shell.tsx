@@ -79,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/pipeline-health-master', label: 'Pipeline Health' },
     { to: '/pipeline-controller', label: 'Pipeline Controller' },
     { to: '/learning-governance', label: 'Learning Governance' },
+    { to: '/agent-calibration', label: 'Agent Calibration' },
     { to: '/paper-trade-intelligence', label: 'Paper Intelligence' },
     { to: '/content-health', label: 'Content Health' },
     { to: '/actions', label: 'Actions' },
