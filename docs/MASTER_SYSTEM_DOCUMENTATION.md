@@ -86,7 +86,7 @@ Trade AI v12 has 6 distinct service boundaries:
 |  +--------v---------+    +------------------+    +---------------+ |
 |  | PostgreSQL 15     |    | Cron Scheduler   |    | Scalp WS      | |
 |  | :5432             |    | 130+ jobs        |    | :7778/:7779   | |
-|  | 219 tables        |    | systemd timers   |    | real-time feed| |
+|  | 249 tables        |    | systemd timers   |    | real-time feed| |
 |  +-------------------+    +------------------+    +---------------+ |
 +-------------------------------------------------------------------+
                     |                    |
@@ -656,7 +656,7 @@ Multiple cron jobs (classifier, curator, reviewer, screener) all compete for the
 
 | Use Case | Script | Frequency |
 |----------|--------|-----------|
-| Strategy classification (14 strategies) | `multi_strategy_classifier.py` | Sunday night batch |
+| Strategy classification (20 strategies) | `multi_strategy_classifier.py` | Sunday night batch |
 | Proposal review (4-chunk pipeline) | `proposal_llm_reviewer.py` | Per proposal |
 | Incubator pre-screening | `incubator_llm_screener.py` | Pre-promotion |
 | Holdings health refresh | `holdings_llm_refresh.py` | Periodic |

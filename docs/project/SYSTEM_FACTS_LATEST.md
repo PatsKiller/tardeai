@@ -1,11 +1,11 @@
 # System Facts — Latest
 
-Generated: 2026-05-09T12:14:58.274842
+Generated: 2026-05-09T12:27:36.690585
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.13.7
-- Git: main @ f275404
+- Git: main @ eef8daa
 
 ## Database
 - Connected: True
@@ -41,18 +41,10 @@ Generated: 2026-05-09T12:14:58.274842
 - Blocked reasons: policy_live_trading_allowed_false, validation_days_insufficient, closed_trade_sample_insufficient, win_rate_below_threshold, profit_factor_below_threshold, governance_not_approved
 
 ## Documentation Drift
-- **docs/CHEAT_SHEET.md**: table_count claimed=219 actual=249
 - **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=321
 - **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=321
 - **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=321
 - **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=321
-- **docs/ARCHITECTURE_INFOGRAM.md**: table_count claimed=219 actual=249
-- **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=219 actual=249
-- **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=219 actual=249
-- **docs/RESTORE_GUIDE.md**: table_count claimed=143 actual=249
 - **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=321
 - **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=321
-- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: table_count claimed=219 actual=249
-- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: strategy_count claimed=14 actual=20
 - **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=90 actual=321
-- **docs/COST_MODEL.md**: table_count claimed=219 actual=249
