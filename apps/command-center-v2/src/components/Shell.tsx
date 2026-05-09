@@ -83,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/weekly-learning', label: 'Weekly Learning' },
     { to: '/backtesting', label: 'Backtesting' },
     { to: '/self-improvement', label: 'Self-Improvement' },
+    { to: '/risk-regime', label: 'Risk Regime' },
     { to: '/paper-trade-intelligence', label: 'Paper Intelligence' },
     { to: '/content-health', label: 'Content Health' },
     { to: '/actions', label: 'Actions' },

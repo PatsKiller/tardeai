@@ -12847,4 +12847,49 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
+    if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):
+        try:
+            row = _db_query("SELECT snapshot_id, regime_label, confidence, stale_data, volatility_state, trend_state, breadth_state, summary, generated_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1", fetch="one")
+            if not row:
+                return 200, {"ok": True, "data": None, "message": "No regime snapshots yet"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/risk-regime/indicators":
+        try:
+            rows = _db_query("SELECT indicator_id, indicator_key, indicator_group, value, value_text, signal, source_key, created_at FROM market_regime_indicators ORDER BY created_at DESC LIMIT 30") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/risk-regime/history":
+        try:
+            rows = _db_query("SELECT snapshot_id, regime_label, confidence, stale_data, generated_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/strategy-rotation/signals":
+        try:
+            rows = _db_query("SELECT signal_id, strategy_id, strategy_name, signal, signal_strength, confidence, reason, recommended_action, status, created_at FROM strategy_rotation_signals ORDER BY created_at DESC LIMIT 30") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/strategy-rotation/profiles":
+        try:
+            rows = _db_query("SELECT strategy_id, strategy_name, favored_regimes, disfavored_regimes, volatility_preference, trend_preference, time_horizon FROM strategy_regime_profiles WHERE active=true ORDER BY strategy_id") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/strategy-rotation/alignments":
+        try:
+            rows = _db_query("SELECT alignment_id, symbol, strategy_id, alignment_type, alignment_score, alignment_label, regime_label, reason, created_at FROM regime_trade_alignment ORDER BY created_at DESC LIMIT 30") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
