@@ -85,9 +85,10 @@ def check_readiness(conn, proposal_id: int) -> dict:
     if ALPACA_MODE != "paper":
         blockers.append(f"ALPACA_MODE={ALPACA_MODE}, must be 'paper'")
 
-    # Check 3: Proposal status = PENDING
-    if p["status"] != "PENDING":
-        blockers.append(f"Proposal status is {p['status']}, not PENDING")
+    # Check 3: Proposal status must be submittable
+    SUBMITTABLE_STATUSES = ('PENDING', 'APPROVED', 'APPROVED_FOR_PAPER_TEST')
+    if p["status"] not in SUBMITTABLE_STATUSES:
+        blockers.append(f"Proposal status is {p['status']}, must be one of {SUBMITTABLE_STATUSES}")
 
     # Check 4: action_state executable
     action_state = p.get("action_state") or ""
@@ -195,7 +196,8 @@ def find_best_candidates(conn, limit: int = 5) -> list:
     cur = conn.cursor()
     cur.execute("""
         SELECT id FROM paper_trade_proposals
-        WHERE status = 'PENDING' AND expires_at > NOW()
+        WHERE status IN ('PENDING', 'APPROVED', 'APPROVED_FOR_PAPER_TEST')
+          AND (expires_at IS NULL OR expires_at > NOW())
         ORDER BY signal_score DESC NULLS LAST, created_at DESC
         LIMIT %s
     """, [limit * 3])  # Fetch extra, then filter

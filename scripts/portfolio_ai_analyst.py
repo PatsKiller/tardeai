@@ -77,7 +77,7 @@ def _ollama(prompt: str, max_tokens: int = 500) -> str:
                 "model": OLLAMA_MODEL, "stream": False,
                 "messages": [{"role": "user", "content": prompt}],
                 "think": False,
-                "options": {"temperature": 0.3, "num_predict": 800}
+                "options": {"temperature": 0.3, "num_predict": 1200}
             }).encode()
             req = urllib.request.Request(
                 OLLAMA_URL, data=payload,
@@ -1250,6 +1250,19 @@ if __name__ == "__main__":
     port = json.load(open(sd / "holdings.json"))
     analysis = json.load(open(sd / "ai_analysis_cache.json")) if (sd/"ai_analysis_cache.json").exists() else {}
     risk = json.load(open(sd / "risk_management.json")) if (sd/"risk_management.json").exists() else {}
+    # Load dividend data into analysis if not already present
+    if not analysis.get("dividends"):
+        div_path = sd / "dividend_calendar.json"
+        if div_path.exists():
+            div_data = json.load(open(div_path))
+            analysis["dividends"] = {
+                "total_annual_income": div_data.get("total_annual") or sum(
+                    (p.get("annual_income") or 0) for p in div_data.get("payers", [])
+                ),
+                "qualified_annual": div_data.get("qualified_annual", 0),
+                "payers": len(div_data.get("payers", [])),
+            }
+            print(f"  [ai] Dividend data loaded: ${analysis['dividends']['total_annual_income']:,.0f}/yr from {analysis['dividends']['payers']} payers")
     result = run_ai_analysis(port, analysis, risk, sd, force_refresh=True, run_type=args.run_type, root=str(root))
     out = sd / "ai_analysis_cache.json"
     json.dump(result, open(out,"w"), indent=2)

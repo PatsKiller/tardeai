@@ -213,9 +213,10 @@ def check_gates(conn, proposal_id: int) -> dict:
     if ALPACA_MODE != "paper":
         blockers.append(f"BLOCKED_LIVE_MODE: ALPACA_MODE={ALPACA_MODE}, must be 'paper'")
 
-    # Gate 2: Proposal status
-    if p["status"] != "PENDING":
-        blockers.append(f"BLOCKED_STATUS: Proposal status is {p['status']}, not PENDING")
+    # Gate 2: Proposal status must be submittable
+    SUBMITTABLE_STATUSES = ('PENDING', 'APPROVED', 'APPROVED_FOR_PAPER_TEST')
+    if p["status"] not in SUBMITTABLE_STATUSES:
+        blockers.append(f"BLOCKED_STATUS: Proposal status is {p['status']}, must be one of {SUBMITTABLE_STATUSES}")
 
     # Gate 3: Risk gate
     if p.get("risk_gate_result") not in ("APPROVED", None):
