@@ -1,11 +1,11 @@
 # System Facts — Latest
 
-Generated: 2026-05-09T12:27:36.690585
+Generated: 2026-05-09T12:35:25.714559
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.13.7
-- Git: main @ eef8daa
+- Git: main @ 31adb7d
 
 ## Database
 - Connected: True
@@ -13,10 +13,10 @@ Generated: 2026-05-09T12:27:36.690585
 - trade_ai_scans: 608
 - paper_trade_proposals: 43
 - paper_trades: 4
-- watchlist_agent_results: 4145
+- watchlist_agent_results: 4146
 - news_articles: 2787
 - topic_monitor: 17
-- content_embeddings: 11968
+- content_embeddings: 11969
 - pipeline_stages: 25
 - pipeline_runs: 5
 - config_documents: 38
