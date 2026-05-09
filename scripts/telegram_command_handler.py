@@ -286,6 +286,16 @@ def parse_command(text: str) -> dict:
     if lower.startswith("thesis review run") or lower.startswith("/thesis review run"):
         return {"command": "thesis_review_run", "args": ""}
 
+    # Session 31: Backtesting commands
+    if lower in ("backtest status", "/backtest status"):
+        return {"command": "backtest_status", "args": ""}
+    if lower in ("backtest strategies", "/backtest strategies"):
+        return {"command": "backtest_strategies", "args": ""}
+    if lower in ("backtest results", "/backtest results"):
+        return {"command": "backtest_results", "args": ""}
+    if lower in ("challenger list", "/challenger list"):
+        return {"command": "challenger_list", "args": ""}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1927,6 +1937,65 @@ def process_command(cmd: dict) -> str:
                               capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
             d = json.loads(r.stdout)
             return f"Thesis Review (dry-run): {d.get('trades_reviewed',0)} trades\nBy validity: {d.get('by_validity',{})}\nLow sample: {d.get('low_sample_size',True)}"
+        except Exception as e:
+            return f"Error: {e}"
+
+    # Session 31: Backtesting handlers
+    if command == "backtest_status":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM strategy_backtest_runs")
+            runs = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM strategy_backtest_trades")
+            trades = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM challenger_definitions")
+            challengers = cur.fetchone()[0]
+            conn.close()
+            return f"Backtest Status:\n  Runs: {runs}\n  Simulated trades: {trades}\n  Challengers: {challengers}"
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "backtest_strategies":
+        try:
+            from strategy_rule_adapter import load_strategy_configs
+            configs = load_strategy_configs()
+            lines = [f"Strategies ({len(configs)}):"]
+            for sid, data in list(configs.items())[:15]:
+                lines.append(f"  {sid}: {data['config'].get('name', sid)}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "backtest_results":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT run_id, strategy_id, status, duration_seconds FROM strategy_backtest_runs ORDER BY created_at DESC LIMIT 5")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No backtest runs yet. Run: .venv/bin/python scripts/strategy_backtester.py --all-strategies --apply --json"
+            lines = ["Recent Backtest Runs:"]
+            for r in rows:
+                lines.append(f"  {r[0][:15]}: {r[1]} [{r[2]}] {r[3]}s")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "challenger_list":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT challenger_id, name, strategy_id, status FROM challenger_definitions ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No challengers defined yet."
+            lines = ["Challengers:"]
+            for r in rows:
+                lines.append(f"  {r[0][:15]}: {r[1]} [{r[3]}]")
+            return "\n".join(lines)
         except Exception as e:
             return f"Error: {e}"
 

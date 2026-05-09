@@ -81,6 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/learning-governance', label: 'Learning Governance' },
     { to: '/agent-calibration', label: 'Agent Calibration' },
     { to: '/weekly-learning', label: 'Weekly Learning' },
+    { to: '/backtesting', label: 'Backtesting' },
     { to: '/paper-trade-intelligence', label: 'Paper Intelligence' },
     { to: '/content-health', label: 'Content Health' },
     { to: '/actions', label: 'Actions' },
