@@ -38,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/execution-quality', label: 'Execution Quality' },
     { to: '/broker-reconciliation', label: 'Broker Recon' },
     { to: '/paper-outcomes', label: 'Paper Outcomes' },
+    { to: '/paper-governance', label: 'Paper Governance' },
     { to: '/strategy-admin', label: 'Strategy Admin' },
     { to: '/live-governance', label: 'Live Governance' },
     { to: '/incubator', label: 'Incubator' },

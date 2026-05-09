@@ -52,6 +52,7 @@ const BrokerReconciliation = lazy(() => import('./pages/BrokerReconciliation'))
 const PaperOutcomes = lazy(() => import('./pages/PaperOutcomes'))
 const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
 const LiveGovernance = lazy(() => import('./pages/LiveGovernance'))
+const PaperGovernance = lazy(() => import('./pages/PaperGovernance'))
 const PipelineHealthMaster = lazy(() => import('./pages/PipelineHealthMaster'))
 
 function Loading() {
@@ -97,6 +98,7 @@ export default function App() {
           <Route path="execution-quality" element={<SafePage><ExecutionQuality /></SafePage>} />
           <Route path="broker-reconciliation" element={<SafePage><BrokerReconciliation /></SafePage>} />
           <Route path="paper-outcomes" element={<SafePage><PaperOutcomes /></SafePage>} />
+          <Route path="paper-governance" element={<SafePage><PaperGovernance /></SafePage>} />
           <Route path="strategy-admin" element={<SafePage><StrategyAdmin /></SafePage>} />
           <Route path="live-governance" element={<SafePage><LiveGovernance /></SafePage>} />
           <Route path="portfolio" element={<SafePage><Portfolio /></SafePage>} />
