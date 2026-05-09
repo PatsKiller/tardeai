@@ -12775,4 +12775,76 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 32: Unified Self-Improvement Command Center ───────────────
+    if base_path in ("/api/v2/self-improvement/status", "/api/v2/self-improvement/summary"):
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from self_improvement_summary import collect_status, _get_conn as _si_conn
+            conn = _si_conn()
+            try:
+                return 200, {"ok": True, "data": collect_status(conn)}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/self-improvement/snapshot/latest":
+        try:
+            row = _db_query("SELECT * FROM self_improvement_snapshots ORDER BY created_at DESC LIMIT 1", fetch="one")
+            if not row:
+                return 200, {"ok": True, "data": None, "message": "No snapshots yet"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/self-improvement/snapshots":
+        try:
+            rows = _db_query("SELECT snapshot_id, generated_at, status FROM self_improvement_snapshots ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/self-improvement/review-queue":
+        try:
+            rows = _db_query("SELECT review_item_id, source_domain, title, severity, review_type, status, requires_action, linked_dashboard_route, created_at FROM operator_review_queue WHERE status='open' ORDER BY CASE severity WHEN 'urgent' THEN 0 WHEN 'warning' THEN 1 WHEN 'important' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, created_at DESC LIMIT 50") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/self-improvement/component-health":
+        try:
+            rows = _db_query("SELECT component_key, component_name, status, last_checked_at, health_score, summary FROM self_improvement_component_health ORDER BY component_key") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/self-improvement/warnings":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from self_improvement_summary import collect_status, _get_conn as _si_conn2
+            conn = _si_conn2()
+            try:
+                s = collect_status(conn)
+                return 200, {"ok": True, "data": s.get("warnings", [])}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/self-improvement/operator-actions":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from self_improvement_summary import collect_status, _get_conn as _si_conn3
+            conn = _si_conn3()
+            try:
+                s = collect_status(conn)
+                return 200, {"ok": True, "data": s.get("recommended_actions", [])}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
