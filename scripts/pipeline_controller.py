@@ -341,6 +341,7 @@ def main():
     parser.add_argument("--run-label", default="manual")
     parser.add_argument("--group", help="Run only stages in this group")
     parser.add_argument("--only-stage", help="Run only this stage")
+    parser.add_argument("--only-stages", help="Comma-separated allowlist of stage keys")
     parser.add_argument("--from-stage", help="Start from this stage")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
@@ -363,6 +364,14 @@ def main():
 
     stages = load_stages(conn, args.pipeline, args.group, args.only_stage)
     deps = load_dependencies(conn, args.pipeline)
+
+    # Filter by allowlist if provided
+    if args.only_stages:
+        allowed = set(s.strip() for s in args.only_stages.split(","))
+        blocked = [s for s in stages if s['stage_key'] not in allowed]
+        stages = [s for s in stages if s['stage_key'] in allowed]
+        if blocked:
+            print(f"  BLOCKED: {len(blocked)} stages not in allowlist: {[s['stage_key'] for s in blocked[:5]]}...")
 
     if args.from_stage:
         start_idx = next((i for i, s in enumerate(stages) if s['stage_key'] == args.from_stage), 0)
