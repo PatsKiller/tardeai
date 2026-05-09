@@ -62,6 +62,7 @@ const AgentCalibration = lazy(() => import('./pages/AgentCalibration'))
 const WeeklyLearning = lazy(() => import('./pages/WeeklyLearning'))
 const Backtesting = lazy(() => import('./pages/Backtesting'))
 const SelfImprovement = lazy(() => import('./pages/SelfImprovement'))
+const RiskRegime = lazy(() => import('./pages/RiskRegime'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -154,6 +155,7 @@ export default function App() {
           <Route path="weekly-learning" element={<SafePage><WeeklyLearning /></SafePage>} />
           <Route path="backtesting" element={<SafePage><Backtesting /></SafePage>} />
           <Route path="self-improvement" element={<SafePage><SelfImprovement /></SafePage>} />
+          <Route path="risk-regime" element={<SafePage><RiskRegime /></SafePage>} />
           <Route path="paper-trade-intelligence" element={<SafePage><PaperTradeIntelligence /></SafePage>} />
           <Route path="*" element={
             <div style={{ padding: 40, color: 'var(--text2)' }}>

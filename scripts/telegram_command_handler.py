@@ -296,6 +296,14 @@ def parse_command(text: str) -> dict:
     if lower in ("challenger list", "/challenger list"):
         return {"command": "challenger_list", "args": ""}
 
+    # Session 33: Risk Regime commands
+    if lower in ("regime", "/regime"):
+        return {"command": "regime_status", "args": ""}
+    if lower in ("strategy rotation", "/strategy rotation"):
+        return {"command": "strategy_rotation_signals", "args": ""}
+    if lower in ("regime alignments", "/regime alignments"):
+        return {"command": "regime_alignments", "args": ""}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1995,6 +2003,53 @@ def process_command(cmd: dict) -> str:
             lines = ["Challengers:"]
             for r in rows:
                 lines.append(f"  {r[0][:15]}: {r[1]} [{r[3]}]")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    # Session 33: Risk Regime handlers
+    if command == "regime_status":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT regime_label, confidence, stale_data, summary FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1")
+            row = cur.fetchone()
+            conn.close()
+            if not row:
+                return "No regime snapshot. Run: .venv/bin/python scripts/market_regime_classifier.py --apply --json"
+            stale = " (STALE)" if row[2] else ""
+            return f"Regime: {row[0]} (conf={float(row[1]):.0%}){stale}\n{row[3]}"
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "strategy_rotation_signals":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT strategy_id, signal, signal_strength, reason FROM strategy_rotation_signals ORDER BY created_at DESC LIMIT 15")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No rotation signals. Run rotation engine first."
+            lines = ["Strategy Rotation:"]
+            for r in rows:
+                lines.append(f"  {r[0]}: {r[1]} (str={float(r[2]):.2f}) — {(r[3] or '')[:50]}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "regime_alignments":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT symbol, strategy_id, alignment_label, regime_label, reason FROM regime_trade_alignment ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No trade/proposal alignments. Run rotation engine first."
+            lines = ["Regime Alignments:"]
+            for r in rows:
+                lines.append(f"  {r[0]} ({r[1]}): {r[2]} in {r[3]} — {(r[4] or '')[:50]}")
             return "\n".join(lines)
         except Exception as e:
             return f"Error: {e}"

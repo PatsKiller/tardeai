@@ -1,126 +1,182 @@
 #!/usr/bin/env python3
-"""strategy_rotation_engine.py — Detect strategy rotation opportunities.
+"""strategy_rotation_engine.py — Generate strategy rotation signals based on regime.
 
-Classification-first. No ticker-hard-coded logic. No broker execution.
+No auto-enable/disable. Signals are read-only/proposal-only.
 
 Usage:
-    python3 scripts/strategy_rotation_engine.py --run [--json]
+    .venv/bin/python scripts/strategy_rotation_engine.py --dry-run --json
+    .venv/bin/python scripts/strategy_rotation_engine.py --apply --json
 """
-import json, os, sys
-from datetime import datetime, timedelta
+import argparse, json, os, sys, uuid
+from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / ".env")
 
-
+def _f(v): return float(v) if isinstance(v, Decimal) else v
+def _uid(p="SIG_"): return f"{p}{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
 def _get_conn():
-    import psycopg2
-    pw = ""
-    for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
-    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+    from session13_db import get_conn
+    return get_conn()
 
 
-def detect_rotations() -> list:
-    """Detect strategy rotation candidates by group allocation drift and signal strength."""
-    import psycopg2.extras
-    conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+def generate_signals(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT snapshot_id, regime_label, confidence, stale_data FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1")
+    regime_row = cur.fetchone()
+    if not regime_row:
+        return [], None, "no_regime_snapshot"
 
-    # Get target allocations
-    cur.execute("SELECT * FROM portfolio_target_allocations WHERE active=TRUE")
-    targets = {r["allocation_id"]: dict(r) for r in cur.fetchall()}
+    snap_id, regime, confidence, stale = regime_row
 
-    # Get current allocations from portfolio QA
-    cur.execute("SELECT group_allocations FROM portfolio_level_qa_history ORDER BY evaluated_at DESC LIMIT 1")
-    qa = cur.fetchone()
-    current_allocs = qa.get("group_allocations", {}) if qa else {}
-    if isinstance(current_allocs, str):
-        current_allocs = json.loads(current_allocs)
+    cur.execute("SELECT strategy_id, strategy_name, favored_regimes, disfavored_regimes FROM strategy_regime_profiles WHERE active=true")
+    profiles = cur.fetchall()
 
-    # Get recent signal strength by strategy group
-    cur.execute("""
-        SELECT strategy_type, AVG(fused_score) as avg_score, COUNT(*) as signal_count,
-               MAX(severity) as max_sev
-        FROM fused_signals WHERE created_at > NOW() - INTERVAL '7 days'
-        GROUP BY strategy_type
-    """)
-    signal_strength = {r["strategy_type"]: dict(r) for r in cur.fetchall()}
+    signals = []
+    for p in profiles:
+        sid, sname, favored, disfavored = p[0], p[1], p[2] or [], p[3] or []
 
-    rotations = []
-    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        if regime in favored:
+            signal = "favor"; strength = 0.7; reason = f"{regime} is favored for {sid}"
+            action = "monitor"
+        elif regime in disfavored:
+            signal = "de_emphasize"; strength = 0.6; reason = f"{regime} is disfavored for {sid}"
+            action = "review"
+        elif regime == "unknown" or stale:
+            signal = "review_required"; strength = 0.3; reason = f"regime unknown/stale"
+            action = "no_action"
+        else:
+            signal = "neutral"; strength = 0.5; reason = f"{regime} is neutral for {sid}"
+            action = "no_action"
 
-    for alloc_id, target in targets.items():
-        current = current_allocs.get(alloc_id, {})
-        actual_pct = float(current.get("pct", 0)) if isinstance(current, dict) else 0
-        target_min = float(target.get("target_min_pct", 0) or 0)
-        target_max = float(target.get("target_max_pct", 100) or 100)
-        hard_cap = float(target.get("hard_cap_pct", 100) or 100)
-        members = target.get("member_strategy_types") or []
+        if confidence and confidence < 0.3:
+            signal = "review_required"; action = "no_action"
+            reason += " (low confidence)"
 
-        if actual_pct < target_min - 5:
-            # Significantly underweight — rotation INTO this group
-            # Find overweight group as source
-            for other_id, other_target in targets.items():
-                if other_id == alloc_id:
-                    continue
-                other_actual = float(current_allocs.get(other_id, {}).get("pct", 0) if isinstance(current_allocs.get(other_id), dict) else 0)
-                other_max = float(other_target.get("target_max_pct", 100) or 100)
-                if other_actual > other_max:
-                    rid = f"rot-{alloc_id}-from-{other_id}-{ts}"
-                    rot = {
-                        "rotation_id": rid,
-                        "source_group_id": other_id,
-                        "target_group_id": alloc_id,
-                        "rotation_amount_pct": round(min(other_actual - other_max, target_min - actual_pct), 1),
-                        "rationale": f"{alloc_id} underweight ({actual_pct:.1f}% vs {target_min:.0f}% min). {other_id} overweight ({other_actual:.1f}% vs {other_max:.0f}% max).",
-                        "confidence": 0.6,
-                        "human_review_required": True,
-                        "status": "proposed",
-                    }
+        signals.append({
+            "signal_id": _uid(), "snapshot_id": snap_id,
+            "strategy_id": sid, "strategy_name": sname,
+            "signal": signal, "signal_strength": round(strength * float(confidence or 0.5), 2),
+            "confidence": confidence, "reason": reason,
+            "supporting_indicators": [regime], "conflicting_indicators": [],
+            "recommended_action": action, "requires_admin_approval": True,
+        })
+    return signals, snap_id, regime
 
-                    cur.execute("""
-                        INSERT INTO strategy_rotation_recommendations
-                            (rotation_id, source_group_id, target_group_id, rotation_amount_pct,
-                             rationale, confidence, human_review_required, status)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (rid, other_id, alloc_id, rot["rotation_amount_pct"],
-                          rot["rationale"][:500], 0.6, True, "proposed"))
 
-                    rotations.append(rot)
+def check_alignments(conn, snap_id, regime):
+    cur = conn.cursor()
+    alignments = []
 
-        elif actual_pct > hard_cap:
-            # Over hard cap — rotation OUT of this group
-            rid = f"rot-{alloc_id}-overcap-{ts}"
-            rot = {
-                "rotation_id": rid,
-                "source_group_id": alloc_id,
-                "target_group_id": "income_generators" if alloc_id != "income_generators" else "core_compounders",
-                "rotation_amount_pct": round(actual_pct - target_max, 1),
-                "rationale": f"{alloc_id} exceeds hard cap ({actual_pct:.1f}% vs {hard_cap:.0f}% cap). Rebalance required.",
-                "confidence": 0.7,
-                "human_review_required": True,
-                "status": "proposed",
-            }
-            cur.execute("""
-                INSERT INTO strategy_rotation_recommendations
-                    (rotation_id, source_group_id, target_group_id, rotation_amount_pct,
-                     rationale, confidence, human_review_required, status)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (rid, alloc_id, rot["target_group_id"], rot["rotation_amount_pct"],
-                  rot["rationale"][:500], 0.7, True, "proposed"))
-            rotations.append(rot)
+    cur.execute("SELECT id, symbol, strategy_id FROM paper_trades WHERE status='open'")
+    for row in cur.fetchall():
+        tid, sym, strat = row
+        cur.execute("SELECT favored_regimes, disfavored_regimes FROM strategy_regime_profiles WHERE strategy_id=%s", [strat])
+        profile = cur.fetchone()
+        if profile:
+            favored, disfavored = profile[0] or [], profile[1] or []
+            if regime in disfavored:
+                label = "misaligned"; score = 30; reason = f"{sym} ({strat}) disfavored in {regime}"
+            elif regime in favored:
+                label = "aligned"; score = 80; reason = f"{sym} aligned"
+            else:
+                label = "partially_aligned"; score = 60; reason = f"{sym} neutral"
+        else:
+            label = "unknown"; score = 50; reason = f"No profile for {strat}"
+        alignments.append({
+            "alignment_id": _uid("ALN_"), "snapshot_id": snap_id,
+            "symbol": sym, "strategy_id": strat, "paper_trade_id": tid,
+            "alignment_type": "open_trade", "alignment_score": score,
+            "alignment_label": label, "regime_label": regime, "reason": reason,
+        })
 
+    cur.execute("SELECT id, symbol, strategy_id FROM paper_trade_proposals WHERE status IN ('APPROVED','APPROVED_FOR_PAPER_TEST','PENDING') LIMIT 20")
+    for row in cur.fetchall():
+        pid, sym, strat = row
+        cur.execute("SELECT favored_regimes, disfavored_regimes FROM strategy_regime_profiles WHERE strategy_id=%s", [strat])
+        profile = cur.fetchone()
+        label = "unknown"; score = 50; reason = f"Proposal {sym}"
+        if profile:
+            favored, disfavored = profile[0] or [], profile[1] or []
+            if regime in disfavored:
+                label = "misaligned"; score = 30; reason = f"Proposal {sym} ({strat}) disfavored"
+            elif regime in favored:
+                label = "aligned"; score = 80; reason = f"Proposal {sym} aligned"
+        alignments.append({
+            "alignment_id": _uid("ALN_"), "snapshot_id": snap_id,
+            "symbol": sym, "strategy_id": strat, "proposal_id": pid,
+            "alignment_type": "proposal", "alignment_score": score,
+            "alignment_label": label, "regime_label": regime, "reason": reason,
+        })
+    return alignments
+
+
+def save_signals(conn, signals, alignments, dry_run=True):
+    if dry_run: return
+    cur = conn.cursor()
+    for s in signals:
+        cur.execute("""
+            INSERT INTO strategy_rotation_signals
+                (signal_id, snapshot_id, strategy_id, strategy_name, signal,
+                 signal_strength, confidence, reason, supporting_indicators,
+                 conflicting_indicators, recommended_action, requires_admin_approval)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (signal_id) DO NOTHING
+        """, [s["signal_id"], s["snapshot_id"], s["strategy_id"], s["strategy_name"],
+              s["signal"], s["signal_strength"], s["confidence"], s["reason"],
+              json.dumps(s["supporting_indicators"]), json.dumps(s["conflicting_indicators"]),
+              s["recommended_action"], s["requires_admin_approval"]])
+    for a in alignments:
+        cur.execute("""
+            INSERT INTO regime_trade_alignment
+                (alignment_id, snapshot_id, symbol, strategy_id, paper_trade_id,
+                 proposal_id, alignment_type, alignment_score, alignment_label,
+                 regime_label, reason)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (alignment_id) DO NOTHING
+        """, [a["alignment_id"], a["snapshot_id"], a["symbol"], a["strategy_id"],
+              a.get("paper_trade_id"), a.get("proposal_id"), a["alignment_type"],
+              a["alignment_score"], a["alignment_label"], a["regime_label"], a["reason"]])
     conn.commit()
-    conn.close()
-    return rotations
 
+
+def main():
+    parser = argparse.ArgumentParser(description="Strategy Rotation Engine")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--latest", action="store_true")
+    parser.add_argument("--strategy")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    dry_run = not args.apply
+    conn = _get_conn()
+    try:
+        signals, snap_id, regime = generate_signals(conn)
+        if args.strategy:
+            signals = [s for s in signals if s["strategy_id"] == args.strategy]
+        alignments = check_alignments(conn, snap_id, regime) if snap_id and regime != "no_regime_snapshot" else []
+        if not dry_run:
+            save_signals(conn, signals, alignments)
+
+        by_signal = {}
+        for s in signals:
+            by_signal[s["signal"]] = by_signal.get(s["signal"], 0) + 1
+        out = {
+            "mode": "dry_run" if dry_run else "applied",
+            "regime": regime, "signals": len(signals), "alignments": len(alignments),
+            "by_signal": by_signal,
+            "misaligned": sum(1 for a in alignments if a["alignment_label"] == "misaligned"),
+        }
+        if args.json:
+            out["rotation_signals"] = [{k: v for k, v in s.items() if k not in ("supporting_indicators","conflicting_indicators")} for s in signals]
+            print(json.dumps(out, indent=2, default=str))
+        else:
+            print(f"Rotation: regime={regime}, {len(signals)} signals, {len(alignments)} alignments ({out['mode']})")
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
-    rotations = detect_rotations()
-    print(f"[rotation] Detected {len(rotations)} rotation opportunities")
-    for r in rotations:
-        print(f"  {r['source_group_id']} → {r['target_group_id']}: {r['rotation_amount_pct']:.1f}% ({r['rationale'][:60]})")
-    if "--json" in sys.argv:
-        print(json.dumps(rotations, indent=2, default=str))
+    main()
