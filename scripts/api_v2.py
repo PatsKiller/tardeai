@@ -12166,4 +12166,128 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 27: Paper Order Modification Proposals ───────────────────
+    if base_path == "/api/v2/paper-order-modifications":
+        try:
+            status_filter = (query or {}).get("status", "proposed")
+            rows = _db_query("""
+                SELECT proposal_id, paper_trade_id, symbol, action,
+                       current_stop, proposed_stop, current_limit, proposed_limit,
+                       reason, confidence, status, admin_decision, approved_by,
+                       approved_at, executed_at, error_message, expires_at, created_at
+                FROM paper_order_modification_proposals
+                WHERE status = %s OR %s = 'all'
+                ORDER BY created_at DESC LIMIT 50
+            """, (status_filter, status_filter)) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/paper-order-modifications/") and not base_path.endswith("/approve") and not base_path.endswith("/reject") and not base_path.endswith("/execute"):
+        try:
+            pid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM paper_order_modification_proposals WHERE proposal_id=%s",
+                            (pid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Proposal not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/paper-order-modifications/") and base_path.endswith("/approve") and method == "POST":
+        try:
+            pid = base_path.split("/")[-2]
+            reason = (body or {}).get("reason", "approved_via_api")
+            approved_by = (body or {}).get("approved_by", "admin")
+            _db_write("""UPDATE paper_order_modification_proposals
+                         SET status='approved', admin_decision='approve', admin_reason=%s,
+                             approved_by=%s, approved_at=now(), updated_at=now()
+                         WHERE proposal_id=%s AND status='proposed'""",
+                      (reason, approved_by, pid))
+            return 200, {"ok": True, "message": f"Proposal {pid} approved"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/paper-order-modifications/") and base_path.endswith("/reject") and method == "POST":
+        try:
+            pid = base_path.split("/")[-2]
+            reason = (body or {}).get("reason", "rejected_via_api")
+            _db_write("""UPDATE paper_order_modification_proposals
+                         SET status='rejected', admin_decision='reject', admin_reason=%s,
+                             rejected_at=now(), updated_at=now()
+                         WHERE proposal_id=%s AND status='proposed'""",
+                      (reason, pid))
+            return 200, {"ok": True, "message": f"Proposal {pid} rejected"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/paper-order-modifications/") and base_path.endswith("/execute") and method == "POST":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from open_trade_manager import execute_approved
+            pid = base_path.split("/")[-2]
+            from session13_db import get_conn as _s27_conn
+            econn = _s27_conn()
+            try:
+                result = execute_approved(econn, pid)
+                return 200, {"ok": result.get("status") == "executed", "data": result}
+            finally:
+                econn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 27: Paper Outcome Analytics ────────────────────────────────
+    if base_path == "/api/v2/paper-outcome-analytics":
+        try:
+            rows = _db_query("""
+                SELECT paper_trade_id, symbol, strategy_id, pnl, pnl_pct, r_multiple,
+                       entry_price, exit_price, stop_price, target_price,
+                       exit_reason, tca_grade, outcome_verdict, hold_minutes,
+                       stop_adjusted_count, limit_adjusted_count, opened_at, closed_at
+                FROM paper_trade_outcome_analytics ORDER BY closed_at DESC NULLS LAST LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-tca":
+        try:
+            rows = _db_query("""
+                SELECT paper_trade_id, symbol, event_type, expected_price, actual_price,
+                       slippage_abs, slippage_bps, quality_grade, created_at
+                FROM paper_execution_quality_events ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-broker-reconciliation":
+        try:
+            rows = _db_query("""
+                SELECT run_id, status, alpaca_mode, db_open_trades, broker_open_positions,
+                       broker_open_orders, matched_positions, unmatched_db_trades,
+                       unmatched_broker_positions, unmatched_orders, started_at, finished_at
+                FROM paper_broker_reconciliation_runs ORDER BY created_at DESC LIMIT 20
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/open-trade-intelligence":
+        try:
+            rows = _db_query("""
+                SELECT DISTINCT ON (paper_trade_id) paper_trade_id, symbol,
+                       current_price, entry_price, stop_price, limit_price,
+                       unrealized_pnl, unrealized_pnl_pct, r_multiple,
+                       distance_to_stop_pct, distance_to_target_pct,
+                       rsi, atr, volume_ratio, trend_state,
+                       news_risk_score, intelligence_summary, snapshot_time
+                FROM open_trade_intelligence_snapshots
+                ORDER BY paper_trade_id, snapshot_time DESC
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
