@@ -106,6 +106,7 @@ function TradeDetail({ tradeId }: { tradeId: number }) {
 export default function PaperJournal() {
   const { data, refetch } = useApi<any>('/api/v2/paper-journal', 60000)
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [expandedOpen, setExpandedOpen] = useState<number | null>(null)
   const [actionRunning, setActionRunning] = useState<string | null>(null)
   const [closeReason, setCloseReason] = useState<Record<number, string>>({})
 
@@ -196,43 +197,81 @@ export default function PaperJournal() {
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
           <SectionHeader title={`Open Trades (${openTrades.length})`} />
           <div style={{ padding: '6px 12px' }}>
-            {openTrades.map((t: any, i: number) => (
-              <div key={t.id ?? i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 11 }}>
-                  <span style={{ fontWeight: 700, color: 'var(--text0)', minWidth: 50, ...mono }}>{t.symbol}</span>
-                  <span style={{ color: 'var(--text3)', fontSize: 9 }}>{t.strategy || t.strategy_id || ''}</span>
-                  {(t.grade || t.signal_grade) && <span style={pill((t.grade || t.signal_grade) === 'A' || (t.grade || t.signal_grade) === 'A+' ? 'green' : 'amber')}>{t.grade || t.signal_grade}</span>}
-                  <span style={{ ...mono, fontSize: 10, color: 'var(--text2)' }}>Entry: {(t.entry ?? t.entry_price) != null ? fmt$(t.entry ?? t.entry_price, 2) : '--'}</span>
-                  {t.broker_status && <span style={pill(t.broker_status === 'filled' ? 'green' : t.broker_status === 'new' || t.broker_status === 'accepted' ? 'amber' : 'red')}>{t.broker_status}</span>}
-                  {t.broker_order_id && <span style={{ fontSize: 8, color: 'var(--text3)', ...mono }}>order: {String(t.broker_order_id).slice(0, 8)}...</span>}
-                  {t.account === 'ALPACA_PAPER' && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(59,130,246,0.1)', color: '#60A5FA', fontWeight: 600 }}>ALPACA</span>}
-                  <span style={{ ...mono, fontSize: 10, color: pnlColor(t.unrealized_pnl), marginLeft: 'auto' }}>
-                    {t.unrealized_pnl != null ? fmt$(t.unrealized_pnl, 2) : ''}
-                  </span>
-                </div>
-                {t.account === 'ALPACA_PAPER' && (
-                  <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
-                    <input
-                      type="text" placeholder="Close reason..."
-                      value={closeReason[t.id] || ''}
-                      onChange={e => setCloseReason(prev => ({ ...prev, [t.id]: e.target.value }))}
-                      style={{ fontSize: 9, padding: '2px 6px', background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--text1)', width: 150, ...mono }}
-                    />
-                    <button onClick={() => {
-                      if (!confirm(`Close PAPER trade ${t.symbol} #${t.id}? This cannot be undone.`)) return
-                      runJournalAction(`close-${t.id}`, '/api/v2/paper-trades/close', {
-                        paper_trade_id: t.id,
-                        reason: closeReason[t.id] || 'manual_close_via_ui',
-                      })
-                    }}
-                      disabled={!!actionRunning}
-                      style={{ padding: '2px 8px', fontSize: 9, fontWeight: 600, border: '1px solid #DC2626', borderRadius: 4, cursor: 'pointer', color: '#EF4444', background: 'rgba(239,68,68,0.1)' }}>
-                      {actionRunning === `close-${t.id}` ? '...' : 'Close Paper Trade'}
-                    </button>
+            {openTrades.map((t: any, i: number) => {
+              const entry = t.entry ?? t.entry_price
+              const stop = t.stop_loss ?? t.stop
+              const target = t.target_1 ?? t.target ?? t.take_profit_price
+              const shares = t.shares ?? t.qty
+              const riskPerShare = entry && stop ? Math.abs(entry - stop) : 0
+              const riskTotal = riskPerShare * (shares || 0)
+              const currentPrice = t.current_price
+              const unrealizedR = riskPerShare > 0 && currentPrice && entry
+                ? ((currentPrice - entry) / riskPerShare)
+                : null
+              const isExpanded = expandedOpen === t.id
+              return (
+                <div key={t.id ?? i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                  onClick={() => setExpandedOpen(isExpanded ? null : t.id)}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 11 }}>
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>{isExpanded ? '▼' : '▶'}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--text0)', minWidth: 50, ...mono }}>{t.symbol}</span>
+                    <span style={{ color: 'var(--text3)', fontSize: 9 }}>{t.strategy || t.strategy_id || ''}</span>
+                    {(t.grade || t.signal_grade) && <span style={pill((t.grade || t.signal_grade) === 'A' || (t.grade || t.signal_grade) === 'A+' ? 'green' : 'amber')}>{t.grade || t.signal_grade}</span>}
+                    <span style={{ ...mono, fontSize: 10, color: 'var(--text2)' }}>Entry: {entry != null ? fmt$(entry, 2) : '--'}</span>
+                    <span style={{ ...mono, fontSize: 10, color: 'var(--text3)' }}>Stop: {stop != null ? fmt$(stop, 2) : '--'}</span>
+                    <span style={{ ...mono, fontSize: 10, color: 'var(--text3)' }}>Target: {target != null ? fmt$(target, 2) : '--'}</span>
+                    <span style={{ ...mono, fontSize: 10, color: 'var(--text3)' }}>{shares ? `${shares}sh` : ''}</span>
+                    {t.broker_status && <span style={pill(t.broker_status === 'filled' ? 'green' : t.broker_status === 'new' || t.broker_status === 'accepted' ? 'amber' : 'red')}>{t.broker_status}</span>}
+                    {t.broker_order_id && <span style={{ fontSize: 8, color: 'var(--text3)', ...mono }}>order: {String(t.broker_order_id).slice(0, 8)}...</span>}
+                    {(t.account === 'ALPACA_PAPER' || t.broker === 'alpaca_paper') && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(59,130,246,0.1)', color: '#60A5FA', fontWeight: 600 }}>ALPACA</span>}
+                    <span style={{ ...mono, fontSize: 10, color: pnlColor(t.unrealized_pnl), marginLeft: 'auto' }}>
+                      {t.unrealized_pnl != null ? fmt$(t.unrealized_pnl, 2) : ''}
+                      {unrealizedR != null && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>({unrealizedR >= 0 ? '+' : ''}{unrealizedR.toFixed(1)}R)</span>}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {isExpanded && (
+                    <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--bg0)', borderRadius: 6, fontSize: 10 }}
+                      onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 8 }}>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>ENTRY</div><div style={{ ...mono, color: 'var(--text0)' }}>${entry?.toFixed(2) || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>STOP</div><div style={{ ...mono, color: 'var(--red)' }}>${stop?.toFixed(2) || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>TARGET</div><div style={{ ...mono, color: 'var(--green)' }}>${target?.toFixed(2) || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>CURRENT</div><div style={{ ...mono, color: pnlColor(t.unrealized_pnl) }}>${currentPrice?.toFixed(2) || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>SHARES</div><div style={{ ...mono }}>{shares || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>RISK $</div><div style={{ ...mono, color: 'var(--red)' }}>${riskTotal.toFixed(0)}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>UNREAL P/L</div><div style={{ ...mono, color: pnlColor(t.unrealized_pnl) }}>{t.unrealized_pnl != null ? fmt$(t.unrealized_pnl, 2) : '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>UNREAL R</div><div style={{ ...mono, color: pnlColor(unrealizedR) }}>{unrealizedR != null ? `${unrealizedR >= 0 ? '+' : ''}${unrealizedR.toFixed(2)}R` : '--'}</div></div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 8 }}>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>ACCOUNT</div><div style={{ ...mono, fontSize: 9 }}>{t.account || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>BROKER</div><div style={{ ...mono, fontSize: 9 }}>{t.broker || t.broker_status || '--'}</div></div>
+                        <div><div style={{ fontSize: 8, color: 'var(--text3)' }}>ORDER ID</div><div style={{ ...mono, fontSize: 9 }}>{t.broker_order_id ? String(t.broker_order_id).slice(0, 12) + '...' : t.client_order_id || '--'}</div></div>
+                      </div>
+                      {t.proposal_id && <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>Proposal #{t.proposal_id}</div>}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input
+                          type="text" placeholder="Close reason..."
+                          value={closeReason[t.id] || ''}
+                          onChange={e => setCloseReason(prev => ({ ...prev, [t.id]: e.target.value }))}
+                          style={{ fontSize: 9, padding: '2px 6px', background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--text1)', width: 150, ...mono }}
+                        />
+                        <button onClick={() => {
+                          if (!confirm(`Close PAPER trade ${t.symbol} #${t.id}? This cannot be undone.`)) return
+                          runJournalAction(`close-${t.id}`, '/api/v2/paper-trades/close', {
+                            paper_trade_id: t.id,
+                            reason: closeReason[t.id] || 'manual_close_via_ui',
+                          })
+                        }}
+                          disabled={!!actionRunning}
+                          style={{ padding: '2px 8px', fontSize: 9, fontWeight: 600, border: '1px solid #DC2626', borderRadius: 4, cursor: 'pointer', color: '#EF4444', background: 'rgba(239,68,68,0.1)' }}>
+                          {actionRunning === `close-${t.id}` ? '...' : 'Close Paper Trade'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
