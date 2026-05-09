@@ -40,6 +40,9 @@ interface SymbolRow {
   // Holdings
   account_holdings: AccountHolding[]; total_shares: number; total_market_value: number
   portfolio_weight: number
+  // LLM health
+  holdings_llm_health?: string; holdings_llm_action?: string
+  holdings_llm_confidence?: number; holdings_llm_at?: string
 }
 
 interface AccountHolding {
@@ -319,6 +322,13 @@ export default function Watchlist() {
                           return <span style={{ fontSize: 7, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${c.color}40`, color: c.color, whiteSpace: 'nowrap' }}>{c.icon} {c.label}</span>
                         })()}
                         {item.in_portfolio && item.portfolio_weight > 0 && <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: 'rgba(220,38,38,.12)', color: '#DC2626', border: '1px solid rgba(220,38,38,.3)', whiteSpace: 'nowrap' }}>{'\u26a0\ufe0f'} HELD {item.portfolio_weight.toFixed(1)}%</span>}
+                        {item.holdings_llm_health && (
+                          <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, whiteSpace: 'nowrap',
+                            background: item.holdings_llm_health === 'STRONG' ? 'rgba(34,197,94,.12)' : item.holdings_llm_health === 'STABLE' ? 'rgba(59,130,246,.12)' : item.holdings_llm_health === 'WATCH' ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)',
+                            color: item.holdings_llm_health === 'STRONG' ? '#22C55E' : item.holdings_llm_health === 'STABLE' ? '#3B82F6' : item.holdings_llm_health === 'WATCH' ? '#F59E0B' : '#EF4444',
+                            border: `1px solid ${item.holdings_llm_health === 'STRONG' ? 'rgba(34,197,94,.3)' : item.holdings_llm_health === 'STABLE' ? 'rgba(59,130,246,.3)' : item.holdings_llm_health === 'WATCH' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)'}`,
+                          }}>AI: {item.holdings_llm_health} {item.holdings_llm_action && item.holdings_llm_action !== 'HOLD' ? `→${item.holdings_llm_action}` : ''}</span>
+                        )}
                       </div>
                     </td>
                     <td style={{ ...td, textAlign: 'center' }}>

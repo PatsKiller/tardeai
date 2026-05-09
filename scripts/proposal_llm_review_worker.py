@@ -99,9 +99,10 @@ def process_one(conn, queue_row, dry_run=False):
                 WHERE id = %s
             """, [pid])
             conn.commit()
-            log.info(f"[review] #{pid} {symbol}: {result.get('narrative_source')} decision={result.get('review', {}).get('decision')}")
+            model_name = result.get('model', 'unknown')
+            log.info(f"[review] #{pid} {symbol}: {result.get('narrative_source')} model={model_name} decision={result.get('review', {}).get('decision')}")
             return {'proposal_id': pid, 'symbol': symbol, 'status': 'completed',
-                    'source': result.get('narrative_source'), 'decision': result.get('review', {}).get('decision')}
+                    'source': result.get('narrative_source'), 'model': model_name, 'decision': result.get('review', {}).get('decision')}
         else:
             error = result.get('error', 'unknown') if result else 'no result'
             cur.execute("""
@@ -140,6 +141,8 @@ def main():
     mode.add_argument("--run", action="store_true")
     parser.add_argument("--limit", type=int, default=2)
     parser.add_argument("--proposal-id", type=int)
+    parser.add_argument("--throttle", type=int, default=10,
+                        help="Seconds to wait between reviews (default 10)")
     args = parser.parse_args()
 
     conn = get_db()
@@ -148,10 +151,27 @@ def main():
             queue = fetch_queue(conn, limit=args.limit, proposal_id=args.proposal_id)
             log.info(f"Found {len(queue)} queued LLM reviews")
 
+            # Warmup Ollama before processing (handles cold GPU model load)
+            if queue and args.run:
+                try:
+                    from local_llm import warmup_ollama
+                    log.info("Warming up Ollama (may take minutes on cold start)...")
+                    if warmup_ollama():
+                        log.info("Ollama warm — starting reviews")
+                    else:
+                        log.warning("Ollama warmup failed — will attempt reviews with fallback chain")
+                except ImportError:
+                    pass
+
             results = []
-            for q in queue:
+            for i, q in enumerate(queue):
                 r = process_one(conn, q, dry_run=args.dry_run)
                 results.append(r)
+                # Throttle between jobs to avoid GPU contention
+                if i < len(queue) - 1 and args.run:
+                    import time
+                    log.info(f"Throttle: waiting {args.throttle}s before next review...")
+                    time.sleep(args.throttle)
 
             pipe.rows(len(results))
 

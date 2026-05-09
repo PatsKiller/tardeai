@@ -128,13 +128,27 @@ def fetch_candidates(cur, force_symbol=None, limit=10):
         """, [force_symbol.upper(), limit])
     else:
         cur.execute("""
-            SELECT * FROM incubator_universe
-            WHERE status = 'ACTIVE'
-              AND latest_score >= 38
-              AND (catalyst_verified = true OR latest_score >= 45)
-              AND promoted_to_proposal_at IS NULL
-              AND days_active >= 1
-            ORDER BY latest_score DESC
+            SELECT iu.*, s.decision as scan_decision
+            FROM incubator_universe iu
+            LEFT JOIN LATERAL (
+                SELECT decision FROM trade_ai_scans
+                WHERE symbol = iu.symbol
+                ORDER BY scanned_at DESC LIMIT 1
+            ) s ON true
+            WHERE iu.status = 'ACTIVE'
+              AND iu.latest_score >= 38
+              AND (iu.catalyst_verified = true OR iu.latest_score >= 45)
+              AND iu.promoted_to_proposal_at IS NULL
+              AND iu.days_active >= 1
+              AND COALESCE(iu.llm_screen_verdict, 'HOLD') != 'DROP'
+              AND COALESCE(s.decision, 'WAIT') != 'AVOID'
+            ORDER BY
+                CASE COALESCE(s.decision, 'WAIT')
+                    WHEN 'GO' THEN 0
+                    WHEN 'WAIT' THEN 1
+                    ELSE 2
+                END,
+                iu.latest_score DESC
             LIMIT %s
         """, [limit])
     return cur.fetchall()
@@ -199,14 +213,19 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
     results = []
     symbol_counts = {}  # track promotions per symbol this run
 
+    # Load existing PENDING proposal counts per symbol (total, not just this run)
+    cur.execute("SELECT symbol, COUNT(*) FROM paper_trade_proposals WHERE status='PENDING' GROUP BY symbol")
+    existing_pending = {r['symbol']: r['count'] for r in cur.fetchall()}
+
     for c in candidates:
         symbol = c['symbol']
         strategy_id = c['strategy_id']
 
-        # Duplicate control: max proposals per symbol per run
+        # Duplicate control: max TOTAL pending proposals per symbol
+        total_pending = existing_pending.get(symbol, 0) + symbol_counts.get(symbol, 0)
         symbol_counts.setdefault(symbol, 0)
-        if symbol_counts[symbol] >= max_per_symbol:
-            results.append(f"SKIPPED: {symbol} (max_per_symbol={max_per_symbol} reached)")
+        if total_pending >= max_per_symbol:
+            results.append(f"SKIPPED: {symbol} (total_pending={total_pending} >= max={max_per_symbol})")
             skipped += 1
             continue
         score = c['latest_score']
@@ -219,6 +238,18 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
                 results.append(f"SKIPPED: {symbol} (no_catalyst, score={score})")
                 skipped += 1
                 continue
+
+        # LLM screen gate: require grade A or B (skip if not screened yet)
+        llm_grade = c.get('llm_screen_grade')
+        llm_verdict = c.get('llm_screen_verdict')
+        if llm_grade and llm_grade not in ('A', 'B'):
+            results.append(f"SKIPPED: {symbol} (llm_grade={llm_grade}, verdict={llm_verdict})")
+            skipped += 1
+            continue
+        if llm_verdict == 'DROP':
+            results.append(f"SKIPPED: {symbol} (llm_verdict=DROP)")
+            skipped += 1
+            continue
 
         # Already pending?
         if is_already_pending(cur, symbol, strategy_id):

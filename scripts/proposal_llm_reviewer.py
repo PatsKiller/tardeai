@@ -40,73 +40,90 @@ def _get_model_name():
         return None
 
 
-def _build_review_prompt(proposal, technical, backtest, stock_history):
-    """Build structured review prompt."""
+def _build_data_summary(proposal, technical, backtest, stock_history):
+    """Build compact data summary for the proposal."""
     symbol = proposal.get('symbol', '?')
     strategy = proposal.get('strategy_id', 'unknown')
     entry = proposal.get('proposed_entry', 0)
     stop = proposal.get('proposed_stop', 0)
     target = proposal.get('proposed_target1', 0)
     shares = proposal.get('proposed_shares', 0)
-
     risk_dollars = abs(float(entry or 0) - float(stop or 0)) * int(shares or 0)
-    reward_dollars = (float(target or 0) - float(entry or 0)) * int(shares or 0)
     rr = proposal.get('proposed_rr', 'N/A')
+    catalyst = proposal.get('catalyst') or 'None'
+    cat_v = proposal.get('catalyst_verified', False)
+    critic = proposal.get('critic_verdict') or 'N/A'
 
-    tech_lines = "No technical data available."
+    lines = [f"{symbol} {strategy} E${entry} S${stop} T${target} x{shares} Risk${risk_dollars:.0f} RR{rr}"]
+    lines.append(f"Cat:{str(catalyst)[:60]}{'(V)' if cat_v else '(UV)'} Critic:{critic} Sector:{proposal.get('vs_sector_pct','?')}%")
+
     if technical:
-        tech_lines = f"""ATR: {technical.get('atr', 'missing')} / {technical.get('atr_pct', 'N/A')}% ({technical.get('atr_state', 'unknown')})
-RSI: {technical.get('rsi', 'missing')} ({technical.get('rsi_state', 'unknown')})
-VWAP: {technical.get('vwap_state', 'unknown')} (distance {technical.get('vwap_distance_pct', 'N/A')}%)
-RVOL: {technical.get('rvol', 'N/A')} ({technical.get('rvol_state', 'unknown')})
-Float: {technical.get('float_m', 'N/A')}M rotation: {technical.get('float_rotation_state', 'unknown')}
-Gap: {technical.get('gap_pct', 'N/A')}% ({technical.get('gap_state', 'unknown')})
-Fib: {json.dumps(technical.get('fib_context', {}), default=str)[:100]}
-ORB: {json.dumps(technical.get('orb_context', {}), default=str)[:100]}
-Technical vote: {technical.get('technical_vote', 'unknown')}
-Concerns: {', '.join(technical.get('technical_concerns', []))}"""
+        t = technical
+        lines.append(f"RSI:{t.get('rsi','?')}({t.get('rsi_state','?')}) ATR:{t.get('atr','?')} VWAP:{t.get('vwap_state','?')} RVOL:{t.get('rvol','?')} Vote:{t.get('technical_vote','?')}")
+        concerns = t.get('technical_concerns', [])
+        if concerns:
+            lines.append(f"Concerns:{','.join(concerns)[:80]}")
+    else:
+        lines.append("Tech:none")
 
-    bt_lines = "No backtest data available."
     if backtest:
-        bt_lines = f"""Quality: {backtest.get('backtest_quality', 'NO_DATA')} ({backtest.get('sample_size', 0)} samples)
-Win rate: {backtest.get('win_rate', 'N/A')}
-Profit factor: {backtest.get('profit_factor', 'N/A')}
-Similar setup: {str(backtest.get('similar_setup_summary', 'N/A'))[:120]}
-Repeat pattern: {backtest.get('repeat_pattern_detected', False)}
-Limitations: {', '.join(backtest.get('limitations', []))}"""
+        lines.append(f"BT:{backtest.get('backtest_quality','?')} n={backtest.get('sample_size',0)} WR:{backtest.get('win_rate','?')} PF:{backtest.get('profit_factor','?')}")
+    else:
+        lines.append("BT:none")
 
-    hist_lines = "No prior history."
     if stock_history:
-        hist_lines = f"""Prior scans: {stock_history.get('prior_scans', 0)}
-Paper trades: {stock_history.get('paper_trades', 0)} (wins: {stock_history.get('paper_wins', 0)})
-Real trades: {stock_history.get('real_trades', 0)}
-Last result: {stock_history.get('last_result', 'N/A')}"""
+        h = stock_history
+        lines.append(f"Hist:scans={h.get('prior_scans',0)} paper={h.get('paper_trades',0)}(w{h.get('paper_wins',0)}) real={h.get('real_trades',0)}")
 
-    return f"""You are reviewing a PAPER TRADE proposal for testing only.
+    return "\n".join(lines)
 
-Use the evidence below. Do not invent missing fields.
-If data is missing, say it is missing.
 
-Symbol: {symbol}
-Strategy: {strategy}
-Entry: ${entry} | Stop: ${stop} | Target: ${target}
-Shares: {shares}
-Risk: ${risk_dollars:.2f} | Reward: ${reward_dollars:.2f} | R:R: {rr}
-Catalyst: {proposal.get('catalyst', 'None')} (verified={proposal.get('catalyst_verified', False)})
-Critic: {proposal.get('critic_verdict', 'N/A')} — {str(proposal.get('critic_reasoning', ''))[:100]}
-Sector: {proposal.get('sector', 'N/A')} (vs sector: {proposal.get('vs_sector_pct', 'N/A')}%)
+def _build_analysis_prompt(data_summary):
+    """Chunk 1: Analyze the setup — bull/bear/technical/catalyst."""
+    return f"""Paper trade review. Be brief (2-3 sentences each field).
+{data_summary}
+JSON only:
+{{"bull_case":"...","bear_case":"...","technical_condition":"...","catalyst_quality":"...","risk_reward_quality":"..."}}"""
 
-TECHNICAL:
-{tech_lines}
 
-BACKTEST:
-{bt_lines}
+def _build_decision_prompt(data_summary, analysis):
+    """Chunk 2: Make decision based on data + analysis."""
+    return f"""Paper trade decision. Use this analysis:
+{data_summary}
+Analysis: {json.dumps(analysis, default=str)[:300]}
+JSON only:
+{{"setup_summary":"1 sentence","decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT","confidence_score":0-100,"approval_conditions":"...","invalidation_conditions":"..."}}"""
 
-HISTORY:
-{hist_lines}
 
-Return structured JSON:
-{{"setup_summary":"...","stock_history":"...","technical_condition":"...","catalyst_quality":"...","sector_context":"...","backtest_context":"...","bull_case":"...","bear_case":"...","risk_reward_quality":"...","approval_conditions":"...","invalidation_conditions":"...","confidence_score":0-100,"decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT"}}"""
+def _build_risk_prompt(data_summary, analysis):
+    """Chunk 3: Risk deep-dive — position sizing, correlation, max drawdown."""
+    return f"""Risk analysis for paper trade. Be brief.
+{data_summary}
+Prior analysis: {json.dumps(analysis, default=str)[:200]}
+JSON only:
+{{"position_size_assessment":"...","correlation_risk":"...","max_drawdown_scenario":"...","risk_mitigation":"...","risk_grade":"A|B|C|D|F"}}"""
+
+
+def _build_catalyst_prompt(data_summary, analysis):
+    """Chunk 4: Catalyst verification — quality, timing, uniqueness."""
+    return f"""Catalyst verification for paper trade. Be brief.
+{data_summary}
+Prior analysis: {json.dumps(analysis, default=str)[:200]}
+JSON only:
+{{"catalyst_type":"company_specific|sector|macro|technical|none","catalyst_freshness":"fresh|stale|unknown","catalyst_uniqueness":"unique|common|generic","catalyst_timing":"imminent|near_term|distant|expired","catalyst_grade":"A|B|C|D|F"}}"""
+
+
+# Chunk stage progression: each stage depends on prior
+CHUNK_STAGES = ['analysis', 'decision', 'risk', 'catalyst']
+
+
+def _build_review_prompt(proposal, technical, backtest, stock_history):
+    """Build structured review prompt (legacy single-shot fallback)."""
+    data_summary = _build_data_summary(proposal, technical, backtest, stock_history)
+    return f"""Paper trade review. Be brief. Use evidence only.
+{data_summary}
+JSON only:
+{{"setup_summary":"...","technical_condition":"...","catalyst_quality":"...","bull_case":"...","bear_case":"...","risk_reward_quality":"...","confidence_score":0-100,"decision":"APPROVE_READY|CAUTIOUS_TEST|WAIT_FOR_DATA|REJECT"}}"""
 
 
 def _deterministic_review(proposal, technical, backtest, stock_history):
@@ -247,25 +264,106 @@ def review_proposal(conn, proposal_id):
     model = "deterministic_fallback"
     narrative_source = "deterministic_fallback"
 
+    def _parse_json(raw):
+        if not raw:
+            return None
+        start = raw.find('{')
+        end = raw.rfind('}') + 1
+        if start >= 0 and end > start:
+            return json.loads(raw[start:end])
+        return None
+
+    # Load prior chunk results (resume from where we left off)
+    prior_chunks = {}
+    raw_chunks = proposal.get('llm_review_chunks')
+    if raw_chunks:
+        if isinstance(raw_chunks, str):
+            try: prior_chunks = json.loads(raw_chunks)
+            except Exception: prior_chunks = {}
+        elif isinstance(raw_chunks, dict):
+            prior_chunks = raw_chunks
+    completed_stage = proposal.get('llm_review_stage') or None
+
     if generate_fn:
         try:
-            prompt = _build_review_prompt(proposal, technical, backtest, stock_history)
-            raw = generate_fn(prompt, timeout=120, fallback=True, fast=False)
-            if raw:
-                start = raw.find('{')
-                end = raw.rfind('}') + 1
-                if start >= 0 and end > start:
-                    parsed = json.loads(raw[start:end])
-                    # Validate decision
-                    decision = parsed.get('decision', 'CAUTIOUS_TEST')
-                    if decision not in ('APPROVE_READY', 'CAUTIOUS_TEST', 'WAIT_FOR_DATA', 'REJECT'):
-                        decision = 'CAUTIOUS_TEST'
-                    parsed['decision'] = decision
-                    # Clamp confidence
-                    parsed['confidence_score'] = min(100, max(0, int(parsed.get('confidence_score', 50))))
-                    review = parsed
+            data_summary = _build_data_summary(proposal, technical, backtest, stock_history)
+
+            # Determine which chunks to run
+            need_analysis = 'analysis' not in prior_chunks
+            need_decision = 'decision' not in prior_chunks
+            need_risk = 'risk' not in prior_chunks
+            need_catalyst = 'catalyst' not in prior_chunks
+
+            analysis = prior_chunks.get('analysis')
+            decision_result = prior_chunks.get('decision')
+            risk_result = prior_chunks.get('risk')
+            catalyst_result = prior_chunks.get('catalyst')
+
+            # Chunk 1: Analysis
+            if need_analysis:
+                prompt1 = _build_analysis_prompt(data_summary)
+                log.info(f"  {symbol}: chunk 1 (analysis)...")
+                raw1 = generate_fn(prompt1, timeout=300, fallback=True, fast=False)
+                analysis = _parse_json(raw1)
+                if analysis:
+                    prior_chunks['analysis'] = analysis
                     model = _get_model_name() or "local_llm"
-                    narrative_source = "local_llm"
+
+            # Chunk 2: Decision (requires analysis)
+            if analysis and need_decision:
+                prompt2 = _build_decision_prompt(data_summary, analysis)
+                log.info(f"  {symbol}: chunk 2 (decision)...")
+                raw2 = generate_fn(prompt2, timeout=300, fallback=True, fast=False)
+                decision_result = _parse_json(raw2)
+                if decision_result:
+                    prior_chunks['decision'] = decision_result
+                    model = _get_model_name() or model
+
+            # Chunk 3: Risk deep-dive (requires analysis)
+            if analysis and need_risk:
+                prompt3 = _build_risk_prompt(data_summary, analysis)
+                log.info(f"  {symbol}: chunk 3 (risk)...")
+                raw3 = generate_fn(prompt3, timeout=300, fallback=True, fast=False)
+                risk_result = _parse_json(raw3)
+                if risk_result:
+                    prior_chunks['risk'] = risk_result
+                    model = _get_model_name() or model
+
+            # Chunk 4: Catalyst verification (requires analysis)
+            if analysis and need_catalyst:
+                prompt4 = _build_catalyst_prompt(data_summary, analysis)
+                log.info(f"  {symbol}: chunk 4 (catalyst)...")
+                raw4 = generate_fn(prompt4, timeout=300, fallback=True, fast=False)
+                catalyst_result = _parse_json(raw4)
+                if catalyst_result:
+                    prior_chunks['catalyst'] = catalyst_result
+                    model = _get_model_name() or model
+
+            # Determine completed stage
+            if catalyst_result and risk_result:
+                completed_stage = 'catalyst'  # all 4 done
+            elif risk_result:
+                completed_stage = 'risk'
+            elif decision_result:
+                completed_stage = 'decision'
+            elif analysis:
+                completed_stage = 'analysis'
+
+            # Merge all chunks into review
+            if analysis:
+                review = {}
+                for chunk_data in [analysis, decision_result, risk_result, catalyst_result]:
+                    if chunk_data:
+                        review.update(chunk_data)
+                # Validate decision
+                decision = review.get('decision', 'CAUTIOUS_TEST')
+                if decision not in ('APPROVE_READY', 'CAUTIOUS_TEST', 'WAIT_FOR_DATA', 'REJECT'):
+                    decision = 'CAUTIOUS_TEST'
+                review['decision'] = decision
+                review['confidence_score'] = min(100, max(0, int(review.get('confidence_score', 50))))
+                review['chunks_completed'] = list(prior_chunks.keys())
+                narrative_source = "local_llm" if decision_result else "local_llm_partial"
+
         except Exception as e:
             log.warning(f"LLM review failed for {symbol}: {e}")
 
@@ -288,17 +386,23 @@ def review_proposal(conn, proposal_id):
         try: conn.rollback()
         except: pass
 
-    # Update proposal
+    # Update proposal with chunk state
     try:
         cur.execute("""
             UPDATE paper_trade_proposals
             SET local_llm_review_status = %s,
+                llm_model_used = %s,
                 confidence_score = %s,
+                llm_review_stage = %s,
+                llm_review_chunks = %s,
                 updated_at = NOW()
             WHERE id = %s
         """, [
-            f"{model} reviewed" if narrative_source == "local_llm" else "deterministic_fallback",
+            f"{model} reviewed" if narrative_source in ("local_llm", "local_llm_partial") else "deterministic_fallback",
+            model,
             review.get('confidence_score'),
+            completed_stage,
+            json.dumps(prior_chunks, default=str) if prior_chunks else None,
             proposal_id,
         ])
         conn.commit()

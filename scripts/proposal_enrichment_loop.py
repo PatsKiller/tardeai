@@ -101,10 +101,11 @@ def classify_entry_zone(drift_pct, timeframe_class):
 # ── Strategy identity ─────────────────────────────────────────────────
 
 def ensure_strategy_identity(conn, proposal):
-    """Populate primary_strategy_id and setup_stack if missing."""
+    """Populate primary_strategy_id and setup_stack if missing or generic 'screener'."""
     pid = proposal['id']
-    if proposal.get('primary_strategy_id') and proposal.get('setup_stack'):
-        return False  # already set
+    primary = proposal.get('primary_strategy_id')
+    if primary and primary != 'screener' and proposal.get('setup_stack'):
+        return False  # already set with real strategy
 
     symbol = proposal['symbol']
     strategy_id = proposal['strategy_id']
@@ -543,6 +544,29 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
     if ensure_strategy_identity(conn, proposal):
         actions.append('strategy_identity')
 
+    # 1b. Sector/industry backfill from latest scan
+    if not dry_run and not proposal.get('sector'):
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE paper_trade_proposals p
+                SET sector = s.sector, industry = s.industry
+                FROM (
+                    SELECT sector, industry FROM trade_ai_scans
+                    WHERE symbol = %s AND sector IS NOT NULL
+                    ORDER BY scanned_at DESC LIMIT 1
+                ) s
+                WHERE p.id = %s AND p.sector IS NULL
+            """, [symbol, pid])
+            if cur.rowcount > 0:
+                conn.commit()
+                actions.append('sector_backfill')
+            else:
+                conn.rollback()
+        except Exception:
+            try: conn.rollback()
+            except: pass
+
     # 2. Price refresh
     price, source = get_live_price(symbol)
     if price and entry > 0:
@@ -612,6 +636,49 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
         try:
             if queue_agent_reviews(conn, proposal):
                 actions.append('agents_queued')
+        except Exception:
+            pass
+
+    # 6b. Stale LLM review detection — re-queue if data changed materially
+    if not dry_run:
+        try:
+            llm_stage = proposal.get('llm_review_stage')
+            if llm_stage == 'catalyst':  # all 4 chunks done — check if stale
+                _stale = False
+                _reason = None
+                # Check if technical snapshot is newer than last LLM review
+                _tech_at = proposal.get('last_technical_snapshot_at')
+                _llm_at = proposal.get('packet_last_enriched_at') or proposal.get('updated_at')
+                if _tech_at and _llm_at and _tech_at > _llm_at:
+                    _stale = True
+                    _reason = 'technical_refreshed'
+                # Check if entry zone changed
+                _prev_zone = proposal.get('prev_entry_zone_status') or proposal.get('entry_zone_status')
+                _curr_zone = proposal.get('entry_zone_status')
+                if _prev_zone and _curr_zone and _prev_zone != _curr_zone:
+                    _stale = True
+                    _reason = f'zone_changed:{_prev_zone}->{_curr_zone}'
+                # Check if price drifted >10% since last review
+                _drift = abs(float(proposal.get('price_drift_pct') or 0))
+                if _drift > 10:
+                    _stale = True
+                    _reason = f'price_drift_{_drift:.1f}pct'
+                # Check if catalyst changed
+                _cat_changed = proposal.get('catalyst_verified') and not proposal.get('llm_review_chunks', {}).get('catalyst')
+                if _cat_changed:
+                    _stale = True
+                    _reason = 'catalyst_new'
+
+                if _stale:
+                    cur = conn.cursor()
+                    cur.execute("""
+                        UPDATE paper_trade_proposals
+                        SET llm_review_stage = NULL, llm_review_chunks = NULL
+                        WHERE id = %s
+                    """, [pid])
+                    conn.commit()
+                    actions.append(f'llm_stale_reset:{_reason}')
+                    log.info(f"  #{pid} {symbol}: LLM review reset — {_reason}")
         except Exception:
             pass
 

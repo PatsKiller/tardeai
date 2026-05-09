@@ -1,13 +1,17 @@
 """
-local_llm.py — Local Ollama LLM with cloud fallback
+local_llm.py — Local Ollama LLM with cloud fallback + toll gate queue.
 Use for non-time-sensitive narrative generation to save API costs.
+
+All callers go through generate() which acquires a file lock before
+hitting Ollama, preventing concurrent GPU contention.
 
 Usage:
     from local_llm import generate
 
-    text = generate(prompt, timeout=120)
+    text = generate(prompt, timeout=300)
     # Returns text from Ollama if available, falls back to Claude Sonnet
 """
+import fcntl
 import json
 import os
 import sys
@@ -23,46 +27,103 @@ apply_ollama_runtime_env()
 OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
 OLLAMA_MODEL_FAST = get_local_llm_model()
 OLLAMA_MODEL = get_local_llm_model()
-FALLBACK_OPENAI = "gpt-5.4-mini"
+FALLBACK_OPENAI = "gpt-4o-mini"
 FALLBACK_ANTHROPIC = "claude-sonnet-4-6"
-DEFAULT_TIMEOUT = 120
-model_used = None  # tracks which model last responded  # seconds before fallback
+DEFAULT_TIMEOUT = 300
+LOCK_FILE = Path("/tmp/ollama_llm_gate.lock")
+LOCK_WAIT_TIMEOUT = 600  # max seconds to wait for lock
+
+model_used = None  # tracks which model last responded
 
 
-def warmup_ollama(model: str = None) -> bool:
-    """Ping Ollama to ensure model is loaded before batch analysis."""
+# ── Toll gate: file-based lock so only one caller uses Ollama at a time ──
+
+class _OllamaGate:
+    """File lock that serializes all Ollama access across processes."""
+
+    def __init__(self):
+        self._fd = None
+
+    def acquire(self, wait_timeout: int = LOCK_WAIT_TIMEOUT) -> bool:
+        """Acquire exclusive lock. Blocks up to wait_timeout seconds."""
+        try:
+            self._fd = open(LOCK_FILE, "w")
+            deadline = time.monotonic() + wait_timeout
+            while True:
+                try:
+                    fcntl.flock(self._fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # Write PID for debugging
+                    self._fd.seek(0)
+                    self._fd.truncate()
+                    self._fd.write(f"{os.getpid()} {time.strftime('%H:%M:%S')}\n")
+                    self._fd.flush()
+                    return True
+                except (IOError, OSError):
+                    if time.monotonic() >= deadline:
+                        print(f"  [local-llm] Gate timeout — waited {wait_timeout}s for lock")
+                        self._fd.close()
+                        self._fd = None
+                        return False
+                    time.sleep(2)
+        except Exception as e:
+            print(f"  [local-llm] Gate error: {e}")
+            return False
+
+    def release(self):
+        """Release the lock."""
+        if self._fd:
+            try:
+                fcntl.flock(self._fd, fcntl.LOCK_UN)
+                self._fd.close()
+            except Exception:
+                pass
+            self._fd = None
+
+
+_gate = _OllamaGate()
+
+
+def warmup_ollama(model: str = None, timeout: int = 480) -> bool:
+    """Ping Ollama to ensure model is loaded before batch analysis.
+    Default 480s (8 min) to handle cold GPU model load.
+    Acquires the gate lock to prevent contention."""
     model = model or OLLAMA_MODEL
-    payload = json.dumps({
-        "model": model,
-        "stream": False,
-        "messages": [{"role": "user", "content": "ready"}],
-        "think": False,
-        "options": {"num_predict": 5}
-    }).encode()
+    if not _gate.acquire():
+        print("  [local-llm] Warmup skipped — could not acquire gate")
+        return False
     try:
+        payload = json.dumps({
+            "model": model,
+            "stream": False,
+            "messages": [{"role": "user", "content": "ready"}],
+            "think": False,
+            "options": {"num_predict": 5}
+        }).encode()
         req = urllib.request.Request(
             OLLAMA_URL, data=payload,
             headers={"Content-Type": "application/json"}, method="POST"
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
             print(f"  [local-llm] Ollama warmup OK — model {model} loaded")
             return True
     except Exception as e:
         print(f"  [local-llm] Ollama warmup failed: {e}")
         return False
+    finally:
+        _gate.release()
 
 
 def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
                 retries: int = 1) -> str | None:
-    """Try Ollama with retry logic. Returns text or None on failure/timeout."""
-    import time as _time
+    """Try Ollama with retry logic. Returns text or None on failure/timeout.
+    Caller must hold the gate lock."""
     payload = json.dumps({
         "model": model,
         "stream": False,
         "messages": [{"role": "user", "content": prompt}],
         "think": False,
-        "options": {"temperature": 0.3, "num_predict": 500}
+        "options": {"temperature": 0.3, "num_predict": 300}
     }).encode()
 
     for attempt in range(retries + 1):
@@ -87,23 +148,22 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
             print(f"  [local-llm] Ollama timeout after {timeout}s "
                   f"(attempt {attempt+1}/{retries+1})")
             if attempt < retries:
-                _time.sleep(5)
+                time.sleep(5)
                 continue
             return None
         except Exception as e:
             print(f"  [local-llm] Ollama error: {e} "
                   f"(attempt {attempt+1}/{retries+1})")
             if attempt < retries:
-                _time.sleep(3)
+                time.sleep(3)
                 continue
             return None
     return None
 
 
 def _try_openai(prompt: str) -> str | None:
-    """Fallback to OpenAI gpt-5.4-mini."""
+    """Fallback to OpenAI gpt-4o-mini."""
     try:
-        import os
         api_key = os.getenv("OPENAI_API_KEY", "")
         if not api_key:
             env_path = Path(__file__).parent.parent / ".env"
@@ -114,8 +174,7 @@ def _try_openai(prompt: str) -> str | None:
                         break
         if not api_key:
             return None
-        import urllib.request, json as _j
-        payload = _j.dumps({
+        payload = json.dumps({
             "model": FALLBACK_OPENAI,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 500
@@ -127,7 +186,7 @@ def _try_openai(prompt: str) -> str | None:
             method="POST"
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
-            data = _j.loads(resp.read())
+            data = json.loads(resp.read())
             text = data["choices"][0]["message"]["content"].strip()
             print(f"  [local-llm] OpenAI fallback OK — {len(text)} chars")
             return text
@@ -142,7 +201,6 @@ def _try_anthropic(prompt: str) -> str | None:
         import anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
-            # Try reading from .env
             env_path = Path(__file__).parent.parent / ".env"
             if env_path.exists():
                 for line in env_path.read_text().splitlines():
@@ -155,7 +213,7 @@ def _try_anthropic(prompt: str) -> str | None:
 
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
-            model=f"claude-{FALLBACK_MODEL}",
+            model=FALLBACK_ANTHROPIC,
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -169,33 +227,53 @@ def _try_anthropic(prompt: str) -> str | None:
 
 def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
              fallback: bool = True, fast: bool = True) -> str:
-    """4-tier chain: local model -> OpenAI -> Anthropic"""
+    """4-tier chain with toll gate: local model -> OpenAI -> Anthropic.
+    Acquires file lock before Ollama calls to prevent GPU contention."""
     global model_used
     model_used = None
-    # Tier 1: local model (fast)
-    if fast:
-        result = _try_ollama(prompt, min(timeout, 30), model=OLLAMA_MODEL_FAST)
-        if result:
-            model_used = OLLAMA_MODEL_FAST
-            return result
-    # Tier 2: local model (full) with retry
-    result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL, retries=1)
-    if result:
-        model_used = OLLAMA_MODEL
-        return result
 
-    # Tier 3: OpenAI fallback
+    # Acquire toll gate — only one process hits Ollama at a time
+    if not _gate.acquire():
+        print("  [local-llm] Could not acquire gate — skipping Ollama, trying fallbacks")
+        if fallback:
+            result = _try_openai(prompt)
+            if result:
+                model_used = FALLBACK_OPENAI
+                return result
+            result = _try_anthropic(prompt)
+            if result:
+                model_used = FALLBACK_ANTHROPIC
+                return result
+        return ""
+
+    try:
+        # Tier 1: local model (fast)
+        if fast:
+            result = _try_ollama(prompt, min(timeout, 30), model=OLLAMA_MODEL_FAST)
+            if result:
+                model_used = OLLAMA_MODEL_FAST
+                return result
+        # Tier 2: local model (full) with retry
+        result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL, retries=1)
+        if result:
+            model_used = OLLAMA_MODEL
+            return result
+    finally:
+        _gate.release()
+
+    # Cloud fallbacks don't need the gate
     if fallback:
         print(f"  [local-llm] Using OpenAI fallback ({FALLBACK_OPENAI})")
         result = _try_openai(prompt)
         if result:
+            model_used = FALLBACK_OPENAI
             return result
 
-    # Tier 4: Anthropic final fallback
     if fallback:
         print(f"  [local-llm] Using Anthropic fallback ({FALLBACK_ANTHROPIC})")
         result = _try_anthropic(prompt)
         if result:
+            model_used = FALLBACK_ANTHROPIC
             return result
 
     print("  [local-llm] All LLM attempts failed — returning empty")

@@ -518,7 +518,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                   <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>Deterministic fallback</span>
                 )}
                 {p.narrative_source === 'local_llm' && (
-                  <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(34,197,94,0.1)', color: 'var(--green)', fontWeight: 600 }}>qwen3:14b</span>
+                  <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(34,197,94,0.1)', color: 'var(--green)', fontWeight: 600 }}>{p.llm_model_used || 'qwen3:14b'}</span>
                 )}
                 {p.narrative_source && p.narrative_source !== 'deterministic_fallback' && p.narrative_source !== 'local_llm' && (
                   <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>{p.narrative_source}</span>
@@ -586,7 +586,9 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                   <div style={{ color: 'var(--text1)', marginBottom: 4 }}>{p.llm_analysis.summary}</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
                     {p.llm_analysis.narrative_source === 'local_llm' ? (
-                      <span style={pill('green')}>LLM: {p.llm_analysis.model_used || 'qwen3:14b'}</span>
+                      <span style={pill('green')}>LLM: {p.llm_model_used || p.llm_analysis.model_used || 'qwen3:14b'}</span>
+                    ) : p.llm_model_used && p.llm_model_used !== 'deterministic_fallback' ? (
+                      <span style={pill('yellow')}>Fallback: {p.llm_model_used}</span>
                     ) : (
                       <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(148,163,184,0.1)', color: '#64748B', fontWeight: 600 }}>Fallback analysis</span>
                     )}
@@ -594,6 +596,40 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       <span style={{ fontSize: 9, color: 'var(--text2)', ...mono }}>conf: {(Number(p.llm_analysis.confidence) * 100).toFixed(0)}%</span>
                     )}
                   </div>
+                </div>
+              </>
+            )}
+
+            {/* LLM Chunk Results (risk + catalyst deep-dive) */}
+            {p.llm_review_chunks && (p.llm_review_chunks.risk || p.llm_review_chunks.catalyst) && (
+              <>
+                <div style={secLbl}>AI Deep Dive {p.llm_review_stage === 'catalyst' ? '(4/4 chunks)' : `(${Object.keys(p.llm_review_chunks).length}/4 chunks)`}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                  {p.llm_review_chunks.risk && (
+                    <div style={{ padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4, fontSize: 10, lineHeight: 1.5 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text2)', marginBottom: 2 }}>Risk Assessment</div>
+                      <span style={pill(p.llm_review_chunks.risk.risk_grade === 'A' || p.llm_review_chunks.risk.risk_grade === 'B' ? 'green' : p.llm_review_chunks.risk.risk_grade === 'C' ? 'amber' : 'red')}>
+                        Risk: {p.llm_review_chunks.risk.risk_grade}
+                      </span>
+                      <div style={{ color: 'var(--text2)', marginTop: 4 }}>{p.llm_review_chunks.risk.position_size_assessment}</div>
+                      {p.llm_review_chunks.risk.max_drawdown_scenario && (
+                        <div style={{ color: 'var(--red)', marginTop: 2, fontSize: 9 }}>DD: {p.llm_review_chunks.risk.max_drawdown_scenario}</div>
+                      )}
+                    </div>
+                  )}
+                  {p.llm_review_chunks.catalyst && (
+                    <div style={{ padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4, fontSize: 10, lineHeight: 1.5 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text2)', marginBottom: 2 }}>AI Catalyst Review</div>
+                      <span style={pill(p.llm_review_chunks.catalyst.catalyst_grade === 'A' || p.llm_review_chunks.catalyst.catalyst_grade === 'B' ? 'green' : p.llm_review_chunks.catalyst.catalyst_grade === 'C' ? 'amber' : 'red')}>
+                        Catalyst: {p.llm_review_chunks.catalyst.catalyst_grade}
+                      </span>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+                        <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 2, background: 'rgba(148,163,184,0.1)', color: 'var(--text2)' }}>{p.llm_review_chunks.catalyst.catalyst_type}</span>
+                        <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 2, background: 'rgba(148,163,184,0.1)', color: 'var(--text2)' }}>{p.llm_review_chunks.catalyst.catalyst_freshness}</span>
+                        <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 2, background: 'rgba(148,163,184,0.1)', color: 'var(--text2)' }}>{p.llm_review_chunks.catalyst.catalyst_timing}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}

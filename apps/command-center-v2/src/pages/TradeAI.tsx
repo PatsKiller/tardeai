@@ -26,6 +26,11 @@ interface Ticker {
   social_sentiment?: string | null; social_score?: number | null
   social_reddit?: number | null; social_stocktwits?: number | null; social_bullish_pct?: number | null
   intelligence_readiness?: number | null
+  incubator_llm_grade?: string | null; incubator_llm_verdict?: string | null
+  holdings_llm_health?: string | null; holdings_llm_action?: string | null
+  proposal_llm_stage?: string | null; proposal_llm_confidence?: number | null
+  proposal_llm_decision?: string | null; proposal_risk_grade?: string | null
+  proposal_catalyst_grade?: string | null
 }
 
 interface RunHistoryItem {
@@ -128,6 +133,26 @@ export default function TradeAI() {
       if (ir == null) return <span style={{ color: 'var(--text3)' }}>—</span>;
       const color = ir >= 75 ? '#10B981' : ir >= 50 ? '#F59E0B' : ir >= 25 ? '#F97316' : '#EF4444';
       return <span style={{ fontFamily: 'monospace', fontSize: 11, color }}>{ir}</span>;
+    }},
+    { key: 'ai_review', label: 'AI Review', width: 80, render: (r: Ticker) => {
+      const pills: React.ReactElement[] = []
+      if (r.incubator_llm_grade) {
+        const gc = r.incubator_llm_grade === 'A' || r.incubator_llm_grade === 'B' ? '#22C55E' : r.incubator_llm_grade === 'C' ? '#F59E0B' : '#EF4444'
+        pills.push(<span key="inc" style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: `${gc}18`, color: gc, border: `1px solid ${gc}40` }}>{r.incubator_llm_grade} {r.incubator_llm_verdict === 'PROMOTE' ? '↑' : ''}</span>)
+      }
+      if (r.holdings_llm_health) {
+        const hc = r.holdings_llm_health === 'STRONG' ? '#22C55E' : r.holdings_llm_health === 'STABLE' ? '#3B82F6' : r.holdings_llm_health === 'WATCH' ? '#F59E0B' : '#EF4444'
+        pills.push(<span key="hld" style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: `${hc}18`, color: hc, border: `1px solid ${hc}40` }}>{r.holdings_llm_health}{r.holdings_llm_action && r.holdings_llm_action !== 'HOLD' ? ` →${r.holdings_llm_action}` : ''}</span>)
+      }
+      if (r.proposal_risk_grade) {
+        const rc = r.proposal_risk_grade === 'A' || r.proposal_risk_grade === 'B' ? '#22C55E' : r.proposal_risk_grade === 'C' ? '#F59E0B' : '#EF4444'
+        pills.push(<span key="risk" style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: `${rc}18`, color: rc, border: `1px solid ${rc}40` }}>R:{r.proposal_risk_grade}</span>)
+      }
+      if (r.proposal_catalyst_grade) {
+        const cc = r.proposal_catalyst_grade === 'A' || r.proposal_catalyst_grade === 'B' ? '#22C55E' : r.proposal_catalyst_grade === 'C' ? '#F59E0B' : '#EF4444'
+        pills.push(<span key="cat" style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, background: `${cc}18`, color: cc, border: `1px solid ${cc}40` }}>C:{r.proposal_catalyst_grade}</span>)
+      }
+      return pills.length > 0 ? <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>{pills}</div> : <span style={{ color: 'var(--text3)', fontSize: 7 }}>—</span>
     }},
     { key: 'grade', label: 'Grd', width: 30, render: (r: Ticker) => <span style={{ fontWeight: 600, color: r.grade === 'A' ? 'var(--green)' : 'var(--text2)' }}>{r.grade}</span> },
     { key: 'rvol', label: 'RVOL', width: 45, align: 'right' as const, sortKey: (r: Ticker) => r.rvol, render: (r: Ticker) => (
@@ -402,6 +427,54 @@ export default function TradeAI() {
                 </div>
               )}
             </DrawerSection>
+
+            {/* AI Review section */}
+            {(selectedTicker.incubator_llm_grade || selectedTicker.holdings_llm_health || selectedTicker.proposal_llm_stage) && (
+              <DrawerSection title="AI Review (qwen3:14b)">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  {selectedTicker.incubator_llm_grade && (
+                    <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>INCUBATOR SCREEN</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: selectedTicker.incubator_llm_grade === 'A' || selectedTicker.incubator_llm_grade === 'B' ? '#22C55E' : selectedTicker.incubator_llm_grade === 'C' ? '#F59E0B' : '#EF4444' }}>
+                        {selectedTicker.incubator_llm_grade} — {selectedTicker.incubator_llm_verdict}
+                      </div>
+                    </div>
+                  )}
+                  {selectedTicker.holdings_llm_health && (
+                    <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>HOLDINGS HEALTH</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: selectedTicker.holdings_llm_health === 'STRONG' ? '#22C55E' : selectedTicker.holdings_llm_health === 'STABLE' ? '#3B82F6' : selectedTicker.holdings_llm_health === 'WATCH' ? '#F59E0B' : '#EF4444' }}>
+                        {selectedTicker.holdings_llm_health}{selectedTicker.holdings_llm_action && selectedTicker.holdings_llm_action !== 'HOLD' ? ` → ${selectedTicker.holdings_llm_action}` : ''}
+                      </div>
+                    </div>
+                  )}
+                  {selectedTicker.proposal_risk_grade && (
+                    <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>RISK GRADE</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: selectedTicker.proposal_risk_grade === 'A' || selectedTicker.proposal_risk_grade === 'B' ? '#22C55E' : selectedTicker.proposal_risk_grade === 'C' ? '#F59E0B' : '#EF4444' }}>
+                        {selectedTicker.proposal_risk_grade}
+                      </div>
+                    </div>
+                  )}
+                  {selectedTicker.proposal_catalyst_grade && (
+                    <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>CATALYST GRADE</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: selectedTicker.proposal_catalyst_grade === 'A' || selectedTicker.proposal_catalyst_grade === 'B' ? '#22C55E' : selectedTicker.proposal_catalyst_grade === 'C' ? '#F59E0B' : '#EF4444' }}>
+                        {selectedTicker.proposal_catalyst_grade}
+                      </div>
+                    </div>
+                  )}
+                  {selectedTicker.proposal_llm_decision && (
+                    <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>
+                      <div style={{ fontSize: 9, color: '#64748B', marginBottom: 2 }}>LLM DECISION</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: selectedTicker.proposal_llm_decision === 'APPROVE_READY' ? '#22C55E' : selectedTicker.proposal_llm_decision === 'CAUTIOUS_TEST' ? '#F59E0B' : '#EF4444' }}>
+                        {selectedTicker.proposal_llm_decision} ({selectedTicker.proposal_llm_confidence}%)
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DrawerSection>
+            )}
 
             <DrawerSection title="Links & Drillthrough">
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
