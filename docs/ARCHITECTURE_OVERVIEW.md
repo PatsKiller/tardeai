@@ -21,8 +21,8 @@ Trade AI v12 is an automated trading intelligence platform that discovers, evalu
 |                                                                                    |
 |   +-----------+     +-------------+     +------------+     +------------------+    |
 |   | React SPA | --> | Portfolio    | --> | PostgreSQL | <-- | Cron Scheduler   |    |
-|   | (50+ pgs) |     | Server :7777|     | :5432      |     | (130+ jobs)      |    |
-|   +-----------+     | 80+ APIs    |     | 249 tables |     +------------------+    |
+|   | (55 pgs)  |     | Server :7777|     | :5432      |     | (141 jobs)       |    |
+|   +-----------+     | 80+ APIs    |     | 256 tables |     +------------------+    |
 |                     +------+------+     +------------+                              |
 |                            |                                                       |
 |              +-------------+-------------+                                         |
@@ -51,11 +51,11 @@ Trade AI v12 is an automated trading intelligence platform that discovers, evalu
 | Service | Responsibility | Scale |
 |---------|---------------|-------|
 | **Portfolio Server** (:7777) | Central API hub. Serves 80+ REST endpoints and the React SPA. All client-facing traffic routes through here. | 11,700 LOC handler |
-| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 249 tables |
+| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 256 tables |
 | **Ollama LLM** (:11434) | Local inference engine. Strategy classification, proposal review, health checks. GPU-accelerated on Intel Arc B50 (Vulkan). | ~15s/chunk, toll-gated |
 | **OpenClaw Gateway** (:18789) | Conversational AI routing. 4 agents accessible via Telegram + WhatsApp. Handles natural language queries about portfolio, risk, and strategy. | 4 agents |
-| **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. 130+ scheduled jobs from 4 AM to midnight. | 130+ crontab entries |
-| **React SPA** | Operator dashboard. 50+ pages covering portfolio, watchlist, proposals, strategy admin, risk, journal, governance. | 96 React components |
+| **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. 141 scheduled jobs from 4 AM to midnight. | 141 crontab entries |
+| **React SPA** | Operator dashboard. 55 pages covering portfolio, watchlist, proposals, strategy admin, risk, journal, governance. | 91 React components |
 
 ---
 
@@ -191,8 +191,8 @@ Daily budget tracking per provider. Automatic cascade on exhaustion or failure.
 | Portfolio value | ~$1.19M |
 | Positions | ~50 |
 | Enriched symbols | 1,139 |
-| News articles ingested | 552+ |
+| News articles ingested | 2,787 |
 | CIO decisions tracked | 55 |
 | Agent handoffs | 110 (32 escalations) |
 | Active incubator symbols | ~55 |
-| Paper trades | 2 open, 0 closed |
+| Paper trades | 4 open, 0 closed |

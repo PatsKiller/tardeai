@@ -210,6 +210,22 @@ def parse_command(text: str) -> dict:
         parts = lower.replace("/cancel paper mod ", "").replace("cancel paper mod ", "").strip()
         return {"command": "paper_mod_cancel", "args": parts}
 
+    # Session 27B: execution revalidation commands
+    if lower in ("paper pending entries", "/paper pending entries"):
+        return {"command": "paper_pending_entries", "args": ""}
+    if lower.startswith("recheck paper entry ") or lower.startswith("/recheck paper entry "):
+        pid = lower.replace("/recheck paper entry ", "").replace("recheck paper entry ", "").strip()
+        return {"command": "paper_recheck_entry", "args": pid}
+    if lower.startswith("approve updated paper entry ") or lower.startswith("/approve updated paper entry "):
+        parts = lower.replace("/approve updated paper entry ", "").replace("approve updated paper entry ", "").strip()
+        return {"command": "paper_approve_updated_entry", "args": parts}
+    if lower.startswith("reject updated paper entry ") or lower.startswith("/reject updated paper entry "):
+        parts = lower.replace("/reject updated paper entry ", "").replace("reject updated paper entry ", "").strip()
+        return {"command": "paper_reject_updated_entry", "args": parts}
+    if lower.startswith("execute ready paper entry ") or lower.startswith("/execute ready paper entry "):
+        pid = lower.replace("/execute ready paper entry ", "").replace("execute ready paper entry ", "").strip()
+        return {"command": "paper_execute_ready_entry", "args": pid}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1422,6 +1438,166 @@ def process_command(cmd: dict) -> str:
             return f"Cancelled: {pid}" if updated else f"Proposal {pid} not found or already resolved."
         except Exception as e:
             return f"Cancel error: {e}"
+
+    # ── Session 27B: Execution Revalidation handlers ───────────────────
+    if command == "paper_pending_entries":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""SELECT id, symbol, strategy_id, proposed_entry, proposed_stop,
+                                  status, created_at, approved_at,
+                                  COALESCE(execution_recheck_required, true) as recheck_req,
+                                  COALESCE(material_change_pending_approval, false) as mat_change
+                           FROM paper_trade_proposals
+                           WHERE status IN ('APPROVED', 'APPROVED_FOR_PAPER_TEST', 'PENDING')
+                           ORDER BY created_at DESC LIMIT 10""")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No pending paper entries."
+            lines = ["Pending Paper Entries:"]
+            for r in rows:
+                age = ""
+                if r[6]:
+                    from datetime import datetime, timezone
+                    age_min = (datetime.now(timezone.utc) - r[6].replace(tzinfo=timezone.utc)).total_seconds() / 60
+                    age = f" age={age_min:.0f}m"
+                recheck = " RECHECK" if r[8] else ""
+                mat = " MAT_CHANGE" if r[9] else ""
+                lines.append(f"  #{r[0]}: {r[1]} {r[3]}/{r[4]} [{r[5]}]{age}{recheck}{mat}")
+            lines.append("\nRecheck: recheck paper entry <id>")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "paper_recheck_entry":
+        try:
+            from paper_execution_revalidator import revalidate, get_pending_proposals, save_recheck
+            from session13_db import get_conn
+            pid = int(args.strip())
+            conn = get_conn()
+            proposals = get_pending_proposals(conn, proposal_id=pid)
+            if not proposals:
+                conn.close()
+                return f"Proposal #{pid} not found or not pending."
+            result = revalidate(conn, proposals[0])
+            save_recheck(conn, result)
+            conn.close()
+            r = result
+            return (f"Recheck #{pid} ({r['symbol']}):\n"
+                    f"Status: {r['status']}\nScore: {r['execution_readiness_score']}\n"
+                    f"Session: {r['market_session']}\nDrift: {r.get('price_drift_pct', 0):.1f}%\n"
+                    f"Material changes: {r.get('material_change_reasons', [])}\n"
+                    f"Reapproval needed: {r['requires_reapproval']}\n"
+                    f"Reason: {r['reason'][:120]}")
+        except Exception as e:
+            return f"Recheck error: {e}"
+
+    if command == "paper_approve_updated_entry":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = int(parts[0])
+            reason = parts[1] if len(parts) > 1 else "approved_updated_via_telegram"
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE paper_trade_proposals
+                           SET material_change_pending_approval=false,
+                               execution_recheck_required=true,
+                               approved_pending_recheck=false,
+                               execution_recheck_reason=%s
+                           WHERE id=%s AND material_change_pending_approval=true
+                           RETURNING id, symbol""", [reason, pid])
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            if row:
+                return f"Updated entry #{row[0]} ({row[1]}) approved. Run recheck again before execution."
+            return f"Proposal #{pid} not found or no material change pending."
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "paper_reject_updated_entry":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = int(parts[0])
+            reason = parts[1] if len(parts) > 1 else "rejected_updated_via_telegram"
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE paper_trade_proposals
+                           SET status='REJECTED', material_change_pending_approval=false,
+                               execution_recheck_reason=%s
+                           WHERE id=%s AND status IN ('APPROVED', 'APPROVED_FOR_PAPER_TEST', 'PENDING')
+                           RETURNING id""", [reason, pid])
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return f"Rejected updated entry #{pid}" if row else f"Proposal #{pid} not found."
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "paper_execute_ready_entry":
+        try:
+            from paper_execution_revalidator import revalidate, get_pending_proposals, save_recheck, check_safety
+            from market_session import is_market_open, current_market_session
+            from session13_db import get_conn
+            import os
+            pid = int(args.strip())
+
+            # Safety gates
+            safe, safety_errors = check_safety()
+            if not safe:
+                return f"BLOCKED: Safety check failed: {safety_errors}"
+            if os.getenv("ALPACA_MODE", "paper").lower() != "paper":
+                return "BLOCKED: ALPACA_MODE is not paper"
+
+            conn = get_conn()
+            proposals = get_pending_proposals(conn, proposal_id=pid)
+            if not proposals:
+                conn.close()
+                return f"Proposal #{pid} not found or not pending."
+
+            # Run revalidation
+            result = revalidate(conn, proposals[0])
+            save_recheck(conn, result)
+
+            p = proposals[0]
+            if result["status"] != "valid_original":
+                conn.close()
+                return (f"NOT READY #{pid} ({result['symbol']}):\n"
+                        f"Status: {result['status']}\nScore: {result['execution_readiness_score']}\n"
+                        f"Session: {result['market_session']}\nDrift: {result.get('price_drift_pct', 0) or 0:.1f}%\n"
+                        f"Reason: {result['reason'][:120]}\n"
+                        f"Reapproval: {result['requires_reapproval']}")
+
+            if p.get("material_change_pending_approval"):
+                conn.close()
+                return f"BLOCKED #{pid}: Material change pending approval. Use: approve updated paper entry {pid}"
+
+            if not is_market_open():
+                conn.close()
+                return f"BLOCKED #{pid}: Market not open (session={current_market_session()}). Cannot submit."
+
+            # Ready to execute — call the paper submitter
+            try:
+                from proposal_paper_submitter import submit_paper
+                sub_result = submit_paper(conn, pid)
+                conn.close()
+                if sub_result.get("ok"):
+                    return (f"EXECUTED #{pid} ({result['symbol']}):\n"
+                            f"Recheck: {result['recheck_id']}\n"
+                            f"Score: {result['execution_readiness_score']}\n"
+                            f"Alpaca order submitted (paper)")
+                else:
+                    return f"SUBMIT FAILED #{pid}: {sub_result.get('error', 'unknown')}"
+            except Exception as e:
+                conn.close()
+                return f"SUBMIT ERROR #{pid}: {e}"
+
+        except Exception as e:
+            return f"Execute error: {e}"
 
     return f"Unknown command: {cmd['args'][:50]}\nType `help` for available commands."
 

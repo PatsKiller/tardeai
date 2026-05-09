@@ -13,15 +13,15 @@
 |                                                                        |
 |  Portfolio ........... ~$1.19M (taxable + IRA, ~50 positions)          |
 |  Mode ................ PAPER ONLY (live trading locked)                 |
-|  Database ............ 249 tables, PostgreSQL 15                       |
+|  Database ............ 256 tables, PostgreSQL 15                       |
 |  Strategies .......... 20 (dynamic YAML, multi-assignment)             |
 |  Pipeline ............ 31 stages, 7 groups                             |
 |  Screeners ........... 2 active (Finviz Elite, 4 run windows)          |
 |  API ................. 80+ endpoints (Flask :7777)                      |
 |  Agents .............. 4 conversational + 3 backend                     |
 |  LLM ................. qwen3:14b local (GPU) + 3 cloud fallbacks       |
-|  Frontend ............ 50+ pages (React SPA, Command Center v2)        |
-|  Cron ................ 130+ scheduled jobs                              |
+|  Frontend ............ 55 pages (React SPA, Command Center v2)         |
+|  Cron ................ 141 scheduled jobs                               |
 |  External Sources .... 12+ (market, news, regulatory, qualitative)     |
 |                                                                        |
 +========================================================================+
@@ -114,7 +114,7 @@
 
   +-----------------------------------------------------------+
   |                    CRON SCHEDULER                          |
-  |  130+ jobs --> triggers scripts --> writes to PG/files     |
+  |  141 jobs --> triggers scripts --> writes to PG/files      |
   +-----------------------------------------------------------+
 
   +-----------------------------------------------------------+

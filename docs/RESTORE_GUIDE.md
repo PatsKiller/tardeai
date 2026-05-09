@@ -37,7 +37,7 @@ XAI_API_KEY=<key>
 ## 3. Database Backup & Restore
 
 **Backup location:** `backups/db/trade_ai_YYYYMMDD.sql.gz`
-**Size:** ~3.7 MB compressed (105 MB uncompressed, 249 tables)
+**Size:** ~3.7 MB compressed (105 MB uncompressed, 256 tables)
 **Schedule:** Daily at 2 AM, keeps 7 days
 
 ### Restore DB from backup:
@@ -102,7 +102,7 @@ Critical tables to verify after restore:
 - `ticker_strategy_classifications` — 55 active symbols
 - `watchlist_agent_results` — 198 agent analyses
 - `agent_handoffs` — 110 handoffs, 32 escalations
-- `news_articles` — 552 articles, 50 sources
+- `news_articles` — 2,787 articles, 50 sources
 - `youtube_transcripts` — 12 transcripts (cleaned + summarized)
 - `personal_situation` — 18 keys (SSDI, MFS, Medicare, income targets)
 - `personal_tax_history` — 2025 + 2026 tax years
