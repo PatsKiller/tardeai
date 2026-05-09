@@ -191,6 +191,25 @@ def parse_command(text: str) -> dict:
         pt_text = text[3:].strip() if lower.startswith("/pt") else text[2:].strip()
         return {"command": "pt_open", "args": pt_text}
 
+    # Session 27: paper order modification commands
+    if lower in ("paper mods", "/paper mods", "paper modifications"):
+        return {"command": "paper_mods_list", "args": ""}
+    if lower.startswith("paper mod ") or lower.startswith("/paper mod "):
+        mod_text = lower.replace("/paper mod ", "").replace("paper mod ", "").strip()
+        return {"command": "paper_mod_detail", "args": mod_text}
+    if lower.startswith("approve paper mod ") or lower.startswith("/approve paper mod "):
+        parts = lower.replace("/approve paper mod ", "").replace("approve paper mod ", "").strip()
+        return {"command": "paper_mod_approve", "args": parts}
+    if lower.startswith("reject paper mod ") or lower.startswith("/reject paper mod "):
+        parts = lower.replace("/reject paper mod ", "").replace("reject paper mod ", "").strip()
+        return {"command": "paper_mod_reject", "args": parts}
+    if lower.startswith("execute approved paper mod ") or lower.startswith("/execute approved paper mod "):
+        parts = lower.replace("/execute approved paper mod ", "").replace("execute approved paper mod ", "").strip()
+        return {"command": "paper_mod_execute", "args": parts}
+    if lower.startswith("cancel paper mod ") or lower.startswith("/cancel paper mod "):
+        parts = lower.replace("/cancel paper mod ", "").replace("cancel paper mod ", "").strip()
+        return {"command": "paper_mod_cancel", "args": parts}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1285,6 +1304,124 @@ def process_command(cmd: dict) -> str:
             return format_pnl_response(summary)
         except Exception as e:
             return f"\u274c Paper P&L error: {e}"
+
+    # ── Session 27: Paper Order Modification handlers ──────────────────
+    if command == "paper_mods_list":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""SELECT proposal_id, symbol, action, reason, confidence, status, created_at
+                           FROM paper_order_modification_proposals
+                           WHERE status IN ('proposed', 'approved')
+                           ORDER BY created_at DESC LIMIT 10""")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No pending paper modification proposals."
+            lines = ["Paper Mod Proposals:"]
+            for r in rows:
+                lines.append(f"  {r[0]}: {r[1]} {r[2]} [{r[5]}] conf={r[4]} — {r[3][:60]}")
+            lines.append("\nDetails: paper mod <id>\nApprove: approve paper mod <id>")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error listing mods: {e}"
+
+    if command == "paper_mod_detail":
+        try:
+            from session13_db import get_conn
+            pid = args.strip()
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""SELECT proposal_id, symbol, action, current_stop, proposed_stop,
+                                  current_limit, proposed_limit, reason, confidence, status,
+                                  evidence, created_at, expires_at
+                           FROM paper_order_modification_proposals WHERE proposal_id=%s""", [pid])
+            r = cur.fetchone()
+            conn.close()
+            if not r:
+                return f"Proposal {pid} not found."
+            return (f"Proposal: {r[0]}\nSymbol: {r[1]}\nAction: {r[2]}\n"
+                    f"Stop: {r[3]} -> {r[4]}\nLimit: {r[5]} -> {r[6]}\n"
+                    f"Reason: {r[7]}\nConfidence: {r[8]}\nStatus: {r[9]}\n"
+                    f"Created: {r[11]}\nExpires: {r[12]}\n"
+                    f"\nApprove: approve paper mod {r[0]}\nReject: reject paper mod {r[0]}")
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "paper_mod_approve":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            reason = parts[1] if len(parts) > 1 else "approved_via_telegram"
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE paper_order_modification_proposals
+                           SET status='approved', admin_decision='approve', admin_reason=%s,
+                               approved_by='john_telegram', approved_at=now(), updated_at=now()
+                           WHERE proposal_id=%s AND status='proposed' RETURNING proposal_id""",
+                        [reason, pid])
+            updated = cur.fetchone()
+            conn.commit()
+            conn.close()
+            if updated:
+                return f"Approved: {pid}\nTo execute: execute approved paper mod {pid}"
+            return f"Proposal {pid} not found or not in 'proposed' status."
+        except Exception as e:
+            return f"Approve error: {e}"
+
+    if command == "paper_mod_reject":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            reason = parts[1] if len(parts) > 1 else "rejected_via_telegram"
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE paper_order_modification_proposals
+                           SET status='rejected', admin_decision='reject', admin_reason=%s,
+                               rejected_at=now(), updated_at=now()
+                           WHERE proposal_id=%s AND status='proposed' RETURNING proposal_id""",
+                        [reason, pid])
+            updated = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return f"Rejected: {pid}" if updated else f"Proposal {pid} not found or not 'proposed'."
+        except Exception as e:
+            return f"Reject error: {e}"
+
+    if command == "paper_mod_execute":
+        try:
+            from open_trade_manager import execute_approved
+            from session13_db import get_conn
+            pid = args.strip()
+            conn = get_conn()
+            result = execute_approved(conn, pid)
+            conn.close()
+            status = result.get("status", "unknown")
+            if status == "executed":
+                return f"Executed: {pid}\n{json.dumps(result.get('broker_response', {}), indent=2, default=str)[:200]}"
+            return f"Execution {status}: {result.get('error', 'unknown')}"
+        except Exception as e:
+            return f"Execute error: {e}"
+
+    if command == "paper_mod_cancel":
+        try:
+            from session13_db import get_conn
+            pid = args.strip()
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("""UPDATE paper_order_modification_proposals
+                           SET status='cancelled', updated_at=now()
+                           WHERE proposal_id=%s AND status IN ('proposed', 'approved')
+                           RETURNING proposal_id""", [pid])
+            updated = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return f"Cancelled: {pid}" if updated else f"Proposal {pid} not found or already resolved."
+        except Exception as e:
+            return f"Cancel error: {e}"
 
     return f"Unknown command: {cmd['args'][:50]}\nType `help` for available commands."
 

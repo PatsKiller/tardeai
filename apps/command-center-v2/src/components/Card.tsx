@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, type CSSProperties } from 'react'
 
 interface CardProps {
   title?: string
@@ -9,9 +9,10 @@ interface CardProps {
   accentColor?: string
   hoverable?: boolean
   onClick?: () => void
+  style?: CSSProperties
 }
 
-export default function Card({ title, subtitle, children, className, compact, accentColor, hoverable = false, onClick }: CardProps) {
+export default function Card({ title, subtitle, children, className, compact, accentColor, hoverable = false, onClick, style: extraStyle }: CardProps) {
   const [hovered, setHovered] = useState(false)
   const interactive = hoverable || !!onClick
 
@@ -32,6 +33,7 @@ export default function Card({ title, subtitle, children, className, compact, ac
         cursor: onClick ? 'pointer' : 'default',
         transition: 'all 150ms ease',
         transform: hovered && onClick ? 'translateY(-1px)' : 'none',
+        ...extraStyle,
       }}
     >
       {(title || subtitle) && (
