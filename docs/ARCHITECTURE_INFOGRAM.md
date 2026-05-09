@@ -13,7 +13,7 @@
 |                                                                        |
 |  Portfolio ........... ~$1.19M (taxable + IRA, ~50 positions)          |
 |  Mode ................ PAPER ONLY (live trading locked)                 |
-|  Database ............ 219 tables, PostgreSQL 15                       |
+|  Database ............ 249 tables, PostgreSQL 15                       |
 |  Strategies .......... 20 (dynamic YAML, multi-assignment)             |
 |  Pipeline ............ 31 stages, 7 groups                             |
 |  Screeners ........... 2 active (Finviz Elite, 4 run windows)          |

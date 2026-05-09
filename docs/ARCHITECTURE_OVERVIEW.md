@@ -22,7 +22,7 @@ Trade AI v12 is an automated trading intelligence platform that discovers, evalu
 |   +-----------+     +-------------+     +------------+     +------------------+    |
 |   | React SPA | --> | Portfolio    | --> | PostgreSQL | <-- | Cron Scheduler   |    |
 |   | (50+ pgs) |     | Server :7777|     | :5432      |     | (130+ jobs)      |    |
-|   +-----------+     | 80+ APIs    |     | 219 tables |     +------------------+    |
+|   +-----------+     | 80+ APIs    |     | 249 tables |     +------------------+    |
 |                     +------+------+     +------------+                              |
 |                            |                                                       |
 |              +-------------+-------------+                                         |
@@ -51,7 +51,7 @@ Trade AI v12 is an automated trading intelligence platform that discovers, evalu
 | Service | Responsibility | Scale |
 |---------|---------------|-------|
 | **Portfolio Server** (:7777) | Central API hub. Serves 80+ REST endpoints and the React SPA. All client-facing traffic routes through here. | 11,700 LOC handler |
-| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 219 tables |
+| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 249 tables |
 | **Ollama LLM** (:11434) | Local inference engine. Strategy classification, proposal review, health checks. GPU-accelerated on Intel Arc B50 (Vulkan). | ~15s/chunk, toll-gated |
 | **OpenClaw Gateway** (:18789) | Conversational AI routing. 4 agents accessible via Telegram + WhatsApp. Handles natural language queries about portfolio, risk, and strategy. | 4 agents |
 | **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. 130+ scheduled jobs from 4 AM to midnight. | 130+ crontab entries |
