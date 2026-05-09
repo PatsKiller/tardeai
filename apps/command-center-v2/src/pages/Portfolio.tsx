@@ -21,6 +21,7 @@ interface Holding {
   atr: number | null; short_float_pct: number | null; week52_high_pct: number | null
   market_cap_b: number | null; company: string; industry: string
   is_cash?: boolean; cost_basis?: number; gain_loss?: number; pi_score?: number | null
+  llm_health?: string; llm_action?: string; llm_confidence?: number; llm_summary?: any; llm_at?: string
 }
 interface HoldingsData { count: number; holdings: Holding[]; as_of: string; equity_curve: { date: string; value: number }[] }
 interface PerfData { current_value: number; periods: Record<string, { change_pct: number; change: number; start_value: number; start_date: string; estimated?: boolean }>; warning?: string | null }
@@ -107,6 +108,12 @@ export default function Portfolio() {
       const s = (r as unknown as Record<string,number>).pi_score
       return s != null ? <span title={`Position Intelligence Score: ${s >= 65 ? 'Strong (≥65) — position well-supported by technicals/fundamentals' : s >= 40 ? 'Moderate (40-64) — mixed signals, monitor closely' : 'Weak (<40) — consider trimming or setting tighter stop'}`} style={{ fontWeight: 600, color: s >= 65 ? 'var(--green)' : s >= 40 ? 'var(--amber)' : 'var(--red)' }}>{s}</span> : <span style={{ color: 'var(--text3)' }} title="PI Score not computed — run enrichment pipeline">—</span>
     }},
+    { key: 'llm_health', label: 'AI', width: 55, render: (r: Holding) => r.llm_health ? (
+      <span title={typeof r.llm_summary === 'object' && r.llm_summary?.reasoning ? r.llm_summary.reasoning : `AI: ${r.llm_health} ${r.llm_action || ''}`} style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+        background: r.llm_health === 'STRONG' ? 'rgba(34,197,94,.12)' : r.llm_health === 'STABLE' ? 'rgba(59,130,246,.12)' : r.llm_health === 'WATCH' ? 'rgba(245,158,11,.12)' : 'rgba(239,68,68,.12)',
+        color: r.llm_health === 'STRONG' ? '#22C55E' : r.llm_health === 'STABLE' ? '#3B82F6' : r.llm_health === 'WATCH' ? '#F59E0B' : '#EF4444',
+      }}>{r.llm_health}{r.llm_action && r.llm_action !== 'HOLD' ? ` →${r.llm_action}` : ''}</span>
+    ) : <span style={{ color: 'var(--text3)', fontSize: 7 }}>—</span> },
     { key: 'rsi', label: 'RSI', width: 35, align: 'right' as const, render: (r: Holding) => (
       r.rsi != null ? <span style={{ color: r.rsi > 70 ? 'var(--red)' : r.rsi < 30 ? 'var(--green)' : 'var(--text1)' }}>{r.rsi.toFixed(0)}</span> : <span style={{ color: 'var(--text3)' }}>—</span>
     )},

@@ -149,6 +149,12 @@ def create_backup(dry_run=False):
                     shutil.copy2(f, sd_dir / f.name)
                     print(f"  {f.name}")
 
+        # 5b. System-level Ollama service override (GPU config)
+        ollama_override = Path("/etc/systemd/system/ollama.service.d/override.conf")
+        if ollama_override.exists() and not dry_run:
+            shutil.copy2(ollama_override, sd_dir / "ollama_override.conf")
+            print(f"  ollama_override.conf (GPU config)")
+
         # 6. Config files (all YAML, JSON configs)
         print("[6/16] Config files...")
         cfg_dir = staging / "config"
