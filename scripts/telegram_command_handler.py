@@ -226,6 +226,37 @@ def parse_command(text: str) -> dict:
         pid = lower.replace("/execute ready paper entry ", "").replace("execute ready paper entry ", "").strip()
         return {"command": "paper_execute_ready_entry", "args": pid}
 
+    # Session 28: Learning Governance commands
+    if lower in ("learning status", "/learning status"):
+        return {"command": "learning_status", "args": ""}
+    if lower in ("learning hypotheses", "/learning hypotheses"):
+        return {"command": "learning_hypotheses", "args": ""}
+    if lower.startswith("learning hypothesis ") or lower.startswith("/learning hypothesis "):
+        hid = lower.replace("/learning hypothesis ", "").replace("learning hypothesis ", "").strip()
+        return {"command": "learning_hypothesis_detail", "args": hid}
+    if lower in ("learning recommendations", "/learning recommendations"):
+        return {"command": "learning_recommendations", "args": ""}
+    if lower.startswith("learning rec ") or lower.startswith("/learning rec "):
+        rid = lower.replace("/learning rec ", "").replace("learning rec ", "").strip()
+        return {"command": "learning_rec_detail", "args": rid}
+    if lower in ("learning proposals", "/learning proposals"):
+        return {"command": "learning_proposals", "args": ""}
+    if lower.startswith("learning proposal ") or lower.startswith("/learning proposal "):
+        pid = lower.replace("/learning proposal ", "").replace("learning proposal ", "").strip()
+        return {"command": "learning_proposal_detail", "args": pid}
+    if lower.startswith("approve learning shadow ") or lower.startswith("/approve learning shadow "):
+        parts = lower.replace("/approve learning shadow ", "").replace("approve learning shadow ", "").strip()
+        return {"command": "learning_approve_shadow", "args": parts}
+    if lower.startswith("reject learning proposal ") or lower.startswith("/reject learning proposal "):
+        parts = lower.replace("/reject learning proposal ", "").replace("reject learning proposal ", "").strip()
+        return {"command": "learning_reject_proposal", "args": parts}
+    if lower.startswith("approve learning implementation ") or lower.startswith("/approve learning implementation "):
+        parts = lower.replace("/approve learning implementation ", "").replace("approve learning implementation ", "").strip()
+        return {"command": "learning_approve_implementation", "args": parts}
+    if lower.startswith("rollback learning proposal ") or lower.startswith("/rollback learning proposal "):
+        parts = lower.replace("/rollback learning proposal ", "").replace("rollback learning proposal ", "").strip()
+        return {"command": "learning_rollback", "args": parts}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1598,6 +1629,139 @@ def process_command(cmd: dict) -> str:
 
         except Exception as e:
             return f"Execute error: {e}"
+
+    # Session 28: Learning Governance handlers
+    if command == "learning_status":
+        try:
+            from learning_governance import get_learning_status, _get_conn
+            conn = _get_conn()
+            s = get_learning_status(conn)
+            conn.close()
+            return (f"Learning Status:\n"
+                    f"  Hypotheses: {s['hypotheses_total']}\n"
+                    f"  Experiments: {s['experiments_total']}\n"
+                    f"  Recommendations: {s['recommendations_total']}\n"
+                    f"  Config proposals: {s['config_proposals_total']}\n"
+                    f"  Closed paper trades: {s['closed_paper_trades']}\n"
+                    f"  Sample tier: {s['sample_size_tier']}")
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_hypotheses":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT hypothesis_id, title, domain, status, sample_size FROM learning_hypotheses ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No learning hypotheses yet."
+            lines = ["Learning Hypotheses:"]
+            for r in rows:
+                lines.append(f"  {r[0][:20]}: {r[1][:50]} [{r[3]}, n={r[4]}]")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_recommendations":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT recommendation_id, title, domain, status, sample_size, confidence FROM learning_recommendations ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No learning recommendations yet."
+            lines = ["Learning Recommendations:"]
+            for r in rows:
+                conf = f"{float(r[5]):.0%}" if r[5] else "?"
+                lines.append(f"  {r[0][:20]}: {r[1][:50]} [{r[3]}, n={r[4]}, conf={conf}]")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_proposals":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT proposal_id, domain, target_key, change_type, status FROM config_change_proposals ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No config change proposals yet."
+            lines = ["Config Change Proposals:"]
+            for r in rows:
+                lines.append(f"  {r[0][:20]}: {r[1]}/{r[2]} {r[3]} [{r[4]}]")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_approve_shadow":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE config_change_proposals SET status='shadow_only', approved_by='telegram', approved_at=now() WHERE proposal_id=%s AND status='proposed' RETURNING proposal_id", [pid])
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return f"Approved for shadow: {pid}" if row else f"Proposal {pid} not found or not proposed."
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_reject_proposal":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            reason = parts[1] if len(parts) > 1 else "rejected_via_telegram"
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE config_change_proposals SET status='rejected', rejected_at=now(), rejection_reason=%s WHERE proposal_id=%s RETURNING proposal_id", [reason, pid])
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return f"Rejected: {pid}" if row else f"Proposal {pid} not found."
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_approve_implementation":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE config_change_proposals SET status='approved', approved_by='telegram', approved_at=now() WHERE proposal_id=%s AND status IN ('proposed','shadow_only') RETURNING proposal_id", [pid])
+            row = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return f"Approved for implementation (manual apply required): {pid}" if row else f"Proposal {pid} not found."
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "learning_rollback":
+        try:
+            from learning_governance import record_rollback_event, _get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            reason = parts[1] if len(parts) > 1 else "rollback_via_telegram"
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE config_change_proposals SET status='rolled_back' WHERE proposal_id=%s RETURNING domain, target_key", [pid])
+            row = cur.fetchone()
+            if row:
+                record_rollback_event(conn, pid, row[0], row[1], reason)
+                conn.commit()
+            conn.close()
+            return f"Rollback recorded: {pid}" if row else f"Proposal {pid} not found."
+        except Exception as e:
+            return f"Error: {e}"
 
     return f"Unknown command: {cmd['args'][:50]}\nType `help` for available commands."
 

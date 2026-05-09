@@ -1,15 +1,15 @@
 # System Facts — Latest
 
-Generated: 2026-05-09T14:41:26.127843
+Generated: 2026-05-09T15:16:59.911838
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.13.7
-- Git: main @ 28a8dbc
+- Git: main @ b8f8cc2
 
 ## Database
 - Connected: True
-- Tables: 259
+- Tables: 269
 - trade_ai_scans: 608
 - paper_trade_proposals: 43
 - paper_trades: 4
@@ -17,20 +17,20 @@ Generated: 2026-05-09T14:41:26.127843
 - news_articles: 2787
 - topic_monitor: 17
 - content_embeddings: 11971
-- pipeline_stages: 27
+- pipeline_stages: 31
 - pipeline_runs: 6
 - config_documents: 38
 - content_entity_links: 0
 - blocked_content: 0
 
 ## Codebase
-- python_script_count: 328
-- sql_migration_count: 29
+- python_script_count: 333
+- sql_migration_count: 30
 - yaml_config_count: 32
 - json_config_count: 6
 - strategy_count: 20
-- frontend_page_count: 55
-- react_component_count: 91
+- frontend_page_count: 56
+- react_component_count: 92
 - cron_job_count: 141
 
 ## Safety
@@ -41,17 +41,17 @@ Generated: 2026-05-09T14:41:26.127843
 - Blocked reasons: policy_live_trading_allowed_false, validation_days_insufficient, closed_trade_sample_insufficient, win_rate_below_threshold, profit_factor_below_threshold, governance_not_approved
 
 ## Documentation Drift
-- **docs/CHEAT_SHEET.md**: table_count claimed=256 actual=259
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=328
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=328
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=328
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=328
-- **docs/ARCHITECTURE_INFOGRAM.md**: table_count claimed=256 actual=259
-- **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=256 actual=259
-- **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=256 actual=259
-- **docs/RESTORE_GUIDE.md**: table_count claimed=256 actual=259
-- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=328
-- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=328
-- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: table_count claimed=256 actual=259
-- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=90 actual=328
-- **docs/COST_MODEL.md**: table_count claimed=256 actual=259
+- **docs/CHEAT_SHEET.md**: table_count claimed=256 actual=269
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=333
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=333
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=333
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=333
+- **docs/ARCHITECTURE_INFOGRAM.md**: table_count claimed=256 actual=269
+- **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=256 actual=269
+- **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=256 actual=269
+- **docs/RESTORE_GUIDE.md**: table_count claimed=256 actual=269
+- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=333
+- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=333
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: table_count claimed=256 actual=269
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=90 actual=333
+- **docs/COST_MODEL.md**: table_count claimed=256 actual=269
