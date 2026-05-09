@@ -59,6 +59,7 @@ const PipelineController = lazy(() => import('./pages/PipelineController'))
 const PaperTradeIntelligence = lazy(() => import('./pages/PaperTradeIntelligence'))
 const LearningGovernance = lazy(() => import('./pages/LearningGovernance'))
 const AgentCalibration = lazy(() => import('./pages/AgentCalibration'))
+const WeeklyLearning = lazy(() => import('./pages/WeeklyLearning'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -148,6 +149,7 @@ export default function App() {
           <Route path="pipeline-controller" element={<SafePage><PipelineController /></SafePage>} />
           <Route path="learning-governance" element={<SafePage><LearningGovernance /></SafePage>} />
           <Route path="agent-calibration" element={<SafePage><AgentCalibration /></SafePage>} />
+          <Route path="weekly-learning" element={<SafePage><WeeklyLearning /></SafePage>} />
           <Route path="paper-trade-intelligence" element={<SafePage><PaperTradeIntelligence /></SafePage>} />
           <Route path="*" element={
             <div style={{ padding: 40, color: 'var(--text2)' }}>
