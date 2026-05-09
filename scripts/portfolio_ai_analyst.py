@@ -253,6 +253,18 @@ def _fetch_market_intelligence(symbols: List[str]) -> str:
     except Exception:
         pass
 
+    # 6. Live web news (Brave Search API) for top holdings
+    try:
+        from web_news_fetcher import fetch_web_news_batch, format_news_for_prompt
+        top_syms = symbols[:8]  # limit API calls
+        web_news = fetch_web_news_batch(top_syms, max_per_symbol=2)
+        if web_news:
+            web_text = format_news_for_prompt(web_news, max_chars=400)
+            if web_text:
+                lines.append(web_text)
+    except Exception:
+        pass
+
     return "\n".join(lines) if lines else ""
 
 
