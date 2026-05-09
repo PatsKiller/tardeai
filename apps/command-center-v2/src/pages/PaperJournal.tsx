@@ -106,6 +106,23 @@ function TradeDetail({ tradeId }: { tradeId: number }) {
 export default function PaperJournal() {
   const { data, refetch } = useApi<any>('/api/v2/paper-journal', 60000)
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [actionRunning, setActionRunning] = useState<string | null>(null)
+  const [closeReason, setCloseReason] = useState<Record<number, string>>({})
+
+  const runJournalAction = async (actionName: string, endpoint: string, body?: any) => {
+    setActionRunning(actionName)
+    try {
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      })
+      const d = await r.json()
+      if (!d.ok) alert(d.error || `${actionName} failed`)
+      else refetch()
+    } catch { alert('Network error') }
+    setActionRunning(null)
+  }
 
   const stats = data?.stats || {}
   const openTrades = data?.open_trades ?? data?.open ?? []
@@ -123,7 +140,19 @@ export default function PaperJournal() {
   return (
     <>
       <PageHeader title="Paper Journal" subtitle="Paper trading performance and validation progress" actions={
-        <button onClick={refetch} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => runJournalAction('monitor', '/api/v2/paper-trades/monitor')}
+            disabled={!!actionRunning}
+            style={{ padding: '4px 10px', fontSize: 10, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 6, color: '#60A5FA', cursor: 'pointer', fontWeight: 600 }}>
+            {actionRunning === 'monitor' ? '...' : 'Monitor Paper Trades'}
+          </button>
+          <button onClick={() => runJournalAction('reconcile', '/api/v2/paper-reconciliation/run')}
+            disabled={!!actionRunning}
+            style={{ padding: '4px 10px', fontSize: 10, background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 6, color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>
+            {actionRunning === 'reconcile' ? '...' : 'Run Reconciliation'}
+          </button>
+          <button onClick={refetch} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
+        </div>
       } />
 
       {/* Stats Tiles */}
@@ -168,14 +197,40 @@ export default function PaperJournal() {
           <SectionHeader title={`Open Trades (${openTrades.length})`} />
           <div style={{ padding: '6px 12px' }}>
             {openTrades.map((t: any, i: number) => (
-              <div key={t.id ?? i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                <span style={{ fontWeight: 700, color: 'var(--text0)', minWidth: 50, ...mono }}>{t.symbol}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{t.strategy || t.strategy_id || ''}</span>
-                {(t.grade || t.signal_grade) && <span style={pill((t.grade || t.signal_grade) === 'A' || (t.grade || t.signal_grade) === 'A+' ? 'green' : 'amber')}>{t.grade || t.signal_grade}</span>}
-                <span style={{ ...mono, fontSize: 10, color: 'var(--text2)' }}>Entry: {(t.entry ?? t.entry_price) != null ? fmt$(t.entry ?? t.entry_price, 2) : '--'}</span>
-                <span style={{ ...mono, fontSize: 10, color: pnlColor(t.unrealized_pnl), marginLeft: 'auto' }}>
-                  {t.unrealized_pnl != null ? fmt$(t.unrealized_pnl, 2) : ''}
-                </span>
+              <div key={t.id ?? i} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 11 }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text0)', minWidth: 50, ...mono }}>{t.symbol}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 9 }}>{t.strategy || t.strategy_id || ''}</span>
+                  {(t.grade || t.signal_grade) && <span style={pill((t.grade || t.signal_grade) === 'A' || (t.grade || t.signal_grade) === 'A+' ? 'green' : 'amber')}>{t.grade || t.signal_grade}</span>}
+                  <span style={{ ...mono, fontSize: 10, color: 'var(--text2)' }}>Entry: {(t.entry ?? t.entry_price) != null ? fmt$(t.entry ?? t.entry_price, 2) : '--'}</span>
+                  {t.broker_status && <span style={pill(t.broker_status === 'filled' ? 'green' : t.broker_status === 'new' || t.broker_status === 'accepted' ? 'amber' : 'red')}>{t.broker_status}</span>}
+                  {t.broker_order_id && <span style={{ fontSize: 8, color: 'var(--text3)', ...mono }}>order: {String(t.broker_order_id).slice(0, 8)}...</span>}
+                  {t.account === 'ALPACA_PAPER' && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(59,130,246,0.1)', color: '#60A5FA', fontWeight: 600 }}>ALPACA</span>}
+                  <span style={{ ...mono, fontSize: 10, color: pnlColor(t.unrealized_pnl), marginLeft: 'auto' }}>
+                    {t.unrealized_pnl != null ? fmt$(t.unrealized_pnl, 2) : ''}
+                  </span>
+                </div>
+                {t.account === 'ALPACA_PAPER' && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4, alignItems: 'center' }}>
+                    <input
+                      type="text" placeholder="Close reason..."
+                      value={closeReason[t.id] || ''}
+                      onChange={e => setCloseReason(prev => ({ ...prev, [t.id]: e.target.value }))}
+                      style={{ fontSize: 9, padding: '2px 6px', background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 3, color: 'var(--text1)', width: 150, ...mono }}
+                    />
+                    <button onClick={() => {
+                      if (!confirm(`Close PAPER trade ${t.symbol} #${t.id}? This cannot be undone.`)) return
+                      runJournalAction(`close-${t.id}`, '/api/v2/paper-trades/close', {
+                        paper_trade_id: t.id,
+                        reason: closeReason[t.id] || 'manual_close_via_ui',
+                      })
+                    }}
+                      disabled={!!actionRunning}
+                      style={{ padding: '2px 8px', fontSize: 9, fontWeight: 600, border: '1px solid #DC2626', borderRadius: 4, cursor: 'pointer', color: '#EF4444', background: 'rgba(239,68,68,0.1)' }}>
+                      {actionRunning === `close-${t.id}` ? '...' : 'Close Paper Trade'}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -193,7 +248,7 @@ export default function PaperJournal() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['', 'Symbol', 'Strategy', 'Grade', 'Entry', 'Exit', 'P&L', 'R', 'Verdict', 'Source', 'Analyzed', 'Iris', 'Aegis', 'Date'].map(h => (
+                  {['', 'Symbol', 'Strategy', 'Grade', 'Entry', 'Exit', 'P&L', 'R', 'Verdict', 'Broker', 'Source', 'Analyzed', 'Iris', 'Aegis', 'Date'].map(h => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
@@ -221,6 +276,12 @@ export default function PaperJournal() {
                         <td style={{ ...tdStyle, ...mono, color: pnlColor(pnl), fontWeight: 600 }}>{pnl != null ? fmt$(pnl, 2) : '--'}</td>
                         <td style={{ ...tdStyle, ...mono, color: pnlColor(r) }}>{r != null ? Number(r).toFixed(2) : '--'}</td>
                         <td style={tdStyle}><span style={pill(verdict === 'WIN' || verdict === 'CORRECT' ? 'green' : verdict === 'LOSS' || verdict === 'WRONG' ? 'red' : 'amber')}>{verdict}</span></td>
+                        <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)', ...mono }}>
+                          {t.account === 'ALPACA_PAPER' ? (
+                            <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(59,130,246,0.1)', color: '#60A5FA', fontWeight: 600 }}>ALPACA</span>
+                          ) : t.account || '--'}
+                          {t.broker_status && <div style={{ fontSize: 8, color: 'var(--text3)' }}>{t.broker_status}</div>}
+                        </td>
                         <td style={{ ...tdStyle, fontSize: 10, color: 'var(--text3)' }}>{t.source || t.opened_via || '--'}</td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.post_trade_analyzed ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.post_trade_analyzed ? 'Y' : '-'}</span></td>
                         <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.iris_curated ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.iris_curated ? 'Y' : '-'}</span></td>
@@ -229,7 +290,7 @@ export default function PaperJournal() {
                       </tr>
                       {isExpanded && (
                         <tr>
-                          <td colSpan={14} style={{ padding: 0, borderBottom: '2px solid var(--border)', background: 'var(--bg0)' }}>
+                          <td colSpan={15} style={{ padding: 0, borderBottom: '2px solid var(--border)', background: 'var(--bg0)' }}>
                             <TradeDetail tradeId={t.id} />
                           </td>
                         </tr>

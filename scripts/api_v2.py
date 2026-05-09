@@ -11558,4 +11558,142 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 28: Paper execution workflow endpoints ──────────────────
+
+    if method == "GET" and base_path == "/api/v2/paper-submit-candidates":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/paper_submit_readiness.py"),
+                         "--best-candidates", "--limit", "5"],
+                        capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+            try:
+                data = json.loads(r.stdout) if r.stdout else {}
+            except Exception:
+                data = {"raw": r.stdout[-500:] if r.stdout else ""}
+            return 200, {"ok": True, "data": data}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/check-submit-readiness":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from paper_submit_readiness import check_readiness, get_db as _get_readiness_db
+            conn = _get_readiness_db()
+            try:
+                result = check_readiness(conn, int(pid))
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/dry-run-submit":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from proposal_paper_submitter import dry_run_bracket
+            from session13_db import get_conn
+            conn = get_conn()
+            try:
+                result = dry_run_bracket(conn, int(pid))
+                return 200, {"ok": True, "data": result}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-proposals/submit-paper":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            # Safety: verify ALPACA_MODE=paper
+            import os as _os
+            if _os.getenv("ALPACA_MODE", "paper").lower() != "paper":
+                return 400, {"ok": False, "error": "BLOCKED: ALPACA_MODE is not paper"}
+            # Verify proposal exists and is PENDING
+            row = _db_query("SELECT status FROM paper_trade_proposals WHERE id=%s",
+                            [int(pid)], fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": f"Proposal {pid} not found"}
+            if row.get("status") != "PENDING":
+                return 400, {"ok": False, "error": f"Proposal {pid} is {row['status']}, not PENDING"}
+            # Run via subprocess for isolation
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python3"),
+                         str(PROJECT_ROOT / "scripts/proposal_paper_submitter.py"),
+                         "--proposal-id", str(pid), "--submit-paper-bracket",
+                         "--allow-after-hours-paper"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            try:
+                data = json.loads(r.stdout) if r.stdout else {}
+            except Exception:
+                data = {"raw": r.stdout[-1000:] if r.stdout else "", "stderr": r.stderr[-500:] if r.stderr else ""}
+            return 200, {"ok": True, "data": data, "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-execution-events":
+        try:
+            rows = _db_query("""
+                SELECT id, paper_trade_id, symbol, event_type, event_source,
+                       payload, created_at
+                FROM paper_execution_events
+                ORDER BY created_at DESC LIMIT 100
+            """) or []
+            return 200, {"ok": True, "events": [
+                {k: _json_clean(v) for k, v in r.items()} for r in rows
+            ]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-trades/monitor":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/paper_trade_monitor.py"), "--apply"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            try:
+                data = json.loads(r.stdout) if r.stdout else {}
+            except Exception:
+                data = {"raw": r.stdout[-1000:] if r.stdout else ""}
+            return 200, {"ok": True, "data": data, "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-trades/close":
+        try:
+            body = body or {}
+            ptid = body.get('paper_trade_id')
+            reason = body.get('reason', 'manual_close_via_ui')
+            if not ptid:
+                return 400, {"ok": False, "error": "paper_trade_id required"}
+            import os as _os
+            if _os.getenv("ALPACA_MODE", "paper").lower() != "paper":
+                return 400, {"ok": False, "error": "BLOCKED: ALPACA_MODE is not paper"}
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/paper_trade_closer.py"),
+                         "--paper-trade-id", str(ptid),
+                         "--close-paper", "--reason", reason],
+                        capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT))
+            try:
+                data = json.loads(r.stdout) if r.stdout else {}
+            except Exception:
+                data = {"raw": r.stdout[-1000:] if r.stdout else ""}
+            return 200, {"ok": True, "data": data, "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None

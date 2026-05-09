@@ -500,7 +500,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             {(!p.llm_analysis?.conviction || p.narrative_source === 'deterministic_fallback') && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', marginBottom: 8,
                 background: '#1C1917', border: '1px solid #44403C', borderRadius: 4 }}>
-                <span style={{ color: '#78716C', fontSize: 11 }}>AI analysis is fallback — not yet reviewed by qwen3:14b</span>
+                <span style={{ color: '#78716C', fontSize: 11 }}>AI analysis is fallback — not yet reviewed by local LLM</span>
                 <button onClick={() => runAction('agent', '/api/v2/paper-proposals/run-agent-review')}
                   disabled={!!runningAction} style={{ background: '#422006', color: '#F59E0B', border: '1px solid #92400E',
                   borderRadius: 3, padding: '2px 10px', cursor: 'pointer', fontSize: 11 }}>
@@ -1181,6 +1181,58 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                       )}>
                       {runningAction === 'submitBracket' ? '...' : 'Submit Alpaca Paper Bracket'}
                     </button>
+                  </div>
+
+                  {/* Session 28: Submit Readiness */}
+                  <div style={secLbl}>Submit Readiness</div>
+                  <div style={{ padding: '8px 10px', background: 'var(--bg0)', borderRadius: 6, marginBottom: 8 }}>
+                    <div style={{ fontSize: 10, padding: '4px 0', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                        background: p.action_state === 'PAPER_READY' ? 'rgba(34,197,94,0.15)' : p.action_state === 'BLOCKED' ? 'rgba(239,68,68,0.15)' : 'rgba(251,191,36,0.12)',
+                        color: p.action_state === 'PAPER_READY' ? 'var(--green)' : p.action_state === 'BLOCKED' ? 'var(--red)' : '#F59E0B' }}>
+                        {p.action_state === 'PAPER_READY' ? 'READY' : p.action_state || 'NOT_CHECKED'}
+                      </span>
+                      <span style={{ fontSize: 9, color: 'var(--amber)', fontWeight: 600 }}>PAPER ONLY -- LIVE TRADING DISABLED</span>
+                    </div>
+                    {er.blockers && er.blockers.length > 0 && (
+                      <div style={{ marginBottom: 4 }}>
+                        <div style={{ fontSize: 8, color: 'var(--red)', fontWeight: 600, marginBottom: 2 }}>BLOCKERS</div>
+                        {er.blockers.map((b: string, i: number) => (
+                          <div key={i} style={{ fontSize: 9, color: 'var(--red)', padding: '1px 0' }}>{b}</div>
+                        ))}
+                      </div>
+                    )}
+                    {er.warnings && er.warnings.length > 0 && (
+                      <div style={{ marginBottom: 4 }}>
+                        <div style={{ fontSize: 8, color: 'var(--amber)', fontWeight: 600, marginBottom: 2 }}>WARNINGS</div>
+                        {er.warnings.map((w: string, i: number) => (
+                          <div key={i} style={{ fontSize: 9, color: 'var(--amber)', padding: '1px 0' }}>{w}</div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      <button onClick={() => runAction('checkReadiness', '/api/v2/paper-proposals/check-submit-readiness')}
+                        disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
+                        {runningAction === 'checkReadiness' ? '...' : 'Check Readiness'}
+                      </button>
+                      <button onClick={() => runAction('dryRunSubmit', '/api/v2/paper-proposals/dry-run-submit')}
+                        disabled={!!runningAction} style={btnStyle('rgba(59,130,246,0.15)', '#60A5FA')}>
+                        {runningAction === 'dryRunSubmit' ? '...' : 'Dry Run Bracket'}
+                      </button>
+                      <button onClick={() => {
+                        if (!confirm(`PAPER ONLY: Submit ${p.symbol} to Alpaca PAPER trading?\n\nThis will place a PAPER bracket order. NO real money involved.\n\nLIVE TRADING IS DISABLED.`)) return
+                        runAction('submitPaperNew', '/api/v2/paper-proposals/submit-paper')
+                      }}
+                        disabled={!!runningAction || (p.action_state === 'BLOCKED')}
+                        style={{
+                          ...btnStyle('#7F1D1D', '#EF4444'),
+                          border: '1px solid #DC2626',
+                          opacity: p.action_state === 'BLOCKED' ? 0.4 : 1,
+                          cursor: p.action_state === 'BLOCKED' ? 'not-allowed' : 'pointer',
+                        }}>
+                        {runningAction === 'submitPaperNew' ? '...' : 'Submit to Alpaca Paper'}
+                      </button>
+                    </div>
                   </div>
                 </>
               )
