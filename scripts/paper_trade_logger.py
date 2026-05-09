@@ -1020,7 +1020,8 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
 
         now = datetime.now(timezone.utc)
 
-        # Insert paper trade
+        # Insert paper trade — status=pending (not yet submitted to broker)
+        # broker is NULL until an actual Alpaca order is submitted via proposal_paper_submitter
         cur.execute("""
             INSERT INTO paper_trades (
                 strategy_id, symbol, account, entry_price, entry_time, shares, dollar_size,
@@ -1028,14 +1029,14 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 score_at_entry, rvol_at_entry, float_m_at_entry, catalyst_at_entry, catalyst_verified,
                 intel_readiness, trade_plan_id, proposal_id, setup_type, signal_grade,
                 risk_gate_result, risk_gate_reason_codes,
-                status, opened_via, logged_by, automation_source
+                status, broker, opened_via, logged_by, automation_source
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s,
-                'open', 'proposal_approved', 'telegram', 'proposal'
+                'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
         """, [
             prop['strategy_id'], prop['symbol'], prop.get('proposed_account', 'TOS_PAPER'),
@@ -1052,7 +1053,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
         # Update proposal
         cur.execute("""
             UPDATE paper_trade_proposals
-            SET status='APPROVED', paper_trade_id=%s, approved_at=NOW(),
+            SET status='APPROVED_FOR_PAPER_TEST', paper_trade_id=%s, approved_at=NOW(),
                 final_entry=%s, final_stop=%s, final_target1=%s, final_shares=%s,
                 final_account=%s, final_dollar_risk=%s, updated_at=NOW()
             WHERE id=%s
