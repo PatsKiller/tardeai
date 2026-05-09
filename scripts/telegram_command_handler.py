@@ -274,6 +274,18 @@ def parse_command(text: str) -> dict:
         parts = lower.replace("/reject agent shadow ", "").replace("reject agent shadow ", "").strip()
         return {"command": "agent_reject_shadow", "args": parts}
 
+    # Session 30: Weekly Learning + Thesis Review commands
+    if lower in ("weekly learning", "/weekly learning"):
+        return {"command": "weekly_learning_summary", "args": ""}
+    if lower in ("weekly learning generate", "/weekly learning generate"):
+        return {"command": "weekly_learning_generate", "args": ""}
+    if lower in ("weekly learning send", "/weekly learning send"):
+        return {"command": "weekly_learning_send", "args": ""}
+    if lower in ("thesis reviews", "/thesis reviews"):
+        return {"command": "thesis_reviews_list", "args": ""}
+    if lower.startswith("thesis review run") or lower.startswith("/thesis review run"):
+        return {"command": "thesis_review_run", "args": ""}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1861,6 +1873,60 @@ def process_command(cmd: dict) -> str:
             row = cur.fetchone()
             conn.commit(); conn.close()
             return f"Rejected: {pid}" if row else f"Proposal {pid} not found."
+        except Exception as e:
+            return f"Error: {e}"
+
+    # Session 30: Weekly Learning + Thesis Review handlers
+    if command == "weekly_learning_summary":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT digest_id, period_start, period_end, paper_trades_closed, win_rate, low_sample_size, status FROM weekly_learning_digests ORDER BY created_at DESC LIMIT 1")
+            row = cur.fetchone()
+            conn.close()
+            if not row:
+                return "No weekly digests generated yet. Run: weekly learning generate"
+            wr = f"{float(row[4]):.0%}" if row[4] else "?"
+            ls = " (LOW SAMPLE)" if row[5] else ""
+            return f"Weekly Digest: {row[1]}—{row[2]}\nClosed: {row[3]} | WR: {wr}{ls}\nStatus: {row[6]}\nID: {row[0]}"
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "weekly_learning_generate":
+        try:
+            import subprocess
+            r = subprocess.run([sys.executable, str(PROJECT_ROOT / "scripts" / "weekly_learning_digest.py"),
+                               "--current-week", "--dry-run", "--json"],
+                              capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+            d = json.loads(r.stdout)
+            return f"Digest (dry-run): {d.get('period','?')}\nClosed: {d.get('closed_trades',0)} | Lessons: {d.get('lessons',0)} | Reviews: {d.get('review_items',0)}\nLow sample: {d.get('low_sample',True)}"
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "thesis_reviews_list":
+        try:
+            from session13_db import get_conn
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT review_id, symbol, thesis_validity, thesis_score, lesson_summary FROM trade_thesis_reviews ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No thesis reviews yet. Run: thesis review run"
+            lines = ["Thesis Reviews:"]
+            for r in rows:
+                lines.append(f"  {r[1]}: {r[2]} (score={r[3]}) — {(r[4] or '')[:60]}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "thesis_review_run":
+        try:
+            import subprocess
+            r = subprocess.run([sys.executable, str(PROJECT_ROOT / "scripts" / "trade_thesis_review_engine.py"),
+                               "--dry-run", "--json"],
+                              capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+            d = json.loads(r.stdout)
+            return f"Thesis Review (dry-run): {d.get('trades_reviewed',0)} trades\nBy validity: {d.get('by_validity',{})}\nLow sample: {d.get('low_sample_size',True)}"
         except Exception as e:
             return f"Error: {e}"
 

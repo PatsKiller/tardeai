@@ -12667,4 +12667,64 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 30: Weekly Learning Digest + Thesis Review ────────────────
+    if base_path == "/api/v2/weekly-learning-digest":
+        try:
+            rows = _db_query("""
+                SELECT digest_id, period_start, period_end, status, holdings_value,
+                       paper_trades_closed, win_rate, low_sample_size, generated_at
+                FROM weekly_learning_digests ORDER BY created_at DESC LIMIT 20
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/weekly-learning-digest/latest":
+        try:
+            row = _db_query("""
+                SELECT digest_id, period_start, period_end, status, holdings_value,
+                       paper_trades_closed, win_rate, profit_factor, low_sample_size,
+                       top_lessons, agent_summary, source_summary, strategy_summary,
+                       thesis_summary, recommendations, human_review_items, digest_markdown
+                FROM weekly_learning_digests ORDER BY created_at DESC LIMIT 1
+            """, fetch="one")
+            if not row:
+                return 200, {"ok": True, "data": None, "message": "No digests generated yet"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/weekly-learning-digest/") and not base_path.endswith("/latest") and not base_path.endswith("/items") and not base_path.endswith("/generate") and not base_path.endswith("/send-telegram"):
+        try:
+            did = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM weekly_learning_digests WHERE digest_id=%s", (did,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Digest not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/trade-thesis-reviews":
+        try:
+            rows = _db_query("""
+                SELECT review_id, paper_trade_id, symbol, strategy_id, trade_status,
+                       review_type, thesis_validity, thesis_score, execution_score,
+                       risk_management_score, outcome_score, lesson_summary,
+                       mistake_tags, strength_tags, low_sample_size, created_at
+                FROM trade_thesis_reviews ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/trade-thesis-reviews/") and not base_path.endswith("/run"):
+        try:
+            rid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM trade_thesis_reviews WHERE review_id=%s", (rid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Review not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None

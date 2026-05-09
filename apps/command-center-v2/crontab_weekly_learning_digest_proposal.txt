@@ -1,0 +1,10 @@
+# PROPOSED: Weekly Learning Digest cron
+# Do NOT install automatically.
+#
+# Post-trade thesis review (daily):
+# 0 21 * * * cd $PROJ && $PY scripts/trade_thesis_review_engine.py --apply --json >> logs/thesis_review.log 2>&1
+#
+# Weekly digest (Sunday evening):
+# 0 20 * * 0 cd $PROJ && $PY scripts/weekly_learning_digest.py --current-week --apply --json >> logs/weekly_digest.log 2>&1
+#
+# Telegram send: manual only until reviewed
