@@ -11386,15 +11386,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             trades = _db_query("""
                 SELECT id, symbol, strategy_id, setup_type, signal_grade, score_at_entry,
                        account, opened_via, automation_source, broker_order_id, broker_status,
+                       broker, client_order_id, take_profit_price, stop_loss_price,
                        entry_price, exit_price, current_price, shares, stop_loss, target_1,
                        dollar_risk, pnl, unrealized_pnl, r_multiple, pnl_pct,
                        status, outcome_verdict, exit_reason, catalyst_at_entry, catalyst_verified,
                        risk_gate_result, entry_time, exit_time, created_at, closed_at, proposal_id,
-                       post_trade_analyzed, iris_curated, aegis_summarized
+                       post_trade_analyzed, iris_curated, aegis_summarized, submitted_at, filled_at
                 FROM paper_trades
                 ORDER BY created_at DESC LIMIT 200
             """) or []
-            open_t = [t for t in trades if t.get('status') == 'open']
+            open_t = [t for t in trades if t.get('status') in ('open', 'pending', 'submitted', 'partially_filled')]
             closed_t = [t for t in trades if t.get('status') == 'closed']
             wins = sum(1 for t in closed_t if (t.get('pnl') or 0) > 0)
             losses = sum(1 for t in closed_t if (t.get('pnl') or 0) < 0)
