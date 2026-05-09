@@ -430,7 +430,7 @@ export default function TradeAI() {
 
             {/* AI Review section */}
             {(selectedTicker.incubator_llm_grade || selectedTicker.holdings_llm_health || selectedTicker.proposal_llm_stage) && (
-              <DrawerSection title="AI Review (qwen3:14b)">
+              <DrawerSection title="AI Review (Local LLM)">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                   {selectedTicker.incubator_llm_grade && (
                     <div style={{ background: '#0B1120', borderRadius: 6, padding: '8px 10px' }}>

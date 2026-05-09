@@ -25,7 +25,7 @@ SONNET = os.getenv("CLAUDE_ESCALATION_MODEL","claude-sonnet-4-20250514")
 from local_llm_config import get_local_llm_model as _get_llm_model, get_local_llm_base_url as _get_llm_base_url
 OLLAMA_MODEL = _get_llm_model()
 _OLLAMA_BASE = _get_llm_base_url().rstrip("/")
-_USE_OLLAMA = False  # set True when run_type=="weekly"
+_USE_OLLAMA = True  # default to local LLM (GPU-accelerated qwen3:14b)
 
 _AI_RULES = """/no_think
 STRICT AI ANALYST PAGE REBUILD RULES — APPLY TO EVERY SECTION EVERY RUN:
@@ -57,22 +57,48 @@ STRICT RULES — READ FIRST:
 """
 
 def _ollama(prompt: str, max_tokens: int = 500) -> str:
-    import re as _re, requests as _req
+    """Use centralized local_llm.generate() with toll gate and GPU.
+    Uses higher num_predict (800) for narrative sections."""
+    import re as _re
     if len(prompt) > 6000: prompt = prompt[:6000] + "\n[Be concise.]"
     try:
-        r = _req.post(f"{_OLLAMA_BASE}/api/chat",
-            json={"model":OLLAMA_MODEL,"stream":False,
-                  "messages":[{"role":"user","content":prompt}],
-                  "think":False,
-                  "options":{"temperature":0.3,"num_predict":800,"num_ctx":4096}},
-            timeout=120)
-        text = r.json().get("message",{}).get("content","").strip()
-        return _re.sub(r"<think>.*?</think>","",text,flags=_re.DOTALL).strip()
+        from local_llm import generate, model_used, _gate, _try_ollama, OLLAMA_MODEL
+        import json as _j
+        # Use toll gate but with higher num_predict for narrative output
+        if not _gate.acquire():
+            # Fall through to cloud
+            from local_llm import _try_openai, _try_anthropic, FALLBACK_OPENAI, FALLBACK_ANTHROPIC
+            result = _try_openai(prompt) or _try_anthropic(prompt)
+            return result or "Analysis unavailable — all LLMs failed"
+        try:
+            import urllib.request
+            from local_llm import OLLAMA_URL
+            payload = _j.dumps({
+                "model": OLLAMA_MODEL, "stream": False,
+                "messages": [{"role": "user", "content": prompt}],
+                "think": False,
+                "options": {"temperature": 0.3, "num_predict": 800}
+            }).encode()
+            req = urllib.request.Request(
+                OLLAMA_URL, data=payload,
+                headers={"Content-Type": "application/json"}, method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                data = _j.loads(resp.read())
+                text = data.get("message", {}).get("content", "").strip()
+                duration = round(data.get("total_duration", 0) / 1e9, 1)
+                tokens = data.get("eval_count", 0)
+                print(f"  [local-llm] Ollama OK — {duration}s, {tokens} tokens")
+                if text:
+                    text = _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+                return text or "Analysis unavailable — LLM returned empty"
+        finally:
+            _gate.release()
     except Exception as e:
-        return f"Ollama error: {e}"
+        return f"LLM error: {e}"
 
 def _ai(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
-    """Route to Ollama (weekly) or Claude (monthly/manual)."""
+    """Route to local LLM (daily/weekly) or Claude (monthly/manual)."""
     if _USE_OLLAMA:
         return _ollama(prompt, max_tokens=min(max_tokens, 600))
     return _claude(prompt, model=model, max_tokens=max_tokens)
@@ -98,10 +124,141 @@ def _claude(prompt: str, model: str = None, max_tokens: int = 1500) -> str:
 # ── Module-level root path (set by run_ai_analysis) ──────────────────────────
 _CURRENT_ROOT = "."
 
+# ── Market intelligence: news, social, agent views, LLM health ──────────────
+
+def _fetch_market_intelligence(symbols: List[str]) -> str:
+    """Fetch news, social, agent views, and LLM health for portfolio holdings.
+    Returns compact text block for LLM context injection."""
+    try:
+        from session13_db import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+    except Exception:
+        return ""
+
+    lines = []
+
+    # 1. Recent news for held symbols (top 3 per symbol, last 3 days)
+    try:
+        cur.execute("""
+            SELECT symbol, title, sentiment, published_at
+            FROM news_articles
+            WHERE symbol = ANY(%s) AND published_at > NOW() - INTERVAL '3 days'
+            ORDER BY published_at DESC LIMIT 20
+        """, [symbols])
+        news = cur.fetchall()
+        if news:
+            lines.append("RECENT NEWS:")
+            by_sym: Dict[str, list] = {}
+            for r in news:
+                by_sym.setdefault(r[0], []).append(r)
+            for sym in sorted(by_sym.keys()):
+                for n in by_sym[sym][:2]:
+                    lines.append(f"  {sym}: {str(n[1])[:60]} ({n[2] or '?'})")
+    except Exception:
+        pass
+
+    # 2. Social mentions for held symbols (last 3 days)
+    try:
+        cur.execute("""
+            SELECT symbol, text, sentiment, post_date
+            FROM (
+                SELECT unnest(string_to_array(
+                    (SELECT string_agg(DISTINCT s2.symbol, ',')
+                     FROM unnest(%s::text[]) AS s2(symbol)
+                     WHERE sp.text ILIKE '%%' || s2.symbol || '%%'
+                    ), ',')) AS symbol,
+                    text, sentiment, post_date
+                FROM social_posts sp
+                WHERE post_date > NOW() - INTERVAL '3 days'
+                ORDER BY post_date DESC LIMIT 30
+            ) sub WHERE symbol IS NOT NULL
+            LIMIT 15
+        """, [symbols])
+        social = cur.fetchall()
+        if social:
+            lines.append("SOCIAL:")
+            for s in social[:8]:
+                lines.append(f"  {s[0]}: {str(s[1])[:50]} ({s[2] or '?'})")
+    except Exception:
+        # Fallback: simple text match
+        try:
+            cur.execute("""
+                SELECT text, sentiment, post_date
+                FROM social_posts
+                WHERE post_date > NOW() - INTERVAL '3 days'
+                ORDER BY post_date DESC LIMIT 10
+            """)
+            social = cur.fetchall()
+            if social:
+                lines.append("SOCIAL (general):")
+                for s in social[:5]:
+                    lines.append(f"  {str(s[0])[:60]} ({s[1] or '?'})")
+        except Exception:
+            pass
+
+    # 3. Agent views (latest per symbol from Maria, Steph, Risk)
+    try:
+        cur.execute("""
+            SELECT DISTINCT ON (symbol, agent)
+                   symbol, agent, recommendation, confidence, summary
+            FROM watchlist_agent_results
+            WHERE symbol = ANY(%s) AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY symbol, agent, created_at DESC
+            LIMIT 30
+        """, [symbols])
+        agents = cur.fetchall()
+        if agents:
+            lines.append("AGENT VIEWS:")
+            for a in agents:
+                lines.append(f"  {a[0]} {a[1]}:{a[2] or '?'}({a[3] or '?'}) {str(a[4] or '')[:40]}")
+    except Exception:
+        pass
+
+    # 4. Holdings LLM health
+    try:
+        cur.execute("""
+            SELECT symbol, holdings_llm_health, holdings_llm_action, holdings_llm_confidence
+            FROM watchlist_items
+            WHERE source = 'portfolio' AND symbol = ANY(%s) AND holdings_llm_health IS NOT NULL
+        """, [symbols])
+        health = cur.fetchall()
+        if health:
+            lines.append("AI HEALTH:")
+            for h in health:
+                action_str = f" →{h[2]}" if h[2] and h[2] != 'HOLD' else ''
+                lines.append(f"  {h[0]}: {h[1]}{action_str} ({h[3]}%)")
+    except Exception:
+        pass
+
+    # 5. Alex recent alerts
+    try:
+        cur.execute("""
+            SELECT symbol, alert_type, message
+            FROM alex_daily_alerts
+            WHERE created_at > NOW() - INTERVAL '24 hours'
+            AND symbol = ANY(%s)
+            ORDER BY created_at DESC LIMIT 8
+        """, [symbols])
+        alerts = cur.fetchall()
+        if alerts:
+            lines.append("ALEX ALERTS:")
+            for a in alerts:
+                lines.append(f"  {a[0]}: [{a[1]}] {str(a[2])[:50]}")
+    except Exception:
+        pass
+
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+    return "\n".join(lines) if lines else ""
+
 
 def _mini_context(portfolio: Dict, analysis: Dict = None, rebalancing: Dict = None, personal: Dict = None) -> str:
-    """Compact portfolio context for Ollama (fits in ~800 tokens).
-    No biographical dump — just key numbers the model needs to analyze."""
+    """Compact portfolio context for local LLM enriched with market intelligence.
+    Includes news, social, agent views, and LLM health assessments."""
     if personal is None:
         personal = {}
     totals = portfolio.get("portfolio_totals", {})
@@ -126,7 +283,11 @@ def _mini_context(portfolio: Dict, analysis: Dict = None, rebalancing: Dict = No
     flags = (analysis or {}).get("critical_flags", [])
     flag_lines = "\n".join(f"  [{f['severity']}] {f['message']}" for f in flags[:4]) if flags else "  None"
 
-    return f"""PORTFOLIO: ${totals.get('total_value',0):,.0f} | Gain: ${totals.get('total_gain',0):+,.0f}
+    # Fetch market intelligence (news, social, agents, LLM health)
+    held_symbols = [h.get('symbol', '') for h in holdings[:20] if h.get('symbol') and '-' not in h.get('symbol', '')]
+    market_intel = _fetch_market_intelligence(held_symbols) if held_symbols else ""
+
+    base = f"""PORTFOLIO: ${totals.get('total_value',0):,.0f} | Gain: ${totals.get('total_gain',0):+,.0f}
 Dividends: ${divs.get('total_annual_income',0):,.0f}/yr
 Owner: {personal.get('owner','John Whiting')}, age {personal.get('age','?')}, SSDI income ${personal.get('ssdi_annual',0) or 0:,.0f}/yr, conservative
 
@@ -141,6 +302,11 @@ FLAGS:
 
 REBALANCING: ${(rebalancing or {}).get('total_to_rebalance',0):,.0f} needed
 {portfolio.get('_weekly_trajectory', '')}"""
+
+    if market_intel:
+        base += f"\n\nMARKET INTELLIGENCE:\n{market_intel}"
+
+    return base
 
 
 def _get_context(portfolio, analysis=None, rebalancing=None, personal=None):
@@ -602,7 +768,7 @@ Net to rebalance: ${rebalancing.get('total_to_rebalance',0):,.0f}
 # ── Section 1: Executive Summary ──────────────────────────────────────────────
 
 def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: Dict = None) -> str:
-    """Haiku quick executive summary for daily runs."""
+    """Daily executive summary enriched with market intelligence."""
     if personal is None:
         personal = {}
     totals = portfolio.get("portfolio_totals", {})
@@ -616,6 +782,13 @@ def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: 
     roth_ytd = personal.get('roth_conversion_ytd_2026', 0) or 0
     roth_sweet = personal.get('roth_target_sweet_spot', 25000)
 
+    # Fetch market intelligence for top holdings
+    holdings = [h for h in portfolio.get("holdings", [])
+                if (h.get("market_value") or 0) > 200 and not h.get("is_loan") and h.get("symbol") and '-' not in h.get("symbol", "")]
+    holdings.sort(key=lambda h: -(h.get("market_value") or 0))
+    held_symbols = [h['symbol'] for h in holdings[:15]]
+    market_intel = _fetch_market_intelligence(held_symbols) if held_symbols else ""
+
     prompt = f"""Portfolio morning brief for {owner} (age {age}):
 Total: ${totals.get('total_value',0):,.0f} | Gain: +${totals.get('total_gain',0):,.0f} (+{totals.get('total_gain_pct',0):.1f}%)
 Annual dividends: ${analysis.get('dividends',{}).get('total_annual_income',0):,.0f}/yr
@@ -624,10 +797,13 @@ Income: SSDI ${ssdi:,.0f}/yr only. {filing} filing. Prop tax + mortgage interest
 Roth conversion: ${roth_ytd:,.0f} done in 2026. Sweet spot ${roth_sweet:,.0f}/yr.
 High priority flags: {len(high_flags)}
 Top flags: {chr(10).join(f['message'] for f in high_flags[:3])}
-
-Write a 3-sentence executive portfolio brief a wealth manager would send.
-Include the single most important action item considering his Roth conversion strategy and income situation."""
-    return _ai(prompt, model=HAIKU, max_tokens=250)
+{chr(10) + market_intel if market_intel else ''}
+Write a portfolio brief a wealth manager would send. Include:
+1. Portfolio health summary (2-3 sentences)
+2. Key news/catalyst impacts on holdings (reference specific tickers and news if available)
+3. Most important action item considering Roth strategy, tax situation, and any agent alerts
+4. Any holdings the AI flagged as WATCH or CONCERN with reasoning"""
+    return _ai(prompt, max_tokens=400)
 
 
 def _roth_conversion_analysis(portfolio: Dict, personal: Dict = None) -> str:
@@ -948,8 +1124,8 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     import portfolio_ai_analyst as _self_mod
     _self_mod._CURRENT_ROOT = str(root)
     global _USE_OLLAMA
-    _USE_OLLAMA = (run_type == "weekly")
-    print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Ollama ' + OLLAMA_MODEL if _USE_OLLAMA else 'Claude Sonnet'})...")
+    _USE_OLLAMA = run_type in ("daily", "weekly")  # local LLM for daily+weekly, Claude for monthly/manual
+    print(f"  [ai] Running AI analysis (mode: {run_type}, engine: {'Local ' + OLLAMA_MODEL if _USE_OLLAMA else 'Claude Sonnet'})...")
 
     # ── Freshness check (Phase 0) ────────────────────────────────────────────
     _freshness_warning = ""
@@ -1057,7 +1233,8 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
 
     results["generated_at"] = datetime.now().isoformat()
     results["run_type"] = run_type
-    n = len([k for k in results if k not in ("generated_at","run_type")])
+    results["model"] = OLLAMA_MODEL if _USE_OLLAMA else SONNET
+    n = len([k for k in results if k not in ("generated_at","run_type","model")])
     print(f"  [ai] ✅ {n} AI sections")
     return results
 
