@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
 
@@ -21,10 +21,24 @@ export default function PaperOutcomes() {
   const { data: thesisData, loading: tLoading } = useApi<any>('/api/v2/execution-quality', 30000)
   const { data: govData, loading: gLoading } = useApi<any>('/api/v2/paper-performance-governance', 60000)
   const { data: lcData } = useApi<any>('/api/v2/paper-proposals/lifecycle-events', 30000)
+  const { data: outcomesData } = useApi<any>('/api/v2/paper-outcomes', 30000)
+  const { data: summaryData } = useApi<any>('/api/v2/paper-dashboard-summary', 60000)
+  const [runningOutcomes, setRunningOutcomes] = useState(false)
 
   const gov = govData?.data || []
   const events = lcData?.events || []
   const tca = thesisData?.data || []
+  const outcomes = outcomesData?.outcomes || []
+  const summary = summaryData?.summary || {}
+
+  const runOutcomeReview = async () => {
+    setRunningOutcomes(true)
+    try {
+      await fetch('/api/v2/paper-outcomes/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      window.location.reload()
+    } catch { alert('Failed') }
+    setRunningOutcomes(false)
+  }
 
   // Aggregate governance stats
   const totalTrades = gov.reduce((s: number, g: any) => s + (g.paper_trades || 0), 0)
@@ -39,12 +53,21 @@ export default function PaperOutcomes() {
         {(tLoading || gLoading) && <div style={{ color: 'var(--text3)', fontSize: 12 }}>Loading...</div>}
 
         {/* Overview */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
           {kv('Total Paper Trades', totalTrades)}
           {kv('Closed Trades', totalClosed)}
           {kv('Strategies Active', strategiesWithData)}
           {kv('Live Eligible', liveEligible, liveEligible > 0 ? 'var(--green)' : 'var(--red)')}
+          {kv('Outcome Reviews', summary.outcome_reviews ?? outcomes.length)}
           {kv('Governance', gov.length > 0 ? gov[0].governance_state : 'PAPER_ONLY')}
+        </div>
+
+        {/* Run Outcome Review button */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button onClick={runOutcomeReview} disabled={runningOutcomes}
+            style={{ padding: '6px 14px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 5, cursor: 'pointer', color: '#60A5FA', background: 'rgba(59,130,246,0.15)' }}>
+            {runningOutcomes ? 'Running...' : 'Run Thesis Outcome Review'}
+          </button>
         </div>
 
         {/* Governance by Strategy */}
@@ -119,6 +142,54 @@ export default function PaperOutcomes() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Thesis Outcomes */}
+        <h3 style={{ fontSize: 13, color: 'var(--text1)', marginBottom: 8 }}>Thesis Outcomes</h3>
+        <div style={{ background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'auto', marginBottom: 24 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, ...mono }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                {['Symbol', 'Strategy', 'Verdict', 'Entry Thesis', 'Outcome Notes', 'PnL', 'R Multiple', 'Date'].map(h => (
+                  <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: 9, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {outcomes.length === 0 && (
+                <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontStyle: 'italic' }}>
+                  No thesis outcomes yet. Outcomes will appear after closed paper trades are reviewed.
+                </td></tr>
+              )}
+              {outcomes.map((o: any) => (
+                <tr key={o.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '6px 10px', fontWeight: 700 }}>{o.symbol || '--'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text2)' }}>{o.strategy_id || '--'}</td>
+                  <td style={{ padding: '6px 10px' }}><span style={pill(resultColor(o.outcome_verdict || ''))}>{o.outcome_verdict || 'PENDING'}</span></td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 10, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.entry_thesis || '--'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text2)', fontSize: 10, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.outcome_notes || '--'}</td>
+                  <td style={{ padding: '6px 10px', color: (Number(o.pnl) || 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>{o.pnl != null ? `$${Number(o.pnl).toFixed(2)}` : '--'}</td>
+                  <td style={{ padding: '6px 10px' }}>{o.r_multiple != null ? Number(o.r_multiple).toFixed(2) : '--'}</td>
+                  <td style={{ padding: '6px 10px', color: 'var(--text3)', fontSize: 9 }}>{o.created_at ? new Date(o.created_at).toLocaleString() : '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Open Monitoring */}
+        <h3 style={{ fontSize: 13, color: 'var(--text1)', marginBottom: 8 }}>Open Paper Trade Monitoring</h3>
+        <div style={{ background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)', padding: 16, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {kv('Open Trades', outcomesData?.open_paper_trades ?? summary.open_paper_trades ?? 0)}
+            {kv('Closed Trades', outcomesData?.closed_paper_trades ?? summary.closed_paper_trades ?? 0)}
+            {kv('Awaiting Review', outcomes.filter((o: any) => !o.outcome_verdict || o.outcome_verdict === 'PENDING').length)}
+          </div>
+          {(outcomesData?.open_paper_trades ?? 0) === 0 && (outcomesData?.closed_paper_trades ?? 0) === 0 && (
+            <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text3)', fontStyle: 'italic', textAlign: 'center' }}>
+              No open or closed paper trades. Thesis tracking will activate once paper trades are placed.
+            </div>
+          )}
         </div>
 
         {/* TCA Summary */}

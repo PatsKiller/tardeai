@@ -242,6 +242,17 @@ def portfolio_holdings():
         if sym not in div_map:
             div_map[sym] = dp.get("yield_pct", 0)
 
+    # Load LLM health data from watchlist_items
+    llm_health_map = {}
+    llm_rows = _db_query("""
+        SELECT symbol, holdings_llm_health, holdings_llm_action,
+               holdings_llm_confidence, holdings_llm_summary, holdings_llm_at
+        FROM watchlist_items
+        WHERE source = 'portfolio' AND holdings_llm_health IS NOT NULL
+    """) or []
+    for lr in llm_rows:
+        llm_health_map[lr['symbol']] = lr
+
     rows = []
     for p in holdings:
         if (p.get("market_value") or 0) < 50 and not p.get("is_cash"):
@@ -300,6 +311,12 @@ def portfolio_holdings():
             "gain_loss": round(p.get("market_value", 0) - basis_map.get((sym, p.get("account", "")), p.get("cost_basis") or p.get("market_value", 0)), 2),
             "pi_score": _pi_score(pi_input) if (e_cache or t_snap) else None,
             "is_cash": bool(p.get("is_cash")),
+            # LLM health assessment
+            "llm_health": (llm_health_map.get(sym) or {}).get('holdings_llm_health'),
+            "llm_action": (llm_health_map.get(sym) or {}).get('holdings_llm_action'),
+            "llm_confidence": (llm_health_map.get(sym) or {}).get('holdings_llm_confidence'),
+            "llm_summary": _json_clean((llm_health_map.get(sym) or {}).get('holdings_llm_summary')),
+            "llm_at": _json_clean((llm_health_map.get(sym) or {}).get('holdings_llm_at')),
         })
     rows.sort(key=lambda r: -r["market_value"])
 
@@ -5466,6 +5483,61 @@ def trade_ai():
     except Exception:
         pass
 
+    # LLM enrichment: incubator screen + holdings health + proposal reviews
+    try:
+        _ticker_syms = [t["symbol"] for t in tickers]
+        # Incubator LLM screen grades
+        _incub_llm = _db_query("""
+            SELECT DISTINCT ON (symbol) symbol, llm_screen_grade, llm_screen_verdict,
+                   llm_screen_confidence, llm_screen_at
+            FROM incubator_universe
+            WHERE symbol = ANY(%s) AND llm_screen_grade IS NOT NULL
+            ORDER BY symbol, llm_screen_at DESC NULLS LAST
+        """, [_ticker_syms]) or []
+        _incub_map = {r["symbol"]: r for r in _incub_llm}
+
+        # Holdings LLM health
+        _hold_llm = _db_query("""
+            SELECT symbol, holdings_llm_health, holdings_llm_action,
+                   holdings_llm_confidence, holdings_llm_at
+            FROM watchlist_items
+            WHERE source = 'portfolio' AND symbol = ANY(%s) AND holdings_llm_health IS NOT NULL
+        """, [_ticker_syms]) or []
+        _hold_map = {r["symbol"]: r for r in _hold_llm}
+
+        # Proposal LLM reviews (latest per symbol)
+        _prop_llm = _db_query("""
+            SELECT DISTINCT ON (symbol) symbol, llm_review_stage, llm_model_used,
+                   confidence_score as llm_confidence,
+                   llm_review_chunks
+            FROM paper_trade_proposals
+            WHERE symbol = ANY(%s) AND status = 'PENDING' AND llm_review_stage IS NOT NULL
+            ORDER BY symbol, confidence_score DESC NULLS LAST
+        """, [_ticker_syms]) or []
+        _prop_map = {r["symbol"]: r for r in _prop_llm}
+
+        for t in tickers:
+            sym = t["symbol"]
+            inc = _incub_map.get(sym)
+            if inc:
+                t["incubator_llm_grade"] = inc.get("llm_screen_grade")
+                t["incubator_llm_verdict"] = inc.get("llm_screen_verdict")
+            hld = _hold_map.get(sym)
+            if hld:
+                t["holdings_llm_health"] = hld.get("holdings_llm_health")
+                t["holdings_llm_action"] = hld.get("holdings_llm_action")
+            prp = _prop_map.get(sym)
+            if prp:
+                t["proposal_llm_stage"] = prp.get("llm_review_stage")
+                t["proposal_llm_confidence"] = prp.get("llm_confidence")
+                chunks = prp.get("llm_review_chunks")
+                if chunks and isinstance(chunks, dict):
+                    t["proposal_llm_decision"] = (chunks.get("decision") or {}).get("decision")
+                    t["proposal_risk_grade"] = (chunks.get("risk") or {}).get("risk_grade")
+                    t["proposal_catalyst_grade"] = (chunks.get("catalyst") or {}).get("catalyst_grade")
+    except Exception:
+        pass
+
     # Sector breakdown from tickers (basic)
     sectors: dict = {}
     for t in tickers:
@@ -6868,6 +6940,7 @@ def _paper_proposals_enriched():
             ) pa ON true
             ORDER BY
                 CASE ptp.status WHEN 'PENDING' THEN 0 ELSE 1 END,
+                COALESCE(ptp.confidence_score, 0) DESC,
                 ptp.created_at DESC
             LIMIT 50
         """) or []
@@ -7222,6 +7295,9 @@ def _paper_proposals_enriched():
                 'top_blocker': p.get('top_blocker'),
                 'next_actions': _json_clean(p.get('next_actions')),
                 'llm_review_status': p.get('llm_review_status') or 'NOT_REQUESTED',
+                'llm_model_used': p.get('llm_model_used'),
+                'llm_review_stage': p.get('llm_review_stage'),
+                'llm_review_chunks': _json_clean(p.get('llm_review_chunks')),
                 'enrichment_attempt_count': p.get('enrichment_attempt_count') or 0,
             })
 
@@ -11413,6 +11489,72 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 VALUES (%s, %s, %s, %s)
             """, ['halt' if value == 'true' else 'resume', key, f'{key} set to {value}', updated_by])
             return 200, {"ok": True, "data": {"key": key, "value": value, "updated_by": updated_by}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Session 27: Paper outcomes, governance run, dashboard summary ────
+
+    if method == "GET" and base_path == "/api/v2/paper-outcomes":
+        try:
+            rows = _db_query("""
+                SELECT * FROM trade_thesis_outcomes ORDER BY created_at DESC LIMIT 50
+            """) or []
+            open_count = _db_query("""
+                SELECT COUNT(*) as cnt FROM paper_trades
+                WHERE status NOT IN ('closed', 'cancelled', 'filled')
+            """, fetch="one") or {}
+            closed_count = _db_query("""
+                SELECT COUNT(*) as cnt FROM paper_trades
+                WHERE status IN ('closed', 'filled')
+            """, fetch="one") or {}
+            return 200, {"ok": True,
+                "outcomes": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "open_paper_trades": open_count.get('cnt', 0),
+                "closed_paper_trades": closed_count.get('cnt', 0)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-outcomes/run":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": True, "output": r.stdout[-2000:], "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/paper-performance-governance/run":
+        try:
+            import subprocess as _sp
+            r = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                         str(PROJECT_ROOT / "scripts/paper_performance_governance.py"), "--apply"],
+                        capture_output=True, text=True, timeout=60, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": True, "output": r.stdout[-2000:], "returncode": r.returncode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/paper-dashboard-summary":
+        try:
+            open_pt = _db_query("SELECT COUNT(*) as cnt FROM paper_trades WHERE status NOT IN ('closed','cancelled','filled')", fetch="one") or {}
+            closed_pt = _db_query("SELECT COUNT(*) as cnt FROM paper_trades WHERE status IN ('closed','filled')", fetch="one") or {}
+            eq_rows = _db_query("SELECT COUNT(*) as cnt FROM paper_execution_quality", fetch="one") or {}
+            recon_issues = _db_query("SELECT COUNT(*) as cnt FROM broker_reconciliation_items WHERE severity IN ('WARN','ERROR','CRITICAL')", fetch="one") or {}
+            outcome_rows = _db_query("SELECT COUNT(*) as cnt FROM trade_thesis_outcomes", fetch="one") or {}
+            strats_learning = _db_query("SELECT COUNT(DISTINCT strategy_id) as cnt FROM paper_trade_proposals WHERE status='PENDING'", fetch="one") or {}
+            last_recon = _db_query("SELECT MAX(created_at) as ts FROM broker_reconciliation_runs", fetch="one") or {}
+            last_tca = _db_query("SELECT MAX(created_at) as ts FROM paper_execution_quality", fetch="one") or {}
+            return 200, {"ok": True, "summary": {
+                "open_paper_trades": open_pt.get('cnt', 0),
+                "closed_paper_trades": closed_pt.get('cnt', 0),
+                "execution_quality_rows": eq_rows.get('cnt', 0),
+                "reconciliation_issues": recon_issues.get('cnt', 0),
+                "outcome_reviews": outcome_rows.get('cnt', 0),
+                "strategies_in_learning_mode": strats_learning.get('cnt', 0),
+                "live_eligible_strategies": 0,
+                "last_reconciliation": _json_clean(last_recon.get('ts')),
+                "last_tca_run": _json_clean(last_tca.get('ts')),
+            }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
