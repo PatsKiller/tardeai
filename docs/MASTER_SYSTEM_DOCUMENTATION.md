@@ -53,10 +53,10 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 
 | Metric | Value |
 |--------|-------|
-| Python scripts | 325 |
-| Cron jobs | 141 |
+| Python scripts | 354 |
+| Cron jobs | 142 |
 | API endpoints | 95+ |
-| Database tables | 256 |
+| Database tables | 299 |
 | Strategies | 20 (YAML-driven) |
 | Frontend pages | 55 |
 | Agents | 7 (4 conversational + 3 backend) |
@@ -85,8 +85,8 @@ Trade AI v12 has 6 distinct service boundaries:
 |           |                                                        |
 |  +--------v---------+    +------------------+    +---------------+ |
 |  | PostgreSQL 15     |    | Cron Scheduler   |    | Scalp WS      | |
-|  | :5432             |    | 141 jobs         |    | :7778/:7779   | |
-|  | 256 tables        |    | systemd timers   |    | real-time feed| |
+|  | :5432             |    | 142 jobs         |    | :7778/:7779   | |
+|  | 299 tables        |    | systemd timers   |    | real-time feed| |
 |  +-------------------+    +------------------+    +---------------+ |
 +-------------------------------------------------------------------+
                     |                    |
@@ -159,7 +159,7 @@ Trade AI v12 has 6 distinct service boundaries:
 ## 4. Database Layer
 
 - **Engine:** PostgreSQL 15
-- **Table count:** 256
+- **Table count:** 299
 - **Connection:** `localhost:5432`, database `trade_ai`, user `trade_ai`
 - **Backup:** 7-day rolling `pg_dump` to `backups/db/trade_ai_*.sql.gz`
 
@@ -752,7 +752,7 @@ All channels toggled via `ENABLE_*` flags in `.env`.
 
 ## 16. Scheduling & Orchestration
 
-141 cron entries manage the full pipeline. Key schedule (all times Eastern):
+142 cron entries manage the full pipeline. Key schedule (all times Eastern):
 
 ### Morning Cascade (5-8 AM)
 
