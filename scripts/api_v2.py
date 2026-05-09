@@ -12414,4 +12414,148 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 28: Learning Governance endpoints ─────────────────────────
+    if base_path == "/api/v2/learning/status":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from learning_governance import get_learning_status, _get_conn as _lg_conn
+            conn = _lg_conn()
+            try:
+                return 200, {"ok": True, "data": get_learning_status(conn)}
+            finally:
+                conn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/learning/hypotheses":
+        try:
+            rows = _db_query("""
+                SELECT hypothesis_id, title, domain, hypothesis_type, status,
+                       sample_size, confidence, risk_level, generated_by, created_at
+                FROM learning_hypotheses ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/learning/hypotheses/") and base_path.count("/") == 4:
+        try:
+            hid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM learning_hypotheses WHERE hypothesis_id=%s", (hid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Hypothesis not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/learning/experiments":
+        try:
+            rows = _db_query("""
+                SELECT experiment_id, hypothesis_id, name, domain, experiment_type,
+                       status, actual_sample_size, min_sample_size, conclusion, created_at
+                FROM learning_experiments ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/learning/experiments/") and base_path.count("/") == 4:
+        try:
+            xid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM learning_experiments WHERE experiment_id=%s", (xid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Experiment not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/learning/recommendations":
+        try:
+            rows = _db_query("""
+                SELECT recommendation_id, hypothesis_id, domain, recommendation_type,
+                       title, summary, sample_size, confidence, risk_level, status, created_at
+                FROM learning_recommendations ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/learning/recommendations/") and base_path.count("/") == 4:
+        try:
+            rid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM learning_recommendations WHERE recommendation_id=%s", (rid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Recommendation not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/learning/config-proposals":
+        try:
+            rows = _db_query("""
+                SELECT proposal_id, recommendation_id, domain, target_key, change_type,
+                       reason, risk_assessment, status, approved_by, created_at
+                FROM config_change_proposals ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/learning/config-proposals/") and not any(
+            base_path.endswith(x) for x in ("/approve-shadow", "/reject", "/approve-implementation", "/rollback")):
+        try:
+            pid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM config_change_proposals WHERE proposal_id=%s", (pid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Proposal not found"}
+            safe = {k: _json_clean(v) for k, v in row.items()}
+            return 200, {"ok": True, "data": safe}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/approve-shadow") and method == "POST" and "/learning/config-proposals/" in base_path:
+        try:
+            pid = base_path.split("/")[-2]
+            who = (body or {}).get("approved_by", "api_admin")
+            _db_write("UPDATE config_change_proposals SET status='shadow_only', approved_by=%s, approved_at=now(), updated_at=now() WHERE proposal_id=%s AND status='proposed'", (who, pid))
+            return 200, {"ok": True, "message": f"Proposal {pid} approved for shadow only"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/reject") and method == "POST" and "/learning/config-proposals/" in base_path:
+        try:
+            pid = base_path.split("/")[-2]
+            reason = (body or {}).get("reason", "rejected_via_api")
+            _db_write("UPDATE config_change_proposals SET status='rejected', rejected_at=now(), rejection_reason=%s, updated_at=now() WHERE proposal_id=%s", (reason, pid))
+            return 200, {"ok": True, "message": f"Proposal {pid} rejected"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/approve-implementation") and method == "POST" and "/learning/config-proposals/" in base_path:
+        try:
+            pid = base_path.split("/")[-2]
+            who = (body or {}).get("approved_by", "api_admin")
+            _db_write("UPDATE config_change_proposals SET status='approved', approved_by=%s, approved_at=now(), updated_at=now() WHERE proposal_id=%s AND status IN ('proposed','shadow_only')", (who, pid))
+            return 200, {"ok": True, "message": f"Proposal {pid} approved for implementation (manual apply required)"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/rollback") and method == "POST" and "/learning/config-proposals/" in base_path:
+        try:
+            pid = base_path.split("/")[-2]
+            reason = (body or {}).get("reason", "rollback_via_api")
+            _db_write("UPDATE config_change_proposals SET status='rolled_back', updated_at=now() WHERE proposal_id=%s", (pid,))
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from learning_governance import record_rollback_event, _get_conn as _lg_conn2
+            conn2 = _lg_conn2()
+            try:
+                record_rollback_event(conn2, pid, "unknown", "unknown", reason)
+            finally:
+                conn2.close()
+            return 200, {"ok": True, "message": f"Rollback recorded for {pid}"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None

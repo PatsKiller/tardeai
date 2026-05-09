@@ -1,0 +1,13 @@
+# PROPOSED: Learning Governance cron entries
+# Do NOT install automatically — manual validation first.
+#
+# Daily learning status:
+# 0 21 * * * cd $PROJ && $PY scripts/learning_governance.py --status --json >> logs/learning_governance.log 2>&1
+#
+# Weekly ingestion learning (after enough data):
+# 0 22 * * 0 cd $PROJ && $PY scripts/ingestion_learning_engine.py --analyze --json >> logs/ingestion_learning.log 2>&1
+#
+# Weekly trade learning (after 30 closed trades):
+# 0 22 * * 0 cd $PROJ && $PY scripts/trade_learning_engine.py --analyze --json >> logs/trade_learning.log 2>&1
+#
+# No automatic implementation cadence.
