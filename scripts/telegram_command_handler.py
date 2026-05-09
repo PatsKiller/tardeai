@@ -257,6 +257,23 @@ def parse_command(text: str) -> dict:
         parts = lower.replace("/rollback learning proposal ", "").replace("rollback learning proposal ", "").strip()
         return {"command": "learning_rollback", "args": parts}
 
+    # Session 29: Agent Calibration commands
+    if lower in ("agent calibration", "/agent calibration"):
+        return {"command": "agent_calibration_status", "args": ""}
+    if lower.startswith("agent calibration ") and lower.split()[-1] not in ("run","normalize","link","score"):
+        agent = lower.replace("/agent calibration ", "").replace("agent calibration ", "").strip()
+        return {"command": "agent_calibration_detail", "args": agent}
+    if lower in ("agent disagreements", "/agent disagreements"):
+        return {"command": "agent_disagreements", "args": ""}
+    if lower in ("agent weight proposals", "/agent weight proposals"):
+        return {"command": "agent_weight_proposals", "args": ""}
+    if lower.startswith("approve agent shadow ") or lower.startswith("/approve agent shadow "):
+        parts = lower.replace("/approve agent shadow ", "").replace("approve agent shadow ", "").strip()
+        return {"command": "agent_approve_shadow", "args": parts}
+    if lower.startswith("reject agent shadow ") or lower.startswith("/reject agent shadow "):
+        parts = lower.replace("/reject agent shadow ", "").replace("reject agent shadow ", "").strip()
+        return {"command": "agent_reject_shadow", "args": parts}
+
     # Session 11: halt/resume trading commands
     if lower == "halt trading":
         return {"command": "halt_trading", "args": "all"}
@@ -1760,6 +1777,90 @@ def process_command(cmd: dict) -> str:
                 conn.commit()
             conn.close()
             return f"Rollback recorded: {pid}" if row else f"Proposal {pid} not found."
+        except Exception as e:
+            return f"Error: {e}"
+
+    # Session 29: Agent Calibration handlers
+    if command == "agent_calibration_status":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM agent_recommendation_registry")
+            total_recs = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM agent_calibration_events")
+            total_events = cur.fetchone()[0]
+            cur.execute("SELECT agent_name, resolved, accuracy, calibration_error, sample_size_status FROM agent_calibration_windows ORDER BY created_at DESC LIMIT 5")
+            windows = cur.fetchall()
+            conn.close()
+            lines = [f"Agent Calibration:\n  Recommendations: {total_recs}\n  Calibration events: {total_events}"]
+            for w in windows:
+                acc = f"{float(w[2]):.0%}" if w[2] else "?"
+                cal = f"{float(w[3]):.2f}" if w[3] else "?"
+                lines.append(f"  {w[0]}: resolved={w[1]}, acc={acc}, cal_err={cal} [{w[4]}]")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "agent_disagreements":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT symbol, disagreement_type, resolved, outcome_summary FROM agent_disagreement_outcomes ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No agent disagreements recorded yet."
+            lines = ["Agent Disagreements:"]
+            for r in rows:
+                lines.append(f"  {r[0]}: {r[1]} | resolved={r[2]} | {(r[3] or '')[:60]}")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "agent_weight_proposals":
+        try:
+            from session13_db import get_conn
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT shadow_proposal_id, agent_name, current_weight, proposed_weight, status FROM agent_weight_shadow_proposals ORDER BY created_at DESC LIMIT 10")
+            rows = cur.fetchall()
+            conn.close()
+            if not rows:
+                return "No agent weight shadow proposals yet."
+            lines = ["Agent Weight Proposals:"]
+            for r in rows:
+                lines.append(f"  {r[0][:15]}: {r[1]} {r[2]}→{r[3]} [{r[4]}]")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "agent_approve_shadow":
+        try:
+            from session13_db import get_conn
+            pid = args.strip().split()[0]
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE agent_weight_shadow_proposals SET status='approved_for_shadow', updated_at=now() WHERE shadow_proposal_id=%s AND status='proposed' RETURNING shadow_proposal_id", [pid])
+            row = cur.fetchone()
+            conn.commit(); conn.close()
+            return f"Approved for shadow: {pid}" if row else f"Proposal {pid} not found or not proposed."
+        except Exception as e:
+            return f"Error: {e}"
+
+    if command == "agent_reject_shadow":
+        try:
+            from session13_db import get_conn
+            parts = args.strip().split(None, 1)
+            pid = parts[0]
+            reason = parts[1] if len(parts) > 1 else "rejected_via_telegram"
+            conn = get_conn()
+            cur = conn.cursor()
+            cur.execute("UPDATE agent_weight_shadow_proposals SET status='rejected', updated_at=now() WHERE shadow_proposal_id=%s RETURNING shadow_proposal_id", [pid])
+            row = cur.fetchone()
+            conn.commit(); conn.close()
+            return f"Rejected: {pid}" if row else f"Proposal {pid} not found."
         except Exception as e:
             return f"Error: {e}"
 

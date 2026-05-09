@@ -12558,4 +12558,113 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 29: Agent Calibration endpoints ───────────────────────────
+    if base_path == "/api/v2/agent-calibration/status":
+        try:
+            status = {}
+            for tbl, label in [("agent_recommendation_registry", "recommendations"),
+                               ("agent_recommendation_outcome_links", "outcome_links"),
+                               ("agent_calibration_events", "calibration_events"),
+                               ("agent_calibration_windows", "calibration_windows"),
+                               ("agent_weight_shadow_proposals", "weight_proposals"),
+                               ("agent_disagreement_outcomes", "disagreements")]:
+                r = _db_query(f"SELECT COUNT(*) as c FROM {tbl}", fetch="one")
+                status[f"{label}_total"] = r["c"] if r else 0
+            agents = _db_query("SELECT DISTINCT agent_name FROM agent_recommendation_registry ORDER BY agent_name") or []
+            status["agents"] = [a["agent_name"] for a in agents]
+            return 200, {"ok": True, "data": status}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-calibration/agents":
+        try:
+            rows = _db_query("""
+                SELECT agent_name, COUNT(*) as total,
+                       COUNT(DISTINCT symbol) as symbols
+                FROM agent_recommendation_registry GROUP BY agent_name ORDER BY total DESC
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/agent-calibration/agents/") and base_path.count("/") == 5:
+        try:
+            agent = base_path.split("/")[-1]
+            windows = _db_query("""
+                SELECT * FROM agent_calibration_windows WHERE agent_name=%s
+                ORDER BY created_at DESC LIMIT 10
+            """, (agent,)) or []
+            recs = _db_query("""
+                SELECT recommendation_id, symbol, recommendation_type, confidence,
+                       recommendation_time FROM agent_recommendation_registry
+                WHERE agent_name=%s ORDER BY recommendation_time DESC LIMIT 20
+            """, (agent,)) or []
+            return 200, {"ok": True, "data": {
+                "agent_name": agent,
+                "windows": [{k: _json_clean(v) for k, v in w.items()} for w in windows],
+                "recent_recommendations": [{k: _json_clean(v) for k, v in r.items()} for r in recs]
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-calibration/events":
+        try:
+            rows = _db_query("""
+                SELECT calibration_event_id, agent_name, symbol, predicted_action,
+                       predicted_confidence, actual_outcome, outcome_score,
+                       calibration_error, explanation, created_at
+                FROM agent_calibration_events ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-calibration/windows":
+        try:
+            rows = _db_query("""
+                SELECT window_id, agent_name, domain, recommendations, resolved,
+                       correct, incorrect, accuracy, avg_confidence, calibration_error,
+                       overconfidence_score, underconfidence_score, low_sample_size,
+                       sample_size_status, recommendation, created_at
+                FROM agent_calibration_windows ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-calibration/recommendations":
+        try:
+            rows = _db_query("""
+                SELECT recommendation_id, title, domain, recommendation_type, status,
+                       sample_size, confidence, risk_level, created_at
+                FROM learning_recommendations WHERE domain='agent_calibration'
+                ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-calibration/weight-proposals":
+        try:
+            rows = _db_query("""
+                SELECT shadow_proposal_id, agent_name, domain, strategy_id,
+                       current_weight, proposed_weight, weight_delta, reason,
+                       sample_size, confidence, risk_level, status, created_at
+                FROM agent_weight_shadow_proposals ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-calibration/disagreements":
+        try:
+            rows = _db_query("""
+                SELECT disagreement_id, symbol, agents_involved, disagreement_type,
+                       winning_view, losing_view, outcome_summary, resolved, created_at
+                FROM agent_disagreement_outcomes ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
