@@ -54,7 +54,7 @@
 | Service | SKU | Specs | Monthly Cost |
 |---------|-----|-------|-------------|
 | **RDS PostgreSQL** | db.t4g.medium | 2 vCPU, 4 GB RAM, 100 GB gp3 | $65-80 |
-| **RDS storage** | gp3, 100 GB | 256 tables, growing | $10-12 |
+| **RDS storage** | gp3, 100 GB | 299 tables, growing | $10-12 |
 | **RDS backups** | 7-day automated | Included in RDS | $0 |
 | **ElastiCache (optional)** | cache.t4g.micro | JSON cache replacement | $12-15 |
 
