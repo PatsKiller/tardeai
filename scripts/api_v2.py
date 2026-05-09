@@ -11714,4 +11714,456 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ══════════════════════════════════════════════════════════════════
+    # TOPIC MONITOR — CRUD + research trigger + transcript review
+    # ══════════════════════════════════════════════════════════════════
+
+    if base_path == "/api/v2/topics":
+        if method == "GET":
+            try:
+                rows = _db_query("""
+                    SELECT t.*,
+                        (SELECT COUNT(*) FROM news_articles
+                         WHERE strategy_type = t.topic_id
+                         AND created_at > NOW() - INTERVAL '1 day' * t.max_age_days) as article_count,
+                        (SELECT COUNT(*) FROM youtube_transcripts
+                         WHERE added_by = 'topic_ingestion'
+                         AND ingested_at > NOW() - INTERVAL '1 day' * t.max_age_days
+                         AND (strategy_tags::text LIKE '%%' || t.topic_id || '%%'
+                              OR title ILIKE '%%' || REPLACE(t.topic_id, '_', ' ') || '%%')) as transcript_count,
+                        (SELECT COUNT(*) FROM blocked_content
+                         WHERE topic_id = t.topic_id) as blocked_count
+                    FROM topic_monitor t
+                    ORDER BY t.priority, t.topic_id
+                """) or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if method == "POST":
+            try:
+                topic_id = (body or {}).get("topic_id", "").strip().lower().replace(" ", "_")
+                if not topic_id:
+                    return 400, {"ok": False, "error": "topic_id required"}
+                display = (body or {}).get("display_name", topic_id.replace("_", " ").title())
+                search_q = (body or {}).get("search_queries", [])
+                video_q = (body or {}).get("video_queries", [])
+                priority = int((body or {}).get("priority", 5))
+                agent_owner = (body or {}).get("agent_owner", "Alex")
+                agent_tags = (body or {}).get("agent_tags", [agent_owner])
+                strategy_tags = (body or {}).get("strategy_tags", [])
+                personal_ctx = (body or {}).get("personal_context", "")
+                saved_urls = (body or {}).get("saved_search_urls", [])
+
+                _db_write("""
+                    INSERT INTO topic_monitor
+                        (topic_id, display_name, search_queries, video_queries,
+                         priority, agent_owner, agent_tags, strategy_tags,
+                         personal_context, saved_search_urls)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (topic_id) DO UPDATE SET
+                        display_name = EXCLUDED.display_name,
+                        search_queries = EXCLUDED.search_queries,
+                        video_queries = EXCLUDED.video_queries,
+                        priority = EXCLUDED.priority,
+                        agent_owner = EXCLUDED.agent_owner,
+                        agent_tags = EXCLUDED.agent_tags,
+                        strategy_tags = EXCLUDED.strategy_tags,
+                        personal_context = EXCLUDED.personal_context,
+                        saved_search_urls = EXCLUDED.saved_search_urls,
+                        updated_at = NOW()
+                """, (topic_id, display, json.dumps(search_q), json.dumps(video_q),
+                      priority, agent_owner, json.dumps(agent_tags), json.dumps(strategy_tags),
+                      personal_ctx, json.dumps(saved_urls)))
+                return 200, {"ok": True, "topic_id": topic_id}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/add-url":
+        if method == "POST":
+            try:
+                topic_id = (body or {}).get("topic_id")
+                url = (body or {}).get("url", "").strip()
+                if not topic_id or not url:
+                    return 400, {"ok": False, "error": "topic_id and url required"}
+                _db_write("""
+                    UPDATE topic_monitor
+                    SET saved_search_urls = saved_search_urls || %s::jsonb,
+                        updated_at = NOW()
+                    WHERE topic_id = %s
+                """, (json.dumps([url]), topic_id))
+                return 200, {"ok": True, "topic_id": topic_id, "url": url}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/run":
+        if method == "POST":
+            try:
+                topic_id = (body or {}).get("topic_id")
+                curate = (body or {}).get("curate", False)
+                import subprocess
+                cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "topic_ingestion.py")]
+                if topic_id:
+                    cmd.extend(["--topic", topic_id])
+                if curate:
+                    cmd.append("--curate")
+                r = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     cwd=str(PROJECT_ROOT), text=True)
+                return 200, {"ok": True, "message": f"Topic ingestion started (pid {r.pid})",
+                             "topic_id": topic_id or "all"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/transcripts":
+        if method == "GET":
+            try:
+                topic_id = (query or {}).get("topic_id", "")
+                status_filter = (query or {}).get("rag_status", "")
+                sql = """
+                    SELECT yt.id, yt.video_id, yt.title, yt.channel_name,
+                           yt.url, yt.quality_score, yt.relevance_score,
+                           yt.rag_status, yt.rag_reason, yt.validation_status,
+                           yt.added_by, yt.ingested_at,
+                           LEFT(yt.summary, 300) as summary,
+                           LEFT(yt.transcript_text, 500) as preview,
+                           yt.strategy_tags, yt.agent_tags
+                    FROM youtube_transcripts yt
+                    WHERE yt.added_by = 'topic_ingestion'
+                """
+                params = []
+                if topic_id:
+                    sql += " AND (yt.strategy_tags::text LIKE %s OR yt.title ILIKE %s)"
+                    params.extend([f'%{topic_id}%', f'%{topic_id.replace("_", " ")}%'])
+                if status_filter:
+                    sql += " AND yt.rag_status = %s"
+                    params.append(status_filter)
+                sql += " ORDER BY yt.ingested_at DESC LIMIT 200"
+                rows = _db_query(sql, params) or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/transcripts/review":
+        if method == "POST":
+            try:
+                transcript_id = (body or {}).get("id")
+                video_id = (body or {}).get("video_id")
+                rag_status = (body or {}).get("rag_status")
+                rag_reason = (body or {}).get("rag_reason", "")
+                if not rag_status or rag_status not in ("approved", "low_quality", "blocked", "pending"):
+                    return 400, {"ok": False, "error": "rag_status must be approved/low_quality/blocked/pending"}
+                if transcript_id:
+                    _db_write("UPDATE youtube_transcripts SET rag_status=%s, rag_reason=%s WHERE id=%s",
+                              (rag_status, rag_reason, transcript_id))
+                elif video_id:
+                    _db_write("UPDATE youtube_transcripts SET rag_status=%s, rag_reason=%s WHERE video_id=%s",
+                              (rag_status, rag_reason, video_id))
+                else:
+                    return 400, {"ok": False, "error": "id or video_id required"}
+                if rag_status == "blocked" and video_id:
+                    _db_write("""
+                        INSERT INTO blocked_content (content_type, content_id, title, reason, blocked_by)
+                        VALUES ('youtube', %s, '', %s, 'operator')
+                        ON CONFLICT (content_type, content_id) DO NOTHING
+                    """, (video_id, rag_reason or "Operator blocked"))
+                return 200, {"ok": True}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/articles":
+        if method == "GET":
+            try:
+                topic_id = (query or {}).get("topic_id", "")
+                sql = """
+                    SELECT id, symbol as topic_id, title, summary, source,
+                           source_url, relevance_score, rag_status, rag_reason,
+                           strategy_tags, agent_tags, created_at
+                    FROM news_articles WHERE source LIKE 'topic_%%'
+                """
+                params = []
+                if topic_id:
+                    sql += " AND strategy_type = %s"
+                    params.append(topic_id)
+                sql += " ORDER BY created_at DESC LIMIT 200"
+                rows = _db_query(sql, params) or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/blocked":
+        if method == "GET":
+            try:
+                rows = _db_query("SELECT * FROM blocked_content ORDER BY created_at DESC LIMIT 200") or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+        if method == "DELETE":
+            try:
+                bc_id = (body or {}).get("id")
+                if bc_id:
+                    _db_write("DELETE FROM blocked_content WHERE id=%s", (bc_id,))
+                return 200, {"ok": True}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/gap-fills":
+        if method == "GET":
+            try:
+                rows = _db_query("""
+                    SELECT topic_id, source, query_used, results_found,
+                           articles_saved, transcripts_saved, llm_normalized,
+                           search_time_ms, created_at
+                    FROM iris_library_gap_fills ORDER BY created_at DESC LIMIT 100
+                """) or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/topics/delete":
+        if method == "POST":
+            try:
+                topic_id = (body or {}).get("topic_id")
+                if not topic_id:
+                    return 400, {"ok": False, "error": "topic_id required"}
+                _db_write("UPDATE topic_monitor SET enabled=false, updated_at=NOW() WHERE topic_id=%s", (topic_id,))
+                return 200, {"ok": True, "topic_id": topic_id}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Entity links: what tickers/topics/sectors are linked to topic content
+    if base_path == "/api/v2/topics/entities":
+        if method == "GET":
+            try:
+                entity_type = (query or {}).get("type", "")
+                entity_value = (query or {}).get("value", "")
+                topic_id = (query or {}).get("topic_id", "")
+                sql = """
+                    SELECT cel.entity_type, cel.entity_value,
+                           COUNT(*) as link_count,
+                           MAX(na.created_at) as latest
+                    FROM content_entity_links cel
+                    JOIN news_articles na ON cel.content_type='news_article' AND cel.content_id=na.id
+                    WHERE 1=1
+                """
+                params = []
+                if entity_type:
+                    sql += " AND cel.entity_type = %s"
+                    params.append(entity_type)
+                if entity_value:
+                    sql += " AND cel.entity_value = %s"
+                    params.append(entity_value)
+                if topic_id:
+                    sql += " AND na.strategy_type = %s"
+                    params.append(topic_id)
+                sql += " GROUP BY cel.entity_type, cel.entity_value ORDER BY link_count DESC LIMIT 100"
+                rows = _db_query(sql, params) or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Ticker intelligence: get all topic content linked to a specific ticker
+    if base_path.startswith("/api/v2/topics/by-ticker/"):
+        ticker = base_path.split("/")[-1].upper()
+        if method == "GET":
+            try:
+                rows = _db_query("""
+                    SELECT na.id, na.title, na.summary, na.source, na.strategy_type as topic,
+                           na.relevance_score, na.rag_status, na.created_at,
+                           cel.entity_type, cel.confidence
+                    FROM content_entity_links cel
+                    JOIN news_articles na ON cel.content_type='news_article' AND cel.content_id=na.id
+                    WHERE cel.entity_value = %s
+                    ORDER BY na.created_at DESC LIMIT 50
+                """, (ticker,)) or []
+                return 200, {"ok": True, "ticker": ticker,
+                             "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Topic curation feedback: learning loop history
+    if base_path == "/api/v2/topics/curation-feedback":
+        if method == "GET":
+            try:
+                rows = _db_query("""
+                    SELECT topic_id, run_date, articles_reviewed, approved_count,
+                           blocked_count, tickers_extracted, suggested_queries,
+                           quality_summary
+                    FROM topic_curation_feedback ORDER BY run_date DESC LIMIT 50
+                """) or []
+                return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Run curator manually from UI
+    if base_path == "/api/v2/topics/curate":
+        if method == "POST":
+            try:
+                topic_id = (body or {}).get("topic_id")
+                import subprocess
+                cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "topic_curator.py"),
+                       "--improve-queries"]
+                if topic_id:
+                    cmd.extend(["--topic", topic_id])
+                r = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     cwd=str(PROJECT_ROOT), text=True)
+                return 200, {"ok": True, "message": f"Curator started (pid {r.pid})"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # ── Pipeline Controller endpoints ─────────────────────────────────────
+    if base_path == "/api/v2/pipeline-controller/status":
+        try:
+            run = _db_query("SELECT run_id, pipeline_key, status, run_label, trigger_source, started_at, finished_at, duration_seconds, summary FROM pipeline_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
+            if not run:
+                return 200, {"ok": True, "data": None, "message": "No runs yet"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in run.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/pipeline-controller/runs":
+        try:
+            limit = int((query or {}).get("limit", 20))
+            rows = _db_query("SELECT run_id, pipeline_key, status, run_label, started_at, finished_at, duration_seconds, summary FROM pipeline_runs ORDER BY created_at DESC LIMIT %s", (limit,)) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/pipeline-controller/runs/") and base_path.endswith("/stages"):
+        run_id = base_path.split("/")[-2]
+        try:
+            rows = _db_query("""
+                SELECT stage_key, status, attempt, duration_seconds, exit_code,
+                       error_type, error_message, sla_status, stdout_tail, dependency_blockers,
+                       started_at, finished_at
+                FROM pipeline_stage_runs WHERE run_id=%s
+                ORDER BY created_at
+            """, (run_id,)) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/pipeline-controller/runs/") and not base_path.endswith("/stages"):
+        run_id = base_path.split("/")[-1]
+        try:
+            run = _db_query("SELECT * FROM pipeline_runs WHERE run_id=%s", (run_id,), fetch="one")
+            if not run:
+                return 404, {"ok": False, "error": "Run not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in run.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/pipeline-controller/stages":
+        try:
+            rows = _db_query("""
+                SELECT stage_key, group_key, name, command, timeout_seconds,
+                       sla_seconds, can_degrade, active, sort_order
+                FROM pipeline_stages WHERE pipeline_key='daily' AND active=true
+                ORDER BY sort_order
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/pipeline-controller/failures":
+        try:
+            rows = _db_query("""
+                SELECT psr.run_id, psr.stage_key, psr.status, psr.error_message,
+                       psr.exit_code, psr.duration_seconds, psr.sla_status,
+                       psr.stdout_tail, psr.attempt, psr.started_at
+                FROM pipeline_stage_runs psr
+                WHERE psr.status IN ('failed', 'degraded')
+                ORDER BY psr.created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── POST: Retry failed stages for a run ─────────────────────────────
+    if base_path.startswith("/api/v2/pipeline-controller/runs/") and base_path.endswith("/retry-failed") and method == "POST":
+        try:
+            parts = base_path.split("/")
+            run_id = parts[5]  # /api/v2/pipeline-controller/runs/<run_id>/retry-failed
+            # Check run exists
+            run = _db_query("SELECT run_id, status FROM pipeline_runs WHERE run_id=%s", (run_id,), fetch="one")
+            if not run:
+                return 404, {"ok": False, "error": f"Run {run_id} not found"}
+            # Find failed stages
+            failed = _db_query("""
+                SELECT stage_key, status, error_message, attempt
+                FROM pipeline_stage_runs
+                WHERE run_id=%s AND status IN ('failed', 'degraded')
+                ORDER BY created_at
+            """, (run_id,)) or []
+            if not failed:
+                return 200, {"ok": True, "message": "No failed stages to retry", "retried": []}
+            # Mark failed stages as pending for retry (does not auto-execute)
+            retried = []
+            for f in failed:
+                _db_write("""
+                    UPDATE pipeline_stage_runs SET status='pending', updated_at=now()
+                    WHERE run_id=%s AND stage_key=%s AND status IN ('failed', 'degraded')
+                """, (run_id, f['stage_key']))
+                retried.append(f['stage_key'])
+            return 200, {"ok": True, "message": f"Marked {len(retried)} stage(s) for retry", "retried": retried,
+                         "note": "Run pipeline_controller.py --resume to execute retries"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Discovery Source Health endpoints ──────────────────────────────────
+    if base_path == "/api/v2/discovery-source-health":
+        try:
+            rows = _db_query("""
+                SELECT source_key, status, last_success_at, last_failure_at,
+                       last_row_count, failure_count, last_error, degraded, updated_at
+                FROM data_source_health ORDER BY source_key
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/candidate-discovery/recent":
+        try:
+            limit = int((query or {}).get("limit", 50))
+            rows = _db_query("""
+                SELECT event_id, source_key, symbol, source_confidence,
+                       normalized_payload, degraded, reason, created_at
+                FROM candidate_discovery_events
+                ORDER BY created_at DESC LIMIT %s
+            """, (limit,)) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Paper Validation Status endpoint ──────────────────────────────────
+    if base_path == "/api/v2/paper-validation-status":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from live_trading_gate import evaluate
+            result = evaluate()
+            return 200, {"ok": True, "data": {k: _json_clean(v) if not isinstance(v, (dict, list, bool)) else v for k, v in result.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── System Facts endpoint ─────────────────────────────────────────────
+    if base_path == "/api/v2/system-facts":
+        try:
+            facts_path = PROJECT_ROOT / "data" / "system_facts.json"
+            if facts_path.exists():
+                facts = json.loads(facts_path.read_text())
+                return 200, {"ok": True, "data": facts}
+            return 200, {"ok": True, "data": None, "message": "No facts generated yet"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/system-fact-drift":
+        try:
+            drift_path = PROJECT_ROOT / "data" / "system_fact_drift.json"
+            if drift_path.exists():
+                drift = json.loads(drift_path.read_text())
+                return 200, {"ok": True, "data": drift}
+            return 200, {"ok": True, "data": []}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None

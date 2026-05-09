@@ -1,0 +1,11 @@
+# PROPOSED: Pipeline Controller cron entries
+# These would replace individual fragile cron entries over time.
+# Do NOT install automatically — review and migrate incrementally.
+#
+# Phase 1: Add controller alongside existing cron (additive, no removal)
+# 0 5 * * 1-5 cd $PROJ && $PY scripts/pipeline_controller.py --pipeline daily --group data_collection --run-label morning_data --allow-degraded >> logs/pipeline_controller.log 2>&1
+# 0 8 * * 1-5 cd $PROJ && $PY scripts/pipeline_controller.py --pipeline daily --group scoring --run-label morning_scoring --allow-degraded >> logs/pipeline_controller.log 2>&1
+# 0 20 * * * cd $PROJ && $PY scripts/pipeline_controller.py --pipeline daily --group overnight --run-label overnight --allow-degraded >> logs/pipeline_controller.log 2>&1
+#
+# Phase 2: Replace individual cron with full pipeline run (after validation)
+# 0 5 * * 1-5 cd $PROJ && $PY scripts/pipeline_controller.py --pipeline daily --run-label daily_full --allow-degraded >> logs/pipeline_controller.log 2>&1

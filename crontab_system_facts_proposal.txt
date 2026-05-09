@@ -1,0 +1,5 @@
+# PROPOSED: System facts generation
+# Generates live system facts manifest daily
+# Do NOT install automatically — review first.
+#
+# 30 5 * * * cd $PROJ && $PY scripts/generate_system_facts.py >> logs/system_facts.log 2>&1

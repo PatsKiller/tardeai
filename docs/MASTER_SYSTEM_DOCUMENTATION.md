@@ -1,214 +1,461 @@
 # Trade AI v12 -- Master System Documentation
 
-**Owner:** John W. Whiting  
-**Server:** ms01-openclaw (Linux)  
-**Last updated:** 2026-05-08  
-**Status:** Paper trading validation (6-month window before live)
-
-Trade AI v12 is an automated trading intelligence and portfolio management platform. It combines Finviz Elite screeners, a 31-stage data pipeline, 20 dynamically loaded strategies, LLM-assisted classification, and a 4-agent conversational layer to surface, score, incubate, and paper-trade equity setups against a ~$1.19M portfolio (taxable + IRA).
+**Owner:** John W. Whiting
+**Server:** ms01-openclaw (Linux, Ubuntu)
+**Document version:** 2026-05-09 (Cloud Product Rebuild)
+**Status:** Paper trading validation -- 6-month window before live consideration
 
 ---
 
 ## Table of Contents
 
-1. [Runtime Topology](#runtime-topology)
-2. [Database](#database)
-3. [Pipeline Architecture](#pipeline-architecture)
-4. [Screener System](#screener-system)
-5. [Strategy System](#strategy-system)
-6. [Incubator Pipeline](#incubator-pipeline)
-7. [Proposal Lifecycle](#proposal-lifecycle)
-8. [Agent Layer](#agent-layer)
-9. [LLM Configuration](#llm-configuration)
-10. [API Layer](#api-layer)
-11. [Frontend](#frontend)
-12. [Notification Channels](#notification-channels)
-13. [Cron Schedule](#cron-schedule)
-14. [Safety Rules](#safety-rules)
-15. [Key File Locations](#key-file-locations)
-16. [Known Constraints](#known-constraints)
-17. [Glossary](#glossary)
+1. [Executive Summary](#1-executive-summary)
+2. [Service Architecture](#2-service-architecture)
+3. [Runtime Topology](#3-runtime-topology)
+4. [Database Layer](#4-database-layer)
+5. [Pipeline Architecture](#5-pipeline-architecture)
+6. [External Research & Signal Ingestion](#6-external-research--signal-ingestion)
+7. [Screener System](#7-screener-system)
+8. [Strategy Engine](#8-strategy-engine)
+9. [Incubator Pipeline](#9-incubator-pipeline)
+10. [Proposal Lifecycle](#10-proposal-lifecycle)
+11. [Agent Layer](#11-agent-layer)
+12. [LLM Subsystem](#12-llm-subsystem)
+13. [API Layer](#13-api-layer)
+14. [Frontend](#14-frontend)
+15. [Notification & Alerting](#15-notification--alerting)
+16. [Scheduling & Orchestration](#16-scheduling--orchestration)
+17. [Security & Access Control](#17-security--access-control)
+18. [Failure Modes & Recovery](#18-failure-modes--recovery)
+19. [Safety Rules (Non-Negotiable)](#19-safety-rules-non-negotiable)
+20. [Key File Locations](#20-key-file-locations)
+21. [Known Constraints](#21-known-constraints)
+22. [Glossary](#22-glossary)
 
 ---
 
-## Runtime Topology
+## 1. Executive Summary
 
-| Service | Port | Process / Notes |
-|---------|------|-----------------|
-| Portfolio server | 7777 | `scripts/portfolio_server.py` -- HTTP API + React frontend |
-| PostgreSQL 15 | 5432 | Database `trade_ai`, user `trade_ai` |
-| Ollama LLM | 11434 | Model `qwen3:14b`, Intel Arc B50 GPU (Vulkan) |
-| OpenClaw gateway | 18789 | Conversational agent routing |
-| Scalp WebSocket | 7778 / 7779 | Real-time scalp feed |
-| Frontend (Vite) | served via 7777 | React SPA at `/v2/`, 50+ pages |
+Trade AI v12 is an automated trading intelligence and portfolio management platform. It operates as a single-tenant, self-hosted service on a dedicated Linux server, combining:
+
+- **Data ingestion** from 12+ external sources (market data, news, SEC filings, transcripts, economic indicators)
+- **31-stage pipeline** organized into 7 groups running pre-market through overnight
+- **20 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
+- **LLM-assisted classification** with a 4-provider fallback chain (local GPU-accelerated primary)
+- **4 conversational AI agents** accessible via Telegram/WhatsApp
+- **3 backend automation agents** for monitoring, hygiene, and critique
+- **Paper trading execution** via Alpaca with bracket orders, TCA, and reconciliation
+- **50+ page React dashboard** (Command Center v2) for operator control
+
+The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **paper-only mode**. Live trading is locked behind a 6-month validation gate requiring 55% win rate and 1.3 profit factor.
+
+### System Scale
+
+| Metric | Value |
+|--------|-------|
+| Python scripts | 304 |
+| Cron jobs | 141 |
+| API endpoints | 95+ |
+| Database tables | 233 |
+| Strategies | 23 (YAML-driven) |
+| Frontend pages | 53 |
+| Agents | 7 (4 conversational + 3 backend) |
+| External data sources | 12+ |
+| Research topics | 17 (DB-driven, LLM-curated) |
+| Topic articles ingested | 761+ |
+
+---
+
+## 2. Service Architecture
+
+Trade AI v12 has 6 distinct service boundaries:
+
+### Service Boundary Map
+
+```
++-------------------------------------------------------------------+
+|                          ms01-openclaw                              |
+|                                                                    |
+|  +------------------+    +------------------+    +---------------+ |
+|  | Portfolio Server  |    | Ollama LLM       |    | OpenClaw GW   | |
+|  | :7777 (Flask)     |<-->| :11434           |<-->| :18789        | |
+|  | 80+ API endpoints |    | qwen3:14b        |    | 4 agents      | |
+|  | React SPA @ /v2/  |    | Intel Arc B50    |    | Telegram/WA   | |
+|  +--------+----------+    +------------------+    +---------------+ |
+|           |                                                        |
+|  +--------v---------+    +------------------+    +---------------+ |
+|  | PostgreSQL 15     |    | Cron Scheduler   |    | Scalp WS      | |
+|  | :5432             |    | 130+ jobs        |    | :7778/:7779   | |
+|  | 219 tables        |    | systemd timers   |    | real-time feed| |
+|  +-------------------+    +------------------+    +---------------+ |
++-------------------------------------------------------------------+
+                    |                    |
+     +--------------+--------------------+--------------+
+     |              |              |              |      |
++----v----+  +------v-----+  +----v----+  +------v---+  |
+| Finviz  |  | News APIs  |  | Broker  |  | Cloud LLM|  |
+| Elite   |  | 7 sources  |  | Alpaca  |  | xAI/Anth/|  |
+|         |  |            |  | (paper) |  | OpenAI   |  |
++---------+  +------------+  +---------+  +----------+  |
+                                                         |
+                              +----v----+  +------v---+  |
+                              | SEC/FRED|  | YouTube  |  |
+                              | Gov Data|  | Transcr. |  |
+                              +---------+  +----------+  |
+```
+
+### Cloud-Equivalent Mapping
+
+| Current (Self-Hosted) | AWS Equivalent | Azure Equivalent |
+|----------------------|----------------|------------------|
+| Portfolio Server (Flask :7777) | ECS Fargate + ALB | Azure Container Apps + App Gateway |
+| PostgreSQL 15 (:5432) | RDS PostgreSQL | Azure Database for PostgreSQL |
+| Ollama LLM (:11434) | EC2 g5 instance / Bedrock | Azure ML GPU VM / Azure OpenAI |
+| OpenClaw Gateway (:18789) | ECS Fargate | Azure Container Apps |
+| Cron Scheduler | EventBridge Scheduler | Azure Logic Apps / Timer Triggers |
+| React SPA | S3 + CloudFront | Azure Blob + CDN |
+| Scalp WebSocket | API Gateway WebSocket | Azure Web PubSub |
+
+### Deployment Model
+
+**Current:** Single-tenant, single-server deployment. All services co-located on `ms01-openclaw`.
+
+**Cloud target:** Single-tenant, multi-service deployment:
+- Compute services containerized (Docker)
+- Database as managed service
+- LLM inference as GPU-accelerated container or managed API
+- Static frontend served from object storage + CDN
+- Cron replaced by managed scheduler
+
+---
+
+## 3. Runtime Topology
+
+| Service | Port | Process | Health Check |
+|---------|------|---------|-------------|
+| Portfolio Server | 7777 | `scripts/portfolio_server.py` | `GET /api/v2/system-health` |
+| PostgreSQL 15 | 5432 | `postgresql` | `pg_isready` |
+| Ollama LLM | 11434 | `ollama serve` | `GET /api/tags` |
+| OpenClaw Gateway | 18789 | OpenClaw daemon | `GET /health` |
+| Scalp WebSocket | 7778/7779 | Scalp feed server | TCP connect |
+| Frontend (Vite) | via 7777 | Served as static from Portfolio Server | `GET /v2/` |
 
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
+### Systemd Services
+
+| Unit | Type | Purpose |
+|------|------|---------|
+| `tradeai-continuous.service` | user | Portfolio server + continuous runner |
+| `tradeai-continuous.timer` | user | Auto-restart timer |
+| `aegis-overnight.service` | user | Aegis synthesis jobs |
+| `aegis-surveillance.service` | user | Aegis overnight monitoring |
+| `portfolio-daily.service` | user | Daily portfolio operations |
+| `recovery-watch.service` | user | Stop-out detection loop |
+| `ollama.service` (override) | system | GPU-accelerated LLM server |
+
 ---
 
-## Database
+## 4. Database Layer
 
 - **Engine:** PostgreSQL 15
-- **Table count:** 219
-- **Connection:** port 5432, database `trade_ai`, user `trade_ai`
+- **Table count:** 233
+- **Connection:** `localhost:5432`, database `trade_ai`, user `trade_ai`
+- **Backup:** 7-day rolling `pg_dump` to `backups/db/trade_ai_*.sql.gz`
 
-### Key Tables
+### Schema Groups
+
+| Group | Key Tables | Purpose |
+|-------|-----------|---------|
+| **Trading Core** | `trade_ai_scans`, `paper_trade_proposals`, `paper_trades` | Screener results, proposals, executed trades |
+| **Incubator** | `incubator_universe`, `ticker_strategy_classifications` | Symbol lifecycle, strategy assignments |
+| **Intelligence** | `watchlist_agent_results`, `intelligence_entities`, `news_articles` | Agent outputs, NLP entities, news corpus |
+| **Market Data** | `market_quotes`, `indicator_confluence_cache`, `fundamental_data` | Prices, technicals, fundamentals |
+| **Enrichment** | `ticker_enrichment_cache`, `catalyst_cache` | 60+ Finviz fields, catalyst data |
+| **Strategy** | `strategy_signals`, `strategy_configs` | Signal history, dynamic config |
+| **Execution Quality** | `paper_execution_quality`, `broker_reconciliation_items`, `trade_thesis_outcomes` | TCA metrics, recon, outcome tracking |
+| **Agent** | `cio_decisions`, `decision_outcomes`, `agent_handoffs` | Decision audit trail |
+| **Portfolio** | `portfolio_holdings`, `portfolio_accounts`, `personal_situation` | Positions, accounts, personal data |
+| **System** | `pipeline_runs`, `daily_system_metrics` | Pipeline health, trending |
+| **Research** | `sec_form4`, `youtube_transcripts` | Filings, transcript archive |
+| **Topic Intelligence** | `topic_monitor`, `content_entity_links`, `blocked_content`, `iris_library_gap_fills`, `topic_curation_feedback` | Topic research, entity linking, quality gating, learning loop |
+
+### Critical Data Volumes
+
+| Table | Approximate Rows | Growth Rate |
+|-------|------------------|-------------|
+| `ticker_enrichment_cache` | 1,139 symbols | +50/week |
+| `news_articles` | 552+ | +20-50/day |
+| `trade_ai_scans` | ~2,000/day (4 windows) | Daily rotation |
+| `watchlist_agent_results` | Growing | +50-100/day |
+| `pipeline_runs` | Growing | +31/day |
+
+---
+
+## 5. Pipeline Architecture
+
+The pipeline runs **31 stages organized into 7 groups**. Each group has a designated time window and dependency chain.
+
+```
+[1. DATA COLLECTION] >>> [2. ENRICHMENT] >>> [3. SCORING] >>> [4. INTELLIGENCE] >>> [5. PROPOSALS] >>> [6. EXECUTION] >>> [7. OVERNIGHT]
+    6-7 AM                   7-8 AM            8-9 AM           continuous          throughout day      market hours         8 PM+
+```
+
+### Group 1 -- Data Collection (6-7 AM M-F)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Finviz Screener Runner | `finviz_screener_runner.py` | Finviz Elite API (cookie + token) | `trade_ai_scans` rows |
+| Social Ingest | `social_ingest.py` | Social media feeds | Sentiment scores |
+| News Ingestion | `news_ingestion.py` | NewsAPI, Finnhub, FMP, Polygon, RSS | `news_articles` rows |
+| FRED Data Ingest | `fred_data_ingest.py` | Federal Reserve API | Economic indicators |
+| SEC Data Ingest | `sec_data_ingest.py` | SEC EDGAR | `sec_form4` (insider filings) |
+
+### Group 2 -- Enrichment (7-8 AM M-F)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Finviz Enrichment | `finviz_enrichment.py` | Finviz 5-view pages | 60+ fields per symbol in `ticker_enrichment_cache` |
+| Catalyst Enrichment | `catalyst_enrichment.py` | 7 API sources | `catalyst_verified` flag, `catalyst_cache` |
+| Symbol Enrichment | `symbol_enrichment.py` | Fundamental APIs | `fundamental_data` |
+| RAG Indexer | `rag_indexer.py` | News + transcripts + filings | Vector embeddings for search |
+
+### Group 3 -- Scoring (8-9 AM M-F)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Trade AI Orchestrator | `trade_ai_orchestrator.py` | Scans + enrichment | 55-point scores, GO/WAIT/NO-GO |
+| Indicator Engine | `indicator_engine.py` | yfinance OHLCV | 17 technical indicators in `indicator_confluence_cache` |
+| Premarket Watcher | `premarket_watcher.py` | Pre-market quotes | Gap and volume alerts |
+| Agent Router | `agent_router.py` | Scored symbols | Routes to appropriate agent |
+
+### Group 4 -- Intelligence (Continuous)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Watchlist Agent Jobs | `process_watchlist_agent_jobs.py` | Job queue | Agent analysis results |
+| Agent Watchlist Engine | `agent_watchlist_engine.py` | Agent outputs | Updated watchlists |
+| CIO Decision Engine | `cio_decision_engine.py` | All intelligence | `cio_decisions` |
+| Pipeline Watchdog | `pipeline_watchdog.py` | `pipeline_runs` | Failure alerts |
+
+### Group 5 -- Proposal Pipeline
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Weekly Incubator Builder | `weekly_incubator_builder.py` | Qualified scans | `incubator_universe` rows |
+| Daily Incubator Refresh | `daily_incubator_refresh.py` | Incubator symbols | Updated scores/catalysts |
+| Incubator Rolloff | `incubator_rolloff_engine.py` | Decayed symbols | Removed entries |
+| Proposal Promoter | `incubator_proposal_promoter.py` | ACTIVE incubator | `paper_trade_proposals` |
+| Proposal Enrichment | `proposal_enrichment_loop.py` | Open proposals | Enriched data packets |
+| Proposal Lifecycle | `proposal_lifecycle.py` | Proposal states | State transitions |
+
+### Group 6 -- Execution (Market Hours)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Risk Gate | `risk_gate.py` | Proposal + portfolio | Pass/fail risk check |
+| Paper Proposals UI | `paper_proposals_ui.py` | Approved proposals | UI approval flow |
+| Alpaca Paper | `alpaca_paper_adapter.py` | Approved orders | Paper trades on Alpaca |
+| Broker Reconciliation | `alpaca_paper_reconciler.py` | Fills vs expectations | `broker_reconciliation_items` |
+| Execution Quality | `execution_quality_analyzer.py` | Fill data | TCA metrics |
+
+### Group 7 -- Overnight (8 PM - 6 AM)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Overnight Batch | `overnight_batch.py` | Daily data | Consolidated metrics |
+| Agent Outcome Scorer | `agent_outcome_scorer.py` | Past recommendations | Performance grades |
+| Strategy Weekly Review | `strategy_weekly_review.py` | Strategy signals | Performance reports |
+| Overnight Embeddings | `overnight_batch_embeddings.py` | New content | Refreshed RAG index |
+
+---
+
+## 6. External Research & Signal Ingestion
+
+### Active Data Sources
+
+| Source | API / Method | Data Type | Query Frequency | Fallback |
+|--------|-------------|-----------|----------------|----------|
+| **Finviz Elite** | HTTP scrape (cookie + API token) | Screener results, 60+ enrichment fields | 4x daily (04:00, 07:00, 09:00, 10:00) | None -- primary screener, manual cookie refresh required |
+| **NewsAPI** | REST API (key) | News articles, headlines | 2x daily (06:30, 12:30) + on-demand | Finnhub news fallback |
+| **Finnhub** | REST API (key) | News, company filings, insider activity | On enrichment trigger | NewsAPI fallback |
+| **Polygon** | REST API (key) | Market data, quotes, corporate events | On catalyst enrichment | Yahoo Finance |
+| **FMP (Financial Modeling Prep)** | REST API (key) | Fundamentals, earnings, financial statements | On catalyst enrichment | AlphaVantage |
+| **AlphaVantage** | REST API (key) | Fundamentals, economic indicators | On enrichment | FMP fallback |
+| **Yahoo Finance (yfinance)** | Python library | OHLCV, quotes, dividends | Indicator refresh (5:45 AM), on-demand | Polygon |
+| **FRED** | REST API (key) | Federal Reserve economic data (rates, CPI, employment) | Daily (6 AM) | Cached last-known values |
+| **SEC EDGAR** | REST API (public) | Form 4 insider filings | Daily (8 PM) | Skip -- non-critical |
+| **YouTube Transcripts** | `youtube-transcript-api` | Video transcripts for financial analysis | Monthly discovery + on-demand | Skip -- supplementary |
+| **Alpaca** | REST API (key) | Paper trade execution, fills, positions | On execution + reconciliation | Manual fallback |
+| **Ollama (local LLM)** | HTTP (:11434) | Classification, review, health checks | Continuous (toll-gated) | Cloud LLM cascade |
+
+### Why Each Source Is Used
+
+| Source | Signal Provided | Impact if Unavailable |
+|--------|----------------|----------------------|
+| Finviz Elite | Volume/gap/float screener hits -- **the primary candidate discovery mechanism** | No new candidates surface. Pipeline stalls at Group 1. |
+| News APIs (4 sources) | Market-moving events, catalyst verification, sentiment | Catalyst scoring degrades; proposals lack event context |
+| Fundamentals (FMP/AV) | Earnings, revenue, debt ratios | Strategy filters using fundamental data produce false negatives |
+| Yahoo Finance | OHLCV for 17 technical indicators | Indicator engine outputs stale; confluence scores unreliable |
+| FRED | Macro context (rates, unemployment, CPI) | Macro overlay strategies (sector rotation, bond income) lose context |
+| SEC EDGAR | Insider buying/selling signals | Insider signal absent; non-blocking for most strategies |
+| YouTube Transcripts | Earnings call language, forward guidance | Alex agent income analysis loses qualitative depth |
+| Alpaca | Order routing, fill confirmation | Execution halted; proposals queue without fills |
+| Local LLM | Classification, critique, health checks | Falls back to cloud LLM (higher cost, higher latency) |
+
+### Source Availability Handling
+
+```
+if source.available:
+    ingest(source.data)
+    update_freshness(source, now())
+elif source.has_fallback:
+    ingest(source.fallback.data)
+    log_degraded(source)
+    alert_operator(source, "degraded")
+else:
+    use_cached_last_known(source)
+    if staleness > source.max_stale_hours:
+        alert_operator(source, "stale")
+        mark_dependent_stages("degraded")
+```
+
+Every source has a `max_stale_hours` threshold. When exceeded, the `pipeline_watchdog` fires a Telegram alert and marks dependent pipeline stages as degraded.
+
+### Research Architecture (Stub -- Not Yet Implemented)
+
+The following integrations are **architecturally designed but not yet live**:
+
+| Integration | Purpose | Status |
+|-------------|---------|--------|
+| Google Programmable Search API | Broad web research for novel signals | Stub -- endpoint defined, no API key provisioned |
+| Earnings transcript provider (e.g., Seeking Alpha, Motley Fool) | Structured earnings call analysis | Stub -- YouTube transcripts used as partial substitute |
+| Alternative data feeds (satellite, credit card, app usage) | Non-traditional alpha signals | Planned -- not architectured yet |
+| Real-time news streaming (WebSocket) | Sub-second news reaction | Planned -- current batch polling at 2x/day |
+
+When these stubs are activated, they will integrate at the **Group 1 (Data Collection)** and **Group 2 (Enrichment)** pipeline stages.
+
+---
+
+## 6b. Topic Intelligence System (Closed-Loop)
+
+The topic intelligence system discovers, ingests, curates, and links non-symbol research content (SSDI, trusts, sector analysis, etc.) using a closed-loop architecture where each iteration improves the next.
+
+### Architecture
+
+```
+[1] INGESTION (topic_ingestion.py)
+    17 topics from DB → LLM generates targeted queries →
+    YouTube API → Google News RSS → Brave → DuckDuckGo →
+    Saved Google search URLs reused → ALL results downloaded
+         |
+         v
+[2] CURATION (topic_curator.py) ← runs automatically after ingestion
+    LLM rates: approved / low_quality / blocked →
+    LLM extracts entities (tickers, topics, sectors) →
+    content_entity_links table connects to existing DB records →
+    LLM generates improved queries for next run →
+    Triggers RAG re-index of approved content
+         |
+         v
+[3] RAG INDEX (rag_indexer.py)
+    Approved content → embeddings → agents consume via RAG
+         |
+         v
+[4] AGENT CONSUMPTION (rag_retrieval.py)
+    Agent asks about NVDA → gets topic_intel from entity links →
+    Alex gets SSDI articles, Maria gets AI datacenter research
+         |
+         v
+[5] FEEDBACK LOOP (topic_curation_feedback)
+    Tickers extracted → Queries that worked → Better queries next run
+```
+
+### DB Tables
 
 | Table | Purpose |
 |-------|---------|
-| `trade_ai_scans` | Screener scan results with scores |
-| `paper_trade_proposals` | Proposals promoted from incubator |
-| `incubator_universe` | Active incubator symbols + strategy assignments |
-| `paper_trades` | Executed paper trades |
-| `watchlist_agent_results` | Agent-generated watchlist analysis |
-| `intelligence_entities` | Entity extraction from news/filings |
-| `news_articles` | Ingested news corpus |
-| `indicator_confluence_cache` | Pre-computed technical indicator values |
-| `pipeline_runs` | Pipeline execution log |
-| `strategy_signals` | Strategy-level signal history |
+| `topic_monitor` | 17 topics with queries, saved URLs, personal context, LLM-generated queries |
+| `content_entity_links` | Links articles/transcripts to tickers, topics, sectors |
+| `blocked_content` | Items never re-downloaded (LLM or operator blocked) |
+| `iris_library_gap_fills` | Search attempt log (source, query, results, saves) |
+| `topic_curation_feedback` | Learning loop: improved queries, quality notes, tickers found |
+
+### Active Topics (17)
+
+| Priority | Topic | Agent | Content Type |
+|----------|-------|-------|-------------|
+| P1 | Disability Retirement | Alex | SSDI, benefits, planning |
+| P1 | SSDI Benefits | Alex | Benefits updates, limits, rules |
+| P1 | SSDI Cash & Asset Shielding | Alex | Asset protection, trusts, ABLE accounts |
+| P2 | AI Data Center Build-Out | Maria | Infrastructure, power, cooling, GPUs |
+| P2 | IRMAA Medicare Surcharge | Alex | Medicare premiums, income thresholds |
+| P2 | Roth Conversion Strategy | Alex | Tax brackets, conversion planning |
+| P2 | Top Yield & Dividend Stocks | Steph | High yield, BDCs, CEFs, monthly income |
+| P2 | Trust & Estate Planning | Alex | Special needs trusts, ABLE, Medicaid |
+| P3 | AI Chip & Materials Layer | Maria | Semiconductors, HBM, packaging |
+| P3 | AI Networking Layer | Maria | InfiniBand, optical, switches |
+| P3 | Covered Call Income | Steph | CC strategies, ETFs, premium income |
+| P3 | Defense Sector Thesis | Maria | Defense budget, AI military |
+| P3 | Dividend Income Strategy | Steph | Dividend growth, aristocrats |
+| P3 | Emerging Sectors by Sentiment | Aegis | Sector rotation, momentum |
+| P3 | Top Swing Trade Setups | Steph | Breakout, momentum, gap setups |
+| P4 | Bond & Interest Rate | Steph | Treasury yields, rate forecast |
+| P5 | Tax Loss Harvesting | Alex | Wash sale, year-end strategies |
+
+### Search Cascade (per topic)
+
+1. **Saved Google search URLs** → extract query → YouTube API search (10 results each)
+2. **YouTube Data API v3** → search + transcript fetch (4-method: cookies, API, timedtext, yt-dlp)
+3. **Google News RSS** → free, 10 results per query
+4. **Brave Search News** → if API key active
+5. **DuckDuckGo HTML** → last resort, no key needed
+
+### Entity Linking
+
+When content has no ticker, it links by topic/sector/concept:
+- SSDI article → `entity_type='topic', entity_value='ssdi'`
+- NVDA datacenter article → `entity_type='ticker', entity_value='NVDA'` AND `entity_type='sector', entity_value='ai_infrastructure'`
+- Retirement planning → `entity_type='topic', entity_value='retirement_planning'`
+
+Entity links enable cross-system queries: "Show me everything about NVDA" returns trade proposals AND topic intelligence articles.
+
+### Access Points
+
+| Channel | Path |
+|---------|------|
+| Command Center | `/v2/topic-monitor` |
+| Telegram | `topic status`, `topic add`, `topic url`, `topic run` |
+| API | `/api/v2/topics`, `/api/v2/topics/by-ticker/{TICKER}`, `/api/v2/topics/entities` |
+| Agents | Automatic via RAG + entity links + agent_event_queue |
+
+### Daily API Cost
+
+| Source | Calls/Day | Cost |
+|--------|-----------|------|
+| YouTube Data API v3 | ~34 searches (3,400 of 10,000 free quota) | Free |
+| Google News RSS | ~51 fetches | Free |
+| YouTube transcript API | ~50 transcripts | Free |
+| Brave Search (if renewed) | ~34 queries | ~$0.17/day ($5/mo) |
+| Local LLM (curation) | ~67 calls, ~17 min GPU | ~$0.02 electricity |
+| Cloud LLM fallback | Rare | ~$0.01/day |
+| **Total** | | **Free-$0.20/day** |
+
+### Cron Schedule
+
+| Time | Script | Purpose |
+|------|--------|---------|
+| 6:45 AM M-F | `topic_ingestion.py --gaps-only --no-llm` | Fill gaps, fast |
+| 7:00 AM M-F | `topic_curator.py --improve-queries` | Rate, extract, link, improve |
+| 8:00 PM Sunday | `topic_ingestion.py` | Full run, all topics, with LLM |
 
 ---
 
-## Pipeline Architecture
-
-The pipeline runs 31 stages organized into 7 groups. Each group has a designated time window and dependency chain.
-
-```mermaid
-flowchart LR
-    subgraph G1["GROUP 1: DATA COLLECTION\n6-7 AM M-F"]
-        A1[finviz_screener_runner]
-        A2[social_ingest]
-        A3[news_ingestion]
-        A4[fred_data_ingest]
-        A5[sec_data_ingest]
-    end
-
-    subgraph G2["GROUP 2: ENRICHMENT\n7-8 AM M-F"]
-        B1[finviz_enrichment]
-        B2[catalyst_enrichment]
-        B3[symbol_enrichment]
-        B4[rag_indexer]
-    end
-
-    subgraph G3["GROUP 3: SCORING\n8-9 AM M-F"]
-        C1[trade_ai_orchestrator]
-        C2[indicator_engine]
-        C3[premarket_watcher]
-        C4[agent_router]
-    end
-
-    subgraph G4["GROUP 4: INTELLIGENCE\ncontinuous"]
-        D1[process_watchlist_agent_jobs]
-        D2[agent_watchlist_engine]
-        D3[cio_decision_engine]
-        D4[pipeline_watchdog]
-    end
-
-    subgraph G5["GROUP 5: PROPOSAL PIPELINE"]
-        E1[weekly_incubator_builder]
-        E2[daily_incubator_refresh]
-        E3[incubator_rolloff_engine]
-        E4[incubator_proposal_promoter]
-        E5[proposal_enrichment_loop]
-        E6[proposal_lifecycle]
-    end
-
-    subgraph G6["GROUP 6: EXECUTION\nmarket hours"]
-        F1[risk_gate]
-        F2[paper_proposals_ui]
-        F3[alpaca_paper]
-        F4[broker_reconciliation]
-        F5[execution_quality]
-    end
-
-    subgraph G7["GROUP 7: OVERNIGHT\n8 PM - 6 AM"]
-        H1[overnight_batch]
-        H2[agent_outcome_scorer]
-        H3[strategy_weekly_review]
-        H4[overnight_batch_embeddings]
-    end
-
-    G1 --> G2 --> G3 --> G4
-    G4 --> G5 --> G6
-    G6 --> G7
-    G7 -->|next day| G1
-```
-
-### Group Details
-
-**GROUP 1 -- DATA COLLECTION (6-7 AM M-F)**
-
-| Stage | Description |
-|-------|-------------|
-| `finviz_screener_runner` | Runs 2 Finviz Elite screeners at 4 time windows |
-| `social_ingest` | Social media sentiment ingestion |
-| `news_ingestion` | Multi-source news feed pull |
-| `fred_data_ingest` | Federal Reserve economic data |
-| `sec_data_ingest` | SEC filings ingestion |
-
-**GROUP 2 -- ENRICHMENT (7-8 AM M-F)**
-
-| Stage | Description |
-|-------|-------------|
-| `finviz_enrichment` | 60+ fields per symbol from Finviz |
-| `catalyst_enrichment` | 7 sources: Finnhub, NewsAPI, Polygon, FMP, AlphaVantage, Finviz, Yahoo |
-| `symbol_enrichment` | Fundamental + structural data |
-| `rag_indexer` | Embedding generation for RAG retrieval |
-
-**GROUP 3 -- SCORING (8-9 AM M-F)**
-
-| Stage | Description |
-|-------|-------------|
-| `trade_ai_orchestrator` | 23-stage pipeline, 55-point scoring system |
-| `indicator_engine` | 17 technical indicators |
-| `premarket_watcher` | Pre-market gap and volume detection |
-| `agent_router` | Routes symbols to appropriate agent analysis |
-
-**GROUP 4 -- INTELLIGENCE (continuous)**
-
-| Stage | Description |
-|-------|-------------|
-| `process_watchlist_agent_jobs` | Async agent job processor |
-| `agent_watchlist_engine` | Agent-driven watchlist updates |
-| `cio_decision_engine` | Chief Investment Officer logic |
-| `pipeline_watchdog` | Monitors all 31 stages for failures |
-
-**GROUP 5 -- PROPOSAL PIPELINE**
-
-| Stage | Description |
-|-------|-------------|
-| `weekly_incubator_builder` | Multi-strategy classifier across 20 strategies |
-| `daily_incubator_refresh` | Score/RVOL/catalyst freshness updates |
-| `incubator_rolloff_engine` | Removes decayed or disqualified symbols |
-| `incubator_proposal_promoter` | Promotes qualifying symbols to proposals |
-| `proposal_enrichment_loop` | Continuous proposal data refresh |
-| `proposal_lifecycle` | State machine transitions |
-
-**GROUP 6 -- EXECUTION (market hours)**
-
-| Stage | Description |
-|-------|-------------|
-| `risk_gate` | Pre-trade risk validation |
-| `paper_proposals_ui` | UI-driven approval flow |
-| `alpaca_paper` | Alpaca paper broker integration |
-| `broker_reconciliation` | Verifies fills match expectations |
-| `execution_quality` | Post-fill quality analysis |
-
-**GROUP 7 -- OVERNIGHT (8 PM - 6 AM)**
-
-| Stage | Description |
-|-------|-------------|
-| `overnight_batch` | Nightly data consolidation |
-| `agent_outcome_scorer` | Grades past agent recommendations |
-| `strategy_weekly_review` | Per-strategy performance review |
-| `overnight_batch_embeddings` | Embedding refresh for RAG |
-
----
-
-## Screener System
+## 7. Screener System
 
 - **Source:** Finviz Elite (requires active subscription + cookie)
 - **Config:** `assets/screeners.yaml`
+- **Authentication:** Dual method (cookie for scraping + API token for API calls)
 
 ### Active Screeners
 
@@ -219,51 +466,61 @@ flowchart LR
 
 ### Run Windows
 
-| Window | Time |
-|--------|------|
-| 1 | 04:00 AM |
-| 2 | 07:00 AM |
-| 3 | 09:00 AM |
-| 4 | 10:00 AM |
+| Window | Time | Purpose |
+|--------|------|---------|
+| 1 | 04:00 AM | Pre-market scan (European hours) |
+| 2 | 07:00 AM | Pre-market US hours |
+| 3 | 09:00 AM | Market open |
+| 4 | 10:00 AM | Post-open consolidation |
 
 ---
 
-## Strategy System
+## 8. Strategy Engine
 
 All 20 strategies are loaded dynamically from `config/strategies/*.yaml` at runtime. There are no hardcoded strategy lists anywhere in the codebase.
 
 ### Strategy Classification Flow
 
-```mermaid
-flowchart TD
-    SYM[Symbol from screener/incubator] --> DET{Phase 1:\nDeterministic Filters}
-    DET -->|screen_filters match| ASSIGN1[Assign matched strategies]
-    DET -->|no match| LLM{Phase 2:\nLLM Classification}
-    LLM -->|qwen3:14b| ASSIGN2[Assign thesis-driven strategies]
-    ASSIGN1 --> MULTI[Multi-strategy assignment]
-    ASSIGN2 --> MULTI
-    MULTI --> INC[Write to incubator_universe]
 ```
-
-**Phase 1 -- Deterministic filter matching:** Uses `screen_filters` from YAML + enrichment data (60+ Finviz fields + indicator cache).
-
-**Phase 2 -- LLM-assisted classification:** Uses `qwen3:14b` for thesis-driven and sector-specific strategies where deterministic data is insufficient.
+Symbol from screener/incubator
+    |
+    v
+Phase 1: Deterministic Filters
+(screen_filters from YAML + enrichment data)
+    |
+    +-- match --> Assign matched strategies
+    |
+    +-- no match --> Phase 2: LLM Classification
+                     (qwen3:14b thesis-driven)
+                         |
+                         v
+                     Assign thesis-driven strategies
+    |
+    v
+Multi-Strategy Assignment
+(single symbol can match multiple strategies)
+    |
+    v
+Write to incubator_universe
+```
 
 ### Strategies by Timeframe
 
 | Timeframe | Strategies |
 |-----------|------------|
-| INTRADAY | `gap_and_go`, `momentum_scalp` |
-| SHORT_SWING | `earnings_catalyst`, `swing_breakout`, `swing_trade`, `speculative_growth`, `tax_loss_harvest` |
-| MEDIUM_SWING | `recovery_watch`, `sector_rotation` |
-| POSITION | 8 strategies (income, dividend, growth, etc.) |
-| CASH | `cash_or_stable` |
+| **INTRADAY** | `gap_and_go`, `momentum_scalp` |
+| **SHORT_SWING** | `earnings_catalyst`, `swing_breakout`, `swing_trade`, `speculative_growth`, `tax_loss_harvest` |
+| **MEDIUM_SWING** | `recovery_watch`, `sector_rotation` |
+| **POSITION** | `income_add`, `core_growth_compounder`, `core_index`, `covered_call_income`, `defense_thesis`, `dividend_growth_compounder`, `high_yield_income_bdc`, `international_dividend`, `reit_income`, `bond_income` |
+| **CASH** | `cash_or_stable` |
 
-A single symbol can match multiple strategies simultaneously via the multi-strategy classifier.
+Each YAML strategy defines: entry criteria, risk parameters (position size, stop placement), scoring weights, exit rules, account eligibility, and co-enablement rules.
+
+**14 of 20 strategies require LLM classification** (IV rank, dividend growth years, unrealized losses not available in the deterministic enrichment cache).
 
 ---
 
-## Incubator Pipeline
+## 9. Incubator Pipeline
 
 The incubator is the holding area between raw screener hits and actionable proposals.
 
@@ -271,15 +528,15 @@ The incubator is the holding area between raw screener hits and actionable propo
 
 1. **`weekly_incubator_builder`** (Sunday 7 PM) -- Pulls qualified tickers from `trade_ai_scans` (score >= 30, RVOL >= 3, catalyst verified). Classifies each against all 20 strategies.
 
-2. **`daily_incubator_refresh`** (daily) -- Updates scores, RVOL, and catalyst freshness. Calls `catalyst_enrichment` for symbols with stale data.
+2. **`daily_incubator_refresh`** (daily) -- Updates scores, RVOL, and catalyst freshness.
 
 3. **`incubator_rolloff_engine`** -- Removes symbols that no longer meet criteria.
 
-4. **`incubator_proposal_promoter`** (8:20 AM + 6:10 PM M-F) -- Promotes qualifying symbols to `paper_trade_proposals`.
+4. **`incubator_llm_screener`** (NEW) -- Pre-promotion LLM screening for quality control.
+
+5. **`incubator_proposal_promoter`** (8:20 AM + 6:10 PM M-F) -- Promotes qualifying symbols.
 
 ### Promotion Criteria
-
-A symbol is promoted when **any** of these conditions are met:
 
 | Condition | Requirements |
 |-----------|--------------|
@@ -288,188 +545,403 @@ A symbol is promoted when **any** of these conditions are met:
 
 ---
 
-## Proposal Lifecycle
+## 10. Proposal Lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> PROPOSED : promoter creates
-    PROPOSED --> ENRICHING : enrichment loop picks up
-    ENRICHING --> SCORED : scoring complete
-    SCORED --> RISK_CHECK : enters risk gate
-    RISK_CHECK --> APPROVED : passes risk gate
-    RISK_CHECK --> REJECTED : fails risk gate
-    APPROVED --> PENDING_ENTRY : awaiting entry zone
-    PENDING_ENTRY --> ENTRY_ZONE_VALID : price in range
-    PENDING_ENTRY --> ENTRY_MISSED : price moved past zone
-    ENTRY_ZONE_VALID --> FILLED : paper order executed
-    ENTRY_MISSED --> EXPIRED : no re-entry
-    FILLED --> OPEN : position tracked
-    OPEN --> CLOSED : exit hit (TP/SL/manual)
-    REJECTED --> [*]
-    EXPIRED --> [*]
-    CLOSED --> [*]
+```
+[PROPOSED] --> [ENRICHING] --> [SCORED] --> [RISK_CHECK]
+                                               |
+                            +------------------+------------------+
+                            |                                     |
+                       [APPROVED]                            [REJECTED]
+                            |
+                     [PENDING_ENTRY]
+                            |
+              +-------------+-------------+
+              |                           |
+       [ENTRY_ZONE_VALID]          [ENTRY_MISSED]
+              |                           |
+          [FILLED]                    [EXPIRED]
+              |
+          [OPEN]
+              |
+          [CLOSED]
 ```
 
-The frontend displays an 8-stage "pipeline chevron" visual indicator showing each proposal's current position in the lifecycle.
+The frontend displays an 8-stage "pipeline chevron" visual indicator showing each proposal's current position. The LLM review pipeline processes proposals in 4 chunks with a state machine controlling chunk transitions.
+
+### Proposal Enrichment Packet
+
+Each proposal accumulates:
+- Technical levels (support/resistance/ATR)
+- Catalyst data (7 sources)
+- Indicator confluence (17 indicators)
+- Agent analysis results
+- Risk gate assessment
+- LLM review chunks (4 phases)
 
 ---
 
-## Agent Layer
+## 11. Agent Layer
 
-### Conversational Agents (OpenClaw, port 18789)
+### Conversational Agents (OpenClaw Gateway :18789)
 
-| Agent | Role |
-|-------|------|
-| **Maria** | Risk assessment, position sizing, portfolio impact analysis |
-| **Steph** | Technical analysis, entry/exit timing, wealth advisory |
-| **Aegis** | Nightly synthesis, morning briefs, overnight surveillance |
-| **Alex** | Income strategy, Roth conversion planning, SSDI/IRMAA impact |
+| Agent | Role | Key Capabilities |
+|-------|------|-------------------|
+| **Maria** | Risk assessment | Position sizing, portfolio impact, exposure analysis, correlation checks |
+| **Steph** | Technical analysis | Entry/exit timing, chart patterns, wealth advisory, indicator confluence |
+| **Aegis** | Synthesis & surveillance | Nightly synthesis, morning briefs, cross-agent coordination, overnight monitoring |
+| **Alex** | Income strategy | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation |
 
-### Backend Orchestration Agents
+Agents are accessible via Telegram and WhatsApp. Configuration is in `config/agents.yaml` and personality/behavior rules in the agents bible (`docs/project/agents_bible.md`).
 
-| Agent | Role |
-|-------|------|
-| **Iris** | Library hygiene, content quality, stale data detection |
-| **Pipeline watchdog** | Monitors 31 pipeline stages for failures/delays |
-| **Scalp critic** | LLM critique of screener candidates |
+### Backend Automation Agents
+
+| Agent | Role | Script |
+|-------|------|--------|
+| **Iris** | Library hygiene -- content quality, stale data detection, dependency audits | `scripts/iris_*.py` |
+| **Pipeline Watchdog** | Health monitoring -- 31 stage failure/delay detection | `scripts/pipeline_watchdog.py` |
+| **Scalp Critic** | LLM critique of screener candidates before promotion | `scripts/incubator_llm_screener.py` |
+
+### Agent Processing Schedule
+
+| Window | Interval | Jobs/Run | Context |
+|--------|----------|----------|---------|
+| Market hours (6 AM - 7 PM) | Every 15 min | 10 jobs | Active trading context |
+| Overnight (8 PM - 11 PM) | Every 5 min | 25 jobs | Batch processing |
+| Weekend | Every 10 min | 15 jobs | Catch-up processing |
 
 ---
 
-## LLM Configuration
+## 12. LLM Subsystem
 
-All LLM config is sourced from `.env` -- zero hardcoded values.
+### Configuration
 
-- **Config hub:** `scripts/local_llm_config.py`
-- **Primary model:** `qwen3:14b` via Ollama (localhost:11434)
-- **Hardware:** Intel Arc B50 GPU, Vulkan backend
+All LLM config is sourced from `.env` -- zero hardcoded values. Configuration hub: `scripts/local_llm_config.py`.
+
+### Primary Model
+
+| Parameter | Value |
+|-----------|-------|
+| Model | `qwen3:14b` |
+| Runtime | Ollama (localhost:11434) |
+| GPU | Intel Arc B50 (Vulkan backend) |
+| Layer offload | 41/41 layers on GPU |
+| Keep-alive | Persistent (`OLLAMA_KEEP_ALIVE=-1`) |
+| Performance | ~15s per chunk (GPU) vs ~300s (CPU) |
 
 ### Routing Fallback Chain
 
 ```
-local (qwen3:14b) --> grok (xAI) --> claude (Anthropic) --> openai
+local (qwen3:14b) --> grok (xAI) --> claude (Anthropic) --> openai (OpenAI)
 ```
 
-A daily budget limit is tracked. On budget exhaustion the system auto-falls back to the next provider in the chain.
+Budget tracking is per-day. On budget exhaustion, the system auto-falls back to the next provider.
+
+### Toll Gate (GPU Contention Prevention)
+
+The system uses `fcntl.flock()` to serialize LLM requests through a toll gate file. This prevents GPU memory contention when multiple cron jobs attempt simultaneous inference.
+
+### Toll Gate Detail
+
+The toll gate uses `/tmp/ollama_llm_gate.lock` with `fcntl.flock(LOCK_EX)`. Process flow:
+1. Caller acquires exclusive file lock (blocks up to 600s)
+2. Writes PID + timestamp to lock file for debugging
+3. Sends request to Ollama
+4. Releases lock on completion or timeout
+5. If lock acquisition fails, falls back to cloud LLM
+
+Multiple cron jobs (classifier, curator, reviewer, screener) all compete for the same GPU. The toll gate ensures serialized access with ~15s per chunk on qwen3:14b.
+
+### LLM Use Cases
+
+| Use Case | Script | Frequency |
+|----------|--------|-----------|
+| Strategy classification (14 strategies) | `multi_strategy_classifier.py` | Sunday night batch |
+| Proposal review (4-chunk pipeline) | `proposal_llm_reviewer.py` | Per proposal |
+| Incubator pre-screening | `incubator_llm_screener.py` | Pre-promotion |
+| Holdings health refresh | `holdings_llm_refresh.py` | Periodic |
+| Agent responses | Via OpenClaw | On user interaction |
+| Duplicate proposal prevention | `incubator_proposal_promoter.py` | On promotion |
+| **Topic query generation** | `topic_ingestion.py --curate` | Per ingestion run |
+| **Content quality rating** | `topic_curator.py` | Post-ingestion |
+| **Entity extraction (tickers/topics/sectors)** | `topic_curator.py` | Post-ingestion |
+| **Query improvement (learning loop)** | `topic_curator.py --improve-queries` | Daily |
 
 ---
 
-## API Layer
+## 13. API Layer
 
 - **Endpoint count:** 80+
 - **Base path:** `/api/v2/*`
 - **Server:** `scripts/portfolio_server.py` on port 7777
-- **Handler:** `scripts/api_v2.py` (11,000+ lines)
+- **Handler:** `scripts/api_v2.py` (11,700+ lines)
+- **Protocol:** HTTP/JSON (no auth layer -- internal network only)
 
-### Key Endpoint Groups
+### Endpoint Groups
 
-| Group | Examples |
-|-------|---------|
-| Portfolio | Holdings, P&L, allocation, rebalance signals |
-| Watchlist | Agent watchlist results, add/remove symbols |
-| Proposals | Proposal CRUD, lifecycle transitions, approval |
-| Intelligence | Entity graph, catalyst timeline, news feed |
-| Strategy | Strategy performance, signal history, YAML config |
-| Agents | Agent job submission, result retrieval |
-| Risk | Risk gate status, exposure checks |
-| Journal | Trade journal entries, annotations |
-| Research | RAG search, symbol deep-dive |
+| Group | Key Endpoints | Methods |
+|-------|--------------|---------|
+| **Portfolio** | `portfolio`, `portfolio-summary`, `portfolio-p-and-l` | GET |
+| **Watchlist** | `watchlist`, `watchlist-items`, `agent-watchlist-results` | GET, POST |
+| **Proposals** | `paper-proposals`, `paper-proposals/promote`, `proposal/{id}` | GET, POST, PUT |
+| **Intelligence** | `intelligence-entities`, `catalyst-timeline`, `news-feed` | GET |
+| **Strategy** | `strategy-configs`, `strategy-performance`, `signal-history` | GET, PUT |
+| **Agents** | `agent-pipeline`, `agent-handoffs`, `agent-outcome-scores` | GET |
+| **Risk** | `risk-gate-status`, `exposure-check`, `correlation-matrix` | GET |
+| **Journal** | `trade-journal`, `journal-entries`, `trade-outcomes` | GET, POST |
+| **Research** | `rag-search`, `symbol-deep-dive`, `research-topics` | GET, POST |
+| **Execution** | `execution-quality`, `broker-reconciliation`, `paper-outcomes` | GET, POST |
+| **Pipeline** | `pipeline-health-master`, `pipeline-stage-status` | GET |
+| **System** | `system-health`, `incubator` | GET |
+| **Governance** | `paper-outcomes`, `governance-dashboard` | GET, POST |
 
 ---
 
-## Frontend
+## 14. Frontend
 
 - **Framework:** React SPA, built with Vite
-- **Route:** served at `/v2/` via portfolio server (port 7777)
+- **Route:** served at `/v2/` via Portfolio Server (port 7777)
+- **Source:** `apps/command-center-v2/` (96 TypeScript/React files)
 - **Pages:** 50+
-- **Key views:** dashboard, watchlist, proposals pipeline, incubator, strategy grid, agent chat, risk monitor, trade journal
+
+### Key Views
+
+| Page | File | Purpose |
+|------|------|---------|
+| Dashboard | `Overview.tsx` | System overview, key metrics |
+| Portfolio | `Portfolio.tsx` | Holdings, P&L, AI health column |
+| Watchlist | Watchlist modules | Agent results, symbol details |
+| Proposals | `PaperProposals.tsx` | Pipeline chevron, LLM review chunks |
+| Incubator | Incubator modules | Symbol lifecycle, strategy grid |
+| Execution Quality | `ExecutionQuality.tsx` | TCA metrics |
+| Broker Reconciliation | `BrokerReconciliation.tsx` | Recon items |
+| Paper Outcomes | Paper outcomes modules | Thesis vs outcome tracking |
+| Governance | `LiveGovernance.tsx` | Paper governance dashboard, LIVE banner |
+| Strategy Admin | `StrategyAdmin.tsx` | YAML config editor |
+| Risk Monitor | `Risk.tsx` | Exposure, correlation, limits |
+| Trade Journal | `Journal.tsx` | Entries, annotations, reports |
+| Technical Analysis | `Technical.tsx` | Charts, indicators |
+| Agent Chat | Agent modules | Conversational interfaces |
+| Retirement/Income | `Retirement.tsx` | Alex integration, Roth planning |
 
 ---
 
-## Notification Channels
+## 15. Notification & Alerting
 
-| Channel | Integration | Config |
-|---------|-------------|--------|
-| Telegram (primary) | Bot API | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| WhatsApp | Twilio API | Twilio credentials in `.env` |
-| Email | SMTP | SMTP config in `.env` |
-| Slack | Webhook | Webhook URL in `.env` |
+| Channel | Integration | Config | Priority |
+|---------|-------------|--------|----------|
+| **Telegram** (primary) | Bot API | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | P1 -- all alerts |
+| **WhatsApp** | Twilio API | Twilio credentials | P2 -- agent conversations |
+| **Email** | SMTP | SMTP config | P3 -- reports |
+| **Slack** | Webhook | Webhook URL | P4 -- optional |
 
-All channels are toggled via `ENABLE_*` flags in `.env`.
+All channels toggled via `ENABLE_*` flags in `.env`.
+
+### Alert Types
+
+| Alert | Source | Trigger |
+|-------|--------|---------|
+| Smart Proactive Alerts | `telegram_smart_alerts.py` | 6 AM daily |
+| Pipeline Failure | `pipeline_watchdog.py` | Stage failure/staleness |
+| System Health | `system_health_alerts.py` | Threshold breach |
+| Iris Library Alert | Iris agent | Content hygiene issues |
+| Aegis Morning Brief | `aegis_morning_brief_delivery.py` | 8 AM daily |
+| Recovery Watch | `recovery_watch.py` | Stop-out detection |
 
 ---
 
-## Cron Schedule
+## 16. Scheduling & Orchestration
 
-130+ cron entries manage the full pipeline. Key schedules:
+130+ cron entries manage the full pipeline. Key schedule (all times Eastern):
+
+### Morning Cascade (5-8 AM)
+
+| Time | Job | Script |
+|------|-----|--------|
+| 5:00 AM | Alex daily scan | `alex_retirement_advisor.py` |
+| 5:45 AM | Indicator cache refresh | `indicator_cache_refresh.py` |
+| 6:00 AM | Smart proactive alerts | `telegram_smart_alerts.py` |
+| 6:15 AM | Agent context refresh | `agent_context_refresh.py` |
+| 6:25 AM | Agent intelligence discovery | `agent_intelligence.py` |
+| 6:30 AM | News ingestion | `news_ingestion.py` |
+| 6:45 AM | Topic ingestion (gaps only) | `topic_ingestion.py --gaps-only` |
+| 6:35 AM | Classify candidates | `multi_strategy_classifier.py` |
+| 6:45 AM | Sync watchlist to DB | `watchlist_sync.py` |
+| 6:50 AM | Materialize strategy cards | `strategy_card_materializer.py` |
+| 6:55 AM | Income engine | `income_engine.py` |
+| 7:00 AM | CIO decisions + enrichment | `cio_decision_engine.py` |
+| 7:00 AM | Topic curator (rate, extract, improve) | `topic_curator.py --improve-queries` |
+| 7:15 AM | State freshness + price sync | `state_freshness_writer.py` |
+| 7:25 AM | System health alerts | `system_health_alerts.py` |
+| 7:40 AM | Portfolio QA | `portfolio_level_qa.py` |
+| 8:00 AM | Aegis morning brief | `aegis_morning_brief_delivery.py` |
+
+### Market Hours (9 AM - 4 PM)
 
 | Time | Job |
 |------|-----|
-| 04:00 AM | Orchestrator run 1 (screener window 1) |
-| 05:45 AM | Indicator cache refresh |
-| 06:30 AM | News ingestion |
-| 07:00 AM | Enrichment pipeline + orchestrator run 2 |
-| 08:20 AM | Incubator proposal promoter (morning) |
-| 09:00 AM | Orchestrator run 3 |
-| 10:00 AM | Orchestrator run 4 |
-| 06:10 PM | Incubator proposal promoter (evening) |
-| 07:00 PM (Sun) | Weekly incubator builder |
-| 08:00 PM | Overnight batch |
-| 10:00 PM (Sun) | LLM incubator classification |
+| 09:00, 10:00 AM | Orchestrator runs (screener windows 3, 4) |
+| 11, 12:30, 1, 2, 3 PM | Hourly light reprice + intraday intelligence |
+| 12:30 PM | News ingestion (midday) |
+| 4:00 PM | End-of-day screener + news |
+
+### Evening & Overnight
+
+| Time | Job |
+|------|-----|
+| 6:10 PM | Proposal promoter (evening) |
+| 8:00 PM | Overnight batch + SEC Form 4 |
+| 9:00 PM | Auto-research |
+| Sun 7:00 PM | Weekly incubator builder |
+| Sun 8:00 PM | Full topic ingestion (all topics, with LLM) |
+| Sun 10:00 PM | LLM incubator classification |
 
 ---
 
-## Safety Rules
+## 17. Security & Access Control
 
-These rules are non-negotiable. No automation or agent may override them.
+### Current State (Self-Hosted)
 
-| # | Rule |
-|---|------|
-| 1 | `LIVE_TRADING_ENABLED=false` -- never change |
-| 2 | `ALPACA_MODE=paper` -- never change |
-| 3 | No risk gate threshold changes without explicit owner approval |
-| 4 | No auto-approval of proposals -- human-in-the-loop required |
-| 5 | No holdings modification by automation |
-| 6 | Holdings value must remain > $1M (assertion checks enforce this) |
+| Layer | Control |
+|-------|---------|
+| **Network** | Server on private network; no public-facing ports |
+| **API** | No authentication layer (internal-only access) |
+| **Database** | Password authentication, localhost-only binding |
+| **Secrets** | `.env` file (not in git, `.gitignore` enforced) |
+| **LLM** | Local inference primary; cloud API keys in `.env` |
+| **Broker** | Paper mode only; API keys scoped to paper trading |
 
-The system is in a 6-month paper validation period. Live trading will not be enabled until the validation window closes and results are reviewed.
+### Cloud Migration Security Requirements
+
+| Requirement | Implementation |
+|-------------|---------------|
+| API authentication | API Gateway + JWT / API key |
+| Network isolation | VPC + private subnets for DB and LLM |
+| Secrets management | AWS Secrets Manager / Azure Key Vault |
+| TLS everywhere | ALB/App Gateway termination + internal TLS |
+| Audit logging | CloudTrail / Azure Monitor |
+| RBAC | IAM roles per service |
 
 ---
 
-## Key File Locations
+## 18. Failure Modes & Recovery
+
+### Critical Failure Scenarios
+
+| Failure | Impact | Detection | Recovery |
+|---------|--------|-----------|----------|
+| **PostgreSQL down** | All services halt | `pg_isready` + watchdog | Restart service; restore from 7-day rolling backup |
+| **Ollama crash** | LLM classification stops | Health check on `:11434` | Systemd auto-restart; cloud fallback activates |
+| **Portfolio Server crash** | API + frontend unavailable | Health check on `:7777` | `pkill + restart`; systemd auto-restart |
+| **Finviz cookie expired** | No new screener candidates | Screener stage reports 0 results | Manual browser re-authentication |
+| **Cloud LLM budget exhausted** | Falls back to next provider | Budget counter in `.env` | Resets daily; or increase budget |
+| **Network outage** | External data sources unavailable | Source staleness exceeds threshold | Pipeline operates on cached data; alerts operator |
+| **Disk full** | Logs/backups fill disk | Disk monitoring | Log rotation; backup pruning |
+| **GPU driver issue** | LLM falls back to CPU (~20x slower) | Vulkan layer count check | Restart Ollama with override; verify `OLLAMA_VULKAN=1` |
+
+### Backup Strategy
+
+| Asset | Method | Retention | Location |
+|-------|--------|-----------|----------|
+| Database | `pg_dump` (gzipped) | 7-day rolling | `backups/db/` |
+| Configuration | `.env` + strategy YAML snapshot | Per-session | `backups/session*/` |
+| Source code | Git | Full history | `.git/` |
+| Portfolio state | JSON snapshot | 10 daily snapshots | `data/portfolios/snapshots/` |
+| Systemd services | Config backup | Per-change | `backups/systemd/` |
+
+### Recovery Procedures
+
+Full disaster recovery documented in `docs/RESTORE_GUIDE.md`:
+- 6 core services to restore
+- 23-point preflight check
+- DB restore sequence
+- Cron re-installation
+- OpenClaw reconfiguration
+
+---
+
+## 19. Safety Rules (Non-Negotiable)
+
+These rules are non-negotiable. No automation, agent, or operator override may violate them.
+
+| # | Rule | Enforcement |
+|---|------|-------------|
+| 1 | `LIVE_TRADING_ENABLED=false` -- never change | `.env` + code assertion |
+| 2 | `ALPACA_MODE=paper` -- never change | `.env` + adapter check |
+| 3 | No risk gate threshold changes without explicit owner approval | UI gate + audit log |
+| 4 | No auto-approval of proposals -- human-in-the-loop required | Proposal state machine |
+| 5 | No holdings modification by automation | Read-only portfolio access |
+| 6 | Holdings value must remain > $1M | Assertion check in code |
+
+**Validation gate:** Live trading will not be enabled until:
+- 6-month paper validation window closes (~Nov 2026)
+- Win rate >= 55%
+- Profit factor >= 1.3
+- Full governance review completed
+
+---
+
+## 20. Key File Locations
 
 | Path | Purpose |
 |------|---------|
 | `.env` | All secrets, API keys, feature flags |
+| `.env.example` | Template with all variables documented |
 | `config/strategies/*.yaml` | 20 strategy definitions (loaded dynamically) |
 | `assets/screeners.yaml` | Finviz screener URLs + run windows |
+| `assets/portfolio_accounts.yaml` | Account definitions |
+| `assets/weights.yaml` | Asset allocation weights |
 | `data/portfolios/state/holdings.json` | Portfolio state (current holdings) |
+| `data/portfolios/state/personal_situation.json` | Personal data (18 keys) |
 | `data/state/ticker_enrichment_cache.json` | Enrichment cache (1,139 symbols) |
-| `scripts/api_v2.py` | All 80+ API endpoints |
-| `scripts/portfolio_server.py` | HTTP server entry point |
+| `scripts/api_v2.py` | All 80+ API endpoints (11,700+ lines) |
+| `scripts/portfolio_server.py` | HTTP server entry point (1,767 lines) |
+| `scripts/portfolio_orchestrator.py` | Orchestration hub (1,714 lines) |
+| `scripts/trade_ai_orchestrator.py` | Screener + scoring (873 lines) |
 | `scripts/local_llm_config.py` | LLM configuration hub |
+| `scripts/local_llm.py` | Ollama inference with toll gate |
+| `scripts/topic_ingestion.py` | Topic-based content ingestion (4-source cascade) |
+| `scripts/topic_curator.py` | Post-ingestion curation (rate, extract, link, improve) |
+| `sql/migrations/` | 22 SQL migration files |
+| `crontab_backup.txt` | Full cron schedule backup |
+| `requirements.txt` | 90 Python packages |
+| `docs/RESTORE_GUIDE.md` | Disaster recovery guide |
+| `docs/project/agents_bible.md` | Agent behavior rules |
+| `docs/project/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md` | Strategy playbooks |
 
 ---
 
-## Known Constraints
+## 21. Known Constraints
 
-| Constraint | Impact |
-|------------|--------|
-| LLM classification speed | ~4.5 min per symbol on Intel Arc B50; scheduled overnight to avoid blocking daytime pipeline |
-| Finviz cookie expiry | Periodic manual browser refresh required to re-authenticate |
-| yfinance rate limits | `indicator_cache_refresh` throttled to ~2-3s per symbol |
-| LLM-only strategies | 14 position/income strategies require LLM classification (IV rank, dividend growth years, unrealized losses not available in enrichment cache) |
+| Constraint | Impact | Mitigation |
+|------------|--------|------------|
+| LLM classification speed | ~4.5 min/symbol on Intel Arc B50 (GPU) | Scheduled overnight; toll gate queuing |
+| Finviz cookie expiry | Periodic manual browser authentication | Dual auth (cookie + API token); alert on 0-result scans |
+| yfinance rate limits | ~2-3s throttle per symbol | Batch processing with delays |
+| LLM-only strategies | 14/20 strategies need LLM (data not in enrichment cache) | Scheduled overnight batch |
+| Proposal enrichment latency | ~30s-1min per proposal | Chunked async state machine |
+| Single-server deployment | No HA, single point of failure | Automated backups; documented recovery |
+| No API authentication | Internal-only assumption | Must add auth before any network exposure |
 
 ---
 
-## Glossary
+## 22. Glossary
 
 | Term | Definition |
 |------|------------|
 | GO | Screener decision: symbol qualifies for trading |
 | WAIT | Screener decision: monitor but do not trade |
+| NO-GO | Screener decision: disqualified |
 | RVOL | Relative volume vs. 20-day average |
 | ATR | Average true range (14-period) |
 | R:R | Risk-to-reward ratio |
+| TCA | Transaction cost analysis |
 | ENTRY_MISSED | Price moved beyond the defined entry zone |
 | ENTRY_ZONE_VALID | Price is still within tradeable entry range |
-| Pipeline chevron | Visual 8-stage progress indicator for proposals in the frontend |
+| Pipeline chevron | Visual 8-stage progress indicator for proposals |
+| Toll gate | `fcntl.flock()` serialization for GPU access |
+| Incubator | Holding area between screener hits and proposals |
+| Enrichment cache | Pre-computed Finviz + fundamental data per symbol |
+| Strategy YAML | Dynamic strategy definition file loaded at runtime |
+| Paper mode | All trades executed on Alpaca paper (simulated) |
+| Profit factor | Gross profit / gross loss ratio |
