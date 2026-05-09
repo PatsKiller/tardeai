@@ -12727,4 +12727,52 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 31: Backtesting + Champion/Challenger ─────────────────────
+    if base_path == "/api/v2/backtesting/status":
+        try:
+            status = {}
+            for tbl, lbl in [("backtest_datasets","datasets"), ("strategy_backtest_runs","runs"),
+                             ("strategy_backtest_trades","trades"), ("challenger_definitions","challengers"),
+                             ("champion_challenger_results","comparisons")]:
+                r = _db_query(f"SELECT COUNT(*) as c FROM {tbl}", fetch="one")
+                status[f"{lbl}_total"] = r["c"] if r else 0
+            return 200, {"ok": True, "data": status}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/datasets":
+        try:
+            rows = _db_query("SELECT dataset_id, name, source_type, rows_count, start_date, end_date, created_at FROM backtest_datasets ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/runs":
+        try:
+            rows = _db_query("SELECT run_id, strategy_id, run_type, status, start_date, end_date, duration_seconds, created_at FROM strategy_backtest_runs ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/results":
+        try:
+            rows = _db_query("SELECT result_id, run_id, strategy_id, simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, sample_size_status, created_at FROM strategy_backtest_results ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/trades":
+        try:
+            rows = _db_query("SELECT simulated_trade_id, run_id, strategy_id, symbol, entry_price, exit_price, pnl, r_multiple, exit_reason FROM strategy_backtest_trades ORDER BY created_at DESC LIMIT 50") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/champion-challenger":
+        try:
+            rows = _db_query("SELECT challenger_id, name, domain, strategy_id, challenger_type, status, created_at FROM challenger_definitions ORDER BY created_at DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
