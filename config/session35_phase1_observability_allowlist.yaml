@@ -1,0 +1,28 @@
+# Session 35 Phase 1: Safe observability-only stages
+# Broker/order/config/Telegram stages are blocked.
+# Rollback: crontab crontab_session35_phase1_rollback.txt
+
+allowed_stages:
+  - stage_key: system_facts
+    mode: live
+    risk_class: SAFE_READ_ONLY
+  - stage_key: self_improvement_snapshot
+    mode: live
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: self_improvement_component_health
+    mode: live
+    risk_class: SAFE_ANALYSIS_WRITE
+
+blocked_patterns:
+  - alpaca
+  - submit_order
+  - place_order
+  - execute-ready
+  - broker_order
+  - cancel_order
+  - replace_order
+  - close_position
+  - telegram send
+  - approve implementation
+  - promote challenger
+  - config apply
