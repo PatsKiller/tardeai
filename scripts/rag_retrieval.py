@@ -152,6 +152,12 @@ def _keyword_fallback(symbol, limit, cur):
             ("news", "SELECT id, title, CAST(relevance_score AS INT), created_at FROM news_articles WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
             ("agent_result", "SELECT id, agent||': '||COALESCE(recommendation,''), CAST(confidence*100 AS INT), created_at FROM watchlist_agent_results WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
             ("cio_decision", "SELECT decision_id, symbol||' CIO: '||COALESCE(action,''), CAST(confidence_raw*100 AS INT), created_at FROM cio_decisions WHERE symbol=%s ORDER BY created_at DESC LIMIT %s", (symbol, limit)),
+            # Topic intelligence linked to this ticker via entity extraction
+            ("topic_intel", """SELECT na.id, na.title, CAST(COALESCE(na.relevance_score,0.5)*100 AS INT), na.created_at
+                FROM content_entity_links cel
+                JOIN news_articles na ON cel.content_type='news_article' AND cel.content_id=na.id
+                WHERE cel.entity_value=%s AND cel.entity_type='ticker' AND na.rag_status='approved'
+                ORDER BY na.created_at DESC LIMIT %s""", (symbol, limit)),
         ]
     for src, sql, params in queries:
         try:

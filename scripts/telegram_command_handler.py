@@ -36,6 +36,10 @@ _COMMANDS = {
     "analyze": "Analyze a symbol or sector",
     "run screener": "Run a named Finviz screener",
     "topics": "List active research topics",
+    "topic status": "Show topic monitor gaps + article counts",
+    "topic add <name>": "Add a new research topic",
+    "topic url <id> <url>": "Add a saved Google search URL to a topic",
+    "topic run <id>": "Run topic ingestion for one topic (or 'all')",
     "proposals": "List pending watchlist proposals",
     "tasks": "List pending tasks needing your decision",
     "debates": "List recent agent debates",
@@ -94,6 +98,16 @@ def parse_command(text: str) -> dict:
         return {"command": "status", "args": ""}
     if lower == "topics":
         return {"command": "topics", "args": ""}
+    if lower.startswith("topic add "):
+        return {"command": "topic_add", "args": text[10:].strip()}
+    if lower.startswith("topic url "):
+        return {"command": "topic_url", "args": text[10:].strip()}
+    if lower.startswith("topic run "):
+        return {"command": "topic_run", "args": text[10:].strip()}
+    if lower == "topic run" or lower == "topic run all":
+        return {"command": "topic_run", "args": "all"}
+    if lower == "topic status" or lower == "topic gaps":
+        return {"command": "topic_status", "args": ""}
     if lower == "tax":
         return {"command": "tax", "args": ""}
     if lower == "conflicts":
@@ -605,6 +619,91 @@ def process_command(cmd: dict) -> str:
         for t in topics:
             lines.append(f"  [{t['id']}] {t['topic']} ({t['priority']}) — {t['research_count']} researches")
         return "\n".join(lines)
+
+    # ── Topic Monitor commands ──
+    if command == "topic_status":
+        conn = _get_conn()
+        import psycopg2.extras
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT t.topic_id, t.display_name, t.priority, t.last_searched,
+                (SELECT COUNT(*) FROM news_articles WHERE strategy_type = t.topic_id
+                 AND created_at > NOW() - INTERVAL '1 day' * t.max_age_days) as articles,
+                (SELECT COUNT(*) FROM youtube_transcripts WHERE added_by = 'topic_ingestion'
+                 AND ingested_at > NOW() - INTERVAL '1 day' * t.max_age_days
+                 AND strategy_tags::text LIKE '%%' || t.topic_id || '%%') as transcripts,
+                t.min_articles
+            FROM topic_monitor t WHERE t.enabled = true ORDER BY t.priority
+        """)
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return "No active topics in topic_monitor table."
+        lines = ["*Topic Monitor Status:*", ""]
+        for r in rows:
+            total = (r['articles'] or 0) + (r['transcripts'] or 0)
+            gap = "GAP" if total < r['min_articles'] else "OK"
+            last = r['last_searched'].strftime('%m/%d') if r['last_searched'] else 'never'
+            lines.append(f"  P{r['priority']} [{gap}] {r['display_name']}: {r['articles']}a + {r['transcripts']}t (last: {last})")
+        return "\n".join(lines)
+
+    if command == "topic_add":
+        # Parse: "topic add SSDI trust NY" → creates topic with that name
+        topic_text = args.strip()
+        if not topic_text:
+            return "Usage: `topic add <topic name>`\nExample: `topic add SSDI trust NY asset protection`"
+        topic_id = topic_text.lower().replace(" ", "_")[:50]
+        display = topic_text.title()[:100]
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO topic_monitor (topic_id, display_name, search_queries, video_queries,
+                priority, agent_owner, agent_tags, strategy_tags,
+                personal_context, saved_search_urls)
+            VALUES (%s, %s, %s, %s, 3, 'Alex', '["Alex"]'::jsonb, '[]'::jsonb,
+                    '', '[]'::jsonb)
+            ON CONFLICT (topic_id) DO NOTHING
+        """, (topic_id, display,
+              json.dumps([topic_text + " 2026", topic_text + " strategy"]),
+              json.dumps([topic_text + " explained", topic_text + " planning"])))
+        conn.commit()
+        conn.close()
+        return f"Topic added: *{display}* (`{topic_id}`)\nRun: `topic run {topic_id}`"
+
+    if command == "topic_url":
+        # Parse: "topic url trust_estate https://google.com/search?..."
+        parts = args.split(None, 1)
+        if len(parts) < 2 or not parts[1].startswith("http"):
+            return "Usage: `topic url <topic_id> <google_search_url>`\nExample: `topic url trust_estate https://www.google.com/search?udm=7&q=SSDI+trusts+NY`"
+        topic_id = parts[0].strip()
+        url = parts[1].strip()
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE topic_monitor
+            SET saved_search_urls = saved_search_urls || %s::jsonb, updated_at = NOW()
+            WHERE topic_id = %s AND enabled = true
+        """, (json.dumps([url]), topic_id))
+        affected = cur.rowcount
+        conn.commit()
+        conn.close()
+        if affected == 0:
+            return f"Topic `{topic_id}` not found or disabled."
+        return f"URL added to *{topic_id}*. Run `topic run {topic_id}` to ingest."
+
+    if command == "topic_run":
+        topic_id = args.strip() if args.strip() != "all" else None
+        try:
+            import subprocess
+            cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "topic_ingestion.py")]
+            if topic_id:
+                cmd.extend(["--topic", topic_id])
+            subprocess.Popen(cmd, stdout=open(str(PROJECT_ROOT / "logs" / "topic_ingestion.log"), "a"),
+                             stderr=subprocess.STDOUT, cwd=str(PROJECT_ROOT))
+            label = f"`{topic_id}`" if topic_id else "all topics"
+            return f"Topic ingestion started for {label}. Check logs/topic_ingestion.log or /v2/topic-monitor"
+        except Exception as e:
+            return f"Error starting topic ingestion: {e}"
 
     if command in ("research", "find", "analyze"):
         # Save as persistent research topic
@@ -1224,7 +1323,7 @@ def poll_and_process():
 
         # Only process messages that look like commands
         lower = text.lower().strip()
-        is_command = any(lower.startswith(c) for c in ["research ", "find ", "analyze ", "run screener ", "look for ", "alex ", "retirement ", "iris", "/iris_", "status", "help", "topics"])
+        is_command = any(lower.startswith(c) for c in ["research ", "find ", "analyze ", "run screener ", "look for ", "alex ", "retirement ", "iris", "/iris_", "status", "help", "topics", "topic "])
         if not is_command:
             continue
 

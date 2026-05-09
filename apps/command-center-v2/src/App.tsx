@@ -54,6 +54,8 @@ const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
 const LiveGovernance = lazy(() => import('./pages/LiveGovernance'))
 const PaperGovernance = lazy(() => import('./pages/PaperGovernance'))
 const PipelineHealthMaster = lazy(() => import('./pages/PipelineHealthMaster'))
+const TopicMonitor = lazy(() => import('./pages/TopicMonitor'))
+const PipelineController = lazy(() => import('./pages/PipelineController'))
 
 function Loading() {
   return <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
@@ -139,6 +141,8 @@ export default function App() {
           <Route path="agent-pipeline" element={<SafePage><AgentPipeline /></SafePage>} />
           <Route path="pipeline-health-master" element={<SafePage><PipelineHealthMaster /></SafePage>} />
           <Route path="intelligence-whiteboard" element={<SafePage><IntelligenceWhiteboard /></SafePage>} />
+          <Route path="topic-monitor" element={<SafePage><TopicMonitor /></SafePage>} />
+          <Route path="pipeline-controller" element={<SafePage><PipelineController /></SafePage>} />
           <Route path="*" element={
             <div style={{ padding: 40, color: 'var(--text2)' }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Page not found</div>

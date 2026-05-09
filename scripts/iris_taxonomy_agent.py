@@ -1404,22 +1404,76 @@ def run_library_audit(dry_run=False):
         conn.rollback()
         print(f"  Dupe check error: {e}")
 
-    # 3e. Content Gap Alerts
+    # 3e. Content Gap Alerts (reads from topic_monitor table)
     print("\n  [3e] Content Gaps...")
     try:
         gap_categories = []
-        for cat in ["disability_retirement", "ssdi", "trust_estate", "roth_conversion",
-                     "retirement_planning", "tax_planning", "dividend_income"]:
-            cur.execute("SELECT count(*) as n FROM news_articles WHERE strategy_type=%s AND created_at > NOW() - INTERVAL '30 days'", (cat,))
+        # Pull topics from topic_monitor DB table (DB-driven, not hardcoded)
+        try:
+            cur.execute("SELECT topic_id, max_age_days, min_articles FROM topic_monitor WHERE enabled = true")
+            topic_rows = cur.fetchall()
+        except Exception:
+            # Fallback to hardcoded if topic_monitor table doesn't exist yet
+            topic_rows = [(cat, 30, 3) for cat in [
+                "disability_retirement", "ssdi", "trust_estate", "roth_conversion",
+                "retirement_planning", "tax_planning", "dividend_income"]]
+        for row in topic_rows:
+            cat = row["topic_id"] if isinstance(row, dict) else row[0]
+            max_age = row["max_age_days"] if isinstance(row, dict) else row[1]
+            min_arts = row["min_articles"] if isinstance(row, dict) else row[2]
+            cur.execute("SELECT count(*) as n FROM news_articles WHERE strategy_type=%s AND created_at > NOW() - INTERVAL '%s days'", (cat, max_age))
             cnt = cur.fetchone()["n"]
-            if cnt < 3:
-                gap_categories.append({"category": cat, "articles_30d": cnt})
-                print(f"  GAP: {cat} — only {cnt} articles in last 30 days")
+            if cnt < min_arts:
+                gap_categories.append({"category": cat, "articles_30d": cnt, "min_required": min_arts})
+                print(f"  GAP: {cat} — only {cnt} articles in last {max_age} days (need {min_arts})")
         report["content_gaps"] = gap_categories
         if not gap_categories:
             print(f"  No critical gaps")
     except Exception as e:
         print(f"  Gap check error: {e}")
+
+    # 3e.1 AUTO-REMEDIATION: trigger topic_ingestion for gap categories
+    remediation_results = {}
+    if not dry_run and gap_categories:
+        print("\n  [3e.1] Auto-Remediation: running topic_ingestion for gaps...")
+        try:
+            import subprocess
+            gap_topic_ids = [g["category"] for g in gap_categories if g.get("articles_30d", 0) < 3]
+            for topic_id in gap_topic_ids:
+                print(f"    Triggering topic_ingestion --topic {topic_id} --gaps-only ...")
+                result = subprocess.run(
+                    [sys.executable, str(Path(__file__).parent / "topic_ingestion.py"),
+                     "--topic", topic_id],
+                    capture_output=True, text=True, timeout=180,
+                    cwd=str(Path(__file__).resolve().parent.parent)
+                )
+                # Parse output for saved counts
+                saved_articles = 0
+                saved_transcripts = 0
+                for line in result.stdout.splitlines():
+                    if "Articles saved:" in line:
+                        try:
+                            saved_articles = int(line.split("Articles saved:")[1].strip().split()[0])
+                        except (ValueError, IndexError):
+                            pass
+                    if "Transcripts saved:" in line:
+                        try:
+                            saved_transcripts = int(line.split("Transcripts saved:")[1].strip().split()[0])
+                        except (ValueError, IndexError):
+                            pass
+                remediation_results[topic_id] = {
+                    "articles": saved_articles, "transcripts": saved_transcripts
+                }
+                total_remediated = saved_articles + saved_transcripts
+                if total_remediated > 0:
+                    print(f"    REMEDIATED {topic_id}: {saved_articles}a + {saved_transcripts}t")
+                else:
+                    print(f"    No new content found for {topic_id}")
+                if result.returncode != 0 and result.stderr:
+                    print(f"    stderr: {result.stderr[:200]}")
+        except Exception as e:
+            print(f"    Remediation error: {e}")
+        report["remediation_results"] = remediation_results
 
     # 3f. Notify agents of critical content gaps
     CRITICAL_GAP_AGENTS = {
@@ -1495,10 +1549,23 @@ def run_library_audit(dry_run=False):
             f"Gaps: {len(report.get('content_gaps', []))} thin ({report.get('gap_events_fired', 0)} agent events fired)"
         )
         _send_telegram_msg(summary)
-        # Critical gap Telegram alerts
+        # Critical gap Telegram alerts (with remediation status)
         for gap in report.get("content_gaps", []):
-            if gap.get("articles_30d", 0) == 0 and gap["category"] in ("ssdi", "disability_retirement", "trust_estate"):
-                _send_telegram_msg(f"Iris Library Alert: {gap['category'].replace('_',' ')} — 0 articles + 0 YouTube in 30 days. Agents notified.")
+            cat = gap["category"]
+            if gap.get("articles_30d", 0) == 0 and cat in ("ssdi", "disability_retirement", "trust_estate"):
+                remed = report.get("remediation_results", {}).get(cat, {})
+                remed_a = remed.get("articles", 0)
+                remed_t = remed.get("transcripts", 0)
+                if remed_a + remed_t > 0:
+                    _send_telegram_msg(
+                        f"Iris Library Alert: {cat.replace('_',' ')} — was 0 in 30 days. "
+                        f"Auto-remediated: {remed_a} articles + {remed_t} transcripts ingested."
+                    )
+                else:
+                    _send_telegram_msg(
+                        f"Iris Library Alert: {cat.replace('_',' ')} — 0 articles + 0 YouTube in 30 days. "
+                        f"Auto-remediation found no new content. Agents notified."
+                    )
 
         # Weekly Sunday: channel recommendations for gaps
         if datetime.now(timezone.utc).weekday() == 6:  # Sunday

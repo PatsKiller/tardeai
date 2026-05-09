@@ -77,6 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/intelligence-whiteboard', label: 'Whiteboard' },
     { to: '/agent-pipeline', label: 'Agent Pipeline' },
     { to: '/pipeline-health-master', label: 'Pipeline Health' },
+    { to: '/pipeline-controller', label: 'Pipeline Controller' },
     { to: '/content-health', label: 'Content Health' },
     { to: '/actions', label: 'Actions' },
     { to: '/approvals', label: 'Approvals' },
