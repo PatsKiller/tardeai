@@ -1,0 +1,49 @@
+# Session 36 Phase 2: Safe analysis/observability stages
+# No broker, no Telegram send, no config promotion.
+# Rollback: crontab crontab_session36_phase2_rollback.txt
+
+allowed_stages:
+  - stage_key: market_regime_snapshot
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: strategy_rotation_signal_refresh
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: learning_governance_status
+    risk_class: SAFE_READ_ONLY
+  - stage_key: ingestion_learning_analysis
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: trade_learning_analysis
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: champion_challenger_summary
+    risk_class: SAFE_READ_ONLY
+  - stage_key: agent_recommendation_normalization
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: agent_outcome_linking
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: agent_calibration_scoring
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: agent_disagreement_scoring
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: post_trade_thesis_review
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: weekly_learning_digest_generate
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: weekly_learning_digest_delivery_dry
+    risk_class: SAFE_READ_ONLY
+  - stage_key: backtest_dataset_build
+    risk_class: SAFE_ANALYSIS_WRITE
+  - stage_key: strategy_backtest_smoke
+    risk_class: SAFE_ANALYSIS_WRITE
+
+blocked_patterns:
+  - alpaca
+  - submit_order
+  - place_order
+  - execute-ready
+  - cancel_order
+  - replace_order
+  - close_position
+  - telegram send
+  - approve implementation
+  - promote challenger
+  - config apply
+  - live trading
