@@ -12290,4 +12290,128 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Session 27B: Execution Revalidation endpoints ─────────────────
+    if base_path == "/api/v2/paper-execution-rechecks":
+        try:
+            rows = _db_query("""
+                SELECT recheck_id, paper_trade_proposal_id, symbol, trigger_type,
+                       status, execution_readiness_score, material_change_detected,
+                       material_change_reasons, price_drift_pct, market_session,
+                       requires_reapproval, reason, created_at
+                FROM paper_trade_execution_rechecks ORDER BY created_at DESC LIMIT 50
+            """) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/paper-execution-rechecks/") and not base_path.endswith("/run") and not base_path.endswith("/approve-updated-plan") and not base_path.endswith("/reject-updated-plan") and not base_path.endswith("/execute-ready"):
+        try:
+            rid = base_path.split("/")[-1]
+            row = _db_query("SELECT * FROM paper_trade_execution_rechecks WHERE recheck_id=%s",
+                            (rid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Recheck not found"}
+            return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/paper-execution-rechecks/run" and method == "POST":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from paper_execution_revalidator import revalidate, get_pending_proposals, save_recheck
+            from session13_db import get_conn as _rck_conn
+            pid = (body or {}).get("proposal_id")
+            rconn = _rck_conn()
+            try:
+                proposals = get_pending_proposals(rconn, proposal_id=pid)
+                results = []
+                for p in proposals:
+                    r = revalidate(rconn, p)
+                    save_recheck(rconn, r)
+                    results.append({k: v for k, v in r.items() if k != "events"})
+                return 200, {"ok": True, "data": results}
+            finally:
+                rconn.close()
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/approve-updated-plan") and method == "POST" and "/paper-execution-rechecks/" in base_path:
+        try:
+            rid = base_path.split("/")[-2]
+            reason = (body or {}).get("reason", "approved_via_api")
+            _db_write("""UPDATE paper_trade_execution_rechecks
+                         SET admin_approval_status='approved', requires_reapproval=false, updated_at=now()
+                         WHERE recheck_id=%s""", (rid,))
+            rec = _db_query("SELECT paper_trade_proposal_id FROM paper_trade_execution_rechecks WHERE recheck_id=%s", (rid,), fetch="one")
+            if rec:
+                _db_write("""UPDATE paper_trade_proposals
+                             SET material_change_pending_approval=false, execution_recheck_required=true,
+                                 execution_recheck_reason=%s
+                             WHERE id=%s""", (reason, rec["paper_trade_proposal_id"]))
+            return 200, {"ok": True, "message": f"Approved updated plan for {rid}. Run recheck again before execution."}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/reject-updated-plan") and method == "POST" and "/paper-execution-rechecks/" in base_path:
+        try:
+            rid = base_path.split("/")[-2]
+            reason = (body or {}).get("reason", "rejected_via_api")
+            _db_write("""UPDATE paper_trade_execution_rechecks
+                         SET admin_approval_status='rejected', updated_at=now()
+                         WHERE recheck_id=%s""", (rid,))
+            rec = _db_query("SELECT paper_trade_proposal_id FROM paper_trade_execution_rechecks WHERE recheck_id=%s", (rid,), fetch="one")
+            if rec:
+                _db_write("""UPDATE paper_trade_proposals SET status='REJECTED',
+                             material_change_pending_approval=false, execution_recheck_reason=%s
+                             WHERE id=%s""", (reason, rec["paper_trade_proposal_id"]))
+            return 200, {"ok": True, "message": f"Rejected updated plan for {rid}"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.endswith("/execute-ready") and method == "POST" and "/paper-execution-rechecks/" in base_path:
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from market_session import is_market_open, current_market_session
+            from paper_execution_revalidator import check_safety
+            import os
+
+            safe, errs = check_safety()
+            if not safe:
+                return 403, {"ok": False, "error": f"Safety blocked: {errs}"}
+            if os.getenv("ALPACA_MODE", "paper").lower() != "paper":
+                return 403, {"ok": False, "error": "ALPACA_MODE not paper"}
+            if not is_market_open():
+                return 403, {"ok": False, "error": f"Market not open (session={current_market_session()})"}
+
+            rid = base_path.split("/")[-2]
+            rec = _db_query("SELECT * FROM paper_trade_execution_rechecks WHERE recheck_id=%s", (rid,), fetch="one")
+            if not rec:
+                return 404, {"ok": False, "error": "Recheck not found"}
+            if rec["status"] != "valid_original":
+                return 403, {"ok": False, "error": f"Recheck status is '{rec['status']}', not valid_original"}
+            if rec.get("requires_reapproval"):
+                return 403, {"ok": False, "error": "Material change requires reapproval first"}
+
+            pid = rec["paper_trade_proposal_id"]
+            # Check proposal not already submitted or has material change pending
+            prop = _db_query("SELECT material_change_pending_approval FROM paper_trade_proposals WHERE id=%s", (pid,), fetch="one")
+            if prop and prop.get("material_change_pending_approval"):
+                return 403, {"ok": False, "error": "Material change pending approval"}
+
+            return 200, {"ok": True, "message": f"Recheck {rid} is valid_original. Use submit-paper endpoint to execute.",
+                         "proposal_id": pid, "recheck_id": rid, "readiness_score": _json_clean(rec.get("execution_readiness_score"))}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/market-session":
+        try:
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from market_session import get_status as _ms_status
+            return 200, {"ok": True, "data": _ms_status()}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None

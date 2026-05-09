@@ -23,6 +23,8 @@ export default function PaperTradeIntelligence() {
   const { data: recon } = useApi<ApiResp>('/api/v2/paper-broker-reconciliation')
   const { data: outcomes } = useApi<ApiResp>('/api/v2/paper-outcome-analytics')
   const { data: gate } = useApi<GateResp>('/api/v2/paper-validation-status')
+  const { data: rechecks } = useApi<ApiResp>('/api/v2/paper-execution-rechecks')
+  const { data: session } = useApi<{ ok: boolean; data: Record<string, unknown> }>('/api/v2/market-session')
   const [tab, setTab] = useState<string>('intel')
 
   const g = gate?.data?.gates || {}
@@ -56,6 +58,7 @@ export default function PaperTradeIntelligence() {
         {tabBtn('tca', 'TCA / Fill Quality')}
         {tabBtn('recon', 'Broker Recon')}
         {tabBtn('outcomes', 'Outcome Analytics')}
+        {tabBtn('rechecks', `Execution Rechecks (${(rechecks?.data || []).length})`)}
       </div>
 
       {tab === 'intel' && (
@@ -153,6 +156,44 @@ export default function PaperTradeIntelligence() {
                   <td style={{ ...td, fontSize:10, color:'#848e9c' }}>{String(r.finished_at||'').slice(0,16)}</td>
                 </tr>
               ))}</tbody>
+            </table>
+          )}
+        </Card>
+      )}
+
+      {tab === 'rechecks' && (
+        <Card title={`Execution Rechecks — Market: ${session?.data?.session || '?'}`}>
+          {session?.data && (
+            <div style={{ fontSize:10, color:'#848e9c', marginBottom:8 }}>
+              {String(session.data.eastern_time)} | Open: {String(session.data.market_open)} | Delay: {String(session.data.should_delay)} ({String(session.data.delay_reason)})
+            </div>
+          )}
+          {!(rechecks?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No execution rechecks yet</div> : (
+            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
+              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {['Proposal','Symbol','Trigger','Status','Score','Drift','Session','Material','Reapproval','Reason','Time'].map(h =>
+                  <th key={h} style={th}>{h}</th>)}
+              </tr></thead>
+              <tbody>{(rechecks.data as Record<string,unknown>[]).map((r) => {
+                const st = String(r.status||'')
+                const sc = Number(r.execution_readiness_score||0)
+                return (
+                <tr key={String(r.recheck_id)} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <td style={td}>#{String(r.paper_trade_proposal_id)}</td>
+                  <td style={{ ...td, fontWeight:600 }}>{String(r.symbol)}</td>
+                  <td style={{ ...td, fontSize:10 }}>{String(r.trigger_type||'')}</td>
+                  <td style={{ ...td, color: st==='valid_original'?'#0ecb81': st==='delayed'?'#f0b90b': st==='blocked_safety'?'#f6465d':'#848e9c' }}>
+                    {st}
+                  </td>
+                  <td style={{ ...td, color: sc>=70?'#0ecb81': sc>=50?'#f0b90b':'#f6465d' }}>{sc}</td>
+                  <td style={td}>{r.price_drift_pct ? `${Number(r.price_drift_pct).toFixed(1)}%` : '—'}</td>
+                  <td style={td}>{String(r.market_session||'')}</td>
+                  <td style={td}>{r.material_change_detected ? 'YES' : '—'}</td>
+                  <td style={{ ...td, color: r.requires_reapproval?'#f6465d':'#848e9c' }}>{r.requires_reapproval ? 'YES' : 'No'}</td>
+                  <td style={{ ...td, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:10 }}>{String(r.reason||'')}</td>
+                  <td style={{ ...td, fontSize:10 }}>{r.created_at ? new Date(String(r.created_at)).toLocaleString() : ''}</td>
+                </tr>
+              )})}</tbody>
             </table>
           )}
         </Card>

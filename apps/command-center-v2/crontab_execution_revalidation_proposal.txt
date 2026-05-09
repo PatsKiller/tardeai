@@ -1,0 +1,9 @@
+# PROPOSED: Execution Revalidation scan
+# Runs revalidation for all pending paper proposals during market hours
+# Do NOT install automatically — manual validation first.
+#
+# During market hours (9:30-4:00 ET), every 30 minutes:
+# */30 9-15 * * 1-5 cd $PROJ && $PY scripts/paper_execution_revalidator.py --all-pending --json >> logs/paper_revalidation.log 2>&1
+#
+# Post-market overnight scan (catch weekend/after-hours approvals):
+# 30 9 * * 1-5 cd $PROJ && $PY scripts/paper_execution_revalidator.py --all-pending --json >> logs/paper_revalidation.log 2>&1

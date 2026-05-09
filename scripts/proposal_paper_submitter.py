@@ -430,6 +430,64 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             "warnings": gates["warnings"],
         }
 
+    # ── Execution-time revalidation (Session 27B) ──
+    try:
+        from paper_execution_revalidator import revalidate
+        recheck = revalidate(conn, {
+            "id": proposal_id, "symbol": p["symbol"],
+            "strategy_id": p.get("strategy_id"),
+            "proposed_entry": plan.get("limit_price"),
+            "proposed_stop": plan.get("stop_price"),
+            "proposed_target1": plan.get("take_profit_price"),
+            "proposed_shares": plan.get("shares"),
+            "created_at": p.get("created_at"),
+            "approved_at": p.get("approved_at"),
+            "execution_recheck_required": True,
+            "approved_pending_recheck": False,
+            "last_recheck_id": None,
+            "execution_validated_at": None,
+            "material_change_pending_approval": False,
+            "proposed_dollar_risk": None, "signal_grade": None,
+            "signal_score": None, "status": p.get("status"),
+            "paper_submitted_at": None,
+        })
+        rck_status = recheck.get("status", "unknown")
+        if rck_status in ("blocked_safety", "cancelled"):
+            _log_event(conn, proposal_id, p["symbol"],
+                       "EXECUTION_REVALIDATION_BLOCKED",
+                       {"recheck_status": rck_status, "reason": recheck.get("reason")})
+            return {"status": "blocked", "proposal_id": proposal_id,
+                    "recheck_status": rck_status,
+                    "reason": recheck.get("reason"),
+                    "blockers": [recheck.get("reason")]}
+        if rck_status == "updated_plan_requires_reapproval":
+            _log_event(conn, proposal_id, p["symbol"],
+                       "EXECUTION_REVALIDATION_REQUIRES_REAPPROVAL",
+                       {"recheck_status": rck_status, "changes": recheck.get("material_change_reasons")})
+            return {"status": "requires_reapproval", "proposal_id": proposal_id,
+                    "recheck_status": rck_status,
+                    "material_changes": recheck.get("material_change_reasons"),
+                    "warnings": [recheck.get("reason")]}
+        if rck_status == "delayed":
+            _log_event(conn, proposal_id, p["symbol"],
+                       "EXECUTION_REVALIDATION_DELAYED",
+                       {"recheck_status": rck_status, "reason": recheck.get("reason")})
+            return {"status": "delayed", "proposal_id": proposal_id,
+                    "recheck_status": rck_status,
+                    "reason": recheck.get("reason"),
+                    "warnings": gates.get("warnings", [])}
+        if rck_status == "downgraded_to_wait":
+            _log_event(conn, proposal_id, p["symbol"],
+                       "EXECUTION_REVALIDATION_DOWNGRADED",
+                       {"recheck_status": rck_status})
+            return {"status": "downgraded", "proposal_id": proposal_id,
+                    "recheck_status": rck_status,
+                    "reason": recheck.get("reason")}
+        # valid_original or acceptable → continue to submission
+        log.info(f"[revalidation] {p['symbol']} passed: score={recheck.get('execution_readiness_score')}")
+    except Exception as e:
+        log.warning(f"[revalidation] Non-fatal error for {p['symbol']}: {e} — proceeding with gates-only")
+
     # Create evidence snapshot
     snapshot_id = _create_evidence_snapshot(
         conn, proposal_id, p["symbol"], p["strategy_id"])

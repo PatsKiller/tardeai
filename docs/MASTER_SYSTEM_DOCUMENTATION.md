@@ -45,7 +45,7 @@ Trade AI v12 is an automated trading intelligence and portfolio management platf
 - **4 conversational AI agents** accessible via Telegram/WhatsApp
 - **3 backend automation agents** for monitoring, hygiene, and critique
 - **Paper trading execution** via Alpaca with bracket orders, TCA, and reconciliation
-- **50+ page React dashboard** (Command Center v2) for operator control
+- **55-page React dashboard** (Command Center v2) for operator control
 
 The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **paper-only mode**. Live trading is locked behind a 6-month validation gate requiring 55% win rate and 1.3 profit factor.
 
@@ -53,12 +53,12 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 
 | Metric | Value |
 |--------|-------|
-| Python scripts | 304 |
+| Python scripts | 325 |
 | Cron jobs | 141 |
 | API endpoints | 95+ |
-| Database tables | 233 |
-| Strategies | 23 (YAML-driven) |
-| Frontend pages | 53 |
+| Database tables | 256 |
+| Strategies | 20 (YAML-driven) |
+| Frontend pages | 55 |
 | Agents | 7 (4 conversational + 3 backend) |
 | External data sources | 12+ |
 | Research topics | 17 (DB-driven, LLM-curated) |
@@ -85,8 +85,8 @@ Trade AI v12 has 6 distinct service boundaries:
 |           |                                                        |
 |  +--------v---------+    +------------------+    +---------------+ |
 |  | PostgreSQL 15     |    | Cron Scheduler   |    | Scalp WS      | |
-|  | :5432             |    | 130+ jobs        |    | :7778/:7779   | |
-|  | 249 tables        |    | systemd timers   |    | real-time feed| |
+|  | :5432             |    | 141 jobs         |    | :7778/:7779   | |
+|  | 256 tables        |    | systemd timers   |    | real-time feed| |
 |  +-------------------+    +------------------+    +---------------+ |
 +-------------------------------------------------------------------+
                     |                    |
@@ -159,7 +159,7 @@ Trade AI v12 has 6 distinct service boundaries:
 ## 4. Database Layer
 
 - **Engine:** PostgreSQL 15
-- **Table count:** 233
+- **Table count:** 256
 - **Connection:** `localhost:5432`, database `trade_ai`, user `trade_ai`
 - **Backup:** 7-day rolling `pg_dump` to `backups/db/trade_ai_*.sql.gz`
 
@@ -185,7 +185,7 @@ Trade AI v12 has 6 distinct service boundaries:
 | Table | Approximate Rows | Growth Rate |
 |-------|------------------|-------------|
 | `ticker_enrichment_cache` | 1,139 symbols | +50/week |
-| `news_articles` | 552+ | +20-50/day |
+| `news_articles` | 2,787+ | +20-50/day |
 | `trade_ai_scans` | ~2,000/day (4 windows) | Daily rotation |
 | `watchlist_agent_results` | Growing | +50-100/day |
 | `pipeline_runs` | Growing | +31/day |
@@ -701,8 +701,8 @@ Multiple cron jobs (classifier, curator, reviewer, screener) all compete for the
 
 - **Framework:** React SPA, built with Vite
 - **Route:** served at `/v2/` via Portfolio Server (port 7777)
-- **Source:** `apps/command-center-v2/` (96 TypeScript/React files)
-- **Pages:** 50+
+- **Source:** `apps/command-center-v2/` (91 TypeScript/React files)
+- **Pages:** 55
 
 ### Key Views
 
@@ -752,7 +752,7 @@ All channels toggled via `ENABLE_*` flags in `.env`.
 
 ## 16. Scheduling & Orchestration
 
-130+ cron entries manage the full pipeline. Key schedule (all times Eastern):
+141 cron entries manage the full pipeline. Key schedule (all times Eastern):
 
 ### Morning Cascade (5-8 AM)
 
