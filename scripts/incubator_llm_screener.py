@@ -167,7 +167,7 @@ def fetch_technical(conn, symbol):
     return result
 
 
-def build_screen_prompt(candidate, news, social, technical):
+def build_screen_prompt(candidate, news, social, technical, web_news_line=""):
     """Build lightweight screening prompt — single chunk, ~200 tokens output."""
     symbol = candidate['symbol']
     score = candidate['latest_score']
@@ -218,6 +218,7 @@ Sector:{sector} RVOL:{rvol} Gap:{gap}
 Catalyst:{str(catalyst)[:80]}{'(V)' if cat_v else '(UV)'}
 Tech:{tech_line}
 News:{news_lines[:200]}
+{web_news_line[:200] if web_news_line else ''}
 Social:{social_lines[:150]}
 If scan=AVOID, verdict should be DROP unless strong catalyst overrides.
 JSON only:
@@ -237,7 +238,19 @@ def screen_one(conn, candidate, dry_run=False):
     social = fetch_social(conn, symbol)
     technical = fetch_technical(conn, symbol)
 
-    prompt = build_screen_prompt(candidate, news, social, technical)
+    # Live web news (supplements DB-stored news)
+    web_news_line = ""
+    try:
+        from web_news_fetcher import fetch_web_news
+        web_results = fetch_web_news(symbol, max_results=3)
+        if web_results:
+            web_news_line = "LiveWeb: " + " | ".join(
+                f"{r['title'][:50]} ({r.get('age', '?')})" for r in web_results[:2]
+            )
+    except Exception:
+        pass
+
+    prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
 
     try:
         from local_llm import generate, model_used as _mu
