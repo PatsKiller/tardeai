@@ -203,6 +203,161 @@ def auto_enrich_research_more(conn, symbol: str) -> bool:
     return True
 
 
+# ── CONTENT_GAP Handler: auto-trigger targeted search + ingestion ────────
+
+def handle_content_gap(conn, event: dict):
+    """When agents detect an intelligence gap for a symbol, auto-trigger:
+    1. Topic ingestion with targeted search queries
+    2. Sentiment scoring on new content
+    3. Immediate RAG re-index so agents see it next run
+    4. Re-queue agent analysis with fresh context
+    """
+    symbol = event.get("symbol")
+    td = event.get("trigger_data") or {}
+    gap_type = td.get("gap_type", "general")
+    gap_detail = td.get("detail", "")
+
+    if not symbol:
+        _log("  CONTENT_GAP: no symbol — skipping")
+        return
+
+    _log(f"  CONTENT_GAP: {symbol} ({gap_type}) — triggering search + ingest loop")
+    import subprocess
+    venv_py = str(PROJECT_ROOT / ".venv/bin/python3")
+
+    # Step 1: Run targeted topic ingestion (gaps-only mode to be efficient)
+    ingested = 0
+    try:
+        result = subprocess.run(
+            [venv_py, str(PROJECT_ROOT / "scripts/topic_ingestion.py"),
+             "--gaps-only"],
+            capture_output=True, text=True, timeout=180,
+            cwd=str(PROJECT_ROOT),
+        )
+        _log(f"  Topic ingestion (gaps-only): exit={result.returncode}")
+        if "ingested" in (result.stdout or "").lower() or "saved" in (result.stdout or "").lower():
+            ingested += 1
+    except subprocess.TimeoutExpired:
+        _log(f"  Topic ingestion timed out (non-fatal)")
+    except Exception as e:
+        _log(f"  Topic ingestion failed: {e}")
+
+    # Step 2: Try news search for this symbol
+    try:
+        result = subprocess.run(
+            [venv_py, str(PROJECT_ROOT / "scripts/news_ingestion.py"),
+             "--symbol", symbol],
+            capture_output=True, text=True, timeout=90,
+            cwd=str(PROJECT_ROOT),
+        )
+        _log(f"  News ingestion for {symbol}: exit={result.returncode}")
+    except Exception as e:
+        _log(f"  News ingestion for {symbol} failed: {e}")
+
+    # Step 3: Score sentiment on any new articles
+    try:
+        result = subprocess.run(
+            [venv_py, str(PROJECT_ROOT / "scripts/sentiment_processor.py")],
+            capture_output=True, text=True, timeout=60,
+            cwd=str(PROJECT_ROOT),
+        )
+        _log(f"  Sentiment scoring: {(result.stdout or '').strip()[:80]}")
+    except Exception as e:
+        _log(f"  Sentiment scoring failed: {e}")
+
+    # Step 4: Immediate RAG re-index (last hour of content, not 8h wait)
+    try:
+        result = subprocess.run(
+            [venv_py, str(PROJECT_ROOT / "scripts/rag_indexer.py"),
+             "--source", "news,youtube_transcript,social_post",
+             "--hours", "1"],
+            capture_output=True, text=True, timeout=120,
+            cwd=str(PROJECT_ROOT),
+        )
+        _log(f"  RAG re-index (1h): exit={result.returncode}")
+    except Exception as e:
+        _log(f"  RAG re-index failed: {e}")
+
+    # Step 5: Re-queue agent analysis with fresh data
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    job_id = f"gap-fill-{symbol.lower()}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    try:
+        cur.execute("""INSERT INTO watchlist_agent_jobs
+                       (id, symbol, requested_agent, request_type, note, status, priority, submitted_from)
+                       VALUES (%s, %s, 'maria', 'research', %s, 'queued', 2, 'content_gap_handler')
+                       ON CONFLICT (id) DO NOTHING""",
+                    (job_id, symbol, f"Re-analysis after gap fill: {gap_type} {gap_detail}"))
+        conn.commit()
+        _log(f"  Re-queued maria research for {symbol}")
+    except Exception as e:
+        _log(f"  Re-queue failed: {e}")
+        conn.rollback()
+
+    # Notify John
+    _send_telegram(
+        f"Intelligence Gap Filled: {symbol}\n"
+        f"Gap: {gap_type}\n"
+        f"Actions: topic search + news + sentiment + RAG re-index\n"
+        f"Maria re-queued for fresh analysis"
+    )
+
+
+def handle_research_more_demand(conn, symbol: str):
+    """When agents output RESEARCH_MORE, trigger targeted content search.
+    This closes the loop: agent demand → new search → fresh content → re-analysis.
+    """
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Check if agents recently said RESEARCH_MORE
+    cur.execute("""SELECT agent, recommendation, confidence, summary
+                   FROM watchlist_agent_results
+                   WHERE symbol=%s AND created_at > NOW() - INTERVAL '4 hours'
+                     AND recommendation = 'RESEARCH_MORE'
+                   ORDER BY created_at DESC LIMIT 5""", (symbol,))
+    demands = cur.fetchall()
+
+    if not demands:
+        return False
+
+    _log(f"  RESEARCH_MORE demand from {len(demands)} agents for {symbol}")
+
+    # Check if we already handled this recently
+    cur.execute("""SELECT COUNT(*) as n FROM watchdog_actions
+                   WHERE action_type='gap_fill' AND target=%s
+                     AND created_at > NOW() - INTERVAL '4 hours'""", (symbol,))
+    if (cur.fetchone()["n"] or 0) > 0:
+        _log(f"  Already gap-filled {symbol} recently — skipping")
+        return False
+
+    # Fire a synthetic CONTENT_GAP event
+    gap_reasons = "; ".join(
+        f"{d['agent']}: {(d.get('summary') or '')[:60]}" for d in demands[:3]
+    )
+    handle_content_gap(conn, {
+        "symbol": symbol,
+        "event_type": "CONTENT_GAP",
+        "trigger_data": {
+            "gap_type": "agent_demand",
+            "detail": gap_reasons,
+            "demanding_agents": [d["agent"] for d in demands],
+        },
+    })
+
+    # Log the action to prevent re-triggering
+    try:
+        cur.execute("""INSERT INTO watchdog_actions
+                       (action_type, target, reason, success, result, created_at)
+                       VALUES ('gap_fill', %s, %s, true, 'triggered', NOW())""",
+                    (symbol, f"RESEARCH_MORE from {len(demands)} agents"))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
+    return True
+
+
 # ── SEC Insider Buy: Debate + Alex Queue ─────────────────────────────────
 
 def handle_sec_debate(conn, event: dict):
@@ -341,16 +496,26 @@ def drain_queue(dry_run: bool = False) -> int:
         if not dry_run and job_ids:
             process_created_jobs(conn, job_ids)
 
+        # CONTENT_GAP: auto-trigger targeted search + ingestion + RAG + re-analysis
+        if etype == "CONTENT_GAP" and symbol and symbol != "—" and not dry_run:
+            try:
+                handle_content_gap(conn, event)
+            except Exception as e:
+                _log(f"  Content gap handler error for {symbol}: {e}")
+
         # SEC_INSIDER_BUY: run debate after agent analyses
-        if etype == "SEC_INSIDER_BUY" and symbol != "—" and not dry_run:
+        elif etype == "SEC_INSIDER_BUY" and symbol != "—" and not dry_run:
             handle_sec_debate(conn, event)
 
-        # Any event + all agents RESEARCH_MORE: auto-enrich and re-queue before human review
+        # Any event + all agents RESEARCH_MORE: auto-search + enrich + re-queue
         if symbol and symbol != "\u2014" and not dry_run:
             try:
-                auto_enrich_research_more(conn, symbol)
+                # First try demand-driven search (RESEARCH_MORE → new content)
+                if not handle_research_more_demand(conn, symbol):
+                    # Fallback to ticker enrichment only
+                    auto_enrich_research_more(conn, symbol)
             except Exception as e:
-                _log(f"  Auto-enrich error for {symbol}: {e}")
+                _log(f"  Auto-enrich/search error for {symbol}: {e}")
 
         # Mark done
         if not dry_run:

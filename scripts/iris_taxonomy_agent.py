@@ -1009,25 +1009,47 @@ def run_weekly_hygiene(dry_run=False):
 
     # Step 3: Intelligence whiteboard items
     print("\n  Step 2: Analyzing whiteboard items...")
-    cur.execute("""SELECT id, source_type, title, summary, quality_score,
-                          created_at, hygiene_status
-                   FROM intelligence_whiteboard
-                   WHERE hygiene_status = 'active' OR hygiene_status IS NULL
-                   ORDER BY created_at ASC LIMIT 500""")
+    cur.execute("""SELECT iw.id, iw.source_type, iw.source_id, iw.title, iw.summary,
+                          iw.quality_score, iw.created_at, iw.hygiene_status,
+                          yt.strategy_tags AS yt_stags, yt.agent_tags AS yt_atags,
+                          yc.category AS channel_category,
+                          na.strategy_tags AS news_stags, na.agent_tags AS news_atags
+                   FROM intelligence_whiteboard iw
+                   LEFT JOIN youtube_transcripts yt ON yt.id = iw.source_id AND iw.source_type = 'youtube'
+                   LEFT JOIN youtube_channels yc ON yc.channel_name = yt.channel_name
+                   LEFT JOIN news_articles na ON na.id = iw.source_id AND iw.source_type = 'news'
+                   WHERE iw.hygiene_status = 'active' OR iw.hygiene_status IS NULL
+                   ORDER BY iw.created_at ASC""")
     wb_items = cur.fetchall()
     auto_demoted = 0
 
     for item in wb_items:
         try:
-            # Get strategy tag from agent_notes if available
+            # Resolve strategy tag from source table data
             stag = "investment_general"
+            src_stags = item.get("yt_stags") or item.get("news_stags") or []
+            if isinstance(src_stags, str):
+                try:
+                    src_stags = json.loads(src_stags)
+                except Exception:
+                    src_stags = []
+            if src_stags:
+                stag = src_stags[0]
+            elif item.get("channel_category"):
+                stag = item["channel_category"]
+            agent_tags = item.get("yt_atags") or item.get("news_atags") or []
+            if isinstance(agent_tags, str):
+                try:
+                    agent_tags = json.loads(agent_tags)
+                except Exception:
+                    agent_tags = []
             result = analyze_content_for_hygiene(
                 content_type=item["source_type"] or "news",
                 content_id=item["id"],
                 title=item["title"] or "",
                 created_at=item["created_at"],
                 strategy_tag=stag,
-                agent_tags=[],
+                agent_tags=agent_tags,
                 text=item["summary"] or "",
                 current_status=item["hygiene_status"] or "active",
             )
@@ -1080,7 +1102,8 @@ def run_weekly_hygiene(dry_run=False):
     # Step 4: News articles
     print(f"\n  Step 3: Analyzing news articles...")
     try:
-        cur.execute("""SELECT id, title, summary, created_at, hygiene_status
+        cur.execute("""SELECT id, title, summary, created_at, hygiene_status,
+                              strategy_tags, agent_tags
                        FROM news_articles
                        WHERE (hygiene_status = 'active' OR hygiene_status IS NULL)
                          AND created_at < NOW() - INTERVAL '85 days'
@@ -1091,10 +1114,26 @@ def run_weekly_hygiene(dry_run=False):
         conn.rollback()
     news_demoted = 0
     for article in old_news:
+        # Resolve strategy tag from the article's own tags
+        news_stag = "investment_general"
+        news_stags = article.get("strategy_tags") or []
+        if isinstance(news_stags, str):
+            try:
+                news_stags = json.loads(news_stags)
+            except Exception:
+                news_stags = []
+        if news_stags:
+            news_stag = news_stags[0]
+        news_atags = article.get("agent_tags") or []
+        if isinstance(news_atags, str):
+            try:
+                news_atags = json.loads(news_atags)
+            except Exception:
+                news_atags = []
         result = analyze_content_for_hygiene(
             content_type="news", content_id=article["id"],
             title=article["title"] or "", created_at=article["created_at"],
-            strategy_tag="investment_general", agent_tags=[],
+            strategy_tag=news_stag, agent_tags=news_atags,
             text=article.get("summary", "") or "", current_status=article["hygiene_status"] or "active",
         )
         if result["action"] in ("demote", "archive") and not dry_run:

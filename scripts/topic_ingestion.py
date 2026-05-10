@@ -949,6 +949,14 @@ def process_topic(conn, topic: dict, dry_run: bool = False,
         generated = llm_generate_queries(conn, topic)
         search_queries = generated.get("news_queries", topic.get("search_queries", []))
         video_queries = generated.get("video_queries", topic.get("video_queries", []))
+    elif topic.get("llm_generated_queries") and topic.get("_use_llm_queries"):
+        # Use pre-computed improved queries from topic_curator
+        llm_q = topic["llm_generated_queries"]
+        if isinstance(llm_q, str):
+            llm_q = json.loads(llm_q)
+        search_queries = llm_q.get("news_queries", topic.get("search_queries", []))
+        video_queries = llm_q.get("video_queries", topic.get("video_queries", []))
+        print(f"\n  [IMPROVED QUERIES] Using curator-generated queries for {display}")
     else:
         search_queries = topic.get("search_queries", [])
         video_queries = topic.get("video_queries", search_queries)
@@ -1187,6 +1195,10 @@ def main():
                         help="Skip LLM normalization")
     parser.add_argument("--curate", action="store_true",
                         help="LLM generates targeted queries from personal situation")
+    parser.add_argument("--use-llm-queries", action="store_true",
+                        help="Use pre-computed LLM queries from topic_curator instead of static queries")
+    parser.add_argument("--symbol", help="Single symbol to search for (gap-fill mode)")
+    parser.add_argument("--limit", type=int, default=10, help="Max articles per query")
     args = parser.parse_args()
 
     conn = _get_conn()
@@ -1216,11 +1228,15 @@ def main():
                        "saved_search_urls", "llm_generated_queries"):
             if isinstance(t.get(field), str):
                 t[field] = json.loads(t[field])
+        # Flag for using pre-computed LLM queries
+        if args.use_llm_queries:
+            t["_use_llm_queries"] = True
 
     print(f"Loaded {len(topics)} topics from topic_monitor table")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'} | "
           f"LLM: {'OFF' if args.no_llm else 'ON'} | "
           f"Curate: {args.curate} | "
+          f"Use LLM queries: {args.use_llm_queries} | "
           f"Gaps only: {args.gaps_only}")
 
     total_stats = {"articles": 0, "transcripts": 0, "topics_processed": 0,

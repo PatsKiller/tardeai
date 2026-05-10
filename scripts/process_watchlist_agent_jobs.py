@@ -393,6 +393,76 @@ def _get_recent_intel(symbol: str) -> str:
     return "\n".join(parts) + "\n" if parts else ""
 
 
+def _get_sentiment_social_context(symbol: str) -> str:
+    """Pull news sentiment, social sentiment, and fused signals for a symbol."""
+    parts = []
+    try:
+        import psycopg2.extras as _pxs
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxs.RealDictCursor)
+
+        # News sentiment: recent articles for this symbol
+        cur.execute("""
+            SELECT sentiment, sentiment_score, title, created_at
+            FROM news_articles
+            WHERE symbol = %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY created_at DESC LIMIT 5
+        """, [symbol])
+        news = cur.fetchall()
+        if news:
+            scored = [n for n in news if n.get("sentiment_score") is not None]
+            avg_score = sum(float(n["sentiment_score"]) for n in scored) / len(scored) if scored else None
+            lines = ["=== News Sentiment (7d) ==="]
+            lines.append(f"  Articles: {len(news)}" + (f" | Avg score: {avg_score:.2f}" if avg_score else " | Sentiment: not scored"))
+            for n in news[:3]:
+                sent = n.get("sentiment") or "unscored"
+                score = f" ({float(n['sentiment_score']):.2f})" if n.get("sentiment_score") else ""
+                lines.append(f"  - [{sent}{score}] {(n['title'] or '')[:80]}")
+            lines.append("=== End News Sentiment ===")
+            parts.append("\n".join(lines))
+
+        # Social sentiment: recent posts mentioning this symbol
+        cur.execute("""
+            SELECT sentiment, sentiment_score, text, platform, post_date
+            FROM social_posts
+            WHERE symbols_mentioned::text ILIKE %s
+              AND ingested_at > NOW() - INTERVAL '7 days'
+            ORDER BY ingested_at DESC LIMIT 10
+        """, [f'%{symbol}%'])
+        social = cur.fetchall()
+        if social:
+            bullish = sum(1 for s in social if (s.get("sentiment") or "").lower() == "bullish")
+            bearish = sum(1 for s in social if (s.get("sentiment") or "").lower() == "bearish")
+            neutral = len(social) - bullish - bearish
+            scored_social = [s for s in social if s.get("sentiment_score") is not None]
+            avg_social = sum(float(s["sentiment_score"]) for s in scored_social) / len(scored_social) if scored_social else None
+            lines = ["=== Social Sentiment (7d) ==="]
+            lines.append(f"  Posts: {len(social)} | Bullish: {bullish} | Bearish: {bearish} | Neutral: {neutral}" +
+                        (f" | Avg score: {avg_social:.2f}" if avg_social else ""))
+            for s in social[:3]:
+                plat = s.get("platform", "?")
+                sent = s.get("sentiment") or "?"
+                lines.append(f"  - [{plat}/{sent}] {(s['text'] or '')[:100]}")
+            lines.append("=== End Social Sentiment ===")
+            parts.append("\n".join(lines))
+
+        # Fused signals (if available)
+        cur.execute("""
+            SELECT overall_signal, confidence, component_scores, created_at
+            FROM fused_signals
+            WHERE symbol = %s AND created_at > NOW() - INTERVAL '14 days'
+            ORDER BY created_at DESC LIMIT 1
+        """, [symbol])
+        fused = cur.fetchone()
+        if fused:
+            parts.append(f"=== Fused Signal ===\n  Signal: {fused['overall_signal']} | Confidence: {float(fused['confidence'] or 0):.0%}\n=== End Fused Signal ===")
+
+        conn.close()
+    except Exception as e:
+        print(f"  [sentiment] {symbol}: {e}")
+    return "\n".join(parts) + "\n" if parts else ""
+
+
 def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") -> str:
     # === SCAN INTELLIGENCE — primary context for scalp candidates ===
     scan_block = ""
@@ -409,6 +479,9 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     # Inject cross-agent views and intel
     other_views = _get_other_agent_views(symbol, agent)
     intel = _get_recent_intel(symbol)
+
+    # Sentiment + social context
+    sentiment_block = _get_sentiment_social_context(symbol)
 
     # RAG pre-context — prior intelligence from all source types
     rag_block = ""
@@ -535,7 +608,7 @@ Context:
 {calibration_block}
 {strategy_playbook_block}
 {scalp_instructions}
-{other_views}{intel}"""
+{sentiment_block}{other_views}{intel}"""
     if note:
         base_instruction += f"Additional note: {note}\n"
 
