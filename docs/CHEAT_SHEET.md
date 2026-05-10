@@ -44,8 +44,20 @@ grep LIVE_TRADING .env    # Must show: false
 # Run for single topic
 .venv/bin/python scripts/topic_ingestion.py --topic ssdi
 
-# Post-ingestion curation (rate quality, extract entities, improve queries)
+# Run with pre-computed LLM-improved queries (from curator)
+.venv/bin/python scripts/topic_ingestion.py --use-llm-queries
+
+# Post-ingestion curation (rate quality, extract entities, improve queries, auto-ingest)
 .venv/bin/python scripts/topic_curator.py --improve-queries
+
+# Run sentiment scoring on unscored articles
+.venv/bin/python scripts/sentiment_processor.py
+
+# Run signal fusion (fuse catalyst + news + social + sentiment per symbol)
+.venv/bin/python scripts/signal_fusion.py --full
+
+# Run incubator promoter (promote qualifying candidates to proposals)
+.venv/bin/python scripts/incubator_proposal_promoter.py --run
 
 # Telegram commands
 # topic status         — show all topics with gap status
@@ -53,6 +65,40 @@ grep LIVE_TRADING .env    # Must show: false
 # topic url <id> <url> — add saved Google search URL
 # topic run ssdi       — run ingestion for one topic
 # topic run all        — run all topics
+# run promoter         — retry incubator promoter
+# run promoter dry     — dry-run promoter
+# status               — full system health check
+```
+
+## YouTube & Article Ingestion
+
+```bash
+# Add a single video
+.venv/bin/python scripts/youtube_transcript_ingest.py --ingest "https://www.youtube.com/watch?v=VIDEO_ID"
+
+# Import a channel (add to tracking + ingest recent videos)
+.venv/bin/python scripts/youtube_transcript_ingest.py --import-channel "https://www.youtube.com/@handle" --strategy retirement_planning
+
+# Ingest latest from all tracked channels
+.venv/bin/python scripts/youtube_transcript_ingest.py --all-channels
+
+# Backfill a channel (~50 videos, ~12 months)
+.venv/bin/python scripts/youtube_transcript_ingest.py --backfill --max 50
+
+# CLI: add videos or articles (same as Telegram)
+.venv/bin/python scripts/telegram_command_handler.py --process "add video URL1 URL2"
+.venv/bin/python scripts/telegram_command_handler.py --process "add article URL1 URL2"
+
+# Telegram / OpenClaw (just paste URLs directly):
+# add video URL1 URL2    — ingest YouTube videos + add channels
+# add article URL1 URL2  — ingest article URLs
+# (bare URLs auto-detect: YouTube → video, other → article)
+
+# Check ingest queue (videos waiting for IP block to clear)
+PGPASSWORD=$(grep DB_PASSWORD .env | cut -d= -f2) psql -h localhost -U trade_ai -d trade_ai -c "SELECT video_id, title, status FROM youtube_ingest_queue ORDER BY queued_at;"
+
+# List tracked channels
+PGPASSWORD=$(grep DB_PASSWORD .env | cut -d= -f2) psql -h localhost -U trade_ai -d trade_ai -c "SELECT channel_name, strategy_focus, last_checked FROM youtube_channels ORDER BY channel_name;"
 ```
 
 ## Common Operator Actions

@@ -380,6 +380,100 @@ Outcome scorer matches to closed trades → calibration update
 Next run: agent sees updated calibration → adjusts confidence
 ```
 
+### Daily Intelligence Workflow (End-to-End)
+
+This is the complete day-in-the-life showing how data flows from raw ingestion through agent analysis, LLM curation, and back into smarter searches:
+
+```
+5:00 AM ─ Alex daily retirement scan
+5:30 AM ─ Agent outcome scorer (grade yesterday's recommendations)
+6:00 AM ─ Credential monitor + previously traded watchlist
+6:30 AM ─ NEWS INGESTION (Yahoo RSS, Finnhub, Seeking Alpha, Google News)
+          └→ ~40-60 articles ingested → auto-approved for RAG
+6:30 AM ─ SOCIAL INGESTION (StockTwits, Reddit)
+          └→ ~100-200 posts with sentiment scored at ingest
+6:45 AM ─ Topic ingestion (gap-fill mode: only topics with <3 articles)
+6:50 AM ─ RAG indexer (embed new news, transcripts, social posts)
+7:00 AM ─ SENTIMENT PROCESSOR (score all unscored articles)
+          └→ Lexicon analysis: positive/negative/neutral + confidence
+7:00 AM ─ TOPIC CURATOR (the learning engine):
+          ├─ [1] Rate pending content (LLM decides: approved/low_quality/blocked)
+          ├─ [2] Extract entities (LLM finds tickers/topics → content_entity_links)
+          ├─ [3] Improve queries (LLM reviews what was found → generates better queries)
+          ├─ [3b] AUTO-INGEST with improved queries (runs topic_ingestion --use-llm-queries)
+          ├─ [4] RAG re-index (embed newly approved content)
+          └─ [5] Fire agent events (TOPIC_INTELLIGENCE → notify relevant agents)
+7:15 AM ─ SIGNAL FUSION (fuse catalyst + news + social + sentiment per symbol)
+          └→ Strategy-weighted composite: e.g. defense_thesis weights catalyst 0.45
+8:10 AM ─ Incubator LLM screener (grade top candidates A-F, PROMOTE/HOLD/DROP)
+8:15 AM ─ Daily incubator refresh (update scores, RVOL, catalyst freshness)
+8:20 AM ─ INCUBATOR PROPOSAL PROMOTER (promote grade A/B candidates to proposals)
+
+─── MARKET HOURS (9 AM - 4 PM) ───
+
+Every 15 min:
+  ├─ Event detector → agent_event_queue (STOP_TRIGGERED, RSI_EXTREME, etc.)
+  ├─ Agent event router:
+  │   ├─ CONTENT_GAP → auto-search + ingest + sentiment + RAG + re-analyze
+  │   ├─ RESEARCH_MORE → demand-driven search loop
+  │   └─ Other events → route to appropriate agents
+  └─ Process agent jobs (Maria, Steph, Risk analyze symbols with 12-layer context)
+
+12:00 PM ─ Sentiment processor (midday refresh)
+12:15 PM ─ Signal fusion (midday refresh)
+12:30 PM ─ News ingestion (midday)
+12:35 PM ─ Social ingestion (midday)
+
+─── EVENING (6-10 PM) ───
+
+6:00 PM ─ Incubator LLM screener (evening batch)
+6:00 PM ─ Incubator rolloff (remove stale candidates)
+6:10 PM ─ Proposal promoter (evening promotion)
+7:00 PM ─ YouTube transcript ingest (all 48 tracked channels)
+8:00 PM ─ Overnight batch + SEC data ingest
+
+─── OVERNIGHT ───
+
+Agent jobs continue processing (25 per 5 min)
+RAG re-indexer (agent results + synthesis, 8h cadence)
+Agent outcome scorer and learning governance update calibration
+```
+
+### LLM Curation Schedule (When Does It Get Smarter?)
+
+| When | What Happens | LLM Used |
+|------|-------------|----------|
+| **7:00 AM daily** | topic_curator rates pending content (approved/low_quality/blocked) | qwen3:14b (~15s per article) |
+| **7:00 AM daily** | topic_curator extracts tickers + topics → content_entity_links | qwen3:14b |
+| **7:00 AM daily** | topic_curator improves queries: reviews last week's articles, generates 4 targeted news + 4 video queries per topic, tailored to John's situation | qwen3:14b |
+| **7:00 AM daily** | Auto-ingests with improved queries (step 3b → topic_ingestion --use-llm-queries) | N/A (search APIs) |
+| **8:10 AM + 6 PM** | Incubator LLM screener grades candidates (catalyst assessment, momentum, confidence) | qwen3:14b |
+| **On CONTENT_GAP** | Agent event router auto-triggers: topic search → news search → sentiment score → RAG re-index → re-queue analysis | qwen3:14b (agent re-analysis) |
+| **On RESEARCH_MORE** | Multiple agents say "need more data" → synthetic CONTENT_GAP → full search loop | qwen3:14b |
+| **5:30 AM daily** | Outcome scorer grades past recommendations (CORRECT/PARTIAL/WRONG) → calibration update | N/A (rule-based) |
+| **Sunday 6 AM** | Iris hygiene: demote stale content, detect superseded regulatory data | N/A (rule-based) |
+| **Sunday 7 PM** | Weekly incubator rebuild with LLM multi-strategy classification | qwen3:14b |
+
+### Query Improvement Example (How the System Learns)
+
+The LLM reviews what was found last run and generates increasingly targeted queries:
+
+**Static queries (original):**
+```
+"SSDI benefits update 2026"
+"social security disability income limits"
+```
+
+**LLM-improved queries (after learning John's situation):**
+```
+"Roth conversion strategies for SSDI beneficiaries with $40K income and MFS filing in New York"
+"2026 IRMAA income thresholds for SSDI recipients and Roth conversion planning"
+"How MFS filing affects IRMAA lookback for Medicare beneficiaries starting in 2026"
+"Safe Dividend Stocks for SSDI Recipients: 4-8% Yield Without IRMAA Risk"
+```
+
+The curator stores these in `topic_monitor.llm_generated_queries` and auto-runs ingestion with them. Each daily cycle produces more targeted results.
+
 ---
 
 ## 6. External Research & Signal Ingestion
@@ -397,9 +491,69 @@ Next run: agent sees updated calibration → adjusts confidence
 | **Yahoo Finance (yfinance)** | Python library | OHLCV, quotes, dividends | Indicator refresh (5:45 AM), on-demand | Polygon |
 | **FRED** | REST API (key) | Federal Reserve economic data (rates, CPI, employment) | Daily (6 AM) | Cached last-known values |
 | **SEC EDGAR** | REST API (public) | Form 4 insider filings | Daily (8 PM) | Skip -- non-critical |
-| **YouTube Transcripts** | `youtube-transcript-api` | Video transcripts for financial analysis | Monthly discovery + on-demand | Skip -- supplementary |
+| **YouTube Transcripts** | `youtube-transcript-api` | Video transcripts for financial analysis | Monthly discovery + daily channel scan | Skip -- supplementary |
 | **Alpaca** | REST API (key) | Paper trade execution, fills, positions | On execution + reconciliation | Manual fallback |
 | **Ollama (local LLM)** | HTTP (:11434) | Classification, review, health checks | Continuous (toll-gated) | Cloud LLM cascade |
+| **Brave Search** | REST API (key) | News search for topic ingestion | On topic ingestion | DuckDuckGo fallback |
+| **Google News RSS** | RSS feed | Topic-targeted news articles | On topic ingestion | Brave Search |
+| **DuckDuckGo** | HTML scrape | News search fallback | On topic ingestion | None |
+| **StockTwits** | REST API | Social sentiment, post volume | 2x daily (6:30 AM, 12:35 PM) | Reddit only |
+| **Reddit** | REST API | Social discussion, sentiment | 2x daily (6:30 AM, 12:35 PM) | StockTwits only |
+| **2Captcha** | REST API (key) | CAPTCHA solving for protected sites | On-demand when blocked | Skip site |
+
+### 2Captcha Integration
+
+**API Key:** `.env` → `TWOCAPTCHA_API_KEY`
+
+2Captcha enables automated data collection from sites that block scrapers with CAPTCHAs. The system can solve:
+
+| CAPTCHA Type | Supported Sites | Use Case |
+|-------------|-----------------|----------|
+| **reCAPTCHA v2/v3** | Seeking Alpha, TipRanks, Glassdoor, SEC EDGAR (rate-limited) | Article scraping, analyst ratings, insider filing deep-dive |
+| **hCaptcha** | Finviz (when rate-limited), Discord (social scraping) | Screener data when cookies expire, social sentiment from Discord |
+| **Cloudflare Turnstile** | Many financial news sites, MarketWatch, Barron's | Premium article access, paywall-adjacent content |
+| **Image CAPTCHA** | Legacy financial sites, government portals | SSA.gov data, state regulatory filings |
+| **FunCaptcha** | LinkedIn (company data) | Executive changes, hiring signals |
+| **GeeTest** | Some Asian market data providers | International ETF/ADR data |
+
+**Integration pattern** (for any ingestion script):
+```python
+import os, requests
+
+def solve_captcha(site_url, site_key, captcha_type="recaptcha_v2"):
+    api_key = os.getenv("TWOCAPTCHA_API_KEY")
+    if not api_key:
+        return None  # skip — no captcha solving available
+
+    # Submit captcha task
+    resp = requests.post("https://2captcha.com/in.php", data={
+        "key": api_key, "method": "userrecaptcha",
+        "googlekey": site_key, "pageurl": site_url,
+        "json": 1
+    }).json()
+
+    task_id = resp.get("request")
+    # Poll for solution (typically 10-30 seconds)
+    for _ in range(30):
+        time.sleep(5)
+        result = requests.get(f"https://2captcha.com/res.php?key={api_key}&action=get&id={task_id}&json=1").json()
+        if result.get("status") == 1:
+            return result["request"]  # solved captcha token
+    return None
+```
+
+**Target sites for enhanced ingestion:**
+
+| Site | Data Value | CAPTCHA Type | Priority |
+|------|-----------|-------------|----------|
+| **Seeking Alpha** | Premium analyst reports, earnings call transcripts | reCAPTCHA v2 | High -- fills content gaps in Alex agent research |
+| **TipRanks** | Analyst consensus, price targets, smart score | reCAPTCHA v2 | High -- enriches proposal quality scoring |
+| **Finviz** (rate-limited) | Screener when cookie expires | hCaptcha | Medium -- backup for primary screener |
+| **MarketWatch** | Premium articles, options flow | Cloudflare | Medium -- broadens news sentiment coverage |
+| **Barron's** | Premium analysis, portfolio strategy | Cloudflare | Low -- supplementary for Alex agent |
+| **SEC EDGAR** (heavy load) | Bulk insider filing analysis | reCAPTCHA | Low -- only when bulk-downloading |
+
+**Cost:** ~$2-3 per 1,000 CAPTCHAs solved. At current ingestion volume, estimated $5-10/month.
 
 ### Why Each Source Is Used
 
@@ -412,8 +566,10 @@ Next run: agent sees updated calibration → adjusts confidence
 | FRED | Macro context (rates, unemployment, CPI) | Macro overlay strategies (sector rotation, bond income) lose context |
 | SEC EDGAR | Insider buying/selling signals | Insider signal absent; non-blocking for most strategies |
 | YouTube Transcripts | Earnings call language, forward guidance | Alex agent income analysis loses qualitative depth |
+| Social (StockTwits + Reddit) | Retail sentiment, volume spikes, emerging narratives | Social fusion signal degrades; momentum strategies lose edge |
 | Alpaca | Order routing, fill confirmation | Execution halted; proposals queue without fills |
 | Local LLM | Classification, critique, health checks | Falls back to cloud LLM (higher cost, higher latency) |
+| 2Captcha | Access to CAPTCHA-protected financial sites | Skip protected sites; reduced coverage for premium content |
 
 ### Source Availability Handling
 
@@ -421,6 +577,9 @@ Next run: agent sees updated calibration → adjusts confidence
 if source.available:
     ingest(source.data)
     update_freshness(source, now())
+elif source.captcha_blocked and TWOCAPTCHA_API_KEY:
+    token = solve_captcha(source.url, source.site_key)
+    ingest(source.data, captcha_token=token)
 elif source.has_fallback:
     ingest(source.fallback.data)
     log_degraded(source)
