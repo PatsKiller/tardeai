@@ -229,14 +229,23 @@ The pipeline runs **31 stages organized into 7 groups**. Each group has a design
 | Premarket Watcher | `premarket_watcher.py` | Pre-market quotes | Gap and volume alerts |
 | Agent Router | `agent_router.py` | Scored symbols | Routes to appropriate agent |
 
+### Group 3b -- Sentiment & Signal Fusion (7 AM, 12 PM M-F)
+
+| Stage | Script | Inputs | Outputs |
+|-------|--------|--------|---------|
+| Sentiment Processor | `sentiment_processor.py` | Unscored news_articles | sentiment + sentiment_score on each article; sentiment_observations |
+| Signal Fusion | `signal_fusion.py` | catalyst + news + social + sentiment | `fused_signals` (strategy-weighted composite per symbol) |
+| Topic Curator | `topic_curator.py --improve-queries` | Recent articles + LLM | Content ratings, entity links, improved search queries → auto-ingestion |
+
 ### Group 4 -- Intelligence (Continuous)
 
 | Stage | Script | Inputs | Outputs |
 |-------|--------|--------|---------|
-| Watchlist Agent Jobs | `process_watchlist_agent_jobs.py` | Job queue | Agent analysis results |
+| Watchlist Agent Jobs | `process_watchlist_agent_jobs.py` | Job queue + RAG + sentiment + social + fused + peers | Agent analysis results |
+| Agent Event Router | `agent_event_router.py` | agent_event_queue | Routes events → agent jobs; handles CONTENT_GAP and RESEARCH_MORE |
 | Agent Watchlist Engine | `agent_watchlist_engine.py` | Agent outputs | Updated watchlists |
 | CIO Decision Engine | `cio_decision_engine.py` | All intelligence | `cio_decisions` |
-| Pipeline Watchdog | `pipeline_watchdog.py` | `pipeline_runs` | Failure alerts |
+| Pipeline Watchdog | `pipeline_watchdog.py` | `pipeline_runs` | Failure alerts + auto-retry |
 
 ### Group 5 -- Proposal Pipeline
 
@@ -267,6 +276,109 @@ The pipeline runs **31 stages organized into 7 groups**. Each group has a design
 | Agent Outcome Scorer | `agent_outcome_scorer.py` | Past recommendations | Performance grades |
 | Strategy Weekly Review | `strategy_weekly_review.py` | Strategy signals | Performance reports |
 | Overnight Embeddings | `overnight_batch_embeddings.py` | New content | Refreshed RAG index |
+
+---
+
+## 5b. Closed-Loop Intelligence Pipeline (Session 37)
+
+The system operates as a **closed-loop intelligence engine**, not a data warehouse. Every data source feeds into correlation, every agent analysis feeds back into new searches, and every failure triggers a notification.
+
+### Full-Circle Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    CLOSED-LOOP INTELLIGENCE                         │
+│                                                                     │
+│   INGEST ──→ CORRELATE ──→ SENTIMENT ──→ CURATE ──→ AGENTS        │
+│     ↑          by symbol     score all      LLM rate     analyze   │
+│     │          + entity      + fuse          + link       + judge   │
+│     │                                                      │        │
+│     │          ┌──────────────────────────────────────────┘        │
+│     │          ▼                                                    │
+│     │     DEMAND SIGNAL                                             │
+│     │     ├─ CONTENT_GAP (Iris detects missing coverage)           │
+│     │     ├─ RESEARCH_MORE (agents need more data)                 │
+│     │     └─ IMPROVED QUERIES (curator learns what's missing)      │
+│     │          │                                                    │
+│     └──────────┘  auto-trigger: search → ingest → score →          │
+│                   RAG re-index → re-analyze → Telegram notify      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Layer Detail
+
+| Layer | Script(s) | Input | Output | Cadence |
+|-------|-----------|-------|--------|---------|
+| **Ingest** | news_ingestion, social_ingest, youtube_transcript_ingest, sec_data_ingest | External APIs | Raw rows in news_articles, social_posts, youtube_transcripts | 2-3x daily + on-demand |
+| **Correlate** | intelligence_entity_manager, topic_curator (extract_and_link_entities) | Raw content | content_entity_links (symbol ↔ content), intelligence_entities (per-symbol score) | After each ingest |
+| **Sentiment** | sentiment_processor, signal_fusion | news_articles, social_posts | sentiment_observations (per-article), fused_signals (per-symbol composite) | 2x daily (7 AM, 12 PM) |
+| **Curate** | topic_curator (rate_pending_content, improve_queries) | Pending content + LLM | rag_status=approved/blocked, llm_generated_queries, content_entity_links | Daily 7 AM |
+| **Agent Analysis** | process_watchlist_agent_jobs | RAG + sentiment + social + fused + peers + playbook | watchlist_agent_results (recommendation, confidence, narrative) | Every 15 min |
+| **Demand Signal** | agent_event_router (handle_content_gap, handle_research_more_demand) | CONTENT_GAP events, RESEARCH_MORE recommendations | Auto-triggered: topic_ingestion → sentiment → RAG → re-analysis | On event |
+| **Feedback** | agent_outcome_scorer, learning_governance | Closed trades vs prior recommendations | agent_calibration (win rate, PnL), confidence adjustments | Daily 5:30 AM |
+| **RAG Index** | rag_indexer | All approved content + agent results + synthesis | Vector embeddings for semantic search | 4x daily + on gap-fill |
+
+### Agent Context Injection (per symbol analysis)
+
+Every time an agent analyzes a symbol, it receives this full context stack:
+
+```
+1. Scan Intelligence    — screener position, score, decision (GO/WAIT/AVOID)
+2. RAG Pre-Context      — top 5 prior intelligence items (news, transcripts, agent results)
+3. News Sentiment (7d)  — article count, avg score, headlines with sentiment labels
+4. Social Sentiment (7d)— post count, bullish/bearish/neutral breakdown, top posts
+5. Fused Signal         — strategy-weighted composite (catalyst + news + social + sentiment)
+6. Peer Agent Notes     — what other agents concluded on this symbol recently
+7. Content Gap Warnings — Iris librarian flags on missing coverage
+8. Technical Confluence — RSI, SMA, ATR, confluence tier
+9. Prospects Context    — pipeline position (incubator, proposal, paper trade)
+10. Calibration Data    — agent's own win rate, avg confidence, past PnL on similar
+11. Strategy Playbook   — role instructions, entry/exit rules, risk parameters
+12. Global Rules G1-G10 — income protection, SSDI awareness, confidence gating
+```
+
+### Demand-Driven Search Loop
+
+When agents need more data, the system auto-responds:
+
+| Trigger | Source | Action Chain |
+|---------|--------|-------------|
+| **CONTENT_GAP** | Iris librarian detects missing coverage | topic_ingestion → news search → sentiment_processor → RAG re-index → Maria re-queued |
+| **RESEARCH_MORE** | Agent outputs low-confidence RESEARCH_MORE | Checks watchdog_actions for recent fills → fires synthetic CONTENT_GAP → full search loop |
+| **Improved Queries** | topic_curator generates better search terms | Auto-runs topic_ingestion --use-llm-queries → new content flows back to curation |
+
+### Per-Agent Full-Circle Integration
+
+| Agent | Reads | Writes | Triggers | LLM Model |
+|-------|-------|--------|----------|-----------|
+| **Maria** | RAG, sentiment, social, fused, peers, playbook, scans | watchlist_agent_results (BUY/HOLD/AVOID + narrative) | Re-analysis on gap-fill; debate on SEC insider buy | qwen3:14b (2-pass: sentiment + fundamentals) |
+| **Steph** | Portfolio state, allocation targets, income projections, sentiment | watchlist_agent_results (ADD/TRIM/HOLD + allocation review) | Escalation queue for concentration risk; INCOME_CRITICAL flag | qwen3:14b |
+| **Alex** | Roth conversion models, IRMAA thresholds, tax brackets, retirement RAG | Research reports, Roth ladder plans, monthly reviews | Auto-queued on SEC insider buy consensus; weekly/monthly research | qwen3:14b + Claude (complex) |
+| **Aegis** | All agent results, portfolio positions, overnight events | Morning briefs, synthesis reports, cross-agent coordination | Morning brief delivery; post-trade synthesis writeback | qwen3:14b |
+| **Iris** | Content freshness, RAG coverage, duplicate detection, entity staleness | Hygiene proposals, CONTENT_GAP events, taxonomy proposals | CONTENT_GAP → auto-search; hygiene escalations to John | qwen3:14b (classification) |
+| **Scalp Critic** | Incubator candidates, catalyst data, technicals, news/social | llm_screen_grade (A-F), verdict (PROMOTE/HOLD/DROP) | Gates incubator → proposal promotion | qwen3:14b |
+
+### Agent LLM Flow
+
+```
+Symbol enters pipeline
+    ↓
+qwen3:14b Pass 1 (sentiment + catalyst analysis)
+    ↓
+qwen3:14b Pass 2 (fundamental + technical synthesis)
+    ↓
+Combined result → JSON (recommendation, confidence, narrative)
+    ↓
+Stored in watchlist_agent_results
+    ↓
+Indexed into RAG (8h cadence)
+    ↓
+Available to next agent analyzing same symbol
+    ↓
+Outcome scorer matches to closed trades → calibration update
+    ↓
+Next run: agent sees updated calibration → adjusts confidence
+```
 
 ---
 
@@ -742,11 +854,46 @@ All channels toggled via `ENABLE_*` flags in `.env`.
 | Alert | Source | Trigger |
 |-------|--------|---------|
 | Smart Proactive Alerts | `telegram_smart_alerts.py` | 6 AM daily |
-| Pipeline Failure | `pipeline_watchdog.py` | Stage failure/staleness |
+| Pipeline Failure (watchdog) | `pipeline_watchdog.py` | Stage failure/staleness |
+| Pipeline Failure (wrapper) | `pipeline_alert.py` | Non-zero exit on any wrapped cron job |
 | System Health | `system_health_alerts.py` | Threshold breach |
 | Iris Library Alert | Iris agent | Content hygiene issues |
 | Aegis Morning Brief | `aegis_morning_brief_delivery.py` | 8 AM daily |
 | Recovery Watch | `recovery_watch.py` | Stop-out detection |
+| Intelligence Gap Fill | `agent_event_router.py` | CONTENT_GAP auto-search completion |
+| Incubator Promoter | `incubator_proposal_promoter.py` | Promotions or failures |
+| YouTube Ingestion | `youtube_transcript_ingest.py` | Crash during channel scan |
+
+### Pipeline Failure Alerting (Session 37)
+
+Every critical cron job is wrapped with `pipeline_alert.py` which:
+1. Runs the command and captures stdout/stderr
+2. On non-zero exit: sends Telegram with error excerpt + reply-to-retry command
+3. Logs to `logs/<pipeline_name>.log` with timestamp and exit code
+
+Wrapped pipelines: news_ingestion, youtube_ingest, overnight_batch, sec_data_ingest, event_detector, previously_traded, pipeline_watchdog.
+
+**Telegram reply commands for retry:**
+- `run promoter` / `run promoter dry` — retry incubator promoter
+- `run screener <name>` — retry a screener
+- `status` — full system health check
+
+### Failure Notification Flow
+
+```
+Cron fires script via pipeline_alert.py
+    ↓
+Script exits non-zero
+    ↓
+pipeline_alert.py captures error
+    ↓
+Telegram alert sent:
+    "PIPELINE FAILURE: <name>
+     Error: <last 5 lines>
+     Reply: run <name>"
+    ↓
+John replies in Telegram → telegram_command_handler executes retry
+```
 
 ---
 
@@ -902,6 +1049,8 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | `scripts/local_llm.py` | Ollama inference with toll gate |
 | `scripts/topic_ingestion.py` | Topic-based content ingestion (4-source cascade) |
 | `scripts/topic_curator.py` | Post-ingestion curation (rate, extract, link, improve) |
+| `scripts/youtube_transcript_ingest.py` | YouTube video/channel ingestion (4-method transcript fetch) |
+| `scripts/telegram_command_handler.py` | Telegram command handler (add video, add article, research, etc.) |
 | `sql/migrations/` | 22 SQL migration files |
 | `crontab_backup.txt` | Full cron schedule backup |
 | `requirements.txt` | 90 Python packages |
