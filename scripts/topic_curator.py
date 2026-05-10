@@ -63,7 +63,7 @@ def _send_telegram(msg):
 # ════════════════════════════════════════════════════════════
 # STEP 1: RATE PENDING CONTENT  (RAG / low_quality / blocked)
 # ════════════════════════════════════════════════════════════
-def rate_pending_content(conn, topic_id=None, limit=50):
+def rate_pending_content(conn, topic_id=None, limit=200):
     """LLM rates pending articles and transcripts. Tight prompt."""
     try:
         from local_llm import generate
@@ -73,13 +73,21 @@ def rate_pending_content(conn, topic_id=None, limit=50):
 
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
 
-    # Get pending articles
-    sql = "SELECT id, title, summary, strategy_type FROM news_articles WHERE rag_status='pending' AND source LIKE 'topic_%%'"
+    # Auto-approve high-relevance articles (score >= 0.4) without LLM — already quality-gated at ingest
+    cur.execute("""UPDATE news_articles SET rag_status='approved', rag_reason='auto: relevance >= 0.4'
+                   WHERE rag_status='pending' AND source LIKE 'topic_%%' AND relevance_score >= 0.4""")
+    auto_approved = cur.rowcount
+    if auto_approved:
+        conn.commit()
+        print(f"  [curator] Auto-approved {auto_approved} high-relevance articles")
+
+    # Get remaining pending articles for LLM rating
+    sql = "SELECT id, title, summary, strategy_type, relevance_score FROM news_articles WHERE rag_status='pending' AND source LIKE 'topic_%%'"
     params = []
     if topic_id:
         sql += " AND strategy_type = %s"
         params.append(topic_id)
-    sql += f" ORDER BY created_at DESC LIMIT {limit}"
+    sql += f" ORDER BY relevance_score DESC NULLS LAST, created_at DESC LIMIT {limit}"
     cur.execute(sql, params)
     articles = cur.fetchall()
 
@@ -108,8 +116,12 @@ def rate_pending_content(conn, topic_id=None, limit=50):
         batch = articles[i:i+5]
         titles = "\n".join(f"{j+1}. {a['title'][:80]}" for j, a in enumerate(batch))
         prompt = (
-            f"/no_think Rate these articles for RAG indexing. Topic context: financial intelligence, "
-            f"retirement planning, SSDI, trading strategies.\n\n{titles}\n\n"
+            f"/no_think Rate these articles for a financial intelligence RAG system. "
+            f"APPROVE if the article is about: stocks, ETFs, dividends, retirement, SSDI, Medicare, "
+            f"Roth conversions, trading, defense sector, AI/tech investing, tax planning, income strategy, "
+            f"or any financial topic useful to a retail investor. "
+            f"BLOCK only if clearly spam, non-English, or completely unrelated to finance.\n\n"
+            f"{titles}\n\n"
             f"Reply ONLY with JSON array: "
             f'[{{"id": 1, "rag": "approved" or "low_quality" or "blocked", "reason": "5 words max"}}]'
         )
@@ -186,12 +198,11 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
 
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
 
-    # Get articles without entity links yet
+    # Get articles without entity links yet (all sources, not just topic-ingested)
     sql = """
         SELECT na.id, na.title, na.summary, na.strategy_type
         FROM news_articles na
-        WHERE na.source LIKE 'topic_%%'
-        AND na.rag_status IN ('approved', 'pending')
+        WHERE na.rag_status IN ('approved', 'pending')
         AND NOT EXISTS (SELECT 1 FROM content_entity_links cel
                         WHERE cel.content_type='news_article' AND cel.content_id=na.id)
     """
@@ -527,12 +538,12 @@ def main():
     else:
         print("[3/5] Skipping query improvement")
 
-    # Step 4: RAG re-index
-    if args.reindex or (stats.get('approved', 0) > 0):
+    # Step 4: RAG re-index (always run if anything was approved, including auto-approvals)
+    if args.reindex or (stats.get('approved', 0) > 0) or (stats.get('rated', 0) > 0):
         print("\n[4/5] Triggering RAG re-index...")
         trigger_rag_reindex(conn)
     else:
-        print("[4/5] Skipping RAG re-index (no new approved content)")
+        print("[4/5] Skipping RAG re-index (no new content)")
 
     # Step 5: Wire into agent context
     print("\n[5/5] Updating agent context...")
@@ -547,14 +558,37 @@ def main():
     print(f"  Agent events: {stats.get('agent_events', 0)}")
     print(f"{'='*60}\n")
 
+    # Validation report — track curation quality over time
+    try:
+        cur2 = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
+        cur2.execute("""SELECT rag_status, count(*) as n FROM news_articles
+                        WHERE source LIKE 'topic_%%' GROUP BY rag_status""")
+        rag_dist = {r['rag_status']: r['n'] for r in cur2.fetchall()}
+        total_topic = sum(rag_dist.values())
+        approval_pct = round(rag_dist.get('approved', 0) / max(total_topic, 1) * 100, 1)
+        cur2.execute("SELECT count(*) as n FROM content_entity_links")
+        entity_count = cur2.fetchone()['n']
+        cur2.execute("SELECT count(DISTINCT topic_id) as n FROM topic_curation_feedback")
+        topics_curated = cur2.fetchone()['n']
+
+        print(f"\n  VALIDATION METRICS:")
+        print(f"  Topic articles: {total_topic} total | {rag_dist.get('approved',0)} approved ({approval_pct}%) | {rag_dist.get('low_quality',0)} low | {rag_dist.get('blocked',0)} blocked | {rag_dist.get('pending',0)} pending")
+        print(f"  Entity links: {entity_count} | Topics curated: {topics_curated}")
+    except Exception:
+        pass
+
     # Telegram summary
-    if stats.get('approved', 0) > 0 or stats.get('entity_links', 0) > 0:
-        _send_telegram(
-            f"Topic Curator: {stats.get('approved',0)} approved for RAG, "
-            f"{stats.get('blocked',0)} blocked, "
-            f"{stats.get('entity_links',0)} entity links created, "
-            f"{stats.get('agent_events',0)} agent events fired."
-        )
+    tg_parts = []
+    if stats.get('approved', 0) > 0:
+        tg_parts.append(f"{stats['approved']} approved")
+    if stats.get('blocked', 0) > 0:
+        tg_parts.append(f"{stats['blocked']} blocked")
+    if stats.get('entity_links', 0) > 0:
+        tg_parts.append(f"{stats['entity_links']} entity links")
+    if stats.get('agent_events', 0) > 0:
+        tg_parts.append(f"{stats['agent_events']} agent events")
+    if tg_parts:
+        _send_telegram(f"Topic Curator: {', '.join(tg_parts)}")
 
     conn.close()
 
