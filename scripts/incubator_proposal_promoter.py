@@ -80,26 +80,25 @@ def _queue_llm_review(conn, proposal_id: int, symbol: str, strategy_id: str):
 
     Inserts a row into proposal_agent_reviews with status='pending' so
     the enrichment pipeline or manual trigger picks it up.
+    Uses savepoints so failures here never poison the main transaction.
     """
     try:
         with conn.cursor() as cur:
+            cur.execute("SAVEPOINT llm_queue")
             # Queue via the existing agent review infrastructure
             cur.execute("""
                 INSERT INTO proposal_agent_reviews
-                    (proposal_id, agent_name, status, created_at)
-                VALUES (%s, 'scalp_critic', 'pending', NOW())
+                    (proposal_id, symbol, strategy_id, agent_name, status, created_at)
+                VALUES (%s, %s, %s, 'scalp_critic', 'pending', NOW())
                 ON CONFLICT DO NOTHING
-            """, [proposal_id])
-            # Also try watchlist_agent_jobs if table exists
-            cur.execute("""
-                INSERT INTO watchlist_agent_jobs
-                    (symbol, requested_agent, request_type, priority, status, note, created_at)
-                VALUES (%s, 'scalp_critic', 'proposal_review', 1, 'queued',
-                        %s, NOW())
-                ON CONFLICT DO NOTHING
-            """, [symbol, f"proposal_id={proposal_id} strategy={strategy_id}"])
+            """, [proposal_id, symbol, strategy_id])
+            cur.execute("RELEASE SAVEPOINT llm_queue")
     except Exception as e:
-        log.warning(f"[llm_queue] non-fatal: {e}")
+        log.warning(f"[llm_queue] agent_reviews non-fatal: {e}")
+        try:
+            conn.cursor().execute("ROLLBACK TO SAVEPOINT llm_queue")
+        except Exception:
+            pass
 
 
 def get_conn():
@@ -338,7 +337,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
         ])
-        new_id = cur.fetchone()[0]
+        new_id = cur.fetchone()['id']
 
         # Mark as promoted
         cur.execute("""
@@ -360,6 +359,16 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
     return results, promoted, skipped
 
 
+def _send_pipeline_alert(message):
+    """Send Telegram alert for pipeline failures with retry command."""
+    try:
+        sys.path.insert(0, os.path.dirname(__file__))
+        from telegram_alert import send_telegram
+        send_telegram(message)
+    except Exception as e:
+        log.error(f"[promoter] Telegram alert failed: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Promote incubator candidates to paper-trade proposals')
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -372,22 +381,46 @@ def main():
 
     dry_run = args.dry_run
 
-    with PipelineRun('incubator_proposal_promoter', triggered_by='cli') as pipe:
-        results, promoted, skipped = run(
-            dry_run=dry_run,
-            limit=args.limit,
-            force_symbol=args.force_symbol,
-            max_per_symbol=args.max_proposals_per_symbol,
-        )
-        pipe.rows(promoted)
+    try:
+        with PipelineRun('incubator_proposal_promoter', triggered_by='cli') as pipe:
+            results, promoted, skipped = run(
+                dry_run=dry_run,
+                limit=args.limit,
+                force_symbol=args.force_symbol,
+                max_per_symbol=args.max_proposals_per_symbol,
+            )
+            pipe.rows(promoted)
 
-    print()
-    prefix = "[DRY RUN] " if dry_run else ""
-    print(f"{prefix}Incubator Proposal Promoter")
-    print(f"{prefix}{'=' * 40}")
-    for line in results:
-        print(f"  {line}")
-    print(f"\n{prefix}Promoted: {promoted}  Skipped: {skipped}")
+        print()
+        prefix = "[DRY RUN] " if dry_run else ""
+        print(f"{prefix}Incubator Proposal Promoter")
+        print(f"{prefix}{'=' * 40}")
+        for line in results:
+            print(f"  {line}")
+        print(f"\n{prefix}Promoted: {promoted}  Skipped: {skipped}")
+
+        # Send success summary via Telegram (live runs only)
+        if not dry_run and promoted > 0:
+            symbols = [l.split(":")[1].strip().split(" ")[0] for l in results if l.startswith("PROMOTED")]
+            _send_pipeline_alert(
+                f"Incubator Promoter\n"
+                f"Promoted: {promoted} | Skipped: {skipped}\n"
+                f"Symbols: {', '.join(symbols)}\n\n"
+                f"Reply: proposals"
+            )
+
+    except Exception as e:
+        log.error(f"[promoter] FATAL: {e}", exc_info=True)
+        error_short = str(e)[:200]
+        _send_pipeline_alert(
+            f"PIPELINE FAILURE: incubator_proposal_promoter\n"
+            f"Error: {error_short}\n\n"
+            f"Reply to retry:\n"
+            f"  run promoter — retry now\n"
+            f"  run promoter dry — dry-run first\n"
+            f"  status — system health check"
+        )
+        sys.exit(1)
 
 
 if __name__ == '__main__':

@@ -35,6 +35,7 @@ _COMMANDS = {
     "find": "Find candidates — saved for iteration",
     "analyze": "Analyze a symbol or sector",
     "run screener": "Run a named Finviz screener",
+    "run promoter": "Run incubator proposal promoter (add 'dry' for dry-run)",
     "topics": "List active research topics",
     "topic status": "Show topic monitor gaps + article counts",
     "topic add <name>": "Add a new research topic",
@@ -65,6 +66,8 @@ _COMMANDS = {
     "halt strategy <id>": "Halt a specific strategy",
     "resume strategy <id>": "Resume a specific strategy",
     "risk status": "Show halt flags and risk gate summary",
+    "add video <urls>": "Add YouTube videos to ingestion (paste 1+ URLs)",
+    "add article <urls>": "Add article URLs to ingestion (paste 1+ URLs)",
     "help": "List available commands",
 }
 
@@ -137,6 +140,8 @@ def parse_command(text: str) -> dict:
         return {"command": "credential_check", "args": ""}
     if lower.startswith("run screener "):
         return {"command": "run_screener", "args": text[13:].strip()}
+    if lower.startswith("run promoter"):
+        return {"command": "run_promoter", "args": text[12:].strip()}
     if lower.startswith("research "):
         return {"command": "research", "args": text[9:].strip()}
     if lower.startswith("find "):
@@ -320,6 +325,18 @@ def parse_command(text: str) -> dict:
     if lower in ("risk status", "risk"):
         return {"command": "risk_status", "args": ""}
 
+    # Session 36: add video command — also auto-detect bare YouTube URLs
+    if lower.startswith("add video ") or lower.startswith("add videos "):
+        return {"command": "add_video", "args": text.split(None, 2)[-1] if len(text.split(None, 2)) > 2 else ""}
+    if "youtube.com/watch" in lower or "youtu.be/" in lower:
+        return {"command": "add_video", "args": text}
+
+    # Session 36: add article command — also auto-detect bare article URLs
+    if lower.startswith("add article ") or lower.startswith("add articles "):
+        return {"command": "add_article", "args": text.split(None, 2)[-1] if len(text.split(None, 2)) > 2 else ""}
+    if re.search(r'https?://\S+', lower) and "youtube.com" not in lower and "youtu.be" not in lower:
+        return {"command": "add_article", "args": text}
+
     return {"command": "unknown", "args": text}
 
 
@@ -475,6 +492,200 @@ def _handle_iris(args: str) -> str:
         return f"*Iris:*\n\n{ask_iris(full_question)}"
     except Exception as e:
         return f"Iris Q&A error: {e}"
+
+
+def _handle_add_video(args: str) -> str:
+    """Add YouTube videos to ingestion. Accepts 1+ URLs, adds channels to tracking,
+    and attempts immediate transcript ingestion."""
+    import urllib.request as _ureq
+
+    # Extract all YouTube URLs from the message
+    urls = re.findall(r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})', args)
+    if not urls:
+        return "No YouTube URLs found. Paste one or more youtube.com/watch?v= links."
+
+    video_ids = list(dict.fromkeys(urls))  # dedupe, preserve order
+    lines = [f"*Processing {len(video_ids)} video(s)...*", ""]
+
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from youtube_transcript_ingest import (
+        ingest_video, get_video_metadata, extract_channel_id, get_channel_info, _get_conn as _yt_conn
+    )
+
+    # Resolve channels and add to tracking
+    channels_added = set()
+    for vid in video_ids:
+        meta = get_video_metadata(vid)
+        channel_name = meta.get("channel_name", "")
+        if channel_name and channel_name not in channels_added:
+            # Look up channel ID via YouTube Data API
+            try:
+                api_key = ""
+                for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+                    if line.startswith("YOUTUBE_API_KEY="):
+                        api_key = line.split("=", 1)[1].strip()
+                        break
+                if api_key:
+                    lookup = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={vid}&key={api_key}"
+                    with _ureq.urlopen(lookup, timeout=10) as resp:
+                        data = json.loads(resp.read())
+                        if data.get("items"):
+                            ch_id = data["items"][0]["snippet"]["channelId"]
+                            conn = _yt_conn()
+                            cur = conn.cursor()
+                            cur.execute("""
+                                INSERT INTO youtube_channels (channel_id, channel_name, channel_url, strategy_focus, added_by)
+                                VALUES (%s, %s, %s, 'general', 'telegram')
+                                ON CONFLICT (channel_id) DO UPDATE SET channel_name=EXCLUDED.channel_name
+                            """, (ch_id, channel_name, f"https://www.youtube.com/channel/{ch_id}"))
+                            conn.commit()
+                            conn.close()
+                            channels_added.add(channel_name)
+            except Exception:
+                pass
+
+    # Attempt to ingest each video
+    ingested = 0
+    queued = 0
+    skipped = 0
+    for vid in video_ids:
+        url = f"https://www.youtube.com/watch?v={vid}"
+        result = ingest_video(url, added_by="telegram")
+
+        if result.get("status") == "ingested":
+            ingested += 1
+            q = result.get("quality_score", 0)
+            r = result.get("relevance_score", 0)
+            lines.append(f"Ingested: _{result.get('title', vid)[:50]}_ (Q:{q} R:{r:.2f})")
+        elif result.get("status") == "already_exists":
+            skipped += 1
+            lines.append(f"Already exists: `{vid}`")
+        else:
+            # Transcript fetch failed — queue for retry
+            queued += 1
+            meta = get_video_metadata(vid)
+            try:
+                conn = _yt_conn()
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO youtube_ingest_queue (video_id, url, title, channel_name)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (video_id) DO NOTHING
+                """, (vid, url, meta.get("title", ""), meta.get("channel_name", "")))
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+            lines.append(f"Queued (IP blocked): _{meta.get('title', vid)[:50]}_")
+
+    lines.append("")
+    if channels_added:
+        lines.append(f"*Channels tracked:* {', '.join(channels_added)}")
+    lines.append(f"*Result:* {ingested} ingested, {skipped} existing, {queued} queued")
+    if queued > 0:
+        lines.append("_Queued videos will retry when YouTube IP block clears._")
+
+    return "\n".join(lines)
+
+
+def _handle_add_article(args: str) -> str:
+    """Add article URLs to ingestion. Fetches page content, scores, and stores."""
+    import urllib.request as _ureq
+
+    # Extract all HTTP(S) URLs from the message
+    urls = re.findall(r'https?://\S+', args)
+    if not urls:
+        return "No URLs found. Paste one or more article links."
+
+    # Strip trailing punctuation from URLs
+    urls = [re.sub(r'[),.\]}>]+$', '', u) for u in urls]
+    urls = list(dict.fromkeys(urls))  # dedupe
+
+    lines = [f"*Processing {len(urls)} article(s)...*", ""]
+
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from content_scoring import score_content, tag_content
+
+    conn = _get_conn()
+    cur = conn.cursor()
+    ingested = 0
+    skipped = 0
+    errors = 0
+
+    for url in urls:
+        try:
+            # Check if already ingested
+            cur.execute("SELECT 1 FROM news_articles WHERE source_url = %s LIMIT 1", (url[:500],))
+            if cur.fetchone():
+                skipped += 1
+                lines.append(f"Already exists: `{url[:60]}`")
+                continue
+
+            # Fetch page content
+            req = _ureq.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            })
+            with _ureq.urlopen(req, timeout=15) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+
+            # Extract text with BS4
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            title = soup.title.string.strip() if soup.title and soup.title.string else url[:80]
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
+
+            # Prefer article/main content
+            main = soup.find("article") or soup.find("main") or soup.find("div", class_="content") or soup
+            text = main.get_text(separator=" ", strip=True)[:10000]
+
+            if len(text) < 100:
+                errors += 1
+                lines.append(f"Too short: _{title[:50]}_")
+                continue
+
+            # Score and tag
+            scores = score_content(title=title, text=text[:5000], source="telegram_article")
+            tags = tag_content(text=text[:5000], title=title)
+
+            # Save
+            cur.execute("SAVEPOINT article_save")
+            cur.execute("""
+                INSERT INTO news_articles
+                    (symbol, strategy_type, title, summary, source, source_url,
+                     published_at, relevance_score, strategy_tags, agent_tags)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s)
+            """, (
+                "manual_add",
+                "manual_add",
+                title[:500],
+                text[:1000],
+                "telegram_article",
+                url[:500],
+                scores.get("relevance_score", 0.5),
+                json.dumps(tags.get("strategy_tags", [])),
+                json.dumps(tags.get("agent_tags", [])),
+            ))
+            conn.commit()
+            ingested += 1
+            q = scores.get("quality_score", 0)
+            r = scores.get("relevance_score", 0)
+            lines.append(f"Ingested: _{title[:50]}_ (Q:{q} R:{r:.2f})")
+
+        except Exception as e:
+            errors += 1
+            try:
+                cur.execute("ROLLBACK TO SAVEPOINT article_save")
+            except Exception:
+                conn.rollback()
+            lines.append(f"Error: `{url[:40]}` — {str(e)[:60]}")
+
+    conn.close()
+
+    lines.append("")
+    lines.append(f"*Result:* {ingested} ingested, {skipped} existing, {errors} errors")
+
+    return "\n".join(lines)
 
 
 def process_command(cmd: dict) -> str:
@@ -718,6 +929,24 @@ def process_command(cmd: dict) -> str:
             cur2.close()
             return f"Screener '{args}' not found.\n\nAvailable:\n" + "\n".join(available)
 
+    if command == "run_promoter":
+        import subprocess
+        dry = "dry" in (args or "").lower()
+        cmd = [sys.executable, os.path.join(str(PROJECT_ROOT), "scripts", "incubator_proposal_promoter.py")]
+        cmd.append("--dry-run" if dry else "--run")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, cwd=str(PROJECT_ROOT))
+            output = (result.stdout or "") + (result.stderr or "")
+            # Extract the summary lines
+            lines = [l.strip() for l in output.strip().splitlines() if l.strip()]
+            summary = "\n".join(lines[-10:]) if len(lines) > 10 else "\n".join(lines)
+            prefix = "[DRY RUN] " if dry else ""
+            return f"{prefix}Promoter executed:\n{summary}"
+        except subprocess.TimeoutExpired:
+            return "Promoter timed out after 120s"
+        except Exception as e:
+            return f"Promoter failed: {e}"
+
     if command == "topics":
         # List active research topics
         conn = _get_conn()
@@ -817,6 +1046,14 @@ def process_command(cmd: dict) -> str:
             return f"Topic ingestion started for {label}. Check logs/topic_ingestion.log or /v2/topic-monitor"
         except Exception as e:
             return f"Error starting topic ingestion: {e}"
+
+    # Session 36: Add YouTube videos from Telegram
+    if command == "add_video":
+        return _handle_add_video(args)
+
+    # Session 36: Add articles from Telegram
+    if command == "add_article":
+        return _handle_add_article(args)
 
     if command in ("research", "find", "analyze"):
         # Save as persistent research topic
@@ -2089,10 +2326,15 @@ def poll_and_process():
         if not text or not chat_id:
             continue
 
-        # Only process messages that look like commands
+        # Only process messages that look like commands or ingestible URLs
         lower = text.lower().strip()
-        is_command = any(lower.startswith(c) for c in ["research ", "find ", "analyze ", "run screener ", "look for ", "alex ", "retirement ", "iris", "/iris_", "status", "help", "topics", "topic "])
-        if not is_command:
+        is_command = any(lower.startswith(c) for c in [
+            "research ", "find ", "analyze ", "run screener ", "run promoter", "look for ",
+            "alex ", "retirement ", "iris", "/iris_", "status", "help",
+            "topics", "topic ", "add video", "add article",
+        ])
+        has_url = "http://" in lower or "https://" in lower
+        if not is_command and not has_url:
             continue
 
         cmd = parse_command(text)

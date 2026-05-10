@@ -323,7 +323,8 @@ def ingest_video(video_url: str, added_by: str = "user") -> dict:
           scores["validation_status"], json.dumps(scores["matched_keywords"]),
           added_by, json.dumps(tags["strategy_tags"]), json.dumps(tags["agent_tags"]),
           timed_json))
-    new_id = cur.fetchone()[0]
+    row = cur.fetchone()
+    new_id = row['id'] if isinstance(row, dict) else row[0]
     conn.commit()
     conn.close()
 
@@ -736,8 +737,24 @@ if __name__ == "__main__":
         results = backfill_all_channels(max_per_channel=max_v)
         print(json.dumps(results, indent=2, default=str))
     elif "--all-channels" in sys.argv:
-        results = ingest_all_channels()
-        print(json.dumps(results, indent=2, default=str))
+        try:
+            results = ingest_all_channels()
+            print(json.dumps(results, indent=2, default=str))
+        except Exception as e:
+            print(f"[yt] FATAL: {e}")
+            try:
+                sys.path.insert(0, os.path.dirname(__file__))
+                from telegram_alert import send_telegram
+                send_telegram(
+                    f"PIPELINE FAILURE: youtube_transcript_ingest\n"
+                    f"Error: {str(e)[:200]}\n\n"
+                    f"Reply to retry:\n"
+                    f"  add video <url> — ingest specific video\n"
+                    f"  status — system health check"
+                )
+            except Exception:
+                pass
+            sys.exit(1)
     else:
         print("Usage:")
         print("  --import-channel URL [--max 20] [--strategy retirement_planning]")

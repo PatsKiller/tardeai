@@ -504,6 +504,26 @@ def main():
     if args.improve_queries and not args.no_llm:
         print("\n[3/5] Improving queries for next run...")
         improve_queries(conn, args.topic)
+
+        # Step 3b: AUTO-RUN improved queries through topic_ingestion
+        # This closes the loop: curate → improve queries → ingest new content → curate again
+        print("\n[3b/5] Running improved queries through topic_ingestion...")
+        try:
+            import subprocess
+            ingest_cmd = [sys.executable, str(PROJECT_ROOT / "scripts" / "topic_ingestion.py"),
+                          "--use-llm-queries"]
+            if args.topic:
+                ingest_cmd += ["--topic", args.topic]
+            r = subprocess.run(ingest_cmd, capture_output=True, text=True, timeout=300,
+                               cwd=str(PROJECT_ROOT))
+            output = (r.stdout or "").strip()
+            if output:
+                print(f"  {output[-200:]}")
+            stats['llm_query_ingest'] = r.returncode == 0
+        except subprocess.TimeoutExpired:
+            print("  [curator] Topic ingestion with improved queries timed out")
+        except Exception as e:
+            print(f"  [curator] Topic ingestion with improved queries failed: {e}")
     else:
         print("[3/5] Skipping query improvement")
 
