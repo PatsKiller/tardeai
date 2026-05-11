@@ -1,0 +1,148 @@
+# Trade AI v12 — Skills & Agent Capabilities Reference
+**Last updated:** 2026-05-11 (Session 29)
+
+---
+
+## Agent Roster
+
+### Conversational Agents (OpenClaw Gateway :18789)
+
+| Agent | Role | LLM | Key Capabilities |
+|-------|------|-----|------------------|
+| **Maria** | Risk assessment & primary analyst | qwen3:14b | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
+| **Steph** | Technical analysis & wealth advisory | qwen3:14b | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
+| **Alex** | Income & retirement strategy | qwen3:14b + Claude (complex) | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
+| **Aegis** | Synthesis & surveillance | qwen3:14b | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
+| **Risk Agent** | Portfolio risk monitoring | qwen3:14b | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
+| **Tax Agent** | Tax optimization | qwen3:14b | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
+
+### Backend Automation Agents
+
+| Agent | Role | Trigger |
+|-------|------|---------|
+| **Iris** | Content hygiene — quality gating, stale detection, duplicate removal | Scheduled + event-driven |
+| **Scalp Critic** | LLM critique of incubator candidates before promotion (A-F grading) | 8:10 AM + 6:00 PM |
+
+---
+
+## OpenClaw Skills (14 skills in 7 groups)
+
+Located in `~/.openclaw/skills/`
+
+### email-calendar (3 skills)
+- **email-compose** — Draft and send emails via gog/Gmail
+- **calendar-query** — Check Google Calendar availability
+- **calendar-create** — Create calendar events
+
+### integrations (2 skills)
+- **github** — GitHub issue/PR management
+- **gog** — Gmail CLI operations (send, read, search)
+
+### light-research (3 skills)
+- **web-search** — Web research via Brave/DuckDuckGo
+- **news-lookup** — Financial news search
+- **ticker-research** — Symbol-specific research aggregation
+
+### operations (1 skill)
+- **tradeai-safe-ops** — Pipeline operations (run screener, check health, trigger enrichment)
+
+### personal-productivity (3 skills)
+- **note-taking** — Capture notes and reminders
+- **task-management** — Task tracking
+- **daily-summary** — Daily activity summary
+
+### steph-wealth-advisor (1 skill)
+- **wealth-advisor** — Steph's wealth advisory skill (96 lines, portfolio analysis, income strategy)
+
+### Telegram Commands (via telegram_command_handler.py)
+- `status` — Full system health check
+- `run promoter` / `run promoter dry` — Retry incubator promoter
+- `run screener <name>` — Retry a screener
+- `topic status` / `topic add` / `topic url` / `topic run` — Topic management
+- `add video <url>` — Add YouTube video for ingestion
+- `add article <url>` — Add news article for ingestion
+
+---
+
+## System Skills (Automated Pipelines)
+
+### Discovery & Scoring
+| Skill | Script | Schedule |
+|-------|--------|----------|
+| Finviz screener | `finviz_screener_runner.py` | 10 AM + 4 PM weekdays |
+| Social scalp scanner | `social_scalp_scanner.py` | 6 AM - 4 PM every 30 min |
+| Pre-market watcher | `premarket_watcher.py` | 5:30 - 9:30 AM every 15 min |
+| Trade AI scoring | `trade_ai_orchestrator.py` | Continuous runner |
+| Incubator LLM screening | `incubator_llm_screener.py` | 8:10 AM + 6 PM |
+
+### Execution & Position Management
+| Skill | Script | Schedule |
+|-------|--------|----------|
+| Instant paper execution | `api_v2.py` → `proposal_paper_submitter.py` | On approval (instant) |
+| Execution sweep (safety net) | `paper_execution_sweep.py` | Every 5 min market hours |
+| Position monitor (trailing stops) | `paper_trade_monitor.py` | Every 5 min market hours |
+| Smart order selection | `alpaca_paper_adapter.py` | On submission |
+
+### Intelligence & Enrichment
+| Skill | Script | Schedule |
+|-------|--------|----------|
+| LLM intelligence (5 sections) | `llm_intelligence_enrichment.py` | 7:20 AM daily |
+| News ingestion (7 sources) | `news_ingestion.py` | 6:30 AM + 12:30 PM |
+| Social ingestion | `social_ingest.py` | 6:30 AM + 12:35 PM |
+| Topic curation (LLM-powered) | `topic_curator.py` | 7:00 AM daily |
+| RAG indexing | `rag_indexer.py` | 4x daily |
+| Sentiment processing | `sentiment_processor.py` | 7:00 AM + 12:00 PM |
+
+### Monitoring & Alerting
+| Skill | Script | Schedule |
+|-------|--------|----------|
+| Central alert dispatcher | `alert_dispatcher.py` | On event (dedup, fatigue, tiers) |
+| Missing condition alerts | `alert_missing_conditions.py` | 7:30 AM daily |
+| Morning brief delivery | `aegis_morning_brief_delivery.py` | 8:00 AM daily |
+| Recovery watch | `recovery_watch_daily.py` | After portfolio pipeline |
+| Pipeline watchdog | `pipeline_watchdog.py` | Every 5 min |
+
+### Learning & Feedback
+| Skill | Script | Schedule |
+|-------|--------|----------|
+| Agent outcome scoring | `agent_outcome_scorer.py` | 5:30 AM daily |
+| Agent calibration | `agent_calibration_engine.py` | On demand |
+| Feedback loop processor | `feedback_loop_processor.py` | 8:30 PM daily |
+| Weekly learning digest | `weekly_learning_digest.py` | Sunday 7:45 AM |
+| Weekly DOCX report | `generate_weekly_docx.py` | Sunday 9:00 PM |
+| Backup verification | `backup_verify.py` | 1st of month |
+
+---
+
+## LLM Routing
+
+```
+Request arrives
+    ↓
+local_llm.py acquires toll gate lock (/tmp/ollama_llm_gate.lock)
+    ↓
+Try qwen3:14b via Ollama (:11434, Intel Arc B50 GPU)
+    ↓ (fail/timeout)
+Try OpenAI gpt-4o-mini
+    ↓ (fail)
+Try Anthropic claude-sonnet-4-6
+    ↓ (fail)
+Return empty (caller handles gracefully)
+```
+
+All model references via `local_llm_config.py` and `.env` — zero hardcoded model names.
+
+---
+
+## Global Agent Rules (G1-G10)
+
+1. **G1** — Never execute live trades without explicit 6-month paper validation
+2. **G2** — Income protection: SSDI awareness in all recommendations
+3. **G3** — IRMAA threshold consciousness in Roth conversion planning
+4. **G4** — Confidence gating: low-confidence recommendations flagged, not promoted
+5. **G5** — Portfolio heat limit: 5% max, alerts above threshold
+6. **G6** — Single-stock concentration: 15% max per symbol
+7. **G7** — Stop-loss discipline: all positions must have stops
+8. **G8** — Paper-only mode: no live broker modifications
+9. **G9** — Audit trail: all decisions logged to DB
+10. **G10** — Human approval required for config changes (no auto-promotion)

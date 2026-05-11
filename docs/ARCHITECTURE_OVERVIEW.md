@@ -1,13 +1,13 @@
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level
-**Last updated:** 2026-05-09
+**Last updated:** 2026-05-11 (Session 29)
 
 ---
 
 ## What Is Trade AI v12?
 
-Trade AI v12 is an automated trading intelligence platform that discovers, evaluates, and paper-trades equity setups against a ~$1.19M multi-account portfolio. It combines quantitative screening, 20 configurable strategies, LLM-powered analysis, and 4 conversational AI agents into a single-tenant cloud-deployable service.
+Trade AI v12 is a fully automated profit-seeking trading intelligence platform that discovers, evaluates, executes, and manages equity positions against a ~$1.19M multi-account portfolio. It combines quantitative screening, 23 configurable strategies, LLM-powered analysis (5 daily intelligence sections via qwen3:14b), and 6 conversational AI agents into a single-tenant self-hosted service. Orders are submitted to Alpaca automatically on approval with R-multiple trailing stop management.
 
 **Current state:** Self-hosted on a dedicated Linux server (`ms01-openclaw`). All services co-located. Paper trading only -- live trading locked behind a 6-month validation gate.
 
@@ -21,17 +21,18 @@ Trade AI v12 is an automated trading intelligence platform that discovers, evalu
 |                                                                                    |
 |   +-----------+     +-------------+     +------------+     +------------------+    |
 |   | React SPA | --> | Portfolio    | --> | PostgreSQL | <-- | Cron Scheduler   |    |
-|   | (55 pgs)  |     | Server :7777|     | :5432      |     | (142 jobs)       |    |
-|   +-----------+     | 80+ APIs    |     | 299 tables |     +------------------+    |
+|   | (42 pgs)  |     | Server :7777|     | :5432      |     | (55 jobs)        |    |
+|   +-----------+     | 275+ APIs   |     | 330 tables |     +------------------+    |
 |                     +------+------+     +------------+                              |
 |                            |                                                       |
 |              +-------------+-------------+                                         |
 |              |                           |                                         |
 |   +----------v----------+     +----------v----------+                              |
-|   | Ollama LLM :11434   |     | OpenClaw GW :18789  |                              |
-|   | qwen3:14b           |     | 4 Agents            |                              |
-|   | Intel Arc B50 GPU   |     | (Maria/Steph/Aegis/ |                              |
-|   +---------------------+     |  Alex)              |                              |
+|   | Ollama LLM :11434   |     | OpenClaw GW :18789  |     +------------------+    |
+|   | qwen3:14b           |     | 6 Agents            |     | Alert Dispatcher |    |
+|   | Intel Arc B50 GPU   |     | (Maria/Steph/Aegis/ |     | Dedup+Fatigue    |    |
+|   | 5 daily intel sects |     |  Alex/Risk/Tax)     |     | 3 tiers          |    |
+|   +---------------------+     +---------------------+     +------------------+    |
 |                               +----------+----------+                              |
 |                                          |                                         |
 +-----------------------------------------------------------------------------------+

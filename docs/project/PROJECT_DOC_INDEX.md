@@ -21,6 +21,7 @@
 ### Strategy & Agent Configuration
 | Document | Purpose |
 |----------|---------|
+| `docs/project/SKILLS.md` | **Skills & capabilities reference** — all agents, OpenClaw skills, system pipelines, LLM routing |
 | `docs/project/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md` | 23 strategy definitions |
 | `docs/project/agents_bible.md` | Agent behavior rules, G1-G10 global rules |
 | `docs/project/project_openclaw.md` | OpenClaw gateway configuration |

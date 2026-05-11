@@ -3,7 +3,7 @@
 **Owner:** John W. Whiting | **Server:** ms01-openclaw (Ubuntu)
 **Root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/`
 **OpenClaw:** `/home/johnclaw/.openclaw/`
-**Updated:** May 2, 2026 | **Bible:** v7.6 | **Agents Bible:** v1.2
+**Updated:** May 11, 2026 (Session 29) | **Bible:** v7.6 | **Agents Bible:** v1.3
 
 ---
 
@@ -25,10 +25,10 @@ These run automatically via cron and events. They write to PostgreSQL. Their out
 
 | # | Agent | Model | What It Does |
 |---|-------|-------|-------------|
-| 4 | **Maria (Research)** | qwen3:1.7b | News, SEC filings, fundamentals — two-pass analysis |
-| 5 | **Steph (Allocation)** | qwen3:1.7b | Income target, account fit, allocation analysis |
-| 6 | **Risk Agent** | qwen3:1.7b | RSI, stops, heat, technical analysis |
-| 7 | **Tax Agent** | qwen3:1.7b | SSDI/IRMAA/MFS tax optimization |
+| 4 | **Maria (Research)** | qwen3:14b | News, SEC filings, fundamentals — two-pass analysis |
+| 5 | **Steph (Allocation)** | qwen3:14b | Income target, account fit, allocation analysis |
+| 6 | **Risk Agent** | qwen3:14b | RSI, stops, heat, technical analysis |
+| 7 | **Tax Agent** | qwen3:14b | SSDI/IRMAA/MFS tax optimization |
 | 8 | **Alex** | Claude Sonnet | Retirement & disability advisor — escalation target |
 | 9 | **Iris** | Claude Sonnet | Taxonomy intelligence — content classification |
 | 10 | **Social Scalp** | Rules-based | Social mention → Finviz → 4-tier scalp alerts |
@@ -58,7 +58,7 @@ These run automatically via cron and events. They write to PostgreSQL. Their out
 | SOUL | `/home/johnclaw/.openclaw/sandboxes/agent-main-f331f052/SOUL.md` (tone) |
 | Identity | `/home/johnclaw/.openclaw/sandboxes/agent-main-f331f052/IDENTITY.md` |
 | Operating Rules | `/home/johnclaw/.openclaw/sandboxes/agent-main-f331f052/AGENTS.md` |
-| Model | Primary: `ollama/qwen3:1.7b`, fallbacks: gpt-5.4-mini, claude-sonnet-4-6 |
+| Model | Primary: `ollama/qwen3:14b`, fallbacks: gpt-5.4-mini, claude-sonnet-4-6 |
 
 #### Telegram Access
 | Channel | Config |
@@ -234,7 +234,7 @@ These agents run automatically. John doesn't talk to them — he sees their outp
 |-----------|----------|
 | Two-pass engine | `scripts/process_watchlist_agent_jobs.py:538` — `_run_maria_two_pass()` |
 | Context builder | `scripts/process_watchlist_agent_jobs.py:163` — `_get_context()` |
-| Model | qwen3:1.7b (local) |
+| Model | qwen3:14b (local) |
 | DB config | `agent_skills` row: maria / `agent_intelligence_rules`: agent_identity |
 | Output table | `watchlist_agent_results` (agent='maria') |
 | Avg confidence | 0.756 (646 results) |
@@ -256,7 +256,7 @@ These agents run automatically. John doesn't talk to them — he sees their outp
 | Component | Location |
 |-----------|----------|
 | Prompt | `scripts/process_watchlist_agent_jobs.py:470` |
-| Model | qwen3:1.7b (local) |
+| Model | qwen3:14b (local) |
 | Avg confidence | 0.759 (725 results) |
 
 **Income thresholds in prompt:** $55K target, 25% concentration rule, 15% hard cap, account rules (Roth=growth, taxable=qualified divs only), never-auto-rotate list.
@@ -276,7 +276,7 @@ These agents run automatically. John doesn't talk to them — he sees their outp
 | Component | Location |
 |-----------|----------|
 | Prompt | `scripts/process_watchlist_agent_jobs.py:481` |
-| Model | qwen3:1.7b (local) |
+| Model | qwen3:14b (local) |
 | Avg confidence | 0.721 (726 results) |
 
 **Risk rules in prompt:** Stop = entry - 2xATR. RSI>75 = OVERBOUGHT. Heat>5% = no new positions. Target: 80% portfolio protected.
@@ -295,7 +295,7 @@ These agents run automatically. John doesn't talk to them — he sees their outp
 |-----------|----------|
 | Prompt | `scripts/process_watchlist_agent_jobs.py:497` |
 | Tax sweep | `scripts/overnight_batch.py --tax-sweep` (6:35 AM cron) |
-| Model | qwen3:1.7b (local, Claude for Roth) |
+| Model | qwen3:14b (local, Claude for Roth) |
 
 **Tax situation in prompt:** MFS, SSDI $45,600/yr, IRMAA threshold $103K, 22% ceiling $94,300, Golden Window 2036-2040, disability exemption (no 10% penalty).
 
@@ -455,6 +455,16 @@ Aegis Core findings → Steph (validation) → John (decision)
 | `analyze <symbol>` | Analyze with portfolio context |
 | `run screener <name>` | Run named Finviz screener |
 
+### Content Ingestion (Session 36)
+| Command | What It Does |
+|---------|-------------|
+| `add video <URLs>` | Ingest YouTube videos — adds channel to tracking, fetches transcript, scores/tags |
+| `add article <URLs>` | Ingest article URLs — fetches page, extracts text, scores/tags |
+| (bare YouTube URLs) | Auto-detected → video ingestion |
+| (bare article URLs) | Auto-detected → article ingestion |
+
+Works from both Telegram (via `telegram_command_handler.py` poll whitelist) and OpenClaw (via `content-ingestion` skill in `~/.openclaw/skills/integrations/`). If YouTube IP-blocks the server, videos are queued in `youtube_ingest_queue` for automatic retry.
+
 ### Direct Telegram Alerts (no command — automatic)
 | Source | What Gets Sent |
 |--------|---------------|
@@ -479,7 +489,7 @@ Aegis Core findings → Steph (validation) → John (decision)
 | Telegram allowed | `tg:780672608`, `tg:8797974247` |
 | WhatsApp enabled | true |
 | WhatsApp allowed | `+3473388380` |
-| Default model | `ollama/qwen3:1.7b` |
+| Default model | `ollama/qwen3:14b` |
 | Fallback models | gpt-5.4-mini, claude-sonnet-4-6 |
 | Memory search | enabled |
 
