@@ -28,12 +28,21 @@ US_HOLIDAYS_2026 = {
 US_EARLY_CLOSE_2026 = {"2026-11-27", "2026-12-24"}
 
 # Freshness thresholds (minutes) by strategy type
+# Multi-day strategies have multi-day validity windows.
+# Staleness is checked against approved_at (when user acted), not created_at.
 FRESHNESS_THRESHOLDS = {
-    "intraday_scalp": 10, "momentum_scalp": 10, "scalp": 10,
-    "momentum": 15, "momentum_breakout": 15, "day_trade": 15,
-    "swing": 60, "swing_breakout": 60, "mean_reversion": 60,
-    "income": 1440, "position": 1440, "dividend": 1440,
-    "default": 15,
+    "intraday_scalp": 30, "momentum_scalp": 30, "scalp": 30, "gap_and_go": 30,
+    "momentum": 60, "momentum_breakout": 60, "day_trade": 60,
+    "swing": 4320, "swing_trade": 4320, "swing_breakout": 4320,  # 3 days
+    "mean_reversion": 4320,
+    "earnings_catalyst": 7200, "sector_rotation": 7200,  # 5 days
+    "speculative_growth": 7200, "core_growth_compounder": 14400,  # 10 days
+    "income": 14400, "income_add": 14400, "covered_call_income": 14400,
+    "dividend_growth_compounder": 14400, "high_yield_income_bdc": 14400,
+    "position": 14400, "dividend": 14400, "defense_thesis": 14400,
+    "recovery_watch": 14400, "reit_income": 14400, "bond_income": 14400,
+    "screener": 4320,
+    "default": 60,
 }
 
 

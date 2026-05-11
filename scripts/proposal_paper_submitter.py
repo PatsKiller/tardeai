@@ -195,7 +195,8 @@ def check_gates(conn, proposal_id: int) -> dict:
     cur.execute("""
         SELECT id, symbol, strategy_id, status, proposed_entry, proposed_stop,
                proposed_target1, proposed_shares, proposed_dollar_risk, proposed_rr,
-               risk_gate_result, approval_allowed, intel_readiness
+               risk_gate_result, approval_allowed, intel_readiness,
+               created_at, approved_at, recommendation_created_at, signal_grade, signal_score
         FROM paper_trade_proposals WHERE id = %s
     """, [proposal_id])
     cols = [d[0] for d in cur.description]

@@ -160,13 +160,13 @@ def revalidate(conn, proposal, simulate_delay_min=None, simulate_session=None, s
     strategy = proposal.get("strategy_id") or "default"
     recheck_id = f"RCK_{now.strftime('%Y%m%d_%H%M%S')}_{proposal['id']}_{uuid.uuid4().hex[:6]}"
 
-    # Timestamps
-    rec_created = proposal.get("created_at")
-    if rec_created and rec_created.tzinfo is None:
-        rec_created = rec_created.replace(tzinfo=timezone.utc)
+    # Timestamps — use approved_at for staleness (when user acted), not created_at
     approved_at = proposal.get("approved_at")
     if approved_at and approved_at.tzinfo is None:
         approved_at = approved_at.replace(tzinfo=timezone.utc)
+    rec_created = approved_at or proposal.get("created_at")
+    if rec_created and rec_created.tzinfo is None:
+        rec_created = rec_created.replace(tzinfo=timezone.utc)
 
     # Simulate delay
     effective_now = now
