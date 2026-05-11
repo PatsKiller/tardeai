@@ -893,9 +893,10 @@ export default function JournalReports() {
   )
 }
 
-// ── Trade Calendar Heatmap ──────────────────────────────────────────────────
+// ── Trade Calendar Heatmap with Month Navigation ──────────────────────────
 function TradeCalendar({ dailyData, onDayClick }: { dailyData: any[]; onDayClick: (day: any) => void }) {
   const dailyMap = useMemo(() => Object.fromEntries(dailyData.map(d => [d.date, d])), [dailyData])
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
 
   const cellColor = (pnl: number | undefined) => {
     if (pnl === undefined) return 'transparent'
@@ -909,48 +910,83 @@ function TradeCalendar({ dailyData, onDayClick }: { dailyData: any[]; onDayClick
   const activeMonths = new Set(dailyData.map(d => d.date.substring(0, 7)))
   if (activeMonths.size === 0) return null
 
-  const sortedKeys = Array.from(activeMonths).sort()
-  const months: { label: string; days: string[] }[] = []
+  const sortedKeys = Array.from(activeMonths).sort().reverse()
+  const currentMonth = selectedMonth || sortedKeys[0]
+  const months: { key: string; label: string; days: string[]; pnl: number; trades: number }[] = []
   for (const ym of sortedKeys) {
     const [y, m] = ym.split('-').map(Number)
     const dt = new Date(y, m - 1, 1)
-    const label = dt.toLocaleString('en-US', { month: 'short', year: '2-digit' })
+    const label = dt.toLocaleString('en-US', { month: 'long', year: 'numeric' })
     const days: string[] = []
     const d = new Date(y, m - 1, 1)
     while (d.getMonth() === m - 1) {
       days.push(d.toISOString().slice(0, 10))
       d.setDate(d.getDate() + 1)
     }
-    months.push({ label, days })
+    const monthPnl = days.reduce((s, day) => s + (dailyMap[day]?.daily_pnl || 0), 0)
+    const monthTrades = days.reduce((s, day) => s + (dailyMap[day]?.trade_count || 0), 0)
+    months.push({ key: ym, label, days, pnl: monthPnl, trades: monthTrades })
   }
 
+  const activeMonth = months.find(m => m.key === currentMonth) || months[0]
+
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <div style={{ display: 'flex', gap: '2px', fontSize: '9px', color: TEXT_SECONDARY, marginBottom: '4px', marginLeft: '60px' }}>
-        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => <span key={i} style={{ width: '16px', textAlign: 'center' }}>{d}</span>)}
+    <div>
+      {/* Month navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        {months.map(m => (
+          <button key={m.key} onClick={() => setSelectedMonth(m.key)}
+            style={{
+              padding: '4px 10px', fontSize: 10, fontWeight: m.key === currentMonth ? 700 : 400,
+              background: m.key === currentMonth ? 'rgba(74,144,244,0.15)' : 'transparent',
+              border: m.key === currentMonth ? '1px solid #4a90f4' : '1px solid transparent',
+              borderRadius: 4, color: m.key === currentMonth ? '#4a90f4' : TEXT_SECONDARY,
+              cursor: 'pointer',
+            }}>
+            {m.label.split(' ')[0]}
+          </button>
+        ))}
       </div>
-      {months.map(m => (
-        <div key={m.label} style={{ display: 'flex', alignItems: 'flex-start', gap: '2px', marginBottom: '2px' }}>
-          <span style={{ width: '56px', fontSize: '10px', color: TEXT_SECONDARY, fontWeight: 600, paddingTop: '2px', flexShrink: 0 }}>{m.label}</span>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 16px)', gap: '2px' }}>
-            {Array.from({ length: new Date(m.days[0]).getDay() }, (_, i) => (
-              <div key={`e${i}`} style={{ width: '16px', height: '16px' }} />
-            ))}
-            {m.days.map(day => {
-              const entry = dailyMap[day]
-              return (
-                <div key={day} title={entry ? `${day}: ${fmt$(entry.daily_pnl)} (${entry.trade_count} trades)` : day}
-                  onClick={() => { if (entry) onDayClick(entry) }}
-                  style={{ width: '16px', height: '16px', borderRadius: '2px',
-                    background: cellColor(entry?.daily_pnl),
-                    border: entry ? 'none' : '1px solid #1E293B22',
-                    cursor: entry ? 'pointer' : 'default' }} />
-              )
-            })}
-          </div>
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '9px', color: TEXT_SECONDARY, marginLeft: '60px' }}>
+
+      {/* Month summary */}
+      <div style={{ fontSize: 11, marginBottom: 8, color: TEXT_SECONDARY }}>
+        <span style={{ fontWeight: 600, color: '#E2E8F0' }}>{activeMonth.label}</span>
+        {' — '}
+        <span style={{ color: activeMonth.pnl >= 0 ? '#4ADE80' : '#F87171' }}>{fmt$(activeMonth.pnl)}</span>
+        {' from '}{activeMonth.trades} trades
+      </div>
+
+      {/* Calendar grid */}
+      <div style={{ display: 'flex', gap: '2px', fontSize: '9px', color: TEXT_SECONDARY, marginBottom: '4px' }}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => <span key={i} style={{ width: '40px', textAlign: 'center' }}>{d}</span>)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 40px)', gap: '2px' }}>
+        {Array.from({ length: new Date(activeMonth.days[0]).getDay() }, (_, i) => (
+          <div key={`e${i}`} style={{ width: '40px', height: '40px' }} />
+        ))}
+        {activeMonth.days.map(day => {
+          const entry = dailyMap[day]
+          const dayNum = parseInt(day.split('-')[2])
+          const trades = entry?.trades || []
+          return (
+            <div key={day} title={entry ? `${day}: ${fmt$(entry.daily_pnl)} (${entry.trade_count} trades)\n${trades.map((t: any) => `${t.symbol}: ${fmt$(t.pnl)}`).join('\n')}` : day}
+              onClick={() => { if (entry) onDayClick(entry) }}
+              style={{ width: '40px', height: '40px', borderRadius: '3px',
+                background: cellColor(entry?.daily_pnl),
+                border: entry ? '1px solid rgba(255,255,255,0.1)' : '1px solid #1E293B33',
+                cursor: entry ? 'pointer' : 'default',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                fontSize: 9, position: 'relative',
+              }}>
+              <span style={{ color: entry ? '#fff' : '#555', fontWeight: entry ? 600 : 400 }}>{dayNum}</span>
+              {entry && <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.7)' }}>{entry.trade_count}t</span>}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '9px', color: TEXT_SECONDARY }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '10px', height: '10px', background: '#166534', borderRadius: '2px', display: 'inline-block' }} /> +$2K</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '10px', height: '10px', background: '#4ADE8066', borderRadius: '2px', display: 'inline-block' }} /> +$0-500</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '10px', height: '10px', background: '#F8717166', borderRadius: '2px', display: 'inline-block' }} /> -$0-500</span>
