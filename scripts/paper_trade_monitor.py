@@ -119,7 +119,8 @@ def monitor(dry_run=False):
 
         # Get DB trade record
         cur.execute("""
-            SELECT id, stop_loss, target_1, strategy_id, entry_price
+            SELECT id, stop_loss, target_1, strategy_id, entry_price,
+                   max_favorable_excursion, max_adverse_excursion
             FROM paper_trades WHERE symbol = %s AND status = 'open'
             ORDER BY created_at DESC LIMIT 1
         """, [sym])
@@ -135,6 +136,13 @@ def monitor(dry_run=False):
         db_entry = _f(trade.get('entry_price')) or entry
         risk = abs(db_entry - stop) if stop and stop < db_entry else db_entry * 0.05
         r_mult = (current - db_entry) / risk if risk > 0 else 0
+
+        # Track MFE/MAE (max favorable/adverse excursion as % from entry)
+        current_excursion_pct = ((current - db_entry) / db_entry * 100) if db_entry else 0
+        prev_mfe = _f(trade.get('max_favorable_excursion')) or 0
+        prev_mae = _f(trade.get('max_adverse_excursion')) or 0
+        new_mfe = max(prev_mfe, current_excursion_pct) if current_excursion_pct > 0 else prev_mfe
+        new_mae = min(prev_mae, current_excursion_pct) if current_excursion_pct < 0 else prev_mae
 
         # Current stop order on Alpaca
         orders = _api_get(f'/v2/orders?status=open&symbols={sym}')
@@ -222,8 +230,11 @@ def monitor(dry_run=False):
         if not dry_run:
             dollar_risk = round(abs(db_entry - stop) * qty, 2) if stop and db_entry else None
             cur.execute("""UPDATE paper_trades SET current_price=%s, r_multiple=%s,
-                pnl=%s, unrealized_pnl=%s, dollar_risk=%s, updated_at=NOW() WHERE id=%s""",
-                [current, round(r_mult, 2), round(pnl, 2), round(pnl, 2), dollar_risk, trade['id']])
+                pnl=%s, unrealized_pnl=%s, dollar_risk=%s,
+                max_favorable_excursion=%s, max_adverse_excursion=%s,
+                updated_at=NOW() WHERE id=%s""",
+                [current, round(r_mult, 2), round(pnl, 2), round(pnl, 2), dollar_risk,
+                 round(new_mfe, 2), round(new_mae, 2), trade['id']])
             conn.commit()
 
         results.append({

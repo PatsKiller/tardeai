@@ -95,6 +95,12 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── Paper Trade Monitor: trailing stops, profit targets, position management ──
 */5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
 
+# ── Market Regime: collect indicators + classify regime ──────────────────
+30 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1
+35 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
+# Also run at market close for after-hours regime snapshot
+5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
+
 # ── Open Trade Monitor: near-stop, near-target, negative news, stale alerts ──
 */15 9-16 * * 1-5 cd $PROJ && flock -n /tmp/open_trade_monitor.lock $PY scripts/open_trade_monitor.py >> logs/open_trade_monitor.log 2>&1
 
