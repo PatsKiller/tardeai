@@ -6,12 +6,23 @@ Entry point: main()
 
 Flow:
 1. Detect new stop-outs from risk_management.json (TRIGGERED status)
-2. Auto-create stopped_out_watch records (deduped by symbol+account+date)
-3. Review all active watch items using available data
-4. Update verdict/confidence/summary
-5. Escalate to Maria or Steph when criteria met
-6. Send Telegram notification for escalations
-7. Log to notification_log for audit
+2. Classify each event: true_stop_out vs relist_no_exit vs market_reconnection
+3. Auto-create stopped_out_watch records (deduped by symbol+account+date)
+4. Detect relist events for symbols that reappear without a confirmed exit
+5. Review all active watch items using available data
+6. Update verdict/confidence/summary (relists → patience scoring, not penalties)
+7. Escalate to Maria or Steph when criteria met
+8. Send Telegram notification for escalations
+9. Log to notification_log for audit
+
+Re-entry Classification (2026-05-11):
+  - explicit_stop_out: confirmed decision to exit / abandon / price exceeded tolerance
+  - relisted_without_stop_out: vehicle reappeared without us exiting — market behavior, not failure
+  - market_reconnection_event: relisting is a market cycle event, not a strategy failure
+  When explicit_stop_out = false:
+    - Do not downgrade confidence in the pricing model
+    - Relisted vehicles contribute to patience_score, not penalties
+    - Aggressiveness reduced only on confirmed stop-outs
 """
 from __future__ import annotations
 import json
@@ -77,7 +88,14 @@ def _db_write(sql, params=None):
 # ── Step 1: Detect new stop-outs ─────────────────────────────────────────
 
 def detect_new_stopouts() -> list[dict]:
-    """Find triggered positions not yet in stopped_out_watch."""
+    """Find triggered positions not yet in stopped_out_watch.
+
+    Classifies each event as:
+      - true_stop_out: explicit decision to exit, price breached stop
+      - relist_no_exit: symbol reappeared, we never exited
+      - market_reconnection: auction/market mechanics, not our strategy
+      - unclassified: needs manual review
+    """
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     h = _load_json(STATE_DIR / "holdings.json") or {}
 
@@ -102,11 +120,14 @@ def detect_new_stopouts() -> list[dict]:
 
         # Check if already in stopped_out_watch (dedup)
         existing = _db_query(
-            "SELECT id FROM stopped_out_watch WHERE symbol = %s AND account = %s AND is_active = true",
+            "SELECT id, exit_type, explicit_stop_out FROM stopped_out_watch WHERE symbol = %s AND account = %s AND is_active = true",
             (sym, acct), fetch="one"
         )
         if existing:
             continue
+
+        # ── Classify the exit event ──
+        exit_classification = _classify_exit_event(sym, acct, current_price, stop_price, live, p)
 
         triggered.append({
             "symbol": sym,
@@ -116,31 +137,207 @@ def detect_new_stopouts() -> list[dict]:
             "shares": live.get("shares", 0),
             "market_value": live.get("market_value", 0),
             "name": live.get("name", ""),
+            **exit_classification,
         })
 
     return triggered
 
 
+def _classify_exit_event(sym, acct, current_price, stop_price, live_data, risk_data) -> dict:
+    """Classify whether this is a true stop-out or a relist/market reconnection.
+
+    Returns dict with: exit_type, explicit_stop_out, relisted_without_stop_out,
+                       market_reconnection_event
+    """
+    # Check for prior closed watch records — if the symbol was watched before
+    # and came back, it's likely a relist
+    prior_watches = _db_query(
+        """SELECT id, exit_type, stopped_out_at, analyst_verdict
+           FROM stopped_out_watch
+           WHERE symbol = %s AND account = %s AND is_active = false
+           ORDER BY stopped_out_at DESC LIMIT 3""",
+        (sym, acct)
+    ) or []
+
+    # Check if we still hold the position (relist indicator)
+    still_holding = live_data.get("shares", 0) > 0
+
+    # Check the risk_management trigger reason
+    trigger_reason = risk_data.get("trigger_reason", "")
+    trigger_type = risk_data.get("trigger_type", "")
+
+    # ── Decision tree ──
+
+    # If we still hold shares, this is NOT a true stop-out
+    if still_holding and current_price > 0:
+        return {
+            "exit_type": "relist_no_exit",
+            "explicit_stop_out": False,
+            "relisted_without_stop_out": True,
+            "market_reconnection_event": True,
+        }
+
+    # If the trigger was explicitly mechanical and price breached stop
+    if current_price > 0 and stop_price > 0 and current_price <= stop_price:
+        return {
+            "exit_type": "true_stop_out",
+            "explicit_stop_out": True,
+            "relisted_without_stop_out": False,
+            "market_reconnection_event": False,
+        }
+
+    # If price is above stop but status is TRIGGERED, likely a relist scenario
+    if current_price > 0 and stop_price > 0 and current_price > stop_price:
+        return {
+            "exit_type": "relist_no_exit",
+            "explicit_stop_out": False,
+            "relisted_without_stop_out": True,
+            "market_reconnection_event": True,
+        }
+
+    # If we had prior watches on this symbol, it's a recurring market event
+    if prior_watches:
+        return {
+            "exit_type": "market_reconnection",
+            "explicit_stop_out": False,
+            "relisted_without_stop_out": True,
+            "market_reconnection_event": True,
+        }
+
+    # Default: unclassified — needs manual review
+    return {
+        "exit_type": "unclassified",
+        "explicit_stop_out": False,
+        "relisted_without_stop_out": False,
+        "market_reconnection_event": False,
+    }
+
+
 def create_watch_records(new_stopouts: list[dict]) -> int:
-    """Insert new stopped_out_watch records."""
+    """Insert new stopped_out_watch records with exit classification."""
     created = 0
     for s in new_stopouts:
+        exit_type = s.get("exit_type", "unclassified")
+        explicit_stop = s.get("explicit_stop_out", False)
+        relisted = s.get("relisted_without_stop_out", False)
+        market_recon = s.get("market_reconnection_event", False)
+
+        # Set initial verdict based on classification
+        if relisted or market_recon:
+            initial_verdict = "market_relist_monitor"
+            initial_confidence = 0.50
+            summary_suffix = "Classified as market relist — no stop-out confirmed. Patience mode active."
+        else:
+            initial_verdict = "wait_monitor"
+            initial_confidence = 0.50
+            summary_suffix = "Auto-detected from TRIGGERED status. Initial verdict: wait_monitor pending analyst review."
+
         try:
             _db_write(
                 """INSERT INTO stopped_out_watch
                    (symbol, account, stopped_out_at, exit_price, stop_price, reason,
                     status, analyst_verdict, analyst_confidence, analyst_summary,
-                    detection_source, auto_created, next_review_at, is_active)
-                   VALUES (%s, %s, %s, %s, %s, 'mechanical', 'active', 'wait_monitor', 0.50,
-                           %s, 'risk_management_triggered', true, CURRENT_DATE + 1, true)
+                    detection_source, auto_created, next_review_at, is_active,
+                    explicit_stop_out, relisted_without_stop_out, market_reconnection_event,
+                    exit_type, patience_score, relist_count, first_seen_at)
+                   VALUES (%s, %s, %s, %s, %s, 'mechanical', 'active', %s, %s,
+                           %s, 'risk_management_triggered', true, CURRENT_DATE + 1, true,
+                           %s, %s, %s, %s, %s, %s, NOW())
                    ON CONFLICT (symbol, account, stopped_out_at) DO NOTHING""",
                 (s["symbol"], s["account"], date.today(), s["exit_price"], s["stop_price"],
-                 f'{s["symbol"]} stopped out at ${s["exit_price"]:.2f} (stop was ${s["stop_price"]:.2f}). Auto-detected from TRIGGERED status. Initial verdict: wait_monitor pending analyst review.')
+                 initial_verdict, initial_confidence,
+                 f'{s["symbol"]} at ${s["exit_price"]:.2f} (stop ${s["stop_price"]:.2f}). {summary_suffix}',
+                 explicit_stop, relisted, market_recon, exit_type,
+                 0.0 if explicit_stop else 0.50,  # relists start with patience credit
+                 1 if relisted else 0,
+                 )
             )
             created += 1
+            if relisted or market_recon:
+                print(f"    {s['symbol']}: classified as {exit_type} (not a true stop-out)")
         except Exception as e:
             print(f"  [recovery] Failed to create watch for {s['symbol']}: {e}")
     return created
+
+
+# ── Step 1b: Detect relist events ───────────────────────────────────────
+
+def detect_relist_events() -> int:
+    """Detect symbols that reappear in holdings/auction after being watched.
+
+    When a watched symbol reappears without an explicit exit, log a relist event
+    and update the watch record to reflect market reconnection behavior.
+    """
+    # Get active watch items
+    items = _db_query(
+        """SELECT id, symbol, account, exit_price, stop_price, exit_type,
+                  explicit_stop_out, relist_count, patience_score
+           FROM stopped_out_watch WHERE is_active = true AND status = 'active'""",
+        fetch="all"
+    ) or []
+    if not items:
+        return 0
+
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    held_symbols = {pos.get("symbol") for pos in h.get("holdings", []) if pos.get("symbol")}
+
+    relist_count = 0
+    for item in items:
+        sym = item["symbol"]
+
+        # If symbol is back in holdings but was marked as a stop-out, it's a relist
+        if sym in held_symbols and item.get("explicit_stop_out"):
+            # Reclassify: this wasn't a true stop-out after all
+            _db_write(
+                """UPDATE stopped_out_watch SET
+                          exit_type = 'relist_no_exit',
+                          explicit_stop_out = false,
+                          relisted_without_stop_out = true,
+                          market_reconnection_event = true,
+                          relist_count = COALESCE(relist_count, 0) + 1,
+                          last_relist_at = NOW(),
+                          patience_score = LEAST(COALESCE(patience_score, 0) + 0.10, 1.00),
+                          analyst_verdict = 'market_relist_monitor',
+                          updated_at = NOW()
+                   WHERE id = %s""",
+                (item["id"],)
+            )
+
+            # Log the relist event
+            _db_write(
+                """INSERT INTO stopped_out_relist_events
+                   (watch_id, symbol, account, relist_date, price_at_relist,
+                    classified_as, relist_reason)
+                   VALUES (%s, %s, %s, CURRENT_DATE, %s, 'market_reconnection', 'symbol_reappeared_in_holdings')
+                   ON CONFLICT (watch_id, relist_date) DO NOTHING""",
+                (item["id"], sym, item.get("account"),
+                 item.get("exit_price"))
+            )
+
+            _db_write(
+                """INSERT INTO stopped_out_watch_history
+                   (watch_id, symbol, changed_by, old_verdict, new_verdict, summary)
+                   VALUES (%s, %s, 'aegis', %s, 'market_relist_monitor',
+                           'Reclassified: symbol reappeared in holdings without confirmed exit. Market reconnection, not strategy failure.')""",
+                (item["id"], sym, item.get("exit_type", "true_stop_out"))
+            )
+            relist_count += 1
+            print(f"    {sym}: relist detected — reclassified from stop-out to market_reconnection")
+
+        # If not a true stop-out and symbol is still around, bump patience score
+        elif sym in held_symbols and not item.get("explicit_stop_out"):
+            current_patience = float(item.get("patience_score") or 0)
+            new_patience = min(current_patience + 0.05, 1.00)
+            _db_write(
+                """UPDATE stopped_out_watch SET
+                          patience_score = %s,
+                          last_relist_at = NOW(),
+                          updated_at = NOW()
+                   WHERE id = %s""",
+                (new_patience, item["id"])
+            )
+
+    return relist_count
 
 
 # ── Step 2: Daily analyst review ─────────────────────────────────────────
@@ -149,7 +346,9 @@ def review_active_items() -> list[dict]:
     """Review all active watch items and update verdicts."""
     items = _db_query(
         """SELECT id, symbol, account, stopped_out_at, exit_price, stop_price,
-                  analyst_verdict, analyst_confidence, analyst_summary, is_active
+                  analyst_verdict, analyst_confidence, analyst_summary, is_active,
+                  explicit_stop_out, relisted_without_stop_out, market_reconnection_event,
+                  exit_type, patience_score, relist_count
            FROM stopped_out_watch WHERE is_active = true AND status = 'active'
            ORDER BY stopped_out_at DESC""",
         fetch="all"
@@ -201,10 +400,20 @@ def review_active_items() -> list[dict]:
         # Fetch journal history for this symbol
         journal_ctx = _get_journal_context(sym)
 
-        # Compute verdict based on available signals + journal history
+        # Build exit classification context
+        exit_ctx = {
+            "explicit_stop_out": item.get("explicit_stop_out", False),
+            "relisted_without_stop_out": item.get("relisted_without_stop_out", False),
+            "market_reconnection_event": item.get("market_reconnection_event", False),
+            "exit_type": item.get("exit_type", "unclassified"),
+            "patience_score": float(item.get("patience_score") or 0),
+            "relist_count": item.get("relist_count", 0),
+        }
+
+        # Compute verdict based on available signals + journal history + exit classification
         verdict, confidence, summary, trigger, invalidation = _compute_verdict(
             sym, exit_price, stop_price, current_price, rsi, sma200,
-            days_since, recovery_pct, news_count, journal_ctx
+            days_since, recovery_pct, news_count, journal_ctx, exit_ctx
         )
 
         old_verdict = item.get("analyst_verdict")
@@ -212,6 +421,7 @@ def review_active_items() -> list[dict]:
             "current_price": current_price, "exit_price": exit_price,
             "recovery_pct": round(recovery_pct, 1), "rsi": rsi,
             "journal_history": journal_ctx,
+            "exit_classification": exit_ctx,
             "sma200_pct": sma200, "days_since_stop": days_since,
             "news_count_7d": news_count, "reviewed_at": datetime.now().isoformat(),
         }
@@ -275,62 +485,115 @@ def _get_journal_context(sym: str) -> dict:
 
 
 def _compute_verdict(sym, exit_price, stop_price, current_price, rsi, sma200,
-                     days_since, recovery_pct, news_count, journal_ctx=None):
-    """Rule-based verdict computation using available signals."""
+                     days_since, recovery_pct, news_count, journal_ctx=None,
+                     exit_ctx=None):
+    """Rule-based verdict computation using available signals + exit classification.
+
+    Key principle: when explicit_stop_out = false (relist / market reconnection),
+    do NOT downgrade confidence or treat as a failed position. Relisted vehicles
+    contribute to patience scoring, not penalties.
+    """
+    ec = exit_ctx or {}
+    is_true_stopout = ec.get("explicit_stop_out", True)  # default conservative
+    is_relist = ec.get("relisted_without_stop_out", False)
+    is_market_recon = ec.get("market_reconnection_event", False)
+    patience = ec.get("patience_score", 0)
+    relist_count = ec.get("relist_count", 0)
 
     # Default
     verdict = "wait_monitor"
     confidence = 0.50
     reasons = []
 
-    # Price recovery signals
-    if current_price > 0 and stop_price > 0:
-        if current_price > stop_price:
-            reasons.append(f"Price ${current_price:.2f} has recovered above stop ${stop_price:.2f}")
-            verdict = "reentry_candidate"
-            confidence = 0.70
-        elif recovery_pct > 5:
-            reasons.append(f"Price recovering: +{recovery_pct:.1f}% from exit")
-            confidence = 0.55
-        elif recovery_pct < -10:
-            reasons.append(f"Continued decline: {recovery_pct:.1f}% from exit. Thesis may be damaged.")
+    # ── Relist / market reconnection path (NOT a failure) ──
+    if is_relist or is_market_recon:
+        verdict = "market_relist_monitor"
+        confidence = 0.55
+        reasons.append(f"Relisted — No Stop-Out. Market reconnection event (relist #{relist_count}).")
+        reasons.append("Price discovery continuing; not a strategy failure.")
+
+        if current_price > 0 and stop_price > 0:
+            if current_price > stop_price:
+                reasons.append(f"Price ${current_price:.2f} above original stop ${stop_price:.2f} — position intact.")
+                verdict = "reentry_candidate"
+                confidence = 0.70 + min(patience * 0.10, 0.15)  # patience bonus
+            elif current_price > exit_price:
+                reasons.append(f"Price ${current_price:.2f} recovering above exit ${exit_price:.2f}.")
+                confidence = 0.60
+
+        # RSI in relist context — constructive only, no penalties
+        if rsi is not None:
+            if rsi > 50:
+                reasons.append(f"RSI {rsi:.0f} — momentum supportive in relist context.")
+                confidence = min(confidence + 0.05, 0.85)
+            elif rsi < 30:
+                reasons.append(f"RSI {rsi:.0f} — oversold during relist cycle, potential opportunity.")
+
+        if sma200 is not None and sma200 > 0:
+            reasons.append(f"Above SMA200 (+{sma200:.1f}%) — trend intact despite relist.")
+
+        # Patience bonus: relists without stop-out build patience score
+        if patience > 0:
+            reasons.append(f"Patience score: {patience:.2f} — sustained engagement without exit.")
+
+        # Time decay is softer for relists — they're market events
+        if days_since > 45 and verdict == "market_relist_monitor":
+            reasons.append(f"{days_since} days since initial flag — extended monitoring, but no penalty for market behavior.")
+        # Only close relist watches after much longer (90+ days)
+        if days_since > 90 and verdict == "market_relist_monitor":
+            reasons.append(f"{days_since} days — consider consolidating this relist watch.")
+            verdict = "wait_monitor"
+
+    else:
+        # ── True stop-out path (original logic, penalties apply) ──
+        # Price recovery signals
+        if current_price > 0 and stop_price > 0:
+            if current_price > stop_price:
+                reasons.append(f"Price ${current_price:.2f} has recovered above stop ${stop_price:.2f}")
+                verdict = "reentry_candidate"
+                confidence = 0.70
+            elif recovery_pct > 5:
+                reasons.append(f"Price recovering: +{recovery_pct:.1f}% from exit")
+                confidence = 0.55
+            elif recovery_pct < -10:
+                reasons.append(f"Continued decline: {recovery_pct:.1f}% from exit. Thesis may be damaged.")
+                verdict = "do_not_reenter"
+                confidence = 0.65
+
+        # RSI signals
+        if rsi is not None:
+            if rsi < 30:
+                reasons.append(f"RSI {rsi:.0f} — oversold, possible reversal setup")
+                if verdict == "wait_monitor":
+                    confidence = max(confidence, 0.55)
+            elif rsi > 60 and current_price > stop_price:
+                reasons.append(f"RSI {rsi:.0f} — momentum recovering")
+                if verdict == "reentry_candidate":
+                    confidence = min(confidence + 0.10, 0.85)
+            elif rsi > 70:
+                reasons.append(f"RSI {rsi:.0f} — overbought after recovery, wait for pullback")
+
+        # SMA200 signals
+        if sma200 is not None:
+            if sma200 > 0:
+                reasons.append(f"Above SMA200 (+{sma200:.1f}%) — constructive")
+            else:
+                reasons.append(f"Below SMA200 ({sma200:.1f}%) — weak trend")
+
+        # Time decay — only for true stop-outs
+        if days_since > 30 and verdict == "wait_monitor":
+            reasons.append(f"{days_since} days since stop — consider closing watch if no recovery")
+            confidence = max(confidence, 0.55)
+        if days_since > 60 and verdict != "reentry_candidate":
+            reasons.append(f"{days_since} days with no recovery signal — thesis likely broken")
             verdict = "do_not_reenter"
-            confidence = 0.65
+            confidence = 0.70
 
-    # RSI signals
-    if rsi is not None:
-        if rsi < 30:
-            reasons.append(f"RSI {rsi:.0f} — oversold, possible reversal setup")
-            if verdict == "wait_monitor":
-                confidence = max(confidence, 0.55)
-        elif rsi > 60 and current_price > stop_price:
-            reasons.append(f"RSI {rsi:.0f} — momentum recovering")
-            if verdict == "reentry_candidate":
-                confidence = min(confidence + 0.10, 0.85)
-        elif rsi > 70:
-            reasons.append(f"RSI {rsi:.0f} — overbought after recovery, wait for pullback")
-
-    # SMA200 signals
-    if sma200 is not None:
-        if sma200 > 0:
-            reasons.append(f"Above SMA200 (+{sma200:.1f}%) — constructive")
-        else:
-            reasons.append(f"Below SMA200 ({sma200:.1f}%) — weak trend")
-
-    # Time decay
-    if days_since > 30 and verdict == "wait_monitor":
-        reasons.append(f"{days_since} days since stop — consider closing watch if no recovery")
-        confidence = max(confidence, 0.55)
-    if days_since > 60 and verdict != "reentry_candidate":
-        reasons.append(f"{days_since} days with no recovery signal — thesis likely broken")
-        verdict = "do_not_reenter"
-        confidence = 0.70
-
-    # News activity
+    # News activity (applies to both paths)
     if news_count > 5:
         reasons.append(f"{news_count} articles in recent coverage — active news flow")
 
-    # Journal history context
+    # Journal history context (applies to both paths)
     jc = journal_ctx or {}
     if jc.get("has_history"):
         rc = jc["review_count"]
@@ -341,17 +604,21 @@ def _compute_verdict(sym, exit_price, stop_price, current_price, rsi, sma200,
             reasons.append(f"Journal history ({rc} reviews): {we_rate*100:.0f}% well-executed — good execution track record on {sym}.")
             if verdict == "reentry_candidate":
                 confidence = min(confidence + 0.05, 0.85)
-        elif we_rate < 0.5 and rc >= 2:
+        elif we_rate < 0.5 and rc >= 2 and is_true_stopout:
+            # Only penalize execution history on true stop-outs
             reasons.append(f"Journal history ({rc} reviews): only {we_rate*100:.0f}% well-executed — caution, past execution on {sym} was weak.")
             confidence = max(confidence - 0.05, 0.40)
-        if mistakes:
+        if mistakes and is_true_stopout:
             reasons.append(f"Past mistakes on {sym}: {', '.join(mistakes[:2])}.")
         if setups:
             reasons.append(f"Previously traded as: {', '.join(setups[:2])}.")
 
     # Build summary
     if not reasons:
-        reasons.append(f"Monitoring {sym} post stop-out. No strong signals yet.")
+        if is_relist:
+            reasons.append(f"Monitoring {sym} — relisted without stop-out. Price discovery continuing.")
+        else:
+            reasons.append(f"Monitoring {sym} post stop-out. No strong signals yet.")
 
     summary = " ".join(reasons)
 
@@ -362,6 +629,9 @@ def _compute_verdict(sym, exit_price, stop_price, current_price, rsi, sma200,
     elif verdict == "do_not_reenter":
         trigger = f"Reconsider only if: major positive catalyst (earnings beat, M&A, sector rotation), AND price recovers above ${stop_price:.2f}. Otherwise this name is closed."
         invalidation = f"Current assessment: avoid {sym}. Thesis appears damaged. Capital better deployed elsewhere."
+    elif verdict == "market_relist_monitor":
+        trigger = f"Continue monitoring: {sym} is a market relist, not a failed position. Watch for price stability above ${stop_price:.2f} and volume normalization."
+        invalidation = f"Reclassify as true stop-out if: explicit exit decision is made, or price drops below ${exit_price * 0.85:.2f} (15% below exit), or confirmed thesis break."
     else:
         rsi_note = f" RSI is {rsi:.0f}" if rsi is not None else ""
         trigger = f"Watch for: {sym} to recover above ${stop_price:.2f} with volume confirmation.{rsi_note}. Check daily until verdict changes."
@@ -425,7 +695,19 @@ def check_and_escalate(reviewed: list[dict]) -> list[dict]:
 
         # Route: Maria for straightforward re-entry, Steph for complex/thesis-damage cases
         escalate_to = _route_escalation(r)
-        reason = f"{r['symbol']} is a re-entry candidate ({r['confidence']*100:.0f}% confidence) after stop-out. Routed to {escalate_to} for review."
+        # Include exit classification in escalation reason
+        exit_note = ""
+        full_item_check = _db_query(
+            "SELECT exit_type, explicit_stop_out, relisted_without_stop_out FROM stopped_out_watch WHERE id = %s",
+            (r["id"],), fetch="one"
+        ) or {}
+        if full_item_check.get("relisted_without_stop_out"):
+            exit_note = " [Relisted — No Stop-Out]"
+        elif full_item_check.get("explicit_stop_out"):
+            exit_note = " after stop-out"
+        else:
+            exit_note = " after stop-out"
+        reason = f"{r['symbol']} is a re-entry candidate ({r['confidence']*100:.0f}% confidence){exit_note}. Routed to {escalate_to} for review."
 
         _db_write(
             """UPDATE stopped_out_watch SET escalated_to = %s, escalated_at = NOW(),
@@ -781,12 +1063,19 @@ def _compute_allocation(sym, analyst_verdict, analyst_conf, cash_pct, heat_pct, 
 def main():
     print(f"[recovery_watch_daily] Starting — {datetime.now().isoformat()}")
 
-    # Step 1: Detect new stop-outs
+    # Step 1: Detect new stop-outs (with exit classification)
     new_stopouts = detect_new_stopouts()
     created = create_watch_records(new_stopouts)
-    print(f"  New stop-outs detected: {len(new_stopouts)}, records created: {created}")
+    true_stops = sum(1 for s in new_stopouts if s.get("explicit_stop_out"))
+    relists = sum(1 for s in new_stopouts if s.get("relisted_without_stop_out"))
+    print(f"  New events detected: {len(new_stopouts)} (true stop-outs: {true_stops}, relists: {relists}), records created: {created}")
 
-    # Step 2: Review all active items
+    # Step 1b: Detect relist events for existing watch items
+    relist_events = detect_relist_events()
+    if relist_events:
+        print(f"  Relist events detected and reclassified: {relist_events}")
+
+    # Step 2: Review all active items (with exit classification context)
     reviewed = review_active_items()
     print(f"  Active items reviewed: {len(reviewed)}")
     for r in reviewed:
@@ -816,8 +1105,9 @@ def main():
     print(f"  Temp allocation recommendations updated: {alloc_updated}")
 
     print(f"[recovery_watch_daily] Complete — {datetime.now().isoformat()}")
-    return {"new_stopouts": len(new_stopouts), "created": created,
-            "reviewed": len(reviewed), "escalated": len(escalated),
+    return {"new_stopouts": len(new_stopouts), "true_stopouts": true_stops,
+            "relists_detected": relists, "relist_reclassifications": relist_events,
+            "created": created, "reviewed": len(reviewed), "escalated": len(escalated),
             "stop_reminders": len(reminders), "alloc_updated": alloc_updated}
 
 

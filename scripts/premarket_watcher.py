@@ -84,9 +84,149 @@ def check_stocktwits_premarket(symbol, conn, dry_run=False):
         now = datetime.now(timezone.utc)
         recent = [m for m in messages if _msg_recent(m, now, hours=2)]
         is_surging = len(recent) >= 3
-        return {'symbol': symbol, 'recent_count': len(recent), 'is_surging': is_surging}
+
+        # Count sentiment
+        bullish = sum(1 for m in recent if (m.get('entities', {}).get('sentiment', {}).get('basic') == 'Bullish'))
+        bearish = sum(1 for m in recent if (m.get('entities', {}).get('sentiment', {}).get('basic') == 'Bearish'))
+        total = len(recent)
+
+        result = {
+            'symbol': symbol,
+            'recent_count': total,
+            'is_surging': is_surging,
+            'bullish': bullish,
+            'bearish': bearish,
+            'bullish_pct': round(bullish / total * 100, 1) if total > 0 else 0,
+        }
+
+        # ── Persist to DB (the pipeline gap fix) ──
+        if not dry_run and total > 0:
+            _persist_stocktwits_premarket(conn, symbol, result, recent)
+
+        return result
     except Exception:
         return {}
+
+
+def _persist_stocktwits_premarket(conn, symbol, result, messages):
+    """Persist StockTwits pre-market data to social_posts and trade_ai_scans.
+
+    This closes the pipeline gap where pre-market StockTwits surge data was
+    only sent to Telegram but never written to the database, making it
+    invisible to the /v2/trade-ai dashboard.
+    """
+    cur = conn.cursor()
+    total = result['recent_count']
+    bullish = result.get('bullish', 0)
+    bearish = result.get('bearish', 0)
+    bullish_pct = result.get('bullish_pct', 0)
+
+    # 1. Persist individual messages to social_posts (deduped by post_id)
+    for msg in messages[:10]:  # cap at 10 per symbol per scan
+        msg_id = f"st_{msg.get('id', '')}"
+        body = msg.get('body', '')[:500]
+        username = msg.get('user', {}).get('username', '')
+        sentiment_raw = msg.get('entities', {}).get('sentiment', {}).get('basic', 'Neutral')
+        sentiment_map = {'Bullish': 'bullish', 'Bearish': 'bearish'}
+        sentiment = sentiment_map.get(sentiment_raw, 'neutral')
+        created = msg.get('created_at', '')
+
+        try:
+            cur.execute("""
+                INSERT INTO social_posts
+                    (platform, post_id, username, text, sentiment, quality_score,
+                     post_date, symbols_mentioned, strategy_tags, added_by)
+                VALUES ('stocktwits', %s, %s, %s, %s, %s, %s,
+                        %s::jsonb, %s::jsonb, 'premarket_watcher')
+                ON CONFLICT (platform, post_id) DO NOTHING
+            """, [
+                msg_id, username, body, sentiment,
+                70 if sentiment != 'neutral' else 50,
+                created[:19] if created else datetime.now().isoformat(),
+                json.dumps([symbol]), json.dumps(['premarket_social']),
+            ])
+        except Exception:
+            pass
+
+    # 2. Upsert surge data into trade_ai_scans (makes it visible on /v2/trade-ai)
+    run_date = datetime.now().date()
+    run_id = f"premarket_{run_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M')}"
+    sentiment_label = 'Very Bullish' if bullish_pct >= 70 else ('Bullish' if bullish_pct >= 55 else ('Bearish' if bearish > bullish else 'Neutral'))
+
+    try:
+        cur.execute("""
+            INSERT INTO trade_ai_scans (
+                run_id, run_date, run_label, run_type,
+                symbol, score, grade, decision,
+                social_stocktwits, social_score, social_sentiment,
+                social_bullish_pct, mention_count, social_sources,
+                source, scanned_at
+            ) VALUES (
+                %s, %s, 'Pre-Market StockTwits', 'premarket_social',
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                'premarket_social', NOW()
+            )
+            ON CONFLICT (symbol, run_date)
+            DO UPDATE SET
+                social_stocktwits = GREATEST(COALESCE(trade_ai_scans.social_stocktwits, 0), EXCLUDED.social_stocktwits),
+                social_score = GREATEST(COALESCE(trade_ai_scans.social_score, 0), EXCLUDED.social_score),
+                social_sentiment = CASE
+                    WHEN EXCLUDED.social_stocktwits > COALESCE(trade_ai_scans.social_stocktwits, 0)
+                    THEN EXCLUDED.social_sentiment
+                    ELSE COALESCE(trade_ai_scans.social_sentiment, EXCLUDED.social_sentiment) END,
+                social_bullish_pct = CASE
+                    WHEN EXCLUDED.social_stocktwits > COALESCE(trade_ai_scans.social_stocktwits, 0)
+                    THEN EXCLUDED.social_bullish_pct
+                    ELSE COALESCE(trade_ai_scans.social_bullish_pct, EXCLUDED.social_bullish_pct) END,
+                mention_count = GREATEST(COALESCE(trade_ai_scans.mention_count, 0), EXCLUDED.mention_count),
+                source = CASE
+                    WHEN trade_ai_scans.source IS NULL OR trade_ai_scans.source = ''
+                    THEN 'premarket_social'
+                    WHEN trade_ai_scans.source LIKE '%%premarket%%'
+                    THEN trade_ai_scans.source
+                    ELSE trade_ai_scans.source || '+premarket_social' END
+        """, [
+            run_id, run_date,
+            symbol,
+            min(total * 3, 50),  # rough score: 3 pts per post, cap 50
+            'B+' if total >= 10 else ('B' if total >= 5 else 'C'),
+            'WAIT' if total < 5 else 'GO',
+            total,
+            min(total / 30.0, 1.0),  # normalize: 30 posts = 1.0
+            sentiment_label,
+            bullish_pct,
+            total,
+            ['stocktwits'],
+        ])
+    except Exception as e:
+        log.warning(f"trade_ai_scans upsert failed for {symbol}: {e}")
+        conn.rollback()
+        return
+
+    # 3. Upsert into scalp_scan_results for source attribution on dashboard
+    try:
+        cur.execute("""
+            INSERT INTO scalp_scan_results
+                (symbol, mention_count, score, grade, decision, sources, alerted, scanned_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+        """, [
+            symbol, total,
+            min(total * 3, 50),
+            'B+' if total >= 10 else ('B' if total >= 5 else 'C'),
+            'WAIT' if total < 5 else 'GO',
+            ['stocktwits_premarket'],
+            result.get('is_surging', False),
+        ])
+    except Exception:
+        pass
+
+    try:
+        conn.commit()
+        log.info(f"Persisted StockTwits pre-market: {symbol} ({total} posts, {sentiment_label})")
+    except Exception:
+        conn.rollback()
 
 
 def _msg_recent(msg, now, hours=2):

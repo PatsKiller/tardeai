@@ -80,6 +80,8 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 30 7 * * 0 $PROJ/scripts/agent_router_cron.sh deep
 0 8 * * 0 $PROJ/scripts/agent_intelligence_cron.sh deep
 0 8 * * 0 cd $PROJ && $PY scripts/run_alex_daily.py --weekly --telegram >> logs/alex_weekly.log 2>&1
+# ── Weekly DOCX Report (Sunday 9 PM — after all weekly jobs complete) ──
+0 21 * * 0 cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1
 
 # ── MONTHLY (1st of month) ─────────────────────────────────────────────
 0 9 1 * * cd $PROJ && $PY scripts/run_alex_daily.py --monthly --telegram >> logs/alex_monthly.log 2>&1

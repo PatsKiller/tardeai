@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-05-09 (Cloud Product Rebuild)
+**Document version:** 2026-05-11 (Session 29 — Re-Entry Classification, Pipeline Gaps, Dashboard Intelligence)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 ---
@@ -942,29 +942,47 @@ Multiple cron jobs (classifier, curator, reviewer, screener) all compete for the
 
 ## 13. API Layer
 
-- **Endpoint count:** 80+
+- **Endpoint count:** 100+
 - **Base path:** `/api/v2/*`
 - **Server:** `scripts/portfolio_server.py` on port 7777
-- **Handler:** `scripts/api_v2.py` (11,700+ lines)
+- **Handler:** `scripts/api_v2.py` (12,600+ lines)
 - **Protocol:** HTTP/JSON (no auth layer -- internal network only)
 
 ### Endpoint Groups
 
 | Group | Key Endpoints | Methods |
 |-------|--------------|---------|
-| **Portfolio** | `portfolio`, `portfolio-summary`, `portfolio-p-and-l` | GET |
-| **Watchlist** | `watchlist`, `watchlist-items`, `agent-watchlist-results` | GET, POST |
-| **Proposals** | `paper-proposals`, `paper-proposals/promote`, `proposal/{id}` | GET, POST, PUT |
-| **Intelligence** | `intelligence-entities`, `catalyst-timeline`, `news-feed` | GET |
-| **Strategy** | `strategy-configs`, `strategy-performance`, `signal-history` | GET, PUT |
-| **Agents** | `agent-pipeline`, `agent-handoffs`, `agent-outcome-scores` | GET |
-| **Risk** | `risk-gate-status`, `exposure-check`, `correlation-matrix` | GET |
-| **Journal** | `trade-journal`, `journal-entries`, `trade-outcomes` | GET, POST |
-| **Research** | `rag-search`, `symbol-deep-dive`, `research-topics` | GET, POST |
-| **Execution** | `execution-quality`, `broker-reconciliation`, `paper-outcomes` | GET, POST |
-| **Pipeline** | `pipeline-health-master`, `pipeline-stage-status` | GET |
-| **System** | `system-health`, `incubator` | GET |
-| **Governance** | `paper-outcomes`, `governance-dashboard` | GET, POST |
+| **Portfolio** | `portfolio/holdings`, `portfolio/performance`, `portfolio-monitor` | GET |
+| **Watchlist** | `watchlist`, `watchlist/items`, `watchlist/symbols`, `watchlist/research-card/{sym}` | GET, POST |
+| **Prospects** | `prospects`, `trade-ai` | GET |
+| **Proposals** | `proposals`, `proposals/feedback`, `proposals/history`, `proposal-detail/{id}` | GET, POST, PUT |
+| **Intelligence** | `intelligence-entities`, `intelligence-whiteboard`, `qualified-intelligence` | GET |
+| **CIO** | `cio` (unified), `cio-dashboard`, `cio-decisions`, `cio-decisions/{sym}` | GET |
+| **Recovery** | `recovery` (exit classification, relist tracking, patience scoring) | GET |
+| **Rebalance** | `rebalance`, `rebalance-plans`, `rebalance-plans/latest` | GET |
+| **Reports** | `reports` (hub), `weekly-report`, `monthly-report` | GET |
+| **Retirement** | `retirement`, `tax-situation`, `trust-transfers` | GET |
+| **Strategy** | `strategy-rules`, `strategy-rotations`, `classifications` | GET, PUT |
+| **Agents** | `agent-pipeline`, `agent-health`, `agent-detail`, `agent-calibration` | GET |
+| **Risk** | `risk-gate-status`, `portfolio-signal-qa` | GET |
+| **Research** | `rag/status`, `research/ticker/{sym}`, `research-topics` | GET, POST |
+| **Social** | `social/posts`, `social/status`, `aegis/social-sentiment` | GET |
+| **Pipeline** | `pipeline-health`, `pipeline-run-health`, `auto-proposal-diagnostics` | GET |
+| **System** | `system-health`, `cost-dashboard`, `llm/health`, `llm-spend` | GET |
+
+### New Endpoints (Session 29 — 2026-05-11)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/v2/recovery` | Full recovery dashboard with exit classification (true stop-out vs relist vs market reconnection), patience scoring, relist event history |
+| `/api/v2/cio` | Unified CIO intelligence with deduplicated decisions (DISTINCT ON symbol), rotations, plans, learning recommendations |
+| `/api/v2/portfolio-monitor` | Real-time portfolio health: holdings with technicals, risk alerts, news digest, LLM health, dividend calendar, recovery watch |
+| `/api/v2/reports` | Reports hub: agent activity, pipeline runs, learning stats, incubator, social ingestion, weekly DOCX catalog |
+
+### Enrichment Changes (Session 29)
+
+- **`/api/v2/prospects`**: Now includes incubator LLM screen grades, proposal LLM reviews, social sentiment from `social_sentiment_history`
+- **`/api/v2/watchlist`**: Now includes LLM health, news counts (7d), social sentiment, latest scan scores/decisions, catalyst text
 
 ---
 
@@ -1253,3 +1271,80 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | Strategy YAML | Dynamic strategy definition file loaded at runtime |
 | Paper mode | All trades executed on Alpaca paper (simulated) |
 | Profit factor | Gross profit / gross loss ratio |
+| Relist | Vehicle/symbol reappears in portfolio without a confirmed exit -- market behavior, not strategy failure |
+| Patience score | Accumulated score for relisted positions (0.0-1.0) -- higher = more sustained engagement without exit |
+| Exit classification | Categorization of stop events: true_stop_out, relist_no_exit, market_reconnection, unclassified |
+
+---
+
+## 23. Session Changelog
+
+### Session 29 — 2026-05-11
+
+**Re-Entry vs Stop-Out Classification**
+
+The learning cycle was interpreting all reappearances of symbols as failed positions. This caused recommendations to be overly aggressive. Changes:
+
+- **DB migration:** `20260511_reentry_vs_stopout_classification.sql`
+  - New columns on `stopped_out_watch`: `explicit_stop_out`, `relisted_without_stop_out`, `market_reconnection_event`, `exit_type`, `patience_score`, `relist_count`, `first_seen_at`, `last_relist_at`
+  - New table: `stopped_out_relist_events` (tracks each relist with evidence)
+  - New views: `v_true_stopout_performance`, `v_relist_patience_tracking`
+  - New analyst verdict: `market_relist_monitor`
+- **`recovery_watch_daily.py`**: Classification logic, relist detection step, verdict computation respects exit type
+- **`agent_outcome_scorer.py`**: `RELIST_NEUTRAL` verdict (score=0) replaces WRONG for relist symbols; excluded from accuracy calculations
+- **`agent_calibration_engine.py`**: `relist_neutral` excluded from resolved count and calibration error
+- **`trade_learning_engine.py`**: `adjusted_win_rate` metric excluding relist losses; patience context in strategy scores
+- All 9 existing recovery items reclassified: all STILL HELD → `relist_no_exit` (none were true stop-outs)
+
+**StockTwits Pipeline Gap Fix**
+
+`premarket_watcher.py` was collecting StockTwits surge data but only sending it to Telegram -- never persisting to DB. Fixed:
+
+- `check_stocktwits_premarket()` now writes to `social_posts` (individual messages), `trade_ai_scans` (aggregated sentiment), and `scalp_scan_results` (source attribution)
+- Sentiment analysis: counts bullish/bearish from StockTwits entity data
+- Pre-market social data now appears on `/v2/trade-ai` dashboard
+
+**New API Endpoints**
+
+Four dashboard pages previously had no backend API:
+- `/api/v2/recovery` — Full recovery dashboard
+- `/api/v2/cio` — Unified CIO with deduplication
+- `/api/v2/portfolio-monitor` — Real-time portfolio health with dividends
+- `/api/v2/reports` — Reports hub with DOCX catalog
+
+**Dashboard Intelligence Enrichment**
+
+- Prospects endpoint now queries incubator LLM grades, proposal LLM reviews, social sentiment history
+- Watchlist endpoint now includes LLM health, news 7d counts, social sentiment, scan scores, catalysts
+- Portfolio-monitor surfaces dividend calendar (current month payers, annual income, top payers)
+- CIO endpoint deduplicates daily repeat decisions (DISTINCT ON symbol)
+
+**Weekly DOCX Report**
+
+- New script: `generate_weekly_docx.py` — comprehensive Word report from all subsystems
+- Added to Sunday cron (21:00) with flock protection
+- First report generated: `archive/weekly/2026-05-11/reports_weekly/weekly_2026-05-11.docx`
+
+**Critical Gaps Fixed**
+
+1. Screener UNDERFILLED: timing issue (pre-market runs have limited data; 10:00/16:00 weekday runs produce full universe)
+2. Rebalance stale: requires Anthropic API credits (currently depleted -- 400 error)
+3. Dividend intelligence surfaced on portfolio-monitor endpoint
+4. Weekly DOCX added to cron schedule
+5. CIO backlog: 93 HUMAN_REVIEW items were duplicates (~15 unique symbols, same rec generated daily)
+6. All 9 recovery items reclassified from `unclassified` to `relist_no_exit`
+
+**Files Modified**
+
+| File | Change |
+|------|--------|
+| `scripts/recovery_watch_daily.py` | Exit classification, relist detection, verdict rewrite |
+| `scripts/agent_outcome_scorer.py` | RELIST_NEUTRAL verdict, accuracy exclusion |
+| `scripts/agent_calibration_engine.py` | relist_neutral handling |
+| `scripts/trade_learning_engine.py` | adjusted_win_rate, patience context |
+| `scripts/premarket_watcher.py` | StockTwits persistence to DB |
+| `scripts/api_v2.py` | 4 new endpoints, 2 enriched endpoints, dividend surfacing, CIO dedup |
+| `scripts/generate_weekly_docx.py` | **NEW** — Weekly DOCX generator |
+| `sql/migrations/20260511_reentry_vs_stopout_classification.sql` | **NEW** — DB migration |
+| `crontab_backup.txt` | Added weekly DOCX cron entry |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Updated to reflect session 29 |
