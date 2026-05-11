@@ -65,8 +65,8 @@ def build_outcomes(trades):
         outcomes.append({
             "paper_trade_id": t["id"], "symbol": t["symbol"],
             "strategy_id": t.get("strategy_id"),
-            "opened_at": str(t.get("entry_time")),
-            "closed_at": str(t.get("exit_time")),
+            "opened_at": t.get("entry_time"),
+            "closed_at": t.get("exit_time"),
             "hold_minutes": _f(t.get("hold_time_min")),
             "entry_price": entry, "exit_price": exit_p,
             "stop_price": float(stop) if stop else None,

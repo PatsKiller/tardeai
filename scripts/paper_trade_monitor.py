@@ -255,6 +255,31 @@ def monitor(dry_run=False):
         except Exception:
             pass
 
+    # Run post-close processors for any trades closed this cycle
+    closed_trades = [r for r in results if r['action'] == 'close_target']
+    if closed_trades and not dry_run:
+        try:
+            import subprocess
+            # Thesis reviewer: compares plan vs actual, classifies thesis outcome
+            subprocess.Popen(
+                [str(PROJECT_ROOT / ".venv/bin/python"),
+                 str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
+                cwd=str(PROJECT_ROOT),
+                stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
+                stderr=subprocess.STDOUT,
+            )
+            # Outcome analytics: builds R-multiple, MFE/MAE, plan adherence stats
+            subprocess.Popen(
+                [str(PROJECT_ROOT / ".venv/bin/python"),
+                 str(PROJECT_ROOT / "scripts/paper_outcome_analytics.py"), "--since", "7", "--apply"],
+                cwd=str(PROJECT_ROOT),
+                stdout=open(str(PROJECT_ROOT / "logs/paper_outcome_analytics_auto.log"), "a"),
+                stderr=subprocess.STDOUT,
+            )
+            log.info(f"Triggered post-close processors for {len(closed_trades)} closed trade(s)")
+        except Exception as e:
+            log.warning(f"Post-close processor trigger failed: {e}")
+
     conn.close()
     return results
 

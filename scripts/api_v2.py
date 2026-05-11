@@ -14478,6 +14478,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 LEFT JOIN paper_trade_outcome_analytics ptoa ON pt.id = ptoa.paper_trade_id
                 LEFT JOIN paper_execution_quality peq ON pt.id = peq.paper_trade_id
                 LEFT JOIN proposal_outcome_chain poc ON tto.proposal_id = poc.proposal_id
+                WHERE pt.status IN ('open', 'closed', 'filled')
                 ORDER BY pt.created_at DESC
                 LIMIT 100
             """
