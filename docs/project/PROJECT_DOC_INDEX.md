@@ -13,6 +13,7 @@
 ### Operational Guides
 | Document | Purpose |
 |----------|---------|
+| `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | **Trade supervision methodology** — monitoring frequency, metrics, stop/target rules, after-hours research, overnight pipeline |
 | `docs/CHEAT_SHEET.md` | Operator quick reference |
 | `docs/RESTORE_GUIDE.md` | Disaster recovery procedures |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50 GPU setup for Ollama |
