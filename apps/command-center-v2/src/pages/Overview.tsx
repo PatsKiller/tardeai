@@ -69,6 +69,7 @@ export default function Overview() {
   const { data: autonomy } = useApi<AutonomyResp>('/api/v2/autonomy-progress')
   const { data: searchSrc } = useApi<SearchSourcesResp>('/api/v2/search-sources')
   const { data: irisData } = useApi<any>('/api/v2/iris/status')
+  const { data: cmdData } = useApi<any>('/api/v2/command')
   const [irisQ, setIrisQ] = useState('')
   const [irisA, setIrisA] = useState('')
   const [askingIris, setAskingIris] = useState(false)
@@ -123,6 +124,25 @@ export default function Overview() {
           {(ov?.concentration_alerts ?? []).map(alert => <button key={alert.symbol} onClick={() => navigate(`/rebalance?symbol=${alert.symbol}`)} style={{ ...bannerBtn(alert.symbol), background: 'var(--red-dim)', color: 'var(--red)' }}>{alert.symbol} concentration {alert.pct.toFixed(1)}%</button>)}
           {(ov?.pending_approvals ?? 0) > 0 && <button onClick={() => navigate('/approvals')} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: '1px solid var(--amber)', borderRadius: 'var(--radius)', background: 'var(--amber-dim)', color: 'var(--amber)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>{ov!.pending_approvals} pending approval{ov!.pending_approvals !== 1 ? 's' : ''} (stop-triggered + governance) — review now</button>}
         </div>
+      )}
+
+      {/* Today's Actions panel */}
+      {cmdData?.actions?.length > 0 && (
+        <Card title={`Today's Actions (${cmdData.actions.length})`}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {cmdData.actions.map((a: { priority: string; action: string }, i: number) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, padding: '3px 0' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: a.priority === 'urgent' ? '#f6465d' : a.priority === 'high' ? '#f0b90b' : a.priority === 'medium' ? '#4a90f4' : '#0ecb81' }} />
+                <span style={{ color: 'var(--text1)' }}>{a.action}</span>
+              </div>
+            ))}
+          </div>
+          {cmdData?.llm_intelligence?.morning_synthesis?.content && (
+            <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(74,144,244,.04)', borderRadius: 4, fontSize: 11, color: 'var(--text2)', lineHeight: 1.5, borderLeft: '2px solid var(--accent)' }}>
+              {cmdData.llm_intelligence.morning_synthesis.content.slice(0, 300)}
+            </div>
+          )}
+        </Card>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1.45fr 0.95fr', gap: 14, alignItems: 'start' }}>

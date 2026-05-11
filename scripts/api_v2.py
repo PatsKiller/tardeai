@@ -10095,6 +10095,83 @@ def _market_intelligence_summary():
     }
 
 
+# ── Global alerts: persistent banner data ─────────────────────────────────
+
+def _global_alerts():
+    """GET /api/v2/global-alerts — Critical conditions for persistent banner.
+
+    Returns alerts sorted by severity. Frontend displays as a banner
+    across all pages until conditions resolve.
+    """
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+
+    alerts = []
+    heat = rm.get("portfolio_heat_pct", 0)
+    no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
+    triggered = [p.get("symbol", "?") for p in rm.get("positions", []) if p.get("status") == "TRIGGERED"]
+
+    if triggered:
+        alerts.append({
+            "severity": "critical",
+            "message": f"{len(triggered)} stop(s) triggered: {', '.join(triggered[:5])}",
+            "action": "Review at /v2/recovery",
+        })
+    if heat > 5:
+        alerts.append({
+            "severity": "warning",
+            "message": f"Portfolio heat {heat:.1f}% — above 5% threshold",
+            "action": "Reduce exposure or add stops",
+        })
+    if no_stop > 5:
+        alerts.append({
+            "severity": "warning",
+            "message": f"{no_stop} positions without stop losses",
+            "action": "Set stops at /v2/portfolio",
+        })
+
+    # Data freshness
+    completed = freshness.get("completed_at", "")
+    if completed:
+        try:
+            from datetime import datetime as _dt
+            age_h = (datetime.now() - _dt.fromisoformat(completed)).total_seconds() / 3600
+            if age_h > 6:
+                alerts.append({
+                    "severity": "info",
+                    "message": f"Data is {age_h:.0f}h old",
+                    "action": "Pipeline may need attention",
+                })
+        except Exception:
+            pass
+
+    # Stale rebalance
+    try:
+        yo = _load_json(STATE_DIR / "yaml_advisor_output.json") or {}
+        gen = yo.get("generated_at", "")
+        if gen:
+            from datetime import datetime as _dt2
+            days = (datetime.now() - _dt2.fromisoformat(str(gen).replace("Z", "+00:00")).replace(tzinfo=None)).days
+            if days > 14:
+                alerts.append({
+                    "severity": "info",
+                    "message": f"Rebalance data is {days} days old",
+                    "action": "Refresh requires API credits",
+                })
+    except Exception:
+        pass
+
+    return {
+        "alerts": alerts,
+        "count": len(alerts),
+        "has_critical": any(a["severity"] == "critical" for a in alerts),
+        "freshness": {
+            "last_refresh": freshness.get("completed_at"),
+            "status": freshness.get("status", "unknown"),
+        },
+    }
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -10183,6 +10260,7 @@ ROUTES = {
     "/api/v2/portfolio-monitor": lambda: _portfolio_monitor(),
     "/api/v2/reports": lambda: _reports_hub(),
     "/api/v2/command": lambda: _morning_command(),
+    "/api/v2/global-alerts": lambda: _global_alerts(),
     "/api/v2/portfolio/intelligence-feed": lambda: _holdings_intelligence(),
     "/api/v2/market-intelligence": lambda: _market_intelligence_summary(),
     "/api/v2/strategy-rotations": lambda: {"rotations": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 20") or [])]},

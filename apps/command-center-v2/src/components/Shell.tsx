@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 import AdminModals from './AdminModals'
+import GlobalAlertBanner from './GlobalAlertBanner'
 import styles from './Shell.module.css'
 
 type OverviewMini = {
@@ -224,6 +225,7 @@ export default function Shell() {
       </header>
       {personalOpen && <AdminModals type="personal" onClose={() => setPersonalOpen(false)} />}
       <main className={styles.main}>
+        <GlobalAlertBanner />
         <Outlet />
       </main>
     </div>

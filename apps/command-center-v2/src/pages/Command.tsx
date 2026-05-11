@@ -1,4 +1,5 @@
 import { useApi } from '../hooks/useApi'
+import FreshnessBadge from '../components/FreshnessBadge'
 
 interface Action { priority: string; action: string }
 interface Mover { symbol: string; perf_week: number; price: number; market_value: number }
@@ -43,9 +44,7 @@ export default function Command() {
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', margin: 0 }}>Morning Command</h2>
-        <span style={{ fontSize: 11, color: 'var(--text3)' }}>
-          {cmd.freshness.status === 'fresh' ? '● Live' : '○ Stale'} — {cmd.freshness.last_refresh?.slice(11, 16) || '—'} ET
-        </span>
+        <FreshnessBadge lastRefresh={cmd.freshness.last_refresh} label="Data" />
       </div>
 
       {/* Portfolio snapshot */}
