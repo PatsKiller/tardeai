@@ -97,6 +97,12 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── Agent Processing: Weekend (every 10 min, 15 jobs) ──
 */10 * * * 0,6 cd $PROJ && $PY scripts/process_watchlist_agent_jobs.py --limit 15 >> logs/watchlist_agent_jobs.log 2>&1
 
+# ── 7:15 AM: Portfolio orchestrator (daily digest, portfolio alerts) ──
+15 7 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_orch.lock $PY scripts/portfolio_orchestrator.py >> logs/portfolio_orchestrator.log 2>&1
+
+# ── 7:30 AM: Missing condition alerts (proposals, API credits, email, rebalance) ──
+30 7 * * 1-5 cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log 2>&1
+
 # ── 9:00 PM: Auto-Research (triggered by agent conflicts + discoveries) ──
 0 21 * * 1-5 cd $PROJ && $PY scripts/auto_research.py --check --telegram >> logs/auto_research.log 2>&1
 

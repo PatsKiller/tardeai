@@ -211,6 +211,61 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
     except Exception:
         pass
 
+    # ── Dividends due this month ──
+    try:
+        div_cal = json.loads((STATE_DIR / "dividend_calendar.json").read_text()) if (STATE_DIR / "dividend_calendar.json").exists() else {}
+        monthly = div_cal.get("monthly_summary", [])
+        cur_month = datetime.now().month
+        this_month = next((m for m in monthly if m.get("month") == cur_month), None)
+        if this_month and this_month.get("symbols"):
+            syms = ", ".join(this_month["symbols"][:8])
+            lines.append(f"*\U0001f4b0 Dividends ({this_month['month_name']}):* ${this_month['total']:,.0f} from {syms}")
+            lines.append("")
+    except Exception:
+        pass
+
+    # ── Proposals needing action ──
+    try:
+        pending_proposals = _db_query(
+            "SELECT symbol, strategy_id FROM paper_trade_proposals WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT 5"
+        ) or []
+        if pending_proposals:
+            syms = ", ".join(p["symbol"] for p in pending_proposals)
+            lines.append(f"*\U0001f4cb Proposals Pending:* {len(pending_proposals)} — {syms}")
+            lines.append("")
+    except Exception:
+        pass
+
+    # ── Recovery watch summary ──
+    try:
+        recovery = _db_query(
+            """SELECT analyst_verdict, COUNT(*) as cnt
+               FROM stopped_out_watch WHERE is_active = true
+               GROUP BY analyst_verdict"""
+        ) or []
+        if recovery:
+            parts = [f"{r['analyst_verdict'].replace('_',' ')}: {r['cnt']}" for r in recovery]
+            lines.append(f"*Recovery Watch:* {', '.join(parts)}")
+            lines.append("")
+    except Exception:
+        pass
+
+    # ── Portfolio risk snapshot ──
+    try:
+        rm = json.loads((STATE_DIR / "risk_management.json").read_text()) if (STATE_DIR / "risk_management.json").exists() else {}
+        heat = rm.get("portfolio_heat_pct", 0)
+        no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
+        if heat > 5 or no_stop > 5:
+            parts = []
+            if heat > 5:
+                parts.append(f"Heat {heat:.1f}% (>5% threshold)")
+            if no_stop > 5:
+                parts.append(f"{no_stop} positions without stops")
+            lines.append(f"*\u26a0\ufe0f Risk:* {' | '.join(parts)}")
+            lines.append("")
+    except Exception:
+        pass
+
     # Next actions
     if next_actions:
         lines.append("*Next Actions:*")
