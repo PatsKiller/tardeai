@@ -1252,8 +1252,8 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | yfinance rate limits | ~2-3s throttle per symbol | Batch processing with delays |
 | LLM-only strategies | 14/20 strategies need LLM (data not in enrichment cache) | Scheduled overnight batch |
 | Proposal enrichment latency | ~30s-1min per proposal | Chunked async state machine |
-| Single-server deployment | No HA, single point of failure | Automated backups; documented recovery |
-| No API authentication | Internal-only assumption | Must add auth before any network exposure |
+| Single-server deployment | No HA, single point of failure | 7-day rolling pg_dump; documented restore guide |
+| API authentication | Token-based auth via `API_AUTH_TOKEN` in .env | Set token to enable; frontend exempt; all /api/ paths checked |
 | Anthropic API credits depleted | Rebalance advisor (`portfolio_yaml_advisor.py`) cannot refresh | Requires credit top-up or local LLM fallback |
 | CIO daily duplicate decisions | Same symbol+action generated daily | 24h dedup gate added to `cio_decision_engine.py` |
 | StockTwits pre-market persistence | Was Telegram-only, invisible to dashboard | Fixed: now writes to `social_posts`, `trade_ai_scans`, `scalp_scan_results` |
@@ -1286,7 +1286,60 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 
 ---
 
-## 23. Session Changelog
+## 23. Production Readiness
+
+### Live Trading Gate
+
+Live trading is locked behind 4 gates (all must pass simultaneously):
+
+| Gate | Requirement | Current | Status |
+|------|------------|---------|--------|
+| Win Rate | >= 55% | ~0% (3 closed) | NOT MET |
+| Profit Factor | >= 1.3 | 0.0 (insufficient data) | NOT MET |
+| Sample Size | >= 30 closed trades | 3 | NOT MET |
+| Time in Paper | >= 6 months | ~1 month | NOT MET |
+
+Gate status is available at `/api/v2/live-trading-gate`.
+
+### API Authentication
+
+- **Method:** Bearer token via `API_AUTH_TOKEN` environment variable
+- **When enabled:** All `/api/*` requests require `Authorization: Bearer <token>` header
+- **Exempt paths:** `/v2/` (frontend), `/data/` (state files), `/reports/`, `/api/health`
+- **When not set:** Auth is disabled (open access, internal-only assumption)
+- **Query param fallback:** `?token=<token>` for browser testing
+
+### Backup Verification
+
+- **Script:** `scripts/backup_verify.py`
+- **Schedule:** Monthly (1st of month)
+- **Checks:** pg_dump exists + recent, backup size non-trivial, state files fresh, DB connectivity
+- **Reports:** Via Telegram alert dispatcher (severity based on findings)
+
+### Performance Budget
+
+| Component | Target | Notes |
+|-----------|--------|-------|
+| API response (p95) | < 500ms | All GET endpoints |
+| Morning pipeline | 07:00 - 08:00 ET | Full cascade: data refresh → enrichment → alerts → brief |
+| LLM enrichment | < 120s total | 5 sections via qwen3:14b |
+| Screener full run | 10:00 AM + 4:00 PM | Weekdays only |
+| Overnight batch | 8:00 - 10:00 PM | Metrics, stale refresh, agent perf |
+| Weekly DOCX | Sunday 9:00 PM | After all weekly jobs |
+
+### High Availability Risks
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| Server failure | Total outage | 7-day rolling pg_dump, restore guide, state file backups |
+| GPU failure | LLM enrichment stops | Cloud fallback chain (xAI → Anthropic → OpenAI) |
+| API credits depleted | Rebalance advisor unavailable | Local LLM covers most use cases, alert on depletion |
+| Finviz auth failure | Screener returns 0 results | Dual auth (cookie + API token), health check alerts |
+| Ollama crash | All local LLM calls fail | Auto-restart via systemd, warmup function on cold start |
+
+---
+
+## 24. Session Changelog
 
 ### Session 29 — 2026-05-11
 

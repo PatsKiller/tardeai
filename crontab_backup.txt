@@ -131,6 +131,9 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 15 7 * * 1-5 cd $PROJ && $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1
 0 8 * * 1 cd $PROJ && $PY scripts/external_market_data_ingest.py --fundamentals >> logs/market_data.log 2>&1
 
+# ── Monthly backup verification (1st of month, 6 AM) ──
+0 6 1 * * cd $PROJ && flock -n /tmp/backup_verify.lock $PY scripts/backup_verify.py >> logs/backup_verify.log 2>&1
+
 # ── YouTube channel discovery (monthly — find new relevant channels) ──
 0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1
 
