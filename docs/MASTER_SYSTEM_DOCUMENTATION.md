@@ -885,8 +885,26 @@ Adapter checks current Alpaca quote for the symbol
         (Price drifted — wait for value)      limit buy + stop loss + take profit
 ```
 
-Market orders: submitted as simple buy, stop placed separately after fill (GTC).
-Limit orders: submitted as bracket (buy + stop + target as OCA group).
+**Market orders:** Simple buy → immediate fill → stop placed as separate GTC order after fill.
+Post-fill, the monitor takes over position management (trailing stops, target monitoring).
+
+**Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
+If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal
+remains in PENDING state and will be re-evaluated by the execution sweep on the next
+market day. If the proposal itself expires (per strategy timeframe), it transitions to EXPIRED.
+
+**Quote source cascade for price check:**
+1. Alpaca latest trade (`/v2/stocks/{symbol}/trades/latest`)
+2. Alpaca latest quote bid/ask (`/v2/stocks/{symbol}/quotes/latest`)
+3. yfinance fallback
+4. If all fail → default to limit order at proposed entry (conservative)
+
+**Order lifecycle states:**
+```
+SUBMITTED → NEW → PARTIALLY_FILLED → FILLED → (monitor takes over)
+                                    → EXPIRED (limit not filled by EOD)
+                                    → CANCELLED (user or system cancellation)
+```
 
 ### Risk Gate (Pre-Submission)
 
@@ -1006,6 +1024,43 @@ Alpaca paper trading does not support simultaneous stop + limit sell on the same
 - Catches edge cases: server restart during approval, network blip, etc.
 
 This is NOT the primary execution path — instant execution on approval is. The sweep is the fallback.
+
+#### Stop Adjustment Rules & Safeguards
+
+**When stops ARE adjusted:**
+- R-multiple crosses a threshold (1.0, 1.5, 2.0, 3.0)
+- Price reaches 80%+ of target move (aggressive tightening)
+- Stop is missing from Alpaca (re-placed at DB level)
+
+**When stops are NOT adjusted:**
+- New stop would be LOWER than current stop (stops only ratchet UP)
+- Market is closed (adjustments only during regular session)
+- Position has no DB record (orphaned Alpaca position — alert sent)
+
+**Drift and slippage handling:**
+- Pre-execution: price drift >2% from proposed entry → limit order (wait for value)
+- Pre-execution: price drift ≤2% or below entry → market order (capture the setup)
+- In-trade: stop is computed from actual fill price, not proposed entry
+- In-trade: R-multiple uses actual fill price as baseline, adjusting for real slippage
+- Unfilled limit orders expire at EOD (TIF=day), proposal re-evaluated next session
+
+#### Conditions That Trigger Dynamic Adjustment
+
+| Condition | Detection | Action |
+|-----------|-----------|--------|
+| Profit milestone (R threshold) | R-multiple computation every 5 min | Trail stop to lock proportional profit |
+| Near target (80%+ of move) | Distance-to-target check | Aggressively tighten stop to 65% of gain |
+| Target hit | Price >= target_1 | Cancel stop, close at market |
+| Stop hit | Alpaca GTC stop triggers | Position auto-closes, paper_trades updated by reconciler |
+| Stop missing | No stop order found on Alpaca | Re-place stop at DB level |
+| Extended run (R >= 4, no target) | R-multiple check | Close position — take profit on outlier |
+
+#### What the System Does NOT Do (Current Limitations)
+
+- **Volatility-based stop widening:** Stops do not expand based on ATR or VIX changes. The initial stop is set at proposal time using ATR and remains the floor.
+- **Regime-aware adjustment:** Market regime changes (bull → bear) do not automatically modify open positions. This is a future enhancement.
+- **Partial profit taking:** The system closes the full position at target, not partial lots. Scale-out logic is planned but not implemented.
+- **Spread/liquidity checks:** The system does not check bid-ask spread or volume before adjusting stops. For paper trading this is acceptable; for live it will need enhancement.
 
 ---
 

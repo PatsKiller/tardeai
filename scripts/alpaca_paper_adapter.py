@@ -186,10 +186,22 @@ class AlpacaPaperAdapter:
         # If current price is significantly above entry, use limit at entry for value.
         current_price = None
         try:
-            quote = self._api_get(f'/v2/stocks/{symbol}/quotes/latest')
-            current_price = float(quote.get('quote', {}).get('ap') or quote.get('quote', {}).get('bp') or 0)
-        except Exception:
-            pass
+            # Try latest trade first (most reliable)
+            trade_data = self._api_get(f'/v2/stocks/{symbol}/trades/latest')
+            current_price = float(trade_data.get('trade', {}).get('p', 0))
+            if not current_price:
+                # Fallback to quote (bid/ask)
+                quote = self._api_get(f'/v2/stocks/{symbol}/quotes/latest')
+                current_price = float(quote.get('quote', {}).get('ap') or quote.get('quote', {}).get('bp') or 0)
+            if not current_price:
+                # Last fallback: yfinance
+                import yfinance as yf
+                t = yf.Ticker(symbol)
+                h = t.history(period='1d')
+                if not h.empty:
+                    current_price = float(h['Close'].iloc[-1])
+        except Exception as _qe:
+            log.warning(f"[alpaca] Quote fetch failed for {symbol}: {_qe}")
 
         use_market = False
         order_type_reason = "limit_at_proposed_entry"
