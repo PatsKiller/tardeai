@@ -9332,7 +9332,30 @@ def _recovery_dashboard():
             "market_reconnection": "Auction/market mechanics shift — not a strategy failure",
             "unclassified": "Needs manual review to determine exit type",
         },
+        "sector_context": _recovery_sector_context([i.get("symbol") for i in items]),
     }
+
+
+def _recovery_sector_context(symbols: list) -> dict:
+    """Get sector and technical context for recovery watch symbols."""
+    ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
+    context = {}
+    for sym in symbols:
+        if not sym:
+            continue
+        tech = ts.get(sym, {}) if isinstance(ts, dict) else {}
+        if tech:
+            context[sym] = {
+                "sector": tech.get("sector", ""),
+                "industry": tech.get("industry", ""),
+                "rsi": tech.get("rsi"),
+                "sma50_pct": tech.get("sma50_pct"),
+                "sma200_pct": tech.get("sma200_pct"),
+                "perf_week": tech.get("perf_week"),
+                "perf_month": tech.get("perf_month"),
+                "beta": tech.get("beta"),
+            }
+    return context
 
 
 # ── CIO unified endpoint (was missing) ────────────────────────────────────
@@ -9447,8 +9470,29 @@ def _cio_unified():
         "latest_plan": {k: _json_clean(v) for k, v in latest_plan.items()} if latest_plan else None,
         "pipeline_issues": [{k: _json_clean(v) for k, v in r.items()} for r in pipeline_health],
         "learning_recommendations": [{k: _json_clean(v) for k, v in r.items()} for r in learning_recs],
+        "news_context": _cio_news_context([d.get("symbol") for d in recent_decisions if d.get("symbol")]),
         "note": "CIO dashboard. All actions require human review. No broker execution.",
     }
+
+
+def _cio_news_context(symbols: list) -> dict:
+    """Get recent news for CIO decision symbols."""
+    if not symbols:
+        return {}
+    unique = list(set(s for s in symbols if s))[:20]
+    news = {}
+    for sym in unique:
+        rows = _db_query("""
+            SELECT title, source, sentiment, created_at::date as date
+            FROM news_articles
+            WHERE symbol = %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY created_at DESC LIMIT 2
+        """, (sym,)) or []
+        if rows:
+            news[sym] = [{"title": r.get("title", ""), "source": r.get("source", ""),
+                          "sentiment": r.get("sentiment"), "date": str(r.get("date", ""))}
+                         for r in rows]
+    return news
 
 
 # ── Portfolio Monitor endpoint (was missing) ───────────────────────────────
@@ -9746,6 +9790,282 @@ def _reports_hub():
             "is_stale": (weekly_docx_age_days or 99) > 7,
             "note": "Weekly Word report should be generated every Sunday" if (weekly_docx_age_days or 99) > 7 else "Weekly Word report is current",
         },
+        "market_intelligence": _market_intelligence_summary(),
+    }
+
+
+# ── Morning Command: unified daily starting point ─────────────────────────
+
+def _morning_command():
+    """GET /api/v2/command — Single-page daily intelligence briefing.
+
+    Synthesizes: portfolio health, overnight changes, dividends due,
+    proposals needing action, recovery items, top news, social sentiment,
+    market context, pipeline status. This is the page you open first.
+    """
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
+    news_data = _load_json(STATE_DIR / "portfolio_news.json") or {}
+
+    # ── Portfolio snapshot ──
+    holdings = h.get("holdings", [])
+    total = sum(p.get("market_value", 0) for p in holdings)
+    cash = sum(p.get("market_value", 0) for p in holdings if p.get("is_cash"))
+    heat = rm.get("portfolio_heat_pct", 0)
+    no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
+    triggered = sum(1 for p in rm.get("positions", []) if p.get("status") == "TRIGGERED")
+
+    # ── Top movers today (from holdings with perf data) ──
+    ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
+    movers = []
+    for pos in holdings:
+        sym = pos.get("symbol", "")
+        if not sym or pos.get("is_cash"):
+            continue
+        tech = ts.get(sym, {}) if isinstance(ts, dict) else {}
+        perf = tech.get("perf_week")
+        if perf is not None:
+            movers.append({"symbol": sym, "perf_week": perf, "price": pos.get("price", 0),
+                           "market_value": pos.get("market_value", 0)})
+    movers.sort(key=lambda x: abs(x.get("perf_week", 0)), reverse=True)
+    top_gainers = [m for m in movers if m.get("perf_week", 0) > 0][:5]
+    top_losers = [m for m in movers if m.get("perf_week", 0) < 0][:5]
+
+    # ── Dividends this month ──
+    from datetime import datetime as _ddt
+    current_month = _ddt.now().month
+    monthly = div_cal.get("monthly_summary", [])
+    this_month_div = next((m for m in monthly if m.get("month") == current_month), {})
+
+    # ── Proposals needing action ──
+    pending_proposals = _db_query("""
+        SELECT id, symbol, strategy_id, status, created_at::date as created
+        FROM paper_trade_proposals
+        WHERE status = 'PENDING'
+        ORDER BY created_at ASC LIMIT 10
+    """) or []
+
+    # ── Recovery watch ──
+    recovery = _db_query("""
+        SELECT symbol, analyst_verdict, analyst_confidence, exit_type, patience_score
+        FROM stopped_out_watch WHERE is_active = true
+        ORDER BY analyst_confidence DESC NULLS LAST
+    """) or []
+
+    # ── Top news (portfolio-relevant) ──
+    top_news = _db_query("""
+        SELECT DISTINCT ON (symbol) symbol, title, source, relevance_score, sentiment, created_at
+        FROM news_articles
+        WHERE created_at > NOW() - INTERVAL '24 hours' AND symbol IS NOT NULL AND symbol != ''
+        ORDER BY symbol, relevance_score DESC NULLS LAST
+        LIMIT 10
+    """) or []
+
+    # ── Social sentiment highlights ──
+    social_highlights = _db_query("""
+        SELECT DISTINCT ON (symbol) symbol, mention_count, bullish_count, bearish_count,
+               sentiment_score, theme_tags
+        FROM social_sentiment_history
+        WHERE observed_at > NOW() - INTERVAL '48 hours'
+        ORDER BY symbol, mention_count DESC NULLS LAST
+        LIMIT 10
+    """) or []
+
+    # ── CIO actions pending (deduped) ──
+    cio_pending = _db_query("""
+        SELECT DISTINCT ON (symbol) symbol, action, priority, rationale
+        FROM cio_decisions
+        WHERE priority IN ('critical', 'high')
+        ORDER BY symbol, created_at DESC
+    """) or []
+
+    # ── Pipeline status ──
+    pipeline_ok = True
+    pipeline_note = "All systems operational"
+    try:
+        runs = _db_query("""
+            SELECT COUNT(*) FILTER (WHERE status='failed') as failed,
+                   COUNT(*) as total
+            FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '12 hours'
+        """, fetch="one") or {}
+        if runs.get("failed", 0) > 0:
+            pipeline_ok = False
+            pipeline_note = f"{runs['failed']}/{runs['total']} pipeline runs failed in last 12h"
+    except Exception:
+        pass
+
+    # ── Screener status ──
+    screener_status = _db_query("""
+        SELECT status, symbols_scanned, finished_at
+        FROM screener_run_health WHERE run_date = CURRENT_DATE
+        ORDER BY finished_at DESC LIMIT 1
+    """, fetch="one") or {}
+
+    # ── Action items (prioritized) ──
+    actions = []
+    if triggered > 0:
+        actions.append({"priority": "urgent", "action": f"{triggered} stop(s) triggered — review immediately"})
+    if heat > 5:
+        actions.append({"priority": "high", "action": f"Portfolio heat {heat:.1f}% — above 5% threshold"})
+    if no_stop > 5:
+        actions.append({"priority": "high", "action": f"{no_stop} positions without stops — set stops"})
+    if pending_proposals:
+        actions.append({"priority": "medium", "action": f"{len(pending_proposals)} proposals pending review"})
+    cio_critical = [c for c in cio_pending if c.get("priority") == "critical"]
+    if cio_critical:
+        syms = ", ".join(c["symbol"] for c in cio_critical[:3])
+        actions.append({"priority": "medium", "action": f"CIO critical: {syms}"})
+    reentry = [r for r in recovery if r.get("analyst_verdict") == "reentry_candidate"]
+    if reentry:
+        syms = ", ".join(r["symbol"] for r in reentry[:3])
+        actions.append({"priority": "low", "action": f"Re-entry candidates: {syms}"})
+
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "portfolio": {
+            "total_value": total,
+            "cash": cash,
+            "cash_pct": round(cash / total * 100, 1) if total else 0,
+            "positions": len([p for p in holdings if not p.get("is_cash") and p.get("market_value", 0) > 50]),
+            "heat_pct": heat,
+            "no_stop_count": no_stop,
+            "triggered_count": triggered,
+        },
+        "actions": actions,
+        "top_gainers": top_gainers,
+        "top_losers": top_losers,
+        "dividends": {
+            "month": this_month_div.get("month_name", ""),
+            "total": this_month_div.get("total", 0),
+            "symbols": this_month_div.get("symbols", []),
+            "annual_income": div_cal.get("total_annual", 0),
+        },
+        "pending_proposals": [{k: _json_clean(v) for k, v in r.items()} for r in pending_proposals],
+        "recovery_watch": [{k: _json_clean(v) for k, v in r.items()} for r in recovery],
+        "top_news": [{k: _json_clean(v) for k, v in r.items()} for r in top_news],
+        "social_highlights": [{k: _json_clean(v) for k, v in r.items()} for r in social_highlights],
+        "cio_pending": [{k: _json_clean(v) for k, v in r.items()} for r in cio_pending],
+        "screener": {
+            "status": screener_status.get("status"),
+            "symbols_scanned": screener_status.get("symbols_scanned"),
+        },
+        "pipeline": {"ok": pipeline_ok, "note": pipeline_note},
+        "freshness": {
+            "last_refresh": freshness.get("completed_at"),
+            "status": freshness.get("status", "unknown"),
+        },
+    }
+
+
+# ── Intelligence enrichment for portfolio holdings ────────────────────────
+
+def _holdings_intelligence():
+    """GET /api/v2/portfolio/intelligence-feed — per-holding news, catalysts, social."""
+    # Recent news per portfolio symbol
+    news_by_symbol = {}
+    news_rows = _db_query("""
+        SELECT symbol, title, source, sentiment, relevance_score, created_at
+        FROM news_articles
+        WHERE created_at > NOW() - INTERVAL '3 days'
+          AND symbol IS NOT NULL AND symbol != ''
+        ORDER BY created_at DESC LIMIT 200
+    """) or []
+    for r in news_rows:
+        sym = r.get("symbol", "")
+        if sym not in news_by_symbol:
+            news_by_symbol[sym] = []
+        if len(news_by_symbol[sym]) < 3:
+            news_by_symbol[sym].append({
+                "title": r.get("title", ""),
+                "source": r.get("source", ""),
+                "sentiment": r.get("sentiment"),
+                "relevance": _json_clean(r.get("relevance_score")),
+                "date": str(r.get("created_at", ""))[:10],
+            })
+
+    # Social sentiment per symbol
+    social_by_symbol = {}
+    social_rows = _db_query("""
+        SELECT DISTINCT ON (symbol) symbol, mention_count, bullish_count, bearish_count,
+               sentiment_score, theme_tags
+        FROM social_sentiment_history
+        WHERE observed_at > NOW() - INTERVAL '7 days'
+        ORDER BY symbol, observed_at DESC
+    """) or []
+    for r in social_rows:
+        social_by_symbol[r["symbol"]] = {
+            "mentions": r.get("mention_count", 0),
+            "bullish": r.get("bullish_count", 0),
+            "bearish": r.get("bearish_count", 0),
+            "score": _json_clean(r.get("sentiment_score")),
+            "themes": r.get("theme_tags"),
+        }
+
+    return {
+        "news": news_by_symbol,
+        "social": social_by_symbol,
+        "coverage": {
+            "news_symbols": len(news_by_symbol),
+            "social_symbols": len(social_by_symbol),
+            "total_articles_3d": len(news_rows),
+        },
+    }
+
+
+# ── Market intelligence summary for reports ───────────────────────────────
+
+def _market_intelligence_summary():
+    """GET /api/v2/market-intelligence — aggregated market/sector sentiment."""
+    # News sentiment distribution
+    sentiment_dist = _db_query("""
+        SELECT sentiment, COUNT(*) as cnt
+        FROM news_articles
+        WHERE created_at > NOW() - INTERVAL '7 days' AND sentiment IS NOT NULL
+        GROUP BY sentiment ORDER BY cnt DESC
+    """) or []
+
+    # Top mentioned symbols in news
+    top_symbols = _db_query("""
+        SELECT symbol, COUNT(*) as mentions, AVG(relevance_score)::numeric(3,2) as avg_relevance
+        FROM news_articles
+        WHERE created_at > NOW() - INTERVAL '7 days' AND symbol IS NOT NULL AND symbol != ''
+        GROUP BY symbol ORDER BY mentions DESC LIMIT 15
+    """) or []
+
+    # News by source
+    by_source = _db_query("""
+        SELECT source, COUNT(*) as cnt
+        FROM news_articles WHERE created_at > NOW() - INTERVAL '7 days'
+        GROUP BY source ORDER BY cnt DESC LIMIT 10
+    """) or []
+
+    # Social volume trends
+    social_trend = _db_query("""
+        SELECT observed_at::date as day, SUM(mention_count) as total_mentions,
+               AVG(sentiment_score)::numeric(3,2) as avg_sentiment
+        FROM social_sentiment_history
+        WHERE observed_at > NOW() - INTERVAL '7 days'
+        GROUP BY observed_at::date ORDER BY day
+    """) or []
+
+    # Top SEC filings
+    sec_filings = _db_query("""
+        SELECT symbol, filer_name, transaction_type, total_value, filing_date
+        FROM sec_form4
+        WHERE filing_date > NOW() - INTERVAL '7 days'
+        ORDER BY total_value DESC NULLS LAST LIMIT 10
+    """) or []
+
+    return {
+        "period": "7 days",
+        "news_sentiment": [{k: _json_clean(v) for k, v in r.items()} for r in sentiment_dist],
+        "top_mentioned_symbols": [{k: _json_clean(v) for k, v in r.items()} for r in top_symbols],
+        "news_by_source": [{k: _json_clean(v) for k, v in r.items()} for r in by_source],
+        "social_trend": [{k: _json_clean(v) for k, v in r.items()} for r in social_trend],
+        "sec_insider_activity": [{k: _json_clean(v) for k, v in r.items()} for r in sec_filings],
+        "total_articles": sum(r.get("cnt", 0) for r in by_source),
     }
 
 
@@ -9836,6 +10156,9 @@ ROUTES = {
     "/api/v2/recovery": lambda: _recovery_dashboard(),
     "/api/v2/portfolio-monitor": lambda: _portfolio_monitor(),
     "/api/v2/reports": lambda: _reports_hub(),
+    "/api/v2/command": lambda: _morning_command(),
+    "/api/v2/portfolio/intelligence-feed": lambda: _holdings_intelligence(),
+    "/api/v2/market-intelligence": lambda: _market_intelligence_summary(),
     "/api/v2/strategy-rotations": lambda: {"rotations": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 20") or [])]},
     "/api/v2/rebalance-plans": lambda: {"plans": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM rebalance_plans ORDER BY generated_at DESC LIMIT 10") or [])]},
     "/api/v2/rebalance-plans/latest": lambda: _rebalance_latest(),

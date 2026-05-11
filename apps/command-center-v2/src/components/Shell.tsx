@@ -20,6 +20,7 @@ interface NavGroup { label: string; items: NavItem[] }
 const NAV_GROUPS: NavGroup[] = [
   { label: 'Home', items: [
     { to: '/', label: 'Overview' },
+    { to: '/command', label: 'Command' },
     { to: '/morning-brief', label: 'Daily Brief' },
     { to: '/inbox', label: 'Inbox' },
   ]},
