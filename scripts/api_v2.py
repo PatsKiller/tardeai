@@ -473,19 +473,35 @@ def watchlist_combined():
         t = ts.get(sym, {}) if isinstance(ts.get(sym), dict) else {}
         hp = holdings_map.get(sym, {})
         company = e.get("company") or t.get("company") or hp.get("name", "")
-        # If no local data at all, try Yahoo (for watchlist-only symbols)
         yq = {}
         if not company and not e and not t and not hp:
             yq = _fetch_yahoo_quote(sym)
+        rsi = e.get("rsi") or t.get("rsi") or yq.get("rsi")
+        rsi_signal = None
+        if rsi is not None:
+            rsi = float(rsi)
+            rsi_signal = "oversold" if rsi < 30 else ("overbought" if rsi > 70 else ("bullish" if rsi > 50 else "neutral"))
+        price = hp.get("price") or t.get("price") or yq.get("price")
+        sma200 = t.get("sma200_pct")
+        high52 = e.get("52w_high") or t.get("52w_high")
+        pct_from_high = None
+        if price and high52:
+            try:
+                pct_from_high = round((float(price) - float(high52)) / float(high52) * 100, 1)
+            except Exception:
+                pass
         return {
             "company": company or yq.get("company", ""),
             "sector": e.get("sector") or t.get("sector") or hp.get("sector", ""),
-            "rsi": e.get("rsi") or t.get("rsi") or yq.get("rsi"),
+            "rsi": rsi,
+            "rsi_signal": rsi_signal,
             "perf_week_pct": e.get("perf_week_pct") or t.get("perf_week_pct") or t.get("perf_week"),
+            "perf_month_pct": e.get("perf_month_pct") or t.get("perf_month_pct") or t.get("perf_month"),
             "beta": t.get("beta") or hp.get("beta"),
             "market_cap_b": e.get("market_cap_b"),
-            "current_price": yq.get("price") if yq else None,
-            "pct_from_52wk_high": yq.get("pct_from_52wk_high") if yq else None,
+            "current_price": price,
+            "sma200_pct": sma200,
+            "pct_from_52wk_high": pct_from_high or (yq.get("pct_from_52wk_high") if yq else None),
             "data_source": "yahoo" if yq.get("company") else ("enrichment_cache" if e else "technical_snapshot" if t else "holdings" if hp else "metadata_only"),
         }
 
@@ -494,8 +510,13 @@ def watchlist_combined():
         enriched = _enrich(sym)
         items.append({"symbol": sym, "source": "user", "status": "active",
                        "company": enriched["company"], "sector": enriched["sector"],
-                       "rsi": enriched["rsi"], "perf_week_pct": enriched["perf_week_pct"],
+                       "rsi": enriched["rsi"], "rsi_signal": enriched.get("rsi_signal"),
+                       "perf_week_pct": enriched["perf_week_pct"],
+                       "perf_month_pct": enriched.get("perf_month_pct"),
                        "beta": enriched["beta"], "market_cap_b": enriched["market_cap_b"],
+                       "current_price": enriched.get("current_price"),
+                       "sma200_pct": enriched.get("sma200_pct"),
+                       "pct_from_52wk_high": enriched.get("pct_from_52wk_high"),
                        "notes": meta.get("notes") if isinstance(meta, dict) else None,
                        "intent": meta.get("target_intent") or meta.get("intent") if isinstance(meta, dict) else None,
                        "thesis": meta.get("thesis") if isinstance(meta, dict) else None,
@@ -517,6 +538,130 @@ def watchlist_combined():
                                "upside_pct": r.get("data", {}).get("upside_pct") if r.get("data") else None})
     except Exception:
         pass
+
+    # ── Enrich all watchlist items with LLM intelligence + social + news ──
+    all_syms = [i["symbol"] for i in items]
+    llm_map = {}
+    news_map = {}
+    social_map = {}
+    scan_map = {}
+
+    if all_syms:
+        # LLM health from holdings
+        try:
+            llm_rows = _db_query("""
+                SELECT symbol, holdings_llm_health, holdings_llm_action, holdings_llm_confidence
+                FROM watchlist_items WHERE symbol = ANY(%s) AND holdings_llm_health IS NOT NULL
+            """, (all_syms,)) or []
+            for r in llm_rows:
+                llm_map[r["symbol"]] = {
+                    "llm_health": r.get("holdings_llm_health"),
+                    "llm_action": r.get("holdings_llm_action"),
+                    "llm_confidence": _json_clean(r.get("holdings_llm_confidence")),
+                }
+        except Exception:
+            pass
+
+        # Recent news count per symbol
+        try:
+            news_rows = _db_query("""
+                SELECT symbol, COUNT(*) as news_count,
+                       MAX(quality_score) as top_score
+                FROM news_articles WHERE symbol = ANY(%s)
+                AND created_at > NOW() - INTERVAL '7 days'
+                GROUP BY symbol
+            """, (all_syms,)) or []
+            for r in news_rows:
+                news_map[r["symbol"]] = {
+                    "news_7d": r.get("news_count", 0),
+                    "news_top_score": r.get("top_score"),
+                }
+        except Exception:
+            pass
+
+        # Social sentiment
+        try:
+            social_rows = _db_query("""
+                SELECT DISTINCT ON (symbol)
+                    symbol, mention_count, sentiment_score
+                FROM social_sentiment_history
+                WHERE symbol = ANY(%s) AND observed_at > NOW() - INTERVAL '7 days'
+                ORDER BY symbol, observed_at DESC
+            """, (all_syms,)) or []
+            for r in social_rows:
+                social_map[r["symbol"]] = {
+                    "social_mentions": r.get("mention_count", 0),
+                    "social_sentiment": _json_clean(r.get("sentiment_score")),
+                }
+        except Exception:
+            pass
+
+        # Latest scan data (score, decision)
+        try:
+            scan_rows = _db_query("""
+                SELECT DISTINCT ON (symbol) symbol, score, decision, catalyst,
+                       social_stocktwits, social_sentiment, scanned_at
+                FROM trade_ai_scans WHERE symbol = ANY(%s)
+                ORDER BY symbol, scanned_at DESC
+            """, (all_syms,)) or []
+            for r in scan_rows:
+                scan_map[r["symbol"]] = {
+                    "scan_score": r.get("score"),
+                    "scan_decision": r.get("decision"),
+                    "catalyst": r.get("catalyst"),
+                    "stocktwits_posts": r.get("social_stocktwits", 0),
+                    "scan_sentiment": r.get("social_sentiment"),
+                }
+        except Exception:
+            pass
+
+    # Merge enrichment into items + compute conviction rating
+    for item in items:
+        sym = item["symbol"]
+        if sym in llm_map:
+            item.update(llm_map[sym])
+        if sym in news_map:
+            item.update(news_map[sym])
+        if sym in social_map:
+            item.update(social_map[sym])
+        if sym in scan_map:
+            item.update(scan_map[sym])
+
+        # ── Conviction rating: 0-100 based on available intelligence ──
+        conviction = 0
+        signals = []
+        if item.get("scan_score") and int(item["scan_score"]) >= 40:
+            conviction += 25
+            signals.append("high_score")
+        if item.get("scan_decision") == "GO":
+            conviction += 15
+            signals.append("GO_decision")
+        if item.get("llm_health") in ("strong", "healthy"):
+            conviction += 15
+            signals.append("llm_healthy")
+        if item.get("news_7d") and int(item["news_7d"]) > 3:
+            conviction += 10
+            signals.append("active_news")
+        if item.get("social_mentions") and int(item["social_mentions"]) > 5:
+            conviction += 10
+            signals.append("social_active")
+        if item.get("catalyst"):
+            conviction += 10
+            signals.append("catalyst_present")
+        rsi = item.get("rsi")
+        if rsi and 30 < float(rsi) < 60:
+            conviction += 10
+            signals.append("rsi_favorable")
+        if item.get("thesis"):
+            conviction += 5
+            signals.append("thesis_defined")
+        item["conviction_score"] = min(conviction, 100)
+        item["conviction_signals"] = signals
+
+        # ── Alert flag for RSI extremes ──
+        if item.get("rsi_signal") in ("oversold", "overbought"):
+            item["alert"] = f"RSI {item.get('rsi_signal').upper()}: {item.get('rsi'):.0f}" if rsi else None
+
     return {"count": len(items), "items": items}
 
 
@@ -2463,36 +2608,114 @@ def dividends():
 
 def retirement():
     r = _load_json(STATE_DIR / "retirement_roadmap.json") or {}
+    div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
     accounts = r.get("accounts") or {}
     key_dates = r.get("key_dates") or {}
     loan = r.get("loan") or {}
     gw = r.get("golden_window") or {}
     tl = r.get("timeline") or []
+
+    total = accounts.get("portfolio_total") or accounts.get("total") or 0
+    roth = accounts.get("roth") or accounts.get("roth_balance") or 0
+    traditional = accounts.get("traditional") or accounts.get("traditional_ira") or accounts.get("pre_tax") or 0
+    taxable = accounts.get("taxable") or 0
+    current_age = r.get("current_age", 0)
+    annual_div = div_cal.get("total_annual", 0)
+    gw_start = gw.get("start_age") or 68.5
+    gw_conversion = gw.get("optimal_annual_conversion") or gw.get("sweet_spot_annual") or 50000
+    loan_balance = loan.get("balance", 0)
+    loan_days = loan.get("days_remaining") or key_dates.get("days_to_loan_deadline", 0)
+
+    # ── Generate actionable narrative ──
+    narrative_lines = []
+
+    # Roth conversion guidance
+    roth_pct = round(roth / total * 100, 1) if total else 0
+    trad_pct = round(traditional / total * 100, 1) if total else 0
+    narrative_lines.append(f"Portfolio: ${total:,.0f} — {trad_pct}% traditional (${traditional:,.0f}), {roth_pct}% Roth (${roth:,.0f}), taxable ${taxable:,.0f}.")
+
+    if current_age and current_age < 62:
+        years_to_gw = round(float(gw_start) - current_age, 1) if gw_start else 0
+        if years_to_gw > 0:
+            projected_roth = roth * (1.07 ** years_to_gw)  # 7% growth assumption
+            narrative_lines.append(
+                f"Golden Window starts in ~{years_to_gw} years (age {gw_start}). "
+                f"At 7% growth, Roth projects to ~${projected_roth:,.0f} by then."
+            )
+            if gw_conversion:
+                narrative_lines.append(
+                    f"Optimal annual conversion: ${gw_conversion:,.0f}/year during the {gw.get('years_available', 4.5)}-year window. "
+                    f"This targets converting ~${gw_conversion * float(gw.get('years_available', 4.5)):,.0f} total from traditional to Roth tax-free."
+                )
+
+    # SSDI context
+    if current_age and current_age < 62:
+        narrative_lines.append(
+            "Current income: SSDI. Roth conversions during SSDI years benefit from lower tax bracket. "
+            "Maximize conversions now while income is below standard deduction + SSDI thresholds."
+        )
+
+    # Loan urgency
+    if loan_balance > 0 and loan_days > 0:
+        monthly = loan.get("monthly_to_payoff", 0)
+        urgency = "URGENT" if loan_days < 365 else ("MODERATE" if loan_days < 730 else "ON TRACK")
+        narrative_lines.append(
+            f"401k Loan: ${loan_balance:,.0f} due in {loan_days} days ({urgency}). "
+            f"Monthly payment: ${monthly:,.0f}. Failure to repay triggers taxable distribution + 10% penalty if under 59.5."
+        )
+
+    # Dividend income in retirement context
+    if annual_div > 0:
+        monthly_div = annual_div / 12
+        narrative_lines.append(
+            f"Dividend income: ${annual_div:,.0f}/year (${monthly_div:,.0f}/month). "
+            f"This covers {round(monthly_div / 4000 * 100, 0)}% of estimated $4,000/month retirement spending need."
+        )
+        qualified = div_cal.get("qualified_annual", 0)
+        if qualified:
+            narrative_lines.append(
+                f"Qualified dividends: ${qualified:,.0f}/year — taxed at preferential long-term capital gains rates (0% if income under ~$44K)."
+            )
+
+    # Current month dividends
+    current_month = _get_current_month_dividends(div_cal)
+    if current_month.get("symbols"):
+        narrative_lines.append(
+            f"This month ({current_month['month_name']}): ${current_month['total']:,.0f} expected from {current_month['count']} positions — {', '.join(current_month['symbols'][:8])}."
+        )
+
     return {
         "as_of": r.get("as_of", ""),
-        "current_age": r.get("current_age", 0),
+        "current_age": current_age,
         "key_dates": key_dates,
         "accounts": {
-            "total": accounts.get("portfolio_total") or accounts.get("total") or 0,
-            "roth": accounts.get("roth") or accounts.get("roth_balance") or 0,
-            "traditional": accounts.get("traditional") or accounts.get("traditional_ira") or accounts.get("pre_tax") or 0,
-            "taxable": accounts.get("taxable") or 0,
+            "total": total, "roth": roth, "traditional": traditional, "taxable": taxable,
         },
         "loan": {
-            "balance": loan.get("balance", 0),
+            "balance": loan_balance,
             "deadline": loan.get("deadline", key_dates.get("loan_deadline", "")),
-            "days_remaining": loan.get("days_remaining", key_dates.get("days_to_loan_deadline", 0)),
+            "days_remaining": loan_days,
             "monthly_to_payoff": loan.get("monthly_to_payoff", 0),
         },
         "timeline": tl,
         "golden_window": {
-            "start_age": gw.get("start_age") or key_dates.get("golden_window_start", ""),
+            "start_age": gw_start,
             "end_age": gw.get("end_age") or key_dates.get("golden_window_end", ""),
             "years_available": gw.get("years_available") or key_dates.get("years_to_golden", 0),
-            "optimal_annual_conversion": gw.get("optimal_annual_conversion") or gw.get("sweet_spot_annual") or 0,
-            "projected_roth_at_start": gw.get("projected_roth_at_start") or accounts.get("roth") or 0,
+            "optimal_annual_conversion": gw_conversion,
+            "projected_roth_at_start": gw.get("projected_roth_at_start") or roth,
             "narrative": gw.get("narrative") or "",
         },
+        "dividend_income": {
+            "annual": annual_div,
+            "monthly_avg": round(annual_div / 12, 2) if annual_div else 0,
+            "qualified_annual": div_cal.get("qualified_annual", 0),
+            "current_month": current_month,
+            "top_payers": [{"symbol": p.get("symbol"), "annual": p.get("annual_income"),
+                            "yield_pct": p.get("yield_pct"), "safety": p.get("safety")}
+                           for p in (div_cal.get("payers") or [])[:8]],
+        },
+        "intelligence_brief": narrative_lines,
     }
 
 
@@ -5215,12 +5438,46 @@ def rebalance():
                 computed.append({"symbol": p["symbol"], "action": "SET STOP", "rationale": f'{p["symbol"]} (${p["market_value"]:,.0f}) has no stop. Consider placing a trailing stop.', "severity": "medium", "account": p.get("account", "")})
         _rann = _rdc.get("total_annual", 0)
         if _rtotal > 0 and _rann / _rtotal < 0.01:
-            computed.append({"symbol": "", "action": "INCOME REVIEW", "rationale": f'Portfolio yield {_rann/_rtotal*100:.2f}% — below 1% target.', "severity": "low"})
+            computed.append({"symbol": "", "action": "INCOME REVIEW", "rationale": f'Portfolio yield {_rann/_rtotal*100:.2f}% — below 1% target. Consider adding income positions (SCHD, JEPI, BDCs).', "severity": "low"})
+        # Sector concentration check
+        _sector_map = {}
+        for p in _rholdings:
+            s = p.get("sector", "Other")
+            _sector_map[s] = _sector_map.get(s, 0) + p.get("market_value", 0)
+        for s, mv in _sector_map.items():
+            spct = mv / _rtotal * 100 if _rtotal else 0
+            if spct > 30:
+                computed.append({"symbol": "", "action": "SECTOR CONCENTRATION", "rationale": f'{s} sector at {spct:.0f}% — over 30% threshold. Consider diversifying.', "severity": "high"})
+        # Cash adequacy
+        _cash = sum(p.get("market_value", 0) for p in _rh.get("holdings", []) if p.get("is_cash"))
+        _cash_pct = _cash / _rtotal * 100 if _rtotal else 0
+        if _cash_pct < 2:
+            computed.append({"symbol": "CASH", "action": "LOW CASH", "rationale": f'Cash at {_cash_pct:.1f}% (${_cash:,.0f}) — below 2% buffer. Consider raising cash.', "severity": "medium"})
+        # Portfolio heat
+        _heat = _rrm.get("portfolio_heat_pct", 0)
+        if _heat > 5:
+            computed.append({"symbol": "", "action": "HEAT ELEVATED", "rationale": f'Portfolio heat at {_heat:.1f}% — above 5% threshold. Reduce risk exposure or add stops.', "severity": "high"})
         recommendations = computed
 
+    # ── Staleness indicator ──
+    generated_at = yo.get("generated_at", "")
+    is_stale = False
+    stale_days = None
+    if generated_at:
+        try:
+            from datetime import datetime as _dt
+            gen_dt = _dt.fromisoformat(str(generated_at).replace("Z", "+00:00"))
+            stale_days = (datetime.now() - gen_dt.replace(tzinfo=None)).days
+            is_stale = stale_days > 7
+        except Exception:
+            is_stale = True
+
     return {
-        "generated_at": yo.get("generated_at", ""),
+        "generated_at": generated_at,
         "status": yo.get("status", ""),
+        "is_stale": is_stale,
+        "stale_days": stale_days,
+        "stale_note": f"Rebalance data is {stale_days} days old. Refreshing requires Anthropic API credits or manual run of portfolio_yaml_advisor.py." if is_stale else None,
         "ground_truth": gt,
         "recommendations": recommendations,
         "summary": summary,
@@ -8395,6 +8652,35 @@ def _prospects_handler(query: dict) -> tuple:
             FROM indicator_confluence_cache
             WHERE profile = 'scalp'
             ORDER BY symbol, computed_at DESC
+        ),
+        paper_proposals AS (
+            SELECT DISTINCT ON (symbol)
+                symbol,
+                proposed_entry AS pp_entry,
+                proposed_stop AS pp_stop,
+                proposed_target1 AS pp_target,
+                proposed_target2 AS pp_target2,
+                strategy_id AS pp_strategy,
+                llm_review_stage AS pp_llm_stage,
+                llm_review_status AS pp_llm_status,
+                status AS pp_status
+            FROM paper_trade_proposals
+            WHERE proposed_entry IS NOT NULL AND proposed_entry > 0
+              AND status NOT IN ('EXPIRED', 'expired')
+            ORDER BY symbol, created_at DESC
+        ),
+        incubator AS (
+            SELECT DISTINCT ON (symbol)
+                symbol,
+                strategy_id AS inc_strategy,
+                llm_screen_grade AS inc_llm_grade,
+                llm_screen_verdict AS inc_llm_verdict,
+                llm_screen_confidence AS inc_llm_confidence,
+                latest_score AS inc_score,
+                days_active AS inc_days_active
+            FROM incubator_universe
+            WHERE status = 'ACTIVE'
+            ORDER BY symbol, latest_score DESC NULLS LAST
         )
         SELECT
             s.symbol, s.score, s.decision, s.price, s.rvol, s.float_m,
@@ -8408,22 +8694,103 @@ def _prospects_handler(query: dict) -> tuple:
                      OR COALESCE(s.social_reddit,0) > 0 OR COALESCE(s.social_stocktwits,0) > 0
                      THEN 'social' END,
                 CASE WHEN p.symbol IS NOT NULL THEN 'agent' END,
-                CASE WHEN w.in_ai_watchlist = true OR w.in_personal_watchlist = true THEN 'watchlist' END
+                CASE WHEN w.in_ai_watchlist = true OR w.in_personal_watchlist = true THEN 'watchlist' END,
+                CASE WHEN pp.symbol IS NOT NULL THEN 'proposal' END,
+                CASE WHEN inc.symbol IS NOT NULL THEN 'incubator' END
             ], NULL) AS pipeline_sources,
-            w.strategy_type, w.ideal_entry, w.stop_loss, w.target_price, w.risk_reward,
+            -- Strategy: cascade incubator > watchlist_master > proposal
+            COALESCE(inc.inc_strategy, w.strategy_type, pp.pp_strategy) AS strategy_type,
+            -- Entry/Stop/Target: cascade proposal > confluence > watchlist_master
+            COALESCE(pp.pp_entry, w.ideal_entry, c.conf_stop * 1.03) AS ideal_entry,
+            COALESCE(pp.pp_stop, c.conf_stop, w.stop_loss) AS stop_loss,
+            COALESCE(pp.pp_target, c.conf_target, w.target_price) AS target_price,
+            -- Risk/reward computed from entry/stop/target
+            CASE WHEN COALESCE(pp.pp_entry, w.ideal_entry) > 0
+                      AND COALESCE(pp.pp_stop, c.conf_stop, w.stop_loss) > 0
+                      AND COALESCE(pp.pp_target, c.conf_target, w.target_price) > 0
+                 THEN ROUND((
+                    (COALESCE(pp.pp_target, c.conf_target, w.target_price) - COALESCE(pp.pp_entry, w.ideal_entry, s.price))
+                    / NULLIF(COALESCE(pp.pp_entry, w.ideal_entry, s.price) - COALESCE(pp.pp_stop, c.conf_stop, w.stop_loss), 0)
+                 )::numeric, 2)
+                 ELSE w.risk_reward
+            END AS risk_reward,
             w.in_portfolio, w.in_ai_watchlist,
             c.confluence_tier, c.confluence_score, c.strategy_badges,
             c.conf_stop, c.conf_target, c.entry_quality, c.atr,
             p.action AS proposal_action, p.proposed_by AS proposal_agent,
-            p.confidence AS proposal_confidence
+            p.confidence AS proposal_confidence,
+            -- Incubator LLM intelligence
+            inc.inc_llm_grade, inc.inc_llm_verdict, inc.inc_llm_confidence,
+            inc.inc_score AS incubator_score, inc.inc_days_active,
+            -- Proposal levels
+            pp.pp_entry AS proposal_entry, pp.pp_stop AS proposal_stop,
+            pp.pp_target AS proposal_target, pp.pp_target2 AS proposal_target2,
+            pp.pp_strategy AS proposal_strategy, pp.pp_llm_stage, pp.pp_llm_status
         FROM latest_scans s
         LEFT JOIN watchlist_symbol_master w ON s.symbol = w.symbol
         LEFT JOIN confluence c ON s.symbol = c.symbol
         LEFT JOIN proposals p ON s.symbol = p.symbol
+        LEFT JOIN paper_proposals pp ON s.symbol = pp.symbol
+        LEFT JOIN incubator inc ON s.symbol = inc.symbol
         WHERE s.price IS NOT NULL
         ORDER BY s.score DESC, c.confluence_score DESC NULLS LAST
     """
     rows = _db_query(sql) or []
+
+    # ── Post-query enrichment: LLM grades not already in SQL join ──
+    # (The main SQL CTE now joins incubator + paper_proposals directly,
+    #  but we still supplement with proposal LLM review grades which are
+    #  not in the main query to keep the SQL manageable.)
+    llm_enrichment = {}
+    try:
+        proposal_llm = _db_query("""
+            SELECT DISTINCT ON (symbol) symbol, llm_model_used,
+                   llm_review_stage, llm_review_status, llm_review_chunks
+            FROM paper_trade_proposals
+            WHERE llm_review_stage IS NOT NULL
+              AND status NOT IN ('EXPIRED', 'expired')
+            ORDER BY symbol, created_at DESC
+        """) or []
+        for r in proposal_llm:
+            chunks = r.get("llm_review_chunks")
+            grades = {}
+            if chunks and isinstance(chunks, (dict, list)):
+                # Extract grades from chunks if available
+                if isinstance(chunks, dict):
+                    grades = {
+                        "proposal_decision_grade": chunks.get("decision_grade"),
+                        "proposal_risk_grade": chunks.get("risk_grade"),
+                        "proposal_catalyst_grade": chunks.get("catalyst_grade"),
+                    }
+            llm_enrichment[r["symbol"]] = {
+                "proposal_llm_model": r.get("llm_model_used"),
+                "proposal_llm_stage": r.get("llm_review_stage"),
+                **{k: v for k, v in grades.items() if v is not None},
+            }
+    except Exception:
+        pass
+
+    # Social sentiment enrichment from social_sentiment_history
+    social_enrichment = {}
+    try:
+        social_hist = _db_query("""
+            SELECT DISTINCT ON (symbol)
+                symbol, mention_count, bullish_count, bearish_count,
+                sentiment_score, theme_tags
+            FROM social_sentiment_history
+            WHERE observed_at > NOW() - INTERVAL '3 days'
+            ORDER BY symbol, observed_at DESC
+        """) or []
+        for r in social_hist:
+            social_enrichment[r["symbol"]] = {
+                "social_mentions": r.get("mention_count", 0),
+                "social_bullish": r.get("bullish_count", 0),
+                "social_bearish": r.get("bearish_count", 0),
+                "social_sentiment_score": _json_clean(r.get("sentiment_score")),
+                "social_themes": r.get("theme_tags"),
+            }
+    except Exception:
+        pass
 
     # Apply type/price/score filters in Python
     filtered = []
@@ -8447,6 +8814,67 @@ def _prospects_handler(query: dict) -> tuple:
             continue
         elif ptype == "position" and (price < 10 or price > 500):
             continue
+
+        # ── Merge LLM + social enrichment ──
+        sym = d.get("symbol", "")
+        if sym in llm_enrichment:
+            d.update(llm_enrichment[sym])
+        if sym in social_enrichment:
+            d.update(social_enrichment[sym])
+
+        # ── ATR-based fallback: compute entry/stop/target when missing ──
+        if price > 0 and not d.get("stop_loss"):
+            atr_val = float(d.get("atr") or 0)
+            if not atr_val and price > 0:
+                # Estimate ATR as ~3% of price for small caps, ~1.5% for large
+                atr_val = price * (0.03 if price < 20 else 0.015)
+            if atr_val > 0:
+                d["ideal_entry"] = d.get("ideal_entry") or round(price, 2)
+                d["stop_loss"] = round(price - (1.5 * atr_val), 2)
+                d["target_price"] = round(price + (2.0 * atr_val), 2)
+                stop = d["stop_loss"]
+                target = d["target_price"]
+                entry = d["ideal_entry"]
+                if entry > stop and entry != stop:
+                    d["risk_reward"] = round((target - entry) / (entry - stop), 2)
+                d["levels_source"] = "atr_computed"
+
+        # ── RSI flag ──
+        # Pull RSI from technical snapshot if not in scan data
+        rsi = None
+        try:
+            _ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
+            if isinstance(_ts, dict) and sym in _ts and isinstance(_ts[sym], dict):
+                rsi = _ts[sym].get("rsi")
+        except Exception:
+            pass
+        if rsi is not None:
+            d["rsi"] = rsi
+            if rsi < 30:
+                d["rsi_signal"] = "oversold"
+            elif rsi > 70:
+                d["rsi_signal"] = "overbought"
+            elif rsi > 50:
+                d["rsi_signal"] = "bullish"
+            else:
+                d["rsi_signal"] = "neutral"
+
+        # ── Action signal: actionable summary ──
+        signals = []
+        if d.get("decision") == "GO":
+            signals.append("GO")
+        if d.get("incubator_score") and float(d["incubator_score"]) >= 40:
+            signals.append("INCUBATED")
+        if d.get("proposal_entry"):
+            signals.append("HAS_PROPOSAL")
+        if d.get("inc_llm_grade") in ("A", "B"):
+            signals.append("LLM_APPROVED")
+        if d.get("rsi_signal") == "oversold":
+            signals.append("OVERSOLD")
+        if d.get("confluence_tier") in ("STRONG", "MODERATE"):
+            signals.append("CONFLUENCE")
+        d["action_signals"] = signals
+        d["signal_strength"] = len(signals)
 
         # Serialize dates
         for k in ("scanned_at",):
@@ -8853,6 +9281,474 @@ def _agent_calibration():
     }
 
 
+# ── Recovery endpoint (was missing — frontend had no API) ──────────────────
+
+def _recovery_dashboard():
+    """GET /api/v2/recovery — Full recovery watch dashboard with exit classification."""
+    items = _db_query("""
+        SELECT id, symbol, account, stopped_out_at, exit_price, stop_price,
+               reason, status, analyst_verdict, analyst_confidence, analyst_summary,
+               reentry_trigger, invalidated_if, escalated_to, escalated_at,
+               temp_allocation_verdict, temp_allocation_reason, temp_allocation_target,
+               exit_type, explicit_stop_out, relisted_without_stop_out,
+               market_reconnection_event, patience_score, relist_count,
+               last_reviewed_at, created_at
+        FROM stopped_out_watch WHERE is_active = true
+        ORDER BY analyst_confidence DESC NULLS LAST, stopped_out_at DESC
+    """) or []
+
+    # Relist events
+    relist_events = _db_query("""
+        SELECT watch_id, symbol, relist_date, price_at_relist, relist_reason, classified_as
+        FROM stopped_out_relist_events ORDER BY relist_date DESC LIMIT 20
+    """) or []
+
+    # History
+    history = _db_query("""
+        SELECT watch_id, symbol, old_verdict, new_verdict, summary, changed_at
+        FROM stopped_out_watch_history ORDER BY changed_at DESC LIMIT 30
+    """) or []
+
+    # Summary stats
+    true_stopouts = sum(1 for i in items if i.get("explicit_stop_out"))
+    relists = sum(1 for i in items if i.get("relisted_without_stop_out"))
+    reentry_candidates = sum(1 for i in items if i.get("analyst_verdict") == "reentry_candidate")
+    avg_patience = sum(float(i.get("patience_score") or 0) for i in items) / max(1, len(items))
+
+    return {
+        "items": [{k: _json_clean(v) for k, v in r.items()} for r in items],
+        "relist_events": [{k: _json_clean(v) for k, v in r.items()} for r in relist_events],
+        "history": [{k: _json_clean(v) for k, v in r.items()} for r in history],
+        "summary": {
+            "total_active": len(items),
+            "true_stopouts": true_stopouts,
+            "relists_no_exit": relists,
+            "reentry_candidates": reentry_candidates,
+            "avg_patience_score": round(avg_patience, 2),
+        },
+        "classification_legend": {
+            "true_stop_out": "Explicit exit — price breached stop or deliberate abandon",
+            "relist_no_exit": "Vehicle relisted without us exiting — market behavior, not failure",
+            "market_reconnection": "Auction/market mechanics shift — not a strategy failure",
+            "unclassified": "Needs manual review to determine exit type",
+        },
+    }
+
+
+# ── CIO unified endpoint (was missing) ────────────────────────────────────
+
+def _cio_unified():
+    """GET /api/v2/cio — Unified CIO intelligence: decisions, rotations, plans, signals.
+
+    Deduplicates daily repeat decisions — shows only the latest per symbol.
+    """
+    decisions = _db_query("""
+        SELECT action, priority, COUNT(DISTINCT symbol) as unique_symbols,
+               COUNT(*) as total_decisions
+        FROM cio_decisions GROUP BY action, priority
+        ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, unique_symbols DESC
+    """) or []
+
+    pending_review = _db_query(
+        "SELECT COUNT(DISTINCT symbol) as cnt FROM cio_decisions WHERE action='HUMAN_REVIEW'", fetch="one"
+    ) or {}
+
+    # Deduplicated: latest decision per symbol (not all daily repeats)
+    recent_decisions = _db_query("""
+        SELECT DISTINCT ON (symbol)
+            symbol, action, priority, rationale, created_at
+        FROM cio_decisions
+        ORDER BY symbol, created_at DESC
+    """) or []
+
+    # Sort by priority then date for display
+    priority_order = {'critical': 0, 'high': 1, 'normal': 2}
+    recent_decisions = sorted(recent_decisions, key=lambda r: (
+        priority_order.get(r.get('priority', 'normal'), 3),
+        str(r.get('created_at', ''))
+    ), reverse=False)
+    recent_decisions = recent_decisions[:30]
+
+    rotations = _db_query("""
+        SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 10
+    """) or []
+
+    latest_plan = _db_query("""
+        SELECT plan_id, plan_summary, total_trade_value, human_review_required, generated_at
+        FROM rebalance_plans ORDER BY generated_at DESC LIMIT 1
+    """, fetch="one") or {}
+
+    # Pipeline health (recent failures)
+    pipeline_health = []
+    try:
+        pipeline_health = _db_query("""
+            SELECT pipeline_key, COUNT(*) FILTER (WHERE status='failed') as failures,
+                   MAX(started_at) as last_run
+            FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '7 days'
+            GROUP BY pipeline_key
+            HAVING COUNT(*) FILTER (WHERE status='failed') > 0
+            ORDER BY failures DESC LIMIT 5
+        """) or []
+    except Exception:
+        pass
+
+    # Learning recommendations (deduplicated by title)
+    learning_recs = _db_query("""
+        SELECT DISTINCT ON (title) recommendation_id, domain, recommendation_type,
+               title, summary, confidence, risk_level, status
+        FROM learning_recommendations WHERE status = 'proposed'
+        ORDER BY title, created_at DESC
+    """) or []
+
+    # ── Categorize decisions into actionable groups ──
+    action_groups = {"rebalance": [], "income_research": [], "defense_thesis": [],
+                     "holds": [], "other": []}
+    for d in recent_decisions:
+        dd = {k: _json_clean(v) for k, v in d.items()}
+        action = dd.get("action", "")
+        rationale = dd.get("rationale", "")
+        strategy = ""
+        # Extract strategy from rationale (format: "strategy_type ACTION...")
+        if rationale:
+            strategy = rationale.split(" ")[0] if " " in rationale else ""
+
+        if "REBALANCE_TRIM" in rationale or action == "REBALANCE_TRIM":
+            action_groups["rebalance"].append(dd)
+        elif "defense_thesis" in strategy:
+            action_groups["defense_thesis"].append(dd)
+        elif "income" in strategy or "bdc" in strategy or "yield" in strategy:
+            action_groups["income_research"].append(dd)
+        elif action == "HOLD":
+            action_groups["holds"].append(dd)
+        else:
+            action_groups["other"].append(dd)
+
+    # Actionable summary
+    actionable_summary = []
+    if action_groups["rebalance"]:
+        syms = [d["symbol"] for d in action_groups["rebalance"]]
+        actionable_summary.append(f"REBALANCE: {len(syms)} positions flagged for trim — {', '.join(syms[:5])}")
+    if action_groups["defense_thesis"]:
+        syms = [d["symbol"] for d in action_groups["defense_thesis"]]
+        actionable_summary.append(f"DEFENSE THESIS: {len(syms)} buy candidates — {', '.join(syms[:5])}")
+    if action_groups["income_research"]:
+        syms = [d["symbol"] for d in action_groups["income_research"]]
+        actionable_summary.append(f"INCOME RESEARCH: {len(syms)} candidates — {', '.join(syms[:5])}")
+    if action_groups["holds"]:
+        actionable_summary.append(f"HOLDS: {len(action_groups['holds'])} positions confirmed — no action needed")
+
+    return {
+        "decision_summary": [{k: _json_clean(v) for k, v in r.items()} for r in decisions],
+        "human_review_pending": pending_review.get("cnt", 0),
+        "recent_decisions": [{k: _json_clean(v) for k, v in r.items()} for r in recent_decisions],
+        "action_groups": {k: v for k, v in action_groups.items() if v},
+        "actionable_summary": actionable_summary,
+        "pending_rotations": [{k: _json_clean(v) for k, v in r.items()} for r in rotations],
+        "latest_plan": {k: _json_clean(v) for k, v in latest_plan.items()} if latest_plan else None,
+        "pipeline_issues": [{k: _json_clean(v) for k, v in r.items()} for r in pipeline_health],
+        "learning_recommendations": [{k: _json_clean(v) for k, v in r.items()} for r in learning_recs],
+        "note": "CIO dashboard. All actions require human review. No broker execution.",
+    }
+
+
+# ── Portfolio Monitor endpoint (was missing) ───────────────────────────────
+
+def _portfolio_monitor():
+    """GET /api/v2/portfolio-monitor — Real-time portfolio intelligence."""
+    h = _load_json(STATE_DIR / "holdings.json") or {}
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
+    news = _load_json(STATE_DIR / "portfolio_news.json") or {}
+    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
+
+    holdings = h.get("holdings", [])
+    total_value = sum(p.get("market_value", 0) for p in holdings)
+    cash = sum(p.get("market_value", 0) for p in holdings if p.get("is_cash"))
+
+    # Enrich holdings with technicals + P&L
+    enriched = []
+    sector_totals = {}
+    for pos in holdings:
+        sym = pos.get("symbol", "")
+        if not sym or pos.get("is_cash"):
+            continue
+        tech = ts.get(sym, {}) if isinstance(ts, dict) else {}
+        mv = pos.get("market_value", 0)
+        cost_basis = pos.get("cost_basis") or pos.get("avg_cost")
+        shares = pos.get("shares", 0)
+        gain_pct = pos.get("gain_pct")
+        gain_dollar = None
+        if cost_basis and shares and mv:
+            gain_dollar = round(mv - (float(cost_basis) * float(shares)), 2)
+            if not gain_pct:
+                gain_pct = round((mv / (float(cost_basis) * float(shares)) - 1) * 100, 1) if cost_basis else None
+
+        sector = tech.get("sector") or pos.get("sector", "Other")
+        if sector:
+            sector_totals[sector] = sector_totals.get(sector, 0) + mv
+
+        rsi = tech.get("rsi")
+        rsi_signal = None
+        if rsi is not None:
+            rsi = float(rsi)
+            rsi_signal = "oversold" if rsi < 30 else ("overbought" if rsi > 70 else None)
+
+        enriched.append({
+            "symbol": sym,
+            "name": pos.get("name", ""),
+            "account": pos.get("account", ""),
+            "shares": shares,
+            "price": pos.get("price", 0),
+            "market_value": mv,
+            "portfolio_pct": round(mv / total_value * 100, 1) if total_value else 0,
+            "gain_pct": gain_pct,
+            "gain_dollar": gain_dollar,
+            "cost_basis": cost_basis,
+            "rsi": rsi,
+            "rsi_signal": rsi_signal,
+            "sma50_pct": tech.get("sma50_pct"),
+            "sma200_pct": tech.get("sma200_pct"),
+            "beta": tech.get("beta"),
+            "perf_week": tech.get("perf_week"),
+            "sector": sector,
+        })
+
+    # Sector concentration analysis
+    sector_breakdown = []
+    for sector, mv in sorted(sector_totals.items(), key=lambda x: -x[1]):
+        pct = round(mv / total_value * 100, 1) if total_value else 0
+        concentration_flag = "HIGH" if pct > 25 else ("MODERATE" if pct > 15 else None)
+        sector_breakdown.append({
+            "sector": sector,
+            "market_value": round(mv, 2),
+            "portfolio_pct": pct,
+            "concentration_flag": concentration_flag,
+        })
+
+    # Daily delta: compare freshness data
+    delta = {}
+    if freshness:
+        delta["last_refresh"] = freshness.get("completed_at")
+        delta["holdings_as_of"] = freshness.get("holdings_as_of")
+        delta["pipeline_status"] = freshness.get("status", "unknown")
+
+    # Risk alerts
+    risk_positions = rm.get("positions", [])
+    no_stop = [p for p in risk_positions if p.get("status") == "NO STOP"]
+    triggered = [p for p in risk_positions if p.get("status") == "TRIGGERED"]
+    heat = rm.get("portfolio_heat_pct", 0)
+
+    # News digest
+    all_news = news.get("all_scored") or news.get("catalysts") or []
+    top_news = sorted(all_news, key=lambda x: x.get("quality_score", 0), reverse=True)[:10]
+
+    # LLM health summaries (if available)
+    llm_health = _db_query("""
+        SELECT symbol, holdings_llm_health, holdings_llm_action, holdings_llm_confidence
+        FROM watchlist_items WHERE holdings_llm_health IS NOT NULL
+        ORDER BY holdings_llm_confidence DESC NULLS LAST
+    """) or []
+
+    # Stopped out watch
+    recovery_items = _db_query("""
+        SELECT symbol, analyst_verdict, analyst_confidence, exit_type,
+               explicit_stop_out, relisted_without_stop_out
+        FROM stopped_out_watch WHERE is_active = true
+    """) or []
+
+    return {
+        "portfolio_summary": {
+            "total_value": total_value,
+            "cash": cash,
+            "cash_pct": round(cash / total_value * 100, 1) if total_value else 0,
+            "position_count": len(enriched),
+            "portfolio_heat_pct": heat,
+            "no_stop_count": len(no_stop),
+            "triggered_count": len(triggered),
+        },
+        "holdings": enriched,
+        "risk_alerts": {
+            "no_stop": [{"symbol": p.get("symbol"), "market_value": p.get("market_value")} for p in no_stop[:10]],
+            "triggered": [{"symbol": p.get("symbol"), "stop_price": p.get("stop_price")} for p in triggered],
+        },
+        "top_news": [{"symbol": n.get("portfolio_symbol", ""), "title": n.get("title", ""),
+                       "source": n.get("source", ""), "score": n.get("quality_score", 0)} for n in top_news],
+        "llm_health": [{k: _json_clean(v) for k, v in r.items()} for r in llm_health],
+        "recovery_watch": [{k: _json_clean(v) for k, v in r.items()} for r in recovery_items],
+        "sector_breakdown": sector_breakdown,
+        "concentration_alerts": [s for s in sector_breakdown if s.get("concentration_flag")],
+        "delta": delta,
+        "dividends": {
+            "total_annual_income": div_cal.get("total_annual", 0),
+            "monthly_average": div_cal.get("monthly_average", 0),
+            "ex_div_alerts": div_cal.get("ex_div_alerts", []),
+            "current_month_payers": _get_current_month_dividends(div_cal),
+            "top_payers": [{"symbol": p.get("symbol"), "annual": p.get("annual_income"),
+                            "yield_pct": p.get("yield_pct"), "frequency": p.get("frequency"),
+                            "safety": p.get("safety")}
+                           for p in (div_cal.get("payers") or [])[:10]],
+        },
+        "freshness": freshness,
+    }
+
+
+def _get_current_month_dividends(div_cal):
+    """Get dividend payers for the current month."""
+    from datetime import datetime
+    current_month = datetime.now().month
+    monthly = div_cal.get("monthly_summary", [])
+    for m in monthly:
+        if m.get("month") == current_month:
+            return {
+                "month_name": m.get("month_name", ""),
+                "total": m.get("total", 0),
+                "symbols": m.get("symbols", []),
+                "count": m.get("count", 0),
+            }
+    return {"month_name": "", "total": 0, "symbols": [], "count": 0}
+
+
+# ── Reports hub endpoint (was missing) ────────────────────────────────────
+
+def _reports_hub():
+    """GET /api/v2/reports — Reports hub with weekly/monthly data + docx catalog."""
+    import glob as _glob
+    import os as _os
+
+    # Weekly report data
+    agent_activity = _db_query("""
+        SELECT agent, COUNT(*) as analyses, AVG(confidence)::numeric(3,2) as avg_conf
+        FROM watchlist_agent_results WHERE created_at > NOW() - INTERVAL '7 days'
+        GROUP BY agent ORDER BY analyses DESC
+    """) or []
+
+    proposals = _db_query("""
+        SELECT status, COUNT(*) as cnt FROM paper_trade_proposals
+        WHERE created_at > NOW() - INTERVAL '7 days'
+        GROUP BY status ORDER BY cnt DESC
+    """) or []
+
+    # Pipeline activity
+    pipeline_runs = _db_query("""
+        SELECT pipeline_key, COUNT(*) as runs,
+               MAX(started_at) as last_run,
+               COUNT(*) FILTER (WHERE status = 'completed') as successes,
+               COUNT(*) FILTER (WHERE status = 'failed') as failures
+        FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '7 days'
+        GROUP BY pipeline_key ORDER BY runs DESC LIMIT 15
+    """) or []
+
+    # Learning stats
+    learning = _db_query("""
+        SELECT domain, COUNT(*) as hypotheses,
+               COUNT(*) FILTER (WHERE status = 'proposed') as pending
+        FROM learning_hypotheses WHERE created_at > NOW() - INTERVAL '30 days'
+        GROUP BY domain
+    """) or []
+
+    # Incubator stats
+    incubator = _db_query("""
+        SELECT status, COUNT(*) as cnt FROM incubator_universe GROUP BY status
+    """) or []
+
+    # Social ingestion
+    social = _db_query("""
+        SELECT platform, COUNT(*) as posts
+        FROM social_posts WHERE ingested_at > NOW() - INTERVAL '7 days'
+        GROUP BY platform
+    """) or []
+
+    # ── Week-over-week comparison ──
+    prior_week_agents = _db_query("""
+        SELECT agent, COUNT(*) as analyses, AVG(confidence)::numeric(3,2) as avg_conf
+        FROM watchlist_agent_results
+        WHERE created_at > NOW() - INTERVAL '14 days' AND created_at <= NOW() - INTERVAL '7 days'
+        GROUP BY agent ORDER BY analyses DESC
+    """) or []
+
+    prior_week_proposals = _db_query("""
+        SELECT status, COUNT(*) as cnt FROM paper_trade_proposals
+        WHERE created_at > NOW() - INTERVAL '14 days' AND created_at <= NOW() - INTERVAL '7 days'
+        GROUP BY status
+    """) or []
+
+    # Win rates
+    win_rate_data = _db_query("""
+        SELECT COUNT(*) as total,
+               COUNT(*) FILTER (WHERE pnl > 0) as wins,
+               COUNT(*) FILTER (WHERE pnl <= 0) as losses,
+               AVG(r_multiple)::numeric(4,2) as avg_r,
+               SUM(pnl)::numeric(10,2) as total_pnl
+        FROM paper_trades WHERE status = 'closed'
+    """, fetch="one") or {}
+
+    # Agent accuracy from calibration
+    agent_accuracy = _db_query("""
+        SELECT agent_name, accuracy_pct, correct_count, wrong_count, trending
+        FROM agent_calibration WHERE window_days = 90 AND strategy_type IS NULL
+        ORDER BY agent_name
+    """) or []
+
+    # Compute trend arrows (this week vs prior)
+    agent_trends = {}
+    current_map = {a.get("agent"): int(a.get("analyses", 0)) for a in agent_activity}
+    prior_map = {a.get("agent"): int(a.get("analyses", 0)) for a in prior_week_agents}
+    for agent in set(list(current_map.keys()) + list(prior_map.keys())):
+        curr = current_map.get(agent, 0)
+        prev = prior_map.get(agent, 0)
+        if curr > prev * 1.1:
+            agent_trends[agent] = "up"
+        elif curr < prev * 0.9:
+            agent_trends[agent] = "down"
+        else:
+            agent_trends[agent] = "stable"
+
+    # DOCX catalog
+    docx_files = []
+    archive_root = str(PROJECT_ROOT / "archive" / "weekly")
+    for f in sorted(_glob.glob(f"{archive_root}/**/*.docx", recursive=True), reverse=True)[:20]:
+        docx_files.append({
+            "filename": _os.path.basename(f),
+            "path": f.replace(str(PROJECT_ROOT), ""),
+            "size_kb": round(_os.path.getsize(f) / 1024, 1),
+            "modified": datetime.fromtimestamp(_os.path.getmtime(f)).isoformat(),
+        })
+
+    # Weekly Word report status
+    latest_weekly_docx = docx_files[0] if docx_files else None
+    weekly_docx_age_days = None
+    if latest_weekly_docx:
+        try:
+            from datetime import datetime as _dt
+            mod = _dt.fromisoformat(latest_weekly_docx["modified"])
+            weekly_docx_age_days = (datetime.now() - mod).days
+        except Exception:
+            pass
+
+    return {
+        "period": "weekly",
+        "generated_at": datetime.now().isoformat(),
+        "agent_activity": [{k: _json_clean(v) for k, v in r.items()} for r in agent_activity],
+        "agent_trends": agent_trends,
+        "agent_accuracy": [{k: _json_clean(v) for k, v in r.items()} for r in agent_accuracy],
+        "proposal_summary": [{k: _json_clean(v) for k, v in r.items()} for r in proposals],
+        "prior_week_proposals": [{k: _json_clean(v) for k, v in r.items()} for r in prior_week_proposals],
+        "win_rate": {k: _json_clean(v) for k, v in win_rate_data.items()} if win_rate_data else {},
+        "pipeline_runs": [{k: _json_clean(v) for k, v in r.items()} for r in pipeline_runs],
+        "learning_stats": [{k: _json_clean(v) for k, v in r.items()} for r in learning],
+        "incubator_stats": [{k: _json_clean(v) for k, v in r.items()} for r in incubator],
+        "social_ingestion": [{k: _json_clean(v) for k, v in r.items()} for r in social],
+        "docx_catalog": docx_files,
+        "weekly_docx_status": {
+            "latest": latest_weekly_docx,
+            "age_days": weekly_docx_age_days,
+            "is_stale": (weekly_docx_age_days or 99) > 7,
+            "note": "Weekly Word report should be generated every Sunday" if (weekly_docx_age_days or 99) > 7 else "Weekly Word report is current",
+        },
+    }
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -8936,6 +9832,10 @@ ROUTES = {
     "/api/v2/social/status": lambda: _social_api_status(),
     "/api/v2/cio-decisions": lambda: _cio_decisions_enriched(),
     "/api/v2/cio-dashboard": lambda: _cio_dashboard(),
+    "/api/v2/cio": lambda: _cio_unified(),
+    "/api/v2/recovery": lambda: _recovery_dashboard(),
+    "/api/v2/portfolio-monitor": lambda: _portfolio_monitor(),
+    "/api/v2/reports": lambda: _reports_hub(),
     "/api/v2/strategy-rotations": lambda: {"rotations": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 20") or [])]},
     "/api/v2/rebalance-plans": lambda: {"plans": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM rebalance_plans ORDER BY generated_at DESC LIMIT 10") or [])]},
     "/api/v2/rebalance-plans/latest": lambda: _rebalance_latest(),

@@ -27,7 +27,12 @@ def _get_conn():
 
 
 def match_and_score(conn) -> list:
-    """Join trade_closed to watchlist_agent_results, score each pair."""
+    """Join trade_closed to watchlist_agent_results, score each pair.
+
+    Respects re-entry classification: if a symbol has an active relist/market
+    reconnection record (explicit_stop_out = false), do not score the
+    recommendation as WRONG. Treat as RELIST_NEUTRAL instead.
+    """
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
     cur.execute("""
@@ -58,26 +63,61 @@ def match_and_score(conn) -> list:
     """)
     pairs = cur.fetchall()
 
+    # Build relist context: symbols with active relist/market reconnection records
+    relist_symbols = set()
+    try:
+        cur.execute("""
+            SELECT DISTINCT symbol FROM stopped_out_watch
+            WHERE is_active = true
+              AND explicit_stop_out = false
+              AND (relisted_without_stop_out = true OR market_reconnection_event = true)
+        """)
+        relist_symbols = {r['symbol'] for r in cur.fetchall()}
+    except Exception:
+        pass  # table may not have new columns yet
+
     scored = []
     for p in pairs:
         rec = (str(p.get('recommendation') or '')).upper()
         pnl_pct = float(p.get('pnl_pct') or 0)
+        sym = p.get('symbol', '')
 
         bullish = any(t in rec for t in ['BUY', 'ADD', 'BULL', 'STRONG_BUY', 'OVERWEIGHT'])
         bearish = any(t in rec for t in ['SELL', 'TRIM', 'AVOID', 'BEAR', 'REDUCE', 'EXIT'])
+
+        # ── Check if this symbol is a relist (no true stop-out) ──
+        is_relist = sym in relist_symbols
 
         if bullish:
             if pnl_pct >= 10: verdict, vscore = 'CORRECT', 1.0
             elif pnl_pct >= 3: verdict, vscore = 'CORRECT', 0.8
             elif pnl_pct >= 0: verdict, vscore = 'PARTIAL', 0.3
-            elif pnl_pct >= -5: verdict, vscore = 'PARTIAL', -0.2
-            else: verdict, vscore = 'WRONG', -1.0
+            elif pnl_pct >= -5:
+                if is_relist:
+                    # Relist: small loss is market noise, not a wrong recommendation
+                    verdict, vscore = 'RELIST_NEUTRAL', 0.0
+                else:
+                    verdict, vscore = 'PARTIAL', -0.2
+            else:
+                if is_relist:
+                    # Relist: don't penalize as WRONG — treat as neutral market event
+                    verdict, vscore = 'RELIST_NEUTRAL', 0.0
+                else:
+                    verdict, vscore = 'WRONG', -1.0
         elif bearish:
             if pnl_pct <= -10: verdict, vscore = 'CORRECT', 1.0
             elif pnl_pct <= -3: verdict, vscore = 'CORRECT', 0.8
             elif pnl_pct <= 0: verdict, vscore = 'PARTIAL', 0.3
-            elif pnl_pct <= 5: verdict, vscore = 'PARTIAL', -0.2
-            else: verdict, vscore = 'WRONG', -1.0
+            elif pnl_pct <= 5:
+                if is_relist:
+                    verdict, vscore = 'RELIST_NEUTRAL', 0.0
+                else:
+                    verdict, vscore = 'PARTIAL', -0.2
+            else:
+                if is_relist:
+                    verdict, vscore = 'RELIST_NEUTRAL', 0.0
+                else:
+                    verdict, vscore = 'WRONG', -1.0
         else:
             verdict, vscore = 'NEUTRAL', 0.0
 
@@ -91,7 +131,8 @@ def match_and_score(conn) -> list:
         except Exception:
             pass
 
-        scored.append({**p, 'verdict': verdict, 'verdict_score': vscore, 'delta_days': delta_days})
+        scored.append({**p, 'verdict': verdict, 'verdict_score': vscore,
+                       'delta_days': delta_days, 'is_relist': is_relist})
 
     return scored
 
@@ -122,7 +163,11 @@ def save_outcomes(conn, scored: list) -> int:
 
 
 def rebuild_calibration(conn):
-    """Recompute agent_calibration from scored outcomes."""
+    """Recompute agent_calibration from scored outcomes.
+
+    RELIST_NEUTRAL verdicts are excluded from accuracy calculations — they
+    represent market reconnection events, not recommendation failures.
+    """
     cur = conn.cursor()
     for window in [30, 90, 365]:
         cur.execute(f"""
@@ -135,10 +180,13 @@ def rebuild_calibration(conn):
             # Overall (strategy_type=NULL) + per-strategy
             for strat in [None]:
                 strat_clause = "" if not strat else f"AND strategy_type = '{strat}'"
+                # Exclude RELIST_NEUTRAL from accuracy denominator — they're
+                # market events, not failed recommendations
                 cur.execute(f"""
-                    SELECT COUNT(*), COUNT(CASE WHEN verdict='CORRECT' THEN 1 END),
+                    SELECT COUNT(*),
+                           COUNT(CASE WHEN verdict='CORRECT' THEN 1 END),
                            COUNT(CASE WHEN verdict='WRONG' THEN 1 END),
-                           COUNT(CASE WHEN verdict='NEUTRAL' THEN 1 END),
+                           COUNT(CASE WHEN verdict IN ('NEUTRAL', 'RELIST_NEUTRAL') THEN 1 END),
                            AVG(confidence), AVG(pnl_pct), SUM(realized_pnl)
                     FROM agent_recommendation_outcomes
                     WHERE agent_name=%s AND scored_at > NOW() - INTERVAL '{window} days'
@@ -151,11 +199,11 @@ def rebuild_calibration(conn):
                 denom = (correct or 0) + (wrong or 0)
                 accuracy = (correct / denom * 100) if denom > 0 else None
 
-                # Trending
+                # Trending — exclude RELIST_NEUTRAL from trending calc
                 cur.execute(f"""
                     SELECT AVG(CASE WHEN verdict='CORRECT' THEN 1.0 ELSE 0.0 END)
                     FROM agent_recommendation_outcomes
-                    WHERE agent_name=%s AND verdict!='NEUTRAL'
+                    WHERE agent_name=%s AND verdict NOT IN ('NEUTRAL', 'RELIST_NEUTRAL')
                     AND scored_at > NOW() - INTERVAL '30 days'
                 """, [agent])
                 recent_30d = cur.fetchone()[0]

@@ -149,6 +149,22 @@ def build_cio_decisions() -> list:
             "status": "proposed",
         }
 
+        # Dedup: skip if same symbol+action+priority already exists within last 24 hours
+        existing = None
+        try:
+            cur.execute("""
+                SELECT decision_id FROM cio_decisions
+                WHERE symbol = %s AND action = %s AND priority = %s
+                  AND created_at > NOW() - INTERVAL '24 hours'
+                LIMIT 1
+            """, (sym, action, priority))
+            existing = cur.fetchone()
+        except Exception:
+            pass
+
+        if existing:
+            continue  # skip duplicate — same recommendation already generated today
+
         # Persist
         cur.execute("""
             INSERT INTO cio_decisions

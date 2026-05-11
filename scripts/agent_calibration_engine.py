@@ -59,6 +59,20 @@ def score_recommendations(conn, agent_filter=None, window_days=90):
         r_mult = None
         explanation = "no_outcome_data"
 
+        # ── Check if this symbol is a relist (no true stop-out) ──
+        is_relist = False
+        try:
+            cur.execute("""
+                SELECT 1 FROM stopped_out_watch
+                WHERE symbol = %s AND is_active = true
+                  AND explicit_stop_out = false
+                  AND (relisted_without_stop_out = true OR market_reconnection_event = true)
+                LIMIT 1
+            """, [symbol])
+            is_relist = cur.fetchone() is not None
+        except Exception:
+            pass  # table may not have new columns yet
+
         # Check paper trade outcome
         if trade_id:
             cur.execute("SELECT status, pnl, r_multiple FROM paper_trades WHERE id=%s", [trade_id])
@@ -69,13 +83,28 @@ def score_recommendations(conn, agent_filter=None, window_days=90):
                 r_mult = _f(t_r)
                 if status == "closed":
                     if rec_type in ("buy", "add", "approve_trade"):
-                        actual = "correct" if (pnl or 0) > 0 else "incorrect"
-                        outcome_score = 1 if actual == "correct" else -1
-                        explanation = f"trade closed pnl={pnl}"
+                        if (pnl or 0) > 0:
+                            actual = "correct"
+                            outcome_score = 1
+                        elif is_relist:
+                            # Relist: loss is market noise, not recommendation failure
+                            actual = "relist_neutral"
+                            outcome_score = 0
+                        else:
+                            actual = "incorrect"
+                            outcome_score = -1
+                        explanation = f"trade closed pnl={pnl}" + (" [relist]" if is_relist else "")
                     elif rec_type in ("sell", "trim", "avoid", "reject_trade"):
-                        actual = "correct" if (pnl or 0) <= 0 else "incorrect"
-                        outcome_score = 1 if actual == "correct" else -1
-                        explanation = f"contrarian trade closed pnl={pnl}"
+                        if (pnl or 0) <= 0:
+                            actual = "correct"
+                            outcome_score = 1
+                        elif is_relist:
+                            actual = "relist_neutral"
+                            outcome_score = 0
+                        else:
+                            actual = "incorrect"
+                            outcome_score = -1
+                        explanation = f"contrarian trade closed pnl={pnl}" + (" [relist]" if is_relist else "")
                     else:
                         actual = "neutral"
                         explanation = f"non-directional rec, trade closed pnl={pnl}"
@@ -108,7 +137,7 @@ def score_recommendations(conn, agent_filter=None, window_days=90):
                     actual = "unresolved"
                     explanation = f"proposal status={prop[0]}"
 
-        # Calibration error
+        # Calibration error — skip relist_neutral (market event, not cal signal)
         cal_error = None
         overconf = None
         underconf = None
@@ -119,6 +148,7 @@ def score_recommendations(conn, agent_filter=None, window_days=90):
             cal_error = abs(expected - realized)
             overconf = max(0, expected - realized)
             underconf = max(0, realized - expected)
+        # relist_neutral: no calibration error — this was a market event
 
         events.append({
             "calibration_event_id": _uid(),
@@ -160,6 +190,7 @@ def aggregate_windows(events, window_days=90):
                 "recommendations": 0, "resolved": 0,
                 "correct": 0, "incorrect": 0, "neutral": 0,
                 "partially_correct": 0, "unresolved": 0,
+                "relist_neutral": 0,
                 "confidences": [], "outcome_scores": [], "cal_errors": [],
                 "overconfs": [], "underconfs": [], "r_multiples": [],
             }
@@ -167,7 +198,8 @@ def aggregate_windows(events, window_days=90):
         w = windows[agent]
         w["recommendations"] += 1
         w[ev["actual_outcome"]] = w.get(ev["actual_outcome"], 0) + 1
-        if ev["actual_outcome"] not in ("unresolved",):
+        if ev["actual_outcome"] not in ("unresolved", "relist_neutral"):
+            # relist_neutral is excluded from resolved count — it's a market event
             w["resolved"] += 1
         if ev["predicted_confidence"] is not None:
             w["confidences"].append(ev["predicted_confidence"])
@@ -200,7 +232,8 @@ def aggregate_windows(events, window_days=90):
         else:
             w["sample_size_status"] = "proposal_allowed"
 
-        w["learning_summary"] = f"{agent}: {resolved} resolved, acc={w['accuracy']}, cal_err={w['calibration_error']}"
+        relist_note = f", {w.get('relist_neutral', 0)} relist-excluded" if w.get("relist_neutral", 0) > 0 else ""
+        w["learning_summary"] = f"{agent}: {resolved} resolved{relist_note}, acc={w['accuracy']}, cal_err={w['calibration_error']}"
         w["recommendation"] = "insufficient_data" if resolved < 10 else (
             "review_overconfidence" if (w["overconfidence_score"] or 0) > 0.3 else "maintain_current")
 
