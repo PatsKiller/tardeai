@@ -180,39 +180,107 @@ class AlpacaPaperAdapter:
             log.warning(f"[alpaca] Max positions ({MAX_POSITIONS}) reached")
             return {'status': 'rejected', 'reason': 'max_positions'}
 
-        # Submit bracket order
+        # Determine order type based on price proximity
+        # If current price is within 2% of entry, use market order for immediate fill.
+        # If current price is below entry (better price), use market order.
+        # If current price is significantly above entry, use limit at entry for value.
+        current_price = None
         try:
-            order_data = {
-                'symbol': symbol,
-                'qty': str(shares),
-                'side': 'buy',
-                'type': 'limit',
-                'time_in_force': 'day',
-                'limit_price': str(entry_price),
-                'order_class': 'bracket',
-                'stop_loss': {'stop_price': str(stop_price)},
-                'take_profit': {'limit_price': str(target_price)},
-            }
+            quote = self._api_get(f'/v2/stocks/{symbol}/quotes/latest')
+            current_price = float(quote.get('quote', {}).get('ap') or quote.get('quote', {}).get('bp') or 0)
+        except Exception:
+            pass
+
+        use_market = False
+        order_type_reason = "limit_at_proposed_entry"
+        if current_price and entry_price:
+            drift_pct = abs(current_price - entry_price) / entry_price * 100
+            if current_price <= entry_price:
+                # Price is at or below entry — market order for immediate fill at better price
+                use_market = True
+                order_type_reason = f"market_better_price (${current_price:.2f} <= ${entry_price:.2f})"
+            elif drift_pct <= 2.0:
+                # Price within 2% of entry — close enough, market order
+                use_market = True
+                order_type_reason = f"market_within_drift ({drift_pct:.1f}% drift)"
+            else:
+                order_type_reason = f"limit_price_drifted ({drift_pct:.1f}% above entry)"
+
+        log.info(f"[alpaca] {symbol}: order_type={('market' if use_market else 'limit')} reason={order_type_reason}")
+
+        # Submit order (bracket if limit, simple + separate stop if market)
+        try:
+            if use_market:
+                # Market order — immediate fill. Set stop separately after fill.
+                order_data = {
+                    'symbol': symbol,
+                    'qty': str(shares),
+                    'side': 'buy',
+                    'type': 'market',
+                    'time_in_force': 'day',
+                }
+            else:
+                # Limit order with bracket — fills when price reaches entry
+                order_data = {
+                    'symbol': symbol,
+                    'qty': str(shares),
+                    'side': 'buy',
+                    'type': 'limit',
+                    'time_in_force': 'day',
+                    'limit_price': str(entry_price),
+                    'order_class': 'bracket',
+                    'stop_loss': {'stop_price': str(stop_price)},
+                    'take_profit': {'limit_price': str(target_price)},
+                }
             result = self._api_post('/v2/orders', order_data)
             order_id = result.get('id', '')
+            fill_price = entry_price  # default to proposed
+
+            # For market orders, set stop loss separately after fill
+            if use_market:
+                import time as _time
+                _time.sleep(2)  # brief wait for fill
+                try:
+                    # Check fill
+                    fill_check = self._api_get(f'/v2/orders/{order_id}')
+                    if fill_check.get('status') == 'filled':
+                        fill_price = float(fill_check.get('filled_avg_price', entry_price))
+                        log.info(f"[alpaca] {symbol} FILLED @ ${fill_price:.2f}")
+                    # Place stop loss
+                    stop_order = {
+                        'symbol': symbol, 'qty': str(shares), 'side': 'sell',
+                        'type': 'stop', 'stop_price': str(stop_price),
+                        'time_in_force': 'gtc',
+                    }
+                    self._api_post('/v2/orders', stop_order)
+                    log.info(f"[alpaca] {symbol} STOP set @ ${stop_price}")
+                except Exception as stop_err:
+                    log.warning(f"[alpaca] {symbol} stop placement failed: {stop_err}")
 
             # Record in paper_trades
+            actual_entry = fill_price if use_market else entry_price
             cur.execute("""
                 INSERT INTO paper_trades (strategy_id, symbol, account, shares, dollar_size,
-                    stop_loss, target_1, planned_entry, dollar_risk,
+                    stop_loss, target_1, planned_entry, entry_price, dollar_risk,
                     broker_order_id, broker_status, order_type,
                     status, opened_via, logged_by, risk_gate_result)
                 VALUES (%s, %s, 'ALPACA_PAPER', %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, 'bracket',
-                    'pending', 'alpaca_adapter', 'alpaca_adapter', 'APPROVED')
-            """, [strategy_id, symbol, shares, round(shares * entry_price, 2),
-                  stop_price, target_price, entry_price, round(abs(entry_price - stop_price) * shares, 2),
-                  order_id, result.get('status', 'new')])
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED')
+            """, [strategy_id, symbol, shares, round(shares * actual_entry, 2),
+                  stop_price, target_price, entry_price, actual_entry,
+                  round(abs(actual_entry - stop_price) * shares, 2),
+                  order_id, result.get('status', 'new'),
+                  'market' if use_market else 'bracket',
+                  'open' if use_market and result.get('status') == 'accepted' else 'pending'])
             conn.commit()
 
-            log.info(f"[alpaca] Order submitted: {symbol} {shares}sh @ ${entry_price} (order {order_id})")
-            return {'status': 'submitted', 'order_id': order_id, 'symbol': symbol}
+            log.info(f"[alpaca] Order submitted: {symbol} {shares}sh @ ${actual_entry:.2f} "
+                     f"({'market' if use_market else 'limit'}) (order {order_id})")
+            return {'status': 'submitted', 'order_id': order_id, 'symbol': symbol,
+                    'order_type': 'market' if use_market else 'limit',
+                    'reason': order_type_reason, 'fill_price': fill_price if use_market else None}
         except Exception as e:
             log.error(f"[alpaca] Order submission failed: {e}")
             return {'status': 'error', 'error': str(e)}
