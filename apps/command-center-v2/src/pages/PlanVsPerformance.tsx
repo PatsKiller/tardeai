@@ -1,6 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, lazy, Suspense } from 'react'
 import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
+
+const BarChartJS = lazy(() => import('../components/charts/BarChartJS'))
+const LineChart = lazy(() => import('../components/charts/LineChart'))
 
 const mono: React.CSSProperties = { fontFamily: 'monospace' }
 const lbl: React.CSSProperties = { fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }
@@ -121,6 +124,27 @@ export default function PlanVsPerformance() {
               {filterBtn('open', `Open (${summary.open_trades || 0})`)}
               {filterBtn('closed', `Closed (${summary.closed_trades || 0})`)}
             </div>
+
+            {/* ── P&L Charts ── */}
+            {trades.length > 0 && (() => {
+              const sorted = [...trades].sort((a: any, b: any) => (a.entry_time || '').localeCompare(b.entry_time || ''))
+              const labels = sorted.map((t: any) => t.symbol || '?')
+              const pnlValues = sorted.map((t: any) => Number(t.pnl || t.unrealized_pnl || 0))
+              let cumulative = 0
+              const cumValues = pnlValues.map(v => { cumulative += v; return Math.round(cumulative * 100) / 100 })
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div style={{ background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)', padding: 12 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>P&L per Trade</div>
+                    <Suspense fallback={null}><BarChartJS labels={labels} data={pnlValues} height={120} /></Suspense>
+                  </div>
+                  <div style={{ background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)', padding: 12 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', marginBottom: 8 }}>Cumulative P&L</div>
+                    <Suspense fallback={null}><LineChart labels={labels} data={cumValues} color={cumulative >= 0 ? '#0ecb81' : '#f6465d'} height={120} /></Suspense>
+                  </div>
+                </div>
+              )
+            })()}
 
             <div style={{ background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'auto', marginBottom: 24 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, ...mono }}>
