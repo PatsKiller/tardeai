@@ -2,8 +2,9 @@
 
 How the Trade AI v12 system monitors active positions, generates execution adjustments, conducts after-hours research, and carries insights forward into the next trading session.
 
-**Last verified:** 2026-05-11  
-**Source of truth:** Actual crontab, script source code, and Alpaca API integration
+**Last verified:** 2026-05-11 (Session 38)  
+**Source of truth:** Actual crontab, script source code, and Alpaca API integration  
+**Sections:** 17 (monitoring, alerts, execution, pre-market, intraday, after-hours, regime, MFE/MAE, page, data hygiene, gaps)
 
 ---
 
@@ -343,6 +344,8 @@ Bracket order to Alpaca:
 | `logs/open_trade_monitor.log` | open_trade_monitor.py | Every 15 min market hours |
 | `logs/post_trade_thesis_auto.log` | post_trade_thesis_reviewer.py | On trade close |
 | `logs/paper_outcome_analytics_auto.log` | paper_outcome_analytics.py | On trade close |
+| `logs/regime_collector.log` | market_regime_collector.py | 6:30 AM + 4:05 PM daily |
+| `logs/regime_classifier.log` | market_regime_classifier.py | 6:35 AM + 4:05 PM daily |
 | `logs/tradeai-continuous.log` | continuous_runner.py | 4 AM - shutdown |
 | `logs/recovery_watch.log` | recovery_watch_daily.py | 7:30 AM daily |
 | `logs/news_ingestion.log` | news_ingestion.py | 3x daily |
@@ -394,7 +397,87 @@ This data feeds the Plan vs Performance page's regime impact analysis and regime
 
 ---
 
-## 13. Known Gaps and Future Enhancements
+## 13. Market Regime Pipeline
+
+**Schedule:** 2x daily (6:30/6:35 AM pre-market, 4:05 PM post-close)  
+**Scripts:** `market_regime_collector.py` → `market_regime_classifier.py`
+
+### Indicators collected
+
+| Indicator | Source | Signal Values |
+|-----------|--------|---------------|
+| `scan_breadth_24h` | trade_ai_scans (distinct symbols in 24h) | broad (>50), narrow (10-50), missing (<10) |
+| `scan_score_avg` | trade_ai_scans (avg score in 24h) | bullish (>60), bearish (<40), neutral |
+| `gap_volatility_proxy` | trade_ai_scans (avg abs gap %) | high_vol (>3%), low_vol (<1%), neutral |
+| `vix_close` | Yahoo Finance chart API | extreme (>30), high (>20), normal (>14), low |
+| `finviz_health` | data_source_health table | risk_on (healthy), risk_off (degraded) |
+| `news_sentiment_proxy` | news_articles (avg relevance in 24h) | neutral |
+| `market_session` | market_session module | risk_on (regular), neutral (other) |
+
+### Regime classification
+
+Classifier scores 7 possible regimes: `risk_on_trend`, `risk_off`, `choppy_range`, `high_volatility`, `low_volatility_grind`, `broad_momentum`, `unknown`. Highest score wins.
+
+### Regime change alerts
+
+When the classifier detects a different `regime_label` than the previous snapshot, it sends a Telegram alert via `alert_dispatcher` with old→new regime, volatility/trend/breadth states, and VIX signal.
+
+---
+
+## 14. MFE/MAE Tracking
+
+The paper trade monitor tracks **Max Favorable Excursion** and **Max Adverse Excursion** as percentage from entry price, updated every 5-min cycle:
+
+- **MFE**: highest % the price moved in your favor since entry
+- **MAE**: deepest % the price moved against you since entry
+
+Stored in `paper_trades.max_favorable_excursion` and `paper_trades.max_adverse_excursion`. Feeds the Plan vs Performance page's MFE/MAE columns.
+
+---
+
+## 15. Plan vs Performance Page
+
+**Route:** `/v2/plan-vs-performance`  
+**API:** `GET /api/v2/plan-vs-performance`
+
+### Tabs
+
+1. **Trade Plan vs Actual** — per-trade table (planned entry/stop/target vs actual), P&L bar chart, cumulative P&L line chart, strategy rollup cards, exit reason breakdown
+2. **Regime Impact** — regime history, performance by entry regime, strategy regime fit table
+3. **Strategy Rotation** — rotation signals, weekly strategy performance snapshots
+
+### Summary cards
+
+- Total/open/closed trade counts
+- Total P&L (realized + unrealized), shown separately
+- Win rate, plan adherence rate
+- Average R planned vs actual
+
+### Data filters
+
+- Excludes `status=cancelled` and `exit_reason=never_submitted_to_broker` trades
+- Only shows `status IN (open, closed, filled)`
+- Regime alert banner when open trades are in disfavored market conditions
+
+---
+
+## 16. Data Hygiene
+
+### Trade status values
+
+| Status | Meaning |
+|--------|---------|
+| `open` | Active position on Alpaca, being monitored |
+| `filled` | Order filled, position active |
+| `closed` | Position exited (target hit, stop hit, or manual close) |
+| `pending` | Proposal approved, awaiting broker submission |
+| `cancelled` | Never executed — proposal expired or was never submitted to broker |
+
+Trades with `status=cancelled` are excluded from all performance reporting. Proposals that were approved but never submitted to the broker are marked `cancelled` with `outcome_verdict=NOT_EXECUTED`.
+
+---
+
+## 17. Known Gaps and Future Enhancements
 
 ### Not yet implemented
 
@@ -404,7 +487,17 @@ This data feeds the Plan vs Performance page's regime impact analysis and regime
 | **No intraday volatility/ATR monitoring** | Monitor checks price vs stop/target but doesn't detect ATR expansion, IV crush, or unusual intraday vol | Add ATR/volatility check to open_trade_monitor alert types |
 | **No portfolio-level drawdown tracking** | Individual position P&L tracked, but no aggregate portfolio drawdown limit during market hours | Add portfolio drawdown circuit breaker to paper_trade_monitor |
 | **No volume-weighted exit signals** | Volume fade is detected as an alert but doesn't trigger automatic action | Consider auto-tightening stops when volume fades below threshold |
-| **Regime data currently shows "unknown"** | Market regime snapshot calculator hasn't been seeded with real indicator data | Wire VIX, breadth, trend indicators into regime calculator cron |
+
+### Recently resolved
+
+| Gap | Resolution | Date |
+|-----|-----------|------|
+| Regime data showing "unknown" | Added VIX from Yahoo Finance, fixed classifier INSERT (missing generated_at), added 2x daily crons | 2026-05-11 |
+| No regime at trade entry | All 3 trade creation paths now capture market_regime + vix_at_entry | 2026-05-11 |
+| No MFE/MAE tracking | Paper trade monitor now tracks peak/trough excursion every 5 min | 2026-05-11 |
+| Post-close processing not automated | Thesis reviewer + outcome analytics auto-trigger on trade close | 2026-05-11 |
+| Open trade monitor not scheduled | Added to crontab (*/15 9-16 weekdays) | 2026-05-11 |
+| Phantom cancelled trades in reporting | Filtered from API, marked as status=cancelled in DB | 2026-05-11 |
 
 ### Architectural notes
 
