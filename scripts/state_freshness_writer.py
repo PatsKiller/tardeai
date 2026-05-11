@@ -26,7 +26,7 @@ STATE_DIR = ROOT / "data" / "portfolios" / "state"
 EXPECTED_MAX_AGE_HOURS = {
     "holdings.json": 24,
     "risk_management.json": 24,
-    "stops.json": 24,
+    "stops.json": 168,  # manually managed via portfolio_stops.py, not auto-generated
     "action_signals.json": 24,
     "technical_snapshot.json": 24,
     "portfolio_news.json": 48,
@@ -110,28 +110,55 @@ def best_timestamp(data: Any, path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
 
 
+# Market-dependent files get relaxed freshness on weekends and Monday pre-market
+# because no trading occurs Sat/Sun and data doesn't change until Monday open
+WEEKEND_RELAXED_FILES = {
+    "stops.json", "action_signals.json", "technical_snapshot.json",
+    "risk_management.json", "holdings.json",
+}
+WEEKEND_MAX_AGE_MULTIPLIER = 3.5  # 24h * 3.5 = 84h covers Fri→Mon morning
+
+
+def _is_market_closed_window(now: datetime) -> bool:
+    """True if weekend (Sat/Sun) or Monday before 10:00 AM ET (pre-market settle)."""
+    import zoneinfo
+    try:
+        et = now.astimezone(zoneinfo.ZoneInfo("America/New_York"))
+    except Exception:
+        et = now  # fallback to UTC
+    if et.weekday() in (5, 6):  # Saturday or Sunday
+        return True
+    if et.weekday() == 0 and et.hour < 10:  # Monday before 10 AM ET
+        return True
+    return False
+
+
 def audit() -> Dict[str, Any]:
     now = datetime.now(timezone.utc)
+    is_weekend = _is_market_closed_window(now)
     files = []
     issues = []
     for filename, max_age in EXPECTED_MAX_AGE_HOURS.items():
+        effective_max_age = max_age
+        if is_weekend and filename in WEEKEND_RELAXED_FILES:
+            effective_max_age = max_age * WEEKEND_MAX_AGE_MULTIPLIER
         path = STATE_DIR / filename
         if not path.exists():
-            item = {"file": filename, "exists": False, "max_age_hours": max_age, "ok": False}
+            item = {"file": filename, "exists": False, "max_age_hours": effective_max_age, "ok": False}
             files.append(item)
             issues.append(f"MISSING: {filename}")
             continue
         data = load_json(path)
         ts = best_timestamp(data, path)
         age_hours = round((now - ts).total_seconds() / 3600, 2)
-        ok = age_hours <= max_age
-        item = {"file": filename, "exists": True, "age_hours": age_hours, "max_age_hours": max_age, "ok": ok}
+        ok = age_hours <= effective_max_age
+        item = {"file": filename, "exists": True, "age_hours": age_hours, "max_age_hours": effective_max_age, "ok": ok}
         if isinstance(data, dict) and data.get("_agent_metadata"):
             item["source_script"] = data["_agent_metadata"].get("source_script")
             item["agent_checked_at"] = data["_agent_metadata"].get("agent_checked_at")
         files.append(item)
         if not ok:
-            issues.append(f"STALE: {filename} is {age_hours}h old, max {max_age}h")
+            issues.append(f"STALE: {filename} is {age_hours}h old, max {effective_max_age}h")
     return {"checked_at": utc_now(), "freshness_ok": not issues, "issues": issues, "files_checked": files}
 
 

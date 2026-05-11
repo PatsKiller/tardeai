@@ -153,6 +153,20 @@ FROM summary;
 
     by_file = {r.get("state_file"): r for r in rows if r.get("state_file")}
 
+    # Also get the latest check per file to avoid penalizing recovered files
+    latest_sql = f"""
+SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)
+FROM (
+  SELECT DISTINCT ON (state_file) state_file, ok
+  FROM state_freshness_history
+  WHERE checked_at >= now() - interval '{int(lookback_hours)} hours'
+    AND state_file IN ({deps_sql})
+  ORDER BY state_file, checked_at DESC
+) t;
+"""
+    latest_rows = _psql_json(latest_sql)
+    latest_ok = {r["state_file"]: r.get("ok", False) for r in latest_rows if r.get("state_file")}
+
     for dep in deps:
         r = by_file.get(dep)
         if not r:
@@ -162,7 +176,8 @@ FROM summary;
         bad_checks = int(r.get("bad_checks") or 0)
         if checks == 0:
             missing.append(dep)
-        elif bad_checks > 0:
+        elif bad_checks > 0 and not latest_ok.get(dep, False):
+            # Only flag as bad if the most recent check is still failing
             bad.append(dep)
         # Note: checks < 2 is too strict when freshness runs once/day.
         # Only flag weak if there's no successful check at all in the window.

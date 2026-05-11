@@ -40,6 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/paper-proposals', label: 'Paper Proposals' },
     { to: '/paper-status', label: 'Paper Status' },
     { to: '/paper-review', label: 'Paper Review' },
+    { to: '/plan-vs-performance', label: 'Plan vs Performance' },
     { to: '/execution-quality', label: 'Execution Quality' },
     { to: '/broker-reconciliation', label: 'Broker Recon' },
     { to: '/incubator', label: 'Incubator' },

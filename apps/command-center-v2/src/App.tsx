@@ -33,6 +33,7 @@ const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
 
 // ── Paper Review (consolidated: Outcomes + TCA) ──
 const PaperReview = lazy(() => import('./pages/PaperReview'))
+const PlanVsPerformance = lazy(() => import('./pages/PlanVsPerformance'))
 
 // ── Strategy & Monitoring ──
 const Watchlist = lazy(() => import('./pages/Watchlist'))
@@ -125,6 +126,7 @@ export default function App() {
           <Route path="execution-quality" element={<SafePage><ExecutionQuality /></SafePage>} />
           <Route path="broker-reconciliation" element={<SafePage><BrokerReconciliation /></SafePage>} />
           <Route path="paper-review" element={<SafePage><PaperReview /></SafePage>} />
+          <Route path="plan-vs-performance" element={<SafePage><PlanVsPerformance /></SafePage>} />
           <Route path="strategy-admin" element={<SafePage><StrategyAdmin /></SafePage>} />
           <Route path="technical" element={<SafePage><Technical /></SafePage>} />
           <Route path="risk" element={<SafePage><Risk /></SafePage>} />
