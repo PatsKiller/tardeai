@@ -5490,6 +5490,7 @@ def rebalance():
         "suggestions": suggestion_cards,
         "yaml_health_score": yaml_health,
         "yaml_health_notes": yaml_notes,
+        "llm_suggestions": {k: _json_clean(v) for k, v in (_db_query("SELECT content, generated_at FROM llm_intelligence_cache WHERE section='rebalance_suggestions'", fetch="one") or {}).items()},
     }
 
 
@@ -8792,6 +8793,15 @@ def _prospects_handler(query: dict) -> tuple:
     except Exception:
         pass
 
+    # Load LLM prospect narratives from cache
+    prospect_narratives = {}
+    try:
+        _pn_row = _db_query("SELECT content FROM llm_intelligence_cache WHERE section='prospect_narratives'", fetch="one")
+        if _pn_row and _pn_row.get("content"):
+            prospect_narratives = json.loads(_pn_row["content"]) if isinstance(_pn_row["content"], str) else _pn_row["content"]
+    except Exception:
+        pass
+
     # Apply type/price/score filters in Python
     filtered = []
     for r in rows:
@@ -8875,6 +8885,10 @@ def _prospects_handler(query: dict) -> tuple:
             signals.append("CONFLUENCE")
         d["action_signals"] = signals
         d["signal_strength"] = len(signals)
+
+        # LLM narrative from cache
+        if sym in prospect_narratives:
+            d["llm_narrative"] = prospect_narratives[sym]
 
         # Serialize dates
         for k in ("scanned_at",):
@@ -9333,6 +9347,7 @@ def _recovery_dashboard():
             "unclassified": "Needs manual review to determine exit type",
         },
         "sector_context": _recovery_sector_context([i.get("symbol") for i in items]),
+        "llm_analysis": {k: _json_clean(v) for k, v in (_db_query("SELECT content, generated_at FROM llm_intelligence_cache WHERE section='recovery_analysis'", fetch="one") or {}).items()},
     }
 
 
@@ -9922,8 +9937,19 @@ def _morning_command():
         syms = ", ".join(r["symbol"] for r in reentry[:3])
         actions.append({"priority": "low", "action": f"Re-entry candidates: {syms}"})
 
+    # ── LLM intelligence from cache ──
+    llm_cache = {}
+    for section in ("portfolio_risk", "morning_synthesis", "prospect_narratives"):
+        row = _db_query(
+            "SELECT content, generated_at FROM llm_intelligence_cache WHERE section = %s",
+            (section,), fetch="one"
+        )
+        if row:
+            llm_cache[section] = {"content": row.get("content", ""), "generated_at": str(row.get("generated_at", ""))}
+
     return {
         "generated_at": datetime.now().isoformat(),
+        "llm_intelligence": llm_cache,
         "portfolio": {
             "total_value": total,
             "cash": cash,

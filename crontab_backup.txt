@@ -100,6 +100,9 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── 7:15 AM: Portfolio orchestrator (daily digest, portfolio alerts) ──
 15 7 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_orch.lock $PY scripts/portfolio_orchestrator.py >> logs/portfolio_orchestrator.log 2>&1
 
+# ── 7:20 AM: LLM intelligence enrichment (portfolio risk, rebalance, recovery, prospects) ──
+20 7 * * 1-5 cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichment.log 2>&1
+
 # ── 7:30 AM: Missing condition alerts (proposals, API credits, email, rebalance) ──
 30 7 * * 1-5 cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log 2>&1
 
