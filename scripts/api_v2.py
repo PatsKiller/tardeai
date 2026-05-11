@@ -14446,4 +14446,136 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Plan vs Performance ──────────────────────────────────────────────
+    if base_path == "/api/v2/plan-vs-performance":
+        try:
+            # 1. All paper trades with plan vs actual data
+            trades_sql = """
+                SELECT
+                    pt.id as trade_id, pt.symbol, pt.strategy_id, pt.status,
+                    pt.planned_entry, pt.planned_stop, pt.stop_loss, pt.target_1, pt.target_2,
+                    pt.entry_price, pt.exit_price, pt.exit_reason,
+                    pt.pnl, pt.pnl_pct, pt.dollar_risk,
+                    pt.vix_at_entry, pt.market_regime as regime_at_entry,
+                    pt.score_at_entry, pt.rvol_at_entry, pt.catalyst_at_entry,
+                    pt.max_favorable_excursion, pt.max_adverse_excursion,
+                    pt.created_at as entry_time, pt.closed_at as exit_time,
+                    -- thesis outcomes
+                    tto.expected_entry, tto.expected_stop, tto.expected_target, tto.expected_r,
+                    tto.actual_entry, tto.actual_exit, tto.actual_r,
+                    tto.thesis_result, tto.invalidation_hit, tto.thesis_followed,
+                    -- outcome analytics
+                    ptoa.planned_r, ptoa.realized_r, ptoa.followed_plan,
+                    ptoa.hold_minutes, ptoa.tca_grade, ptoa.outcome_verdict,
+                    ptoa.stop_adjusted_count, ptoa.limit_adjusted_count,
+                    -- execution quality
+                    peq.slippage_pct, peq.slippage_dollars, peq.fill_quality,
+                    peq.time_to_fill_seconds,
+                    -- proposal chain
+                    poc.chain_status, poc.outcome_fed_back
+                FROM paper_trades pt
+                LEFT JOIN trade_thesis_outcomes tto ON pt.id = tto.paper_trade_id
+                LEFT JOIN paper_trade_outcome_analytics ptoa ON pt.id = ptoa.paper_trade_id
+                LEFT JOIN paper_execution_quality peq ON pt.id = peq.paper_trade_id
+                LEFT JOIN proposal_outcome_chain poc ON tto.proposal_id = poc.proposal_id
+                ORDER BY pt.created_at DESC
+                LIMIT 100
+            """
+            trades = _db_query(trades_sql) or []
+
+            # 2. Current market regime
+            regime_now = _db_query(
+                "SELECT regime_label, confidence, volatility_state, trend_state, breadth_state, liquidity_state, risk_appetite_state, summary, generated_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1",
+                fetch="one"
+            )
+
+            # 3. Strategy regime profiles (which strategies favor current conditions)
+            profiles = _db_query(
+                "SELECT strategy_id, strategy_name, favored_regimes, disfavored_regimes, volatility_preference, trend_preference, time_horizon FROM strategy_regime_profiles WHERE active=true ORDER BY strategy_id"
+            ) or []
+
+            # 4. Recent rotation signals (market changes affecting plan)
+            rotation = _db_query(
+                "SELECT strategy_id, strategy_name, signal, signal_strength, confidence, reason, recommended_action, created_at FROM strategy_rotation_signals ORDER BY created_at DESC LIMIT 20"
+            ) or []
+
+            # 5. Strategy performance snapshots (weekly auto-assessments)
+            perf_snaps = _db_query(
+                "SELECT strategy_id, snapshot_date, trades_closed, wins, losses, win_rate, profit_factor, avg_r, total_pnl, assessment, recommendation FROM strategy_performance_snapshots ORDER BY snapshot_date DESC, strategy_id LIMIT 50"
+            ) or []
+
+            # 6. Regime history (trend over time)
+            regime_history = _db_query(
+                "SELECT regime_label, confidence, volatility_state, trend_state, generated_at FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 10"
+            ) or []
+
+            # Compute summary stats
+            closed = [t for t in trades if t.get("status") == "closed"]
+            open_trades = [t for t in trades if t.get("status") != "closed"]
+            total_pnl = sum(float(t.get("pnl") or 0) for t in closed)
+            winners = [t for t in closed if (float(t.get("pnl") or 0)) > 0]
+            losers = [t for t in closed if (float(t.get("pnl") or 0)) < 0]
+            win_rate = (len(winners) / len(closed) * 100) if closed else 0
+            plan_followed = [t for t in closed if t.get("followed_plan") or t.get("thesis_followed")]
+            plan_rate = (len(plan_followed) / len(closed) * 100) if closed else 0
+            avg_r_planned = 0
+            avg_r_actual = 0
+            r_count = 0
+            for t in closed:
+                pr = t.get("planned_r") or t.get("expected_r")
+                ar = t.get("realized_r") or t.get("actual_r")
+                if pr is not None and ar is not None:
+                    avg_r_planned += float(pr)
+                    avg_r_actual += float(ar)
+                    r_count += 1
+            if r_count:
+                avg_r_planned /= r_count
+                avg_r_actual /= r_count
+
+            # Check regime alignment for current open trades
+            current_regime = regime_now.get("regime_label") if regime_now else None
+            regime_alerts = []
+            if current_regime and profiles:
+                profile_map = {p["strategy_id"]: p for p in profiles}
+                for t in open_trades:
+                    sid = t.get("strategy_id")
+                    prof = profile_map.get(sid)
+                    if not prof:
+                        continue
+                    disfavored = prof.get("disfavored_regimes") or []
+                    if isinstance(disfavored, str):
+                        import json as _json
+                        try: disfavored = _json.loads(disfavored)
+                        except: disfavored = []
+                    if current_regime in disfavored:
+                        regime_alerts.append({
+                            "symbol": t.get("symbol"),
+                            "strategy_id": sid,
+                            "regime_at_entry": t.get("regime_at_entry"),
+                            "regime_now": current_regime,
+                            "alert": f"Current regime '{current_regime}' is DISFAVORED for strategy {sid}",
+                        })
+
+            return 200, {"ok": True,
+                "summary": {
+                    "total_trades": len(trades),
+                    "open_trades": len(open_trades),
+                    "closed_trades": len(closed),
+                    "total_pnl": round(total_pnl, 2),
+                    "win_rate": round(win_rate, 1),
+                    "plan_adherence_rate": round(plan_rate, 1),
+                    "avg_r_planned": round(avg_r_planned, 2),
+                    "avg_r_actual": round(avg_r_actual, 2),
+                },
+                "trades": [{k: _json_clean(v) for k, v in t.items()} for t in trades],
+                "regime_now": {k: _json_clean(v) for k, v in regime_now.items()} if regime_now else None,
+                "regime_history": [{k: _json_clean(v) for k, v in r.items()} for r in regime_history],
+                "regime_alerts": regime_alerts,
+                "strategy_profiles": [{k: _json_clean(v) for k, v in p.items()} for p in profiles],
+                "rotation_signals": [{k: _json_clean(v) for k, v in r.items()} for r in rotation],
+                "strategy_snapshots": [{k: _json_clean(v) for k, v in s.items()} for s in perf_snaps],
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
