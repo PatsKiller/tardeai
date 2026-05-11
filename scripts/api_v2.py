@@ -7757,7 +7757,11 @@ def _paper_proposals_enriched():
             has_agent_reviews = len(prop.get('agent_reviews', [])) > 0
             has_llm = prop.get('llm_analysis') is not None
 
-            paper_ready = trade_plan_exists and intel >= 50
+            # Paper ready: trade plan exists + (intel >= 50 OR catalyst verified OR has agent reviews)
+            # For paper testing, a verified catalyst with valid levels is sufficient to approve.
+            # Intel score is desirable but not a hard gate for paper validation.
+            has_catalyst = bool(prop.get('catalyst_verified'))
+            paper_ready = trade_plan_exists and (intel >= 50 or has_catalyst or has_agent_reviews)
             prop['paper_ready'] = paper_ready
 
             # Override approval_allowed for paper trading
