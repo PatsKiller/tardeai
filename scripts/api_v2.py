@@ -14479,6 +14479,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 LEFT JOIN paper_execution_quality peq ON pt.id = peq.paper_trade_id
                 LEFT JOIN proposal_outcome_chain poc ON tto.proposal_id = poc.proposal_id
                 WHERE pt.status IN ('open', 'closed', 'filled')
+                  AND NOT (pt.status = 'closed' AND pt.exit_reason = 'never_submitted_to_broker')
                 ORDER BY pt.created_at DESC
                 LIMIT 100
             """
@@ -14511,9 +14512,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             ) or []
 
             # Compute summary stats
-            closed = [t for t in trades if t.get("status") == "closed"]
-            open_trades = [t for t in trades if t.get("status") != "closed"]
-            total_pnl = sum(float(t.get("pnl") or 0) for t in closed)
+            # Filter out "closed" trades that never actually executed (no exit_price, never submitted)
+            real_closed = [t for t in trades if t.get("status") == "closed"
+                           and t.get("exit_reason") != "never_submitted_to_broker"
+                           and (t.get("exit_price") is not None or t.get("pnl") is not None)]
+            closed = real_closed
+            open_trades = [t for t in trades if t.get("status") in ("open", "filled")]
+            realized_pnl = sum(float(t.get("pnl") or 0) for t in closed)
+            unrealized_pnl = sum(float(t.get("pnl") or t.get("unrealized_pnl") or 0) for t in open_trades)
+            total_pnl = realized_pnl + unrealized_pnl
             winners = [t for t in closed if (float(t.get("pnl") or 0)) > 0]
             losers = [t for t in closed if (float(t.get("pnl") or 0)) < 0]
             win_rate = (len(winners) / len(closed) * 100) if closed else 0
@@ -14559,9 +14566,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             return 200, {"ok": True,
                 "summary": {
-                    "total_trades": len(trades),
+                    "total_trades": len(open_trades) + len(closed),
                     "open_trades": len(open_trades),
                     "closed_trades": len(closed),
+                    "realized_pnl": round(realized_pnl, 2),
+                    "unrealized_pnl": round(unrealized_pnl, 2),
                     "total_pnl": round(total_pnl, 2),
                     "win_rate": round(win_rate, 1),
                     "plan_adherence_rate": round(plan_rate, 1),

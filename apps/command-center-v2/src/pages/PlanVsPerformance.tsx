@@ -75,13 +75,17 @@ export default function PlanVsPerformance() {
         )}
 
         {/* ── Summary Cards ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 12, marginBottom: 16, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 12, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
           {kv('Total Trades', summary.total_trades)}
           {kv('Open', summary.open_trades)}
           {kv('Closed', summary.closed_trades)}
-          {kv('Total P&L', fmtDollar(summary.total_pnl), pnlColor(summary.total_pnl))}
           {kv('Win Rate', summary.win_rate != null ? `${summary.win_rate}%` : '--', summary.win_rate >= 50 ? 'var(--green)' : 'var(--red)')}
           {kv('Plan Adherence', summary.plan_adherence_rate != null ? `${summary.plan_adherence_rate}%` : '--', summary.plan_adherence_rate >= 70 ? 'var(--green)' : 'var(--amber)')}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
+          {kv('Total P&L', fmtDollar(summary.total_pnl), pnlColor(summary.total_pnl))}
+          {kv('Realized', fmtDollar(summary.realized_pnl), pnlColor(summary.realized_pnl))}
+          {kv('Unrealized', fmtDollar(summary.unrealized_pnl), pnlColor(summary.unrealized_pnl))}
           {kv('Avg R Planned', fmtR(summary.avg_r_planned))}
           {kv('Avg R Actual', fmtR(summary.avg_r_actual), pnlColor(summary.avg_r_actual))}
         </div>
@@ -178,6 +182,53 @@ export default function PlanVsPerformance() {
                 </tbody>
               </table>
             </div>
+
+            {/* ── Strategy Rollup ── */}
+            {(() => {
+              const byStrategy: Record<string, { open: number; closed: number; wins: number; totalPnl: number; totalR: number; rCount: number }> = {}
+              trades.forEach((t: any) => {
+                const sid = t.strategy_id || 'unknown'
+                if (!byStrategy[sid]) byStrategy[sid] = { open: 0, closed: 0, wins: 0, totalPnl: 0, totalR: 0, rCount: 0 }
+                if (t.status === 'open' || t.status === 'filled') {
+                  byStrategy[sid].open++
+                  byStrategy[sid].totalPnl += Number(t.pnl || t.unrealized_pnl || 0)
+                } else if (t.status === 'closed') {
+                  byStrategy[sid].closed++
+                  const p = Number(t.pnl || 0)
+                  byStrategy[sid].totalPnl += p
+                  if (p > 0) byStrategy[sid].wins++
+                }
+                const ar = t.realized_r || t.actual_r || t.r_multiple
+                if (ar != null) { byStrategy[sid].totalR += Number(ar); byStrategy[sid].rCount++ }
+              })
+              if (Object.keys(byStrategy).length === 0) return null
+              return (
+                <>
+                  <h3 style={{ fontSize: 13, color: 'var(--text1)', marginBottom: 8 }}>Strategy Rollup</h3>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
+                    {Object.entries(byStrategy).sort((a, b) => b[1].totalPnl - a[1].totalPnl).map(([sid, s]) => {
+                      const total = s.open + s.closed
+                      const wr = s.closed > 0 ? (s.wins / s.closed * 100) : null
+                      const avgR = s.rCount > 0 ? s.totalR / s.rCount : null
+                      return (
+                        <div key={sid} style={{ padding: 12, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)', minWidth: 160 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 6, ...mono }}>{sid}</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                            {kv('Open', s.open)}
+                            {kv('Closed', s.closed)}
+                            {kv('Win Rate', wr != null ? `${wr.toFixed(0)}%` : '--', wr != null ? (wr >= 50 ? 'var(--green)' : 'var(--red)') : undefined)}
+                            {kv('Avg R', avgR != null ? fmtR(avgR) : '--', avgR != null ? pnlColor(avgR) : undefined)}
+                          </div>
+                          <div style={{ marginTop: 6 }}>
+                            {kv('Total P&L', fmtDollar(s.totalPnl), pnlColor(s.totalPnl))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )
+            })()}
 
             {/* ── Exit Reason Breakdown (closed trades only) ── */}
             {(() => {

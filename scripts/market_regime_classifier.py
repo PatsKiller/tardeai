@@ -117,11 +117,11 @@ def save_snapshot(conn, snapshot, dry_run=True):
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO market_regime_snapshots
-            (snapshot_id, market_session, regime_label, regime_score, confidence,
+            (snapshot_id, generated_at, market_session, regime_label, regime_score, confidence,
              volatility_state, trend_state, breadth_state, liquidity_state,
              leadership_state, risk_appetite_state, macro_state, data_freshness_state,
              stale_data, missing_data, inputs, summary)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s, NOW(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (snapshot_id) DO NOTHING
     """, [snapshot["snapshot_id"], snapshot["market_session"], snapshot["regime_label"],
           snapshot["regime_score"], snapshot["confidence"],
