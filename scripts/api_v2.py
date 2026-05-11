@@ -11848,7 +11848,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import sys as _sys
             _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from alpaca_paper_adapter import AlpacaPaperAdapter
-            adapter = AlpacaPaperAdapter(dry_run=True)
+            adapter = AlpacaPaperAdapter()
             alpaca_status = adapter.get_alpaca_paper_status()
 
             pt_stats = _db_query("""
@@ -11857,7 +11857,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE AND status='open') as today_opened,
                     COUNT(*) FILTER (WHERE closed_at::date = CURRENT_DATE) as today_closed,
                     COALESCE(SUM(pnl) FILTER (WHERE closed_at::date = CURRENT_DATE), 0) as today_realized,
-                    COALESCE(SUM(unrealized_pnl) FILTER (WHERE status='open'), 0) as today_unrealized
+                    COALESCE(SUM(COALESCE(unrealized_pnl, pnl)) FILTER (WHERE status='open'), 0) as today_unrealized
                 FROM paper_trades
             """, fetch="one") or {}
 

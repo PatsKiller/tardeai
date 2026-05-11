@@ -208,9 +208,10 @@ def monitor(dry_run=False):
 
         # Update DB with current state
         if not dry_run:
+            dollar_risk = round(abs(db_entry - stop) * qty, 2) if stop and db_entry else None
             cur.execute("""UPDATE paper_trades SET current_price=%s, r_multiple=%s,
-                pnl=%s, updated_at=NOW() WHERE id=%s""",
-                [current, round(r_mult, 2), round(pnl, 2), trade['id']])
+                pnl=%s, unrealized_pnl=%s, dollar_risk=%s, updated_at=NOW() WHERE id=%s""",
+                [current, round(r_mult, 2), round(pnl, 2), round(pnl, 2), dollar_risk, trade['id']])
             conn.commit()
 
         results.append({
