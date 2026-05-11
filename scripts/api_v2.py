@@ -11943,6 +11943,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception:
                 pass
 
+            # ── INSTANT EXECUTION: attempt Alpaca paper submission immediately ──
+            alpaca_result = None
+            if result.get('success') and result.get('paper_trade_id'):
+                try:
+                    from proposal_paper_submitter import submit_paper
+                    from session13_db import get_conn as _get_sub_conn
+                    _sub_conn = _get_sub_conn()
+                    if _sub_conn:
+                        alpaca_result = submit_paper(_sub_conn, int(pid), dry_run=False)
+                        _sub_conn.close()
+                        if alpaca_result and alpaca_result.get('status') == 'submitted':
+                            print(f"  [instant-exec] {body.get('proposal_id')}: Alpaca paper order submitted")
+                except Exception as _alpaca_err:
+                    alpaca_result = {"status": "failed", "error": str(_alpaca_err)}
+                    print(f"  [instant-exec] Alpaca submit failed: {_alpaca_err}")
+
             return 200 if result.get('success') else 400, {
                 "ok": result.get('success', False),
                 "proposal_id": int(pid),
@@ -11951,6 +11967,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "message": result.get('message', 'Approved for paper test' if result.get('success') else 'Approval failed'),
                 "paper_trade_id": result.get('paper_trade_id'),
                 "blockers": result.get('blockers', []),
+                "alpaca_submission": alpaca_result,
                 "data": result,
             }
         except Exception as e:

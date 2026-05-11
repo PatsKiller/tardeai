@@ -223,12 +223,13 @@ class RiskGate:
                 if float(stop_pct) > max_stop:
                     reasons.append('STOP_TOO_WIDE')
 
-            # 13. Dollar size (paper=$5000, live=$2000)
+            # 13. Dollar size (paper from env default $15K, live from strategy YAML)
             dollar_size = plan.get('dollar_size')
             if dollar_size:
                 live_rules = strategy_yaml.get('live_trade_rules', {})
                 live_max = live_rules.get('max_position_size', 2000)
-                max_size = 5000 if mode == 'paper' else live_max
+                paper_max = int(os.getenv('PAPER_MAX_POSITION_SIZE', '15000'))
+                max_size = paper_max if mode == 'paper' else live_max
                 if float(dollar_size) > max_size:
                     reasons.append('DOLLAR_SIZE_TOO_LARGE')
 
