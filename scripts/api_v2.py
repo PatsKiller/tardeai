@@ -10095,6 +10095,67 @@ def _market_intelligence_summary():
     }
 
 
+# ── Feedback loop dashboard ───────────────────────────────────────────────
+
+def _feedback_dashboard():
+    """GET /api/v2/feedback-dashboard — Feedback loop closure metrics."""
+    # Proposal outcome chain
+    chain_stats = _db_query("""
+        SELECT chain_status, COUNT(*) as cnt
+        FROM proposal_outcome_chain GROUP BY chain_status
+    """) or []
+
+    # Alert effectiveness
+    alert_eff = _db_query("""
+        SELECT notification_type,
+               COUNT(*) as total,
+               COUNT(*) FILTER (WHERE action_taken = true) as acted_on,
+               AVG(effectiveness_score)::numeric(3,2) as avg_score
+        FROM alert_effectiveness
+        WHERE alert_date > CURRENT_DATE - 30
+        GROUP BY notification_type ORDER BY total DESC
+    """) or []
+
+    # Agent sample tracking
+    agent_samples = _db_query("""
+        SELECT DISTINCT ON (agent_name)
+               agent_name, resolved, correct, wrong, sample_tier,
+               accuracy_pct, days_to_next_tier, snapshot_date
+        FROM agent_sample_tracking
+        ORDER BY agent_name, snapshot_date DESC
+    """) or []
+
+    # Strategy snapshots (latest)
+    strat_snaps = _db_query("""
+        SELECT strategy_id, trades_closed, wins, losses, win_rate,
+               profit_factor, recommendation, snapshot_date
+        FROM strategy_performance_snapshots
+        WHERE snapshot_date = (SELECT MAX(snapshot_date) FROM strategy_performance_snapshots)
+        ORDER BY trades_closed DESC
+    """) or []
+
+    # Recovery outcomes
+    recovery_outcomes = _db_query("""
+        SELECT symbol, final_verdict, patience_correct, days_monitored, reentry_pnl
+        FROM recovery_outcome_log ORDER BY resolved_at DESC LIMIT 10
+    """) or []
+
+    # CIO response rate
+    cio_responses = _db_query("""
+        SELECT response, COUNT(*) as cnt
+        FROM cio_decision_responses GROUP BY response
+    """) or []
+
+    return {
+        "proposal_chain": [{k: _json_clean(v) for k, v in r.items()} for r in chain_stats],
+        "alert_effectiveness": [{k: _json_clean(v) for k, v in r.items()} for r in alert_eff],
+        "agent_samples": [{k: _json_clean(v) for k, v in r.items()} for r in agent_samples],
+        "strategy_snapshots": [{k: _json_clean(v) for k, v in r.items()} for r in strat_snaps],
+        "recovery_outcomes": [{k: _json_clean(v) for k, v in r.items()} for r in recovery_outcomes],
+        "cio_response_rate": [{k: _json_clean(v) for k, v in r.items()} for r in cio_responses],
+    }
+
+
 # ── Global alerts: persistent banner data ─────────────────────────────────
 
 def _global_alerts():
@@ -10261,6 +10322,7 @@ ROUTES = {
     "/api/v2/reports": lambda: _reports_hub(),
     "/api/v2/command": lambda: _morning_command(),
     "/api/v2/global-alerts": lambda: _global_alerts(),
+    "/api/v2/feedback-dashboard": lambda: _feedback_dashboard(),
     "/api/v2/portfolio/intelligence-feed": lambda: _holdings_intelligence(),
     "/api/v2/market-intelligence": lambda: _market_intelligence_summary(),
     "/api/v2/strategy-rotations": lambda: {"rotations": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 20") or [])]},

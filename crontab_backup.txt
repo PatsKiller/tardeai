@@ -106,6 +106,9 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── 7:30 AM: Missing condition alerts (proposals, API credits, email, rebalance) ──
 30 7 * * 1-5 cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log 2>&1
 
+# ── 8:30 PM: Feedback loop processor (proposal chains, alert scoring, strategy snapshots) ──
+30 20 * * 1-5 cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1
+
 # ── 9:00 PM: Auto-Research (triggered by agent conflicts + discoveries) ──
 0 21 * * 1-5 cd $PROJ && $PY scripts/auto_research.py --check --telegram >> logs/auto_research.log 2>&1
 
