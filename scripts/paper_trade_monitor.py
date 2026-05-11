@@ -158,10 +158,22 @@ def monitor(dry_run=False):
                     _api_delete(f'/v2/orders/{stop_order_id}')
                     import time; time.sleep(1)
                 _api_delete(f'/v2/positions/{sym}')
-                cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
-                    close_date=NOW(), pnl=%s, r_multiple=%s WHERE id=%s""",
-                    [current, round(pnl, 2), round(r_mult, 2), trade['id']])
-                conn.commit()
+                # Use full close path for journal completeness
+                try:
+                    from paper_trade_logger import close_paper_trade
+                    close_paper_trade(sym, current, reason=f"target_hit: {reason}")
+                except Exception as close_err:
+                    log.warning(f"[{sym}] Full close failed ({close_err}), using fallback")
+                    cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
+                        exit_reason=%s, close_date=NOW(), closed_at=NOW(),
+                        pnl=%s, pnl_pct=%s, r_multiple=%s, hold_time_min=%s,
+                        outcome_verdict=%s WHERE id=%s""",
+                        [current, f"target_hit: {reason}", round(pnl, 2),
+                         round(pnl_pct, 1), round(r_mult, 2),
+                         round((datetime.now(timezone.utc) - (trade.get('entry_time') or datetime.now(timezone.utc))).total_seconds() / 60, 1) if trade.get('entry_time') else None,
+                         'CORRECT' if pnl > 0 else ('WRONG' if pnl < 0 else 'NEUTRAL'),
+                         trade['id']])
+                    conn.commit()
 
         # ── NEAR TARGET (>80% of move) → tighten stop aggressively ──
         elif target and db_entry and target > db_entry:
