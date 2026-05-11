@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-05-11 (Session 29 — Re-Entry Classification, Pipeline Gaps, Dashboard Intelligence)
+**Document version:** 2026-05-11 (Session 29 — Phases 1-8 Complete: Classification, Intelligence, Consolidation, LLM, UI/UX, Feedback, Production)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 ---
@@ -38,14 +38,16 @@
 
 Trade AI v12 is an automated trading intelligence and portfolio management platform. It operates as a single-tenant, self-hosted service on a dedicated Linux server, combining:
 
-- **Data ingestion** from 12+ external sources (market data, news, SEC filings, transcripts, economic indicators)
+- **Data ingestion** from 15+ external sources (market data, news, SEC filings, transcripts, social, economic indicators)
 - **31-stage pipeline** organized into 7 groups running pre-market through overnight
-- **20 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
-- **LLM-assisted classification** with a 4-provider fallback chain (local GPU-accelerated primary)
-- **4 conversational AI agents** accessible via Telegram/WhatsApp
-- **3 backend automation agents** for monitoring, hygiene, and critique
+- **23 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
+- **LLM-assisted classification** with a 3-provider fallback chain (local GPU-accelerated primary → OpenAI → Anthropic)
+- **6 AI agents** accessible via Telegram/WhatsApp (Maria, Steph, Alex, Aegis, Risk Agent, Tax Agent)
+- **Iris backend agent** for content hygiene + Scalp Critic for incubator gating
 - **Paper trading execution** via Alpaca with bracket orders, TCA, and reconciliation
-- **55-page React dashboard** (Command Center v2) for operator control
+- **42-page React dashboard** (Command Center v2, consolidated from 61) for operator control
+- **Feedback loop closure** with proposal outcome chains, alert effectiveness scoring, and agent calibration
+- **LLM intelligence enrichment** generating daily narratives across 5 surfaces via qwen3:14b
 
 The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **paper-only mode**. Live trading is locked behind a 6-month validation gate requiring 55% win rate and 1.3 profit factor.
 
@@ -53,16 +55,22 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 
 | Metric | Value |
 |--------|-------|
-| Python scripts | 355 |
-| Cron jobs | 143 |
-| API endpoints | 271 (246 in api_v2.py + 21 in portfolio_server.py + 4 shared) |
-| Database tables | 300 |
-| Strategies | 20 (YAML-driven) |
-| Frontend pages | 61 |
-| Agents | 7 (4 conversational + 3 backend) |
-| External data sources | 12+ |
+| Python scripts | 364 |
+| Cron jobs | 53 (flock-protected, weekday/weekend/monthly schedules) |
+| API endpoints | 275+ (api_v2.py + portfolio_server.py) |
+| Database tables | 330 |
+| SQL migrations | 37 |
+| Strategies | 23 (YAML-driven, multi-assignment) |
+| Frontend pages | 42 primary routes (consolidated from 61 via TabPage) |
+| Nav items | 42 across 8 groups |
+| Agents | 6 conversational (Maria, Steph, Alex, Aegis, Risk, Tax) + 2 backend (Iris, Scalp Critic) |
+| External data sources | 15+ |
 | Research topics | 17 (DB-driven, LLM-curated) |
-| Topic articles ingested | 761+ |
+| News articles ingested | 3,022+ |
+| Social posts ingested | 2,248+ |
+| Incubator symbols | 1,139 active |
+| Telegram alert scripts | 56 (routed through central alert_dispatcher) |
+| LLM intelligence sections | 5 (generated daily via qwen3:14b) |
 
 ---
 
@@ -78,15 +86,15 @@ Trade AI v12 has 6 distinct service boundaries:
 |                                                                    |
 |  +------------------+    +------------------+    +---------------+ |
 |  | Portfolio Server  |    | Ollama LLM       |    | OpenClaw GW   | |
-|  | :7777 (Flask)     |<-->| :11434           |<-->| :18789        | |
-|  | 271 API endpoints |    | qwen3:14b        |    | 4 agents      | |
+|  | :7777 (HTTP+Auth) |<-->| :11434           |<-->| :18789        | |
+|  | 275+ API endpoints|    | qwen3:14b        |    | 6 agents      | |
 |  | React SPA @ /v2/  |    | Intel Arc B50    |    | Telegram/WA   | |
 |  +--------+----------+    +------------------+    +---------------+ |
 |           |                                                        |
 |  +--------v---------+    +------------------+    +---------------+ |
-|  | PostgreSQL 15     |    | Cron Scheduler   |    | Scalp WS      | |
-|  | :5432             |    | 142 jobs         |    | :7778/:7779   | |
-|  | 299 tables        |    | systemd timers   |    | real-time feed| |
+|  | PostgreSQL 15     |    | Cron Scheduler   |    | Alert Dispatch| |
+|  | :5432             |    | 53 jobs          |    | Dedup+Fatigue | |
+|  | 330 tables        |    | flock-protected  |    | 3 tiers       | |
 |  +-------------------+    +------------------+    +---------------+ |
 +-------------------------------------------------------------------+
                     |                    |
@@ -159,7 +167,7 @@ Trade AI v12 has 6 distinct service boundaries:
 ## 4. Database Layer
 
 - **Engine:** PostgreSQL 15
-- **Table count:** 299
+- **Table count:** 330
 - **Connection:** `localhost:5432`, database `trade_ai`, user `trade_ai`
 - **Backup:** 7-day rolling `pg_dump` to `backups/db/trade_ai_*.sql.gz`
 
@@ -178,6 +186,8 @@ Trade AI v12 has 6 distinct service boundaries:
 | **Recovery** | `stopped_out_watch`, `stopped_out_relist_events`, `stopped_out_watch_history` | Exit classification (true stop-out vs relist vs market reconnection), patience scoring |
 | **Portfolio** | `portfolio_holdings`, `portfolio_accounts`, `personal_situation` | Positions, accounts, personal data |
 | **System** | `pipeline_runs`, `daily_system_metrics` | Pipeline health, trending |
+| **Feedback Loops** | `proposal_outcome_chain`, `alert_effectiveness`, `strategy_performance_snapshots`, `agent_sample_tracking`, `recovery_outcome_log`, `cio_decision_responses` | Closed-loop tracking: proposal → trade → P&L → agent calibration |
+| **LLM Cache** | `llm_intelligence_cache` | 5 daily-generated LLM narratives (portfolio risk, rebalance, recovery, morning, prospects) |
 | **Research** | `sec_form4`, `youtube_transcripts` | Filings, transcript archive |
 | **Topic Intelligence** | `topic_monitor`, `content_entity_links`, `blocked_content`, `iris_library_gap_fills`, `topic_curation_feedback` | Topic research, entity linking, quality gating, learning loop |
 
@@ -185,11 +195,15 @@ Trade AI v12 has 6 distinct service boundaries:
 
 | Table | Approximate Rows | Growth Rate |
 |-------|------------------|-------------|
-| `ticker_enrichment_cache` | 1,139 symbols | +50/week |
-| `news_articles` | 2,787+ | +20-50/day |
-| `trade_ai_scans` | ~2,000/day (4 windows) | Daily rotation |
-| `watchlist_agent_results` | Growing | +50-100/day |
-| `pipeline_runs` | Growing | +31/day |
+| `news_articles` | 3,022+ | +200/week |
+| `social_posts` | 2,248+ | +150/week |
+| `incubator_universe` | 1,139 active | +50/week (rolloff cleans stale) |
+| `trade_ai_scans` | 640 (current window) | 40-120/day weekdays |
+| `cio_decisions` | 446 (deduped per 24h) | +15/day unique |
+| `notification_log` | 90 | +5-10/day |
+| `proposal_outcome_chain` | 38 | Grows with proposals |
+| `alert_effectiveness` | 31 | +5-10/week |
+| `llm_intelligence_cache` | 5 | Refreshed daily |
 
 ---
 
@@ -901,39 +915,59 @@ All LLM config is sourced from `.env` -- zero hardcoded values. Configuration hu
 | Keep-alive | Persistent (`OLLAMA_KEEP_ALIVE=-1`) |
 | Performance | ~15s per chunk (GPU) vs ~300s (CPU) |
 
-### Routing Fallback Chain
+### Routing & Fallback Chain
 
 ```
-local (qwen3:14b) --> grok (xAI) --> claude (Anthropic) --> openai (OpenAI)
+local (qwen3:14b via Ollama) ──→ OpenAI (gpt-4o-mini) ──→ Anthropic (claude-sonnet-4-6)
+         PRIMARY                      FALLBACK 1                  FALLBACK 2
+    Intel Arc B50 GPU               On Ollama failure            On OpenAI failure
+    ~15s/chunk, free                ~$0.01/call                  ~$0.03/call
 ```
 
-Budget tracking is per-day. On budget exhaustion, the system auto-falls back to the next provider.
+**Escalation logic** (in `local_llm.py`):
+- Try local Ollama first (toll-gated, max 300s timeout)
+- On timeout/failure → try OpenAI `gpt-4o-mini`
+- On OpenAI failure → try Anthropic `claude-sonnet-4-6`
+- On all failure → return empty (caller handles gracefully)
+
+**When external LLM is used instead of local:**
+- `portfolio_yaml_advisor.py` — requires Claude Opus (complex multi-page analysis). Currently blocked by API credit depletion.
+- Agent conversational responses (via OpenClaw) — may use cloud LLM for complex queries
+- All other use cases (classification, screening, enrichment, narratives) → local primary
 
 ### Toll Gate (GPU Contention Prevention)
 
-The system uses `fcntl.flock()` to serialize LLM requests through a toll gate file. This prevents GPU memory contention when multiple cron jobs attempt simultaneous inference.
-
-### Toll Gate Detail
-
-The toll gate uses `/tmp/ollama_llm_gate.lock` with `fcntl.flock(LOCK_EX)`. Process flow:
-1. Caller acquires exclusive file lock (blocks up to 600s)
+File lock at `/tmp/ollama_llm_gate.lock` using `fcntl.flock(LOCK_EX)`:
+1. Caller acquires exclusive lock (blocks up to 600s)
 2. Writes PID + timestamp to lock file for debugging
 3. Sends request to Ollama
 4. Releases lock on completion or timeout
-5. If lock acquisition fails, falls back to cloud LLM
-
-Multiple cron jobs (classifier, curator, reviewer, screener) all compete for the same GPU. The toll gate ensures serialized access with ~15s per chunk on qwen3:14b.
+5. If lock acquisition fails → falls back to cloud LLM
 
 ### LLM Use Cases
 
-| Use Case | Script | Frequency |
-|----------|--------|-----------|
-| Strategy classification (20 strategies) | `multi_strategy_classifier.py` | Sunday night batch |
-| Proposal review (4-chunk pipeline) | `proposal_llm_reviewer.py` | Per proposal |
-| Incubator pre-screening | `incubator_llm_screener.py` | Pre-promotion |
-| Holdings health refresh | `holdings_llm_refresh.py` | Periodic |
-| Agent responses | Via OpenClaw | On user interaction |
-| Duplicate proposal prevention | `incubator_proposal_promoter.py` | On promotion |
+| Use Case | Script | Frequency | Model |
+|----------|--------|-----------|-------|
+| Intelligence enrichment (5 surfaces) | `llm_intelligence_enrichment.py` | 7:20 AM daily | qwen3:14b |
+| Strategy classification (23 strategies) | `multi_strategy_classifier.py` | Sunday night batch | qwen3:14b |
+| Proposal review (4-chunk pipeline) | `proposal_llm_reviewer.py` | Per proposal | qwen3:14b |
+| Incubator pre-screening (A-F grades) | `incubator_llm_screener.py` | 8:10 AM + 6 PM | qwen3:14b |
+| Holdings health refresh | `holdings_llm_refresh.py` | 3x daily market hours | qwen3:14b |
+| Topic curation (rate, extract, improve) | `topic_curator.py` | 7:00 AM daily | qwen3:14b |
+| Agent responses | Via OpenClaw gateway | On user interaction | qwen3:14b + cloud fallback |
+| Rebalance advisor | `portfolio_yaml_advisor.py` | Monthly or on-demand | Claude Opus (cloud) |
+
+### LLM Intelligence Enrichment (Phase 5)
+
+`llm_intelligence_enrichment.py` generates 5 intelligence sections daily, stored in `llm_intelligence_cache`:
+
+| Section | Content | Surfaced On |
+|---------|---------|-------------|
+| `portfolio_risk` | Risk assessment narrative (concentration, stops, actions) | `/v2/command` |
+| `rebalance_suggestions` | 5 numbered tax-aware suggestions | `/v2/rebalance` |
+| `recovery_analysis` | Re-entry readiness and abandonment calls | `/v2/recovery` |
+| `morning_synthesis` | Portfolio + news + social synthesis paragraph | `/v2/command`, Overview |
+| `prospect_narratives` | Per-symbol 1-sentence thesis (top scored) | `/v2/prospects` |
 | **Topic query generation** | `topic_ingestion.py --curate` | Per ingestion run |
 | **Content quality rating** | `topic_curator.py` | Post-ingestion |
 | **Entity extraction (tickers/topics/sectors)** | `topic_curator.py` | Post-ingestion |
@@ -1050,7 +1084,27 @@ Every critical cron job is wrapped with `pipeline_alert.py` which:
 
 Wrapped pipelines: news_ingestion, youtube_ingest, overnight_batch, sec_data_ingest, event_detector, previously_traded, pipeline_watchdog.
 
-**Scale:** 55+ scripts send Telegram alerts across 100+ unique call sites. Central hub: `telegram_alert.py`. All sends logged to `notification_log` table with dedupe keys.
+**Scale:** 56 scripts send Telegram alerts across 100+ unique call sites. All sends logged to `notification_log` table with dedupe keys.
+
+### Central Alert Dispatcher (Phase 2)
+
+`alert_dispatcher.py` provides unified routing for all alerts:
+
+| Feature | Detail |
+|---------|--------|
+| **Cross-script dedup** | Same symbol + alert type + date = one alert per day |
+| **Escalation tiers** | `INFO` (dashboard only), `ALERT` (Telegram), `URGENT` (bypasses rate limit) |
+| **Fatigue detection** | Auto-downgrade to INFO after 3 consecutive days + fire META alert |
+| **Rate limiting** | Max 15 Telegram alerts per hour (configurable via `ALERT_MAX_PER_HOUR`) |
+| **Convenience functions** | `alert_stop_triggered()`, `alert_dividend_payers()`, `alert_pipeline_failure()`, `alert_proposal_aging()`, `alert_api_credits_depleted()` |
+
+### Missing Condition Alerts (Phase 2)
+
+`alert_missing_conditions.py` checks daily at 7:30 AM:
+- Proposals stuck in PENDING > 7 days
+- Anthropic API credit depletion (minimal POST test)
+- Email digest not firing > 3 days
+- Rebalance data > 14 days stale
 
 **Telegram reply commands for retry:**
 - `run promoter` / `run promoter dry` — retry incubator promoter
@@ -1078,7 +1132,7 @@ John replies in Telegram → telegram_command_handler executes retry
 
 ## 16. Scheduling & Orchestration
 
-142 cron entries manage the full pipeline. Key schedule (all times Eastern):
+53 cron entries manage the full pipeline (flock-protected to prevent stacking). Key schedule (all times Eastern):
 
 ### Morning Cascade (5-8 AM)
 
@@ -1098,9 +1152,12 @@ John replies in Telegram → telegram_command_handler executes retry
 | 7:00 AM | CIO decisions + enrichment | `cio_decision_engine.py` |
 | 7:00 AM | Topic curator (rate, extract, improve) | `topic_curator.py --improve-queries` |
 | 7:15 AM | State freshness + price sync | `state_freshness_writer.py` |
+| 7:15 AM | Portfolio orchestrator (digest, alerts) | `portfolio_orchestrator.py` |
+| 7:20 AM | LLM intelligence enrichment (5 sections) | `llm_intelligence_enrichment.py` |
 | 7:25 AM | System health alerts | `system_health_alerts.py` |
+| 7:30 AM | Missing condition alerts | `alert_missing_conditions.py` |
 | 7:40 AM | Portfolio QA | `portfolio_level_qa.py` |
-| 8:00 AM | Aegis morning brief | `aegis_morning_brief_delivery.py` |
+| 8:00 AM | Aegis morning brief (upgraded: dividends, proposals, risk) | `aegis_morning_brief_delivery.py` |
 
 ### Market Hours (9 AM - 4 PM)
 
@@ -1117,11 +1174,13 @@ John replies in Telegram → telegram_command_handler executes retry
 |------|-----|
 | 6:10 PM | Proposal promoter (evening) |
 | 8:00 PM | Overnight batch + SEC Form 4 |
+| 8:30 PM | Feedback loop processor (outcome chains, alert scoring) |
 | 9:00 PM | Auto-research |
 | Sun 7:00 PM | Weekly incubator builder |
 | Sun 8:00 PM | Full topic ingestion (all topics, with LLM) |
 | Sun 9:00 PM | Weekly DOCX report (`generate_weekly_docx.py`) |
 | Sun 10:00 PM | LLM incubator classification |
+| 1st of month, 6 AM | Backup verification (`backup_verify.py`) |
 
 ---
 
@@ -1221,12 +1280,17 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | `data/portfolios/state/holdings.json` | Portfolio state (current holdings) |
 | `data/portfolios/state/personal_situation.json` | Personal data (18 keys) |
 | `data/state/ticker_enrichment_cache.json` | Enrichment cache (1,139 symbols) |
-| `scripts/api_v2.py` | All 100+ API endpoints (12,600+ lines) |
+| `scripts/api_v2.py` | All 275+ API endpoints (13,000+ lines) |
+| `scripts/portfolio_server.py` | HTTP server with token auth (1,800+ lines) |
+| `scripts/portfolio_orchestrator.py` | Orchestration hub with dividend alerts (1,750+ lines) |
 | `scripts/recovery_watch_daily.py` | Recovery watch with exit classification (true stop-out vs relist) |
 | `scripts/generate_weekly_docx.py` | Weekly consolidated Word report from all subsystems |
 | `scripts/cio_decision_engine.py` | CIO decisions with 24h dedup gate |
-| `scripts/portfolio_server.py` | HTTP server entry point (1,767 lines) |
-| `scripts/portfolio_orchestrator.py` | Orchestration hub (1,714 lines) |
+| `scripts/alert_dispatcher.py` | Central alert routing (dedup, tiers, fatigue, rate limit) |
+| `scripts/alert_missing_conditions.py` | Daily missing condition checks (proposals, API, email, rebalance) |
+| `scripts/llm_intelligence_enrichment.py` | Daily LLM narrative generation (5 sections via qwen3:14b) |
+| `scripts/feedback_loop_processor.py` | Outcome chains, alert scoring, strategy snapshots, agent tracking |
+| `scripts/backup_verify.py` | Monthly backup integrity verification |
 | `scripts/trade_ai_orchestrator.py` | Screener + scoring (873 lines) |
 | `scripts/local_llm_config.py` | LLM configuration hub |
 | `scripts/local_llm.py` | Ollama inference with toll gate |
@@ -1341,72 +1405,17 @@ Gate status is available at `/api/v2/live-trading-gate`.
 
 ## 24. Session Changelog
 
-### Session 29 — 2026-05-11
+### Session 29 — 2026-05-11 (Phases 1-8)
 
-**Re-Entry vs Stop-Out Classification**
+12 commits, ~9,000 lines added across 65+ files. All changes are integrated into the sections above.
 
-The learning cycle was interpreting all reappearances of symbols as failed positions. This caused recommendations to be overly aggressive. Changes:
-
-- **DB migration:** `20260511_reentry_vs_stopout_classification.sql`
-  - New columns on `stopped_out_watch`: `explicit_stop_out`, `relisted_without_stop_out`, `market_reconnection_event`, `exit_type`, `patience_score`, `relist_count`, `first_seen_at`, `last_relist_at`
-  - New table: `stopped_out_relist_events` (tracks each relist with evidence)
-  - New views: `v_true_stopout_performance`, `v_relist_patience_tracking`
-  - New analyst verdict: `market_relist_monitor`
-- **`recovery_watch_daily.py`**: Classification logic, relist detection step, verdict computation respects exit type
-- **`agent_outcome_scorer.py`**: `RELIST_NEUTRAL` verdict (score=0) replaces WRONG for relist symbols; excluded from accuracy calculations
-- **`agent_calibration_engine.py`**: `relist_neutral` excluded from resolved count and calibration error
-- **`trade_learning_engine.py`**: `adjusted_win_rate` metric excluding relist losses; patience context in strategy scores
-- All 9 existing recovery items reclassified: all STILL HELD → `relist_no_exit` (none were true stop-outs)
-
-**StockTwits Pipeline Gap Fix**
-
-`premarket_watcher.py` was collecting StockTwits surge data but only sending it to Telegram -- never persisting to DB. Fixed:
-
-- `check_stocktwits_premarket()` now writes to `social_posts` (individual messages), `trade_ai_scans` (aggregated sentiment), and `scalp_scan_results` (source attribution)
-- Sentiment analysis: counts bullish/bearish from StockTwits entity data
-- Pre-market social data now appears on `/v2/trade-ai` dashboard
-
-**New API Endpoints**
-
-Four dashboard pages previously had no backend API:
-- `/api/v2/recovery` — Full recovery dashboard
-- `/api/v2/cio` — Unified CIO with deduplication
-- `/api/v2/portfolio-monitor` — Real-time portfolio health with dividends
-- `/api/v2/reports` — Reports hub with DOCX catalog
-
-**Dashboard Intelligence Enrichment**
-
-- Prospects endpoint now queries incubator LLM grades, proposal LLM reviews, social sentiment history
-- Watchlist endpoint now includes LLM health, news 7d counts, social sentiment, scan scores, catalysts
-- Portfolio-monitor surfaces dividend calendar (current month payers, annual income, top payers)
-- CIO endpoint deduplicates daily repeat decisions (DISTINCT ON symbol)
-
-**Weekly DOCX Report**
-
-- New script: `generate_weekly_docx.py` — comprehensive Word report from all subsystems
-- Added to Sunday cron (21:00) with flock protection
-- First report generated: `archive/weekly/2026-05-11/reports_weekly/weekly_2026-05-11.docx`
-
-**Critical Gaps Fixed**
-
-1. Screener UNDERFILLED: timing issue (pre-market runs have limited data; 10:00/16:00 weekday runs produce full universe)
-2. Rebalance stale: requires Anthropic API credits (currently depleted -- 400 error)
-3. Dividend intelligence surfaced on portfolio-monitor endpoint
-4. Weekly DOCX added to cron schedule
-5. CIO backlog: 93 HUMAN_REVIEW items were duplicates (~15 unique symbols, same rec generated daily)
-6. All 9 recovery items reclassified from `unclassified` to `relist_no_exit`
-
-**Files Modified**
-
-| File | Change |
-|------|--------|
-| `scripts/recovery_watch_daily.py` | Exit classification, relist detection, verdict rewrite |
-| `scripts/agent_outcome_scorer.py` | RELIST_NEUTRAL verdict, accuracy exclusion |
-| `scripts/agent_calibration_engine.py` | relist_neutral handling |
-| `scripts/trade_learning_engine.py` | adjusted_win_rate, patience context |
-| `scripts/premarket_watcher.py` | StockTwits persistence to DB |
-| `scripts/api_v2.py` | 4 new endpoints, 2 enriched endpoints, dividend surfacing, CIO dedup |
-| `scripts/generate_weekly_docx.py` | **NEW** — Weekly DOCX generator |
-| `sql/migrations/20260511_reentry_vs_stopout_classification.sql` | **NEW** — DB migration |
-| `crontab_backup.txt` | Added weekly DOCX cron entry |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Updated to reflect session 29 |
+| Phase | Summary | Key Artifacts |
+|-------|---------|---------------|
+| **1. Fix What's Broken** | Re-entry vs stop-out classification, StockTwits pipeline fix, 4 new API endpoints, weekly DOCX, prospects entry/stop/target | `20260511_reentry_vs_stopout_classification.sql`, `generate_weekly_docx.py` |
+| **2. Alert Quality** | Central alert dispatcher with dedup + fatigue + tiers, missing condition alerts, morning brief upgrade | `alert_dispatcher.py`, `alert_missing_conditions.py` |
+| **3. Page Consolidation** | 61 → 42 primary routes via TabPage component. 8 merges, 3 eliminations. Legacy routes redirect. | `TabPage.tsx`, 8 hub pages, updated `App.tsx` + `Shell.tsx` |
+| **4. Intelligence Delivery** | Morning Command page, market intelligence API, per-page news/social/sector context, CIO news context | `Command.tsx`, `/api/v2/command`, `/api/v2/market-intelligence` |
+| **5. LLM Integration** | 5 daily intelligence sections via qwen3:14b. Portfolio risk, rebalance, recovery, morning synthesis, prospect narratives. | `llm_intelligence_enrichment.py`, `llm_intelligence_cache` table |
+| **6. UI/UX** | Global alert banner (4 active alerts), freshness badges (green/yellow/red), Today's Actions panel on Overview | `GlobalAlertBanner.tsx`, `FreshnessBadge.tsx` |
+| **7. Feedback Loops** | Proposal outcome chains (38 linked), alert effectiveness scoring (31 scored), strategy snapshots (4), agent sample tracking | `feedback_loop_processor.py`, `20260511_feedback_loop_closure.sql` |
+| **8. Production Readiness** | API auth (token-based), backup verification (10/10 passing), live trading gate (4 gates, all FAIL = paper only) | `backup_verify.py`, `/api/v2/live-trading-gate` |
