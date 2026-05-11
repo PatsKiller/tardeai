@@ -92,6 +92,9 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # ── Paper Execution Sweep: safety net for approved proposals (market hours) ──
 */5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_sweep.lock $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1
 
+# ── Paper Trade Monitor: trailing stops, profit targets, position management ──
+*/5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
+
 # ── Agent Processing: Market hours (every 15 min, 10 jobs) ──────────────
 */15 6-19 * * 1-5 cd $PROJ && $PY scripts/process_watchlist_agent_jobs.py --limit 10 >> logs/watchlist_agent_jobs.log 2>&1
 # ── Agent Processing: Overnight (every 5 min, 25 jobs — clear backlog) ──
