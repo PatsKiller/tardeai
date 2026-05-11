@@ -6762,7 +6762,7 @@ def _journal_report():
                     'body': f'{wd["day_name"].strip()} shows avg P&L of ${float(wd["avg_pnl"]):.0f} with {wd_wr:.0f}% win rate across {wd["total"]} trades.',
                     'action': f'Track {wd["day_name"].strip()} trades separately for 30 days.'})
 
-        # ── SECTION 15: Daily P&L for calendar
+        # ── SECTION 15: Daily P&L for calendar (with per-ticker breakdown)
         cur.execute(f"""
             SELECT close_date::text as date, SUM(pnl) as daily_pnl,
                    COUNT(*) as trade_count, COUNT(CASE WHEN pnl>0 THEN 1 END) as wins,
@@ -6770,6 +6770,25 @@ def _journal_report():
             FROM trade_closed t WHERE {where} GROUP BY close_date ORDER BY close_date
         """, params)
         daily_pnl = [{k: _f(v) for k, v in dict(r).items()} for r in cur.fetchall()]
+
+        # Per-ticker trades per day (for calendar drill-down)
+        cur.execute(f"""
+            SELECT close_date::text as date, symbol, pnl, buy_price, sell_price,
+                   shares, trade_type, account
+            FROM trade_closed t WHERE {where} ORDER BY close_date, symbol
+        """, params)
+        daily_trades_raw = cur.fetchall()
+        daily_trades = {}
+        for r in daily_trades_raw:
+            row = {k: _f(v) for k, v in dict(r).items()}
+            day = row['date']
+            if day not in daily_trades:
+                daily_trades[day] = []
+            daily_trades[day].append(row)
+
+        # Attach trades to daily_pnl entries
+        for dp in daily_pnl:
+            dp['trades'] = daily_trades.get(dp['date'], [])
 
         # ── SECTION 16: Signal analytics
         cur.execute("""
