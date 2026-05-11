@@ -153,11 +153,27 @@ def monitor(dry_run=False):
             action = "close_target"
             reason = f"TARGET HIT ${current:.2f} >= ${target:.2f} (R={r_mult:.1f}, P&L=${pnl:+.0f})"
             if not dry_run:
+                # Cancel stop first so shares are freed, then market sell
+                if stop_order_id:
+                    _api_delete(f'/v2/orders/{stop_order_id}')
+                    import time; time.sleep(1)
                 _api_delete(f'/v2/positions/{sym}')
                 cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
                     close_date=NOW(), pnl=%s, r_multiple=%s WHERE id=%s""",
                     [current, round(pnl, 2), round(r_mult, 2), trade['id']])
                 conn.commit()
+
+        # ── NEAR TARGET (>80% of move) → tighten stop aggressively ──
+        elif target and db_entry and target > db_entry:
+            target_move = target - db_entry
+            current_move = current - db_entry
+            pct_to_target = current_move / target_move if target_move > 0 else 0
+            if pct_to_target >= 0.80:
+                # Within 80% of target — tighten stop to lock most of the gain
+                new_stop = round(db_entry + target_move * 0.65, 2)  # lock 65% of target move
+                if new_stop > alpaca_stop:
+                    action = "tighten_near_target"
+                    reason = f"NEAR TARGET ({pct_to_target*100:.0f}% of move) → tight stop ${new_stop:.2f} to lock gains"
 
         # ── R-MULTIPLE TRAILING STOP (the strategy's R:R in action) ──
         elif r_mult >= 3.0:
@@ -174,8 +190,9 @@ def monitor(dry_run=False):
             reason = f"R={r_mult:.1f} → breakeven stop (${new_stop:.2f})"
 
         # Only move stop UP, never down
-        if new_stop > alpaca_stop and action == "hold":
-            action = "adjust_stop"
+        if new_stop > alpaca_stop and action in ("hold", "tighten_near_target"):
+            if action == "hold":
+                action = "adjust_stop"
             if not dry_run:
                 new_id = replace_stop(sym, qty, new_stop, stop_order_id)
                 if new_id:
@@ -214,7 +231,7 @@ def monitor(dry_run=False):
             lines = ["*Paper Trade Monitor*", ""]
             for r in results:
                 icon = {"hold": "—", "adjust_stop": "↑", "close_target": "$",
-                        "add_stop": "+", "no_record": "?"}.get(r['action'], "•")
+                        "tighten_near_target": "⬆", "add_stop": "+", "no_record": "?"}.get(r['action'], "•")
                 lines.append(f"{icon} *{r['symbol']}* R={r.get('r_multiple',0):.1f} "
                              f"P&L=${r.get('pnl',0):+.0f} ({r.get('pnl_pct',0):+.1f}%)")
                 if r['action'] != 'hold':
