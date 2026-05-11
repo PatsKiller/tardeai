@@ -340,6 +340,9 @@ Bracket order to Alpaca:
 |-----|--------|------|
 | `logs/paper_monitor.log` | paper_trade_monitor.py | Every 5 min market hours |
 | `logs/paper_execution.log` | paper_execution_sweep.py | Every 5 min market hours |
+| `logs/open_trade_monitor.log` | open_trade_monitor.py | Every 15 min market hours |
+| `logs/post_trade_thesis_auto.log` | post_trade_thesis_reviewer.py | On trade close |
+| `logs/paper_outcome_analytics_auto.log` | paper_outcome_analytics.py | On trade close |
 | `logs/tradeai-continuous.log` | continuous_runner.py | 4 AM - shutdown |
 | `logs/recovery_watch.log` | recovery_watch_daily.py | 7:30 AM daily |
 | `logs/news_ingestion.log` | news_ingestion.py | 3x daily |
@@ -357,3 +360,53 @@ Bracket order to Alpaca:
 | **Overriding exit decisions** | Monitor closes on target/stop, but human can intervene via Alpaca dashboard |
 | **Promoting to live trading** | Paper-only mode is hardcoded; live requires 6-month paper validation |
 | **Strategy creation/deletion** | Strategy admin page, manual configuration |
+
+---
+
+## 11. Post-Close Processing
+
+When a trade closes (target hit by monitor, or stop-loss hit on Alpaca), the system automatically triggers:
+
+1. **Thesis Reviewer** (`post_trade_thesis_reviewer.py --apply`): Compares original proposal thesis (expected entry/stop/target/R) against actual results. Classifies outcome as THESIS_CONFIRMED, THESIS_PARTIAL, THESIS_INVALIDATED, or THESIS_ABANDONED. Writes to `trade_thesis_outcomes`.
+
+2. **Outcome Analytics** (`paper_outcome_analytics.py --since 7 --apply`): Builds `paper_trade_outcome_analytics` with R-multiple, MFE/MAE, plan adherence, hold time, TCA grade, stop/limit adjustment counts.
+
+Both are triggered as background processes (non-blocking) from:
+- `paper_trade_monitor.py` — when a target hit closes a position
+- `alpaca_paper_adapter.detect_closed_positions()` — when a stop-loss or manual close removes the position from Alpaca
+
+Logs: `logs/post_trade_thesis_auto.log`, `logs/paper_outcome_analytics_auto.log`
+
+---
+
+## 12. Market Context at Entry
+
+Every new paper trade records the market regime and VIX at entry time:
+- `paper_trades.market_regime`: Current regime label from `market_regime_snapshots`
+- `paper_trades.vix_at_entry`: Current VIX level from `market_regime_indicators`
+
+This is populated in all three trade entry paths:
+- `paper_trade_logger.open_paper_trade()` — Telegram /pt commands
+- `paper_trade_logger.approve_proposal()` — Dashboard proposal approvals
+- `alpaca_paper_adapter.submit_entry()` — Alpaca bracket order submissions
+
+This data feeds the Plan vs Performance page's regime impact analysis and regime alert system.
+
+---
+
+## 13. Known Gaps and Future Enhancements
+
+### Not yet implemented
+
+| Gap | Impact | Potential Fix |
+|-----|--------|---------------|
+| **No event-driven monitoring** | 5-min blind spot between checks; a stock could gap 10% and system won't know for up to 5 minutes | Alpaca WebSocket streaming for real-time price/order events |
+| **No intraday volatility/ATR monitoring** | Monitor checks price vs stop/target but doesn't detect ATR expansion, IV crush, or unusual intraday vol | Add ATR/volatility check to open_trade_monitor alert types |
+| **No portfolio-level drawdown tracking** | Individual position P&L tracked, but no aggregate portfolio drawdown limit during market hours | Add portfolio drawdown circuit breaker to paper_trade_monitor |
+| **No volume-weighted exit signals** | Volume fade is detected as an alert but doesn't trigger automatic action | Consider auto-tightening stops when volume fades below threshold |
+| **Regime data currently shows "unknown"** | Market regime snapshot calculator hasn't been seeded with real indicator data | Wire VIX, breadth, trend indicators into regime calculator cron |
+
+### Architectural notes
+
+- **Broker-level protection is the real safety net.** Even if all crons fail, Alpaca's GTC bracket orders (stop-loss + take-profit) remain active and will execute. The 5-min monitor is an optimization layer, not the last line of defense.
+- **After-hours is where most intelligence work happens.** Market hours are dominated by execution and monitoring; the overnight batch (8 PM) does the deep analysis that informs next-day decisions.

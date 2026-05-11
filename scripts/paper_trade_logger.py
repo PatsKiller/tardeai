@@ -120,6 +120,36 @@ def _resolve_account(raw: str | None) -> str | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 1b. Market context at trade entry
+# ─────────────────────────────────────────────────────────────────────────────
+def _get_entry_regime(conn) -> dict:
+    """Fetch current market regime and VIX for trade entry context."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT regime_label, volatility_state, trend_state, breadth_state
+            FROM market_regime_snapshots
+            ORDER BY created_at DESC LIMIT 1
+        """)
+        row = cur.fetchone()
+        regime = row[0] if row else None
+
+        # Try to get VIX from indicator cache or regime indicators
+        vix = None
+        cur.execute("""
+            SELECT value FROM market_regime_indicators
+            WHERE indicator_key = 'vix_close' OR indicator_key = 'vix'
+            ORDER BY created_at DESC LIMIT 1
+        """)
+        vix_row = cur.fetchone()
+        if vix_row:
+            vix = float(vix_row[0])
+        return {"regime": regime, "vix": vix}
+    except Exception:
+        return {"regime": None, "vix": None}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 2. open_paper_trade
 # ─────────────────────────────────────────────────────────────────────────────
 def open_paper_trade(params: dict) -> dict:
@@ -210,6 +240,7 @@ def open_paper_trade(params: dict) -> dict:
 
         # ── 3. Insert paper_trades row ──────────────────────────────────
         now = datetime.now(timezone.utc)
+        entry_ctx = _get_entry_regime(conn)
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO paper_trades (
@@ -218,6 +249,7 @@ def open_paper_trade(params: dict) -> dict:
                 stop_loss, target_1, dollar_risk,
                 trade_plan_id, planned_entry, planned_stop,
                 risk_gate_result, risk_gate_reason_codes,
+                market_regime, vix_at_entry,
                 status, opened_via, logged_by,
                 created_at, updated_at
             ) VALUES (
@@ -225,6 +257,7 @@ def open_paper_trade(params: dict) -> dict:
                 %s, %s, %s, %s,
                 %s, %s, %s,
                 %s, %s, %s,
+                %s, %s,
                 %s, %s,
                 'open', 'telegram', 'paper_trade_logger',
                 %s, %s
@@ -235,6 +268,7 @@ def open_paper_trade(params: dict) -> dict:
             stop, target, dollar_risk,
             trade_plan_id, entry, stop,
             decision.result, decision.reason_codes,
+            entry_ctx["regime"], entry_ctx["vix"],
             now, now,
         ))
         trade_id = cur.fetchone()[0]
@@ -1019,6 +1053,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             return {'success': False, 'message': f'Risk gate error (fail-closed): {e}'}
 
         now = datetime.now(timezone.utc)
+        entry_ctx = _get_entry_regime(conn)
 
         # Insert paper trade — status=pending (not yet submitted to broker)
         # broker is NULL until an actual Alpaca order is submitted via proposal_paper_submitter
@@ -1029,12 +1064,14 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 score_at_entry, rvol_at_entry, float_m_at_entry, catalyst_at_entry, catalyst_verified,
                 intel_readiness, trade_plan_id, proposal_id, setup_type, signal_grade,
                 risk_gate_result, risk_gate_reason_codes,
+                market_regime, vix_at_entry,
                 status, broker, opened_via, logged_by, automation_source
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
+                %s, %s,
                 %s, %s,
                 'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
@@ -1047,6 +1084,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             prop.get('intel_readiness'), prop.get('trade_plan_id'), proposal_id,
             prop.get('setup_type'), prop.get('signal_grade'),
             rg_result, json.dumps(rg_codes),
+            entry_ctx["regime"], entry_ctx["vix"],
         ])
         paper_trade_id = cur.fetchone()[0]
 

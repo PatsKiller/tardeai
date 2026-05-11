@@ -146,6 +146,26 @@ class AlpacaPaperAdapter:
 
         if closed:
             conn.commit()
+            # Trigger post-close processors
+            try:
+                import subprocess
+                subprocess.Popen(
+                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                     str(PROJECT_ROOT / "scripts/post_trade_thesis_reviewer.py"), "--apply"],
+                    cwd=str(PROJECT_ROOT),
+                    stdout=open(str(PROJECT_ROOT / "logs/post_trade_thesis_auto.log"), "a"),
+                    stderr=subprocess.STDOUT,
+                )
+                subprocess.Popen(
+                    [str(PROJECT_ROOT / ".venv/bin/python"),
+                     str(PROJECT_ROOT / "scripts/paper_outcome_analytics.py"), "--since", "7", "--apply"],
+                    cwd=str(PROJECT_ROOT),
+                    stdout=open(str(PROJECT_ROOT / "logs/paper_outcome_analytics_auto.log"), "a"),
+                    stderr=subprocess.STDOUT,
+                )
+                log.info(f"[alpaca] Triggered post-close processors for {closed} trade(s)")
+            except Exception as e:
+                log.warning(f"[alpaca] Post-close processor trigger failed: {e}")
         return closed
 
     def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn):
@@ -271,20 +291,34 @@ class AlpacaPaperAdapter:
 
             # Record in paper_trades
             actual_entry = fill_price if use_market else entry_price
+            # Get market regime context at entry
+            _regime, _vix = None, None
+            try:
+                cur.execute("SELECT regime_label FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1")
+                _rr = cur.fetchone()
+                if _rr: _regime = _rr[0]
+                cur.execute("SELECT value FROM market_regime_indicators WHERE indicator_key IN ('vix_close','vix') ORDER BY created_at DESC LIMIT 1")
+                _vr = cur.fetchone()
+                if _vr: _vix = float(_vr[0])
+            except Exception:
+                pass
             cur.execute("""
                 INSERT INTO paper_trades (strategy_id, symbol, account, shares, dollar_size,
                     stop_loss, target_1, planned_entry, entry_price, dollar_risk,
                     broker_order_id, broker_status, order_type,
+                    market_regime, vix_at_entry,
                     status, opened_via, logged_by, risk_gate_result)
                 VALUES (%s, %s, 'ALPACA_PAPER', %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
+                    %s, %s,
                     %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED')
             """, [strategy_id, symbol, shares, round(shares * actual_entry, 2),
                   stop_price, target_price, entry_price, actual_entry,
                   round(abs(actual_entry - stop_price) * shares, 2),
                   order_id, result.get('status', 'new'),
                   'market' if use_market else 'bracket',
+                  _regime, _vix,
                   'open' if use_market and result.get('status') == 'accepted' else 'pending'])
             conn.commit()
 
