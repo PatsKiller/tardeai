@@ -1417,18 +1417,18 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               runAction('submitPaper', '/api/v2/paper-proposals/submit-alpaca-paper')
             }
           }}
-          disabled={!!runningAction || !p.execution_readiness || !['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state)}
-          title={!p.execution_readiness ? 'Run execution readiness check first' : p.execution_readiness?.readiness_state}
+          disabled={!!runningAction || p.status === 'PENDING'}
+          title={p.paper_submit_state === 'SUBMITTED' ? 'Already submitted to Alpaca' : p.status === 'PENDING' ? 'Approve first — Alpaca submission is automatic on approval' : 'Submit to Alpaca paper trading'}
           style={{
             ...btnStyle(
-              ['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? '#065F46' : 'rgba(34,197,94,0.1)',
-              ['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? '#10B981' : '#44403C'
+              p.paper_submit_state === 'SUBMITTED' ? '#065F46' : p.status !== 'PENDING' ? '#065F46' : 'rgba(34,197,94,0.1)',
+              p.paper_submit_state === 'SUBMITTED' ? '#10B981' : p.status !== 'PENDING' ? '#10B981' : '#44403C'
             ),
-            opacity: !p.execution_readiness || !['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? 0.4 : 1,
-            cursor: !p.execution_readiness || !['READY_FOR_PAPER_SUBMIT', 'CAUTION_EXECUTABLE'].includes(p.execution_readiness?.readiness_state) ? 'not-allowed' : 'pointer',
+            opacity: p.status === 'PENDING' ? 0.4 : 1,
+            cursor: p.status === 'PENDING' ? 'not-allowed' : 'pointer',
             border: '1px solid #047857',
           }}>
-          {runningAction === 'submitPaper' ? '...' : 'Submit to Alpaca Paper'}
+          {runningAction === 'submitPaper' ? '...' : p.paper_submit_state === 'SUBMITTED' ? 'Submitted' : 'Submit to Alpaca Paper'}
         </button>
 
         <button onClick={handleApprove} disabled={!!acting[p.id] || approveDisabled}
