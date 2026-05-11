@@ -586,6 +586,39 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             save_dividend_history(dividend_calendar.get("payers", []), date_str)
         except Exception as _dhe:
             print(f"  [dividend-history] Postgres write failed (pipeline continues): {_dhe}")
+        # ── Dividend payer notification for current month ──
+        try:
+            from datetime import datetime as _ddt
+            _cur_month = _ddt.now().month
+            _monthly = dividend_calendar.get("monthly_summary", [])
+            _this_month = next((m for m in _monthly if m.get("month") == _cur_month), None)
+            if _this_month and _this_month.get("symbols"):
+                _div_dk = f"{date_str}:dividend_payers:{_cur_month}"
+                if not notification_already_logged(_div_dk):
+                    _div_msg = (
+                        f"\U0001f4b0 Dividend Payers This Month ({_this_month['month_name']})\n\n"
+                        f"Expected: ${_this_month['total']:,.0f} from {_this_month['count']} positions\n"
+                        f"Symbols: {', '.join(_this_month['symbols'][:10])}\n\n"
+                        f"Annual income: ${dividend_calendar.get('total_annual', 0):,.0f}/yr"
+                    )
+                    try:
+                        from telegram_alert import send_telegram as _div_tg
+                        _div_tg(_div_msg)
+                    except Exception:
+                        pass
+                    save_notification_log_entry({
+                        "notification_date": date_str,
+                        "notification_type": "dividend_alert",
+                        "channel": "telegram",
+                        "subject": f"Dividend Payers — {_this_month['month_name']}: ${_this_month['total']:,.0f}",
+                        "body_summary": _div_msg[:300],
+                        "status": "sent",
+                        "dedupe_key": _div_dk,
+                        "sent_at": _ddt.now().isoformat(),
+                    })
+                    print(f"  [dividends] Telegram: {_this_month['count']} payers, ${_this_month['total']:,.0f} this month")
+        except Exception as _div_e:
+            print(f"  [dividends] Telegram alert skipped: {_div_e}")
     except Exception as e:
         print(f"  [dividends] ❌ {e}")
 
@@ -1422,10 +1455,12 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         _hc_drafts = get_high_confidence_drafts(date_str, 0.90)
         _hc_sent = 0
         for _hc in _hc_drafts:
-            _hc_dk = f"{date_str}:draft_alert:telegram:rec_{_hc['id']}"
+            # Dedup by symbol + action + date (not recommendation ID)
+            # Prevents the same draft from firing daily when unresolved.
+            _hc_sym = _hc["symbol"] or "Portfolio"
+            _hc_dk = f"{date_str}:draft_alert:telegram:{_hc_sym}_{_hc.get('action', 'review')}"
             if notification_already_logged(_hc_dk):
                 continue
-            _hc_sym = _hc["symbol"] or "Portfolio"
             _hc_msg = (
                 f"\U0001f4cb DRAFT PENDING REVIEW\n\n"
                 f"{_hc_sym}: {_hc['action'].replace('_',' ')}\n"
@@ -1546,7 +1581,12 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         _s1_escalations = get_escalations_by_date_severity(date_str, 1)
         _notif_sent = 0
         for _s1 in _s1_escalations:
-            _dk = f"{date_str}:urgent_alert:telegram:esc_{_s1['id']}"
+            # Dedup by symbol + trigger_rule + date (not escalation ID)
+            # This prevents the same stop condition from firing a new alert
+            # every day when the underlying issue hasn't been resolved.
+            _s1_sym = _s1.get("symbol", "unknown")
+            _s1_rule = _s1.get("trigger_rule", "unknown")
+            _dk = f"{date_str}:urgent_alert:telegram:{_s1_sym}_{_s1_rule}"
             if notification_already_logged(_dk):
                 continue
             # Build message
