@@ -53,12 +53,12 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 
 | Metric | Value |
 |--------|-------|
-| Python scripts | 354 |
-| Cron jobs | 142 |
-| API endpoints | 95+ |
-| Database tables | 299 |
+| Python scripts | 355 |
+| Cron jobs | 143 |
+| API endpoints | 271 (246 in api_v2.py + 21 in portfolio_server.py + 4 shared) |
+| Database tables | 300 |
 | Strategies | 20 (YAML-driven) |
-| Frontend pages | 55 |
+| Frontend pages | 61 |
 | Agents | 7 (4 conversational + 3 backend) |
 | External data sources | 12+ |
 | Research topics | 17 (DB-driven, LLM-curated) |
@@ -79,7 +79,7 @@ Trade AI v12 has 6 distinct service boundaries:
 |  +------------------+    +------------------+    +---------------+ |
 |  | Portfolio Server  |    | Ollama LLM       |    | OpenClaw GW   | |
 |  | :7777 (Flask)     |<-->| :11434           |<-->| :18789        | |
-|  | 80+ API endpoints |    | qwen3:14b        |    | 4 agents      | |
+|  | 271 API endpoints |    | qwen3:14b        |    | 4 agents      | |
 |  | React SPA @ /v2/  |    | Intel Arc B50    |    | Telegram/WA   | |
 |  +--------+----------+    +------------------+    +---------------+ |
 |           |                                                        |
@@ -174,7 +174,8 @@ Trade AI v12 has 6 distinct service boundaries:
 | **Enrichment** | `ticker_enrichment_cache`, `catalyst_cache` | 60+ Finviz fields, catalyst data |
 | **Strategy** | `strategy_signals`, `strategy_configs` | Signal history, dynamic config |
 | **Execution Quality** | `paper_execution_quality`, `broker_reconciliation_items`, `trade_thesis_outcomes` | TCA metrics, recon, outcome tracking |
-| **Agent** | `cio_decisions`, `decision_outcomes`, `agent_handoffs` | Decision audit trail |
+| **Agent** | `cio_decisions`, `decision_outcomes`, `agent_handoffs` | Decision audit trail (CIO deduped per 24h) |
+| **Recovery** | `stopped_out_watch`, `stopped_out_relist_events`, `stopped_out_watch_history` | Exit classification (true stop-out vs relist vs market reconnection), patience scoring |
 | **Portfolio** | `portfolio_holdings`, `portfolio_accounts`, `personal_situation` | Positions, accounts, personal data |
 | **System** | `pipeline_runs`, `daily_system_metrics` | Pipeline health, trending |
 | **Research** | `sec_form4`, `youtube_transcripts` | Filings, transcript archive |
@@ -988,30 +989,26 @@ Multiple cron jobs (classifier, curator, reviewer, screener) all compete for the
 
 ## 14. Frontend
 
-- **Framework:** React SPA, built with Vite
+- **Framework:** React SPA (Next.js)
 - **Route:** served at `/v2/` via Portfolio Server (port 7777)
 - **Source:** `apps/command-center-v2/` (91 TypeScript/React files)
-- **Pages:** 55
+- **Pages:** 61 (all fully implemented, no stubs)
+- **API hooks:** `useApi()`, `useFetch()` custom hooks for data fetching
+- **Charts:** BarChartJS, LineChart, DoughnutChart components
 
-### Key Views
+### Page Groups
 
-| Page | File | Purpose |
-|------|------|---------|
-| Dashboard | `Overview.tsx` | System overview, key metrics |
-| Portfolio | `Portfolio.tsx` | Holdings, P&L, AI health column |
-| Watchlist | Watchlist modules | Agent results, symbol details |
-| Proposals | `PaperProposals.tsx` | Pipeline chevron, LLM review chunks |
-| Incubator | Incubator modules | Symbol lifecycle, strategy grid |
-| Execution Quality | `ExecutionQuality.tsx` | TCA metrics |
-| Broker Reconciliation | `BrokerReconciliation.tsx` | Recon items |
-| Paper Outcomes | Paper outcomes modules | Thesis vs outcome tracking |
-| Governance | `LiveGovernance.tsx` | Paper governance dashboard, LIVE banner |
-| Strategy Admin | `StrategyAdmin.tsx` | YAML config editor |
-| Risk Monitor | `Risk.tsx` | Exposure, correlation, limits |
-| Trade Journal | `Journal.tsx` | Entries, annotations, reports |
-| Technical Analysis | `Technical.tsx` | Charts, indicators |
-| Agent Chat | Agent modules | Conversational interfaces |
-| Retirement/Income | `Retirement.tsx` | Alex integration, Roth planning |
+| Group | Pages | Key Views |
+|-------|-------|-----------|
+| **Portfolio Core** | Overview, Portfolio, Returns, Dividends, Rebalance, Retirement, Tax, Correlation, Attribution, Forecast | Holdings, P&L, income, allocation, tax lots |
+| **Trading** | Trade AI, Strategy Desk, Prospects, Execution Quality, Broker Recon | Screener results, strategy signals, TCA |
+| **Paper Trading** | Paper Status, Paper Proposals, Paper Journal, Paper Outcomes, Paper Governance, Paper Trade Intelligence | Full paper trading lifecycle |
+| **Intelligence** | AI Analyst, Intelligence Sources, Intelligence Entities, Intelligence Whiteboard, Content Health, Topic Monitor, Portfolio Intelligence | Research, NLP, RAG, topic ingestion |
+| **Agents** | Agent Pipeline, Agent Calibration, CIO Dashboard, Morning Brief | Agent performance, decisions, briefings |
+| **Monitoring** | Watchlist, Recovery, Portfolio Monitor, Alerts, Notifications, System Health, Risk, Risk Regime | Position tracking, stops, alerts |
+| **Pipeline** | Pipeline Health Master, Pipeline Controller, Incubator, Self Improvement, Weekly Learning, Learning Governance | Pipeline ops, incubator lifecycle |
+| **Reporting** | Reports, Journal Analytics, Journal Reports, Backtesting | Analytics, reports, DOCX catalog |
+| **Admin** | Strategy Admin, Live Governance, Approvals, Orchestration, Ops, System Hub, Action Center | Config, governance, operations |
 
 ---
 
@@ -1036,7 +1033,10 @@ All channels toggled via `ENABLE_*` flags in `.env`.
 | System Health | `system_health_alerts.py` | Threshold breach |
 | Iris Library Alert | Iris agent | Content hygiene issues |
 | Aegis Morning Brief | `aegis_morning_brief_delivery.py` | 8 AM daily |
-| Recovery Watch | `recovery_watch.py` | Stop-out detection |
+| Recovery Watch | `recovery_watch_daily.py` | Stop-out detection, relist classification, escalation to Maria/Steph |
+| Pre-Market StockTwits | `premarket_watcher.py` | StockTwits surge data (persisted to social_posts + trade_ai_scans) |
+| Stop Placement Reminder | `recovery_watch_daily.py` | Positions without confirmed stops |
+| Weekly DOCX Report | `generate_weekly_docx.py` | Weekly Word report generated + Telegram notification |
 | Intelligence Gap Fill | `agent_event_router.py` | CONTENT_GAP auto-search completion |
 | Incubator Promoter | `incubator_proposal_promoter.py` | Promotions or failures |
 | YouTube Ingestion | `youtube_transcript_ingest.py` | Crash during channel scan |
@@ -1049,6 +1049,8 @@ Every critical cron job is wrapped with `pipeline_alert.py` which:
 3. Logs to `logs/<pipeline_name>.log` with timestamp and exit code
 
 Wrapped pipelines: news_ingestion, youtube_ingest, overnight_batch, sec_data_ingest, event_detector, previously_traded, pipeline_watchdog.
+
+**Scale:** 55+ scripts send Telegram alerts across 100+ unique call sites. Central hub: `telegram_alert.py`. All sends logged to `notification_log` table with dedupe keys.
 
 **Telegram reply commands for retry:**
 - `run promoter` / `run promoter dry` — retry incubator promoter
@@ -1118,6 +1120,7 @@ John replies in Telegram → telegram_command_handler executes retry
 | 9:00 PM | Auto-research |
 | Sun 7:00 PM | Weekly incubator builder |
 | Sun 8:00 PM | Full topic ingestion (all topics, with LLM) |
+| Sun 9:00 PM | Weekly DOCX report (`generate_weekly_docx.py`) |
 | Sun 10:00 PM | LLM incubator classification |
 
 ---
@@ -1218,7 +1221,10 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | `data/portfolios/state/holdings.json` | Portfolio state (current holdings) |
 | `data/portfolios/state/personal_situation.json` | Personal data (18 keys) |
 | `data/state/ticker_enrichment_cache.json` | Enrichment cache (1,139 symbols) |
-| `scripts/api_v2.py` | All 80+ API endpoints (11,700+ lines) |
+| `scripts/api_v2.py` | All 100+ API endpoints (12,600+ lines) |
+| `scripts/recovery_watch_daily.py` | Recovery watch with exit classification (true stop-out vs relist) |
+| `scripts/generate_weekly_docx.py` | Weekly consolidated Word report from all subsystems |
+| `scripts/cio_decision_engine.py` | CIO decisions with 24h dedup gate |
 | `scripts/portfolio_server.py` | HTTP server entry point (1,767 lines) |
 | `scripts/portfolio_orchestrator.py` | Orchestration hub (1,714 lines) |
 | `scripts/trade_ai_orchestrator.py` | Screener + scoring (873 lines) |
@@ -1248,6 +1254,9 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | Proposal enrichment latency | ~30s-1min per proposal | Chunked async state machine |
 | Single-server deployment | No HA, single point of failure | Automated backups; documented recovery |
 | No API authentication | Internal-only assumption | Must add auth before any network exposure |
+| Anthropic API credits depleted | Rebalance advisor (`portfolio_yaml_advisor.py`) cannot refresh | Requires credit top-up or local LLM fallback |
+| CIO daily duplicate decisions | Same symbol+action generated daily | 24h dedup gate added to `cio_decision_engine.py` |
+| StockTwits pre-market persistence | Was Telegram-only, invisible to dashboard | Fixed: now writes to `social_posts`, `trade_ai_scans`, `scalp_scan_results` |
 
 ---
 
