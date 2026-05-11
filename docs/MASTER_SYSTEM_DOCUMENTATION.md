@@ -273,15 +273,17 @@ The pipeline runs **31 stages organized into 7 groups**. Each group has a design
 | Proposal Enrichment | `proposal_enrichment_loop.py` | Open proposals | Enriched data packets |
 | Proposal Lifecycle | `proposal_lifecycle.py` | Proposal states | State transitions |
 
-### Group 6 -- Execution (Market Hours)
+### Group 6 -- Execution (Automated, Market Hours)
 
-| Stage | Script | Inputs | Outputs |
-|-------|--------|--------|---------|
-| Risk Gate | `risk_gate.py` | Proposal + portfolio | Pass/fail risk check |
-| Paper Proposals UI | `paper_proposals_ui.py` | Approved proposals | UI approval flow |
-| Alpaca Paper | `alpaca_paper_adapter.py` | Approved orders | Paper trades on Alpaca |
-| Broker Reconciliation | `alpaca_paper_reconciler.py` | Fills vs expectations | `broker_reconciliation_items` |
-| Execution Quality | `execution_quality_analyzer.py` | Fill data | TCA metrics |
+| Stage | Script | Trigger | Outputs |
+|-------|--------|---------|---------|
+| Risk Gate | `risk_gate.py` | On proposal creation | Pass/fail + reason codes. Paper cap $15K (env: `PAPER_MAX_POSITION_SIZE`) |
+| Instant Submission | `api_v2.py` → `proposal_paper_submitter.py` | On approval click | Immediate Alpaca order (market or limit based on price proximity) |
+| Smart Order Type | `alpaca_paper_adapter.py` | During submission | Market if price ≤ entry or within 2%; limit+bracket if >2% above |
+| Execution Sweep | `paper_execution_sweep.py` | Every 5 min (cron safety net) | Catches approved proposals not yet submitted |
+| Position Monitor | `paper_trade_monitor.py` | Every 5 min (cron) | R-multiple trailing stops, target detection, automatic closes |
+| Broker Reconciliation | `alpaca_paper_reconciler.py` | On fill events | `broker_reconciliation_items` |
+| Execution Quality | `execution_quality_analyzer.py` | On trade close | TCA metrics |
 
 ### Group 7 -- Overnight (8 PM - 6 AM)
 
@@ -831,39 +833,179 @@ The incubator is the holding area between raw screener hits and actionable propo
 
 ---
 
-## 10. Proposal Lifecycle
+## 10. Proposal Lifecycle & Automated Execution
+
+### Lifecycle Flow
 
 ```
-[PROPOSED] --> [ENRICHING] --> [SCORED] --> [RISK_CHECK]
-                                               |
-                            +------------------+------------------+
-                            |                                     |
-                       [APPROVED]                            [REJECTED]
-                            |
-                     [PENDING_ENTRY]
-                            |
-              +-------------+-------------+
-              |                           |
-       [ENTRY_ZONE_VALID]          [ENTRY_MISSED]
-              |                           |
-          [FILLED]                    [EXPIRED]
-              |
-          [OPEN]
-              |
-          [CLOSED]
+[PROPOSED] ──→ [ENRICHING] ──→ [RISK_CHECK] ──→ [PENDING]
+                                                     │
+                    ┌────────────────────────────────┤
+                    │                                │
+               [APPROVED]                       [REJECTED / RISK_BLOCKED / EXPIRED]
+                    │
+                    │ ← INSTANT (same HTTP request, no cron delay)
+                    ▼
+            [ALPACA SUBMISSION]
+                    │
+        ┌───────────┼───────────┐
+        │           │           │
+   [MARKET]    [LIMIT]    [BRACKET]
+   (immediate)  (wait)    (limit+stop+target)
+        │           │           │
+        ▼           ▼           ▼
+     [FILLED]  [PENDING_FILL] [PENDING_FILL]
+        │                       │
+        ▼                       ▼
+     [OPEN] ←──────────────────┘
+        │
+        │  ← paper_trade_monitor.py (every 5 min)
+        │     adjusts stops, checks targets
+        ▼
+     [CLOSED]
+     (target hit / stop hit / manual close)
 ```
 
-The frontend displays an 8-stage "pipeline chevron" visual indicator showing each proposal's current position. The LLM review pipeline processes proposals in 4 chunks with a state machine controlling chunk transitions.
+**Key principle:** Approval triggers immediate execution. There is no human step between approval and Alpaca order submission. The system determines order type, parameters, and routing automatically.
+
+### Order Type Selection Logic
+
+The system selects order type at submission time based on current market conditions:
+
+```
+Adapter checks current Alpaca quote for the symbol
+    │
+    ├─ Current price ≤ proposed entry      → MARKET ORDER
+    │   (Better price available — fill now)
+    │
+    ├─ Current price within 2% of entry    → MARKET ORDER
+    │   (Close enough — avoid missing the setup)
+    │
+    └─ Current price >2% above entry       → LIMIT ORDER (bracket)
+        (Price drifted — wait for value)      limit buy + stop loss + take profit
+```
+
+Market orders: submitted as simple buy, stop placed separately after fill (GTC).
+Limit orders: submitted as bracket (buy + stop + target as OCA group).
+
+### Risk Gate (Pre-Submission)
+
+Every proposal passes through `risk_gate.py` before execution:
+
+| Check | Threshold | Fail Action |
+|-------|-----------|-------------|
+| Position size | Paper: $15K max (env configurable), Live: per strategy YAML | DOLLAR_SIZE_TOO_LARGE |
+| Duplicate position | No open trade for same symbol | BLOCKED_DUPLICATE |
+| Duplicate order | Idempotency check via client_order_id | BLOCKED_DUPLICATE_ORDER |
+| Quality review | Not in BLOCKED_BY_RISK_GATE or REJECT_RECOMMENDED | BLOCKED_QUALITY |
+| Live trading lock | ALPACA_MODE must be 'paper' | BLOCKED_LIVE_MODE |
+| Data quality | Intel readiness > 50 (warning only) | LOW_INTEL (warning) |
+
+### Execution-Time Revalidation
+
+Before submitting to Alpaca, `paper_execution_revalidator.py` runs a final check:
+
+| Check | Action |
+|-------|--------|
+| Market session (closed/premarket/afterhours) | Delay until regular hours |
+| Recommendation staleness (vs strategy-specific threshold) | Delay or downgrade |
+| Approval staleness | Delay if approved too long ago |
+| Price drift from proposed entry | Warn or block if drift > threshold |
+| Material changes since approval | Require re-approval |
+
+Freshness thresholds match strategy timeframe:
+
+| Strategy Type | Staleness Threshold |
+|--------------|-------------------|
+| Scalp / gap_and_go | 30 minutes |
+| Momentum / day trade | 60 minutes |
+| Swing / swing_breakout | 3 days (4,320 min) |
+| Earnings / sector rotation | 5 days (7,200 min) |
+| Income / position / defense | 10 days (14,400 min) |
+
+Staleness is checked against `approved_at` (when user acted), not `created_at` (when system generated).
 
 ### Proposal Enrichment Packet
 
-Each proposal accumulates:
-- Technical levels (support/resistance/ATR)
-- Catalyst data (7 sources)
-- Indicator confluence (17 indicators)
-- Agent analysis results
+Each proposal accumulates before becoming submittable:
+- Entry/stop/target price levels (from ATR, confluence cache, or strategy rules)
+- Catalyst data and verification
+- Indicator confluence (17 technical indicators)
+- Agent analysis results (if reviewed)
 - Risk gate assessment
-- LLM review chunks (4 phases)
+- LLM review (when available)
+
+### In-Trade Position Management
+
+Once a position is open on Alpaca, `paper_trade_monitor.py` runs every 5 minutes during market hours and manages the position automatically:
+
+#### R-Multiple Trailing Stop System
+
+The R-multiple is the strategy's risk-to-reward framework in action. R = (current_price - entry) / initial_risk.
+
+| Condition | Action | Logic |
+|-----------|--------|-------|
+| R < 1.0 | Hold — stop at original level | Trade hasn't proven itself yet |
+| R >= 1.0 | Move stop to breakeven (entry price) | Eliminate risk — free trade |
+| R >= 1.5 | Lock 0.5R profit | Protect partial gain |
+| R >= 2.0 | Lock 1.0R profit | Protect full initial risk as profit |
+| R >= 3.0 | Lock 2.0R profit (tight trail) | Aggressive profit protection |
+| 80%+ of target move | Tighten stop to lock 65% of gain | Near-target protection |
+| Price >= target_1 | Close position at market | Take profit |
+
+**Stops only move UP, never down.** The trailing stop ratchets upward as the trade progresses.
+
+#### Dynamic Stop Adjustment Flow
+
+```
+paper_trade_monitor.py (every 5 min, market hours)
+    │
+    ├─ Fetch all positions from Alpaca
+    ├─ For each position:
+    │   ├─ Get current price from Alpaca
+    │   ├─ Get entry/stop/target from paper_trades DB
+    │   ├─ Compute R-multiple
+    │   ├─ Get current stop order from Alpaca
+    │   │
+    │   ├─ If target hit:
+    │   │   ├─ Cancel stop order on Alpaca
+    │   │   ├─ Close position at market
+    │   │   ├─ Update paper_trades: status=closed, exit_price, pnl, r_multiple
+    │   │   └─ Send Telegram alert: "TARGET HIT"
+    │   │
+    │   ├─ If R crossed a threshold:
+    │   │   ├─ Compute new stop price
+    │   │   ├─ If new_stop > current_stop:
+    │   │   │   ├─ Cancel old stop on Alpaca
+    │   │   │   ├─ Place new stop (GTC)
+    │   │   │   ├─ Update paper_trades.stop_loss
+    │   │   │   └─ Send Telegram alert: "Stop adjusted"
+    │   │   └─ Else: hold (stops never move down)
+    │   │
+    │   ├─ If near target (80%+ of move):
+    │   │   └─ Tighten stop to lock 65% of gain
+    │   │
+    │   └─ Update paper_trades: current_price, r_multiple, pnl
+    │
+    └─ Send consolidated Telegram alert if any actions taken
+```
+
+#### Alpaca Order Limitations
+
+Alpaca paper trading does not support simultaneous stop + limit sell on the same shares (OCA). The workaround:
+- Stop-loss is placed as a standing GTC order on Alpaca
+- Profit target is monitored by `paper_trade_monitor.py` every 5 minutes
+- When price reaches 80%+ of target move, the stop tightens aggressively to capture the gain
+- When target is hit, the stop is cancelled and position is closed at market
+
+#### Safety Net
+
+`paper_execution_sweep.py` runs every 5 minutes during market hours as a safety net:
+- Finds approved proposals with `paper_submit_state = NOT_SUBMITTED`
+- Calls `submit_paper()` for each
+- Catches edge cases: server restart during approval, network blip, etc.
+
+This is NOT the primary execution path — instant execution on approval is. The sweep is the fallback.
 
 ---
 
@@ -1321,6 +1463,8 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | Anthropic API credits depleted | Rebalance advisor (`portfolio_yaml_advisor.py`) cannot refresh | Requires credit top-up or local LLM fallback |
 | CIO daily duplicate decisions | Same symbol+action generated daily | 24h dedup gate added to `cio_decision_engine.py` |
 | StockTwits pre-market persistence | Was Telegram-only, invisible to dashboard | Fixed: now writes to `social_posts`, `trade_ai_scans`, `scalp_scan_results` |
+| Alpaca OCA limitation | Cannot hold stop + target orders simultaneously on same shares | Target monitored by `paper_trade_monitor.py` every 5 min; at 80% of move, stop tightens aggressively |
+| Paper trading validation period | 6-month window required before live trading | Live trading gate tracks 4 metrics; all currently FAIL |
 
 ---
 
@@ -1350,7 +1494,23 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 
 ---
 
-## 23. Production Readiness
+## 23. Automation Intent & Production Readiness
+
+### System Design Intent
+
+Trade AI v12 is designed as a **fully automated profit-seeking trading system** with professional risk controls. The system is intended to:
+
+1. **Discover** candidates automatically (screeners, incubator, social, news)
+2. **Evaluate** them through multi-strategy scoring, agent analysis, and LLM review
+3. **Propose** trades with computed entry/stop/target levels
+4. **Execute** instantly on approval — system determines order type and parameters
+5. **Manage** open positions automatically — trailing stops, profit targets, dynamic adjustment
+6. **Close** positions on target hit or stop trigger — no manual intervention required
+7. **Learn** from outcomes — feed P&L back to agent calibration and strategy scoring
+
+Human intervention points: proposal approval (go/no-go decision) and system configuration. Everything else is automated.
+
+Currently in **paper-only validation mode** (6-month validation window before live consideration).
 
 ### Live Trading Gate
 
