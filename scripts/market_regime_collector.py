@@ -93,6 +93,26 @@ def collect_scan_based_indicators(conn, snapshot_id):
     return indicators
 
 
+def collect_vix(snapshot_id):
+    """Fetch VIX from Yahoo Finance chart API."""
+    try:
+        import urllib.request
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=1d"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        resp = urllib.request.urlopen(req, timeout=10)
+        data = json.loads(resp.read())
+        vix = float(data["chart"]["result"][0]["meta"]["regularMarketPrice"])
+        signal = "extreme" if vix > 30 else ("high" if vix > 20 else ("normal" if vix > 14 else "low"))
+        return {
+            "indicator_id": _uid(), "snapshot_id": snapshot_id,
+            "indicator_key": "vix_close", "indicator_group": "volatility",
+            "value": round(vix, 2), "signal": signal,
+            "source_key": "yahoo_finance",
+        }
+    except Exception:
+        return None
+
+
 def collect_market_session(snapshot_id):
     """Collect market session indicator."""
     from market_session import current_market_session
@@ -136,6 +156,9 @@ def main():
     try:
         indicators = collect_scan_based_indicators(conn, snapshot_id)
         indicators.append(collect_market_session(snapshot_id))
+        vix_ind = collect_vix(snapshot_id)
+        if vix_ind:
+            indicators.append(vix_ind)
 
         if not dry_run:
             save_indicators(conn, indicators)

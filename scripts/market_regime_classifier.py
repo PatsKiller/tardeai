@@ -69,6 +69,19 @@ def classify(conn, snapshot_id=None):
     elif gap_vol.get("signal") == "low_vol":
         scores["low_volatility_grind"] += 2
 
+    # VIX
+    vix = indicators.get("vix_close", {})
+    if vix.get("signal") == "extreme":
+        scores["high_volatility"] += 3; scores["risk_off"] += 2
+    elif vix.get("signal") == "high":
+        scores["high_volatility"] += 2; scores["risk_off"] += 1
+    elif vix.get("signal") == "low":
+        scores["low_volatility_grind"] += 2; scores["risk_on_trend"] += 1
+    elif vix.get("signal") == "normal":
+        scores["risk_on_trend"] += 1
+    elif not vix:
+        missing.append("no_vix_data")
+
     # Source health
     finviz = indicators.get("finviz_health", {})
     if finviz.get("signal") == "risk_off":
@@ -134,6 +147,43 @@ def save_snapshot(conn, snapshot, dry_run=True):
     conn.commit()
 
 
+def _get_previous_regime(conn):
+    """Get the most recent regime label before the current run."""
+    cur = conn.cursor()
+    cur.execute("SELECT regime_label FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1")
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def _alert_regime_change(old_regime, snapshot):
+    """Send Telegram alert when regime changes."""
+    try:
+        from alert_dispatcher import dispatch_alert
+        new = snapshot["regime_label"]
+        vol = snapshot.get("volatility_state", "?")
+        trend = snapshot.get("trend_state", "?")
+        breadth = snapshot.get("breadth_state", "?")
+        conf = snapshot.get("confidence", 0)
+        vix_input = snapshot.get("inputs", {}).get("vix_close", "--")
+
+        message = (
+            f"*Market Regime Changed*\n\n"
+            f"{old_regime} → *{new}* (conf={conf:.0%})\n\n"
+            f"Volatility: {vol}\n"
+            f"Trend: {trend}\n"
+            f"Breadth: {breadth}\n"
+            f"VIX signal: {vix_input}\n\n"
+            f"Review open positions for regime alignment."
+        )
+        dispatch_alert(
+            "regime_change", f"Regime: {old_regime} → {new}",
+            message, tier="ALERT", source="market_regime_classifier",
+            dedupe_scope="global",
+        )
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Market Regime Classifier")
     parser.add_argument("--dry-run", action="store_true")
@@ -159,7 +209,11 @@ def main():
 
         snapshot = classify(conn)
         if not dry_run:
+            # Check for regime change before saving
+            prev = _get_previous_regime(conn)
             save_snapshot(conn, snapshot)
+            if prev and prev != snapshot["regime_label"]:
+                _alert_regime_change(prev, snapshot)
 
         out = {"mode": "dry_run" if dry_run else "applied", **snapshot}
         if args.json:
