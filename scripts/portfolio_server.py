@@ -1015,6 +1015,16 @@ def handle_clear_pending(body: dict) -> tuple:
 
 # ── HTTP Handler ──────────────────────────────────────────────────────────────
 
+# ── API Authentication ───────────────────────────────────────────────────────
+# Set API_AUTH_TOKEN in .env to enable. If not set, auth is disabled (open access).
+# When enabled, all /api/* requests require: Authorization: Bearer <token>
+# Static files (/v2/, /data/, /reports/) are exempt — no auth needed for frontend.
+API_AUTH_TOKEN = os.environ.get("API_AUTH_TOKEN", "").strip()
+API_AUTH_ENABLED = bool(API_AUTH_TOKEN)
+# Paths exempt from auth (frontend, static files, health check)
+AUTH_EXEMPT_PREFIXES = ("/v2/", "/data/", "/reports/", "/assets/", "/api/health")
+
+
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
@@ -1023,14 +1033,49 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         if "/api/" in str(path):
             print(f"  [server] {fmt % args}")
 
+    def _check_auth(self) -> bool:
+        """Validate API authentication. Returns True if authorized."""
+        if not API_AUTH_ENABLED:
+            return True
+        parsed = urlparse(self.path)
+        path = parsed.path
+        # Exempt static/frontend paths
+        for prefix in AUTH_EXEMPT_PREFIXES:
+            if path.startswith(prefix):
+                return True
+        # Only check auth for /api/ paths
+        if not path.startswith("/api/"):
+            return True
+        # Check Authorization header
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header == f"Bearer {API_AUTH_TOKEN}":
+            return True
+        # Check query param fallback (for browser testing)
+        query = parse_qs(urlparse(self.path).query)
+        if query.get("token", [None])[0] == API_AUTH_TOKEN:
+            return True
+        return False
+
+    def _send_auth_error(self):
+        """Send 401 Unauthorized response."""
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps({"ok": False, "error": "Unauthorized. Set Authorization: Bearer <token> header."}).encode())
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_GET(self):
+        if not self._check_auth():
+            self._send_auth_error()
+            return
+
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
@@ -1346,6 +1391,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(404, f"Not found: {path}")
 
     def do_POST(self):
+        if not self._check_auth():
+            self._send_auth_error()
+            return
+
         parsed = urlparse(self.path)
         path = parsed.path
 

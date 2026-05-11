@@ -10095,6 +10095,130 @@ def _market_intelligence_summary():
     }
 
 
+# ── Live Trading Gate Validation ──────────────────────────────────────────
+
+def _live_trading_gate():
+    """GET /api/v2/live-trading-gate — Progress toward live trading authorization.
+
+    Requirements: 55% win rate, 1.3 profit factor, 6-month paper validation,
+    30+ closed trades minimum sample size.
+    """
+    REQUIRED_WIN_RATE = 0.55
+    REQUIRED_PROFIT_FACTOR = 1.3
+    REQUIRED_MONTHS = 6
+    REQUIRED_SAMPLE = 30
+
+    # Paper trade stats
+    stats = _db_query("""
+        SELECT COUNT(*) as total,
+               COUNT(*) FILTER (WHERE status='closed') as closed,
+               COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
+               COUNT(*) FILTER (WHERE status='closed' AND pnl <= 0) as losses,
+               COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) as gp,
+               COALESCE(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0) as gl,
+               MIN(created_at) as first_trade,
+               MAX(close_date) as last_close
+        FROM paper_trades
+    """, fetch="one") or {}
+
+    closed = stats.get("closed", 0) or 0
+    wins = stats.get("wins", 0) or 0
+    losses = stats.get("losses", 0) or 0
+    gp = float(stats.get("gp", 0) or 0)
+    gl = float(stats.get("gl", 0) or 0)
+    win_rate = round(wins / max(closed, 1), 3)
+    profit_factor = round(gp / max(gl, 0.01), 3)
+
+    # Time in paper mode
+    first_trade = stats.get("first_trade")
+    months_active = 0
+    if first_trade:
+        try:
+            from datetime import datetime as _dt
+            ft = _dt.fromisoformat(str(first_trade).replace("+00:00", "+00:00"))
+            months_active = round((datetime.now(timezone.utc) - ft.astimezone(timezone.utc)).days / 30, 1)
+        except Exception:
+            pass
+
+    # Gate checks
+    gates = [
+        {
+            "gate": "win_rate",
+            "label": f"Win Rate >= {REQUIRED_WIN_RATE*100:.0f}%",
+            "required": REQUIRED_WIN_RATE,
+            "current": win_rate,
+            "passed": win_rate >= REQUIRED_WIN_RATE and closed >= REQUIRED_SAMPLE,
+            "detail": f"{win_rate*100:.1f}% ({wins}W / {losses}L)",
+        },
+        {
+            "gate": "profit_factor",
+            "label": f"Profit Factor >= {REQUIRED_PROFIT_FACTOR}",
+            "required": REQUIRED_PROFIT_FACTOR,
+            "current": profit_factor,
+            "passed": profit_factor >= REQUIRED_PROFIT_FACTOR and closed >= REQUIRED_SAMPLE,
+            "detail": f"{profit_factor:.2f} (${gp:,.0f} gross profit / ${gl:,.0f} gross loss)",
+        },
+        {
+            "gate": "sample_size",
+            "label": f"Minimum {REQUIRED_SAMPLE} Closed Trades",
+            "required": REQUIRED_SAMPLE,
+            "current": closed,
+            "passed": closed >= REQUIRED_SAMPLE,
+            "detail": f"{closed} closed ({stats.get('total', 0)} total)",
+        },
+        {
+            "gate": "time_in_paper",
+            "label": f"Minimum {REQUIRED_MONTHS} Months Paper Trading",
+            "required": REQUIRED_MONTHS,
+            "current": months_active,
+            "passed": months_active >= REQUIRED_MONTHS,
+            "detail": f"{months_active} months" + (f" (started {str(first_trade)[:10]})" if first_trade else ""),
+        },
+    ]
+
+    all_passed = all(g["passed"] for g in gates)
+
+    # Projections
+    daily_rate = closed / max(months_active * 30, 1) if months_active else 0
+    trades_needed = max(0, REQUIRED_SAMPLE - closed)
+    days_to_sample = round(trades_needed / max(daily_rate, 0.1))
+    months_remaining = max(0, REQUIRED_MONTHS - months_active)
+
+    return {
+        "status": "AUTHORIZED" if all_passed else "PAPER_ONLY",
+        "all_gates_passed": all_passed,
+        "gates": gates,
+        "summary": {
+            "closed_trades": closed,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "months_active": months_active,
+            "gross_profit": gp,
+            "gross_loss": gl,
+        },
+        "projections": {
+            "daily_trade_rate": round(daily_rate, 2),
+            "trades_to_sample_gate": trades_needed,
+            "est_days_to_sample": days_to_sample,
+            "months_to_time_gate": round(months_remaining, 1),
+        },
+        "ha_risks": [
+            {"risk": "Single server deployment", "impact": "Total system outage if server fails", "mitigation": "7-day rolling pg_dump backups, documented restore guide"},
+            {"risk": "No API authentication", "impact": "Unauthorized access if network exposed", "mitigation": "Auth layer added (API_AUTH_TOKEN in .env), internal-only network"},
+            {"risk": "Single Ollama instance", "impact": "LLM enrichment stops if GPU fails", "mitigation": "Cloud fallback chain (xAI → Anthropic → OpenAI)"},
+            {"risk": "Anthropic API credits depleted", "impact": "Rebalance advisor, cloud fallback unavailable", "mitigation": "Local LLM covers most use cases, alert fires on depletion"},
+            {"risk": "Finviz cookie expiry", "impact": "Screener returns 0 results", "mitigation": "Dual auth (cookie + API token), health check alerts"},
+        ],
+        "performance_budget": {
+            "api_response_p95_ms": 500,
+            "pipeline_completion_window": "07:00 - 08:00 ET (morning cascade)",
+            "llm_enrichment_budget": "120s total (5 sections)",
+            "screener_full_run": "10:00 AM + 4:00 PM weekdays",
+            "overnight_batch": "8:00 PM - 10:00 PM",
+        },
+    }
+
+
 # ── Feedback loop dashboard ───────────────────────────────────────────────
 
 def _feedback_dashboard():
@@ -10323,6 +10447,7 @@ ROUTES = {
     "/api/v2/command": lambda: _morning_command(),
     "/api/v2/global-alerts": lambda: _global_alerts(),
     "/api/v2/feedback-dashboard": lambda: _feedback_dashboard(),
+    "/api/v2/live-trading-gate": lambda: _live_trading_gate(),
     "/api/v2/portfolio/intelligence-feed": lambda: _holdings_intelligence(),
     "/api/v2/market-intelligence": lambda: _market_intelligence_summary(),
     "/api/v2/strategy-rotations": lambda: {"rotations": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM strategy_rotation_recommendations ORDER BY created_at DESC LIMIT 20") or [])]},
