@@ -195,9 +195,48 @@ Cron: */5 20-23 * * 1-5  process_watchlist_agent_jobs.py --limit 25
 
 ### Recommendations for Phase 1
 
-1. **Add flock guard to watchlist cron** to prevent concurrent accumulation
-2. **Reduce cron frequency** during evening hours (*/15 instead of */5)
+1. ~~**Add flock guard to watchlist cron**~~ — Done in Phase 0C
+2. **Reduce cron frequency** during evening hours (*/15 instead of */5) — optional, flock handles it
 3. **No model changes needed** — qwen3:14b performance is normal at 9.9 tok/s
 4. **`think:false` is working** — no `/no_think` prefix needed in prompts
 5. **Anthropic billing** should be resolved before relying on Claude as fallback
 6. **Grok fallback is functioning** and keeping the system operational during queue saturation
+
+## Phase 0C — Cron Concurrency Guard — 2026-05-11 21:01 ET
+
+### Change: flock guard on all process_watchlist_agent_jobs.py cron entries
+
+**Lock file:** `/tmp/tradeai_watchlist_agent_jobs.lock`
+**Mechanism:** `flock -n -E 99` (non-blocking, exit 99 on conflict)
+**Skip logging:** On conflict, writes timestamped `[flock] skipped` to `logs/watchlist_agent_jobs.log`
+
+### Cron entries modified (4 of 4)
+
+| Schedule | Hours | Limit | Status |
+|----------|-------|-------|--------|
+| `*/15 6-19 * * 1-5` | Market hours | --limit 10 | flock guarded |
+| `*/5 20-23 * * 1-5` | Evening | --limit 25 | flock guarded |
+| `*/5 0-5 * * 2-6` | Overnight | --limit 25 | flock guarded |
+| `*/10 * * * 0,6` | Weekend | --limit 15 | flock guarded |
+
+### Crontab backup
+- Pre-change backup: `docs/v4_1_discovery/crontab_pre_phase0c.txt`
+- Also at: `/tmp/crontab_backup_20260511_phase0c.txt`
+
+### Flock contention test: PASSED
+- First lock acquired → second flock correctly returned exit code 99
+- Skip logging confirmed functional
+
+### Validation
+- `crontab -l | grep process_watchlist_agent` — all 4 entries show `flock -n -E 99`
+- No overlapping agent processes observed after installation
+- `system-health`: `local.available=true`, `latency=0.001s`
+- `gpu-status`: qwen3:14b resident, 9.94 GB VRAM used
+- Safety: `ALPACA_MODE=paper`, `LLM_DISABLE_LIVE_EXECUTION=true`, holdings $1,191,456
+
+### What was NOT changed
+- No model routing changes
+- No model pulls
+- No cron frequency changes (still */5 evening, */15 market hours)
+- No --limit reductions
+- No broker, holdings, or execution changes
