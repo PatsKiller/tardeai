@@ -120,7 +120,7 @@ def monitor(dry_run=False):
         # Get DB trade record
         cur.execute("""
             SELECT id, stop_loss, target_1, strategy_id, entry_price,
-                   max_favorable_excursion, max_adverse_excursion
+                   max_favorable_excursion, max_adverse_excursion, updated_at
             FROM paper_trades WHERE symbol = %s AND status = 'open'
             ORDER BY created_at DESC LIMIT 1
         """, [sym])
@@ -130,6 +130,19 @@ def monitor(dry_run=False):
                             "reason": "Position on Alpaca but no DB record",
                             "current": current, "pnl": round(pnl, 2), "pnl_pct": round(pnl_pct, 1)})
             continue
+
+        # ── Gap 7 fix: Catch-up detection ──
+        _last_update = trade.get('updated_at')
+        if _last_update:
+            try:
+                _lu_dt = _last_update if hasattr(_last_update, 'timestamp') else datetime.fromisoformat(str(_last_update))
+                if _lu_dt.tzinfo is None:
+                    _lu_dt = _lu_dt.replace(tzinfo=timezone.utc)
+                _gap_min = (datetime.now(timezone.utc) - _lu_dt).total_seconds() / 60
+                if _gap_min > 10:
+                    log.warning(f"[{sym}] CATCH-UP: last update was {_gap_min:.0f}min ago — forcing full re-evaluation")
+            except Exception:
+                pass
 
         stop = _f(trade.get('stop_loss')) or 0
         target = _f(trade.get('target_1')) or 0
@@ -195,7 +208,12 @@ def monitor(dry_run=False):
                     action = "tighten_near_target"
                     reason = f"NEAR TARGET ({pct_to_target*100:.0f}% of move) → tight stop ${new_stop:.2f} to lock gains"
 
-        # ── R-MULTIPLE TRAILING STOP (the strategy's R:R in action) ──
+        # ── R-MULTIPLE TRAILING STOP ──
+        # Design decision: Manual R-based stops (not Alpaca native trailing_percent).
+        # R-multiple logic requires custom thresholds (1R=breakeven, 1.5R=lock 0.5R, etc.)
+        # that can't be expressed as a single trailing percentage. Trade-off: 5-min gap
+        # between adjustments vs. native trailing. Acceptable because R-logic is superior
+        # to fixed-percent trailing for strategy-aware risk management.
         elif r_mult >= 3.0:
             new_stop = round(db_entry + risk * 2.0, 2)
             reason = f"R={r_mult:.1f} → lock 2.0R profit (stop ${new_stop:.2f})"

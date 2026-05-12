@@ -34,6 +34,12 @@ NEGATIVE_KEYWORDS = [
     'secondary offering', 'shelf registration', 'class action',
 ]
 
+# Gap 9 fix: Critical news triggers auto-close, not just alert
+CRITICAL_NEWS_KEYWORDS = [
+    'sec halt', 'trading halt', 'bankruptcy', 'going concern',
+    'sec investigation', 'fraud', 'class action', 'delisted',
+]
+
 DEDUP_MINUTES = 30
 
 
@@ -53,13 +59,39 @@ def get_open_trades(conn):
 
 
 def get_current_price(conn, symbol):
+    """Get current price with staleness check. Falls back to Alpaca quote if stale."""
     cur = conn.cursor()
     cur.execute("""
-        SELECT price FROM trade_ai_scans
+        SELECT price, scanned_at FROM trade_ai_scans
         WHERE symbol = %s ORDER BY scanned_at DESC LIMIT 1
     """, [symbol])
     row = cur.fetchone()
-    return float(row[0]) if row else None
+    if row and row[0]:
+        price, scanned_at = float(row[0]), row[1]
+        # Check freshness — reject if older than 5 minutes
+        if scanned_at:
+            age_sec = (datetime.now(timezone.utc) - scanned_at.replace(tzinfo=timezone.utc)
+                       if scanned_at.tzinfo is None else
+                       datetime.now(timezone.utc) - scanned_at).total_seconds()
+            if age_sec <= 300:
+                return price
+            log.warning(f"[{symbol}] Scan price is {age_sec/60:.0f}min old — trying Alpaca quote")
+    # Fallback: Alpaca latest trade
+    try:
+        import os, requests
+        _key = os.getenv('ALPACA_API_KEY', '')
+        _sec = os.getenv('ALPACA_SECRET_KEY', '')
+        if _key:
+            r = requests.get(f'https://data.alpaca.markets/v2/stocks/{symbol}/trades/latest',
+                             headers={'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}, timeout=5)
+            if r.status_code == 200:
+                p = float(r.json().get('trade', {}).get('p', 0))
+                if p > 0:
+                    return p
+    except Exception as _e:
+        log.warning(f"[{symbol}] Alpaca quote fallback failed: {_e}")
+    # Last resort: return scan price even if stale
+    return float(row[0]) if row and row[0] else None
 
 
 def check_negative_news(conn, symbol, since):
@@ -208,11 +240,41 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
             send_telegram(f"🟢 {msg}", dry_run, no_telegram)
             alerts.append(('EXTENDED_PROFIT', symbol))
 
-    # ── Negative News ──
+    # ── Negative News (Gap 9 fix: auto-close on critical news) ──
     if entry_time:
         neg_headlines = check_negative_news(conn, symbol, entry_time)
         if neg_headlines:
-            if not already_alerted(conn, tid, 'NEGATIVE_NEWS'):
+            # Check for CRITICAL news that warrants auto-close
+            critical_hits = [h for h in neg_headlines
+                             if any(kw in h.lower() for kw in CRITICAL_NEWS_KEYWORDS)]
+            if critical_hits and not dry_run:
+                msg = f"CRITICAL NEWS AUTO-CLOSE: {symbol}: {critical_hits[0]}"
+                log.critical(msg)
+                insert_alert(conn, tid, symbol, sid, 'CRITICAL_NEWS_CLOSE', 'CRITICAL',
+                             f'{symbol} auto-closed on critical news', msg,
+                             {'headlines': critical_hits[:3], 'auto_closed': True})
+                insert_curation_event(conn, tid, symbol, sid, 'Risk', 'AUTO_CLOSE_CRITICAL_NEWS',
+                                      msg, {'headlines': critical_hits[:3]})
+                # Auto-close the position on Alpaca
+                try:
+                    import os, requests
+                    _key = os.getenv('ALPACA_API_KEY', '')
+                    _sec = os.getenv('ALPACA_SECRET_KEY', '')
+                    _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
+                    requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
+                                    headers=_headers, timeout=10)
+                    cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
+                        exit_reason=%s, closed_at=NOW(), closed_via='auto_close_critical_news',
+                        outcome_verdict='LOSS', notes=COALESCE(notes,'')||%s
+                        WHERE id=%s""",
+                        [price, f'critical_news: {critical_hits[0][:100]}',
+                         f' | Auto-closed on critical news: {critical_hits[0][:100]}', tid])
+                    log.info(f"[{symbol}] Position auto-closed on critical news")
+                except Exception as _ce:
+                    log.error(f"[{symbol}] Auto-close failed: {_ce}")
+                send_telegram(f"🛑 {msg}", dry_run, no_telegram)
+                alerts.append(('CRITICAL_NEWS_CLOSE', symbol))
+            elif not already_alerted(conn, tid, 'NEGATIVE_NEWS'):
                 msg = f"NEGATIVE NEWS for {symbol}: {neg_headlines[0]}"
                 insert_alert(conn, tid, symbol, sid, 'NEGATIVE_NEWS', 'WARN',
                              f'{symbol} negative news', msg,

@@ -241,58 +241,121 @@ class AlpacaPaperAdapter:
 
         log.info(f"[alpaca] {symbol}: order_type={('market' if use_market else 'limit')} reason={order_type_reason}")
 
+        # ── Gap 4 fix: Market hours gate ──
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            import zoneinfo
+            _et = _dt.now(zoneinfo.ZoneInfo("America/New_York"))
+            _wd = _et.weekday()  # 0=Mon, 6=Sun
+            _h, _m = _et.hour, _et.minute
+            _market_open = (_wd < 5 and ((_h == 9 and _m >= 30) or (10 <= _h < 16)))
+            if not _market_open:
+                log.warning(f"[alpaca] BLOCKED: {symbol} submission outside market hours ({_et.strftime('%H:%M %Z %A')})")
+                return {'status': 'blocked', 'reason': f'outside_market_hours ({_et.strftime("%H:%M %Z %A")})'}
+        except Exception as _mhe:
+            log.warning(f"[alpaca] Market hours check failed ({_mhe}), proceeding cautiously")
+
         # Submit order (bracket if limit, simple + separate stop if market)
         try:
             if use_market:
-                # Market order — immediate fill. Set stop separately after fill.
                 order_data = {
-                    'symbol': symbol,
-                    'qty': str(shares),
-                    'side': 'buy',
-                    'type': 'market',
-                    'time_in_force': 'day',
+                    'symbol': symbol, 'qty': str(shares), 'side': 'buy',
+                    'type': 'market', 'time_in_force': 'day',
                 }
             else:
-                # Limit order with bracket — fills when price reaches entry
                 order_data = {
-                    'symbol': symbol,
-                    'qty': str(shares),
-                    'side': 'buy',
-                    'type': 'limit',
-                    'time_in_force': 'day',
-                    'limit_price': str(entry_price),
-                    'order_class': 'bracket',
+                    'symbol': symbol, 'qty': str(shares), 'side': 'buy',
+                    'type': 'limit', 'time_in_force': 'day',
+                    'limit_price': str(entry_price), 'order_class': 'bracket',
                     'stop_loss': {'stop_price': str(stop_price)},
                     'take_profit': {'limit_price': str(target_price)},
                 }
             result = self._api_post('/v2/orders', order_data)
             order_id = result.get('id', '')
-            fill_price = entry_price  # default to proposed
 
-            # For market orders, set stop loss separately after fill
-            if use_market:
-                import time as _time
-                _time.sleep(2)  # brief wait for fill
+            # ── Gap 1 fix: Fill verification loop ──
+            import time as _time
+            fill_price = entry_price
+            fill_status = result.get('status', 'new')
+            filled_qty = 0
+            for _attempt in range(8):  # up to ~20 sec
+                _time.sleep(1 + _attempt * 0.5)
                 try:
-                    # Check fill
                     fill_check = self._api_get(f'/v2/orders/{order_id}')
-                    if fill_check.get('status') == 'filled':
+                    fill_status = fill_check.get('status', '')
+                    filled_qty = int(float(fill_check.get('filled_qty', 0)))
+                    if fill_status == 'filled':
                         fill_price = float(fill_check.get('filled_avg_price', entry_price))
-                        log.info(f"[alpaca] {symbol} FILLED @ ${fill_price:.2f}")
-                    # Place stop loss
-                    stop_order = {
-                        'symbol': symbol, 'qty': str(shares), 'side': 'sell',
-                        'type': 'stop', 'stop_price': str(stop_price),
-                        'time_in_force': 'gtc',
-                    }
-                    self._api_post('/v2/orders', stop_order)
-                    log.info(f"[alpaca] {symbol} STOP set @ ${stop_price}")
-                except Exception as stop_err:
-                    log.warning(f"[alpaca] {symbol} stop placement failed: {stop_err}")
+                        log.info(f"[alpaca] {symbol} FILLED @ ${fill_price:.2f} ({filled_qty} shares)")
+                        break
+                    if fill_status in ('canceled', 'cancelled', 'rejected', 'expired'):
+                        log.error(f"[alpaca] {symbol} order {fill_status} — aborting")
+                        return {'status': 'error', 'reason': f'order_{fill_status}', 'order_id': order_id}
+                    # ── Gap 3 fix: Partial fill rejection ──
+                    if fill_status == 'partially_filled':
+                        log.error(f"[alpaca] {symbol} PARTIAL FILL: {filled_qty}/{shares} — canceling remainder")
+                        try:
+                            self._api_delete(f'/v2/orders/{order_id}')
+                        except Exception:
+                            pass
+                        if filled_qty > 0:
+                            # Close the partial position immediately
+                            try:
+                                self._api_delete(f'/v2/positions/{symbol}')
+                                log.info(f"[alpaca] {symbol} partial position closed")
+                            except Exception:
+                                pass
+                        return {'status': 'error', 'reason': f'partial_fill_rejected ({filled_qty}/{shares})'}
+                except Exception as _fce:
+                    log.warning(f"[alpaca] Fill check attempt {_attempt}: {_fce}")
+            else:
+                # Timed out waiting for fill
+                if not use_market:
+                    # Limit order still pending — that's OK, monitor will track it
+                    log.info(f"[alpaca] {symbol} limit order pending (not yet filled)")
+                    fill_status = 'pending_new'
+                else:
+                    log.error(f"[alpaca] {symbol} market order fill timeout — checking final state")
+                    try:
+                        _final = self._api_get(f'/v2/orders/{order_id}')
+                        fill_status = _final.get('status', 'unknown')
+                        if fill_status != 'filled':
+                            log.error(f"[alpaca] {symbol} final status={fill_status} — canceling")
+                            self._api_delete(f'/v2/orders/{order_id}')
+                            return {'status': 'error', 'reason': f'fill_timeout_status_{fill_status}'}
+                        fill_price = float(_final.get('filled_avg_price', entry_price))
+                        filled_qty = int(float(_final.get('filled_qty', 0)))
+                    except Exception:
+                        return {'status': 'error', 'reason': 'fill_verification_failed'}
 
-            # Record in paper_trades
-            actual_entry = fill_price if use_market else entry_price
-            # Get market regime context at entry
+            # ── Gap 2 fix: Atomic stop for market orders ──
+            if use_market and fill_status == 'filled':
+                stop_placed = False
+                for _sa in range(3):
+                    try:
+                        stop_order = {
+                            'symbol': symbol, 'qty': str(filled_qty or shares), 'side': 'sell',
+                            'type': 'stop', 'stop_price': str(stop_price), 'time_in_force': 'gtc',
+                        }
+                        self._api_post('/v2/orders', stop_order)
+                        log.info(f"[alpaca] {symbol} STOP set @ ${stop_price}")
+                        stop_placed = True
+                        break
+                    except Exception as _se:
+                        log.warning(f"[alpaca] {symbol} stop attempt {_sa}: {_se}")
+                        _time.sleep(1)
+                if not stop_placed:
+                    # CRITICAL: position is unhedged — close it immediately
+                    log.error(f"[alpaca] CRITICAL: {symbol} stop placement FAILED — closing unhedged position")
+                    try:
+                        self._api_delete(f'/v2/positions/{symbol}')
+                    except Exception:
+                        pass
+                    return {'status': 'error', 'reason': 'stop_placement_failed_position_closed'}
+
+            # Record in paper_trades — only if fill confirmed or limit pending
+            actual_entry = fill_price if (use_market and fill_status == 'filled') else entry_price
+            actual_shares = filled_qty if filled_qty > 0 else shares
             _regime, _vix = None, None
             try:
                 cur.execute("SELECT regime_label FROM market_regime_snapshots ORDER BY created_at DESC LIMIT 1")
@@ -303,31 +366,36 @@ class AlpacaPaperAdapter:
                 if _vr: _vix = float(_vr[0])
             except Exception:
                 pass
+            _db_status = 'open' if fill_status == 'filled' else 'pending'
             cur.execute("""
                 INSERT INTO paper_trades (strategy_id, symbol, account, shares, dollar_size,
                     stop_loss, target_1, planned_entry, entry_price, dollar_risk,
                     broker_order_id, broker_status, order_type,
                     market_regime, vix_at_entry,
-                    status, opened_via, logged_by, risk_gate_result)
+                    status, opened_via, logged_by, risk_gate_result,
+                    notes)
                 VALUES (%s, %s, 'ALPACA_PAPER', %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s,
-                    %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED')
-            """, [strategy_id, symbol, shares, round(shares * actual_entry, 2),
+                    %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED',
+                    %s)
+            """, [strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
                   stop_price, target_price, entry_price, actual_entry,
-                  round(abs(actual_entry - stop_price) * shares, 2),
-                  order_id, result.get('status', 'new'),
+                  round(abs(actual_entry - stop_price) * actual_shares, 2),
+                  order_id, fill_status,
                   'market' if use_market else 'bracket',
-                  _regime, _vix,
-                  'open' if use_market and result.get('status') == 'accepted' else 'pending'])
+                  _regime, _vix, _db_status,
+                  f"Order type: {order_type_reason}. Fill verified: {fill_status}. "
+                  f"Shares: {actual_shares}. Stop: ${stop_price} ({'atomic bracket' if not use_market else 'placed after fill'})."])
             conn.commit()
 
-            log.info(f"[alpaca] Order submitted: {symbol} {shares}sh @ ${actual_entry:.2f} "
-                     f"({'market' if use_market else 'limit'}) (order {order_id})")
+            log.info(f"[alpaca] Order complete: {symbol} {actual_shares}sh @ ${actual_entry:.2f} "
+                     f"({'market' if use_market else 'limit'}) status={_db_status} (order {order_id})")
             return {'status': 'submitted', 'order_id': order_id, 'symbol': symbol,
                     'order_type': 'market' if use_market else 'limit',
-                    'reason': order_type_reason, 'fill_price': fill_price if use_market else None}
+                    'fill_status': fill_status, 'fill_price': fill_price if fill_status == 'filled' else None,
+                    'reason': order_type_reason}
         except Exception as e:
             log.error(f"[alpaca] Order submission failed: {e}")
             return {'status': 'error', 'error': str(e)}
