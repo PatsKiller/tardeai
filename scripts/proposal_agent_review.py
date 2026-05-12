@@ -66,6 +66,23 @@ def _get_model_name():
         return None
 
 
+def _get_trade_history_context(symbol, strategy):
+    """Fetch past trade outcomes from RAG for this symbol/strategy."""
+    try:
+        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        results = get_rag_context(symbol=symbol, strategy_focus=strategy, limit=5)
+        # Filter to trade outcomes only
+        outcomes = [r for r in results if r.get('source_type') == 'trade_outcome']
+        if outcomes:
+            lines = []
+            for o in outcomes[:3]:
+                lines.append(f"  - {o.get('title', '')}")
+            return "PAST TRADE HISTORY (from system memory):\n" + "\n".join(lines)
+    except Exception:
+        pass
+    return ""
+
+
 def _build_agent_prompt(agent_name, proposal, technical, backtest):
     """Build review prompt for a specific agent."""
     symbol = proposal.get('symbol', '?')
@@ -102,6 +119,9 @@ Sample size: {backtest.get('sample_size', 0)}
 Win rate: {backtest.get('win_rate', 'N/A')}
 Similar setup: {backtest.get('similar_setup_summary', 'N/A')[:100]}"""
 
+    # Inject past trade history from RAG
+    history_context = _get_trade_history_context(symbol, strategy)
+
     base = f"""You are {agent_name}, reviewing a PAPER TRADE proposal for {symbol}.
 Strategy: {strategy}
 Entry: ${entry} | Stop: ${stop} | Target: ${target} | Shares: {shares}
@@ -111,6 +131,7 @@ Critic: {critic} — {critic_reasoning}
 Sector: {sector} | vs Sector: {vs_sector}%
 {tech_summary}
 {bt_summary}
+{history_context}
 """
 
     agent_instructions = {
