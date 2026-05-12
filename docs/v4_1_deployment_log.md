@@ -291,6 +291,45 @@ ps -ef | grep process_watchlist_agent_jobs.py | grep -v grep | wc -l
 - No cron frequency changes (still */5 evening, */15 market hours)
 - No broker, holdings, or execution changes
 
+## Phase 0E — Watchlist Agent Batch Tuning — 2026-05-11 22:15 ET
+
+### Reason
+Phase 0D set `--limit 10` with a 12-minute timeout cap. The watchlist agent still
+hit the timeout consistently — 10 jobs × ~2 min/job (including queue wait and Grok
+fallback) exceeds 12 minutes. Reducing to `--limit 5` targets ~10 minutes per batch.
+
+### Change
+All 4 `process_watchlist_agent_jobs.py` cron entries: `--limit 10` → `--limit 5`.
+
+| Schedule | Hours | Old limit | New limit |
+|----------|-------|-----------|-----------|
+| `*/15 6-19 * * 1-5` | Market hours | 10 | **5** |
+| `*/5 20-23 * * 1-5` | Evening | 10 | **5** |
+| `*/5 0-5 * * 2-6` | Overnight | 10 | **5** |
+| `*/10 * * * 0,6` | Weekend | 10 | **5** |
+
+### Preserved
+- `flock -n -E 99` — overlap prevention
+- `timeout 12m` — runtime cap
+- `[flock] skipped` logging (exit 99)
+- `[timeout]` logging (exit 124)
+- Cron frequencies unchanged
+
+### Crontab backup
+- `docs/v4_1_discovery/crontab_pre_phase0e.txt`
+
+### Monitoring
+```bash
+# Check for timeouts (should stop appearing with --limit 5)
+grep '\[timeout\]' logs/watchlist_agent_jobs.log | tail -10
+
+# Check for flock skips (expected during adjacent cron windows)
+grep '\[flock\]' logs/watchlist_agent_jobs.log | tail -10
+
+# Check process count
+ps -ef | grep process_watchlist_agent_jobs.py | grep -v grep | wc -l
+```
+
 ## Phase 1 Pilot — gemma3:27b BATCH_OVERNIGHT Test — 2026-05-11 22:00 ET
 
 ### Result: CONDITIONAL GO
