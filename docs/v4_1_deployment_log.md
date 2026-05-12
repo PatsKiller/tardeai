@@ -393,10 +393,48 @@ gemma3:27b was tested as a BATCH_OVERNIGHT model. Full report: `docs/v4_1_phase1
 # Run wrapper manually (outside market hours only)
 ./scripts/run_batch_overnight_gemma_pilot.sh
 
-# Or with more symbols
-./scripts/run_batch_overnight_gemma_pilot.sh --limit 5
+# Or with more symbols (max 3 in Phase 1C)
+./scripts/run_batch_overnight_gemma_pilot.sh --limit 3
 
 # Check results
 tail -50 logs/gemma_overnight_pilot.log
 curl -s http://localhost:7777/api/v2/gpu-status | python3 -m json.tool
 ```
+
+## Phase 1C — Controlled Expansion (2 symbols) — 2026-05-12 08:10 ET
+
+### Script fix
+- `--limit` argument parsing was broken (only captured `$1`, dropped value)
+- Replaced with proper while/case parser supporting `--limit N`
+- Added `MAX_LIMIT=3` enforcement (hard cap for Phase 1C)
+- Default remains `--limit 1`
+
+### Pilot run: --limit 2
+
+| Metric | Value |
+|--------|-------|
+| Symbols classified | 2 |
+| Runtime | 2 min 42 sec |
+| Per-symbol time | ~1 min 21 sec avg |
+| gemma3-overnight VRAM | 13.64 GB GPU + 4.79 GB CPU |
+| Pilot exit code | 0 |
+| qwen3 restore | ok |
+| nomic restore | ok |
+
+### Post-run validation: ALL PASSED
+- GPU: qwen3:14b (9.4 GB) + nomic-embed-text (0.54 GB)
+- verify_llm_providers.py: Local usable=True
+- ALPACA_MODE=paper, LLM_DISABLE_LIVE_EXECUTION=true
+- Holdings: $1,191,948
+
+### Limit 3 recommendation: YES
+- 2-symbol at 2m42s leaves wide margin under 10m timeout
+- Extrapolated 3-symbol: ~3m13s
+- GPU lifecycle clean on both 1-symbol and 2-symbol runs
+
+### What was NOT changed
+- No cron entries added or modified
+- No .env routing changes (BATCH_OVERNIGHT not set)
+- No changes to STANDARD, REALTIME, EMBEDDING, MEDIA_CONTENT, CRITICAL_CLOUD
+- No broker, holdings, or execution changes
+- Full report: `docs/v4_1_phase1c_controlled_expansion_report.md`
