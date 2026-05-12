@@ -116,7 +116,7 @@ Target: ${target:.2f}
 Exit: ${exit_p:.2f}
 P&L: ${pnl:+.2f}
 R multiple: {f'{r_mult:.2f}' if r_mult else 'N/A'}
-Catalyst: {t.get('catalyst_at_entry', 'None')[:100]}
+Catalyst: {(t.get('catalyst_at_entry') or 'None')[:100]}
 Catalyst verified: {t.get('catalyst_verified', False)}
 RVOL at entry: {t.get('rvol_at_entry', 'N/A')}
 Opened via: {t.get('opened_via', 'N/A')}

@@ -239,6 +239,177 @@ function TradeExpansion({ trade }: { trade: any }) {
   )
 }
 
+// ── Professional Journal Entry (closed trade detail) ─────────────────────
+function JournalEntry({ tradeId }: { tradeId: number }) {
+  const [detail, setDetail] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/v2/journal/trade-detail/${tradeId}`).then(r => r.json())
+      .then(d => { if (d.ok) setDetail(d) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [tradeId])
+
+  if (loading) return <div style={{ padding: 16, color: 'var(--text3)', fontSize: 11 }}>Loading journal entry...</div>
+  if (!detail) return <div style={{ padding: 16, color: 'var(--red)', fontSize: 11 }}>Could not load trade detail</div>
+
+  const cls = detail.classification || {}
+  const timing = detail.timing || {}
+  const tech = detail.technicals_at_entry || {}
+  const risk = detail.risk_execution || {}
+  const narr = detail.narrative || {}
+  const review = narr.journal_review || {}
+  const thesis = narr.thesis_outcome || {}
+  const llm = narr.llm_analysis || {}
+  const critiques = detail.agent_critiques || []
+  const riskActions = detail.risk_actions || []
+
+  const secLbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, marginTop: 14 }
+  const kvStyle: React.CSSProperties = { fontSize: 11, color: '#E2E8F0' }
+  const kvLbl: React.CSSProperties = { fontSize: 9, color: '#64748B', textTransform: 'uppercase' }
+
+  return (
+    <div style={{ padding: '16px 20px', background: '#0B1120' }}>
+      {/* ── Classification ── */}
+      <div style={secLbl}>TRADE CLASSIFICATION</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, padding: '8px 12px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }}>
+        {[
+          ['Direction', cls.direction?.toUpperCase()],
+          ['Strategy', cls.strategy],
+          ['Setup', cls.setup],
+          ['Trade Type', cls.intended_type],
+          ['Day', cls.day_of_week],
+          ['Time', cls.time_of_day?.replace('_', ' ')],
+          ['Regime', cls.market_regime],
+        ].map(([l, v]) => (
+          <div key={l as string}><div style={kvLbl}>{l}</div><div style={kvStyle}>{v || '—'}</div></div>
+        ))}
+      </div>
+
+      {/* ── Timing ── */}
+      <div style={secLbl}>TIMING</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '8px 12px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }}>
+        {[
+          ['Entry', timing.entry_time ? new Date(timing.entry_time).toLocaleString() : '—'],
+          ['Exit', timing.exit_time ? new Date(timing.exit_time).toLocaleString() : '—'],
+          ['Hold Duration', timing.hold_minutes != null ? (timing.hold_minutes < 60 ? `${timing.hold_minutes}min` : `${(timing.hold_minutes / 60).toFixed(1)}h`) : '—'],
+        ].map(([l, v]) => (
+          <div key={l as string}><div style={kvLbl}>{l}</div><div style={kvStyle}>{v}</div></div>
+        ))}
+      </div>
+
+      {/* ── Technical State at Entry ── */}
+      <div style={secLbl}>TECHNICAL STATE AT ENTRY</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 8, padding: '8px 12px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }}>
+        {[
+          ['VIX', tech.vix != null ? Number(tech.vix).toFixed(1) : null],
+          ['RVOL', tech.rvol != null ? `${Number(tech.rvol).toFixed(1)}x` : null],
+          ['Score', tech.score],
+          ['Grade', tech.signal_grade],
+          ['Float', tech.float_m != null ? `${Number(tech.float_m).toFixed(0)}M` : null],
+          ['Intel', tech.intel_readiness],
+          ['Catalyst', tech.catalyst ? (tech.catalyst as string).slice(0, 50) : null],
+          ['Verified', tech.catalyst_verified ? 'Yes' : tech.catalyst ? 'No' : null],
+        ].map(([l, v]) => (
+          <div key={l as string}><div style={kvLbl}>{l}</div><div style={kvStyle}>{v ?? '—'}</div></div>
+        ))}
+      </div>
+
+      {/* ── Risk & Execution ── */}
+      <div style={secLbl}>RISK & EXECUTION</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8, padding: '8px 12px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }}>
+        {[
+          ['Planned Entry', risk.planned_entry ? `$${Number(risk.planned_entry).toFixed(2)}` : null],
+          ['Actual Entry', risk.actual_entry ? `$${Number(risk.actual_entry).toFixed(2)}` : null],
+          ['Slippage', risk.slippage != null ? `$${Number(risk.slippage).toFixed(4)}` : null],
+          ['Stop', risk.stop ? `$${Number(risk.stop).toFixed(2)}` : null],
+          ['Target', risk.target ? `$${Number(risk.target).toFixed(2)}` : null],
+          ['Exit', risk.exit_price ? `$${Number(risk.exit_price).toFixed(2)}` : null],
+          ['P&L', risk.pnl != null ? `$${Number(risk.pnl).toFixed(2)}` : null],
+          ['R Multiple', risk.r_multiple != null ? `${Number(risk.r_multiple).toFixed(2)}R` : null],
+          ['MAE', risk.mae != null ? `${Number(risk.mae).toFixed(1)}%` : null],
+          ['MFE', risk.mfe != null ? `${Number(risk.mfe).toFixed(1)}%` : null],
+          ['Exit Reason', risk.exit_reason],
+          ['Verdict', risk.outcome_verdict],
+        ].map(([l, v]) => {
+          const isP = l === 'P&L' || l === 'Verdict'
+          const color = isP && v ? (v.includes('-') || v === 'LOSS' || v === 'WRONG' ? '#F87171' : v === 'CORRECT' || v === 'WIN' ? '#4ADE80' : '#E2E8F0') : '#E2E8F0'
+          return <div key={l as string}><div style={kvLbl}>{l}</div><div style={{ ...kvStyle, color, fontWeight: isP ? 700 : 400 }}>{v ?? '—'}</div></div>
+        })}
+      </div>
+
+      {/* ── LLM Analysis (What Went Right / Wrong) ── */}
+      {llm.summary && (
+        <>
+          <div style={secLbl}>LLM POST-TRADE ANALYSIS</div>
+          <div style={{ padding: '10px 14px', background: '#0D1626', borderRadius: 6, marginBottom: 8, borderLeft: '3px solid #60A5FA' }}>
+            <div style={{ fontSize: 12, color: '#E2E8F0', lineHeight: 1.6, marginBottom: 8 }}>{llm.summary}</div>
+            {llm.worked_reasons && (() => { try { const r = typeof llm.worked_reasons === 'string' ? JSON.parse(llm.worked_reasons) : llm.worked_reasons; return r.length > 0 ? <div style={{ marginBottom: 6 }}><span style={{ fontSize: 10, color: '#4ADE80', fontWeight: 600 }}>What worked:</span>{r.map((x: string, i: number) => <div key={i} style={{ fontSize: 11, color: '#94A3B8', paddingLeft: 8 }}>+ {x}</div>)}</div> : null } catch { return null } })()}
+            {llm.failed_reasons && (() => { try { const r = typeof llm.failed_reasons === 'string' ? JSON.parse(llm.failed_reasons) : llm.failed_reasons; return r.length > 0 ? <div style={{ marginBottom: 6 }}><span style={{ fontSize: 10, color: '#F87171', fontWeight: 600 }}>What failed:</span>{r.map((x: string, i: number) => <div key={i} style={{ fontSize: 11, color: '#94A3B8', paddingLeft: 8 }}>- {x}</div>)}</div> : null } catch { return null } })()}
+            {llm.lessons && (() => { try { const r = typeof llm.lessons === 'string' ? JSON.parse(llm.lessons) : llm.lessons; return r.length > 0 ? <div><span style={{ fontSize: 10, color: '#F59E0B', fontWeight: 600 }}>Lessons:</span>{r.map((x: string, i: number) => <div key={i} style={{ fontSize: 11, color: '#94A3B8', paddingLeft: 8 }}>{x}</div>)}</div> : null } catch { return null } })()}
+            <div style={{ fontSize: 9, color: '#475569', marginTop: 6 }}>Model: {llm.model_used} | Confidence: {llm.confidence != null ? `${(Number(llm.confidence) * 100).toFixed(0)}%` : '—'}</div>
+          </div>
+        </>
+      )}
+
+      {/* ── Agent Critiques ── */}
+      {critiques.length > 0 && (
+        <>
+          <div style={secLbl}>AGENT CRITIQUES ({critiques.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+            {critiques.map((ev: any, i: number) => (
+              <div key={i} style={{ padding: '8px 12px', background: '#0D1626', borderRadius: 6, borderLeft: `3px solid ${ev.agent_name === 'Iris' ? '#A78BFA' : ev.agent_name === 'Aegis' ? '#60A5FA' : ev.agent_name === 'local_llm' ? '#F59E0B' : '#94A3B8'}` }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: ev.agent_name === 'Iris' ? '#A78BFA' : ev.agent_name === 'Aegis' ? '#60A5FA' : '#F59E0B' }}>{ev.agent_name}</span>
+                  <span style={{ fontSize: 9, color: '#475569' }}>{ev.event_type}</span>
+                </div>
+                <div style={{ fontSize: 11, color: '#CBD5E1', lineHeight: 1.5 }}>{ev.event_summary}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Journal Review (Lessons + Mistakes + Strengths) ── */}
+      {review.lesson_learned && (
+        <>
+          <div style={secLbl}>JOURNAL REVIEW</div>
+          <div style={{ padding: '10px 14px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: '#E2E8F0', lineHeight: 1.6, marginBottom: 8 }}>{review.lesson_learned}</div>
+            {review.review_notes && <div style={{ fontSize: 11, color: '#94A3B8', lineHeight: 1.5, marginBottom: 8 }}>{review.review_notes}</div>}
+            {review.coach_notes && <div style={{ fontSize: 11, color: '#60A5FA', lineHeight: 1.5, marginBottom: 8, borderLeft: '2px solid #60A5FA', paddingLeft: 8 }}>{review.coach_notes}</div>}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(typeof review.mistake_tags === 'string' ? (() => { try { return JSON.parse(review.mistake_tags) } catch { return [] } })() : review.mistake_tags || []).map((t: string) => (
+                <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(248,113,113,0.15)', color: '#F87171', fontWeight: 600 }}>{t}</span>
+              ))}
+              {(typeof review.strength_tags === 'string' ? (() => { try { return JSON.parse(review.strength_tags) } catch { return [] } })() : review.strength_tags || []).map((t: string) => (
+                <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(74,222,128,0.15)', color: '#4ADE80', fontWeight: 600 }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Risk Actions Timeline ── */}
+      {riskActions.length > 0 && (
+        <>
+          <div style={secLbl}>RISK ACTIONS ({riskActions.length})</div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {riskActions.map((a: any, i: number) => (
+              <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0', borderBottom: '1px solid #1E293B', fontSize: 11 }}>
+                <span style={{ minWidth: 100, color: '#475569', fontSize: 10 }}>{a.created_at ? new Date(a.created_at).toLocaleString() : '—'}</span>
+                <span style={{ color: a.action_type?.includes('close') ? '#F87171' : '#60A5FA', fontWeight: 600, fontSize: 10, minWidth: 80 }}>{a.action_type}</span>
+                <span style={{ color: '#CBD5E1', flex: 1 }}>{a.trigger_reason}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Calendar P&L Heatmap ──────────────────────────────────────────────────
 function CalendarPL({ daily }: { daily: any[] }) {
   if (!daily.length) return <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>No closed trades yet.</div>
@@ -906,7 +1077,7 @@ export default function AutomatedTradeJournal() {
                           </tr>
                           {isExpanded && (
                             <tr><td colSpan={15} style={{ padding: 0, borderBottom: '2px solid var(--border)' }}>
-                              <TradeExpansion trade={t} />
+                              <JournalEntry tradeId={t.id} />
                             </td></tr>
                           )}
                         </tbody>

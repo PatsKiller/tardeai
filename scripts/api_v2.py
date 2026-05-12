@@ -12948,6 +12948,65 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path.startswith("/api/v2/journal/trade-detail/"):
+        try:
+            _td_id = int(base_path.rsplit("/", 1)[-1])
+            _td = _db_query("SELECT * FROM paper_trades WHERE id = %s", [_td_id], fetch="one")
+            if not _td:
+                return 404, {"ok": False, "error": "Trade not found"}
+            _td_key = f"paper-{_td['symbol']}-{_td_id}"
+            _td_review = _db_query("SELECT * FROM journal_trade_reviews WHERE trade_key = %s", [_td_key], fetch="one")
+            _td_thesis = _db_query("SELECT * FROM trade_thesis_outcomes WHERE paper_trade_id = %s", [_td_id], fetch="one")
+            _td_events = _db_query("SELECT agent_name, event_type, event_summary, payload, created_at FROM agent_curation_events WHERE paper_trade_id = %s ORDER BY created_at", [_td_id]) or []
+            _td_analysis = _db_query("SELECT model_used, summary, worked_reasons, failed_reasons, lessons, suggested_rule_changes, confidence, created_at FROM paper_trade_analysis WHERE paper_trade_id = %s ORDER BY created_at DESC LIMIT 1", [_td_id], fetch="one")
+            _td_risk = _db_query("SELECT action_type, old_value, new_value, trigger_price, trigger_reason, created_at FROM paper_trade_risk_actions WHERE paper_trade_id = %s ORDER BY created_at", [_td_id]) or []
+            _td_alerts = _db_query("SELECT alert_type, severity, title, message, created_at FROM open_trade_alerts WHERE paper_trade_id = %s ORDER BY created_at", [_td_id]) or []
+            _td_proposal = None
+            if _td.get('proposal_id'):
+                _td_proposal = _db_query("SELECT id, symbol, strategy_id, proposed_entry, proposed_stop, proposed_target1, proposed_shares, signal_score, signal_grade, catalyst, catalyst_verified, execution_eligibility_status, execution_eligibility_reason, live_price_at_execution, created_at FROM paper_trade_proposals WHERE id = %s", [_td.get('proposal_id')], fetch="one")
+            # Timing classification
+            _td_tod = _td_dow = None
+            _td_et = _td.get('entry_time')
+            if _td_et:
+                try:
+                    import zoneinfo as _zi
+                    _et_obj = _td_et if hasattr(_td_et, 'hour') else __import__('datetime').datetime.fromisoformat(str(_td_et))
+                    _et_loc = _et_obj.astimezone(_zi.ZoneInfo("America/New_York"))
+                    _h = _et_loc.hour
+                    _td_tod = "pre_market" if _h < 9 else "open" if _h < 10 else "midday" if _h < 14 else "close" if _h < 16 else "after_hours"
+                    _td_dow = _et_loc.strftime("%A")
+                except Exception: pass
+            _td_hold = _td.get('hold_time_min')
+            if not _td_hold and _td_et and _td.get('closed_at'):
+                try:
+                    _td_hold = int((_td['closed_at'] - _td_et).total_seconds() / 60) if hasattr(_td_et, 'timestamp') else None
+                except Exception: pass
+            _entry_p = float(_td.get('entry_price') or 0)
+            _stop_p = float(_td.get('stop_loss') or 0)
+            _tgt_p = float(_td.get('target_1') or 0)
+            _plan_e = float(_td.get('planned_entry') or _entry_p)
+            _slip = round(_entry_p - _plan_e, 4) if _plan_e else None
+            _itype = "scalp" if (_td_hold or 999) < 60 else "day" if (_td_hold or 999) < 480 else "swing"
+            return 200, {"ok": True,
+                "trade": {k: _json_clean(v) for k, v in _td.items()},
+                "classification": {"direction": "long", "strategy": _td.get('strategy_id'), "setup": _td.get('setup_type') or _td.get('strategy_id'), "intended_type": _itype, "time_of_day": _td_tod, "day_of_week": _td_dow, "market_regime": _td.get('market_regime')},
+                "timing": {"entry_time": _json_clean(_td_et), "exit_time": _json_clean(_td.get('closed_at')), "hold_minutes": _td_hold},
+                "technicals_at_entry": {"vix": _td.get('vix_at_entry'), "rvol": _td.get('rvol_at_entry'), "score": _td.get('score_at_entry'), "signal_grade": _td.get('signal_grade'), "catalyst": _td.get('catalyst_at_entry'), "catalyst_verified": _td.get('catalyst_verified'), "float_m": _td.get('float_m_at_entry'), "intel_readiness": _td.get('intel_readiness')},
+                "risk_execution": {"planned_entry": _plan_e, "actual_entry": _entry_p, "slippage": _slip, "stop": _stop_p, "target": _tgt_p, "exit_price": float(_td.get('exit_price') or 0), "pnl": float(_td.get('pnl') or 0), "r_multiple": _td.get('r_multiple'), "mae": _td.get('max_adverse_excursion'), "mfe": _td.get('max_favorable_excursion'), "exit_reason": _td.get('exit_reason'), "outcome_verdict": _td.get('outcome_verdict'), "risk_params_at_fill": _td.get('risk_params_at_fill')},
+                "narrative": {
+                    "journal_review": {k: _json_clean(v) for k, v in _td_review.items()} if _td_review else None,
+                    "thesis_outcome": {k: _json_clean(v) for k, v in _td_thesis.items()} if _td_thesis else None,
+                    "llm_analysis": {k: _json_clean(v) for k, v in _td_analysis.items()} if _td_analysis else None,
+                },
+                "agent_critiques": [{k: _json_clean(v) for k, v in e.items()} for e in _td_events],
+                "risk_actions": [{k: _json_clean(v) for k, v in a.items()} for a in _td_risk],
+                "alerts": [{k: _json_clean(v) for k, v in a.items()} for a in _td_alerts],
+                "proposal": {k: _json_clean(v) for k, v in _td_proposal.items()} if _td_proposal else None,
+            }
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/paper-journal":
         try:
             trades = _db_query("""

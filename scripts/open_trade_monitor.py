@@ -185,6 +185,13 @@ def _auto_close_position(conn, trade_id, symbol, price, reason, cur):
             WHERE id=%s""",
             [price, reason, f'auto_{reason}', _verdict, trade_id])
         log.info(f"[{symbol}] Position auto-closed: reason={reason} at ${price:.2f}")
+        # Trigger post-trade analysis pipeline
+        try:
+            from agent_curation_hooks import on_paper_trade_closed
+            on_paper_trade_closed(conn, trade_id)
+            log.info(f"[{symbol}] Post-trade analysis pipeline triggered")
+        except Exception as _hook_err:
+            log.warning(f"[{symbol}] Post-trade hooks failed (non-fatal): {_hook_err}")
     except Exception as e:
         log.error(f"[{symbol}] Auto-close failed: {e}")
 
@@ -380,6 +387,10 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                         [price, f'critical_news: {critical_hits[0][:100]}',
                          f' | Auto-closed on critical news: {critical_hits[0][:100]}', tid])
                     log.info(f"[{symbol}] Position auto-closed on critical news")
+                    try:
+                        from agent_curation_hooks import on_paper_trade_closed
+                        on_paper_trade_closed(conn, tid)
+                    except Exception: pass
                 except Exception as _ce:
                     log.error(f"[{symbol}] Auto-close failed: {_ce}")
                 send_telegram(f"🛑 {msg}", dry_run, no_telegram)
