@@ -14588,4 +14588,94 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── LLM Fleet v4.1 — GPU Status (read-only, short timeout) ──────────
+    if base_path == "/api/v2/gpu-status":
+        try:
+            import urllib.request as _ur
+            import json as _json
+            result = {
+                "ok": True,
+                "ollama_alive": False,
+                "resident_models": [],
+                "vram_used_gb": 0,
+                "vram_free_gb": 16.0,
+                "vram_total_gb": 16.0,
+                "active_hours": False,
+                "deployment_phase": __import__("os").environ.get("LLM_DEPLOYMENT_PHASE", ""),
+            }
+            # Short timeout — must not block the API
+            try:
+                ps_resp = _ur.urlopen("http://localhost:11434/api/ps", timeout=3)
+                ps_data = _json.loads(ps_resp.read())
+                result["ollama_alive"] = True
+                models = []
+                total_vram = 0
+                for m in ps_data.get("models", []):
+                    size_gb = round(m.get("size", 0) / 1024 / 1024 / 1024, 2)
+                    total_vram += size_gb
+                    models.append({"name": m["name"], "vram_gb": size_gb})
+                result["resident_models"] = models
+                result["vram_used_gb"] = round(total_vram, 2)
+                result["vram_free_gb"] = round(16.0 - total_vram, 2)
+            except Exception:
+                result["ollama_alive"] = False
+
+            # Active hours check (inline, no import needed)
+            try:
+                import zoneinfo as _zi
+                _now = __import__("datetime").datetime.now(_zi.ZoneInfo("America/New_York"))
+                if _now.weekday() < 5:
+                    _mo = _now.replace(hour=9, minute=30, second=0)
+                    _mc = _now.replace(hour=16, minute=0, second=0)
+                    result["active_hours"] = _mo <= _now <= _mc
+            except Exception:
+                pass
+
+            # Process type model map
+            try:
+                from local_llm_config import get_model_for_process_type, STANDARD, BATCH_OVERNIGHT, EMBEDDING
+                result["process_models"] = {
+                    "STANDARD": get_model_for_process_type(STANDARD),
+                    "BATCH_OVERNIGHT": get_model_for_process_type(BATCH_OVERNIGHT),
+                    "EMBEDDING": get_model_for_process_type(EMBEDDING),
+                }
+            except Exception:
+                pass
+
+            # Last OOM event
+            _oom_log = PROJECT_ROOT / "logs" / "gpu_oom.log"
+            try:
+                if _oom_log.exists():
+                    for line in reversed(_oom_log.read_text().strip().splitlines()[-5:]):
+                        try:
+                            entry = _json.loads(line)
+                            if entry.get("oom_detected"):
+                                result["last_oom_event"] = entry.get("checked_at")
+                                break
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Last warmup
+            _warmup_log = PROJECT_ROOT / "logs" / "gpu_warmup.log"
+            try:
+                if _warmup_log.exists():
+                    for line in reversed(_warmup_log.read_text().strip().splitlines()[-5:]):
+                        try:
+                            entry = _json.loads(line)
+                            result["last_warmup"] = entry.get("ts")
+                            result["last_warmup_ms"] = entry.get("elapsed_ms")
+                            result["last_warmup_model"] = entry.get("model")
+                            result["last_warmup_success"] = entry.get("success")
+                            break
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            return 200, result
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     return None
