@@ -87,12 +87,13 @@ class AlpacaPaperAdapter:
             current = float(pos.get('current_price', 0))
             unrealized = float(pos.get('unrealized_pl', 0))
 
-            # Update existing open paper trade if exists
+            # Update existing open paper trade if exists (check any account)
             cur.execute("""
                 UPDATE paper_trades
                 SET current_price = %s, unrealized_pnl = %s, last_synced_at = NOW()
-                WHERE symbol = %s AND account = 'ALPACA_PAPER' AND status = 'open'
-            """, [current, unrealized, symbol])
+                WHERE symbol = %s AND status = 'open'
+                  AND id = (SELECT id FROM paper_trades WHERE symbol = %s AND status = 'open' ORDER BY created_at DESC LIMIT 1)
+            """, [current, unrealized, symbol, symbol])
 
             if cur.rowcount == 0:
                 # Position exists in Alpaca but not in paper_trades — create record
@@ -115,7 +116,7 @@ class AlpacaPaperAdapter:
         cur = conn.cursor()
         cur.execute("""
             SELECT id, symbol FROM paper_trades
-            WHERE account = 'ALPACA_PAPER' AND status = 'open'
+            WHERE status = 'open'
         """)
         open_trades = cur.fetchall()
 
