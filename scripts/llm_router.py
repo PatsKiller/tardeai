@@ -377,10 +377,17 @@ def health_check() -> dict:
     """Test all providers and return availability status."""
     results = {}
 
-    # Local
+    # Local — check model residency via /api/ps (fast, <100ms).
+    # A full generate probe is too slow (~50-60s with qwen3 thinking) for a health endpoint.
     try:
-        r = _call_local("Say 'ok' in one word.", max_tokens=10, timeout=5)
-        results["local"] = {"available": r.get("success", False), "latency": r.get("latency"), "model": LOCAL_MODEL}
+        t0 = time.time()
+        ps_req = urllib.request.urlopen("http://localhost:11434/api/ps", timeout=5)
+        ps_data = json.loads(ps_req.read())
+        latency = round(time.time() - t0, 3)
+        resident = [m["name"] for m in ps_data.get("models", [])]
+        alive = LOCAL_MODEL in resident or any(LOCAL_MODEL.split(":")[0] in m for m in resident)
+        results["local"] = {"available": alive, "latency": latency, "model": LOCAL_MODEL,
+                            "resident_models": resident}
     except Exception as e:
         results["local"] = {"available": False, "error": str(e)}
 

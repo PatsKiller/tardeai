@@ -27,13 +27,39 @@ apply_ollama_runtime_env()
 OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
 OLLAMA_MODEL_FAST = get_local_llm_model()
 OLLAMA_MODEL = get_local_llm_model()
-FALLBACK_OPENAI = "gpt-4o-mini"
-FALLBACK_ANTHROPIC = "claude-sonnet-4-6"
+# Fallback models — centralized from .env, live-discovered defaults
+FALLBACK_OPENAI = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini").strip()
+FALLBACK_ANTHROPIC = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6").strip()
 DEFAULT_TIMEOUT = 300
 LOCK_FILE = Path("/tmp/ollama_llm_gate.lock")
 LOCK_WAIT_TIMEOUT = 600  # max seconds to wait for lock
 
 model_used = None  # tracks which model last responded
+
+# ── LLM Fleet v4.1 — JSONL Audit Logging ─────────────────────────────────
+_AUDIT_LOG = Path(__file__).resolve().parent.parent / "logs" / "llm_routing_audit.jsonl"
+
+
+def _log_audit(caller: str, process_type: str, model: str, provider: str,
+               latency_ms: int, status: str, fallback_used: bool = False):
+    """Append one audit line to JSONL. Non-blocking, never raises."""
+    try:
+        entry = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "caller": caller,
+            "process_type": process_type,
+            "model": model,
+            "provider": provider,
+            "latency_ms": latency_ms,
+            "status": status,
+            "fallback": fallback_used,
+            "phase": os.getenv("LLM_DEPLOYMENT_PHASE", ""),
+        }
+        _AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(_AUDIT_LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass  # audit must never break callers
 
 
 # ── Toll gate: file-based lock so only one caller uses Ollama at a time ──
@@ -226,24 +252,37 @@ def _try_anthropic(prompt: str) -> str | None:
 
 
 def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
-             fallback: bool = True, fast: bool = True) -> str:
+             fallback: bool = True, fast: bool = True,
+             caller: str = "", process_type: str = "STANDARD") -> str:
     """4-tier chain with toll gate: local model -> OpenAI -> Anthropic.
-    Acquires file lock before Ollama calls to prevent GPU contention."""
+    Acquires file lock before Ollama calls to prevent GPU contention.
+
+    Args:
+        caller: script name for audit logging (optional)
+        process_type: LLM fleet process type for audit (optional)
+    """
     global model_used
     model_used = None
+    t0 = time.time()
 
     # Acquire toll gate — only one process hits Ollama at a time
     if not _gate.acquire():
         print("  [local-llm] Could not acquire gate — skipping Ollama, trying fallbacks")
+        _log_audit(caller, process_type, OLLAMA_MODEL, "ollama", 0, "gate_timeout")
         if fallback:
             result = _try_openai(prompt)
             if result:
                 model_used = FALLBACK_OPENAI
+                _log_audit(caller, process_type, FALLBACK_OPENAI, "openai",
+                           int((time.time()-t0)*1000), "ok", fallback_used=True)
                 return result
             result = _try_anthropic(prompt)
             if result:
                 model_used = FALLBACK_ANTHROPIC
+                _log_audit(caller, process_type, FALLBACK_ANTHROPIC, "anthropic",
+                           int((time.time()-t0)*1000), "ok", fallback_used=True)
                 return result
+        _log_audit(caller, process_type, "", "none", int((time.time()-t0)*1000), "all_failed")
         return ""
 
     try:
@@ -252,14 +291,22 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
             result = _try_ollama(prompt, min(timeout, 30), model=OLLAMA_MODEL_FAST)
             if result:
                 model_used = OLLAMA_MODEL_FAST
+                _log_audit(caller, process_type, OLLAMA_MODEL_FAST, "ollama",
+                           int((time.time()-t0)*1000), "ok")
                 return result
         # Tier 2: local model (full) with retry
         result = _try_ollama(prompt, timeout, model=OLLAMA_MODEL, retries=1)
         if result:
             model_used = OLLAMA_MODEL
+            _log_audit(caller, process_type, OLLAMA_MODEL, "ollama",
+                       int((time.time()-t0)*1000), "ok")
             return result
     finally:
         _gate.release()
+
+    # Local failed — log it
+    _log_audit(caller, process_type, OLLAMA_MODEL, "ollama",
+               int((time.time()-t0)*1000), "local_failed")
 
     # Cloud fallbacks don't need the gate
     if fallback:
@@ -267,6 +314,8 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
         result = _try_openai(prompt)
         if result:
             model_used = FALLBACK_OPENAI
+            _log_audit(caller, process_type, FALLBACK_OPENAI, "openai",
+                       int((time.time()-t0)*1000), "ok", fallback_used=True)
             return result
 
     if fallback:
@@ -274,8 +323,11 @@ def generate(prompt: str, timeout: int = DEFAULT_TIMEOUT,
         result = _try_anthropic(prompt)
         if result:
             model_used = FALLBACK_ANTHROPIC
+            _log_audit(caller, process_type, FALLBACK_ANTHROPIC, "anthropic",
+                       int((time.time()-t0)*1000), "ok", fallback_used=True)
             return result
 
+    _log_audit(caller, process_type, "", "none", int((time.time()-t0)*1000), "all_failed")
     print("  [local-llm] All LLM attempts failed — returning empty")
     return ""
 
