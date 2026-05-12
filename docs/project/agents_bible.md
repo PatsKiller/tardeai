@@ -241,7 +241,7 @@ These agents run automatically. John doesn't talk to them — he sees their outp
 
 **Decision Rules (in prompt):** BUY requires catalyst_present + PE below sector + analyst target >10% + no negative SEC. SELL requires bearish catalyst confirmed OR RSI>75 with no catalyst. HOLD for mixed signals or confidence <55%.
 
-**Injections:** RAG (5 items, Pass 2), FRED macro, outcome lessons, peer notes — all wired in v7.5.
+**Injections:** RAG (5 items, Pass 2), research advisories, FRED macro, outcome lessons, peer notes — all wired in v7.5+.
 
 ---
 
@@ -261,7 +261,7 @@ These agents run automatically. John doesn't talk to them — he sees their outp
 
 **Income thresholds in prompt:** $55K target, 25% concentration rule, 15% hard cap, account rules (Roth=growth, taxable=qualified divs only), never-auto-rotate list.
 
-**Injections:** Full `_build_prompt()` path — RAG, FRED, outcome lessons, peer notes, G1-G10 global rules.
+**Injections:** Full `_build_prompt()` path — RAG, research advisories, FRED, outcome lessons, peer notes, G1-G10 global rules.
 
 ---
 

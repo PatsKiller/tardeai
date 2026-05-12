@@ -496,6 +496,28 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     except Exception as e:
         print(f"  [RAG] {symbol} ({agent}): FAILED — {e}")
 
+    # Research advisories — persistent user research findings relevant to this analysis
+    research_block = ""
+    try:
+        _rc = _get_conn()
+        _rcur = _rc.cursor()
+        _rcur.execute(
+            "SELECT topic, latest_findings, research_count FROM user_research_topics "
+            "WHERE status='active' AND latest_findings IS NOT NULL "
+            "ORDER BY priority DESC, latest_finding_at DESC LIMIT 3"
+        )
+        _rtopics = _rcur.fetchall()
+        _rcur.close()
+        _rc.close()
+        if _rtopics:
+            _rlines = ["=== Active Research Advisories ==="]
+            for _rt in _rtopics:
+                _rlines.append(f"- {_rt[0]} (iter #{_rt[2]}): {(_rt[1] or '')[:200]}")
+            _rlines.append("=== End Research Advisories ===")
+            research_block = "\n".join(_rlines)
+    except Exception:
+        pass
+
     # Peer agent notes — what other agents concluded recently
     peer_notes = ""
     try:
@@ -601,6 +623,7 @@ Context:
 {scan_block}
 {context_text}
 {rag_block}
+{research_block}
 {peer_notes}
 {gap_warnings}
 {confluence_block}
