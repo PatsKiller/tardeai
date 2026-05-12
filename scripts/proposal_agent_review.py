@@ -241,7 +241,7 @@ def _deterministic_review(agent_name, proposal, technical, backtest):
         summary = f"{symbol}: position sizing appears within limits for paper test."
 
     elif agent_name == "Tax":
-        account = proposal.get('proposed_account', 'TOS_PAPER')
+        account = proposal.get('proposed_account', 'ALPACA_PAPER')
         if 'ira' in account.lower() or 'roth' in account.lower():
             vote = "CAUTIOUS_TEST"
             confidence = 50

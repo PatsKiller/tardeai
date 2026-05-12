@@ -11298,7 +11298,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 from paper_trade_logger import create_manual_proposal
                 result = create_manual_proposal(
                     symbol=symbol, shares=shares, entry=entry,
-                    stop=stop, target=target, account='TOS_PAPER')
+                    stop=stop, target=target, account='ALPACA_PAPER')
                 pid = result.get('proposal_id')
                 if result.get('success') and pid:
                     # Backfill strategy attribution
