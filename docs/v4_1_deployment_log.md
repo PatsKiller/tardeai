@@ -290,3 +290,26 @@ ps -ef | grep process_watchlist_agent_jobs.py | grep -v grep | wc -l
 - No model routing or model pull changes
 - No cron frequency changes (still */5 evening, */15 market hours)
 - No broker, holdings, or execution changes
+
+## Phase 1 Pilot — gemma3:27b BATCH_OVERNIGHT Test — 2026-05-11 22:00 ET
+
+### Result: CONDITIONAL GO
+
+gemma3:27b was tested as a BATCH_OVERNIGHT model. Full report: `docs/v4_1_phase1_pilot_report.md`
+
+### Key metrics
+- **VRAM**: 13.75 GB allocated (75.3% GPU), 4.51 GB CPU spillover
+- **Throughput**: 5.3 tok/s (vs qwen3:14b at 9.9 tok/s) — ~53% throughput
+- **Pilot script**: `multi_strategy_classifier.py --batch --llm --limit 1` — classified ACH in 99s
+- **Restore**: qwen3:14b + nomic-embed-text fully restored (9.94 GB, matching pre-pilot state)
+
+### Method
+- Model override via `LOCAL_LLM_MODEL=gemma3:27b` in shell only (not persisted to .env)
+- BATCH_OVERNIGHT was NOT changed persistently
+- GPU lifecycle: cooldown(qwen) → smoke test(gemma) → pilot run → cooldown(gemma) → warmup(qwen+nomic)
+
+### Next steps for Phase 1 expansion (NOT started)
+1. Create `gemma3-overnight` Modelfile with `keep_alive=0`, `num_ctx=8192`
+2. Set `LLM_BATCH_OVERNIGHT=gemma3:27b` in `.env`
+3. Wrap overnight batch scripts in lifecycle (warmup/cooldown)
+4. Observe one full overnight cycle before expanding to more scripts
