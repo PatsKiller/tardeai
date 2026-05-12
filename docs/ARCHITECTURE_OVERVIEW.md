@@ -183,6 +183,19 @@ Request --> [Toll Gate Lock] --> Local qwen3:14b (GPU)
 
 Daily budget tracking per provider. Automatic cascade on exhaustion or failure.
 
+### Multi-Tier Trade Review (Separate from Fallback Chain)
+
+Trade reviews use 4 models deliberately for escalating depth — this is not a fallback chain, each tier runs independently on schedule:
+
+| Tier | Model | When | Purpose |
+|------|-------|------|---------|
+| Realtime | qwen3:14b | Every trade close | Fast 4-agent structured review |
+| Overnight | gemma3:27b | 8 PM nightly | Deeper analysis with larger model |
+| Weekly | OpenAI gpt-4o | Sunday 10 AM | Cross-trade pattern detection |
+| Monthly | Anthropic Claude | 1st of month | Strategic review of all weeklies |
+
+All tiers feed findings back into RAG for future proposal evaluation. Implemented in `multi_tier_trade_reviewer.py`.
+
 ---
 
 ## Key Metrics

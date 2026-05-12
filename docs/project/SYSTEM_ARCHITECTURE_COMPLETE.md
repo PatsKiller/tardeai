@@ -104,6 +104,23 @@ Request → local_llm.generate()
 
 **Audit trail:** Every call logged to `logs/llm_routing_audit.jsonl` with caller, model, latency_ms, status, fallback chain.
 
+### Multi-Tier Trade Review Orchestration
+
+Separate from the fallback chain, the trade review system uses 4 models deliberately for escalating analysis depth:
+
+```
+Trade Close Event
+    ├─ Realtime (qwen3:14b) ── immediate, via on_paper_trade_closed()
+    ├─ Overnight (gemma3:27b) ── 8 PM nightly, via overnight_batch.py
+    ├─ Weekly (OpenAI gpt-4o) ── Sunday 10 AM, cron
+    └─ Monthly (Anthropic Claude) ── 1st of month, cron
+```
+
+Each tier generates reviews with 4 agent perspectives (risk_agent, strategy_agent, execution_agent, learning_agent). Higher tiers receive lower-tier reviews as context. All reviews index findings into RAG and write learning outcomes to `agent_intelligence_rules`.
+
+**Implemented in:** `multi_tier_trade_reviewer.py`
+**Persists to:** `paper_trade_multi_reviews`, `agent_curation_events`, `content_embeddings`, `agent_intelligence_rules`
+
 ---
 
 ## 5. The Trading Pipeline — End to End
