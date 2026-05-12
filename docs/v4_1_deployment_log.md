@@ -438,3 +438,52 @@ curl -s http://localhost:7777/api/v2/gpu-status | python3 -m json.tool
 - No changes to STANDARD, REALTIME, EMBEDDING, MEDIA_CONTENT, CRITICAL_CLOUD
 - No broker, holdings, or execution changes
 - Full report: `docs/v4_1_phase1c_controlled_expansion_report.md`
+
+## Phase 1D — Controlled Limit-5 Expansion — 2026-05-12 08:57 ET
+
+### Script change
+- `MAX_LIMIT` raised from 3 to 5 in `run_batch_overnight_gemma_pilot.sh`
+- Default remains `--limit 1`
+- All safety gates preserved (ALPACA_MODE, LLM_DISABLE, holdings, active hours, timeout, shell-only override, fail-closed restore)
+- Phase references updated from 1C to 1D in comments/logs
+
+### Pilot run: --limit 5
+
+| Metric | Value |
+|--------|-------|
+| Symbols classified | 5 (ACH, ACNT, ACTU, ADNT, ADUR) |
+| Wall time | **7 min 41 sec** (461s) |
+| Timeout cap | 10 min |
+| Under timeout? | YES — 2 min 19 sec margin |
+| Per-symbol avg | ~91s |
+| gemma3-overnight VRAM | 13.64 GB GPU + 4.79 GB CPU |
+| Pilot exit code | 0 |
+| qwen3 restore | ok |
+| nomic restore | ok |
+
+### Post-run validation: ALL PASSED
+- GPU: qwen3:14b (9.4 GB) + nomic-embed-text (0.54 GB) — matches pre-swap
+- ALPACA_MODE=paper, LLM_DISABLE_LIVE_EXECUTION=true
+- Holdings: $1,192,663
+- No cron entries added
+- No persistent .env routing changes
+- LOCAL_LLM_MODEL=qwen3:14b (unchanged)
+- STANDARD, REALTIME, EMBEDDING, MEDIA_CONTENT, CRITICAL_CLOUD: not set (unchanged)
+
+### Scaling ceiling
+- --limit 5 at 7m41s is the practical max under 10m timeout
+- --limit 7 would extrapolate to ~10m47s (TIMEOUT risk)
+
+### Recommendation
+Phase 1 should stop at manual --limit 5. Before scheduling a nightly cron:
+1. Add Ollama queue drain check before GPU swap
+2. Add model-swap lock to pause other LLM callers during gemma window
+3. Schedule at 2-3 AM when cron traffic is lowest
+4. Require operator approval before enabling cron
+
+### What was NOT changed
+- No cron entries added or modified
+- No .env routing changes
+- No changes to STANDARD, REALTIME, EMBEDDING, MEDIA_CONTENT, CRITICAL_CLOUD
+- No broker, holdings, or execution changes
+- Full report: `docs/v4_1_phase1d_limit5_report.md`
