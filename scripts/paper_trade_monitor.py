@@ -247,6 +247,29 @@ def monitor(dry_run=False):
         })
         log.info(f"[{sym}] {action}: {reason}")
 
+    # ── PHANTOM DETECTION: DB says open but Alpaca has no position ──
+    alpaca_symbols = {pos['symbol'] for pos in positions}
+    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id FROM paper_trades WHERE status = 'open'")
+    db_open = cur.fetchall()
+    for dbt in db_open:
+        if dbt['symbol'] not in alpaca_symbols:
+            log.warning(f"[{dbt['symbol']}] PHANTOM: open in DB but NOT on Alpaca — auto-closing")
+            cur.execute("""
+                UPDATE paper_trades
+                SET status = 'closed', exit_reason = 'phantom_no_alpaca_position',
+                    exit_price = entry_price, pnl = 0, pnl_pct = 0,
+                    closed_at = NOW(), closed_via = 'monitor_phantom_check',
+                    notes = COALESCE(notes, '') || ' | Auto-closed by monitor: no matching Alpaca position found.',
+                    updated_at = NOW()
+                WHERE id = %s
+            """, [dbt['id']])
+            conn.commit()
+            results.append({
+                "symbol": dbt['symbol'], "action": "phantom_closed",
+                "reason": f"DB open but no Alpaca position — auto-closed",
+                "pnl": 0, "pnl_pct": 0, "r_multiple": 0,
+            })
+
     # Alert on actions taken
     actions = [r for r in results if r['action'] != 'hold']
     if actions and not dry_run:
@@ -255,7 +278,8 @@ def monitor(dry_run=False):
             lines = ["*Paper Trade Monitor*", ""]
             for r in results:
                 icon = {"hold": "—", "adjust_stop": "↑", "close_target": "$",
-                        "tighten_near_target": "⬆", "add_stop": "+", "no_record": "?"}.get(r['action'], "•")
+                        "tighten_near_target": "⬆", "add_stop": "+", "no_record": "?",
+                        "phantom_closed": "⛔"}.get(r['action'], "•")
                 lines.append(f"{icon} *{r['symbol']}* R={r.get('r_multiple',0):.1f} "
                              f"P&L=${r.get('pnl',0):+.0f} ({r.get('pnl_pct',0):+.1f}%)")
                 if r['action'] != 'hold':
