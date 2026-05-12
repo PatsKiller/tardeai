@@ -1,5 +1,5 @@
 # Trade AI v12 — Skills & Agent Capabilities Reference
-**Last updated:** 2026-05-11 (Session 29)
+**Last updated:** 2026-05-12 (Session 30)
 
 ---
 
@@ -90,8 +90,22 @@ Located in `~/.openclaw/skills/`
 | News ingestion (7 sources) | `news_ingestion.py` | 6:30 AM + 12:30 PM |
 | Social ingestion | `social_ingest.py` | 6:30 AM + 12:35 PM |
 | Topic curation (LLM-powered) | `topic_curator.py` | 7:00 AM daily |
-| RAG indexing | `rag_indexer.py` | 4x daily |
+| RAG indexing (11 sources incl. research) | `rag_indexer.py` | 4x daily |
+| Research topic iteration | `iterate_research_topics.py` | Daily (overnight batch) |
 | Sentiment processing | `sentiment_processor.py` | 7:00 AM + 12:00 PM |
+
+### Research Advisory Pipeline
+| Step | Detail |
+|------|--------|
+| **Source** | `user_research_topics` table — persistent topics created via Telegram `research <topic>` |
+| **Iteration** | `iterate_research_topics.py` runs daily, calls LLM with prior findings as context |
+| **Storage** | `latest_findings` column (text), `portfolio_intelligence_events` (audit) |
+| **RAG Index** | Indexed as `research_finding` source type in `content_embeddings` (boost: 1.25×) |
+| **Agent Injection** | Directly injected into agent prompts as "Active Research Advisories" block |
+| **Morning Brief** | Top 3 findings surfaced as "RESEARCH ADVISORIES" section (priority 6) |
+| **Command Center** | `Intelligence > Research Topics` page (`/v2/research-topics`) |
+| **Telegram** | Iterations posted to user on completion |
+| **Email** | Included in daily digest via GOG Gmail |
 
 ### Monitoring & Alerting
 | Skill | Script | Schedule |

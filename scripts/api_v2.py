@@ -1383,7 +1383,7 @@ def _aegis_chat_context():
     _heat = _pt.get("day_change_pct", 0)
     # Risk data for stop count
     _risk = _load_json(STATE_DIR / "risk_management.json") or {}
-    _triggered = len([p for p in _risk.get("positions", []) if p.get("triggered")])
+    _triggered = len([p for p in _risk.get("positions", []) if p.get("status") == "TRIGGERED"])
     _unprotected = len([p for p in _risk.get("positions", []) if not p.get("has_stop") and not p.get("stop_price")])
     _live_summary = f"Portfolio ${_pv:,.0f}. Heat {_heat:.1f}%. {_triggered} stops triggered, {_unprotected} unprotected."
     # Also get Aegis brief for additional context
@@ -1543,7 +1543,20 @@ def _compose_morning_brief(summary_text, steph_items, cc_items, rotations, recov
             rot_parts.append(f"{r.get('from_symbol','?')} → {r.get('to_symbol','?') or 'no alternative'}: {r.get('switch_verdict','?')}")
         sections.append({"priority": 5, "title": "ROTATION ALTERNATIVES", "items": rot_parts})
 
-    # 6. Summary line
+    # 6. Research findings (latest iterations from persistent research topics)
+    _research = _db_query(
+        "SELECT topic, latest_findings, priority, research_count FROM user_research_topics "
+        "WHERE status='active' AND latest_findings IS NOT NULL "
+        "ORDER BY priority DESC, latest_finding_at DESC LIMIT 5"
+    ) or []
+    if _research:
+        rf_parts = []
+        for rt in _research[:3]:
+            _findings_preview = (rt.get("latest_findings") or "")[:120].replace("\n", " ")
+            rf_parts.append(f"{rt.get('topic','?')} (iter #{rt.get('research_count',0)}): {_findings_preview}… → /v2/research-topics")
+        sections.append({"priority": 6, "title": "RESEARCH ADVISORIES", "items": rf_parts})
+
+    # 7. Summary line
     next_actions = []
     if triggered:
         next_actions.append(f"1. Verify {', '.join(p.get('symbol','') for p in triggered[:3])} stop levels in broker → /v2/risk")
@@ -2498,9 +2511,9 @@ def risk():
         # Escalation lane
         "escalation": {
             "danger": [{"symbol": p.get("symbol",""), "max_loss": p.get("max_loss",0), "distance_pct": p.get("distance_pct",0), "account": p.get("account","")}
-                       for p in positions if p.get("triggered") or p.get("status") == "danger"][:4],
+                       for p in positions if p.get("status") in ("TRIGGERED", "DANGER")][:4],
             "warning": [{"symbol": p.get("symbol",""), "max_loss": p.get("max_loss",0), "distance_pct": p.get("distance_pct",0), "account": p.get("account","")}
-                        for p in positions if p.get("status") == "warning"][:4],
+                        for p in positions if p.get("status") == "WARNING"][:4],
             "unprotected": [{"symbol": p.get("symbol",""), "market_value": p.get("market_value",0), "account": p.get("account","")}
                             for p in positions if not p.get("stop_price") and not p.get("protected")][:4],
         },

@@ -21,12 +21,12 @@ SOURCE_LABELS = {
     "sec_form4": "SEC Form 4", "fred_series": "FRED Macro",
     "agent_result": "Agent Memory", "agent_synthesis": "Synthesis",
     "cio_decision": "CIO Decision", "fused_signal": "Fused Signal",
-    "decision_outcome": "Outcome",
+    "decision_outcome": "Outcome", "research_finding": "Research Advisory",
 }
 
 SOURCE_BOOSTS = {
-    "decision_outcome": 1.3, "agent_synthesis": 1.2, "cio_decision": 1.15,
-    "fused_signal": 1.1, "agent_result": 1.05,
+    "decision_outcome": 1.3, "research_finding": 1.25, "agent_synthesis": 1.2,
+    "cio_decision": 1.15, "fused_signal": 1.1, "agent_result": 1.05,
 }
 
 
@@ -80,11 +80,11 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
             return _keyword_fallback(symbol, limit, cur)
 
         if is_category:
-            # Search by strategy/category across news + YouTube embeddings
+            # Search by strategy/category across news + YouTube + research embeddings
             cur.execute("""
                 SELECT ce.id, ce.source_type, ce.source_id, ce.title, ce.embedding, ce.created_at
                 FROM content_embeddings ce
-                WHERE (ce.title ILIKE %s OR ce.source_type IN ('news','youtube'))
+                WHERE (ce.title ILIKE %s OR ce.source_type IN ('news','youtube','research_finding'))
                   AND ce.created_at > NOW() - INTERVAL '365 days'
                 ORDER BY ce.created_at DESC LIMIT 200
             """, (f"%{search_term}%",))
@@ -159,6 +159,11 @@ def _keyword_fallback(symbol, limit, cur):
                 WHERE cel.entity_value=%s AND cel.entity_type='ticker' AND na.rag_status='approved'
                 ORDER BY na.created_at DESC LIMIT %s""", (symbol, limit)),
         ]
+    # Research findings — always include (topic-level, not ticker-specific)
+    queries.append(("research_finding",
+        "SELECT id, COALESCE(topic,''), research_count, COALESCE(latest_finding_at, updated_at) FROM user_research_topics WHERE status='active' AND latest_findings IS NOT NULL AND (topic ILIKE %s OR latest_findings ILIKE %s) ORDER BY latest_finding_at DESC LIMIT %s",
+        (f"%{search_term}%", f"%{search_term}%", limit)))
+
     for src, sql, params in queries:
         try:
             cur.execute(sql, params)

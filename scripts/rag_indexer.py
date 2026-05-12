@@ -64,6 +64,10 @@ SOURCE_CONFIGS = {
         "sql": "SELECT id, COALESCE(symbol,'')||' outcome: '||COALESCE(recommendation,'')||' '||COALESCE(notes,''), COALESCE(symbol,'')||' outcome: '||COALESCE(recommendation,''), created_at FROM decision_outcomes",
         "date_col": "created_at",
     },
+    "research_finding": {
+        "sql": "SELECT id, COALESCE(topic,'')||' '||COALESCE(latest_findings,''), COALESCE(topic,''), COALESCE(latest_finding_at, updated_at) FROM user_research_topics WHERE status='active' AND latest_findings IS NOT NULL",
+        "date_col": "latest_finding_at",
+    },
 }
 
 
