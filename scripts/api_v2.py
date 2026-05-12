@@ -12978,6 +12978,91 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/automated-trade-journal":
+        try:
+            _acct = ((query or {}).get("account", ["ALPACA_PAPER"])[0]
+                     if isinstance((query or {}).get("account"), list)
+                     else (query or {}).get("account", "ALPACA_PAPER"))
+            trades = _db_query("""
+                SELECT id, symbol, strategy_id, account, entry_price, exit_price,
+                       current_price, shares, stop_loss, target_1, dollar_risk,
+                       pnl, unrealized_pnl, r_multiple, pnl_pct,
+                       status, outcome_verdict, exit_reason,
+                       market_regime, vix_at_entry,
+                       catalyst_at_entry, catalyst_verified,
+                       risk_gate_result, risk_gate_reason_codes,
+                       max_favorable_excursion, max_adverse_excursion,
+                       opened_via, closed_via, notes,
+                       entry_time, closed_at, created_at, updated_at
+                FROM paper_trades
+                WHERE account = %s AND status IN ('open', 'closed')
+                ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, created_at DESC
+                LIMIT 100
+            """, [_acct]) or []
+            # Fetch full lifecycle events per trade
+            _trade_ids = [t['id'] for t in trades if t.get('id')]
+            events_by_trade = {}
+            if _trade_ids:
+                _events = _db_query("""
+                    SELECT paper_trade_id, agent_name, event_type, event_summary,
+                           payload, created_at
+                    FROM agent_curation_events
+                    WHERE paper_trade_id = ANY(%s)
+                    ORDER BY created_at ASC
+                """, [_trade_ids]) or []
+                for ev in _events:
+                    tid = ev['paper_trade_id']
+                    events_by_trade.setdefault(tid, []).append(
+                        {k: _json_clean(v) for k, v in ev.items()})
+            # Fetch alerts per trade
+            alerts_by_trade = {}
+            if _trade_ids:
+                _alerts = _db_query("""
+                    SELECT paper_trade_id, alert_type, severity, title, message,
+                           created_at
+                    FROM open_trade_alerts
+                    WHERE paper_trade_id = ANY(%s)
+                    ORDER BY created_at ASC
+                """, [_trade_ids]) or []
+                for al in _alerts:
+                    tid = al['paper_trade_id']
+                    alerts_by_trade.setdefault(tid, []).append(
+                        {k: _json_clean(v) for k, v in al.items()})
+            # Fetch journal reviews
+            reviews_by_symbol = {}
+            _syms = list({t['symbol'] for t in trades if t.get('symbol')})
+            if _syms:
+                _reviews = _db_query("""
+                    SELECT trade_key, symbol, setup_name, realized_r,
+                           mistake_tags, strength_tags, lesson_learned,
+                           review_notes, coach_notes, closed_date
+                    FROM journal_trade_reviews
+                    WHERE symbol = ANY(%s)
+                    ORDER BY closed_date DESC
+                """, [_syms]) or []
+                for rv in _reviews:
+                    reviews_by_symbol.setdefault(rv['symbol'], []).append(
+                        {k: _json_clean(v) for k, v in rv.items()})
+            # Build enriched response
+            enriched = []
+            for t in trades:
+                td = {k: _json_clean(v) for k, v in t.items()}
+                td['execution_log'] = events_by_trade.get(t['id'], [])
+                td['alerts'] = alerts_by_trade.get(t['id'], [])
+                td['journal_reviews'] = reviews_by_symbol.get(t['symbol'], [])
+                enriched.append(td)
+            _open = [t for t in enriched if t.get('status') == 'open']
+            _closed = [t for t in enriched if t.get('status') == 'closed']
+            return 200, {"ok": True, "account": _acct,
+                "trades": enriched, "open": _open, "closed": _closed,
+                "summary": {
+                    "open_count": len(_open), "closed_count": len(_closed),
+                    "total_pnl": round(sum(float(t.get('pnl') or 0) for t in _closed), 2),
+                    "unrealized_pnl": round(sum(float(t.get('unrealized_pnl') or 0) for t in _open), 2),
+                }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/paper-automation-performance":
         try:
             by_source = _db_query("""

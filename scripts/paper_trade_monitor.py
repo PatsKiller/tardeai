@@ -235,6 +235,26 @@ def monitor(dry_run=False):
                 updated_at=NOW() WHERE id=%s""",
                 [current, round(r_mult, 2), round(pnl, 2), round(pnl, 2), dollar_risk,
                  round(new_mfe, 2), round(new_mae, 2), trade['id']])
+
+            # ── Execution log: record every non-hold action for journal ──
+            if action != "hold":
+                try:
+                    cur.execute("""
+                        INSERT INTO agent_curation_events
+                            (paper_trade_id, symbol, strategy_id, agent_name, event_type, event_summary, payload)
+                        VALUES (%s, %s, %s, 'monitor', %s, %s, %s)
+                    """, [trade['id'], sym, trade.get('strategy_id', ''),
+                          f'MONITOR_{action.upper()}',
+                          f"{action}: {reason}",
+                          json.dumps({
+                              'action': action, 'price': current, 'stop': alpaca_stop,
+                              'new_stop': new_stop if action in ('adjust_stop', 'tighten_near_target') else None,
+                              'r_multiple': round(r_mult, 2), 'pnl': round(pnl, 2),
+                              'pnl_pct': round(pnl_pct, 1),
+                              'mfe_pct': round(new_mfe, 2), 'mae_pct': round(new_mae, 2),
+                          })])
+                except Exception:
+                    pass  # non-blocking
             conn.commit()
 
         results.append({
