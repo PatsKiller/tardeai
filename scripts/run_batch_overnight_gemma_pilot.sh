@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# run_batch_overnight_gemma_pilot.sh — Phase 1B overnight gemma3-overnight pilot
+# run_batch_overnight_gemma_pilot.sh — Phase 1C overnight gemma3-overnight pilot
 #
 # Runs multi_strategy_classifier.py with gemma3-overnight as the local model.
 # Handles GPU lifecycle: evict qwen → load gemma → run pilot → restore qwen + nomic.
 # Fails closed: if qwen restore fails, exits non-zero and alerts.
 #
 # Usage:
-#   ./scripts/run_batch_overnight_gemma_pilot.sh              # default: --batch --llm --limit 1
-#   ./scripts/run_batch_overnight_gemma_pilot.sh --limit 5    # override limit
+#   ./scripts/run_batch_overnight_gemma_pilot.sh              # default: --limit 1
+#   ./scripts/run_batch_overnight_gemma_pilot.sh --limit 2    # 2 symbols
+#   ./scripts/run_batch_overnight_gemma_pilot.sh --limit 3    # max allowed
 #
 # NOT scheduled via cron. Run manually or by operator only.
 # ────────────────────────────────────────────────────────────────────────────
@@ -24,7 +25,32 @@ PILOT_MODEL="gemma3-overnight"
 RESTORE_MODEL="qwen3:14b"
 EMBED_MODEL="nomic-embed-text:latest"
 PILOT_TIMEOUT="10m"
-LIMIT="${1:---limit 1}"  # default --limit 1, or pass --limit N
+MAX_LIMIT=3
+
+# Parse --limit N argument (default 1, max 3)
+LIMIT_N=1
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --limit)
+            LIMIT_N="${2:-1}"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if ! [[ "$LIMIT_N" =~ ^[0-9]+$ ]] || [ "$LIMIT_N" -lt 1 ]; then
+    echo "ERROR: --limit must be a positive integer, got '$LIMIT_N'" >&2
+    exit 1
+fi
+if [ "$LIMIT_N" -gt "$MAX_LIMIT" ]; then
+    echo "ERROR: --limit $LIMIT_N exceeds Phase 1C max of $MAX_LIMIT" >&2
+    exit 1
+fi
+LIMIT="--limit $LIMIT_N"
 
 # ── Logging ──────────────────────────────────────────────────────────────
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') [pilot] $*" | tee -a "$LOG"; }
@@ -68,7 +94,7 @@ warmup_embed() {
 }
 
 # ── Safety check ─────────────────────────────────────────────────────────
-log "=== Phase 1B Overnight Pilot Start ==="
+log "=== Phase 1C Overnight Pilot Start (limit=$LIMIT_N, max=$MAX_LIMIT) ==="
 log "Checking safety..."
 
 ALPACA_MODE=$(grep -oP '(?<=ALPACA_MODE=)\S+' "$PROJ/.env" 2>/dev/null || echo "")
@@ -180,7 +206,7 @@ log "GPU state AFTER restore:"
 gpu_ps | tee -a "$LOG"
 
 # ── Summary ──────────────────────────────────────────────────────────────
-log "=== Phase 1B Overnight Pilot Complete ==="
+log "=== Phase 1C Overnight Pilot Complete (limit=$LIMIT_N) ==="
 log "Pilot exit code: $PILOT_EXIT"
 log "qwen3 restore: $RESTORE_STATUS"
 
