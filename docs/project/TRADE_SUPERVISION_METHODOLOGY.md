@@ -10,15 +10,31 @@ How the Trade AI v12 system monitors active positions, generates execution adjus
 
 ## 1. Monitoring Architecture Overview
 
-Trade supervision operates on three concurrent layers:
+Trade supervision operates on four concurrent layers:
 
 | Layer | Frequency | Hours (ET) | Purpose |
 |-------|-----------|------------|---------|
-| **Position Management** | Every 5 min | 9:00 AM - 4:00 PM | Stop adjustments, target exits, P&L sync |
+| **Position Management** | Every 5 min | 9:00 AM - 4:00 PM | Stop-hit/target-hit auto-close, trailing stops, P&L sync |
 | **Situational Alerts** | Every 15 min | Market hours | Near-stop, negative news, staleness, volume |
 | **Execution Safety Net** | Every 5 min | 9:00 AM - 4:00 PM | Submit approved-but-unexecuted proposals |
+| **Post-Close Analysis** | On close + nightly + weekly + monthly | Various | Multi-tier LLM reviews, learning loop |
 
-All three are **time-sliced cron jobs**, not event-driven or continuous polling. Between intervals, positions are protected by bracket orders on Alpaca (limit entry + stop-loss + take-profit) which execute at the broker level regardless of whether our system is running.
+All monitoring layers are **time-sliced cron jobs**, not event-driven. Between intervals, positions are protected by bracket orders on Alpaca (limit entry + stop-loss + take-profit) which execute at the broker level regardless of whether our system is running.
+
+### Post-Close Analysis Layer
+
+When a trade closes (by any path), the system triggers multi-tier LLM reviews:
+
+| Tier | Model | Trigger | Purpose |
+|------|-------|---------|---------|
+| Realtime | qwen3:14b | `on_paper_trade_closed()` — immediate | Fast initial analysis with 4 agent perspectives |
+| Overnight | gemma3:27b | `overnight_batch.py` — 8 PM | Deeper analysis of day's closed trades |
+| Weekly | OpenAI gpt-4o | Cron Sunday 10 AM | Cross-trade pattern detection, strategy grades |
+| Monthly | Anthropic Claude | Cron 1st of month | Strategic review of weekly summaries |
+
+**Implemented in:** `multi_tier_trade_reviewer.py`, `agent_curation_hooks.py`, `overnight_batch.py`
+
+All reviews persist to `paper_trade_multi_reviews` table, index findings into RAG (`content_embeddings`), and write learning outcomes to `agent_intelligence_rules`. Higher tiers receive lower-tier reviews as context.
 
 ---
 
@@ -54,18 +70,37 @@ All three are **time-sliced cron jobs**, not event-driven or continuous polling.
 | Target distance | DB `target_1` vs current | Target hit / near-target |
 | Dollar risk | Calculated: `|entry - stop| * shares` | DB update, risk tracking |
 
+### Automated Risk Actions (Priority Order)
+
+The monitor checks these conditions in priority order. Stop-hit and target-hit auto-close immediately and skip remaining checks.
+
+**Implemented in:** `open_trade_monitor.py` → `monitor_trade()`, `_auto_close_position()`, `_update_stop_on_alpaca()`
+
+| Priority | Condition | Action | Logged To |
+|----------|-----------|--------|-----------|
+| 1 | **Stop hit**: price ≤ stop | Auto-close on Alpaca, mark closed/LOSS | `paper_trade_risk_actions` |
+| 2 | **Target hit**: price ≥ target | Auto-close on Alpaca, mark closed/CORRECT | `paper_trade_risk_actions` |
+| 3 | **Trailing stop**: R ≥ 1.0 | Move stop to entry + 50% of gains, update Alpaca order | `paper_trade_risk_actions` |
+| 4 | Near stop | Alert only (Telegram) | `open_trade_alerts` |
+| 5 | Near target | Alert only (Telegram) | `open_trade_alerts` |
+| 6 | Stale trade (>3h, |R|<0.5) | Flag stale | `open_trade_alerts` |
+| 7 | Extended profit (R≥1.5) | Informational alert | `open_trade_alerts` |
+| 8 | **Critical news** keywords | Auto-close on Alpaca | `paper_trade_risk_actions` |
+
+**All close paths trigger `on_paper_trade_closed()`** which runs the full post-trade analysis pipeline (Iris, Aegis, LLM analysis, RAG indexing, realtime multi-tier review).
+
 ### R-Multiple Trailing Stop Rules
 
-Stops only move UP (profit protection), never down:
+Stops only move UP (profit protection), never down. Current implementation uses a single threshold:
 
-| Condition | New Stop Level | Effect |
-|-----------|---------------|--------|
-| R >= 1.0 | Entry price (breakeven) | Eliminates loss risk |
-| R >= 1.5 | Entry + 0.5R | Locks 0.5R profit |
-| R >= 2.0 | Entry + 1.0R | Locks 1.0R profit |
-| R >= 3.0 | Entry + 2.0R | Tight trail, locks 2.0R |
-| >= 80% to target | Entry + 65% of target move | Aggressive lock near target |
-| At or above target | Position closed (market sell) | Full exit |
+| Condition | New Stop Level | Effect | Status |
+|-----------|---------------|--------|--------|
+| R >= 1.0 | Entry + 50% of gains | Locks half of profit | **Enforced** in `open_trade_monitor.py` |
+| R >= 1.5 | Entry + 0.5R | Locks 0.5R profit | Planned (not yet enforced) |
+| R >= 2.0 | Entry + 1.0R | Locks 1.0R profit | Planned |
+| R >= 3.0 | Entry + 2.0R | Tight trail, locks 2.0R | Planned |
+| >= 80% to target | Entry + 65% of target move | Aggressive lock near target | Planned |
+| At or above target | Position closed (market sell) | Full exit | **Enforced** (auto-close) |
 
 ### How stop adjustments are executed
 

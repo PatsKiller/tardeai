@@ -895,6 +895,36 @@ alpaca_paper_adapter.py → submit_entry()
 
 **Approved ≠ Executed.** Approval triggers validation, but execution is conditional on passing all gates. A stale or drifted proposal will be blocked even after approval.
 
+### Approval-Time Revalidation
+
+When John approves a trade, `approval_revalidator.py` → `validate_at_approval()` runs **immediately** before the proposal enters the execution pipeline. This is separate from the execution-time revalidator — it runs at decision time, not submission time.
+
+**Implemented in:** `approval_revalidator.py` → `validate_at_approval()`, called from `api_v2.py` POST `/api/v2/approvals/decision`
+
+| Check | Source | Fail Action |
+|-------|--------|-------------|
+| Stop breach (live price ≤ stop) | Alpaca live quote | **REJECTED** — approval reverted |
+| Price drift > 10% | Alpaca vs proposed_entry | **REJECTED** |
+| R:R ratio < 1.5 (with live price) | Computed from live price/stop/target | **REJECTED** |
+| Strategy YAML criteria | `config/strategies/{id}.yaml` | **REJECTED** per specific disqualifier |
+| Proposal staleness | `created_at` vs timeframe_class threshold | **REJECTED** (intraday: 2h, swing: 72h) |
+| Past trade losses | RAG query for `trade_outcome` embeddings | Warning surfaced to user |
+| Price drift > 5% | Alpaca vs proposed_entry | Warning + shares recalculated |
+| Price drift > 2% | Alpaca vs proposed_entry | Shares recalculated to maintain dollar risk |
+
+**Strategy YAML criteria enforced** (from `config/strategies/*.yaml`):
+- Price range (min/max per strategy)
+- RVOL minimum
+- Float maximum
+- Signal score minimum
+- Catalyst requirement (present/verified)
+- Account eligibility and forbidden accounts
+- Auto-disqualifiers (e.g., AFTER_130PM, WIDE_SPREAD, DILUTION_RISK)
+
+If validation returns REJECTED, the approval is reverted to pending and the user sees the blockers in the UI response.
+
+**Agents query past trade outcomes during proposal review.** Both `proposal_agent_review.py` and `proposal_intelligence_analyzer.py` inject RAG-retrieved trade history into their LLM prompts. If FLYW lost money as a swing_trade, the next FLYW swing proposal prompt explicitly tells agents about that loss.
+
 **Market orders:** Simple buy → immediate fill → stop placed as separate GTC order after fill.
 Post-fill, the monitor takes over position management (trailing stops, auto-close on stop/target hit).
 
@@ -1175,6 +1205,72 @@ This is NOT the primary execution path — instant execution on approval is. The
 - **Partial profit taking:** The system closes the full position at target, not partial lots.
 - **Spread/liquidity checks:** The system does not check bid-ask spread or volume before adjusting stops. Acceptable for paper trading.
 
+### Post-Trade Analysis Pipeline
+
+When any paper trade closes, `on_paper_trade_closed()` in `agent_curation_hooks.py` triggers the full post-trade analysis chain. All close paths call this hook: `open_trade_monitor.py` (auto-close on stop/target/news), `paper_trade_closer.py` (manual close), `alpaca_paper_adapter.py` (sync close).
+
+**Implemented in:** `agent_curation_hooks.py` → `on_paper_trade_closed()`
+
+| Step | Component | Output |
+|------|-----------|--------|
+| Iris writeback | `iris_record_trade_outcome()` | Outcome intelligence rules |
+| Aegis synthesis | `aegis_write_post_trade_synthesis()` | Narrative paragraph in `agent_curation_events` |
+| Outcome lessons | `trigger_outcome_lessons()` | Pattern library updates |
+| Pattern confirmation | `check_pattern_confirmation()` | Pattern strength adjustments |
+| RAG indexing | `_index_trade_outcome_to_rag()` | Outcome embedded in `content_embeddings` |
+| LLM analysis | `paper_trade_analyzer.py` | What worked/failed/lessons in `paper_trade_analysis` |
+| **Realtime review** | `multi_tier_trade_reviewer.py` (qwen3:14b) | 4-agent structured review in `paper_trade_multi_reviews` |
+
+### Learning Loop (Closed — Self-Improving)
+
+The system forms a closed feedback loop where trade outcomes improve future proposals:
+
+```
+Trade closes → LLM analysis + agent critiques → RAG embedding
+    ↓
+Next proposal for same symbol/strategy
+    ↓
+proposal_agent_review.py queries RAG → sees "PAST TRADE HISTORY" in prompt
+proposal_intelligence_analyzer.py queries RAG → "factor past losses into assessment"
+approval_revalidator.py queries RAG → surfaces past losses as warnings
+    ↓
+Agents vote with historical context → better decisions
+```
+
+**Key tables in the learning loop:**
+
+| Table | Purpose | Written By | Read By |
+|-------|---------|------------|---------|
+| `content_embeddings` (source_type='trade_outcome') | Vectorized trade outcomes | `agent_curation_hooks.py` | RAG queries in proposal review |
+| `content_embeddings` (source_type='trade_review') | Vectorized tier reviews | `multi_tier_trade_reviewer.py` | RAG queries in proposal review |
+| `agent_intelligence_rules` (rule_type='trade_learning') | Learning agent findings | `multi_tier_trade_reviewer.py` | Agent prompt context |
+| `paper_trade_multi_reviews` | Structured reviews per tier | `multi_tier_trade_reviewer.py` | Journal UI, monthly aggregation |
+| `paper_trade_analysis` | LLM what-worked/failed/lessons | `paper_trade_analyzer.py` | Journal UI |
+| `paper_trade_risk_actions` | Stop adjustments, auto-closes | `open_trade_monitor.py` | Journal UI, risk audit |
+| `journal_trade_reviews` | Human-readable review + tags | `agent_curation_hooks.py` | Journal UI |
+| `trade_thesis_outcomes` | Thesis confirmed/invalidated | `post_trade_thesis_reviewer.py` | Journal UI |
+
+### API: Professional Trade Journal Entry
+
+**Endpoint:** `GET /api/v2/journal/trade-detail/{id}`
+**Implemented in:** `api_v2.py`
+
+Aggregates ALL data for a single closed trade into a structured response:
+
+| Section | Data Source |
+|---------|------------|
+| `classification` | paper_trades: strategy, setup, regime, day/time |
+| `timing` | paper_trades: entry/exit timestamps, hold duration |
+| `technicals_at_entry` | paper_trades: VIX, RVOL, score, grade, catalyst |
+| `risk_execution` | paper_trades: planned vs actual, slippage, MAE/MFE, R-multiple |
+| `narrative.journal_review` | journal_trade_reviews: lessons, coach notes, mistake/strength tags |
+| `narrative.thesis_outcome` | trade_thesis_outcomes: thesis confirmed/invalidated |
+| `narrative.llm_analysis` | paper_trade_analysis: what worked/failed/lessons |
+| `agent_critiques` | agent_curation_events: Iris, Aegis, system, LLM events |
+| `multi_tier_reviews` | paper_trade_multi_reviews: realtime/overnight/weekly/monthly reviews with agent commentaries |
+| `risk_actions` | paper_trade_risk_actions: stop adjustments, auto-closes |
+| `proposal` | paper_trade_proposals: original proposal parameters, eligibility |
+
 ---
 
 ## 11. Agent Layer
@@ -1254,6 +1350,30 @@ File lock at `/tmp/ollama_llm_gate.lock` using `fcntl.flock(LOCK_EX)`:
 4. Releases lock on completion or timeout
 5. If lock acquisition fails → falls back to cloud LLM
 
+### Multi-Tier Trade Review System
+
+Closed trades receive escalating LLM review across 4 tiers. Each higher tier sees lower-tier reviews as context, building layered analysis. All reviews persist to `paper_trade_multi_reviews` table and index findings into RAG.
+
+**Implemented in:** `multi_tier_trade_reviewer.py`
+
+| Tier | Model | Trigger | Purpose |
+|------|-------|---------|---------|
+| Realtime | qwen3:14b (Ollama) | Every trade close via `on_paper_trade_closed()` | Fast initial analysis (~30s) |
+| Overnight | gemma3:27b (Ollama) | Nightly 8 PM via `overnight_batch.py` | Deeper analysis with larger model |
+| Weekly | OpenAI gpt-4o | Sunday 10 AM via cron | Cross-trade pattern detection, strategy grades |
+| Monthly | Anthropic Claude | 1st of month via cron | Strategic review of weekly summaries + flagged trades |
+
+Each tier generates structured reviews with 4 agent perspectives:
+
+| Agent | Evaluates |
+|-------|-----------|
+| risk_agent | Stop placement, position sizing, R:R honored |
+| strategy_agent | Criteria alignment, setup validity, repeat-worthiness |
+| execution_agent | Entry timing, slippage, exit handling |
+| learning_agent | Patterns, rules to change, memory for future trades |
+
+All agent commentaries are written to `agent_curation_events` (visible in journal) and learning findings to `agent_intelligence_rules` (consumed by future proposals via RAG).
+
 ### LLM Use Cases
 
 | Use Case | Script | Frequency | Model |
@@ -1266,6 +1386,13 @@ File lock at `/tmp/ollama_llm_gate.lock` using `fcntl.flock(LOCK_EX)`:
 | Topic curation (rate, extract, improve) | `topic_curator.py` | 7:00 AM daily | qwen3:14b |
 | Agent responses | Via OpenClaw gateway | On user interaction | qwen3:14b + cloud fallback |
 | Rebalance advisor | `portfolio_yaml_advisor.py` | Monthly or on-demand | Claude Opus (cloud) |
+| **Trade review — realtime** | `multi_tier_trade_reviewer.py` | Every trade close | qwen3:14b |
+| **Trade review — overnight** | `multi_tier_trade_reviewer.py` | Nightly 8 PM | gemma3:27b |
+| **Trade review — weekly** | `multi_tier_trade_reviewer.py` | Sunday 10 AM | OpenAI gpt-4o |
+| **Trade review — monthly** | `multi_tier_trade_reviewer.py` | 1st of month | Anthropic Claude |
+| **Post-trade analysis** | `paper_trade_analyzer.py` | Every trade close | qwen3:14b |
+| **Proposal intelligence** | `proposal_intelligence_analyzer.py` | Per proposal (with RAG context) | qwen3:14b |
+| **Proposal agent review** | `proposal_agent_review.py` | Per proposal (with RAG context) | qwen3:14b |
 
 ### LLM Intelligence Enrichment (Phase 5)
 
