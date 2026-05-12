@@ -65,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
   { label: 'Intelligence', items: [
     { to: '/intelligence', label: 'Intelligence Hub' },
     { to: '/topic-monitor', label: 'Topic Monitor' },
+    { to: '/research-topics', label: 'Research Topics' },
     { to: '/agent-pipeline', label: 'Agent Pipeline' },
     { to: '/agent-calibration', label: 'Agent Calibration' },
   ]},

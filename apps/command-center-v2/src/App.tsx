@@ -47,6 +47,7 @@ const JournalHub = lazy(() => import('./pages/JournalHub'))
 // ── Intelligence (consolidated: Sources + Entities + Whiteboard + Content Health) ──
 const IntelligenceHub = lazy(() => import('./pages/IntelligenceHub'))
 const TopicMonitor = lazy(() => import('./pages/TopicMonitor'))
+const ResearchTopics = lazy(() => import('./pages/ResearchTopics'))
 const AIAnalyst = lazy(() => import('./pages/AIAnalyst'))
 
 // ── Agents & Pipeline (consolidated) ──
@@ -145,6 +146,7 @@ export default function App() {
           {/* ── Intelligence (consolidated) ── */}
           <Route path="intelligence" element={<SafePage><IntelligenceHub /></SafePage>} />
           <Route path="topic-monitor" element={<SafePage><TopicMonitor /></SafePage>} />
+          <Route path="research-topics" element={<SafePage><ResearchTopics /></SafePage>} />
           <Route path="ai-analyst" element={<SafePage><AIAnalyst /></SafePage>} />
 
           {/* ── Agents & Pipeline (consolidated) ── */}
