@@ -259,6 +259,14 @@ def close_paper_trade(conn, paper_trade_id=None, symbol=None, reason="manual", d
     # Run post-close pipeline
     post_close = _run_post_close(trade_id, sym)
 
+    # Trigger agent curation hooks for journal entry generation
+    try:
+        from agent_curation_hooks import on_paper_trade_closed
+        on_paper_trade_closed(conn, trade_id)
+        log.info(f"[{sym}] Post-trade analysis hooks triggered")
+    except Exception as _hook_err:
+        log.warning(f"[{sym}] Post-trade hooks failed (non-fatal): {_hook_err}")
+
     return {
         "status": "closed",
         "paper_trade_id": trade_id,
