@@ -256,6 +256,50 @@ def check_pattern_confirmation(conn, paper_trade_id):
     return {'success': True, 'patterns_checked': checked}
 
 
+def _index_trade_outcome_to_rag(conn, paper_trade_id):
+    """Embed trade outcome into content_embeddings so agents learn from it via RAG."""
+    trade = _get_trade(conn, paper_trade_id)
+    if not trade:
+        return {'success': False, 'reason': 'trade_not_found'}
+
+    symbol = trade['symbol']
+    verdict = trade.get('outcome_verdict') or 'UNKNOWN'
+    strategy = trade.get('strategy_id', '')
+    pnl = float(trade['pnl']) if trade.get('pnl') else 0
+    r_mult = trade.get('r_multiple')
+    catalyst = trade.get('catalyst_at_entry', '') or ''
+    verified = trade.get('catalyst_verified', False)
+    notes = trade.get('notes', '') or ''
+
+    r_str = f"{r_mult:+.1f}R" if r_mult is not None else ""
+    embed_text = (
+        f"{symbol} paper trade {strategy} closed {verdict} {r_str} pnl=${pnl:+.2f}. "
+        f"{'Verified' if verified else 'Unverified'} catalyst: {catalyst[:100]}. "
+        f"{notes[:200]}"
+    )
+    title = f"{symbol} trade outcome: {verdict} {r_str} ({strategy})"
+
+    try:
+        from rag_retrieval import embed_text as _embed
+        vec = _embed(embed_text[:2000])
+        if vec is None:
+            return {'success': False, 'reason': 'embedding_failed'}
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO content_embeddings (source_type, source_id, title, embedding, embedding_model, embedding_dim, created_at)
+            VALUES ('trade_outcome', %s, %s, %s, 'nomic-embed-text', %s, NOW())
+            ON CONFLICT (source_type, source_id) DO UPDATE SET
+                title = EXCLUDED.title, embedding = EXCLUDED.embedding, created_at = NOW()
+        """, [paper_trade_id, title[:300], json.dumps(vec), len(vec)])
+
+        log.info(f"[RAG] Indexed trade outcome for {symbol} ({strategy} {verdict})")
+        return {'success': True, 'symbol': symbol}
+    except Exception as e:
+        log.warning(f"[RAG] Index failed for {symbol}: {e}")
+        return {'success': False, 'error': str(e)}
+
+
 def on_paper_trade_closed(conn, paper_trade_id):
     """Master hook called when any paper trade closes.
 
@@ -291,10 +335,18 @@ def on_paper_trade_closed(conn, paper_trade_id):
         log.error(f"Pattern check failed for trade {paper_trade_id}: {e}")
         results['patterns'] = {'success': False, 'error': str(e)}
 
+    # RAG indexing — embed trade outcome so agents learn from it
+    try:
+        results['rag'] = _index_trade_outcome_to_rag(conn, paper_trade_id)
+    except Exception as e:
+        log.error(f"RAG index failed for trade {paper_trade_id}: {e}")
+        results['rag'] = {'success': False, 'error': str(e)}
+
     log.info(f"Curation complete for trade {paper_trade_id}: "
              f"iris={results.get('iris',{}).get('success')}, "
              f"aegis={results.get('aegis',{}).get('success')}, "
              f"lessons={results.get('lessons',{}).get('success')}, "
-             f"patterns={results.get('patterns',{}).get('success')}")
+             f"patterns={results.get('patterns',{}).get('success')}, "
+             f"rag={results.get('rag',{}).get('success')}")
 
     return results

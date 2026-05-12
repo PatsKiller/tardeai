@@ -22,10 +22,11 @@ SOURCE_LABELS = {
     "agent_result": "Agent Memory", "agent_synthesis": "Synthesis",
     "cio_decision": "CIO Decision", "fused_signal": "Fused Signal",
     "decision_outcome": "Outcome", "research_finding": "Research Advisory",
+    "trade_outcome": "Trade Outcome",
 }
 
 SOURCE_BOOSTS = {
-    "decision_outcome": 1.3, "research_finding": 1.25, "agent_synthesis": 1.2,
+    "trade_outcome": 1.35, "decision_outcome": 1.3, "research_finding": 1.25, "agent_synthesis": 1.2,
     "cio_decision": 1.15, "fused_signal": 1.1, "agent_result": 1.05,
 }
 
