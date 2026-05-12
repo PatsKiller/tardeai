@@ -136,11 +136,68 @@ To be populated during Phase 0 implementation.
   .venv/bin/python scripts/verify_llm_providers.py
   ```
 
-### D. qwen3:14b Generation Latency — OBSERVATION
-- Model is resident in VRAM (9.6 GB, 41/41 layers offloaded)
-- Generate calls take 50-120s even for trivial prompts
-- `think: false` API parameter may not be suppressing qwen3 internal thinking
-- Requests queue serially in Ollama, compounding latency under cron load
-- Embedding calls (nomic-embed-text) remain fast (~60ms)
-- **Not a blocker for Phase 0** — model responds, just slowly. May need investigation
-  for Phase 1 (consider `/no_think` prompt prefix or Ollama parameter tuning).
+### D. qwen3:14b Generation Latency — OBSERVATION (superseded by Phase 0B)
+
+See Phase 0B below for full diagnosis.
+
+## Phase 0B — Local LLM Diagnostics — 2026-05-11 20:47 ET
+
+### Root Cause: Queue Saturation, NOT Model Failure
+
+**qwen3:14b is healthy.** The observed 83-120s latency was caused entirely by
+**Ollama request queue saturation** from concurrent cron processes.
+
+### Evidence — Clean Queue Direct Tests
+
+| Test | think:false | num_predict | eval_count | eval_time | total_time | tok/s |
+|------|------------|-------------|------------|-----------|------------|-------|
+| Tiny (/no_think ok) | yes | 3 | 3 | 0.19s | 12.2s | 15.8 |
+| 2-sentence | yes | 100 | 35 | 3.3s | 5.6s | 10.5 |
+| Agent-sized (w/ /no_think) | yes | 300 | 114 | 11.5s | 14.6s | 9.9 |
+| Agent-sized (no prefix) | yes | 300 | 125 | 12.6s | 16.2s | 9.9 |
+| **Thinking ENABLED** | **no** | 800 | **460** | **48.0s** | **57.0s** | 9.6 |
+
+Key findings:
+- **9.6-15.8 tok/s** — normal for qwen3:14b Q4_K_M on Intel Arc B50 Vulkan
+- **`think:false` works correctly** — reduces token count from 460 to ~120 for same prompt
+- **No `<think>` tags** in any output (DB confirmed across 8 recent results)
+- **`/no_think` prefix has no measurable effect** — `think:false` API param is sufficient
+- **local_llm.generate() works**: 11.9s on clean queue, audit logged as `status=ok`
+
+### Queue Saturation Mechanism
+
+```
+Cron: */5 20-23 * * 1-5  process_watchlist_agent_jobs.py --limit 25
+```
+
+- Fires every 5 minutes → ~25 LLM calls per invocation
+- Each call takes ~15s with think:false, ~57s with thinking enabled
+- Processes accumulate because they can't finish before the next cron fires
+- **Peak observed: 10 concurrent processes** (from 20:00-20:45, none finished)
+- Ollama serializes generation → queue depth × 15s per request = catastrophic wait
+- Fallback chain catches this: local timeout → Claude (billing fail) → Grok (succeeds in 13-28s)
+
+### Diagnostic Fields Added to llm_router.py
+
+`_call_local()` now captures Ollama internals on success:
+- `eval_count`, `prompt_eval_count`, `eval_duration_s`, `prompt_eval_duration_s`
+- `total_duration_s`, `tok_per_s`
+- Written to `logs/llm_router.log` as `ollama_*` fields when provider=local
+
+### Provider Status (at time of testing)
+
+| Provider | Status | Detail |
+|----------|--------|--------|
+| Local (qwen3:14b) | **USABLE** (when queue is clear) | 9.9 tok/s, ~15s per agent call |
+| OpenAI | USABLE | 1.84s probe response |
+| Anthropic | DEGRADED | Credit balance too low (HTTP 400) |
+| xAI/Grok | CONFIGURED | Actively handling fallback traffic (~$0.0002/call) |
+
+### Recommendations for Phase 1
+
+1. **Add flock guard to watchlist cron** to prevent concurrent accumulation
+2. **Reduce cron frequency** during evening hours (*/15 instead of */5)
+3. **No model changes needed** — qwen3:14b performance is normal at 9.9 tok/s
+4. **`think:false` is working** — no `/no_think` prefix needed in prompts
+5. **Anthropic billing** should be resolved before relying on Claude as fallback
+6. **Grok fallback is functioning** and keeping the system operational during queue saturation
