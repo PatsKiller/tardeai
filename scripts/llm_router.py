@@ -136,11 +136,22 @@ def _call_local(prompt: str, max_tokens: int = 800, timeout: int = None) -> dict
             result = json.loads(resp.read())
             text = result.get("message", {}).get("content", "").strip()
             latency = round(time.time() - t0, 2)
+            # Diagnostic: capture Ollama internals for Phase 0B analysis
+            eval_count = result.get("eval_count", 0)
+            prompt_eval_count = result.get("prompt_eval_count", 0)
+            eval_dur_s = round(result.get("eval_duration", 0) / 1e9, 2)
+            prompt_eval_dur_s = round(result.get("prompt_eval_duration", 0) / 1e9, 2)
+            total_dur_s = round(result.get("total_duration", 0) / 1e9, 2)
+            tok_per_s = round(eval_count / eval_dur_s, 1) if eval_dur_s > 0 else 0
             return {
                 "model_used": LOCAL_MODEL, "provider": "local",
                 "response": text, "latency": latency,
                 "success": bool(text and len(text) > 20),
                 "cost_estimate": 0.0,
+                # Phase 0B diagnostics (backward-compatible, ignored by consumers)
+                "eval_count": eval_count, "prompt_eval_count": prompt_eval_count,
+                "eval_duration_s": eval_dur_s, "prompt_eval_duration_s": prompt_eval_dur_s,
+                "total_duration_s": total_dur_s, "tok_per_s": tok_per_s,
             }
     except Exception as e:
         return {"model_used": LOCAL_MODEL, "provider": "local",
@@ -439,6 +450,14 @@ def _log_call(task_type: str, result: dict):
         "fallbacks": fallbacks,
         "high_impact": hi,
     }
+    # Phase 0B: include Ollama diagnostics when available
+    if result.get("eval_count"):
+        entry["ollama_eval_count"] = result["eval_count"]
+        entry["ollama_prompt_eval_count"] = result.get("prompt_eval_count", 0)
+        entry["ollama_eval_duration_s"] = result.get("eval_duration_s", 0)
+        entry["ollama_prompt_eval_dur_s"] = result.get("prompt_eval_duration_s", 0)
+        entry["ollama_total_dur_s"] = result.get("total_duration_s", 0)
+        entry["ollama_tok_per_s"] = result.get("tok_per_s", 0)
 
     try:
         with open(log_file, "a") as f:
