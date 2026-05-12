@@ -12985,14 +12985,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                      else (query or {}).get("account", "ALPACA_PAPER"))
             trades = _db_query("""
                 SELECT id, symbol, strategy_id, account, entry_price, exit_price,
-                       current_price, shares, stop_loss, target_1, dollar_risk,
+                       current_price, shares, stop_loss, target_1, target_2, dollar_risk, dollar_size,
                        pnl, unrealized_pnl, r_multiple, pnl_pct,
                        status, outcome_verdict, exit_reason,
                        market_regime, vix_at_entry,
-                       catalyst_at_entry, catalyst_verified,
+                       catalyst_at_entry, catalyst_verified, intel_readiness,
+                       score_at_entry, rvol_at_entry, float_m_at_entry,
                        risk_gate_result, risk_gate_reason_codes,
                        max_favorable_excursion, max_adverse_excursion,
-                       opened_via, closed_via, notes,
+                       planned_entry, entry_slippage, planned_stop, stop_slippage,
+                       opened_via, closed_via, logged_by, notes,
+                       broker_order_id, broker_status, order_type, broker, client_order_id,
+                       bracket_order, take_profit_price, stop_loss_price,
+                       submitted_at, filled_at, close_requested_at, close_reason, close_order_id,
+                       hold_time_min, proposal_id,
+                       post_trade_analyzed, iris_curated, aegis_summarized,
                        entry_time, closed_at, created_at, updated_at
                 FROM paper_trades
                 WHERE account = %s AND status IN ('open', 'closed')
@@ -13019,7 +13026,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if _trade_ids:
                 _alerts = _db_query("""
                     SELECT paper_trade_id, alert_type, severity, title, message,
-                           created_at
+                           data, created_at
                     FROM open_trade_alerts
                     WHERE paper_trade_id = ANY(%s)
                     ORDER BY created_at ASC
@@ -13033,9 +13040,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _syms = list({t['symbol'] for t in trades if t.get('symbol')})
             if _syms:
                 _reviews = _db_query("""
-                    SELECT trade_key, symbol, setup_name, realized_r,
-                           mistake_tags, strength_tags, lesson_learned,
-                           review_notes, coach_notes, closed_date
+                    SELECT trade_key, symbol, setup_family, setup_name, timeframe,
+                           direction, entry_type, exit_type, market_regime, catalyst_type,
+                           planned_r, realized_r, followed_plan, well_executed,
+                           execution_quality_score, sizing_quality_score, risk_management_score,
+                           confidence_before, stress_level,
+                           mistake_tags, strength_tags,
+                           lesson_learned, review_notes, coach_notes,
+                           entry_signals, exit_signals, setup_types,
+                           payload, closed_date
                     FROM journal_trade_reviews
                     WHERE symbol = ANY(%s)
                     ORDER BY closed_date DESC
@@ -13043,6 +13056,45 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 for rv in _reviews:
                     reviews_by_symbol.setdefault(rv['symbol'], []).append(
                         {k: _json_clean(v) for k, v in rv.items()})
+            # Fetch Alpaca real-time data for open trades
+            _alpaca_live = {}
+            try:
+                import os, requests as _req
+                _akey = os.getenv('ALPACA_API_KEY', '')
+                _asec = os.getenv('ALPACA_SECRET_KEY', '')
+                if _akey and os.getenv('ENABLE_ALPACA_PAPER', 'false').lower() == 'true':
+                    _hdrs = {'APCA-API-KEY-ID': _akey, 'APCA-API-SECRET-KEY': _asec}
+                    _pos_resp = _req.get('https://paper-api.alpaca.markets/v2/positions', headers=_hdrs, timeout=5)
+                    if _pos_resp.status_code == 200:
+                        for _p in _pos_resp.json():
+                            _alpaca_live[_p['symbol']] = {
+                                'alpaca_qty': int(float(_p.get('qty', 0))),
+                                'alpaca_avg_entry': float(_p.get('avg_entry_price', 0)),
+                                'alpaca_current_price': float(_p.get('current_price', 0)),
+                                'alpaca_market_value': float(_p.get('market_value', 0)),
+                                'alpaca_cost_basis': float(_p.get('cost_basis', 0)),
+                                'alpaca_unrealized_pl': float(_p.get('unrealized_pl', 0)),
+                                'alpaca_unrealized_plpc': float(_p.get('unrealized_plpc', 0)),
+                                'alpaca_intraday_pl': float(_p.get('unrealized_intraday_pl', 0)),
+                                'alpaca_intraday_plpc': float(_p.get('unrealized_intraday_plpc', 0)),
+                                'alpaca_lastday_price': float(_p.get('lastday_price', 0)),
+                                'alpaca_change_today': float(_p.get('change_today', 0)),
+                                'alpaca_side': _p.get('side', 'long'),
+                            }
+                    _ord_resp = _req.get('https://paper-api.alpaca.markets/v2/orders?status=open', headers=_hdrs, timeout=5)
+                    if _ord_resp.status_code == 200:
+                        for _o in _ord_resp.json():
+                            _sym = _o['symbol']
+                            if _sym not in _alpaca_live:
+                                _alpaca_live[_sym] = {}
+                            _alpaca_live[_sym].setdefault('alpaca_orders', []).append({
+                                'order_id': _o['id'], 'type': _o.get('type'),
+                                'side': _o.get('side'), 'stop_price': _o.get('stop_price'),
+                                'limit_price': _o.get('limit_price'),
+                                'status': _o.get('status'), 'qty': _o.get('qty'),
+                            })
+            except Exception:
+                pass
             # Build enriched response
             enriched = []
             for t in trades:
@@ -13050,16 +13102,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 td['execution_log'] = events_by_trade.get(t['id'], [])
                 td['alerts'] = alerts_by_trade.get(t['id'], [])
                 td['journal_reviews'] = reviews_by_symbol.get(t['symbol'], [])
+                # Merge Alpaca real-time
+                if t['symbol'] in _alpaca_live and t.get('status') == 'open':
+                    td['alpaca'] = _alpaca_live[t['symbol']]
                 enriched.append(td)
             _open = [t for t in enriched if t.get('status') == 'open']
             _closed = [t for t in enriched if t.get('status') == 'closed']
+            # Analytics
+            _wins = sum(1 for t in _closed if (t.get('pnl') or 0) > 0)
+            _losses = sum(1 for t in _closed if (t.get('pnl') or 0) < 0)
+            _total_pnl = round(sum(float(t.get('pnl') or 0) for t in _closed), 2)
+            _unrealized = round(sum(float(t.get('unrealized_pnl') or 0) for t in _open), 2)
+            _avg_r = round(sum(float(t.get('r_multiple') or 0) for t in _closed) / max(len(_closed), 1), 2)
+            _by_strategy = {}
+            for t in _closed:
+                s = t.get('strategy_id', 'unknown')
+                _by_strategy.setdefault(s, {'count': 0, 'pnl': 0, 'wins': 0})
+                _by_strategy[s]['count'] += 1
+                _by_strategy[s]['pnl'] += float(t.get('pnl') or 0)
+                if (t.get('pnl') or 0) > 0:
+                    _by_strategy[s]['wins'] += 1
             return 200, {"ok": True, "account": _acct,
                 "trades": enriched, "open": _open, "closed": _closed,
                 "summary": {
                     "open_count": len(_open), "closed_count": len(_closed),
-                    "total_pnl": round(sum(float(t.get('pnl') or 0) for t in _closed), 2),
-                    "unrealized_pnl": round(sum(float(t.get('unrealized_pnl') or 0) for t in _open), 2),
-                }}
+                    "total_pnl": _total_pnl, "unrealized_pnl": _unrealized,
+                    "wins": _wins, "losses": _losses,
+                    "win_rate": round(_wins / max(len(_closed), 1) * 100, 1),
+                    "avg_r": _avg_r,
+                    "by_strategy": [{**v, 'strategy': k, 'win_rate': round(v['wins']/max(v['count'],1)*100,1)}
+                                    for k, v in _by_strategy.items()],
+                },
+                "alpaca_connected": bool(_alpaca_live),
+            }
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
