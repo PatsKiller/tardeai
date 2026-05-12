@@ -37,6 +37,31 @@ def _chat_ids() -> list:
     return [c.strip() for c in raw.split(",") if c.strip()]
 
 
+def _smart_split(text: str, limit: int) -> list[str]:
+    """Split text at newline boundaries, falling back to sentence then hard cut."""
+    if len(text) <= limit:
+        return [text]
+    chunks = []
+    while text:
+        if len(text) <= limit:
+            chunks.append(text)
+            break
+        # Try to split at last newline within limit
+        cut = text.rfind("\n", 0, limit)
+        if cut < limit // 2:
+            # Try sentence boundary (. or !) within limit
+            for sep in (". ", "! ", "? "):
+                pos = text.rfind(sep, 0, limit)
+                if pos > limit // 2:
+                    cut = pos + len(sep)
+                    break
+        if cut < limit // 2:
+            cut = limit  # hard cut as last resort
+        chunks.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    return chunks
+
+
 def send_telegram(message: str) -> bool:
     """Send a message via Telegram bot. Returns True on success."""
     if not _enabled():
@@ -46,7 +71,7 @@ def send_telegram(message: str) -> bool:
         print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
         return False
     try:
-        chunks   = [message[i:i+MAX_MSG_LEN] for i in range(0, len(message), MAX_MSG_LEN)]
+        chunks = _smart_split(message, MAX_MSG_LEN)
         chat_ids = _chat_ids()
         if not chat_ids:
             print("[telegram] No chat IDs configured")

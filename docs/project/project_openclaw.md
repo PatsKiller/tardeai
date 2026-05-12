@@ -26,7 +26,7 @@ originSessionId: 9fa89957-9286-4128-b08d-7f960d9b6594
 
 | Role | Model |
 |------|-------|
-| Primary | `ollama/qwen3:1.7b` |
+| Primary | `ollama/qwen3:14b` |
 | Fallback 1 | `openai/gpt-5.4-mini` |
 | Fallback 2 | `anthropic/claude-sonnet-4-6` |
 | Ollama URL | `http://127.0.0.1:11434` |

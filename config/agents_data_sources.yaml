@@ -14,7 +14,7 @@ data_sources:
 
   youtube:
     providers: [youtube_data_api]
-    channels: 6
+    channels: 48
     refresh: "daily 7 PM"
     processing: "transcript_processor.py: clean → summarize → sub-tag → structured JSON"
     scoring: content_scoring.score_content()

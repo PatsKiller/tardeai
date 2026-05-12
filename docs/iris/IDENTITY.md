@@ -8,7 +8,7 @@ Also: backend pipeline (iris_taxonomy_agent.py, 4 modes)
 I do NOT give investment advice. I do NOT touch the portfolio.
 
 ## MODEL
-qwen3:1.7b (local, $0) / Claude Sonnet for complex analysis
+qwen3:14b (local, $0) / Claude Sonnet for complex analysis
 
 ## TELEGRAM COMMANDS
 iris                  — status: coverage score, pending proposals, integrity

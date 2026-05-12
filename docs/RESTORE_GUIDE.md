@@ -12,7 +12,7 @@
 | Portfolio server | `nohup .venv/bin/python scripts/portfolio_server.py &` | scripts/portfolio_server.py |
 | Trade AI continuous runner | `systemctl --user start tradeai-continuous.service` | ~/.config/systemd/user/tradeai-continuous.service |
 | OpenClaw gateway | `openclaw gateway restart` | ~/.openclaw/openclaw.json |
-| Ollama LLM | `ollama serve` (auto-starts) | Model: qwen3:1.7b |
+| Ollama LLM | `ollama serve` (auto-starts) | Model: qwen3:14b |
 | PostgreSQL | `sudo systemctl start postgresql` | DB: trade_ai, user: trade_ai |
 
 ## 2. Critical Environment Variables (.env)
@@ -94,7 +94,7 @@ Restore: `systemctl --user daemon-reload && systemctl --user enable --now tradea
 Key settings in openclaw.json:
 - `memorySearch.enabled: true`
 - `gateway.port: 18789`
-- Models: ollama/qwen3:1.7b (primary) → openai/gpt-5.4-mini → anthropic/claude-sonnet-4-6
+- Models: ollama/qwen3:14b (primary) → openai/gpt-5.4-mini → anthropic/claude-sonnet-4-6
 
 ## 6. Database Tables (143)
 
