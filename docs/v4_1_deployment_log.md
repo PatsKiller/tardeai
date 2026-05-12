@@ -309,7 +309,55 @@ gemma3:27b was tested as a BATCH_OVERNIGHT model. Full report: `docs/v4_1_phase1
 - GPU lifecycle: cooldown(qwen) → smoke test(gemma) → pilot run → cooldown(gemma) → warmup(qwen+nomic)
 
 ### Next steps for Phase 1 expansion (NOT started)
-1. Create `gemma3-overnight` Modelfile with `keep_alive=0`, `num_ctx=8192`
-2. Set `LLM_BATCH_OVERNIGHT=gemma3:27b` in `.env`
-3. Wrap overnight batch scripts in lifecycle (warmup/cooldown)
-4. Observe one full overnight cycle before expanding to more scripts
+1. ~~Create `gemma3-overnight` Modelfile~~ — Done in Phase 1B
+2. Set `LLM_BATCH_OVERNIGHT=gemma3-overnight` in `.env` (when operator approves)
+3. ~~Create lifecycle wrapper script~~ — Done in Phase 1B
+4. Run one controlled overnight test with wrapper before expanding
+
+## Phase 1B — Overnight Model Preparation — 2026-05-11 22:09 ET
+
+### Deliverables created
+
+**1. `gemma3-overnight` named model** (via `config/Modelfile.gemma3-overnight`)
+- Based on gemma3:27b
+- `num_ctx=4096`, `temperature=0.2`, `top_p=0.9`, `num_predict=500`
+- Concise classification system prompt
+- `keep_alive=0` handled at request time by lifecycle wrapper
+- Built: `ollama create gemma3-overnight -f config/Modelfile.gemma3-overnight`
+- Verified: `ollama list` shows `gemma3-overnight:latest` (17 GB)
+
+**2. Smoke test: PASSED**
+- Prompt: "Classify AAPL: growth, value, or income?"
+- Response: "Growth." — 5.5s total, 8.3 tok/s
+- VRAM: 13.64 GB (74% GPU), same profile as raw gemma3:27b
+
+**3. `scripts/run_batch_overnight_gemma_pilot.sh` wrapper** (not scheduled)
+- Sets `LOCAL_LLM_MODEL=gemma3-overnight` inside script only
+- Safety: checks ALPACA_MODE, LLM_DISABLE_LIVE_EXECUTION, holdings guard
+- Active hours gate: refuses during 9:30-16:00 ET
+- GPU lifecycle: evict qwen → run pilot → unload gemma → restore qwen + nomic
+- Fail-closed: exit 2 with manual intervention instructions if restore fails
+- Timeout: 10 minutes default
+- Logs to: `logs/gemma_overnight_pilot.log`
+- Default: `--batch --llm --limit 1`
+
+### What was NOT changed
+- `.env` was NOT modified
+- `LLM_BATCH_OVERNIGHT` remains unset (defaults to qwen3:14b)
+- No cron entries added or modified
+- No routing changes to STANDARD, REALTIME, EMBEDDING, or any other process type
+- No broker, holdings, or execution changes
+- qwen3:14b + nomic-embed-text fully restored (9.94 GB)
+
+### Validation commands for controlled overnight test
+```bash
+# Run wrapper manually (outside market hours only)
+./scripts/run_batch_overnight_gemma_pilot.sh
+
+# Or with more symbols
+./scripts/run_batch_overnight_gemma_pilot.sh --limit 5
+
+# Check results
+tail -50 logs/gemma_overnight_pilot.log
+curl -s http://localhost:7777/api/v2/gpu-status | python3 -m json.tool
+```
