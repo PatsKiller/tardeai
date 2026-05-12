@@ -7,7 +7,7 @@
 
 ## What Is Trade AI v12?
 
-Trade AI v12 is a fully automated profit-seeking trading intelligence platform that discovers, evaluates, executes, and manages equity positions against a ~$1.19M multi-account portfolio. It combines quantitative screening, 23 configurable strategies, LLM-powered analysis (5 daily intelligence sections via qwen3:14b), and 6 conversational AI agents into a single-tenant self-hosted service. Orders are submitted to Alpaca automatically on approval with R-multiple trailing stop management.
+Trade AI v12 is a fully automated profit-seeking trading intelligence platform that discovers, evaluates, executes, and manages equity positions against a ~$1.19M multi-account portfolio. It combines quantitative screening, 23 configurable strategies, LLM-powered analysis (5 daily intelligence sections via qwen3:14b), and 6 conversational AI agents into a single-tenant self-hosted service. Approved proposals pass through multi-layer validation (live price drift check, stop-breach gate, eligibility scoring) before conditional submission to Alpaca paper trading, with automated trailing stop management and continuous post-fill risk monitoring.
 
 **Current state:** Self-hosted on a dedicated Linux server (`ms01-openclaw`). All services co-located. Paper trading only -- live trading locked behind a 6-month validation gate.
 
