@@ -378,6 +378,14 @@ def run(send_telegram: bool = False):
     except Exception as e:
         print(f"[overnight] Price levels (non-fatal): {e}")
 
+    # 6. Overnight trade review (gemma3:27b — deeper analysis of today's closed trades)
+    try:
+        from multi_tier_trade_reviewer import run_tier
+        review_result = run_tier("overnight")
+        print(f"[overnight] Trade reviews: {review_result.get('trades_reviewed', 0)} trades reviewed by gemma3:27b")
+    except Exception as e:
+        print(f"[overnight] Trade review (non-fatal): {e}")
+
     print(f"[overnight] Done")
     return {"metrics": metrics, "tier1": tier1, "tier2": tier2}
 

@@ -264,6 +264,7 @@ function JournalEntry({ tradeId }: { tradeId: number }) {
   const llm = narr.llm_analysis || {}
   const critiques = detail.agent_critiques || []
   const riskActions = detail.risk_actions || []
+  const multiTierReviews = detail.multi_tier_reviews || []
 
   const secLbl: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, marginTop: 14 }
   const kvStyle: React.CSSProperties = { fontSize: 11, color: '#E2E8F0' }
@@ -403,6 +404,39 @@ function JournalEntry({ tradeId }: { tradeId: number }) {
                 <span style={{ color: '#CBD5E1', flex: 1 }}>{a.trigger_reason}</span>
               </div>
             ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Multi-Tier LLM Reviews ── */}
+      {multiTierReviews.length > 0 && (
+        <>
+          <div style={secLbl}>MULTI-TIER REVIEWS ({multiTierReviews.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {multiTierReviews.map((r: any, i: number) => {
+              const tierColor: Record<string, string> = { realtime: '#60A5FA', overnight: '#A78BFA', weekly: '#4ADE80', monthly: '#F59E0B' }
+              const commentaries = typeof r.agent_commentaries === 'string' ? (() => { try { return JSON.parse(r.agent_commentaries) } catch { return {} } })() : r.agent_commentaries || {}
+              return (
+                <div key={i} style={{ padding: '10px 14px', background: '#0D1626', borderRadius: 6, borderLeft: `3px solid ${tierColor[r.tier] || '#94A3B8'}` }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: tierColor[r.tier] || '#94A3B8', textTransform: 'uppercase' }}>{r.tier}</span>
+                    <span style={{ fontSize: 9, color: '#475569' }}>{r.model_used}</span>
+                    <span style={{ fontSize: 9, color: '#475569', marginLeft: 'auto' }}>{r.created_at ? new Date(r.created_at).toLocaleString() : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#CBD5E1', lineHeight: 1.6, marginBottom: 8 }}>{r.review_text}</div>
+                  {Object.keys(commentaries).length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                      {Object.entries(commentaries).map(([agent, comment]) => (
+                        <div key={agent} style={{ padding: '6px 8px', background: '#0B1120', borderRadius: 4, fontSize: 10 }}>
+                          <div style={{ color: '#64748B', fontWeight: 600, marginBottom: 2, textTransform: 'uppercase', fontSize: 9 }}>{agent.replace('_', ' ')}</div>
+                          <div style={{ color: '#94A3B8', lineHeight: 1.4 }}>{String(comment).slice(0, 200)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </>
       )}
