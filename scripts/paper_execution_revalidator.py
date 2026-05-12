@@ -98,7 +98,16 @@ def get_pending_proposals(conn, proposal_id=None, symbol=None):
 
 
 def get_current_quote(conn, symbol):
-    """Get latest price data for symbol."""
+    """Get latest price data for symbol. Tries live Alpaca quote first, falls back to DB."""
+    # Try live quote from Alpaca for freshest price
+    try:
+        from market_quote_provider import fetch_alpaca_quote
+        live = fetch_alpaca_quote(symbol)
+        if live and live.get("price") and live["price"] > 0:
+            return {"price": _f(live["price"]), "time": datetime.now(timezone.utc), "source": "alpaca_live"}
+    except Exception as e:
+        log.debug(f"Live quote failed for {symbol}: {e}")
+    # Fallback to trade_ai_scans
     cur = conn.cursor()
     cur.execute("""SELECT price, scanned_at FROM trade_ai_scans
                    WHERE symbol=%s ORDER BY scanned_at DESC LIMIT 1""", [symbol])
@@ -244,6 +253,14 @@ def revalidate(conn, proposal, simulate_delay_min=None, simulate_session=None, s
                                  {"age_seconds": quote_age}))
             score -= 15
 
+    # ── Check 4b: Stop already breached — instant block ──
+    if current_price and stop and current_price <= stop:
+        events.append(_event(sym, proposal["id"], "stop_already_breached", "critical",
+                             {"current_price": current_price, "stop": stop,
+                              "message": f"Current price ${current_price:.2f} is at or below stop ${stop:.2f} — trade would immediately stop out"}))
+        blockers.append(f"stop_breached: price ${current_price:.2f} <= stop ${stop:.2f}")
+        score -= 100
+
     # ── Check 5: Price drift ──
     drift_pct = None
     if current_price and entry and entry > 0:
@@ -338,10 +355,22 @@ def revalidate(conn, proposal, simulate_delay_min=None, simulate_session=None, s
             "note": "recalibrated to current price" if drift_pct and drift_pct > PRICE_DRIFT_WARN_PCT else "original plan"
         }
 
+    # Map status to eligibility for downstream consumers
+    eligibility_map = {
+        "valid_original": "ELIGIBLE",
+        "blocked_safety": "INELIGIBLE",
+        "cancelled": "INELIGIBLE",
+        "downgraded_to_wait": "INELIGIBLE",
+        "updated_plan_requires_reapproval": "NEEDS_REVALIDATION",
+        "delayed": "NEEDS_REVALIDATION",
+    }
+    eligibility_status = eligibility_map.get(status, "INELIGIBLE")
+
     result = {
         "recheck_id": recheck_id,
         "paper_trade_proposal_id": proposal["id"],
         "symbol": sym,
+        "eligibility_status": eligibility_status,
         "trigger_type": _determine_trigger(session, rec_stale, drift_pct),
         "recommendation_created_at": str(rec_created) if rec_created else None,
         "approval_created_at": str(approved_at) if approved_at else None,

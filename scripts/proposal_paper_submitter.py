@@ -431,7 +431,14 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             "warnings": gates["warnings"],
         }
 
+    # ── Lifecycle: VALIDATING ──
+    cur = conn.cursor()
+    cur.execute("UPDATE paper_trade_proposals SET paper_submit_state='VALIDATING', updated_at=NOW() WHERE id=%s", [proposal_id])
+    conn.commit()
+    _log_event(conn, proposal_id, p["symbol"], "LIFECYCLE_VALIDATING", {})
+
     # ── Execution-time revalidation (Session 27B) ──
+    recheck_live_price = None
     try:
         from paper_execution_revalidator import revalidate
         recheck = revalidate(conn, {
@@ -453,10 +460,30 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             "paper_submitted_at": None,
         })
         rck_status = recheck.get("status", "unknown")
+        recheck_live_price = recheck.get("current_price")
+
+        # Persist eligibility to proposals table
+        _elig_status = recheck.get("eligibility_status", "INELIGIBLE" if rck_status != "valid_original" else "ELIGIBLE")
+        _elig_reason = recheck.get("reason", "unknown")
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE paper_trade_proposals
+            SET execution_eligibility_status = %s,
+                execution_eligibility_reason = %s,
+                live_price_at_execution = %s,
+                live_price_timestamp = NOW(),
+                updated_at = NOW()
+            WHERE id = %s
+        """, [_elig_status, _elig_reason[:500] if _elig_reason else None, recheck_live_price, proposal_id])
+        conn.commit()
+
         if rck_status in ("blocked_safety", "cancelled"):
+            cur.execute("UPDATE paper_trade_proposals SET paper_submit_state='BLOCKED', updated_at=NOW() WHERE id=%s", [proposal_id])
+            conn.commit()
             _log_event(conn, proposal_id, p["symbol"],
                        "EXECUTION_REVALIDATION_BLOCKED",
-                       {"recheck_status": rck_status, "reason": recheck.get("reason")})
+                       {"recheck_status": rck_status, "reason": recheck.get("reason"),
+                        "eligibility": _elig_status, "live_price": recheck_live_price})
             return {"status": "blocked", "proposal_id": proposal_id,
                     "recheck_status": rck_status,
                     "reason": recheck.get("reason"),
@@ -485,7 +512,13 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
                     "recheck_status": rck_status,
                     "reason": recheck.get("reason")}
         # valid_original or acceptable → continue to submission
-        log.info(f"[revalidation] {p['symbol']} passed: score={recheck.get('execution_readiness_score')}")
+        log.info(f"[revalidation] {p['symbol']} passed: score={recheck.get('execution_readiness_score')} eligibility={_elig_status}")
+        # ── Lifecycle: VALIDATED ──
+        cur = conn.cursor()
+        cur.execute("UPDATE paper_trade_proposals SET paper_submit_state='VALIDATED', updated_at=NOW() WHERE id=%s", [proposal_id])
+        conn.commit()
+        _log_event(conn, proposal_id, p["symbol"], "LIFECYCLE_VALIDATED",
+                   {"score": recheck.get("execution_readiness_score"), "live_price": recheck_live_price})
     except Exception as e:
         log.warning(f"[revalidation] Non-fatal error for {p['symbol']}: {e} — proceeding with gates-only")
 
@@ -520,6 +553,7 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             target_price=float(plan["take_profit_price"]),
             strategy_id=p["strategy_id"],
             conn=conn,
+            validated_price=float(recheck_live_price) if recheck_live_price else None,
         )
 
         event_type = ("ALPACA_PAPER_ORDER_SUBMITTED"
@@ -527,6 +561,13 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
                       else "ALPACA_PAPER_SUBMIT_BLOCKED")
         _log_event(conn, proposal_id, p["symbol"], event_type,
                    {"result": result, "execution_plan": plan})
+
+        # ── Lifecycle: SUBMITTED or BLOCKED ──
+        _new_state = "SUBMITTED" if event_type == "ALPACA_PAPER_ORDER_SUBMITTED" else "BLOCKED"
+        cur = conn.cursor()
+        cur.execute("UPDATE paper_trade_proposals SET paper_submit_state=%s, updated_at=NOW() WHERE id=%s",
+                    [_new_state, proposal_id])
+        conn.commit()
 
         return {
             "status": result.get("status"),

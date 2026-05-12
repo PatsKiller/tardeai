@@ -225,6 +225,9 @@ export default function TradeAI() {
                  tai.run_health_status === 'RUN_UNDERFILLED' ? '#F87171' : '#FBBF24',
         }}>
           Run {tai.latest_run_label || tai.run_label} &middot; {tai.run_date} &middot; {tai.latest_run_symbols_scanned ?? tai.ticker_count} symbols &middot; {tai.run_health_status}
+          {tai.run_health_status === 'RUN_UNDERFILLED' && (
+            <span style={{ fontWeight: 400, opacity: 0.8 }}> — Screener returned fewer symbols than target universe. Check Finviz filters or cookie freshness.</span>
+          )}
           {tai.today_strategy_signal_count != null && ` · ${tai.today_strategy_signal_count} signals today`}
         </div>
       )}

@@ -1,3 +1,6 @@
+/* TODO Session 32: wire alert_dispatcher.py dedup gate to suppress duplicate stop alerts
+   Root cause: portfolio_orchestrator.py fires both urgent_alert + draft_alert for same stop condition.
+   Fix: add sent_today check in alert_dispatcher.py before sending */
 import { useApi } from '../hooks/useApi'
 
 interface Alert {
@@ -21,7 +24,13 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; icon: string
 
 export default function GlobalAlertBanner() {
   const { data } = useApi<AlertData>('/api/v2/global-alerts', 60000)
-  const alerts = data?.alerts || []
+  // Deduplicate alerts by message to prevent identical banners stacking
+  const seen = new Set<string>()
+  const alerts = (data?.alerts || []).filter(a => {
+    if (seen.has(a.message)) return false
+    seen.add(a.message)
+    return true
+  })
 
   if (alerts.length === 0) return null
 

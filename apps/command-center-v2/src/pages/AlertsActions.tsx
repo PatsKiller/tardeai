@@ -44,23 +44,23 @@ export default function AlertsActions() {
 
   // Triggered stops
   const triggered = (risk?.positions || []).filter(p => p.triggered)
-  triggered.forEach(s => alerts.push({ level: 'critical', icon: '\u{1f6d1}', title: `Stop triggered: ${s.symbol}`, sub: `Price ${fmt$(s.current_price, 2)} hit stop ${fmt$(s.stop_price || 0, 2)}` }))
+  triggered.forEach(s => alerts.push({ level: 'critical', icon: '🛑', title: `Stop triggered: ${s.symbol}`, sub: `Price ${fmt$(s.current_price, 2)} hit stop ${fmt$(s.stop_price || 0, 2)}` }))
 
   // GO tickers
   if (ov?.trade_ai?.go_count && ov.trade_ai.go_count > 0)
-    alerts.push({ level: 'info', icon: '\u{1f7e2}', title: `${ov.trade_ai.go_count} GO ticker(s)`, sub: 'High conviction setups this run' })
+    alerts.push({ level: 'info', icon: '🟢', title: `${ov.trade_ai.go_count} GO ticker(s)`, sub: 'High conviction setups this run' })
 
   // Ex-div alerts
   const exDivs = (divs?.ex_div_alerts || []) as { symbol: string; ex_date: string; amount: string }[]
-  exDivs.slice(0, 3).forEach(d => alerts.push({ level: 'info', icon: '\u{1f4b0}', title: `Ex-div: ${d.symbol} on ${d.ex_date}`, sub: d.amount }))
+  exDivs.slice(0, 3).forEach(d => alerts.push({ level: 'info', icon: '💰', title: `Ex-div: ${d.symbol} on ${d.ex_date}`, sub: d.amount }))
 
   // Pending approvals
   if (ov?.pending_approvals && ov.pending_approvals > 0)
-    alerts.push({ level: 'warning', icon: '\u{1f4cb}', title: `${ov.pending_approvals} pending approval(s)`, sub: 'Action queue items awaiting review' })
+    alerts.push({ level: 'warning', icon: '📋', title: `${ov.pending_approvals} pending approval(s)`, sub: 'Action queue items awaiting review' })
 
   // System OK
   if (alerts.filter(a => a.level === 'critical').length === 0 && alerts.filter(a => a.level === 'warning').length === 0)
-    alerts.push({ level: 'ok', icon: '\u2705', title: 'All systems nominal', sub: 'No critical alerts' })
+    alerts.push({ level: 'ok', icon: '✅', title: 'All systems nominal', sub: 'No critical alerts' })
 
   const levelColor: Record<string, string> = { critical: 'var(--red)', warning: 'var(--amber)', info: 'var(--accent)', ok: 'var(--green)' }
   const levelBg: Record<string, string> = { critical: 'var(--red-dim)', warning: 'var(--amber-dim)', info: 'var(--accent-dim)', ok: 'var(--green-dim)' }
@@ -86,14 +86,14 @@ export default function AlertsActions() {
 
       {/* Quick Actions grid — matches v1 layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 6, marginBottom: 14 }}>
-        <ActionBtn icon="\u25b6" label="Run Pipeline" onClick={() => triggerRun('/api/run-portfolio', 'pipeline')} />
-        <ActionBtn icon="\u26a1" label="Trade AI" onClick={() => triggerRun('/api/run-pipeline', 'tradeai')} />
-        <ActionBtn icon="\u27f3" label="Reprice" onClick={() => triggerRun('/api/run-reprice', 'reprice')} />
-        <ActionBtn icon="\u{1f4e5}" label="Import" onClick={() => setShowImport(true)} />
-        <ActionBtn icon="\u{1f4d3}" label="Journal" onClick={() => window.location.href = '/v2/journal'} />
-        <ActionBtn icon="\u{1f6e1}" label="Risk" onClick={() => window.location.href = '/v2/risk'} />
-        <ActionBtn icon="\u{1f4c8}" label="Returns" onClick={() => window.location.href = '/v2/portfolio'} />
-        <ActionBtn icon="\u{1f4cb}" label="Queue" onClick={() => window.location.href = '/v2/approvals'} />
+        <ActionBtn icon="▶" label="Run Pipeline" onClick={() => triggerRun('/api/run-portfolio', 'pipeline')} />
+        <ActionBtn icon="⚡" label="Trade AI" onClick={() => triggerRun('/api/run-pipeline', 'tradeai')} />
+        <ActionBtn icon="⟳" label="Reprice" onClick={() => triggerRun('/api/run-reprice', 'reprice')} />
+        <ActionBtn icon="📥" label="Import" onClick={() => setShowImport(true)} />
+        <ActionBtn icon="📓" label="Journal" onClick={() => window.location.href = '/v2/journal'} />
+        <ActionBtn icon="🛡" label="Risk" onClick={() => window.location.href = '/v2/risk'} />
+        <ActionBtn icon="📈" label="Returns" onClick={() => window.location.href = '/v2/portfolio'} />
+        <ActionBtn icon="📋" label="Queue" onClick={() => window.location.href = '/v2/approvals'} />
       </div>
 
       {/* Run status indicators */}

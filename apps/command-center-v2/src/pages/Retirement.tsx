@@ -84,7 +84,21 @@ export default function Retirement() {
     setDeciding(s => { const n = { ...s }; delete n[id]; return n })
   }, [])
 
-  if (!data) return <div style={{ color: 'var(--text3)', padding: 40, fontFamily: 'var(--sans)' }}>Loading retirement roadmap…</div>
+  if (!data) return (
+    <div style={{ padding: '20px 0' }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)', marginBottom: 16 }}>Retirement Roadmap</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
+        {['Portfolio Value', 'Golden Window', 'Roth Conversions', '401k Loan'].map(label => (
+          <div key={label} style={{ padding: '14px 16px', background: 'var(--bg1, #1e1e2e)', borderRadius: 8, border: '1px solid var(--border1, #2a2a3a)' }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6 }}>{label}</div>
+            <div style={{ height: 20, width: '60%', background: 'var(--bg3, #333)', borderRadius: 4, animation: 'pulse 1.5s ease-in-out infinite' }} />
+          </div>
+        ))}
+      </div>
+      <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading retirement roadmap...</div>
+      <style>{`@keyframes pulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.8 } }`}</style>
+    </div>
+  )
 
   const gw = data.golden_window || {} as RetirementData['golden_window']
   const loan = data.loan || {} as RetirementData['loan']

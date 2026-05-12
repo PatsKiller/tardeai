@@ -156,6 +156,73 @@ def send_telegram(message, dry_run=False, no_telegram=False):
         log.warning(f"Telegram send failed: {e}")
 
 
+def _log_risk_action(conn, trade_id, symbol, action_type, old_value, new_value, trigger_price, trigger_reason):
+    """Log a risk management action to paper_trade_risk_actions."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO paper_trade_risk_actions
+                (paper_trade_id, symbol, action_type, old_value, new_value, trigger_price, trigger_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, [trade_id, symbol, action_type, old_value, new_value, trigger_price, trigger_reason])
+    except Exception as e:
+        log.warning(f"Failed to log risk action for {symbol}: {e}")
+
+
+def _auto_close_position(conn, trade_id, symbol, price, reason, cur):
+    """Close position on Alpaca and update DB."""
+    try:
+        import os, requests
+        _key = os.getenv('ALPACA_API_KEY', '')
+        _sec = os.getenv('ALPACA_SECRET_KEY', '')
+        _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
+        requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
+                        headers=_headers, timeout=10)
+        _verdict = 'LOSS' if reason == 'stop_hit' else 'CORRECT' if reason == 'target_hit' else 'LOSS'
+        cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
+            exit_reason=%s, closed_at=NOW(), closed_via=%s,
+            outcome_verdict=%s, lifecycle_state='closed'
+            WHERE id=%s""",
+            [price, reason, f'auto_{reason}', _verdict, trade_id])
+        log.info(f"[{symbol}] Position auto-closed: reason={reason} at ${price:.2f}")
+    except Exception as e:
+        log.error(f"[{symbol}] Auto-close failed: {e}")
+
+
+def _update_stop_on_alpaca(conn, trade, new_stop):
+    """Cancel existing stop order and place new one at updated price."""
+    symbol = trade['symbol']
+    try:
+        import os, requests
+        _key = os.getenv('ALPACA_API_KEY', '')
+        _sec = os.getenv('ALPACA_SECRET_KEY', '')
+        _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
+        # Get open orders for this symbol
+        resp = requests.get(f'https://paper-api.alpaca.markets/v2/orders?status=open&symbols={symbol}',
+                            headers=_headers, timeout=10)
+        orders = resp.json() if resp.ok else []
+        # Cancel existing stop orders
+        for o in orders:
+            if o.get('type') == 'stop' and o.get('side') == 'sell':
+                requests.delete(f'https://paper-api.alpaca.markets/v2/orders/{o["id"]}',
+                                headers=_headers, timeout=10)
+                log.info(f"[{symbol}] Cancelled old stop order {o['id']}")
+        # Place new stop
+        shares = int(trade.get('shares', 0))
+        if shares > 0:
+            new_order = requests.post('https://paper-api.alpaca.markets/v2/orders',
+                headers=_headers, timeout=10,
+                json={'symbol': symbol, 'qty': str(shares), 'side': 'sell',
+                      'type': 'stop', 'stop_price': str(new_stop),
+                      'time_in_force': 'gtc'})
+            if new_order.ok:
+                log.info(f"[{symbol}] New stop placed at ${new_stop:.2f}")
+            else:
+                log.error(f"[{symbol}] Failed to place new stop: {new_order.text}")
+    except Exception as e:
+        log.error(f"[{symbol}] Stop update failed: {e}")
+
+
 def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
     """Monitor a single open trade. Returns list of alerts generated."""
     alerts = []
@@ -190,6 +257,49 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
 
     now = datetime.now(timezone.utc)
     age_hours = (now - entry_time).total_seconds() / 3600 if entry_time else 0
+
+    # ── STOP HIT: Auto-close if price breached stop ──
+    if stop > 0 and price <= stop:
+        msg = f"STOP HIT: {symbol} at ${price:.2f} breached stop ${stop:.2f} — auto-closing"
+        log.critical(msg)
+        insert_alert(conn, tid, symbol, sid, 'STOP_HIT_CLOSE', 'CRITICAL',
+                     f'{symbol} stop hit', msg, {'price': price, 'stop': stop})
+        _log_risk_action(conn, tid, symbol, 'stop_hit_close', stop, price, price,
+                         f'Price ${price:.2f} breached stop ${stop:.2f}')
+        if not dry_run:
+            _auto_close_position(conn, tid, symbol, price, 'stop_hit', cur)
+        send_telegram(f"🛑 {msg}", dry_run, no_telegram)
+        alerts.append(('STOP_HIT_CLOSE', symbol))
+        return alerts  # trade is closed, skip remaining checks
+
+    # ── TARGET HIT: Auto-close if price reached target ──
+    if target > 0 and price >= target:
+        msg = f"TARGET HIT: {symbol} at ${price:.2f} reached target ${target:.2f} — auto-closing"
+        log.info(msg)
+        insert_alert(conn, tid, symbol, sid, 'TARGET_HIT_CLOSE', 'INFO',
+                     f'{symbol} target hit', msg, {'price': price, 'target': target})
+        _log_risk_action(conn, tid, symbol, 'target_hit_close', target, price, price,
+                         f'Price ${price:.2f} reached target ${target:.2f}')
+        if not dry_run:
+            _auto_close_position(conn, tid, symbol, price, 'target_hit', cur)
+        send_telegram(f"🎯 {msg}", dry_run, no_telegram)
+        alerts.append(('TARGET_HIT_CLOSE', symbol))
+        return alerts
+
+    # ── TRAILING STOP: Lock in gains at R >= 1.0 ──
+    if r_mult is not None and r_mult >= 1.0 and stop > 0 and entry > 0:
+        new_stop = round(entry + 0.5 * (price - entry), 2)
+        if new_stop > stop:
+            msg = f"TRAILING STOP: {symbol} R={r_mult:.1f}, moving stop ${stop:.2f} → ${new_stop:.2f}"
+            log.info(msg)
+            _log_risk_action(conn, tid, symbol, 'trailing_stop_update', stop, new_stop, price,
+                             f'R={r_mult:.1f}, locking 50% of gains')
+            cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", [new_stop, tid])
+            if not dry_run:
+                _update_stop_on_alpaca(conn, trade, new_stop)
+            send_telegram(f"📈 {msg}", dry_run, no_telegram)
+            alerts.append(('TRAILING_STOP', symbol))
+            stop = new_stop  # use updated stop for subsequent checks
 
     # ── Near Stop ──
     if stop > 0 and entry > stop:
@@ -310,9 +420,9 @@ def run_monitor(dry_run=False, no_telegram=False):
             conn.commit()
 
         # Summary
-        critical = sum(1 for a in all_alerts if a[0] in ('NEAR_STOP',))
-        warn = sum(1 for a in all_alerts if a[0] in ('STALE_TRADE', 'NEGATIVE_NEWS'))
-        info = sum(1 for a in all_alerts if a[0] in ('NEAR_TARGET', 'EXTENDED_PROFIT'))
+        critical = sum(1 for a in all_alerts if a[0] in ('NEAR_STOP', 'STOP_HIT_CLOSE', 'CRITICAL_NEWS_CLOSE'))
+        warn = sum(1 for a in all_alerts if a[0] in ('STALE_TRADE', 'NEGATIVE_NEWS', 'TRAILING_STOP'))
+        info = sum(1 for a in all_alerts if a[0] in ('NEAR_TARGET', 'EXTENDED_PROFIT', 'TARGET_HIT_CLOSE'))
 
         log.info(f"Monitor complete: {len(trades)} trades, "
                  f"{len(all_alerts)} alerts ({critical} critical, {warn} warn, {info} info)")

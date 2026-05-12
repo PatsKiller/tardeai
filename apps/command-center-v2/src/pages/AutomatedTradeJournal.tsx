@@ -314,11 +314,11 @@ function CalendarPL({ daily }: { daily: any[] }) {
 }
 
 // ── Analytics Section ─────────────────────────────────────────────────────
-function AnalyticsSection({ account }: { account: string }) {
+function AnalyticsSection({ account, closedTrades }: { account: string; closedTrades?: any[] }) {
   const [analytics, setAnalytics] = useState<any>(null)
 
   useEffect(() => {
-    fetch(`/api/v2/automated-journal-analytics?account=${account}`)
+    fetch(`/api/v2/paper-analytics`)
       .then(r => r.json())
       .then(d => { if (d.ok) setAnalytics(d) })
       .catch(() => {})
@@ -329,9 +329,27 @@ function AnalyticsSection({ account }: { account: string }) {
   const eq = analytics.equity_curve || []
   const monthly = analytics.monthly || []
   const weekly = analytics.weekly || []
-  const daily = analytics.daily || []
+
+  // Build daily from closed trades if analytics endpoint doesn't provide it
+  let daily = analytics.daily || []
+  if (daily.length === 0 && closedTrades && closedTrades.length > 0) {
+    const byDate: Record<string, { pnl: number; trades: number; wins: number; losses: number }> = {}
+    for (const t of closedTrades) {
+      const dateStr = (t.closed_at || '').slice(0, 10)
+      if (!dateStr) continue
+      if (!byDate[dateStr]) byDate[dateStr] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
+      byDate[dateStr].pnl += (t.pnl ?? 0)
+      byDate[dateStr].trades += 1
+      if ((t.pnl ?? 0) > 0) byDate[dateStr].wins += 1
+      else if ((t.pnl ?? 0) < 0) byDate[dateStr].losses += 1
+    }
+    daily = Object.entries(byDate).map(([date, v]) => ({
+      trade_date: date, daily_pnl: v.pnl, trades: v.trades, wins: v.wins, losses: v.losses,
+    })).sort((a, b) => a.trade_date.localeCompare(b.trade_date))
+  }
 
   const hasData = eq.length > 0
+  const byStrategy = (analytics.by_strategy || []).filter((s: any) => (s.trades || 0) > 0 || (s.wins || 0) > 0)
 
   // Equity curve chart data
   const equityData = {
@@ -484,37 +502,263 @@ function AnalyticsSection({ account }: { account: string }) {
           )}
         </div>
       </div>
+
+      {/* Strategy Breakdown Table */}
+      {byStrategy.length > 0 && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+          <SectionHeader title="Strategy Breakdown" />
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr>
+                {['Strategy', 'Trades', 'Wins', 'Losses', 'P&L'].map(h => (
+                  <th key={h} style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {byStrategy.map((s: any) => (
+                <tr key={s.strategy_id}>
+                  <td style={{ padding: '5px 8px', fontWeight: 600, color: 'var(--text0)' }}>{s.strategy_id}</td>
+                  <td style={{ padding: '5px 8px', ...mono }}>{s.trades || 0}</td>
+                  <td style={{ padding: '5px 8px', ...mono, color: 'var(--green)' }}>{s.wins || 0}</td>
+                  <td style={{ padding: '5px 8px', ...mono, color: 'var(--red)' }}>{(s.trades || 0) - (s.wins || 0)}</td>
+                  <td style={{ padding: '5px 8px', ...mono, fontWeight: 600, color: pnlColor(s.pnl) }}>{s.pnl != null ? fmt$(s.pnl, 2) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )
 }
 
+// ── Governance Sub-tab ────────────────────────────────────────────────────
+function GovernanceSubTab({ journalStats }: { journalStats: any }) {
+  const [govData, setGovData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [running, setRunning] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/v2/paper-performance-governance')
+      .then(r => r.json())
+      .then(d => setGovData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const gov = govData?.data || govData || []
+  const govArray = Array.isArray(gov) ? gov : []
+  // Use parent journal stats as primary source
+  const jOpen = journalStats?.open ?? 0
+  const jClosed = journalStats?.closed ?? 0
+  const totalOpen = jOpen || govArray.reduce((s: number, g: any) => s + (g.paper_trades || 0) - (g.closed_trades || 0), 0)
+  const totalClosed = jClosed || govArray.reduce((s: number, g: any) => s + (g.closed_trades || 0), 0)
+  const strategiesWithData = govArray.filter((g: any) => (g.paper_trades || 0) > 0).length
+  const liveEligible = govArray.filter((g: any) => g.live_eligible).length
+  const reconIssues = govArray.filter((g: any) => g.recon_issues > 0).length
+
+  const runCheck = async () => {
+    setRunning(true)
+    try {
+      await fetch('/api/v2/paper-performance-governance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      window.location.reload()
+    } catch { /* ignore */ }
+    setRunning(false)
+  }
+
+  if (loading) return <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12 }}>Loading governance data...</div>
+
+  return (
+    <div>
+      {/* Banner */}
+      <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 16 }}>🛑</span>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#EF4444' }}>LIVE TRADING DISABLED</div>
+          <div style={{ fontSize: 10, color: '#94A3B8' }}>Paper validation gates must pass before live trading is enabled for any strategy.</div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 14 }}>
+        {[
+          { label: 'Open Trades', value: totalOpen },
+          { label: 'Closed Trades', value: totalClosed },
+          { label: 'Strategies', value: strategiesWithData },
+          { label: 'Live Eligible', value: liveEligible, color: liveEligible > 0 ? 'var(--green)' : 'var(--red)' },
+          { label: 'Outcome Reviews', value: govArray.filter((g: any) => g.outcome_reviews > 0).length },
+          { label: 'Recon Issues', value: reconIssues, color: reconIssues > 0 ? 'var(--red)' : 'var(--green)' },
+        ].map(s => (
+          <div key={s.label} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px' }}>
+            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: s.color || 'var(--text0)', fontFamily: 'monospace' }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Run button */}
+      <div style={{ marginBottom: 14 }}>
+        <button onClick={runCheck} disabled={running}
+          style={{ padding: '6px 16px', fontSize: 11, fontWeight: 600, border: '1px solid var(--accent)', borderRadius: 6, background: 'rgba(74,144,244,0.1)', color: 'var(--accent)', cursor: running ? 'wait' : 'pointer', fontFamily: 'monospace' }}>
+          {running ? 'Running...' : 'Run Governance Check'}
+        </button>
+      </div>
+
+      {/* Strategy gates */}
+      {govArray.length > 0 && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Strategy Validation Status</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr>
+                {['Strategy', 'Trades', 'Closed', 'Win Rate', 'PF', 'Eligible'].map(h => (
+                  <th key={h} style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {govArray.filter((g: any) => g.paper_trades > 0).map((g: any) => (
+                <tr key={g.strategy_id}>
+                  <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text0)' }}>{g.strategy_id}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{g.paper_trades}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{g.closed_trades}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: (g.win_rate ?? 0) >= 50 ? 'var(--green)' : 'var(--red)' }}>{g.win_rate != null ? `${g.win_rate}%` : '--'}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{g.profit_factor != null ? g.profit_factor.toFixed(2) : '--'}</td>
+                  <td style={{ padding: '6px 8px' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                      background: g.live_eligible ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                      color: g.live_eligible ? 'var(--green)' : 'var(--red)' }}>
+                      {g.live_eligible ? 'YES' : 'NO'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Performance Sub-tab ──────────────────────────────────────────────────
+function PerformanceSubTab({ journalStats }: { journalStats: any }) {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/v2/paper-automation-performance')
+      .then(r => r.json())
+      .then(d => setData(d))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div style={{ padding: 20, color: 'var(--text3)', fontSize: 12 }}>Loading performance data...</div>
+
+  const perf = data?.data || data?.performance || {}
+  const bySource = perf.by_source || perf.by_automation_source || []
+  const recentGrades = perf.recent_grades || perf.grade_trend || []
+  const sampleSize = journalStats?.closed ?? perf.total_closed ?? perf.sample_size ?? 0
+
+  return (
+    <div>
+      {sampleSize < 10 && (
+        <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, marginBottom: 14, fontSize: 11, color: '#F59E0B' }}>
+          Sample size: {sampleSize} closed trades. Accuracy metrics become reliable after 10+ closed trades.
+        </div>
+      )}
+
+      {/* By automation source */}
+      {(Array.isArray(bySource) ? bySource : Object.entries(bySource).map(([k, v]: [string, any]) => ({ source: k, ...v }))).length > 0 ? (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Performance by Automation Source</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr>
+                {['Source', 'Trades', 'Win Rate', 'P&L', 'Avg R'].map(h => (
+                  <th key={h} style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(Array.isArray(bySource) ? bySource : Object.entries(bySource).map(([k, v]: [string, any]) => ({ source: k, ...v }))).map((s: any) => (
+                <tr key={s.source || s.automation_source}>
+                  <td style={{ padding: '6px 8px', fontWeight: 600, color: 'var(--text0)' }}>{(s.source || s.automation_source || '').replace(/_/g, ' ')}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{s.count || s.trades || 0}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: (s.win_rate ?? 0) >= 50 ? 'var(--green)' : 'var(--red)' }}>{s.win_rate != null ? `${s.win_rate}%` : '--'}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: (s.total_pnl ?? s.pnl ?? 0) >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{fmt$(s.total_pnl ?? s.pnl ?? 0, 2)}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{s.avg_r != null ? `${Number(s.avg_r).toFixed(2)}R` : '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>No automation performance data available yet.</div>
+      )}
+
+      {/* Grade trend */}
+      {recentGrades.length > 0 && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Recent Trade Grades (last 10)</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {recentGrades.slice(-10).map((g: any, i: number) => {
+              const grade = g.grade || g.overall_grade || '--'
+              const gradeColor: Record<string, string> = { A: '#4ADE80', B: '#60A5FA', C: '#F59E0B', D: '#F87171' }
+              return (
+                <div key={i} style={{ background: 'var(--bg0)', borderRadius: 6, padding: '6px 10px', border: '1px solid var(--border)', textAlign: 'center', minWidth: 50 }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: gradeColor[grade] || 'var(--text3)' }}>{grade}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>{g.symbol || ''}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Inner Tab Bar ────────────────────────────────────────────────────────
+const INNER_TABS = ['Journal', 'Analytics', 'Governance', 'Performance'] as const
+type InnerTab = typeof INNER_TABS[number]
+
 export default function AutomatedTradeJournal() {
   const [data, setData] = useState<any>(null)
+  const [analyticsData, setAnalyticsData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [account, setAccount] = useState('ALPACA_PAPER')
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [innerTab, setInnerTab] = useState<InnerTab>('Journal')
 
   const fetchData = useCallback(() => {
     setLoading(true)
-    fetch(`/api/v2/automated-trade-journal?account=${account}`)
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [account])
+    Promise.all([
+      fetch('/api/v2/paper-journal').then(r => r.json()).catch(() => null),
+      fetch('/api/v2/paper-analytics').then(r => r.json()).catch(() => null),
+    ]).then(([journal, analytics]) => {
+      setData(journal)
+      setAnalyticsData(analytics)
+      setLoading(false)
+    })
+  }, [])
 
   useEffect(() => {
     fetchData()
-    const iv = setInterval(fetchData, 30000) // refresh every 30s for real-time
+    const iv = setInterval(fetchData, 30000)
     return () => clearInterval(iv)
   }, [fetchData])
 
-  const summary = data?.summary || {}
-  const openTrades = data?.open || []
-  const closedTrades = data?.closed || []
+  const stats = data?.stats || {}
+  const openTrades = data?.open_trades || []
+  const closedTrades = data?.closed_trades || []
+  const unrealizedPnl = analyticsData?.overall?.total_unrealized_pnl
 
   return (
     <>
-      <PageHeader title="Automated Journal" subtitle={`${account.replace('_', ' ')} — real-time execution log and trade lifecycle`} actions={
+      <PageHeader title="Automated Journal" subtitle="Automated trading log — Alpaca paper trades, bot-executed positions, and validation progress" actions={
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <select value={account} onChange={e => setAccount(e.target.value)}
             style={{ background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', fontSize: 10 }}>
@@ -526,137 +770,173 @@ export default function AutomatedTradeJournal() {
         </div>
       } />
 
-      {/* Stats Tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10, marginBottom: 14 }}>
-        <MetricTile label="Open" value={summary.open_count ?? 0} />
-        <MetricTile label="Closed" value={summary.closed_count ?? 0} />
-        <MetricTile label="Wins" value={summary.wins ?? 0} deltaColor="var(--green)" />
-        <MetricTile label="Losses" value={summary.losses ?? 0} deltaColor="var(--red)" />
-        <MetricTile label="Win Rate" value={summary.win_rate != null ? `${summary.win_rate}%` : '--'}
-          deltaColor={(summary.win_rate ?? 0) >= 50 ? 'var(--green)' : 'var(--red)'} />
-        <MetricTile label="Avg R" value={summary.avg_r != null ? `${summary.avg_r}R` : '--'}
-          deltaColor={(summary.avg_r ?? 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
-        <MetricTile label="Realized P&L" value={summary.total_pnl != null ? fmt$(summary.total_pnl, 2) : '--'}
-          deltaColor={pnlColor(summary.total_pnl)} />
-        <MetricTile label="Unrealized" value={summary.unrealized_pnl != null ? fmt$(summary.unrealized_pnl, 2) : '--'}
-          deltaColor={pnlColor(summary.unrealized_pnl)} />
+      {/* Inner tab bar */}
+      <div style={{ display: 'flex', gap: 2, marginBottom: 14, borderBottom: '1px solid var(--border)' }}>
+        {INNER_TABS.map(tab => (
+          <button key={tab} onClick={() => setInnerTab(tab)}
+            style={{
+              padding: '6px 14px', fontSize: 11, fontWeight: innerTab === tab ? 600 : 400, cursor: 'pointer',
+              color: innerTab === tab ? '#60A5FA' : 'var(--text3)',
+              background: 'none', border: 'none',
+              borderBottom: innerTab === tab ? '2px solid #60A5FA' : '2px solid transparent',
+              marginBottom: -1, transition: 'all 0.15s ease',
+            }}>
+            {tab}
+          </button>
+        ))}
       </div>
 
-      {/* Strategy Breakdown */}
-      {summary.by_strategy?.length > 0 && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
-          <SectionHeader title="Strategy Performance" />
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', padding: '6px 0' }}>
-            {summary.by_strategy.map((s: any) => (
-              <div key={s.strategy} style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 14px', border: '1px solid var(--border)', minWidth: 150 }}>
-                <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>{s.strategy}</div>
-                <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
-                  <span>{s.count} trades</span>
-                  <span style={{ color: pnlColor(s.pnl) }}>{fmt$(s.pnl, 0)}</span>
-                  <span>{s.win_rate}% WR</span>
-                </div>
-              </div>
-            ))}
+      {/* ── Journal sub-tab (default) ── */}
+      {innerTab === 'Journal' && (
+        <>
+          {/* Stats Tiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10, marginBottom: 14 }}>
+            <MetricTile label="Open" value={stats.open ?? 0} />
+            <MetricTile label="Closed" value={stats.closed ?? 0} />
+            <MetricTile label="Wins" value={stats.wins ?? 0} deltaColor="var(--green)" />
+            <MetricTile label="Losses" value={stats.losses ?? 0} deltaColor="var(--red)" />
+            <MetricTile label="Win Rate" value={stats.win_rate != null ? `${(stats.win_rate * 100).toFixed(0)}%` : '--'}
+              deltaColor={(stats.win_rate ?? 0) >= 0.5 ? 'var(--green)' : 'var(--red)'} />
+            <MetricTile label="Avg R" value={analyticsData?.overall?.avg_r != null ? `${Number(analyticsData.overall.avg_r).toFixed(2)}R` : '--'}
+              deltaColor={pnlColor(analyticsData?.overall?.avg_r)} />
+            <MetricTile label="Realized P&L" value={stats.total_pnl != null ? fmt$(stats.total_pnl, 2) : '--'}
+              deltaColor={pnlColor(stats.total_pnl)} />
+            <MetricTile label="Unrealized" value={unrealizedPnl != null ? fmt$(unrealizedPnl, 2) : '--'}
+              deltaColor={pnlColor(unrealizedPnl)} />
           </div>
-        </div>
-      )}
 
-      {loading && <div style={{ padding: 20, color: 'var(--text3)' }}>Loading...</div>}
-
-      {/* Analytics: Equity Curve + Calendar P&L + Monthly Summary */}
-      <AnalyticsSection account={account} />
-
-      {/* Open Trades */}
-      {openTrades.length > 0 && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
-          <SectionHeader title={`Open Positions (${openTrades.length})`} />
-          {openTrades.map((t: any) => {
-            const isExpanded = expandedId === t.id
-            const alpaca = t.alpaca || {}
-            const livePrice = alpaca.alpaca_current_price || t.current_price
-            const livePnl = alpaca.alpaca_unrealized_pl ?? t.unrealized_pnl
-            return (
-              <div key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                <div onClick={() => setExpandedId(isExpanded ? null : t.id)}
-                  style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{isExpanded ? '▼' : '▶'}</span>
-                  <span style={{ fontWeight: 700, ...mono, minWidth: 50, color: 'var(--text0)' }}>{t.symbol}</span>
-                  <span style={pill('blue')}>{t.strategy_id}</span>
-                  <span style={{ ...mono, fontSize: 10, color: 'var(--text2)' }}>Entry: {fmt$(t.entry_price, 2)}</span>
-                  <span style={{ ...mono, fontSize: 10, color: 'var(--red)' }}>Stop: {fmt$(t.stop_loss, 2)}</span>
-                  <span style={{ ...mono, fontSize: 10, color: 'var(--green)' }}>Target: {fmt$(t.target_1, 2)}</span>
-                  <span style={{ ...mono, fontSize: 10, color: 'var(--text3)' }}>{t.shares}sh</span>
-                  {t.broker_status && <span style={pill(t.broker_status === 'filled' ? 'green' : 'amber')}>{t.broker_status}</span>}
-                  <span style={pill('blue')}>ALPACA</span>
-                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <span style={{ ...mono, fontSize: 11, color: 'var(--text2)' }}>${livePrice?.toFixed(2) || '--'}</span>
-                    <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: pnlColor(livePnl) }}>
-                      {livePnl != null ? `$${livePnl >= 0 ? '+' : ''}${livePnl.toFixed(2)}` : '--'}
-                    </span>
-                    <span style={{ ...mono, fontSize: 10, color: pnlColor(t.r_multiple) }}>
-                      {t.r_multiple != null ? `${t.r_multiple >= 0 ? '+' : ''}${Number(t.r_multiple).toFixed(1)}R` : ''}
-                    </span>
+          {/* Strategy Breakdown */}
+          {analyticsData?.by_strategy?.length > 0 && (
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+              <SectionHeader title="Strategy Performance" />
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', padding: '6px 0' }}>
+                {analyticsData.by_strategy.filter((s: any) => (s.trades || s.count || 0) > 0).map((s: any) => (
+                  <div key={s.strategy_id || s.strategy} style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 14px', border: '1px solid var(--border)', minWidth: 150 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 600 }}>{s.strategy_id || s.strategy}</div>
+                    <div style={{ display: 'flex', gap: 8, fontSize: 11, marginTop: 4 }}>
+                      <span>{s.trades || s.count || 0} trades</span>
+                      <span style={{ color: pnlColor(s.pnl) }}>{fmt$(s.pnl ?? 0, 0)}</span>
+                      <span>{s.wins || 0}W</span>
+                    </div>
                   </div>
-                </div>
-                {isExpanded && <TradeExpansion trade={t} />}
+                ))}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )}
+
+          {loading && <div style={{ padding: 20, color: 'var(--text3)' }}>Loading...</div>}
+
+          {/* Open Trades */}
+          {openTrades.length > 0 && (
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+              <SectionHeader title={`Open Positions (${openTrades.length})`} />
+              {openTrades.map((t: any) => {
+                const isExpanded = expandedId === t.id
+                const alpaca = t.alpaca || {}
+                const livePrice = alpaca.alpaca_current_price || t.current_price
+                const livePnl = alpaca.alpaca_unrealized_pl ?? t.unrealized_pnl
+                return (
+                  <div key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <div onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                      style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, color: 'var(--text3)' }}>{isExpanded ? '▼' : '▶'}</span>
+                      <span style={{ fontWeight: 700, ...mono, minWidth: 50, color: 'var(--text0)' }}>{t.symbol}</span>
+                      <span style={pill('blue')}>{t.strategy_id}</span>
+                      <span style={{ ...mono, fontSize: 10, color: 'var(--text2)' }}>Entry: {fmt$(t.entry_price, 2)}</span>
+                      <span style={{ ...mono, fontSize: 10, color: 'var(--red)' }}>Stop: {fmt$(t.stop_loss, 2)}</span>
+                      <span style={{ ...mono, fontSize: 10, color: 'var(--green)' }}>Target: {fmt$(t.target_1, 2)}</span>
+                      <span style={{ ...mono, fontSize: 10, color: 'var(--text3)' }}>{t.shares}sh</span>
+                      {t.broker_status && <span style={pill(t.broker_status === 'filled' ? 'green' : 'amber')}>{t.broker_status}</span>}
+                      <span style={pill('blue')}>ALPACA</span>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span style={{ ...mono, fontSize: 11, color: 'var(--text2)' }}>${livePrice?.toFixed(2) || '--'}</span>
+                        <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: pnlColor(livePnl) }}>
+                          {livePnl != null ? `$${livePnl >= 0 ? '+' : ''}${livePnl.toFixed(2)}` : '--'}
+                        </span>
+                        <span style={{ ...mono, fontSize: 10, color: pnlColor(t.r_multiple) }}>
+                          {t.r_multiple != null ? `${t.r_multiple >= 0 ? '+' : ''}${Number(t.r_multiple).toFixed(1)}R` : ''}
+                        </span>
+                      </div>
+                    </div>
+                    {isExpanded && <TradeExpansion trade={t} />}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Closed Trades */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+            <SectionHeader title={`Closed Trades (${closedTrades.length})`} />
+            {closedTrades.length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>No closed trades yet</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {['', 'Symbol', 'Strategy', 'Entry', 'Exit', 'Shares', 'P&L', 'R', 'Verdict', 'Exit Reason', 'Iris', 'Aegis', 'RAG', 'Events', 'Date'].map(h => (
+                        <th key={h} style={thStyle}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {closedTrades.map((t: any, i: number) => {
+                      const isExpanded = expandedId === t.id
+                      const verdict = t.outcome_verdict || (t.pnl > 0 ? 'WIN' : t.pnl < 0 ? 'LOSS' : '--')
+                      return (
+                        <tbody key={t.id}>
+                          <tr onClick={() => setExpandedId(isExpanded ? null : t.id)}
+                            style={{ background: isExpanded ? 'rgba(59,130,246,0.08)' : i % 2 ? 'var(--bg0)' : 'transparent', cursor: 'pointer' }}>
+                            <td style={{ ...tdStyle, width: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 10 }}>{isExpanded ? '▲' : '▼'}</td>
+                            <td style={{ ...tdStyle, fontWeight: 700, ...mono }}>{t.symbol}</td>
+                            <td style={{ ...tdStyle, fontSize: 10, color: 'var(--text2)' }}>{t.strategy_id}</td>
+                            <td style={{ ...tdStyle, ...mono }}>{fmt$(t.entry_price, 2)}</td>
+                            <td style={{ ...tdStyle, ...mono }}>{fmt$(t.exit_price, 2)}</td>
+                            <td style={{ ...tdStyle, ...mono, fontSize: 10 }}>{t.shares || '--'}</td>
+                            <td style={{ ...tdStyle, ...mono, color: pnlColor(t.pnl), fontWeight: 600 }}>{t.pnl != null ? fmt$(t.pnl, 2) : '--'}</td>
+                            <td style={{ ...tdStyle, ...mono, color: pnlColor(t.r_multiple) }}>{t.r_multiple != null ? `${Number(t.r_multiple).toFixed(2)}R` : '--'}</td>
+                            <td style={tdStyle}><span style={pill(verdict === 'WIN' || verdict === 'CORRECT' ? 'green' : verdict === 'LOSS' || verdict === 'WRONG' ? 'red' : 'amber')}>{verdict}</span></td>
+                            <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)' }}>{(t.exit_reason || '').slice(0, 30)}</td>
+                            <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.iris_curated ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.iris_curated ? '✓' : '-'}</span></td>
+                            <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.aegis_summarized ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.aegis_summarized ? '✓' : '-'}</span></td>
+                            <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.post_trade_analyzed ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.post_trade_analyzed ? '✓' : '-'}</span></td>
+                            <td style={{ ...tdStyle, textAlign: 'center', ...mono, fontSize: 10 }}>{t.execution_log?.length || 0}</td>
+                            <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)', ...mono }}>{(t.closed_at || '').slice(0, 10) || '--'}</td>
+                          </tr>
+                          {isExpanded && (
+                            <tr><td colSpan={15} style={{ padding: 0, borderBottom: '2px solid var(--border)' }}>
+                              <TradeExpansion trade={t} />
+                            </td></tr>
+                          )}
+                        </tbody>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
-      {/* Closed Trades */}
-      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
-        <SectionHeader title={`Closed Trades (${closedTrades.length})`} />
-        {closedTrades.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>No closed trades yet</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['', 'Symbol', 'Strategy', 'Entry', 'Exit', 'Shares', 'P&L', 'R', 'Verdict', 'Exit Reason', 'Iris', 'Aegis', 'RAG', 'Events', 'Date'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {closedTrades.map((t: any, i: number) => {
-                  const isExpanded = expandedId === t.id
-                  const verdict = t.outcome_verdict || (t.pnl > 0 ? 'WIN' : t.pnl < 0 ? 'LOSS' : '--')
-                  return (
-                    <tbody key={t.id}>
-                      <tr onClick={() => setExpandedId(isExpanded ? null : t.id)}
-                        style={{ background: isExpanded ? 'rgba(59,130,246,0.08)' : i % 2 ? 'var(--bg0)' : 'transparent', cursor: 'pointer' }}>
-                        <td style={{ ...tdStyle, width: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 10 }}>{isExpanded ? '▲' : '▼'}</td>
-                        <td style={{ ...tdStyle, fontWeight: 700, ...mono }}>{t.symbol}</td>
-                        <td style={{ ...tdStyle, fontSize: 10, color: 'var(--text2)' }}>{t.strategy_id}</td>
-                        <td style={{ ...tdStyle, ...mono }}>{fmt$(t.entry_price, 2)}</td>
-                        <td style={{ ...tdStyle, ...mono }}>{fmt$(t.exit_price, 2)}</td>
-                        <td style={{ ...tdStyle, ...mono, fontSize: 10 }}>{t.shares || '--'}</td>
-                        <td style={{ ...tdStyle, ...mono, color: pnlColor(t.pnl), fontWeight: 600 }}>{t.pnl != null ? fmt$(t.pnl, 2) : '--'}</td>
-                        <td style={{ ...tdStyle, ...mono, color: pnlColor(t.r_multiple) }}>{t.r_multiple != null ? `${Number(t.r_multiple).toFixed(2)}R` : '--'}</td>
-                        <td style={tdStyle}><span style={pill(verdict === 'WIN' || verdict === 'CORRECT' ? 'green' : verdict === 'LOSS' || verdict === 'WRONG' ? 'red' : 'amber')}>{verdict}</span></td>
-                        <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)' }}>{(t.exit_reason || '').slice(0, 30)}</td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.iris_curated ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.iris_curated ? '✓' : '-'}</span></td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.aegis_summarized ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.aegis_summarized ? '✓' : '-'}</span></td>
-                        <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.post_trade_analyzed ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.post_trade_analyzed ? '✓' : '-'}</span></td>
-                        <td style={{ ...tdStyle, textAlign: 'center', ...mono, fontSize: 10 }}>{t.execution_log?.length || 0}</td>
-                        <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)', ...mono }}>{(t.closed_at || '').slice(0, 10) || '--'}</td>
-                      </tr>
-                      {isExpanded && (
-                        <tr><td colSpan={15} style={{ padding: 0, borderBottom: '2px solid var(--border)' }}>
-                          <TradeExpansion trade={t} />
-                        </td></tr>
-                      )}
-                    </tbody>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* ── Analytics sub-tab ── */}
+      {innerTab === 'Analytics' && (
+        <>
+          {(stats.closed ?? 0) < 10 && (
+            <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, marginBottom: 14, fontSize: 11, color: '#F59E0B' }}>
+              Accumulating data — full analytics available after 10+ closed trades. Currently {stats.closed ?? 0} closed.
+            </div>
+          )}
+          <AnalyticsSection account={account} closedTrades={closedTrades} />
+        </>
+      )}
+
+      {/* ── Governance sub-tab ── */}
+      {innerTab === 'Governance' && <GovernanceSubTab journalStats={stats} />}
+
+      {/* ── Performance sub-tab ── */}
+      {innerTab === 'Performance' && <PerformanceSubTab journalStats={stats} />}
     </>
   )
 }

@@ -169,7 +169,7 @@ class AlpacaPaperAdapter:
                 log.warning(f"[alpaca] Post-close processor trigger failed: {e}")
         return closed
 
-    def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn):
+    def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn, validated_price=None):
         """Submit a bracket order to Alpaca paper."""
         if not self.enabled:
             log.info(f"[alpaca] DISABLED — would submit {shares} {symbol} @ ${entry_price}")
@@ -223,6 +223,23 @@ class AlpacaPaperAdapter:
                     current_price = float(h['Close'].iloc[-1])
         except Exception as _qe:
             log.warning(f"[alpaca] Quote fetch failed for {symbol}: {_qe}")
+
+        # Use validated price from revalidator if adapter fetch failed
+        if not current_price and validated_price:
+            current_price = validated_price
+            log.info(f"[alpaca] Using validated_price ${validated_price:.2f} for {symbol}")
+
+        # ── HARD SAFETY GATE 1: Stop already breached ──
+        if current_price and stop_price and current_price <= stop_price:
+            log.error(f"[alpaca] BLOCKED {symbol}: price ${current_price:.2f} <= stop ${stop_price:.2f} — would immediately stop out")
+            return {'status': 'blocked', 'reason': f'stop_breached: price ${current_price:.2f} <= stop ${stop_price:.2f}'}
+
+        # ── HARD SAFETY GATE 2: Excessive drift from proposed entry ──
+        if current_price and entry_price and entry_price > 0:
+            adapter_drift = abs(current_price - entry_price) / entry_price * 100
+            if adapter_drift > 5.0:
+                log.error(f"[alpaca] BLOCKED {symbol}: drift {adapter_drift:.1f}% exceeds 5% threshold (entry=${entry_price:.2f} vs live=${current_price:.2f})")
+                return {'status': 'blocked', 'reason': f'excessive_drift: {adapter_drift:.1f}% from proposed entry ${entry_price:.2f}'}
 
         use_market = False
         order_type_reason = "limit_at_proposed_entry"
@@ -367,18 +384,31 @@ class AlpacaPaperAdapter:
             except Exception:
                 pass
             _db_status = 'open' if fill_status == 'filled' else 'pending'
+            import json as _json
+            _risk_snap = _json.dumps({
+                "proposed_entry": entry_price,
+                "live_price_at_submit": current_price,
+                "filled_avg_price": actual_entry,
+                "stop": stop_price,
+                "target": target_price,
+                "drift_pct": round(abs(current_price - entry_price) / entry_price * 100, 2) if current_price and entry_price and entry_price > 0 else None,
+                "order_type": "market" if use_market else "limit",
+                "order_type_reason": order_type_reason,
+            })
             cur.execute("""
                 INSERT INTO paper_trades (strategy_id, symbol, account, shares, dollar_size,
                     stop_loss, target_1, planned_entry, entry_price, dollar_risk,
                     broker_order_id, broker_status, order_type,
                     market_regime, vix_at_entry,
                     status, opened_via, logged_by, risk_gate_result,
+                    risk_params_at_fill, lifecycle_state,
                     notes)
                 VALUES (%s, %s, 'ALPACA_PAPER', %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s,
                     %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED',
+                    %s, %s,
                     %s)
             """, [strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
                   stop_price, target_price, entry_price, actual_entry,
@@ -386,6 +416,7 @@ class AlpacaPaperAdapter:
                   order_id, fill_status,
                   'market' if use_market else 'bracket',
                   _regime, _vix, _db_status,
+                  _risk_snap, _db_status,
                   f"Order type: {order_type_reason}. Fill verified: {fill_status}. "
                   f"Shares: {actual_shares}. Stop: ${stop_price} ({'atomic bracket' if not use_market else 'placed after fill'})."])
             conn.commit()
