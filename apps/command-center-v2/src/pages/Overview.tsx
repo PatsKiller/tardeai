@@ -70,6 +70,8 @@ export default function Overview() {
   const { data: searchSrc } = useApi<SearchSourcesResp>('/api/v2/search-sources')
   const { data: irisData } = useApi<any>('/api/v2/iris/status')
   const { data: cmdData } = useApi<any>('/api/v2/command')
+  const { data: paperJournal } = useApi<any>('/api/v2/paper-journal')
+  const { data: recoveryWatch } = useApi<any>('/api/v2/stopped-out-watch')
   const [irisQ, setIrisQ] = useState('')
   const [irisA, setIrisA] = useState('')
   const [askingIris, setAskingIris] = useState(false)
@@ -202,6 +204,63 @@ export default function Overview() {
               </div>
             </div>
           </Card>
+
+          {/* Mini Automated Journal */}
+          {paperJournal?.stats && (
+            <Card title="Paper Trades" subtitle={`${paperJournal.stats.open ?? 0} open · ${paperJournal.stats.closed ?? 0} closed`}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{paperJournal.stats.open ?? 0}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>OPEN</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: paperJournal.stats.total_pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt$(paperJournal.stats.total_pnl ?? 0)}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>P&L</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{paperJournal.stats.losses ?? 0}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>LOSSES</div>
+                </div>
+              </div>
+              {(paperJournal.open_trades || []).slice(0, 3).map((t: any) => (
+                <div key={t.id || t.symbol} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0', color: 'var(--text2)' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{t.symbol}</span>
+                  <span>{t.strategy_id}</span>
+                </div>
+              ))}
+              {(paperJournal.open_trades || []).length > 3 && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>+{paperJournal.open_trades.length - 3} more</div>}
+              <button onClick={() => navigate('/journal?tab=automated-journal')} style={primaryAction}>Open Automated Journal</button>
+            </Card>
+          )}
+
+          {/* Mini Recovery Watch */}
+          {recoveryWatch?.items?.length > 0 && (
+            <Card title="Recovery Watch" subtitle={`${recoveryWatch.items.length} stopped positions`}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 8 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>{recoveryWatch.items.filter((i: any) => i.analyst_verdict === 'reentry_candidate').length}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>RE-ENTRY</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--amber)' }}>{recoveryWatch.items.filter((i: any) => i.analyst_verdict === 'wait_monitor').length}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>WAIT</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--red)' }}>{recoveryWatch.items.filter((i: any) => i.analyst_verdict === 'do_not_reenter').length}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>DO NOT</div>
+                </div>
+              </div>
+              {recoveryWatch.items.slice(0, 3).map((i: any) => (
+                <div key={i.id || i.symbol} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0', color: 'var(--text2)' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{i.symbol}</span>
+                  <span style={{ color: i.analyst_verdict === 'reentry_candidate' ? 'var(--green)' : i.analyst_verdict === 'do_not_reenter' ? 'var(--red)' : 'var(--amber)', fontSize: 9 }}>
+                    {(i.analyst_verdict || 'pending').replace(/_/g, ' ')}
+                  </span>
+                </div>
+              ))}
+              <button onClick={() => navigate('/recovery')} style={primaryAction}>Open Recovery Watch</button>
+            </Card>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

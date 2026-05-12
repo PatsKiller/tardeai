@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Shell from './components/Shell'
 
 // ── Core pages ──
@@ -195,6 +195,8 @@ export default function App() {
           <Route path="live-governance" element={<SafePage><GovernanceHub /></SafePage>} />
           <Route path="correlation" element={<SafePage><Risk /></SafePage>} />
           <Route path="forecast" element={<SafePage><Returns /></SafePage>} />
+          <Route path="proposals" element={<Navigate to="../paper-proposals" replace />} />
+          <Route path="strategy" element={<Navigate to="../strategy-desk" replace />} />
 
           <Route path="*" element={
             <div style={{ padding: 40, color: 'var(--text2)' }}>

@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import TabPage from '../components/TabPage'
 
 const Journal = lazy(() => import('./Journal'))
@@ -9,9 +10,14 @@ const AutomatedTradeJournal = lazy(() => import('./AutomatedTradeJournal'))
 const Loading = () => <div style={{ color: 'var(--text3)', padding: 20 }}>Loading...</div>
 
 export default function JournalHub() {
+  const [searchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const defaultTab = tabParam === 'automated-journal' ? 'automated' : undefined
+
   return (
     <TabPage
       title="Trade Journal"
+      defaultTab={defaultTab}
       tabs={[
         { id: 'entries', label: 'Entries', component: <Suspense fallback={<Loading />}><Journal /></Suspense> },
         { id: 'analytics', label: 'Analytics', component: <Suspense fallback={<Loading />}><JournalAnalytics /></Suspense> },

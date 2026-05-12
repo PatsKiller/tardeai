@@ -1,0 +1,72 @@
+===== Phase 0C Clean Window Test =====
+2026-05-11T21:08:06-04:00
+
+===== Waiting for watchlist agent job to clear =====
+2026-05-11T21:08:06-04:00 python_process_count=1
+2026-05-11T21:08:16-04:00 python_process_count=1
+2026-05-11T21:08:26-04:00 python_process_count=1
+2026-05-11T21:08:36-04:00 python_process_count=1
+2026-05-11T21:08:46-04:00 python_process_count=1
+2026-05-11T21:08:56-04:00 python_process_count=1
+2026-05-11T21:09:06-04:00 python_process_count=1
+2026-05-11T21:09:16-04:00 python_process_count=1
+2026-05-11T21:09:26-04:00 python_process_count=1
+2026-05-11T21:09:36-04:00 python_process_count=1
+2026-05-11T21:09:46-04:00 python_process_count=1
+2026-05-11T21:09:56-04:00 python_process_count=1
+2026-05-11T21:10:06-04:00 python_process_count=1
+2026-05-11T21:10:16-04:00 python_process_count=1
+2026-05-11T21:10:26-04:00 python_process_count=1
+2026-05-11T21:10:36-04:00 python_process_count=1
+2026-05-11T21:10:46-04:00 python_process_count=1
+2026-05-11T21:10:56-04:00 python_process_count=1
+2026-05-11T21:11:06-04:00 python_process_count=1
+2026-05-11T21:11:17-04:00 python_process_count=1
+2026-05-11T21:11:27-04:00 python_process_count=1
+2026-05-11T21:11:37-04:00 python_process_count=1
+2026-05-11T21:11:47-04:00 python_process_count=1
+2026-05-11T21:11:57-04:00 python_process_count=1
+2026-05-11T21:12:07-04:00 python_process_count=1
+2026-05-11T21:12:17-04:00 python_process_count=1
+2026-05-11T21:12:27-04:00 python_process_count=1
+2026-05-11T21:12:37-04:00 python_process_count=1
+2026-05-11T21:12:47-04:00 python_process_count=1
+2026-05-11T21:12:57-04:00 python_process_count=1
+2026-05-11T21:13:07-04:00 python_process_count=1
+2026-05-11T21:13:17-04:00 python_process_count=1
+2026-05-11T21:13:27-04:00 python_process_count=1
+2026-05-11T21:13:37-04:00 python_process_count=1
+2026-05-11T21:13:47-04:00 python_process_count=1
+2026-05-11T21:13:57-04:00 python_process_count=1
+2026-05-11T21:14:07-04:00 python_process_count=1
+2026-05-11T21:14:17-04:00 python_process_count=1
+2026-05-11T21:14:27-04:00 python_process_count=1
+2026-05-11T21:14:37-04:00 python_process_count=1
+2026-05-11T21:14:47-04:00 python_process_count=1
+2026-05-11T21:14:57-04:00 python_process_count=1
+2026-05-11T21:15:07-04:00 python_process_count=1
+2026-05-11T21:15:17-04:00 python_process_count=1
+2026-05-11T21:15:27-04:00 python_process_count=1
+2026-05-11T21:15:37-04:00 python_process_count=1
+2026-05-11T21:15:47-04:00 python_process_count=1
+2026-05-11T21:15:57-04:00 python_process_count=1
+2026-05-11T21:16:07-04:00 python_process_count=1
+2026-05-11T21:16:17-04:00 python_process_count=1
+2026-05-11T21:16:27-04:00 python_process_count=1
+2026-05-11T21:16:37-04:00 python_process_count=1
+2026-05-11T21:16:47-04:00 python_process_count=1
+2026-05-11T21:16:57-04:00 python_process_count=1
+2026-05-11T21:17:07-04:00 python_process_count=1
+2026-05-11T21:17:17-04:00 python_process_count=1
+2026-05-11T21:17:27-04:00 python_process_count=1
+2026-05-11T21:17:38-04:00 python_process_count=1
+2026-05-11T21:17:48-04:00 python_process_count=1
+2026-05-11T21:17:58-04:00 python_process_count=1
+
+===== Final process check =====
+johnclaw  804169  804164  0 21:05 ?        00:00:00 /bin/sh -c cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock $PY scripts/process_watchlist_agent_jobs.py --limit 25 >> logs/watchlist_agent_jobs.log 2>&1; [ $? -eq 99 ] && echo "$(date +%Y-%m-%d\ %H:%M:%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log
+johnclaw  804170  804169  0 21:05 ?        00:00:00 flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 25
+johnclaw  804171  804170  0 21:05 ?        00:00:03 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 25
+final_python_process_count=1
+
+BLOCKED: watchlist agent still running. Do not proceed to Phase 1.

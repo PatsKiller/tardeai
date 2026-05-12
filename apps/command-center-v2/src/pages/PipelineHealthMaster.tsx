@@ -144,7 +144,14 @@ export default function PipelineHealthMaster() {
       }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
           <span style={{ color: 'var(--text1)', fontWeight: 700 }}>
-            Pipeline Health: {summary?.healthy ?? '-'}/{summary?.total_stages ?? 31} stages healthy
+            Pipeline Health: {(() => {
+              const h = summary?.healthy ?? 0
+              const w = summary?.warnings ?? 0
+              const c = summary?.critical ?? 0
+              const total = summary?.total_stages ?? 31
+              if (h === 0 && w === 0 && c === 0) return <span style={{ color: '#60A5FA' }}>{total}/{total} stages nominal (no runs yet today)</span>
+              return <span style={{ color: c > 0 ? '#EF4444' : w > 0 ? '#F59E0B' : '#10B981' }}>{h}/{total} stages healthy</span>
+            })()}
           </span>
           <span style={{ color: '#F59E0B' }}>
             {summary?.warnings ?? 0} warnings

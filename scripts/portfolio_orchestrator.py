@@ -200,8 +200,15 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
         stop_alerts = check_stop_alerts(risk_mgmt)
         if stop_alerts:
             from portfolio_alerts import _send_telegram
+            from db_adapter import notification_already_logged, save_notification_log_entry
+            from datetime import date as _date
             for a in stop_alerts:
+                _stop_dk = f"{_date.today()}:stop_alert:{a.get('symbol','unknown')}"
+                if notification_already_logged(_stop_dk):
+                    print(f"  [stops] Dedup: already sent today for {a.get('symbol','?')}")
+                    continue
                 _send_telegram(a["msg"], root)
+                save_notification_log_entry({"dedupe_key": _stop_dk, "notification_type": "stop_alert", "channel": "telegram", "subject": f"Stop alert: {a.get('symbol','')}", "body_summary": a["msg"][:200], "status": "sent"})
                 print(f"  [stops] Alert sent: {a['msg'][:60]}")
             # Generate decision briefs for danger-level positions
             danger_positions = risk_mgmt.get("danger", [])

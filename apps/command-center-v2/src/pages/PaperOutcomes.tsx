@@ -23,13 +23,15 @@ export default function PaperOutcomes() {
   const { data: lcData } = useApi<any>('/api/v2/paper-proposals/lifecycle-events', 30000)
   const { data: outcomesData } = useApi<any>('/api/v2/paper-outcomes', 30000)
   const { data: summaryData } = useApi<any>('/api/v2/paper-dashboard-summary', 60000)
+  const { data: journalData } = useApi<any>('/api/v2/paper-journal', 60000)
   const [runningOutcomes, setRunningOutcomes] = useState(false)
 
-  const gov = govData?.data || []
+  const gov = govData?.data || govData || []
   const events = lcData?.events || []
   const tca = thesisData?.data || []
   const outcomes = outcomesData?.outcomes || []
   const summary = summaryData?.summary || {}
+  const journalStats = journalData?.stats || {}
 
   const runOutcomeReview = async () => {
     setRunningOutcomes(true)
@@ -40,15 +42,24 @@ export default function PaperOutcomes() {
     setRunningOutcomes(false)
   }
 
-  // Aggregate governance stats
-  const totalTrades = gov.reduce((s: number, g: any) => s + (g.paper_trades || 0), 0)
-  const totalClosed = gov.reduce((s: number, g: any) => s + (g.closed_trades || 0), 0)
-  const strategiesWithData = gov.filter((g: any) => (g.paper_trades || 0) > 0).length
-  const liveEligible = gov.filter((g: any) => g.live_eligible).length
+  // Use paper-journal as primary source, governance as fallback
+  const jOpen = journalStats.open ?? 0
+  const jClosed = journalStats.closed ?? 0
+  const totalTrades = jOpen + jClosed || (Array.isArray(gov) ? gov.reduce((s: number, g: any) => s + (g.paper_trades || 0), 0) : 0)
+  const totalClosed = jClosed || (Array.isArray(gov) ? gov.reduce((s: number, g: any) => s + (g.closed_trades || 0), 0) : 0)
+  // Count distinct strategies from open trades
+  const openStrategies = new Set((journalData?.open_trades || []).map((t: any) => t.strategy_id).filter(Boolean))
+  const closedStrategies = new Set((journalData?.closed_trades || []).map((t: any) => t.strategy_id).filter(Boolean))
+  const strategiesWithData = new Set([...openStrategies, ...closedStrategies]).size || (Array.isArray(gov) ? gov.filter((g: any) => (g.paper_trades || 0) > 0).length : 0)
+  const liveEligible = Array.isArray(gov) ? gov.filter((g: any) => g.live_eligible).length : 0
 
   return (
     <>
-      <PageHeader title="Paper Outcome Analytics" subtitle="Thesis outcomes, lifecycle events, and governance status" />
+      <PageHeader title="Paper Outcome Analytics" subtitle="Thesis outcomes, lifecycle events, and governance status" actions={
+        <a href="/v2/journal?tab=automated-journal" style={{ padding: '4px 12px', fontSize: 10, fontWeight: 600, border: '1px solid var(--accent, #4a90f4)', borderRadius: 6, background: 'rgba(74,144,244,0.08)', color: 'var(--accent, #4a90f4)', textDecoration: 'none', fontFamily: 'monospace' }}>
+          View in Automated Journal →
+        </a>
+      } />
       <div style={{ padding: '0 24px 24px' }}>
         {(tLoading || gLoading) && <div style={{ color: 'var(--text3)', fontSize: 12 }}>Loading...</div>}
 

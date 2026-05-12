@@ -1,0 +1,39 @@
+{
+  "patch_date": "2026-05-07",
+  "session": "22",
+  "session_title": "Afternoon Pipeline + Screener Quality",
+  "changes": {
+    "continuous_runner_schedule": {
+      "before": "3am-11am only (5 windows)",
+      "after": "3am-4pm (8 windows): added 11:30-12:15, 13:30-14:15, 15:15-16:00",
+      "full_anchors_added": ["12:00", "14:00", "15:30"]
+    },
+    "strategy_signal_sync": {
+      "fix": "Hard-enforce momentum_scalp YAML criteria in routing",
+      "infer_strategy_id_fix": "Fixed fallback to cascade momentum_scalp→gap_and_go→earnings_catalyst→swing_breakout instead of defaulting to momentum_scalp",
+      "added_checks": ["min_gap_pct in momentum_scalp.yaml", "min_score check in candidate_matches_strategy()"]
+    },
+    "auto_proposal_generator": {
+      "fix": "Added _validate_against_strategy_criteria() with YAML hard checks + fallback reassignment",
+      "new_skip_reason": "SKIPPED_STRATEGY_CRITERIA"
+    },
+    "proposal_intelligence_analyzer": {
+      "fix": "Added --expire-stale flag for EOD cleanup",
+      "expire_rules": ["Intraday proposals (scalp/gap) > 8hr old → EXPIRED", "All proposals past expires_at → EXPIRED"]
+    },
+    "telegram_avoid_noise": {
+      "fix": "Session 21A: RVOL/SCORE_JUMP alerts now filtered to GO+WAIT only, AVOID suppressed"
+    },
+    "new_crons": [
+      "12:15 queue_proposal_agent_reviews --apply",
+      "12:25 proposal_intelligence_analyzer --pending --apply",
+      "12:30 proposal_quality_reviewer --apply",
+      "14:15 queue_proposal_agent_reviews --apply",
+      "14:25 proposal_intelligence_analyzer --pending --apply",
+      "15:45 proposal_quality_reviewer --apply",
+      "16:30 proposal_intelligence_analyzer --expire-stale --apply"
+    ],
+    "crontab_total": 118,
+    "scripts_total": 268
+  }
+}

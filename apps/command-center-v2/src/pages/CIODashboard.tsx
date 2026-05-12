@@ -29,6 +29,7 @@ interface AgentsResp { agents: AgentRow[] }
 
 export default function CIODashboard() {
   const [refreshKey, setRefreshKey] = useState(0)
+  const [showAllCritical, setShowAllCritical] = useState(false)
   const { data: dashboard } = useApi<CIODashboardData>(`/api/v2/cio-dashboard?_r=${refreshKey}`)
   const { data: decisionsResp } = useApi<{ decisions: CIODecision[] }>(`/api/v2/cio-decisions?_r=${refreshKey}`)
   const { data: agentsSummary } = useApi<AgentsResp>(`/api/v2/agents/summary?_r=${refreshKey}`)
@@ -184,10 +185,17 @@ export default function CIODashboard() {
 
       {/* 1. IMMEDIATE DECISIONS */}
       <Card>
-        <SectionHeader title="Immediate CIO Decisions" count={critical.length || undefined} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <SectionHeader title="Immediate CIO Decisions" count={critical.length || undefined} />
+          {critical.length > 10 && (
+            <button onClick={() => setShowAllCritical(v => !v)} style={{ fontSize: 9, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'transparent', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'monospace' }}>
+              {showAllCritical ? 'Top 10' : `Show all ${critical.length}`}
+            </button>
+          )}
+        </div>
         {critical.length === 0 && <div style={{ padding: 14, color: 'var(--text3)', fontSize: 11 }}>No critical/high-priority decisions pending.</div>}
         <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-          {critical.map(d => (
+          {(showAllCritical ? critical : critical.slice(0, 10)).map(d => (
             <div key={d.decision_id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
               <PriorityBadge priority={d.priority} />
               <span style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 12, minWidth: 50 }}>{d.symbol || '—'}</span>

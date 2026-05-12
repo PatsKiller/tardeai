@@ -14,12 +14,12 @@ interface AuditData {
 }
 
 const ACTIONS = [
-  { id: 'daily', label: 'Run Daily Pipeline', endpoint: '/api/run-portfolio', desc: 'Full daily pipeline — reprice, compute signals, update snapshots, generate reports.', icon: '\u25b6', color: 'var(--green)', output: 'Portfolio daily report + Trade AI dashboard in Reports', dest: '/reports' },
-  { id: 'reprice', label: 'Run Reprice Only', endpoint: '/api/run-reprice', desc: 'Refresh current prices without running full pipeline. Fast (~30s).', icon: '\u27f3', color: 'var(--accent)', output: 'Updated Holdings, Risk, and Returns data', dest: '/portfolio' },
-  { id: 'tradeai', label: 'Run Trade AI Scan', endpoint: '/api/run-trade-ai', desc: 'Scalp screener — scan for GO/WAIT/AVOID setups. Takes 5-7 minutes.', icon: '\u26a1', color: 'var(--amber)', output: 'Trade AI dashboard in Reports + updated Trade AI page', dest: '/trade-ai' },
-  { id: 'recovery', label: 'Run Recovery Review', endpoint: '/api/run-recovery-review', desc: 'Stop-out detection, analyst review, stop confirmation reminders, allocation advisor.', icon: '\u{1f6e1}', color: 'var(--accent)', output: 'Updated Recovery Watch page + Telegram notifications', dest: '/recovery' },
-  { id: 'aegis', label: 'Run Aegis Surveillance', endpoint: '/api/run-aegis', desc: 'Aegis portfolio surveillance — concentration, stops, income, risk posture analysis.', icon: '\u{1f6e1}', color: 'var(--purple)', output: 'Aegis findings in Approvals + Recovery + Orchestration', dest: '/orchestration' },
-  { id: 'rebalance', label: 'Run Rebalance', endpoint: '/api/run-pipeline', desc: 'Rebalance analysis — concentration, income architecture, YAML health.', icon: '\u2696', color: 'var(--text1)', output: 'Updated Rebalance page with observations + suggestions', dest: '/rebalance' },
+  { id: 'daily', label: 'Run Daily Pipeline', endpoint: '/api/run-portfolio', desc: 'Full daily pipeline — reprice, compute signals, update snapshots, generate reports.', icon: '▶', color: 'var(--green)', output: 'Portfolio daily report + Trade AI dashboard in Reports', dest: '/reports' },
+  { id: 'reprice', label: 'Run Reprice Only', endpoint: '/api/run-reprice', desc: 'Refresh current prices without running full pipeline. Fast (~30s).', icon: '⟳', color: 'var(--accent)', output: 'Updated Holdings, Risk, and Returns data', dest: '/portfolio' },
+  { id: 'tradeai', label: 'Run Trade AI Scan', endpoint: '/api/run-trade-ai', desc: 'Scalp screener — scan for GO/WAIT/AVOID setups. Takes 5-7 minutes.', icon: '⚡', color: 'var(--amber)', output: 'Trade AI dashboard in Reports + updated Trade AI page', dest: '/trade-ai' },
+  { id: 'recovery', label: 'Run Recovery Review', endpoint: '/api/run-recovery-review', desc: 'Stop-out detection, analyst review, stop confirmation reminders, allocation advisor.', icon: '🛡', color: 'var(--accent)', output: 'Updated Recovery Watch page + Telegram notifications', dest: '/recovery' },
+  { id: 'aegis', label: 'Run Aegis Surveillance', endpoint: '/api/run-aegis', desc: 'Aegis portfolio surveillance — concentration, stops, income, risk posture analysis.', icon: '🛡', color: 'var(--purple)', output: 'Aegis findings in Approvals + Recovery + Orchestration', dest: '/orchestration' },
+  { id: 'rebalance', label: 'Run Rebalance', endpoint: '/api/run-pipeline', desc: 'Rebalance analysis — concentration, income architecture, YAML health.', icon: '⚖', color: 'var(--text1)', output: 'Updated Rebalance page with observations + suggestions', dest: '/rebalance' },
 ]
 
 export default function ActionCenter() {

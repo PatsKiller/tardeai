@@ -98,7 +98,7 @@ export default function StoppedOutWatch() {
         <MetricTile label="Re-entry" value={String(reentryCount)} deltaColor="var(--green)" />
         <MetricTile label="Wait / Monitor" value={String(waitCount)} deltaColor="var(--amber)" />
         <MetricTile label="Do Not Re-enter" value={String(dontCount)} deltaColor="var(--red)" />
-        <MetricTile label="Freed Capital" value={fmt$(items.reduce((s, i) => s + (i.exit_price || 0) * ((i as unknown as Record<string, number>).shares || 0), 0) || 0)} delta="stays as cash in original account" deltaColor="var(--text3)" />
+        <MetricTile label="Exited Positions" value={`${items.length} stops`} delta="freed capital stays as cash in original account" deltaColor="var(--text3)" />
       </div>
 
       {/* Portfolio context for strategic reasoning */}

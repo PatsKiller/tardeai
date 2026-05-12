@@ -284,7 +284,7 @@ export default function Prospects() {
                         {p.float_m ? `${p.float_m.toFixed(0)}M` : '—'}
                       </td>
                       <td style={{ padding: '8px' }}>
-                        {p.confluence_tier ? (
+                        {p.confluence_tier && p.confluence_tier !== 'NONE' ? (
                           <span style={{
                             fontSize: '9px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px',
                             background: (TIER_COLORS[p.confluence_tier] || TIER_COLORS.WEAK).bg,
