@@ -1029,6 +1029,40 @@ def approval_decide(body: dict):
         except Exception:
             pass
 
+    # ── On approval: run strategy criteria validation + live price check ──
+    if decision == "approved" and sym:
+        validation_result = None
+        try:
+            # Find the paper_trade_proposal for this symbol
+            p_row = _db_query(
+                "SELECT id FROM paper_trade_proposals WHERE symbol = %s AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST') ORDER BY created_at DESC LIMIT 1",
+                (sym,), fetch="one"
+            )
+            if p_row:
+                from approval_revalidator import validate_at_approval
+                from session13_db import get_conn
+                conn = get_conn()
+                validation_result = validate_at_approval(conn, p_row['id'])
+                conn.close()
+
+                if validation_result.get('status') == 'REJECTED':
+                    # Block the approval — revert to pending
+                    _db_write("UPDATE action_queue SET status = 'pending', reviewed_at = NULL WHERE id = %s", (queue_id,))
+                    return 200, {
+                        "ok": True, "action": "blocked",
+                        "queue_id": queue_id,
+                        "validation": validation_result,
+                        "message": f"Trade blocked: {'; '.join(validation_result.get('blockers', []))}"
+                    }
+        except Exception as _val_err:
+            log.warning(f"Approval validation failed (non-fatal): {_val_err}")
+            validation_result = {"status": "validation_error", "error": str(_val_err)}
+
+        return 200, {
+            "ok": True, "action": decision, "queue_id": queue_id,
+            "validation": validation_result
+        }
+
     return 200, {"ok": True, "action": decision, "queue_id": queue_id}
 
 
