@@ -13138,6 +13138,83 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/automated-journal-analytics":
+        try:
+            _acct = ((query or {}).get("account", ["ALPACA_PAPER"])[0]
+                     if isinstance((query or {}).get("account"), list)
+                     else (query or {}).get("account", "ALPACA_PAPER"))
+            # Daily P&L for calendar heatmap + equity curve
+            _daily = _db_query("""
+                SELECT closed_at::date as trade_date,
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
+                       ROUND(SUM(pnl)::numeric, 2) as daily_pnl,
+                       ROUND(AVG(pnl)::numeric, 2) as avg_pnl,
+                       ROUND(AVG(r_multiple)::numeric, 2) as avg_r
+                FROM paper_trades
+                WHERE account = %s AND status = 'closed' AND closed_at IS NOT NULL
+                GROUP BY closed_at::date
+                ORDER BY closed_at::date
+            """, [_acct]) or []
+            # Monthly summary
+            _monthly = _db_query("""
+                SELECT TO_CHAR(closed_at, 'YYYY-MM') as month,
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+                       SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) as losses,
+                       ROUND(SUM(pnl)::numeric, 2) as total_pnl,
+                       ROUND(AVG(pnl)::numeric, 2) as avg_pnl,
+                       ROUND(AVG(r_multiple)::numeric, 2) as avg_r,
+                       ROUND(MAX(pnl)::numeric, 2) as best_trade,
+                       ROUND(MIN(pnl)::numeric, 2) as worst_trade
+                FROM paper_trades
+                WHERE account = %s AND status = 'closed' AND closed_at IS NOT NULL
+                GROUP BY TO_CHAR(closed_at, 'YYYY-MM')
+                ORDER BY month
+            """, [_acct]) or []
+            # Weekly summary
+            _weekly = _db_query("""
+                SELECT TO_CHAR(date_trunc('week', closed_at), 'YYYY-MM-DD') as week_start,
+                       COUNT(*) as trades,
+                       SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+                       ROUND(SUM(pnl)::numeric, 2) as total_pnl,
+                       ROUND(AVG(r_multiple)::numeric, 2) as avg_r
+                FROM paper_trades
+                WHERE account = %s AND status = 'closed' AND closed_at IS NOT NULL
+                GROUP BY date_trunc('week', closed_at)
+                ORDER BY week_start
+            """, [_acct]) or []
+            # Build equity curve (cumulative P&L)
+            _cumulative = 0
+            _equity_curve = []
+            for d in _daily:
+                _cumulative += float(d.get('daily_pnl') or 0)
+                _equity_curve.append({
+                    'date': str(d['trade_date']),
+                    'daily_pnl': float(d.get('daily_pnl') or 0),
+                    'cumulative_pnl': round(_cumulative, 2),
+                    'trades': d.get('trades', 0),
+                    'wins': d.get('wins', 0),
+                    'losses': d.get('losses', 0),
+                })
+            # Unrealized equity (open positions)
+            _open_pnl = _db_query("""
+                SELECT ROUND(SUM(unrealized_pnl)::numeric, 2) as total
+                FROM paper_trades WHERE account = %s AND status = 'open'
+            """, [_acct], fetch="one") or {}
+            return 200, {"ok": True, "account": _acct,
+                "daily": [{k: _json_clean(v) for k, v in d.items()} for d in _daily],
+                "equity_curve": _equity_curve,
+                "monthly": [{k: _json_clean(v) for k, v in m.items()} for m in _monthly],
+                "weekly": [{k: _json_clean(v) for k, v in w.items()} for w in _weekly],
+                "current_equity": round(_cumulative + float(_open_pnl.get('total') or 0), 2),
+                "realized_total": round(_cumulative, 2),
+                "unrealized_total": float(_open_pnl.get('total') or 0),
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/paper-automation-performance":
         try:
             by_source = _db_query("""
