@@ -240,3 +240,53 @@ Cron: */5 20-23 * * 1-5  process_watchlist_agent_jobs.py --limit 25
 - No cron frequency changes (still */5 evening, */15 market hours)
 - No --limit reductions
 - No broker, holdings, or execution changes
+
+## Phase 0D — Runtime Cap and Batch-Size Control — 2026-05-11 21:25 ET
+
+### Evidence prompting this change
+- Phase 0C flock is working: `[flock] skipped` logged at 21:10 and 21:15
+- But the 21:05 process ran for 14+ minutes, monopolizing Ollama for one batch
+- Single-job runtime remains too long for other callers to get queue time
+
+### Changes applied
+
+**1. Runtime cap:** `timeout 12m` added inside flock, outside the Python process.
+- flock acquires lock → timeout caps the job at 12 minutes → Python runs inside both
+- If job exceeds 12m, timeout sends SIGTERM (exit 124) and logs `[timeout]` entry
+- flock is outside timeout so lock-skip detection (exit 99) still works independently
+
+**2. Batch size reduced to --limit 10 across all schedules:**
+
+| Schedule | Hours | Old limit | New limit |
+|----------|-------|-----------|-----------|
+| `*/15 6-19 * * 1-5` | Market hours | 10 | 10 (unchanged) |
+| `*/5 20-23 * * 1-5` | Evening | 25 | **10** |
+| `*/5 0-5 * * 2-6` | Overnight | 25 | **10** |
+| `*/10 * * * 0,6` | Weekend | 15 | **10** |
+
+**3. Exit code handling:** `rc=$?` captured once, checked for both 99 (flock skip) and 124 (timeout).
+
+### Crontab backup
+- Pre-change: `docs/v4_1_discovery/crontab_pre_phase0d.txt`
+
+### Validation
+- `crontab -l | grep process_watchlist_agent` — all 4 entries show `flock`, `timeout 12m`, `--limit 10`
+- `timeout 2s bash -lc 'sleep 5'` → exit 124 confirmed
+- Safety: `ALPACA_MODE=paper`, `LLM_DISABLE_LIVE_EXECUTION=true`, holdings $1,191,456
+
+### Monitoring commands
+```bash
+# Check for timeout kills
+grep '\[timeout\]' logs/watchlist_agent_jobs.log
+
+# Check for flock skips
+grep '\[flock\]' logs/watchlist_agent_jobs.log
+
+# Confirm single-process at any time
+ps -ef | grep process_watchlist_agent_jobs.py | grep -v grep | wc -l
+```
+
+### What was NOT changed
+- No model routing or model pull changes
+- No cron frequency changes (still */5 evening, */15 market hours)
+- No broker, holdings, or execution changes
