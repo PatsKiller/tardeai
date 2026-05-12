@@ -873,20 +873,30 @@ The incubator is the holding area between raw screener hits and actionable propo
 The system selects order type at submission time based on current market conditions:
 
 ```
-Adapter checks current Alpaca quote for the symbol
+alpaca_paper_adapter.py → submit_entry()
     │
-    ├─ Current price ≤ proposed entry      → MARKET ORDER
+    ├─ HARD BLOCK: price ≤ stop             → BLOCKED (stop_breached)
+    │   (Would immediately stop out)           Order never submitted
+    │
+    ├─ HARD BLOCK: drift > 5%               → BLOCKED (excessive_drift)
+    │   (Stale proposal, too far from plan)    Order never submitted
+    │
+    ├─ Current price ≤ proposed entry       → MARKET ORDER
     │   (Better price available — fill now)
     │
-    ├─ Current price within 2% of entry    → MARKET ORDER
-    │   (Close enough — avoid missing the setup)
+    ├─ Current price within 2% of entry     → MARKET ORDER
+    │   (Close enough — avoid missing setup)
     │
-    └─ Current price >2% above entry       → LIMIT ORDER (bracket)
-        (Price drifted — wait for value)      limit buy + stop loss + take profit
+    └─ Current price >2% above entry        → LIMIT ORDER (bracket)
+        (Price drifted — wait for value)       limit buy + stop loss + take profit
 ```
 
+**Hard blocks** prevent the BLBD incident (May 12, 2026): a 4-day-old proposal at $80.24 entry/$76.23 stop was submitted when price was $68. The buy filled at $68.48 (below stop) and the stop triggered immediately. Both the revalidator and adapter now independently block this scenario.
+
+**Approved ≠ Executed.** Approval triggers validation, but execution is conditional on passing all gates. A stale or drifted proposal will be blocked even after approval.
+
 **Market orders:** Simple buy → immediate fill → stop placed as separate GTC order after fill.
-Post-fill, the monitor takes over position management (trailing stops, target monitoring).
+Post-fill, the monitor takes over position management (trailing stops, auto-close on stop/target hit).
 
 **Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
 If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal
@@ -921,15 +931,27 @@ Every proposal passes through `risk_gate.py` before execution:
 
 ### Execution-Time Revalidation
 
-Before submitting to Alpaca, `paper_execution_revalidator.py` runs a final check:
+Before submitting to Alpaca, `paper_execution_revalidator.py` runs a final eligibility check using **live Alpaca quotes** (not stale DB data). The revalidator returns an `eligibility_status`: `ELIGIBLE`, `INELIGIBLE`, or `NEEDS_REVALIDATION`.
+
+**Implemented in:** `paper_execution_revalidator.py` → `revalidate()`
+**Quote source:** `get_current_quote()` → tries `market_quote_provider.fetch_alpaca_quote()` first, falls back to `trade_ai_scans` DB table.
 
 | Check | Action |
 |-------|--------|
+| **Stop already breached** (price <= stop) | **Hard block** — instant INELIGIBLE, order never submitted |
 | Market session (closed/premarket/afterhours) | Delay until regular hours |
 | Recommendation staleness (vs strategy-specific threshold) | Delay or downgrade |
 | Approval staleness | Delay if approved too long ago |
-| Price drift from proposed entry | Warn or block if drift > threshold |
+| Price drift >= 3% from proposed entry | Block, require re-approval (NEEDS_REVALIDATION) |
+| Price drift >= 1.5% | Warning, score deduction |
+| Risk/reward degraded > 50% | Block, require re-approval |
 | Material changes since approval | Require re-approval |
+
+The submitter persists the eligibility result to the proposals table:
+- `execution_eligibility_status` (ELIGIBLE/INELIGIBLE/NEEDS_REVALIDATION)
+- `execution_eligibility_reason` (human-readable)
+- `live_price_at_execution` (Alpaca quote at validation time)
+- `live_price_timestamp`
 
 Freshness thresholds match strategy timeframe:
 
@@ -943,6 +965,59 @@ Freshness thresholds match strategy timeframe:
 
 Staleness is checked against `approved_at` (when user acted), not `created_at` (when system generated).
 
+### Adapter-Level Hard Safety Gates
+
+Even if the revalidator passes, `alpaca_paper_adapter.py` → `submit_entry()` enforces two additional hard blocks as defense-in-depth:
+
+**Implemented in:** `alpaca_paper_adapter.py` → `submit_entry()` (after current price fetch, before order submission)
+
+| Gate | Condition | Result |
+|------|-----------|--------|
+| Stop breach | `current_price <= stop_price` | Order blocked, returns `stop_breached` |
+| Excessive drift | `abs(current_price - entry_price) / entry_price > 5%` | Order blocked, returns `excessive_drift` |
+
+The adapter accepts a `validated_price` parameter from the revalidator to eliminate the TOCTOU (time-of-check-to-time-of-use) gap. If the adapter's own price fetch fails, it uses the revalidator's validated price.
+
+### Proposal Lifecycle State Machine
+
+**Implemented in:** `proposal_paper_submitter.py` → `submit_paper()`
+**DB column:** `paper_trade_proposals.paper_submit_state`
+
+```
+NOT_SUBMITTED → VALIDATING → VALIDATED → SUBMITTED
+                    │                        │
+                    └─ BLOCKED ←─────────────┘
+```
+
+| State | Trigger | Owner |
+|-------|---------|-------|
+| NOT_SUBMITTED | Proposal created/approved | api_v2.py |
+| VALIDATING | submit_paper() called, before revalidation | proposal_paper_submitter.py |
+| VALIDATED | Revalidation passes (eligibility=ELIGIBLE) | proposal_paper_submitter.py |
+| BLOCKED | Revalidation fails or adapter rejects | proposal_paper_submitter.py |
+| SUBMITTED | Adapter successfully submits to Alpaca | proposal_paper_submitter.py |
+
+All transitions are logged to `proposal_event_log` with timestamps and payloads.
+
+### Execution Audit Trail
+
+Every trade persists a `risk_params_at_fill` JSONB snapshot in the `paper_trades` table:
+
+```json
+{
+  "proposed_entry": 80.24,
+  "live_price_at_submit": 68.48,
+  "filled_avg_price": 68.48,
+  "stop": 76.23,
+  "target": 88.26,
+  "drift_pct": 14.66,
+  "order_type": "market",
+  "order_type_reason": "market_better_price ($68.48 <= $80.24)"
+}
+```
+
+**Implemented in:** `alpaca_paper_adapter.py` → `submit_entry()` (INSERT INTO paper_trades)
+
 ### Proposal Enrichment Packet
 
 Each proposal accumulates before becoming submittable:
@@ -955,57 +1030,92 @@ Each proposal accumulates before becoming submittable:
 
 ### In-Trade Position Management
 
-Once a position is open on Alpaca, `paper_trade_monitor.py` runs every 5 minutes during market hours and manages the position automatically:
+Once a position is open on Alpaca, `open_trade_monitor.py` → `monitor_trade()` runs on each open trade during market hours and manages positions automatically. All risk actions are logged to the `paper_trade_risk_actions` table.
 
-#### R-Multiple Trailing Stop System
+**Implemented in:** `open_trade_monitor.py` → `monitor_trade()`, `_auto_close_position()`, `_update_stop_on_alpaca()`, `_log_risk_action()`
 
-The R-multiple is the strategy's risk-to-reward framework in action. R = (current_price - entry) / initial_risk.
+#### Trade Lifecycle States
 
-| Condition | Action | Logic |
-|-----------|--------|-------|
-| R < 1.0 | Hold — stop at original level | Trade hasn't proven itself yet |
-| R >= 1.0 | Move stop to breakeven (entry price) | Eliminate risk — free trade |
-| R >= 1.5 | Lock 0.5R profit | Protect partial gain |
-| R >= 2.0 | Lock 1.0R profit | Protect full initial risk as profit |
-| R >= 3.0 | Lock 2.0R profit (tight trail) | Aggressive profit protection |
-| 80%+ of target move | Tighten stop to lock 65% of gain | Near-target protection |
-| Price >= target_1 | Close position at market | Take profit |
+**DB column:** `paper_trades.lifecycle_state`
+
+```
+pending → open → managing → closed / stopped_out
+```
+
+| State | Meaning |
+|-------|---------|
+| `pending` | Order submitted but not yet filled |
+| `open` | Position filled on Alpaca |
+| `managing` | Monitor is actively managing risk (first tick after fill) |
+| `closed` | Position exited (target hit, stop hit, manual, or news close) |
+
+#### Automated Risk Actions (Priority Order)
+
+The monitor checks these conditions in order. Stop-hit and target-hit return immediately since the trade is closed.
+
+| Priority | Condition | Action | Implemented In |
+|----------|-----------|--------|----------------|
+| 1 | **Stop hit**: `price <= stop` | Auto-close position on Alpaca, mark trade closed/LOSS | `_auto_close_position()` |
+| 2 | **Target hit**: `price >= target` | Auto-close position on Alpaca, mark trade closed/CORRECT | `_auto_close_position()` |
+| 3 | **Trailing stop**: `R >= 1.0` | Move stop to `entry + 50% × (price - entry)`, update Alpaca stop order | `_update_stop_on_alpaca()` |
+| 4 | Near stop: price within 75% of stop distance | Alert only (Telegram) | `insert_alert()` |
+| 5 | Near target: price within 80% of target distance | Alert only (Telegram) | `insert_alert()` |
+| 6 | Stale trade: open > 3h with |R| < 0.5 | Flag as stale, alert | `stale_flag=true` |
+| 7 | Extended profit: R >= 1.5 | Informational alert | `insert_alert()` |
+| 8 | Critical news keywords detected | Auto-close position, alert | `_auto_close_position()` |
 
 **Stops only move UP, never down.** The trailing stop ratchets upward as the trade progresses.
+
+#### Risk Action Audit Trail
+
+Every stop adjustment, auto-close, and trailing stop update is logged to `paper_trade_risk_actions`:
+
+| Column | Purpose |
+|--------|---------|
+| `action_type` | `stop_hit_close`, `target_hit_close`, `trailing_stop_update`, `critical_news_close` |
+| `old_value` | Previous stop/target level |
+| `new_value` | New stop level or exit price |
+| `trigger_price` | Market price that triggered the action |
+| `trigger_reason` | Human-readable explanation |
+| `broker_order_updated` | Whether Alpaca order was modified |
 
 #### Dynamic Stop Adjustment Flow
 
 ```
-paper_trade_monitor.py (every 5 min, market hours)
+open_trade_monitor.py → monitor_trade() (cron-driven, market hours)
     │
-    ├─ Fetch all positions from Alpaca
-    ├─ For each position:
-    │   ├─ Get current price from Alpaca
-    │   ├─ Get entry/stop/target from paper_trades DB
-    │   ├─ Compute R-multiple
-    │   ├─ Get current stop order from Alpaca
-    │   │
-    │   ├─ If target hit:
-    │   │   ├─ Cancel stop order on Alpaca
-    │   │   ├─ Close position at market
-    │   │   ├─ Update paper_trades: status=closed, exit_price, pnl, r_multiple
-    │   │   └─ Send Telegram alert: "TARGET HIT"
-    │   │
-    │   ├─ If R crossed a threshold:
-    │   │   ├─ Compute new stop price
-    │   │   ├─ If new_stop > current_stop:
-    │   │   │   ├─ Cancel old stop on Alpaca
-    │   │   │   ├─ Place new stop (GTC)
-    │   │   │   ├─ Update paper_trades.stop_loss
-    │   │   │   └─ Send Telegram alert: "Stop adjusted"
-    │   │   └─ Else: hold (stops never move down)
-    │   │
-    │   ├─ If near target (80%+ of move):
-    │   │   └─ Tighten stop to lock 65% of gain
-    │   │
-    │   └─ Update paper_trades: current_price, r_multiple, pnl
+    ├─ Get current price via get_current_price()
+    ├─ Compute: unrealized P&L, R-multiple
+    ├─ Update paper_trades: current_price, unrealized_pnl, r_multiple
     │
-    └─ Send consolidated Telegram alert if any actions taken
+    ├─ STOP HIT? (price <= stop)
+    │   ├─ Delete position on Alpaca
+    │   ├─ Update paper_trades: closed, exit_price, pnl, lifecycle_state='closed'
+    │   ├─ Log to paper_trade_risk_actions
+    │   └─ Telegram: "STOP HIT" → return (done)
+    │
+    ├─ TARGET HIT? (price >= target)
+    │   ├─ Delete position on Alpaca
+    │   ├─ Update paper_trades: closed, exit_price, pnl, lifecycle_state='closed'
+    │   ├─ Log to paper_trade_risk_actions
+    │   └─ Telegram: "TARGET HIT" → return (done)
+    │
+    ├─ TRAILING STOP? (R >= 1.0)
+    │   ├─ new_stop = entry + 50% × (price - entry)
+    │   ├─ If new_stop > current stop:
+    │   │   ├─ Cancel old stop order on Alpaca
+    │   │   ├─ Place new GTC stop at new_stop
+    │   │   ├─ Update paper_trades.stop_loss
+    │   │   ├─ Log to paper_trade_risk_actions
+    │   │   └─ Telegram: "TRAILING STOP: stop moved"
+    │   └─ Else: hold (stops never move down)
+    │
+    ├─ NEAR STOP? NEAR TARGET? STALE? EXTENDED PROFIT?
+    │   └─ Alert only (Telegram + open_trade_alerts table)
+    │
+    └─ CRITICAL NEWS?
+        ├─ Auto-close position on Alpaca
+        └─ Telegram: "CRITICAL NEWS AUTO-CLOSE"
 ```
 
 #### Alpaca Order Limitations
@@ -1037,30 +1147,33 @@ This is NOT the primary execution path — instant execution on approval is. The
 - Market is closed (adjustments only during regular session)
 - Position has no DB record (orphaned Alpaca position — alert sent)
 
-**Drift and slippage handling:**
-- Pre-execution: price drift >2% from proposed entry → limit order (wait for value)
-- Pre-execution: price drift ≤2% or below entry → market order (capture the setup)
+**Drift and slippage handling (multi-layer):**
+
+| Layer | Check | Threshold | Action |
+|-------|-------|-----------|--------|
+| Revalidator | Stop breach | `price <= stop` | **Hard block** — INELIGIBLE |
+| Revalidator | Price drift | >= 3% | Block, require re-approval |
+| Revalidator | Price drift | >= 1.5% | Warning, score deduction |
+| Adapter | Stop breach | `price <= stop` | **Hard block** — defense-in-depth |
+| Adapter | Excessive drift | > 5% | **Hard block** |
+| Adapter | Moderate drift | > 2% | Limit order (wait for value) |
+| Adapter | Small drift | <= 2% or below entry | Market order (capture setup) |
+| Post-fill | R-multiple | >= 1.0 | Trailing stop locks 50% of gains |
+| Post-fill | Stop breached | `price <= stop` | Auto-close position |
+| Post-fill | Target reached | `price >= target` | Auto-close position |
+
 - In-trade: stop is computed from actual fill price, not proposed entry
 - In-trade: R-multiple uses actual fill price as baseline, adjusting for real slippage
 - Unfilled limit orders expire at EOD (TIF=day), proposal re-evaluated next session
-
-#### Conditions That Trigger Dynamic Adjustment
-
-| Condition | Detection | Action |
-|-----------|-----------|--------|
-| Profit milestone (R threshold) | R-multiple computation every 5 min | Trail stop to lock proportional profit |
-| Near target (80%+ of move) | Distance-to-target check | Aggressively tighten stop to 65% of gain |
-| Target hit | Price >= target_1 | Cancel stop, close at market |
-| Stop hit | Alpaca GTC stop triggers | Position auto-closes, paper_trades updated by reconciler |
-| Stop missing | No stop order found on Alpaca | Re-place stop at DB level |
-| Extended run (R >= 4, no target) | R-multiple check | Close position — take profit on outlier |
+- All risk actions logged to `paper_trade_risk_actions` table with trigger prices
 
 #### What the System Does NOT Do (Current Limitations)
 
 - **Volatility-based stop widening:** Stops do not expand based on ATR or VIX changes. The initial stop is set at proposal time using ATR and remains the floor.
-- **Regime-aware adjustment:** Market regime changes (bull → bear) do not automatically modify open positions. This is a future enhancement.
-- **Partial profit taking:** The system closes the full position at target, not partial lots. Scale-out logic is planned but not implemented.
-- **Spread/liquidity checks:** The system does not check bid-ask spread or volume before adjusting stops. For paper trading this is acceptable; for live it will need enhancement.
+- **Granular R-multiple tiers:** The trailing stop currently uses a single threshold (R >= 1.0 → lock 50% of gains). Finer tiers (1.5R, 2.0R, 3.0R) are documented as targets but not yet enforced in `open_trade_monitor.py`.
+- **Regime-aware adjustment:** Market regime changes (bull → bear) do not automatically modify open positions.
+- **Partial profit taking:** The system closes the full position at target, not partial lots.
+- **Spread/liquidity checks:** The system does not check bid-ask spread or volume before adjusting stops. Acceptable for paper trading.
 
 ---
 
