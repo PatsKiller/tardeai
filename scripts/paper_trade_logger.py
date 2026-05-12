@@ -23,8 +23,8 @@ log = logging.getLogger(__name__)
 
 # ── Account validation ──────────────────────────────────────────────────────
 VALID_PAPER_ACCOUNTS = {
-    "tos": "TOS_PAPER",
-    "tos_paper": "TOS_PAPER",
+    "tos": "ALPACA_PAPER",
+    "tos_paper": "ALPACA_PAPER",
     "alpaca": "ALPACA_PAPER",
     "alpaca_paper": "ALPACA_PAPER",
     "sim": "SIM_PAPER",
@@ -34,7 +34,7 @@ BLOCKED_ACCOUNTS = {
     "live", "tos_live", "alpaca_live",
     "taxable", "rollover_ira", "roth_ira", "fidelity_401k",
 }
-DEFAULT_ACCOUNT = "TOS_PAPER"
+DEFAULT_ACCOUNT = "ALPACA_PAPER"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -766,7 +766,7 @@ def proposal_quality_check(candidate: dict, conn=None) -> tuple:
 
 
 def create_proposal(symbol: str, strategy_id: str = 'momentum_scalp',
-                    proposed_by: str = 'system', account: str = 'TOS_PAPER') -> dict:
+                    proposed_by: str = 'system', account: str = 'ALPACA_PAPER') -> dict:
     """Create a paper trade proposal from latest trade plan. Returns dict with success/proposal_id/message."""
     conn = get_conn()
     try:
@@ -900,7 +900,7 @@ def _check_scan_decision(conn, symbol: str) -> dict:
 
 
 def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
-                           target: float, account: str = 'TOS_PAPER') -> dict:
+                           target: float, account: str = 'ALPACA_PAPER') -> dict:
     """Create a manual paper trade proposal.
 
     Adds WAIT/DOWNGRADE guard: if latest scan shows WAIT/AVOID/NO GO or
@@ -1040,7 +1040,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             gate = RiskGate(conn)
             decision = gate.check(prop['symbol'], prop['strategy_id'],
                 {'stop_loss': float(stop), 'dollar_size': dollar_size},
-                prop.get('proposed_account', 'TOS_PAPER'), 'paper', 'paper_trade')
+                prop.get('proposed_account', 'ALPACA_PAPER'), 'paper', 'paper_trade')
             rg_result = decision.result
             rg_codes = decision.reason_codes
             if not decision.approved:
@@ -1076,7 +1076,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
         """, [
-            prop['strategy_id'], prop['symbol'], prop.get('proposed_account', 'TOS_PAPER'),
+            prop['strategy_id'], prop['symbol'], prop.get('proposed_account', 'ALPACA_PAPER'),
             float(entry), now, int(shares), dollar_size,
             float(stop), float(target), dollar_risk, float(entry), float(stop),
             prop.get('signal_score'), prop.get('rvol'), prop.get('float_m'),
@@ -1096,7 +1096,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 final_account=%s, final_dollar_risk=%s, updated_at=NOW()
             WHERE id=%s
         """, [paper_trade_id, float(entry), float(stop), float(target), int(shares),
-              prop.get('proposed_account', 'TOS_PAPER'), dollar_risk, proposal_id])
+              prop.get('proposed_account', 'ALPACA_PAPER'), dollar_risk, proposal_id])
         conn.commit()
 
         _write_audit(conn, 'paper_proposal_approved', prop['symbol'], {
@@ -1110,7 +1110,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             'symbol': prop['symbol'], 'strategy_id': prop['strategy_id'],
             'entry': float(entry), 'stop': float(stop), 'target': float(target),
             'shares': int(shares), 'dollar_risk': dollar_risk,
-            'account': prop.get('proposed_account', 'TOS_PAPER'),
+            'account': prop.get('proposed_account', 'ALPACA_PAPER'),
             'risk_gate': rg_result,
             'message': f'PAPER TRADE #{paper_trade_id} opened from proposal #{proposal_id}',
         }

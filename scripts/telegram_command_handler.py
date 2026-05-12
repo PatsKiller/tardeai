@@ -1520,11 +1520,11 @@ def process_command(cmd: dict) -> str:
             if not ok:
                 return f"\u274c {err}"
             if params.get('auto'):
-                result = create_proposal(params['symbol'], account=params.get('account', 'TOS_PAPER'))
+                result = create_proposal(params['symbol'], account=params.get('account', 'ALPACA_PAPER'))
             else:
                 result = create_manual_proposal(
                     params['symbol'], params['shares'], params['entry'],
-                    params['stop'], params['target'], params.get('account', 'TOS_PAPER'))
+                    params['stop'], params['target'], params.get('account', 'ALPACA_PAPER'))
             if result.get('success'):
                 pid = result['proposal_id']
                 sym = result['symbol']
@@ -1534,7 +1534,7 @@ def process_command(cmd: dict) -> str:
                 rr = result.get('rr', 0)
                 rg = result.get('risk_gate_result', '?')
                 return (f"\U0001f4dd PAPER PROPOSAL #{pid}\n"
-                        f"{sym} | {result.get('account', 'TOS_PAPER')}\n"
+                        f"{sym} | {result.get('account', 'ALPACA_PAPER')}\n"
                         f"Entry: ${e:.2f} x {sh} = ${e*sh:.0f}\n"
                         f"Stop: ${s:.2f} | Target: ${t:.2f}\n"
                         f"Risk: ${dr:.0f} | R:R {rr:.1f}\n"
@@ -1578,7 +1578,7 @@ def process_command(cmd: dict) -> str:
             result = approve_proposal(pid, **overrides)
             if result.get('success'):
                 return (f"\u2705 PAPER TRADE #{result['paper_trade_id']} OPENED\n"
-                        f"{result['symbol']} | {result.get('account','TOS_PAPER')}\n"
+                        f"{result['symbol']} | {result.get('account','ALPACA_PAPER')}\n"
                         f"Entry: ${result['entry']:.2f} x {result['shares']}\n"
                         f"Stop: ${result['stop']:.2f} | Target: ${result['target']:.2f}\n"
                         f"Risk: ${result['dollar_risk']:.0f}\n"

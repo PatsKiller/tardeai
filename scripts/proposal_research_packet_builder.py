@@ -263,7 +263,7 @@ def build_research_packet(conn, proposal_id, refresh=False):
         decision = rg.check(
             symbol=symbol, strategy_id=strategy_id,
             trade_plan={'stop_loss': stop, 'dollar_size': dollar_size},
-            account=prop.get('proposed_account', 'TOS_PAPER'),
+            account=prop.get('proposed_account', 'ALPACA_PAPER'),
             mode='paper', action_context='paper_trade',
             extra={'sector': prop.get('sector'), 'intel_readiness': prop.get('intel_readiness')}
         )
