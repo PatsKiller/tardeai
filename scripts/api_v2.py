@@ -13040,6 +13040,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "llm_analysis": dict(_td_analysis) if _td_analysis else None,
                 },
                 "agent_critiques": [dict(e) for e in _td_events],
+                "multi_tier_reviews": [dict(r) for r in (_db_query("SELECT tier, model_used, review_text, agent_commentaries, created_at FROM paper_trade_multi_reviews WHERE paper_trade_id = %s ORDER BY created_at", [_td_id]) or [])],
                 "risk_actions": [dict(a) for a in _td_risk],
                 "alerts": [dict(a) for a in _td_alerts],
                 "proposal": dict(_td_proposal) if _td_proposal else None,

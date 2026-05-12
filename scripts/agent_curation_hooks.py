@@ -342,11 +342,22 @@ def on_paper_trade_closed(conn, paper_trade_id):
         log.error(f"RAG index failed for trade {paper_trade_id}: {e}")
         results['rag'] = {'success': False, 'error': str(e)}
 
+    # Multi-tier realtime review (qwen3:14b — fast, runs on every close)
+    try:
+        from multi_tier_trade_reviewer import review_trade
+        trade_row = _get_trade(conn, paper_trade_id)
+        if trade_row and trade_row.get('status') == 'closed':
+            results['realtime_review'] = review_trade(conn, trade_row, 'realtime')
+    except Exception as e:
+        log.error(f"Realtime review failed for trade {paper_trade_id}: {e}")
+        results['realtime_review'] = {'success': False, 'error': str(e)}
+
     log.info(f"Curation complete for trade {paper_trade_id}: "
              f"iris={results.get('iris',{}).get('success')}, "
              f"aegis={results.get('aegis',{}).get('success')}, "
              f"lessons={results.get('lessons',{}).get('success')}, "
              f"patterns={results.get('patterns',{}).get('success')}, "
-             f"rag={results.get('rag',{}).get('success')}")
+             f"rag={results.get('rag',{}).get('success')}, "
+             f"realtime_review={results.get('realtime_review',{}).get('success')}")
 
     return results
