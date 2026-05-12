@@ -129,10 +129,24 @@ def build_prompt(p):
                 f"status={m.get('match_status','?')} {'[PRIMARY]' if m.get('is_primary') else ''}"
                 for m in stack[:5])
 
+    # Inject past trade outcomes from RAG for this symbol/strategy
+    trade_history_ctx = ""
+    try:
+        from rag_retrieval import get_rag_context
+        rag_results = get_rag_context(symbol=p.get('symbol'), strategy_focus=p.get('strategy_id'), limit=5)
+        outcomes = [r for r in rag_results if r.get('source_type') == 'trade_outcome']
+        if outcomes:
+            trade_history_ctx = "\n=== PAST TRADE OUTCOMES (from system memory) ===\n" + "\n".join(
+                f"  - {o.get('title', '')}" for o in outcomes[:3])
+            trade_history_ctx += "\nFactor these past results into your assessment. If similar setups lost money, explain why this time is different or recommend rejection.\n"
+    except Exception:
+        pass
+
     return f"""You are an institutional prop desk analyst. Analyze this paper trade proposal.
 Be specific. Reference at least 5 numeric facts. Identify 2+ kill conditions.
 Your analysis MUST explicitly state: (1) primary strategy and why, (2) secondary setups if any,
 (3) 3+ criteria met, (4) any criteria failed, (5) whether auto-disqualifiers were checked.
+(6) If past trade outcomes are available below, explain whether this trade avoids the same mistakes.
 If your answer could apply to any ticker, rewrite it. Under 300 words.
 
 === TRADE SETUP ===
@@ -155,7 +169,7 @@ Verified: {p.get('catalyst_verified')} | Confidence: {p.get('catalyst_confidence
 Critic: {p.get('critic_verdict') or 'N/A'} — {str(p.get('critic_reasoning') or '')[:100]}
 News: {news_str}
 Missing: {', '.join(missing) if missing else 'None'}
-
+{trade_history_ctx}
 Answer as JSON:
 {{"setup_narrative":"what this trade is and why it exists (reference numbers)","strategy_fit_assessment":"how well setup matches strategy criteria","technical_assessment":"RSI/VWAP/ATR interpretation for this specific setup","catalyst_assessment":"catalyst quality and expected duration","risk_assessment":"what could go wrong, be specific","kill_conditions":["condition 1 that invalidates in first 30-60 min","condition 2"],"approve_case":"bull case with numbers","reject_case":"bear case with numbers","verdict":"APPROVE_PAPER_TEST or CAUTIOUS_PAPER_TEST or REJECT","conviction":"HIGH or MEDIUM or LOW","confidence":0.0-1.0}}"""
 

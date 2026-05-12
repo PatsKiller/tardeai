@@ -12949,6 +12949,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     if base_path.startswith("/api/v2/journal/trade-detail/"):
+        def _deep_clean(obj):
+            if isinstance(obj, Decimal): return float(obj)
+            if hasattr(obj, 'isoformat'): return obj.isoformat()
+            if isinstance(obj, dict): return {k: _deep_clean(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)): return [_deep_clean(i) for i in obj]
+            if isinstance(obj, bytes): return obj.decode('utf-8', errors='replace')
+            return obj
         try:
             _td_id = int(base_path.rsplit("/", 1)[-1])
             _td = _db_query("SELECT * FROM paper_trades WHERE id = %s", [_td_id], fetch="one")
@@ -12987,22 +12994,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _plan_e = float(_td.get('planned_entry') or _entry_p)
             _slip = round(_entry_p - _plan_e, 4) if _plan_e else None
             _itype = "scalp" if (_td_hold or 999) < 60 else "day" if (_td_hold or 999) < 480 else "swing"
-            return 200, {"ok": True,
-                "trade": {k: _json_clean(v) for k, v in _td.items()},
+            return 200, _deep_clean({"ok": True,
+                "trade": dict(_td),
                 "classification": {"direction": "long", "strategy": _td.get('strategy_id'), "setup": _td.get('setup_type') or _td.get('strategy_id'), "intended_type": _itype, "time_of_day": _td_tod, "day_of_week": _td_dow, "market_regime": _td.get('market_regime')},
-                "timing": {"entry_time": _json_clean(_td_et), "exit_time": _json_clean(_td.get('closed_at')), "hold_minutes": _td_hold},
+                "timing": {"entry_time": _td_et, "exit_time": _td.get('closed_at'), "hold_minutes": _td_hold},
                 "technicals_at_entry": {"vix": _td.get('vix_at_entry'), "rvol": _td.get('rvol_at_entry'), "score": _td.get('score_at_entry'), "signal_grade": _td.get('signal_grade'), "catalyst": _td.get('catalyst_at_entry'), "catalyst_verified": _td.get('catalyst_verified'), "float_m": _td.get('float_m_at_entry'), "intel_readiness": _td.get('intel_readiness')},
                 "risk_execution": {"planned_entry": _plan_e, "actual_entry": _entry_p, "slippage": _slip, "stop": _stop_p, "target": _tgt_p, "exit_price": float(_td.get('exit_price') or 0), "pnl": float(_td.get('pnl') or 0), "r_multiple": _td.get('r_multiple'), "mae": _td.get('max_adverse_excursion'), "mfe": _td.get('max_favorable_excursion'), "exit_reason": _td.get('exit_reason'), "outcome_verdict": _td.get('outcome_verdict'), "risk_params_at_fill": _td.get('risk_params_at_fill')},
                 "narrative": {
-                    "journal_review": {k: _json_clean(v) for k, v in _td_review.items()} if _td_review else None,
-                    "thesis_outcome": {k: _json_clean(v) for k, v in _td_thesis.items()} if _td_thesis else None,
-                    "llm_analysis": {k: _json_clean(v) for k, v in _td_analysis.items()} if _td_analysis else None,
+                    "journal_review": dict(_td_review) if _td_review else None,
+                    "thesis_outcome": dict(_td_thesis) if _td_thesis else None,
+                    "llm_analysis": dict(_td_analysis) if _td_analysis else None,
                 },
-                "agent_critiques": [{k: _json_clean(v) for k, v in e.items()} for e in _td_events],
-                "risk_actions": [{k: _json_clean(v) for k, v in a.items()} for a in _td_risk],
-                "alerts": [{k: _json_clean(v) for k, v in a.items()} for a in _td_alerts],
-                "proposal": {k: _json_clean(v) for k, v in _td_proposal.items()} if _td_proposal else None,
-            }
+                "agent_critiques": [dict(e) for e in _td_events],
+                "risk_actions": [dict(a) for a in _td_risk],
+                "alerts": [dict(a) for a in _td_alerts],
+                "proposal": dict(_td_proposal) if _td_proposal else None,
+            })
         except Exception as e:
             import traceback; traceback.print_exc()
             return 500, {"ok": False, "error": str(e)}
