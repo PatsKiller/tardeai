@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Line, Bar } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Tooltip } from 'chart.js'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
 import MetricTile from '../components/MetricTile'
 import { fmt$, fmtPct } from '../lib/format'
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Tooltip)
 
 const mono: React.CSSProperties = { fontFamily: 'monospace' }
 const thStyle: React.CSSProperties = { fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px', padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }
@@ -235,6 +239,255 @@ function TradeExpansion({ trade }: { trade: any }) {
   )
 }
 
+// ── Calendar P&L Heatmap ──────────────────────────────────────────────────
+function CalendarPL({ daily }: { daily: any[] }) {
+  if (!daily.length) return <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>No closed trades yet.</div>
+
+  // Group by month
+  const byMonth: Record<string, any[]> = {}
+  for (const d of daily) {
+    const m = d.date.slice(0, 7) // YYYY-MM
+    byMonth[m] = byMonth[m] || []
+    byMonth[m].push(d)
+  }
+
+  const maxPnl = Math.max(1, ...daily.map(d => Math.abs(d.daily_pnl)))
+
+  return (
+    <div>
+      {Object.entries(byMonth).map(([month, days]) => {
+        const firstDay = new Date(days[0].date + 'T00:00')
+        const monthLabel = firstDay.toLocaleString('en-US', { month: 'long', year: 'numeric' })
+        // Build day lookup
+        const dayMap: Record<number, any> = {}
+        for (const d of days) {
+          const day = new Date(d.date + 'T00:00').getDate()
+          dayMap[day] = d
+        }
+        // Get days in month
+        const yr = firstDay.getFullYear()
+        const mo = firstDay.getMonth()
+        const daysInMonth = new Date(yr, mo + 1, 0).getDate()
+        const startDow = new Date(yr, mo, 1).getDay()
+
+        const cells = []
+        // Empty cells for offset
+        for (let i = 0; i < startDow; i++) cells.push(<div key={`e${i}`} style={{ width: 28, height: 28 }} />)
+        for (let day = 1; day <= daysInMonth; day++) {
+          const d = dayMap[day]
+          const isWeekend = new Date(yr, mo, day).getDay() % 6 === 0
+          let bg = 'var(--bg0)'
+          let color = 'var(--text3)'
+          if (d) {
+            const intensity = Math.min(1, Math.abs(d.daily_pnl) / maxPnl)
+            const alpha = 0.2 + intensity * 0.6
+            bg = d.daily_pnl > 0 ? `rgba(72,187,120,${alpha})` : `rgba(248,113,113,${alpha})`
+            color = 'var(--text0)'
+          }
+          cells.push(
+            <div key={day} title={d ? `${d.date}: $${d.daily_pnl.toFixed(2)} (${d.trades} trades, ${d.wins}W ${d.losses}L)` : `Day ${day}`}
+              style={{
+                width: 28, height: 28, borderRadius: 4, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', fontSize: 9, color, background: bg,
+                opacity: isWeekend && !d ? 0.3 : 1, cursor: d ? 'pointer' : 'default',
+                border: d ? '1px solid rgba(255,255,255,0.1)' : 'none',
+              }}>
+              {day}
+            </div>
+          )
+        }
+
+        return (
+          <div key={month} style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 600, marginBottom: 4 }}>{monthLabel}</div>
+            <div style={{ display: 'flex', gap: 2, marginBottom: 2 }}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <div key={i} style={{ width: 28, textAlign: 'center', fontSize: 8, color: 'var(--text3)' }}>{d}</div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>{cells}</div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Analytics Section ─────────────────────────────────────────────────────
+function AnalyticsSection({ account }: { account: string }) {
+  const [analytics, setAnalytics] = useState<any>(null)
+
+  useEffect(() => {
+    fetch(`/api/v2/automated-journal-analytics?account=${account}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setAnalytics(d) })
+      .catch(() => {})
+  }, [account])
+
+  if (!analytics) return null
+
+  const eq = analytics.equity_curve || []
+  const monthly = analytics.monthly || []
+  const weekly = analytics.weekly || []
+  const daily = analytics.daily || []
+
+  const hasData = eq.length > 0
+
+  // Equity curve chart data
+  const equityData = {
+    labels: eq.map((d: any) => d.date.slice(5)), // MM-DD
+    datasets: [
+      {
+        label: 'Cumulative P&L',
+        data: eq.map((d: any) => d.cumulative_pnl),
+        borderColor: eq.length > 0 && eq[eq.length - 1].cumulative_pnl >= 0 ? '#4ADE80' : '#F87171',
+        backgroundColor: eq.length > 0 && eq[eq.length - 1].cumulative_pnl >= 0 ? 'rgba(72,187,120,0.1)' : 'rgba(248,113,113,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+      },
+    ],
+  }
+
+  const equityOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { tooltip: { backgroundColor: '#0F172A', titleColor: '#E2E8F0', bodyColor: '#94A3B8', borderColor: '#1E293B', borderWidth: 1 } },
+    scales: {
+      x: { ticks: { color: '#64748B', font: { size: 9 } }, grid: { color: '#1E293B' } },
+      y: { ticks: { color: '#64748B', font: { size: 9 }, callback: (v: any) => `$${v}` }, grid: { color: '#1E293B' } },
+    },
+  }
+
+  // Daily P&L bar chart
+  const dailyBarData = {
+    labels: eq.map((d: any) => d.date.slice(5)),
+    datasets: [{
+      label: 'Daily P&L',
+      data: eq.map((d: any) => d.daily_pnl),
+      backgroundColor: eq.map((d: any) => d.daily_pnl >= 0 ? 'rgba(72,187,120,0.7)' : 'rgba(248,113,113,0.7)'),
+      borderRadius: 3,
+    }],
+  }
+
+  const barOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { tooltip: { backgroundColor: '#0F172A', titleColor: '#E2E8F0', bodyColor: '#94A3B8' } },
+    scales: {
+      x: { ticks: { color: '#64748B', font: { size: 9 } }, grid: { display: false } },
+      y: { ticks: { color: '#64748B', font: { size: 9 }, callback: (v: any) => `$${v}` }, grid: { color: '#1E293B' } },
+    },
+  }
+
+  return (
+    <>
+      {hasData && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          {/* Equity Curve */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+            <SectionHeader title="Equity Curve" />
+            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>REALIZED</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: pnlColor(analytics.realized_total), ...mono }}>{fmt$(analytics.realized_total, 2)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>UNREALIZED</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: pnlColor(analytics.unrealized_total), ...mono }}>{fmt$(analytics.unrealized_total, 2)}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>TOTAL EQUITY</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: pnlColor(analytics.current_equity), ...mono }}>{fmt$(analytics.current_equity, 2)}</div>
+              </div>
+            </div>
+            <div style={{ height: 200 }}>
+              <Line data={equityData} options={equityOpts as any} />
+            </div>
+          </div>
+
+          {/* Daily P&L Bar */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+            <SectionHeader title="Daily P&L" />
+            <div style={{ height: 250 }}>
+              <Bar data={dailyBarData} options={barOpts as any} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: hasData ? '1fr 1fr' : '1fr', gap: 14, marginBottom: 14 }}>
+        {/* Calendar Heatmap */}
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+          <SectionHeader title="Calendar P&L" />
+          <CalendarPL daily={daily.map((d: any) => ({ date: d.trade_date, daily_pnl: d.daily_pnl, trades: d.trades, wins: d.wins, losses: d.losses }))} />
+        </div>
+
+        {/* Monthly Summary */}
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14 }}>
+          <SectionHeader title="Monthly Summary" />
+          {monthly.length === 0 ? (
+            <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic' }}>No monthly data yet.</div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Month', 'Trades', 'W/L', 'Win %', 'P&L', 'Avg R', 'Best', 'Worst'].map(h => (
+                    <th key={h} style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', padding: '5px 6px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {monthly.map((m: any) => {
+                  const wr = m.trades > 0 ? Math.round((m.wins / m.trades) * 100) : 0
+                  return (
+                    <tr key={m.month}>
+                      <td style={{ padding: '4px 6px', fontSize: 11, color: 'var(--text1)', ...mono }}>{m.month}</td>
+                      <td style={{ padding: '4px 6px', fontSize: 11, ...mono }}>{m.trades}</td>
+                      <td style={{ padding: '4px 6px', fontSize: 10, color: 'var(--text2)' }}>{m.wins}W / {m.losses}L</td>
+                      <td style={{ padding: '4px 6px', fontSize: 11, color: wr >= 50 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{wr}%</td>
+                      <td style={{ padding: '4px 6px', fontSize: 11, color: pnlColor(m.total_pnl), fontWeight: 600, ...mono }}>{fmt$(m.total_pnl, 2)}</td>
+                      <td style={{ padding: '4px 6px', fontSize: 10, ...mono, color: pnlColor(m.avg_r) }}>{m.avg_r != null ? `${m.avg_r}R` : '--'}</td>
+                      <td style={{ padding: '4px 6px', fontSize: 10, color: 'var(--green)', ...mono }}>{fmt$(m.best_trade, 2)}</td>
+                      <td style={{ padding: '4px 6px', fontSize: 10, color: 'var(--red)', ...mono }}>{fmt$(m.worst_trade, 2)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+
+          {/* Weekly breakdown */}
+          {weekly.length > 0 && (
+            <>
+              <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', fontWeight: 600, marginTop: 14, marginBottom: 6 }}>WEEKLY</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Week', 'Trades', 'Wins', 'P&L', 'Avg R'].map(h => (
+                      <th key={h} style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', padding: '4px 6px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekly.map((w: any) => (
+                    <tr key={w.week_start}>
+                      <td style={{ padding: '3px 6px', fontSize: 10, ...mono, color: 'var(--text2)' }}>{w.week_start}</td>
+                      <td style={{ padding: '3px 6px', fontSize: 10, ...mono }}>{w.trades}</td>
+                      <td style={{ padding: '3px 6px', fontSize: 10, color: 'var(--green)' }}>{w.wins}</td>
+                      <td style={{ padding: '3px 6px', fontSize: 10, color: pnlColor(w.total_pnl), fontWeight: 600, ...mono }}>{fmt$(w.total_pnl, 2)}</td>
+                      <td style={{ padding: '3px 6px', fontSize: 10, ...mono, color: pnlColor(w.avg_r) }}>{w.avg_r != null ? `${w.avg_r}R` : '--'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function AutomatedTradeJournal() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -309,6 +562,9 @@ export default function AutomatedTradeJournal() {
       )}
 
       {loading && <div style={{ padding: 20, color: 'var(--text3)' }}>Loading...</div>}
+
+      {/* Analytics: Equity Curve + Calendar P&L + Monthly Summary */}
+      <AnalyticsSection account={account} />
 
       {/* Open Trades */}
       {openTrades.length > 0 && (
