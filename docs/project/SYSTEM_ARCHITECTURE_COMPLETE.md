@@ -510,9 +510,9 @@ Plus: event intelligence digest, Iris taxonomy status, pipeline health, dividend
 - TCA slippage, broker reconciliation issues
 - Minimum thresholds: 30 trades for watchlist, 1.25 profit factor, 180 calendar days
 
-### 8.6 Automated Trade Journal
+### 8.6 Automated Journal
 
-New "Automated Journal" tab under Trade Journal. Per-trade professional execution log:
+The "Automated Journal" tab (renamed from Paper Journal) provides the same depth as the regular journal for all automated trading accounts. Currently: Alpaca Paper. Per-trade professional execution log:
 
 | Section | Content |
 |---------|---------|
