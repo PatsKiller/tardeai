@@ -1702,8 +1702,9 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
             _kr_path = Path.home() / ".openclaw" / "credentials" / "gog_keyring_password"
             if _kr_path.exists():
                 _gog_env["GOG_KEYRING_PASSWORD"] = _kr_path.read_text().strip()
+            _gog_bin = str(Path.home() / ".local" / "bin" / "gog")
             _send_result = _sp.run(
-                ["gog", "gmail", "send",
+                [_gog_bin, "gmail", "send",
                  "-a", "john@jwwhiting.com",
                  "--to", "john@jwwhiting.com",
                  "--subject", _subject,
