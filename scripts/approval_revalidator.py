@@ -75,6 +75,102 @@ def get_trade_history(symbol, strategy_id):
         return []
 
 
+def _verify_live_strategy_conditions(proposal, live_price, conn):
+    """Re-verify live market conditions match strategy requirements at approval time.
+    Checks RSI, RVOL collapse, catalyst freshness, VWAP extension, negative news."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    strategy_id = proposal.get('strategy_id', '')
+    symbol = proposal.get('symbol', '')
+    warnings = []
+    blocks = []
+
+    # Get current snapshot
+    cur.execute("""
+        SELECT rsi, data->>'rvol' as rvol, data->>'vwap' as vwap
+        FROM ticker_snapshot_daily
+        WHERE symbol = %s
+        ORDER BY snapshot_date DESC LIMIT 1
+    """, [symbol])
+    tech = cur.fetchone()
+
+    # Get current scan
+    cur.execute("""
+        SELECT score, grade as signal_grade, catalyst_verified, rvol as scan_rvol
+        FROM trade_ai_scans WHERE symbol = %s
+        ORDER BY scanned_at DESC LIMIT 1
+    """, [symbol])
+    scan = cur.fetchone()
+
+    # Check 1: RSI overbought for momentum strategies
+    MOMENTUM = {'momentum_scalp', 'gap_and_go', 'swing_breakout', 'earnings_catalyst'}
+    if strategy_id in MOMENTUM and tech and tech.get('rsi'):
+        rsi = float(tech['rsi'])
+        if rsi > 80:
+            blocks.append(f"RSI {rsi:.0f} — severely overbought at approval. Breakout entry at RSI>80 has poor outcomes.")
+        elif rsi > 72:
+            warnings.append(f"RSI {rsi:.0f} — elevated. Consider waiting for pullback.")
+
+    # Check 2: RVOL collapsed
+    if tech and tech.get('rvol'):
+        try:
+            curr_rvol = float(tech['rvol'])
+            if strategy_id in MOMENTUM and curr_rvol < 1.5:
+                blocks.append(f"RVOL collapsed to {curr_rvol:.1f}x — volume interest gone. Setup no longer valid.")
+            # Check vs original scan RVOL
+            orig_rvol = _f(proposal.get('rvol'))
+            if orig_rvol and orig_rvol > 0 and curr_rvol < orig_rvol * 0.4:
+                warnings.append(f"RVOL dropped from {orig_rvol:.1f}x to {curr_rvol:.1f}x — momentum fading.")
+        except (TypeError, ValueError):
+            pass
+
+    # Check 3: Catalyst freshness for time-sensitive catalysts
+    created = proposal.get('created_at')
+    if created:
+        try:
+            age_hours = (datetime.now(timezone.utc) - (created.replace(tzinfo=timezone.utc) if created.tzinfo is None else created)).total_seconds() / 3600
+            catalyst = proposal.get('catalyst') or ''
+            time_sensitive = any(k in catalyst.lower() for k in ['earnings', 'gap', 'breaking', 'premarket'])
+            if time_sensitive and age_hours > 48:
+                warnings.append(f"Time-sensitive catalyst is {age_hours:.0f}h old — may be priced in.")
+        except Exception:
+            pass
+
+    # Check 4: Price above VWAP for intraday strategies
+    INTRADAY = {'momentum_scalp', 'gap_and_go'}
+    if strategy_id in INTRADAY and tech and tech.get('vwap') and live_price:
+        try:
+            vwap = float(tech['vwap'])
+            if vwap > 0:
+                pct_above = (live_price - vwap) / vwap * 100
+                if pct_above > 5:
+                    warnings.append(f"Price is {pct_above:.1f}% above VWAP — extended. Risk of reversion.")
+        except (TypeError, ValueError):
+            pass
+
+    # Check 5: Recent negative news
+    if created:
+        try:
+            cur.execute("""
+                SELECT COUNT(*) as cnt FROM news_articles
+                WHERE symbol = %s AND published_at > %s
+                  AND sentiment = 'negative'
+            """, [symbol, created])
+            row = cur.fetchone()
+            if row and row['cnt'] > 2:
+                warnings.append(f"{row['cnt']} negative articles since proposal creation.")
+        except Exception:
+            pass
+
+    snapshot = {
+        'rsi': float(tech['rsi']) if tech and tech.get('rsi') else None,
+        'rvol': float(tech['rvol']) if tech and tech.get('rvol') else None,
+        'checked_at': datetime.now(timezone.utc).isoformat(),
+    }
+
+    return {'passed': len(blocks) == 0, 'warnings': warnings, 'blocks': blocks, 'condition_snapshot': snapshot}
+
+
 def validate_at_approval(conn, proposal_id):
     """Full validation at approval time. Returns validation result dict."""
     proposal = get_proposal(conn, proposal_id)
@@ -230,6 +326,11 @@ def validate_at_approval(conn, proposal_id):
         elif age_hours > max_hours * 0.75:
             warnings.append(f"AGING_PROPOSAL: {age_hours:.0f}h old ({max_hours}h max)")
 
+    # ── 7. LIVE STRATEGY CONDITIONS ──
+    live_conditions = _verify_live_strategy_conditions(proposal, live_price, conn)
+    blockers.extend(live_conditions.get('blocks', []))
+    warnings.extend(live_conditions.get('warnings', []))
+
     # ── DETERMINE STATUS ──
     if blockers:
         status = "REJECTED"
@@ -254,6 +355,8 @@ def validate_at_approval(conn, proposal_id):
         "adjustments": adjustments,
         "past_losses": len(losses) if 'losses' in dir() else 0,
         "strategy_config_loaded": bool(config),
+        "live_condition_warnings": live_conditions.get('warnings', []),
+        "condition_snapshot": live_conditions.get('condition_snapshot', {}),
         "validated_at": datetime.now(timezone.utc).isoformat(),
     }
 
