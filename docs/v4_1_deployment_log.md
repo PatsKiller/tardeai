@@ -822,3 +822,29 @@ filled — correctly cleaned up as BREAKEVEN.
 
 ### After fix
 Automated Journal: 1 open, 5 closed, 2 losses, $-30.19 PnL (was 0/0/0 before)
+
+## Proposal Pipeline — Auto-Expiry, Strategy Gate, Frequency — 2026-05-13 11:20 ET
+
+### Summary
+Proposal pipeline was stale: 7 PENDING proposals with no operator action for 3+ days,
+promoter had no cron entry, Finviz screener ran only 2x/day.
+
+### Auto-expiry
+Added `_auto_expire_stale_proposals()` to `incubator_proposal_promoter.py`:
+- PENDING >3 days no action → EXPIRED
+- Past `expires_at` → EXPIRED
+- PENDING >2 days AND price drift >8% → EXPIRED
+- Runs before every promotion cycle. First run expired 5 stale proposals.
+
+### Strategy-aware gate
+- Global ceiling: 20 PENDING proposals max (was unlimited)
+- Per-strategy: max 5 per strategy_id
+- `expiry_reason` column added to `paper_trade_proposals`
+
+### Frequency increase
+- Finviz screener: 2x/day → 7x/day (7,8,10,12,14,16,18 weekdays, flock-protected)
+- Incubator promoter: no cron → 5x/day (9,11,13,15,17 weekdays)
+
+### Proposals API enhancement
+- `summary.by_strategy`: per-strategy proposal count, win rate, PnL, trade count
+- Per-proposal: `strategy_win_rate`, `strategy_total_pnl`, `strategy_trade_count`, `age_hours`
