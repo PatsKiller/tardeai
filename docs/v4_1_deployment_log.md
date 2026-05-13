@@ -762,3 +762,30 @@ Calibration layer grading gemma3 overnight predictions against actual outcomes.
 - `GET /api/v2/queue/calibration` endpoint
 - Cron: `30 21 * * 1-5` nightly scoring
 - 41 strategy_classification events seeded, grading begins as trades close
+
+## Strategy-Aware Overnight Analysis — 2026-05-13 10:30 ET
+
+### Summary
+3 new overnight job types, strategy-aware incubator grading, 7 new screeners,
+16 static symbols. All 20 strategies now have a path into the proposal pipeline.
+
+### Part A — 3 new overnight job types
+| Job Type | Day | Strategy Focus |
+|----------|-----|----------------|
+| `income_strategy_scan` | Monday | income_add, dividend_growth_compounder, high_yield_income_bdc, covered_call_income |
+| `growth_strategy_scan` | Wednesday | core_growth_compounder, sector_rotation, defense_thesis |
+| `reversion_strategy_scan` | Saturday | swing_trade retracement, bond_income, cash_or_stable |
+
+### Part B — Strategy-aware incubator grader
+- `incubator_llm_screener.py` now detects `strategy_id` on each symbol
+- 4 strategy groups: INCOME, GROWTH, REVERSION, MOMENTUM (default)
+- 3 new prompt builders: income (no RVOL penalty), growth (EPS/sector focus), reversion (rewards oversold)
+- Existing momentum grader completely unchanged
+
+### Part C — Screener universes (27 total)
+- 3 new Finviz screeners: dividend_aristocrats, high_yield_bdc_reit, quality_compounders
+- 16 static symbols in watchlist_items: bond ETFs (BND, TLT, IEF, SHY, etc.), BDCs (ARCC, MAIN, HTGC), REITs (O, STAG), cash (SGOV, BIL, SHV, USFR)
+
+### Problem solved
+Before: 10 of 19 strategies had zero proposals (income, defense, bond, recovery, etc.)
+After: all strategies have source universe, strategy-appropriate screening, overnight LLM analysis

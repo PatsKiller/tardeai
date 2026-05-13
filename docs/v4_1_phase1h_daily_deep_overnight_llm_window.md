@@ -113,6 +113,9 @@ Stores gemma3-overnight analysis outputs.
 | `weekly_behavioral_review` | `paper_trades` | Cross-trade pattern analysis. Sunday only, gated at 20+ closed trades (currently inactive) |
 | `rebalance_analysis` | `rebalance_analysis_results` | Monthly deep rebalance analysis. 1st of month or stale >35 days |
 | `strategy_opportunity_scan` | `ticker_snapshot_daily` | Weekly Sunday P1: gemma3 evaluates top 40 watchlist symbols against 11 underutilized strategies to surface candidates momentum screeners miss |
+| `income_strategy_scan` | `ticker_snapshot_daily`, `incubator_universe` | Monday nights P1: evaluates income universe against income_add, dividend_growth_compounder, high_yield_income_bdc, covered_call_income |
+| `growth_strategy_scan` | `ticker_snapshot_daily`, `incubator_universe` | Wednesday nights P1: evaluates growth universe against core_growth_compounder, sector_rotation, defense_thesis |
+| `reversion_strategy_scan` | `ticker_snapshot_daily`, `incubator_universe` | Saturday nights P1: evaluates oversold/bond/cash universe against swing_trade retracement, bond_income, cash_or_stable |
 
 ## 7. Journal/Closed Trade Integration
 
