@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-05-12
+**Updated:** 2026-05-13
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -27,7 +27,7 @@
 | `docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | Execution prompt for LLM fleet deployment — gates, hard rules, authorized steps |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator-facing runbook for LLM fleet phases |
 | `docs/v4_1_deployment_log.md` | **Living deployment log** — gate results, phase completions, deviations, rollback commands |
-| `docs/v4_1_phase1h_daily_deep_overnight_llm_window.md` | **Phase 1H** — daily 23:00–03:00 deep overnight LLM queue window (gemma3-overnight, 70-job target, 75 hard max) |
+| `docs/v4_1_phase1h_daily_deep_overnight_llm_window.md` | **Phase 1H** — daily 23:00–03:00 deep overnight LLM queue window (gemma3-overnight, 100-job target, ~40s/job observed throughput) |
 
 ### Phase 1 Test Reports (LLM Fleet)
 | Document | Purpose |
@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | Fix: deep overnight queue cap 70→100 (expansion job types were starved). Fix: .env quoting for FINVIZ_USER_AGENT/COOKIE + 5 direct parser scripts. Updated deployment log, Phase 1H doc. |
 | 2026-05-13 | A1A audit: Phase 0 migration (7 scripts to local_llm.generate), two-tier rebalance advisor. Updated MASTER_SYSTEM (process-type routing, rebalance routing). |
 | 2026-05-12 | A1A audit: Goals 1-6 resolved (7/13 gaps fixed), PM pipeline crons, Phase 1H expansion (5 new job types), R-tiers in open_trade_monitor. Updated MASTER_SYSTEM (schedule, R-tiers), VERIFIED_ASSESSMENT (gap status), FOCUSED_PLAN (gaps 4-5 done, score 7.5). |
 | 2026-05-12 | Added VERIFIED_MATURITY_ASSESSMENT_2026-05-12.md (browser-verified 7.51/10, 13 gaps, session prompt). |

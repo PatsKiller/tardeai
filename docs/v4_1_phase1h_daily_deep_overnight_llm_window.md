@@ -29,7 +29,7 @@ regardless of success or failure.
 - **Default nightly target: 100 jobs** (operational cap)
 - Observed throughput: ~40-43 sec/job (100 jobs ≈ 72 min, well within 240-min budget)
 - The 03:00 hard stop ensures qwen3:14b is restored before any 04:00+ jobs
-- **Time cap always beats count cap** — if 03:00 arrives before 70 items finish, the window stops
+- **Time cap always beats count cap** — if 03:00 arrives before all items finish, the window stops
 - No market-hours risk: window is entirely after close and before pre-market
 
 ### Why 100 is the default (not 70, not 150)
