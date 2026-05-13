@@ -894,3 +894,21 @@ API additions:
 Removed: 8 pipeline badges, packet progress bar, tab bar, support/reject boxes,
 LLM status tag — all moved to collapsed Full Details drawer.
 1121 lines of old card code removed.
+
+## Fix: Stop Breach Auto-Block + Risk Gate Conn — 2026-05-13 13:00 ET
+
+### Stop breach auto-block
+- If `current_price <= proposed_stop`, verdict = `BLOCKED` (red, approve disabled)
+- Example: GCTS at $1.88 with stop $1.88 → "STOP BREACHED — price $1.88 at or below stop"
+- Added to auto-expiry: stop-breached proposals auto-expire
+
+### Specific verdict reasons
+Verified working after server restart. Maps generic "Review data completeness" to:
+- `risk_gate_result` is None → "Risk gate not checked — click Check Execution (10 sec)"
+- `llm_review_status` NOT_REQUESTED → "AI not reviewed — click Run AI Review (30 sec)"
+- stop breached → "STOP BREACHED — price $X at or below stop $Y"
+
+### Orchestrator risk_gate fix
+`trade_ai_orchestrator.py` line 631: `RiskGate(conn)` used undefined bare `conn`.
+Replaced with `_rg_get_conn()` from `db_adapter`. Was causing risk_gate stage to
+fail silently on every orchestrator run (12PM, 2PM, 4PM, 5:30PM).
