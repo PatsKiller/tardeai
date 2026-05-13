@@ -956,6 +956,8 @@ Post-fill, the monitor takes over position management (trailing stops, auto-clos
 
 **Sync position promotion:** `sync_positions` detects Alpaca-filled trades stuck at `status='pending'` and promotes them to `'open'` with correct fill price. Also recalculates stop if above fill.
 
+**Broker as source of truth:** No `paper_trades` row is created until the broker confirms the fill. Unfilled limit orders return `{status:'pending'}` without creating a DB record. The `sync_positions` method detects fills on subsequent cycles and creates broker-confirmed records. The `broker_confirmed` column (`GENERATED ALWAYS AS (filled_at IS NOT NULL)`) gates all journal queries — phantom records never appear in profitability reporting.
+
 **Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
 If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal
 remains in PENDING state and will be re-evaluated by the execution sweep on the next
