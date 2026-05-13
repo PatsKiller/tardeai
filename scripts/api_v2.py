@@ -8230,6 +8230,41 @@ def _paper_proposals_enriched():
                 except Exception:
                     pass
 
+            # RSI flag and overbought block
+            _rsi_val = float(prop.get('rsi') or 0)
+            _sid = prop.get('strategy_id') or ''
+            _RSI_EXEMPT = {'income_add','dividend_growth_compounder','high_yield_income_bdc',
+                           'covered_call_income','bond_income','cash_or_stable','recovery_watch'}
+            _MOMENTUM = {'momentum_scalp','gap_and_go','earnings_catalyst','speculative_growth','core_growth_compounder'}
+            _SWING = {'swing_breakout','swing_trade','sector_rotation','defense_thesis'}
+
+            rsi_flag = None
+            if _rsi_val >= 80: rsi_flag = 'OVERBOUGHT'
+            elif _rsi_val >= 70: rsi_flag = 'ELEVATED'
+            elif _rsi_val <= 20 and _rsi_val > 0: rsi_flag = 'OVERSOLD_EXTREME'
+            elif _rsi_val <= 30 and _rsi_val > 0: rsi_flag = 'OVERSOLD'
+
+            rsi_blocks = False
+            if _sid not in _RSI_EXEMPT:
+                if _sid in _MOMENTUM and _rsi_val >= 80: rsi_blocks = True
+                elif _sid in _SWING and _rsi_val >= 75: rsi_blocks = True
+                elif _rsi_val >= 85: rsi_blocks = True
+
+            prop['rsi_flag'] = rsi_flag
+            prop['rsi_flag_color'] = 'red' if rsi_flag in ('OVERBOUGHT','OVERSOLD_EXTREME') else 'orange' if rsi_flag == 'ELEVATED' else 'yellow' if rsi_flag == 'OVERSOLD' else 'green'
+            prop['rsi_flag_blocks_approval'] = rsi_blocks
+
+            # Override verdict if RSI blocks
+            if rsi_blocks and verdict not in ('BLOCKED',):
+                verdict = 'BLOCKED'
+                verdict_color = 'red'
+                verdict_reason = f"RSI {_rsi_val:.0f} \u2014 severely overbought, approval will be rejected"
+                prop['operator_verdict'] = verdict
+                prop['operator_verdict_color'] = verdict_color
+                prop['operator_verdict_reason'] = verdict_reason
+                prop['sort_order'] = 5
+                prop['is_blocked'] = True
+
             # thesis_display — build from data if setup_thesis is generic
             thesis = prop.get('agent_narrative') or prop.get('approve_case') or ''
             st = str(prop.get('setup_type') or prop.get('strategy_id') or '')

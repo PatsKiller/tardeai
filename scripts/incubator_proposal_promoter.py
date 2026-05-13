@@ -153,10 +153,63 @@ def _auto_expire_stale_proposals(conn):
         log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: stop breached")
     expired += cur.rowcount
 
+    # Rule 5: RSI overbought for non-exempt strategies
+    cur.execute("""
+        UPDATE paper_trade_proposals SET
+            status = 'EXPIRED', expiry_reason = 'AUTO: RSI overbought'
+        WHERE status = 'PENDING'
+          AND strategy_id NOT IN ('income_add','dividend_growth_compounder',
+              'high_yield_income_bdc','covered_call_income','bond_income',
+              'cash_or_stable','recovery_watch')
+          AND symbol IN (
+              SELECT ts.symbol FROM ticker_snapshot_daily ts
+              WHERE ts.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+                AND ts.rsi >= 80
+          )
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: RSI >= 80")
+    expired += cur.rowcount
+
     conn.commit()
     if expired > 0:
         log.info(f"[auto-expiry] Expired {expired} stale proposals")
     return expired
+
+
+def _check_rsi_gate(symbol, strategy_id, conn):
+    """Block overbought promotions. Income/recovery exempt."""
+    _EXEMPT = {'income_add', 'dividend_growth_compounder', 'high_yield_income_bdc',
+               'covered_call_income', 'bond_income', 'cash_or_stable', 'recovery_watch'}
+    if strategy_id in _EXEMPT:
+        return True, 'rsi_exempt'
+
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT COALESCE(ts.rsi, CAST(NULLIF(sd.data->>'rsi','') AS FLOAT)) as rsi
+        FROM (SELECT 1) d
+        LEFT JOIN ticker_snapshot_daily ts ON ts.symbol=%s
+            AND ts.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+        LEFT JOIN ticker_snapshot_daily sd ON sd.symbol=%s
+            AND sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+        LIMIT 1
+    """, [symbol, symbol])
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        return True, 'rsi_unavailable'
+    rsi = float(row[0])
+
+    _MOMENTUM = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst', 'speculative_growth', 'core_growth_compounder'}
+    _SWING = {'swing_breakout', 'swing_trade', 'sector_rotation', 'defense_thesis'}
+
+    if strategy_id in _MOMENTUM and rsi >= 80:
+        return False, f'RSI_{rsi:.0f}_overbought_blocks_{strategy_id}'
+    if strategy_id in _SWING and rsi >= 75:
+        return False, f'RSI_{rsi:.0f}_elevated_blocks_{strategy_id}'
+    if rsi >= 85:
+        return False, f'RSI_{rsi:.0f}_severely_overbought'
+    return True, f'RSI_{rsi:.0f}_ok'
 
 
 def _check_promotion_gate(conn):
@@ -392,6 +445,13 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
             continue
         if scan_price < 1.0:
             results.append(f"SKIPPED: {symbol} (penny_stock ${scan_price:.2f})")
+            skipped += 1
+            continue
+
+        # RSI gate — block overbought at promotion time
+        can_rsi, rsi_reason = _check_rsi_gate(symbol, strategy_id, conn)
+        if not can_rsi:
+            results.append(f"SKIPPED: {symbol} ({rsi_reason})")
             skipped += 1
             continue
 
