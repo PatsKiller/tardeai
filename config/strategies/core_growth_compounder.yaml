@@ -11,11 +11,11 @@ timeframe_class: POSITION
 universe:
   price:
     min: 50.00
-    max: null
+    max:
   float_m:
-    max: null
+    max:
   rvol:
-    min: null
+    min:
 
 entry_criteria:
   - id: QUALITY_SCORE
@@ -56,7 +56,7 @@ exit_rules:
 risk:
   risk_per_trade_pct: 0.01
   max_position_size: 25000
-  max_daily_trades: null
+  max_daily_trades:
   target_rr: 3.0
 
 scoring:
@@ -66,7 +66,7 @@ scoring:
 lifecycle:
   proposal_expiry_hours: 720
   overnight_allowed: true
-  max_hold_days: null
+  max_hold_days:
 
 execution:
   paper_allowed: true
@@ -101,3 +101,47 @@ screen_filters:
   min_market_cap_b: 50
   min_score: 0
   quality_focus: true
+vix_rules:
+  max_vix_for_entry: 45
+  elevated_vix_band:
+    - 25
+    - 40
+  elevated_vix_changes:
+    position_size_multiplier: 1.0
+    require_pullback_to_ema_50: true
+  extreme_vix_threshold: 45
+  extreme_vix_action: accelerate_new_entries
+  exit_holdings_at_vix:
+  notes: Quality compounders pull back hardest in volatility — best entry zone.
+technical_indicators_required:
+  gates:
+    - id: EMA_200_SUPPORT
+      condition: price within 5% of EMA(200) on pullback
+      metric: distance_from_ema_200
+      operator: lte
+      value: 0.05
+  preferred:
+    - rsi_14_below_50
+    - fib_618_distance
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_5
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.

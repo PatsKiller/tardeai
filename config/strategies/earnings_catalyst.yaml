@@ -1,7 +1,7 @@
 strategy_id: earnings_catalyst
 display_name: Earnings Catalyst
-version: "1.0"
-status: TESTING
+version: "1.0.0"
+status: DEPRECATED
 purpose: "Pre-earnings buildup + post-earnings momentum. Two sub-strategies tracked independently."
 
 eligible_accounts: [taxable, rollover_ira, roth_ira]
@@ -87,3 +87,57 @@ outcome_learning_fields:
   - gap_magnitude
   - entry_timing
   - sector_alignment
+deprecated_in_favor_of:
+  - earnings_pre_buildup
+  - earnings_post_momentum
+deprecated_date: '2026-05-13'
+deprecated_reason: Two sub-strategies in one YAML prevented router from cleanly mapping candidates. Split into separate files.
+co_enables:
+  promotes_to: []
+  strengthens: []
+  notes: Deprecated — use earnings_pre_buildup or earnings_post_momentum.
+vix_rules:
+  max_vix_for_entry: 30
+  elevated_vix_band:
+    - 25
+    - 35
+  elevated_vix_changes:
+    position_size_multiplier: 0.6
+    pause_pre_earnings_only: true
+    post_earnings_still_allowed: true
+  extreme_vix_threshold: 35
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: Pre-earnings buildup is fragile in high VIX; post-earnings momentum can still work.
+technical_indicators_required:
+  gates:
+    - id: PRICE_DATA_FRESH
+      condition: price data <= 15 minutes old
+      metric: price_age_min
+      operator: lte
+      value: 15
+  preferred:
+    - ema_21
+    - rvol
+    - fib_618_distance
+  irrelevant:
+    - bollinger_squeeze
+  note: See earnings_pre_buildup and earnings_post_momentum for sub-strategy specifics.
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
