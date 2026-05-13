@@ -576,3 +576,35 @@ operator-tuned 70 default / 75 hard max based on 4-hour window throughput analys
 - No broker, holdings, execution, or trading behavior changes
 - 03:00 hard stop and 03:15 restore deadline unchanged
 - All safety gates preserved
+
+## Phase 1H Expansion — 5 New Job Types — 2026-05-12 22:30 ET
+
+### New job types added
+- `rag_content_curation`: nightly P1, up to 20 items. gemma3 128K context re-evaluates pending/low-quality news and YouTube for novelty. Writes verdict back to source table.
+- `risk_synthesis`: nightly P0, single job. Portfolio-level risk narrative saved to `risk_synthesis_results`, feeds morning brief.
+- `recovery_watch_review`: Tue/Thu only P1, up to 12 items. Thesis validity for `stopped_out_watch` items (THESIS_INTACT/INVALIDATED/NEEDS_MORE_DATA).
+- `covered_call_scoring`: Sunday only P1, up to 15 items. Strike/yield scoring for `aegis_covered_call_candidates`.
+- `weekly_behavioral_review`: Sunday only P2, gated at 20+ closed trades. Currently inactive (4 closed trades).
+
+### New tables/columns
+- `risk_synthesis_results` (new table)
+- `deep_overnight_llm_results`: +10 new columns (source_table, source_id, curation_verdict, curation_weight, risk_narrative, reentry_verdict, cc_verdict, cc_strike_target, cc_yield_estimate, behavioral_patterns)
+- `news_articles`: +3 deep_curation columns
+- `youtube_transcripts`: +3 deep_curation columns
+- `deep_overnight_llm_queue`: +1 source_id column
+
+### Budget impact
+- Weeknights (Tue/Thu): +31 jobs (1 risk + 20 RAG + 10 recovery)
+- Weeknights (Mon/Wed/Fri): +21 jobs (1 risk + 20 RAG)
+- Sundays: +21-36 jobs (1 risk + 20 RAG + 0-15 CC + 0-1 behavioral)
+- All within 70-job default cap
+
+### Morning brief integration
+- `aegis_morning_brief_delivery.py` now surfaces overnight risk synthesis priority action
+
+### What was NOT changed
+- No cron/timer changes
+- No .env changes
+- No routing changes
+- No broker, holdings, execution, or trading behavior changes
+- Existing job type handlers unchanged

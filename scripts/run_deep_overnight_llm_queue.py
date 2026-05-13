@@ -139,9 +139,22 @@ Provide a structured proposal assessment:
 Be concise and direct."""
 
     elif job_type == "risk_synthesis":
-        return f"""Synthesize current portfolio risk for overnight assessment.
+        # Load portfolio context for risk synthesis
+        portfolio_ctx = ""
+        try:
+            import json as _json
+            hdata = _json.load(open(str(PROJ / "data/portfolios/state/holdings.json")))
+            total_val = hdata["portfolio_totals"]["total_value"]
+            top_holdings = sorted(hdata.get("holdings", []),
+                                  key=lambda h: h.get("market_value", 0), reverse=True)[:20]
+            lines = [f"  {h.get('symbol','?')}: ${h.get('market_value',0):,.0f} "
+                     f"({h.get('portfolio_pct',0):.1f}%)" for h in top_holdings]
+            portfolio_ctx = f"\nPortfolio: ${total_val:,.0f}\nTop holdings:\n" + "\n".join(lines)
+        except Exception:
+            portfolio_ctx = "\nPortfolio data unavailable."
 
-Focus areas: {', '.join(reasons)}
+        return f"""Synthesize current portfolio risk for overnight assessment.
+{portfolio_ctx}
 
 Provide a structured risk report:
 1. CONCENTRATION RISK: Any over-concentrated positions or sectors?
@@ -150,7 +163,63 @@ Provide a structured risk report:
 4. EVENT RISK: Any upcoming events that could impact the portfolio?
 5. ACTION ITEMS: Specific risk-reduction recommendations.
 
-Be concise and direct."""
+Respond as JSON: {{"top_risks": [{{"symbol":"SYM","risk_type":"type","severity":"HIGH/MEDIUM/LOW","action":"action"}}], "narrative": "3 paragraph prose", "priority_action": "single most important action"}}"""
+
+    elif job_type == "rag_content_curation":
+        source_table = job.get("source_table") or meta.get("source_table", "")
+        source_id = job.get("source_id") or meta.get("source_id", "")
+        return f"""You are a financial intelligence curator. Evaluate this content for a trading RAG knowledge base.
+
+Source: {source_table} ID {source_id}
+Symbol: {symbol}
+Queue reasons: {', '.join(reasons)}
+
+Evaluate for: novelty, source credibility, relevance to active trading decisions, timeliness.
+
+Respond as JSON: {{"verdict": "APPROVE_BOOST|APPROVE_STANDARD|LOW_QUALITY|SUPERSEDED", "weight": 1.5|1.0|0.0, "reason": "one sentence", "key_signal": "most important fact or null"}}
+
+APPROVE_BOOST (1.5): High-quality, novel, clear trading signal.
+APPROVE_STANDARD (1.0): Relevant, adequate. Normal weight.
+LOW_QUALITY (0.0): Generic, repetitive, no signal.
+SUPERSEDED (null): Already covered by better content."""
+
+    elif job_type == "recovery_watch_review":
+        return f"""You are a portfolio recovery analyst. Evaluate whether {symbol}'s original buy thesis remains valid after being stopped out.
+
+Review triggers: {', '.join(reasons)}
+
+Evaluate:
+1. Was the stop-out from temporary conditions or fundamental deterioration?
+2. Has the situation improved, worsened, or stayed the same?
+3. Is the original thesis still intact?
+4. What is the re-entry risk?
+
+Respond as JSON: {{"verdict": "THESIS_INTACT|THESIS_INVALIDATED|NEEDS_MORE_DATA", "confidence": 0.0-1.0, "reentry_risk": "HIGH|MEDIUM|LOW", "recommended_action": "REENTER_NOW|WAIT_FOR_CATALYST|STAY_CASH|CLOSE_WATCH", "key_factor": "single most important factor"}}"""
+
+    elif job_type == "covered_call_scoring":
+        return f"""You are an options income specialist. Evaluate {symbol} for covered call selling.
+
+Queue reasons: {', '.join(reasons)}
+
+Evaluate:
+1. Is this an appropriate time to sell covered calls?
+2. What strike price OTM % would you target?
+3. Estimated monthly premium yield?
+4. Assignment risk?
+
+Respond as JSON: {{"verdict": "FAVORABLE|MARGINAL|SKIP", "strike_target_pct_otm": 2.0-10.0, "estimated_monthly_yield_pct": 0.0-5.0, "assignment_risk": "HIGH|MEDIUM|LOW", "rationale": "two sentences", "timing": "NOW|WAIT_FOR_PULLBACK|NOT_SUITABLE"}}"""
+
+    elif job_type == "weekly_behavioral_review":
+        return f"""You are a trading coach reviewing behavioral patterns across closed trades.
+
+Identify:
+1. Time-of-day patterns
+2. Strategy win/loss patterns
+3. Hold duration patterns
+4. Position sizing patterns
+5. Emotional/behavioral patterns
+
+Respond as JSON: {{"patterns": [{{"type": "pattern_type", "observation": "specific data", "severity": "HIGH|MEDIUM|LOW", "recommendation": "behavior change"}}], "top_strength": "best pattern", "top_weakness": "worst pattern", "summary": "two paragraph coaching"}}"""
 
     else:
         return f"""Deep LLM review for {symbol or 'portfolio'}.
@@ -194,6 +263,52 @@ def call_gemma(prompt, model="gemma3-overnight", timeout=180):
         elapsed = round(time.monotonic() - start, 1)
         log(f"  gemma ERROR: {e} ({elapsed}s)")
         return None, elapsed
+
+
+def _apply_curation_verdict(cur, job, parsed):
+    """Write curation verdict back to source content table."""
+    source_table = job.get("source_table")
+    source_id = job.get("source_id")
+    verdict = parsed.get("verdict", "LOW_QUALITY")
+    weight = parsed.get("weight")
+    if not source_table or not source_id:
+        return
+    new_rag = "approved" if verdict in ("APPROVE_BOOST", "APPROVE_STANDARD") else None
+    if source_table == "news_articles":
+        sql = "UPDATE news_articles SET deep_curation_verdict=%s, deep_curation_at=NOW(), deep_curation_weight=%s"
+        params = [verdict, weight]
+        if new_rag:
+            sql += ", rag_status=%s"
+            params.append(new_rag)
+        sql += " WHERE id=%s"
+        params.append(source_id)
+        cur.execute(sql, params)
+    elif source_table == "youtube_transcripts":
+        sql = "UPDATE youtube_transcripts SET deep_curation_verdict=%s, deep_curation_at=NOW(), deep_curation_weight=%s"
+        params = [verdict, weight]
+        if new_rag:
+            sql += ", rag_status=%s"
+            params.append(new_rag)
+        sql += " WHERE id=%s"
+        params.append(source_id)
+        cur.execute(sql, params)
+
+
+def _save_risk_synthesis(cur, queue_id, parsed):
+    """Save risk synthesis narrative to dedicated results table."""
+    try:
+        hdata = json.load(open(str(PROJ / "data/portfolios/state/holdings.json")))
+        total_val = hdata["portfolio_totals"]["total_value"]
+    except Exception:
+        total_val = None
+    cur.execute("""
+        INSERT INTO risk_synthesis_results
+            (portfolio_value, top_risks, narrative, morning_brief_ready, queue_id)
+        VALUES (%s, %s, %s, TRUE, %s)
+    """, [total_val,
+          json.dumps(parsed.get("top_risks", [])),
+          parsed.get("narrative", ""),
+          queue_id])
 
 
 def recover_stale_running(cur):
@@ -250,7 +365,8 @@ def main():
         SELECT id, job_type, symbol, trade_id, journal_id, account,
                priority_tier, priority_score, reason_codes,
                last_qwen_summary, last_qwen_confidence, metadata_json,
-               attempt_count, input_hash
+               attempt_count, input_hash,
+               source_table, source_id
         FROM deep_overnight_llm_queue
         WHERE status = 'pending'
         {type_filter}
@@ -316,18 +432,51 @@ def main():
         text, runtime = call_gemma(prompt, model=model)
 
         if text:
-            # Store result
+            # Parse JSON from response if present
+            parsed = {}
+            try:
+                import re as _re
+                match = _re.search(r'\{.+\}', text, _re.DOTALL)
+                if match:
+                    parsed = json.loads(match.group())
+            except Exception:
+                pass
+
+            # Store result with expanded columns
+            jtype = job["job_type"]
             cur.execute("""
                 INSERT INTO deep_overnight_llm_results
                 (queue_id, job_type, symbol, trade_id, journal_id, model,
-                 prompt_version, summary, findings_json, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'v1', %s, %s, NOW())
+                 prompt_version, summary, findings_json,
+                 source_table, source_id,
+                 curation_verdict, curation_weight,
+                 risk_narrative, reentry_verdict,
+                 cc_verdict, cc_strike_target, cc_yield_estimate,
+                 behavioral_patterns, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'v1', %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 RETURNING id
-            """, (job_id, job["job_type"], job.get("symbol"),
+            """, (job_id, jtype, job.get("symbol"),
                   job.get("trade_id"), job.get("journal_id"),
                   model, text[:2000],
-                  json.dumps({"raw_response": text[:5000]})))
+                  json.dumps(parsed if parsed else {"raw_response": text[:5000]}),
+                  job.get("source_table"), job.get("source_id"),
+                  parsed.get("verdict") if jtype == "rag_content_curation" else None,
+                  parsed.get("weight") if jtype == "rag_content_curation" else None,
+                  parsed.get("narrative") if jtype == "risk_synthesis" else None,
+                  parsed.get("verdict") if jtype == "recovery_watch_review" else None,
+                  parsed.get("verdict") if jtype == "covered_call_scoring" else None,
+                  None,  # cc_strike_target computed below
+                  parsed.get("estimated_monthly_yield_pct") if jtype == "covered_call_scoring" else None,
+                  json.dumps(parsed.get("patterns")) if jtype == "weekly_behavioral_review" and parsed.get("patterns") else None,
+                  ))
             result_id = cur.fetchone()[0]
+
+            # Post-processing for specific job types
+            if jtype == "rag_content_curation" and parsed.get("verdict"):
+                _apply_curation_verdict(cur, job, parsed)
+            elif jtype == "risk_synthesis" and parsed.get("narrative"):
+                _save_risk_synthesis(cur, job_id, parsed)
 
             # Mark done
             cur.execute("""

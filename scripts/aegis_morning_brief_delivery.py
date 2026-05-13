@@ -174,6 +174,24 @@ def send_telegram_brief(brief: dict, summary: str) -> bool:
         lines.append(f"*Steph Queue:* {pending} pending" + (f", {needs_john} need John" if needs_john else ""))
         lines.append("")
 
+    # Overnight risk synthesis (from deep LLM window)
+    try:
+        _risk = _db_query(
+            """SELECT LEFT(narrative, 200) as preview,
+                      top_risks->0->>'action' as priority_action
+               FROM risk_synthesis_results
+               WHERE generated_at > NOW() - INTERVAL '18 hours'
+                 AND morning_brief_ready = TRUE
+               ORDER BY generated_at DESC LIMIT 1""",
+            fetch="one"
+        )
+        if _risk and _risk.get("priority_action"):
+            lines.append(f"*Overnight Risk Analysis:*")
+            lines.append(f"  {_risk['priority_action']}")
+            lines.append("")
+    except Exception:
+        pass
+
     # Event intelligence digest (Level 3)
     event_digest, event_total = _get_event_digest()
     if event_total > 0:
