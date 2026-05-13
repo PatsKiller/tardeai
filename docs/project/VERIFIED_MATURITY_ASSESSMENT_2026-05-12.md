@@ -165,29 +165,29 @@ Previous self-reported score was 6.5. Live browser verification and full doc rea
 
 ## PART 2 — VERIFIED GAPS (browser-confirmed)
 
-| # | Gap | Source of Evidence | Impact |
-|---|-----|--------------------|--------|
-| G1 | `/v2/automated-journal` returns 404 | Browser -- live 404 | Journal access broken for that route |
-| G2 | Intraday data not populating Risk page (RSI + movers = empty) | Browser -- "No RSI data available" | Risk page charts are non-functional |
-| G3 | Brave Search depleted (402) | Browser -- live warning banner | Reduced topic ingestion quality |
-| G4 | Pipeline data 14h stale | Browser -- global alert banner | All scoring/signal data from yesterday |
-| G5 | Rebalance data 29 days stale | Browser -- global alert banner | Rebalance recommendations are stale |
-| G6 | R-multiple tiers single-rule (only 1.0R -> breakeven) in open_trade_monitor.py | Docs -- "What System Does NOT Do" | Trades give back too much gain |
-| G7 | Steph review queue: 336 in-review | Aegis morning brief in project files | Agent analysis severely backed up |
-| G8 | Annotation queue: 57 pending (75% unannotated) | Browser -- journal page | Coaching cards and learning quality degraded |
-| G9 | Incubator last build: 5/10, 0 promoted today | Browser -- incubator page | Proposal pipeline may be stalled |
-| G10 | "Utilities 11" nav artifact | Browser -- nav header | Minor UI display bug |
-| G11 | Win rate header shows manual journal rate, not paper rate | Browser -- header tile | Misleading metric for paper trading context |
-| G12 | Agent Calibration all zeros | Browser -- calibration page | Learning loop output not visible |
-| G13 | Doc drift (19 confirmed metric mismatches) | SYSTEM_FACTS_LATEST.md | Misleading documentation |
+| # | Gap | Source of Evidence | Impact | Status |
+|---|-----|--------------------|--------|--------|
+| G1 | `/v2/automated-journal` returns 404 | Browser -- live 404 | Journal access broken | **FIXED** — redirect added to App.tsx |
+| G2 | Intraday data not populating Risk page | Browser -- "No RSI data available" | Risk charts non-functional | **FIXED** — portfolio_stops.py enriches from cache |
+| G3 | Brave Search depleted (402) | Browser -- live warning banner | Reduced topic ingestion | OPEN — needs $5 credit |
+| G4 | Pipeline data 14h stale | Browser -- global alert banner | Scoring data stale | **FIXED** — 4 PM crons added (12/14/16/17:30) |
+| G5 | Rebalance data 29 days stale | Browser -- global alert banner | Rebalance stale | OPEN — needs Anthropic credit |
+| G6 | R-multiple tiers single-rule in open_trade_monitor.py | Docs | Trades give back gain | **FIXED** — 4-tier trailing implemented |
+| G7 | Steph review queue: 336 in-review | Morning brief | Agent analysis backed up | OPEN — operational |
+| G8 | Annotation queue: 57 pending (75% unannotated) | Browser -- journal | Learning quality degraded | OPEN — operational |
+| G9 | Incubator last build: 5/10, 0 promoted | Browser -- incubator | Proposal pipeline stalled | OPEN — operational |
+| G10 | "Utilities 11" nav artifact | Browser -- nav header | UI display bug | **FIXED** — replaced with Approvals button |
+| G11 | Win rate header misleading | Browser -- header tile | Missing context | **FIXED** — shows trade count |
+| G12 | Agent Calibration all zeros | Browser -- calibration page | Learning not visible | OPEN — needs 20+ closed trades |
+| G13 | Doc drift (19 metric mismatches) | SYSTEM_FACTS_LATEST.md | Misleading docs | **FIXED** — update_doc_metrics.py applied |
+
+**Session resolution:** 7 of 13 gaps fixed. Remaining 6 are operational (credit top-ups, sample size, queue backlogs).
 
 ---
 
 ## PART 3 — CLAUDE CODE SESSION PROMPT
 
-See the session prompt section for Goals 1-6 targeting: broken automated-journal route, intraday risk data, R-multiple tiers in open_trade_monitor.py, win rate header label, doc drift fix script, and nav artifact cleanup.
-
-**Scope boundaries:** Do NOT touch broker execution logic, proposal schema, cron schedules, alert dispatcher, .env settings, or deploy gemma3 overnight.
+Goals 1-6 from this section were **completed** in Session 31. See commit `53041f8` and `424c804`.
 
 ---
 

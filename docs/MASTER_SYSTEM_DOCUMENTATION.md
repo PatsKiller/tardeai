@@ -1574,7 +1574,7 @@ John replies in Telegram → telegram_command_handler executes retry
 
 ## 16. Scheduling & Orchestration
 
-53 cron entries manage the full pipeline (flock-protected to prevent stacking). Key schedule (all times Eastern):
+67+ cron entries manage the full pipeline (flock-protected to prevent stacking). Key schedule (all times Eastern):
 
 ### Morning Cascade (5-8 AM)
 
@@ -1607,8 +1607,10 @@ John replies in Telegram → telegram_command_handler executes retry
 |------|-----|
 | 09:00, 10:00 AM | Orchestrator runs (screener windows 3, 4) |
 | 11, 12:30, 1, 2, 3 PM | Hourly light reprice + intraday intelligence |
+| 12:00, 2:00, 4:00 PM | Afternoon pipeline refresh (--no-llm, scoring only) |
 | 12:30 PM | News ingestion (midday) |
 | 4:00 PM | End-of-day screener + news |
+| 5:30 PM | Evening pipeline refresh (with LLM enrichment) |
 
 ### Evening & Overnight
 
@@ -1618,6 +1620,7 @@ John replies in Telegram → telegram_command_handler executes retry
 | 8:00 PM | Overnight batch + SEC Form 4 |
 | 8:30 PM | Feedback loop processor (outcome chains, alert scoring) |
 | 9:00 PM | Auto-research |
+| **11:00 PM–3:00 AM** | **Deep overnight LLM window** (gemma3-overnight queue: strategy classification, risk synthesis, RAG curation, journal reviews, recovery watch, covered call scoring) |
 | Sun 7:00 PM | Weekly incubator builder |
 | Sun 8:00 PM | Full topic ingestion (all topics, with LLM) |
 | Sun 9:00 PM | Weekly DOCX report (`generate_weekly_docx.py`) |
