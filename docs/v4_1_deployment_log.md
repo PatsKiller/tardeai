@@ -1114,3 +1114,17 @@ Database is a mirror of broker state — nothing written until broker confirms f
 - TRUE = broker confirmed fill. FALSE = phantom/unconfirmed.
 - Used by journal API and monitor integrity checks.
 - Historical trades backfilled: INFU #13 and BLBD #16 got `filled_at` from `entry_time`.
+
+## Fix: Win Rate Phantom Dilution + Reconciler Broker Exit — 2026-05-13 18:00 ET
+
+### Win rate was 17% — should be 33%
+3 phantom breakeven trades ($0 PnL, never filled on Alpaca) were diluting the win rate.
+Journal API now calculates from `_real_closed` (trades with non-zero PnL only):
+- Before: 1W / 6 total = 16.7%
+- After: 1W / 3 real trades = 33.3%
+- `real_trade_count` added to API summary
+
+### Reconciler reads exit from broker order history
+`detect_closed_positions` now fetches actual sell order `filled_avg_price` and `filled_at`
+from broker instead of fabricating exit price from current market data. Computes real PnL
+and sets correct `outcome_verdict` from broker-confirmed values.
