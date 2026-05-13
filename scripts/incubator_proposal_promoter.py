@@ -73,6 +73,18 @@ SCREENER_DISPLAY = {
 }
 
 RISK_BUDGET = 150  # dollars per trade
+
+# Strategy groups for per-symbol diversification
+STRATEGY_GROUPS = {
+    'gap_and_go': 'MOMENTUM', 'momentum_scalp': 'MOMENTUM',
+    'swing_breakout': 'MOMENTUM', 'earnings_catalyst': 'MOMENTUM',
+    'income_add': 'INCOME', 'dividend_growth_compounder': 'INCOME',
+    'covered_call_income': 'INCOME', 'high_yield_income_bdc': 'INCOME',
+    'core_growth_compounder': 'GROWTH', 'sector_rotation': 'GROWTH',
+    'defense_thesis': 'GROWTH', 'speculative_growth': 'GROWTH',
+    'swing_trade': 'REVERSION', 'recovery_watch': 'REVERSION',
+    'bond_income': 'REVERSION', 'cash_or_stable': 'REVERSION',
+}
 MAX_ACTIVE_PROPOSALS = 20  # global ceiling
 MAX_PER_STRATEGY = 5  # per strategy group ceiling
 
@@ -312,19 +324,31 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
     promoted = 0
     skipped = 0
     results = []
-    symbol_counts = {}  # track promotions per symbol this run
+    symbol_counts: dict = {}  # track groups promoted per symbol this run {symbol: set(groups)}
 
-    # Load existing PENDING proposal counts per symbol (total, not just this run)
-    cur.execute("SELECT symbol, COUNT(*) FROM paper_trade_proposals WHERE status='PENDING' GROUP BY symbol")
-    existing_pending = {r['symbol']: r['count'] for r in cur.fetchall()}
+    # Load existing PENDING proposals per symbol+group for strategy-group dedup
+    cur.execute("""SELECT symbol, strategy_id FROM paper_trade_proposals WHERE status='PENDING'""")
+    existing_groups: dict = {}  # {symbol: set of groups}
+    existing_pending: dict = {}  # {symbol: count}
+    for r in cur.fetchall():
+        s = r['symbol']
+        g = STRATEGY_GROUPS.get(r['strategy_id'], 'OTHER')
+        existing_groups.setdefault(s, set()).add(g)
+        existing_pending[s] = existing_pending.get(s, 0) + 1
 
     for c in candidates:
         symbol = c['symbol']
         strategy_id = c['strategy_id']
 
-        # Duplicate control: max TOTAL pending proposals per symbol
-        total_pending = existing_pending.get(symbol, 0) + symbol_counts.get(symbol, 0)
-        symbol_counts.setdefault(symbol, 0)
+        # Strategy-group dedup: max 1 proposal per symbol per strategy group
+        group = STRATEGY_GROUPS.get(strategy_id, 'OTHER')
+        sym_groups = existing_groups.get(symbol, set()) | symbol_counts.get(symbol, set())
+        if group in sym_groups:
+            results.append(f"SKIPPED: {symbol} (group {group} already pending)")
+            skipped += 1
+            continue
+        # Max 2 total per symbol (across all groups)
+        total_pending = existing_pending.get(symbol, 0) + len(symbol_counts.get(symbol, set()))
         if total_pending >= max_per_symbol:
             results.append(f"SKIPPED: {symbol} (total_pending={total_pending} >= max={max_per_symbol})")
             skipped += 1
@@ -364,6 +388,10 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
             scan_price = extract_evidence_price(c.get('evidence_payload'))
         if scan_price is None or scan_price <= 0:
             results.append(f"SKIPPED: {symbol} (no_price)")
+            skipped += 1
+            continue
+        if scan_price < 1.0:
+            results.append(f"SKIPPED: {symbol} (penny_stock ${scan_price:.2f})")
             skipped += 1
             continue
 
@@ -453,7 +481,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
 
         conn.commit()
         promoted += 1
-        symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+        symbol_counts.setdefault(symbol, set()).add(STRATEGY_GROUPS.get(strategy_id, 'OTHER'))
         results.append(f"PROMOTED: {symbol} ({strategy_key}, score={score}, {screener_name})")
 
     cur.close()

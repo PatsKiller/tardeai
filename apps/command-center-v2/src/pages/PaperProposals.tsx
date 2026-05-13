@@ -444,7 +444,10 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       </div>
 
       {/* ROW 5 — ONE LINE THESIS */}
-      <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--text2)', lineHeight: 1.4, maxHeight: 36, overflow: 'hidden' }}>{thesisLine}</div>
+      <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--text2)', lineHeight: 1.4, maxHeight: 36, overflow: 'hidden' }}>
+        {p.thesis_display || thesisLine}
+        {p.other_strategy_count > 0 && <span style={{ marginLeft: 8, fontSize: 9, color: '#F59E0B', fontWeight: 600 }}>+{p.other_strategy_count} other {p.other_strategy_count === 1 ? 'strategy' : 'strategies'}</span>}
+      </div>
 
       {/* ROW 6 — ACTION BUTTONS */}
       <div style={{ padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -899,6 +902,16 @@ export default function PaperProposals() {
         <div style={{ padding: '8px 14px', marginBottom: 10, borderRadius: 6, fontSize: 11,
           background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: '#F59E0B' }}>
           {summary.pipeline_health_message}
+        </div>
+      )}
+
+      {/* Multi-strategy warning */}
+      {(summary.multi_strategy_symbols || []).length > 0 && (
+        <div style={{ padding: '6px 14px', marginBottom: 10, borderRadius: 6, fontSize: 10,
+          background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', color: '#F59E0B' }}>
+          {(summary.multi_strategy_symbols || []).map((ms: any) => (
+            <span key={ms.symbol} style={{ marginRight: 12 }}>{ms.symbol} has {ms.count} proposals ({ms.strategies.join(', ')}) — approve at most 1</span>
+          ))}
         </div>
       )}
 
