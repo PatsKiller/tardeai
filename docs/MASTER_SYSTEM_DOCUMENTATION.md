@@ -499,7 +499,7 @@ The curator stores these in `topic_monitor.llm_generated_queries` and auto-runs 
 
 | Source | API / Method | Data Type | Query Frequency | Fallback |
 |--------|-------------|-----------|----------------|----------|
-| **Finviz Elite** | HTTP scrape (cookie + API token) | Screener results, 60+ enrichment fields | 4x daily (04:00, 07:00, 09:00, 10:00) | None -- primary screener, manual cookie refresh required |
+| **Finviz Elite** | HTTP scrape (cookie + API token) | Screener results, 60+ enrichment fields | 7x daily (07:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00 M-F, flock-protected) | None -- primary screener, manual cookie refresh required |
 | **NewsAPI** | REST API (key) | News articles, headlines | 2x daily (06:30, 12:30) + on-demand | Finnhub news fallback |
 | **Finnhub** | REST API (key) | News, company filings, insider activity | On enrichment trigger | NewsAPI fallback |
 | **Polygon** | REST API (key) | Market data, quotes, corporate events | On catalyst enrichment | Yahoo Finance |
@@ -822,7 +822,7 @@ The incubator is the holding area between raw screener hits and actionable propo
 
 4. **`incubator_llm_screener`** (NEW) -- Pre-promotion LLM screening for quality control.
 
-5. **`incubator_proposal_promoter`** (8:20 AM + 6:10 PM M-F) -- Promotes qualifying symbols.
+5. **`incubator_proposal_promoter`** (every 2h: 9,11,13,15,17 M-F) -- Promotes qualifying symbols. Auto-expires stale proposals first.
 
 ### Promotion Criteria
 
@@ -830,6 +830,19 @@ The incubator is the holding area between raw screener hits and actionable propo
 |-----------|--------------|
 | High-conviction | `status=ACTIVE`, `score >= 38`, `catalyst_verified = true`, `days_active >= 1` |
 | Score override | `status=ACTIVE`, `score >= 45`, `days_active >= 1` |
+
+### Auto-Expiry Rules (runs before each promotion cycle)
+
+| Rule | Condition | Result |
+|------|-----------|--------|
+| No action | PENDING >3 days, no approval/rejection | EXPIRED |
+| Past expiry | `expires_at` < NOW | EXPIRED |
+| Price drift | PENDING >2 days AND price moved >8% from entry | EXPIRED |
+
+### Promotion Gate
+- Global ceiling: 20 PENDING proposals max
+- Per-strategy: max 5 per strategy_id (concentration check)
+- If 3+ strategies all at cap, blocks further promotion
 
 ---
 

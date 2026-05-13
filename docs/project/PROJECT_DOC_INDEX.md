@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | Proposal pipeline: auto-expiry (3 rules), strategy-aware gate (20 global/5 per-strategy), Finviz 7x/day, promoter 5x/day, strategy perf in proposals API. |
 | 2026-05-13 | Fix: paper_trades lifecycle_state never transitioning to 'closed' — 5 of 6 close paths missing lifecycle_state update. Fixed 5 scripts + migrated 17 stuck rows. Automated Journal now shows closed trades correctly. |
 | 2026-05-13 | Strategy-aware overnight: 3 new job types (income Mon/growth Wed/reversion Sat), strategy-aware incubator grader (4 prompt groups), 7 new screeners (27 total), 16 static bond/BDC/cash symbols. All 20 strategies now have proposal pipeline path. |
 | 2026-05-13 | LLM Queue Manager page (/v2/ops), 9 new API endpoints, event-driven requeue engine, 4 new Finviz screeners, strategy_opportunity_scan job, gemma3 calibration loop, Friday extended cron, updated Phase 1H doc + deployment log. |

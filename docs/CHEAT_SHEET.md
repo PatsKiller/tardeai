@@ -240,7 +240,7 @@ curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
 | 7:00 AM | Finviz enrichment | `finviz_enrichment.py` | Check enrichment cache timestamps |
 | 04/07/09/10 | Orchestrator runs | `trade_ai_orchestrator.py` | Check `pipeline_runs` for completion |
 | 8:15 AM | Incubator refresh | `daily_incubator_refresh.py` | Check incubator scores updated |
-| 8:20 AM | Proposal promoter | `incubator_proposal_promoter.py` | Check `paper_trade_proposals` |
+| Every 2h (9-17) | Proposal promoter | `incubator_proposal_promoter.py` | Auto-expires stale, promotes new. Check `paper_trade_proposals` |
 | 8:00 PM | Overnight batch | `overnight_batch.py` | Check overnight log |
 | Sun 7 PM | Weekly incubator build | `weekly_incubator_builder.py` | Check incubator universe count |
 | Sun 10 PM | LLM classification | `weekly_incubator_builder.py --llm` | Check strategy assignments |
