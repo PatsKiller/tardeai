@@ -126,7 +126,7 @@ class AlpacaPaperAdapter:
                         shares, dollar_size, current_price, unrealized_pnl, status,
                         lifecycle_state, broker_status, filled_at,
                         opened_via, logged_by, last_synced_at)
-                    VALUES ('momentum_scalp', %s, 'ALPACA_PAPER', %s, NOW(),
+                    VALUES ('unknown_sync', %s, 'ALPACA_PAPER', %s, NOW(),
                         %s, %s, %s, %s, 'open',
                         'open', 'filled', NOW(),
                         'alpaca_sync', 'alpaca_adapter', NOW())
@@ -613,7 +613,9 @@ class AlpacaPaperAdapter:
             return {'status': 'error', 'message': f'Paper trade #{paper_trade_id} not found or not open'}
 
         symbol, shares, entry, stop, target, strategy_id = row
-        return self.submit_entry(symbol, int(shares), float(entry), float(stop), float(target), strategy_id or 'momentum_scalp', conn)
+        if not strategy_id:
+            log.warning(f"[alpaca] Paper trade #{paper_trade_id} has no strategy_id — using 'unknown'")
+        return self.submit_entry(symbol, int(shares), float(entry), float(stop), float(target), strategy_id or 'unknown', conn)
 
     def write_sync_log(self, conn, status: str, message: str, payload: dict = None):
         """Write to paper_system_sync_log."""

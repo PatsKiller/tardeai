@@ -29,8 +29,9 @@ log = logging.getLogger("open_trade_monitor")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
 # Time stop: max hold days per strategy (None = no time stop)
+# Intraday strategies use market close (3:45 PM ET), not day count
+INTRADAY_STRATEGIES = {'momentum_scalp', 'gap_and_go'}
 MAX_HOLD_DAYS = {
-    'momentum_scalp': 0, 'gap_and_go': 1,
     'swing_breakout': 21, 'swing_trade': 21,
     'earnings_catalyst': 7, 'speculative_growth': 21,
     'sector_rotation': 56, 'defense_thesis': 56,
@@ -324,23 +325,50 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
         alerts.append(('TARGET_HIT_CLOSE', symbol))
         return alerts
 
-    # ── TIME STOP: Auto-close if max hold days exceeded ──
-    max_hold = MAX_HOLD_DAYS.get(sid)
-    if max_hold is not None and entry_time:
-        hold_days = (now - entry_time).total_seconds() / 86400
-        if hold_days >= max_hold:
-            msg = (f"TIME STOP: {symbol} closed after {hold_days:.0f} days "
-                   f"(max hold: {max_hold}d for {sid}). P&L: ${pnl:+.2f}")
-            log.warning(msg)
-            insert_alert(conn, tid, symbol, sid, 'TIME_STOP_CLOSE', 'CRITICAL',
-                         f'{symbol} time stop', msg, {'hold_days': hold_days, 'max_hold': max_hold, 'pnl': pnl})
-            _log_risk_action(conn, tid, symbol, 'time_stop_close', stop, price, price,
-                             f'Held {hold_days:.0f}d >= {max_hold}d max for {sid}')
-            if not dry_run:
-                _auto_close_position(conn, tid, symbol, price, f'time_stop_max_{max_hold}d', cur)
-            send_telegram(f"\u23f0 {msg}", dry_run, no_telegram)
-            alerts.append(('TIME_STOP_CLOSE', symbol))
-            return alerts
+    # ── TIME STOP: Auto-close if max hold exceeded ──
+    # Dedup: skip if time_stop already attempted in last 30 min
+    try:
+        cur.execute("""SELECT COUNT(*) FROM paper_trade_risk_actions
+            WHERE paper_trade_id=%s AND action_type='time_stop_close'
+            AND created_at > NOW()-INTERVAL '30 minutes'""", [tid])
+        if cur.fetchone()[0] > 0:
+            pass  # skip — already attempted recently
+        else:
+            time_stop_fire = False
+            time_stop_reason = ''
+            if sid in INTRADAY_STRATEGIES and entry_time:
+                # Intraday: close at 3:45 PM ET, not by day count
+                try:
+                    import zoneinfo
+                    _et = datetime.now(zoneinfo.ZoneInfo('America/New_York'))
+                    if _et.hour >= 15 and _et.minute >= 45:
+                        time_stop_fire = True
+                        time_stop_reason = f'time_stop_intraday_{_et.strftime("%H%M")}'
+                except Exception:
+                    pass
+            elif entry_time:
+                max_hold = MAX_HOLD_DAYS.get(sid)
+                if max_hold is not None:
+                    hold_days = (now - entry_time).total_seconds() / 86400
+                    if hold_days >= max_hold:
+                        time_stop_fire = True
+                        time_stop_reason = f'time_stop_{max_hold}d'
+
+            if time_stop_fire:
+                hold_hours = (now - entry_time).total_seconds() / 3600 if entry_time else 0
+                msg = (f"TIME STOP: {symbol} closed after {hold_hours:.0f}h "
+                       f"({time_stop_reason} for {sid}). P&L: ${pnl:+.2f}")
+                log.warning(msg)
+                insert_alert(conn, tid, symbol, sid, 'TIME_STOP_CLOSE', 'CRITICAL',
+                             f'{symbol} time stop', msg, {'reason': time_stop_reason, 'pnl': pnl})
+                _log_risk_action(conn, tid, symbol, 'time_stop_close', stop, price, price, time_stop_reason)
+                if not dry_run:
+                    _auto_close_position(conn, tid, symbol, price, time_stop_reason, cur)
+                send_telegram(f"\u23f0 {msg}", dry_run, no_telegram)
+                alerts.append(('TIME_STOP_CLOSE', symbol))
+                return alerts
+    except Exception as _tse:
+        log.warning(f"[{symbol}] Time stop check error: {_tse}")
 
     # ── TRAILING STOP: 4-tier R-multiple trailing ──
     # Use planned_stop or dollar_risk to recover initial 1R (stop_loss may have been moved)
