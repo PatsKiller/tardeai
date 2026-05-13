@@ -7,7 +7,7 @@
 # Usage:
 #   ./scripts/run_deep_overnight_llm_window.sh              # normal run
 #   ./scripts/run_deep_overnight_llm_window.sh --dry-run    # dry run (no gemma, no queue changes)
-#   ./scripts/run_deep_overnight_llm_window.sh --max-jobs 50
+#   ./scripts/run_deep_overnight_llm_window.sh --max-jobs 70
 #
 # Safety:
 #   - Only runs between 23:00 and 03:00 unless --force-window
@@ -35,7 +35,9 @@ EMBED_MODEL="nomic-embed-text:latest"
 # Defaults
 TIME_BUDGET=240
 HARD_STOP="03:00"
-MAX_JOBS=120
+MAX_JOBS=70
+HARD_MAX_JOBS=75
+ALLOW_OVER_75=false
 DRY_RUN=false
 FORCE_WINDOW=false
 
@@ -47,7 +49,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --max-jobs)
-            MAX_JOBS="${2:-120}"
+            MAX_JOBS="${2:-70}"
             shift 2
             ;;
         --time-budget)
@@ -58,13 +60,24 @@ while [[ $# -gt 0 ]]; do
             FORCE_WINDOW=true
             shift
             ;;
+        --allow-over-75)
+            ALLOW_OVER_75=true
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 [--dry-run] [--max-jobs N] [--time-budget MIN] [--force-window]" >&2
+            echo "Usage: $0 [--dry-run] [--max-jobs N] [--time-budget MIN] [--force-window] [--allow-over-75]" >&2
             exit 1
             ;;
     esac
 done
+
+# ── Hard cap validation ──────────────────────────────────────────────────
+if [ "$MAX_JOBS" -gt "$HARD_MAX_JOBS" ] && [ "$ALLOW_OVER_75" != "true" ]; then
+    echo "ERROR: --max-jobs $MAX_JOBS exceeds hard max of $HARD_MAX_JOBS." >&2
+    echo "Use --allow-over-75 to override (not recommended)." >&2
+    exit 1
+fi
 
 # ── Logging ──────────────────────────────────────────────────────────────
 mkdir -p "$PROJ/logs"
