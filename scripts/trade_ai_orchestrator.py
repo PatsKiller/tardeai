@@ -837,7 +837,8 @@ def _parse():
                     help="Also generate institutional-grade dashboard variant")
     ap.add_argument("--macro-context", action="store_true",
                     help="Force macro regime commentary (auto-enabled on zero-GO days)")
-    ap.add_argument("--run-label",         required=True, choices=["0400","0700","0900","1000"])
+    ap.add_argument("--run-label",         required=True,
+                    choices=["0400","0700","0900","1000","1200","1400","1600","1730"])
     ap.add_argument("--date",              default=datetime.now().strftime("%Y-%m-%d"))
     ap.add_argument("--project-root",      default=".")
     ap.add_argument("--skip-market-check", action="store_true")
