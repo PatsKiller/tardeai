@@ -255,6 +255,22 @@ class AlpacaPaperAdapter:
             log.warning(f"[alpaca] Max positions ({MAX_POSITIONS}) reached")
             return {'status': 'rejected', 'reason': 'max_positions'}
 
+        # Block duplicate symbol — no second position on same symbol
+        cur.execute("SELECT id, strategy_id FROM paper_trades WHERE symbol=%s AND status='open' LIMIT 1", [symbol])
+        _dup = cur.fetchone()
+        if _dup:
+            log.warning(f"[alpaca] BLOCKED {symbol}: already have open trade #{_dup[0]} ({_dup[1]}). No duplicate positions.")
+            return {'status': 'rejected', 'reason': f'duplicate_symbol: already open as {_dup[1]} (trade #{_dup[0]})'}
+
+        # Also check Alpaca directly — broker is source of truth
+        try:
+            _positions = self.get_positions()
+            if any(p['symbol'] == symbol for p in _positions):
+                log.warning(f"[alpaca] BLOCKED {symbol}: already on Alpaca. No duplicate positions.")
+                return {'status': 'rejected', 'reason': 'duplicate_symbol: already on broker'}
+        except Exception:
+            pass
+
         # Determine order type based on price proximity
         # If current price is within 2% of entry, use market order for immediate fill.
         # If current price is below entry (better price), use market order.
