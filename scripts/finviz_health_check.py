@@ -17,7 +17,7 @@ def _env(key, default=""):
     if env_path.exists():
         for line in env_path.read_text().splitlines():
             if line.strip().startswith(key + "="):
-                return line.split("=", 1)[1].strip().strip('"')
+                return line.split("=", 1)[1].strip().strip("'\"")
     return os.getenv(key, default)
 
 def _get_conn():

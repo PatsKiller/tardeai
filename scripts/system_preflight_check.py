@@ -36,7 +36,8 @@ def run():
     print("FINVIZ:")
     cookie = ""
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
-        if line.startswith("FINVIZ_COOKIE="): cookie = line.split("=", 1)[1].strip()
+        if line.startswith("FINVIZ_COOKIE="): cookie = line.split("=", 1)[1].strip().strip("'\"")
+
     check("FINVIZ_COOKIE exists", len(cookie) > 50, f"Only {len(cookie)} chars")
     check("Has .ASPXAUTH", ".ASPXAUTH=" in cookie, "Missing authentication token")
     check("Has .AspNetCore.Session", ".AspNetCore.Session=" in cookie, "Missing session")
