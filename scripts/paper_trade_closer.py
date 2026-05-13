@@ -238,6 +238,7 @@ def close_paper_trade(conn, paper_trade_id=None, symbol=None, reason="manual", d
             hold_time_min = %s,
             outcome_verdict = %s,
             status = 'closed',
+            lifecycle_state = 'closed',
             closed_at = %s,
             closed_via = 'paper_trade_closer',
             updated_at = %s

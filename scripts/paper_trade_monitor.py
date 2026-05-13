@@ -185,7 +185,8 @@ def monitor(dry_run=False):
                     close_paper_trade(sym, current, reason=f"target_hit: {reason}")
                 except Exception as close_err:
                     log.warning(f"[{sym}] Full close failed ({close_err}), using fallback")
-                    cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
+                    cur.execute("""UPDATE paper_trades SET status='closed', lifecycle_state='closed',
+                        exit_price=%s,
                         exit_reason=%s, close_date=NOW(), closed_at=NOW(),
                         pnl=%s, pnl_pct=%s, r_multiple=%s, hold_time_min=%s,
                         outcome_verdict=%s WHERE id=%s""",

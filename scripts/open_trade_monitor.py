@@ -403,7 +403,8 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                     _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
                     requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
                                     headers=_headers, timeout=10)
-                    cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
+                    cur.execute("""UPDATE paper_trades SET status='closed', lifecycle_state='closed',
+                        exit_price=%s,
                         exit_reason=%s, closed_at=NOW(), closed_via='auto_close_critical_news',
                         outcome_verdict='LOSS', notes=COALESCE(notes,'')||%s
                         WHERE id=%s""",
