@@ -77,12 +77,43 @@ def build_prompt(job):
     meta = job.get("metadata_json") or {}
 
     if job_type == "strategy_classification":
+        # Load actual enrichment data to prevent hallucination
+        enrich_ctx = ""
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""SELECT rsi, perf_week_pct, data->>'price' as price,
+                                data->>'sector' as sector, data->>'div_yield' as div_yield,
+                                data->>'rvol' as rvol, data->>'beta' as beta,
+                                data->>'pe' as pe, data->>'sma200' as sma200
+                         FROM ticker_snapshot_daily
+                         WHERE symbol = %s ORDER BY snapshot_date DESC LIMIT 1""", [symbol])
+            row = c.fetchone()
+            if row:
+                rsi, pw, price, sector, dy, rvol, beta, pe, sma200 = row
+                enrich_ctx = (f"\nACTUAL DATA (use these numbers, do not invent):\n"
+                              f"  Price: ${price} | RSI: {rsi} | RVOL: {rvol}x\n"
+                              f"  Sector: {sector} | Beta: {beta} | P/E: {pe}\n"
+                              f"  Week perf: {pw}% | Div yield: {dy}% | SMA200: {sma200}\n")
+            # Current classification
+            c.execute("""SELECT strategy_type, confidence, classification_source
+                         FROM ticker_strategy_classifications
+                         WHERE symbol=%s AND active=true LIMIT 1""", [symbol])
+            cls = c.fetchone()
+            if cls:
+                enrich_ctx += f"  Current strategy: {cls[0]} (confidence: {cls[1]}, source: {cls[2]})\n"
+            conn_tmp.close()
+        except Exception:
+            pass
+
         return f"""Analyze the trading strategy classification for {symbol}.
 
 Current classification reasons: {', '.join(reasons)}
 Prior summary: {qwen_summary[:1000] if qwen_summary else 'None available'}
+{enrich_ctx}
+Provide a structured deep review using ONLY the data above.
+Do NOT invent prices, ratios, or metrics not provided.
 
-Provide a structured deep review:
 1. CLASSIFICATION ASSESSMENT: Is the current strategy assignment appropriate?
 2. EVIDENCE QUALITY: How strong is the evidence supporting this classification?
 3. ALTERNATIVE STRATEGIES: Should any other strategies be considered?
@@ -92,18 +123,54 @@ Provide a structured deep review:
 Be concise and direct. Use structured format."""
 
     elif job_type == "closed_trade_review":
+        # Load actual trade data to prevent hallucination
+        trade_ctx = ""
+        history_ctx = ""
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""SELECT id, symbol, account, open_date, close_date, trade_type,
+                                buy_price, sell_price, pnl, pnl_pct, hold_days, stop_used, r_multiple, setup, note
+                         FROM trade_closed WHERE id = %s""", [job.get('trade_id')])
+            row = c.fetchone()
+            if row:
+                tid, sym, acct, od, cd, tt, bp, sp, pnl_val, pp, hd, su, rm, setup, note = row
+                trade_ctx = (f"\nACTUAL TRADE DATA (use these numbers, do not invent):\n"
+                             f"  Entry: ${bp} on {od} | Exit: ${sp} on {cd}\n"
+                             f"  Type: {tt} | Hold: {hd} days\n"
+                             f"  P&L: ${pnl_val} ({pp}%)\n"
+                             f"  Stop used: {'$' + str(su) if su else 'NONE'}\n"
+                             f"  R-multiple: {rm or 'N/A'}\n"
+                             f"  Setup: {setup or 'N/A'} | Note: {(note or '')[:100]}\n")
+            # Past trades on this symbol
+            c.execute("""SELECT pnl, pnl_pct, hold_days, stop_used, close_date
+                         FROM trade_closed WHERE symbol = %s ORDER BY close_date DESC LIMIT 10""", [symbol])
+            past = c.fetchall()
+            if past:
+                wins = sum(1 for r in past if (r[0] or 0) > 0)
+                losses = sum(1 for r in past if (r[0] or 0) < 0)
+                total_pnl = sum(r[0] or 0 for r in past)
+                stops_used = sum(1 for r in past if r[3])
+                history_ctx = (f"\nPAST {symbol} TRADES ({len(past)} total): {wins}W {losses}L, total ${total_pnl:.0f}\n"
+                               f"  Stops used: {stops_used}/{len(past)} trades\n")
+            conn_tmp.close()
+        except Exception:
+            pass
+
         return f"""Review the closed trade for {symbol}.
 
 Trade ID: {job.get('trade_id')}
 Account: {job.get('account', 'N/A')}
 Review triggers: {', '.join(reasons)}
+{trade_ctx}{history_ctx}
+Provide a structured post-trade analysis using ONLY the data above.
+Do NOT invent numbers, dates, or claim patterns not supported by the data.
 
-Provide a structured post-trade analysis:
 1. OUTCOME ASSESSMENT: Was this trade well-executed given the setup?
 2. ENTRY/EXIT QUALITY: Was timing and sizing appropriate?
 3. RISK MANAGEMENT: Were stops and position sizing followed?
 4. LESSONS LEARNED: What can be improved for similar setups?
-5. PATTERN MATCH: Does this trade fit a recurring pattern (good or bad)?
+5. PATTERN MATCH: Does this trade fit a recurring pattern based on the history above?
 
 Be concise and direct. Focus on actionable lessons."""
 
