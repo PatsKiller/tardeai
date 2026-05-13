@@ -142,13 +142,13 @@ This runs every 5 minutes during market hours via cron. A simpler 50%-lock versi
 
 ## Implementation Sequence
 
-### Do Now (High Impact)
+### Done (Implemented 2026-05-12, commit 6ad5fc7)
 
-| Gap | File | Impact |
+| Gap | File | Status |
 |-----|------|--------|
-| Gap 6: Telegram NEEDS_REVALIDATION alert | `proposal_paper_submitter.py` + `telegram_command_handler.py` | Prevents silent stale-entry |
-| Gap 7: Revalidation snapshot columns | `alpaca_paper_adapter.py` + migration | Journal completeness |
-| Gap 3: Outcome provenance write-back | `agent_curation_hooks.py` + migration | Proposal analytics foundation |
+| Gap 3: Outcome provenance write-back | `agent_curation_hooks.py` + migration `20260512_gap3_proposal_outcome_provenance.sql` | **DONE** — 8 outcome columns on proposals, write-back in on_paper_trade_closed() |
+| Gap 6: Telegram NEEDS_REVALIDATION alert | `proposal_paper_submitter.py` | **DONE** — Telegram alert with drift/price/re-approval commands on NEEDS_REVALIDATION and blocked_safety |
+| Gap 7: Revalidation snapshot columns | `alpaca_paper_adapter.py` + migration `20260512_gap7_revalidation_snapshot.sql` | **DONE** — 5 columns on paper_trades, full recheck result persisted |
 
 ### Do Next Session
 
@@ -175,8 +175,8 @@ Every learning mechanism in the system is correctly wired. The limiting factor i
 
 | State | Score | Key Unlock |
 |-------|-------|------------|
-| Current | **6.5 / 10** | Execution pipeline mostly solid |
-| + Gaps 3, 6, 7 | **7.0 / 10** | Silent stale-entry problem solved |
+| ~~Pre-gaps~~ | ~~6.5 / 10~~ | ~~Execution pipeline mostly solid~~ |
+| **Current (Gaps 3, 6, 7 done)** | **7.0 / 10** | Silent stale-entry problem solved, outcome provenance active |
 | + 30 closed trades | **7.8 / 10** | Learning loops activate meaningfully |
 | + Gaps 1 & 2 (after data) | **8.2 / 10** | Agent calibration feeds proposals |
 | + 6-month paper validation | **8.8 / 10** | Live trading gate opens |
