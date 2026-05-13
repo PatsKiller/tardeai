@@ -574,12 +574,53 @@ def queue_weekly_behavioral_review(cur, dry_run=False):
                               "P2", 55, [f"closed:{closed}"], ih)
 
 
+def queue_rebalance_analysis(cur, dry_run=False):
+    """Queue monthly deep rebalance analysis. 1st of month or stale >35d."""
+    today = datetime.now()
+
+    # Check if already done this month
+    cur.execute("""
+        SELECT id FROM rebalance_analysis_results
+        WHERE analysis_tier = 'gemma3_monthly'
+          AND generated_at > DATE_TRUNC('month', NOW())
+        LIMIT 1
+    """)
+    if cur.fetchone():
+        return 0
+
+    # Check staleness
+    cur.execute("""
+        SELECT generated_at FROM rebalance_analysis_results
+        WHERE analysis_tier = 'gemma3_monthly'
+        ORDER BY generated_at DESC LIMIT 1
+    """)
+    row = cur.fetchone()
+    stale_days = (datetime.now() - row[0].replace(tzinfo=None)).days if row else 999
+
+    is_first = (today.day == 1)
+    is_stale = (stale_days > 35)
+    if not (is_first or is_stale):
+        return 0
+
+    ih = f"rebalance_analysis:{today.strftime('%Y-%m')}"
+    if _already_queued(cur, ih):
+        return 0
+
+    reason = "monthly_1st" if is_first else f"stale_{stale_days}d"
+    if dry_run:
+        print(f"  [DRY] rebalance_analysis: PORTFOLIO reason={reason} stale={stale_days}d score=95")
+        return 1
+    return _insert_queue_item(cur, "rebalance_analysis", "PORTFOLIO",
+                              "P0", 95, [reason], ih)
+
+
 EXPANSION_BUILDERS = [
     ("risk_synthesis", queue_risk_synthesis),
     ("rag_content_curation", queue_rag_content_curation),
     ("recovery_watch_review", queue_recovery_watch_review),
     ("covered_call_scoring", queue_covered_call_scoring),
     ("weekly_behavioral_review", queue_weekly_behavioral_review),
+    ("rebalance_analysis", queue_rebalance_analysis),
 ]
 
 
@@ -596,6 +637,7 @@ ALL_JOB_TYPES = [
     "recovery_watch_review",
     "covered_call_scoring",
     "weekly_behavioral_review",
+    "rebalance_analysis",
 ]
 
 BUILDERS = {
