@@ -950,8 +950,11 @@ If validation returns REJECTED, the approval is reverted to pending and the user
 
 **Agents query past trade outcomes during proposal review.** Both `proposal_agent_review.py` and `proposal_intelligence_analyzer.py` inject RAG-retrieved trade history into their LLM prompts. If FLYW lost money as a swing_trade, the next FLYW swing proposal prompt explicitly tells agents about that loss.
 
-**Market orders:** Simple buy → immediate fill → stop placed as separate GTC order after fill.
+**Market orders:** Simple buy → immediate fill → **stop recalculated if fill < proposed entry** → stop placed as separate GTC order after fill.
+If fill price is below the proposed stop (stop would be above entry), the adapter recalculates stop to 5% below actual fill price. This prevents the stop-above-entry scenario that left GCTS unprotected on 2026-05-13.
 Post-fill, the monitor takes over position management (trailing stops, auto-close on stop/target hit).
+
+**Sync position promotion:** `sync_positions` detects Alpaca-filled trades stuck at `status='pending'` and promotes them to `'open'` with correct fill price. Also recalculates stop if above fill.
 
 **Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
 If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal

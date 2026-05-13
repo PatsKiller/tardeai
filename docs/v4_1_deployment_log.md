@@ -1001,3 +1001,35 @@ Full flow verified end-to-end:
 Write-back gaps fixed by operator:
 - `broker_status`, `broker_order_id`, `submitted_at`, `filled_at` populated
 - Lifecycle events and curation hooks verified
+
+## Fix: Stop Recalculation on Fill + Pending→Open Promotion — 2026-05-13 15:30 ET
+
+### Problem: GCTS position running with no stop loss
+GCTS proposal had `proposed_entry=$1.60, proposed_stop=$1.52`. Market order filled at
+$1.49 (7% below proposed entry). Stop of $1.52 was carried unchanged, meaning stop >
+entry. Alpaca correctly rejected: "stop price must be less than current price ($1.48)".
+**GCTS ran unprotected until manually caught in audit.**
+
+### Immediate fix
+Stop manually placed at $1.42 (5% below $1.49 fill) on Alpaca + DB updated.
+
+### Code fixes in `alpaca_paper_adapter.py`
+
+**1. Stop recalculation on fill** (`submit_entry`):
+When market order fills below proposed_entry and stop > fill price, recalculates
+`effective_stop = fill_price * 0.95`. Applied to both Alpaca stop order placement
+and paper_trades DB insert.
+
+**2. Pending→open promotion** (`sync_positions`):
+Detects Alpaca-filled trades stuck at `status='pending'` (adapter created row but
+didn't update status on fill). Promotes to `open` with correct fill price. Also
+recalculates stop if above fill.
+
+**3. DB insert uses effective_stop**:
+INSERT now writes recalculated `effective_stop` instead of original `stop_price`,
+and computes `dollar_risk` from actual fill-to-stop distance.
+
+### Safety chain update
+Paper trading safety chain now: RSI gate → risk gate → approval revalidation →
+market hours → **fill verification + stop recalculation** → atomic stop → R-multiple
+trailing → phantom detection → critical news auto-close → reconciliation
