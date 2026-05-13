@@ -789,3 +789,36 @@ Calibration layer grading gemma3 overnight predictions against actual outcomes.
 ### Problem solved
 Before: 10 of 19 strategies had zero proposals (income, defense, bond, recovery, etc.)
 After: all strategies have source universe, strategy-appropriate screening, overnight LLM analysis
+
+## Fix: paper_trades lifecycle_state Never Transitioning to 'closed' — 2026-05-13 11:00 ET
+
+### Root cause
+5 of 6 paper trade close paths set `status='closed'` but missed
+`lifecycle_state='closed'`. Only `open_trade_monitor.py` (stop/target hit auto-close)
+set it correctly. The Automated Trade Journal page showed 0 closed trades and 0% win
+rate because it filtered on `status IN ('open','closed')` — which found the rows,
+but the lifecycle_state inconsistency caused downstream issues.
+
+### Close paths fixed (added `lifecycle_state='closed'`)
+| Script | Close Path |
+|--------|-----------|
+| `paper_trade_monitor.py:188` | Target hit fallback |
+| `open_trade_monitor.py:406` | Critical news auto-close |
+| `paper_trade_closer.py:232` | Manual/scheduled close |
+| `paper_trade_logger.py:376` | Telegram-triggered close |
+| `alpaca_paper_adapter.py:135` | Alpaca sync position-gone |
+
+`open_trade_monitor.py:183` (stop/target auto-close) already correct — no change needed.
+
+### Migration
+- 5 rows fixed: `status='closed'` → `lifecycle_state='closed'`, outcome_verdict from pnl
+- 12 rows fixed: `status='cancelled'` → `lifecycle_state='cancelled'`
+- INFU remains correctly `lifecycle_state='open'` (live position)
+
+### XMTR clarification
+The expected +$134 XMTR win is in the `trade_closed` table (historical Schwab IRA),
+not `paper_trades` (Alpaca paper). The XMTR paper trade was a phantom that never
+filled — correctly cleaned up as BREAKEVEN.
+
+### After fix
+Automated Journal: 1 open, 5 closed, 2 losses, $-30.19 PnL (was 0/0/0 before)
