@@ -44,6 +44,7 @@
 | `docs/RESTORE_GUIDE.md` | Disaster recovery procedures |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50 GPU setup for Ollama |
 | `docs/COST_MODEL.md` | Cloud operating cost model |
+| `docs/LLM_DATA_DICTIONARY.md` | **LLM data dictionary** — how data flows to every model call, 6 context types with source tables, anti-hallucination spec |
 
 ### Improvement Plans & Assessments
 | Document | Purpose |
@@ -82,6 +83,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | SESSION 31 END (55 commits): Strategy intelligence API, performance feedback in agent prompts, YAML audit exported. LLM context engine, data dictionary, broker source of truth, time stop, proposal card rebuild, RSI gate, 27 screeners. 4 trades closed, +$28.26. |
 | 2026-05-13 | llm_context_engine.py: 6 context types (strategy/trade/risk/recovery/CC/proposal). All overnight prompts enriched. 129 jobs requeued. Time stop intraday fix. max_per_symbol=1. Duplicate symbol guard. Site audit fixes. |
 | 2026-05-13 | paper-journal endpoint win rate fixed (14%→33%), empty positions API guard prevents phantom closes, GCTS phantom-close root cause fixed. Full audit: Alpaca=DB=API verified. |
 | 2026-05-13 | Win rate fix: excludes phantom $0 breakevens (17%→33.3%). Reconciler reads actual exit price from broker order history. real_trade_count in API. |

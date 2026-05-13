@@ -1212,3 +1212,37 @@ after entry. Correct behavior for intraday — but wrong strategy was on the tra
 - Cron health: shows "scheduled" with expected times (was all "unknown")
 - Phantom trades hidden from closed list (XMTR, EVC, FLYW breakevens)
 - GCTS phantom-close root cause: empty positions API guard in adapter
+
+## Strategy Intelligence API + Agent Performance Feedback — 2026-05-13 20:30 ET
+
+### GET /api/v2/strategy-intelligence
+Health dashboard for all 20 strategies: governance state, trade count, win rate,
+profit factor, YAML quality flags (entry_criteria, auto_disqualifiers, vix_rules),
+active proposals, trades to validation, performance verdict.
+
+### Agent prompt performance injection
+Every watchlist agent call now receives strategy performance data after the
+playbook block: governance state, win rate, profit factor, avg R, confidence
+adjustment guidance (PERFORMING: +0.05-0.10, UNDERPERFORMING: -0.10-0.15).
+
+### YAML audit exported
+63 issues across 20 strategies. All missing vix_rules and technical_indicators_required.
+earnings_catalyst and gap_and_go have 0 entry_criteria. Full audit at
+~/strategy_yaml_audit.md (2,359 lines). Enhancement deferred to dedicated session.
+
+---
+
+## Session 31 Summary — 2026-05-13
+
+**55 commits** across 12+ hours. Major builds: LLM Queue Manager, event-driven
+requeue, strategy diversity (27 screeners), gemma3 calibration loop, proposal
+pipeline overhaul (card rebuild, RSI gate, auto-expiry, operator verdict UX),
+lifecycle_state fix, broker source of truth architecture, time stop, data
+integrity guards, LLM context engine (6 types), strategy intelligence API.
+
+**Trades:** GCTS approved and closed by time_stop (-$9.38). INFU closed
+manually (+$67.83) then re-entered via earnings_catalyst. 4 real closed trades,
+1W 3L, 25% WR, +$28.26 realized. 2 positions open (GCTS + INFU).
+
+**System:** 360+ scripts, 336 tables, 290+ endpoints, 160+ crons, 15 overnight
+job types, 13-step safety chain, broker_confirmed column, LLM context engine.
