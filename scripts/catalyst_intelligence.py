@@ -112,20 +112,10 @@ Output valid JSON only, no other text:
     }).encode()
 
     try:
-        # Use shared serialized lock from scoring.py — one Ollama call at a time
-        try:
-            from scoring import _ollama_serialized
-            text = _ollama_serialized(prompt, num_predict=500, timeout=30, model=OLLAMA_MODEL_FAST)
-            data = {"response": text}
-        except ImportError:
-            # Fallback to direct call if scoring not available
-            req = urllib.request.Request(
-                OLLAMA_URL, data=payload,
-                headers={"Content-Type": "application/json"}, method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT) as resp:
-                data = json.loads(resp.read())
-                text = data.get("message", {}).get("content", "").strip()
+        # Route through local_llm.generate() — provides serialization + fallback + audit
+        from local_llm import generate
+        text = generate(prompt, timeout=30,
+                        caller="catalyst_intelligence", process_type="STANDARD") or ""
         if True:
             # Strip thinking tags from qwen3 responses
             import re as _re

@@ -16,27 +16,10 @@ import threading
 _ollama_lock = threading.Lock()
 
 def _ollama_serialized(prompt: str, num_predict: int = 500, timeout: int = 90, model: str = None) -> str:
-    """Serialized Ollama call — acquires lock, runs, releases. No pile-up."""
-    import urllib.request
-    import json as _json
-    if model is None:
-        from local_llm_config import get_local_llm_model
-        model = get_local_llm_model()
-    payload = _json.dumps({
-        "model": model, "stream": False,
-        "messages": [{"role": "user", "content": prompt}],
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": num_predict}
-    }).encode()
-    from local_llm_config import get_local_llm_base_url
-    _base = get_local_llm_base_url().rstrip("/")
-    req = urllib.request.Request(
-        f"{_base}/api/chat",
-        data=payload, headers={"Content-Type": "application/json"}, method="POST"
-    )
-    with _ollama_lock:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return _json.loads(resp.read()).get("message", {}).get("content", "").strip()
+    """Serialized LLM call via local_llm.generate() — toll gate provides serialization."""
+    from local_llm import generate
+    return generate(prompt, timeout=timeout,
+                    caller="scoring", process_type="STANDARD") or ""
 import yaml
 
 # ── Load weights ──────────────────────────────────────────────────────────────

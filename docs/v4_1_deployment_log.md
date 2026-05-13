@@ -608,3 +608,35 @@ operator-tuned 70 default / 75 hard max based on 4-hour window throughput analys
 - No routing changes
 - No broker, holdings, execution, or trading behavior changes
 - Existing job type handlers unchanged
+
+## Phase 0 Migration — LLM Hardcoding Audit — 2026-05-13
+
+### Discovery results
+- 25+ hardcoded model references across scripts (excluding config hub, tests, validators)
+- 18 direct Ollama callers bypassing local_llm.py
+- 15+ direct Anthropic callers (most are CRITICAL_CLOUD — correct, not migrated)
+
+### Scripts migrated to local_llm.generate() with process_type routing
+
+| Script | Process Type | Previous Pattern | Notes |
+|--------|-------------|-----------------|-------|
+| `morning_digest.py` | STANDARD | Direct urllib /api/chat | 2 narrative calls |
+| `portfolio_news.py` | STANDARD | Direct requests.post /api/chat | ~31 scoring calls/run |
+| `scalp_critic_agent.py` | STANDARD | Direct urllib /api/chat | ~10-50 critique calls |
+| `stop_decision_brief.py` | STANDARD | Direct requests.post /api/chat | 1 call per stop alert |
+| `post_trade_thesis_reviewer.py` | STANDARD | Direct urllib /api/generate (old) | 1 call per closed trade |
+| `catalyst_intelligence.py` | STANDARD | scoring._ollama_serialized fallback | ~50 scoring calls |
+| `scoring.py` | STANDARD | Threading lock + direct urllib | ~50-80 calls, was serialization hub |
+
+### What changed
+- All 7 scripts now call `local_llm.generate(prompt, caller=X, process_type="STANDARD")`
+- All calls now go through the toll gate (fcntl flock), audit logging, and cloud fallback chain
+- No model names hardcoded in any migrated script
+- `scoring._ollama_serialized()` preserved as function signature but now delegates to local_llm
+
+### What was NOT changed
+- No .env changes, no model routing changes (still qwen3:14b for STANDARD)
+- `aegis_synthesis.py`, `process_watchlist_agent_jobs.py`, `multi_strategy_classifier.py` — NOT migrated (complex, pilot separately)
+- `multi_tier_trade_reviewer.py`, `portfolio_orchestrator.py` — NOT migrated (complex dispatch)
+- Direct Anthropic callers (CRITICAL_CLOUD scripts) — correct, not migrated
+- No broker, holdings, execution, or trading behavior changes

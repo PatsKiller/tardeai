@@ -115,29 +115,13 @@ def _send_telegram(message: str, project_root: Path) -> bool:
 
 
 def _ollama_narrative(prompt: str, timeout: int = 90) -> str:
-    """Generate narrative via Ollama."""
+    """Generate narrative via local LLM (routed through local_llm.generate)."""
     try:
-        from local_llm_config import get_local_llm_model, get_local_llm_base_url
-        _model = get_local_llm_model()
-        _base = get_local_llm_base_url().rstrip("/")
-        payload = json.dumps({
-            "model": _model,
-            "stream": False,
-            "messages": [{"role": "user", "content": prompt}],
-            "think": False,
-            "options": {"temperature": 0.3}
-        }).encode()
-        req = urllib.request.Request(
-            f"{_base}/api/chat",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
-            return data.get("message", {}).get("content", "").strip()
+        from local_llm import generate
+        return generate(prompt, timeout=timeout,
+                        caller="morning_digest", process_type="STANDARD")
     except Exception as e:
-        print(f"  [digest] Ollama error: {e}")
+        print(f"  [digest] LLM error: {e}")
         return ""
 
 
