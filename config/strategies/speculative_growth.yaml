@@ -102,3 +102,58 @@ screen_filters:
   max_float_m: 200
   min_score: 35
   high_risk: true
+vix_rules:
+  max_vix_for_entry: 25
+  elevated_vix_band:
+    - 22
+    - 30
+  elevated_vix_changes:
+    position_size_multiplier: 0.5
+    require_aplus_grade: true
+    require_revenue_growth_30pct: true
+  extreme_vix_threshold: 30
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix: 35
+  notes: Speculative names are first to break in volatility — exit existing at VIX 35.
+technical_indicators_required:
+  gates:
+    - id: RS_RANK_TOP_20PCT
+      condition: RS rank percentile >= 80
+      metric: rs_rank_percentile
+      operator: gte
+      value: 80
+    - id: BREAKOUT_CONFIRMED
+      condition: price breaking above consolidation
+      metric: breakout_confirmed
+      operator: eq
+      value: true
+    - id: EMA_50_RISING
+      condition: EMA(50) slope > 0
+      metric: ema_50_slope_5d
+      operator: gt
+      value: 0
+  preferred:
+    - atr_14_pct
+    - volume_trend
+    - fib_618_distance
+  irrelevant:
+    - vwap
+    - opening_range
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.

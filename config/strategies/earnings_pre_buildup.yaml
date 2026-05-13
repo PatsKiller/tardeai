@@ -1,0 +1,211 @@
+strategy_id: earnings_pre_buildup
+display_name: Earnings Pre-Buildup
+version: "1.0.0"
+status: UNVALIDATED
+purpose: "Enter 3-5 days before earnings on institutional positioning signals (options flow, analyst revisions, volume trend). Exit before announcement. Never hold through earnings in taxable accounts."
+
+eligible_accounts: [taxable, rollover_ira, roth_ira]
+forbidden_accounts: []
+timeframe: swing_3_to_5d
+timeframe_class: SHORT_SWING
+
+universe:
+  price:
+    min: 5.00
+    max: 500.00
+  float_m:
+    max: 500
+  rvol:
+    min: 1.2
+
+primary_data_sources:
+  - finviz_screener
+  - news_articles
+  - sec_edgar
+  - earnings_calendar
+  - options_flow
+
+entry_criteria:
+  - id: EARNINGS_PROXIMITY
+    description: "Earnings announcement 3-5 trading days out"
+    metric: days_to_earnings
+    operator: between
+    value: [3, 5]
+  - id: OPTIONS_ACTIVITY_SURGE
+    description: "Call/put ratio rising and options volume > 2x 20-day average"
+    metric: options_activity_score
+    operator: gte
+    value: 1.5
+  - id: ANALYST_REVISIONS_UP
+    description: "Analyst EPS estimates revised up over last 30 days"
+    metric: analyst_revision_30d
+    operator: eq
+    value: positive
+  - id: TECHNICAL_STRENGTH
+    description: "Price above 21-day EMA with rising slope"
+    metric: price_vs_ema_21
+    operator: gt
+    value: 0
+
+auto_disqualifiers:
+  - id: NO_EARNINGS_DATE
+    description: "Earnings date not confirmed in calendar"
+  - id: HOLD_THROUGH_EARNINGS_TAXABLE
+    description: "Cannot hold through earnings in taxable account — exit required before announcement"
+  - id: EARNINGS_WITHIN_2D
+    description: "Less than 2 trading days until earnings — entry window closed"
+  - id: NEGATIVE_PRE_ANNOUNCEMENT
+    description: "Company issued negative pre-announcement or guidance cut"
+  - id: HEAVY_INSIDER_SELLING
+    description: "Insider selling >5% of holdings in last 30 days"
+
+exit_rules:
+  stop_method: time_based_or_atr
+  stop_max_pct: 0.05
+  target_method: time_based
+  exit_before_earnings: true
+  exit_window_hours_before_close: 2
+  no_hold_through_earnings_in_taxable: true
+
+risk:
+  risk_per_trade_pct: 0.003
+  max_position_size: 5000
+  max_daily_trades: 2
+  target_rr: 2.0
+
+scoring:
+  min_score_go: 40
+  min_score_wait: 28
+
+scoring_weights:
+  options_activity: 25
+  analyst_revisions: 20
+  technical_setup: 20
+  catalyst_quality: 15
+  earnings_history: 10
+  sector_alignment: 10
+
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+
+lifecycle:
+  proposal_expiry_hours: 72
+  overnight_allowed: true
+  max_hold_days: 5
+
+execution:
+  paper_allowed: true
+  live_allowed: false
+
+agent_responsibilities:
+  maria: "Verify the catalyst is real (options surge backed by analyst upgrades, not just retail-driven). Check guidance history and prior earnings surprise direction."
+  risk: "Validate exit-before-earnings discipline. Confirm stop placement and position size. Flag any taxable-account hold-through attempts."
+  steph: "Confirm account placement — taxable forces exit, IRA allows hold-through if validated."
+  tax: "Verify wash-sale window if recently sold same name."
+
+co_enables:
+  promotes_to: [earnings_post_momentum]
+  strengthens: [swing_breakout]
+  notes: "Pre-earnings positions that beat well roll into post-earnings momentum trades."
+
+vix_rules:
+  max_vix_for_entry: 28
+  elevated_vix_band: [22, 35]
+  elevated_vix_changes:
+    position_size_multiplier: 0.5
+    require_aplus_grade: true
+  extreme_vix_threshold: 35
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix: null
+  notes: "Pre-earnings positioning is most VIX-sensitive — IV crush risk amplifies."
+
+technical_indicators_required:
+  gates:
+    - id: PRICE_ABOVE_EMA_21
+      condition: "price > EMA(21)"
+      metric: price_vs_ema_21
+      operator: gt
+      value: 0
+    - id: VOLUME_TREND_RISING
+      condition: "5-day avg volume > 20-day avg"
+      metric: volume_5d_vs_20d
+      operator: gt
+      value: 1.0
+    - id: IV_RANK_ELEVATED
+      condition: "IV rank > 40 (signals expected move)"
+      metric: iv_rank
+      operator: gte
+      value: 40
+  preferred:
+    - options_call_put_ratio
+    - analyst_revision_30d
+    - ema_50
+    - earnings_surprise_history
+  irrelevant:
+    - vwap
+    - opening_range
+    - fib_618_distance
+
+minimum_evidence:
+  required:
+    - earnings_date
+    - price_data
+    - options_data
+    - analyst_estimates
+    - trade_plan
+  preferred:
+    - options_volume_history
+    - revenue_data
+    - guidance_history
+
+performance_context:
+  last_updated: null
+  closed_paper_trades: 0
+  win_rate: null
+  avg_r_realized: null
+  profit_factor: null
+  max_drawdown_pct: null
+  expectancy_per_trade: null
+  best_trade_r: null
+  worst_trade_r: null
+  current_streak: null
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.50
+  notes: "Populated nightly by scripts/paper_performance_governance.py."
+
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+
+prompt_context:
+  summary: "Pre-earnings buildup. Enter 3-5 days before announcement on institutional positioning signals. Exit before earnings. Taxable accounts must exit; IRA accounts may hold through if validated."
+  key_questions:
+    - "Is the options activity backed by analyst upgrades or just speculation?"
+    - "What is the company's earnings surprise history?"
+    - "Will the exit-before-earnings discipline be enforced?"
+
+screen_filters:
+  min_price: 5.00
+  max_price: 300.00
+  min_rvol: 1.2
+  earnings_within_days: 5
+  earnings_min_days_out: 3
+  min_score: 30
+
+outcome_learning_fields:
+  - days_to_earnings_at_entry
+  - options_activity_score
+  - analyst_revision_count
+  - exit_timing_vs_earnings
+  - earnings_outcome_post_exit
+  - r_realized

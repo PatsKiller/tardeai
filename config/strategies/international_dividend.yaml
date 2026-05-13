@@ -11,11 +11,11 @@ timeframe_class: POSITION
 universe:
   price:
     min: 5.00
-    max: null
+    max:
   float_m:
-    max: null
+    max:
   rvol:
-    min: null
+    min:
 
 entry_criteria:
   - id: INTERNATIONAL_EXPOSURE
@@ -56,7 +56,7 @@ exit_rules:
 risk:
   risk_per_trade_pct: 0.003
   max_position_size: 10000
-  max_daily_trades: null
+  max_daily_trades:
   target_rr: 2.0
 
 scoring:
@@ -66,7 +66,7 @@ scoring:
 lifecycle:
   proposal_expiry_hours: 720
   overnight_allowed: true
-  max_hold_days: null
+  max_hold_days:
 
 execution:
   paper_allowed: true
@@ -102,3 +102,42 @@ screen_filters:
   max_div_yield_pct: 10.0
   country_filter: [non_us, international, adr]
   min_score: 0
+vix_rules:
+  max_vix_for_entry: 40
+  elevated_vix_band:
+    - 30
+    - 40
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+  extreme_vix_threshold: 40
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: Currency volatility compounds equity volatility in international names.
+technical_indicators_required:
+  gates: []
+  preferred:
+    - ema_200_support
+    - currency_trend
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_5
+  note: Fundamental and currency-driven entry.
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.

@@ -11,11 +11,11 @@ timeframe_class: SHORT_SWING
 universe:
   price:
     min: 1.00
-    max: null
+    max:
   float_m:
-    max: null
+    max:
   rvol:
-    min: null
+    min:
 
 entry_criteria:
   - id: UNREALIZED_LOSS
@@ -56,7 +56,7 @@ exit_rules:
 risk:
   risk_per_trade_pct: 0.005
   max_position_size: 10000
-  max_daily_trades: null
+  max_daily_trades:
   target_rr: 1.0
 
 scoring:
@@ -104,3 +104,44 @@ screen_filters:
   account_types: [taxable]
   min_holding_days: 31
   min_score: 0
+vix_rules:
+  max_vix_for_entry:
+  elevated_vix_band:
+    - 25
+    - 50
+  elevated_vix_changes:
+    accelerate_screening: true
+  extreme_vix_threshold:
+  extreme_vix_action: accelerate_new_entries
+  exit_holdings_at_vix:
+  notes: VIX spikes create harvestable losses — accelerate.
+technical_indicators_required:
+  gates: []
+  preferred: []
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi
+    - ema
+    - fib
+    - bollinger
+    - macd
+  note: Technicals are entirely irrelevant — this is a tax-driven strategy.
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.

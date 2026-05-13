@@ -13,7 +13,7 @@ universe:
     min: 5.00
     max: 500.00
   float_m:
-    max: null
+    max:
   rvol:
     min: 1.2
 
@@ -101,3 +101,65 @@ screen_filters:
   min_rvol: 1.5
   max_float_m: 500
   min_score: 35
+vix_rules:
+  max_vix_for_entry: 32
+  elevated_vix_band:
+    - 25
+    - 35
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+    require_aplus_grade: true
+  extreme_vix_threshold: 35
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: Trend-following degrades in regime shifts — tighten quality bar.
+technical_indicators_required:
+  gates:
+    - id: PRICE_ABOVE_EMA_50
+      condition: price > EMA(50)
+      metric: price_vs_ema_50
+      operator: gt
+      value: 0
+    - id: EMA_50_ABOVE_EMA_200
+      condition: EMA(50) > EMA(200)
+      metric: ema_50_vs_ema_200
+      operator: gt
+      value: 0
+    - id: RSI_BAND
+      condition: RSI(14) between 50 and 72
+      metric: rsi_14
+      operator: between
+      value:
+        - 50
+        - 72
+    - id: ATR_STOP_REASONABLE
+      condition: ATR(14)-based stop <= 2x ATR
+      metric: stop_vs_atr_multiplier
+      operator: lte
+      value: 2.0
+  preferred:
+    - fib_618_distance
+    - volume_trend
+    - sector_rs
+  irrelevant:
+    - vwap
+    - opening_range
+    - bollinger_squeeze
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.

@@ -11,11 +11,11 @@ timeframe_class: POSITION
 universe:
   price:
     min: 10.00
-    max: null
+    max:
   float_m:
-    max: null
+    max:
   rvol:
-    min: null
+    min:
 
 entry_criteria:
   - id: SHARES_OWNED
@@ -56,7 +56,7 @@ exit_rules:
 risk:
   risk_per_trade_pct: 0.005
   max_position_size: 10000
-  max_daily_trades: null
+  max_daily_trades:
   target_rr: 1.5
 
 scoring:
@@ -104,3 +104,55 @@ screen_filters:
   requires_shares_owned: true
   min_shares_owned: 100
   min_score: 0
+vix_rules:
+  max_vix_for_entry: 30
+  elevated_vix_band:
+    - 22
+    - 30
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+    shorter_dte_30_max: true
+    lower_delta_target_0_15: true
+  extreme_vix_threshold: 30
+  extreme_vix_action: pause_new_writes
+  exit_holdings_at_vix:
+  notes: IV is rich in high VIX but assignment risk also rises — shorter DTE, lower delta.
+technical_indicators_required:
+  gates:
+    - id: IV_RANK_ELEVATED
+      condition: IV rank >= 50 (rich premium)
+      metric: iv_rank
+      operator: gte
+      value: 50
+    - id: EXISTING_POSITION_100_SHARES
+      condition: existing long stock position >= 100 shares per contract
+      metric: shares_held
+      operator: gte
+      value: 100
+  preferred:
+    - delta_target_0_20_to_0_30
+    - dte_30_to_45
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_14
+    - ema_9
+  note: Technicals largely irrelevant for entry — premium and assignment math drive decision.
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.

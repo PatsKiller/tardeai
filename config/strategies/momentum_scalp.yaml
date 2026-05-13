@@ -1,6 +1,6 @@
 strategy_id: momentum_scalp
 display_name: Momentum Scalp
-version: "1.0"
+version: "1.0.0"
 status: TESTING
 purpose: "Micro-cap momentum — RVOL surge + verified catalyst. Intraday hold, exit same day."
 
@@ -146,3 +146,121 @@ sub_strategies:
     expected_win_rate: 0.50
     filters:
       source: social_confirmed
+entry_criteria:
+  - id: CATALYST_VERIFIED
+    description: Verified catalyst (news, SEC filing, or institutional event) — not social-only
+    metric: catalyst_verified
+    operator: eq
+    value: true
+  - id: RVOL_SURGE
+    description: Relative volume at least 5x 20-day average
+    metric: rvol
+    operator: gte
+    value: 5.0
+  - id: PRICE_RANGE
+    description: Price between $1 and $25 (preferred under $10)
+    metric: price
+    operator: between
+    value:
+      - 1.0
+      - 25.0
+  - id: FLOAT_LOW
+    description: Float under 100M shares (preferred under 20M)
+    metric: float_m
+    operator: lte
+    value: 100
+  - id: ENTRY_WINDOW
+    description: Current time before 13:30 ET
+    metric: current_time_et
+    operator: lte
+    value: 13:30
+exit_rules:
+  stop_method: fixed_pct
+  stop_max_pct: 0.15
+  target_method: trailing
+  intraday_exit_required: true
+  no_overnight_hold: true
+lifecycle:
+  proposal_expiry_hours: 4
+  overnight_allowed: false
+  max_hold_days: 0
+risk:
+  risk_per_trade_pct: 0.002
+  max_position_size: 2000
+  max_daily_trades: 3
+  target_rr: 2.0
+co_enables:
+  promotes_to:
+    - swing_breakout
+  strengthens:
+    - gap_and_go
+  notes: Successful intraday momentum runners can incubate into multi-day swing setups.
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.5
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Intraday momentum scalp on micro-cap names with verified catalyst and RVOL surge. Strict same-day exit, taxable account only.
+  key_questions:
+    - Is the catalyst verified or social-only?
+    - Is RVOL holding above 5x or fading?
+    - Are we within the entry window (before 13:30 ET)?
+vix_rules:
+  max_vix_for_entry: 25
+  elevated_vix_band:
+    - 22
+    - 35
+  elevated_vix_changes:
+    position_size_multiplier: 0.5
+    require_aplus_grade: true
+    require_catalyst_verified: true
+  extreme_vix_threshold: 35
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix: 40
+  notes: Micro-cap momentum is most vulnerable to VIX expansion — pause aggressively.
+technical_indicators_required:
+  gates:
+    - id: VWAP_RECLAIM
+      condition: price > vwap (intraday)
+      metric: price_vs_vwap
+      operator: gt
+      value: 0
+    - id: EMA_9_ABOVE_EMA_21
+      condition: EMA(9) > EMA(21) on 5-min
+      metric: ema_9_minus_ema_21
+      operator: gt
+      value: 0
+    - id: OPENING_RANGE_BREAK
+      condition: price > opening 15-min high
+      metric: price_vs_or_high
+      operator: gt
+      value: 0
+  preferred:
+    - rvol_5min
+    - rsi_5
+    - atr_pct
+    - premarket_high_distance
+  irrelevant:
+    - ema_200
+    - fib_618_distance
+    - bollinger_squeeze
+performance_context:
+  last_updated:
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
