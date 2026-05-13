@@ -97,6 +97,56 @@ def replace_stop(symbol, qty, new_stop, old_order_id=None):
     return None
 
 
+def _fix_integrity_issues(conn, alpaca_symbols):
+    """Fix data integrity issues before processing positions."""
+    cur = conn.cursor()
+    fixed = 0
+
+    # Fix 1: Open trades never filled after 30min → cancel
+    cur.execute("""
+        UPDATE paper_trades
+        SET lifecycle_state = 'cancelled', status = 'cancelled',
+            close_reason = 'auto_fix_never_filled'
+        WHERE lifecycle_state = 'open'
+          AND filled_at IS NULL AND broker_status NOT IN ('filled')
+          AND created_at < NOW() - INTERVAL '30 minutes'
+        RETURNING id, symbol
+    """)
+    for r in cur.fetchall():
+        log.info(f"[integrity] Auto-cancelled never-filled: {r[1]} id={r[0]}")
+        fixed += 1
+
+    # Fix 2: DB says open but Alpaca doesn't have it → close as phantom
+    cur.execute("SELECT id, symbol FROM paper_trades WHERE lifecycle_state='open'")
+    for tid, sym in cur.fetchall():
+        if sym not in alpaca_symbols:
+            cur.execute("""
+                UPDATE paper_trades SET lifecycle_state='closed', status='closed',
+                    close_reason='phantom_no_alpaca_position', closed_at=NOW(),
+                    closed_via='integrity_check',
+                    outcome_verdict = CASE WHEN pnl > 0 THEN 'WIN' WHEN pnl < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
+                WHERE id = %s
+            """, [tid])
+            log.warning(f"[integrity] Closed phantom: {sym} id={tid} — not on Alpaca")
+            fixed += 1
+
+    # Fix 3: closed_at set but lifecycle_state still open
+    cur.execute("""
+        UPDATE paper_trades SET lifecycle_state = 'closed',
+            outcome_verdict = CASE WHEN pnl > 0 THEN 'WIN' WHEN pnl < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
+        WHERE lifecycle_state = 'open' AND closed_at IS NOT NULL
+        RETURNING id, symbol
+    """)
+    for r in cur.fetchall():
+        log.info(f"[integrity] Fixed stuck closed: {r[1]} id={r[0]}")
+        fixed += 1
+
+    if fixed > 0:
+        conn.commit()
+        log.info(f"[integrity] Fixed {fixed} data integrity issues")
+    return fixed
+
+
 def monitor(dry_run=False):
     """Check all positions, adjust stops, take profits."""
     positions = _api_get('/v2/positions')
@@ -105,6 +155,11 @@ def monitor(dry_run=False):
         return []
 
     conn = _get_conn()
+
+    # Run integrity check before processing
+    alpaca_symbols = {p['symbol'] for p in positions}
+    _fix_integrity_issues(conn, alpaca_symbols)
+
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     results = []
