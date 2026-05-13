@@ -25,7 +25,13 @@ def _safe_float(val, default=0.0) -> float:
     if val is None:
         return default
     if isinstance(val, dict):
-        return float(val.get('value', val.get('amount', default)))
+        for key in ('value', 'amount', 'price', 'score'):
+            if key in val:
+                try:
+                    return float(val[key])
+                except (TypeError, ValueError):
+                    pass
+        return default
     try:
         return float(val)
     except (TypeError, ValueError):
