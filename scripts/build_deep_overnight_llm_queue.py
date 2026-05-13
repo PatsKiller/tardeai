@@ -484,7 +484,7 @@ def queue_rag_content_curation(cur, dry_run=False):
         SELECT id, COALESCE(title, channel_name) as title
         FROM youtube_transcripts
         WHERE rag_status IN ('pending', 'low_quality') AND deep_curation_at IS NULL
-        ORDER BY created_at DESC LIMIT 8
+        ORDER BY ingested_at DESC LIMIT 8
     """)
     for tid, title in cur.fetchall():
         ih = f"rag_curation:youtube_transcripts:{tid}"

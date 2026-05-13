@@ -567,7 +567,27 @@ Provide a structured analysis with:
 Be concise and direct."""
 
 
-def call_gemma(prompt, model="gemma3-overnight", timeout=180):
+def _safe_cc_float(val):
+    """Safely convert LLM output to float for numeric DB columns.
+    Handles range strings like '1.5-3.0' by taking the midpoint."""
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip()
+    if '-' in s and not s.startswith('-'):
+        parts = s.split('-')
+        try:
+            return round((float(parts[0]) + float(parts[1])) / 2, 2)
+        except (ValueError, IndexError):
+            return None
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
+def call_gemma(prompt, model="gemma3-overnight", timeout=300):
     """Call gemma3-overnight via Ollama. Returns (text, runtime_sec) or (None, 0)."""
     url = f"{OLLAMA_URL}/api/chat"
     payload = json.dumps({
@@ -844,7 +864,7 @@ def main():
                   parsed.get("verdict") if jtype == "recovery_watch_review" else None,
                   parsed.get("verdict") if jtype == "covered_call_scoring" else None,
                   None,  # cc_strike_target computed below
-                  parsed.get("estimated_monthly_yield_pct") if jtype == "covered_call_scoring" else None,
+                  _safe_cc_float(parsed.get("estimated_monthly_yield_pct")) if jtype == "covered_call_scoring" else None,
                   json.dumps(parsed.get("patterns")) if jtype == "weekly_behavioral_review" and parsed.get("patterns") else None,
                   ))
             result_id = cur.fetchone()[0]
