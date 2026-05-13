@@ -96,6 +96,30 @@ class AlpacaPaperAdapter:
             """, [current, unrealized, symbol, symbol])
 
             if cur.rowcount == 0:
+                # Check for pending trades that Alpaca filled but status wasn't updated
+                cur.execute("""
+                    UPDATE paper_trades
+                    SET status = 'open', broker_status = 'filled',
+                        entry_price = %s, current_price = %s, unrealized_pnl = %s,
+                        filled_at = NOW(), last_synced_at = NOW()
+                    WHERE symbol = %s AND status = 'pending' AND lifecycle_state = 'open'
+                      AND id = (SELECT id FROM paper_trades WHERE symbol = %s AND status = 'pending' ORDER BY created_at DESC LIMIT 1)
+                    RETURNING id, stop_loss
+                """, [avg_entry, current, unrealized, symbol, symbol])
+                fixed_row = cur.fetchone()
+                if fixed_row:
+                    trade_id_fixed, old_stop = fixed_row
+                    log.info(f"[alpaca] {symbol} promoted pending→open (filled at ${avg_entry:.2f})")
+                    # Recalculate stop if it's above fill price (invalid for long)
+                    if old_stop and float(old_stop) > avg_entry:
+                        new_stop = round(avg_entry * 0.95, 2)
+                        cur.execute("UPDATE paper_trades SET stop_loss=%s, stop_loss_price=%s WHERE id=%s",
+                                    [new_stop, new_stop, trade_id_fixed])
+                        log.warning(f"[alpaca] {symbol} stop recalculated: ${old_stop}→${new_stop} (was above fill ${avg_entry})")
+                    synced += 1
+                    continue
+
+            if cur.rowcount == 0:
                 # Position exists in Alpaca but not in paper_trades — create record
                 cur.execute("""
                     INSERT INTO paper_trades (strategy_id, symbol, account, entry_price, entry_time,
@@ -347,16 +371,23 @@ class AlpacaPaperAdapter:
                         return {'status': 'error', 'reason': 'fill_verification_failed'}
 
             # ── Gap 2 fix: Atomic stop for market orders ──
+            # Recalculate stop if fill price differs significantly from proposed entry
+            effective_stop = stop_price
+            if use_market and fill_status == 'filled' and fill_price and stop_price:
+                if fill_price < float(stop_price):
+                    # Stop is above fill — recalculate at 5% below fill
+                    effective_stop = round(fill_price * 0.95, 2)
+                    log.warning(f"[alpaca] {symbol} stop recalculated: ${stop_price}→${effective_stop} (fill ${fill_price:.2f} below original stop)")
             if use_market and fill_status == 'filled':
                 stop_placed = False
                 for _sa in range(3):
                     try:
                         stop_order = {
                             'symbol': symbol, 'qty': str(filled_qty or shares), 'side': 'sell',
-                            'type': 'stop', 'stop_price': str(stop_price), 'time_in_force': 'gtc',
+                            'type': 'stop', 'stop_price': str(effective_stop), 'time_in_force': 'gtc',
                         }
                         self._api_post('/v2/orders', stop_order)
-                        log.info(f"[alpaca] {symbol} STOP set @ ${stop_price}")
+                        log.info(f"[alpaca] {symbol} STOP set @ ${effective_stop}")
                         stop_placed = True
                         break
                     except Exception as _se:
@@ -431,8 +462,8 @@ class AlpacaPaperAdapter:
                     %s, %s,
                     %s)
             """, [strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
-                  stop_price, target_price, entry_price, actual_entry,
-                  round(abs(actual_entry - stop_price) * actual_shares, 2),
+                  effective_stop, target_price, entry_price, actual_entry,
+                  round(abs(actual_entry - effective_stop) * actual_shares, 2),
                   order_id, fill_status,
                   'market' if use_market else 'bracket',
                   _regime, _vix, _db_status,
