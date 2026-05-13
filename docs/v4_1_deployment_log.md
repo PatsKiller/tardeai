@@ -960,3 +960,20 @@ LIFE (RSI 93.89) expired immediately on first run.
 
 ### Frontend
 Row 3 RSI display: red "RSI 94 OVERBOUGHT" badge when >=80, orange "RSI 73 ↑" when >=70.
+
+## Fix: Three Pipeline Bugs Causing RUN_FAILED — 2026-05-13 14:30 ET
+
+### Bug 1: finviz_ingestion — No screener URLs for PM run_labels
+`screeners.yaml` only defined run_windows for 0400/0700/0900/1000. The PM crons
+(1200/1400/1600/1730) passed run_labels that had no entry, causing `pick_active_screeners`
+to return empty → 0 tickers → RUN_FAILED.
+**Fix**: Added 5 PM run_windows (1200/1400/1600/1730/test-fix) mapping to
+prime_setups + watchlist_setups screeners.
+
+### Bug 2: symbol_enrichment — `get_connection` import
+`trade_ai_orchestrator.py:375` imports `from db_adapter import get_connection` but
+`db_adapter.py` only exported `_get_conn`. The import failed on every run.
+**Fix**: Added `get_connection = _get_conn` alias in `db_adapter.py`.
+
+### Bug 3: risk_gate — `conn` not defined (confirmed already fixed)
+Already fixed in commit 74a8652. The 12PM log error was from the pre-fix run.
