@@ -13611,7 +13611,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             """) or []
             # Filter: only show broker-confirmed open trades
             open_t = [t for t in trades if t.get('status') in ('open',) and (t.get('filled_at') or t.get('broker_status') == 'filled')]
-            closed_t = [t for t in trades if t.get('status') == 'closed']
+            closed_t = [t for t in trades if t.get('status') == 'closed'
+                        and not (t.get('close_reason') or '').startswith('phantom')
+                        and not (t.get('close_reason') or '').startswith('Orphan')
+                        and not (t.get('exit_reason') or '').startswith('phantom')
+                        and not (t.get('exit_reason') or '').startswith('order_never_filled')]
             # Win rate: only count real trades (non-zero PnL)
             real_closed = [t for t in closed_t if (t.get('pnl') or 0) != 0]
             wins = sum(1 for t in real_closed if (t.get('pnl') or 0) > 0)
