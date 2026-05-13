@@ -196,13 +196,96 @@ def get_portfolio_context(conn=None):
         return f"  Portfolio error: {e}\n"
 
 
+def get_recovery_context(symbol, conn=None):
+    """Get stopped-out watch data for recovery analysis."""
+    try:
+        from db_adapter import _execute
+        sw = _execute("""
+            SELECT exit_price, stop_price, stopped_out_at, reason, thesis_at_exit,
+                   status, setup_name, realized_pnl
+            FROM stopped_out_watch WHERE symbol=%s AND is_active=true LIMIT 1
+        """, [symbol], fetch="one")
+        if not sw:
+            return f"  No recovery data for {symbol}\n"
+        snap = _execute("SELECT data->>'price' as price, rsi, perf_week_pct FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1", [symbol], fetch="one")
+        exit_p = float(sw.get('exit_price') or 0)
+        cur_p = float((snap or {}).get('price') or 0)
+        recovery_pct = ((cur_p - exit_p) / exit_p * 100) if exit_p > 0 and cur_p > 0 else 0
+        days_out = 0
+        if sw.get('stopped_out_at'):
+            try:
+                days_out = (datetime.now(timezone.utc) - sw['stopped_out_at'].replace(tzinfo=timezone.utc if sw['stopped_out_at'].tzinfo is None else sw['stopped_out_at'].tzinfo)).days
+            except Exception:
+                pass
+        return (
+            f"  Exit: ${exit_p} | Stop: ${sw.get('stop_price')} | Stopped: {sw.get('stopped_out_at')}\n"
+            f"  Days since exit: {days_out} | Status: {sw.get('status')}\n"
+            f"  Reason: {sw.get('reason')} | Setup: {sw.get('setup_name')}\n"
+            f"  Thesis at exit: {(str(sw.get('thesis_at_exit') or ''))[:200]}\n"
+            f"  Realized P&L: ${sw.get('realized_pnl')}\n"
+            f"  Current: ${cur_p} | RSI: {(snap or {}).get('rsi')} | Week: {(snap or {}).get('perf_week_pct')}%\n"
+            f"  Recovery from exit: {recovery_pct:+.1f}%\n"
+        )
+    except Exception as e:
+        return f"  Recovery error: {e}\n"
+
+
+def get_proposal_context(proposal_id, conn=None):
+    """Get full proposal data for review."""
+    try:
+        from db_adapter import _execute
+        p = _execute("""
+            SELECT proposed_entry, proposed_stop, proposed_target1, proposed_shares,
+                   strategy_id, signal_score, signal_grade, catalyst, catalyst_verified,
+                   screener_name, created_at
+            FROM paper_trade_proposals WHERE id = %s
+        """, [proposal_id], fetch="one")
+        if not p:
+            return f"  Proposal #{proposal_id} not found\n"
+        pe = float(p.get('proposed_entry') or 0)
+        ps = float(p.get('proposed_stop') or 0)
+        pt = float(p.get('proposed_target1') or 0)
+        sh = int(p.get('proposed_shares') or 0)
+        rr = round((pt - pe) / (pe - ps), 1) if pe > ps and pt > pe else 0
+        risk = round(abs(pe - ps) * sh, 2) if pe and ps else 0
+        return (
+            f"  Strategy: {p.get('strategy_id')} | Grade: {p.get('signal_grade')} | Score: {p.get('signal_score')}\n"
+            f"  Entry: ${pe} | Stop: ${ps} | Target: ${pt}\n"
+            f"  Shares: {sh} | Risk: ${risk} | R:R: {rr}:1\n"
+            f"  Catalyst: {(str(p.get('catalyst') or ''))[:80]} {'(verified)' if p.get('catalyst_verified') else '(unverified)'}\n"
+            f"  Source: {p.get('screener_name')} | Created: {p.get('created_at')}\n"
+        )
+    except Exception as e:
+        return f"  Proposal error: {e}\n"
+
+
+def get_covered_call_context(symbol, conn=None):
+    """Get data for covered call scoring."""
+    try:
+        from db_adapter import _execute
+        snap = _execute("""SELECT data->>'price' as price, rsi, data->>'beta' as beta,
+                                  data->>'div_yield' as div_yield, data->>'rvol' as rvol,
+                                  perf_week_pct, data->>'sma50_pct' as sma50
+                           FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1""", [symbol], fetch="one")
+        cc = _execute("SELECT verdict, reasoning FROM aegis_covered_call_candidates WHERE symbol=%s ORDER BY observed_at DESC LIMIT 1", [symbol], fetch="one")
+        lines = []
+        if snap:
+            lines.append(f"  Price: ${snap.get('price')} | RSI: {snap.get('rsi')} | Beta: {snap.get('beta')}")
+            lines.append(f"  Div: {snap.get('div_yield')}% | RVOL: {snap.get('rvol')}x | Week: {snap.get('perf_week_pct')}%")
+        if cc:
+            lines.append(f"  Aegis verdict: {cc.get('verdict')} — {(str(cc.get('reasoning') or ''))[:80]}")
+        return "\n".join(lines) + "\n" if lines else f"  No CC data for {symbol}\n"
+    except Exception as e:
+        return f"  CC error: {e}\n"
+
+
 def build_context(symbol=None, context_type='general', trade_id=None,
                   proposal_id=None, conn=None, include_news=True,
                   include_history=True):
     """Build complete data context for any LLM prompt.
 
-    context_type: 'trade_review', 'strategy', 'recovery', 'proposal',
-                  'risk_synthesis', 'general'
+    context_type: 'trade_review', 'strategy_classification', 'recovery_watch',
+                  'risk_synthesis', 'proposal', 'covered_call', 'general'
     """
     sections = []
 
@@ -226,6 +309,18 @@ def build_context(symbol=None, context_type='general', trade_id=None,
     if context_type == 'risk_synthesis':
         sections.append("PORTFOLIO:")
         sections.append(get_portfolio_context(conn))
+
+    if context_type == 'recovery_watch' and symbol:
+        sections.append("RECOVERY DATA:")
+        sections.append(get_recovery_context(symbol, conn))
+
+    if context_type == 'proposal' and proposal_id:
+        sections.append("PROPOSAL DATA:")
+        sections.append(get_proposal_context(proposal_id, conn))
+
+    if context_type == 'covered_call' and symbol:
+        sections.append("COVERED CALL DATA:")
+        sections.append(get_covered_call_context(symbol, conn))
 
     sections.append(ANTI_HALLUCINATION)
 
