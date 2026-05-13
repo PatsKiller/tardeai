@@ -594,6 +594,34 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
             except Exception:
                 pass
             strategy_playbook_block = f"\n{ctx}\n"
+
+            # Inject strategy performance data so agents adjust confidence
+            try:
+                _pconn = _get_conn()
+                _pcur = _pconn.cursor()
+                _pcur.execute("""SELECT governance_state, paper_trades, closed_trades,
+                                       win_rate, avg_r, profit_factor, expectancy_r
+                                FROM paper_performance_governance
+                                WHERE strategy_id=%s ORDER BY created_at DESC LIMIT 1""", [_strat_id])
+                _prow = _pcur.fetchone()
+                _pconn.close()
+                if _prow and _prow[2]:
+                    _wr = float(_prow[3] or 0) * 100
+                    _pf = float(_prow[5] or 0)
+                    _verdict = 'PERFORMING' if _pf >= 1.3 and _wr >= 55 else 'UNDERPERFORMING' if _pf < 0.8 else 'ACCUMULATING'
+                    _conf_adj = 'Raise confidence +0.05-0.10' if _verdict == 'PERFORMING' else 'Lower confidence -0.10-0.15' if _verdict == 'UNDERPERFORMING' else 'Use 50% baseline'
+                    strategy_playbook_block += (
+                        f"\nSTRATEGY PERFORMANCE — {_strat_id}:\n"
+                        f"  State: {_prow[0]} | Trades: {_prow[2]} | WR: {_wr:.0f}% | PF: {_pf:.2f} | Avg R: {float(_prow[4] or 0):.2f}\n"
+                        f"  Verdict: {_verdict} — {_conf_adj}\n"
+                    )
+                elif _strat_id:
+                    strategy_playbook_block += (
+                        f"\nSTRATEGY PERFORMANCE — {_strat_id}:\n"
+                        f"  UNVALIDATED — no closed paper trades yet. Use 50% confidence baseline.\n"
+                    )
+            except Exception:
+                pass
     except Exception:
         pass
 

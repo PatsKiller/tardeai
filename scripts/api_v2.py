@@ -10914,6 +10914,62 @@ def _journal_integrity_warnings():
     return warnings
 
 
+def _strategy_intelligence():
+    """GET /api/v2/strategy-intelligence — health dashboard for all 20 strategies."""
+    import yaml, glob
+    strategies = []
+    yaml_dir = PROJECT_ROOT / "config" / "strategies"
+    for f in sorted(glob.glob(str(yaml_dir / "*.yaml"))):
+        if 'schema' in f or 'shared' in f or 'recommendation' in f:
+            continue
+        try:
+            with open(f) as fh:
+                y = yaml.safe_load(fh) or {}
+            sid = y.get('strategy_id', '')
+            if not sid:
+                continue
+            # Get governance data
+            gov = _db_query("SELECT governance_state, paper_trades, closed_trades, win_rate, profit_factor, expectancy_r, avg_r FROM paper_performance_governance WHERE strategy_id=%s ORDER BY created_at DESC LIMIT 1", [sid], fetch="one") or {}
+            # Get proposal/trade counts
+            prop_count = (_db_query("SELECT count(*) as n FROM paper_trade_proposals WHERE strategy_id=%s AND status='PENDING'", [sid], fetch="one") or {}).get('n', 0)
+            trade_count = gov.get('closed_trades') or 0
+            strategies.append({
+                'strategy_id': sid,
+                'display_name': y.get('display_name', sid.replace('_', ' ').title()),
+                'governance_state': gov.get('governance_state', 'UNVALIDATED'),
+                'trade_count': trade_count,
+                'win_rate': float(gov['win_rate']) if gov.get('win_rate') else None,
+                'profit_factor': float(gov['profit_factor']) if gov.get('profit_factor') else None,
+                'avg_r': float(gov['avg_r']) if gov.get('avg_r') else None,
+                'expectancy': float(gov['expectancy_r']) if gov.get('expectancy_r') else None,
+                'trades_to_validation': max(0, 30 - (trade_count or 0)),
+                'active_proposals': prop_count,
+                'yaml_version': y.get('version', '?'),
+                'has_entry_criteria': len(y.get('entry_criteria', [])) >= 4,
+                'has_auto_disqualifiers': len(y.get('auto_disqualifiers', [])) >= 3,
+                'has_agent_responsibilities': bool(y.get('agent_responsibilities')),
+                'has_vix_rules': bool(y.get('vix_rules')),
+                'has_technical_indicators': bool(y.get('technical_indicators_required')),
+                'co_enables': y.get('co_enables', []),
+                'performance_verdict': 'PERFORMING' if gov.get('profit_factor') and float(gov['profit_factor']) >= 1.3 else 'UNDERPERFORMING' if gov.get('profit_factor') and float(gov['profit_factor']) < 0.8 else 'ACCUMULATING' if trade_count else 'NO_DATA',
+            })
+        except Exception:
+            continue
+
+    unvalidated = sum(1 for s in strategies if s['governance_state'] == 'UNVALIDATED')
+    with_proposals = sum(1 for s in strategies if s['active_proposals'] > 0)
+    return {
+        'strategies': strategies,
+        'summary': {
+            'total_strategies': len(strategies),
+            'unvalidated': unvalidated,
+            'with_proposals': with_proposals,
+            'without_proposals': len(strategies) - with_proposals,
+            'total_closed_trades': sum(s['trade_count'] or 0 for s in strategies),
+        },
+    }
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -11076,6 +11132,7 @@ ROUTES = {
     "/api/v2/ops/cron-health": lambda: _ops_cron_health(),
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
     "/api/v2/queue/calibration": lambda: _queue_calibration(),
+    "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
 }
 
 
