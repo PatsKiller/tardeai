@@ -873,3 +873,16 @@ Added `_verify_live_strategy_conditions()` to `approval_revalidator.py`:
 | Negative news | >2 articles since creation | Warning |
 
 `condition_snapshot` (RSI, RVOL, timestamp) written to approval audit trail.
+
+### PaperProposals.tsx frontend redesign
+- Operator verdict badge (READY/NEEDS REVIEW/STALE QUOTE/ENTRY MISSED) at top of each card
+- Plain English verdict reason below badge
+- Age display colored green (<24h) / yellow (<72h) / red (>72h)
+- Strategy win rate and trade count on each card header
+- 3 simplified badges (DATA %/ANALYSIS/EXEC) replace 8-tile metric row
+- Full pipeline tiles in collapsible "Full Details" drawer
+- Pipeline health message banner when ready_count == 0
+- Sort by verdict priority, then strategy win rate, then score
+- Strategy filter dropdown with win rate and trade count per strategy
+- "Dismiss All Entry Missed" quick action button
+- Entry missed cards dimmed (opacity 0.65), border colored by verdict
