@@ -487,3 +487,64 @@ Phase 1 should stop at manual --limit 5. Before scheduling a nightly cron:
 - No changes to STANDARD, REALTIME, EMBEDDING, MEDIA_CONTENT, CRITICAL_CLOUD
 - No broker, holdings, or execution changes
 - Full report: `docs/v4_1_phase1d_limit5_report.md`
+
+## Phase 1H — Daily Deep Overnight LLM Window — 2026-05-12 20:40 ET
+
+### Summary
+Enabled a daily 23:00–03:00 deep overnight LLM processing window using
+gemma3-overnight to process a prioritized queue of high-value jobs.
+
+### Files created
+- `scripts/create_deep_overnight_llm_queue.py` — schema creation (safe idempotent)
+- `scripts/build_deep_overnight_llm_queue.py` — queue builder with priority scoring
+- `scripts/run_deep_overnight_llm_queue.py` — queue runner with time budget/hard stop
+- `scripts/run_deep_overnight_llm_window.sh` — daily wrapper (lock, safety, swap, restore)
+- `docs/v4_1_phase1h_daily_deep_overnight_llm_window.md` — full Phase 1H documentation
+- `docs/v4_1_discovery/phase1h_2300_0300_schedule_audit.md` — schedule conflict audit
+- `docs/v4_1_discovery/crontab_pre_phase1h.txt` — crontab backup before changes
+- `docs/v4_1_discovery/crontab_post_phase1h.txt` — crontab after changes
+
+### Schedule enabled
+```
+0 23 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh >> logs/deep_overnight_llm_window.log 2>&1
+```
+
+### Cron changes
+1. Added daily 23:00 deep window entry
+2. Modified `*/5 20-23` watchlist agent entry — added deep-llm-lock check
+3. Modified `*/5 0-5` watchlist agent entry — added deep-llm-lock check
+
+### Queue schema
+- `deep_overnight_llm_queue` — created with 7 indexes
+- `deep_overnight_llm_results` — created with 3 indexes
+- Initial queue: 100 items (46 P0, 32 P1, 8 P2, 14 P3)
+- Job types queued: strategy_classification (48), closed_trade_review (34), manual_journal_review (18)
+
+### Dry-run results
+- Queue builder: 100 jobs across 3 types, priority scoring correct
+- Queue runner: 5 jobs shown in priority order
+- Deep wrapper: Window gate, safety gates, lock, and dry-run exit all correct
+
+### Safety validation
+- ALPACA_MODE=paper ✓
+- LLM_DISABLE_LIVE_EXECUTION=true ✓
+- Holdings guard: $1,192,934 ✓
+- qwen3:14b resident (9.4 GB) ✓
+- nomic-embed-text resident (0.54 GB) ✓
+- Ollama alive ✓
+- No persistent routing changes ✓
+- No broker/holdings/execution changes ✓
+
+### Rollback command
+```bash
+# Disable nightly schedule
+crontab -l | grep -v "run_deep_overnight_llm_window" | crontab -
+# Or restore from backup:
+crontab docs/v4_1_discovery/crontab_pre_phase1h.txt
+```
+
+### Next step recommendation
+- Monitor first nightly run (tonight at 23:00)
+- Check `logs/deep_overnight_llm_window.log` after 03:15 for completion
+- Verify qwen3:14b/nomic-embed-text restoration after window
+- After 7 consecutive successful nights, consider Phase 2 readiness
