@@ -765,7 +765,7 @@ Entity links enable cross-system queries: "Show me everything about NVDA" return
 
 ## 8. Strategy Engine
 
-All 20 strategies are loaded dynamically from `config/strategies/*.yaml` at runtime. There are no hardcoded strategy lists anywhere in the codebase.
+All 22 strategies are loaded dynamically from `config/strategies/*.yaml` at runtime. There are no hardcoded strategy lists anywhere in the codebase. Each YAML includes `vix_rules`, `technical_indicators_required`, and `performance_context` blocks.
 
 ### Strategy Classification Flow
 

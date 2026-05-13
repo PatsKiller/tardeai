@@ -98,3 +98,4 @@ apps/command-center-v2-backup-*
 docs/project/docx_patch_*.json
 docs/project/docx_patch_*.py
 *.tst
+docs/session33_patches.tar.gz
