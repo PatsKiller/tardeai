@@ -226,6 +226,71 @@ Respond as JSON: {{"patterns": [{{"type": "pattern_type", "observation": "specif
         # Rebalance uses its own dedicated script with full context loading
         return None  # Signal to use dedicated handler instead of generic prompt
 
+    elif job_type == "strategy_opportunity_scan":
+        # Load top watchlist symbols with enrichment data
+        try:
+            import psycopg2.extras
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""
+                SELECT DISTINCT sd.symbol, sd.rsi,
+                       sd.data->>'sector' as sector,
+                       sd.data->>'price' as price,
+                       sd.data->>'div_yield' as div_yield,
+                       sd.perf_week_pct,
+                       sd.data->>'rvol' as rvol
+                FROM ticker_snapshot_daily sd
+                WHERE sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+                  AND sd.symbol IN (
+                      SELECT symbol FROM ticker_strategy_classifications WHERE active = true
+                      UNION SELECT symbol FROM watchlist_items WHERE active = true
+                  )
+                ORDER BY CAST(NULLIF(sd.data->>'rvol','') AS FLOAT) DESC NULLS LAST
+                LIMIT 40
+            """)
+            symbols = c.fetchall()
+            conn_tmp.close()
+
+            symbol_lines = []
+            for sym, rsi, sector, price, div_yield, perf_week, rvol in symbols:
+                symbol_lines.append(
+                    f"  {sym}: sector={sector} price={price} rsi={rsi} "
+                    f"div={div_yield}% week={perf_week}% rvol={rvol}x")
+        except Exception:
+            symbol_lines = ["  (data unavailable)"]
+
+        underutilized = [
+            "income_add", "sector_rotation", "defense_thesis",
+            "covered_call_income", "dividend_growth_compounder",
+            "high_yield_income_bdc", "recovery_watch", "core_growth_compounder",
+            "reit_income", "bond_income", "tax_loss_harvest"
+        ]
+
+        return f"""You are a strategy diversification analyst. Review these watchlist symbols
+and identify which ones fit UNDERUTILIZED strategies overlooked by momentum screening.
+
+WATCHLIST SYMBOLS (top 40):
+{chr(10).join(symbol_lines)}
+
+UNDERUTILIZED STRATEGIES:
+{chr(10).join(f'  - {s}' for s in underutilized)}
+
+CRITERIA:
+- income_add: div yield >3%, stable price, income-generating
+- sector_rotation: outperforming sector peers, relative strength
+- defense_thesis: aerospace/defense/govt contractor, macro tailwind
+- covered_call_income: stable price, can sell premium, not too volatile
+- dividend_growth_compounder: consistent dividend growth, 5yr+ history
+- high_yield_income_bdc: BDC/CEF/REIT, >6% yield, institutional quality
+- recovery_watch: recently sold off, thesis intact, waiting for catalyst
+- core_growth_compounder: steady EPS growth, durable competitive advantage
+- reit_income: REIT with stable yield and occupancy
+- bond_income: bond ETF/fund, interest rate sensitive
+- tax_loss_harvest: positions with unrealized losses for year-end harvesting
+
+Only flag genuine fits. Respond as JSON:
+{{"opportunities": [{{"symbol": "TICKER", "strategy": "strategy_id", "fit_score": 0-100, "rationale": "one sentence", "urgency": "HIGH|MEDIUM|LOW"}}], "summary": "2 sentence overview", "most_underutilized": "strategy with most opportunity"}}"""
+
     else:
         return f"""Deep LLM review for {symbol or 'portfolio'}.
 
