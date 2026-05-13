@@ -874,15 +874,23 @@ Added `_verify_live_strategy_conditions()` to `approval_revalidator.py`:
 
 `condition_snapshot` (RSI, RVOL, timestamp) written to approval audit trail.
 
-### PaperProposals.tsx frontend redesign
-- Operator verdict badge (READY/NEEDS REVIEW/STALE QUOTE/ENTRY MISSED) at top of each card
-- Plain English verdict reason below badge
-- Age display colored green (<24h) / yellow (<72h) / red (>72h)
-- Strategy win rate and trade count on each card header
-- 3 simplified badges (DATA %/ANALYSIS/EXEC) replace 8-tile metric row
-- Full pipeline tiles in collapsible "Full Details" drawer
-- Pipeline health message banner when ready_count == 0
-- Sort by verdict priority, then strategy win rate, then score
-- Strategy filter dropdown with win rate and trade count per strategy
-- "Dismiss All Entry Missed" quick action button
-- Entry missed cards dimmed (opacity 0.65), border colored by verdict
+### PaperProposals.tsx — complete card rebuild (2053 → 932 lines)
+6-row card layout — operator decision in 5 seconds, no clicks required:
+
+| Row | Content |
+|-----|---------|
+| 1. Status Bar | Colored verdict badge + symbol + strategy + grade + age |
+| 2. Key Numbers | Entry / Current (±drift%) / Stop / Target — always visible |
+| 3. Trade Metrics | R:R / Risk $ / Shares / RVOL / RSI — color-coded |
+| 4. Timestamps | Created / Price check / AI review / Risk gate — color-coded |
+| 5. Thesis | One-line from agent narrative (max 160 chars) |
+| 6. Actions | Refresh Price / Check Execution / AI Review / Approve / Reject |
+
+API additions:
+- Specific verdict reasons: "Risk gate not checked — click Check Execution (10 sec)"
+- `live_price_timestamp_display`, `ai_review_completed_at_display`, `risk_gate_display`
+- `current_price_display`, `price_drift_display`, `price_drift_color`
+
+Removed: 8 pipeline badges, packet progress bar, tab bar, support/reject boxes,
+LLM status tag — all moved to collapsed Full Details drawer.
+1121 lines of old card code removed.
