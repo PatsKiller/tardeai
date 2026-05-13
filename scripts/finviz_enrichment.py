@@ -139,7 +139,7 @@ def _load_env(root: Path) -> None:
             line = line.strip()
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"'))
+                os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 
 
 def _parse_float(val: str) -> Optional[float]:

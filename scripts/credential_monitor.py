@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 def _env(key: str) -> str:
     for line in (PROJECT_ROOT / ".env").read_text().splitlines():
         if line.startswith(f"{key}="):
-            return line.split("=", 1)[1].strip()
+            return line.split("=", 1)[1].strip().strip("'\"")
     return ""
 
 
