@@ -8046,7 +8046,8 @@ def _paper_proposals_enriched():
         except Exception:
             pass
 
-        # Add strategy perf to each proposal + compute age
+        # Add strategy perf, operator verdict, age to each proposal
+        ready_count = 0; review_count = 0; stale_count = 0; missed_count = 0
         for prop in pending_list:
             sid = prop.get('strategy_id')
             if sid and sid in strategy_perf:
@@ -8057,17 +8058,72 @@ def _paper_proposals_enriched():
                 prop['strategy_win_rate'] = None
                 prop['strategy_total_pnl'] = None
                 prop['strategy_trade_count'] = 0
+
             # Age
+            age_hours = None
             if prop.get('created_at'):
                 try:
                     from datetime import datetime as _dt, timezone as _tz
                     ca = prop['created_at']
                     if isinstance(ca, str):
                         ca = _dt.fromisoformat(ca.replace('Z', '+00:00'))
-                    age = (_dt.now(_tz.utc) - ca.replace(tzinfo=_tz.utc) if ca.tzinfo is None else ca)
-                    prop['age_hours'] = round(age.total_seconds() / 3600, 1)
+                    age_td = _dt.now(_tz.utc) - (ca.replace(tzinfo=_tz.utc) if ca.tzinfo is None else ca)
+                    age_hours = round(age_td.total_seconds() / 3600, 1)
                 except Exception:
-                    prop['age_hours'] = None
+                    pass
+            prop['age_hours'] = age_hours
+            if age_hours is not None:
+                h = age_hours
+                prop['age_display'] = f"{int(h * 60)} min ago" if h < 1 else f"{int(h)}h ago" if h < 24 else f"{int(h / 24)}d {int(h % 24)}h ago"
+                prop['age_color'] = 'green' if h < 24 else 'yellow' if h < 72 else 'red'
+            else:
+                prop['age_display'] = '—'
+                prop['age_color'] = 'gray'
+
+            # Operator verdict
+            ezs = prop.get('entry_zone_status') or ''
+            ls = prop.get('lifecycle_status') or ''
+            ds = prop.get('decision_state') or ''
+            try:
+                drift = float(prop.get('price_drift_pct') or 0) or None
+            except (TypeError, ValueError):
+                drift = None
+
+            if 'MISSED' in ezs.upper() or 'MISSED' in ls.upper():
+                verdict = 'ENTRY_MISSED'
+                verdict_color = 'red'
+                drift_str = f" {drift:+.1f}%" if drift else ""
+                verdict_reason = f"Price moved{drift_str} out of entry zone"
+                missed_count += 1
+            elif 'STALE' in (prop.get('last_price_source') or '').upper() or 'STALE' in ls.upper():
+                verdict = 'STALE_QUOTE'
+                verdict_color = 'orange'
+                verdict_reason = "Price data is stale — refresh before approving"
+                stale_count += 1
+            elif ds in ('BLOCKED_BY_RISK_GATE', 'RESEARCH_INCOMPLETE', 'AI_REVIEW_MISSING'):
+                verdict = 'NEEDS_REVIEW'
+                verdict_color = 'yellow'
+                verdict_reason = ds.replace('_', ' ').title()
+                review_count += 1
+            elif ds == 'APPROVE_READY_PAPER_TEST':
+                verdict = 'READY'
+                verdict_color = 'green'
+                verdict_reason = "Clean entry, all gates clear"
+                ready_count += 1
+            else:
+                verdict = 'NEEDS_REVIEW'
+                verdict_color = 'yellow'
+                verdict_reason = "Review data completeness before approving"
+                review_count += 1
+
+            prop['operator_verdict'] = verdict
+            prop['operator_verdict_color'] = verdict_color
+            prop['operator_verdict_reason'] = verdict_reason
+            prop['sort_order'] = {'READY': 1, 'NEEDS_REVIEW': 2, 'STALE_QUOTE': 3, 'ENTRY_MISSED': 4}.get(verdict, 2)
+            prop['is_actionable'] = verdict in ('READY', 'NEEDS_REVIEW')
+
+        # Sort: verdict priority, then strategy win rate, then score
+        pending_list.sort(key=lambda p: (p.get('sort_order', 2), -(p.get('strategy_win_rate') or 0), -(p.get('signal_score') or 0)))
 
         # Build by_strategy summary
         by_strat = {}
@@ -8084,9 +8140,18 @@ def _paper_proposals_enriched():
             "expired_today": expired_today,
             "summary": {
                 "pending": len(pending_list),
-                "expired_today": len(expired_today),
+                "ready_count": ready_count,
+                "needs_review_count": review_count,
+                "stale_count": stale_count,
+                "entry_missed_count": missed_count,
+                "expired_today": len(expired_today) if isinstance(expired_today, list) else expired_today,
                 "incubator_ready_count": incubator_ready_count,
                 "last_promotion_run": last_promotion_run,
+                "pipeline_health_message": (
+                    f"{missed_count} missed entries, {stale_count} stale quotes. "
+                    f"Refresh prices or dismiss stale proposals to unlock "
+                    f"the {incubator_ready_count} candidates in the incubator."
+                ) if ready_count == 0 and len(pending_list) > 0 else None,
                 "by_strategy": [{**v, 'strategy_id': k}
                                 for k, v in sorted(by_strat.items(),
                                                    key=lambda x: x[1].get('win_rate', 0),
