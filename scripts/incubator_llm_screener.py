@@ -34,6 +34,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 MIN_SCORE = 40
 
+# ── Strategy group constants for strategy-aware grading ──────────────────
+
+INCOME_STRATEGIES = {
+    'income_add', 'dividend_growth_compounder',
+    'high_yield_income_bdc', 'covered_call_income',
+}
+
+GROWTH_STRATEGIES = {
+    'core_growth_compounder', 'sector_rotation',
+    'defense_thesis', 'speculative_growth',
+}
+
+REVERSION_STRATEGIES = {
+    'swing_trade', 'recovery_watch', 'bond_income', 'cash_or_stable',
+}
+
+MOMENTUM_STRATEGIES = {
+    'momentum_scalp', 'gap_and_go', 'swing_breakout',
+    'earnings_catalyst',
+}
+
 
 def get_db():
     import psycopg2, psycopg2.extras
@@ -225,6 +246,100 @@ JSON only:
 {{"screen_grade":"A|B|C|D|F","verdict":"PROMOTE|HOLD|DROP","confidence":0-100,"reasoning":"1-2 sentences","catalyst_assessment":"strong|moderate|weak|none","momentum":"building|stable|fading"}}"""
 
 
+def _build_income_grade_prompt(candidate, news_lines, social_lines, tech_line, web_news_line=""):
+    """Grade income/dividend candidates. Does NOT penalize low RVOL or missing catalyst."""
+    symbol = candidate['symbol']
+    score = candidate['latest_score']
+    sector = candidate.get('sector') or '?'
+    strategy = candidate.get('strategy_id') or 'income_add'
+    delta = candidate.get('score_delta') or 0
+    days = candidate.get('days_active') or 0
+    lifecycle = candidate.get('lifecycle_state') or '?'
+
+    return f"""Income strategy screening. Grade for income/dividend suitability.
+{symbol} score={score} delta={delta:+.0f} days={days:.0f} lifecycle={lifecycle}
+Strategy:{strategy} Sector:{sector}
+News:{news_lines[:200]}
+{web_news_line[:200] if web_news_line else ''}
+
+GRADE ON INCOME CRITERIA (not momentum):
+A: Yield 3-8%, stable/growing dividend, low beta, large/mid cap, strong balance sheet
+B: Yield 2-4%, good dividend history, reasonable valuation, retirement income fit
+C: Marginal yield or valuation concern
+D: Yield unsustainable or too volatile for income
+F: Yield trap or completely wrong fit
+
+Low RVOL is FINE. No catalyst is FINE. Grade on yield quality and stability.
+JSON only:
+{{"screen_grade":"A|B|C|D|F","verdict":"PROMOTE|HOLD|DROP","confidence":0-100,"reasoning":"1-2 sentences","yield_quality":"sustainable|at_risk|unknown"}}"""
+
+
+def _build_growth_grade_prompt(candidate, news_lines, social_lines, tech_line, web_news_line=""):
+    """Grade growth/compounder/sector candidates on growth criteria."""
+    symbol = candidate['symbol']
+    score = candidate['latest_score']
+    sector = candidate.get('sector') or '?'
+    strategy = candidate.get('strategy_id') or 'core_growth_compounder'
+    delta = candidate.get('score_delta') or 0
+    days = candidate.get('days_active') or 0
+    lifecycle = candidate.get('lifecycle_state') or '?'
+
+    return f"""Growth strategy screening. Grade for growth/compounder/sector suitability.
+{symbol} score={score} delta={delta:+.0f} days={days:.0f} lifecycle={lifecycle}
+Strategy:{strategy} Sector:{sector}
+Tech:{tech_line}
+News:{news_lines[:200]}
+{web_news_line[:200] if web_news_line else ''}
+
+GRADE ON GROWTH CRITERIA:
+For core_growth_compounder: consistent EPS growth >10%/yr, strong ROE, durable moat
+For sector_rotation: leading sector this week/month, relative strength vs peers
+For defense_thesis: defense/aerospace/gov-IT, contract backlog, AI-defense exposure
+
+A: Exceptional fit — clear compounder or sector leader
+B: Good fit — above-average growth or sector strength
+C: Marginal — some growth but not compelling
+D: Poor fit — growth decelerating or wrong sector
+F: Wrong strategy fit entirely
+
+JSON only:
+{{"screen_grade":"A|B|C|D|F","verdict":"PROMOTE|HOLD|DROP","confidence":0-100,"reasoning":"1-2 sentences","growth_quality":"accelerating|stable|decelerating|unknown"}}"""
+
+
+def _build_reversion_grade_prompt(candidate, news_lines, social_lines, tech_line, web_news_line=""):
+    """Grade reversion/pullback candidates. Rewards oversold quality."""
+    symbol = candidate['symbol']
+    score = candidate['latest_score']
+    sector = candidate.get('sector') or '?'
+    strategy = candidate.get('strategy_id') or 'swing_trade'
+    rvol = candidate.get('rvol_latest') or '?'
+    delta = candidate.get('score_delta') or 0
+    days = candidate.get('days_active') or 0
+    lifecycle = candidate.get('lifecycle_state') or '?'
+
+    return f"""Reversion strategy screening. Grade for pullback/value suitability.
+{symbol} score={score} delta={delta:+.0f} days={days:.0f} lifecycle={lifecycle}
+Strategy:{strategy} Sector:{sector} RVOL:{rvol}
+Tech:{tech_line}
+News:{news_lines[:200]}
+{web_news_line[:200] if web_news_line else ''}
+
+GRADE ON REVERSION CRITERIA (opposite of momentum):
+For swing_trade retracement: RSI <45, above 200d SMA, pulling back from strength
+For recovery_watch: recently sold off, thesis intact, waiting for catalyst
+For bond_income: yield vs current rates, duration fit, credit quality
+
+A: Excellent reversion — oversold quality, clear support, buyable dip
+B: Good — pulling back but thesis intact
+C: Marginal — oversold but fundamentals unclear
+D: Broken — falling for good reason, avoid
+F: Extended/overbought (opposite of what we want)
+
+Low RVOL is FINE. No catalyst is FINE. Grade on oversold quality.
+JSON only:
+{{"screen_grade":"A|B|C|D|F","verdict":"PROMOTE|HOLD|DROP","confidence":0-100,"reasoning":"1-2 sentences","setup_quality":"textbook|decent|marginal|broken"}}"""
+
+
 def screen_one(conn, candidate, dry_run=False):
     """Run LLM screen on one incubator candidate."""
     symbol = candidate['symbol']
@@ -250,7 +365,50 @@ def screen_one(conn, candidate, dry_run=False):
     except Exception:
         pass
 
-    prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
+    # Select strategy-appropriate prompt based on strategy_id
+    strategy_id = candidate.get('strategy_id') or ''
+    if strategy_id in INCOME_STRATEGIES:
+        # Build condensed enrichment strings for strategy-aware prompts
+        news_str = "No recent news."
+        if news:
+            news_str = " | ".join(f"{n['title'][:60]} ({n.get('sentiment','?')})" for n in news[:3])
+        social_str = f"{len(social)} posts" if social else "No social mentions."
+        tech_str = ""
+        if technical:
+            parts = []
+            if technical.get('rsi_14'): parts.append(f"RSI:{technical['rsi_14']:.0f}")
+            if technical.get('technical_grade'): parts.append(technical['technical_grade'])
+            tech_str = " ".join(parts) if parts else "No technical data."
+        prompt = _build_income_grade_prompt(candidate, news_str, social_str, tech_str, web_news_line)
+    elif strategy_id in GROWTH_STRATEGIES:
+        news_str = "No recent news."
+        if news:
+            news_str = " | ".join(f"{n['title'][:60]} ({n.get('sentiment','?')})" for n in news[:3])
+        social_str = f"{len(social)} posts" if social else "No social mentions."
+        tech_str = ""
+        if technical:
+            parts = []
+            if technical.get('rsi_14'): parts.append(f"RSI:{technical['rsi_14']:.0f}")
+            if technical.get('rvol'): parts.append(f"RVOL:{technical['rvol']:.1f}x")
+            if technical.get('technical_grade'): parts.append(technical['technical_grade'])
+            tech_str = " ".join(parts) if parts else "No technical data."
+        prompt = _build_growth_grade_prompt(candidate, news_str, social_str, tech_str, web_news_line)
+    elif strategy_id in REVERSION_STRATEGIES:
+        news_str = "No recent news."
+        if news:
+            news_str = " | ".join(f"{n['title'][:60]} ({n.get('sentiment','?')})" for n in news[:3])
+        social_str = f"{len(social)} posts" if social else "No social mentions."
+        tech_str = ""
+        if technical:
+            parts = []
+            if technical.get('rsi_14'): parts.append(f"RSI:{technical['rsi_14']:.0f}")
+            if technical.get('technical_grade'): parts.append(technical['technical_grade'])
+            if technical.get('adx_regime'): parts.append(f"ADX:{technical['adx_regime']}")
+            tech_str = " ".join(parts) if parts else "No technical data."
+        prompt = _build_reversion_grade_prompt(candidate, news_str, social_str, tech_str, web_news_line)
+    else:
+        # Default: existing momentum prompt (unchanged)
+        prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
 
     try:
         from local_llm import generate, model_used as _mu

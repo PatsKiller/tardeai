@@ -291,6 +291,118 @@ CRITERIA:
 Only flag genuine fits. Respond as JSON:
 {{"opportunities": [{{"symbol": "TICKER", "strategy": "strategy_id", "fit_score": 0-100, "rationale": "one sentence", "urgency": "HIGH|MEDIUM|LOW"}}], "summary": "2 sentence overview", "most_underutilized": "strategy with most opportunity"}}"""
 
+    elif job_type == "income_strategy_scan":
+        # Load income universe from snapshot data
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""
+                SELECT DISTINCT sd.symbol, sd.data->>'div_yield' as div_yield,
+                       sd.data->>'price' as price, sd.data->>'sector' as sector,
+                       sd.data->>'beta' as beta, sd.data->>'pe' as pe
+                FROM ticker_snapshot_daily sd
+                WHERE sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+                  AND (CAST(NULLIF(sd.data->>'div_yield','') AS FLOAT) > 2
+                       OR sd.symbol IN (SELECT symbol FROM incubator_universe
+                                        WHERE strategy_id IN ('income_add','dividend_growth_compounder',
+                                                              'high_yield_income_bdc','covered_call_income')))
+                ORDER BY CAST(NULLIF(sd.data->>'div_yield','') AS FLOAT) DESC NULLS LAST
+                LIMIT 40
+            """)
+            symbols = c.fetchall()
+            conn_tmp.close()
+            lines = [f"  {s[0]}: yield={s[1]}% price={s[2]} sector={s[3]} beta={s[4]} pe={s[5]}" for s in symbols]
+        except Exception:
+            lines = ["  (data unavailable)"]
+
+        return f"""You are an income investing specialist. Evaluate these symbols for 4 income strategies.
+
+INCOME UNIVERSE ({len(lines)} symbols):
+{chr(10).join(lines)}
+
+STRATEGIES:
+- income_add: yield 3-8%, stable/growing dividend, beta <0.8, fits IRA
+- dividend_growth_compounder: dividend growth >5%/yr 5+ years, yield 2-4%, strong balance sheet
+- high_yield_income_bdc: BDC/CEF/REIT >6% yield, institutional quality, covered distribution
+- covered_call_income: stable price, liquid options, 1-3%/month premium potential
+
+Respond as JSON:
+{{"candidates": [{{"symbol": "TICKER", "strategy": "strategy_id", "fit_score": 0-100, "yield_assessment": "sustainable|at_risk", "rationale": "one sentence"}}], "top_pick": "best income add", "income_gap_assessment": "summary"}}"""
+
+    elif job_type == "growth_strategy_scan":
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""
+                SELECT DISTINCT sd.symbol, sd.data->>'sector' as sector,
+                       sd.data->>'price' as price, sd.perf_week_pct,
+                       sd.data->>'rvol' as rvol, sd.data->>'eps_growth_5yr' as eps_g
+                FROM ticker_snapshot_daily sd
+                WHERE sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+                  AND (sd.perf_week_pct > 3
+                       OR sd.symbol IN (SELECT symbol FROM incubator_universe
+                                        WHERE strategy_id IN ('core_growth_compounder',
+                                                              'sector_rotation','defense_thesis')))
+                ORDER BY sd.perf_week_pct DESC NULLS LAST
+                LIMIT 40
+            """)
+            symbols = c.fetchall()
+            conn_tmp.close()
+            lines = [f"  {s[0]}: sector={s[1]} price={s[2]} week={s[3]}% rvol={s[4]}x eps_g={s[5]}" for s in symbols]
+        except Exception:
+            lines = ["  (data unavailable)"]
+
+        return f"""You are a growth equity analyst. Evaluate these symbols for 3 growth strategies.
+
+GROWTH UNIVERSE ({len(lines)} symbols):
+{chr(10).join(lines)}
+
+STRATEGIES:
+- core_growth_compounder: consistent EPS growth >10%/yr, strong ROE, durable moat, 10yr hold
+- sector_rotation: leading its sector this week/month, relative strength vs peers
+- defense_thesis: aerospace/defense/gov-IT, contract backlog, AI-defense exposure
+
+Respond as JSON:
+{{"candidates": [{{"symbol": "TICKER", "strategy": "strategy_id", "fit_score": 0-100, "thesis": "two sentences", "timeframe": "months|years", "rationale": "one sentence"}}], "sector_rotation_call": "which sector to rotate into", "top_growth_pick": "single best compounder"}}"""
+
+    elif job_type == "reversion_strategy_scan":
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""
+                SELECT DISTINCT sd.symbol, sd.rsi, sd.data->>'price' as price,
+                       sd.data->>'sma200' as sma200, sd.perf_week_pct,
+                       sd.data->>'div_yield' as div_yield
+                FROM ticker_snapshot_daily sd
+                WHERE sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+                  AND (sd.rsi < 40
+                       OR sd.symbol IN ('BND','TLT','IEF','SHY','VTIP','AGG','LQD',
+                                        'SGOV','BIL','SHV','USFR')
+                       OR sd.symbol IN (SELECT symbol FROM incubator_universe
+                                        WHERE strategy_id IN ('swing_trade','recovery_watch',
+                                                              'bond_income','cash_or_stable')))
+                ORDER BY sd.rsi ASC NULLS LAST
+                LIMIT 40
+            """)
+            symbols = c.fetchall()
+            conn_tmp.close()
+            lines = [f"  {s[0]}: rsi={s[1]} price={s[2]} sma200={s[3]} week={s[4]}% yield={s[5]}" for s in symbols]
+        except Exception:
+            lines = ["  (data unavailable)"]
+
+        return f"""You are a mean-reversion and income analyst. Evaluate these symbols.
+
+REVERSION UNIVERSE ({len(lines)} symbols):
+{chr(10).join(lines)}
+
+STRATEGIES:
+- swing_trade retracement: RSI <40, above 200d SMA, pulling back from strength, buyable dip
+- bond_income: treasury/bond ETFs, duration positioning for current rate environment
+- cash_or_stable: money market alternatives, stable value, productive cash parking
+
+Respond as JSON:
+{{"retracement_candidates": [{{"symbol": "TICKER", "pullback_pct": -5.2, "thesis_intact": true, "rationale": "why buyable dip"}}], "bond_recommendation": {{"duration": "short|medium|long", "suggested_etf": "TICKER", "rationale": "rate reasoning"}}, "cash_parking": "best cash alternative", "top_retracement_pick": "best retracement setup"}}"""
+
     else:
         return f"""Deep LLM review for {symbol or 'portfolio'}.
 
