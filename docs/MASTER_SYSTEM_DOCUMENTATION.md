@@ -842,6 +842,9 @@ The incubator is the holding area between raw screener hits and actionable propo
 ### Promotion Gate
 - Global ceiling: 20 PENDING proposals max
 - Per-strategy: max 5 per strategy_id (concentration check)
+- Per-symbol: max 1 per strategy group (MOMENTUM/INCOME/GROWTH/REVERSION), max 2 total
+- Penny stock filter: skip symbols with price <$1.00
+- Stop breach: auto-expire if current_price <= proposed_stop
 - If 3+ strategies all at cap, blocks further promotion
 
 ---

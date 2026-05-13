@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | Fix: proposal quality — price/RSI fallback from snapshots, data-driven thesis_display, strategy-group dedup (max 1/group), penny stock filter, multi-strategy warning in UI. |
 | 2026-05-13 | Fix: stop breach auto-block (BLOCKED verdict, approve disabled), specific verdict reasons confirmed, orchestrator risk_gate conn bug fixed (was failing silently every run). |
 | 2026-05-13 | Proposal card complete rebuild: 6-row layout (verdict/prices/metrics/timestamps/thesis/actions), specific verdict reasons in API, 2053→932 lines. Operator decision in 5 seconds, no clicks. |
 | 2026-05-13 | Proposal operator UX: operator_verdict (READY/NEEDS_REVIEW/STALE/MISSED) per proposal, age display, verdict sort. Approval re-verification: RSI/RVOL/catalyst/VWAP/news live checks at approval time (2 new blocks, 5 warnings). |
