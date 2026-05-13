@@ -8186,8 +8186,31 @@ def _paper_proposals_enriched():
             prop['ai_review_completed_at_display'] = _ts_display(prop.get('packet_last_enriched_at'))
             prop['risk_gate_display'] = {"text": "Passed" if prop.get('risk_gate_result') == 'passed' else "Not checked", "color": "green" if prop.get('risk_gate_result') == 'passed' else "red"}
 
-            # Current price + drift
+            # Current price + drift — fallback through multiple sources
             cp = prop.get('current_price') or prop.get('live_price_at_execution') or prop.get('scan_price')
+            # Fallback: snapshot data
+            if not cp:
+                try:
+                    _snap = _db_query("SELECT data->>'price' as p, rsi, data->>'rvol' as rvol FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1", [prop.get('symbol')], fetch="one")
+                    if _snap and _snap.get('p'):
+                        cp = float(_snap['p'])
+                    # Also grab RSI/RVOL from snapshot if missing
+                    if _snap:
+                        if not prop.get('rsi') and _snap.get('rsi'):
+                            prop['rsi'] = float(_snap['rsi'])
+                        if not prop.get('rvol') and _snap.get('rvol'):
+                            prop['rvol'] = float(_snap['rvol'])
+                except Exception:
+                    pass
+            # Fallback: trade_ai_scans price
+            if not cp:
+                try:
+                    _sc = _db_query("SELECT price FROM trade_ai_scans WHERE symbol=%s ORDER BY scanned_at DESC LIMIT 1", [prop.get('symbol')], fetch="one")
+                    if _sc and _sc.get('price'):
+                        cp = float(_sc['price'])
+                except Exception:
+                    pass
+
             pe = prop.get('proposed_entry')
             if cp and pe and float(pe) > 0:
                 try:
@@ -8197,6 +8220,45 @@ def _paper_proposals_enriched():
                     prop['price_drift_color'] = 'green' if abs(d_pct) < 2 else 'yellow' if abs(d_pct) < 5 else 'red'
                 except Exception:
                     pass
+
+            # RSI from snapshot if still missing
+            if not prop.get('rsi'):
+                try:
+                    _rsi_row = _db_query("SELECT rsi FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1", [prop.get('symbol')], fetch="one")
+                    if _rsi_row and _rsi_row.get('rsi'):
+                        prop['rsi'] = float(_rsi_row['rsi'])
+                except Exception:
+                    pass
+
+            # thesis_display — build from data if setup_thesis is generic
+            thesis = prop.get('agent_narrative') or prop.get('approve_case') or ''
+            st = str(prop.get('setup_type') or prop.get('strategy_id') or '')
+            if len(thesis) < 50 or 'is a' in thesis[:60]:
+                parts = []
+                if prop.get('rvol'): parts.append(f"RVOL {float(prop['rvol']):.1f}x")
+                if prop.get('signal_score'): parts.append(f"Score {prop['signal_score']}pts")
+                if prop.get('catalyst_verified'): parts.append("Catalyst verified")
+                elif prop.get('catalyst'): parts.append("Catalyst unverified")
+                if prop.get('rsi'): parts.append(f"RSI {float(prop['rsi']):.0f}")
+                if prop.get('gap_pct'): parts.append(f"Gap {float(prop['gap_pct']):+.1f}%")
+                if prop.get('float_m'): parts.append(f"Float {float(prop['float_m']):.1f}M")
+                prop['thesis_display'] = f"{prop.get('symbol')}: {st} | {' | '.join(parts)}" if parts else thesis
+            else:
+                prop['thesis_display'] = thesis[:160]
+
+        # Multi-strategy symbol detection
+        sym_strats: dict = {}
+        for p in pending_list:
+            s = p.get('symbol')
+            sym_strats.setdefault(s, []).append(p.get('strategy_id'))
+        multi_strategy_symbols = [
+            {"symbol": s, "count": len(strats), "strategies": strats}
+            for s, strats in sym_strats.items() if len(strats) > 1
+        ]
+        # Add badge count to each proposal
+        for p in pending_list:
+            others = len(sym_strats.get(p.get('symbol'), [])) - 1
+            p['other_strategy_count'] = others
 
         # Sort: verdict priority, then strategy win rate, then score
         pending_list.sort(key=lambda p: (p.get('sort_order', 2), -(p.get('strategy_win_rate') or 0), -(p.get('signal_score') or 0)))
@@ -8232,6 +8294,7 @@ def _paper_proposals_enriched():
                                 for k, v in sorted(by_strat.items(),
                                                    key=lambda x: x[1].get('win_rate', 0),
                                                    reverse=True)],
+                "multi_strategy_symbols": multi_strategy_symbols,
             },
             "pending_count": len(pending_list),
             "count": len(proposals),
