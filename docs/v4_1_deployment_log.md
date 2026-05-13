@@ -977,3 +977,27 @@ prime_setups + watchlist_setups screeners.
 
 ### Bug 3: risk_gate — `conn` not defined (confirmed already fixed)
 Already fixed in commit 74a8652. The 12PM log error was from the pre-fix run.
+
+## risk_gate Safe Float + Pipeline Manual Test — 2026-05-13 15:00 ET
+
+### risk_gate float fix
+`risk_gate.py` had 7 bare `float()` calls crashing on JSONB dict values from
+trade plan data. Added `_safe_float()` helper. Manual test confirmed:
+`risk_gate: 3 approved 3 flagged, 0 errors` (was 5 exceptions before).
+
+### Manual pipeline test (run_label 1400)
+Confirmed all three prior bugs fixed:
+- `finviz_ingestion`: 15 tickers | 2 screeners (was 0/RUN_FAILED)
+- `risk_gate`: 3 approved 3 flagged (was `name 'conn' is not defined`)
+- `symbol_enrichment`: no import errors (was `get_connection` not found)
+
+### GCTS trade approval audit (13:12 ET)
+Full flow verified end-to-end:
+1. Proposal #69 approved → `APPROVED_FOR_PAPER_TEST`, `ELIGIBLE`
+2. Paper trade #20 created → `opened_via=proposal_approved`
+3. Alpaca market buy 1,875 shares submitted → filled at $1.49
+4. Position live: GCTS 1,875 shares, INFU 357 shares (2 positions total)
+
+Write-back gaps fixed by operator:
+- `broker_status`, `broker_order_id`, `submitted_at`, `filled_at` populated
+- Lifecycle events and curation hooks verified
