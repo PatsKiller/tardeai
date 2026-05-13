@@ -150,6 +150,10 @@ class AlpacaPaperAdapter:
             return 0
 
         alpaca_positions = self.get_positions()
+        if not alpaca_positions and len(open_trades) > 0:
+            # API returned empty but we have open trades — likely API failure, not real close
+            log.warning(f"[alpaca] Positions API returned empty with {len(open_trades)} open DB trades — skipping close detection (possible API issue)")
+            return 0
         alpaca_symbols = {p['symbol'] for p in alpaca_positions}
 
         closed = 0

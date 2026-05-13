@@ -13609,15 +13609,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 FROM paper_trades
                 ORDER BY created_at DESC LIMIT 200
             """) or []
-            open_t = [t for t in trades if t.get('status') in ('open', 'pending', 'submitted', 'partially_filled')]
+            # Filter: only show broker-confirmed open trades
+            open_t = [t for t in trades if t.get('status') in ('open',) and (t.get('filled_at') or t.get('broker_status') == 'filled')]
             closed_t = [t for t in trades if t.get('status') == 'closed']
-            wins = sum(1 for t in closed_t if (t.get('pnl') or 0) > 0)
-            losses = sum(1 for t in closed_t if (t.get('pnl') or 0) < 0)
+            # Win rate: only count real trades (non-zero PnL)
+            real_closed = [t for t in closed_t if (t.get('pnl') or 0) != 0]
+            wins = sum(1 for t in real_closed if (t.get('pnl') or 0) > 0)
+            losses = sum(1 for t in real_closed if (t.get('pnl') or 0) < 0)
             total_pnl = sum(float(t.get('pnl') or 0) for t in closed_t)
-            wr = round(wins / len(closed_t), 3) if closed_t else None
+            wr = round(wins / len(real_closed), 3) if real_closed else None
             return 200, {"ok": True,
                 "stats": {"closed": len(closed_t), "open": len(open_t), "wins": wins, "losses": losses,
-                          "win_rate": wr, "total_pnl": round(total_pnl, 2)},
+                          "win_rate": wr, "total_pnl": round(total_pnl, 2),
+                          "real_trade_count": len(real_closed)},
                 "trades": [{k: _json_clean(v) for k, v in t.items()} for t in trades],
                 "open_trades": [{k: _json_clean(v) for k, v in t.items()} for t in open_t],
                 "closed_trades": [{k: _json_clean(v) for k, v in t.items()} for t in closed_t],
