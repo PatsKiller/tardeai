@@ -12,7 +12,7 @@ type OverviewMini = {
   last_repriced?: string
   pending_approvals?: number
   trade_ai?: { vix?: number | null; breadth?: string | null; go_count?: number; wait_count?: number; no_go_count?: number; run_label?: string; run_date?: string }
-  journal?: { total_pnl: number; win_rate: number }
+  journal?: { total_pnl: number; win_rate: number; trade_count?: number }
 }
 
 interface NavItem { to: string; label: string }

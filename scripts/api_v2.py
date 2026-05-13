@@ -10447,6 +10447,155 @@ def _global_alerts():
     }
 
 
+# ── Deep Overnight LLM Queue endpoints ─────────────────────────────────────
+
+def _queue_summary():
+    from datetime import datetime, timedelta
+    rows = _db_query("SELECT status, count(*) as cnt FROM deep_overnight_llm_queue GROUP BY status") or []
+    by_status = {r["status"]: r["cnt"] for r in rows}
+    tier_rows = _db_query("SELECT priority_tier, count(*) as cnt FROM deep_overnight_llm_queue WHERE status='pending' GROUP BY priority_tier") or []
+    tier_map = {r["priority_tier"]: r["cnt"] for r in tier_rows}
+    done_today = (_db_query("SELECT count(*) as cnt FROM deep_overnight_llm_queue WHERE status='done' AND completed_at > NOW() - INTERVAL '24 hours'", fetch="one") or {}).get("cnt", 0)
+    pending = by_status.get("pending", 0)
+    cap = 100
+    now = datetime.now()
+    window_start = now.replace(hour=23, minute=0, second=0, microsecond=0)
+    if now.hour >= 23:
+        window_start += timedelta(days=1)
+    next_hrs = max(0, (window_start - now).total_seconds() / 3600) if now.hour >= 3 else 0
+    will_run = min(pending, cap)
+    return {
+        "pending": pending, "done_today": done_today, "failed": by_status.get("failed", 0),
+        "running": by_status.get("running", 0), "cap_tonight": cap,
+        "window_start": "23:00", "window_end": "03:00",
+        "next_window_in_hours": round(next_hrs, 1),
+        "estimated_completion_nights": round(pending / cap, 1) if cap else 0,
+        "by_status": [{"status": s, "count": c} for s, c in by_status.items()],
+        "job_budget": {
+            "cap": cap, "pending_p0": tier_map.get("P0", 0), "pending_p1": tier_map.get("P1", 0),
+            "pending_p2": tier_map.get("P2", 0), "pending_p3": tier_map.get("P3", 0),
+            "pending_p4": tier_map.get("P4", 0),
+            "will_run_tonight": will_run, "wont_run_tonight": max(0, pending - cap),
+        },
+    }
+
+
+def _queue_pending():
+    rows = _db_query("""
+        SELECT id, job_type, symbol, priority_tier, priority_score, reason_codes,
+               queued_at, attempt_count, source_table, source_id,
+               EXTRACT(EPOCH FROM (NOW() - queued_at))/3600 as age_hours
+        FROM deep_overnight_llm_queue WHERE status = 'pending'
+        ORDER BY priority_score DESC, queued_at ASC LIMIT 300
+    """) or []
+    cap = 100
+    jobs = []
+    for i, r in enumerate(rows):
+        d = {k: _json_clean(v) for k, v in r.items()}
+        d["will_run_tonight"] = i < cap
+        d["age_hours"] = round(float(d.get("age_hours") or 0), 1)
+        jobs.append(d)
+    return {"jobs": jobs, "total": len(jobs)}
+
+
+def _queue_completed():
+    rows = _db_query("""
+        SELECT q.id, q.job_type, q.symbol, q.priority_tier, q.priority_score,
+               q.completed_at, q.last_gemma_runtime_sec as duration_seconds, q.last_error,
+               r.summary, r.curation_verdict, r.curation_weight,
+               r.risk_narrative, r.reentry_verdict, r.cc_verdict
+        FROM deep_overnight_llm_queue q
+        LEFT JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.status = 'done' AND q.completed_at > NOW() - INTERVAL '24 hours'
+        ORDER BY q.completed_at DESC LIMIT 200
+    """) or []
+    jobs = [{**{k: _json_clean(v) for k, v in r.items()}, "had_error": bool(r.get("last_error"))} for r in rows]
+    durs = [float(r.get("duration_seconds") or 0) for r in rows if r.get("duration_seconds")]
+    return {
+        "jobs": jobs, "total": len(jobs),
+        "stats": {
+            "total_ran": len(jobs),
+            "avg_duration": round(sum(durs) / len(durs), 1) if durs else 0,
+            "fastest": round(min(durs), 1) if durs else 0,
+            "slowest": round(max(durs), 1) if durs else 0,
+            "error_count": sum(1 for r in rows if r.get("last_error")),
+        },
+    }
+
+
+def _queue_failed():
+    rows = _db_query("""
+        SELECT id, job_type, symbol, priority_tier, priority_score,
+               attempt_count, last_error, started_at, completed_at, queued_at
+        FROM deep_overnight_llm_queue
+        WHERE status IN ('failed', 'error') OR (attempt_count > 1 AND status = 'pending')
+        ORDER BY queued_at DESC LIMIT 100
+    """) or []
+    return {"jobs": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "total": len(rows)}
+
+
+def _ops_cron_health():
+    rows = _db_query("""
+        SELECT ps.script_name as name, COALESCE(ps.display_name, ps.script_name) as display_name,
+               ps.expected_hour, ps.expected_min, ps.run_days as schedule, ps.critical,
+               (SELECT pr.started_at FROM pipeline_runs pr WHERE pr.pipeline_key = ps.script_name ORDER BY pr.started_at DESC LIMIT 1) as last_run,
+               (SELECT pr.status FROM pipeline_runs pr WHERE pr.pipeline_key = ps.script_name ORDER BY pr.started_at DESC LIMIT 1) as last_status,
+               (SELECT count(*) FROM pipeline_runs pr WHERE pr.pipeline_key = ps.script_name AND pr.started_at > NOW()-INTERVAL '24 hours') as runs_today
+        FROM pipeline_schedule ps WHERE ps.active = true ORDER BY ps.expected_hour, ps.expected_min
+    """) or []
+    if not rows:
+        rows = _db_query("SELECT script_name as name, display_name, expected_hour, expected_min, run_days as schedule, critical FROM pipeline_schedule WHERE active=true ORDER BY expected_hour, expected_min") or []
+    crons = []
+    for r in rows:
+        d = {k: _json_clean(v) for k, v in r.items()}
+        status = "ok"
+        if d.get("last_status") in ("failed", "error"):
+            status = "failed"
+        elif not d.get("last_run"):
+            status = "unknown"
+        else:
+            try:
+                from datetime import datetime, timezone
+                lr = r.get("last_run")
+                if hasattr(lr, 'timestamp'):
+                    age_h = (datetime.now(timezone.utc) - lr.replace(tzinfo=timezone.utc if lr.tzinfo is None else lr.tzinfo)).total_seconds() / 3600
+                    if age_h > 25:
+                        status = "stale"
+            except Exception:
+                pass
+        d["status"] = status
+        crons.append(d)
+    return {"crons": crons}
+
+
+def _ops_llm_audit():
+    import json as _json
+    audit_path = PROJECT_ROOT / "logs" / "llm_routing_audit.jsonl"
+    if not audit_path.exists():
+        return {"entries": [], "total": 0, "note": "llm_routing_audit.jsonl not found"}
+    entries = []
+    try:
+        lines = audit_path.read_text().strip().split("\n")
+        for line in lines[-100:]:
+            try:
+                e = _json.loads(line)
+                entries.append({
+                    "timestamp": e.get("timestamp", ""), "caller": e.get("caller", ""),
+                    "process_type": e.get("process_type", ""),
+                    "model": e.get("model", e.get("model_used", "")),
+                    "latency_ms": e.get("latency_ms", e.get("elapsed_ms", 0)),
+                    "status": e.get("status", "ok"),
+                    "fallback_triggered": e.get("fallback_triggered", False),
+                    "tokens": e.get("tokens", e.get("eval_count", 0)),
+                })
+            except Exception:
+                continue
+    except Exception:
+        pass
+    entries.reverse()
+    return {"entries": entries, "total": len(entries)}
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -10602,6 +10751,12 @@ ROUTES = {
     "/api/v2/incubator-events": lambda: _incubator_events_api(),
     "/api/v2/incubator-health": lambda: _incubator_health_api(),
     "/api/v2/proposal-quality-review": lambda: _proposal_quality_review_api(),
+    "/api/v2/queue/summary": lambda: _queue_summary(),
+    "/api/v2/queue/pending": lambda: _queue_pending(),
+    "/api/v2/queue/completed": lambda: _queue_completed(),
+    "/api/v2/queue/failed": lambda: _queue_failed(),
+    "/api/v2/ops/cron-health": lambda: _ops_cron_health(),
+    "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
 }
 
 
@@ -11463,6 +11618,44 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         _news_articles_list._query = query
         _intelligence_library._query = query
         _agent_pipeline._query = query
+
+    # ── Queue management POST routes ──────────────────────────────────
+    if method == "POST" and base_path == "/api/v2/queue/boost":
+        try:
+            job_id = (body or {}).get("job_id")
+            boost = int((body or {}).get("boost_amount", 50))
+            if not job_id:
+                return 400, {"ok": False, "error": "job_id required"}
+            result = _db_write("UPDATE deep_overnight_llm_queue SET priority_score = priority_score + %s, updated_at = NOW() WHERE id = %s AND status = 'pending' RETURNING id, priority_score", (boost, job_id))
+            if result:
+                return 200, {"ok": True, "data": {"new_score": result["priority_score"]}}
+            return 404, {"ok": False, "error": "Job not found or not pending"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/queue/cancel":
+        try:
+            job_id = (body or {}).get("job_id")
+            if not job_id:
+                return 400, {"ok": False, "error": "job_id required"}
+            result = _db_write("UPDATE deep_overnight_llm_queue SET status = 'cancelled', updated_at = NOW() WHERE id = %s AND status = 'pending' RETURNING id", (job_id,))
+            if result:
+                return 200, {"ok": True, "data": {"cancelled": True}}
+            return 404, {"ok": False, "error": "Job not found or not pending"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/queue/retry":
+        try:
+            job_id = (body or {}).get("job_id")
+            if not job_id:
+                return 400, {"ok": False, "error": "job_id required"}
+            result = _db_write("UPDATE deep_overnight_llm_queue SET status = 'pending', attempt_count = 0, last_error = NULL, updated_at = NOW() WHERE id = %s AND status IN ('failed', 'error') RETURNING id", (job_id,))
+            if result:
+                return 200, {"ok": True, "data": {"retried": True}}
+            return 404, {"ok": False, "error": "Job not found or not in failed state"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
 
     # Static routes
     handler = ROUTES.get(base_path)
