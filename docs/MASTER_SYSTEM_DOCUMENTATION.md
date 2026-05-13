@@ -1341,8 +1341,15 @@ local (qwen3:14b via Ollama) ──→ OpenAI (gpt-4o-mini) ──→ Anthropic 
 - On OpenAI failure → try Anthropic `claude-sonnet-4-6`
 - On all failure → return empty (caller handles gracefully)
 
+### Process-Type Routing (Phase 0 Migration)
+
+All LLM calls declare a process type. The config hub (`local_llm_config.py`) resolves the model from `.env`. Scripts call `local_llm.generate(prompt, caller="script_name", process_type="STANDARD")` — no hardcoded model names.
+
+**Migrated scripts (Phase 0):** `morning_digest.py`, `portfolio_news.py`, `scalp_critic_agent.py`, `stop_decision_brief.py`, `post_trade_thesis_reviewer.py`, `catalyst_intelligence.py`, `scoring.py` — all route through `local_llm.generate()` with STANDARD process type, toll gate serialization, audit logging, and cloud fallback.
+
 **When external LLM is used instead of local:**
-- `portfolio_yaml_advisor.py` — requires Claude Opus (complex multi-page analysis). Currently blocked by API credit depletion.
+- `rebalance_deep_analyzer.py` — gemma3:27b monthly deep analysis (zero cost, runs in deep overnight queue). Tier 2 verification via `rebalance_verifier.py` using Anthropic Sonnet (~$0.008/week).
+- `portfolio_yaml_advisor.py` — legacy, requires Claude Opus (blocked by API credit depletion). Superseded by `rebalance_deep_analyzer.py` for monthly analysis.
 - Agent conversational responses (via OpenClaw) — may use cloud LLM for complex queries
 - All other use cases (classification, screening, enrichment, narratives) → local primary
 
