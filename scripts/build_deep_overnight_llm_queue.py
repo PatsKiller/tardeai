@@ -614,6 +614,180 @@ def queue_rebalance_analysis(cur, dry_run=False):
                               "P0", 95, [reason], ih)
 
 
+# ─── Event-Driven Requeue Engine ────────────────────────────────────────
+
+def _requeue_on_events(cur, dry_run=False):
+    """Event-driven requeue: check for material changes since last gemma3 analysis
+    and requeue affected symbols at elevated priority. Runs at the start of every
+    build cycle so event-triggered jobs compete fairly with scheduled ones.
+
+    Triggers:
+    - strategy_classification: staleness >14d, price >5% week move, RVOL >5x, earnings <14d
+    - recovery_watch_review: price recovered near exit price (any day, not just Tue/Thu)
+    - covered_call_scoring: price >3% move on CC candidate (any day, not just Sunday)
+    """
+    counts = {}
+    today_tag = datetime.now().strftime("%Y-%m-%d")
+
+    # ── Trigger 1: strategy_classification — staleness + price + RVOL + earnings ──
+    cur.execute("""
+        WITH last_classified AS (
+            SELECT symbol, MAX(completed_at) as last_run
+            FROM deep_overnight_llm_queue
+            WHERE job_type = 'strategy_classification' AND status = 'done'
+            GROUP BY symbol
+        )
+        SELECT lc.symbol, lc.last_run,
+               EXTRACT(EPOCH FROM (NOW() - lc.last_run))/86400 as days_since,
+               sd.perf_week_pct,
+               sd.data->>'rvol' as rvol,
+               sd.data->>'earnings_date' as earnings_date
+        FROM last_classified lc
+        JOIN ticker_snapshot_daily sd ON sd.symbol = lc.symbol
+            AND sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+        WHERE lc.symbol NOT IN (
+            SELECT symbol FROM deep_overnight_llm_queue
+            WHERE job_type = 'strategy_classification' AND status = 'pending'
+        )
+        AND (
+            EXTRACT(EPOCH FROM (NOW() - lc.last_run))/86400 > 14
+            OR ABS(sd.perf_week_pct) > 5
+            OR CAST(NULLIF(sd.data->>'rvol','') AS FLOAT) > 5
+        )
+    """)
+    requeued_cls = 0
+    for symbol, last_run, days_since, perf_week, rvol_str, earnings_date in cur.fetchall():
+        score = 75
+        reasons = []
+        days_since = float(days_since or 0)
+
+        if days_since > 21:
+            score += 10
+            reasons.append(f"stale:{int(days_since)}d")
+        elif days_since > 14:
+            reasons.append(f"stale:{int(days_since)}d")
+
+        try:
+            pw = abs(float(perf_week or 0))
+            if pw > 10:
+                score += 20
+                reasons.append(f"week_move:{pw:.1f}pct")
+            elif pw > 5:
+                score += 10
+                reasons.append(f"week_move:{pw:.1f}pct")
+        except (ValueError, TypeError):
+            pass
+
+        try:
+            rv = float(rvol_str or 0)
+            if rv > 5:
+                score += 15
+                reasons.append(f"rvol_spike:{rv:.1f}x")
+        except (ValueError, TypeError):
+            pass
+
+        if earnings_date:
+            try:
+                ed = datetime.strptime(str(earnings_date)[:10], "%Y-%m-%d")
+                days_to = (ed - datetime.now()).days
+                if 0 < days_to <= 14:
+                    score += 25
+                    reasons.append(f"earnings_in_{days_to}d")
+            except (ValueError, TypeError):
+                pass
+
+        if not reasons:
+            reasons = ["requeue_staleness"]
+
+        ih = f"requeue:cls:{symbol}:{today_tag}"
+        if _already_queued(cur, ih):
+            continue
+
+        if dry_run:
+            print(f"  [REQUEUE] strategy_classification: {symbol} score={score} {reasons}")
+        else:
+            _insert_queue_item(cur, "strategy_classification", symbol,
+                               "P1", score, reasons, ih)
+        requeued_cls += 1
+
+    counts["strategy_classification"] = requeued_cls
+
+    # ── Trigger 2: recovery_watch — price recovered near exit (any day) ──
+    cur.execute("""
+        SELECT sw.symbol, sw.exit_price, sw.status,
+               sd.data->>'price' as current_price
+        FROM stopped_out_watch sw
+        JOIN ticker_snapshot_daily sd ON sd.symbol = sw.symbol
+            AND sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+        WHERE sw.is_active = true
+          AND CAST(NULLIF(sd.data->>'price','') AS FLOAT) > CAST(sw.exit_price AS FLOAT) * 0.98
+          AND sw.symbol NOT IN (
+              SELECT symbol FROM deep_overnight_llm_queue
+              WHERE job_type = 'recovery_watch_review' AND status = 'pending'
+          )
+    """)
+    requeued_rec = 0
+    for symbol, exit_price, sw_status, current_price in cur.fetchall():
+        try:
+            chg = (float(current_price) - float(exit_price)) / float(exit_price) * 100
+        except (ValueError, TypeError, ZeroDivisionError):
+            continue
+
+        ih = f"requeue:recovery:{symbol}:{today_tag}"
+        if _already_queued(cur, ih):
+            continue
+
+        reason = f"price_recovered:{chg:+.1f}pct_from_exit"
+        if dry_run:
+            print(f"  [REQUEUE] recovery_watch_review: {symbol} price={current_price} "
+                  f"exit={exit_price} {reason}")
+        else:
+            _insert_queue_item(cur, "recovery_watch_review", symbol,
+                               "P1", 95, [reason], ih, "stopped_out_watch", None)
+        requeued_rec += 1
+
+    counts["recovery_watch_review"] = requeued_rec
+
+    # ── Trigger 3: covered_call — price >3% move on CC candidate (any day) ──
+    cur.execute("""
+        SELECT DISTINCT cc.symbol,
+               sd.perf_week_pct
+        FROM aegis_covered_call_candidates cc
+        JOIN ticker_snapshot_daily sd ON sd.symbol = cc.symbol
+            AND sd.snapshot_date = (SELECT MAX(snapshot_date) FROM ticker_snapshot_daily)
+        WHERE ABS(sd.perf_week_pct) > 3
+          AND cc.symbol NOT IN (
+              SELECT symbol FROM deep_overnight_llm_queue
+              WHERE job_type = 'covered_call_scoring' AND status = 'pending'
+                AND queued_at > NOW() - INTERVAL '7 days'
+          )
+    """)
+    requeued_cc = 0
+    for symbol, perf_week in cur.fetchall():
+        ih = f"requeue:cc:{symbol}:{today_tag}"
+        if _already_queued(cur, ih):
+            continue
+
+        reason = f"week_move:{perf_week:.1f}pct"
+        if dry_run:
+            print(f"  [REQUEUE] covered_call_scoring: {symbol} {reason}")
+        else:
+            _insert_queue_item(cur, "covered_call_scoring", symbol,
+                               "P1", 85, [reason], ih,
+                               "aegis_covered_call_candidates", None)
+        requeued_cc += 1
+
+    counts["covered_call_scoring"] = requeued_cc
+
+    total = sum(counts.values())
+    if total > 0:
+        print(f"[requeue_on_events] Requeued {total} jobs: {counts}")
+    else:
+        print(f"[requeue_on_events] No requeue triggers fired")
+
+    return counts
+
+
 EXPANSION_BUILDERS = [
     ("risk_synthesis", queue_risk_synthesis),
     ("rag_content_curation", queue_rag_content_curation),
@@ -734,6 +908,12 @@ def main():
         reasons = ",".join(j["reason_codes"][:3])
         print(f"{i+1:>4} {j['job_type']:>25} {ident:>8} {j['priority_tier']:>4} {j['priority_score']:>5} {reasons}")
 
+    # ── Event-driven requeues — runs first to fill gaps ──
+    requeue_counts = _requeue_on_events(cur, dry_run=args.dry_run)
+    requeue_total = sum(requeue_counts.values())
+    if not args.dry_run:
+        conn.commit()
+
     # ── Phase 1H expansion: direct-insert builders ──
     expansion_total = 0
     for exp_name, exp_fn in EXPANSION_BUILDERS:
@@ -753,7 +933,7 @@ def main():
         print(f"\nExpansion job types: {expansion_total} additional items")
 
     if args.dry_run:
-        print(f"\n=== DRY RUN — {len(all_jobs)} list jobs + {expansion_total} expansion jobs ===")
+        print(f"\n=== DRY RUN — {len(all_jobs)} list jobs + {expansion_total} expansion + {requeue_total} requeue ===")
         conn.close()
         return
 

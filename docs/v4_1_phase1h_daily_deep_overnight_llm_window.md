@@ -161,6 +161,25 @@ Items are NOT requeued when:
 - Already completed with same input hash
 - Marked as skipped/deferred
 
+### Event-Driven Requeue Engine
+
+Runs at the start of every build cycle (before scheduled queues) to detect
+material changes since the last gemma3 analysis. Fills unused nightly slots
+with the most urgent re-analyses instead of letting capacity go idle.
+
+| Trigger | Job Type | Score Bonus | Condition |
+|---------|----------|-------------|-----------|
+| **Staleness** | strategy_classification | +0-10 | >14 days since last classification |
+| **Price move** | strategy_classification | +10-20 | >5% week move |
+| **RVOL spike** | strategy_classification | +15 | RVOL >5x (unusual activity) |
+| **Earnings proximity** | strategy_classification | +25 | Earnings within 14 days |
+| **Price recovery** | recovery_watch_review | score=95 | Price within 2% of exit price (any day) |
+| **CC price move** | covered_call_scoring | score=85 | >3% week move on CC candidate (any day) |
+
+Base requeue score for strategy_classification is 75 (P1), with bonuses stacking.
+Recovery watch and covered call requeues bypass the Tue/Thu and Sunday schedule
+gates when triggered by significant price events.
+
 ## 10. Nightly Budget Policy
 
 - **Time budget:** 240 minutes (default)
