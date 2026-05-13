@@ -484,6 +484,18 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
                        "EXECUTION_REVALIDATION_BLOCKED",
                        {"recheck_status": rck_status, "reason": recheck.get("reason"),
                         "eligibility": _elig_status, "live_price": recheck_live_price})
+            # ── Telegram alert for blocked submission ──
+            try:
+                from telegram_alert import send_telegram
+                send_telegram(
+                    f"🚫 *SUBMISSION BLOCKED: {p['symbol']}*\n\n"
+                    f"Proposal #{proposal_id} blocked at revalidation.\n"
+                    f"Reason: {recheck.get('reason', rck_status)}\n"
+                    f"Live price: ${recheck_live_price or '?'}\n"
+                    f"Status: {rck_status}"
+                )
+            except Exception:
+                pass
             return {"status": "blocked", "proposal_id": proposal_id,
                     "recheck_status": rck_status,
                     "reason": recheck.get("reason"),
@@ -492,6 +504,32 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             _log_event(conn, proposal_id, p["symbol"],
                        "EXECUTION_REVALIDATION_REQUIRES_REAPPROVAL",
                        {"recheck_status": rck_status, "changes": recheck.get("material_change_reasons")})
+            # ── Gap 6: Telegram alert for NEEDS_REVALIDATION ──
+            try:
+                from telegram_alert import send_telegram
+                orig = recheck.get("original_plan", {})
+                recal = recheck.get("recalibrated_plan", {})
+                drift = recheck.get("price_drift_pct", 0)
+                score = recheck.get("execution_readiness_score", "?")
+                changes = recheck.get("material_change_reasons", [])
+                live_px = recheck.get("current_price", "?")
+                orig_entry = orig.get("entry", plan.get("limit_price", "?"))
+                new_shares = recal.get("shares", plan.get("shares", "?"))
+                orig_shares = orig.get("shares", plan.get("shares", "?"))
+                msg = (
+                    f"⚠️ *REVALIDATION REQUIRED: {p['symbol']}*\n\n"
+                    f"Proposal #{proposal_id} needs re-approval.\n"
+                    f"Original entry: ${orig_entry}\n"
+                    f"Current price: ${live_px} ({drift:+.1f}% drift)\n"
+                    f"Shares: {orig_shares} → {new_shares}\n"
+                    f"Score: {score}/100\n"
+                    f"Changes: {', '.join(changes[:3]) if changes else 'price_drift'}\n\n"
+                    f"Approve: /approve updated paper entry {proposal_id}\n"
+                    f"Reject:  /reject updated paper entry {proposal_id}"
+                )
+                send_telegram(msg)
+            except Exception as tg_err:
+                log.warning(f"[revalidation] Telegram alert failed: {tg_err}")
             return {"status": "requires_reapproval", "proposal_id": proposal_id,
                     "recheck_status": rck_status,
                     "material_changes": recheck.get("material_change_reasons"),
@@ -554,6 +592,7 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             strategy_id=p["strategy_id"],
             conn=conn,
             validated_price=float(recheck_live_price) if recheck_live_price else None,
+            revalidation_snapshot=recheck if recheck else None,
         )
 
         event_type = ("ALPACA_PAPER_ORDER_SUBMITTED"
