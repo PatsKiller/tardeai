@@ -8089,7 +8089,21 @@ def _paper_proposals_enriched():
             except (TypeError, ValueError):
                 drift = None
 
-            if 'MISSED' in ezs.upper() or 'MISSED' in ls.upper():
+            # Stop breach check — must come first
+            _cp = None
+            _sp = None
+            try:
+                _cp = float(prop.get('current_price') or prop.get('live_price_at_execution') or prop.get('scan_price') or 0)
+                _sp = float(prop.get('proposed_stop') or 0)
+            except (TypeError, ValueError):
+                pass
+
+            if _cp and _sp and _cp > 0 and _sp > 0 and _cp <= _sp:
+                verdict = 'BLOCKED'
+                verdict_color = 'red'
+                verdict_reason = f"STOP BREACHED \u2014 price ${_cp:.2f} at or below stop ${_sp:.2f}"
+                missed_count += 1
+            elif 'MISSED' in ezs.upper() or 'MISSED' in ls.upper():
                 verdict = 'ENTRY_MISSED'
                 verdict_color = 'red'
                 drift_str = f" {drift:+.1f}%" if drift else ""
@@ -8140,8 +8154,9 @@ def _paper_proposals_enriched():
             prop['operator_verdict'] = verdict
             prop['operator_verdict_color'] = verdict_color
             prop['operator_verdict_reason'] = verdict_reason
-            prop['sort_order'] = {'READY': 1, 'NEEDS_REVIEW': 2, 'STALE_QUOTE': 3, 'ENTRY_MISSED': 4}.get(verdict, 2)
+            prop['sort_order'] = {'READY': 1, 'NEEDS_REVIEW': 2, 'STALE_QUOTE': 3, 'ENTRY_MISSED': 4, 'BLOCKED': 5}.get(verdict, 2)
             prop['is_actionable'] = verdict in ('READY', 'NEEDS_REVIEW')
+            prop['is_blocked'] = verdict == 'BLOCKED'
 
             # Timestamp display fields
             def _ts_display(ts_val, label=""):

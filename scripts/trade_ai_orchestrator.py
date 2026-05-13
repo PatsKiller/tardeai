@@ -628,7 +628,9 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     # 18c Risk gate — annotate GO/WAIT tickers with prop desk governance (non-fatal)
     try:
         from risk_gate import RiskGate
-        _rg = RiskGate(conn)
+        from db_adapter import _get_conn as _rg_get_conn
+        _rg_conn = _rg_get_conn()
+        _rg = RiskGate(_rg_conn)
         _rg_approved = 0
         _rg_rejected = 0
         for t in scored:
