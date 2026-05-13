@@ -43,17 +43,13 @@ def _env(key, default=""):
 
 
 def _ollama(prompt, max_tokens=500):
-    """Call local Ollama LLM for scoring/curation."""
+    """Call local LLM for scoring/curation (routed through local_llm.generate)."""
     import re as _re
     try:
-        r = requests.post(OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "stream": False,
-                  "messages": [{"role": "user", "content": prompt}],
-                  "think": False,
-                  "options": {"temperature": 0.2, "num_predict": max_tokens, "num_ctx": 4096}},
-            timeout=60)
-        text = r.json().get("message", {}).get("content", "").strip()
-        return _re.sub(r"<think>.*?</think>", "", text, flags=_re.DOTALL).strip()
+        from local_llm import generate
+        text = generate(prompt, timeout=60,
+                        caller="portfolio_news", process_type="STANDARD")
+        return _re.sub(r"<think>.*?</think>", "", text or "", flags=_re.DOTALL).strip()
     except Exception as e:
         return f"LLM error: {e}"
 

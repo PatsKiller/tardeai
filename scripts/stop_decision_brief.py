@@ -31,13 +31,9 @@ def _env(key, default=""):
 def _ollama(prompt, max_tokens=800):
     import re
     try:
-        r = requests.post(OLLAMA_URL,
-            json={"model": OLLAMA_MODEL, "stream": False,
-                  "messages": [{"role": "user", "content": prompt}],
-                  "think": False,
-                  "options": {"temperature": 0.2, "num_predict": max_tokens, "num_ctx": 4096}},
-            timeout=90)
-        text = r.json().get("message", {}).get("content", "").strip()
+        from local_llm import generate
+        text = generate(prompt, timeout=90,
+                        caller="stop_decision_brief", process_type="STANDARD") or ""
         return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     except Exception as e:
         return f"LLM unavailable: {e}"

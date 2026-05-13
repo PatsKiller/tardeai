@@ -125,23 +125,13 @@ def industry_fallback(symbol: str) -> str:
 # ── Stage 3: LLM Critique ───────────────────────────────────────────────────
 
 def _call_ollama(prompt: str, timeout: int = 60) -> str:
-    import urllib.request
-    from local_llm_config import get_local_llm_model, get_local_llm_base_url
-    _model = get_local_llm_model()
-    _base = get_local_llm_base_url().rstrip("/")
-    payload = json.dumps({
-        "model": _model, "stream": False,
-        "messages": [{"role": "user", "content": prompt}],
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": 300}
-    }).encode()
+    """Route through local_llm.generate() for audit + fallback."""
     try:
-        req = urllib.request.Request(f"{_base}/api/chat",
-                                     data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read()).get("message", {}).get("content", "")
+        from local_llm import generate
+        return generate(prompt, timeout=timeout,
+                        caller="scalp_critic_agent", process_type="STANDARD") or ""
     except Exception as e:
-        log.warning(f"Ollama error: {e}")
+        log.warning(f"LLM error: {e}")
         return ""
 
 

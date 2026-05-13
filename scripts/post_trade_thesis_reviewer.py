@@ -239,22 +239,10 @@ Technicals at entry: RSI={technical.get('rsi_14')} ATR={technical.get('atr_14')}
 Provide a 2-3 sentence review covering: (1) Was the thesis setup valid? (2) What could improve? Keep it factual and brief. Respond in plain text only."""
 
     try:
-        import urllib.request
-        payload = json.dumps({
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 200},
-        }).encode()
-        req = urllib.request.Request(
-            f"{_base}/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-            return data.get("response", "").strip(), model
+        from local_llm import generate
+        text = generate(prompt, timeout=60,
+                        caller="post_trade_thesis_reviewer", process_type="STANDARD")
+        return (text.strip() if text else None), model
     except Exception as e:
         log.warning(f"LLM review failed: {e}")
         return None, None
