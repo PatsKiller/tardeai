@@ -35,6 +35,21 @@ run_windows:
   '1000':
     label: first_hour_read
     active_screeners: [prime_setups, watchlist_setups]
+  '1200':
+    label: midday_refresh
+    active_screeners: [prime_setups, watchlist_setups]
+  '1400':
+    label: afternoon_check
+    active_screeners: [prime_setups, watchlist_setups]
+  '1600':
+    label: close_read
+    active_screeners: [prime_setups, watchlist_setups]
+  '1730':
+    label: post_close
+    active_screeners: [prime_setups, watchlist_setups]
+  'test-fix':
+    label: test_run
+    active_screeners: [prime_setups, watchlist_setups]
 
 screeners:
 
