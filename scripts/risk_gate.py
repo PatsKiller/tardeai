@@ -19,6 +19,18 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+
+def _safe_float(val, default=0.0) -> float:
+    """Convert to float safely — handles None, dict (JSONB), and bad strings."""
+    if val is None:
+        return default
+    if isinstance(val, dict):
+        return float(val.get('value', val.get('amount', default)))
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
 log = logging.getLogger(__name__)
 
 FAIL_CLOSED_CONTEXTS = {'paper_trade', 'live_trade', 'approval_ready', 'broker_submit', 'telegram_actionable'}
@@ -207,7 +219,7 @@ class RiskGate:
             # 11. Stop defined
             if action_context in FAIL_CLOSED_CONTEXTS:
                 stop = plan.get('stop_loss') or plan.get('stop')
-                if not stop or float(stop) <= 0:
+                if not stop or _safe_float(stop) <= 0:
                     reasons.append('STOP_NOT_DEFINED')
 
             # 12. Stop width
@@ -220,7 +232,7 @@ class RiskGate:
                     if 'stop' in str(dq.get('id', '')).lower() and 'pct' in str(dq.get('id', '')).lower():
                         # Extract threshold from condition
                         pass
-                if float(stop_pct) > max_stop:
+                if _safe_float(stop_pct) > max_stop:
                     reasons.append('STOP_TOO_WIDE')
 
             # 13. Dollar size (paper from env default $15K, live from strategy YAML)
@@ -230,7 +242,7 @@ class RiskGate:
                 live_max = live_rules.get('max_position_size', 2000)
                 paper_max = int(os.getenv('PAPER_MAX_POSITION_SIZE', '15000'))
                 max_size = paper_max if mode == 'paper' else live_max
-                if float(dollar_size) > max_size:
+                if _safe_float(dollar_size) > max_size:
                     reasons.append('DOLLAR_SIZE_TOO_LARGE')
 
             # 14. Data quality
@@ -248,12 +260,12 @@ class RiskGate:
             # 16. VIX regime
             vix = extra_data.get('vix')
             regime_rules = shared.get('market_regime_rules', {})
-            if vix and float(vix) >= 35:
+            if vix and _safe_float(vix) >= 35:
                 vix_rules = regime_rules.get('vix_above_35', {})
                 strat_rule = vix_rules.get(strategy_id)
                 if strat_rule == 'paused':
                     reasons.append('REGIME_PAUSED')
-            elif vix and float(vix) >= 25:
+            elif vix and _safe_float(vix) >= 25:
                 vix_rules = regime_rules.get('vix_25_to_35', {})
                 strat_rule = vix_rules.get(strategy_id)
                 if strat_rule == 'paused':
@@ -263,7 +275,7 @@ class RiskGate:
             source = extra_data.get('source', '')
             catalyst_rules = shared.get('catalyst_rules', {})
             source_quality = extra_data.get('source_quality_score', 1.0)
-            if source in ('stocktwits', 'reddit', 'social') or (source_quality and float(source_quality) < 0.5):
+            if source in ('stocktwits', 'reddit', 'social') or (source_quality and _safe_float(source_quality, 1.0) < 0.5):
                 catalyst_verified = extra_data.get('catalyst_verified', False)
                 if not catalyst_verified:
                     if action_context in FAIL_CLOSED_CONTEXTS:
