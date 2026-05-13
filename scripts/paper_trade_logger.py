@@ -382,6 +382,7 @@ def close_paper_trade(symbol: str, exit_price: float, reason: str = "manual") ->
                 hold_time_min = %s,
                 outcome_verdict = %s,
                 status = 'closed',
+                lifecycle_state = 'closed',
                 closed_at = %s,
                 closed_via = 'telegram',
                 updated_at = %s

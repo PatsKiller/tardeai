@@ -133,7 +133,8 @@ class AlpacaPaperAdapter:
                 log.info(f"[alpaca] {symbol} no longer in Alpaca positions — marking closed")
                 cur.execute("""
                     UPDATE paper_trades
-                    SET status = 'closed', closed_at = NOW(), closed_via = 'alpaca_sync',
+                    SET status = 'closed', lifecycle_state = 'closed',
+                        closed_at = NOW(), closed_via = 'alpaca_sync',
                         exit_reason = 'position_closed_in_alpaca', updated_at = NOW()
                     WHERE id = %s
                 """, [trade_id])
