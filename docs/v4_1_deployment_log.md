@@ -1077,3 +1077,40 @@ stop would have caught it at day 21 automatically.
 - Closed: 6 (1 WIN, 2 LOSS, 3 BREAKEVEN)
 - Realized P&L: +$37.64
 - Principle confirmed: **Alpaca is source of truth**, DB follows
+
+## PM Crons --allow-underfilled + risk_gate Dict Keys — 2026-05-13 17:00 ET
+
+- All 4 PM crons (1200/1400/1600/1730) now pass `--allow-underfilled`
+- `risk_gate._safe_float()` expanded to search `price` and `score` dict keys
+
+## Paper Trades Data Integrity Guards — 2026-05-13 17:15 ET
+
+### _fix_integrity_issues() in paper_trade_monitor.py
+Runs at start of every 5-min cycle before position processing:
+1. Auto-cancels open records never filled after 30min
+2. Closes phantom DB records not on Alpaca
+3. Fixes stuck closed_at records still marked open
+
+### Journal API integrity
+- Filtered: excludes unfilled open records (`filled_at IS NULL AND broker_status != 'filled'`)
+- `_journal_integrity_warnings()`: detects unfilled opens, missing verdicts, duplicate symbols
+- Warnings returned in API response as `integrity_warnings`
+
+## Architectural Fix: Broker as Source of Truth — 2026-05-13 17:30 ET
+
+**Principle**: Active broker (currently Alpaca paper) is sole source of truth for trades.
+Database is a mirror of broker state — nothing written until broker confirms fill.
+
+### Changes to alpaca_paper_adapter.py
+
+| Component | Before | After |
+|-----------|--------|-------|
+| Unfilled limit orders | Created paper_trades row (`status='pending'`) | No row created. Returns `{status:'pending'}` — sync detects fill later |
+| Filled market orders | INSERT missing `filled_at`, `submitted_at` | Both set to `NOW()` |
+| Sync-detected positions | INSERT missing `lifecycle_state`, `broker_status`, `filled_at` | All set: `open`, `filled`, `NOW()` |
+
+### broker_confirmed column
+`ALTER TABLE paper_trades ADD COLUMN broker_confirmed BOOLEAN GENERATED ALWAYS AS (filled_at IS NOT NULL) STORED`
+- TRUE = broker confirmed fill. FALSE = phantom/unconfirmed.
+- Used by journal API and monitor integrity checks.
+- Historical trades backfilled: INFU #13 and BLBD #16 got `filled_at` from `entry_time`.
