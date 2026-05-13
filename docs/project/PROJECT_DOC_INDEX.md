@@ -1,14 +1,40 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-05-11 (Session 29, Phases 1-8)
+
+**Updated:** 2026-05-12
+**Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
+
+---
 
 ## Active Documents
+
+### Protocol
+| Document | Purpose |
+|----------|---------|
+| `docs/A1A.md` | **Documentation due-diligence protocol** — non-negotiable rules for keeping docs current, accurate, and consistent |
 
 ### Primary Reference
 | Document | Purpose |
 |----------|---------|
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative system reference** — 24 sections covering architecture, pipeline, data sources, strategies, agents, LLM, API, frontend, notifications, scheduling, security, production readiness |
-| `docs/SYSTEM_AUDIT_2026-05-11.md` | Full system audit: 42 pages, 275 endpoints, 56 Telegram scripts |
-| `docs/IMPROVEMENT_PLAN_2026-05-11.md` | 8-phase improvement plan (all phases complete) |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative system reference** — 22 sections covering architecture, pipeline, data sources, strategies, agents, LLM, API, frontend, notifications, scheduling, security, production readiness |
+| `docs/SYSTEM_AUDIT_2026-05-11.md` | Full system audit: 43 pages, 280+ endpoints, 152+ crons |
+| `docs/project/SYSTEM_ARCHITECTURE_COMPLETE.md` | Complete system architecture detail |
+| `docs/ARCHITECTURE_OVERVIEW.md` | Executive architecture summary |
+
+### LLM Fleet v4.1
+| Document | Purpose |
+|----------|---------|
+| `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | **LLM fleet architecture** — process types, GPU lifecycle, phased rollout, gemma3:27b overnight, model routing. Supersedes v3.4.1 |
+| `docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` | Execution prompt for LLM fleet deployment — gates, hard rules, authorized steps |
+| `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator-facing runbook for LLM fleet phases |
+| `docs/v4_1_deployment_log.md` | **Living deployment log** — gate results, phase completions, deviations, rollback commands |
+| `docs/v4_1_phase1h_daily_deep_overnight_llm_window.md` | **Phase 1H** — daily 23:00–03:00 deep overnight LLM queue window (gemma3-overnight, 70-job target, 75 hard max) |
+
+### Phase 1 Test Reports (LLM Fleet)
+| Document | Purpose |
+|----------|---------|
+| `docs/v4_1_phase1_pilot_report.md` | Phase 1 pilot: gemma3:27b BATCH_OVERNIGHT test (1 symbol) |
+| `docs/v4_1_phase1c_controlled_expansion_report.md` | Phase 1C: 2-symbol expansion test |
+| `docs/v4_1_phase1d_limit5_report.md` | Phase 1D: 5-symbol expansion test |
 
 ### Operational Guides
 | Document | Purpose |
@@ -27,13 +53,28 @@
 | `docs/project/agents_bible.md` | Agent behavior rules, G1-G10 global rules |
 | `docs/project/project_openclaw.md` | OpenClaw gateway configuration |
 
-### Reference
+### Reference (may need freshness check)
 | Document | Purpose |
 |----------|---------|
-| `docs/ARCHITECTURE_OVERVIEW.md` | Executive architecture summary |
-| `docs/llm_fleet_strategy_v3_4_1.md` | LLM fleet strategy |
-| `docs/project/SYSTEM_FACTS_LATEST.md` | System facts snapshot |
+| `docs/project/SYSTEM_FACTS_LATEST.md` | System facts snapshot (check freshness) |
+| `docs/IMPROVEMENT_PLAN_2026-05-11.md` | 8-phase improvement plan (all phases complete — historical) |
+
+### Discovery Artifacts
+| Document | Purpose |
+|----------|---------|
+| `docs/v4_1_discovery/` | LLM fleet v4.1 discovery: crontab backups, LLM reference scans, service units, schedule audits |
+
+## Superseded (archive candidates)
+| Document | Superseded by | Action |
+|----------|---------------|--------|
+| `docs/llm_fleet_strategy_v3_4_1.md` | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | Archive — v3.4.1 is superseded by v4.1 Final |
 
 ## Archived
-All session-specific docs (Sessions 27-36) and dated operational briefs are in `docs/_archive/`.
+All session-specific docs (Sessions 27-37) and dated operational briefs are in `docs/_archive/`.
 Retained for historical reference but no longer authoritative.
+
+## Change Log
+| Date | Change |
+|------|--------|
+| 2026-05-12 | Added A1A protocol, LLM fleet v4.1 docs, Phase 1H doc, test reports, discovery artifacts. Flagged v3.4.1 as superseded. |
+| 2026-05-11 | Initial index (Session 29, Phases 1-8) |
