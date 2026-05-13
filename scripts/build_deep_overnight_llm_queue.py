@@ -788,6 +788,34 @@ def _requeue_on_events(cur, dry_run=False):
     return counts
 
 
+def queue_strategy_opportunity_scan(cur, dry_run=False):
+    """Queue weekly strategy diversity scan. Sunday only. gemma3 evaluates
+    top watchlist symbols against all 20 strategies to surface candidates
+    that momentum screeners miss."""
+    if datetime.now().weekday() != 6:  # Sunday=6
+        return 0
+
+    cur.execute("""
+        SELECT id FROM deep_overnight_llm_queue
+        WHERE job_type = 'strategy_opportunity_scan'
+          AND queued_at > NOW() - INTERVAL '6 days'
+          AND status IN ('pending', 'running', 'done')
+        LIMIT 1
+    """)
+    if cur.fetchone():
+        return 0
+
+    ih = f"strategy_opp_scan:{datetime.now().strftime('%Y-%W')}"
+    if _already_queued(cur, ih):
+        return 0
+
+    if dry_run:
+        print(f"  [DRY] strategy_opportunity_scan: WATCHLIST Sunday scan score=88")
+        return 1
+    return _insert_queue_item(cur, "strategy_opportunity_scan", "WATCHLIST",
+                              "P1", 88, ["weekly_strategy_diversity_scan"], ih)
+
+
 EXPANSION_BUILDERS = [
     ("risk_synthesis", queue_risk_synthesis),
     ("rag_content_curation", queue_rag_content_curation),
@@ -795,6 +823,7 @@ EXPANSION_BUILDERS = [
     ("covered_call_scoring", queue_covered_call_scoring),
     ("weekly_behavioral_review", queue_weekly_behavioral_review),
     ("rebalance_analysis", queue_rebalance_analysis),
+    ("strategy_opportunity_scan", queue_strategy_opportunity_scan),
 ]
 
 
@@ -812,6 +841,7 @@ ALL_JOB_TYPES = [
     "covered_call_scoring",
     "weekly_behavioral_review",
     "rebalance_analysis",
+    "strategy_opportunity_scan",
 ]
 
 BUILDERS = {
