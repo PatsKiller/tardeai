@@ -30,7 +30,8 @@ def _get_trade(conn, paper_trade_id):
                signal_grade, score_at_entry, catalyst_at_entry, catalyst_verified,
                rvol_at_entry, float_m_at_entry, hold_time_min,
                entry_time, exit_time, account, opened_via, automation_source,
-               stop_loss, target_1, dollar_risk, risk_gate_result
+               stop_loss, target_1, dollar_risk, risk_gate_result,
+               proposal_id, closed_at
         FROM paper_trades WHERE id = %s
     """, [paper_trade_id])
     cols = [d[0] for d in cur.description]
@@ -300,12 +301,69 @@ def _index_trade_outcome_to_rag(conn, paper_trade_id):
         return {'success': False, 'error': str(e)}
 
 
+def _write_outcome_to_proposal(conn, trade):
+    """Link trade result back to the originating proposal (Gap 3 provenance)."""
+    proposal_id = trade.get('proposal_id')
+    if not proposal_id:
+        return {'success': False, 'reason': 'no_proposal_id'}
+
+    pnl = trade.get('pnl')
+    verdict = (
+        'WIN'       if pnl and float(pnl) > 0 else
+        'LOSS'      if pnl and float(pnl) < 0 else
+        'BREAKEVEN'
+    )
+
+    hold_hours = None
+    entry_time = trade.get('entry_time')
+    closed_at = trade.get('closed_at') or trade.get('exit_time')
+    if entry_time and closed_at:
+        try:
+            hold_hours = int((closed_at - entry_time).total_seconds() / 3600)
+        except Exception:
+            pass
+
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE paper_trade_proposals SET
+            outcome_trade_id         = %s,
+            outcome_r_multiple       = %s,
+            outcome_pnl              = %s,
+            outcome_pnl_pct          = %s,
+            outcome_verdict          = %s,
+            outcome_thesis_confirmed = %s,
+            outcome_closed_at        = %s,
+            outcome_hold_hours       = %s
+        WHERE id = %s AND outcome_trade_id IS NULL
+    """, [trade['id'], trade.get('r_multiple'),
+          trade.get('pnl'), trade.get('pnl_pct'),
+          verdict,
+          trade.get('outcome_verdict') == 'CORRECT' if trade.get('outcome_verdict') else None,
+          closed_at, hold_hours, proposal_id])
+    updated = cur.rowcount
+    log.info(f"[provenance] Wrote outcome to proposal {proposal_id}: "
+             f"verdict={verdict}, r={trade.get('r_multiple')}, "
+             f"pnl=${trade.get('pnl')}, updated={updated}")
+    return {'success': True, 'proposal_id': proposal_id, 'verdict': verdict, 'updated': updated}
+
+
 def on_paper_trade_closed(conn, paper_trade_id):
     """Master hook called when any paper trade closes.
 
     Runs all curation hooks. Never blocks the close — errors are logged.
     """
     results = {}
+
+    # Outcome provenance — write trade result back to originating proposal
+    try:
+        trade_data = _get_trade(conn, paper_trade_id)
+        if trade_data:
+            results['provenance'] = _write_outcome_to_proposal(conn, trade_data)
+        else:
+            results['provenance'] = {'success': False, 'reason': 'trade_not_found'}
+    except Exception as e:
+        log.error(f"Outcome provenance failed for trade {paper_trade_id}: {e}")
+        results['provenance'] = {'success': False, 'error': str(e)}
 
     # Iris outcome writeback
     try:
@@ -353,6 +411,7 @@ def on_paper_trade_closed(conn, paper_trade_id):
         results['realtime_review'] = {'success': False, 'error': str(e)}
 
     log.info(f"Curation complete for trade {paper_trade_id}: "
+             f"provenance={results.get('provenance',{}).get('success')}, "
              f"iris={results.get('iris',{}).get('success')}, "
              f"aegis={results.get('aegis',{}).get('success')}, "
              f"lessons={results.get('lessons',{}).get('success')}, "

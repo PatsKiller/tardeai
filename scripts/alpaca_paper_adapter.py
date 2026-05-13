@@ -169,7 +169,7 @@ class AlpacaPaperAdapter:
                 log.warning(f"[alpaca] Post-close processor trigger failed: {e}")
         return closed
 
-    def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn, validated_price=None):
+    def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn, validated_price=None, revalidation_snapshot=None):
         """Submit a bracket order to Alpaca paper."""
         if not self.enabled:
             log.info(f"[alpaca] DISABLED — would submit {shares} {symbol} @ ${entry_price}")
@@ -395,6 +395,21 @@ class AlpacaPaperAdapter:
                 "order_type": "market" if use_market else "limit",
                 "order_type_reason": order_type_reason,
             })
+            # Extract revalidation snapshot fields (Gap 7)
+            _reval_verdict = None
+            _reval_score = None
+            _reval_flags = None
+            _price_at_approval = None
+            _staleness_min = None
+            if revalidation_snapshot:
+                _reval_verdict = revalidation_snapshot.get("status") or revalidation_snapshot.get("eligibility_status")
+                _reval_score = revalidation_snapshot.get("execution_readiness_score")
+                _mc = revalidation_snapshot.get("material_change_reasons")
+                _reval_flags = json.dumps(_mc) if _mc else None
+                _price_at_approval = revalidation_snapshot.get("price_at_recommendation")
+                elapsed = revalidation_snapshot.get("elapsed_since_approval_seconds")
+                _staleness_min = int(elapsed / 60) if elapsed else None
+
             cur.execute("""
                 INSERT INTO paper_trades (strategy_id, symbol, account, shares, dollar_size,
                     stop_loss, target_1, planned_entry, entry_price, dollar_risk,
@@ -402,12 +417,16 @@ class AlpacaPaperAdapter:
                     market_regime, vix_at_entry,
                     status, opened_via, logged_by, risk_gate_result,
                     risk_params_at_fill, lifecycle_state,
+                    revalidation_verdict, revalidation_score, revalidation_flags,
+                    price_at_approval, staleness_at_submit_min,
                     notes)
                 VALUES (%s, %s, 'ALPACA_PAPER', %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s,
                     %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED',
+                    %s, %s,
+                    %s, %s, %s,
                     %s, %s,
                     %s)
             """, [strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
@@ -417,6 +436,8 @@ class AlpacaPaperAdapter:
                   'market' if use_market else 'bracket',
                   _regime, _vix, _db_status,
                   _risk_snap, _db_status,
+                  _reval_verdict, _reval_score, _reval_flags,
+                  _price_at_approval, _staleness_min,
                   f"Order type: {order_type_reason}. Fill verified: {fill_status}. "
                   f"Shares: {actual_shares}. Stop: ${stop_price} ({'atomic bracket' if not use_market else 'placed after fill'})."])
             conn.commit()
