@@ -45,6 +45,11 @@
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50 GPU setup for Ollama |
 | `docs/COST_MODEL.md` | Cloud operating cost model |
 
+### Improvement Plans
+| Document | Purpose |
+|----------|---------|
+| `docs/project/FOCUSED_IMPROVEMENT_PLAN.md` | **Active improvement plan** — 7 verified gaps (3 resolved/deferred), corrected maturity score 6.5/10, implementation sequence |
+
 ### Strategy & Agent Configuration
 | Document | Purpose |
 |----------|---------|
@@ -76,5 +81,6 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-12 | Added FOCUSED_IMPROVEMENT_PLAN.md (corrected architect assessment, 7 gaps, maturity path). |
 | 2026-05-12 | Added A1A protocol, LLM fleet v4.1 docs, Phase 1H doc, test reports, discovery artifacts. Flagged v3.4.1 as superseded. |
 | 2026-05-11 | Initial index (Session 29, Phases 1-8) |
