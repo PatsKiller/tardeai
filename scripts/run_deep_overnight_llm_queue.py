@@ -191,17 +191,48 @@ Provide a structured journal analysis:
 Be concise and direct. Focus on behavioral insights."""
 
     elif job_type == "proposal_review":
+        prop_ctx = ""
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""SELECT proposed_entry, proposed_stop, proposed_target1, proposed_shares,
+                                strategy_id, signal_score, signal_grade, catalyst, catalyst_verified,
+                                screener_name, created_at
+                         FROM paper_trade_proposals WHERE id = %s""", [job.get('trade_id')])
+            row = c.fetchone()
+            if row:
+                pe, ps, pt, sh, sid, sc, sg, cat, cv, scr, ca = row
+                rr = round((float(pt) - float(pe)) / (float(pe) - float(ps)), 1) if pe and ps and pt and float(pe) > float(ps) else 0
+                risk = round(abs(float(pe) - float(ps)) * int(sh), 2) if pe and ps and sh else 0
+                prop_ctx = (f"\nACTUAL PROPOSAL DATA:\n"
+                            f"  Strategy: {sid} | Grade: {sg} | Score: {sc}\n"
+                            f"  Entry: ${pe} | Stop: ${ps} | Target: ${pt}\n"
+                            f"  Shares: {sh} | Risk: ${risk} | R:R: {rr}:1\n"
+                            f"  Catalyst: {(str(cat) or 'None')[:80]} {'(verified)' if cv else '(unverified)'}\n"
+                            f"  Source: {scr} | Created: {ca}\n")
+            # RSI/RVOL for timing assessment
+            c.execute("""SELECT rsi, data->>'rvol' as rvol, data->>'price' as price
+                         FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1""", [symbol])
+            snap = c.fetchone()
+            if snap:
+                prop_ctx += f"  Current: price=${snap[2]} RSI={snap[0]} RVOL={snap[1]}x\n"
+            conn_tmp.close()
+        except Exception:
+            pass
+
         return f"""Deep review of trade proposal for {symbol}.
 
 Proposal ID: {job.get('trade_id')}
 Account: {job.get('account', 'N/A')}
 Review triggers: {', '.join(reasons)}
+{prop_ctx}
+Provide a structured proposal assessment using ONLY the data above.
+Do NOT invent prices, scores, or catalyst details.
 
-Provide a structured proposal assessment:
 1. THESIS QUALITY: Is the trade thesis well-supported?
 2. RISK/REWARD: Is the risk/reward ratio appropriate?
-3. TIMING: Is the entry timing favorable given current conditions?
-4. SIZING: Is position sizing appropriate for the account and risk?
+3. TIMING: Is the entry timing favorable given current RSI/RVOL?
+4. SIZING: Is position sizing appropriate for the risk?
 5. RECOMMENDATION: Approve, modify, or reject with specific reasons?
 
 Be concise and direct."""
@@ -252,11 +283,40 @@ LOW_QUALITY (0.0): Generic, repetitive, no signal.
 SUPERSEDED (null): Already covered by better content."""
 
     elif job_type == "recovery_watch_review":
+        recovery_ctx = ""
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""SELECT exit_price, stop_price, stopped_out_at, reason, thesis_at_exit,
+                                status, setup_name, realized_pnl
+                         FROM stopped_out_watch WHERE symbol=%s AND is_active=true LIMIT 1""", [symbol])
+            sw = c.fetchone()
+            if sw:
+                recovery_ctx = (f"\nACTUAL RECOVERY DATA:\n"
+                                f"  Exit price: ${sw[0]} | Stop: ${sw[1]} | Stopped: {sw[2]}\n"
+                                f"  Reason: {sw[3]} | Setup: {sw[5]}\n"
+                                f"  Thesis at exit: {(str(sw[4]) or 'N/A')[:200]}\n"
+                                f"  Realized P&L: ${sw[7]}\n")
+            c.execute("""SELECT data->>'price' as price, rsi, perf_week_pct
+                         FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1""", [symbol])
+            snap = c.fetchone()
+            if snap and sw:
+                try:
+                    cur_price = float(snap[0] or 0)
+                    exit_p = float(sw[0] or 0)
+                    recovery_pct = ((cur_price - exit_p) / exit_p * 100) if exit_p > 0 else 0
+                    recovery_ctx += f"  Current: ${snap[0]} RSI={snap[1]} Week={snap[2]}% Recovery: {recovery_pct:+.1f}% from exit\n"
+                except Exception:
+                    pass
+            conn_tmp.close()
+        except Exception:
+            pass
+
         return f"""You are a portfolio recovery analyst. Evaluate whether {symbol}'s original buy thesis remains valid after being stopped out.
 
 Review triggers: {', '.join(reasons)}
-
-Evaluate:
+{recovery_ctx}
+Using ONLY the data above, evaluate:
 1. Was the stop-out from temporary conditions or fundamental deterioration?
 2. Has the situation improved, worsened, or stayed the same?
 3. Is the original thesis still intact?
@@ -265,11 +325,34 @@ Evaluate:
 Respond as JSON: {{"verdict": "THESIS_INTACT|THESIS_INVALIDATED|NEEDS_MORE_DATA", "confidence": 0.0-1.0, "reentry_risk": "HIGH|MEDIUM|LOW", "recommended_action": "REENTER_NOW|WAIT_FOR_CATALYST|STAY_CASH|CLOSE_WATCH", "key_factor": "single most important factor"}}"""
 
     elif job_type == "covered_call_scoring":
+        cc_ctx = ""
+        try:
+            conn_tmp = get_db_connection()
+            c = conn_tmp.cursor()
+            c.execute("""SELECT data->>'price' as price, rsi, data->>'beta' as beta,
+                                data->>'div_yield' as div_yield, data->>'rvol' as rvol,
+                                perf_week_pct, data->>'sma50_pct' as sma50
+                         FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1""", [symbol])
+            snap = c.fetchone()
+            if snap:
+                cc_ctx = (f"\nACTUAL DATA:\n"
+                          f"  Price: ${snap[0]} | RSI: {snap[1]} | Beta: {snap[2]}\n"
+                          f"  Div yield: {snap[3]}% | RVOL: {snap[4]}x | Week: {snap[5]}%\n"
+                          f"  SMA50 distance: {snap[6]}%\n")
+            c.execute("""SELECT recommendation, confidence_score FROM aegis_covered_call_candidates
+                         WHERE symbol=%s LIMIT 1""", [symbol])
+            cc = c.fetchone()
+            if cc:
+                cc_ctx += f"  Aegis recommendation: {cc[0]} (confidence: {cc[1]})\n"
+            conn_tmp.close()
+        except Exception:
+            pass
+
         return f"""You are an options income specialist. Evaluate {symbol} for covered call selling.
 
 Queue reasons: {', '.join(reasons)}
-
-Evaluate:
+{cc_ctx}
+Using ONLY the data above, evaluate:
 1. Is this an appropriate time to sell covered calls?
 2. What strike price OTM % would you target?
 3. Estimated monthly premium yield?
