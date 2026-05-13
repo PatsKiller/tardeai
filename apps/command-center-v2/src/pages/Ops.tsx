@@ -182,6 +182,12 @@ export default function Ops() {
         </>
       )}
 
+      {/* LLM Routing Audit */}
+      <LLMRoutingAudit />
+
+      {/* Cron Health Grid */}
+      <CronHealth />
+
       {/* John Decision Audit Trail */}
       <DecisionAuditTrail />
 
@@ -311,6 +317,90 @@ function DecisionAuditTrail() {
                 <span style={{ color: 'var(--text3)', fontSize: 9 }}>{h.changed_at ? timeAgo(h.changed_at) : '—'}</span>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+    </>
+  )
+}
+
+
+function LLMRoutingAudit() {
+  const { data } = useApi<{ entries: { timestamp: string; caller: string; process_type: string; model: string; latency_ms: number; status: string; fallback_triggered: boolean }[] }>('/api/v2/ops/llm-audit')
+  const entries = data?.entries ?? []
+  return (
+    <>
+      <SectionHeader title="LLM Routing Audit" count={entries.length} />
+      {entries.length === 0 ? (
+        <Card compact><div style={{ color: 'var(--text3)', fontSize: 10, padding: 8, textAlign: 'center' }}>No LLM audit entries found. Calls logged to logs/llm_routing_audit.jsonl.</div></Card>
+      ) : (
+        <Card compact>
+          <div style={{ overflow: 'auto', maxHeight: 300 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+              <thead><tr style={{ position: 'sticky', top: 0, background: 'var(--bg1)' }}>
+                {['Time', 'Script', 'Process Type', 'Model', 'Latency', 'Status'].map(h => (
+                  <th key={h} style={{ padding: '5px 8px', textAlign: 'left', color: 'var(--text3)', fontSize: 9, fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {entries.slice(0, 50).map((e, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', color: 'var(--text3)', fontSize: 9 }}>{e.timestamp?.slice(11, 19) || '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', color: 'var(--text1)', fontWeight: 600 }}>{e.caller || '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', color: 'var(--text2)' }}>{e.process_type || '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', color: e.fallback_triggered ? 'var(--amber)' : e.status === 'error' ? 'var(--red)' : 'var(--green)' }}>{e.model || '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', textAlign: 'right', color: 'var(--text2)' }}>{e.latency_ms ? `${Math.round(e.latency_ms)}ms` : '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))' }}>
+                      {e.fallback_triggered ? <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(255,160,0,.12)', color: 'var(--amber)' }}>FALLBACK</span>
+                        : e.status === 'error' ? <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--red-dim)', color: 'var(--red)' }}>ERROR</span>
+                        : <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--green-dim)', color: 'var(--green)' }}>LOCAL</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </>
+  )
+}
+
+
+function CronHealth() {
+  const { data } = useApi<{ crons: { name: string; display_name?: string; schedule?: string; last_run: string; last_status: string; runs_today: number; status: string; critical: boolean }[] }>('/api/v2/ops/cron-health')
+  const crons = data?.crons ?? []
+  const badge = (s: string) => {
+    const m: Record<string, { bg: string; fg: string }> = { ok: { bg: 'var(--green-dim)', fg: 'var(--green)' }, stale: { bg: 'rgba(255,160,0,.12)', fg: 'var(--amber)' }, failed: { bg: 'var(--red-dim)', fg: 'var(--red)' } }
+    const c = m[s] || { bg: 'var(--bg3)', fg: 'var(--text3)' }
+    return <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: c.bg, color: c.fg }}>{s.toUpperCase()}</span>
+  }
+  return (
+    <>
+      <SectionHeader title="Cron Health" count={crons.length} />
+      {crons.length === 0 ? (
+        <Card compact><div style={{ color: 'var(--text3)', fontSize: 10, padding: 8, textAlign: 'center' }}>Cron health data loading...</div></Card>
+      ) : (
+        <Card compact>
+          <div style={{ overflow: 'auto', maxHeight: 350 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+              <thead><tr style={{ position: 'sticky', top: 0, background: 'var(--bg1)' }}>
+                {['Cron Name', 'Time', 'Last Run', 'Status', 'Runs/24h'].map(h => (
+                  <th key={h} style={{ padding: '5px 8px', textAlign: h === 'Cron Name' ? 'left' : 'right', color: 'var(--text3)', fontSize: 9, fontWeight: 600, borderBottom: '1px solid var(--border)' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {crons.map((c, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', color: 'var(--text1)', fontWeight: 600 }}>{c.display_name || c.name?.replace(/_/g, ' ') || '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', textAlign: 'right', color: 'var(--text3)', fontSize: 9 }}>{c.schedule || '—'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', textAlign: 'right', color: 'var(--text2)', fontSize: 9 }}>{c.last_run ? timeAgo(c.last_run) : 'never'}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', textAlign: 'right' }}>{badge(c.status)}</td>
+                    <td style={{ padding: '3px 8px', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,.04))', textAlign: 'right', color: 'var(--text2)' }}>{c.runs_today ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}
