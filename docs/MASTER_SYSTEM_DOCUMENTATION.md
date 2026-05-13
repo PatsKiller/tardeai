@@ -1223,6 +1223,7 @@ This is NOT the primary execution path — instant execution on approval is. The
 | Post-fill | R-multiple | >= 1.0 | Trailing stop locks 50% of gains |
 | Post-fill | Stop breached | `price <= stop` | Auto-close position |
 | Post-fill | Target reached | `price >= target` | Auto-close position |
+| Post-fill | Time stop | `hold_days >= max_hold_days` | Auto-close (per-strategy: scalp 0d, swing 21d, sector 56d, income none) |
 
 - In-trade: stop is computed from actual fill price, not proposed entry
 - In-trade: R-multiple uses actual fill price as baseline, adjusting for real slippage

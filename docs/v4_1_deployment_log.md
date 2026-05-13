@@ -1032,4 +1032,25 @@ and computes `dollar_risk` from actual fill-to-stop distance.
 ### Safety chain update
 Paper trading safety chain now: RSI gate → risk gate → approval revalidation →
 market hours → **fill verification + stop recalculation** → atomic stop → R-multiple
-trailing → phantom detection → critical news auto-close → reconciliation
+trailing → **time stop** → phantom detection → critical news auto-close → reconciliation
+
+## TIME STOP Auto-Close — 2026-05-13 16:00 ET
+
+Added to `open_trade_monitor.py`. Checks hold duration against per-strategy max on
+every 15-min monitoring cycle. Uses same close path as stop_hit (Alpaca liquidate +
+DB update + on_paper_trade_closed hook).
+
+| Strategy | Max Hold | Note |
+|----------|----------|------|
+| momentum_scalp | 0d (intraday) | Already enforced by market hours |
+| gap_and_go | 1d | |
+| earnings_catalyst | 7d | |
+| swing_breakout, swing_trade, speculative_growth | 21d | |
+| sector_rotation, defense_thesis | 56d (8 weeks) | |
+| Income, recovery, bond, cash strategies | No limit | Hold indefinitely |
+
+Verdict based on P&L at close: WIN if profitable, LOSS if not, BREAKEVEN if flat.
+Telegram: "⏰ TIME STOP: SYMBOL closed after Nd (max: Md for strategy). P&L: $X"
+
+INFU was manually closed today (+$67.83 WIN) after 6 STALE_TRADE alerts — the time
+stop would have caught it at day 21 automatically.
