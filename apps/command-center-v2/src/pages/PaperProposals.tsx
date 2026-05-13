@@ -432,7 +432,11 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         <span>Risk <strong>${computedRisk.toFixed(0)}</strong></span>
         <span>Shares <strong>{shares.toLocaleString()}</strong></span>
         {rvol && <span>RVOL <strong style={{ color: rvolColor }}>{Number(rvol).toFixed(1)}x</strong></span>}
-        {rsiVal && <span>RSI <strong style={{ color: rsiColor }}>{Number(rsiVal).toFixed(0)}</strong></span>}
+        {rsiVal && (
+          p.rsi_flag === 'OVERBOUGHT' ? <span style={{ color: '#EF4444', fontWeight: 700 }}>{'\u26a0\ufe0f'} RSI {Number(rsiVal).toFixed(0)} OVERBOUGHT</span>
+          : p.rsi_flag === 'ELEVATED' ? <span>RSI <strong style={{ color: '#F97316' }}>{Number(rsiVal).toFixed(0)} {'\u2191'}</strong></span>
+          : <span>RSI <strong style={{ color: rsiColor }}>{Number(rsiVal).toFixed(0)}</strong></span>
+        )}
       </div>
 
       {/* ROW 4 — VALIDATION TIMESTAMPS */}
