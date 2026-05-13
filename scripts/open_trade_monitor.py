@@ -28,6 +28,20 @@ from session13_db import get_conn
 log = logging.getLogger("open_trade_monitor")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
+# Time stop: max hold days per strategy (None = no time stop)
+MAX_HOLD_DAYS = {
+    'momentum_scalp': 0, 'gap_and_go': 1,
+    'swing_breakout': 21, 'swing_trade': 21,
+    'earnings_catalyst': 7, 'speculative_growth': 21,
+    'sector_rotation': 56, 'defense_thesis': 56,
+    'core_growth_compounder': None, 'core_index': None,
+    'income_add': None, 'dividend_growth_compounder': None,
+    'high_yield_income_bdc': None, 'covered_call_income': None,
+    'bond_income': None, 'cash_or_stable': None,
+    'recovery_watch': None, 'reit_income': None,
+    'international_dividend': None, 'tax_loss_harvest': None,
+}
+
 NEGATIVE_KEYWORDS = [
     'offering', 'dilution', 'SEC investigation', 'halt', 'lawsuit',
     'downgrade', 'bankruptcy', 'going concern', 'withdraws guidance',
@@ -179,7 +193,23 @@ def _auto_close_position(conn, trade_id, symbol, price, reason, cur):
         _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
         requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
                         headers=_headers, timeout=10)
-        _verdict = 'LOSS' if reason == 'stop_hit' else 'CORRECT' if reason == 'target_hit' else 'LOSS'
+        # Determine verdict: target=WIN, stop=LOSS, time_stop=based on P&L
+        if reason == 'target_hit':
+            _verdict = 'WIN'
+        elif reason == 'stop_hit':
+            _verdict = 'LOSS'
+        elif reason.startswith('time_stop'):
+            # Time stop verdict based on P&L at close
+            _entry = None
+            try:
+                cur.execute("SELECT entry_price FROM paper_trades WHERE id=%s", [trade_id])
+                _r = cur.fetchone()
+                _entry = float(_r[0]) if _r else None
+            except Exception:
+                pass
+            _verdict = 'WIN' if _entry and price > _entry else 'LOSS' if _entry and price < _entry else 'BREAKEVEN'
+        else:
+            _verdict = 'LOSS'
         cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
             exit_reason=%s, closed_at=NOW(), closed_via=%s,
             outcome_verdict=%s, lifecycle_state='closed'
@@ -293,6 +323,24 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
         send_telegram(f"🎯 {msg}", dry_run, no_telegram)
         alerts.append(('TARGET_HIT_CLOSE', symbol))
         return alerts
+
+    # ── TIME STOP: Auto-close if max hold days exceeded ──
+    max_hold = MAX_HOLD_DAYS.get(sid)
+    if max_hold is not None and entry_time:
+        hold_days = (now - entry_time).total_seconds() / 86400
+        if hold_days >= max_hold:
+            msg = (f"TIME STOP: {symbol} closed after {hold_days:.0f} days "
+                   f"(max hold: {max_hold}d for {sid}). P&L: ${pnl:+.2f}")
+            log.warning(msg)
+            insert_alert(conn, tid, symbol, sid, 'TIME_STOP_CLOSE', 'CRITICAL',
+                         f'{symbol} time stop', msg, {'hold_days': hold_days, 'max_hold': max_hold, 'pnl': pnl})
+            _log_risk_action(conn, tid, symbol, 'time_stop_close', stop, price, price,
+                             f'Held {hold_days:.0f}d >= {max_hold}d max for {sid}')
+            if not dry_run:
+                _auto_close_position(conn, tid, symbol, price, f'time_stop_max_{max_hold}d', cur)
+            send_telegram(f"\u23f0 {msg}", dry_run, no_telegram)
+            alerts.append(('TIME_STOP_CLOSE', symbol))
+            return alerts
 
     # ── TRAILING STOP: 4-tier R-multiple trailing ──
     # Use planned_stop or dollar_risk to recover initial 1R (stop_loss may have been moved)
