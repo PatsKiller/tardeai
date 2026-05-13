@@ -1246,3 +1246,28 @@ manually (+$67.83) then re-entered via earnings_catalyst. 4 real closed trades,
 
 **System:** 360+ scripts, 336 tables, 290+ endpoints, 160+ crons, 15 overnight
 job types, 13-step safety chain, broker_confirmed column, LLM context engine.
+
+## Session 33: Strategy YAML Patch Package — 2026-05-13 18:30 ET
+
+### Summary
+Resolved 63 YAML audit issues from Session 32. All 22 strategies now have
+vix_rules, technical_indicators_required, and performance_context blocks.
+
+### Changes
+- **22 strategy YAMLs patched**: 3 new blocks each (vix_rules, technical_indicators,
+  performance_context). 6 v1.0 files converted to v1.0.0 schema.
+- **3 new strategies**: fib_retracement_bounce, earnings_pre_buildup,
+  earnings_post_momentum (split from deprecated earnings_catalyst)
+- **8 new screeners** in assets/screeners.yaml: quality_pullback, oversold_quality,
+  dividend_value_pullback, post_earnings_gappers, sector_leadership_rs,
+  covered_call_candidates, speculative_growth_breakouts, defensive_quality
+- **6 deployment scripts**: deploy_yaml_patches.py, bulk_patch, convert, validate,
+  patch_screeners, populate_performance_context
+- **Nightly cron**: populate_performance_context.py at 2:30 AM refreshes
+  performance stats from paper_performance_governance into YAMLs
+
+### Verification
+- Holdings: $1,190,695 / 47 positions (unchanged pre/post)
+- vix_rules present: 23 files | technical_indicators: 23 | performance_context: 25
+- earnings_catalyst.yaml: status=DEPRECATED
+- All backups at backups/session33_pre_deploy_*, schema_convert_*, strategy_yaml_*

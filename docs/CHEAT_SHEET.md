@@ -275,3 +275,23 @@ curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
 | **Database size** | Growing (330 tables) | Managed DB storage costs |
 | **GPU compute** | Fixed (Intel Arc B50) | GPU instance pricing ($0.50-2.00/hr) |
 | **Log retention** | 7-day rolling | CloudWatch/Azure Monitor ingestion fees |
+
+---
+
+## Session 33 Quick Refs
+
+```bash
+# Restore strategy YAMLs from backup
+cp backups/strategy_yaml_20260513_183104/*.yaml config/strategies/
+
+# Re-run YAML validator
+.venv/bin/python scripts/validate_strategy_yamls.py --config-dir config/strategies --md
+
+# Re-run performance context refresh manually
+.venv/bin/python scripts/populate_performance_context.py --apply
+
+# Verify all required blocks present
+grep -l 'vix_rules:' config/strategies/*.yaml | wc -l           # expect 23
+grep -l 'technical_indicators_required:' config/strategies/*.yaml | wc -l  # expect 23
+grep -l 'performance_context:' config/strategies/*.yaml | wc -l # expect 25
+```

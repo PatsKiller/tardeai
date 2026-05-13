@@ -67,3 +67,14 @@ Generated: 2026-05-11T07:15:01.483115
 - **docs/MASTER_SYSTEM_DOCUMENTATION.md**: cron_job_count claimed=142 actual=152
 - **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=90 actual=358
 - **docs/COST_MODEL.md**: table_count claimed=299 actual=320
+---
+
+## Session 33 Updates (2026-05-13)
+
+- Strategy count: 22 active + 1 deprecated = 23 total (was 20)
+- Schema dialect: all v1.0.0 (no v1.0 TESTING remaining)
+- YAML audit issues: ~63 → informational only (all required blocks present)
+- New blocks on all YAMLs: vix_rules, technical_indicators_required, performance_context
+- Screener count in assets/screeners.yaml: 10 core + 8 new = 18 (DB has 27 total with finviz_screeners)
+- New strategies: fib_retracement_bounce, earnings_pre_buildup, earnings_post_momentum
+- Deprecated: earnings_catalyst (split into pre/post)

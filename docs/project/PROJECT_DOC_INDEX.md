@@ -83,6 +83,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | Session 33: Strategy YAML patch — 22 strategies patched (vix_rules, technical_indicators, performance_context), 3 new strategies (fib_retracement_bounce, earnings_pre/post), 8 new screeners, earnings_catalyst deprecated, nightly perf cron. |
 | 2026-05-13 | SESSION 31 END (55 commits): Strategy intelligence API, performance feedback in agent prompts, YAML audit exported. LLM context engine, data dictionary, broker source of truth, time stop, proposal card rebuild, RSI gate, 27 screeners. 4 trades closed, +$28.26. |
 | 2026-05-13 | llm_context_engine.py: 6 context types (strategy/trade/risk/recovery/CC/proposal). All overnight prompts enriched. 129 jobs requeued. Time stop intraday fix. max_per_symbol=1. Duplicate symbol guard. Site audit fixes. |
 | 2026-05-13 | paper-journal endpoint win rate fixed (14%→33%), empty positions API guard prevents phantom closes, GCTS phantom-close root cause fixed. Full audit: Alpaca=DB=API verified. |
