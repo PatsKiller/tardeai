@@ -120,13 +120,15 @@ class AlpacaPaperAdapter:
                     continue
 
             if cur.rowcount == 0:
-                # Position exists in Alpaca but not in paper_trades — create record
+                # Position exists in Alpaca but not in paper_trades — create broker-confirmed record
                 cur.execute("""
                     INSERT INTO paper_trades (strategy_id, symbol, account, entry_price, entry_time,
                         shares, dollar_size, current_price, unrealized_pnl, status,
+                        lifecycle_state, broker_status, filled_at,
                         opened_via, logged_by, last_synced_at)
                     VALUES ('momentum_scalp', %s, 'ALPACA_PAPER', %s, NOW(),
                         %s, %s, %s, %s, 'open',
+                        'open', 'filled', NOW(),
                         'alpaca_sync', 'alpaca_adapter', NOW())
                 """, [symbol, avg_entry, qty, round(qty * avg_entry, 2), current, unrealized])
             synced += 1
@@ -415,7 +417,13 @@ class AlpacaPaperAdapter:
                 if _vr: _vix = float(_vr[0])
             except Exception:
                 pass
-            _db_status = 'open' if fill_status == 'filled' else 'pending'
+            # Only create paper_trades record if broker confirmed the fill
+            if fill_status != 'filled':
+                log.info(f"[alpaca] {symbol} order not filled (status={fill_status}) — no paper_trades record created. Monitor will detect fill via sync.")
+                conn.commit()
+                return {'status': 'pending', 'order_id': order_id, 'fill_status': fill_status,
+                        'reason': 'limit_order_pending_fill', 'symbol': symbol}
+            _db_status = 'open'
             import json as _json
             _risk_snap = _json.dumps({
                 "proposed_entry": entry_price,
@@ -449,6 +457,7 @@ class AlpacaPaperAdapter:
                     market_regime, vix_at_entry,
                     status, opened_via, logged_by, risk_gate_result,
                     risk_params_at_fill, lifecycle_state,
+                    filled_at, submitted_at,
                     revalidation_verdict, revalidation_score, revalidation_flags,
                     price_at_approval, staleness_at_submit_min,
                     notes)
@@ -458,6 +467,7 @@ class AlpacaPaperAdapter:
                     %s, %s,
                     %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED',
                     %s, %s,
+                    NOW(), NOW(),
                     %s, %s, %s,
                     %s, %s,
                     %s)
