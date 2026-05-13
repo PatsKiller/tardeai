@@ -8116,11 +8116,72 @@ def _paper_proposals_enriched():
                 verdict_reason = "Review data completeness before approving"
                 review_count += 1
 
+            # Specific verdict reason (replaces generic "Review data completeness")
+            if verdict == 'NEEDS_REVIEW':
+                rg = prop.get('risk_gate_result')
+                llm_s = prop.get('llm_review_status') or 'NOT_REQUESTED'
+                ar_s = prop.get('agent_review_status') or 'not reviewed'
+                if not rg or rg == 'not_checked':
+                    verdict_reason = "Risk gate not checked \u2014 click Check Execution (10 sec)"
+                elif llm_s in ('NOT_REQUESTED', 'deterministic_fallback', 'not run'):
+                    verdict_reason = "AI not reviewed \u2014 click Run AI Review (30 sec)"
+                elif ar_s in ('NOT_REQUESTED', 'not reviewed'):
+                    verdict_reason = "Agent review missing \u2014 click Run AI Review"
+                elif ds == 'RESEARCH_INCOMPLETE':
+                    verdict_reason = "Research incomplete \u2014 click Enrich All to fill gaps"
+                else:
+                    verdict_reason = "Review flagged items before approving"
+            elif verdict == 'ENTRY_MISSED':
+                drift_str = f" {drift:+.1f}%" if drift else ""
+                verdict_reason = f"Entry zone missed{drift_str} \u2014 price left the zone"
+            elif verdict == 'STALE_QUOTE':
+                verdict_reason = "Quote is stale \u2014 click Refresh Price"
+
             prop['operator_verdict'] = verdict
             prop['operator_verdict_color'] = verdict_color
             prop['operator_verdict_reason'] = verdict_reason
             prop['sort_order'] = {'READY': 1, 'NEEDS_REVIEW': 2, 'STALE_QUOTE': 3, 'ENTRY_MISSED': 4}.get(verdict, 2)
             prop['is_actionable'] = verdict in ('READY', 'NEEDS_REVIEW')
+
+            # Timestamp display fields
+            def _ts_display(ts_val, label=""):
+                if not ts_val:
+                    return {"text": "Never", "color": "red"}
+                try:
+                    from datetime import datetime as _ddt, timezone as _ttz
+                    if isinstance(ts_val, str):
+                        ts_val = _ddt.fromisoformat(ts_val.replace('Z', '+00:00'))
+                    age_s = (_ddt.now(_ttz.utc) - (ts_val.replace(tzinfo=_ttz.utc) if ts_val.tzinfo is None else ts_val)).total_seconds()
+                    mins = age_s / 60
+                    hrs = age_s / 3600
+                    if mins < 60:
+                        return {"text": f"{int(mins)} min ago", "color": "green"}
+                    elif hrs < 2:
+                        return {"text": f"{int(hrs)}h {int(mins % 60)}m ago", "color": "green"}
+                    elif hrs < 8:
+                        return {"text": f"{int(hrs)}h ago", "color": "yellow"}
+                    elif hrs < 24:
+                        return {"text": f"{int(hrs)}h ago", "color": "red"}
+                    else:
+                        return {"text": f"{int(hrs / 24)}d ago", "color": "red"}
+                except Exception:
+                    return {"text": "Unknown", "color": "gray"}
+
+            prop['live_price_timestamp_display'] = _ts_display(prop.get('live_price_timestamp'))
+            prop['ai_review_completed_at_display'] = _ts_display(prop.get('packet_last_enriched_at'))
+            prop['risk_gate_display'] = {"text": "Passed" if prop.get('risk_gate_result') == 'passed' else "Not checked", "color": "green" if prop.get('risk_gate_result') == 'passed' else "red"}
+
+            # Current price + drift
+            cp = prop.get('current_price') or prop.get('live_price_at_execution') or prop.get('scan_price')
+            pe = prop.get('proposed_entry')
+            if cp and pe and float(pe) > 0:
+                try:
+                    d_pct = (float(cp) - float(pe)) / float(pe) * 100
+                    prop['current_price_display'] = float(cp)
+                    prop['price_drift_display'] = round(d_pct, 1)
+                    prop['price_drift_color'] = 'green' if abs(d_pct) < 2 else 'yellow' if abs(d_pct) < 5 else 'red'
+                except Exception:
+                    pass
 
         # Sort: verdict priority, then strategy win rate, then score
         pending_list.sort(key=lambda p: (p.get('sort_order', 2), -(p.get('strategy_win_rate') or 0), -(p.get('signal_score') or 0)))
