@@ -354,12 +354,12 @@ Ordered by impact on trading quality, not complexity.
 - `paper_trades` revalidation snapshot — journal shows "score 82/100, 14 min stale at submit" without cross-table joins
 - Re-approval path confirmed pre-existing in `telegram_command_handler.py`
 
-### Do Next Session (~2 hours)
+### Also Completed — Session 31 (2026-05-12)
 
-| Gap | File | Effort | Impact |
-|-----|------|--------|--------|
-| Gap 4: Granular R-multiple tiers (1.0R/1.5R/2.0R/3.0R) | `open_trade_monitor.py` | 1h | Better in-trade protection |
-| Gap 5: Doc drift fix script | `scripts/update_doc_numbers.py` | 0.5h | Operational hygiene |
+| Gap | Files Changed | Status |
+|-----|--------------|--------|
+| **Gap 4: R-multiple tiers in open_trade_monitor.py** | `open_trade_monitor.py` | **DONE** — 4-tier trailing (1.0R/1.5R/2.0R/3.0R) using planned_stop for initial risk |
+| **Gap 5: Doc drift fix** | `scripts/update_doc_metrics.py` + 4 docs | **DONE** — script created and applied |
 
 ### Wire Up Later (No rush — needs sample data first)
 
@@ -393,15 +393,15 @@ Current blocker: only 4 open positions with conservative sizing. To close 30 tra
 | State | Score | Key Unlock |
 |-------|-------|------------|
 | Start of session | **6.5 / 10** | Execution pipeline mostly solid |
-| **+ Gaps 3, 6, 7 DONE** | **7.0 / 10** | Silent stale-entry problem solved |
-| + Gap 4 (next session) | **7.2 / 10** | Tighter in-trade protection |
+| + Gaps 3, 6, 7 | **7.0 / 10** | Silent stale-entry problem solved |
+| **+ Gaps 4, 5 + PM pipeline + deep LLM window DONE** | **7.5 / 10** | R-tiers, risk data, stale data, doc drift, 8 overnight job types |
 | + 30 closed trades | **7.8 / 10** | Learning loops activate meaningfully |
 | + Gaps 1 & 2 (after data) | **8.2 / 10** | Agent calibration -> proposal scoring |
 | + 6-month paper validation | **8.8 / 10** | Live trading gate opens |
 
-**Current score: 7.0 / 10**
+**Current score: 7.5 / 10**
 
-The ceiling from code alone is ~7.2. The remaining upside comes from trade volume and time.
+All code gaps are resolved. The remaining upside comes from trade volume and time.
 
 ---
 
