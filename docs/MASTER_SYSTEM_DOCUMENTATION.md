@@ -845,6 +845,8 @@ The incubator is the holding area between raw screener hits and actionable propo
 - Per-symbol: max 1 per strategy group (MOMENTUM/INCOME/GROWTH/REVERSION), max 2 total
 - Penny stock filter: skip symbols with price <$1.00
 - Stop breach: auto-expire if current_price <= proposed_stop
+- RSI gate: blocks RSI>=80 momentum, RSI>=75 swing at promotion. Income/recovery exempt.
+- RSI auto-expiry: Rule 5 expires PENDING proposals where RSI>=80 on every cycle
 - If 3+ strategies all at cap, blocks further promotion
 
 ---
