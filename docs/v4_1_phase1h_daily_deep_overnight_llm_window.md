@@ -374,9 +374,11 @@ Before Phase 3 (media/content model):
 ### Completed Phase 1H extensions
 - risk_synthesis, rag_content_curation, recovery_watch_review, covered_call_scoring, weekly_behavioral_review, rebalance_analysis — all active
 - strategy_opportunity_scan — Sunday nights, evaluates watchlist against 11 underutilized strategies
+- Rotating strategy scans: income_strategy_scan (Mon), growth_strategy_scan (Wed), reversion_strategy_scan (Sat)
+- Strategy-aware incubator grading (`incubator_llm_screener.py`): 4 prompt groups (income, growth, reversion, momentum). Income/reversion symbols no longer penalized for low RVOL or missing catalyst
 - Event-driven requeue engine — price/staleness/earnings/recovery triggers
 - gemma3 calibration loop — grades verdicts against actual outcomes
-- 4 new Finviz screeners for strategy diversity (income, oversold, sector rotation, defense)
+- 7 new Finviz screeners (27 total) + 16 static bond/BDC/cash symbols in watchlist
 - Friday 4PM extended window (400 jobs, 11h)
 - Queue Manager UI page at /v2/ops (LLM Queue tab)
 
