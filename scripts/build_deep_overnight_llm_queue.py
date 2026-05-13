@@ -816,6 +816,63 @@ def queue_strategy_opportunity_scan(cur, dry_run=False):
                               "P1", 88, ["weekly_strategy_diversity_scan"], ih)
 
 
+def queue_income_strategy_scan(cur, dry_run=False):
+    """Monday nights only. Evaluates income universe against 4 income strategies."""
+    if datetime.now().weekday() != 0:  # Monday=0
+        return 0
+    cur.execute("""SELECT id FROM deep_overnight_llm_queue
+        WHERE job_type='income_strategy_scan' AND queued_at > NOW()-INTERVAL '6 days'
+        AND status IN ('pending','running','done') LIMIT 1""")
+    if cur.fetchone():
+        return 0
+    ih = f"income_strategy_scan:{datetime.now().strftime('%Y-%W')}"
+    if _already_queued(cur, ih):
+        return 0
+    if dry_run:
+        print(f"  [DRY] income_strategy_scan: INCOME_UNIVERSE Monday score=87")
+        return 1
+    return _insert_queue_item(cur, "income_strategy_scan", "INCOME_UNIVERSE",
+                              "P1", 87, ["monday_income_scan"], ih)
+
+
+def queue_growth_strategy_scan(cur, dry_run=False):
+    """Wednesday nights only. Evaluates growth/sector/defense universe."""
+    if datetime.now().weekday() != 2:  # Wednesday=2
+        return 0
+    cur.execute("""SELECT id FROM deep_overnight_llm_queue
+        WHERE job_type='growth_strategy_scan' AND queued_at > NOW()-INTERVAL '6 days'
+        AND status IN ('pending','running','done') LIMIT 1""")
+    if cur.fetchone():
+        return 0
+    ih = f"growth_strategy_scan:{datetime.now().strftime('%Y-%W')}"
+    if _already_queued(cur, ih):
+        return 0
+    if dry_run:
+        print(f"  [DRY] growth_strategy_scan: GROWTH_UNIVERSE Wednesday score=86")
+        return 1
+    return _insert_queue_item(cur, "growth_strategy_scan", "GROWTH_UNIVERSE",
+                              "P1", 86, ["wednesday_growth_scan"], ih)
+
+
+def queue_reversion_strategy_scan(cur, dry_run=False):
+    """Saturday nights only. Evaluates reversion/bond/cash universe."""
+    if datetime.now().weekday() != 5:  # Saturday=5
+        return 0
+    cur.execute("""SELECT id FROM deep_overnight_llm_queue
+        WHERE job_type='reversion_strategy_scan' AND queued_at > NOW()-INTERVAL '6 days'
+        AND status IN ('pending','running','done') LIMIT 1""")
+    if cur.fetchone():
+        return 0
+    ih = f"reversion_strategy_scan:{datetime.now().strftime('%Y-%W')}"
+    if _already_queued(cur, ih):
+        return 0
+    if dry_run:
+        print(f"  [DRY] reversion_strategy_scan: REVERSION_UNIVERSE Saturday score=84")
+        return 1
+    return _insert_queue_item(cur, "reversion_strategy_scan", "REVERSION_UNIVERSE",
+                              "P1", 84, ["saturday_reversion_scan"], ih)
+
+
 EXPANSION_BUILDERS = [
     ("risk_synthesis", queue_risk_synthesis),
     ("rag_content_curation", queue_rag_content_curation),
@@ -824,6 +881,9 @@ EXPANSION_BUILDERS = [
     ("weekly_behavioral_review", queue_weekly_behavioral_review),
     ("rebalance_analysis", queue_rebalance_analysis),
     ("strategy_opportunity_scan", queue_strategy_opportunity_scan),
+    ("income_strategy_scan", queue_income_strategy_scan),
+    ("growth_strategy_scan", queue_growth_strategy_scan),
+    ("reversion_strategy_scan", queue_reversion_strategy_scan),
 ]
 
 
@@ -842,6 +902,9 @@ ALL_JOB_TYPES = [
     "weekly_behavioral_review",
     "rebalance_analysis",
     "strategy_opportunity_scan",
+    "income_strategy_scan",
+    "growth_strategy_scan",
+    "reversion_strategy_scan",
 ]
 
 BUILDERS = {
