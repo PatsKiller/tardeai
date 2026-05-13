@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | risk_gate _safe_float fix, manual pipeline test confirmed all bugs fixed, GCTS trade approval audit passed end-to-end (proposal→paper_trade→Alpaca fill). |
 | 2026-05-13 | Fix: 3 pipeline bugs — screeners.yaml missing PM run_windows (1200/1400/1600/1730), db_adapter get_connection alias, risk_gate conn confirmed fixed. |
 | 2026-05-13 | RSI overbought auto-block: _check_rsi_gate at promotion (>=80 momentum, >=75 swing), auto-expiry Rule 5, rsi_flag/rsi_flag_blocks_approval in API, red OVERBOUGHT badge in UI. Income/recovery exempt. |
 | 2026-05-13 | Fix: proposal quality — price/RSI fallback from snapshots, data-driven thesis_display, strategy-group dedup (max 1/group), penny stock filter, multi-strategy warning in UI. |
