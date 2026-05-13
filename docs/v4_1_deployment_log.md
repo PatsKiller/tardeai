@@ -548,3 +548,31 @@ crontab docs/v4_1_discovery/crontab_pre_phase1h.txt
 - Check `logs/deep_overnight_llm_window.log` after 03:15 for completion
 - Verify qwen3:14b/nomic-embed-text restoration after window
 - After 7 consecutive successful nights, consider Phase 2 readiness
+
+## Phase 1H Capacity Tune — 2026-05-12 21:00 ET
+
+### Summary
+Raised nightly deep queue target from conservative 120 (unrestricted) to an
+operator-tuned 70 default / 75 hard max based on 4-hour window throughput analysis.
+
+### Rationale
+- Phase 1D: ~91s per symbol, ~2–3 min per job with overhead
+- 4-hour window: ~80–120 jobs theoretical capacity
+- Operational target: 70 to preserve ~30 min restore/reporting buffer
+- Hard max: 75 (override: `--allow-over-75`, not recommended)
+- Time cap always beats count cap — 03:00 hard stop is non-negotiable
+- P0/P1 journal/closed-trade jobs share the budget (30–45 min reserved)
+
+### Files changed
+- `scripts/run_deep_overnight_llm_window.sh` — MAX_JOBS 120→70, HARD_MAX_JOBS=75, --allow-over-75
+- `scripts/run_deep_overnight_llm_queue.py` — --limit default 120→70
+- `docs/v4_1_phase1h_daily_deep_overnight_llm_window.md` — capacity policy updated
+- `docs/v4_1_deployment_log.md` — this entry
+
+### What was NOT changed
+- No cron/timer changes
+- No .env changes
+- No routing changes (STANDARD, BATCH_OVERNIGHT, EMBEDDING, etc.)
+- No broker, holdings, execution, or trading behavior changes
+- 03:00 hard stop and 03:15 restore deadline unchanged
+- All safety gates preserved
