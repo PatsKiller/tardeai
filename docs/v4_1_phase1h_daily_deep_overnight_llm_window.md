@@ -26,21 +26,20 @@ regardless of success or failure.
 
 - gemma3-overnight processes ~1 item per 2–3 minutes (from Phase 1D testing)
 - 240 minutes / 2.5 min avg = ~80–120 items theoretical max
-- **Default nightly target: 70 jobs** (operational cap)
-- **Hard max: 75 jobs** (enforced in wrapper; override requires `--allow-over-75`)
-- 70–75 target preserves a ~30-minute buffer for model swap, restore, and reporting
+- **Default nightly target: 100 jobs** (operational cap)
+- Observed throughput: ~40-43 sec/job (100 jobs ≈ 72 min, well within 240-min budget)
 - The 03:00 hard stop ensures qwen3:14b is restored before any 04:00+ jobs
 - **Time cap always beats count cap** — if 03:00 arrives before 70 items finish, the window stops
 - No market-hours risk: window is entirely after close and before pre-market
 
-### Why 70 is the default (not 50, not 120)
+### Why 100 is the default (not 70, not 150)
 
-Phase 1D showed ~91 seconds per symbol for strategy classification. With overhead
-(queue building, model swap, restore), effective throughput is 2–3 minutes per job.
-A 4-hour window supports ~80–120 jobs theoretically, but the operational target is
-70 to guarantee time for the restore cycle (qwen3:14b + nomic-embed-text) and any
-reporting/logging. The hard max of 75 adds a small margin for fast nights while
-still protecting the restore deadline.
+Phase 1D estimated ~91 seconds per symbol, but observed nightly throughput is
+~40-43 seconds per job. 100 jobs × 43s = ~72 minutes, leaving >160 minutes of
+buffer for the restore cycle. The prior cap of 70 was too low — it caused new
+Phase 1H expansion job types (risk_synthesis, rag_content_curation, etc.) to be
+cut off despite having P0/P1 priority because 70 original-type jobs had higher
+individual scores.
 
 ### Mixed queue budget sharing
 
@@ -50,7 +49,7 @@ high-priority non-symbol jobs run first. Reserve roughly 30–45 minutes (15–2
 for these items. The remaining budget goes to strategy classification symbols.
 
 If no high-priority journal/closed-trade jobs exist, strategy classification may
-use the full 70/75 target.
+use the full 100-job target.
 
 ## 3. Schedule Audit
 
@@ -166,8 +165,7 @@ Items are NOT requeued when:
 
 - **Time budget:** 240 minutes (default)
 - **Hard stop:** 03:00 local time
-- **Default nightly target:** 70 jobs
-- **Hard max:** 75 jobs (override: `--allow-over-75`, not recommended)
+- **Default nightly target:** 100 jobs
 - **Per-job timeout:** 180 seconds (3 minutes)
 - **Restore deadline:** 03:15 (cleanup takes ~2-3 minutes)
 - **Queue order:** Priority score descending, then queued_at ascending
@@ -223,8 +221,8 @@ cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 # Live run (outside window, must force)
 ./scripts/run_deep_overnight_llm_window.sh --force-window --max-jobs 10
 
-# Override hard max (not recommended)
-./scripts/run_deep_overnight_llm_window.sh --force-window --max-jobs 80 --allow-over-75
+# Run with custom job count
+./scripts/run_deep_overnight_llm_window.sh --force-window --max-jobs 80
 
 # Individual components
 .venv/bin/python scripts/build_deep_overnight_llm_queue.py --dry-run --limit 50

@@ -6,8 +6,9 @@ and hard stop enforcement.
 
 Usage:
     .venv/bin/python scripts/run_deep_overnight_llm_queue.py --dry-run --limit 5
-    .venv/bin/python scripts/run_deep_overnight_llm_queue.py --limit 70 --time-budget-min 240
-    .venv/bin/python scripts/run_deep_overnight_llm_queue.py --hard-stop 03:00 --limit 75
+    .venv/bin/python scripts/run_deep_overnight_llm_queue.py --limit 100 --time-budget-min 240
+    .venv/bin/python scripts/run_deep_overnight_llm_queue.py --hard-stop 03:00 --limit 100
+    .venv/bin/python scripts/run_deep_overnight_llm_queue.py --force-job-types risk_synthesis --limit 1
 
 Does NOT touch broker, holdings, execution, or trading behavior.
 """
@@ -338,16 +339,23 @@ def recover_stale_running(cur):
 def main():
     parser = argparse.ArgumentParser(description="Run deep overnight LLM queue")
     parser.add_argument("--dry-run", action="store_true", help="Show what would run")
-    parser.add_argument("--limit", type=int, default=70, help="Max jobs to process (default 70, hard max 75)")
+    parser.add_argument("--limit", type=int, default=100, help="Max jobs to process (default 100)")
     parser.add_argument("--time-budget-min", type=int, default=240, help="Time budget in minutes")
     parser.add_argument("--hard-stop", type=str, default="03:00", help="Hard stop time HH:MM")
     parser.add_argument("--job-types", type=str, default=None,
                         help="Comma-separated job types to process")
+    parser.add_argument("--force-job-types", type=str, default=None,
+                        help="Force specific job types to run (comma-separated), ignoring priority order")
     args = parser.parse_args()
+
+    # Handle --force-job-types overriding --job-types
+    if args.force_job_types:
+        args.job_types = args.force_job_types
 
     model = os.getenv("LOCAL_LLM_MODEL", "gemma3-overnight")
     log(f"Queue runner starting — model={model}, limit={args.limit}, "
-        f"budget={args.time_budget_min}m, hard_stop={args.hard_stop}")
+        f"budget={args.time_budget_min}m, hard_stop={args.hard_stop}"
+        f"{', force_types=' + args.force_job_types if args.force_job_types else ''}")
 
     conn = get_db_connection()
     cur = conn.cursor()
