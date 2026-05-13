@@ -693,3 +693,72 @@ All direct `.env` readers that handle Finviz credentials now `.strip("'\"")`
 - `multi_tier_trade_reviewer.py`, `portfolio_orchestrator.py` — NOT migrated (complex dispatch)
 - Direct Anthropic callers (CRITICAL_CLOUD scripts) — correct, not migrated
 - No broker, holdings, execution, or trading behavior changes
+
+## LLM Queue Manager Page + Enhanced Ops Console — 2026-05-13 08:30 ET
+
+### Summary
+Built `/v2/ops` LLM Queue tab (5 sub-tabs: overview, pending, completed, failed,
+schedule & controls) with 9 new API endpoints. Enhanced Ops Console with LLM routing
+audit table and cron health grid. Added Friday 4PM extended cron (400 jobs).
+
+### New API endpoints
+- `GET /api/v2/queue/summary` — pending/done/cap/budget breakdown
+- `GET /api/v2/queue/pending` — 300 pending jobs sorted by priority
+- `GET /api/v2/queue/completed` — last 24h completions with duration stats
+- `GET /api/v2/queue/failed` — failed/error jobs
+- `POST /api/v2/queue/boost` — bump priority_score
+- `POST /api/v2/queue/cancel` — cancel pending job
+- `POST /api/v2/queue/retry` — reset failed job to pending
+- `GET /api/v2/ops/llm-audit` — last 100 LLM routing audit entries
+- `GET /api/v2/ops/cron-health` — 13 scheduled crons from pipeline_schedule
+
+### Frontend files
+- `LLMQueue.tsx` — new page with budget bar, job type breakdown, filters, actions
+- `Ops.tsx` — added LLM Routing Audit and Cron Health sections
+- `OpsHub.tsx` — added LLM Queue tab
+
+### Cron addition
+```
+0 16 * * 5  flock -n ... run_deep_overnight_llm_window.sh --force-window --max-jobs 400
+```
+
+## Event-Driven Requeue Engine — 2026-05-13 09:15 ET
+
+### Summary
+Added `_requeue_on_events()` to `build_deep_overnight_llm_queue.py`. Detects material
+changes since last gemma3 analysis and fills unused nightly slots.
+
+### Triggers
+| Trigger | Job Type | Score | Condition |
+|---------|----------|-------|-----------|
+| Staleness | strategy_classification | 75+10 | >14d since last run |
+| Price move | strategy_classification | 75+10-20 | >5% week move |
+| RVOL spike | strategy_classification | 75+15 | RVOL >5x |
+| Earnings | strategy_classification | 75+25 | Earnings within 14d |
+| Price recovery | recovery_watch_review | 95 | Price within 2% of exit |
+| CC price move | covered_call_scoring | 85 | >3% week move |
+
+### Dry-run results
+7 requeues: 5 strategy (AVAV, RKLB, KTOS, ARKG, IRDM) + 2 CC (PFLT, ARKG)
+
+## Strategy Diversity Fix — 2026-05-13 09:30 ET
+
+### Problem
+12 of 21 strategies had 0 proposals. Momentum screeners starved all other types.
+
+### Fix
+- 4 new Finviz screeners: income_candidates, oversold_reversion, sector_leaders, defense_momentum
+- New job type: `strategy_opportunity_scan` — Sunday nights, gemma3 evaluates top 40
+  watchlist symbols against 11 underutilized strategies
+
+## gemma3 Calibration Loop — 2026-05-13 09:45 ET
+
+### Summary
+Calibration layer grading gemma3 overnight predictions against actual outcomes.
+
+### New assets
+- `gemma3_calibration_events` table + `gemma3_accuracy_by_job_type` view
+- `scripts/gemma3_calibration_scorer.py` — seeds PENDING events, grades outcomes
+- `GET /api/v2/queue/calibration` endpoint
+- Cron: `30 21 * * 1-5` nightly scoring
+- 41 strategy_classification events seeded, grading begins as trades close
