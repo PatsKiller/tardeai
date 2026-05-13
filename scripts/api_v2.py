@@ -13758,12 +13758,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 enriched.append(td)
             _open = [t for t in enriched if t.get('status') == 'open']
             _closed = [t for t in enriched if t.get('status') == 'closed']
-            # Analytics
-            _wins = sum(1 for t in _closed if (t.get('pnl') or 0) > 0)
-            _losses = sum(1 for t in _closed if (t.get('pnl') or 0) < 0)
+            # Analytics — only count real trades (non-zero PnL) for win rate
+            _real_closed = [t for t in _closed if (t.get('pnl') or 0) != 0]
+            _wins = sum(1 for t in _real_closed if (t.get('pnl') or 0) > 0)
+            _losses = sum(1 for t in _real_closed if (t.get('pnl') or 0) < 0)
             _total_pnl = round(sum(float(t.get('pnl') or 0) for t in _closed), 2)
             _unrealized = round(sum(float(t.get('unrealized_pnl') or 0) for t in _open), 2)
-            _avg_r = round(sum(float(t.get('r_multiple') or 0) for t in _closed) / max(len(_closed), 1), 2)
+            _avg_r = round(sum(float(t.get('r_multiple') or 0) for t in _real_closed) / max(len(_real_closed), 1), 2)
             _by_strategy = {}
             for t in _closed:
                 s = t.get('strategy_id', 'unknown')
@@ -13778,7 +13779,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "open_count": len(_open), "closed_count": len(_closed),
                     "total_pnl": _total_pnl, "unrealized_pnl": _unrealized,
                     "wins": _wins, "losses": _losses,
-                    "win_rate": round(_wins / max(len(_closed), 1) * 100, 1),
+                    "win_rate": round(_wins / max(len(_real_closed), 1) * 100, 1),
+                    "real_trade_count": len(_real_closed),
                     "avg_r": _avg_r,
                     "by_strategy": [{**v, 'strategy': k, 'win_rate': round(v['wins']/max(v['count'],1)*100,1)}
                                     for k, v in _by_strategy.items()],
