@@ -359,7 +359,7 @@ def compute_levels(price):
 # Main
 # ---------------------------------------------------------------------------
 
-def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
+def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -566,7 +566,7 @@ def main():
     mode.add_argument('--run', action='store_true', help='Execute promotions')
     parser.add_argument('--limit', type=int, default=10, help='Max promotions per run (default 10)')
     parser.add_argument('--force-symbol', type=str, default=None, help='Promote regardless of score gate')
-    parser.add_argument('--max-proposals-per-symbol', type=int, default=2, help='Max proposals per symbol per run')
+    parser.add_argument('--max-proposals-per-symbol', type=int, default=1, help='Max proposals per symbol (strongest strategy only)')
     args = parser.parse_args()
 
     dry_run = args.dry_run
