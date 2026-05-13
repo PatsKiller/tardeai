@@ -10910,6 +10910,24 @@ def _queue_calibration():
     }
 
 
+def _journal_integrity_warnings():
+    """Check paper_trades data integrity. Returns list of warning strings."""
+    warnings = []
+    try:
+        r1 = _db_query("SELECT COUNT(*) as cnt FROM paper_trades WHERE lifecycle_state='open' AND filled_at IS NULL AND broker_status NOT IN ('filled')", fetch="one")
+        if r1 and r1.get('cnt', 0) > 0:
+            warnings.append(f"{r1['cnt']} open trade(s) never confirmed filled")
+        r2 = _db_query("SELECT COUNT(*) as cnt FROM paper_trades WHERE lifecycle_state='closed' AND outcome_verdict IS NULL AND pnl IS NOT NULL", fetch="one")
+        if r2 and r2.get('cnt', 0) > 0:
+            warnings.append(f"{r2['cnt']} closed trade(s) missing outcome verdict")
+        r3 = _db_query("SELECT symbol, COUNT(*) as cnt FROM paper_trades WHERE lifecycle_state='open' GROUP BY symbol HAVING COUNT(*)>1") or []
+        for r in r3:
+            warnings.append(f"{r['symbol']} has {r['cnt']} open records — possible duplicate")
+    except Exception:
+        pass
+    return warnings
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -13632,6 +13650,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        entry_time, closed_at, created_at, updated_at
                 FROM paper_trades
                 WHERE account = %s AND status IN ('open', 'closed')
+                  AND NOT (status = 'open' AND filled_at IS NULL
+                           AND broker_status NOT IN ('filled')
+                           AND close_reason IS NULL)
                 ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, created_at DESC
                 LIMIT 100
             """, [_acct]) or []
@@ -13763,6 +13784,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                     for k, v in _by_strategy.items()],
                 },
                 "alpaca_connected": bool(_alpaca_live),
+                "integrity_warnings": _journal_integrity_warnings(),
             }
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
