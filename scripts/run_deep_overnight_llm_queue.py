@@ -221,6 +221,10 @@ Identify:
 
 Respond as JSON: {{"patterns": [{{"type": "pattern_type", "observation": "specific data", "severity": "HIGH|MEDIUM|LOW", "recommendation": "behavior change"}}], "top_strength": "best pattern", "top_weakness": "worst pattern", "summary": "two paragraph coaching"}}"""
 
+    elif job_type == "rebalance_analysis":
+        # Rebalance uses its own dedicated script with full context loading
+        return None  # Signal to use dedicated handler instead of generic prompt
+
     else:
         return f"""Deep LLM review for {symbol or 'portfolio'}.
 
@@ -426,6 +430,44 @@ def main():
             WHERE id = %s
         """, (job_id,))
         conn.commit()
+
+        # Special dispatch for rebalance_analysis (uses dedicated script)
+        if job["job_type"] == "rebalance_analysis":
+            try:
+                from rebalance_deep_analyzer import run_analysis
+                _start = time.monotonic()
+                _res = run_analysis(conn, queue_id=job_id)
+                runtime = round(time.monotonic() - _start, 1)
+                if _res.get("error"):
+                    text = None
+                else:
+                    text = _res.get("executive_summary", "Rebalance complete")
+                    # Store in results table via the analyzer, skip generic insert
+                    cur.execute("""
+                        UPDATE deep_overnight_llm_queue
+                        SET status = 'done', completed_at = NOW(),
+                            last_gemma_model = %s, last_gemma_runtime_sec = %s,
+                            result_table = 'rebalance_analysis_results',
+                            result_id = %s, updated_at = NOW()
+                        WHERE id = %s
+                    """, (model, runtime, _res.get("result_id"), job_id))
+                    conn.commit()
+                    succeeded += 1
+                    log(f"  DONE #{job_id} — rebalance result_id={_res.get('result_id')}, {runtime}s")
+                    processed += 1
+                    continue
+            except Exception as e:
+                log(f"  FAILED #{job_id} — rebalance error: {e}")
+                cur.execute("""
+                    UPDATE deep_overnight_llm_queue
+                    SET status = CASE WHEN attempt_count >= 3 THEN 'failed' ELSE 'pending' END,
+                        last_error = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (str(e), job_id))
+                conn.commit()
+                failed += 1
+                processed += 1
+                continue
 
         # Build prompt and call gemma
         prompt = build_prompt(job)

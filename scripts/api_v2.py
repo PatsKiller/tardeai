@@ -5539,7 +5539,26 @@ def rebalance():
         "yaml_health_score": yaml_health,
         "yaml_health_notes": yaml_notes,
         "llm_suggestions": {k: _json_clean(v) for k, v in (_db_query("SELECT content, generated_at FROM llm_intelligence_cache WHERE section='rebalance_suggestions'", fetch="one") or {}).items()},
+        "deep_analysis": _get_deep_rebalance_analysis(),
     }
+
+
+def _get_deep_rebalance_analysis():
+    """Get latest deep rebalance analysis from rebalance_analysis_results."""
+    try:
+        row = _db_query("""
+            SELECT id, generated_at, yaml_health_score, executive_summary,
+                   recommendations, v_concentration_plan, bond_ballast_assessment,
+                   yaml_gaps, verification_passed, ssdi_irmaa_flags,
+                   verified_at, model_primary, stale_days_at_run
+            FROM rebalance_analysis_results
+            ORDER BY generated_at DESC LIMIT 1
+        """, fetch="one")
+        if not row:
+            return None
+        return {k: _json_clean(v) for k, v in row.items()}
+    except Exception:
+        return None
 
 
 def _rebalance_account_summary():
