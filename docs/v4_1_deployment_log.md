@@ -936,3 +936,27 @@ fail silently on every orchestrator run (12PM, 2PM, 4PM, 5:30PM).
 - **Multi-strategy warning**: API returns `multi_strategy_symbols` in summary.
   Frontend shows header warning + per-card "+1 other strategy" badge.
 - **Stop breach auto-expiry**: Added rule 4 to promoter auto-expiry.
+
+## RSI Overbought Auto-Block at Proposal Promotion — 2026-05-13 14:15 ET
+
+### Promoter RSI gate (`_check_rsi_gate`)
+Blocks at promotion time — overbought symbols never reach the proposals page:
+
+| Strategy Group | RSI Threshold | Action |
+|---------------|---------------|--------|
+| Momentum (scalp, gap_and_go, earnings, speculative) | >= 80 | BLOCKED |
+| Swing (breakout, swing_trade, sector_rotation) | >= 75 | BLOCKED |
+| Any non-exempt | >= 85 | BLOCKED |
+| Income, recovery, bond, cash | N/A | **Exempt** |
+
+### Auto-expiry Rule 5
+RSI >= 80 auto-expires PENDING proposals on every promoter cycle.
+LIFE (RSI 93.89) expired immediately on first run.
+
+### API fields
+- `rsi_flag`: OVERBOUGHT/ELEVATED/OVERSOLD/null
+- `rsi_flag_blocks_approval`: true when RSI blocks for this strategy
+- Overrides `operator_verdict` to BLOCKED with red background
+
+### Frontend
+Row 3 RSI display: red "RSI 94 OVERBOUGHT" badge when >=80, orange "RSI 73 ↑" when >=70.

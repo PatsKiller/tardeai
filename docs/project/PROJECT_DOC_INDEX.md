@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | RSI overbought auto-block: _check_rsi_gate at promotion (>=80 momentum, >=75 swing), auto-expiry Rule 5, rsi_flag/rsi_flag_blocks_approval in API, red OVERBOUGHT badge in UI. Income/recovery exempt. |
 | 2026-05-13 | Fix: proposal quality — price/RSI fallback from snapshots, data-driven thesis_display, strategy-group dedup (max 1/group), penny stock filter, multi-strategy warning in UI. |
 | 2026-05-13 | Fix: stop breach auto-block (BLOCKED verdict, approve disabled), specific verdict reasons confirmed, orchestrator risk_gate conn bug fixed (was failing silently every run). |
 | 2026-05-13 | Proposal card complete rebuild: 6-row layout (verdict/prices/metrics/timestamps/thesis/actions), specific verdict reasons in API, 2053→932 lines. Operator decision in 5 seconds, no clicks. |
