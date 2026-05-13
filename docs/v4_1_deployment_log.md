@@ -1147,3 +1147,68 @@ detection entirely — log warning instead of closing everything.
 - Closed: 6 (3 real: 1W +$67.83, 2L -$30.19; 3 phantom breakevens)
 - Win Rate: 33% (real trades only)
 - Realized P&L: +$37.64
+
+## Data-Enriched LLM Prompts + Context Engine — 2026-05-13 19:00 ET
+
+### Root cause: hallucination from data-sparse prompts
+gemma3 received "Review closed trade for SPRC. Trade ID: 158. Triggers: loss" — no
+prices, P&L, stop usage, or history. It invented "third instance in last quarter"
+(actually 2 losses, not 3). Every prompt that passes only IDs/triggers risks this.
+
+### Fix: `llm_context_engine.py` — centralized data context for all LLM calls
+Any script can now import `build_context(symbol, context_type, ...)` to get
+680–1,213 chars of actual DB data + anti-hallucination block.
+
+| Context Type | Data Included | Chars |
+|-------------|---------------|-------|
+| `strategy_classification` | RSI, RVOL, price, sector, beta, P/E, SMA50/200, trade history | 680 |
+| `trade_review` | Entry/exit prices, P&L, stop, hold days, R-multiple, past symbol trades | 924 |
+| `risk_synthesis` | All portfolio positions with market values, %, day change | 1213 |
+| `recovery_watch` | Exit price, days out, recovery %, thesis at exit, current RSI | 942 |
+| `covered_call` | Price, RSI, beta, div yield, RVOL, Aegis verdict | 775 |
+| `proposal` | Entry/stop/target, R:R, catalyst, score, current snapshot | 1015 |
+
+### Overnight queue prompts enriched (inline)
+All 6 core job types in `run_deep_overnight_llm_queue.py` now query actual data:
+- `closed_trade_review`: entry/exit/P&L/stop/hold + past symbol history
+- `strategy_classification`: RSI/RVOL/price/sector + current classification
+- `proposal_review`: entry/stop/target/R:R/catalyst + current RSI/RVOL
+- `recovery_watch_review`: exit price/current/days out/recovery %
+- `covered_call_scoring`: price/RSI/beta/RVOL/Aegis verdict
+- `risk_synthesis`: already had portfolio context (no change)
+
+### 129 jobs requeued for re-run with enriched prompts
+All previously-completed jobs (79 strategy + 32 trade review + 17 journal)
+reset to pending with `requeue_enriched_prompt` reason code. Will re-run
+tonight with full data context.
+
+### Scripts already data-rich (no migration needed)
+- `process_watchlist_agent_jobs.py` — loads scan intel, RAG, sentiment, research
+- `stop_decision_brief.py` — holdings, enrichment, stops, news, technicals
+- `scoring.py` — actual headlines for catalyst scoring
+- `incubator_llm_screener.py` — 4 strategy-specific builders with inline data
+
+### Anti-hallucination block on all prompts
+"Use ONLY the data above. Do NOT invent, estimate, or assume numbers not
+explicitly provided. Do NOT claim patterns unless the data supports them."
+
+## Time Stop Fixes + Strategy ID Cleanup — 2026-05-13 19:30 ET
+
+### GCTS closed after 1 hour by time_stop_max_0d
+momentum_scalp had `MAX_HOLD_DAYS=0`, which fired on the first 15-min check
+after entry. Correct behavior for intraday — but wrong strategy was on the trade.
+
+### Fixes
+- Intraday strategies (momentum_scalp, gap_and_go) now close at 3:45 PM ET,
+  not by day count. Moved to `INTRADAY_STRATEGIES` set.
+- Time stop dedup: 30-min window prevents repeated close attempts
+- Removed `'momentum_scalp'` hardcoded default in adapter sync INSERT
+- `max_per_symbol` changed from 2 to 1 — only strongest strategy promoted
+- Duplicate symbol guard: adapter blocks second position on same symbol
+
+## Site Audit Fixes — 2026-05-13 20:00 ET
+
+- Trade AI: `market_regime` field added from breadth (was None)
+- Cron health: shows "scheduled" with expected times (was all "unknown")
+- Phantom trades hidden from closed list (XMTR, EVC, FLYW breakevens)
+- GCTS phantom-close root cause: empty positions API guard in adapter
