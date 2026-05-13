@@ -464,7 +464,7 @@ Agent outcome scorer and learning governance update calibration
 | **7:00 AM daily** | topic_curator extracts tickers + topics → content_entity_links | qwen3:14b |
 | **7:00 AM daily** | topic_curator improves queries: reviews last week's articles, generates 4 targeted news + 4 video queries per topic, tailored to John's situation | qwen3:14b |
 | **7:00 AM daily** | Auto-ingests with improved queries (step 3b → topic_ingestion --use-llm-queries) | N/A (search APIs) |
-| **8:10 AM + 6 PM** | Incubator LLM screener grades candidates (catalyst assessment, momentum, confidence) | qwen3:14b |
+| **8:10 AM + 6 PM** | Incubator LLM screener grades candidates — strategy-aware: 4 prompt groups (income, growth, reversion, momentum default). Income/reversion not penalized for low RVOL | qwen3:14b |
 | **On CONTENT_GAP** | Agent event router auto-triggers: topic search → news search → sentiment score → RAG re-index → re-queue analysis | qwen3:14b (agent re-analysis) |
 | **On RESEARCH_MORE** | Multiple agents say "need more data" → synthetic CONTENT_GAP → full search loop | qwen3:14b |
 | **5:30 AM daily** | Outcome scorer grades past recommendations (CORRECT/PARTIAL/WRONG) → calibration update | N/A (rule-based) |
