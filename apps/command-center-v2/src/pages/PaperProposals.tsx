@@ -377,34 +377,56 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       background: 'var(--bg1)', borderRadius: 8, marginBottom: 14,
       border: `1px solid ${ac.border}`,
       borderLeft: `4px solid ${
-        (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_ZONE_VALID' ? '#10B981'
-        : (p.entry_zone_status || p.lifecycle_status || '') === 'ENTRY_MISSED' ? '#F59E0B'
-        : norm.actionState === 'BLOCKED' ? '#EF4444'
-        : norm.actionState === 'PAPER_READY' ? '#10B981'
+        p.operator_verdict_color === 'green' ? '#10B981'
+        : p.operator_verdict_color === 'red' ? '#EF4444'
+        : p.operator_verdict_color === 'orange' ? '#F97316'
+        : p.operator_verdict_color === 'yellow' ? '#F59E0B'
         : '#334155'
       }`,
+      opacity: p.operator_verdict === 'ENTRY_MISSED' ? 0.65 : 1,
     }}>
       {showConfirm && <ConfirmModal p={p} onConfirm={handleConfirmApprove} onCancel={() => setShowConfirm(false)} />}
 
-      {/* ── Header (compact, high-contrast) ── */}
+      {/* ── Header with operator verdict ── */}
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* Operator verdict badge */}
+            {p.operator_verdict && (() => {
+              const vc: Record<string, { bg: string; text: string; icon: string }> = {
+                READY: { bg: 'rgba(34,197,94,0.2)', text: '#22C55E', icon: '\u2705' },
+                NEEDS_REVIEW: { bg: 'rgba(251,191,36,0.15)', text: '#F59E0B', icon: '\u26a0\ufe0f' },
+                STALE_QUOTE: { bg: 'rgba(249,115,22,0.15)', text: '#F97316', icon: '\ud83d\udd70' },
+                ENTRY_MISSED: { bg: 'rgba(239,68,68,0.15)', text: '#EF4444', icon: '\u26d4' },
+              }
+              const v = vc[p.operator_verdict] || vc.NEEDS_REVIEW
+              return <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: v.bg, color: v.text }}>{v.icon} {p.operator_verdict.replace(/_/g, ' ')}</span>
+            })()}
             <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
             {p.signal_grade && <span style={pill(p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'green' : p.signal_grade === 'B' ? 'amber' : 'red')}>{p.signal_grade}</span>}
             {p.signal_score != null && <span style={{ fontSize: 10, color: 'var(--text2)', ...mono }}>{p.signal_score}pts</span>}
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{norm.primaryStrategy}</span>
-            {p.proposal_timeframe_class && (() => {
-              const tc = TIMEFRAME_COLORS[p.proposal_timeframe_class] || { bg: 'rgba(148,163,184,0.12)', text: '#94A3B8' }
-              return <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: tc.bg, color: tc.text }}>{p.proposal_timeframe_class.replace(/_/g, ' ')}</span>
-            })()}
-            {p.screener_display_name && <span style={{ fontSize: 9, color: 'var(--text3)' }}>{p.screener_display_name}</span>}
+            {/* Strategy win rate */}
+            {p.strategy_trade_count > 0 && (
+              <span style={{ fontSize: 9, color: (p.strategy_win_rate ?? 0) >= 50 ? 'var(--green)' : 'var(--amber)', fontWeight: 600 }}>
+                {p.strategy_win_rate}% WR ({p.strategy_trade_count} trades)
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Age display */}
+            {p.age_display && (
+              <span style={{ fontSize: 9, fontWeight: 600, ...mono,
+                color: p.age_color === 'green' ? '#22C55E' : p.age_color === 'red' ? '#EF4444' : '#F59E0B'
+              }}>{p.age_display}</span>
+            )}
             <LifecycleBadge status={p.lifecycle_status || p.entry_zone_status || 'ACTIVE'} riskGateResult={p.risk_gate_result} />
-            <span style={{ fontSize: 9, color: 'var(--text3)', ...mono }}>{ageStr(p.created_at)}</span>
           </div>
         </div>
+        {/* Verdict reason */}
+        {p.operator_verdict_reason && (
+          <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4 }}>{p.operator_verdict_reason}</div>
+        )}
       </div>
 
       {/* ── Pipeline chevron (always visible) ── */}
@@ -428,10 +450,42 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       {/* ── Blocker/status banner ── */}
       <BlockerBanner p={p} norm={norm} />
 
-      {/* ── Metric tiles row ── */}
-      <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
-        {tiles.map(t => <MetricTile key={t.label} label={t.label} value={t.value} status={t.status} tileColor={t.tileColor} onClick={() => setActiveTab(t.tab)} />)}
+      {/* ── Simplified 3-badge row + full details toggle ── */}
+      <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+        {/* DATA badge */}
+        {(() => {
+          const dc = norm.dataCompleteness
+          const c = dc >= 80 ? '#22C55E' : dc >= 60 ? '#F59E0B' : '#EF4444'
+          return <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: `${c}20`, color: c }}>DATA {dc}%</span>
+        })()}
+        {/* ANALYSIS badge */}
+        {(() => {
+          const hasLLM = p.llm_review_status === 'COMPLETE'
+          const hasFallback = p.agent_review_status === 'deterministic_fallback'
+          const c = hasLLM ? '#22C55E' : hasFallback ? '#F59E0B' : '#EF4444'
+          const t = hasLLM ? 'LLM' : hasFallback ? 'FALLBACK' : 'NONE'
+          return <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: `${c}20`, color: c }}>ANALYSIS {t}</span>
+        })()}
+        {/* EXECUTION badge */}
+        {(() => {
+          const erS = (er.readiness_state || '').toUpperCase()
+          const c = erS.includes('READY') ? '#22C55E' : erS.includes('CAUTION') ? '#F59E0B' : erS ? '#EF4444' : '#64748B'
+          const t = erS.includes('READY') ? 'READY' : erS.includes('BLOCKED') ? 'BLOCKED' : erS.includes('MISSED') ? 'MISSED' : erS ? 'CHECK' : 'PENDING'
+          return <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: `${c}20`, color: c }}>EXEC {t}</span>
+        })()}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setActiveTab(activeTab === 'details_full' ? 'summary' : 'details_full')}
+          style={{ fontSize: 9, padding: '2px 8px', background: 'none', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text3)', cursor: 'pointer' }}>
+          {activeTab === 'details_full' ? '\u25b2 Hide Details' : '\u25bc Full Details'}
+        </button>
       </div>
+
+      {/* ── Full metric tiles (collapsible) ── */}
+      {activeTab === 'details_full' && (
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+          {tiles.map(t => <MetricTile key={t.label} label={t.label} value={t.value} status={t.status} tileColor={t.tileColor} onClick={() => setActiveTab(t.tab)} />)}
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div style={{ padding: '0 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 0, overflow: 'auto' }}>
@@ -1676,11 +1730,14 @@ export default function PaperProposals() {
     filtered = filtered.filter((p: any) => (p.symbol || '').toUpperCase().includes(q))
   }
 
-  // Sort by lifecycle priority, then score
+  // Sort by operator verdict priority, then strategy win rate, then score
   const sorted = [...filtered].sort((a, b) => {
-    const la = LIFECYCLE_PRIORITY[a.lifecycle_status || a.entry_zone_status || 'UNKNOWN'] || 7
-    const lb = LIFECYCLE_PRIORITY[b.lifecycle_status || b.entry_zone_status || 'UNKNOWN'] || 7
-    if (la !== lb) return la - lb
+    const sa = a.sort_order ?? 2
+    const sb = b.sort_order ?? 2
+    if (sa !== sb) return sa - sb
+    const wa = a.strategy_win_rate ?? 0
+    const wb = b.strategy_win_rate ?? 0
+    if (wa !== wb) return wb - wa
     return Number(b.signal_score || 0) - Number(a.signal_score || 0)
   })
 
@@ -1725,7 +1782,14 @@ export default function PaperProposals() {
         <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)}
           style={{ fontSize: 10, padding: '4px 8px', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 4, ...mono }}>
           <option value="ALL">All Strategies</option>
-          {strategies.sort().map(s => <option key={s} value={s}>{s}</option>)}
+          {(summary.by_strategy || []).map((s: any) => (
+            <option key={s.strategy_id} value={s.strategy_id}>
+              {s.strategy_id} ({s.proposal_count} props{s.win_rate != null ? `, ${s.win_rate}% WR` : ''}{s.trade_count ? `, ${s.trade_count} trades` : ''})
+            </option>
+          ))}
+          {strategies.filter(s => !(summary.by_strategy || []).some((bs: any) => bs.strategy_id === s)).sort().map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
         </select>
         <select value={stateFilter} onChange={e => setStateFilter(e.target.value)}
           style={{ fontSize: 10, padding: '4px 8px', background: 'var(--bg1)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 4, ...mono }}>
@@ -1775,36 +1839,39 @@ export default function PaperProposals() {
         </div>
       )}
 
-      {/* Session 26: Packet health summary */}
-      {pending.length > 0 && (() => {
-        const avgPct = pending.reduce((s: number, p: any) => s + (p.packet_completion_pct || 0), 0) / pending.length
-        const states: Record<string, number> = {}
-        for (const p of pending) {
-          const s = p.action_state || 'UNKNOWN'
-          states[s] = (states[s] || 0) + 1
-        }
-        const llmPending = pending.filter((p: any) => (p.llm_review_status || 'NOT_REQUESTED') !== 'COMPLETE').length
-        const agentsPending = pending.filter((p: any) => (p.agent_review_status || 'NOT_REQUESTED') !== 'COMPLETE' && p.agent_review_status !== 'complete').length
-        return (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', padding: '6px 0' }}>
-            {[
-              { label: 'Pending', value: pending.length, color: '#60A5FA' },
-              { label: 'Paper Ready', value: states.PAPER_READY || 0, color: '#22C55E' },
-              { label: 'Blocked', value: states.BLOCKED || 0, color: '#EF4444' },
-              { label: 'Missing Data', value: states.MISSING_DATA || 0, color: '#F59E0B' },
-              { label: 'Needs Review', value: states.NEEDS_REVIEW || 0, color: '#F59E0B' },
-              { label: 'Avg Packet', value: `${avgPct.toFixed(0)}%`, color: avgPct >= 70 ? '#22C55E' : '#F59E0B' },
-              { label: 'LLM Pending', value: llmPending, color: llmPending > 0 ? '#A855F7' : '#22C55E' },
-              { label: 'Agent Pending', value: agentsPending, color: agentsPending > 0 ? '#A855F7' : '#22C55E' },
-            ].map(m => (
-              <div key={m.label} style={{ padding: '3px 8px', borderRadius: 4, background: 'var(--bg1)', border: '1px solid var(--border)', textAlign: 'center', minWidth: 60 }}>
-                <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{m.label}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: m.color, fontFamily: 'monospace' }}>{m.value}</div>
-              </div>
-            ))}
-          </div>
-        )
-      })()}
+      {/* Operator verdict summary bar */}
+      {pending.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', padding: '6px 0', alignItems: 'center' }}>
+          {[
+            { label: 'Ready', value: summary.ready_count ?? 0, color: '#22C55E', icon: '\u2705' },
+            { label: 'Need Action', value: summary.needs_review_count ?? 0, color: '#F59E0B', icon: '\u26a0\ufe0f' },
+            { label: 'Stale Quote', value: summary.stale_count ?? 0, color: '#F97316', icon: '\ud83d\udd70' },
+            { label: 'Entry Missed', value: summary.entry_missed_count ?? 0, color: '#EF4444', icon: '\u26d4' },
+          ].map(m => (
+            <div key={m.label} style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--bg1)', border: '1px solid var(--border)', textAlign: 'center', minWidth: 70 }}>
+              <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{m.icon} {m.label}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: m.color, fontFamily: 'monospace' }}>{m.value}</div>
+            </div>
+          ))}
+          {/* Dismiss All Entry Missed button */}
+          {(summary.entry_missed_count ?? 0) > 0 && (
+            <button onClick={async () => {
+              const missed = pending.filter((p: any) => p.operator_verdict === 'ENTRY_MISSED')
+              for (const p of missed) await act(p.id, 'reject')
+            }} style={{ padding: '5px 10px', fontSize: 9, fontWeight: 600, borderRadius: 5, cursor: 'pointer', color: 'var(--red)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              Dismiss All Entry Missed
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Pipeline health message */}
+      {summary.pipeline_health_message && (
+        <div style={{ padding: '8px 14px', marginBottom: 10, borderRadius: 6, fontSize: 11,
+          background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: '#F59E0B' }}>
+          {summary.pipeline_health_message}
+        </div>
+      )}
 
       {/* Proposal list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflow: 'visible' }}>
