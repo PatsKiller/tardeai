@@ -1627,7 +1627,7 @@ John replies in Telegram → telegram_command_handler executes retry
 | 8:00 PM | Overnight batch + SEC Form 4 |
 | 8:30 PM | Feedback loop processor (outcome chains, alert scoring) |
 | 9:00 PM | Auto-research |
-| **11:00 PM–3:00 AM** | **Deep overnight LLM window** (gemma3-overnight, 100-job cap, 12 job types: strategy classification, risk synthesis, RAG curation, journal/trade reviews, recovery watch, covered call scoring, strategy opportunity scan, rebalance analysis. Event-driven requeue + calibration loop) |
+| **11:00 PM–3:00 AM** | **Deep overnight LLM window** (gemma3-overnight, 100-job cap, 15 job types: strategy classification, risk synthesis, RAG curation, journal/trade reviews, recovery watch, covered call scoring, strategy opportunity scan, rebalance analysis, + rotating strategy scans: income (Mon), growth (Wed), reversion (Sat). Event-driven requeue + calibration loop. Strategy-aware incubator grading (4 prompt groups)) |
 | **Fri 4:00 PM** | **Friday extended window** (400-job weekly backlog clear, 11h window) |
 | Sun 7:00 PM | Weekly incubator builder |
 | Sun 8:00 PM | Full topic ingestion (all topics, with LLM) |

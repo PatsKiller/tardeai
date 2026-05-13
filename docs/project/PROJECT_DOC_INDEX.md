@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | Strategy-aware overnight: 3 new job types (income Mon/growth Wed/reversion Sat), strategy-aware incubator grader (4 prompt groups), 7 new screeners (27 total), 16 static bond/BDC/cash symbols. All 20 strategies now have proposal pipeline path. |
 | 2026-05-13 | LLM Queue Manager page (/v2/ops), 9 new API endpoints, event-driven requeue engine, 4 new Finviz screeners, strategy_opportunity_scan job, gemma3 calibration loop, Friday extended cron, updated Phase 1H doc + deployment log. |
 | 2026-05-13 | Fix: deep overnight queue cap 70→100 (expansion job types were starved). Fix: .env quoting for FINVIZ_USER_AGENT/COOKIE + 5 direct parser scripts. Updated deployment log, Phase 1H doc. |
 | 2026-05-13 | A1A audit: Phase 0 migration (7 scripts to local_llm.generate), two-tier rebalance advisor. Updated MASTER_SYSTEM (process-type routing, rebalance routing). |
