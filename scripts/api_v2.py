@@ -10596,6 +10596,20 @@ def _ops_llm_audit():
     return {"entries": entries, "total": len(entries)}
 
 
+def _queue_calibration():
+    rows = _db_query("""
+        SELECT job_type, total_graded, correct, partial, wrong, pending,
+               accuracy_pct, tracking_since
+        FROM gemma3_accuracy_by_job_type
+    """) or []
+    if not rows:
+        return {"accuracy": [], "note": "Calibration data accumulates as trades close. Check back after first paper trade closes."}
+    return {
+        "accuracy": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "total_events": sum(r.get("total_graded", 0) for r in rows),
+    }
+
+
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
 ROUTES = {
@@ -10757,6 +10771,7 @@ ROUTES = {
     "/api/v2/queue/failed": lambda: _queue_failed(),
     "/api/v2/ops/cron-health": lambda: _ops_cron_health(),
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
+    "/api/v2/queue/calibration": lambda: _queue_calibration(),
 }
 
 
