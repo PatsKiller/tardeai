@@ -912,3 +912,27 @@ Verified working after server restart. Maps generic "Review data completeness" t
 `trade_ai_orchestrator.py` line 631: `RiskGate(conn)` used undefined bare `conn`.
 Replaced with `_rg_get_conn()` from `db_adapter`. Was causing risk_gate stage to
 fail silently on every orchestrator run (12PM, 2PM, 4PM, 5:30PM).
+
+## Fix: Proposal Pipeline Quality — 2026-05-13 13:30 ET
+
+### Problems found (live browser audit)
+| Issue | Root Cause |
+|-------|-----------|
+| Current price $-- on fresh proposals | `current_price` NULL, promoter doesn't set it |
+| RSI missing | API didn't read from `ticker_snapshot_daily` |
+| Generic thesis ("GCTS is a recovery_watch proposal") | No data-driven fallback |
+| Same symbol ×4 dominating page | Per-symbol cap without strategy group awareness |
+| OSS symbols failing with no_price | No penny stock / volume filter |
+
+### Fixes applied
+- **Price fallback chain**: API tries proposal → snapshot → scan price. RSI/RVOL
+  also sourced from `ticker_snapshot_daily` when missing on proposal.
+- **thesis_display**: Built from data when setup_thesis is generic:
+  "GCTS: Recovery Watch | RVOL 8.7x | Score 40pts | Catalyst verified | RSI 65"
+- **Strategy-group dedup**: Max 1 proposal per symbol per group
+  (MOMENTUM/INCOME/GROWTH/REVERSION), max 2 total per symbol.
+  Prevents GCTS×4 domination.
+- **Penny stock filter**: Skip symbols with price <$1.00.
+- **Multi-strategy warning**: API returns `multi_strategy_symbols` in summary.
+  Frontend shows header warning + per-card "+1 other strategy" badge.
+- **Stop breach auto-expiry**: Added rule 4 to promoter auto-expiry.
