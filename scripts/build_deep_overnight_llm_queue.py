@@ -394,6 +394,195 @@ def build_proposal_review_jobs(cur, held_symbols):
     return jobs
 
 
+# ─── Phase 1H Expansion: Direct-insert queue builders ─────────────────────
+
+def _already_queued(cur, input_hash):
+    """Check if a job with this input_hash is already pending/running/done."""
+    cur.execute("""
+        SELECT id FROM deep_overnight_llm_queue
+        WHERE input_hash = %s AND status IN ('pending', 'running', 'done')
+    """, [input_hash])
+    return cur.fetchone() is not None
+
+
+def _insert_queue_item(cur, job_type, symbol, tier, score, reasons, input_hash,
+                       source_table=None, source_id=None):
+    """Insert a single queue item. Returns 1 if inserted, 0 if skipped."""
+    if _already_queued(cur, input_hash):
+        return 0
+    cur.execute("""
+        INSERT INTO deep_overnight_llm_queue
+            (job_type, symbol, priority_tier, priority_score,
+             reason_codes, input_hash, source_table, source_id,
+             source_script, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s,
+                'build_deep_overnight_llm_queue.py', 'pending')
+    """, [job_type, symbol, tier, score, reasons, input_hash,
+          source_table, source_id])
+    return cur.rowcount
+
+
+def queue_risk_synthesis(cur, dry_run=False):
+    """Queue one portfolio-level risk synthesis per night. P0, single job."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    input_hash = f"risk_synthesis:{today}"
+    if _already_queued(cur, input_hash):
+        return 0
+    if dry_run:
+        print(f"  [DRY] risk_synthesis: PORTFOLIO nightly score=100")
+        return 1
+    return _insert_queue_item(cur, "risk_synthesis", "PORTFOLIO", "P0", 100,
+                              ["nightly_synthesis"], input_hash)
+
+
+def queue_rag_content_curation(cur, dry_run=False):
+    """Queue pending/low-quality content for gemma deep curation. Up to 20/night."""
+    queued = 0
+
+    # Pending news > 48h old
+    cur.execute("""
+        SELECT id, title, symbol
+        FROM news_articles
+        WHERE rag_status = 'pending'
+          AND published_at < NOW() - INTERVAL '48 hours'
+          AND deep_curation_at IS NULL
+        ORDER BY published_at DESC LIMIT 12
+    """)
+    for aid, title, symbol in cur.fetchall():
+        ih = f"rag_curation:news_articles:{aid}"
+        if dry_run:
+            print(f"  [DRY] rag_curation: news:{aid} '{(title or '')[:40]}' score=75")
+            queued += 1
+        else:
+            queued += _insert_queue_item(cur, "rag_content_curation", symbol or "",
+                                         "P1", 75, ["pending_news", "age>48h"], ih,
+                                         "news_articles", aid)
+        if queued >= 20:
+            return queued
+
+    # Low-quality news never gemma-reviewed
+    cur.execute("""
+        SELECT id, title, symbol
+        FROM news_articles
+        WHERE rag_status = 'low_quality' AND deep_curation_at IS NULL
+        ORDER BY published_at DESC LIMIT 8
+    """)
+    for aid, title, symbol in cur.fetchall():
+        ih = f"rag_curation:news_articles:{aid}"
+        if dry_run:
+            print(f"  [DRY] rag_curation: news_low:{aid} '{(title or '')[:40]}' score=65")
+            queued += 1
+        else:
+            queued += _insert_queue_item(cur, "rag_content_curation", symbol or "",
+                                         "P1", 65, ["low_quality_news"], ih,
+                                         "news_articles", aid)
+        if queued >= 20:
+            return queued
+
+    # YouTube transcripts pending/low
+    cur.execute("""
+        SELECT id, COALESCE(title, channel_name) as title
+        FROM youtube_transcripts
+        WHERE rag_status IN ('pending', 'low_quality') AND deep_curation_at IS NULL
+        ORDER BY created_at DESC LIMIT 8
+    """)
+    for tid, title in cur.fetchall():
+        ih = f"rag_curation:youtube_transcripts:{tid}"
+        if dry_run:
+            print(f"  [DRY] rag_curation: yt:{tid} '{(title or '')[:40]}' score=70")
+            queued += 1
+        else:
+            queued += _insert_queue_item(cur, "rag_content_curation", "",
+                                         "P1", 70, ["pending_transcript"], ih,
+                                         "youtube_transcripts", tid)
+        if queued >= 20:
+            return queued
+
+    return queued
+
+
+def queue_recovery_watch_review(cur, dry_run=False):
+    """Queue recovery watch reviews. Tue/Thu only."""
+    if datetime.now().weekday() not in (1, 3):  # Tue=1, Thu=3
+        return 0
+
+    week_tag = datetime.now().strftime("%Y-%W")
+    cur.execute("""
+        SELECT symbol, status, exit_price, stopped_out_at, thesis_at_exit
+        FROM stopped_out_watch
+        WHERE is_active = true
+        ORDER BY stopped_out_at DESC LIMIT 12
+    """)
+    queued = 0
+    for symbol, status, exit_price, stopped_at, thesis in cur.fetchall():
+        ih = f"recovery_watch:{symbol}:{week_tag}"
+        score = 90
+        reasons = [f"status:{status}"]
+        if dry_run:
+            print(f"  [DRY] recovery_watch: {symbol} status={status} score={score}")
+            queued += 1
+        else:
+            queued += _insert_queue_item(cur, "recovery_watch_review", symbol,
+                                         "P1", score, reasons, ih,
+                                         "stopped_out_watch", None)
+    return queued
+
+
+def queue_covered_call_scoring(cur, dry_run=False):
+    """Queue covered call scoring. Sunday only."""
+    if datetime.now().weekday() != 6:  # Sunday=6
+        return 0
+
+    week_tag = datetime.now().strftime("%Y-%W")
+    cur.execute("""
+        SELECT symbol, recommendation, confidence_score
+        FROM aegis_covered_call_candidates
+        WHERE recommendation IN ('review_needed', 'candidate')
+        ORDER BY confidence_score DESC NULLS LAST LIMIT 15
+    """)
+    queued = 0
+    for symbol, rec, conf in cur.fetchall():
+        ih = f"cc_scoring:{symbol}:{week_tag}"
+        score = 80 + (10 if rec == "candidate" else 0)
+        if dry_run:
+            print(f"  [DRY] covered_call: {symbol} rec={rec} score={score}")
+            queued += 1
+        else:
+            queued += _insert_queue_item(cur, "covered_call_scoring", symbol,
+                                         "P1", score, [f"cc_rec:{rec}"], ih,
+                                         "aegis_covered_call_candidates", None)
+    return queued
+
+
+def queue_weekly_behavioral_review(cur, dry_run=False):
+    """Queue weekly behavioral review. Sunday only. Gated at 20+ closed trades."""
+    if datetime.now().weekday() != 6:
+        return 0
+
+    cur.execute("SELECT COUNT(*) FROM paper_trades WHERE lifecycle_state = 'closed'")
+    closed = cur.fetchone()[0]
+    if closed < 20:
+        print(f"  [SKIP] weekly_behavioral: {closed} closed trades, need 20+")
+        return 0
+
+    week_tag = datetime.now().strftime("%Y-%W")
+    ih = f"weekly_behavior:{week_tag}"
+    if dry_run:
+        print(f"  [DRY] weekly_behavioral: {closed} closed trades score=55")
+        return 1
+    return _insert_queue_item(cur, "weekly_behavioral_review", "ALL_TRADES",
+                              "P2", 55, [f"closed:{closed}"], ih)
+
+
+EXPANSION_BUILDERS = [
+    ("risk_synthesis", queue_risk_synthesis),
+    ("rag_content_curation", queue_rag_content_curation),
+    ("recovery_watch_review", queue_recovery_watch_review),
+    ("covered_call_scoring", queue_covered_call_scoring),
+    ("weekly_behavioral_review", queue_weekly_behavioral_review),
+]
+
+
 # ─── Main ────────────────────────────────────────────────────────────────
 
 ALL_JOB_TYPES = [
@@ -402,6 +591,11 @@ ALL_JOB_TYPES = [
     "auto_journal_review",
     "manual_journal_review",
     "proposal_review",
+    "risk_synthesis",
+    "rag_content_curation",
+    "recovery_watch_review",
+    "covered_call_scoring",
+    "weekly_behavioral_review",
 ]
 
 BUILDERS = {
@@ -498,8 +692,26 @@ def main():
         reasons = ",".join(j["reason_codes"][:3])
         print(f"{i+1:>4} {j['job_type']:>25} {ident:>8} {j['priority_tier']:>4} {j['priority_score']:>5} {reasons}")
 
+    # ── Phase 1H expansion: direct-insert builders ──
+    expansion_total = 0
+    for exp_name, exp_fn in EXPANSION_BUILDERS:
+        if args.job_types and exp_name not in requested:
+            continue
+        try:
+            n = exp_fn(cur, dry_run=args.dry_run)
+            if n > 0:
+                print(f"  {exp_name}: {n} queued")
+                expansion_total += n
+            if not args.dry_run:
+                conn.commit()
+        except Exception as e:
+            print(f"  {exp_name}: ERROR — {e} (continuing)")
+
+    if expansion_total:
+        print(f"\nExpansion job types: {expansion_total} additional items")
+
     if args.dry_run:
-        print(f"\n=== DRY RUN — {len(all_jobs)} jobs would be queued ===")
+        print(f"\n=== DRY RUN — {len(all_jobs)} list jobs + {expansion_total} expansion jobs ===")
         conn.close()
         return
 

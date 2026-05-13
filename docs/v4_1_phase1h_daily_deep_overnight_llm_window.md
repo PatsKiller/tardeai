@@ -107,10 +107,11 @@ Stores gemma3-overnight analysis outputs.
 | `auto_journal_review` | `journal_trade_reviews` | Review of automated journal entries |
 | `manual_journal_review` | `journal_trade_reviews` | Review of manual journal entries |
 | `proposal_review` | `paper_trade_proposals` | Deep review of pending proposals |
-| `journal_pattern_review` | (future) | Cross-trade behavioral patterns |
-| `recovery_watch_review` | (future) | Recovery/re-entry decisions |
-| `risk_synthesis` | (future) | Portfolio-level risk assessment |
-| `weekly_behavioral_review` | (future) | Weekly pattern analysis |
+| `rag_content_curation` | `news_articles`, `youtube_transcripts` | Deep curation with 128K context — APPROVE_BOOST/STANDARD/LOW_QUALITY/SUPERSEDED. Nightly, up to 20 items |
+| `risk_synthesis` | `holdings.json`, `paper_trades` | Single nightly P0 portfolio risk narrative for morning brief. Saved to `risk_synthesis_results` |
+| `recovery_watch_review` | `stopped_out_watch` | Thesis validity for stopped-out positions. Tue/Thu only, up to 12 items |
+| `covered_call_scoring` | `aegis_covered_call_candidates` | Strike/yield scoring for CC candidates. Sunday only, up to 15 items |
+| `weekly_behavioral_review` | `paper_trades` | Cross-trade pattern analysis. Sunday only, gated at 20+ closed trades (currently inactive) |
 
 ## 7. Journal/Closed Trade Integration
 
