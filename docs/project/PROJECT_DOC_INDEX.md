@@ -45,10 +45,11 @@
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50 GPU setup for Ollama |
 | `docs/COST_MODEL.md` | Cloud operating cost model |
 
-### Improvement Plans
+### Improvement Plans & Assessments
 | Document | Purpose |
 |----------|---------|
-| `docs/project/FOCUSED_IMPROVEMENT_PLAN.md` | **Active improvement plan** — 7 verified gaps (3 resolved/deferred), corrected maturity score 6.5/10, implementation sequence |
+| `docs/project/VERIFIED_MATURITY_ASSESSMENT_2026-05-12.md` | **Browser-verified maturity assessment** — 12-domain scorecard (7.51/10), 13 confirmed gaps, session prompt for Goals 1-6 |
+| `docs/project/FOCUSED_IMPROVEMENT_PLAN.md` | **Active improvement plan** — 7 verified gaps (3 done, 1 already resolved, 2 deferred), current score 7.0/10 |
 
 ### Strategy & Agent Configuration
 | Document | Purpose |
@@ -81,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-12 | Added VERIFIED_MATURITY_ASSESSMENT_2026-05-12.md (browser-verified 7.51/10, 13 gaps, session prompt). |
 | 2026-05-12 | A1A audit: Gaps 3/6/7 implemented. Updated MASTER_SYSTEM_DOCUMENTATION (revalidation alerts, R-multiple tiers, outcome provenance), SYSTEM_ARCHITECTURE_COMPLETE (provenance hook), FOCUSED_IMPROVEMENT_PLAN (gaps marked done). |
 | 2026-05-12 | Added FOCUSED_IMPROVEMENT_PLAN.md (corrected architect assessment, 7 gaps, maturity path). |
 | 2026-05-12 | Added A1A protocol, LLM fleet v4.1 docs, Phase 1H doc, test reports, discovery artifacts. Flagged v3.4.1 as superseded. |
