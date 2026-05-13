@@ -597,7 +597,7 @@ operator-tuned 70 default / 75 hard max based on 4-hour window throughput analys
 - Weeknights (Tue/Thu): +31 jobs (1 risk + 20 RAG + 10 recovery)
 - Weeknights (Mon/Wed/Fri): +21 jobs (1 risk + 20 RAG)
 - Sundays: +21-36 jobs (1 risk + 20 RAG + 0-15 CC + 0-1 behavioral)
-- All within 70-job default cap
+- Original 70-job cap was too low to accommodate — raised to 100 (see fix below)
 
 ### Morning brief integration
 - `aegis_morning_brief_delivery.py` now surfaces overnight risk synthesis priority action
@@ -608,6 +608,59 @@ operator-tuned 70 default / 75 hard max based on 4-hour window throughput analys
 - No routing changes
 - No broker, holdings, execution, or trading behavior changes
 - Existing job type handlers unchanged
+
+## Fix: Deep Overnight Queue — Job Cap 70→100 — 2026-05-13 08:00 ET
+
+### Root cause
+risk_synthesis (P0, score=100) and all other Phase 1H expansion job types never
+ran despite being correctly queued. The nightly cap of 70 jobs was entirely consumed
+by higher-scored original types: journal reviews (170), strategy classifications
+(130), closed trade reviews (115-125). Expansion types were jobs #71+.
+
+### Observed throughput
+Last night processed 70 jobs in 47 minutes (23:00–23:47). Average ~40 sec/job,
+not the estimated 2.5 min/job from Phase 1D. The 240-minute budget had 193 minutes
+of unused headroom.
+
+### Fix
+- `run_deep_overnight_llm_window.sh`: MAX_JOBS 70→100, HARD_MAX_JOBS 75→100
+- `run_deep_overnight_llm_queue.py`: default --limit 70→100, added --force-job-types flag
+- `v4_1_phase1h_daily_deep_overnight_llm_window.md`: capacity policy updated
+
+### Smoke test
+- Dry run: `--force-job-types risk_synthesis,rag_content_curation --limit 3` found all 3 jobs
+- Live run: risk_synthesis dispatched correctly, timed out (expected — gemma not loaded during daytime)
+- Job returned to pending with attempt_count=1, will succeed at tonight's 23:00 window
+
+## Fix: .env Quoting + Direct Parser Audit — 2026-05-13 08:20 ET
+
+### Root cause
+`FINVIZ_USER_AGENT` and `FINVIZ_COOKIE` contained unquoted parentheses, spaces,
+and semicolons — characters that break `bash source .env`. Additionally, 5 Python
+scripts with direct `.env` file parsers (using `split("=",1)[1].strip()`) did not
+strip quotes, causing them to send literal quote characters in HTTP Cookie headers.
+
+### .env fix
+- `FINVIZ_USER_AGENT`: wrapped in single quotes (has `(Windows NT 10.0; Win64; x64)`)
+- `FINVIZ_COOKIE`: wrapped in single quotes (has `(Eastern Daylight Time)`)
+- python-dotenv (used by 80+ scripts) correctly strips quotes — no impact
+- Backup preserved at `.env.backup.20260513_082028`
+
+### Parser fixes (5 scripts)
+All direct `.env` readers that handle Finviz credentials now `.strip("'\"")`
+
+| Script | Issue | Impact |
+|--------|-------|--------|
+| `system_preflight_check.py` | `.strip()` only | Finviz CSV check was FAILING (got HTML login page) |
+| `credential_monitor.py` | `.strip()` only | Reported 102KB "ok" (was actually HTML, not CSV) |
+| `finviz_validator.py` | `.strip()` only | Would send quoted cookie to Finviz |
+| `finviz_health_check.py` | `.strip('"')` only | Would not strip single quotes |
+| `finviz_enrichment.py` | `_load_env` did `.strip('"')` | Would not strip single quotes in `os.environ` |
+
+### Verification (all pass)
+- Cookie auth: health_check 1,370 rows, credential_monitor 27KB CSV, preflight CSV+tickers, validator 2/2 screeners, screener_runner 20 screeners
+- API token auth: finviz_news (200, 36KB), finviz_enrichment (6 views AAPL/MSFT/TSLA)
+- Holdings guard: $1,192,258 ✓
 
 ## Phase 0 Migration — LLM Hardcoding Audit — 2026-05-13
 

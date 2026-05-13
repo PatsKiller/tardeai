@@ -140,7 +140,7 @@ tail -50 logs/proposal_enrichment.log
 
 | File | Purpose |
 |------|---------|
-| `.env` | All secrets, API keys, LLM config, feature flags |
+| `.env` | All secrets, API keys, LLM config, feature flags. Values with `( ) ;` must be single-quoted |
 | `.env.example` | Template with documented variables |
 | `config/strategies/*.yaml` | 20 strategy definitions (dynamically loaded) |
 | `assets/screeners.yaml` | Finviz screener URLs + run windows |
@@ -245,7 +245,7 @@ curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
 
 | Failure | Symptom | Fix |
 |---------|---------|-----|
-| **Finviz cookie expired** | Screener returns 0 results | Manual browser login to Finviz Elite, update cookie in `.env` |
+| **Finviz cookie expired** | Screener returns 0 results | Manual browser login to Finviz Elite, update cookie in `.env`. **Wrap in single quotes** — value contains `( ) ;` characters |
 | **Ollama GPU fallback to CPU** | Classification takes 300s instead of 15s | `sudo systemctl restart ollama`; verify Vulkan override |
 | **Portfolio server 502** | React SPA shows connection error | `pkill -f portfolio_server.py && nohup .venv/bin/python scripts/portfolio_server.py &` |
 | **DB connection refused** | All API calls fail | `sudo systemctl restart postgresql` |

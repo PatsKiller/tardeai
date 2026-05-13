@@ -17,11 +17,16 @@
 
 ## 2. Critical Environment Variables (.env)
 
+**Quoting rule:** Values containing parentheses, spaces, or semicolons MUST be
+wrapped in single quotes. This includes `FINVIZ_USER_AGENT` and `FINVIZ_COOKIE`.
+python-dotenv strips quotes automatically; direct `.env` parsers use `.strip("'\"")`.
+
 ```
 DB_PASSWORD=<your_password>
 FINNHUB_API_KEY=<key>
 FMP_API_KEY=<key>
-FINVIZ_COOKIE=<full_elite_session_cookie>
+FINVIZ_COOKIE='<full_elite_session_cookie>'
+FINVIZ_USER_AGENT='Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...'
 YOUTUBE_API_KEY=<key>
 ALPHA_VANTAGE_API_KEY=<key>
 TELEGRAM_BOT_TOKEN=<token>
