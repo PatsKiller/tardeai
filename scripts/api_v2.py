@@ -5929,6 +5929,7 @@ def trade_ai():
         "run_health_status": _run_health_status,
         "vix": latest.get("vix"),
         "breadth": latest.get("breadth", ""),
+        "market_regime": latest.get("breadth", latest.get("market_regime", "Neutral")),
         "go_count": go_count,
         "wait_count": wait_count,
         "avoid_count": avoid_count,
@@ -10837,33 +10838,18 @@ def _queue_failed():
 def _ops_cron_health():
     rows = _db_query("""
         SELECT ps.script_name as name, COALESCE(ps.display_name, ps.script_name) as display_name,
-               ps.expected_hour, ps.expected_min, ps.run_days as schedule, ps.critical,
-               (SELECT pr.started_at FROM pipeline_runs pr WHERE pr.pipeline_key = ps.script_name ORDER BY pr.started_at DESC LIMIT 1) as last_run,
-               (SELECT pr.status FROM pipeline_runs pr WHERE pr.pipeline_key = ps.script_name ORDER BY pr.started_at DESC LIMIT 1) as last_status,
-               (SELECT count(*) FROM pipeline_runs pr WHERE pr.pipeline_key = ps.script_name AND pr.started_at > NOW()-INTERVAL '24 hours') as runs_today
+               ps.expected_hour, ps.expected_min, ps.run_days as schedule, ps.critical
         FROM pipeline_schedule ps WHERE ps.active = true ORDER BY ps.expected_hour, ps.expected_min
     """) or []
-    if not rows:
-        rows = _db_query("SELECT script_name as name, display_name, expected_hour, expected_min, run_days as schedule, critical FROM pipeline_schedule WHERE active=true ORDER BY expected_hour, expected_min") or []
     crons = []
     for r in rows:
         d = {k: _json_clean(v) for k, v in r.items()}
-        status = "ok"
-        if d.get("last_status") in ("failed", "error"):
-            status = "failed"
-        elif not d.get("last_run"):
-            status = "unknown"
-        else:
-            try:
-                from datetime import datetime, timezone
-                lr = r.get("last_run")
-                if hasattr(lr, 'timestamp'):
-                    age_h = (datetime.now(timezone.utc) - lr.replace(tzinfo=timezone.utc if lr.tzinfo is None else lr.tzinfo)).total_seconds() / 3600
-                    if age_h > 25:
-                        status = "stale"
-            except Exception:
-                pass
-        d["status"] = status
+        # Schedule info + expected time display
+        eh = d.get('expected_hour', 0)
+        em = d.get('expected_min', 0)
+        d['expected_time'] = f"{eh:02d}:{em:02d}"
+        d['status'] = 'critical' if d.get('critical') else 'scheduled'
+        d['runs_today'] = None  # individual run tracking not yet instrumented
         crons.append(d)
     return {"crons": crons}
 
