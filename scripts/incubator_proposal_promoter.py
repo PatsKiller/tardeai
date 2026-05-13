@@ -73,6 +73,84 @@ SCREENER_DISPLAY = {
 }
 
 RISK_BUDGET = 150  # dollars per trade
+MAX_ACTIVE_PROPOSALS = 20  # global ceiling
+MAX_PER_STRATEGY = 5  # per strategy group ceiling
+
+
+# ---------------------------------------------------------------------------
+# Auto-expiry and gate logic
+# ---------------------------------------------------------------------------
+
+def _auto_expire_stale_proposals(conn):
+    """Expire proposals that have gone stale without operator action.
+    Runs at the start of every promoter cycle, before the gate check."""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    expired = 0
+
+    # Rule 1: PENDING > 3 days with no approval/rejection
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'EXPIRED', expiry_reason = 'AUTO: No operator action in 3 days'
+        WHERE status = 'PENDING'
+          AND created_at < NOW() - INTERVAL '3 days'
+          AND approved_at IS NULL AND rejected_at IS NULL
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: 3 days no action")
+    expired += cur.rowcount
+
+    # Rule 2: Past expires_at
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'EXPIRED', expiry_reason = 'AUTO: Past expiration time'
+        WHERE status = 'PENDING'
+          AND expires_at IS NOT NULL AND expires_at < NOW()
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: past expires_at")
+    expired += cur.rowcount
+
+    # Rule 3: PENDING > 2 days AND price drifted >8% from proposed entry
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'EXPIRED', expiry_reason = 'AUTO: Price drifted >8% from entry over 2+ days'
+        WHERE status = 'PENDING'
+          AND created_at < NOW() - INTERVAL '2 days'
+          AND current_price IS NOT NULL AND proposed_entry IS NOT NULL
+          AND proposed_entry > 0
+          AND ABS(current_price - proposed_entry) / proposed_entry > 0.08
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: price drift >8%")
+    expired += cur.rowcount
+
+    conn.commit()
+    if expired > 0:
+        log.info(f"[auto-expiry] Expired {expired} stale proposals")
+    return expired
+
+
+def _check_promotion_gate(conn):
+    """Strategy-aware promotion gate. Returns (can_promote, reason)."""
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM paper_trade_proposals WHERE status = 'PENDING'")
+    total = cur.fetchone()[0]
+    if total >= MAX_ACTIVE_PROPOSALS:
+        return False, f"Global gate: {total}/{MAX_ACTIVE_PROPOSALS} pending proposals"
+
+    cur.execute("""
+        SELECT strategy_id, COUNT(*) as cnt FROM paper_trade_proposals
+        WHERE status = 'PENDING' GROUP BY strategy_id ORDER BY cnt DESC
+    """)
+    maxed = [r[0] for r in cur.fetchall() if r[1] >= MAX_PER_STRATEGY]
+    if len(maxed) >= 3:
+        return False, f"Strategy concentration: {maxed} all at {MAX_PER_STRATEGY}"
+
+    return True, "OK"
 
 
 def _queue_llm_review(conn, proposal_id: int, symbol: str, strategy_id: str):
@@ -205,6 +283,16 @@ def compute_levels(price):
 def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=2):
     conn = get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Auto-expire stale proposals first (always, even on dry-run preview)
+    if not dry_run:
+        _auto_expire_stale_proposals(conn)
+
+    # Strategy-aware promotion gate
+    can_promote, gate_reason = _check_promotion_gate(conn)
+    if not can_promote and not force_symbol:
+        log.warning(f"[promoter] Gate blocked: {gate_reason}")
+        return [f"GATE BLOCKED: {gate_reason}"], 0, 0
 
     candidates = fetch_candidates(cur, force_symbol=force_symbol, limit=limit)
     promoted = 0

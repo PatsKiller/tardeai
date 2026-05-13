@@ -8021,6 +8021,63 @@ def _paper_proposals_enriched():
             pass
 
         pending_list = [p for p in proposals if p.get('status') == 'PENDING']
+
+        # Strategy performance from closed paper trades
+        strategy_perf = {}
+        try:
+            _sp_rows = _db_query("""
+                SELECT strategy_id,
+                       count(*) as trade_count,
+                       SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
+                       ROUND(SUM(pnl)::numeric, 2) as total_pnl
+                FROM paper_trades
+                WHERE lifecycle_state = 'closed' AND strategy_id IS NOT NULL
+                GROUP BY strategy_id
+            """) or []
+            for sr in _sp_rows:
+                sid = sr['strategy_id']
+                tc = sr['trade_count'] or 0
+                w = sr['wins'] or 0
+                strategy_perf[sid] = {
+                    'trade_count': tc, 'wins': w,
+                    'total_pnl': float(sr['total_pnl'] or 0),
+                    'win_rate': round(w / tc * 100, 1) if tc > 0 else 0,
+                }
+        except Exception:
+            pass
+
+        # Add strategy perf to each proposal + compute age
+        for prop in pending_list:
+            sid = prop.get('strategy_id')
+            if sid and sid in strategy_perf:
+                prop['strategy_win_rate'] = strategy_perf[sid]['win_rate']
+                prop['strategy_total_pnl'] = strategy_perf[sid]['total_pnl']
+                prop['strategy_trade_count'] = strategy_perf[sid]['trade_count']
+            else:
+                prop['strategy_win_rate'] = None
+                prop['strategy_total_pnl'] = None
+                prop['strategy_trade_count'] = 0
+            # Age
+            if prop.get('created_at'):
+                try:
+                    from datetime import datetime as _dt, timezone as _tz
+                    ca = prop['created_at']
+                    if isinstance(ca, str):
+                        ca = _dt.fromisoformat(ca.replace('Z', '+00:00'))
+                    age = (_dt.now(_tz.utc) - ca.replace(tzinfo=_tz.utc) if ca.tzinfo is None else ca)
+                    prop['age_hours'] = round(age.total_seconds() / 3600, 1)
+                except Exception:
+                    prop['age_hours'] = None
+
+        # Build by_strategy summary
+        by_strat = {}
+        for p in pending_list:
+            sid = p.get('strategy_id', 'unknown')
+            by_strat.setdefault(sid, {'proposal_count': 0})
+            by_strat[sid]['proposal_count'] += 1
+            if sid in strategy_perf:
+                by_strat[sid].update(strategy_perf[sid])
+
         return 200, {
             "ok": True,
             "proposals": pending_list,
@@ -8030,6 +8087,10 @@ def _paper_proposals_enriched():
                 "expired_today": len(expired_today),
                 "incubator_ready_count": incubator_ready_count,
                 "last_promotion_run": last_promotion_run,
+                "by_strategy": [{**v, 'strategy_id': k}
+                                for k, v in sorted(by_strat.items(),
+                                                   key=lambda x: x[1].get('win_rate', 0),
+                                                   reverse=True)],
             },
             "pending_count": len(pending_list),
             "count": len(proposals),
