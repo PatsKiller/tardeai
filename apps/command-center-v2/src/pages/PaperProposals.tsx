@@ -407,7 +407,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
       {/* ROW 1 — STATUS BAR (colored by verdict) */}
       <div style={{ padding: '8px 14px', background: vc.bg, borderBottom: `1px solid ${vc.text}30`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4, borderRadius: '6px 6px 0 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: vc.text }}>{p.operator_verdict === 'READY' ? '\u2705' : p.operator_verdict === 'ENTRY_MISSED' ? '\u26d4' : p.operator_verdict === 'STALE_QUOTE' ? '\ud83d\udd70' : '\u26a0\ufe0f'} {(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: vc.text }}>{p.operator_verdict === 'READY' ? '\u2705' : p.operator_verdict === 'BLOCKED' ? '\ud83d\uded1' : p.operator_verdict === 'ENTRY_MISSED' ? '\u26d4' : p.operator_verdict === 'STALE_QUOTE' ? '\ud83d\udd70' : '\u26a0\ufe0f'} {(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')}</span>
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_id}</span>
           {p.signal_grade && <span style={pill(p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'green' : p.signal_grade === 'B' ? 'amber' : 'red')}>{p.signal_grade} {p.signal_score}pts</span>}
@@ -461,7 +461,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           {runningAction === 'aiReview' ? 'Running...' : '\ud83e\udde0 AI Review'}
         </button>
         <div style={{ flex: 1 }} />
-        <button onClick={handleApprove} disabled={approveDisabled && !canApproveWithConfirm}
+        <button onClick={handleApprove} disabled={p.is_blocked || (approveDisabled && !canApproveWithConfirm)}
           title={p.operator_verdict !== 'READY' ? (p.operator_verdict_reason || 'Not ready') : 'Approve for paper test'}
           style={{ ...btnStyle(p.operator_verdict === 'READY' ? '#22C55E' : 'rgba(148,163,184,0.2)', p.operator_verdict === 'READY' ? '#fff' : '#94A3B8'), fontSize: 10, padding: '5px 14px', border: p.operator_verdict === 'READY' ? 'none' : '1px solid rgba(148,163,184,0.3)' }}>
           {acting[p.id] === 'approve' ? 'Approving...' : '\u2713 Approve'}

@@ -127,6 +127,20 @@ def _auto_expire_stale_proposals(conn):
         log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: price drift >8%")
     expired += cur.rowcount
 
+    # Rule 4: Stop breached — current_price <= proposed_stop
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'EXPIRED', expiry_reason = 'AUTO: Stop breached — price at or below stop'
+        WHERE status = 'PENDING'
+          AND current_price IS NOT NULL AND proposed_stop IS NOT NULL
+          AND proposed_stop > 0
+          AND current_price <= proposed_stop
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: stop breached")
+    expired += cur.rowcount
+
     conn.commit()
     if expired > 0:
         log.info(f"[auto-expiry] Expired {expired} stale proposals")
