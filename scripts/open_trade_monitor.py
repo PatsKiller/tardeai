@@ -49,7 +49,8 @@ def get_open_trades(conn):
         SELECT id, symbol, strategy_id, entry_price, entry_time, shares,
                stop_loss, target_1, dollar_risk, account,
                current_price, unrealized_pnl, r_multiple,
-               monitored_at, last_alert_at, stale_flag
+               monitored_at, last_alert_at, stale_flag,
+               planned_stop
         FROM paper_trades
         WHERE status = 'open'
         ORDER BY entry_time DESC
@@ -293,20 +294,42 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
         alerts.append(('TARGET_HIT_CLOSE', symbol))
         return alerts
 
-    # ── TRAILING STOP: Lock in gains at R >= 1.0 ──
-    if r_mult is not None and r_mult >= 1.0 and stop > 0 and entry > 0:
-        new_stop = round(entry + 0.5 * (price - entry), 2)
+    # ── TRAILING STOP: 4-tier R-multiple trailing ──
+    # Use planned_stop or dollar_risk to recover initial 1R (stop_loss may have been moved)
+    initial_stop = float(trade.get('planned_stop') or 0)
+    if initial_stop <= 0:
+        # Fallback: compute from dollar_risk if planned_stop unavailable
+        dr = float(trade.get('dollar_risk') or 0)
+        initial_stop = round(entry - (dr / shares), 2) if shares and dr > 0 else stop
+    initial_risk = abs(entry - initial_stop) if initial_stop > 0 else (abs(entry - stop) if stop else 0)
+
+    if r_mult is not None and r_mult >= 1.0 and initial_risk > 0 and entry > 0:
+        # Determine tier-based stop
+        if r_mult >= 3.0:
+            new_stop = round(entry + initial_risk * 2.0, 2)
+            tier_reason = f"R={r_mult:.1f} >= 3.0R — locking 2.0R profit"
+        elif r_mult >= 2.0:
+            new_stop = round(entry + initial_risk * 1.0, 2)
+            tier_reason = f"R={r_mult:.1f} >= 2.0R — locking 1.0R profit"
+        elif r_mult >= 1.5:
+            new_stop = round(entry + initial_risk * 0.5, 2)
+            tier_reason = f"R={r_mult:.1f} >= 1.5R — locking 0.5R profit"
+        else:
+            new_stop = round(entry, 2)
+            tier_reason = f"R={r_mult:.1f} >= 1.0R — moving to breakeven"
+
+        # Stops only move UP
         if new_stop > stop:
-            msg = f"TRAILING STOP: {symbol} R={r_mult:.1f}, moving stop ${stop:.2f} → ${new_stop:.2f}"
+            msg = f"TRAILING STOP: {symbol} {tier_reason}, stop ${stop:.2f} → ${new_stop:.2f}"
             log.info(msg)
             _log_risk_action(conn, tid, symbol, 'trailing_stop_update', stop, new_stop, price,
-                             f'R={r_mult:.1f}, locking 50% of gains')
+                             tier_reason)
             cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", [new_stop, tid])
             if not dry_run:
                 _update_stop_on_alpaca(conn, trade, new_stop)
             send_telegram(f"📈 {msg}", dry_run, no_telegram)
             alerts.append(('TRAILING_STOP', symbol))
-            stop = new_stop  # use updated stop for subsequent checks
+            stop = new_stop
 
     # ── Near Stop ──
     if stop > 0 and entry > stop:

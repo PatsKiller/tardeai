@@ -1204,7 +1204,7 @@ This is NOT the primary execution path — instant execution on approval is. The
 #### What the System Does NOT Do (Current Limitations)
 
 - **Volatility-based stop widening:** Stops do not expand based on ATR or VIX changes. The initial stop is set at proposal time using ATR and remains the floor.
-- **Granular R-multiple tiers:** `paper_trade_monitor.py` (every 5 min) implements full 4-tier trailing: 1.0R→breakeven, 1.5R→lock 0.5R, 2.0R→lock 1.0R, 3.0R→lock 2.0R. `open_trade_monitor.py` (every 15 min) uses a simpler 50%-lock fallback.
+- **Granular R-multiple tiers:** Both `paper_trade_monitor.py` (every 5 min) and `open_trade_monitor.py` (every 15 min) implement full 4-tier trailing: 1.0R→breakeven, 1.5R→lock 0.5R, 2.0R→lock 1.0R, 3.0R→lock 2.0R. Uses `planned_stop` to recover initial 1R even after stop has been moved.
 - **Regime-aware adjustment:** Market regime changes (bull → bear) do not automatically modify open positions.
 - **Partial profit taking:** The system closes the full position at target, not partial lots.
 - **Spread/liquidity checks:** The system does not check bid-ask spread or volume before adjusting stops. Acceptable for paper trading.
@@ -1742,7 +1742,7 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | `scripts/telegram_command_handler.py` | Telegram command handler (add video, add article, research, etc.) |
 | `sql/migrations/` | 22 SQL migration files |
 | `crontab_backup.txt` | Full cron schedule backup |
-| `requirements.txt` | 90 Python packages |
+| `requirements.txt` | 376 Python packages |
 | `docs/RESTORE_GUIDE.md` | Disaster recovery guide |
 | `docs/project/agents_bible.md` | Agent behavior rules |
 | `docs/project/TRADE_AI_STRATEGY_PLAYBOOK_v1.0.md` | Strategy playbooks |

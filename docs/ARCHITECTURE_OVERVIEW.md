@@ -52,11 +52,11 @@ Trade AI v12 is a fully automated profit-seeking trading intelligence platform t
 | Service | Responsibility | Scale |
 |---------|---------------|-------|
 | **Portfolio Server** (:7777) | Central API hub. Serves 80+ REST endpoints and the React SPA. All client-facing traffic routes through here. | 11,700 LOC handler |
-| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 299 tables |
+| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 334 tables |
 | **Ollama LLM** (:11434) | Local inference engine. Strategy classification, proposal review, health checks. GPU-accelerated on Intel Arc B50 (Vulkan). | ~15s/chunk, toll-gated |
 | **OpenClaw Gateway** (:18789) | Conversational AI routing. 4 agents accessible via Telegram + WhatsApp. Handles natural language queries about portfolio, risk, and strategy. | 4 agents |
-| **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. 142 scheduled jobs from 4 AM to midnight. | 142 crontab entries |
-| **React SPA** | Operator dashboard. 55 pages covering portfolio, watchlist, proposals, strategy admin, risk, journal, governance. | 91 React components |
+| **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. 142 scheduled jobs from 4 AM to midnight. | 63 crontab entries |
+| **React SPA** | Operator dashboard. 73 pages covering portfolio, watchlist, proposals, strategy admin, risk, journal, governance. | 91 React components |
 
 ---
 

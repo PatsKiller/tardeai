@@ -196,6 +196,7 @@ def overview():
             "trade_count": len(j_all),
             "total_pnl": round(j_total_pnl, 2),
             "win_rate": round(j_win_rate, 1),
+            "source": "journal",
         },
         "news_count": len(news.get("catalysts", [])),
         "notification_count": (notif_rows or {}).get("cnt", 0),

@@ -72,10 +72,27 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
       - max_loss_at_stop ($)
       - risk_pct_portfolio (%)
     Also computes total portfolio heat and unprotected exposure.
+    Enriches positions with RSI and day_change_pct from enrichment cache and holdings.
     """
     stops        = load_stops(state_dir)
     holdings     = portfolio.get("holdings", [])
     total_mv     = portfolio.get("portfolio_totals", {}).get("total_value", 0)
+
+    # Load enrichment data for RSI
+    enrichment = {}
+    try:
+        enrich_path = state_dir / "ticker_enrichment_cache.json"
+        if enrich_path.exists():
+            enrichment = json.load(open(enrich_path))
+    except Exception:
+        pass
+
+    # Build day_change_pct lookup from holdings
+    day_changes = {}
+    for h in holdings:
+        sym = h.get("symbol", "").upper()
+        if h.get("day_change_pct") is not None:
+            day_changes[sym] = h["day_change_pct"]
 
     positions: List[Dict] = []
     total_risk_dollars    = 0.0
@@ -121,6 +138,7 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
             else:
                 status = "OK"
 
+            _enr = enrichment.get(sym, {})
             positions.append({
                 "symbol":          sym,
                 "account":         acct,
@@ -138,10 +156,13 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
                 "set_date":        stop_data.get("set_date",""),
                 "status":          status,
                 "protected":       True,
+                "rsi":             _enr.get("rsi"),
+                "day_change_pct":  day_changes.get(sym),
             })
             total_risk_dollars  += max(0, max_loss)
             total_protected_mv  += mv
         else:
+            _enr = enrichment.get(sym, {})
             positions.append({
                 "symbol":       sym,
                 "account":      acct,
@@ -153,6 +174,8 @@ def compute_risk_metrics(portfolio: Dict, state_dir: Path) -> Dict:
                 "status":       "NO STOP",
                 "protected":    False,
                 "risk_pct_port": round(mv / total_mv * 100, 2) if total_mv else 0,
+                "rsi":          _enr.get("rsi"),
+                "day_change_pct": day_changes.get(sym),
             })
             total_unprotected_mv += mv
 
