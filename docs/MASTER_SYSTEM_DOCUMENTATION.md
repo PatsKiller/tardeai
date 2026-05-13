@@ -186,7 +186,7 @@ Trade AI v12 has 6 distinct service boundaries:
 | **Recovery** | `stopped_out_watch`, `stopped_out_relist_events`, `stopped_out_watch_history` | Exit classification (true stop-out vs relist vs market reconnection), patience scoring |
 | **Portfolio** | `portfolio_holdings`, `portfolio_accounts`, `personal_situation` | Positions, accounts, personal data |
 | **System** | `pipeline_runs`, `daily_system_metrics` | Pipeline health, trending |
-| **Feedback Loops** | `proposal_outcome_chain`, `alert_effectiveness`, `strategy_performance_snapshots`, `agent_sample_tracking`, `recovery_outcome_log`, `cio_decision_responses` | Closed-loop tracking: proposal → trade → P&L → agent calibration |
+| **Feedback Loops** | `proposal_outcome_chain`, `alert_effectiveness`, `strategy_performance_snapshots`, `agent_sample_tracking`, `recovery_outcome_log`, `cio_decision_responses`, `gemma3_calibration_events` | Closed-loop tracking: proposal → trade → P&L → agent calibration. gemma3 overnight accuracy tracked via `gemma3_accuracy_by_job_type` view |
 | **LLM Cache** | `llm_intelligence_cache` | 5 daily-generated LLM narratives (portfolio risk, rebalance, recovery, morning, prospects) |
 | **Research** | `sec_form4`, `youtube_transcripts` | Filings, transcript archive |
 | **Topic Intelligence** | `topic_monitor`, `content_entity_links`, `blocked_content`, `iris_library_gap_fills`, `topic_curation_feedback` | Topic research, entity linking, quality gating, learning loop |
@@ -1627,7 +1627,8 @@ John replies in Telegram → telegram_command_handler executes retry
 | 8:00 PM | Overnight batch + SEC Form 4 |
 | 8:30 PM | Feedback loop processor (outcome chains, alert scoring) |
 | 9:00 PM | Auto-research |
-| **11:00 PM–3:00 AM** | **Deep overnight LLM window** (gemma3-overnight queue: strategy classification, risk synthesis, RAG curation, journal reviews, recovery watch, covered call scoring) |
+| **11:00 PM–3:00 AM** | **Deep overnight LLM window** (gemma3-overnight, 100-job cap, 12 job types: strategy classification, risk synthesis, RAG curation, journal/trade reviews, recovery watch, covered call scoring, strategy opportunity scan, rebalance analysis. Event-driven requeue + calibration loop) |
+| **Fri 4:00 PM** | **Friday extended window** (400-job weekly backlog clear, 11h window) |
 | Sun 7:00 PM | Weekly incubator builder |
 | Sun 8:00 PM | Full topic ingestion (all topics, with LLM) |
 | Sun 9:00 PM | Weekly DOCX report (`generate_weekly_docx.py`) |

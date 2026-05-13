@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-05-11 (Session 29)
+**Last updated:** 2026-05-13
 
 ---
 
@@ -9,6 +9,12 @@
 ```bash
 # Full system health (single command)
 curl -s http://localhost:7777/api/v2/system-health | python3 -m json.tool
+
+# Deep overnight queue status
+curl -s http://localhost:7777/api/v2/queue/summary | python3 -m json.tool
+
+# gemma3 calibration accuracy
+curl -s http://localhost:7777/api/v2/queue/calibration | python3 -m json.tool
 
 # Portfolio value assertion (must be > $1M)
 python3 -c "import json; d=json.load(open('data/portfolios/state/holdings.json')); v=d['portfolio_totals']['total_value']; assert v>1_000_000; print(f'OK: \${v:,.0f}')"

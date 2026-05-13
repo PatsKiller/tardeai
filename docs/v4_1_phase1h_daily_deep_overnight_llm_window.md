@@ -111,6 +111,8 @@ Stores gemma3-overnight analysis outputs.
 | `recovery_watch_review` | `stopped_out_watch` | Thesis validity for stopped-out positions. Tue/Thu only, up to 12 items |
 | `covered_call_scoring` | `aegis_covered_call_candidates` | Strike/yield scoring for CC candidates. Sunday only, up to 15 items |
 | `weekly_behavioral_review` | `paper_trades` | Cross-trade pattern analysis. Sunday only, gated at 20+ closed trades (currently inactive) |
+| `rebalance_analysis` | `rebalance_analysis_results` | Monthly deep rebalance analysis. 1st of month or stale >35 days |
+| `strategy_opportunity_scan` | `ticker_snapshot_daily` | Weekly Sunday P1: gemma3 evaluates top 40 watchlist symbols against 11 underutilized strategies to surface candidates momentum screeners miss |
 
 ## 7. Journal/Closed Trade Integration
 
@@ -320,7 +322,38 @@ FROM deep_overnight_llm_results
 GROUP BY 1;"
 ```
 
-## 20. Phase 2 and Phase 3 Gates
+## 20. Calibration & Accuracy Tracking
+
+gemma3 overnight predictions are graded against actual outcomes via the
+`gemma3_calibration_events` table and `gemma3_accuracy_by_job_type` view.
+
+### How it works
+1. **Seeding**: Every completed gemma3 job gets a PENDING calibration event
+2. **Grading**: `gemma3_calibration_scorer.py` runs nightly at 21:30 (weekdays)
+3. **strategy_classification**: Graded when a paper trade closes within 14 days
+   - CORRECT: strong fit + trade won, or weak fit + trade lost
+   - WRONG: strong fit + trade lost, or weak fit + trade won
+4. **recovery_watch_review**: Graded 14+ days after verdict
+   - CORRECT: THESIS_INTACT + price recovered, or INVALIDATED + stayed down
+   - WRONG: opposite of prediction
+5. **rag_content_curation**: Graded by RAG retrieval count (future)
+
+### Monitoring
+```bash
+# Current accuracy
+PGPASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2) psql -h localhost -U trade_ai -d trade_ai -c "
+SELECT * FROM gemma3_accuracy_by_job_type;"
+
+# API endpoint
+curl -s http://localhost:7777/api/v2/queue/calibration | python3 -m json.tool
+```
+
+### Cron schedule
+```
+30 21 * * 1-5  .venv/bin/python scripts/gemma3_calibration_scorer.py >> logs/gemma3_calibration.log 2>&1
+```
+
+## 21. Phase 2 and Phase 3 Gates
 
 ### Phase 2 readiness (NOT YET)
 Before Phase 2 (embedding upgrade):
@@ -335,8 +368,16 @@ Before Phase 3 (media/content model):
 - Or Phase 1H stable and operator skips to Phase 3
 - Operator explicitly says "Begin Phase 3"
 
+### Completed Phase 1H extensions
+- risk_synthesis, rag_content_curation, recovery_watch_review, covered_call_scoring, weekly_behavioral_review, rebalance_analysis — all active
+- strategy_opportunity_scan — Sunday nights, evaluates watchlist against 11 underutilized strategies
+- Event-driven requeue engine — price/staleness/earnings/recovery triggers
+- gemma3 calibration loop — grades verdicts against actual outcomes
+- 4 new Finviz screeners for strategy diversity (income, oversold, sector rotation, defense)
+- Friday 4PM extended window (400 jobs, 11h)
+- Queue Manager UI page at /v2/ops (LLM Queue tab)
+
 ### Future Phase 1H extensions (not authorized)
-- Add risk_synthesis, weekly_behavioral_review job types
-- Add recovery_watch_review when recovery_outcome_log has data
 - Expand queue sources to include SEC/news/social catalysts
 - Add OpenAI tier-2 review for high-priority items gemma flagged
+- RAG retrieval count grading for rag_content_curation calibration
