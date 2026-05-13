@@ -1054,3 +1054,26 @@ Telegram: "⏰ TIME STOP: SYMBOL closed after Nd (max: Md for strategy). P&L: $X
 
 INFU was manually closed today (+$67.83 WIN) after 6 STALE_TRADE alerts — the time
 stop would have caught it at day 21 automatically.
+
+## Paper Trades Data Audit — 2026-05-13 16:30 ET
+
+### Problems found
+- R-multiples wrong on 5 closed trades (phantom trades had stale R values)
+- INFU #21: new Alpaca position created by adapter sync after close — real trade, needed stop/target in DB
+- BLBD #15: cancelled row had -$449.92 PnL (proposal entry, never actually filled). Real loss is #16 at -$14.80.
+
+### Fixes (direct DB updates, Alpaca = source of truth)
+| Trade | Fix |
+|-------|-----|
+| XMTR #3 | R 1.3→0 (phantom, pnl=0) |
+| EVC #4 | R -1.95→0 (phantom, pnl=0) |
+| FLYW #12 | R 7.0→-0.82 (recalculated from pnl -$15.39) |
+| FLYW #19 | R→0 (phantom, pnl=0) |
+| BLBD #16 | R→-0.05 (recalculated from pnl -$14.80) |
+| INFU #21 | stop=$7.97 (matches Alpaca), target=$9.23 |
+
+### Correct state after audit
+- Open: 2 (GCTS @ $1.49, INFU @ $8.61)
+- Closed: 6 (1 WIN, 2 LOSS, 3 BREAKEVEN)
+- Realized P&L: +$37.64
+- Principle confirmed: **Alpaca is source of truth**, DB follows

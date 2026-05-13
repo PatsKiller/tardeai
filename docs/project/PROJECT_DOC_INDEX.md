@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | Paper trades data audit: fixed 5 stale R-multiples, INFU #21 stop/target from Alpaca, confirmed BLBD #15 cancelled not real loss. Alpaca = source of truth. |
 | 2026-05-13 | TIME STOP auto-close: per-strategy max hold days (scalp 0d, swing 21d, sector 56d, income none). Verdict from P&L. INFU closed manually today; time stop would catch at day 21. |
 | 2026-05-13 | Fix: stop recalculation on fill (GCTS ran unprotected — stop $1.52 > fill $1.49). Adapter now recalculates stop to 5% below fill. Pending→open promotion in sync. |
 | 2026-05-13 | risk_gate _safe_float fix, manual pipeline test confirmed all bugs fixed, GCTS trade approval audit passed end-to-end (proposal→paper_trade→Alpaca fill). |
