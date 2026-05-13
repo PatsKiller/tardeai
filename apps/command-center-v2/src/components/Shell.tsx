@@ -81,7 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
 ]
 
-const UTILITY_NAV: NavItem[] = []
+// UTILITY_NAV removed — items consolidated into main nav groups
 
 function fmtDollar(v?: number) {
   if (v == null || Number.isNaN(v)) return '—'
@@ -170,7 +170,7 @@ function NavDropdown({ group, pendingApprovals }: { group: NavGroup; pendingAppr
 }
 
 export default function Shell() {
-  const [utilOpen, setUtilOpen] = useState(false)
+  // utilOpen state removed — utilities dropdown consolidated into main nav
   const [personalOpen, setPersonalOpen] = useState(false)
   const navigate = useNavigate()
   const { data } = useApi<OverviewMini>('/api/v2/overview', 30000)
@@ -194,17 +194,17 @@ export default function Shell() {
           <TapeMetric label="Last Run" value={`${data?.trade_ai?.run_label || '—'} ${data?.trade_ai?.run_date || ''}`.trim()} onClick={() => navigate('/trade-ai')} />
           <TapeMetric label="Setup State" value={setupState} good={(data?.trade_ai?.go_count ?? 0) > 0} onClick={() => navigate('/trade-ai')} />
           <TapeMetric label="Journal P&L" value={fmtDollar(data?.journal?.total_pnl)} good={(data?.journal?.total_pnl ?? 0) >= 0} onClick={() => navigate('/journal-analytics')} />
-          <TapeMetric label="Win Rate" value={data?.journal?.win_rate != null ? `${data.journal.win_rate}%` : '—'} good={(data?.journal?.win_rate ?? 0) >= 50} onClick={() => navigate('/journal-analytics')} />
+          <TapeMetric label={`Win Rate (${data?.journal?.trade_count ?? 0} trades)`} value={data?.journal?.win_rate != null ? `${data.journal.win_rate}%` : '—'} good={(data?.journal?.win_rate ?? 0) >= 50} onClick={() => navigate('/journal-analytics')} />
           <div className={styles.live}><span className={styles.dot} />{data?.as_of || 'Live'}</div>
           <button className={styles.utilityBtn} onClick={() => setPersonalOpen(true)} title="Personal Situation — age, SSDI, filing status, accounts">👤</button>
-          <button className={styles.utilityBtn} onClick={() => setUtilOpen(v => !v)}>
-            Utilities
-            {pendingApprovals > 0 && (
+          {pendingApprovals > 0 && (
+            <button className={styles.utilityBtn} onClick={() => navigate('/inbox')} title={`${pendingApprovals} pending approvals`}>
+              Approvals
               <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--red)', color: '#fff', minWidth: 16, textAlign: 'center', display: 'inline-block' }}>
                 {pendingApprovals}
               </span>
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
         <div className={styles.navRow}>
@@ -213,16 +213,7 @@ export default function Shell() {
               <NavDropdown key={group.label} group={group} pendingApprovals={pendingApprovals} />
             ))}
           </nav>
-          {utilOpen && (
-            <div className={styles.utilityMenu}>
-              <div className={styles.utilityTitle}>Admin / Ops Utility</div>
-              {UTILITY_NAV.map(item => (
-                <NavLink key={item.to} to={item.to} className={styles.utilityLink} onClick={() => setUtilOpen(false)}>
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
-          )}
+          {/* Utilities dropdown removed — items consolidated into main nav groups */}
         </div>
       </header>
       {personalOpen && <AdminModals type="personal" onClose={() => setPersonalOpen(false)} />}

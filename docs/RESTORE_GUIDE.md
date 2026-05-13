@@ -37,7 +37,7 @@ XAI_API_KEY=<key>
 ## 3. Database Backup & Restore
 
 **Backup location:** `backups/db/trade_ai_YYYYMMDD.sql.gz`
-**Size:** ~3.7 MB compressed (105 MB uncompressed, 299 tables)
+**Size:** ~3.7 MB compressed (105 MB uncompressed, 334 tables)
 **Schedule:** Daily at 2 AM, keeps 7 days
 
 ### Restore DB from backup:

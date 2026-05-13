@@ -142,6 +142,7 @@ export default function App() {
 
           {/* ── Journal (consolidated) ── */}
           <Route path="journal" element={<SafePage><JournalHub /></SafePage>} />
+          <Route path="automated-journal" element={<Navigate to="/v2/journal?tab=automated-journal" replace />} />
 
           {/* ── Intelligence (consolidated) ── */}
           <Route path="intelligence" element={<SafePage><IntelligenceHub /></SafePage>} />
