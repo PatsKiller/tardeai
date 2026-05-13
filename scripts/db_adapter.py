@@ -73,6 +73,10 @@ def _get_conn():
     return _conn
 
 
+# Alias for scripts that import get_connection
+get_connection = _get_conn
+
+
 def _execute(sql: str, params=None, fetch: str = None):
     """Execute SQL. fetch='one'|'all'|None."""
     conn = _get_conn()
