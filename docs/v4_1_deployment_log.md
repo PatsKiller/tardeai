@@ -848,3 +848,28 @@ Added `_auto_expire_stale_proposals()` to `incubator_proposal_promoter.py`:
 ### Proposals API enhancement
 - `summary.by_strategy`: per-strategy proposal count, win rate, PnL, trade count
 - Per-proposal: `strategy_win_rate`, `strategy_total_pnl`, `strategy_trade_count`, `age_hours`
+
+## Proposal Operator UX + Approval Re-Verification — 2026-05-13 12:00 ET
+
+### Proposals API — operator_verdict
+Every proposal now includes computed operator-facing fields:
+- `operator_verdict`: READY / NEEDS_REVIEW / STALE_QUOTE / ENTRY_MISSED
+- `operator_verdict_color`: green / yellow / orange / red
+- `operator_verdict_reason`: plain English explanation
+- `age_hours`, `age_display` ("2d 3h ago"), `age_color`
+- `sort_order`: READY first → NEEDS_REVIEW → STALE_QUOTE → ENTRY_MISSED
+- Summary: `ready_count`, `needs_review_count`, `stale_count`, `entry_missed_count`
+- `pipeline_health_message`: surfaces when no proposals are READY
+
+### Approval re-verification (check #7)
+Added `_verify_live_strategy_conditions()` to `approval_revalidator.py`:
+
+| Check | Condition | Severity |
+|-------|-----------|----------|
+| RSI overbought | >80 momentum strategies | **BLOCK** |
+| RVOL collapsed | <1.5x momentum strategies | **BLOCK** |
+| Catalyst freshness | time-sensitive >48h old | Warning |
+| VWAP extended | >5% above for intraday | Warning |
+| Negative news | >2 articles since creation | Warning |
+
+`condition_snapshot` (RSI, RVOL, timestamp) written to approval audit trail.

@@ -924,6 +924,13 @@ When John approves a trade, `approval_revalidator.py` → `validate_at_approval(
 | Past trade losses | RAG query for `trade_outcome` embeddings | Warning surfaced to user |
 | Price drift > 5% | Alpaca vs proposed_entry | Warning + shares recalculated |
 | Price drift > 2% | Alpaca vs proposed_entry | Shares recalculated to maintain dollar risk |
+| **RSI overbought** | ticker_snapshot_daily RSI >80 (momentum strategies) | **REJECTED** |
+| RSI elevated | RSI >72 (momentum strategies) | Warning |
+| **RVOL collapsed** | Current RVOL <1.5x (momentum strategies) | **REJECTED** |
+| RVOL fading | Current RVOL <40% of original scan | Warning |
+| Catalyst stale | Time-sensitive catalyst >48h old | Warning |
+| VWAP extended | Price >5% above VWAP (intraday strategies) | Warning |
+| Negative news | >2 negative articles since proposal creation | Warning |
 
 **Strategy YAML criteria enforced** (from `config/strategies/*.yaml`):
 - Price range (min/max per strategy)
