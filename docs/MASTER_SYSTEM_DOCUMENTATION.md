@@ -983,6 +983,10 @@ The submitter persists the eligibility result to the proposals table:
 - `live_price_at_execution` (Alpaca quote at validation time)
 - `live_price_timestamp`
 
+**Telegram alerts (Gap 6):** When revalidation returns `NEEDS_REVALIDATION` (material change or excessive drift), the submitter sends a Telegram alert with the original vs current price, drift %, recalibrated shares, and inline re-approval commands (`/approve updated paper entry {id}` or `/reject updated paper entry {id}`). Blocked submissions also trigger a Telegram alert with the block reason. This prevents silent stale submissions.
+
+**Revalidation audit trail (Gap 7):** When a trade is submitted, the adapter persists the full revalidation snapshot to `paper_trades`: `revalidation_verdict`, `revalidation_score`, `revalidation_flags`, `price_at_approval`, `staleness_at_submit_min`. This enables the Automated Journal to show revalidation context without cross-table joins.
+
 Freshness thresholds match strategy timeframe:
 
 | Strategy Type | Staleness Threshold |
@@ -1006,7 +1010,7 @@ Even if the revalidator passes, `alpaca_paper_adapter.py` → `submit_entry()` e
 | Stop breach | `current_price <= stop_price` | Order blocked, returns `stop_breached` |
 | Excessive drift | `abs(current_price - entry_price) / entry_price > 5%` | Order blocked, returns `excessive_drift` |
 
-The adapter accepts a `validated_price` parameter from the revalidator to eliminate the TOCTOU (time-of-check-to-time-of-use) gap. If the adapter's own price fetch fails, it uses the revalidator's validated price.
+The adapter accepts a `validated_price` parameter from the revalidator to eliminate the TOCTOU (time-of-check-to-time-of-use) gap. If the adapter's own price fetch fails, it uses the revalidator's validated price. The adapter also accepts a `revalidation_snapshot` parameter containing the full recheck result, which is persisted to `paper_trades` for journal audit trail (Gap 7).
 
 ### Proposal Lifecycle State Machine
 
@@ -1200,7 +1204,7 @@ This is NOT the primary execution path — instant execution on approval is. The
 #### What the System Does NOT Do (Current Limitations)
 
 - **Volatility-based stop widening:** Stops do not expand based on ATR or VIX changes. The initial stop is set at proposal time using ATR and remains the floor.
-- **Granular R-multiple tiers:** The trailing stop currently uses a single threshold (R >= 1.0 → lock 50% of gains). Finer tiers (1.5R, 2.0R, 3.0R) are documented as targets but not yet enforced in `open_trade_monitor.py`.
+- **Granular R-multiple tiers:** `paper_trade_monitor.py` (every 5 min) implements full 4-tier trailing: 1.0R→breakeven, 1.5R→lock 0.5R, 2.0R→lock 1.0R, 3.0R→lock 2.0R. `open_trade_monitor.py` (every 15 min) uses a simpler 50%-lock fallback.
 - **Regime-aware adjustment:** Market regime changes (bull → bear) do not automatically modify open positions.
 - **Partial profit taking:** The system closes the full position at target, not partial lots.
 - **Spread/liquidity checks:** The system does not check bid-ask spread or volume before adjusting stops. Acceptable for paper trading.
@@ -1213,6 +1217,7 @@ When any paper trade closes, `on_paper_trade_closed()` in `agent_curation_hooks.
 
 | Step | Component | Output |
 |------|-----------|--------|
+| **Outcome provenance** | `_write_outcome_to_proposal()` | Writes verdict/pnl/r_multiple back to `paper_trade_proposals` |
 | Iris writeback | `iris_record_trade_outcome()` | Outcome intelligence rules |
 | Aegis synthesis | `aegis_write_post_trade_synthesis()` | Narrative paragraph in `agent_curation_events` |
 | Outcome lessons | `trigger_outcome_lessons()` | Pattern library updates |

@@ -328,6 +328,7 @@ Trades close through five paths:
 
 | Hook | Agent | Output |
 |------|-------|--------|
+| _write_outcome_to_proposal | System | Outcome provenance → `paper_trade_proposals` (verdict, pnl, r_multiple) |
 | iris_record_trade_outcome | Iris | Outcome lesson → `agent_intelligence_rules` |
 | aegis_write_post_trade_synthesis | Aegis | Synthesis paragraph → `agent_curation_events` |
 | trigger_outcome_lessons | System | Outcome scorer → feedback loop |
