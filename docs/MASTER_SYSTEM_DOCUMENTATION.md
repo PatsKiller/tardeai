@@ -1437,6 +1437,31 @@ All agent commentaries are written to `agent_curation_events` (visible in journa
 | **Proposal intelligence** | `proposal_intelligence_analyzer.py` | Per proposal (with RAG context) | qwen3:14b |
 | **Proposal agent review** | `proposal_agent_review.py` | Per proposal (with RAG context) | qwen3:14b |
 
+### LLM Context Engine
+
+All prompt builders use `scripts/llm_context_engine.py` to inject actual DB data into
+prompts. No LLM call receives only IDs or trigger names — every call gets the underlying
+data it needs to reason correctly.
+
+**Usage:** `from llm_context_engine import build_context`
+`ctx = build_context(symbol='GCTS', context_type='trade_review', trade_id=158, conn=conn)`
+
+**Context types and data sources:**
+
+| Context Type | Data Injected | Source Tables |
+|-------------|---------------|---------------|
+| `strategy_classification` | RSI, RVOL, price, sector, beta, P/E, SMA50/200, trade history, news | `ticker_snapshot_daily`, `paper_trades`, `trade_closed`, `news_articles` |
+| `trade_review` | Entry/exit/P&L/stop/hold/R-multiple + past symbol W/L/stop usage | `trade_closed`, `paper_trades` |
+| `risk_synthesis` | All positions with market values, portfolio %, day change | `holdings.json` |
+| `recovery_watch` | Exit price, days out, recovery %, thesis at exit, current RSI | `stopped_out_watch`, `ticker_snapshot_daily` |
+| `covered_call` | Price, RSI, beta, div yield, RVOL, Aegis verdict | `ticker_snapshot_daily`, `aegis_covered_call_candidates` |
+| `proposal` | Entry/stop/target, R:R, catalyst, score, current snapshot | `paper_trade_proposals`, `ticker_snapshot_daily` |
+
+**Anti-hallucination block** appended to every context: *"Use ONLY the data above.
+Do NOT invent, estimate, or assume numbers not explicitly provided."*
+
+**Data flow:** DB tables → `llm_context_engine.py` → formatted text block → prompt builder → LLM call → structured output → DB results table
+
 ### LLM Intelligence Enrichment (Phase 5)
 
 `llm_intelligence_enrichment.py` generates 5 intelligence sections daily, stored in `llm_intelligence_cache`:
