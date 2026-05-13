@@ -82,6 +82,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-13 | paper-journal endpoint win rate fixed (14%→33%), empty positions API guard prevents phantom closes, GCTS phantom-close root cause fixed. Full audit: Alpaca=DB=API verified. |
 | 2026-05-13 | Win rate fix: excludes phantom $0 breakevens (17%→33.3%). Reconciler reads actual exit price from broker order history. real_trade_count in API. |
 | 2026-05-13 | Architectural fix: broker as source of truth. No paper_trades row before fill confirmation. broker_confirmed generated column. Integrity guards in monitor + journal API. PM crons --allow-underfilled. |
 | 2026-05-13 | Paper trades data audit: fixed 5 stale R-multiples, INFU #21 stop/target from Alpaca, confirmed BLBD #15 cancelled not real loss. Alpaca = source of truth. |

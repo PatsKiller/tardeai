@@ -1128,3 +1128,22 @@ Journal API now calculates from `_real_closed` (trades with non-zero PnL only):
 `detect_closed_positions` now fetches actual sell order `filled_avg_price` and `filled_at`
 from broker instead of fabricating exit price from current market data. Computes real PnL
 and sets correct `outcome_verdict` from broker-confirmed values.
+
+## Fix: paper-journal Endpoint + Empty Positions API Guard — 2026-05-13 18:30 ET
+
+### paper-journal win rate was 14% (should be 33%)
+Frontend reads `/api/v2/paper-journal` (not `automated-trade-journal`). This endpoint
+counted ALL closed trades including $0 phantom breakevens in win rate denominator.
+Fixed: `real_closed` excludes zero-PnL trades. Now 1W/3 real = 33%.
+
+### GCTS repeatedly phantom-closed
+`detect_closed_positions` marked GCTS as closed whenever Alpaca positions API returned
+empty (API hiccup, not real close). GCTS reopened 3 times during this session.
+**Root cause fix**: if positions API returns empty while DB has open trades, skip close
+detection entirely — log warning instead of closing everything.
+
+### Final verified state (Alpaca = DB = API)
+- Open: 2 (GCTS 1875sh @ $1.49, INFU 357sh @ $8.61) — both on Alpaca with stops
+- Closed: 6 (3 real: 1W +$67.83, 2L -$30.19; 3 phantom breakevens)
+- Win Rate: 33% (real trades only)
+- Realized P&L: +$37.64
