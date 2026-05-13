@@ -1271,3 +1271,24 @@ vix_rules, technical_indicators_required, and performance_context blocks.
 - vix_rules present: 23 files | technical_indicators: 23 | performance_context: 25
 - earnings_catalyst.yaml: status=DEPRECATED
 - All backups at backups/session33_pre_deploy_*, schema_convert_*, strategy_yaml_*
+
+## Session 34 Hotfix: Overnight Queue Crash — 2026-05-13 18:45 ET
+
+### Context
+Manual 150-job overnight run crashed at job 73 with `psycopg2.errors.InvalidTextRepresentation:
+invalid input syntax for type numeric: "1.5-3.0"`. The 23:00 auto window would hit the same bug.
+
+### Fixes (4)
+
+| Fix | Root Cause | Change |
+|-----|-----------|--------|
+| covered_call crash | LLM returned range "1.5-3.0" for NUMERIC `cc_yield_estimate` | Added `_safe_cc_float()` — handles ranges (midpoint), None, bad strings |
+| Stuck running job | Job #309 (ARKG) stuck since 17:36, blocking queue | Reset to `failed` |
+| Timeout | gemma3 heavy jobs timing out at 180s | Bumped default to 300s |
+| RAG SQL | `youtube_transcripts` has `ingested_at` not `created_at` | Fixed ORDER BY column |
+
+### Queue state after fix
+pending: 441 | running: 0 | done: 14 | failed: 1
+
+### Iron Rule
+$1,190,695 / 47 positions — identical pre and post
