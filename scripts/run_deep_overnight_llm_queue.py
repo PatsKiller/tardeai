@@ -283,46 +283,39 @@ LOW_QUALITY (0.0): Generic, repetitive, no signal.
 SUPERSEDED (null): Already covered by better content."""
 
     elif job_type == "recovery_watch_review":
-        recovery_ctx = ""
+        # Use llm_context_engine for full data context
         try:
-            conn_tmp = get_db_connection()
-            c = conn_tmp.cursor()
-            c.execute("""SELECT exit_price, stop_price, stopped_out_at, reason, thesis_at_exit,
-                                status, setup_name, realized_pnl
-                         FROM stopped_out_watch WHERE symbol=%s AND is_active=true LIMIT 1""", [symbol])
-            sw = c.fetchone()
-            if sw:
-                recovery_ctx = (f"\nACTUAL RECOVERY DATA:\n"
-                                f"  Exit price: ${sw[0]} | Stop: ${sw[1]} | Stopped: {sw[2]}\n"
-                                f"  Reason: {sw[3]} | Setup: {sw[5]}\n"
-                                f"  Thesis at exit: {(str(sw[4]) or 'N/A')[:200]}\n"
-                                f"  Realized P&L: ${sw[7]}\n")
-            c.execute("""SELECT data->>'price' as price, rsi, perf_week_pct
-                         FROM ticker_snapshot_daily WHERE symbol=%s ORDER BY snapshot_date DESC LIMIT 1""", [symbol])
-            snap = c.fetchone()
-            if snap and sw:
-                try:
-                    cur_price = float(snap[0] or 0)
-                    exit_p = float(sw[0] or 0)
-                    recovery_pct = ((cur_price - exit_p) / exit_p * 100) if exit_p > 0 else 0
-                    recovery_ctx += f"  Current: ${snap[0]} RSI={snap[1]} Week={snap[2]}% Recovery: {recovery_pct:+.1f}% from exit\n"
-                except Exception:
-                    pass
-            conn_tmp.close()
+            from llm_context_engine import build_context
+            ctx = build_context(symbol=symbol, context_type='recovery_watch',
+                                conn=get_db_connection())
         except Exception:
-            pass
+            ctx = f"  Symbol: {symbol}\n  (context engine unavailable)\n"
 
         return f"""You are a portfolio recovery analyst. Evaluate whether {symbol}'s original buy thesis remains valid after being stopped out.
 
 Review triggers: {', '.join(reasons)}
-{recovery_ctx}
-Using ONLY the data above, evaluate:
+
+{ctx}
+
+RECOVERY WATCH ANALYSIS TASK:
+Using ONLY the data above (do NOT invent prices, dates, or events):
 1. Was the stop-out from temporary conditions or fundamental deterioration?
 2. Has the situation improved, worsened, or stayed the same?
 3. Is the original thesis still intact?
-4. What is the re-entry risk?
+4. What specific catalyst would justify re-entry?
 
-Respond as JSON: {{"verdict": "THESIS_INTACT|THESIS_INVALIDATED|NEEDS_MORE_DATA", "confidence": 0.0-1.0, "reentry_risk": "HIGH|MEDIUM|LOW", "recommended_action": "REENTER_NOW|WAIT_FOR_CATALYST|STAY_CASH|CLOSE_WATCH", "key_factor": "single most important factor"}}"""
+REQUIRED OUTPUT (strict JSON):
+{{"verdict": "RE_ENTER_NOW|RE_ENTER_AT_LEVEL|WAIT_FOR_CATALYST|CUT_LOSSES|HOLD_WATCH|INSUFFICIENT_DATA",
+"confidence": 0.0-1.0,
+"specific_catalyst_needed": "concrete event (earnings beat, contract win, FDA approval) — NOT generic phrases",
+"reentry_price_target": null,
+"reentry_signal_to_watch": "specific technical level or news event",
+"thesis_status": "intact|broken|evolving",
+"key_factor": "single most important factor from the data above",
+"data_gaps": ["list specific missing data that would improve this analysis"],
+"rationale": "2-3 sentences citing actual data from above"}}
+
+If you lack data for a specific verdict, output verdict='INSUFFICIENT_DATA' and list what is missing in data_gaps. Do NOT produce template/generic responses."""
 
     elif job_type == "covered_call_scoring":
         cc_ctx = ""
@@ -683,6 +676,62 @@ def recover_stale_running(cur):
     return len(recovered)
 
 
+_GAP_PATTERNS = {
+    'missing_div_yield': ['dividend yield is none', 'div yield: none',
+                          "yield 'none%'", 'dividend data unavailable'],
+    'missing_sector': ['sector unknown', 'sector: none',
+                       'sector data unavailable'],
+    'missing_catalyst': ['needs more data', 'wait for catalyst',
+                         'catalyst unknown', 'no specific catalyst',
+                         'insufficient_data'],
+    'missing_setup_details': ['setup information is missing',
+                              'setup details unknown',
+                              'lack of setup data'],
+    'missing_market_data': ['rvol unavailable', 'rsi unavailable',
+                            'volume data missing'],
+    'stale_news': ['no recent news', 'news data outdated'],
+    'missing_thesis': ['original thesis unknown',
+                       'buy thesis not recorded'],
+}
+
+
+def _extract_and_register_gaps(queue_id, symbol, parsed, conn):
+    """Scan gemma3 output for data gaps and register them for resolution."""
+    if not parsed or not symbol:
+        return
+    try:
+        cur = conn.cursor()
+        text = json.dumps(parsed).lower()
+        gaps = []
+
+        # Explicit data_gaps array from prompt schema
+        for g in (parsed.get('data_gaps') or []):
+            gaps.append(('explicit', str(g)))
+
+        # Implicit detection from response text
+        for gap_type, patterns in _GAP_PATTERNS.items():
+            if any(p in text for p in patterns):
+                gaps.append((gap_type, f'Detected in {symbol} overnight response'))
+
+        for gap_type, detail in gaps:
+            # Skip if open gap already exists for same symbol+type
+            cur.execute("""
+                SELECT id FROM data_gap_registry
+                WHERE symbol = %s AND gap_type = %s AND status = 'open'
+            """, [symbol, gap_type])
+            if cur.fetchone():
+                continue
+            severity = 'high' if gap_type in ('missing_catalyst', 'missing_market_data', 'explicit') else 'medium'
+            cur.execute("""
+                INSERT INTO data_gap_registry
+                    (symbol, gap_type, gap_detail, detected_by, source_job_id, severity, status)
+                VALUES (%s, %s, %s, 'gemma3_overnight', %s, %s, 'open')
+            """, [symbol, gap_type, detail, queue_id, severity])
+        conn.commit()
+    except Exception as e:
+        log(f"  gap extraction error: {e}")
+
+
 DEFAULT_QUOTAS = {
     "risk_synthesis": 1,
     "recovery_watch_review": 10,
@@ -1001,6 +1050,10 @@ def main():
                 WHERE id = %s
             """, (model, runtime, result_id, job_id))
             conn.commit()
+
+            # Extract and register data gaps from the response
+            _extract_and_register_gaps(job_id, job.get("symbol"), parsed, conn)
+
             succeeded += 1
             log(f"  DONE #{job_id} — result_id={result_id}, runtime={runtime}s")
         else:

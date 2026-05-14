@@ -16114,4 +16114,33 @@ def _overnight_dashboard():
         'data_quality': data_quality,
         'actionable_signals': actionable,
     }
+
+    # 16. Data gap intelligence
+    try:
+        gap_summary = _db_query("""
+            SELECT gap_type, severity, status, COUNT(*) as count,
+                   array_agg(DISTINCT symbol ORDER BY symbol)
+                       FILTER (WHERE symbol IS NOT NULL) as symbols
+            FROM data_gap_registry
+            WHERE detected_at > NOW() - INTERVAL '7 days'
+            GROUP BY gap_type, severity, status
+            ORDER BY
+              CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+              count DESC
+        """) or []
+        gap_stats = _db_query("""
+            SELECT
+              COUNT(*) FILTER (WHERE status='open') as open_gaps,
+              COUNT(*) FILTER (WHERE status='enriching') as enriching,
+              COUNT(*) FILTER (WHERE status='resolved'
+                                AND resolved_at > NOW() - INTERVAL '24 hours') as resolved_today,
+              COUNT(*) FILTER (WHERE status='abandoned') as abandoned
+            FROM data_gap_registry
+        """, fetch="one") or {}
+        data['gap_summary'] = [{k: _json_clean(v) for k, v in r.items()} for r in gap_summary]
+        data['gap_stats'] = {k: _json_clean(v) for k, v in (gap_stats or {}).items()}
+    except Exception:
+        data['gap_summary'] = []
+        data['gap_stats'] = {}
+
     return 200, {"ok": True, "data": data}
