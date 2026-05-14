@@ -591,6 +591,7 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
             target_price=float(plan["take_profit_price"]),
             strategy_id=p["strategy_id"],
             conn=conn,
+            proposal_id=proposal_id,
             validated_price=float(recheck_live_price) if recheck_live_price else None,
             revalidation_snapshot=recheck if recheck else None,
         )

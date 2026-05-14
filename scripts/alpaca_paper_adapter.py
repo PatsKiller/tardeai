@@ -223,7 +223,7 @@ class AlpacaPaperAdapter:
                 log.warning(f"[alpaca] Post-close processor trigger failed: {e}")
         return closed
 
-    def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn, validated_price=None, revalidation_snapshot=None):
+    def submit_entry(self, symbol, shares, entry_price, stop_price, target_price, strategy_id, conn, proposal_id=None, validated_price=None, revalidation_snapshot=None):
         """Submit a bracket order to Alpaca paper."""
         if not self.enabled:
             log.info(f"[alpaca] DISABLED — would submit {shares} {symbol} @ ${entry_price}")
@@ -494,7 +494,7 @@ class AlpacaPaperAdapter:
                 _staleness_min = int(elapsed / 60) if elapsed else None
 
             cur.execute("""
-                INSERT INTO paper_trades (strategy_id, symbol, account, shares, dollar_size,
+                INSERT INTO paper_trades (proposal_id, strategy_id, symbol, account, shares, dollar_size,
                     stop_loss, target_1, planned_entry, entry_price, dollar_risk,
                     broker_order_id, broker_status, order_type,
                     market_regime, vix_at_entry,
@@ -504,7 +504,7 @@ class AlpacaPaperAdapter:
                     revalidation_verdict, revalidation_score, revalidation_flags,
                     price_at_approval, staleness_at_submit_min,
                     notes)
-                VALUES (%s, %s, 'ALPACA_PAPER', %s, %s,
+                VALUES (%s, %s, %s, 'ALPACA_PAPER', %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s,
@@ -514,7 +514,7 @@ class AlpacaPaperAdapter:
                     %s, %s, %s,
                     %s, %s,
                     %s)
-            """, [strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
+            """, [proposal_id, strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
                   effective_stop, target_price, entry_price, actual_entry,
                   round(abs(actual_entry - effective_stop) * actual_shares, 2),
                   order_id, fill_status,
