@@ -43,6 +43,16 @@
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_parallel_index_design.md` | Phase 2B design (NOT APPLIED) |
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_hybrid_retrieval_design.md` | Phase 2C design (NOT APPLIED) |
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2d_embedding_promotion_checklist.md` | Phase 2D checklist (BLOCKED) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_scope.md` | Phase 2B expansion scope (1K→5K) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_preflight.md` | Phase 2B expansion preflight |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_coverage_gap.md` | Source coverage gap analysis |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_build_report.md` | Build report (3,897 added, 0 fail) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_build_results.json` | Build results JSON |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_parallel_retrieval_report.md` | 5K parallel retrieval (QWEN3_BETTER) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_expand_5000_parallel_retrieval_results.json` | Parallel results JSON |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_expand_5000_hybrid_retrieval_report.md` | 5K hybrid retrieval report |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_expand_5000_hybrid_retrieval_results.json` | Hybrid results JSON |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b2_expand_5000_evaluation_report.md` | **5K evaluation: QWEN3_BETTER, recommend offline pilot** |
 | `docs/v4_1_phase1_pilot_report.md` | Phase 1 pilot: gemma3:27b BATCH_OVERNIGHT test (1 symbol) |
 | `docs/v4_1_phase1c_controlled_expansion_report.md` | Phase 1C: 2-symbol expansion test |
 | `docs/v4_1_phase1d_limit5_report.md` | Phase 1D: 5-symbol expansion test |
@@ -94,6 +104,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Phase 2B-Expanded: qwen3 index expanded 1K→4,897. Verdict upgraded QWEN3_BETTER (sim 0.647 vs 0.612, diversity 3.0 vs 1.4). Hybrid diversity 2.73. Recommend Phase 2C offline pilot. No production changes. |
 | 2026-05-14 | Phase 2C: Hybrid retrieval pilot. 40 queries, HYBRID_MARGINAL verdict. Qwen3 finds 56.5% unique items but consensus only 2.5% (limited by 1K index). Recommend expanding to 5K. No production changes. |
 | 2026-05-14 | Three-tier alert architecture deployed. 17 alert types classified (URGENT/DIGEST/DASHBOARD_ONLY). Digest crons at 8 AM + 4 PM. /v2/alerts page. Live facts: 344 tables, 401 scripts, 85 crons, 76 pages. |
 | 2026-05-14 | Phase 2B: 1000-doc parallel index built with qwen3-embedding:8b. 40-query comparison: HYBRID_RECOMMENDED. Top-5 overlap 0.6%, source diversity +50%. No production changes. |

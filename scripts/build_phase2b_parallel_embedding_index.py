@@ -52,14 +52,37 @@ def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [phase2b-build] {msg}", flush=True)
 
 
+# Per-source caps for balanced 5,000-doc mix.
+# Proportional to production importance, not just row count.
+SOURCE_CAPS = {
+    "agent_result":     1500,
+    "fused_signal":      900,
+    "news":              600,
+    "decision_outcome":  500,
+    "agent_synthesis":   400,
+    "cio_decision":      400,
+    "youtube":           250,
+    "social_post":       200,
+    "sec_form4":         100,
+    "trade_review":       50,
+    "trade_outcome":      50,
+    "fred_series":        28,
+    "brave_cache":        10,
+}
+
+SOURCE_QUERY_PER_TYPE = """
+SELECT ce.id, ce.source_type, ce.source_id, ce.title, ce.created_at
+FROM content_embeddings ce
+WHERE ce.source_type = %s
+ORDER BY ce.created_at DESC
+LIMIT %s
+"""
+
+# Fallback: simple LIMIT query (original behavior)
 SOURCE_QUERY = """
 SELECT ce.id, ce.source_type, ce.source_id, ce.title, ce.created_at
 FROM content_embeddings ce
-WHERE ce.source_type IN (
-    'agent_result','news','fused_signal','decision_outcome',
-    'youtube','agent_synthesis','cio_decision','trade_review',
-    'trade_outcome','sec_form4'
-)
+WHERE ce.source_type NOT IN ('test')
 ORDER BY ce.created_at DESC
 LIMIT %s
 """
@@ -94,12 +117,16 @@ def main():
     group.add_argument("--apply", action="store_true", help="Build embeddings")
     parser.add_argument("--limit-docs", type=int, default=1000, help="Max docs to process")
     parser.add_argument("--batch-size", type=int, default=25, help="Batch size for inserts")
+    parser.add_argument("--table", default="content_embeddings_qwen3_test", help="Target table")
+    parser.add_argument("--model", default="qwen3-embedding:8b", help="Embedding model")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--json-output", default=None, help="Write JSON summary to file")
     args = parser.parse_args()
 
-    log("Phase 2B — Build parallel qwen3-embedding:8b test index")
-    log(f"Model: qwen3-embedding:8b | Limit: {args.limit_docs} | Batch: {args.batch_size}")
+    target_table = args.table
+    target_model = args.model
+    log("Phase 2B — Build parallel embedding test index")
+    log(f"Model: {target_model} | Table: {target_table} | Limit: {args.limit_docs} | Batch: {args.batch_size}")
     log("NOTE: Using title field (up to 300 chars) as embedding source.")
     log("      Full-text recovery from source tables would be better in production.")
     log("Production content_embeddings will NOT be altered.")
@@ -111,19 +138,45 @@ def main():
     cur.execute("""
         SELECT EXISTS (
             SELECT 1 FROM information_schema.tables
-            WHERE table_name = 'content_embeddings_qwen3_test'
+            WHERE table_name = %s
         )
-    """)
+    """, (target_table,))
     if not cur.fetchone()[0]:
-        log("ABORT: Test table content_embeddings_qwen3_test does not exist.")
+        log(f"ABORT: Test table {target_table} does not exist.")
         log("Run: scripts/create_phase2b_parallel_embedding_index.py --apply")
         sys.exit(1)
 
-    # Get source docs
-    log(f"Fetching up to {args.limit_docs} source docs from production...")
-    cur.execute(SOURCE_QUERY, (args.limit_docs,))
-    cols = [d[0] for d in cur.description]
-    source_docs = [dict(zip(cols, row)) for row in cur.fetchall()]
+    # Get source docs with balanced per-source sampling
+    log(f"Fetching up to {args.limit_docs} source docs from production (balanced)...")
+    source_docs = []
+    if args.limit_docs >= 2000:
+        # Balanced sampling: pull per-source caps, scaled to target
+        scale = args.limit_docs / 5000.0
+        for src_type, cap in SOURCE_CAPS.items():
+            scaled_cap = max(1, int(cap * scale))
+            cur.execute(SOURCE_QUERY_PER_TYPE, (src_type, scaled_cap))
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+            source_docs.extend(rows)
+            if rows and args.verbose:
+                log(f"  {src_type}: {len(rows)} docs (cap {scaled_cap})")
+        # Fill remaining capacity from agent_result (largest source)
+        remaining = args.limit_docs - len(source_docs)
+        if remaining > 0:
+            fetched_ids = {d["id"] for d in source_docs}
+            cur.execute("""SELECT ce.id, ce.source_type, ce.source_id, ce.title, ce.created_at
+                           FROM content_embeddings ce WHERE ce.source_type = 'agent_result'
+                           ORDER BY ce.created_at DESC LIMIT %s""", (remaining + 500,))
+            cols = [d[0] for d in cur.description]
+            for row in cur.fetchall():
+                d = dict(zip(cols, row))
+                if d["id"] not in fetched_ids and len(source_docs) < args.limit_docs:
+                    source_docs.append(d)
+                    fetched_ids.add(d["id"])
+    else:
+        cur.execute(SOURCE_QUERY, (args.limit_docs,))
+        cols = [d[0] for d in cur.description]
+        source_docs = [dict(zip(cols, row)) for row in cur.fetchall()]
     log(f"Fetched {len(source_docs)} source documents")
 
     if not source_docs:
@@ -140,11 +193,11 @@ def main():
 
     # Filter out docs already in test table
     source_keys = [(d["source_type"], d["source_id"]) for d in source_docs]
-    cur.execute("""
+    cur.execute(f"""
         SELECT source_type, source_id
-        FROM content_embeddings_qwen3_test
-        WHERE embedding_model = 'qwen3-embedding:8b'
-    """)
+        FROM {target_table}
+        WHERE embedding_model = %s
+    """, (target_model,))
     existing = set((r[0], r[1]) for r in cur.fetchall())
     pending = [d for d in source_docs if (d["source_type"], d["source_id"]) not in existing]
     skipped_existing = len(source_docs) - len(pending)
@@ -152,9 +205,9 @@ def main():
 
     if args.dry_run:
         log("=== DRY RUN ===")
-        log(f"Would embed {len(pending)} documents with qwen3-embedding:8b")
+        log(f"Would embed {len(pending)} documents with {target_model}")
         log(f"Estimated time: ~{len(pending) * 0.3:.0f}s ({len(pending)} docs x ~300ms)")
-        log(f"Target table: content_embeddings_qwen3_test")
+        log(f"Target table: {target_table}")
         log("No production data would be modified.")
         log("=== DRY RUN COMPLETE ===")
         conn.close()
@@ -189,7 +242,7 @@ def main():
             content_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
 
             try:
-                embedding, latency_ms = embed_text(title, model="qwen3-embedding:8b")
+                embedding, latency_ms = embed_text(title, model=target_model)
                 if not embedding:
                     batch_failed += 1
                     failed += 1
@@ -197,8 +250,8 @@ def main():
                         log(f"  FAIL: empty embedding for {doc['source_type']}:{doc['source_id']}")
                     continue
 
-                cur.execute("""
-                    INSERT INTO content_embeddings_qwen3_test
+                cur.execute(f"""
+                    INSERT INTO {target_table}
                         (source_type, source_id, title, content_preview, content_hash,
                          embedding, embedding_model, embedding_dim, embedding_latency_ms,
                          source_created_at)
@@ -211,7 +264,7 @@ def main():
                     title[:200],
                     content_hash,
                     json.dumps(embedding),
-                    "qwen3-embedding:8b",
+                    target_model,
                     len(embedding),
                     latency_ms,
                     doc.get("created_at"),
@@ -241,7 +294,7 @@ def main():
     avg_latency = round(sum(latencies) / max(len(latencies), 1), 1)
 
     # Final count
-    cur.execute("SELECT COUNT(*) FROM content_embeddings_qwen3_test")
+    cur.execute(f"SELECT COUNT(*) FROM {target_table}")
     final_count = cur.fetchone()[0]
 
     log("=" * 60)

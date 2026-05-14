@@ -1571,3 +1571,49 @@ UNCHANGED — no routing, embedding, cron, .env, or broker changes.
 
 ### Iron Rule
 $1,191,538 / 43 positions — no production changes
+
+---
+
+## Phase 2B-Expanded — 2026-05-14
+
+### What Changed
+Expanded qwen3-embedding:8b parallel test index from 1,000 → 4,897 documents (13 source types). Re-ran retrieval comparison and hybrid pilot.
+
+### Build Results
+| Metric | Value |
+|--------|-------|
+| Rows added | 3,897 |
+| Total qwen3 test rows | 4,897 |
+| Source types covered | 13 of 14 |
+| Build time | 1,066s (~18 min) |
+| Avg latency | 267.9ms |
+| Failures | 0 |
+
+### Parallel Retrieval (40 queries)
+| Metric | 1K Index | 5K Index |
+|--------|----------|----------|
+| Qwen3 similarity | 0.609 | 0.647 (+6.2%) |
+| Nomic similarity | 0.613 | 0.612 |
+| Qwen3 diversity | 2.08 | 3.0 (+44%) |
+| Verdict | HYBRID_RECOMMENDED | **QWEN3_BETTER** |
+
+### Hybrid Retrieval (40 queries)
+| Metric | 1K Index | 5K Index |
+|--------|----------|----------|
+| Source diversity | 1.88 | 2.73 (+45%) |
+| Consensus | 2.5% | 0.5% |
+| Qwen3-only items | 56.5% | 71.5% |
+| Latency | 1,713ms | 6,881ms |
+
+### Recommendation
+Begin Phase 2C offline integration pilot for deep overnight jobs only.
+Phase 2D production promotion remains BLOCKED.
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Model Residency
+nomic-embed-text + qwen3:14b resident. qwen3-embedding:8b unloaded after build.
+
+### Iron Rule
+$1,187,937 — no production changes
