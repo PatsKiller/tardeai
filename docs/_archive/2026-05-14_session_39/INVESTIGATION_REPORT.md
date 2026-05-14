@@ -284,3 +284,28 @@ Each fix touches production trade execution paths. The fixes interact:
 - Fix 1 (cooldown) needs Fix 5 to be useful (otherwise the cooldown has no learning data to leverage)
 
 **Recommended deployment sequence:** 5 -> 3 -> 2 -> 1 -> 4, with a manual verification step between each.
+
+---
+
+## SESSION 40 — ALL FIVE FIXES DEPLOYED (2026-05-14)
+
+| # | Root Cause | Fix | Commit |
+|---|-----------|-----|--------|
+| 1 | proposal_id keystone (RC5) | Wire through adapter + backfill 4 trades | 1ef4e72 |
+| 2 | Verdict from PnL (RC3) | Single helper, all closers standardized | b2401eb |
+| 3 | Proposal resubmit (RC2) | Gate 0 + executed_at column + backfill 11 | f04dd76 |
+| 4 | 48h cooldown (RC1) | New gate in auto_proposal_generator | 15fe8f6 |
+| 5 | Stop validation (RC4) | Universal helper + CHECK constraint | (this commit) |
+
+### Operator Frustrations — Status
+1. INFU same-day re-proposal: **FIXED** (Fix 4 — 48h cooldown)
+2. GCTS double proposals: **FIXED** (Fix 3 — EXECUTED state)
+3. FLYW marked LOSS on profit: **FIXED** (Fix 2 — PnL verdict)
+4. BLBD stop_hit_instant: **FIXED** (Fix 5 — universal validation)
+5. System not learning: **FIXED** (Fix 1 — keystone restored)
+
+### Next Observation Points
+- Tomorrow morning: verify INFU not re-proposed
+- Tomorrow PM: agent calibration should show non-zero correct/wrong counts
+- This week: monitor audit_log for STOP_RECALCULATED events
+- This week: monitor audit_log for PROPOSAL_BLOCKED_COOLDOWN events

@@ -110,12 +110,14 @@ class AlpacaPaperAdapter:
                 if fixed_row:
                     trade_id_fixed, old_stop = fixed_row
                     log.info(f"[alpaca] {symbol} promoted pending→open (filled at ${avg_entry:.2f})")
-                    # Recalculate stop if it's above fill price (invalid for long)
-                    if old_stop and float(old_stop) > avg_entry:
-                        new_stop = round(avg_entry * 0.95, 2)
+                    # Universal stop validation (Fix 5)
+                    from trade_outcome_helpers import validate_and_recalc_stop
+                    new_stop, _recalced, _reason = validate_and_recalc_stop(
+                        entry_price=avg_entry, stop_loss=float(old_stop) if old_stop else None, direction='long')
+                    if _recalced:
                         cur.execute("UPDATE paper_trades SET stop_loss=%s, stop_loss_price=%s WHERE id=%s",
                                     [new_stop, new_stop, trade_id_fixed])
-                        log.warning(f"[alpaca] {symbol} stop recalculated: ${old_stop}→${new_stop} (was above fill ${avg_entry})")
+                        log.warning(f"[alpaca] {symbol} stop recalculated: ${old_stop}→${new_stop} ({_reason})")
                     synced += 1
                     continue
 
@@ -416,14 +418,14 @@ class AlpacaPaperAdapter:
                     except Exception:
                         return {'status': 'error', 'reason': 'fill_verification_failed'}
 
-            # ── Gap 2 fix: Atomic stop for market orders ──
-            # Recalculate stop if fill price differs significantly from proposed entry
-            effective_stop = stop_price
-            if use_market and fill_status == 'filled' and fill_price and stop_price:
-                if fill_price < float(stop_price):
-                    # Stop is above fill — recalculate at 5% below fill
-                    effective_stop = round(fill_price * 0.95, 2)
-                    log.warning(f"[alpaca] {symbol} stop recalculated: ${stop_price}→${effective_stop} (fill ${fill_price:.2f} below original stop)")
+            # ── Universal stop validation (Fix 5) ──
+            # Validate stop against actual fill price on ALL order types
+            from trade_outcome_helpers import validate_and_recalc_stop
+            _actual_entry = fill_price if (fill_status == 'filled' and fill_price) else float(entry_price)
+            effective_stop, _stop_recalced, _stop_reason = validate_and_recalc_stop(
+                entry_price=_actual_entry, stop_loss=stop_price, direction='long')
+            if _stop_recalced:
+                log.warning(f"[alpaca] {symbol} stop recalculated: ${stop_price}→${effective_stop} ({_stop_reason})")
             if use_market and fill_status == 'filled':
                 stop_placed = False
                 for _sa in range(3):
