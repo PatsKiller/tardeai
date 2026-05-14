@@ -45,6 +45,7 @@ const StoppedOutWatch = lazy(() => import('./pages/StoppedOutWatch'))
 const JournalHub = lazy(() => import('./pages/JournalHub'))
 
 // ── Intelligence (consolidated: Sources + Entities + Whiteboard + Content Health) ──
+const OvernightDashboard = lazy(() => import('./pages/OvernightDashboard'))
 const IntelligenceHub = lazy(() => import('./pages/IntelligenceHub'))
 const TopicMonitor = lazy(() => import('./pages/TopicMonitor'))
 const ResearchTopics = lazy(() => import('./pages/ResearchTopics'))
@@ -145,6 +146,7 @@ export default function App() {
           <Route path="automated-journal" element={<Navigate to="/v2/journal?tab=automated-journal" replace />} />
 
           {/* ── Intelligence (consolidated) ── */}
+          <Route path="overnight" element={<SafePage><OvernightDashboard /></SafePage>} />
           <Route path="intelligence" element={<SafePage><IntelligenceHub /></SafePage>} />
           <Route path="topic-monitor" element={<SafePage><TopicMonitor /></SafePage>} />
           <Route path="research-topics" element={<SafePage><ResearchTopics /></SafePage>} />

@@ -63,6 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/journal', label: 'Trade Journal' },
   ]},
   { label: 'Intelligence', items: [
+    { to: '/overnight', label: 'Overnight Brief' },
     { to: '/intelligence', label: 'Intelligence Hub' },
     { to: '/topic-monitor', label: 'Topic Monitor' },
     { to: '/research-topics', label: 'Research Topics' },

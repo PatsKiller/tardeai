@@ -12422,21 +12422,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
-    if base_path == "/api/v2/paper-analytics":
+    if base_path in ("/api/v2/automated-journal-analytics", "/api/v2/paper-analytics"):
         try:
+            # Exclude phantom/orphan/never-filled trades from analytics
+            _real_trade_filter = """
+                AND COALESCE(exit_reason, '') NOT LIKE 'phantom%%'
+                AND COALESCE(exit_reason, '') NOT LIKE 'order_never_filled%%'
+                AND COALESCE(close_reason, '') NOT LIKE 'phantom%%'
+                AND COALESCE(close_reason, '') NOT LIKE 'Orphan%%'
+            """
             # Overall stats
-            overall = _db_query("""
+            overall = _db_query(f"""
                 SELECT
-                    COUNT(*) FILTER (WHERE status='closed') as total_trades,
+                    COUNT(*) FILTER (WHERE status='closed' {_real_trade_filter}) as total_trades,
                     COUNT(*) FILTER (WHERE status='open') as open_trades,
-                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
-                    COUNT(*) FILTER (WHERE status='closed' AND pnl < 0) as losses,
-                    ROUND(SUM(pnl) FILTER (WHERE status='closed' AND pnl > 0)::numeric, 2) as gross_profit,
-                    ROUND(ABS(SUM(pnl) FILTER (WHERE status='closed' AND pnl < 0))::numeric, 2) as gross_loss,
-                    ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as total_realized_pnl,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0 {_real_trade_filter}) as wins,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl < 0 {_real_trade_filter}) as losses,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed' AND pnl > 0 {_real_trade_filter})::numeric, 2) as gross_profit,
+                    ROUND(ABS(SUM(pnl) FILTER (WHERE status='closed' AND pnl < 0 {_real_trade_filter}))::numeric, 2) as gross_loss,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed' {_real_trade_filter})::numeric, 2) as total_realized_pnl,
                     ROUND(SUM(unrealized_pnl) FILTER (WHERE status='open')::numeric, 2) as total_unrealized_pnl,
-                    ROUND(AVG(pnl) FILTER (WHERE status='closed' AND pnl > 0)::numeric, 2) as avg_winner,
-                    ROUND(AVG(ABS(pnl)) FILTER (WHERE status='closed' AND pnl < 0)::numeric, 2) as avg_loser
+                    ROUND(AVG(pnl) FILTER (WHERE status='closed' AND pnl > 0 {_real_trade_filter})::numeric, 2) as avg_winner,
+                    ROUND(AVG(ABS(pnl)) FILTER (WHERE status='closed' AND pnl < 0 {_real_trade_filter})::numeric, 2) as avg_loser,
+                    ROUND(AVG(r_multiple) FILTER (WHERE status='closed' AND pnl != 0 {_real_trade_filter})::numeric, 2) as avg_r
                 FROM paper_trades
             """, fetch="one") or {}
             tc = overall.get('total_trades') or 0
@@ -12450,13 +12458,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             al = float(overall.get('avg_loser') or 0)
             overall['expectancy'] = round((wr * aw) - ((1 - wr) * al), 2) if wr is not None else None
 
-            # By strategy
-            by_strategy = _db_query("""
+            # By strategy — exclude phantom/orphan/never-filled
+            by_strategy = _db_query(f"""
                 SELECT strategy_id,
-                    COUNT(*) FILTER (WHERE status='closed') as trades,
-                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
-                    ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as pnl
+                    COUNT(*) FILTER (WHERE status='closed' {_real_trade_filter}) as trades,
+                    COUNT(*) FILTER (WHERE status='closed' AND pnl > 0 {_real_trade_filter}) as wins,
+                    ROUND(SUM(pnl) FILTER (WHERE status='closed' {_real_trade_filter})::numeric, 2) as pnl
                 FROM paper_trades GROUP BY strategy_id
+                HAVING COUNT(*) FILTER (WHERE status='closed' {_real_trade_filter}) > 0
+                    OR COUNT(*) FILTER (WHERE status='open') > 0
             """) or []
 
             # Validation gates per strategy
@@ -12479,11 +12489,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     'gate_passed': done >= 30 and bwr is not None and bwr >= float(sr.get('min_win_rate') or 0.50),
                 }
 
-            # Recent closed
-            recent = _db_query("""
+            # Recent closed — exclude phantoms
+            recent = _db_query(f"""
                 SELECT id, symbol, strategy_id, account, entry_price, exit_price,
                        pnl, pnl_pct, outcome_verdict, exit_reason, closed_at
                 FROM paper_trades WHERE status='closed'
+                    {_real_trade_filter}
                 ORDER BY closed_at DESC LIMIT 20
             """) or []
 
@@ -13638,7 +13649,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import traceback; traceback.print_exc()
             return 500, {"ok": False, "error": str(e)}
 
-    if base_path == "/api/v2/paper-journal":
+    if base_path in ("/api/v2/automated-journal", "/api/v2/paper-journal"):
         try:
             trades = _db_query("""
                 SELECT id, symbol, strategy_id, setup_type, signal_grade, score_at_entry,
@@ -15632,4 +15643,190 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Overnight Intelligence Dashboard ────────────────────────────────────
+    if base_path == "/api/v2/overnight-dashboard":
+        if method == "GET":
+            try:
+                return _overnight_dashboard()
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
     return None
+
+
+def _overnight_dashboard():
+    """Single-shot overnight intelligence report — everything from the last window."""
+    from datetime import datetime as _dt
+
+    # 1. Window summary
+    window = _db_query("""
+        SELECT MIN(started_at) as window_start,
+               MAX(completed_at) as window_end,
+               COUNT(*) FILTER (WHERE status='done') as done_count,
+               COUNT(*) FILTER (WHERE status='failed') as failed_count,
+               COUNT(*) FILTER (WHERE status='running') as running_count,
+               COUNT(*) FILTER (WHERE status='pending') as pending_count,
+               ROUND(AVG(EXTRACT(EPOCH FROM (completed_at - started_at)))
+                     FILTER (WHERE status='done')) as avg_sec
+        FROM deep_overnight_llm_queue
+        WHERE updated_at > NOW() - INTERVAL '24 hours'
+          AND started_at IS NOT NULL
+    """, fetch="one") or {}
+
+    # 2. Job breakdown by type
+    by_job_type = _db_query("""
+        SELECT q.job_type,
+               COUNT(*) FILTER (WHERE q.status='done') as done,
+               COUNT(*) FILTER (WHERE q.status='failed') as failed,
+               COUNT(*) FILTER (WHERE q.status='pending') as pending,
+               ROUND(AVG(EXTRACT(EPOCH FROM (q.completed_at - q.started_at)))
+                     FILTER (WHERE q.status='done')) as avg_sec,
+               ROUND(AVG(LENGTH(r.summary)) FILTER (WHERE q.status='done')) as avg_chars
+        FROM deep_overnight_llm_queue q
+        LEFT JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.updated_at > NOW() - INTERVAL '24 hours'
+        GROUP BY q.job_type
+        ORDER BY done DESC
+    """) or []
+
+    # 3. Risk synthesis (morning brief seed)
+    risk_synth = _db_query("""
+        SELECT generated_at, narrative, top_risks,
+               portfolio_value, heat_pct,
+               LENGTH(narrative) as narrative_chars
+        FROM risk_synthesis_results
+        WHERE generated_at > NOW() - INTERVAL '24 hours'
+        ORDER BY generated_at DESC LIMIT 1
+    """, fetch="one") or {}
+
+    # 4. Recovery watch verdicts
+    recovery_verdicts = _db_query("""
+        SELECT q.symbol, r.summary,
+               r.reentry_verdict as verdict,
+               r.findings_json->>'recommended_action' as reentry_signal,
+               r.findings_json->>'confidence' as confidence,
+               r.created_at
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.job_type = 'recovery_watch_review'
+          AND r.created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY r.created_at DESC LIMIT 20
+    """) or []
+
+    # 5. Closed trade reviews
+    trade_reviews = _db_query("""
+        SELECT q.symbol, q.trade_id,
+               r.summary,
+               r.findings_json->'analysis'->>'grade' as grade,
+               r.findings_json->'analysis'->>'key_lesson' as key_lesson,
+               r.findings_json->'analysis'->>'outcome_assessment' as outcome,
+               r.created_at
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.job_type = 'closed_trade_review'
+          AND r.created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY r.created_at DESC LIMIT 20
+    """) or []
+
+    # 6. Strategy classifications (held positions)
+    strategy_class = _db_query("""
+        SELECT q.symbol, r.summary,
+               r.findings_json AS classification_data,
+               r.created_at
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.job_type = 'strategy_classification'
+          AND r.created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY r.created_at DESC LIMIT 30
+    """) or []
+
+    # 7. RAG content curation results
+    rag_curation = _db_query("""
+        SELECT q.symbol,
+               r.curation_verdict as verdict,
+               r.curation_weight as quality_score,
+               r.summary,
+               r.created_at
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.job_type = 'rag_content_curation'
+          AND r.created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY r.created_at DESC LIMIT 25
+    """) or []
+
+    # 8. Covered call scoring
+    covered_calls = _db_query("""
+        SELECT q.symbol, r.summary,
+               r.cc_verdict as verdict,
+               r.cc_strike_target as strike,
+               r.cc_yield_estimate as yield_est,
+               r.created_at
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.job_type = 'covered_call_scoring'
+          AND r.created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY r.cc_yield_estimate DESC NULLS LAST LIMIT 15
+    """) or []
+
+    # 9. Strategy opportunity / growth scan
+    opportunity_scan = _db_query("""
+        SELECT q.symbol, r.summary,
+               r.findings_json,
+               r.recommendations_json,
+               r.created_at
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE q.job_type IN ('growth_strategy_scan', 'rebalance_analysis')
+          AND r.created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY r.created_at DESC LIMIT 15
+    """) or []
+
+    # 10. Failed jobs
+    failed_jobs = _db_query("""
+        SELECT job_type, symbol, attempt_count,
+               last_error, started_at
+        FROM deep_overnight_llm_queue
+        WHERE status = 'failed'
+          AND updated_at > NOW() - INTERVAL '24 hours'
+        ORDER BY updated_at DESC LIMIT 20
+    """) or []
+
+    # 11. gemma3 calibration (7-day rolling)
+    calibration = _db_query("""
+        SELECT job_type,
+               COUNT(*) as total_events,
+               COUNT(*) FILTER (WHERE grade='CORRECT') as correct,
+               COUNT(*) FILTER (WHERE grade='HALLUCINATION') as hallucinated,
+               COUNT(*) FILTER (WHERE grade='PARTIAL') as partial,
+               COUNT(*) FILTER (WHERE grade='PENDING') as pending_grade
+        FROM gemma3_calibration_events
+        WHERE created_at > NOW() - INTERVAL '7 days'
+        GROUP BY job_type
+        ORDER BY total_events DESC
+    """) or []
+
+    # 12. New proposals generated overnight
+    new_proposals = _db_query("""
+        SELECT symbol, strategy_id, signal_score as score, signal_grade as grade,
+               proposed_entry as entry_price, status, created_at
+        FROM paper_trade_proposals
+        WHERE created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY signal_score DESC NULLS LAST LIMIT 15
+    """) or []
+
+    data = {
+        'generated_at': _dt.now().isoformat(),
+        'window': {k: _json_clean(v) for k, v in (window or {}).items()},
+        'by_job_type': [{k: _json_clean(v) for k, v in r.items()} for r in by_job_type],
+        'risk_synthesis': {k: _json_clean(v) for k, v in (risk_synth or {}).items()},
+        'recovery_verdicts': [{k: _json_clean(v) for k, v in r.items()} for r in recovery_verdicts],
+        'trade_reviews': [{k: _json_clean(v) for k, v in r.items()} for r in trade_reviews],
+        'strategy_classifications': [{k: _json_clean(v) for k, v in r.items()} for r in strategy_class],
+        'rag_curation': [{k: _json_clean(v) for k, v in r.items()} for r in rag_curation],
+        'covered_calls': [{k: _json_clean(v) for k, v in r.items()} for r in covered_calls],
+        'opportunity_scan': [{k: _json_clean(v) for k, v in r.items()} for r in opportunity_scan],
+        'failed_jobs': [{k: _json_clean(v) for k, v in r.items()} for r in failed_jobs],
+        'gemma3_calibration': [{k: _json_clean(v) for k, v in r.items()} for r in calibration],
+        'new_proposals': [{k: _json_clean(v) for k, v in r.items()} for r in new_proposals],
+    }
+    return 200, {"ok": True, "data": data}
