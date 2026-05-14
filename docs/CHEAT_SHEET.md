@@ -295,3 +295,37 @@ grep -l 'vix_rules:' config/strategies/*.yaml | wc -l           # expect 23
 grep -l 'technical_indicators_required:' config/strategies/*.yaml | wc -l  # expect 23
 grep -l 'performance_context:' config/strategies/*.yaml | wc -l # expect 25
 ```
+
+---
+
+## Data Gap Resolver
+
+```bash
+# Check current gap registry
+PGPASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2) \
+psql -h localhost -U trade_ai -d trade_ai -c "
+SELECT gap_type, status, COUNT(*), array_agg(DISTINCT symbol) as symbols
+FROM data_gap_registry WHERE detected_at > NOW() - INTERVAL '24 hours'
+GROUP BY gap_type, status ORDER BY 1,2;"
+
+# Run resolver manually
+python3 scripts/data_gap_resolver.py
+
+# Pre-overnight sweep (force close gaps before 23:00 window)
+python3 scripts/data_gap_resolver.py --pre-overnight
+
+# Weekly audit (persistent unresolvable gaps)
+python3 scripts/data_gap_resolver.py --weekly-audit
+
+# View resolver log
+tail -50 logs/data_gap_resolver.log
+
+# Verify cron scheduled (expect 3 entries)
+crontab -l | grep data_gap_resolver
+
+# Deep overnight health check
+.venv/bin/python scripts/check_deep_overnight_health.py --summary
+
+# Queue status report
+.venv/bin/python scripts/report_deep_overnight_queue_status.py --summary
+```

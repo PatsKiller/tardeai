@@ -78,3 +78,20 @@ Generated: 2026-05-11T07:15:01.483115
 - Screener count in assets/screeners.yaml: 10 core + 8 new = 18 (DB has 27 total with finviz_screeners)
 - New strategies: fib_retracement_bounce, earnings_pre_buildup, earnings_post_momentum
 - Deprecated: earnings_catalyst (split into pre/post)
+
+## Session 35 Updates (2026-05-14)
+
+- New table: data_gap_registry (gap tracking from gemma3 outputs)
+- New table: gap_resolution_outcomes (feedback measurement)
+- New table: overnight_actionable_outcomes (actionable signal tracking)
+- New script: scripts/data_gap_resolver.py (self-healing gap resolution)
+- New script: scripts/report_deep_overnight_queue_status.py (queue reporter)
+- New script: scripts/check_deep_overnight_health.py (11 health checks)
+- New script: scripts/overnight_digest_telegram.py (6 AM brief)
+- New page: /v2/overnight (Overnight Intelligence Dashboard)
+- Cron entries: +3 gap resolver (hourly/pre-overnight/weekly) → ~155 total
+- Total DB tables: 333+ (was 330)
+- Queue runner: --quota-policy balanced with per-type soft quotas
+- Recovery watch prompt: uses llm_context_engine.build_context()
+- Queue dedup: per-job-type cooldowns prevent duplicate analysis
+- Self-healing loop: detection → resolution → re-queue → verification
