@@ -86,6 +86,12 @@ See `v4_1_phase2c_nightly_enable_scope.md`.
 > If clean: enable Friday extended hybrid.
 > Phase 2D production promotion remains BLOCKED.
 
+## Monitoring and Rollback
+
+**Monitor:** `./scripts/monitor_phase2c_hybrid_nightly.sh`
+**Rollback:** `./scripts/rollback_phase2c_hybrid_nightly.sh` (restores pre-change crontab)
+**Manual fallback:** removes all hybrid flags via sed (see `v4_1_phase2c_nightly_enable_scope.md`)
+
 ## Phase 2 Gates
 
 | # | Gate | Status |

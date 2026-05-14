@@ -59,6 +59,7 @@
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_nightly_enable_scope.md` | Phase 2C nightly enablement scope |
 | `docs/llm_fleet/phase2_embedding_ab/crontab_pre_phase2c_nightly_hybrid_enable.txt` | Pre-change crontab |
 | `docs/llm_fleet/phase2_embedding_ab/crontab_post_phase2c_nightly_hybrid_enable.txt` | Post-change crontab |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_monitoring_rollback_fix.md` | Monitoring/rollback fix note |
 | `docs/v4_1_phase1_pilot_report.md` | Phase 1 pilot: gemma3:27b BATCH_OVERNIGHT test (1 symbol) |
 | `docs/v4_1_phase1c_controlled_expansion_report.md` | Phase 1C: 2-symbol expansion test |
 | `docs/v4_1_phase1d_limit5_report.md` | Phase 1D: 5-symbol expansion test |

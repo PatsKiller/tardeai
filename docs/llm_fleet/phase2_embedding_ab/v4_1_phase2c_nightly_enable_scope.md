@@ -62,6 +62,30 @@ Market-hours agents, Telegram, OpenClaw, broker/execution, risk gates, order pla
 | Friday extended hybrid | NO (disabled) |
 | Phase 2D promotion | BLOCKED |
 
+## Monitoring
+
+```bash
+./scripts/monitor_phase2c_hybrid_nightly.sh
+```
+
 ## Rollback
 
-Remove `--enable-hybrid-rag` from daily cron to instantly disable.
+**Preferred** — restore pre-change crontab backup:
+```bash
+./scripts/rollback_phase2c_hybrid_nightly.sh
+```
+
+**Manual fallback** — if backup missing, remove all hybrid flags:
+```bash
+crontab -l | sed \
+  -e 's/ --enable-hybrid-rag//g' \
+  -e 's/ --hybrid-prefetch-limit [0-9]*//g' \
+  -e 's/ --hybrid-job-types [^ ]*//g' \
+  -e 's/ --hybrid-context-file [^ ]*//g' \
+  -e 's/ --hybrid-final-k [0-9]*//g' \
+  -e 's/ --hybrid-mode [^ ]*//g' \
+  -e 's/ --hybrid-strict [^ ]*//g' \
+  | crontab -
+```
+
+Rollback disables Phase 2C nightly hybrid only. Phase 1 base deep overnight schedule is preserved.
