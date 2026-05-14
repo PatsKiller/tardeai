@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-14
 **Candidate:** qwen3-embedding:8b
-**Status:** NOT INSTALLED
+**Status:** INSTALLED and TESTED (2026-05-14)
 
 ---
 
@@ -10,7 +10,7 @@
 
 ```
 ollama list | grep qwen3-embedding
-(no output — model not found)
+qwen3-embedding:8b    64b933495768    4.7 GB    May 14 2026
 ```
 
 ## Current Production Model
@@ -22,10 +22,20 @@ ollama list | grep qwen3-embedding
 
 ## Candidate Model
 
-- **qwen3-embedding:8b** — ~5 GB disk, ~5 GB VRAM estimated
-- Expected dimensions: 4096 (Qwen3 embedding series)
-- Would coexist with qwen3:14b (9.4 GB) — combined ~14.4 GB, within 16 GB VRAM limit with ~1.6 GB headroom
+- **qwen3-embedding:8b** — 4.7 GB disk, 5.67 GB VRAM when resident
+- Confirmed dimensions: **4,096** (5.3x nomic's 768)
+- Coexists with qwen3:14b (9.4 GB) — combined 15.07 GB, within 16 GB limit (~0.9 GB headroom)
+- Evicts nomic-embed-text when both qwen models are resident
+- Avg embedding latency: **295ms** (vs nomic's 23ms — 13x slower)
 - EMBEDDING process type is local-only (never cloud, per LLM_FLEET_STRATEGY H4)
+
+## Smoke Test Results (2026-05-14)
+
+| Prompt | nomic dim | qwen3 dim | Both OK |
+|--------|-----------|-----------|---------|
+| "test embedding" | 768 | 4096 | YES |
+| "RTX recovery watch evidence" | 768 | 4096 | YES |
+| "closed trade review with MFE and MAE" | 768 | 4096 | YES |
 
 ## Pull Command
 

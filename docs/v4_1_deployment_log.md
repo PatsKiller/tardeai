@@ -1447,15 +1447,19 @@ $1,190,653 / 43 positions — no broker, holdings, execution, or embedding chang
 All gates PASS. ALPACA_MODE=paper, LLM_DISABLE=true, holdings=$1,190,653, no deep lock.
 
 ### Candidate Model
-**qwen3-embedding:8b is NOT INSTALLED.** Pull command: `ollama pull qwen3-embedding:8b`
+**qwen3-embedding:8b INSTALLED** (4.7 GB, pulled 2026-05-14 10:05 ET)
 
 ### Current Production
 nomic-embed-text: 768 dims, 14,784 embeddings, 14 source types, 23ms avg latency.
 
-### Baseline Results
-- 40 queries tested against 1,000 docs
-- 0 empty results, 5 source types in top-5
-- Candidate: NOT TESTED (not installed)
+### A/B Baseline Results
+- 40 queries tested against 1,000 docs, both models
+- nomic: 768d, 23ms avg, 0 empty, 5 source types in top-5
+- qwen3-embedding: 4096d, 295ms avg, 0 empty
+- VRAM: qwen3-embed (5.67GB) + qwen3:14b (9.4GB) = 15.07GB — fits but evicts nomic
+- Verdict: INCONCLUSIVE — quality comparison needs Phase 2B parallel index
+- Phase 2B: GO recommended
+- Production models restored: qwen3:14b + nomic-embed-text confirmed resident
 
 ### What Changed
 - New script: `scripts/embedding_ab_baseline.py`
@@ -1470,7 +1474,7 @@ nomic-embed-text: 768 dims, 14,784 embeddings, 14 source types, 23ms avg latency
 - nomic-embed-text: RETAINED as production default
 
 ### Recommended Next Step
-Operator should approve: `Approve pull qwen3-embedding:8b for Phase 2A embedding A/B testing.`
+Phase 2B parallel index test. Operator command: `Begin Phase 2B limited parallel embedding index test.`
 
 ### Iron Rule
 $1,190,653 / 43 positions — no production embedding or routing changes
