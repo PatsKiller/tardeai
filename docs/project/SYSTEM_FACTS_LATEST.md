@@ -1,6 +1,6 @@
 # System Facts (Latest)
 
-Generated: 2026-05-14 10:21 EDT
+Generated: 2026-05-14 10:26 EDT
 Source: Live introspection on ms01-openclaw
 Regeneration: `bash scripts/regenerate_system_facts.sh`
 
@@ -22,11 +22,11 @@ Regeneration: `bash scripts/regenerate_system_facts.sh`
 
 ## Recent Commits
 
+- 9b99389 docs: systematic documentation protocol + export utilities
 - bd5a1de Phase 2A: qwen3-embedding:8b pulled and A/B baseline tested
 - 5cf141b Phase 2A embedding A/B baseline and RAG discovery
 - 4f13d9a docs: schedule data gap resolver + canonical doc updates
 - 6f448cb docs: update for self-healing gap orchestration
-- 979323f feat: self-healing data gap orchestration
 
 ---
 

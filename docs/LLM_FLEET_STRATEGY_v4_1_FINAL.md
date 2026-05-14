@@ -1147,3 +1147,17 @@ result = execute(prompt, process_type=STANDARD, script="script_name.py")
 
 This document does address the current local-LLM routing question, but it deliberately does it through a process-type migration pattern rather than hardcoding every script to a model. Phase 0 creates the live inventory and routing/audit layer. Phase 1 changes only pilot batch scripts. Phase 2 changes embeddings only after A/B retrieval validation. Phase 3 changes only pilot media/content scripts.
 
+---
+
+## Phase 2 — RAG Embedding A/B Testing (Active)
+
+Full Phase 2 documentation is at `docs/llm_fleet/phase2_embedding_ab/`.
+
+Phase 2 evaluates replacing `nomic-embed-text` with `qwen3-embedding:8b`.
+Candidate installed (4.7 GB, 4096 dims). Baseline established 2026-05-14.
+A/B embedding comparison complete: nomic 23ms/768d vs candidate 295ms/4096d.
+Retrieval quality comparison pending Phase 2B parallel index.
+
+See `docs/llm_fleet/phase2_embedding_ab/00_README.md` for read order
+and current gate status.
+
