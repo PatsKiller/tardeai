@@ -53,6 +53,9 @@
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_expand_5000_hybrid_retrieval_report.md` | 5K hybrid retrieval report |
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_expand_5000_hybrid_retrieval_results.json` | Hybrid results JSON |
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b2_expand_5000_evaluation_report.md` | **5K evaluation: QWEN3_BETTER, recommend offline pilot** |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_offline_integration_scope.md` | Phase 2C offline integration scope and safety |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_offline_integration_pilot_report.md` | Phase 2C 5-job pilot report |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_offline_integration_pilot_results.json` | Pilot results JSON |
 | `docs/v4_1_phase1_pilot_report.md` | Phase 1 pilot: gemma3:27b BATCH_OVERNIGHT test (1 symbol) |
 | `docs/v4_1_phase1c_controlled_expansion_report.md` | Phase 1C: 2-symbol expansion test |
 | `docs/v4_1_phase1d_limit5_report.md` | Phase 1D: 5-symbol expansion test |
@@ -104,6 +107,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Phase 2C offline integration pilot: hybrid_rag_context_adapter.py created, queue runner updated with --use-hybrid-rag opt-in. 5/5 jobs passed (nomic fallback). RAG context added where none existed. No production changes. |
 | 2026-05-14 | Phase 2B-Expanded: qwen3 index expanded 1K→4,897. Verdict upgraded QWEN3_BETTER (sim 0.647 vs 0.612, diversity 3.0 vs 1.4). Hybrid diversity 2.73. Recommend Phase 2C offline pilot. No production changes. |
 | 2026-05-14 | Phase 2C: Hybrid retrieval pilot. 40 queries, HYBRID_MARGINAL verdict. Qwen3 finds 56.5% unique items but consensus only 2.5% (limited by 1K index). Recommend expanding to 5K. No production changes. |
 | 2026-05-14 | Three-tier alert architecture deployed. 17 alert types classified (URGENT/DIGEST/DASHBOARD_ONLY). Digest crons at 8 AM + 4 PM. /v2/alerts page. Live facts: 344 tables, 401 scripts, 85 crons, 76 pages. |

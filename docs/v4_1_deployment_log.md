@@ -1617,3 +1617,30 @@ nomic-embed-text + qwen3:14b resident. qwen3-embedding:8b unloaded after build.
 
 ### Iron Rule
 $1,187,937 — no production changes
+
+---
+
+## Phase 2C Offline Integration Pilot — 2026-05-14
+
+### What Changed
+Created hybrid_rag_context_adapter.py and wired it into run_deep_overnight_llm_queue.py behind explicit --use-hybrid-rag opt-in flag. Ran 5-job manual pilot.
+
+### Pilot Results
+| Metric | Value |
+|--------|-------|
+| Jobs processed | 5/5 |
+| Failures | 0 |
+| Runtime | 4.8 min |
+| Job types | manual_journal_review (1), strategy_classification (4) |
+| Fallback used | Yes (qwen3-embedding not loaded during daytime) |
+| RAG latency overhead | 0.3-2.3s per job (0.4-5.2% of total) |
+| Source diversity | 1-6 types (previously 0, jobs had no RAG) |
+
+### Key Finding
+Deep overnight jobs currently use NO RAG context — only SQL-derived data. Adding even nomic-only RAG context provides new evidence (prior analyses, outcomes, news, signals) that was previously unavailable to gemma3.
+
+### Recommendation
+Enable hybrid RAG for nightly deep queue behind wrapper flag. Run 20-job pilot during deep overnight window where qwen3-embedding can be loaded. Phase 2D blocked.
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.

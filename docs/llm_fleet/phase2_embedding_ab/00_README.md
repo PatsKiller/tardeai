@@ -1,7 +1,7 @@
 # Phase 2 — RAG Embedding A/B Testing
 
-**Status:** Phase 2B-Expanded COMPLETE. qwen3 index at 4,897 docs. QWEN3_BETTER verdict. Recommend Phase 2C offline integration pilot.
-**Last commit:** (Phase 2B-Expanded, 2026-05-14)
+**Status:** Phase 2C offline pilot COMPLETE (5/5 jobs). Hybrid adapter + opt-in flags deployed. Recommend enabling for nightly deep queue.
+**Last commit:** (Phase 2C offline pilot, 2026-05-14)
 **Owner:** John W. Whiting
 
 ## What This Is
@@ -62,10 +62,21 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 - Latency: hybrid total 1.7s
 - See `v4_1_phase2c_evaluation_report.md` for full analysis
 
+## Phase 2C Offline Integration Pilot Results (2026-05-14)
+
+- 5/5 jobs succeeded, 0 failures, 4.8 min runtime
+- Hybrid adapter created (scripts/hybrid_rag_context_adapter.py)
+- Queue runner updated with --use-hybrid-rag opt-in flag
+- All 5 jobs used nomic-only fallback (qwen3-embedding not loaded during daytime)
+- RAG context added to jobs that previously had NO RAG (SQL-only)
+- Source diversity 1-6 types per query (previously 0)
+- Latency overhead: 0.3-2.3s per job (0.4-5.2% of total)
+- See `v4_1_phase2c_offline_integration_pilot_report.md`
+
 ## Next Steps (Operator Decision Required)
 
-> Recommend: Begin Phase 2C offline integration pilot for deep overnight jobs only.
-> qwen3-embedding:8b demonstrates quality advantage. Hybrid adds source diversity.
+> Recommend: Enable hybrid RAG for nightly deep queue behind wrapper flag.
+> Run a 20-job pilot during deep overnight window (qwen3-embedding loaded).
 > Phase 2D production promotion remains BLOCKED.
 
 ## Phase 2 Gates
@@ -79,7 +90,8 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 | 4b | Parallel index expanded (5K) | DONE (4,897 docs) |
 | 5 | Retrieval comparison | DONE (QWEN3_BETTER) |
 | 6 | Latency delta measured | DONE (274ms vs 28ms) |
-| 7 | Offline integration pilot | PENDING operator approval |
+| 7 | Offline integration pilot | DONE (5/5 jobs, nomic-only fallback) |
+| 7b | Full hybrid pilot (deep window) | PENDING operator approval |
 | 8-14 | (See promotion checklist) | BLOCKED |
 
 ## Safety Invariants
