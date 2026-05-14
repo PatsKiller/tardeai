@@ -1702,7 +1702,10 @@ Stage B: gemma3-overnight → deep reasoning with cached context → restore qwe
 - Phase 2D blocked
 
 ### Observation
-Monitor tonight's first scheduled run at 23:00 UTC.
+```bash
+./scripts/monitor_phase2c_hybrid_nightly.sh
+```
 
 ### Rollback
-Remove `--enable-hybrid-rag` from daily cron line.
+Preferred: `./scripts/rollback_phase2c_hybrid_nightly.sh` (restores pre-change crontab backup).
+Manual fallback removes all hybrid flags via sed. See `v4_1_phase2c_nightly_enable_scope.md`.
