@@ -1709,3 +1709,34 @@ Stage B: gemma3-overnight → deep reasoning with cached context → restore qwe
 ### Rollback
 Preferred: `./scripts/rollback_phase2c_hybrid_nightly.sh` (restores pre-change crontab backup).
 Manual fallback removes all hybrid flags via sed. See `v4_1_phase2c_nightly_enable_scope.md`.
+
+---
+
+## Phase 2 Finalization — 2026-05-14
+
+### What Changed
+- Friday extended hybrid RAG enabled (`--enable-hybrid-rag` added to Friday cron)
+- Phase 2D formalized as bounded offline/deep-queue hybrid RAG approval
+- Phase 2 closed
+
+### Cron
+**Daily:** `... --enable-hybrid-rag >> logs/deep_overnight_llm_window.log` (unchanged)
+**Friday:** `... --enable-hybrid-rag --force-window --max-jobs 200 --allow-over-hard-max >> logs/deep_llm_friday_extended.log` (NEW)
+
+### Phase 2D Status
+APPROVED: bounded offline/deep-queue hybrid RAG only.
+BLOCKED: global production embedding promotion.
+
+### Production Impact
+- Global RAG routing: UNCHANGED
+- Production embedding: nomic-embed-text (UNCHANGED)
+- .env: UNCHANGED
+- Broker/holdings/execution: UNCHANGED
+
+### Rollback
+- `./scripts/rollback_phase2c_hybrid_nightly.sh --daily` — daily only
+- `./scripts/rollback_phase2c_hybrid_nightly.sh --friday` — Friday only
+- `./scripts/rollback_phase2c_hybrid_nightly.sh --all` — both
+
+### Next Phase
+Phase 3: Small media/prose model pilot.

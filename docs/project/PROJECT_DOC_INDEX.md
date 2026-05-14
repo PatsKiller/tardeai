@@ -60,6 +60,11 @@
 | `docs/llm_fleet/phase2_embedding_ab/crontab_pre_phase2c_nightly_hybrid_enable.txt` | Pre-change crontab |
 | `docs/llm_fleet/phase2_embedding_ab/crontab_post_phase2c_nightly_hybrid_enable.txt` | Post-change crontab |
 | `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_monitoring_rollback_fix.md` | Monitoring/rollback fix note |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_friday_hybrid_enable.md` | Friday extended hybrid enablement |
+| `docs/llm_fleet/phase2_embedding_ab/crontab_pre_phase2c_friday_hybrid_enable.txt` | Pre-Friday crontab backup |
+| `docs/llm_fleet/phase2_embedding_ab/crontab_post_phase2c_friday_hybrid_enable.txt` | Post-Friday crontab backup |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2d_bounded_offline_promotion.md` | **Phase 2D bounded offline promotion (approved)** |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_final_closeout_report.md` | **Phase 2 final closeout** |
 | `docs/v4_1_phase1_pilot_report.md` | Phase 1 pilot: gemma3:27b BATCH_OVERNIGHT test (1 symbol) |
 | `docs/v4_1_phase1c_controlled_expansion_report.md` | Phase 1C: 2-symbol expansion test |
 | `docs/v4_1_phase1d_limit5_report.md` | Phase 1D: 5-symbol expansion test |
@@ -111,6 +116,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Phase 2 FINALIZED: Friday hybrid enabled. Phase 2D bounded offline promotion approved. Global embedding promotion blocked. Phase 2 closeout report written. |
 | 2026-05-14 | Phase 2C nightly enablement: daily 23:00 deep queue now uses --enable-hybrid-rag with two-stage lifecycle. Friday unchanged. Cron updated. Production RAG/embeddings unchanged. |
 | 2026-05-14 | Phase 2C offline integration pilot: hybrid_rag_context_adapter.py created, queue runner updated with --use-hybrid-rag opt-in. 20/20 jobs passed. RAG context added where none existed. No production changes. |
 | 2026-05-14 | Phase 2B-Expanded: qwen3 index expanded 1K→4,897. Verdict upgraded QWEN3_BETTER (sim 0.647 vs 0.612, diversity 3.0 vs 1.4). Hybrid diversity 2.73. Recommend Phase 2C offline pilot. No production changes. |
