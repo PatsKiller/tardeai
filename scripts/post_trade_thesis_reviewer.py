@@ -377,5 +377,191 @@ def main():
         conn.close()
 
 
+# ──────────────────────────────────────────────────────────────
+# Phase 5 — Post-trade price recovery analysis (2026-05-14)
+# ──────────────────────────────────────────────────────────────
+
+STRATEGY_HOLD_NORMS = {
+    'momentum_scalp':            {'min': 0.25, 'norm': 1.0,  'max': 4.0},
+    'earnings_catalyst':         {'min': 4.0,  'norm': 24.0, 'max': 120.0},
+    'swing_breakout':            {'min': 8.0,  'norm': 48.0, 'max': 168.0},
+    'swing_trade':               {'min': 8.0,  'norm': 48.0, 'max': 168.0},
+    'dividend_growth_compounder':{'min': 168.0,'norm': 720.0,'max': 8760.0},
+    'gap_and_go':                {'min': 0.5,  'norm': 2.0,  'max': 8.0},
+    'speculative_growth':        {'min': 24.0, 'norm': 96.0, 'max': 336.0},
+    'recovery_watch':            {'min': 48.0, 'norm': 168.0,'max': 720.0},
+    'DEFAULT':                   {'min': 1.0,  'norm': 24.0, 'max': 168.0},
+}
+
+
+def fetch_post_exit_bars(symbol, exit_time):
+    """Pull 15min bars from Alpaca for 4h window after exit, plus EOD."""
+    import os, requests
+    key = os.getenv('ALPACA_API_KEY', '')
+    secret = os.getenv('ALPACA_SECRET_KEY', '')
+    headers = {'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret}
+    result = {
+        'price_15min': None, 'price_1h': None, 'price_4h': None,
+        'price_eod': None, 'max_favorable_4h': None, 'max_adverse_4h': None,
+        'bars_fetched': 0, 'error': None,
+    }
+    try:
+        start = exit_time
+        end = exit_time + timedelta(hours=4)
+        r = requests.get('https://data.alpaca.markets/v2/stocks/{}/bars'.format(symbol),
+                         params={'timeframe': '15Min', 'start': start.isoformat(),
+                                 'end': end.isoformat(), 'limit': 20},
+                         headers=headers, timeout=15)
+        if not r.ok:
+            result['error'] = f'bars_http_{r.status_code}'
+            return result
+        bars = r.json().get('bars', [])
+        result['bars_fetched'] = len(bars)
+        if not bars:
+            result['error'] = 'no_bars_returned'
+            return result
+        if len(bars) >= 1:
+            result['price_15min'] = float(bars[0]['c'])
+        if len(bars) >= 4:
+            result['price_1h'] = float(bars[3]['c'])
+        if len(bars) >= 16:
+            result['price_4h'] = float(bars[15]['c'])
+        result['max_favorable_4h'] = max(float(b['h']) for b in bars)
+        result['max_adverse_4h'] = min(float(b['l']) for b in bars)
+
+        # EOD bar
+        r2 = requests.get('https://data.alpaca.markets/v2/stocks/{}/bars'.format(symbol),
+                          params={'timeframe': '1Day', 'start': exit_time.strftime('%Y-%m-%d'),
+                                  'end': (exit_time + timedelta(days=1)).strftime('%Y-%m-%d'), 'limit': 1},
+                          headers=headers, timeout=15)
+        if r2.ok:
+            eod_bars = r2.json().get('bars', [])
+            if eod_bars:
+                result['price_eod'] = float(eod_bars[0]['c'])
+    except Exception as e:
+        result['error'] = str(e)[:200]
+        log.error(f"Bars fetch failed for {symbol}: {e}")
+    return result
+
+
+def compute_recovery_verdicts(trade, bars_data):
+    """Compute stop_too_tight, would_have_recovered, held_too_short/long, thesis_outcome."""
+    entry = float(trade['entry_price']) if trade.get('entry_price') else None
+    stop = float(trade['stop_loss']) if trade.get('stop_loss') else None
+    target = float(trade['target_1']) if trade.get('target_1') else None
+    exit_reason = trade.get('exit_reason', '') or ''
+    verdicts = {'stop_too_tight': None, 'would_have_recovered': None,
+                'held_too_short': None, 'held_too_long': None, 'thesis_outcome': 'INCONCLUSIVE'}
+
+    # stop_too_tight: price recovered 2%+ above stop within 4h
+    if stop and bars_data.get('max_favorable_4h') and 'stop' in exit_reason.lower():
+        verdicts['stop_too_tight'] = bars_data['max_favorable_4h'] >= stop * 1.02
+
+    # would_have_recovered: EOD > entry
+    if entry and bars_data.get('price_eod'):
+        verdicts['would_have_recovered'] = bars_data['price_eod'] > entry
+
+    # hold time
+    norms = STRATEGY_HOLD_NORMS.get(trade.get('strategy_id', ''), STRATEGY_HOLD_NORMS['DEFAULT'])
+    hold_hours = trade.get('hold_hours')
+    if hold_hours is not None:
+        verdicts['held_too_short'] = hold_hours < norms['min']
+        verdicts['held_too_long'] = hold_hours > norms['max']
+
+    # thesis outcome
+    if target and entry and bars_data.get('max_favorable_4h'):
+        if bars_data['max_favorable_4h'] >= target:
+            verdicts['thesis_outcome'] = 'FULL'
+        elif bars_data['max_favorable_4h'] > entry:
+            verdicts['thesis_outcome'] = 'PARTIAL'
+        else:
+            verdicts['thesis_outcome'] = 'FAILED'
+    return verdicts
+
+
+def generate_lesson_qwen3(trade, bars_data, verdicts):
+    """Call qwen3:14b for a 1-2 sentence lesson. Returns (text, tokens)."""
+    import requests as _req
+    prompt = f"""/no_think Analyze this paper trade and give ONE specific lesson in 1-2 sentences.
+
+Trade: {trade.get('symbol')} {trade.get('strategy_id')}
+Entry: ${trade.get('entry_price')} Exit: ${trade.get('exit_price')} (reason: {trade.get('exit_reason')})
+Stop: ${trade.get('stop_loss')} PnL: ${trade.get('pnl')} Hold: {trade.get('hold_hours', '?')}h
+
+Post-exit: 15min=${bars_data.get('price_15min')}, 1h=${bars_data.get('price_1h')}, max_favorable_4h=${bars_data.get('max_favorable_4h')}, EOD=${bars_data.get('price_eod')}
+Verdicts: stop_too_tight={verdicts.get('stop_too_tight')}, would_have_recovered={verdicts.get('would_have_recovered')}, thesis={verdicts.get('thesis_outcome')}
+
+Output ONLY the lesson. Be concrete: "Don't use X% stops on Y when ..." or "Hold Z at least N hours because ...".
+"""
+    try:
+        r = _req.post('http://localhost:11434/api/generate',
+                      json={'model': 'qwen3:14b', 'prompt': prompt, 'stream': False,
+                            'options': {'num_predict': 1000, 'temperature': 0.3}},
+                      timeout=120)
+        r.raise_for_status()
+        d = r.json()
+        lesson = (d.get('response') or '').strip()
+        if not lesson and d.get('thinking'):
+            # Extract useful content from thinking if response empty
+            lesson = d['thinking'].strip()[-300:]
+        return lesson[:500], d.get('eval_count', 0)
+    except Exception as e:
+        log.error(f"qwen3 lesson failed: {e}")
+        return f"Lesson generation failed: {e}", 0
+
+
+def run_price_recovery_analysis(trade_id, conn):
+    """Orchestrator: fetch bars, compute verdicts, generate lesson, write row."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, proposal_id, symbol, strategy_id,
+               entry_price, exit_price, stop_loss, target_1,
+               entry_time, closed_at, pnl, exit_reason,
+               EXTRACT(EPOCH FROM (closed_at - entry_time))/3600
+        FROM paper_trades WHERE id = %s AND lifecycle_state = 'closed'
+    """, [trade_id])
+    row = cur.fetchone()
+    if not row:
+        return None
+    trade = dict(zip(['id', 'proposal_id', 'symbol', 'strategy_id', 'entry_price',
+                       'exit_price', 'stop_loss', 'target_1', 'entry_time', 'closed_at',
+                       'pnl', 'exit_reason', 'hold_hours'], row))
+
+    bars = fetch_post_exit_bars(trade['symbol'], trade['closed_at'])
+    verdicts = compute_recovery_verdicts(trade, bars)
+    lesson, tokens = generate_lesson_qwen3(trade, bars, verdicts)
+
+    cur.execute("""
+        INSERT INTO post_trade_price_analysis (
+            trade_id, proposal_id, symbol, strategy_id,
+            entry_price, exit_price, stop_loss, target_1,
+            price_15min_after, price_1h_after, price_4h_after, price_eod,
+            max_favorable_4h, max_adverse_4h,
+            stop_too_tight, would_have_recovered, held_too_short, held_too_long,
+            thesis_outcome, lesson_text, lesson_model, bars_fetched, fetch_errors, backfilled
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, %s, 'qwen3:14b', %s, %s, %s
+        ) ON CONFLICT (trade_id) DO UPDATE SET
+            price_15min_after=EXCLUDED.price_15min_after, price_1h_after=EXCLUDED.price_1h_after,
+            price_4h_after=EXCLUDED.price_4h_after, price_eod=EXCLUDED.price_eod,
+            stop_too_tight=EXCLUDED.stop_too_tight, would_have_recovered=EXCLUDED.would_have_recovered,
+            lesson_text=EXCLUDED.lesson_text, analyzed_at=NOW()
+        RETURNING id
+    """, [trade['id'], trade['proposal_id'], trade['symbol'], trade['strategy_id'],
+          trade['entry_price'], trade['exit_price'], trade['stop_loss'], trade['target_1'],
+          bars.get('price_15min'), bars.get('price_1h'), bars.get('price_4h'), bars.get('price_eod'),
+          bars.get('max_favorable_4h'), bars.get('max_adverse_4h'),
+          verdicts.get('stop_too_tight'), verdicts.get('would_have_recovered'),
+          verdicts.get('held_too_short'), verdicts.get('held_too_long'),
+          verdicts.get('thesis_outcome'), lesson, bars.get('bars_fetched', 0),
+          bars.get('error'), False])
+    rid = cur.fetchone()[0]
+    conn.commit()
+    log.info(f"Price recovery analysis written for trade {trade_id}: row {rid}")
+    return rid
+
+
 if __name__ == "__main__":
     main()
