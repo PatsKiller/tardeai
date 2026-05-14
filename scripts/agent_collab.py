@@ -508,6 +508,114 @@ def get_entity_intelligence(entity_id: str, conn) -> str:
             return ''
 
 
+def get_symbol_history_context(symbol: str, conn, days: int = 14) -> str:
+    """Return formatted prior-outcome context for a symbol.
+
+    Includes last 5 closed trades + any captured lessons from agent_intelligence_rules.
+    Designed for LLM prompt injection so agents see recent history before recommending.
+    """
+    import os
+    if os.getenv('AGENT_HISTORY_CONTEXT_ENABLED', 'true').lower() != 'true':
+        return ''
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT entry_time, closed_at, strategy_id,
+                   entry_price, exit_price, stop_loss,
+                   pnl, outcome_verdict, exit_reason,
+                   EXTRACT(EPOCH FROM (closed_at - entry_time))/3600 as hold_hours
+            FROM paper_trades
+            WHERE symbol = %s AND lifecycle_state = 'closed'
+              AND closed_at > NOW() - (%s || ' days')::interval
+            ORDER BY closed_at DESC LIMIT 5
+        """, [symbol, str(days)])
+        rows = cur.fetchall()
+        if not rows:
+            return ''
+
+        cur.execute("""
+            SELECT config, created_at FROM agent_intelligence_rules
+            WHERE (rule_key ILIKE %s OR config::text ILIKE %s)
+              AND created_at > NOW() - (%s || ' days')::interval
+            ORDER BY created_at DESC LIMIT 3
+        """, ['%' + symbol + '%', '%' + symbol + '%', str(days)])
+        lessons = cur.fetchall()
+
+        wins = sum(1 for r in rows if r[7] == 'WIN')
+        losses = sum(1 for r in rows if r[7] == 'LOSS')
+        lines = [f"=== PRIOR OUTCOMES FOR {symbol} (last {days} days) ===",
+                 f"Trades: {len(rows)} ({wins}W / {losses}L)", ""]
+        for entry_time, closed_at, strat, entry, exit_p, stop, pnl, verdict, exit_reason, hold_hr in rows:
+            pnl_f = float(pnl) if pnl else 0
+            pnl_str = f"+${pnl_f:.2f}" if pnl_f > 0 else f"-${abs(pnl_f):.2f}"
+            exit_str = f"${float(exit_p):.2f}" if exit_p else "N/A"
+            hold_str = f"{float(hold_hr):.1f}h" if hold_hr else "?"
+            lines.append(f"  {closed_at.strftime('%m-%d %H:%M')} {strat}: {verdict} {pnl_str} "
+                         f"(${float(entry):.2f}→{exit_str}, {hold_str}, {exit_reason})")
+        if lessons:
+            lines.append("")
+            lines.append("Captured lessons:")
+            for config, _ in lessons:
+                lesson_str = config.get('text', '') if isinstance(config, dict) else str(config)[:200]
+                if lesson_str:
+                    lines.append(f"  - {lesson_str[:200]}")
+        lines.append("Consider this history when evaluating new proposals.")
+        return "\n".join(lines) + "\n"
+    except Exception:
+        return ''
+
+
+def get_strategy_performance_context(strategy_id: str, conn, days: int = 30) -> str:
+    """Return formatted strategy-level performance context for prompt injection."""
+    import os
+    if os.getenv('AGENT_HISTORY_CONTEXT_ENABLED', 'true').lower() != 'true':
+        return ''
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE outcome_verdict = 'WIN') as wins,
+                   COUNT(*) FILTER (WHERE outcome_verdict = 'LOSS') as losses,
+                   SUM(pnl) FILTER (WHERE pnl > 0) as gross_profit,
+                   SUM(ABS(pnl)) FILTER (WHERE pnl < 0) as gross_loss,
+                   AVG(EXTRACT(EPOCH FROM (closed_at - entry_time))/3600) as avg_hold
+            FROM paper_trades
+            WHERE strategy_id = %s AND lifecycle_state = 'closed'
+              AND closed_at > NOW() - (%s || ' days')::interval
+        """, [strategy_id, str(days)])
+        row = cur.fetchone()
+        if not row or (row[0] or 0) + (row[1] or 0) == 0:
+            return ''
+        wins, losses, gross_profit, gross_loss, avg_hold = row
+        total = wins + losses
+        win_rate = wins / total if total > 0 else 0
+        gp = float(gross_profit or 0)
+        gl = float(gross_loss or 0)
+        pf = gp / gl if gl > 0 else None
+
+        cur.execute("""
+            SELECT exit_reason, COUNT(*), AVG(pnl)::numeric(10,2)
+            FROM paper_trades
+            WHERE strategy_id = %s AND lifecycle_state = 'closed'
+              AND outcome_verdict = 'LOSS' AND closed_at > NOW() - (%s || ' days')::interval
+            GROUP BY exit_reason ORDER BY COUNT(*) DESC LIMIT 3
+        """, [strategy_id, str(days)])
+        failures = cur.fetchall()
+
+        lines = [f"=== STRATEGY PERFORMANCE — {strategy_id} (last {days}d) ===",
+                 f"Trades: {total} ({wins}W/{losses}L) win rate {win_rate:.0%}"]
+        if pf is not None:
+            lines.append(f"Profit factor: {pf:.2f} (P${gp:.0f} / L${gl:.0f})")
+        if avg_hold:
+            lines.append(f"Avg hold: {float(avg_hold):.1f}h")
+        if failures:
+            lines.append("Top failure modes:")
+            for reason, cnt, avg_pnl in failures:
+                lines.append(f"  {reason}: {cnt} losses, avg ${avg_pnl}")
+        return "\n".join(lines) + "\n"
+    except Exception:
+        return ''
+
+
 def get_calibration_context(agent_name: str, conn) -> str:
     """
     Return this agent's recommendation accuracy for prompt injection.

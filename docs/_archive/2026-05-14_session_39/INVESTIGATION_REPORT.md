@@ -309,3 +309,21 @@ Each fix touches production trade execution paths. The fixes interact:
 - Tomorrow PM: agent calibration should show non-zero correct/wrong counts
 - This week: monitor audit_log for STOP_RECALCULATED events
 - This week: monitor audit_log for PROPOSAL_BLOCKED_COOLDOWN events
+
+---
+
+## SESSION 41 — FIX 6: AGENT PROMPT CONSUMPTION (2026-05-14)
+
+### What Fix 6 Adds
+- get_symbol_history_context(): prior outcomes block per symbol (last 14d, max 5 trades)
+- get_strategy_performance_context(): win rate, profit factor, failure modes
+- Wired into process_watchlist_agent_jobs.py and agent_watchlist_engine.py
+- Feature flag AGENT_HISTORY_CONTEXT_ENABLED=true (toggle off instantly)
+
+### Prompt Size Impact
+- Symbol history: 200-525 chars (51-131 tokens) per symbol
+- Strategy perf: 105-244 chars (26-61 tokens) per strategy
+- Well under budget — no truncation needed
+
+### The Full Learning Loop Is Now Operational
+  proposal → trade → outcome → verdict → chain → calibration → prompt

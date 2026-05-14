@@ -451,17 +451,19 @@ def run_agent_debate(symbol: str, trigger_title: str, trigger_id: int = 0,
         # Confluence + pipeline context
         confluence_ctx = ""
         prospects_ctx = ""
+        history_ctx = ""
         try:
-            from agent_collab import get_confluence_context, get_prospects_context
+            from agent_collab import get_confluence_context, get_prospects_context, get_symbol_history_context
             _conn = _get_conn()
             confluence_ctx = get_confluence_context(symbol, _conn, profile='swing')
             prospects_ctx = get_prospects_context(symbol, _conn)
+            history_ctx = get_symbol_history_context(symbol, _conn)
             _conn.close()
         except Exception:
             pass
 
         context_block = ""
-        ctx_parts = [x for x in [heat_ctx, session_ctx, confluence_ctx, prospects_ctx] if x]
+        ctx_parts = [x for x in [heat_ctx, session_ctx, confluence_ctx, prospects_ctx, history_ctx] if x]
         if ctx_parts:
             context_block = "\n" + "\n".join(ctx_parts) + "\n"
 
