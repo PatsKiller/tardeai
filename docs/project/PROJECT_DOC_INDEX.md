@@ -93,7 +93,8 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
-| 2026-05-14 | Phase 2A: Embedding A/B baseline & RAG discovery. Candidate qwen3-embedding:8b NOT INSTALLED. Baseline nomic-embed-text tested (768d, 23ms, 0 empty). 10 new Phase 2 docs. No production embedding/routing changes. |
+| 2026-05-14 | Documentation standards protocol created (DOCUMENTATION_STANDARDS.md). Export/backup and system facts regeneration scripts. Live counts: 341 tables, 397 scripts, 83 crons, 75 pages, 14786 embeddings. |
+| 2026-05-14 | Phase 2A complete: qwen3-embedding:8b pulled and tested. 4096d, 295ms. Baseline nomic 768d, 23ms. Phase 2B GO recommended. No production changes. |
 | 2026-05-14 | Session 35: Self-healing gap resolver scheduled (hourly+pre-overnight+weekly cron). Overnight dashboard v2 with parsed gemma3 outputs. Phase 1 finalized (quotas, health checks, reporter). Docs updated: MASTER §5.5, ARCH, CHEAT_SHEET, RESTORE_GUIDE. |
 | 2026-05-13 | Session 34 hotfix: overnight queue crash — _safe_cc_float for LLM range strings, stuck job reset, timeout 180→300s, RAG SQL ingested_at fix. 23:00 window safe. |
 | 2026-05-13 | Session 33: Strategy YAML patch — 22 strategies patched (vix_rules, technical_indicators, performance_context), 3 new strategies (fib_retracement_bounce, earnings_pre/post), 8 new screeners, earnings_catalyst deprecated, nightly perf cron. |
