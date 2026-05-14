@@ -1543,3 +1543,31 @@ Tables: 344 | Scripts: 401 | Crons: 85 | Pages: 76 | Embeddings: 14,791
 
 ### Iron Rule
 $1,191,263 / 43 positions — no broker, holdings, execution changes
+
+---
+
+## Phase 2C: Hybrid Retrieval Pilot — 2026-05-14 11:02 ET
+
+### Pilot
+- `hybrid_rag_retrieval_pilot.py` queries both nomic (14,792) + qwen3 (1,000) indexes
+- 40 queries, weighted reranking, merge/dedupe
+
+### Results
+| Metric | Value |
+|--------|-------|
+| Verdict | HYBRID_MARGINAL |
+| Consensus (both) | 2.5% |
+| Nomic-only | 41% |
+| Qwen3-only | 56.5% |
+| Source diversity | 1.88 types/query |
+| Latency | 1,713ms total |
+| Empty | 0/40 |
+
+### Recommendation
+Expand qwen3 index to 5,000+ docs. Re-evaluate hybrid with matched coverage.
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Iron Rule
+$1,191,538 / 43 positions — no production changes
