@@ -1,7 +1,7 @@
 # Phase 2 — RAG Embedding A/B Testing
 
-**Status:** Phase 2C COMPLETE. HYBRID_MARGINAL — expand qwen3 index to 5,000+ before offline integration.
-**Last commit:** (Phase 2C)
+**Status:** Phase 2B-Expanded COMPLETE. qwen3 index at 4,897 docs. QWEN3_BETTER verdict. Recommend Phase 2C offline integration pilot.
+**Last commit:** (Phase 2B-Expanded, 2026-05-14)
 **Owner:** John W. Whiting
 
 ## What This Is
@@ -33,7 +33,7 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 9. `v4_1_phase2c_hybrid_retrieval_design.md` — design only, pending approval
 10. `v4_1_phase2d_embedding_promotion_checklist.md` — 14 gates, blocked
 
-## Phase 2B Results
+## Phase 2B Results (Initial — 1,000 docs)
 
 - 1,000 docs indexed with qwen3-embedding:8b in parallel table
 - 40-query comparison: HYBRID_RECOMMENDED
@@ -42,18 +42,31 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 - Latency: qwen3 321ms vs nomic 28ms (11x slower)
 - See `v4_1_phase2b_evaluation_report.md` for full analysis
 
-## Phase 2C Results
+## Phase 2B-Expanded Results (4,897 docs — 2026-05-14)
+
+- Expanded from 1,000 → 4,897 docs across 13 source types
+- 3,897 new embeddings, 0 failures, 267ms avg latency, 18 min runtime
+- **Verdict upgraded: QWEN3_BETTER**
+- Qwen3 similarity: 0.647 vs nomic 0.612 (+6.2%)
+- Source diversity: 3.0 vs nomic 1.4 (+114%)
+- Consensus still very low (0.5%) — models find genuinely different documents
+- Hybrid source diversity: 2.73 types/query (up from 1.88)
+- Hybrid latency: 6.9s (acceptable for offline only)
+- See `v4_1_phase2b2_expand_5000_evaluation_report.md` for full analysis
+
+## Phase 2C Results (Initial — with 1,000 docs)
 
 - Hybrid pilot ran 40 queries merging nomic (14,792 docs) + qwen3 (1,000 docs)
 - Verdict: HYBRID_MARGINAL — qwen3 finds 56.5% unique items but consensus only 2.5%
 - Source diversity: 1.88 types/query (vs nomic 1.4, qwen3 2.1)
 - Latency: hybrid total 1.7s
-- Limiting factor: qwen3 index size (1,000 vs 14,792)
 - See `v4_1_phase2c_evaluation_report.md` for full analysis
 
 ## Next Steps (Operator Decision Required)
 
-> Expand Phase 2B qwen3 parallel index to 5,000 documents.
+> Recommend: Begin Phase 2C offline integration pilot for deep overnight jobs only.
+> qwen3-embedding:8b demonstrates quality advantage. Hybrid adds source diversity.
+> Phase 2D production promotion remains BLOCKED.
 
 ## Phase 2 Gates
 
@@ -62,10 +75,12 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 | 1 | Candidate model installed | DONE |
 | 2 | Baseline established (nomic) | DONE |
 | 3 | Candidate A/B run | DONE |
-| 4 | Parallel index built | DONE (1,000 docs) |
-| 5 | Retrieval comparison | DONE (HYBRID_RECOMMENDED) |
-| 6 | Latency delta measured | DONE (321ms vs 28ms) |
-| 7-14 | (See promotion checklist) | BLOCKED |
+| 4 | Parallel index built (1K) | DONE |
+| 4b | Parallel index expanded (5K) | DONE (4,897 docs) |
+| 5 | Retrieval comparison | DONE (QWEN3_BETTER) |
+| 6 | Latency delta measured | DONE (274ms vs 28ms) |
+| 7 | Offline integration pilot | PENDING operator approval |
+| 8-14 | (See promotion checklist) | BLOCKED |
 
 ## Safety Invariants
 
