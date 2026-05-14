@@ -1,0 +1,25 @@
+{
+  "phase": "2C_offline_integration",
+  "timestamp": "2026-05-14T13:08:47Z",
+  "pilot_size": 5,
+  "succeeded": 5,
+  "failed": 0,
+  "total_runtime_min": 4.8,
+  "model": "gemma3-overnight",
+  "hybrid_rag_enabled": true,
+  "hybrid_rag_fallback_used": true,
+  "hybrid_rag_fallback_reason": "qwen3-embedding:8b not loaded — qwen3:14b occupying GPU",
+  "jobs": [
+    {"id": 93, "job_type": "manual_journal_review", "symbol": "#3", "sources": 3, "nomic": 10, "qwen3": 0, "consensus": 0, "rag_lat_ms": 298, "gemma_runtime_s": 51.5, "result_id": 294},
+    {"id": 96, "job_type": "strategy_classification", "symbol": "BBAI", "sources": 6, "nomic": 10, "qwen3": 0, "consensus": 0, "rag_lat_ms": 2318, "gemma_runtime_s": 49.2, "result_id": 295},
+    {"id": 97, "job_type": "strategy_classification", "symbol": "BCRX", "sources": 1, "nomic": 10, "qwen3": 0, "consensus": 0, "rag_lat_ms": 2296, "gemma_runtime_s": 64.8, "result_id": 296},
+    {"id": 94, "job_type": "strategy_classification", "symbol": "ARBB", "sources": 5, "nomic": 10, "qwen3": 0, "consensus": 0, "rag_lat_ms": 2260, "gemma_runtime_s": 67.8, "result_id": 297},
+    {"id": 95, "job_type": "strategy_classification", "symbol": "ASTS", "sources": 6, "nomic": 10, "qwen3": 0, "consensus": 0, "rag_lat_ms": 2244, "gemma_runtime_s": 44.0, "result_id": 298}
+  ],
+  "avg_rag_latency_ms": 1883,
+  "avg_source_diversity": 4.2,
+  "avg_gemma_runtime_s": 55.5,
+  "production_changed": false,
+  "cron_changed": false,
+  "env_changed": false
+}
