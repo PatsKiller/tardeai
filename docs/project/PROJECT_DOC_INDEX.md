@@ -83,6 +83,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Session 35: Self-healing gap resolver scheduled (hourly+pre-overnight+weekly cron). Overnight dashboard v2 with parsed gemma3 outputs. Phase 1 finalized (quotas, health checks, reporter). Docs updated: MASTER §5.5, ARCH, CHEAT_SHEET, RESTORE_GUIDE. |
 | 2026-05-13 | Session 34 hotfix: overnight queue crash — _safe_cc_float for LLM range strings, stuck job reset, timeout 180→300s, RAG SQL ingested_at fix. 23:00 window safe. |
 | 2026-05-13 | Session 33: Strategy YAML patch — 22 strategies patched (vix_rules, technical_indicators, performance_context), 3 new strategies (fib_retracement_bounce, earnings_pre/post), 8 new screeners, earnings_catalyst deprecated, nightly perf cron. |
 | 2026-05-13 | SESSION 31 END (55 commits): Strategy intelligence API, performance feedback in agent prompts, YAML audit exported. LLM context engine, data dictionary, broker source of truth, time stop, proposal card rebuild, RSI gate, 27 screeners. 4 trades closed, +$28.26. |

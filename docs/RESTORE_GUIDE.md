@@ -69,6 +69,11 @@ Current crontab has ~46 entries. Key ones:
 - `0 20 * * 1-5` — Overnight batch + SEC Form 4 ingestion
 - `0 21 * * 1-5` — Auto-research
 - `30 9 * * 0` — Watchlist hygiene
+- `0 23 * * *` — Deep overnight LLM window (gemma3-overnight)
+- `0 16 * * 5` — Friday extended deep LLM window (200 jobs)
+- `0 10-16 * * 1-5` — Data gap resolver (hourly market hours)
+- `0 18 * * 1-5` — Data gap resolver pre-overnight sweep
+- `0 8 * * 0` — Data gap resolver weekly audit
 
 Export: `crontab -l > crontab_backup.txt`
 
@@ -116,6 +121,10 @@ Critical tables to verify after restore:
 - `decision_outcomes` — 88 tracked
 - `daily_system_metrics` — trending data
 - `sec_form4` — 4 insider filings
+- `deep_overnight_llm_queue` — overnight gemma3 job queue
+- `deep_overnight_llm_results` — gemma3 output store
+- `data_gap_registry` — gaps detected from gemma3 overnight outputs
+- `gap_resolution_outcomes` — measures whether resolutions improved output
 - `market_quotes` — yfinance data
 - `fundamental_data` — Alpha Vantage metrics
 

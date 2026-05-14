@@ -493,6 +493,54 @@ The curator stores these in `topic_monitor.llm_generated_queries` and auto-runs 
 
 ---
 
+## 5.5 Self-Healing Data Gap Orchestration
+
+The system identifies its own knowledge gaps and dispatches workers to close them autonomously before the next overnight intelligence run.
+
+### Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `data_gap_registry` table | PostgreSQL | Structured tracking of every detected gap |
+| `_extract_and_register_gaps()` | `run_deep_overnight_llm_queue.py` | Parses every gemma3 output for explicit `data_gaps` + 7 implicit patterns |
+| `data_gap_resolver.py` | `scripts/` | Hourly worker that dispatches resolution actions |
+| `gap_resolution_outcomes` table | PostgreSQL | Measures whether resolutions improved next-day output |
+
+### Gap Types Detected
+
+| Type | Trigger | Resolution Action |
+|------|---------|-------------------|
+| `missing_div_yield` | "dividend yield is none" in response | Force enrichment refresh |
+| `missing_sector` | "sector unknown" or "sector: none" | Force enrichment refresh |
+| `missing_market_data` | "rvol unavailable", "rsi unavailable" | Force enrichment refresh |
+| `missing_catalyst` | "needs more data", "wait for catalyst" | Dispatch Maria research job |
+| `missing_setup_details` | "setup information missing" | Reconstruct from paper_trades + proposals |
+| `missing_thesis` | "original thesis unknown" | Recover from paper_trade_proposals |
+| `stale_news` | "no recent news" | Trigger news ingestion priority refresh |
+
+### Cron Schedule
+
+| Time | Frequency | Purpose |
+|------|-----------|---------|
+| 10:00–16:00 ET | Hourly M–F | Close gaps during market hours |
+| 18:00 ET | Daily M–F | Pre-overnight sweep before 23:00 queue |
+| Sun 08:00 | Weekly | Audit persistent unresolvable gaps |
+
+### Workflow
+
+```
+gemma3 output → _extract_and_register_gaps() → data_gap_registry (open)
+    → hourly resolver dispatches: enrichment / Maria research / thesis recovery
+    → gap marked 'resolved' → source job re-queued at P1:80
+    → next overnight produces better answer with enriched data
+```
+
+### Dashboard Surface
+
+`/v2/overnight` Data Gap Intelligence section: open/enriching/resolved/abandoned counts with per-type symbol breakdown. API: `gap_stats` and `gap_summary` in `/api/v2/overnight-dashboard`.
+
+---
+
 ## 6. External Research & Signal Ingestion
 
 ### Active Data Sources

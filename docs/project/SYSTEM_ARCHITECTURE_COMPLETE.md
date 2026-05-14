@@ -61,7 +61,8 @@ Trade AI v12 is a single-operator portfolio intelligence and paper trading syste
 | OpenClaw Gateway | Node.js | Port 18789 | Conversational agents (Maria, Steph, Aegis, Alex) |
 | Telegram Bot | Bot API | tradeai_bigjohn718_bot | Alerts, commands, approvals |
 | GOG (Gmail CLI) | OAuth + CLI | ~/.local/bin/gog | Daily email digest |
-| Cron Scheduler | crontab | 152+ entries | All scheduled automation |
+| Cron Scheduler | crontab | 155+ entries | All scheduled automation |
+| Data Gap Resolver | data_gap_resolver.py | Hourly+daily+weekly | Self-healing intelligence loop |
 
 ### External Data Providers
 

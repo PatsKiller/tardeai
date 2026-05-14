@@ -1415,3 +1415,26 @@ $1,190,957 / 43 positions — no broker, holdings, execution, or embedding chang
 
 ### Iron Rule
 $1,191,013 / 43 positions — no broker, holdings, execution, or embedding changes
+
+---
+
+## Session 35 — Gap Resolver Scheduling + Documentation — 2026-05-14 09:49 ET
+
+**Cron entries deployed:**
+- `0 10-16 * * 1-5` — hourly market-hours gap resolution
+- `0 18 * * 1-5` — pre-overnight sweep
+- `0 8 * * 0` — weekly audit
+
+**Documentation updated (7 files):**
+- MASTER_SYSTEM_DOCUMENTATION.md — new §5.5 Self-Healing Data Gap Orchestration
+- SYSTEM_ARCHITECTURE_COMPLETE.md — background processes + cron count 152→155
+- PROJECT_DOC_INDEX.md — Session 35 change log entry
+- CHEAT_SHEET.md — gap resolver + health check + queue reporter quick refs
+- RESTORE_GUIDE.md — cron entries + critical tables
+- v4_1_deployment_log.md — this entry
+- SYSTEM_FACTS_LATEST.md — Session 35 facts
+
+**Verification:** 3 cron entries in crontab, resolver exits 0, logs created.
+
+### Iron Rule
+$1,190,653 / 43 positions — no broker, holdings, execution, or embedding changes
