@@ -1,6 +1,6 @@
 # System Facts (Latest)
 
-Generated: 2026-05-14 10:26 EDT
+Generated: 2026-05-14 10:52 EDT
 Source: Live introspection on ms01-openclaw
 Regeneration: `bash scripts/regenerate_system_facts.sh`
 
@@ -10,23 +10,23 @@ Regeneration: `bash scripts/regenerate_system_facts.sh`
 
 | Metric | Value |
 |--------|-------|
-| Portfolio value | $1,191,230.75 |
-| PostgreSQL tables | 341 |
-| Python scripts | 397 |
-| Active cron entries | 83 |
-| React pages | 75 |
+| Portfolio value | $1,191,262.55 |
+| PostgreSQL tables | 344 |
+| Python scripts | 401 |
+| Active cron entries | 85 |
+| React pages | 76 |
 | Strategy YAMLs | 26 |
-| Content embeddings | 14786 |
+| Content embeddings | 14791 |
 
 ---
 
 ## Recent Commits
 
+- a0de86d feat: three-tier alert architecture — kill Telegram fatigue
+- 37a0801 Phase 2B limited qwen3 parallel embedding index test
+- a3c1671 docs: place Phase 2 embedding A/B docs in llm_fleet/phase2_embedding_ab/
 - 9b99389 docs: systematic documentation protocol + export utilities
 - bd5a1de Phase 2A: qwen3-embedding:8b pulled and A/B baseline tested
-- 5cf141b Phase 2A embedding A/B baseline and RAG discovery
-- 4f13d9a docs: schedule data gap resolver + canonical doc updates
-- 6f448cb docs: update for self-healing gap orchestration
 
 ---
 

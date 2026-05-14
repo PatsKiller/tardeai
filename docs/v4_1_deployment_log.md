@@ -1518,3 +1518,28 @@ qwen3 has 50% better source diversity. Hybrid approach combining both recommende
 
 ### Iron Rule
 $1,191,288 / 43 positions — no production embedding or routing changes
+
+---
+
+## Three-Tier Alert Architecture — 2026-05-14 10:50 ET
+
+### Changes
+- `alert_dispatcher.py` enhanced with DIGEST + DASHBOARD_ONLY tiers, 17 classified alert types
+- `send_alert_digest.py` created — morning/evening consolidated Telegram briefs
+- `alert_dispatch_log` + `digest_queue` tables created
+- `/api/v2/alerts-dashboard` endpoint + `/v2/alerts` React page
+- 2 cron entries: 8 AM morning digest, 4 PM evening digest
+
+### Tier Rules
+URGENT (7): stop_triggered, iris_block, credential_expired, api_credits_depleted, pipeline_failure, proposal_approved_ready, sector_event
+DIGEST (6): premarket_catalyst, topic_ingestion, rag_curation_summary, covered_call_candidates, iris_library_audit, new_go_normal
+DASHBOARD_ONLY (4): youtube_backfill_progress, pipeline_run_ok, duplicate_recap, go_confirmation_repeat
+
+### Verification
+Test dispatches: dashboard_only and queued_morning_digest both route correctly. API returns live data.
+
+### Live System Facts (introspected)
+Tables: 344 | Scripts: 401 | Crons: 85 | Pages: 76 | Embeddings: 14,791
+
+### Iron Rule
+$1,191,263 / 43 positions — no broker, holdings, execution changes

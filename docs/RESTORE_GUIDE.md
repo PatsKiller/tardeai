@@ -74,6 +74,8 @@ Current crontab has ~46 entries. Key ones:
 - `0 10-16 * * 1-5` — Data gap resolver (hourly market hours)
 - `0 18 * * 1-5` — Data gap resolver pre-overnight sweep
 - `0 8 * * 0` — Data gap resolver weekly audit
+- `0 8 * * 1-5` — Alert digest morning brief
+- `0 16 * * 1-5` — Alert digest evening brief
 
 Export: `crontab -l > crontab_backup.txt`
 
@@ -125,6 +127,9 @@ Critical tables to verify after restore:
 - `deep_overnight_llm_results` — gemma3 output store
 - `data_gap_registry` — gaps detected from gemma3 overnight outputs
 - `gap_resolution_outcomes` — measures whether resolutions improved output
+- `alert_dispatch_log` — three-tier alert classifications and dedup decisions
+- `digest_queue` — aggregated alerts pending morning/evening digest
+- `content_embeddings_qwen3_test` — Phase 2B parallel embedding index (test only)
 - `market_quotes` — yfinance data
 - `fundamental_data` — Alpha Vantage metrics
 

@@ -329,3 +329,31 @@ crontab -l | grep data_gap_resolver
 # Queue status report
 .venv/bin/python scripts/report_deep_overnight_queue_status.py --summary
 ```
+
+---
+
+## Alert Dispatcher
+
+```bash
+# Check dispatch volume last 24h
+PGPASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2) \
+psql -h localhost -U trade_ai -d trade_ai -c "
+SELECT action_taken, COUNT(*) FROM alert_dispatch_log
+WHERE created_at > NOW() - INTERVAL '24 hours'
+GROUP BY 1 ORDER BY 2 DESC;"
+
+# See suppressed alerts
+PGPASSWORD=$(grep '^DB_PASSWORD=' .env | cut -d= -f2) \
+psql -h localhost -U trade_ai -d trade_ai -c "
+SELECT alert_type, symbol, COUNT(*) FROM alert_dispatch_log
+WHERE action_taken IN ('suppressed_dedup','dashboard_only')
+  AND created_at > NOW() - INTERVAL '24 hours'
+GROUP BY 1,2 ORDER BY 3 DESC LIMIT 10;"
+
+# Send digest manually
+python3 scripts/send_alert_digest.py morning
+python3 scripts/send_alert_digest.py evening
+
+# View dashboard
+# http://192.168.50.16:7777/v2/alerts
+```
