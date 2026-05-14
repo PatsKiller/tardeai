@@ -15643,7 +15643,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
-    # ── Overnight Intelligence Dashboard ────────────────────────────────────
+    # ── Overnight Intelligence Dashboard v2 ─────────────────────────────────
     if base_path == "/api/v2/overnight-dashboard":
         if method == "GET":
             try:
@@ -15651,11 +15651,153 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/overnight-grade":
+        if method == "POST":
+            try:
+                b = body or {}
+                result_id = b.get("result_id")
+                grade = b.get("grade", "")
+                if not result_id or grade not in ("CORRECT", "HALLUCINATION", "PARTIAL", "PENDING"):
+                    return 400, {"ok": False, "error": "result_id and valid grade required"}
+                _db_write("""UPDATE overnight_actionable_outcomes
+                             SET calibration_grade=%s, graded_by='dashboard', graded_at=NOW()
+                             WHERE result_id=%s""", (grade, result_id))
+                return 200, {"ok": True, "graded": result_id}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/overnight-retry" or (base_path.startswith("/api/v2/overnight-retry/") and method == "POST"):
+        if method == "POST":
+            try:
+                # Extract queue_id from URL or body
+                qid = None
+                if "/" in base_path and base_path.count("/") > 3:
+                    qid = base_path.split("/")[-1]
+                if not qid:
+                    qid = (body or {}).get("queue_id")
+                if not qid:
+                    return 400, {"ok": False, "error": "queue_id required"}
+                _db_write("""UPDATE deep_overnight_llm_queue
+                             SET status='pending', attempt_count=0, last_error=NULL
+                             WHERE id=%s AND status='failed'""", (int(qid),))
+                return 200, {"ok": True, "requeued": int(qid)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
     return None
 
 
+# ── Gemma3 output parser ──────────────────────────────────────────────────
+
+def _parse_trade_review(fj):
+    """Parse closed_trade_review findings_json into normalized fields.
+    Handles both snake_case and Title Case formats from gemma3."""
+    if not fj or not isinstance(fj, dict):
+        return {}
+    # Normalize: some results use 'analysis' sub-key, others are flat
+    analysis = fj.get("analysis", {})
+    flat = {k.lower().replace(" ", "_").replace("/", "_"): v for k, v in fj.items()}
+    a = {k.lower().replace(" ", "_").replace("/", "_"): v for k, v in analysis.items()} if analysis else {}
+    merged = {**flat, **a}
+
+    details = fj.get("trade_details", {})
+    hist = fj.get("historical_performance", {})
+
+    return {
+        "grade": merged.get("grade") or None,
+        "outcome": merged.get("outcome_assessment", ""),
+        "lesson": merged.get("lessons_learned", merged.get("key_lesson", "")),
+        "risk_mgmt": merged.get("risk_management", ""),
+        "entry_exit": merged.get("entry_exit_quality", merged.get("entry_exit_quality", "")),
+        "pattern": merged.get("pattern_match", ""),
+        "pnl": details.get("pnl_dollars") if details else None,
+        "pnl_pct": details.get("pnl_percent") if details else None,
+        "hold_days": details.get("hold_days") if details else None,
+        "stop_used": details.get("stop_used") if details else None,
+        "entry_price": details.get("entry_price") if details else None,
+        "exit_price": details.get("exit_price") if details else None,
+        "total_trades": hist.get("trades") if hist else None,
+        "win_count": hist.get("wins") if hist else None,
+    }
+
+
+def _parse_strategy_classification(fj, symbol):
+    """Parse strategy_classification findings_json into normalized fields.
+    Handles variable top-level key structures from gemma3."""
+    if not fj or not isinstance(fj, dict):
+        return {}
+    # Find the review object — try nested first, then flat top-level
+    review = None
+    # Check nested structures: deep_review, strategy_review, or symbol-named key
+    for k, v in fj.items():
+        if isinstance(v, dict) and any(sk for sk in v if "CLASSIFICATION" in sk.upper() or "EVIDENCE" in sk.upper() or "RECOMMENDATION" in sk.upper()):
+            review = v
+            break
+    if not review:
+        review = fj.get("deep_review", fj.get("strategy_review"))
+    # If no nested key, the top-level may be the review itself
+    if not review or not isinstance(review, dict):
+        if any("CLASSIFICATION" in k.upper() or "RECOMMENDATION" in k.upper() for k in fj):
+            review = fj
+        else:
+            return {}
+
+    # Normalize keys — strip leading numbers like "1. " or "4. "
+    import re as _re
+    norm = {}
+    for k, v in review.items():
+        kl = _re.sub(r'^\d+[\.\)]\s*', '', k).lower().strip()
+        if "classification" in kl and "assessment" in kl:
+            norm["classification"] = v
+        elif "evidence" in kl:
+            norm["evidence"] = v
+        elif "recommendation" in kl:
+            norm["recommendation"] = v
+        elif "thesis" in kl:
+            norm["thesis_intact"] = v
+        elif "risk" in kl and "flag" in kl:
+            norm["risks"] = v
+        elif "alternative" in kl:
+            norm["alternatives"] = v
+        elif "current" in kl and "strategy" in kl:
+            norm["current_strategy"] = v
+
+    return norm
+
+
+def _parse_growth_scan(fj):
+    """Parse growth_strategy_scan findings_json — extract individual candidates from batch."""
+    if not fj or not isinstance(fj, dict):
+        return []
+    # Try direct candidates array
+    candidates = fj.get("candidates", [])
+    if candidates and isinstance(candidates, list):
+        return candidates
+    # Try raw_response with embedded JSON (often wrapped in ```json fences)
+    raw = fj.get("raw_response", "")
+    if raw and isinstance(raw, str):
+        # Strip markdown code fences
+        clean = raw.replace("```json", "").replace("```", "").strip()
+        try:
+            parsed = json.loads(clean)
+            return parsed.get("candidates", [])
+        except json.JSONDecodeError:
+            # Truncated JSON — extract individual candidate objects
+            import re as _re
+            items = []
+            for m in _re.finditer(r'\{\s*"symbol"\s*:\s*"([^"]+)"[^}]*?"strategy"\s*:\s*"([^"]*)"[^}]*?"fit_score"\s*:\s*(\d+)', clean):
+                items.append({"symbol": m.group(1), "strategy": m.group(2), "fit_score": int(m.group(3)), "thesis": ""})
+            # Try extracting thesis too
+            for m in _re.finditer(r'\{\s*"symbol"\s*:\s*"([^"]+)".*?"thesis"\s*:\s*"([^"]*)"', clean):
+                for item in items:
+                    if item["symbol"] == m.group(1):
+                        item["thesis"] = m.group(2)
+            return items
+    return []
+
+
 def _overnight_dashboard():
-    """Single-shot overnight intelligence report — everything from the last window."""
+    """Single-shot overnight intelligence report v2 — with parsed gemma3 outputs."""
     from datetime import datetime as _dt
 
     # 1. Window summary
@@ -15699,12 +15841,14 @@ def _overnight_dashboard():
         ORDER BY generated_at DESC LIMIT 1
     """, fetch="one") or {}
 
-    # 4. Recovery watch verdicts
-    recovery_verdicts = _db_query("""
-        SELECT q.symbol, r.summary,
+    # 4. Recovery watch verdicts — detect template fallback
+    recovery_raw = _db_query("""
+        SELECT q.id as queue_id, r.id as result_id,
+               q.symbol, r.summary,
                r.reentry_verdict as verdict,
                r.findings_json->>'recommended_action' as reentry_signal,
                r.findings_json->>'confidence' as confidence,
+               r.findings_json->>'key_factor' as key_factor,
                r.created_at
         FROM deep_overnight_llm_queue q
         JOIN deep_overnight_llm_results r ON r.queue_id = q.id
@@ -15712,35 +15856,73 @@ def _overnight_dashboard():
           AND r.created_at > NOW() - INTERVAL '24 hours'
         ORDER BY r.created_at DESC LIMIT 20
     """) or []
+    # Detect template fallback: all identical verdicts + signals + confidence
+    recovery_verdicts = []
+    verdict_set = set()
+    for rv in recovery_raw:
+        d = {k: _json_clean(v) for k, v in rv.items()}
+        sig = f"{d.get('verdict')}|{d.get('reentry_signal')}|{d.get('confidence')}"
+        verdict_set.add(sig)
+        recovery_verdicts.append(d)
+    template_fallback = len(verdict_set) == 1 and len(recovery_verdicts) > 2
 
-    # 5. Closed trade reviews
-    trade_reviews = _db_query("""
-        SELECT q.symbol, q.trade_id,
+    # 5. Closed trade reviews — parsed from findings_json
+    trade_raw = _db_query("""
+        SELECT q.id as queue_id, r.id as result_id,
+               q.symbol, q.trade_id,
+               r.findings_json,
                r.summary,
-               r.findings_json->'analysis'->>'grade' as grade,
-               r.findings_json->'analysis'->>'key_lesson' as key_lesson,
-               r.findings_json->'analysis'->>'outcome_assessment' as outcome,
                r.created_at
         FROM deep_overnight_llm_queue q
         JOIN deep_overnight_llm_results r ON r.queue_id = q.id
         WHERE q.job_type = 'closed_trade_review'
           AND r.created_at > NOW() - INTERVAL '24 hours'
-        ORDER BY r.created_at DESC LIMIT 20
+        ORDER BY r.created_at DESC LIMIT 30
     """) or []
+    trade_reviews = []
+    for tr in trade_raw:
+        parsed = _parse_trade_review(tr.get("findings_json"))
+        trade_reviews.append({
+            "queue_id": tr.get("queue_id"),
+            "result_id": tr.get("result_id"),
+            "symbol": tr.get("symbol"),
+            "trade_id": tr.get("trade_id"),
+            "grade": parsed.get("grade"),
+            "outcome": parsed.get("outcome", ""),
+            "lesson": parsed.get("lesson", ""),
+            "risk_mgmt": parsed.get("risk_mgmt", ""),
+            "pnl": _json_clean(parsed.get("pnl")),
+            "pnl_pct": _json_clean(parsed.get("pnl_pct")),
+            "hold_days": parsed.get("hold_days"),
+            "stop_used": parsed.get("stop_used"),
+            "created_at": _json_clean(tr.get("created_at")),
+        })
 
-    # 6. Strategy classifications (held positions)
-    strategy_class = _db_query("""
-        SELECT q.symbol, r.summary,
-               r.findings_json AS classification_data,
-               r.created_at
+    # 6. Strategy classifications — parsed
+    strat_raw = _db_query("""
+        SELECT q.id as queue_id, r.id as result_id,
+               q.symbol, r.findings_json, r.created_at
         FROM deep_overnight_llm_queue q
         JOIN deep_overnight_llm_results r ON r.queue_id = q.id
         WHERE q.job_type = 'strategy_classification'
           AND r.created_at > NOW() - INTERVAL '24 hours'
         ORDER BY r.created_at DESC LIMIT 30
     """) or []
+    strategy_class = []
+    for sc in strat_raw:
+        parsed = _parse_strategy_classification(sc.get("findings_json"), sc.get("symbol"))
+        strategy_class.append({
+            "symbol": sc.get("symbol"),
+            "classification": parsed.get("classification", ""),
+            "recommendation": parsed.get("recommendation", ""),
+            "thesis_intact": parsed.get("thesis_intact", ""),
+            "evidence": parsed.get("evidence", ""),
+            "current_strategy": parsed.get("current_strategy", ""),
+            "risks": parsed.get("risks", ""),
+            "created_at": _json_clean(sc.get("created_at")),
+        })
 
-    # 7. RAG content curation results
+    # 7. RAG content curation — with per-ticker breakdown
     rag_curation = _db_query("""
         SELECT q.symbol,
                r.curation_verdict as verdict,
@@ -15753,6 +15935,19 @@ def _overnight_dashboard():
           AND r.created_at > NOW() - INTERVAL '24 hours'
         ORDER BY r.created_at DESC LIMIT 25
     """) or []
+    # Build per-ticker RAG breakdown
+    rag_by_ticker = {}
+    for r in rag_curation:
+        sym = r.get("symbol") or "unknown"
+        v = (r.get("verdict") or "").upper()
+        if sym not in rag_by_ticker:
+            rag_by_ticker[sym] = {"approved": 0, "rejected": 0, "flagged": 0}
+        if "APPROVE" in v:
+            rag_by_ticker[sym]["approved"] += 1
+        elif "REJECT" in v:
+            rag_by_ticker[sym]["rejected"] += 1
+        else:
+            rag_by_ticker[sym]["flagged"] += 1
 
     # 8. Covered call scoring
     covered_calls = _db_query("""
@@ -15768,11 +15963,12 @@ def _overnight_dashboard():
         ORDER BY r.cc_yield_estimate DESC NULLS LAST LIMIT 15
     """) or []
 
-    # 9. Strategy opportunity / growth scan
-    opportunity_scan = _db_query("""
+    # 9. Strategy opportunity / growth scan — parse individual candidates
+    opp_raw = _db_query("""
         SELECT q.symbol, r.summary,
                r.findings_json,
                r.recommendations_json,
+               q.job_type,
                r.created_at
         FROM deep_overnight_llm_queue q
         JOIN deep_overnight_llm_results r ON r.queue_id = q.id
@@ -15780,10 +15976,31 @@ def _overnight_dashboard():
           AND r.created_at > NOW() - INTERVAL '24 hours'
         ORDER BY r.created_at DESC LIMIT 15
     """) or []
+    opportunity_scan = []
+    for opp in opp_raw:
+        candidates = _parse_growth_scan(opp.get("findings_json"))
+        if candidates:
+            for c in candidates:
+                opportunity_scan.append({
+                    "symbol": c.get("symbol", opp.get("symbol")),
+                    "strategy": c.get("strategy", ""),
+                    "score": c.get("fit_score"),
+                    "thesis": c.get("thesis", ""),
+                    "timeframe": c.get("timeframe", ""),
+                    "created_at": _json_clean(opp.get("created_at")),
+                })
+        else:
+            opportunity_scan.append({
+                "symbol": opp.get("symbol"),
+                "strategy": "",
+                "score": None,
+                "thesis": "",
+                "created_at": _json_clean(opp.get("created_at")),
+            })
 
     # 10. Failed jobs
     failed_jobs = _db_query("""
-        SELECT job_type, symbol, attempt_count,
+        SELECT id, job_type, symbol, attempt_count,
                last_error, started_at
         FROM deep_overnight_llm_queue
         WHERE status = 'failed'
@@ -15814,19 +16031,87 @@ def _overnight_dashboard():
         ORDER BY signal_score DESC NULLS LAST LIMIT 15
     """) or []
 
+    # 13. Duplicate detection
+    duplicates = _db_query("""
+        SELECT q.symbol, q.job_type, COUNT(*) as cnt
+        FROM deep_overnight_llm_queue q
+        JOIN deep_overnight_llm_results r ON r.queue_id = q.id
+        WHERE r.created_at > NOW() - INTERVAL '24 hours'
+        GROUP BY q.symbol, q.job_type
+        HAVING COUNT(*) > 1
+        ORDER BY COUNT(*) DESC LIMIT 20
+    """) or []
+
+    # 14. Data quality alerts
+    data_quality = []
+    if template_fallback:
+        data_quality.append({
+            "severity": "high",
+            "section": "recovery_watch",
+            "message": f"All {len(recovery_verdicts)} recovery verdicts are identical — likely template fallback, not real analysis",
+        })
+    # Check for reviews with no parsed grades
+    no_grade = sum(1 for tr in trade_reviews if not tr.get("grade") and not tr.get("outcome"))
+    if no_grade > 0:
+        data_quality.append({
+            "severity": "medium",
+            "section": "trade_reviews",
+            "message": f"{no_grade} of {len(trade_reviews)} trade reviews have no parsed grade or outcome",
+        })
+    # Duplicate alert
+    high_dupes = [d for d in duplicates if (d.get("cnt") or 0) > 3]
+    if high_dupes:
+        syms = ", ".join(f"{d['symbol']}({d['cnt']}x)" for d in high_dupes[:5])
+        data_quality.append({
+            "severity": "medium",
+            "section": "duplicates",
+            "message": f"High duplicate counts: {syms}",
+        })
+    # Check for failed jobs
+    if failed_jobs:
+        data_quality.append({
+            "severity": "high" if len(failed_jobs) > 3 else "low",
+            "section": "failed_jobs",
+            "message": f"{len(failed_jobs)} job(s) failed",
+        })
+
+    # 15. Actionable summary — signals the operator should act on
+    actionable = []
+    # Recovery re-entry signals (only if not template fallback)
+    if not template_fallback:
+        for rv in recovery_verdicts:
+            sig = (rv.get("reentry_signal") or "").upper()
+            if sig in ("RE_ENTER", "BUY", "REENTER"):
+                actionable.append({"type": "recovery_reentry", "symbol": rv["symbol"], "detail": sig})
+    # New proposals with high grades
+    for p in new_proposals:
+        pg = (p.get("grade") or "").upper()
+        if pg in ("A", "A+", "A-"):
+            actionable.append({"type": "new_proposal", "symbol": p["symbol"], "detail": f"Grade {pg}, score {p.get('score')}"})
+    # Trade lessons with stop failures
+    for tr in trade_reviews:
+        if tr.get("stop_used") is False:
+            actionable.append({"type": "no_stop_alert", "symbol": tr["symbol"], "detail": "No stop used"})
+
     data = {
         'generated_at': _dt.now().isoformat(),
+        'version': 2,
         'window': {k: _json_clean(v) for k, v in (window or {}).items()},
         'by_job_type': [{k: _json_clean(v) for k, v in r.items()} for r in by_job_type],
         'risk_synthesis': {k: _json_clean(v) for k, v in (risk_synth or {}).items()},
-        'recovery_verdicts': [{k: _json_clean(v) for k, v in r.items()} for r in recovery_verdicts],
-        'trade_reviews': [{k: _json_clean(v) for k, v in r.items()} for r in trade_reviews],
-        'strategy_classifications': [{k: _json_clean(v) for k, v in r.items()} for r in strategy_class],
+        'recovery_verdicts': recovery_verdicts,
+        'recovery_template_fallback': template_fallback,
+        'trade_reviews': trade_reviews,
+        'strategy_classifications': strategy_class,
         'rag_curation': [{k: _json_clean(v) for k, v in r.items()} for r in rag_curation],
+        'rag_by_ticker': rag_by_ticker,
         'covered_calls': [{k: _json_clean(v) for k, v in r.items()} for r in covered_calls],
-        'opportunity_scan': [{k: _json_clean(v) for k, v in r.items()} for r in opportunity_scan],
+        'opportunity_scan': opportunity_scan,
         'failed_jobs': [{k: _json_clean(v) for k, v in r.items()} for r in failed_jobs],
         'gemma3_calibration': [{k: _json_clean(v) for k, v in r.items()} for r in calibration],
         'new_proposals': [{k: _json_clean(v) for k, v in r.items()} for r in new_proposals],
+        'duplicates': [{k: _json_clean(v) for k, v in r.items()} for r in duplicates],
+        'data_quality': data_quality,
+        'actionable_signals': actionable,
     }
     return 200, {"ok": True, "data": data}
