@@ -13707,32 +13707,35 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     _prop = _db_query("SELECT * FROM paper_trade_proposals WHERE id=%s",
                                       [_trade["proposal_id"]], fetch="one")
 
-                # 3. Agent reviews for this proposal
+                # 3. Agent reviews for this proposal (exclude empty stubs)
                 _reviews = []
                 if _trade.get("proposal_id"):
                     _reviews = _db_query("""
-                        SELECT agent_name, vote, confidence, summary, concerns, payload, reviewed_at
+                        SELECT agent_name, vote, confidence, summary, concerns, payload, reviewed_at, status
                         FROM proposal_agent_reviews
-                        WHERE proposal_id=%s ORDER BY created_at
+                        WHERE proposal_id=%s AND (vote IS NOT NULL OR summary IS NOT NULL AND summary != '')
+                        ORDER BY created_at
                     """, [_trade["proposal_id"]]) or []
 
-                # 4. Watchlist agent narratives for this symbol (closest to proposal time)
+                # 4. Watchlist agent narratives for this symbol
+                # Try closest to proposal time (7-day window), fall back to most recent
                 _narratives = []
                 _prop_time = (_prop or {}).get("created_at")
                 if _prop_time:
                     _narratives = _db_query("""
-                        SELECT agent, recommendation, confidence, summary,
-                               LEFT(full_narrative, 500) as narrative_preview, model_used, created_at
+                        SELECT DISTINCT ON (agent) agent, recommendation, confidence, summary,
+                               LEFT(full_narrative, 800) as narrative_preview, model_used, created_at
                         FROM watchlist_agent_results
-                        WHERE symbol=%s AND created_at BETWEEN %s - INTERVAL '24 hours' AND %s + INTERVAL '24 hours'
-                        ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - %s))) LIMIT 6
+                        WHERE symbol=%s AND created_at BETWEEN %s - INTERVAL '7 days' AND %s + INTERVAL '1 day'
+                        ORDER BY agent, ABS(EXTRACT(EPOCH FROM (created_at - %s)))
                     """, [_sym, _prop_time, _prop_time, _prop_time]) or []
-                else:
+                if not _narratives:
                     _narratives = _db_query("""
-                        SELECT agent, recommendation, confidence, summary,
-                               LEFT(full_narrative, 500) as narrative_preview, model_used, created_at
+                        SELECT DISTINCT ON (agent) agent, recommendation, confidence, summary,
+                               LEFT(full_narrative, 800) as narrative_preview, model_used, created_at
                         FROM watchlist_agent_results
-                        WHERE symbol=%s ORDER BY created_at DESC LIMIT 6
+                        WHERE symbol=%s
+                        ORDER BY agent, created_at DESC
                     """, [_sym]) or []
 
                 # 5. Competing strategies (all proposals for same symbol within 24h)
