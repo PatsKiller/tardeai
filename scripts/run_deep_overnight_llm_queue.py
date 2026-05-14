@@ -842,6 +842,8 @@ def main():
                         help="[PILOT] Top-K results from hybrid RAG merge")
     parser.add_argument("--hybrid-rag-audit", action="store_true",
                         help="[PILOT] Log hybrid RAG metrics per job")
+    parser.add_argument("--hybrid-rag-cache", type=str, default=None,
+                        help="[PILOT] Path to prefetched hybrid RAG context JSON cache (Stage A output)")
     args = parser.parse_args()
 
     # Handle --force-job-types overriding --job-types
@@ -1007,26 +1009,39 @@ def main():
             hybrid_workflows = set((args.hybrid_rag_workflows or "").split(",")) if args.hybrid_rag_workflows else set()
             if job["job_type"] in hybrid_workflows:
                 try:
-                    from hybrid_rag_context_adapter import get_hybrid_context
-                    rag_query = f"{job.get('symbol', '')} {job['job_type']}"
-                    hybrid_result = get_hybrid_context(
-                        query=rag_query,
-                        symbol=job.get("symbol"),
-                        workflow=job["job_type"],
-                        final_k=args.hybrid_rag_final_k,
-                    )
-                    hybrid_ctx = hybrid_result.get("final_context_text", "")
-                    hybrid_metrics = hybrid_result.get("metrics", {})
-                    if hybrid_ctx and not hybrid_result.get("error"):
-                        prompt = prompt + f"\n\n{hybrid_ctx}"
-                        if getattr(args, 'hybrid_rag_audit', False):
-                            log(f"  [hybrid-rag] {job['job_type']} {job.get('symbol','?')}: "
+                    # Prefer prefetched cache (Stage A output) over live retrieval
+                    hybrid_ctx = ""
+                    if getattr(args, 'hybrid_rag_cache', None):
+                        _cache_path = Path(args.hybrid_rag_cache)
+                        if _cache_path.exists():
+                            _cache = json.loads(_cache_path.read_text())
+                            _cached = _cache.get("jobs", {}).get(str(job_id), {})
+                            hybrid_ctx = _cached.get("context_text", "")
+                            hybrid_metrics = _cached.get("metrics", {})
+                            if hybrid_ctx and getattr(args, 'hybrid_rag_audit', False):
+                                log(f"  [hybrid-rag] CACHED {job['job_type']} {job.get('symbol','?')}: "
+                                    f"sources={hybrid_metrics.get('source_type_count',0)} "
+                                    f"nomic={hybrid_metrics.get('nomic_only_count',0)} "
+                                    f"qwen3={hybrid_metrics.get('qwen3_only_count',0)} "
+                                    f"consensus={hybrid_metrics.get('consensus_count',0)}")
+                    # Fallback to live retrieval if no cache hit
+                    if not hybrid_ctx:
+                        from hybrid_rag_context_adapter import get_hybrid_context
+                        rag_query = f"{job.get('symbol', '')} {job['job_type']}"
+                        hybrid_result = get_hybrid_context(
+                            query=rag_query, symbol=job.get("symbol"),
+                            workflow=job["job_type"], final_k=args.hybrid_rag_final_k)
+                        hybrid_ctx = hybrid_result.get("final_context_text", "")
+                        hybrid_metrics = hybrid_result.get("metrics", {})
+                        if hybrid_ctx and not hybrid_result.get("error") and getattr(args, 'hybrid_rag_audit', False):
+                            log(f"  [hybrid-rag] LIVE {job['job_type']} {job.get('symbol','?')}: "
                                 f"sources={hybrid_metrics.get('source_type_count',0)} "
                                 f"nomic={hybrid_metrics.get('nomic_only_count',0)} "
                                 f"qwen3={hybrid_metrics.get('qwen3_only_count',0)} "
                                 f"consensus={hybrid_metrics.get('consensus_count',0)} "
-                                f"lat={hybrid_metrics.get('total_latency_ms',0)}ms "
-                                f"fallback={hybrid_metrics.get('fallback_used',False)}")
+                                f"lat={hybrid_metrics.get('total_latency_ms',0)}ms")
+                    if hybrid_ctx:
+                        prompt = prompt + f"\n\n{hybrid_ctx}"
                 except Exception as e:
                     log(f"  [hybrid-rag] Non-fatal error: {e}")
 
