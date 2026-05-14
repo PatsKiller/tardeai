@@ -1,7 +1,7 @@
 # Phase 2 — RAG Embedding A/B Testing
 
-**Status:** Phase 2B COMPLETE. HYBRID_RECOMMENDED. Phase 2C pending operator approval.
-**Last commit:** (Phase 2B)
+**Status:** Phase 2C COMPLETE. HYBRID_MARGINAL — expand qwen3 index to 5,000+ before offline integration.
+**Last commit:** (Phase 2C)
 **Owner:** John W. Whiting
 
 ## What This Is
@@ -42,9 +42,18 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 - Latency: qwen3 321ms vs nomic 28ms (11x slower)
 - See `v4_1_phase2b_evaluation_report.md` for full analysis
 
+## Phase 2C Results
+
+- Hybrid pilot ran 40 queries merging nomic (14,792 docs) + qwen3 (1,000 docs)
+- Verdict: HYBRID_MARGINAL — qwen3 finds 56.5% unique items but consensus only 2.5%
+- Source diversity: 1.88 types/query (vs nomic 1.4, qwen3 2.1)
+- Latency: hybrid total 1.7s
+- Limiting factor: qwen3 index size (1,000 vs 14,792)
+- See `v4_1_phase2c_evaluation_report.md` for full analysis
+
 ## Next Steps (Operator Decision Required)
 
-> Begin Phase 2C limited hybrid retrieval pilot.
+> Expand Phase 2B qwen3 parallel index to 5,000 documents.
 
 ## Phase 2 Gates
 

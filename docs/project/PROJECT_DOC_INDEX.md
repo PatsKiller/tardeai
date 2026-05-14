@@ -94,6 +94,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Phase 2C: Hybrid retrieval pilot. 40 queries, HYBRID_MARGINAL verdict. Qwen3 finds 56.5% unique items but consensus only 2.5% (limited by 1K index). Recommend expanding to 5K. No production changes. |
 | 2026-05-14 | Three-tier alert architecture deployed. 17 alert types classified (URGENT/DIGEST/DASHBOARD_ONLY). Digest crons at 8 AM + 4 PM. /v2/alerts page. Live facts: 344 tables, 401 scripts, 85 crons, 76 pages. |
 | 2026-05-14 | Phase 2B: 1000-doc parallel index built with qwen3-embedding:8b. 40-query comparison: HYBRID_RECOMMENDED. Top-5 overlap 0.6%, source diversity +50%. No production changes. |
 | 2026-05-14 | Phase 2 docs moved to docs/llm_fleet/phase2_embedding_ab/ (10 files). Created 00_README.md index. Cross-referenced from LLM_FLEET_STRATEGY. File paths updated in doc index. |
