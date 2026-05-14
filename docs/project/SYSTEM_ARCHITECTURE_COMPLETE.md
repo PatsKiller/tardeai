@@ -34,12 +34,12 @@ Trade AI v12 is a single-operator portfolio intelligence and paper trading syste
          │                      │
     ┌────▼──────────────────────▼──────────────────────────────┐
     │              PORTFOLIO SERVER (Port 7777)                 │
-    │  api_v2.py — aiohttp — 280+ endpoints — 14,800 lines    │
+    │  api_v2.py — aiohttp — 283+ endpoints — 16,100 lines    │
     └────┬────────────┬────────────┬───────────┬───────────────┘
          │            │            │           │
     ┌────▼────┐ ┌─────▼─────┐ ┌───▼───┐ ┌────▼─────┐
     │PostgreSQL│ │  Ollama   │ │Alpaca │ │OpenClaw  │
-    │322 tables│ │qwen3:14b  │ │Paper  │ │Gateway   │
+    │331 tables│ │qwen3:14b  │ │Paper  │ │Gateway   │
     │trade_ai  │ │nomic-embed│ │Broker │ │Port 18789│
     │          │ │Port 11434 │ │       │ │4 agents  │
     └──────────┘ └───────────┘ └───────┘ └──────────┘
@@ -54,8 +54,8 @@ Trade AI v12 is a single-operator portfolio intelligence and paper trading syste
 | Component | Technology | Location | Purpose |
 |-----------|-----------|----------|---------|
 | Portfolio Server | Python aiohttp | Port 7777 | API gateway for all data and actions |
-| Command Center | React 19 + Vite 8 | Port 5173 | 43-page operator dashboard |
-| PostgreSQL | 322 tables | localhost:5432 | All persistent state |
+| Command Center | React 19 + Vite 8 | Port 5173 | 44-page operator dashboard |
+| PostgreSQL | 331 tables | localhost:5432 | All persistent state |
 | Ollama | qwen3:14b + nomic-embed-text | Port 11434 | Local LLM inference + embeddings |
 | Alpaca Paper | REST API | paper-api.alpaca.markets | Broker execution (paper only) |
 | OpenClaw Gateway | Node.js | Port 18789 | Conversational agents (Maria, Steph, Aegis, Alex) |
@@ -623,9 +623,9 @@ Discovery → Incubator Universe (ACTIVE)
 | Live trading | BLOCKED (6 gates all failing) |
 | Local LLM | qwen3:14b (9.4 GB VRAM, 9.9 tok/s) |
 | Embedding model | nomic-embed-text (0.54 GB VRAM) |
-| Database tables | 322 |
-| API endpoints | 280+ |
-| Command Center pages | 43 |
+| Database tables | 331 |
+| API endpoints | 283+ |
+| Command Center pages | 44 |
 | Cron jobs | 152+ |
 | RAG embeddings | 14,000+ |
 | Agent results | 4,274 |

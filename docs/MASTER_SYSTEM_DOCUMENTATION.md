@@ -45,7 +45,7 @@ Trade AI v12 is an automated trading intelligence and portfolio management platf
 - **6 AI agents** accessible via Telegram/WhatsApp (Maria, Steph, Alex, Aegis, Risk Agent, Tax Agent)
 - **Iris backend agent** for content hygiene + Scalp Critic for incubator gating
 - **Paper trading execution** via Alpaca with bracket orders, TCA, and reconciliation
-- **42-page React dashboard** (Command Center v2, consolidated from 61) for operator control
+- **43-page React dashboard** (Command Center v2, consolidated from 61) for operator control
 - **Feedback loop closure** with proposal outcome chains, alert effectiveness scoring, and agent calibration
 - **LLM intelligence enrichment** generating daily narratives across 5 surfaces via qwen3:14b
 
@@ -57,12 +57,12 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 |--------|-------|
 | Python scripts | 364 |
 | Cron jobs | 53 (flock-protected, weekday/weekend/monthly schedules) |
-| API endpoints | 275+ (api_v2.py + portfolio_server.py) |
-| Database tables | 330 |
+| API endpoints | 278+ (api_v2.py + portfolio_server.py) |
+| Database tables | 331 |
 | SQL migrations | 37 |
 | Strategies | 23 (YAML-driven, multi-assignment) |
-| Frontend pages | 42 primary routes (consolidated from 61 via TabPage) |
-| Nav items | 42 across 8 groups |
+| Frontend pages | 43 primary routes (consolidated from 61 via TabPage) |
+| Nav items | 43 across 8 groups |
 | Agents | 6 conversational (Maria, Steph, Alex, Aegis, Risk, Tax) + 2 backend (Iris, Scalp Critic) |
 | External data sources | 15+ |
 | Research topics | 17 (DB-driven, LLM-curated) |
