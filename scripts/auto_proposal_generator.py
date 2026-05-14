@@ -250,6 +250,38 @@ def check_open_paper_trade(conn, symbol: str, strategy_id: str) -> dict | None:
     return {"id": row[0], "status": row[1]} if row else None
 
 
+def check_recently_closed(conn, symbol: str, strategy_id: str, cooldown_hours: int = 48) -> dict | None:
+    """Block if any paper trade with this symbol closed within cooldown window, regardless of strategy."""
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT id, strategy_id, pnl, outcome_verdict,
+               closed_at, exit_reason
+        FROM paper_trades
+        WHERE symbol = %s
+          AND lifecycle_state = 'closed'
+          AND closed_at > NOW() - make_interval(hours => %s)
+        ORDER BY closed_at DESC LIMIT 1
+    """, [symbol, cooldown_hours])
+    row = cur.fetchone()
+    if not row:
+        return None
+    prior_id, prior_strat, pnl, verdict, closed_at, exit_reason = row
+    pnl_f = float(pnl) if pnl is not None else 0
+    from datetime import datetime, timezone
+    hours_since = (datetime.now(timezone.utc) - closed_at.astimezone(timezone.utc)).total_seconds() / 3600
+    return {
+        "reason": "SKIPPED_RECENTLY_CLOSED",
+        "detail": (f"trade #{prior_id} ({symbol}/{prior_strat}) closed {closed_at} "
+                   f"verdict={verdict} pnl=${pnl_f:.2f} via {exit_reason} — "
+                   f"{hours_since:.1f}h ago, cooldown {cooldown_hours}h"),
+        "prior_trade_id": prior_id,
+        "prior_strategy": prior_strat,
+        "prior_pnl": pnl_f,
+        "prior_verdict": verdict,
+        "hours_since_close": round(hours_since, 1),
+    }
+
+
 def check_rejection_cooldown(conn, symbol: str, force: bool = False) -> dict | None:
     """Check if symbol was recently rejected (24h cooldown). Returns skip reason or None."""
     if force:
@@ -626,6 +658,17 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 if not dry_run:
                     record_decision(conn, run_label, sig, "SKIPPED_OPEN_TRADE", [reason], None, None, None)
                 stats["details"].append({"symbol": sym, "decision": "SKIPPED_OPEN_TRADE", "reason": reason})
+                continue
+
+            # 2a. Recently closed trade cooldown (48h, any strategy)
+            closed_block = check_recently_closed(conn, sym, sid, cooldown_hours=48)
+            if closed_block:
+                stats["proposals_skipped"] += 1
+                reason = f"{closed_block['reason']} ({closed_block['detail']})"
+                log.info(f"  {sym}: {reason}")
+                if not dry_run:
+                    record_decision(conn, run_label, sig, closed_block["reason"], [closed_block["detail"]], None, None, None)
+                stats["details"].append({"symbol": sym, "decision": closed_block["reason"], "reason": reason})
                 continue
 
             # 2b. Rejection cooldown check (24h)
