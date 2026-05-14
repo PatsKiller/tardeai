@@ -54,14 +54,15 @@ Trade AI v12 is a single-operator portfolio intelligence and paper trading syste
 | Component | Technology | Location | Purpose |
 |-----------|-----------|----------|---------|
 | Portfolio Server | Python aiohttp | Port 7777 | API gateway for all data and actions |
-| Command Center | React 19 + Vite 8 | Port 5173 | 44-page operator dashboard |
+| Command Center | React 19 + Vite 8 | Port 5173 | 76-page operator dashboard |
 | PostgreSQL | 333 tables | localhost:5432 | All persistent state |
 | Ollama | qwen3:14b + nomic-embed-text | Port 11434 | Local LLM inference + embeddings |
 | Alpaca Paper | REST API | paper-api.alpaca.markets | Broker execution (paper only) |
 | OpenClaw Gateway | Node.js | Port 18789 | Conversational agents (Maria, Steph, Aegis, Alex) |
 | Telegram Bot | Bot API | tradeai_bigjohn718_bot | Alerts, commands, approvals |
 | GOG (Gmail CLI) | OAuth + CLI | ~/.local/bin/gog | Daily email digest |
-| Cron Scheduler | crontab | 155+ entries | All scheduled automation |
+| Cron Scheduler | crontab | 85+ entries | All scheduled automation |
+| Alert Digest | send_alert_digest.py | 8 AM + 4 PM M-F | Three-tier alert aggregation |
 | Data Gap Resolver | data_gap_resolver.py | Hourly+daily+weekly | Self-healing intelligence loop |
 
 ### External Data Providers
@@ -624,9 +625,9 @@ Discovery → Incubator Universe (ACTIVE)
 | Live trading | BLOCKED (6 gates all failing) |
 | Local LLM | qwen3:14b (9.4 GB VRAM, 9.9 tok/s) |
 | Embedding model | nomic-embed-text (0.54 GB VRAM) |
-| Database tables | 333 |
-| API endpoints | 283+ |
-| Command Center pages | 44 |
+| Database tables | 344 |
+| API endpoints | 284+ |
+| Command Center pages | 76 |
 | Cron jobs | 152+ |
 | RAG embeddings | 14,000+ |
 | Agent results | 4,274 |

@@ -55,14 +55,14 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 
 | Metric | Value |
 |--------|-------|
-| Python scripts | 364 |
-| Cron jobs | 53 (flock-protected, weekday/weekend/monthly schedules) |
-| API endpoints | 278+ (api_v2.py + portfolio_server.py) |
-| Database tables | 333 |
+| Python scripts | 401 |
+| Cron jobs | 85 (flock-protected, weekday/weekend/monthly schedules) |
+| API endpoints | 280+ (api_v2.py + portfolio_server.py) |
+| Database tables | 344 |
 | SQL migrations | 37 |
-| Strategies | 23 (YAML-driven, multi-assignment) |
-| Frontend pages | 43 primary routes (consolidated from 61 via TabPage) |
-| Nav items | 43 across 8 groups |
+| Strategies | 26 (YAML-driven, multi-assignment) |
+| Frontend pages | 76 primary routes (consolidated from 61 via TabPage + new) |
+| Nav items | 44 across 8 groups |
 | Agents | 6 conversational (Maria, Steph, Alex, Aegis, Risk, Tax) + 2 backend (Iris, Scalp Critic) |
 | External data sources | 15+ |
 | Research topics | 17 (DB-driven, LLM-curated) |
@@ -538,6 +538,38 @@ gemma3 output → _extract_and_register_gaps() → data_gap_registry (open)
 ### Dashboard Surface
 
 `/v2/overnight` Data Gap Intelligence section: open/enriching/resolved/abandoned counts with per-type symbol breakdown. API: `gap_stats` and `gap_summary` in `/api/v2/overnight-dashboard`.
+
+---
+
+## 5.6 Three-Tier Alert Architecture
+
+Replaces ~50 Telegram messages/day with ~12 actionable messages. Every Telegram notification must require action or contain delta intelligence.
+
+### Tiers
+
+| Tier | Behavior | Count |
+|------|----------|-------|
+| URGENT | Telegram immediate, 24h dedup per symbol+condition, escalate on worsen | 7 types |
+| DIGEST | Aggregated into morning (8 AM) or evening (4 PM) brief | 6 types |
+| DASHBOARD_ONLY | No Telegram, visible at /v2/alerts | 4 types |
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| `alert_dispatcher.py` | Central classifier with dedup, fatigue detection, rate limiting |
+| `send_alert_digest.py` | Morning/evening consolidated Telegram briefs |
+| `alert_dispatch_log` table | Every classification + action decision |
+| `digest_queue` table | Aggregated alerts pending next digest |
+| `/v2/alerts` page | Dashboard view of sent/suppressed/queued/dashboard-only |
+| `/api/v2/alerts-dashboard` | API for alert volume and classification data |
+
+### Cron Schedule
+
+| Time | Script | Purpose |
+|------|--------|---------|
+| 8:00 AM ET M-F | send_alert_digest.py morning | Morning consolidated brief |
+| 4:00 PM ET M-F | send_alert_digest.py evening | Evening consolidated brief |
 
 ---
 
