@@ -71,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/agent-calibration', label: 'Agent Calibration' },
   ]},
   { label: 'System', items: [
+    { to: '/alerts', label: 'Alert Dashboard' },
     { to: '/ops', label: 'Operations' },
     { to: '/pipeline', label: 'Pipeline' },
     { to: '/governance', label: 'Governance' },

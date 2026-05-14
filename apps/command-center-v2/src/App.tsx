@@ -68,6 +68,9 @@ const GovernanceHub = lazy(() => import('./pages/GovernanceHub'))
 // ── Ops (consolidated: Hub + Ops + Orchestration) ──
 const OpsHub = lazy(() => import('./pages/OpsHub'))
 
+// ── Alerts ──
+const AlertsDashboard = lazy(() => import('./pages/AlertsDashboard'))
+
 // ── System ──
 const SystemHealth = lazy(() => import('./pages/SystemHealth'))
 const Reports = lazy(() => import('./pages/Reports'))
@@ -165,6 +168,9 @@ export default function App() {
 
           {/* ── Governance (consolidated) ── */}
           <Route path="governance" element={<SafePage><GovernanceHub /></SafePage>} />
+
+          {/* ── Alerts ── */}
+          <Route path="alerts" element={<SafePage><AlertsDashboard /></SafePage>} />
 
           {/* ── Ops (consolidated) ── */}
           <Route path="ops" element={<SafePage><OpsHub /></SafePage>} />

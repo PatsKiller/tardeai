@@ -15644,6 +15644,66 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── Overnight Intelligence Dashboard v2 ─────────────────────────────────
+    # ── Alerts Dashboard ──────────────────────────────────────────────────
+    if base_path == "/api/v2/alerts-dashboard":
+        if method == "GET":
+            try:
+                # Volume stats (last 24h)
+                vol = _db_query("""
+                    SELECT
+                      COUNT(*) FILTER (WHERE action_taken = 'sent_telegram') as sent,
+                      COUNT(*) FILTER (WHERE action_taken = 'suppressed_dedup') as suppressed,
+                      COUNT(*) FILTER (WHERE action_taken LIKE 'queued_%%') as queued,
+                      COUNT(*) FILTER (WHERE action_taken = 'dashboard_only') as dashboard_only,
+                      COUNT(*) as total
+                    FROM alert_dispatch_log
+                    WHERE created_at > NOW() - INTERVAL '24 hours'
+                """, fetch="one") or {}
+
+                # By tier
+                by_tier = _db_query("""
+                    SELECT tier, action_taken, COUNT(*) as count
+                    FROM alert_dispatch_log
+                    WHERE created_at > NOW() - INTERVAL '24 hours'
+                    GROUP BY tier, action_taken ORDER BY tier, count DESC
+                """) or []
+
+                # Suppressed
+                suppressed = _db_query("""
+                    SELECT alert_type, symbol, COUNT(*) as suppressed_count,
+                           MAX(created_at) as last_attempt
+                    FROM alert_dispatch_log
+                    WHERE action_taken IN ('suppressed_dedup', 'dashboard_only')
+                      AND created_at > NOW() - INTERVAL '24 hours'
+                    GROUP BY alert_type, symbol ORDER BY suppressed_count DESC LIMIT 20
+                """) or []
+
+                # Digest pending
+                digest_pending = _db_query("""
+                    SELECT digest_slot, COUNT(*) as queued
+                    FROM digest_queue WHERE sent = FALSE
+                    GROUP BY digest_slot
+                """) or []
+
+                # Recent urgent
+                urgent = _db_query("""
+                    SELECT alert_type, symbol, message, created_at, action_taken
+                    FROM alert_dispatch_log
+                    WHERE tier = 'URGENT' AND created_at > NOW() - INTERVAL '24 hours'
+                    ORDER BY created_at DESC LIMIT 20
+                """) or []
+
+                data = {
+                    'volume_stats': {k: _json_clean(v) for k, v in (vol or {}).items()},
+                    'by_tier': [{k: _json_clean(v) for k, v in r.items()} for r in by_tier],
+                    'suppressed': [{k: _json_clean(v) for k, v in r.items()} for r in suppressed],
+                    'digest_pending': [{k: _json_clean(v) for k, v in r.items()} for r in digest_pending],
+                    'urgent_recent': [{k: _json_clean(v) for k, v in r.items()} for r in urgent],
+                }
+                return 200, {"ok": True, "data": data}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/overnight-dashboard":
         if method == "GET":
             try:
