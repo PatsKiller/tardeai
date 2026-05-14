@@ -12424,12 +12424,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path in ("/api/v2/automated-journal-analytics", "/api/v2/paper-analytics"):
         try:
-            # Exclude phantom/orphan/never-filled trades from analytics
+            # Exclude phantom/orphan/never-filled/bogus trades from analytics
             _real_trade_filter = """
                 AND COALESCE(exit_reason, '') NOT LIKE 'phantom%%'
                 AND COALESCE(exit_reason, '') NOT LIKE 'order_never_filled%%'
+                AND COALESCE(exit_reason, '') NOT LIKE 'bogus%%'
                 AND COALESCE(close_reason, '') NOT LIKE 'phantom%%'
                 AND COALESCE(close_reason, '') NOT LIKE 'Orphan%%'
+                AND (pnl IS NULL OR pnl != 0)
             """
             # Overall stats
             overall = _db_query(f"""
