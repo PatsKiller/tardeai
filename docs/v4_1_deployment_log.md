@@ -1677,3 +1677,32 @@ UNCHANGED — no routing, embedding, cron, .env, or broker changes.
 
 ### Model Residency
 Final: qwen3:14b + nomic-embed-text (production). All pilot models unloaded.
+
+---
+
+## Phase 2C Nightly Enablement — 2026-05-14
+
+### What Changed
+Daily 23:00 deep queue cron updated to include `--enable-hybrid-rag` flag.
+Friday extended cron UNCHANGED (no hybrid).
+
+### Cron Change
+**Old:** `./scripts/run_deep_overnight_llm_window.sh >> logs/...`
+**New:** `./scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag >> logs/...`
+
+### Two-Stage Lifecycle
+Stage A: nomic + qwen3-embedding → prefetch → unload qwen3-embedding
+Stage B: gemma3-overnight → deep reasoning with cached context → restore qwen3:14b + nomic
+
+### Safety
+- qwen3-embedding and gemma3-overnight never co-resident
+- Production RAG routing unchanged
+- .env unchanged
+- Broker/holdings/execution unchanged
+- Phase 2D blocked
+
+### Observation
+Monitor tonight's first scheduled run at 23:00 UTC.
+
+### Rollback
+Remove `--enable-hybrid-rag` from daily cron line.

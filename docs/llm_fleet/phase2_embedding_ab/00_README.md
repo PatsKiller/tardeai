@@ -1,7 +1,7 @@
 # Phase 2 — RAG Embedding A/B Testing
 
-**Status:** Phase 2C offline pilot COMPLETE (5/5 jobs). Hybrid adapter + opt-in flags deployed. Recommend enabling for nightly deep queue.
-**Last commit:** (Phase 2C offline pilot, 2026-05-14)
+**Status:** Phase 2C NIGHTLY ENABLED. Daily 23:00 deep queue uses two-stage hybrid RAG. Friday extended disabled. Phase 2D blocked.
+**Last commit:** (Phase 2C nightly enable, 2026-05-14)
 **Owner:** John W. Whiting
 
 ## What This Is
@@ -73,10 +73,17 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 - Latency overhead: 0.3-2.3s per job (0.4-5.2% of total)
 - See `v4_1_phase2c_offline_integration_pilot_report.md`
 
+## Nightly Enablement (2026-05-14)
+
+Daily 23:00 deep queue now runs with `--enable-hybrid-rag`.
+Two-stage lifecycle: Stage A prefetches with qwen3-embedding + nomic, Stage B runs gemma with cached context.
+Friday extended: no hybrid (unchanged).
+See `v4_1_phase2c_nightly_enable_scope.md`.
+
 ## Next Steps (Operator Decision Required)
 
-> Recommend: Enable hybrid RAG for nightly deep queue behind wrapper flag.
-> Run a 20-job pilot during deep overnight window (qwen3-embedding loaded).
+> Observe tonight's first scheduled hybrid run.
+> If clean: enable Friday extended hybrid.
 > Phase 2D production promotion remains BLOCKED.
 
 ## Phase 2 Gates
@@ -90,8 +97,9 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 | 4b | Parallel index expanded (5K) | DONE (4,897 docs) |
 | 5 | Retrieval comparison | DONE (QWEN3_BETTER) |
 | 6 | Latency delta measured | DONE (274ms vs 28ms) |
-| 7 | Offline integration pilot | DONE (5/5 jobs, nomic-only fallback) |
-| 7b | Full hybrid pilot (deep window) | PENDING operator approval |
+| 7 | Offline integration pilot | DONE (20/20 jobs, two-stage) |
+| 7b | Nightly enablement | DONE (daily 23:00 --enable-hybrid-rag) |
+| 7c | Friday extended hybrid | PENDING operator approval |
 | 8-14 | (See promotion checklist) | BLOCKED |
 
 ## Safety Invariants
