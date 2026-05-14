@@ -1740,3 +1740,32 @@ BLOCKED: global production embedding promotion.
 
 ### Next Phase
 Phase 3: Small media/prose model pilot.
+
+---
+
+## Phase 2E Global Shadow Index — 2026-05-14
+
+### What Changed
+Built full qwen3-embedding:8b shadow index covering entire production corpus.
+
+### Results
+| Metric | Value |
+|--------|-------|
+| Production rows | 14,888 |
+| Shadow rows | 14,874 |
+| Coverage | 100% |
+| Source types | 14/14 |
+| Seeded from test | 4,897 |
+| Newly embedded | 9,977 |
+| Failed | 0 |
+| Build time | 90.4 min |
+| Avg latency | 537.5ms |
+
+### Table
+`content_embeddings_qwen3_shadow` — full corpus, shadow only, not production.
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Next
+Phase 2F: Global shadow retrieval comparison.

@@ -86,9 +86,18 @@ Phase 2D is approved as **bounded offline/deep-queue hybrid RAG only**.
 Global production embedding promotion remains **blocked**.
 See `v4_1_phase2d_bounded_offline_promotion.md`.
 
+## Phase 2E: Global Shadow Index (2026-05-14)
+
+- Full qwen3 shadow index: **14,874 rows** (100% production coverage)
+- 14 source types, 0 failures, 90.4 min build time
+- Table: `content_embeddings_qwen3_shadow`
+- Production `content_embeddings` unchanged
+- Phase 2F global shadow retrieval can begin
+
 ## Next Phase
 
-Phase 3: Small media/prose model pilot (not yet started).
+Phase 2F: Global shadow retrieval comparison (pending operator approval).
+Then Phase 3: Small media/prose model pilot.
 
 ## Monitoring and Rollback
 
