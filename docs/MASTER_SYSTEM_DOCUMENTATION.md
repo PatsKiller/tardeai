@@ -58,7 +58,7 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 | Python scripts | 364 |
 | Cron jobs | 53 (flock-protected, weekday/weekend/monthly schedules) |
 | API endpoints | 278+ (api_v2.py + portfolio_server.py) |
-| Database tables | 331 |
+| Database tables | 333 |
 | SQL migrations | 37 |
 | Strategies | 23 (YAML-driven, multi-assignment) |
 | Frontend pages | 43 primary routes (consolidated from 61 via TabPage) |

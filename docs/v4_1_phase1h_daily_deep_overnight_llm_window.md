@@ -516,7 +516,29 @@ Integrates with `alert_dispatcher.py` for FAIL conditions. Exits nonzero on any 
 
 ---
 
-## 26. Phase 1 Closeout
+## 26. Self-Healing Data Gap Orchestration
+
+**Date:** 2026-05-14
+**Status:** DEPLOYED
+
+Closes the loop between gemma3 detection and automated resolution:
+
+1. **Recovery watch prompt**: uses `llm_context_engine.build_context('recovery_watch')`
+   for full data instead of sparse manual queries. Adds `data_gaps` output field.
+2. **Queue dedup**: per-job-type cooldown prevents re-running same analysis too often.
+3. **`data_gap_registry` table**: every gemma3 "needs more data" creates a structured gap.
+4. **`_extract_and_register_gaps()`**: scans every response for 7 implicit gap patterns
+   + explicit data_gaps arrays.
+5. **`data_gap_resolver.py`**: dispatches enrichment/agent jobs via `watchlist_agent_jobs`,
+   re-queues source jobs at elevated priority after resolution.
+6. **Dashboard**: gap intelligence section with open/enriching/resolved counts.
+
+Flow: gemma3 flags gap → registry → resolver dispatches agent → data enriched → job
+re-queued → next overnight produces better answer → gap closed.
+
+---
+
+## 27. Phase 1 Closeout
 
 **Date:** 2026-05-14
 **Status:** COMPLETE

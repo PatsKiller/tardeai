@@ -39,7 +39,7 @@ Trade AI v12 is a single-operator portfolio intelligence and paper trading syste
          │            │            │           │
     ┌────▼────┐ ┌─────▼─────┐ ┌───▼───┐ ┌────▼─────┐
     │PostgreSQL│ │  Ollama   │ │Alpaca │ │OpenClaw  │
-    │331 tables│ │qwen3:14b  │ │Paper  │ │Gateway   │
+    │333 tables│ │qwen3:14b  │ │Paper  │ │Gateway   │
     │trade_ai  │ │nomic-embed│ │Broker │ │Port 18789│
     │          │ │Port 11434 │ │       │ │4 agents  │
     └──────────┘ └───────────┘ └───────┘ └──────────┘
@@ -55,7 +55,7 @@ Trade AI v12 is a single-operator portfolio intelligence and paper trading syste
 |-----------|-----------|----------|---------|
 | Portfolio Server | Python aiohttp | Port 7777 | API gateway for all data and actions |
 | Command Center | React 19 + Vite 8 | Port 5173 | 44-page operator dashboard |
-| PostgreSQL | 331 tables | localhost:5432 | All persistent state |
+| PostgreSQL | 333 tables | localhost:5432 | All persistent state |
 | Ollama | qwen3:14b + nomic-embed-text | Port 11434 | Local LLM inference + embeddings |
 | Alpaca Paper | REST API | paper-api.alpaca.markets | Broker execution (paper only) |
 | OpenClaw Gateway | Node.js | Port 18789 | Conversational agents (Maria, Steph, Aegis, Alex) |
@@ -623,7 +623,7 @@ Discovery → Incubator Universe (ACTIVE)
 | Live trading | BLOCKED (6 gates all failing) |
 | Local LLM | qwen3:14b (9.4 GB VRAM, 9.9 tok/s) |
 | Embedding model | nomic-embed-text (0.54 GB VRAM) |
-| Database tables | 331 |
+| Database tables | 333 |
 | API endpoints | 283+ |
 | Command Center pages | 44 |
 | Cron jobs | 152+ |

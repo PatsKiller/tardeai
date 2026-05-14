@@ -1379,3 +1379,39 @@ Go — pending operator approval and 7 clean nightly runs. No embedding promotio
 
 ### Iron Rule
 $1,190,957 / 43 positions — no broker, holdings, execution, or embedding changes
+
+---
+
+## Self-Healing Data Gap Orchestration — 2026-05-14 09:35 ET
+
+### Changes
+
+**Recovery watch prompt fix (HIGH):**
+- Replaced manual sparse query with `llm_context_engine.build_context('recovery_watch')`
+- Full context: snapshot, news, trade history, recovery data, anti-hallucination block
+- Strict JSON output with `data_gaps` array and `INSUFFICIENT_DATA` verdict
+- Should eliminate 10-identical-template-fallback pattern
+
+**Queue dedup cooldowns:**
+- Per-job-type cooldown in `build_deep_overnight_llm_queue.py`
+- closed_trade_review: 7d, strategy_classification: 3d, recovery_watch: 24h
+- Prevents AGMH 8x, PFE 6x type clusters
+- Blank symbol jobs skipped
+
+**Self-healing gap orchestration:**
+- `data_gap_registry` + `gap_resolution_outcomes` tables created
+- `_extract_and_register_gaps()` in queue runner: scans every gemma3 response
+  for explicit data_gaps + 7 implicit gap patterns
+- `data_gap_resolver.py`: dispatches enrichment/agent jobs via watchlist_agent_jobs,
+  re-queues source jobs at P1:80 after resolution
+- Dashboard gap intelligence section: open/enriching/resolved/abandoned counts
+- API: gap_summary + gap_stats in overnight-dashboard
+
+### Validation
+- 3 test gaps (V div_yield, RTX/LMT catalyst) → resolved → 3 agent jobs dispatched
+- All py_compile: PASS
+- React build: OK
+- Holdings: $1,191,013
+
+### Iron Rule
+$1,191,013 / 43 positions — no broker, holdings, execution, or embedding changes
