@@ -196,7 +196,8 @@ def check_gates(conn, proposal_id: int) -> dict:
         SELECT id, symbol, strategy_id, status, proposed_entry, proposed_stop,
                proposed_target1, proposed_shares, proposed_dollar_risk, proposed_rr,
                risk_gate_result, approval_allowed, intel_readiness,
-               created_at, approved_at, recommendation_created_at, signal_grade, signal_score
+               created_at, approved_at, recommendation_created_at, signal_grade, signal_score,
+               paper_submit_state
         FROM paper_trade_proposals WHERE id = %s
     """, [proposal_id])
     cols = [d[0] for d in cur.description]
@@ -207,6 +208,12 @@ def check_gates(conn, proposal_id: int) -> dict:
     p = dict(zip(cols, row))
     blockers = []
     warnings = []
+
+    # Gate 0: ALREADY EXECUTED — prevents duplicate trades from same proposal
+    if p.get("paper_submit_state") == "EXECUTED":
+        blockers.append("BLOCKED_ALREADY_EXECUTED: Proposal already produced a paper trade")
+        log.warning(f"[gate0] Proposal {proposal_id} ({p['symbol']}) blocked — already EXECUTED")
+        return {"passed": False, "blockers": blockers, "warnings": warnings}
 
     # Gate 1: LIVE TRADING BLOCK
     if LIVE_TRADING_ENABLED:
@@ -602,11 +609,14 @@ def submit_paper(conn, proposal_id: int, dry_run: bool = False) -> dict:
         _log_event(conn, proposal_id, p["symbol"], event_type,
                    {"result": result, "execution_plan": plan})
 
-        # ── Lifecycle: SUBMITTED or BLOCKED ──
-        _new_state = "SUBMITTED" if event_type == "ALPACA_PAPER_ORDER_SUBMITTED" else "BLOCKED"
+        # ── Lifecycle: EXECUTED or BLOCKED ──
+        _new_state = "EXECUTED" if event_type == "ALPACA_PAPER_ORDER_SUBMITTED" else "BLOCKED"
         cur = conn.cursor()
-        cur.execute("UPDATE paper_trade_proposals SET paper_submit_state=%s, updated_at=NOW() WHERE id=%s",
-                    [_new_state, proposal_id])
+        cur.execute("""UPDATE paper_trade_proposals
+            SET paper_submit_state=%s, executed_at=CASE WHEN %s='EXECUTED' THEN NOW() ELSE executed_at END,
+                updated_at=NOW()
+            WHERE id=%s""",
+            [_new_state, _new_state, proposal_id])
         conn.commit()
 
         return {
