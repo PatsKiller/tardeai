@@ -462,3 +462,65 @@ failed jobs, and gemma3 calibration accuracy. Telegram digest script added.
 - Expand queue sources to include SEC/news/social catalysts
 - Add OpenAI tier-2 review for high-priority items gemma flagged
 - RAG retrieval count grading for rag_content_curation calibration
+
+---
+
+## 23. Phase 1K — Queue Mix Balancing / Quotas
+
+**Date:** 2026-05-14
+**Status:** DEPLOYED
+
+Added `--quota-policy balanced` to `run_deep_overnight_llm_queue.py`. Per-type soft
+quotas prevent any single forced job type from consuming all queue slots:
+
+| Job Type | Soft Quota |
+|----------|-----------|
+| risk_synthesis | 1 |
+| recovery_watch_review | 10 |
+| rag_content_curation | 15 |
+| closed_trade_review | 15 |
+| auto_journal_review | 15 |
+| manual_journal_review | 15 |
+| journal_pattern_review | 3 |
+| proposal_review | 10 |
+| strategy_classification | Remaining capacity |
+
+Dry run confirmed: 15 RAG + 1 journal + 34 strategy (mixed) vs. all-RAG before quotas.
+
+---
+
+## 24. Phase 1L — Queue Status Reporting
+
+**Date:** 2026-05-14
+**Status:** DEPLOYED
+
+`scripts/report_deep_overnight_queue_status.py` — standalone CLI reporter.
+
+Reports: queue counts by status/type, done today, failed jobs, P0/P1 pending,
+oldest pending, latest run, risk synthesis, recovery verdicts, journal reviews,
+RAG curation, model residency, lock status, cron presence.
+
+---
+
+## 25. Phase 1M — Health Checks & Alerting
+
+**Date:** 2026-05-14
+**Status:** DEPLOYED
+
+`scripts/check_deep_overnight_health.py` — 11 health checks with PASS/WARN/FAIL.
+
+Checks: lock stuck, gemma/qwen/nomic residency, risk synthesis missing, P0 pending,
+failed jobs high, deep run status, provider health, safety gates, holdings guard.
+
+Integrates with `alert_dispatcher.py` for FAIL conditions. Exits nonzero on any FAIL.
+
+---
+
+## 26. Phase 1 Closeout
+
+**Date:** 2026-05-14
+**Status:** COMPLETE
+
+All 14 Phase 1 requirements met. See `docs/v4_1_phase1_final_closeout_report.md`
+for full details including rollback instructions, model routing, queue policy,
+and Phase 2/3 readiness assessment.

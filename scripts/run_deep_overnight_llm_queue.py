@@ -683,6 +683,93 @@ def recover_stale_running(cur):
     return len(recovered)
 
 
+DEFAULT_QUOTAS = {
+    "risk_synthesis": 1,
+    "recovery_watch_review": 10,
+    "rag_content_curation": 15,
+    "closed_trade_review": 15,
+    "auto_journal_review": 15,
+    "manual_journal_review": 15,
+    "journal_pattern_review": 3,
+    "proposal_review": 10,
+    # strategy_classification fills remaining capacity
+}
+
+
+def _build_balanced_queue(cur, job_types, limit, quotas):
+    """Build a balanced job list using per-type soft quotas.
+    Returns (jobs, columns, selection_log)."""
+    columns_sql = """id, job_type, symbol, trade_id, journal_id, account,
+               priority_tier, priority_score, reason_codes,
+               last_qwen_summary, last_qwen_confidence, metadata_json,
+               attempt_count, input_hash, source_table, source_id"""
+
+    types = [t.strip() for t in job_types.split(",")] if job_types else []
+    selected = []
+    selection_log = []
+    seen_ids = set()
+
+    # Phase 1: Fill quota for each forced type (highest priority first within each type)
+    for jtype in types:
+        quota = quotas.get(jtype, 15)
+        cur.execute(f"""
+            SELECT {columns_sql}
+            FROM deep_overnight_llm_queue
+            WHERE status = 'pending' AND job_type = %s
+            ORDER BY priority_score DESC, queued_at ASC
+            LIMIT %s
+        """, (jtype, quota))
+        rows = cur.fetchall()
+        if not cur.description:
+            continue
+        cols = [desc[0] for desc in cur.description]
+        taken = 0
+        for row in rows:
+            job = dict(zip(cols, row))
+            if job["id"] not in seen_ids:
+                selected.append(row)
+                seen_ids.add(job["id"])
+                taken += 1
+        avail_count_sql = cur.execute(
+            "SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status='pending' AND job_type=%s", (jtype,))
+        avail = cur.fetchone()[0]
+        selection_log.append(f"  {jtype}: quota={quota}, available={avail}, selected={taken}")
+
+    # Phase 2: Fill remaining capacity with strategy_classification or any remaining pending
+    remaining = limit - len(selected)
+    if remaining > 0:
+        # Get strategy_classification first (fills remaining), then any other unselected
+        id_exclude = tuple(seen_ids) if seen_ids else (0,)
+        placeholders = ",".join(["%s"] * len(id_exclude))
+        cur.execute(f"""
+            SELECT {columns_sql}
+            FROM deep_overnight_llm_queue
+            WHERE status = 'pending' AND id NOT IN ({placeholders})
+            ORDER BY
+                CASE WHEN job_type = 'strategy_classification' THEN 1 ELSE 0 END DESC,
+                priority_score DESC, queued_at ASC
+            LIMIT %s
+        """, list(id_exclude) + [remaining])
+        rows = cur.fetchall()
+        fill_count = 0
+        for row in rows:
+            cols = [desc[0] for desc in cur.description]
+            job = dict(zip(cols, row))
+            if job["id"] not in seen_ids:
+                selected.append(row)
+                seen_ids.add(job["id"])
+                fill_count += 1
+        selection_log.append(f"  (remaining capacity): {fill_count} jobs (strategy_classification priority)")
+
+    # Sort final list by priority_score DESC for processing order
+    if selected and cur.description:
+        cols = [desc[0] for desc in cur.description]
+        # Re-sort: P0 first, then by priority_score DESC
+        selected.sort(key=lambda r: (-dict(zip(cols, r)).get("priority_score", 0),))
+
+    return selected, [desc[0] for desc in cur.description] if cur.description else [], selection_log
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run deep overnight LLM queue")
     parser.add_argument("--dry-run", action="store_true", help="Show what would run")
@@ -693,16 +780,31 @@ def main():
                         help="Comma-separated job types to process")
     parser.add_argument("--force-job-types", type=str, default=None,
                         help="Force specific job types to run (comma-separated), ignoring priority order")
+    parser.add_argument("--quota-policy", type=str, default=None, choices=["balanced", "none"],
+                        help="Queue balancing policy: 'balanced' uses per-type soft quotas")
+    parser.add_argument("--job-type-quotas", type=str, default=None,
+                        help="Custom quotas: 'risk_synthesis=1,recovery_watch_review=10,...'")
     args = parser.parse_args()
 
     # Handle --force-job-types overriding --job-types
     if args.force_job_types:
         args.job_types = args.force_job_types
 
+    # Parse custom quotas if provided
+    quotas = dict(DEFAULT_QUOTAS)
+    if args.job_type_quotas:
+        for pair in args.job_type_quotas.split(","):
+            if "=" in pair:
+                k, v = pair.strip().split("=", 1)
+                quotas[k.strip()] = int(v.strip())
+
+    use_balanced = args.quota_policy == "balanced"
+
     model = os.getenv("LOCAL_LLM_MODEL", "gemma3-overnight")
     log(f"Queue runner starting — model={model}, limit={args.limit}, "
         f"budget={args.time_budget_min}m, hard_stop={args.hard_stop}"
-        f"{', force_types=' + args.force_job_types if args.force_job_types else ''}")
+        f"{', force_types=' + args.force_job_types if args.force_job_types else ''}"
+        f"{', quota_policy=balanced' if use_balanced else ''}")
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -711,41 +813,55 @@ def main():
     recovered = recover_stale_running(cur)
     conn.commit()
 
-    # Build query for pending jobs
-    type_filter = ""
-    type_params = []
-    if args.job_types:
-        types = [t.strip() for t in args.job_types.split(",")]
-        placeholders = ",".join(["%s"] * len(types))
-        type_filter = f"AND job_type IN ({placeholders})"
-        type_params = types
+    # Build job list — balanced or simple
+    if use_balanced and args.job_types:
+        jobs, columns, selection_log = _build_balanced_queue(cur, args.job_types, args.limit, quotas)
+        log(f"Balanced queue selection (limit={args.limit}):")
+        for line in selection_log:
+            log(line)
+        log(f"Total selected: {len(jobs)}")
+    else:
+        # Original simple query
+        type_filter = ""
+        type_params = []
+        if args.job_types:
+            types = [t.strip() for t in args.job_types.split(",")]
+            placeholders = ",".join(["%s"] * len(types))
+            type_filter = f"AND job_type IN ({placeholders})"
+            type_params = types
 
-    cur.execute(f"""
-        SELECT id, job_type, symbol, trade_id, journal_id, account,
-               priority_tier, priority_score, reason_codes,
-               last_qwen_summary, last_qwen_confidence, metadata_json,
-               attempt_count, input_hash,
-               source_table, source_id
-        FROM deep_overnight_llm_queue
-        WHERE status = 'pending'
-        {type_filter}
-        ORDER BY priority_score DESC, queued_at ASC
-        LIMIT %s
-    """, type_params + [args.limit])
+        cur.execute(f"""
+            SELECT id, job_type, symbol, trade_id, journal_id, account,
+                   priority_tier, priority_score, reason_codes,
+                   last_qwen_summary, last_qwen_confidence, metadata_json,
+                   attempt_count, input_hash,
+                   source_table, source_id
+            FROM deep_overnight_llm_queue
+            WHERE status = 'pending'
+            {type_filter}
+            ORDER BY priority_score DESC, queued_at ASC
+            LIMIT %s
+        """, type_params + [args.limit])
 
-    jobs = cur.fetchall()
-    columns = [desc[0] for desc in cur.description]
+        jobs = cur.fetchall()
+        columns = [desc[0] for desc in cur.description]
 
     log(f"Found {len(jobs)} pending jobs")
 
     if args.dry_run:
         log("=== DRY RUN ===")
-        for i, row in enumerate(jobs[:50]):
+        # Count by type for summary
+        type_counts = {}
+        for i, row in enumerate(jobs[:100]):
             job = dict(zip(columns, row))
-            sym = job.get("symbol") or f"#{job.get('trade_id') or job.get('journal_id') or '?'}"
-            reasons = job.get("reason_codes") or []
-            log(f"  {i+1:>3}. [{job['priority_tier']}:{job['priority_score']:>3}] "
-                f"{job['job_type']:>25} {sym:>8} — {','.join(reasons[:3])}")
+            jt = job["job_type"]
+            type_counts[jt] = type_counts.get(jt, 0) + 1
+            if i < 50:
+                sym = job.get("symbol") or f"#{job.get('trade_id') or job.get('journal_id') or '?'}"
+                reasons = job.get("reason_codes") or []
+                log(f"  {i+1:>3}. [{job['priority_tier']}:{job['priority_score']:>3}] "
+                    f"{job['job_type']:>25} {sym:>8} — {','.join(reasons[:3])}")
+        log(f"Job type mix: {', '.join(f'{k}={v}' for k, v in sorted(type_counts.items()))}")
         log(f"Would process up to {len(jobs)} jobs in {args.time_budget_min} minutes")
         conn.close()
         return
