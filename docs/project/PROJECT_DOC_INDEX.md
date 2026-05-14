@@ -32,16 +32,17 @@
 ### Phase 1 Test Reports (LLM Fleet)
 | Document | Purpose |
 |----------|---------|
-| `docs/v4_1_phase2_a1a_scope.md` | **Phase 2A A1A scope** — which docs are affected, updated, or deferred |
-| `docs/v4_1_phase2_preflight.md` | **Phase 2A preflight** — all gates, model inventory, health check |
-| `docs/v4_1_phase2_rag_embedding_discovery.md` | **Phase 2A RAG discovery** — current embedding arch, tables, scoring, cron |
-| `docs/v4_1_phase2_candidate_model_check.md` | **Phase 2A candidate check** — qwen3-embedding:8b status and pull command |
-| `docs/v4_1_phase2_embedding_ab_queries.md` | **Phase 2A query set** — 40 queries across 20 categories for A/B |
-| `docs/v4_1_phase2_embedding_ab_report.md` | **Phase 2A baseline report** — nomic baseline results, candidate NOT TESTED |
-| `docs/v4_1_phase2_embedding_ab_results.json` | Phase 2A machine-readable results |
-| `docs/v4_1_phase2b_parallel_index_design.md` | **Phase 2B design** — parallel test table, NOT APPLIED |
-| `docs/v4_1_phase2c_hybrid_retrieval_design.md` | **Phase 2C design** — dual-model retrieval, NOT APPLIED |
-| `docs/v4_1_phase2d_embedding_promotion_checklist.md` | **Phase 2D checklist** — 14-gate promotion, BLOCKED pending operator approval |
+| `docs/llm_fleet/phase2_embedding_ab/00_README.md` | **Phase 2 index** — read order, current gate status, next steps |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_a1a_scope.md` | Phase 2A A1A scope |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_preflight.md` | Phase 2A preflight gates |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_rag_embedding_discovery.md` | RAG architecture discovery |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_candidate_model_check.md` | Candidate model check (installed, tested) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_embedding_ab_queries.md` | 40 A/B queries across 20 categories |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_embedding_ab_report.md` | A/B results (nomic 23ms vs candidate 295ms) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2_embedding_ab_results.json` | Raw JSON results |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2b_parallel_index_design.md` | Phase 2B design (NOT APPLIED) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2c_hybrid_retrieval_design.md` | Phase 2C design (NOT APPLIED) |
+| `docs/llm_fleet/phase2_embedding_ab/v4_1_phase2d_embedding_promotion_checklist.md` | Phase 2D checklist (BLOCKED) |
 | `docs/v4_1_phase1_pilot_report.md` | Phase 1 pilot: gemma3:27b BATCH_OVERNIGHT test (1 symbol) |
 | `docs/v4_1_phase1c_controlled_expansion_report.md` | Phase 1C: 2-symbol expansion test |
 | `docs/v4_1_phase1d_limit5_report.md` | Phase 1D: 5-symbol expansion test |
@@ -93,6 +94,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Phase 2 docs moved to docs/llm_fleet/phase2_embedding_ab/ (10 files). Created 00_README.md index. Cross-referenced from LLM_FLEET_STRATEGY. File paths updated in doc index. |
 | 2026-05-14 | Documentation standards protocol created (DOCUMENTATION_STANDARDS.md). Export/backup and system facts regeneration scripts. Live counts: 341 tables, 397 scripts, 83 crons, 75 pages, 14786 embeddings. |
 | 2026-05-14 | Phase 2A complete: qwen3-embedding:8b pulled and tested. 4096d, 295ms. Baseline nomic 768d, 23ms. Phase 2B GO recommended. No production changes. |
 | 2026-05-14 | Session 35: Self-healing gap resolver scheduled (hourly+pre-overnight+weekly cron). Overnight dashboard v2 with parsed gemma3 outputs. Phase 1 finalized (quotas, health checks, reporter). Docs updated: MASTER §5.5, ARCH, CHEAT_SHEET, RESTORE_GUIDE. |
