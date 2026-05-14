@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# run_deep_overnight_llm_window.sh — Phase 1H daily deep overnight LLM window
+# run_deep_overnight_llm_window.sh — Phase 1J daily deep overnight LLM window
 #
 # Scheduled entry point for 23:00–03:00 deep overnight LLM processing.
 # Uses gemma3-overnight to process a prioritized queue of high-value jobs.
+#
+# Phase 1J changes:
+#   - Forces mixed job types so risk_synthesis/recovery/RAG/journal are not starved
+#   - Strategy classification fills remaining capacity after forced types
+#   - Daily max 100, hard max 125, hard stop 03:00, restore by 03:15
+#   - Friday 16:00 400-job extended cron removed (unsafe, not approved)
 #
 # Usage:
 #   ./scripts/run_deep_overnight_llm_window.sh              # normal run
@@ -36,10 +42,13 @@ EMBED_MODEL="nomic-embed-text:latest"
 TIME_BUDGET=240
 HARD_STOP="03:00"
 MAX_JOBS=100
-HARD_MAX_JOBS=100
-ALLOW_OVER_75=false
+HARD_MAX_JOBS=125
+ALLOW_OVER_HARD_MAX=false
 DRY_RUN=false
 FORCE_WINDOW=false
+
+# Forced mixed job types — ensures these run before strategy_classification fills remaining capacity
+FORCED_JOB_TYPES="risk_synthesis,recovery_watch_review,rag_content_curation,closed_trade_review,auto_journal_review,manual_journal_review,journal_pattern_review,proposal_review"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -60,22 +69,22 @@ while [[ $# -gt 0 ]]; do
             FORCE_WINDOW=true
             shift
             ;;
-        --allow-over-75)
-            ALLOW_OVER_75=true
+        --allow-over-hard-max|--allow-over-75)
+            ALLOW_OVER_HARD_MAX=true
             shift
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 [--dry-run] [--max-jobs N] [--time-budget MIN] [--force-window] [--allow-over-75]" >&2
+            echo "Usage: $0 [--dry-run] [--max-jobs N] [--time-budget MIN] [--force-window] [--allow-over-hard-max]" >&2
             exit 1
             ;;
     esac
 done
 
 # ── Hard cap validation ──────────────────────────────────────────────────
-if [ "$MAX_JOBS" -gt "$HARD_MAX_JOBS" ] && [ "$ALLOW_OVER_75" != "true" ]; then
+if [ "$MAX_JOBS" -gt "$HARD_MAX_JOBS" ] && [ "$ALLOW_OVER_HARD_MAX" != "true" ]; then
     echo "ERROR: --max-jobs $MAX_JOBS exceeds hard max of $HARD_MAX_JOBS." >&2
-    echo "Use --allow-over-75 to override (not recommended)." >&2
+    echo "Use --allow-over-hard-max to override (not recommended)." >&2
     exit 1
 fi
 
@@ -222,7 +231,7 @@ restore_models() {
 
 START_TIME=$(date +%s)
 log "══════════════════════════════════════════════════════════════"
-log "=== Phase 1H Deep Overnight LLM Window Starting ==="
+log "=== Phase 1J Deep Overnight LLM Window Starting ==="
 log "══════════════════════════════════════════════════════════════"
 log "Mode:        $([ "$DRY_RUN" = true ] && echo 'DRY RUN' || echo 'LIVE')"
 log "Time budget: ${TIME_BUDGET}m"
@@ -322,12 +331,14 @@ gpu_ps | tee -a "$LOG"
 
 # ── Run queue with gemma3-overnight ────────────────────────────────────
 log "Starting queue runner with gemma3-overnight..."
+log "Forced job types: $FORCED_JOB_TYPES"
 QUEUE_EXIT=0
 LOCAL_LLM_MODEL="$PILOT_MODEL" \
     "$PY" "$PROJ/scripts/run_deep_overnight_llm_queue.py" \
     --limit "$MAX_JOBS" \
     --time-budget-min "$TIME_BUDGET" \
     --hard-stop "$HARD_STOP" \
+    --force-job-types "$FORCED_JOB_TYPES" \
     2>&1 | tee -a "$LOG" || QUEUE_EXIT=$?
 
 log "Queue runner exit code: $QUEUE_EXIT"
@@ -345,7 +356,7 @@ END_TIME=$(date +%s)
 TOTAL_RUNTIME=$(( END_TIME - START_TIME ))
 
 log "══════════════════════════════════════════════════════════════"
-log "=== Phase 1H Deep Overnight LLM Window Complete ==="
+log "=== Phase 1J Deep Overnight LLM Window Complete ==="
 log "══════════════════════════════════════════════════════════════"
 log "Total runtime:     ${TOTAL_RUNTIME}s ($(( TOTAL_RUNTIME / 60 ))m)"
 log "Queue exit code:   $QUEUE_EXIT"
