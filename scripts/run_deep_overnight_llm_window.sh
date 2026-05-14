@@ -47,6 +47,14 @@ ALLOW_OVER_HARD_MAX=false
 DRY_RUN=false
 FORCE_WINDOW=false
 
+# Phase 2C: Hybrid RAG defaults
+ENABLE_HYBRID_RAG=false
+HYBRID_PREFETCH_LIMIT=100
+HYBRID_FINAL_K=10
+HYBRID_JOB_TYPES="risk_synthesis,recovery_watch_review,closed_trade_review,auto_journal_review,manual_journal_review,journal_pattern_review,proposal_review,strategy_classification"
+HYBRID_CONTEXT_FILE="$PROJ/data/hybrid_rag_prefetch_cache.json"
+QWEN3_EMBED_MODEL="qwen3-embedding:8b"
+
 # Forced mixed job types — ensures these run before strategy_classification fills remaining capacity
 FORCED_JOB_TYPES="risk_synthesis,recovery_watch_review,rag_content_curation,closed_trade_review,auto_journal_review,manual_journal_review,journal_pattern_review,proposal_review"
 
@@ -73,9 +81,25 @@ while [[ $# -gt 0 ]]; do
             ALLOW_OVER_HARD_MAX=true
             shift
             ;;
+        --enable-hybrid-rag)
+            ENABLE_HYBRID_RAG=true
+            shift
+            ;;
+        --hybrid-prefetch-limit)
+            HYBRID_PREFETCH_LIMIT="${2:-100}"
+            shift 2
+            ;;
+        --hybrid-job-types)
+            HYBRID_JOB_TYPES="${2}"
+            shift 2
+            ;;
+        --hybrid-final-k)
+            HYBRID_FINAL_K="${2:-10}"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 [--dry-run] [--max-jobs N] [--time-budget MIN] [--force-window] [--allow-over-hard-max]" >&2
+            echo "Usage: $0 [--dry-run] [--max-jobs N] [--time-budget MIN] [--force-window] [--allow-over-hard-max] [--enable-hybrid-rag]" >&2
             exit 1
             ;;
     esac
@@ -238,6 +262,7 @@ log "Time budget: ${TIME_BUDGET}m"
 log "Hard stop:   $HARD_STOP"
 log "Max jobs:    $MAX_JOBS"
 log "Model:       $PILOT_MODEL"
+log "Hybrid RAG:  $([ "$ENABLE_HYBRID_RAG" = true ] && echo 'ENABLED (Phase 2C two-stage)' || echo 'disabled')"
 
 # ── Gate 1: Window check ────────────────────────────────────────────────
 HOUR=$(date +%H)
@@ -309,6 +334,14 @@ log "GPU API: $GPU_STATUS"
 log "Building deep overnight queue..."
 if [ "$DRY_RUN" = true ]; then
     "$PY" "$PROJ/scripts/build_deep_overnight_llm_queue.py" --dry-run --limit "$MAX_JOBS" 2>&1 | tee -a "$LOG"
+    if [ "$ENABLE_HYBRID_RAG" = true ]; then
+        log "DRY RUN — Hybrid RAG plan:"
+        log "  Stage A: prefetch with nomic + $QWEN3_EMBED_MODEL (limit=$HYBRID_PREFETCH_LIMIT, k=$HYBRID_FINAL_K)"
+        log "  Stage A: unload $QWEN3_EMBED_MODEL"
+        log "  Stage B: gemma generation with prefetched context from $HYBRID_CONTEXT_FILE"
+        log "  Restore: unload gemma → restore qwen3:14b + nomic"
+        log "  Hybrid job types: $HYBRID_JOB_TYPES"
+    fi
     log "=== DRY RUN COMPLETE — no model changes, no queue processing ==="
     # Don't trigger cleanup restore on dry run exit
     rm -f "$LOCK_FILE"
@@ -318,15 +351,85 @@ else
     "$PY" "$PROJ/scripts/build_deep_overnight_llm_queue.py" --apply --limit "$MAX_JOBS" 2>&1 | tee -a "$LOG"
 fi
 
-# ── Evict qwen3:14b and nomic ─────────────────────────────────────────
-log "Evicting models for gemma window..."
-log "  Evicting $RESTORE_MODEL..."
-unload_model "$RESTORE_MODEL"
-log "  Evicting $EMBED_MODEL..."
-unload_model "$EMBED_MODEL"
-sleep 3
+# ── Phase 2C: Stage A — Hybrid RAG Context Prefetch (optional) ────────
+HYBRID_CACHE_ARGS=""
+if [ "$ENABLE_HYBRID_RAG" = true ]; then
+    log "──────────────────────────────────────────────────────────────"
+    log "STAGE A — Hybrid RAG Context Prefetch (Phase 2C)"
+    log "──────────────────────────────────────────────────────────────"
 
-log "GPU state AFTER eviction:"
+    # Verify gemma is NOT resident before Stage A
+    if curl -s "$OLLAMA_URL/api/ps" 2>/dev/null | grep -qi "gemma"; then
+        log "  WARNING: gemma model resident — unloading before Stage A"
+        unload_model "$PILOT_MODEL"
+        sleep 3
+    fi
+
+    # Evict qwen3:14b to free VRAM for qwen3-embedding:8b
+    log "  Evicting $RESTORE_MODEL for embedding prefetch..."
+    unload_model "$RESTORE_MODEL"
+    sleep 2
+
+    # nomic-embed-text stays resident — needed for hybrid retrieval
+    # Load qwen3-embedding:8b
+    log "  Loading $QWEN3_EMBED_MODEL..."
+    curl -s -X POST "$OLLAMA_URL/api/embeddings" \
+        -H "Content-Type: application/json" \
+        -d "{\"model\":\"$QWEN3_EMBED_MODEL\",\"prompt\":\"test\"}" \
+        --max-time 60 > /dev/null 2>&1
+    sleep 2
+
+    log "  GPU state during Stage A prefetch:"
+    gpu_ps | tee -a "$LOG"
+
+    # Run prefetch
+    log "  Prefetching hybrid context for up to $HYBRID_PREFETCH_LIMIT jobs..."
+    "$PY" "$PROJ/scripts/prefetch_hybrid_rag_context.py" \
+        --limit "$HYBRID_PREFETCH_LIMIT" \
+        --job-types "$HYBRID_JOB_TYPES" \
+        --output "$HYBRID_CONTEXT_FILE" \
+        --final-k "$HYBRID_FINAL_K" \
+        --json 2>&1 | tee -a "$LOG"
+
+    # Unload qwen3-embedding — MUST happen before gemma loads
+    log "  Unloading $QWEN3_EMBED_MODEL (before Stage B)..."
+    unload_model "$QWEN3_EMBED_MODEL"
+    sleep 3
+
+    # Verify qwen3-embedding is gone
+    if curl -s "$OLLAMA_URL/api/ps" 2>/dev/null | grep -qi "qwen3-embedding"; then
+        log "  WARNING: $QWEN3_EMBED_MODEL still resident — force unloading"
+        unload_model "$QWEN3_EMBED_MODEL"
+        sleep 3
+    fi
+    log "  Stage A complete. qwen3-embedding unloaded."
+
+    if [ -f "$HYBRID_CONTEXT_FILE" ]; then
+        HYBRID_CACHE_ARGS="--use-hybrid-rag --hybrid-rag-cache $HYBRID_CONTEXT_FILE --hybrid-rag-workflows $HYBRID_JOB_TYPES --hybrid-rag-final-k $HYBRID_FINAL_K --hybrid-rag-audit"
+        log "  Hybrid context file ready: $HYBRID_CONTEXT_FILE"
+    else
+        log "  WARNING: Hybrid context file not created — proceeding without hybrid"
+    fi
+
+    log "──────────────────────────────────────────────────────────────"
+    log "STAGE B — Gemma Deep Reasoning (using prefetched context)"
+    log "──────────────────────────────────────────────────────────────"
+
+    # Evict nomic before gemma loads (gemma needs max VRAM)
+    log "  Evicting $EMBED_MODEL for gemma window..."
+    unload_model "$EMBED_MODEL"
+    sleep 2
+else
+    # No hybrid — standard eviction
+    log "Evicting models for gemma window..."
+    log "  Evicting $RESTORE_MODEL..."
+    unload_model "$RESTORE_MODEL"
+    log "  Evicting $EMBED_MODEL..."
+    unload_model "$EMBED_MODEL"
+    sleep 3
+fi
+
+log "GPU state BEFORE gemma:"
 gpu_ps | tee -a "$LOG"
 
 # ── Run queue with gemma3-overnight ────────────────────────────────────
@@ -340,6 +443,7 @@ LOCAL_LLM_MODEL="$PILOT_MODEL" \
     --hard-stop "$HARD_STOP" \
     --force-job-types "$FORCED_JOB_TYPES" \
     --quota-policy balanced \
+    $HYBRID_CACHE_ARGS \
     2>&1 | tee -a "$LOG" || QUEUE_EXIT=$?
 
 log "Queue runner exit code: $QUEUE_EXIT"
