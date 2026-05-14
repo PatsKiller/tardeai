@@ -1438,3 +1438,39 @@ $1,191,013 / 43 positions — no broker, holdings, execution, or embedding chang
 
 ### Iron Rule
 $1,190,653 / 43 positions — no broker, holdings, execution, or embedding changes
+
+---
+
+## Phase 2A: Embedding A/B Baseline & RAG Discovery — 2026-05-14 10:00 ET
+
+### Preflight
+All gates PASS. ALPACA_MODE=paper, LLM_DISABLE=true, holdings=$1,190,653, no deep lock.
+
+### Candidate Model
+**qwen3-embedding:8b is NOT INSTALLED.** Pull command: `ollama pull qwen3-embedding:8b`
+
+### Current Production
+nomic-embed-text: 768 dims, 14,784 embeddings, 14 source types, 23ms avg latency.
+
+### Baseline Results
+- 40 queries tested against 1,000 docs
+- 0 empty results, 5 source types in top-5
+- Candidate: NOT TESTED (not installed)
+
+### What Changed
+- New script: `scripts/embedding_ab_baseline.py`
+- New docs: A1A scope, preflight, RAG discovery, candidate check, A/B queries, A/B report, A/B results JSON, Phase 2B/2C/2D design docs
+
+### What Did NOT Change
+- Production embeddings: UNCHANGED
+- Production RAG routing: UNCHANGED
+- Cron: UNCHANGED
+- .env: UNCHANGED
+- Broker/holdings/execution: UNCHANGED
+- nomic-embed-text: RETAINED as production default
+
+### Recommended Next Step
+Operator should approve: `Approve pull qwen3-embedding:8b for Phase 2A embedding A/B testing.`
+
+### Iron Rule
+$1,190,653 / 43 positions — no production embedding or routing changes
