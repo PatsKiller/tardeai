@@ -1,7 +1,7 @@
 # Phase 2 — RAG Embedding A/B Testing
 
-**Status:** Phase 2C NIGHTLY ENABLED. Daily 23:00 deep queue uses two-stage hybrid RAG. Friday extended disabled. Phase 2D blocked.
-**Last commit:** (Phase 2C nightly enable, 2026-05-14)
+**Status:** PHASE 2 COMPLETE. Bounded offline hybrid RAG approved (daily + Friday). Global embedding promotion blocked.
+**Last commit:** (Phase 2 finalization, 2026-05-14)
 **Owner:** John W. Whiting
 
 ## What This Is
@@ -73,18 +73,22 @@ Phase 2 of the LLM Fleet v4.1 plan evaluates whether to replace
 - Latency overhead: 0.3-2.3s per job (0.4-5.2% of total)
 - See `v4_1_phase2c_offline_integration_pilot_report.md`
 
-## Nightly Enablement (2026-05-14)
+## Production Enablement (2026-05-14)
 
-Daily 23:00 deep queue now runs with `--enable-hybrid-rag`.
-Two-stage lifecycle: Stage A prefetches with qwen3-embedding + nomic, Stage B runs gemma with cached context.
-Friday extended: no hybrid (unchanged).
-See `v4_1_phase2c_nightly_enable_scope.md`.
+- **Daily 23:00:** hybrid RAG enabled (`--enable-hybrid-rag`)
+- **Friday extended:** hybrid RAG enabled (`--enable-hybrid-rag`)
+- Two-stage lifecycle enforced (qwen3-embedding and gemma3-overnight never co-resident)
+- Global production RAG routing unchanged (nomic-embed-text remains default)
 
-## Next Steps (Operator Decision Required)
+## Phase 2D: Bounded Offline Promotion
 
-> Observe tonight's first scheduled hybrid run.
-> If clean: enable Friday extended hybrid.
-> Phase 2D production promotion remains BLOCKED.
+Phase 2D is approved as **bounded offline/deep-queue hybrid RAG only**.
+Global production embedding promotion remains **blocked**.
+See `v4_1_phase2d_bounded_offline_promotion.md`.
+
+## Next Phase
+
+Phase 3: Small media/prose model pilot (not yet started).
 
 ## Monitoring and Rollback
 
@@ -105,7 +109,10 @@ See `v4_1_phase2c_nightly_enable_scope.md`.
 | 6 | Latency delta measured | DONE (274ms vs 28ms) |
 | 7 | Offline integration pilot | DONE (20/20 jobs, two-stage) |
 | 7b | Nightly enablement | DONE (daily 23:00 --enable-hybrid-rag) |
-| 7c | Friday extended hybrid | PENDING operator approval |
+| 7c | Friday extended hybrid | DONE (Friday 16:00 --enable-hybrid-rag) |
+| 8 | Phase 2D bounded offline promotion | DONE (offline/deep only) |
+| 9 | Phase 2 closeout | DONE |
+| — | Global embedding promotion | BLOCKED |
 | 8-14 | (See promotion checklist) | BLOCKED |
 
 ## Safety Invariants
