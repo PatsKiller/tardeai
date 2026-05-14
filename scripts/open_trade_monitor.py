@@ -194,23 +194,20 @@ def _auto_close_position(conn, trade_id, symbol, price, reason, cur):
         _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
         requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
                         headers=_headers, timeout=10)
-        # Determine verdict: target=WIN, stop=LOSS, time_stop=based on P&L
-        if reason == 'target_hit':
-            _verdict = 'WIN'
-        elif reason == 'stop_hit':
-            _verdict = 'LOSS'
-        elif reason.startswith('time_stop'):
-            # Time stop verdict based on P&L at close
-            _entry = None
-            try:
-                cur.execute("SELECT entry_price FROM paper_trades WHERE id=%s", [trade_id])
-                _r = cur.fetchone()
-                _entry = float(_r[0]) if _r else None
-            except Exception:
-                pass
-            _verdict = 'WIN' if _entry and price > _entry else 'LOSS' if _entry and price < _entry else 'BREAKEVEN'
+        # Determine verdict from actual P&L, not exit reason
+        from trade_outcome_helpers import classify_verdict
+        _entry = None
+        try:
+            cur.execute("SELECT entry_price FROM paper_trades WHERE id=%s", [trade_id])
+            _r = cur.fetchone()
+            _entry = float(_r[0]) if _r else None
+        except Exception:
+            pass
+        if _entry:
+            _pnl_estimate = (price - _entry) * 1  # per-share; classify_verdict only checks sign
+            _verdict = classify_verdict(_pnl_estimate)
         else:
-            _verdict = 'LOSS'
+            _verdict = 'UNKNOWN'
         cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
             exit_reason=%s, closed_at=NOW(), closed_via=%s,
             outcome_verdict=%s, lifecycle_state='closed'

@@ -180,7 +180,8 @@ class AlpacaPaperAdapter:
                 _shares = int(_tr[1]) if _tr and _tr[1] else 0
                 if _exit_price and _entry:
                     _exit_pnl = round((_exit_price - _entry) * _shares, 2)
-                _verdict = 'WIN' if _exit_pnl and _exit_pnl > 0 else 'LOSS' if _exit_pnl and _exit_pnl < 0 else 'BREAKEVEN'
+                from trade_outcome_helpers import classify_verdict
+                _verdict = classify_verdict(_exit_pnl)
 
                 cur.execute("""
                     UPDATE paper_trades

@@ -223,9 +223,8 @@ def close_paper_trade(conn, paper_trade_id=None, symbol=None, reason="manual", d
     entry_time = trade.get("entry_time") or trade.get("created_at")
     hold_time_min = round((now - entry_time).total_seconds() / 60, 1) if entry_time else None
 
-    verdict = "NEUTRAL"
-    if pnl is not None:
-        verdict = "CORRECT" if pnl > 0 else "WRONG" if pnl < 0 else "NEUTRAL"
+    from trade_outcome_helpers import classify_verdict
+    verdict = classify_verdict(pnl)
 
     # Update paper_trades
     cur.execute("""
