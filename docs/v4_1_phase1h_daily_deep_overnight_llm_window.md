@@ -379,8 +379,84 @@ Before Phase 3 (media/content model):
 - Event-driven requeue engine — price/staleness/earnings/recovery triggers
 - gemma3 calibration loop — grades verdicts against actual outcomes
 - 7 new Finviz screeners (27 total) + 16 static bond/BDC/cash symbols in watchlist
-- Friday 4PM extended window (400 jobs, 11h)
+- Friday 4PM extended window (200 jobs — Phase 1J reduced from 400)
 - Queue Manager UI page at /v2/ops (LLM Queue tab)
+- Overnight Intelligence Dashboard at /v2/overnight (Phase 1J)
+
+---
+
+## 22. Phase 1J — Mixed Job Type Enforcement and Cron Cleanup
+
+**Date:** 2026-05-14
+**Status:** DEPLOYED
+
+### Problem
+The nightly wrapper (`run_deep_overnight_llm_window.sh`) did not pass `--force-job-types`
+to the queue runner. Strategy classification jobs dominated the queue, starving
+risk_synthesis, recovery_watch_review, rag_content_curation, closed_trade_review,
+and journal review jobs.
+
+A Friday 16:00 extended cron used `--max-jobs 400 --allow-over-75`, which was too
+aggressive and used stale flag naming.
+
+### Changes
+
+**A. Wrapper forced mixed job types:**
+The wrapper now passes `--force-job-types` to ensure these types run before
+strategy_classification fills remaining capacity:
+- risk_synthesis
+- recovery_watch_review
+- rag_content_curation
+- closed_trade_review
+- auto_journal_review
+- manual_journal_review
+- journal_pattern_review
+- proposal_review
+
+**B. Capacity policy:**
+| Setting | Daily (23:00) | Friday Extended (16:00) |
+|---------|--------------|------------------------|
+| Max jobs | 100 | 200 |
+| Hard max | 125 | 200 (with --allow-over-hard-max) |
+| Hard stop | 03:00 | 03:00 |
+| Restore deadline | 03:15 | 03:15 |
+| Forced mixed types | YES | YES (via wrapper) |
+| Safety gates | All | All |
+| 400 jobs | NOT APPROVED | Requires Phase 1K |
+
+**C. Flag naming cleanup:**
+- `--allow-over-75` renamed to `--allow-over-hard-max`
+- Backward compatibility preserved (both flags accepted)
+- HARD_MAX_JOBS changed from 100 to 125
+
+**D. Friday extended cron preserved with safe policy:**
+- Reduced from `--max-jobs 400` to `--max-jobs 200`
+- Uses `--allow-over-hard-max` (replaces stale `--allow-over-75`)
+- Same safety gates, lock, restore behavior as daily run
+- Operator-approved — documented as intentional
+- 400 requires future Phase 1K approval after observing 200
+
+**E. Crontab:**
+```
+# Daily 23:00
+0 23 * * * cd /home/johnclaw/.../trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh >> logs/deep_overnight_llm_window.log 2>&1
+
+# Friday extended (operator-approved, cap 200)
+0 16 * * 5 cd /home/johnclaw/.../trade-ai-v12-rebuild && flock -n /tmp/tradeai_deep_llm_window.lock bash scripts/run_deep_overnight_llm_window.sh --force-window --max-jobs 200 --allow-over-hard-max >> logs/deep_llm_friday_extended.log 2>&1
+```
+
+**F. Overnight Intelligence Dashboard:**
+New page at `/v2/overnight` with API endpoint `/api/v2/overnight-dashboard`.
+Single-shot morning briefing showing window stats, risk synthesis, recovery verdicts,
+trade reviews, strategy classifications, covered calls, RAG curation, proposals,
+failed jobs, and gemma3 calibration accuracy. Telegram digest script added.
+
+### What Phase 1J does NOT change
+- No Phase 2 or Phase 3 work
+- No embedding changes
+- No broker/holdings/execution changes
+- No global model routing changes
+- No queue/result data deleted
 
 ### Future Phase 1H extensions (not authorized)
 - Expand queue sources to include SEC/news/social catalysts

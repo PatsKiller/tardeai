@@ -1292,3 +1292,39 @@ pending: 441 | running: 0 | done: 14 | failed: 1
 
 ### Iron Rule
 $1,190,695 / 47 positions — identical pre and post
+
+---
+
+## Phase 1J: Mixed Queue Enforcement + Overnight Dashboard — 2026-05-14 08:45 ET
+
+### Changes
+1. **Wrapper forced mixed job types** — `run_deep_overnight_llm_window.sh` now passes
+   `--force-job-types risk_synthesis,recovery_watch_review,rag_content_curation,closed_trade_review,auto_journal_review,manual_journal_review,journal_pattern_review,proposal_review`
+   to the queue runner. Strategy classification fills remaining capacity.
+
+2. **Capacity policy** — Daily max 100, hard max 125, hard stop 03:00.
+   HARD_MAX_JOBS changed from 100 to 125.
+
+3. **Flag rename** — `--allow-over-75` → `--allow-over-hard-max` (backward compat kept).
+
+4. **Friday extended cron preserved** — Reduced from 400 to 200 jobs with safe gates.
+   Uses `--allow-over-hard-max`. 400 requires future Phase 1K approval.
+
+5. **Overnight Intelligence Dashboard** — New page `/v2/overnight` with API endpoint
+   `/api/v2/overnight-dashboard`. 12-section morning briefing. Telegram digest script added.
+
+### Crontab
+- Daily: `0 23 * * *` — unchanged, 100 jobs max
+- Friday: `0 16 * * 5` — changed from 400 to 200 jobs, updated flag naming
+
+### Validation
+- bash -n: PASS
+- py_compile: PASS
+- Dry run with forced types: 20 jobs queued (rag_content_curation prioritized)
+- API endpoint: 165 done, 1 failed, 9 job types, all sections populated
+- Safety: ALPACA_MODE=paper, LLM_DISABLE_LIVE_EXECUTION=true
+- GPU: qwen3:14b (9.4GB) + nomic-embed-text (0.54GB) resident
+- Holdings: $1,191,050
+
+### Iron Rule
+$1,191,050 / 43 positions — no broker, holdings, execution, or embedding changes
