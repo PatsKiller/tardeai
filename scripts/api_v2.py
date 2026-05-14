@@ -13689,6 +13689,115 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Trade Intelligence Aggregator (Phase 3, Session 42) ──
+    if base_path.startswith("/api/v2/trade/") and base_path.endswith("/intelligence"):
+        _tid_str = base_path[len("/api/v2/trade/"):-len("/intelligence")].strip("/")
+        if _tid_str.isdigit():
+            try:
+                _tid = int(_tid_str)
+                # 1. Core trade
+                _trade = _db_query("SELECT * FROM paper_trades WHERE id=%s", [_tid], fetch="one")
+                if not _trade:
+                    return 404, {"ok": False, "error": f"Trade {_tid} not found"}
+                _sym = _trade["symbol"]
+
+                # 2. Linked proposal
+                _prop = None
+                if _trade.get("proposal_id"):
+                    _prop = _db_query("SELECT * FROM paper_trade_proposals WHERE id=%s",
+                                      [_trade["proposal_id"]], fetch="one")
+
+                # 3. Agent reviews for this proposal
+                _reviews = []
+                if _trade.get("proposal_id"):
+                    _reviews = _db_query("""
+                        SELECT agent_name, vote, confidence, summary, concerns, payload, reviewed_at
+                        FROM proposal_agent_reviews
+                        WHERE proposal_id=%s ORDER BY created_at
+                    """, [_trade["proposal_id"]]) or []
+
+                # 4. Watchlist agent narratives for this symbol (closest to proposal time)
+                _narratives = []
+                _prop_time = (_prop or {}).get("created_at")
+                if _prop_time:
+                    _narratives = _db_query("""
+                        SELECT agent, recommendation, confidence, summary,
+                               LEFT(full_narrative, 500) as narrative_preview, model_used, created_at
+                        FROM watchlist_agent_results
+                        WHERE symbol=%s AND created_at BETWEEN %s - INTERVAL '24 hours' AND %s + INTERVAL '24 hours'
+                        ORDER BY ABS(EXTRACT(EPOCH FROM (created_at - %s))) LIMIT 6
+                    """, [_sym, _prop_time, _prop_time, _prop_time]) or []
+                else:
+                    _narratives = _db_query("""
+                        SELECT agent, recommendation, confidence, summary,
+                               LEFT(full_narrative, 500) as narrative_preview, model_used, created_at
+                        FROM watchlist_agent_results
+                        WHERE symbol=%s ORDER BY created_at DESC LIMIT 6
+                    """, [_sym]) or []
+
+                # 5. Competing strategies (all proposals for same symbol within 24h)
+                _competing = []
+                if _prop:
+                    _competing = _db_query("""
+                        SELECT id, strategy_id, signal_score, signal_grade,
+                               critic_confidence, status, paper_submit_state
+                        FROM paper_trade_proposals
+                        WHERE symbol=%s
+                          AND ABS(EXTRACT(EPOCH FROM (created_at - %s))) < 86400
+                        ORDER BY COALESCE(signal_score, 0) DESC
+                    """, [_sym, _prop["created_at"]]) or []
+
+                # 6. Post-trade thesis outcome
+                _thesis = _db_query("""
+                    SELECT thesis_result, actual_r, invalidation_hit,
+                           max_favorable_excursion_pct, max_adverse_excursion_pct,
+                           thesis_followed, exit_reason, review_payload
+                    FROM trade_thesis_outcomes WHERE paper_trade_id=%s
+                """, [_tid], fetch="one")
+
+                # 7. Post-trade price analysis (new table, may not exist yet)
+                _price_analysis = None
+                try:
+                    _price_analysis = _db_query("""
+                        SELECT * FROM post_trade_price_analysis WHERE trade_id=%s
+                    """, [_tid], fetch="one")
+                except Exception:
+                    pass
+
+                # 8. Prior outcomes context (Fix 6 block)
+                _prior_ctx = ""
+                try:
+                    from agent_collab import get_symbol_history_context, get_strategy_performance_context
+                    from session13_db import get_conn as _get_intel_conn
+                    _iconn = _get_intel_conn()
+                    _prior_ctx = get_symbol_history_context(_sym, _iconn, days=30)
+                    _strat_ctx = get_strategy_performance_context(
+                        _trade.get("strategy_id", ""), _iconn, days=30)
+                    _iconn.close()
+                    if _strat_ctx:
+                        _prior_ctx = (_prior_ctx or "") + "\n" + _strat_ctx
+                except Exception:
+                    pass
+
+                _clean = lambda rows: [{k: _json_clean(v) for k, v in r.items()} for r in rows] if rows else []
+
+                return 200, {"ok": True, "data": {
+                    "trade": {k: _json_clean(v) for k, v in _trade.items()},
+                    "proposal": {k: _json_clean(v) for k, v in _prop.items()} if _prop else None,
+                    "agent_reasoning": {
+                        "reviews": _clean(_reviews),
+                        "narratives": _clean(_narratives),
+                    },
+                    "competing_strategies": _clean(_competing),
+                    "post_trade": {
+                        "thesis": {k: _json_clean(v) for k, v in _thesis.items()} if _thesis else None,
+                        "price_analysis": {k: _json_clean(v) for k, v in _price_analysis.items()} if _price_analysis else None,
+                    },
+                    "prior_outcomes_context": _prior_ctx,
+                }}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/automated-trade-journal":
         try:
             _acct = ((query or {}).get("account", ["ALPACA_PAPER"])[0]
