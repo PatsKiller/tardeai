@@ -1644,3 +1644,36 @@ Enable hybrid RAG for nightly deep queue behind wrapper flag. Run 20-job pilot d
 
 ### Production Impact
 UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+---
+
+## Phase 2C Offline Integration — Two-Stage 20-Job Pilot — 2026-05-14
+
+### What Changed
+Implemented two-stage lifecycle: Stage A prefetches hybrid context (qwen3-embedding + nomic), Stage B runs gemma generation with cached context. Hard rule enforced: qwen3-embedding:8b and gemma3-overnight never co-resident.
+
+### New Scripts
+- scripts/prefetch_hybrid_rag_context.py — Stage A prefetch
+- scripts/run_phase2c_hybrid_offline_pilot.sh — Two-stage orchestrator (updated)
+- scripts/run_deep_overnight_llm_queue.py — --hybrid-rag-cache flag for prefetched context
+
+### Results
+| Metric | Value |
+|--------|-------|
+| Stage A: Jobs prefetched | 20/20 |
+| Stage A: Time | 6.8s |
+| Stage A: Avg RAG latency | 341ms |
+| Stage B: Jobs processed | 20/20 |
+| Stage B: Time | 20.1 min |
+| Stage B: Failures | 0 |
+| Co-residency violations | 0 |
+| Context source | Prefetched cache (no live embedding during gemma) |
+
+### Key Finding
+Deep overnight jobs previously had ZERO RAG context. Two-stage lifecycle safely adds 10 RAG results per job from 2-6 source types without model co-residency conflicts.
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Model Residency
+Final: qwen3:14b + nomic-embed-text (production). All pilot models unloaded.

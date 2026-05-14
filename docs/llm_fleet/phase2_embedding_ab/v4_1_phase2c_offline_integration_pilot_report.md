@@ -1,7 +1,7 @@
 # Phase 2C Offline Integration Pilot — Report
 
 **Date:** 2026-05-14
-**Status:** COMPLETE (5/5 jobs succeeded)
+**Status:** COMPLETE — Two-stage 20-job pilot (corrected from initial 5-job single-stage)
 
 ## Pilot Configuration
 
@@ -81,3 +81,51 @@ Zero errors in adapter, queue runner, or gemma inference. Clean fallback behavio
 | .env | NO |
 | Broker/holdings/execution | NO |
 | Phase 2D promotion | BLOCKED |
+
+## Two-Stage 20-Job Pilot (Corrected Lifecycle)
+
+Hard rule: qwen3-embedding:8b and gemma3-overnight must NOT be co-resident.
+
+### Stage A — Hybrid Context Prefetch
+- Models loaded: nomic-embed-text + qwen3-embedding:8b
+- Jobs prefetched: 20/20, 0 failures
+- Total time: 6.8s
+- Average RAG latency: 341ms
+- qwen3-embedding:8b unloaded after prefetch
+- qwen3:14b restored
+- gemma3-overnight NOT resident during Stage A
+
+### Stage B — Gemma Generation
+- Model loaded: gemma3-overnight
+- Jobs processed: 20/20, 0 failures
+- Total time: 20.1 minutes
+- Average gemma runtime: ~60s per job
+- Context source: prefetched cache (no live embedding calls)
+- qwen3-embedding:8b NOT resident during Stage B
+
+### Final Model Restoration
+- gemma3-overnight: unloaded
+- qwen3:14b: restored (100% GPU)
+- nomic-embed-text: restored (100% GPU)
+- No co-residency violations
+
+### Two-Stage Lifecycle Summary
+
+| Phase | Models Resident | Duration |
+|-------|----------------|----------|
+| Stage A (prefetch) | nomic + qwen3-embedding | 6.8s |
+| Transition A→B | nomic only | ~5s |
+| Stage B (generation) | nomic + gemma3-overnight | 20.1 min |
+| Restore | nomic + qwen3:14b | ~5s |
+
+### All 20 Jobs Used Cached Context
+Every Stage B job read from prefetched cache. Zero live embedding calls during gemma generation.
+
+### Context Source Diversity (from prefetch, nomic-only fallback)
+
+| Metric | Value |
+|--------|-------|
+| Source types per job | 2-6 |
+| Nomic results per job | 10 |
+| Qwen3 results per job | 0 (nomic-only fallback during daytime) |
+| Total jobs with RAG context | 20/20 (previously 0/20 had RAG) |
