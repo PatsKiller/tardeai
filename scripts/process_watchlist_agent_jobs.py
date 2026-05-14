@@ -536,12 +536,14 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     confluence_block = ""
     prospects_block = ""
     calibration_block = ""
+    symbol_history_block = ""
     try:
-        from agent_collab import get_confluence_context, get_prospects_context, get_calibration_context
+        from agent_collab import get_confluence_context, get_prospects_context, get_calibration_context, get_symbol_history_context, get_strategy_performance_context
         _conn = _get_conn()
         confluence_block = get_confluence_context(symbol, _conn, profile='swing')
         prospects_block = get_prospects_context(symbol, _conn)
         calibration_block = get_calibration_context(agent, _conn)
+        symbol_history_block = get_symbol_history_context(symbol, _conn)
         _conn.close()
     except Exception:
         pass
@@ -656,6 +658,7 @@ Context:
 {gap_warnings}
 {confluence_block}
 {prospects_block}
+{symbol_history_block}
 {calibration_block}
 {strategy_playbook_block}
 {scalp_instructions}
