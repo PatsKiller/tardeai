@@ -99,3 +99,4 @@ docs/project/docx_patch_*.json
 docs/project/docx_patch_*.py
 *.tst
 docs/session33_patches.tar.gz
+backups/doc_exports/*.zip
