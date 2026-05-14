@@ -94,6 +94,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-14 | Phase 2B: 1000-doc parallel index built with qwen3-embedding:8b. 40-query comparison: HYBRID_RECOMMENDED. Top-5 overlap 0.6%, source diversity +50%. No production changes. |
 | 2026-05-14 | Phase 2 docs moved to docs/llm_fleet/phase2_embedding_ab/ (10 files). Created 00_README.md index. Cross-referenced from LLM_FLEET_STRATEGY. File paths updated in doc index. |
 | 2026-05-14 | Documentation standards protocol created (DOCUMENTATION_STANDARDS.md). Export/backup and system facts regeneration scripts. Live counts: 341 tables, 397 scripts, 83 crons, 75 pages, 14786 embeddings. |
 | 2026-05-14 | Phase 2A complete: qwen3-embedding:8b pulled and tested. 4096d, 295ms. Baseline nomic 768d, 23ms. Phase 2B GO recommended. No production changes. |
