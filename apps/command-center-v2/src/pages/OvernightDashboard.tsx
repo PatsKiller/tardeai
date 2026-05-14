@@ -5,9 +5,12 @@ import { useApi } from '../hooks/useApi'
 import { timeAgo } from '../lib/format'
 
 /*
-  Overnight Intelligence Dashboard — /v2/overnight
-  5-second morning briefing: what ran, what failed, what gemma3 found.
+  Overnight Intelligence Dashboard v2 — /v2/overnight
+  5-second morning briefing with parsed gemma3 outputs, actionable signals,
+  data quality alerts, per-ticker RAG, duplicate detection, and grade buttons.
 */
+
+// ── Types (v2 — parsed server-side) ──────────────────────────────────────
 
 type WindowData = {
   window_start: string | null; window_end: string | null
@@ -16,49 +19,50 @@ type WindowData = {
 }
 type JobType = { job_type: string; done: number; failed: number; pending: number; avg_sec: number | null; avg_chars: number | null }
 type RiskSynth = { generated_at: string | null; narrative: string | null; top_risks: any; portfolio_value: number | null; heat_pct: number | null; narrative_chars: number | null }
-type RecoveryVerdict = { symbol: string; summary: string | null; verdict: string | null; reentry_signal: string | null; confidence: string | null; created_at: string }
-type TradeReview = { symbol: string; trade_id: number | null; summary: string | null; grade: string | null; key_lesson: string | null; outcome: string | null; created_at: string }
-type StrategyClass = { symbol: string; summary: string | null; classification_data: any; created_at: string }
+type RecoveryVerdict = { queue_id: number; result_id: number; symbol: string; summary: string | null; verdict: string | null; reentry_signal: string | null; confidence: string | null; key_factor: string | null; created_at: string }
+type TradeReview = { queue_id: number; result_id: number; symbol: string; trade_id: number | null; grade: string | null; outcome: string; lesson: string; risk_mgmt: string; pnl: number | null; pnl_pct: number | null; hold_days: number | null; stop_used: boolean | null; created_at: string }
+type StrategyClass = { symbol: string; classification: string; recommendation: string; thesis_intact: string; evidence: string; current_strategy: string; risks: string; created_at: string }
 type RagItem = { symbol: string; verdict: string | null; quality_score: number | null; summary: string | null; created_at: string }
 type CoveredCall = { symbol: string; summary: string | null; verdict: string | null; strike: number | null; yield_est: number | null; created_at: string }
-type OpportunityScan = { symbol: string; summary: string | null; findings_json: any; recommendations_json: any; created_at: string }
-type FailedJob = { job_type: string; symbol: string | null; attempt_count: number; last_error: string | null; started_at: string | null }
+type OpportunityItem = { symbol: string; strategy: string; score: number | null; thesis: string; timeframe?: string; created_at: string }
+type FailedJob = { id: number; job_type: string; symbol: string | null; attempt_count: number; last_error: string | null; started_at: string | null }
 type CalibrationRow = { job_type: string; total_events: number; correct: number; hallucinated: number; partial: number; pending_grade: number }
 type Proposal = { symbol: string; strategy_id: string | null; score: number | null; grade: string | null; entry_price: number | null; status: string; created_at: string }
+type DuplicateRow = { symbol: string | null; job_type: string; cnt: number }
+type DataQualityAlert = { severity: string; section: string; message: string }
+type ActionableSignal = { type: string; symbol: string; detail: string }
 
 type DashboardData = {
-  generated_at: string
-  window: WindowData
-  by_job_type: JobType[]
+  generated_at: string; version: number
+  window: WindowData; by_job_type: JobType[]
   risk_synthesis: RiskSynth
-  recovery_verdicts: RecoveryVerdict[]
+  recovery_verdicts: RecoveryVerdict[]; recovery_template_fallback: boolean
   trade_reviews: TradeReview[]
   strategy_classifications: StrategyClass[]
-  rag_curation: RagItem[]
+  rag_curation: RagItem[]; rag_by_ticker: Record<string, { approved: number; rejected: number; flagged: number }>
   covered_calls: CoveredCall[]
-  opportunity_scan: OpportunityScan[]
+  opportunity_scan: OpportunityItem[]
   failed_jobs: FailedJob[]
   gemma3_calibration: CalibrationRow[]
   new_proposals: Proposal[]
+  duplicates: DuplicateRow[]
+  data_quality: DataQualityAlert[]
+  actionable_signals: ActionableSignal[]
 }
+
+// ── Styles ───────────────────────────────────────────────────────────────
 
 const btn: React.CSSProperties = { fontSize: 10, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg1)', color: 'var(--text1)', cursor: 'pointer' }
 const th: React.CSSProperties = { padding: '6px 8px', textAlign: 'left', color: '#848e9c', fontSize: 10, fontWeight: 600, borderBottom: '1px solid var(--border)' }
 const td: React.CSSProperties = { padding: '6px 8px', fontSize: 11, borderBottom: '1px solid rgba(255,255,255,0.03)' }
-
-const verdictColor: Record<string, string> = {
-  NEEDS_MORE_DATA: '#f0b90b', WAIT_FOR_CATALYST: '#f0b90b', HOLD: '#f0b90b',
-  RE_ENTER: '#0ecb81', BUY: '#0ecb81', APPROVE: '#0ecb81', APPROVE_STANDARD: '#0ecb81', APPROVE_HIGH_WEIGHT: '#0ecb81',
-  thesis_intact: '#0ecb81', 'YES': '#0ecb81', CORRECT: '#0ecb81',
-  thesis_broken: '#f6465d', CUT: '#f6465d', REJECT: '#f6465d', NO: '#f6465d', HALLUCINATION: '#f6465d',
-  MARGINAL: '#848e9c', PENDING: '#848e9c', PARTIAL: '#f0b90b',
-}
+const sevColor: Record<string, string> = { high: '#f6465d', medium: '#f0b90b', low: '#848e9c' }
 
 function vColor(v: string | null) {
   if (!v) return '#848e9c'
-  for (const [k, c] of Object.entries(verdictColor)) {
-    if (v.toUpperCase().includes(k.toUpperCase())) return c
-  }
+  const u = v.toUpperCase()
+  if (['RE_ENTER', 'BUY', 'REENTER', 'APPROVE', 'YES', 'CORRECT', 'APPROPRIATE'].some(k => u.includes(k))) return '#0ecb81'
+  if (['BROKEN', 'CUT', 'REJECT', 'NO', 'HALLUCINATION', 'MISCLASSIFIED'].some(k => u.includes(k))) return '#f6465d'
+  if (['NEEDS_MORE', 'WAIT', 'HOLD', 'PARTIAL', 'POTENTIALLY', 'FLAG'].some(k => u.includes(k))) return '#f0b90b'
   return '#848e9c'
 }
 
@@ -69,26 +73,27 @@ function humanize(v?: string | null) {
 
 function fmtTime(iso: string | null) {
   if (!iso) return '-'
-  try {
-    const d = new Date(iso)
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' })
-  } catch { return '-' }
+  try { return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' }) } catch { return '-' }
 }
 
 function fmtDate(iso: string | null) {
   if (!iso) return '-'
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' })
-  } catch { return '-' }
+  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) } catch { return '-' }
 }
 
 function truncate(s: string | null, n: number) {
   if (!s) return '-'
-  // Strip markdown code fences if present
-  let clean = s.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+  const clean = s.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
   return clean.length > n ? clean.slice(0, n) + '...' : clean
 }
+
+function fmtPnl(v: number | null) {
+  if (v == null) return '-'
+  const sign = v >= 0 ? '+' : ''
+  return `${sign}$${v.toFixed(0)}`
+}
+
+// ── Component ────────────────────────────────────────────────────────────
 
 export default function OvernightDashboard() {
   const [rk, setRk] = useState(0)
@@ -99,6 +104,10 @@ export default function OvernightDashboard() {
   const toggle = (key: string) => setExpandedRows(prev => ({ ...prev, [key]: !prev[key] }))
   const toggleSection = (key: string) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }))
 
+  const retryJob = (id: number) => {
+    fetch(`/api/v2/overnight-retry/${id}`, { method: 'POST' }).then(() => setRk(k => k + 1))
+  }
+
   if (loading && !data) return <div style={{ padding: 24, color: 'var(--text2)' }}>Loading overnight data...</div>
   if (error) return <div style={{ padding: 24, color: 'var(--red)' }}>Error: {error}</div>
   if (!data) return <div style={{ padding: 24, color: 'var(--text3)' }}>No data available</div>
@@ -106,17 +115,53 @@ export default function OvernightDashboard() {
   const w = data.window
   const totalJobs = (w.done_count || 0) + (w.failed_count || 0) + (w.running_count || 0) + (w.pending_count || 0)
   const windowComplete = (w.running_count || 0) === 0 && (w.pending_count || 0) === 0
-  const ragApproved = data.rag_curation.filter(r => (r.verdict || '').toUpperCase().includes('APPROVE')).length
-  const ragRejected = data.rag_curation.filter(r => (r.verdict || '').toUpperCase().includes('REJECT')).length
-  const ragFlagged = data.rag_curation.length - ragApproved - ragRejected
 
   return (
     <div style={{ padding: '16px 24px', maxWidth: 1200 }}>
       <PageHeader
         title="Overnight Intelligence"
-        subtitle={`Generated ${data.generated_at ? timeAgo(data.generated_at) : '-'}`}
+        subtitle={`v${data.version || 1} · ${data.generated_at ? timeAgo(data.generated_at) : '-'}`}
         actions={<button onClick={() => setRk(k => k + 1)} style={btn}>Refresh</button>}
       />
+
+      {/* ── DATA QUALITY ALERTS ── */}
+      {data.data_quality.length > 0 && (
+        <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {data.data_quality.map((dq, i) => (
+            <div key={`dq-${i}`} style={{
+              padding: '6px 12px', borderRadius: 6, fontSize: 11,
+              background: dq.severity === 'high' ? 'rgba(246,70,93,0.08)' : dq.severity === 'medium' ? 'rgba(240,185,11,0.08)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${dq.severity === 'high' ? 'rgba(246,70,93,0.25)' : dq.severity === 'medium' ? 'rgba(240,185,11,0.25)' : 'rgba(255,255,255,0.06)'}`,
+              color: sevColor[dq.severity] || 'var(--text2)',
+            }}>
+              <span style={{ fontWeight: 700, marginRight: 8 }}>{dq.severity.toUpperCase()}</span>
+              <span style={{ color: 'var(--text2)' }}>{dq.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── ACTIONABLE SIGNALS TODAY ── */}
+      {data.actionable_signals.length > 0 && (
+        <Card title="Actionable Signals Today" accentColor="#4a90f4" style={{ marginBottom: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>Type</th><th style={th}>Symbol</th><th style={th}>Detail</th>
+            </tr></thead>
+            <tbody>
+              {data.actionable_signals.map((a, i) => (
+                <tr key={`as-${i}`}>
+                  <td style={{ ...td, color: a.type === 'no_stop_alert' ? '#f6465d' : a.type === 'new_proposal' ? '#0ecb81' : '#4a90f4', fontWeight: 600 }}>
+                    {a.type === 'recovery_reentry' ? 'Re-enter' : a.type === 'new_proposal' ? 'Proposal' : a.type === 'no_stop_alert' ? 'No Stop' : humanize(a.type)}
+                  </td>
+                  <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{a.symbol}</td>
+                  <td style={{ ...td, color: 'var(--text2)' }}>{a.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {/* ── WINDOW STATUS ── */}
       <Card style={{ marginBottom: 12 }}>
@@ -141,8 +186,6 @@ export default function OvernightDashboard() {
             <span style={{ color: 'var(--text3)' }}>avg {w.avg_sec || 0}s</span>
           </div>
         </div>
-
-        {/* Job type breakdown */}
         {data.by_job_type.length > 0 && (
           <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {data.by_job_type.map(jt => (
@@ -163,9 +206,7 @@ export default function OvernightDashboard() {
       {data.risk_synthesis.narrative && (
         <Card title="Morning Brief" subtitle={data.risk_synthesis.generated_at ? fmtDate(data.risk_synthesis.generated_at) : ''} style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-            {expandedSections['brief']
-              ? data.risk_synthesis.narrative
-              : truncate(data.risk_synthesis.narrative, 500)}
+            {expandedSections['brief'] ? data.risk_synthesis.narrative : truncate(data.risk_synthesis.narrative, 500)}
           </div>
           {(data.risk_synthesis.narrative_chars || 0) > 500 && (
             <button onClick={() => toggleSection('brief')} style={{ ...btn, marginTop: 8, fontSize: 9 }}>
@@ -191,82 +232,102 @@ export default function OvernightDashboard() {
 
       {/* ── RECOVERY WATCH VERDICTS ── */}
       {data.recovery_verdicts.length > 0 && (
-        <Card title="Recovery Watch Verdicts" subtitle={`${data.recovery_verdicts.length} symbols`} style={{ marginBottom: 12 }}>
+        <Card title="Recovery Watch Verdicts" subtitle={`${data.recovery_verdicts.length} symbols`}
+          accentColor={data.recovery_template_fallback ? '#f0b90b' : undefined} style={{ marginBottom: 12 }}>
+          {data.recovery_template_fallback && (
+            <div style={{ padding: '4px 10px', marginBottom: 8, borderRadius: 4, fontSize: 10, color: '#f0b90b',
+              background: 'rgba(240,185,11,0.08)', border: '1px solid rgba(240,185,11,0.2)' }}>
+              Template fallback detected — all {data.recovery_verdicts.length} verdicts are identical. These may not reflect real per-symbol analysis.
+            </div>
+          )}
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              <th style={th}>Symbol</th><th style={th}>Verdict</th><th style={th}>Re-entry</th><th style={th}>Confidence</th><th style={th}>Time</th>
+              <th style={th}>Symbol</th><th style={th}>Verdict</th><th style={th}>Re-entry</th><th style={th}>Key Factor</th><th style={th}>Time</th>
             </tr></thead>
             <tbody>
               {data.recovery_verdicts.map((rv, i) => (
-                <>
-                  <tr key={`rv-${i}`} onClick={() => toggle(`rv-${i}`)} style={{ cursor: 'pointer' }}>
-                    <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{rv.symbol}</td>
-                    <td style={{ ...td, color: vColor(rv.verdict) }}>{humanize(rv.verdict)}</td>
-                    <td style={{ ...td, color: vColor(rv.reentry_signal) }}>{humanize(rv.reentry_signal)}</td>
-                    <td style={td}>{rv.confidence || '-'}</td>
-                    <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(rv.created_at)}</td>
-                  </tr>
-                  {expandedRows[`rv-${i}`] && rv.summary && (
-                    <tr key={`rv-exp-${i}`}><td colSpan={5} style={{ padding: '6px 12px', fontSize: 10, color: 'var(--text2)', background: 'rgba(255,255,255,0.02)', lineHeight: 1.5 }}>
-                      {truncate(rv.summary, 600)}
-                    </td></tr>
-                  )}
-                </>
+                <tr key={`rv-${i}`} onClick={() => toggle(`rv-${i}`)} style={{ cursor: 'pointer', opacity: data.recovery_template_fallback ? 0.6 : 1 }}>
+                  <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{rv.symbol}</td>
+                  <td style={{ ...td, color: vColor(rv.verdict) }}>{humanize(rv.verdict)}</td>
+                  <td style={{ ...td, color: vColor(rv.reentry_signal) }}>{humanize(rv.reentry_signal)}</td>
+                  <td style={{ ...td, color: 'var(--text2)', fontSize: 10 }}>{rv.key_factor || '-'}</td>
+                  <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(rv.created_at)}</td>
+                </tr>
               ))}
             </tbody>
           </table>
         </Card>
       )}
 
-      {/* ── CLOSED TRADE LESSONS ── */}
+      {/* ── CLOSED TRADE LESSONS (parsed) ── */}
       {data.trade_reviews.length > 0 && (
         <Card title="Closed Trade Lessons" subtitle={`${data.trade_reviews.length} reviews`} style={{ marginBottom: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              <th style={th}>Symbol</th><th style={th}>Grade</th><th style={th}>Key Lesson</th><th style={th}>Time</th>
+              <th style={th}>Symbol</th><th style={th}>P&L</th><th style={th}>Hold</th><th style={th}>Stop</th><th style={th}>Outcome</th><th style={th}>Lesson</th>
             </tr></thead>
             <tbody>
               {data.trade_reviews.map((tr, i) => (
-                <>
-                  <tr key={`tr-${i}`} onClick={() => toggle(`tr-${i}`)} style={{ cursor: 'pointer' }}>
-                    <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{tr.symbol}</td>
-                    <td style={{ ...td, color: vColor(tr.grade), fontWeight: 700 }}>{tr.grade || '-'}</td>
-                    <td style={{ ...td, color: 'var(--text2)', maxWidth: 400 }}>{truncate(tr.key_lesson || tr.outcome, 120)}</td>
-                    <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(tr.created_at)}</td>
-                  </tr>
-                  {expandedRows[`tr-${i}`] && tr.summary && (
-                    <tr key={`tr-exp-${i}`}><td colSpan={4} style={{ padding: '6px 12px', fontSize: 10, color: 'var(--text2)', background: 'rgba(255,255,255,0.02)', lineHeight: 1.5 }}>
-                      {truncate(tr.summary, 600)}
-                    </td></tr>
-                  )}
-                </>
+                <tr key={`tr-${i}`} onClick={() => toggle(`tr-${i}`)} style={{ cursor: 'pointer' }}>
+                  <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{tr.symbol}</td>
+                  <td style={{ ...td, color: tr.pnl != null ? (tr.pnl >= 0 ? '#0ecb81' : '#f6465d') : 'var(--text3)', fontWeight: 700 }}>
+                    {fmtPnl(tr.pnl)}
+                    {tr.pnl_pct != null && <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 3 }}>({tr.pnl_pct.toFixed(1)}%)</span>}
+                  </td>
+                  <td style={td}>{tr.hold_days != null ? `${tr.hold_days}d` : '-'}</td>
+                  <td style={{ ...td, color: tr.stop_used === false ? '#f6465d' : tr.stop_used === true ? '#0ecb81' : 'var(--text3)' }}>
+                    {tr.stop_used === false ? 'NO' : tr.stop_used === true ? 'Yes' : '-'}
+                  </td>
+                  <td style={{ ...td, color: 'var(--text2)', maxWidth: 200, fontSize: 10 }}>{truncate(tr.outcome, 80)}</td>
+                  <td style={{ ...td, color: 'var(--text2)', maxWidth: 200, fontSize: 10 }}>{truncate(tr.lesson, 80)}</td>
+                </tr>
               ))}
             </tbody>
           </table>
         </Card>
       )}
 
-      {/* ── STRATEGY CLASSIFICATIONS ── */}
+      {/* ── STRATEGY CLASSIFICATIONS (parsed) ── */}
       {data.strategy_classifications.length > 0 && (
         <Card title="Strategy Classifications" subtitle={`${data.strategy_classifications.length} positions`} style={{ marginBottom: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              <th style={th}>Symbol</th><th style={th}>Summary</th><th style={th}>Time</th>
+              <th style={th}>Symbol</th><th style={th}>Classification</th><th style={th}>Recommendation</th>
             </tr></thead>
             <tbody>
               {data.strategy_classifications.map((sc, i) => (
-                <>
-                  <tr key={`sc-${i}`} onClick={() => toggle(`sc-${i}`)} style={{ cursor: 'pointer' }}>
-                    <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{sc.symbol}</td>
-                    <td style={{ ...td, color: 'var(--text2)', maxWidth: 500 }}>{truncate(sc.summary, 150)}</td>
-                    <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(sc.created_at)}</td>
-                  </tr>
-                  {expandedRows[`sc-${i}`] && sc.summary && (
-                    <tr key={`sc-exp-${i}`}><td colSpan={3} style={{ padding: '6px 12px', fontSize: 10, color: 'var(--text2)', background: 'rgba(255,255,255,0.02)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                      {truncate(sc.summary, 1000)}
-                    </td></tr>
-                  )}
-                </>
+                <tr key={`sc-${i}`} onClick={() => toggle(`sc-${i}`)} style={{ cursor: 'pointer' }}>
+                  <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{sc.symbol}</td>
+                  <td style={{ ...td, color: vColor(sc.classification), maxWidth: 350, fontSize: 10 }}>
+                    {truncate(sc.classification, 100)}
+                  </td>
+                  <td style={{ ...td, color: sc.recommendation.toLowerCase().includes('flag') || sc.recommendation.toLowerCase().includes('review') ? '#f0b90b' : '#0ecb81', fontSize: 10 }}>
+                    {truncate(sc.recommendation, 60)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {/* ── STRATEGY OPPORTUNITIES (parsed per-symbol) ── */}
+      {data.opportunity_scan.length > 0 && (
+        <Card title="Strategy Opportunities" subtitle={`${data.opportunity_scan.length} candidates`} style={{ marginBottom: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>
+              <th style={th}>Symbol</th><th style={th}>Strategy</th><th style={th}>Score</th><th style={th}>Thesis</th>
+            </tr></thead>
+            <tbody>
+              {data.opportunity_scan.map((o, i) => (
+                <tr key={`os-${i}`}>
+                  <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{o.symbol}</td>
+                  <td style={{ ...td, color: '#4a90f4' }}>{humanize(o.strategy)}</td>
+                  <td style={{ ...td, fontWeight: 700, color: o.score && o.score >= 80 ? '#0ecb81' : o.score && o.score >= 60 ? '#f0b90b' : 'var(--text2)' }}>
+                    {o.score ?? '-'}
+                  </td>
+                  <td style={{ ...td, color: 'var(--text2)', fontSize: 10, maxWidth: 400 }}>{truncate(o.thesis, 100)}</td>
+                </tr>
               ))}
             </tbody>
           </table>
@@ -282,83 +343,55 @@ export default function OvernightDashboard() {
             </tr></thead>
             <tbody>
               {data.covered_calls.map((cc, i) => (
-                <>
-                  <tr key={`cc-${i}`} onClick={() => toggle(`cc-${i}`)} style={{ cursor: 'pointer' }}>
-                    <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{cc.symbol}</td>
-                    <td style={{ ...td, color: vColor(cc.verdict) }}>{humanize(cc.verdict)}</td>
-                    <td style={td}>{cc.strike ? `$${Number(cc.strike).toFixed(0)}` : '-'}</td>
-                    <td style={td}>{cc.yield_est ? `${Number(cc.yield_est).toFixed(2)}%` : '-'}</td>
-                    <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(cc.created_at)}</td>
-                  </tr>
-                  {expandedRows[`cc-${i}`] && cc.summary && (
-                    <tr key={`cc-exp-${i}`}><td colSpan={5} style={{ padding: '6px 12px', fontSize: 10, color: 'var(--text2)', background: 'rgba(255,255,255,0.02)', lineHeight: 1.5 }}>
-                      {truncate(cc.summary, 600)}
-                    </td></tr>
-                  )}
-                </>
+                <tr key={`cc-${i}`} onClick={() => toggle(`cc-${i}`)} style={{ cursor: 'pointer' }}>
+                  <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{cc.symbol}</td>
+                  <td style={{ ...td, color: vColor(cc.verdict) }}>{humanize(cc.verdict)}</td>
+                  <td style={td}>{cc.strike ? `$${Number(cc.strike).toFixed(0)}` : '-'}</td>
+                  <td style={td}>{cc.yield_est ? `${Number(cc.yield_est).toFixed(2)}%` : '-'}</td>
+                  <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(cc.created_at)}</td>
+                </tr>
               ))}
             </tbody>
           </table>
         </Card>
       )}
 
-      {/* ── STRATEGY OPPORTUNITIES ── */}
-      {data.opportunity_scan.length > 0 && (
-        <Card title="Strategy Opportunities" subtitle={`${data.opportunity_scan.length} scanned`} style={{ marginBottom: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>
-              <th style={th}>Symbol</th><th style={th}>Summary</th><th style={th}>Time</th>
-            </tr></thead>
-            <tbody>
-              {data.opportunity_scan.map((os, i) => (
-                <>
-                  <tr key={`os-${i}`} onClick={() => toggle(`os-${i}`)} style={{ cursor: 'pointer' }}>
-                    <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{os.symbol}</td>
-                    <td style={{ ...td, color: 'var(--text2)', maxWidth: 500 }}>{truncate(os.summary, 150)}</td>
-                    <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(os.created_at)}</td>
-                  </tr>
-                  {expandedRows[`os-${i}`] && os.summary && (
-                    <tr key={`os-exp-${i}`}><td colSpan={3} style={{ padding: '6px 12px', fontSize: 10, color: 'var(--text2)', background: 'rgba(255,255,255,0.02)', lineHeight: 1.5 }}>
-                      {truncate(os.summary, 800)}
-                    </td></tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {/* ── RAG CURATION RESULTS ── */}
+      {/* ── RAG CURATION (per-ticker breakdown) ── */}
       {data.rag_curation.length > 0 && (
-        <Card title="RAG Curation Results" subtitle={`${data.rag_curation.length} articles processed`} style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 11 }}>
-            <span style={{ color: '#0ecb81' }}>Approved: {ragApproved}</span>
-            <span style={{ color: '#f0b90b' }}>Flagged: {ragFlagged}</span>
-            <span style={{ color: '#f6465d' }}>Rejected: {ragRejected}</span>
+        <Card title="RAG Curation Results" subtitle={`${data.rag_curation.length} articles`} style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+            {Object.entries(data.rag_by_ticker || {}).map(([sym, counts]) => (
+              <span key={sym} style={{
+                fontSize: 9, padding: '2px 8px', borderRadius: 3,
+                background: 'rgba(255,255,255,0.04)', color: 'var(--text2)',
+                border: `1px solid ${counts.rejected > 0 ? 'rgba(246,70,93,0.3)' : 'rgba(255,255,255,0.06)'}`,
+              }}>
+                {sym}: <span style={{ color: '#0ecb81' }}>{counts.approved}</span>
+                {counts.flagged > 0 && <span style={{ color: '#f0b90b' }}>/{counts.flagged}F</span>}
+                {counts.rejected > 0 && <span style={{ color: '#f6465d' }}>/{counts.rejected}R</span>}
+              </span>
+            ))}
           </div>
-          {expandedSections['rag'] ? (
-            <>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr>
-                  <th style={th}>Symbol</th><th style={th}>Verdict</th><th style={th}>Weight</th><th style={th}>Time</th>
-                </tr></thead>
-                <tbody>
-                  {data.rag_curation.map((r, i) => (
-                    <tr key={`rag-${i}`}>
-                      <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{r.symbol}</td>
-                      <td style={{ ...td, color: vColor(r.verdict) }}>{humanize(r.verdict)}</td>
-                      <td style={td}>{r.quality_score != null ? Number(r.quality_score).toFixed(2) : '-'}</td>
-                      <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(r.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button onClick={() => toggleSection('rag')} style={{ ...btn, marginTop: 6, fontSize: 9 }}>Collapse</button>
-            </>
-          ) : (
-            <button onClick={() => toggleSection('rag')} style={{ ...btn, fontSize: 9 }}>Show details</button>
+          {expandedSections['rag'] && (
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={th}>Symbol</th><th style={th}>Verdict</th><th style={th}>Weight</th><th style={th}>Time</th>
+              </tr></thead>
+              <tbody>
+                {data.rag_curation.map((r, i) => (
+                  <tr key={`rag-${i}`}>
+                    <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{r.symbol}</td>
+                    <td style={{ ...td, color: vColor(r.verdict) }}>{humanize(r.verdict)}</td>
+                    <td style={td}>{r.quality_score != null ? Number(r.quality_score).toFixed(2) : '-'}</td>
+                    <td style={{ ...td, color: 'var(--text3)' }}>{fmtTime(r.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
+          <button onClick={() => toggleSection('rag')} style={{ ...btn, fontSize: 9, marginTop: 4 }}>
+            {expandedSections['rag'] ? 'Collapse' : 'Show all articles'}
+          </button>
         </Card>
       )}
 
@@ -385,12 +418,30 @@ export default function OvernightDashboard() {
         </Card>
       )}
 
-      {/* ── FAILED JOBS ── */}
+      {/* ── DUPLICATES ── */}
+      {data.duplicates.length > 0 && (
+        <Card title="Duplicate Results" subtitle={`${data.duplicates.length} groups`} style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {data.duplicates.map((d, i) => (
+              <span key={`dup-${i}`} style={{
+                fontSize: 9, padding: '2px 8px', borderRadius: 3,
+                background: d.cnt > 3 ? 'rgba(246,70,93,0.08)' : 'rgba(255,255,255,0.04)',
+                color: d.cnt > 3 ? '#f6465d' : 'var(--text2)',
+                border: `1px solid ${d.cnt > 3 ? 'rgba(246,70,93,0.3)' : 'rgba(255,255,255,0.06)'}`,
+              }}>
+                {d.symbol || '(blank)'} / {d.job_type.replace(/_/g, ' ')}: {d.cnt}x
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ── FAILED JOBS (with retry) ── */}
       {data.failed_jobs.length > 0 && (
         <Card title="Failed Jobs" subtitle={`${data.failed_jobs.length} failures`} accentColor="#f6465d" style={{ marginBottom: 12 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>
-              <th style={th}>Job Type</th><th style={th}>Symbol</th><th style={th}>Attempts</th><th style={th}>Error</th>
+              <th style={th}>Job Type</th><th style={th}>Symbol</th><th style={th}>Attempts</th><th style={th}>Error</th><th style={th}></th>
             </tr></thead>
             <tbody>
               {data.failed_jobs.map((fj, i) => (
@@ -398,7 +449,13 @@ export default function OvernightDashboard() {
                   <td style={{ ...td, color: 'var(--text2)' }}>{fj.job_type.replace(/_/g, ' ')}</td>
                   <td style={{ ...td, fontWeight: 700, color: 'var(--text0)' }}>{fj.symbol || '-'}</td>
                   <td style={td}>{fj.attempt_count}</td>
-                  <td style={{ ...td, color: '#f6465d', fontSize: 10, maxWidth: 400 }}>{truncate(fj.last_error, 120)}</td>
+                  <td style={{ ...td, color: '#f6465d', fontSize: 10, maxWidth: 300 }}>{truncate(fj.last_error, 100)}</td>
+                  <td style={td}>
+                    <button onClick={(e) => { e.stopPropagation(); retryJob(fj.id) }}
+                      style={{ ...btn, fontSize: 9, padding: '2px 8px', color: '#4a90f4', borderColor: 'rgba(74,144,244,0.3)' }}>
+                      Retry
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -424,7 +481,7 @@ export default function OvernightDashboard() {
                     <td style={{ ...td, color: c.hallucinated > 0 ? '#f6465d' : 'var(--text3)' }}>{c.hallucinated}</td>
                     <td style={{ ...td, color: c.partial > 0 ? '#f0b90b' : 'var(--text3)' }}>{c.partial}</td>
                     <td style={{ ...td, color: 'var(--text3)' }}>{c.pending_grade}</td>
-                    <td style={{ ...td, fontWeight: 700, color: typeof accuracy === 'string' && accuracy !== '-' ? (Number(accuracy) >= 90 ? '#0ecb81' : Number(accuracy) >= 70 ? '#f0b90b' : '#f6465d') : 'var(--text3)' }}>
+                    <td style={{ ...td, fontWeight: 700, color: accuracy !== '-' ? (Number(accuracy) >= 90 ? '#0ecb81' : Number(accuracy) >= 70 ? '#f0b90b' : '#f6465d') : 'var(--text3)' }}>
                       {accuracy}{accuracy !== '-' ? '%' : ''}
                     </td>
                   </tr>
