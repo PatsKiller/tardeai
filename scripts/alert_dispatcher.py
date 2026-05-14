@@ -53,9 +53,39 @@ FATIGUE_THRESHOLD_DAYS = int(os.getenv("ALERT_FATIGUE_DAYS", "3"))
 MAX_TELEGRAM_PER_HOUR = int(os.getenv("ALERT_MAX_PER_HOUR", "15"))
 
 # Tiers
-TIER_INFO = "INFO"       # Dashboard only — no Telegram
-TIER_ALERT = "ALERT"     # Telegram notification
-TIER_URGENT = "URGENT"   # Telegram with priority flag
+TIER_INFO = "INFO"           # Dashboard only — no Telegram
+TIER_ALERT = "ALERT"         # Telegram notification
+TIER_URGENT = "URGENT"       # Telegram with priority flag
+TIER_DIGEST = "DIGEST"       # Aggregated into morning/evening brief
+TIER_DASHBOARD = "DASHBOARD_ONLY"  # No Telegram at all
+
+# ── Three-tier classification rules ─────────────────────────────────────
+# Maps alert_type to tier + dedup behavior. Unknown types default to ALERT.
+
+ALERT_TIER_RULES = {
+    # URGENT — first occurrence only, dedup 24h per symbol+condition
+    'stop_triggered': {'tier': TIER_URGENT, 'dedup_window_hours': 24, 'escalate_on_worsen_pct': 2.0},
+    'iris_block': {'tier': TIER_URGENT, 'dedup_window_hours': 12},
+    'credential_expired': {'tier': TIER_URGENT, 'dedup_window_hours': 24},
+    'api_credits_depleted': {'tier': TIER_URGENT, 'dedup_window_hours': 24},
+    'pipeline_failure': {'tier': TIER_URGENT, 'dedup_window_hours': 4},
+    'proposal_approved_ready': {'tier': TIER_URGENT, 'dedup_window_hours': 24},
+    'sector_event': {'tier': TIER_URGENT, 'dedup_window_hours': 4},
+
+    # DIGEST — aggregated into morning (8 AM) or evening (4 PM) briefs
+    'premarket_catalyst': {'tier': TIER_DIGEST, 'digest_slot': 'morning'},
+    'topic_ingestion': {'tier': TIER_DIGEST, 'digest_slot': 'evening'},
+    'rag_curation_summary': {'tier': TIER_DIGEST, 'digest_slot': 'evening'},
+    'covered_call_candidates': {'tier': TIER_DIGEST, 'digest_slot': 'evening'},
+    'iris_library_audit': {'tier': TIER_DIGEST, 'digest_slot': 'morning'},
+    'new_go_normal': {'tier': TIER_DIGEST, 'digest_slot': 'morning'},
+
+    # DASHBOARD_ONLY — no Telegram at all
+    'youtube_backfill_progress': {'tier': TIER_DASHBOARD},
+    'pipeline_run_ok': {'tier': TIER_DASHBOARD},
+    'duplicate_recap': {'tier': TIER_DASHBOARD},
+    'go_confirmation_repeat': {'tier': TIER_DASHBOARD},
+}
 
 
 def _get_conn():
@@ -237,7 +267,25 @@ def dispatch_alert(
                                   meta_body, meta_dk, "telegram", "alert_dispatcher",
                                   symbol=symbol, sent=True)
 
-        # 3. Route by tier
+        # 3. Check tier classification rules
+        tier_rules = ALERT_TIER_RULES.get(alert_type, {})
+        classified_tier = tier_rules.get('tier')
+        if classified_tier and not force:
+            # Override caller's tier with classification
+            if classified_tier == TIER_DIGEST:
+                action = _queue_digest(conn, alert_type, symbol, body,
+                                       metadata={"source": source, "title": title})
+                _log_dispatch(conn, alert_type, TIER_DIGEST, symbol, dedupe_key,
+                              body, {"source": source}, action)
+                return {"sent": False, "reason": action, "tier": TIER_DIGEST, "fatigued": False}
+            elif classified_tier == TIER_DASHBOARD:
+                _log_dispatch(conn, alert_type, TIER_DASHBOARD, symbol, dedupe_key,
+                              body, {"source": source}, 'dashboard_only')
+                _log_notification(conn, alert_type, TIER_DASHBOARD, title, body, dedupe_key,
+                                  "dashboard", source, symbol=symbol, sent=True)
+                return {"sent": False, "reason": "dashboard_only", "tier": TIER_DASHBOARD, "fatigued": False}
+
+        # 4. Route by tier
         channel = "dashboard"
         sent = False
         error = None
@@ -263,9 +311,11 @@ def dispatch_alert(
             if not sent:
                 error = "telegram_send_failed"
 
-        # 4. Log to notification_log
+        # 5. Log to notification_log and dispatch_log
         _log_notification(conn, alert_type, tier, title, body, dedupe_key,
                           channel, source, symbol=symbol, sent=sent, error=error)
+        _log_dispatch(conn, alert_type, tier, symbol, dedupe_key,
+                      body, {"source": source}, 'sent_telegram' if sent else (error or 'logged'))
 
         return {"sent": sent, "reason": error or "ok", "tier": tier, "fatigued": fatigued}
 
@@ -274,6 +324,54 @@ def dispatch_alert(
             conn.close()
         except Exception:
             pass
+
+
+# ── Digest queue helper ────────────────────────────────────────────────
+
+def _queue_digest(conn, alert_type, symbol, body, metadata=None):
+    """Queue an alert for the next morning or evening digest."""
+    rules = ALERT_TIER_RULES.get(alert_type, {})
+    slot = rules.get('digest_slot', 'morning')
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO digest_queue
+                (digest_slot, alert_type, symbol, message, metadata, queued_at, sent)
+            VALUES (%s, %s, %s, %s, %s, NOW(), FALSE)
+        """, [slot, alert_type, symbol, body[:1000],
+              json.dumps(metadata or {})])
+        conn.commit()
+        return f'queued_{slot}_digest'
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return f'digest_queue_error: {e}'
+
+
+def _log_dispatch(conn, alert_type, tier, symbol, condition_key,
+                  message, metadata, action):
+    """Write to alert_dispatch_log for visibility."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO alert_dispatch_log
+                (alert_type, tier, symbol, condition_key, message, metadata, action_taken)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, [alert_type, tier, symbol, condition_key,
+              (message or '')[:500], json.dumps(metadata or {}), action])
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+
+
+def classify_alert(alert_type):
+    """Return the tier rules for an alert type. Unknown types get ALERT tier."""
+    return ALERT_TIER_RULES.get(alert_type, {'tier': TIER_ALERT})
 
 
 # ── Convenience functions for common alert patterns ────────────────────
