@@ -48,6 +48,8 @@ type DashboardData = {
   duplicates: DuplicateRow[]
   data_quality: DataQualityAlert[]
   actionable_signals: ActionableSignal[]
+  gap_summary: { gap_type: string; severity: string; status: string; count: number; symbols: string[] | null }[]
+  gap_stats: { open_gaps: number; enriching: number; resolved_today: number; abandoned: number }
 }
 
 // ── Styles ───────────────────────────────────────────────────────────────
@@ -493,6 +495,33 @@ export default function OvernightDashboard() {
             const totalPending = data.gemma3_calibration.reduce((s, c) => s + c.pending_grade, 0)
             return totalPending > 0 ? <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>Pending grading: {totalPending}</div> : null
           })()}
+        </Card>
+      )}
+
+      {/* ── DATA GAP INTELLIGENCE ── */}
+      {(data.gap_summary?.length > 0 || (data.gap_stats?.open_gaps || 0) > 0) && (
+        <Card title="Data Gap Intelligence" subtitle="Self-healing loop" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 10, fontSize: 11 }}>
+            <span style={{ color: '#f6465d' }}>Open: {data.gap_stats?.open_gaps || 0}</span>
+            <span style={{ color: '#f0b90b' }}>Enriching: {data.gap_stats?.enriching || 0}</span>
+            <span style={{ color: '#0ecb81' }}>Resolved Today: {data.gap_stats?.resolved_today || 0}</span>
+            <span style={{ color: 'var(--text3)' }}>Abandoned: {data.gap_stats?.abandoned || 0}</span>
+          </div>
+          {data.gap_summary?.filter(g => g.status === 'open').length > 0 && (
+            <div style={{ fontSize: 10, color: 'var(--text2)' }}>
+              {data.gap_summary.filter(g => g.status === 'open').map((g, i) => (
+                <div key={`gap-${i}`} style={{ marginBottom: 4, paddingLeft: 8 }}>
+                  <span style={{ color: sevColor[g.severity] || 'var(--text3)', fontWeight: 600 }}>
+                    {g.severity?.toUpperCase()}
+                  </span>
+                  {' '}{humanize(g.gap_type)}: {g.symbols?.join(', ') || '-'} ({g.count})
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
+            Gaps auto-detected from gemma3 responses. Resolver dispatches enrichment/agent jobs hourly.
+          </div>
         </Card>
       )}
 

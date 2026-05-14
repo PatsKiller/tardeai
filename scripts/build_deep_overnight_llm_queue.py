@@ -405,10 +405,44 @@ def _already_queued(cur, input_hash):
     return cur.fetchone() is not None
 
 
+# Per-job-type cooldown hours — prevents re-running same analysis too often
+_COOLDOWN_HOURS = {
+    'closed_trade_review': 168,       # 7 days per trade
+    'strategy_classification': 72,    # 3 days per position
+    'recovery_watch_review': 24,      # daily is enough
+    'rag_content_curation': 0,        # no cooldown — different articles
+    'covered_call_scoring': 168,      # weekly
+    'risk_synthesis': 12,             # 2x/day max
+    'manual_journal_review': 24,
+    'auto_journal_review': 24,
+    'journal_pattern_review': 168,
+    'proposal_review': 24,
+}
+
+
+def _recently_completed(cur, job_type, symbol):
+    """Check if this job_type+symbol was completed within the cooldown window."""
+    hours = _COOLDOWN_HOURS.get(job_type, 24)
+    if hours == 0:
+        return False
+    cur.execute("""
+        SELECT COUNT(*) FROM deep_overnight_llm_queue
+        WHERE job_type = %s AND symbol = %s AND status = 'done'
+          AND completed_at > NOW() - make_interval(hours => %s)
+    """, [job_type, symbol or '', hours])
+    return (cur.fetchone()[0] or 0) > 0
+
+
 def _insert_queue_item(cur, job_type, symbol, tier, score, reasons, input_hash,
                        source_table=None, source_id=None):
     """Insert a single queue item. Returns 1 if inserted, 0 if skipped."""
     if _already_queued(cur, input_hash):
+        return 0
+    # Skip blank symbols for non-portfolio-level jobs
+    if job_type not in ('risk_synthesis',) and (not symbol or symbol.strip() == ''):
+        return 0
+    # Cooldown check — skip if recently completed
+    if _recently_completed(cur, job_type, symbol):
         return 0
     cur.execute("""
         INSERT INTO deep_overnight_llm_queue
