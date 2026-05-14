@@ -1,0 +1,38 @@
+{
+  "timestamp": "2026-05-14T10:01:46.381885",
+  "production_changed": false,
+  "rag_routing_changed": false,
+  "baseline": {
+    "model": "nomic-embed-text",
+    "available": true,
+    "dimensions": 768,
+    "query_count": 40,
+    "avg_latency_ms": 23.4,
+    "empty_results": 0,
+    "source_diversity": 5,
+    "doc_count": 1000
+  },
+  "candidate": {
+    "model": "qwen3-embedding:8b",
+    "available": false,
+    "dimensions": 0,
+    "query_count": 0,
+    "avg_latency_ms": null,
+    "empty_results": null,
+    "tested": false
+  },
+  "comparison": {
+    "candidate_tested": false,
+    "verdict": "NOT_TESTED",
+    "note": "Candidate not installed \u2014 operator must approve pull",
+    "phase2b_recommended": false
+  },
+  "source_distribution": {
+    "agent_result": 573,
+    "trade_review": 11,
+    "trade_outcome": 6,
+    "news": 8,
+    "fused_signal": 402
+  },
+  "baseline_results": []
+}
