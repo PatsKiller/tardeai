@@ -1478,3 +1478,43 @@ Phase 2B parallel index test. Operator command: `Begin Phase 2B limited parallel
 
 ### Iron Rule
 $1,190,653 / 43 positions — no production embedding or routing changes
+
+---
+
+## Phase 2B: Parallel Embedding Index Test — 2026-05-14 10:41 ET
+
+### Table Created
+`content_embeddings_qwen3_test` — 1,000 rows, 4096 dims, 5 source types
+
+### Index Build
+- agent_result: 576, fused_signal: 399, trade_review: 11, news: 8, trade_outcome: 6
+- Avg embedding latency: ~190ms
+- 0 failures
+- qwen3:14b + nomic-embed-text restored after build
+
+### Retrieval Comparison (40 queries)
+| Metric | nomic (production) | qwen3 (parallel) |
+|--------|-------------------|------------------|
+| Avg similarity | 0.613 | 0.609 |
+| Avg latency | 28ms | 321ms |
+| Source diversity | 1.4 types | 2.1 types |
+| Empty results | 0/40 | 0/40 |
+| Top-5 overlap | 0.6% | — |
+| Top-10 overlap | 1.3% | — |
+
+### Verdict: HYBRID_RECOMMENDED
+Models find completely different documents. Both produce relevant results.
+qwen3 has 50% better source diversity. Hybrid approach combining both recommended.
+
+### Production Impact
+- content_embeddings: UNCHANGED (14,787 rows)
+- RAG routing: UNCHANGED
+- Cron: UNCHANGED
+- .env: UNCHANGED
+- Models restored: qwen3:14b + nomic-embed-text
+
+### Recommended Next Step
+`Begin Phase 2C limited hybrid retrieval pilot.`
+
+### Iron Rule
+$1,191,288 / 43 positions — no production embedding or routing changes
