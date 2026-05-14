@@ -1328,3 +1328,54 @@ $1,190,695 / 47 positions — identical pre and post
 
 ### Iron Rule
 $1,191,050 / 43 positions — no broker, holdings, execution, or embedding changes
+
+---
+
+## Phase 1 Finalization: Deep Overnight Governance & Closeout — 2026-05-14 09:15 ET
+
+### Changes
+
+**Phase 1K — Queue Mix Balancing:**
+- Added `--quota-policy balanced` and `--job-type-quotas` args to `run_deep_overnight_llm_queue.py`
+- Per-type soft quotas: risk_synthesis=1, recovery=10, rag=15, closed_trade=15, journal=15, proposal=10
+- Strategy classification fills remaining capacity after forced types
+- Wrapper updated to pass `--quota-policy balanced`
+
+**Phase 1L — Queue Status Reporter:**
+- Created `scripts/report_deep_overnight_queue_status.py`
+- Outputs: queue counts, job mix, failed jobs, model residency, lock, cron, risk synthesis
+- Supports --summary, --json, --pending-top N
+
+**Phase 1M — Health Checks & Alerting:**
+- Created `scripts/check_deep_overnight_health.py`
+- 11 checks: lock stuck, gemma/qwen/nomic residency, risk synthesis, P0 pending, failed jobs, provider, safety, holdings
+- Integrates with alert_dispatcher for FAIL conditions
+- All 11 checks: PASS
+
+**Phase 1N — Documentation:**
+- `docs/v4_1_phase1_final_audit.md`: full system state audit
+- `docs/v4_1_phase1_final_closeout_report.md`: complete closeout with rollback instructions
+
+### Validation
+- All py_compile: PASS
+- bash -n: PASS
+- Balanced dry run: 15 RAG + 1 journal + 34 strategy (mixed, not all one type)
+- Queue reporter: 660 total, 165 done, 1 failed, 494 pending
+- Health checker: 11/11 PASS
+- Safety: ALPACA_MODE=paper, LLM_DISABLE_LIVE_EXECUTION=true
+- Holdings: $1,190,957
+
+### Cron (unchanged)
+- Daily: `0 23 * * *` — 100 jobs, balanced quotas
+- Friday: `0 16 * * 5` — 200 jobs, --allow-over-hard-max
+
+### Model routing (unchanged)
+- STANDARD/REALTIME: qwen3:14b
+- DEEP_OVERNIGHT: gemma3-overnight (wrapper only)
+- EMBEDDING: nomic-embed-text
+
+### Phase 2A readiness
+Go — pending operator approval and 7 clean nightly runs. No embedding promotion yet.
+
+### Iron Rule
+$1,190,957 / 43 positions — no broker, holdings, execution, or embedding changes

@@ -339,6 +339,7 @@ LOCAL_LLM_MODEL="$PILOT_MODEL" \
     --time-budget-min "$TIME_BUDGET" \
     --hard-stop "$HARD_STOP" \
     --force-job-types "$FORCED_JOB_TYPES" \
+    --quota-policy balanced \
     2>&1 | tee -a "$LOG" || QUEUE_EXIT=$?
 
 log "Queue runner exit code: $QUEUE_EXIT"
