@@ -14421,6 +14421,111 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
+        # ── Screener Config CRUD ──
+        if _panel == "screeners":
+            if method == "GET":
+                try:
+                    rows = _db_query("""SELECT id, display_name, description, group_name, strategy_class,
+                        strategies, finviz_url, run_windows, status, enabled, quality_gates,
+                        last_run_at, last_result_count, change_log, created_at, updated_at
+                        FROM screener_config ORDER BY group_name, display_name""") or []
+                    # Strategy coverage gap analysis
+                    ALL_STRATEGIES = [
+                        'momentum_scalp','gap_and_go','swing_trade','swing_breakout',
+                        'earnings_catalyst','earnings_post_momentum','speculative_growth',
+                        'fib_retracement_bounce','recovery_watch','sector_rotation',
+                        'dividend_growth_compounder','income_add','covered_call_income',
+                        'high_yield_income_bdc','reit_income','bond_income',
+                        'defense_thesis','core_growth_compounder','international_dividend',
+                        'core_index',
+                    ]
+                    covered = set()
+                    for r in rows:
+                        for s in (r.get('strategies') or []):
+                            covered.add(s)
+                    gaps = [s for s in ALL_STRATEGIES if s not in covered]
+                    multi = {}
+                    for r in rows:
+                        for s in (r.get('strategies') or []):
+                            multi.setdefault(s, []).append(r['id'])
+                    multi_mapped = {s: ids for s, ids in multi.items() if len(ids) > 1}
+                    return 200, {"ok": True, "data": {
+                        "screeners": rows,
+                        "total": len(rows),
+                        "strategy_coverage": {
+                            "total_strategies": len(ALL_STRATEGIES),
+                            "covered": len(covered),
+                            "gaps": gaps,
+                            "gap_count": len(gaps),
+                            "multi_mapped": multi_mapped,
+                        }
+                    }}
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
+
+            if method == "POST":
+                try:
+                    b = body or {}
+                    sid = b.get("id")
+                    if not sid:
+                        return 400, {"ok": False, "error": "id required"}
+                    change_entry = json.dumps([{"date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "action": "created", "note": b.get("change_note", "Created via dashboard")}])
+                    _db_query("""INSERT INTO screener_config
+                        (id, display_name, description, group_name, strategy_class,
+                         strategies, finviz_url, run_windows, status, enabled, quality_gates, change_log)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        [sid, b.get("display_name", sid), b.get("description", ""),
+                         b.get("group_name", ""), b.get("strategy_class", ""),
+                         b.get("strategies", []), b.get("finviz_url", ""),
+                         b.get("run_windows", []), b.get("status", "active"),
+                         b.get("enabled", True),
+                         json.dumps(b.get("quality_gates", {})), change_entry])
+                    return 200, {"ok": True, "message": f"Screener '{sid}' created"}
+                except Exception as e:
+                    return 500, {"ok": False, "error": str(e)}
+
+        if _panel.startswith("screeners/") and method == "PUT":
+            try:
+                sid = _panel.split("/", 1)[1]
+                b = body or {}
+                sets, params = ["updated_at = NOW()"], []
+                for fld in ("display_name", "description", "group_name", "strategy_class",
+                            "finviz_url", "status"):
+                    if fld in b:
+                        sets.append(f"{fld} = %s")
+                        params.append(b[fld])
+                for fld in ("strategies", "run_windows"):
+                    if fld in b:
+                        sets.append(f"{fld} = %s")
+                        params.append(b[fld])
+                if "enabled" in b:
+                    sets.append("enabled = %s")
+                    params.append(b["enabled"])
+                if "quality_gates" in b:
+                    sets.append("quality_gates = %s::jsonb")
+                    params.append(json.dumps(b["quality_gates"]))
+                # Append change log entry
+                note = b.get("change_note", "Updated via dashboard")
+                sets.append("change_log = change_log || %s::jsonb")
+                params.append(json.dumps([{"date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "action": "updated", "note": note}]))
+                params.append(sid)
+                _db_query(f"UPDATE screener_config SET {', '.join(sets)} WHERE id = %s", params)
+                return 200, {"ok": True, "message": f"Screener '{sid}' updated"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        if _panel.startswith("screeners/") and method == "DELETE":
+            try:
+                sid = _panel.split("/", 1)[1]
+                _db_query("UPDATE screener_config SET status='deleted', enabled=false, updated_at=NOW(), change_log = change_log || %s::jsonb WHERE id=%s",
+                    [json.dumps([{"date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "action": "deleted", "note": "Soft-deleted via dashboard"}]), sid])
+                return 200, {"ok": True, "message": f"Screener '{sid}' disabled"}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         return 404, {"ok": False, "error": f"Unknown strategy-analytics panel: {_panel}"}
 
     if base_path == "/api/v2/automated-trade-journal":
