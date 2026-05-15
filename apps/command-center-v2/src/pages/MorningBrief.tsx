@@ -60,7 +60,7 @@ const categoryMap: Record<string, string> = { rotation_review: 'Rotation', thesi
 const ownerColor: Record<string, string> = { John: 'var(--amber)', Steph: 'var(--accent)', Aegis: 'var(--text2)', Monitor: 'var(--text2)', 'Steph / John': 'var(--purple)' }
 const severityColor: Record<string, string> = { critical: 'var(--red)', high: 'var(--amber)', medium: 'var(--accent)', low: 'var(--text3)' }
 
-function humanize(v?: string | null) { if (!v) return '—'; return labelMap[v] || categoryMap[v] || v.replace(/_/g, ' ').replace(/\b\w/g, s => s.toUpperCase()) }
+function humanize(v?: string | null) { if (!v) return '—'; const s = String(v); return labelMap[s] || categoryMap[s] || s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) }
 function compactCurrency(n?: number | null) { if (n == null || Number.isNaN(n)) return '—'; const abs = Math.abs(n); if (abs >= 1e6) return `${n < 0 ? '-' : ''}$${(abs / 1e6).toFixed(1)}M`; if (abs >= 1e3) return `${n < 0 ? '-' : ''}$${(abs / 1e3).toFixed(0)}K`; return fmt$(n, 0) }
 function parseUrgency(due: string | null | undefined) { const t = (due || '').toLowerCase(); if (t === 'now' || t === 'overdue') return 'critical'; if (t === 'today') return 'high'; if (t.includes('week')) return 'medium'; return 'low' }
 function canonicalTriggered(positions: RiskPos[]) { return positions.filter(p => p.triggered || (p.status || '').toUpperCase() === 'TRIGGERED') }
