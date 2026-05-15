@@ -136,6 +136,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-15 | **Promoter quality gates**: Spread > 3% blocks promotion. Momentum/scalp min price raised $1 → $3. 5/7 bad proposals would have been caught. |
 | 2026-05-15 | **Post-A-4 Day 1**: Pipeline producing hourly proposals (4 in 4h). 19 scan signals. 1/5 activated strategies has proposal. A-5 deferred pending 3-5 day observation. |
 | 2026-05-15 | **Phase 6E**: Scheduled stale sweeper. Pre-market dry-run (08:15), apply (08:25), EOD report (16:10). Wrapper with flock+safety gates. Rollback script. 12 tests, 83 total regression. |
 | 2026-05-15 | **Phase 6D**: Proposal stale-time sweeper. Strategy-aware freshness thresholds, sweeper script (dry-run default), freshness gate before session/revalidation. 18 unit tests, 71 total regression. |

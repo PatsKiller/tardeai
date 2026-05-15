@@ -127,13 +127,16 @@ Approve → Audit → Freshness Gate → Session Gate → Revalidation → Risk 
 | Unit tests (12/12) | PASSED |
 | Safety audit (15/15) | PASSED |
 
-### Incubator Promoter RSI Gate Fix
+### Incubator Promoter Quality Gates
 
 | Item | Status |
 |------|--------|
 | `screener` added to momentum RSI gate (>= 80 blocks) | FIXED |
 | RSI value stored on proposal at promotion time | FIXED |
-| Root cause: FLYW promoted at RSI 83, dropped below stop | IDENTIFIED |
+| Spread gate at promotion (> 3% blocks) | FIXED |
+| Strategy-aware price floor ($3 for momentum/scalp) | FIXED |
+| Root cause: FLYW RSI 83 dropped below stop | IDENTIFIED |
+| Root cause: 5/7 proposals were illiquid micro-caps (30%+ spread) | IDENTIFIED |
 
 ### Commands
 

@@ -1,5 +1,26 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Promoter Quality Gates — Spread + Price Floor — 2026-05-15
+
+### Summary
+7/7 proposals on Day 1 were blocked by execution readiness (spread, price drift, missing technicals). Root cause: the incubator promoter was surfacing illiquid micro-caps with 30%+ spreads and sub-$3 penny stocks. Phase 6 safety gates correctly caught them, but they shouldn't have been promoted.
+
+### Fixes
+1. **Spread gate at promotion**: blocks if live spread > 3%
+2. **Strategy-aware price floor**: momentum/scalp/screener/gap_and_go require $3+ (was $1)
+
+### Promoter Gate Chain (complete)
+```
+Candidate → Already pending? → Price lookup → Penny < $1? → Momentum < $3? → Spread > 3%? → RSI overbought? → INSERT
+```
+
+### Verification
+5/7 bad proposals would now be caught at promotion. Remaining 2 (MLGO, RCEL) had tight spreads and $5+ prices — blocked later for price drift (timing, not quality).
+
+### Test: 83/83 pass
+
+---
+
 ## Post-A-4 Pipeline Observation Day 1 — 2026-05-15
 
 First live-market evidence after A-4 pipeline repair. 4 proposals generated hourly (08-11 AM ET). 19 scan signals across 6 hours. 1/5 activated strategies (speculative_growth) produced a proposal. Pipeline is firing as designed. Morning brief renders correctly after 6ce832d fix. Paper account shows real equity (~$100K). Phase 6 tests: 83/83 clean. A-5 deferred pending 3-5 trading day observation window (through 2026-05-22).
