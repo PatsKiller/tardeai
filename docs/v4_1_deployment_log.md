@@ -2045,3 +2045,23 @@ None. qwen3:14b remains STANDARD/REALTIME. nomic remains embedding. Phase 2H unc
 
 ### Recommendation
 Keep enabled. Expand further as content integrations accumulate. Phase 3 is functionally complete.
+
+---
+
+## Phase 4 — LLM Fleet Observability — 2026-05-14
+
+### Added
+- Fleet status report: scripts/report_llm_fleet_status.py
+- Alert rules + checker: config/llm_fleet_alert_rules.yaml, scripts/check_llm_fleet_alerts.py
+- Daily summary: scripts/write_daily_llm_fleet_summary.py
+- Rollback: scripts/rollback_phase4_observability.sh
+- API/dashboard: deferred (CLI sufficient)
+
+### Fleet Status
+OK. 3 models resident (qwen3:14b + gemma3:4b + nomic). VRAM 13.9/16GB. 0 alerts.
+
+### Production Impact
+None. Read-only observability. No routing, .env, cron, or execution changes.
+
+### Next Phase
+Phase 5: Feedback/learning loop.
