@@ -1,0 +1,4 @@
+ strategy_id | symbol | distinct_days | first_seen | last_seen 
+-------------+--------+---------------+------------+-----------
+(0 rows)
+
