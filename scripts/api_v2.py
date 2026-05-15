@@ -14026,31 +14026,35 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # 2. Paper account
             _pa = {"equity": 0, "open_positions": 0, "cash": 0, "heat_pct": 0}
             try:
-                _paper_size = float(os.getenv("PAPER_ACCOUNT_SIZE", "100000"))
+                _paper_size = 100000.0
                 _open = _db_query("SELECT COUNT(*) as cnt, COALESCE(SUM(dollar_risk),0) as risk FROM paper_trades WHERE status='open'", fetch="one") or {}
                 _pa["open_positions"] = _open.get("cnt", 0)
                 _pa["heat_pct"] = round(float(_open.get("risk", 0)) / _paper_size, 4) if _paper_size > 0 else 0
                 try:
                     import requests as _rq
-                    # Read Alpaca keys from .env (api_v2 doesn't use dotenv)
-                    _env_lines = {}
+                    # Read keys from .env file directly (server env may not have os.getenv working in this scope)
+                    _env_kv = {}
                     for _el in (PROJECT_ROOT / ".env").read_text().splitlines():
                         if "=" in _el and not _el.startswith("#"):
-                            _ek, _ev = _el.split("=", 1)
-                            _env_lines[_ek.strip()] = _ev.strip()
-                    _ak = _env_lines.get("ALPACA_API_KEY", "")
-                    _as = _env_lines.get("ALPACA_SECRET_KEY", "")
-                    if _ak and _as:
+                            _ek2, _ev2 = _el.split("=", 1)
+                            _env_kv[_ek2.strip()] = _ev2.strip()
+                    _ak = _env_kv.get("ALPACA_API_KEY", "")
+                    _asec = _env_kv.get("ALPACA_SECRET_KEY", "")
+                    if _ak and _asec:
                         _r = _rq.get("https://paper-api.alpaca.markets/v2/account",
-                                     headers={"APCA-API-KEY-ID": _ak, "APCA-API-SECRET-KEY": _as}, timeout=5)
+                                     headers={"APCA-API-KEY-ID": _ak, "APCA-API-SECRET-KEY": _asec}, timeout=5)
                         if _r.ok:
                             _acct = _r.json()
                             _pa["equity"] = round(float(_acct.get("equity", 0)), 2)
                             _pa["cash"] = round(float(_acct.get("cash", 0)), 2)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                        else:
+                            _pa["_error"] = f"alpaca_http_{_r.status_code}"
+                    else:
+                        _pa["_error"] = "alpaca_keys_missing"
+                except Exception as _e:
+                    _pa["_error"] = str(_e)[:100]
+            except Exception as _pa_err:
+                _pa["_outer_error"] = str(_pa_err)[:100]
 
             # 3. Overnight activity
             _oa = {"since": _since, "proposals_created": 0, "proposals_approved": 0,
@@ -14379,36 +14383,41 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
-        # Newly Activated Strategies (A-2)
         if _panel == "newly-activated":
             try:
-                _acts = _db_query("""
-                    SELECT sa.strategy_id, sa.activated_at, sa.activated_by,
-                           sa.pre_activation_defect, sa.fix_applied, sa.observation_window_days,
-                           EXTRACT(DAY FROM NOW() - sa.activated_at)::int as days_since_activation,
-                           (SELECT COUNT(*) FROM trade_ai_scans s
-                            WHERE s.strategy_hint = sa.strategy_id AND s.created_at > sa.activated_at) as candidates_since,
-                           (SELECT COUNT(*) FROM paper_trade_proposals p
-                            WHERE p.strategy_id = sa.strategy_id AND p.created_at > sa.activated_at) as proposals_since,
-                           (SELECT COUNT(*) FROM paper_trades t
-                            WHERE t.strategy_id = sa.strategy_id AND t.created_at > sa.activated_at) as trades_since
-                    FROM strategy_activations sa
-                    ORDER BY sa.activated_at DESC
-                """) or []
-                for _a in _acts:
-                    c = _a.get("candidates_since", 0) or 0
-                    p = _a.get("proposals_since", 0) or 0
-                    t = _a.get("trades_since", 0) or 0
-                    if t > 0:
-                        _a["status"] = "ACTIVE"
-                    elif p > 0:
-                        _a["status"] = "WORKING"
-                    elif c > 0:
-                        _a["status"] = "SCREENED_BUT_NOT_PROPOSED"
-                    else:
-                        days = _a.get("days_since_activation", 0) or 0
-                        _a["status"] = "DORMANT" if days >= 3 else "WAITING"
-                return 200, {"ok": True, "data": _acts}
+                # Use fresh connection — strategy_activations may have been created after server started
+                import psycopg2 as _pg2, psycopg2.extras as _pge2
+                _dbpw2 = ""
+                for _el2 in (PROJECT_ROOT / ".env").read_text().splitlines():
+                    if _el2.startswith("DB_PASSWORD="):
+                        _dbpw2 = _el2.split("=", 1)[1].strip()
+                        break
+                _nc2 = _pg2.connect(host="127.0.0.1", dbname="trade_ai", user="trade_ai", password=_dbpw2)
+                _nc2.autocommit = True
+                _cur2 = _nc2.cursor(cursor_factory=_pge2.RealDictCursor)
+                _cur2.execute("SELECT strategy_id, activated_at, activated_by, pre_activation_defect FROM strategy_activations ORDER BY activated_at DESC")
+                _sa_rows = _cur2.fetchall()
+                out = []
+                for r in _sa_rows:
+                    sid = r["strategy_id"]
+                    _at = r["activated_at"]
+                    days = 0
+                    if _at:
+                        try:
+                            _at_utc = _at.astimezone(_tz.utc) if _at.tzinfo else _at.replace(tzinfo=_tz.utc)
+                            days = max(0, int((_dt.now(_tz.utc) - _at_utc).total_seconds() / 86400))
+                        except Exception:
+                            pass
+                    _cur2.execute("SELECT COUNT(*) as c FROM paper_trade_proposals WHERE strategy_id=%s", [sid])
+                    props = _cur2.fetchone()["c"]
+                    _cur2.execute("SELECT COUNT(*) as c FROM paper_trades WHERE strategy_id=%s", [sid])
+                    trades = _cur2.fetchone()["c"]
+                    status = "TOO_EARLY" if days < 1 else "ACTIVE" if trades > 0 else "PROPOSED_NO_TRADES" if props > 0 else "RETIRE_CANDIDATE" if days >= 7 else "DORMANT"
+                    out.append({"strategy_id": sid, "activated_at": _json_clean(_at),
+                                "activated_by": r.get("activated_by"), "days_since": days,
+                                "proposals_since": props, "trades_since": trades, "status": status})
+                _nc2.close()
+                return 200, {"ok": True, "data": out}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
