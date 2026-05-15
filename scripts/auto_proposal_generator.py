@@ -205,9 +205,10 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
         AND status IN ('active','ACTIVE')
     """
     params = [min_score]
-    if run_label:
-        sql += " AND (scan_run_label = %s OR scan_run_label IS NULL)"
-        params.append(run_label)
+    # Note: run_label filter removed in A-4 fix. Signals from any same-day
+    # run are eligible — pre-market (0400) signals should be visible to
+    # daytime (1200/1400/1600/1730) proposal runs. The fired_at::date = CURRENT_DATE
+    # filter already scopes to today's signals only.
     if symbol:
         sql += " AND symbol = %s"
         params.append(symbol)
