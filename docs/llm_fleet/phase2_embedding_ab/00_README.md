@@ -94,9 +94,20 @@ See `v4_1_phase2d_bounded_offline_promotion.md`.
 - Production `content_embeddings` unchanged
 - Phase 2F global shadow retrieval can begin
 
+## Phase 2F: Global Shadow Retrieval (2026-05-14)
+
+100-query comparison across 25 categories:
+- **Nomic wins similarity**: 0.688 vs qwen3 0.634
+- **Qwen3 wins diversity**: 2.7 vs nomic 2.4
+- **Hybrid best overall**: 0.699 similarity, 2.6 diversity
+- **Winners**: nomic=74, hybrid=35, qwen3=21, tie=5
+- **Consensus**: 2.9% (models find different relevant docs)
+- **0% empty results** for both models
+- Production unchanged, global promotion blocked
+
 ## Next Phase
 
-Phase 2F: Global shadow retrieval comparison (pending operator approval).
+Phase 2G: Limited canary (pending operator approval).
 Then Phase 3: Small media/prose model pilot.
 
 ## Monitoring and Rollback

@@ -1769,3 +1769,33 @@ UNCHANGED — no routing, embedding, cron, .env, or broker changes.
 
 ### Next
 Phase 2F: Global shadow retrieval comparison.
+
+---
+
+## Phase 2F Global Shadow Retrieval — 2026-05-14
+
+### Results (100 queries, 25 categories)
+| Metric | Nomic | Qwen3 | Hybrid |
+|--------|-------|-------|--------|
+| Avg similarity | 0.688 | 0.634 | 0.699 |
+| Avg diversity | 2.4 | 2.7 | 2.6 |
+| Avg latency | 93ms | 1,285ms | — |
+| Empty rate | 0% | 0% | 0% |
+
+| Method | Winner Count |
+|--------|-------------|
+| nomic | 74 |
+| hybrid | 35 |
+| qwen3 | 21 |
+| tie | 5 |
+
+Overlap: 1.6%, Consensus: 2.9%
+
+### Key Finding
+Nomic wins on similarity (higher relevance scores). Qwen3 wins on diversity (finds different source types). Hybrid combines both advantages. Models are strongly complementary — 97% of results are unique to one model. This confirms hybrid is the right approach for deep/offline queues where both perspectives add value.
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Recommendation
+Phase 2G limited canary can begin if operator approves.
