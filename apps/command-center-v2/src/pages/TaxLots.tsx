@@ -16,6 +16,11 @@ export default function TaxLots() {
   const { data: t } = useApi<TaxData>('/api/v2/tax-lots')
   const [selectedLot, setSelectedLot] = useState<Lot | null>(null)
   const [acctFilter, setAcctFilter] = useState('all')
+
+  // All hooks must be called before any early return (React rules of hooks)
+  const accounts = useMemo(() => t ? ['all', ...Array.from(new Set(t.lots.map(l => l.account)))] : ['all'], [t])
+  const filtered = useMemo(() => !t ? [] : acctFilter === 'all' ? t.lots : t.lots.filter(l => l.account === acctFilter), [t, acctFilter])
+
   if (!t) return <div style={{ color: 'var(--text3)', padding: 40 }}>Loading...</div>
 
   if (t.count === 0) return (
@@ -27,9 +32,6 @@ export default function TaxLots() {
       </div>
     </>
   )
-
-  const accounts = useMemo(() => ['all', ...Array.from(new Set(t.lots.map(l => l.account)))], [t])
-  const filtered = useMemo(() => acctFilter === 'all' ? t.lots : t.lots.filter(l => l.account === acctFilter), [t, acctFilter])
 
   const totalGain = filtered.reduce((s, l) => s + l.unrealized_gain, 0)
   const totalBasis = filtered.reduce((s, l) => s + l.cost_basis, 0)
