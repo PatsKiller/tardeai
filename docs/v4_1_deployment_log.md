@@ -1799,3 +1799,30 @@ UNCHANGED — no routing, embedding, cron, .env, or broker changes.
 
 ### Recommendation
 Phase 2G limited canary can begin if operator approves.
+
+---
+
+## Phase 2G Limited Canary — 2026-05-14
+
+### What Changed
+Added bounded Phase 2G hybrid RAG canary with policy config, enforcement, batch runner, audit, and rollback.
+
+### Config
+`config/phase2g_hybrid_canary.yaml` — 12 allowed workflows, 9 blocked workflows
+
+### Canary Batch
+- 16/16 queries OK, 0 errors, 34.8s
+- 6 workflows tested: risk_synthesis, recovery_watch_review, closed_trade_review, manual_journal_review, proposal_review, rag_content_curation
+- Source diversity: 2.4 types/query
+- Fallback: 16/16 (nomic-only — qwen3-embedding not loaded during daytime)
+- Blocked workflow test: correctly refused
+
+### Policy Enforcement
+- Allowed: risk_synthesis → ALLOWED
+- Blocked: telegram_realtime → BLOCKED (correct)
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Rollback
+`./scripts/rollback_phase2g_canary.sh --disable`
