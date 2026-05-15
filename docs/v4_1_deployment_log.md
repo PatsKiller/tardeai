@@ -2091,3 +2091,31 @@ None. Read-only feedback collection.
 
 ### Next
 Review human queue. Schedule collector. Build approval workflow later.
+
+---
+
+## Proposal Pipeline Fix — 2026-05-14
+
+### Changes
+1. **Stale proposal cleanup cron** — NEW
+   - `scripts/cleanup_stale_proposals.py` auto-rejects blocked (>4h), missing data (>48h), and stale (>24h) proposals
+   - Runs at 10:00 AM and 3:00 PM weekdays
+   - Keeps proposal queue fresh instead of accumulating dead entries
+
+2. **End-of-day auto-proposals** — CHANGED
+   - Removed `--skip-auto-proposals` from 17:30 orchestrator run
+   - Strong incubator candidates can now auto-promote at end of day
+   - Earlier runs (12:00, 14:00, 16:00) still skip auto-proposals
+
+3. **Dashboard BLOCKED verdict fix** — FIXED
+   - `proposal_execution_readiness.py` now syncs `action_state` when writing execution results
+   - `api_v2.py` verdict logic now checks `action_state` for BLOCKED instead of falling through to NEEDS_REVIEW
+   - Dashboard correctly shows BLOCKED when execution gates fail
+
+### Cron
+**Old 17:30:** `--run-label 1730 --no-alerts --skip-auto-proposals --allow-underfilled`
+**New 17:30:** `--run-label 1730 --no-alerts --allow-underfilled`
+**New cleanup:** `0 10,15 * * 1-5 ... cleanup_stale_proposals.py --apply`
+
+### Production Impact
+Paper proposals only. No broker/execution/live-trading changes.
