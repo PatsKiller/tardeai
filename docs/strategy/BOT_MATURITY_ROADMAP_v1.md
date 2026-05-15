@@ -223,7 +223,7 @@ The bot is ready for real money when ALL of these are true:
 
 | # | Question | Decision | Reasoning |
 |---|----------|----------|-----------|
-| Q1 | Backtest data source | Alpaca free for Phase A/B. Upgrade to Polygon at Phase C if data quality drives >20% divergence | Zero new infrastructure. $29/mo is trivial if needed later |
+| Q1 | Backtest data source | Alpaca historical bars (OHLCV) + Finviz Elite live/screener (already configured). No Polygon needed unless specific gap found | Both sources already configured and producing data. 781 Finviz rows over 10 days. Finviz screener history enables realistic backtest replay |
 | Q2 | Risk hard-limits | heat=6%, single_position=8%, sector=25%, correlation=0.7 | Soft alert at 5% heat, hard block at 6%. 8% concentration prevents bot from repeating live portfolio's V-at-26% pattern |
 | Q3 | Auto-tune approval flow | Dashboard one-click + Telegram 8AM digest of pending tunes. Rate-limited 2 changes/strategy/30 days | Dashboard for the decision, Telegram for the notification. Rate limit prevents parameter thrashing |
 | Q4 | Strategy retirement | Pause at 30% win-rate over 20 trades OR 15% strategy-level drawdown. Pause not delete. Auto-revive after 30d if backtest supports | 30%/20 = 95% statistical confidence strategy is broken. Drawdown trigger catches high-loss-magnitude strategies |

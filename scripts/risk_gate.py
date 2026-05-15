@@ -251,6 +251,55 @@ class RiskGate:
                 if _safe_float(dollar_size) > max_size:
                     reasons.append('DOLLAR_SIZE_TOO_LARGE')
 
+            # ── Hard Risk Governance Gates (Session A-1, operator-approved thresholds) ──
+            # These gates enforce hard portfolio-level limits for the bot paper account.
+            _paper_size = _safe_float(os.getenv('PAPER_ACCOUNT_SIZE', '100000'))
+
+            # H1. Portfolio heat limit (6% default)
+            if self.conn and os.getenv('RISK_GATE_H1_ENABLED', 'true').lower() == 'true':
+                try:
+                    heat_limit = _safe_float(os.getenv('HEAT_LIMIT_PCT', '0.06'))
+                    cur = self.conn.cursor()
+                    cur.execute("SELECT COALESCE(SUM(dollar_risk), 0) FROM paper_trades WHERE status='open'")
+                    current_risk = _safe_float(cur.fetchone()[0])
+                    new_risk = _safe_float(plan.get('dollar_risk', 0))
+                    would_be_heat = (current_risk + new_risk) / _paper_size if _paper_size > 0 else 0
+                    if would_be_heat > heat_limit:
+                        reasons.append(f'HEAT_LIMIT_EXCEEDED_{would_be_heat:.1%}_vs_{heat_limit:.0%}')
+                except Exception:
+                    pass
+
+            # H2. Single position concentration (8% default)
+            if os.getenv('RISK_GATE_H2_ENABLED', 'true').lower() == 'true':
+                conc_limit = _safe_float(os.getenv('POSITION_CONCENTRATION_PCT', '0.08'))
+                pos_size = _safe_float(plan.get('dollar_size', 0))
+                pos_pct = pos_size / _paper_size if _paper_size > 0 else 0
+                if pos_pct > conc_limit:
+                    reasons.append(f'CONCENTRATION_CAP_{pos_pct:.1%}_vs_{conc_limit:.0%}')
+
+            # H3. Sector concentration (25% default)
+            if self.conn and sector and os.getenv('RISK_GATE_H3_ENABLED', 'true').lower() == 'true':
+                try:
+                    sector_limit = _safe_float(os.getenv('SECTOR_CONCENTRATION_PCT', '0.25'))
+                    cur = self.conn.cursor()
+                    cur.execute("""
+                        SELECT COALESCE(SUM(pt.dollar_size), 0)
+                        FROM paper_trades pt
+                        JOIN trade_ai_scans tas ON tas.symbol = pt.symbol
+                          AND tas.scanned_at = (SELECT MAX(scanned_at) FROM trade_ai_scans WHERE symbol = pt.symbol)
+                        WHERE pt.status = 'open' AND tas.sector = %s
+                    """, [sector])
+                    sector_dollars = _safe_float(cur.fetchone()[0])
+                    new_sector_pct = (sector_dollars + pos_size) / _paper_size if _paper_size > 0 else 0
+                    if new_sector_pct > sector_limit:
+                        reasons.append(f'SECTOR_CAP_{sector}_{new_sector_pct:.1%}_vs_{sector_limit:.0%}')
+                except Exception:
+                    pass
+
+            # H4. Correlation cap (0.7 default, disabled by default — enable after validation)
+            # Expensive: requires bar data fetch. Runs last, only if H1-H3 passed.
+            # Implementation deferred to Phase B when correlation calculation is validated.
+
             # 14. Data quality
             intel = extra_data.get('intel_readiness', 0)
             if action_context in FAIL_CLOSED_CONTEXTS and intel is not None and int(intel or 0) < 20:
