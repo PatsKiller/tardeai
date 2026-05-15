@@ -281,7 +281,7 @@ def get_conn():
 # ---------------------------------------------------------------------------
 
 def fetch_candidates(cur, force_symbol=None, limit=10):
-    """Return incubator rows eligible for promotion."""
+    """Return incubator rows eligible for promotion (screener-sourced)."""
     if force_symbol:
         cur.execute("""
             SELECT * FROM incubator_universe
@@ -315,6 +315,59 @@ def fetch_candidates(cur, force_symbol=None, limit=10):
                 iu.latest_score DESC
             LIMIT %s
         """, [limit])
+    return cur.fetchall()
+
+
+# Strategies that don't come from screener scans — need classification-based promotion
+_CLASSIFICATION_STRATEGIES = {
+    'income_add', 'dividend_growth_compounder', 'covered_call_income',
+    'high_yield_income_bdc', 'reit_income', 'bond_income',
+    'recovery_watch', 'defense_thesis', 'swing_trade',
+    'core_growth_compounder', 'sector_rotation',
+    'international_dividend',
+}
+
+# Lower score floor for under-represented strategies
+_DIVERSITY_SCORE_FLOOR = 30
+
+
+def fetch_classification_candidates(cur, limit=10):
+    """Return candidates from strategy classifications + incubator for non-screener strategies.
+
+    These are strategies like income, dividend, recovery, defense that rarely
+    appear in screener scans but have many classified symbols in the incubator.
+    """
+    strat_list = ",".join(f"'{s}'" for s in _CLASSIFICATION_STRATEGIES)
+    cur.execute(f"""
+        SELECT iu.*,
+               'WAIT' as scan_decision,
+               tsc.strategy_type as classified_strategy,
+               tsc.confidence as classification_confidence
+        FROM incubator_universe iu
+        JOIN ticker_strategy_classifications tsc
+            ON tsc.symbol = iu.symbol
+            AND tsc.strategy_type = iu.strategy_id
+            AND tsc.active = true
+        WHERE iu.status = 'ACTIVE'
+          AND iu.strategy_id IN ({strat_list})
+          AND iu.latest_score >= {_DIVERSITY_SCORE_FLOOR}
+          AND iu.promoted_to_proposal_at IS NULL
+          AND iu.days_active >= 1
+          AND COALESCE(iu.llm_screen_verdict, 'HOLD') != 'DROP'
+          -- Skip strategies that already have pending proposals
+          AND iu.strategy_id NOT IN (
+              SELECT DISTINCT strategy_id FROM paper_trade_proposals
+              WHERE status = 'PENDING'
+          )
+        ORDER BY
+            -- Prioritize strategies with zero proposals ever
+            CASE WHEN iu.strategy_id NOT IN (
+                SELECT DISTINCT strategy_id FROM paper_trade_proposals
+            ) THEN 0 ELSE 1 END,
+            tsc.confidence DESC NULLS LAST,
+            iu.latest_score DESC
+        LIMIT %s
+    """, [limit])
     return cur.fetchall()
 
 
@@ -381,7 +434,17 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         log.warning(f"[promoter] Gate blocked: {gate_reason}")
         return [f"GATE BLOCKED: {gate_reason}"], 0, 0
 
+    # Merge screener candidates + classification-based candidates for diversity
     candidates = fetch_candidates(cur, force_symbol=force_symbol, limit=limit)
+    if not force_symbol:
+        classification_candidates = fetch_classification_candidates(cur, limit=max(5, limit // 2))
+        # Deduplicate by (symbol, strategy_id)
+        seen = {(c['symbol'], c['strategy_id']) for c in candidates}
+        for cc in classification_candidates:
+            if (cc['symbol'], cc['strategy_id']) not in seen:
+                candidates.append(cc)
+                seen.add((cc['symbol'], cc['strategy_id']))
+        log.info(f"[promoter] {len(candidates)} candidates ({len(classification_candidates)} from classifications)")
     promoted = 0
     skipped = 0
     results = []
@@ -420,7 +483,9 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
 
         # Gate check (force-symbol bypasses score gates but not pending check)
         if not force_symbol:
-            if not catalyst_verified and (score is None or score < 45):
+            # Classification strategies (income, dividend, etc.) don't require catalysts
+            is_classification = strategy_id in _CLASSIFICATION_STRATEGIES
+            if not is_classification and not catalyst_verified and (score is None or score < 45):
                 results.append(f"SKIPPED: {symbol} (no_catalyst, score={score})")
                 skipped += 1
                 continue
@@ -443,10 +508,19 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             skipped += 1
             continue
 
-        # Price lookup
+        # Price lookup — scan → evidence → live quote fallback
         scan_price, screener_label = get_scan_price(cur, symbol)
         if scan_price is None:
             scan_price = extract_evidence_price(c.get('evidence_payload'))
+        if scan_price is None:
+            try:
+                from market_quote_provider import get_best_quote
+                _lq = get_best_quote(symbol)
+                if _lq and _lq.get('last_price') and _lq['last_price'] > 0:
+                    scan_price = _lq['last_price']
+                    screener_label = f"live_quote_{_lq.get('provider', 'unknown')}"
+            except Exception:
+                pass
         if scan_price is None or scan_price <= 0:
             results.append(f"SKIPPED: {symbol} (no_price)")
             skipped += 1
