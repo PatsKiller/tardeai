@@ -18,7 +18,7 @@ The bot is ready for real money when ALL of these are true:
 - [ ] Max drawdown discipline activated and tested (bot pauses after X% portfolio drawdown)
 - [ ] Operator-facing dashboards score 8/10 maturity (currently 5-6/10)
 - [ ] Independent code review of all live-trading code paths completed
-- [ ] Shadow live mode run for 30+ days (mirrors real decisions, no real fills)
+- [ ] Shadow live mode run for 60+ days (mirrors real decisions, no real fills)
 
 ### Existing Infrastructure That Accelerates This
 
@@ -219,15 +219,16 @@ The bot is ready for real money when ALL of these are true:
 
 ## 5. Decisions Required From Operator Before Phase A Starts
 
-1. **Backtest data source:** Alpaca historical bars (free with account) or Polygon.io ($29/mo for 5+ years of minute bars)?
-2. **Risk hard-limit values:**
-   - Max portfolio heat: 5%? 7%? 8%?
-   - Max single-position concentration: 10%? 15%?
-   - Max sector concentration: 25%? 30%?
-3. **Auto-tune approval flow:** Telegram approve/reject, dashboard one-click, or daily digest with batch approval?
-4. **Strategy retirement threshold:** Pause at win-rate <30% over 20 trades, or <35% over 15 trades?
-5. **Shadow-mode duration:** 30 days? 60 days?
-6. **Trade velocity target:** 3 trades/day (current) or push to 5-10/day by activating more strategies?
+### Operator Decisions (approved 2026-05-15)
+
+| # | Question | Decision | Reasoning |
+|---|----------|----------|-----------|
+| Q1 | Backtest data source | Alpaca free for Phase A/B. Upgrade to Polygon at Phase C if data quality drives >20% divergence | Zero new infrastructure. $29/mo is trivial if needed later |
+| Q2 | Risk hard-limits | heat=6%, single_position=8%, sector=25%, correlation=0.7 | Soft alert at 5% heat, hard block at 6%. 8% concentration prevents bot from repeating live portfolio's V-at-26% pattern |
+| Q3 | Auto-tune approval flow | Dashboard one-click + Telegram 8AM digest of pending tunes. Rate-limited 2 changes/strategy/30 days | Dashboard for the decision, Telegram for the notification. Rate limit prevents parameter thrashing |
+| Q4 | Strategy retirement | Pause at 30% win-rate over 20 trades OR 15% strategy-level drawdown. Pause not delete. Auto-revive after 30d if backtest supports | 30%/20 = 95% statistical confidence strategy is broken. Drawdown trigger catches high-loss-magnitude strategies |
+| Q5 | Shadow-mode duration | 60 days minimum with 3 pass criteria: decision consistency (5%), performance (+-20%), zero silent failures | 60d catches 2 earnings cycles, 1+ Fed meeting, 1+ OPEX. 30d is one regime, too short |
+| Q6 | Trade velocity | Target 5/day by end of Phase B, 7-8/day by end of Phase D. Velocity follows capability, not the other way | Avoid lowering quality thresholds to hit velocity targets. 5/day = 200 trades in 2 months |
 
 ## 6. Open Risks
 
@@ -256,7 +257,7 @@ By 2026-11-15 (six months from today):
 - Auto-tuning has applied 10+ approved parameter changes
 - Stop_too_tight % below 20% across all active strategies
 - Backtest consistency within 20% for all live-eligible strategies
-- 30+ days of shadow-mode operation documented
+- 60+ days of shadow-mode operation documented
 - Operator confidence rating: 8/10 (self-reported)
 - Operator go/no-go decision documented with evidence
 
