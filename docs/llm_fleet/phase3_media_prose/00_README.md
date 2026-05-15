@@ -1,9 +1,20 @@
 # Phase 3 — Media/Prose Model Pilot
 
-**Status:** CANDIDATE_BETTER — gemma3:4b passes Phase 3 (3.3 GB, 4x faster, better quality)
-**Candidate model:** gemma3:4b (3.3 GB) — replaces rejected gemma4:e4b
-**Current production model:** qwen3:14b (STANDARD/REALTIME, unchanged)
+**Status:** PHASE 3C ROUTED — gemma3:4b approved for media/prose workflows
+**Media/prose model:** gemma3:4b (3.3 GB, coexists with qwen3:14b)
+**STANDARD/REALTIME:** qwen3:14b (unchanged)
+**Embedding:** nomic-embed-text (unchanged)
+**Deep reasoning:** gemma3-overnight (unchanged)
 **Rejected:** gemma4:e4b (9.6 GB, removed)
+
+## Phase 3C Routing
+
+- Config: `config/phase3_media_prose_routing.yaml`
+- 14 approved media/prose workflows
+- 12 blocked trading/execution workflows
+- Router: `scripts/phase3_media_prose_router.py`
+- Audit: `.venv/bin/python scripts/audit_phase3_media_prose_routing.py`
+- Rollback: `./scripts/rollback_phase3_media_prose_routing.sh --disable`
 
 ## Purpose
 

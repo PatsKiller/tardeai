@@ -1997,3 +1997,29 @@ None. qwen3:14b + nomic-embed-text restored.
 
 ### Recommendation
 Continue Phase 3 pilot with gemma3:4b for approved media/prose workflows.
+
+---
+
+## Phase 3C — Media/Prose Routing to gemma3:4b — 2026-05-14
+
+### Config
+`config/phase3_media_prose_routing.yaml` — 14 approved, 12 blocked workflows.
+
+### Router Test
+- Approved (youtube_transcript_summary): gemma3:4b, 4.3s, 341 chars, no fallback
+- Blocked (broker_execution): REFUSED correctly
+
+### Model State
+| Role | Model | Status |
+|------|-------|--------|
+| STANDARD/REALTIME | qwen3:14b | Unchanged |
+| MEDIA/PROSE | gemma3:4b | NEW — 3.3 GB, coexists with qwen3:14b |
+| DEEP reasoning | gemma3-overnight | Unchanged |
+| Embedding | nomic-embed-text | Unchanged |
+| Hybrid offline | qwen3-embedding:8b | Unchanged |
+
+### Production Impact
+No global routing change. qwen3:14b remains STANDARD/REALTIME. Media/prose routing is opt-in via Phase 3C policy.
+
+### Rollback
+`./scripts/rollback_phase3_media_prose_routing.sh --disable`
