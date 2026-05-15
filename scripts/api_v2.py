@@ -12644,6 +12644,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "message": result.get('message', 'Approved for paper test' if result.get('success') else 'Approval failed'),
                 "paper_trade_id": result.get('paper_trade_id'),
                 "blockers": result.get('blockers', []),
+                "market_revalidation": result.get('market_revalidation'),
                 "alpaca_submission": alpaca_result,
                 "data": result,
             }

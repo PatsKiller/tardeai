@@ -18,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from session13_db import get_conn
 from risk_gate import RiskGate, RiskDecision
+from market_quote_provider import get_best_quote
 
 log = logging.getLogger(__name__)
 
@@ -1006,10 +1007,148 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
         return {'success': False, 'message': f'Manual proposal failed: {e}'}
 
 
+def _revalidate_market_conditions(symbol: str, entry: float, stop: float, target: float, shares: int) -> dict:
+    """Real-time market revalidation at approval time.
+
+    Fetches live quote and checks whether the trade still makes sense
+    under current market conditions. Returns pass/fail with details.
+
+    Thresholds:
+      - Price drift > 3% from proposed entry → BLOCK
+      - Stop already breached → BLOCK
+      - R:R degraded below 1.2 → BLOCK
+      - No live quote available → BLOCK
+      - Spread > 1.5% → BLOCK
+      - Price drift 1.5-3% → WARN (adjust entry to current price)
+    """
+    result = {
+        "passed": False,
+        "symbol": symbol,
+        "proposed_entry": entry,
+        "proposed_stop": stop,
+        "proposed_target": target,
+        "proposed_shares": shares,
+        "live_price": None,
+        "provider": None,
+        "quote_age_seconds": None,
+        "price_drift_pct": None,
+        "live_rr": None,
+        "live_spread_pct": None,
+        "adjusted_entry": None,
+        "adjusted_shares": None,
+        "adjusted_dollar_risk": None,
+        "blockers": [],
+        "warnings": [],
+        "message": "",
+    }
+
+    # ── Fetch live quote ──
+    try:
+        quote = get_best_quote(symbol)
+    except Exception as e:
+        result["blockers"].append(f"quote_fetch_error: {e}")
+        result["message"] = f"Cannot approve: failed to fetch live market data for {symbol}"
+        return result
+
+    live_price = quote.get("last_price") if quote else None
+    if not live_price or live_price <= 0:
+        result["blockers"].append("no_live_quote")
+        result["message"] = f"Cannot approve: no live price available for {symbol}. Stale data cannot be trusted."
+        return result
+
+    result["live_price"] = live_price
+    result["provider"] = quote.get("provider", "unknown")
+    result["live_spread_pct"] = quote.get("spread_pct")
+
+    # Quote age check
+    qt = quote.get("quote_timestamp")
+    if qt:
+        from datetime import timezone as _tz
+        _now = datetime.now(_tz.utc)
+        if hasattr(qt, 'tzinfo') and qt.tzinfo is None:
+            qt = qt.replace(tzinfo=_tz.utc)
+        elif isinstance(qt, (int, float)):
+            qt = datetime.fromtimestamp(qt, tz=_tz.utc)
+        try:
+            age = (_now - qt).total_seconds()
+            result["quote_age_seconds"] = round(age)
+            if age > 900:  # 15 min
+                result["blockers"].append(f"stale_quote: {round(age)}s old")
+                result["message"] = f"Cannot approve: quote for {symbol} is {round(age/60)}min old. Need fresh market data."
+                return result
+        except Exception:
+            pass
+
+    # ── Check 1: Stop already breached ──
+    if live_price <= stop:
+        result["blockers"].append(f"stop_breached: price ${live_price:.2f} <= stop ${stop:.2f}")
+        result["message"] = (f"Not a good trade under current conditions: {symbol} is at ${live_price:.2f}, "
+                             f"already at or below stop loss ${stop:.2f}. Would immediately stop out.")
+        return result
+
+    # ── Check 2: Price drift ──
+    drift_pct = abs(live_price - entry) / entry * 100 if entry > 0 else 0
+    result["price_drift_pct"] = round(drift_pct, 2)
+
+    if drift_pct > 3.0:
+        direction = "above" if live_price > entry else "below"
+        result["blockers"].append(f"price_drift_{drift_pct:.1f}pct: ${live_price:.2f} vs entry ${entry:.2f}")
+        result["message"] = (f"Not a good trade under current conditions: {symbol} is now ${live_price:.2f}, "
+                             f"{drift_pct:.1f}% {direction} proposed entry ${entry:.2f}. "
+                             f"Trade parameters are stale — resubmit with fresh analysis.")
+        return result
+
+    # ── Check 3: Spread too wide ──
+    spread_pct = quote.get("spread_pct")
+    if spread_pct and spread_pct > 1.5:
+        result["blockers"].append(f"wide_spread: {spread_pct:.2f}%")
+        result["message"] = (f"Not a good trade under current conditions: {symbol} spread is {spread_pct:.2f}%, "
+                             f"too wide for safe execution. Wait for tighter liquidity.")
+        return result
+
+    # ── Check 4: Recalculate R:R with current price ──
+    current_risk = abs(live_price - stop)
+    current_reward = abs(target - live_price)
+    live_rr = round(current_reward / current_risk, 2) if current_risk > 0 else 0
+    result["live_rr"] = live_rr
+
+    if live_rr < 1.2:
+        result["blockers"].append(f"rr_degraded: {live_rr}:1 (min 1.2:1)")
+        orig_risk = abs(entry - stop)
+        orig_rr = round(abs(target - entry) / orig_risk, 2) if orig_risk > 0 else 0
+        result["message"] = (f"Not a good trade under current conditions: {symbol} R:R has degraded from "
+                             f"{orig_rr}:1 to {live_rr}:1 at current price ${live_price:.2f}. "
+                             f"Reward no longer justifies the risk.")
+        return result
+
+    # ── Passed all checks — recalibrate if needed ──
+    result["passed"] = True
+    adjusted_entry = live_price if drift_pct > 1.5 else entry
+    adjusted_dollar_risk = round(abs(adjusted_entry - stop) * int(shares), 2)
+    result["adjusted_entry"] = adjusted_entry
+    result["adjusted_shares"] = shares
+    result["adjusted_dollar_risk"] = adjusted_dollar_risk
+
+    if drift_pct > 1.5:
+        direction = "above" if live_price > entry else "below"
+        result["warnings"].append(f"price_adjusted: {drift_pct:.1f}% {direction}, entry recalibrated to ${live_price:.2f}")
+        result["message"] = (f"Approved with adjustment: {symbol} moved {drift_pct:.1f}% {direction} proposed entry. "
+                             f"Entry recalibrated from ${entry:.2f} to ${live_price:.2f}. R:R={live_rr}:1.")
+    else:
+        result["message"] = (f"Market conditions confirmed: {symbol} at ${live_price:.2f} "
+                             f"(drift {drift_pct:.1f}%), R:R={live_rr}:1. Approved.")
+
+    return result
+
+
 def approve_proposal(proposal_id: int, override_shares: int = None,
                      override_entry: float = None, override_stop: float = None,
                      override_target: float = None) -> dict:
-    """Approve a proposal, create paper trade, optionally submit to Alpaca."""
+    """Approve a proposal, create paper trade, optionally submit to Alpaca.
+
+    Runs real-time market revalidation BEFORE creating the paper trade.
+    If current market conditions make the trade unfavorable, approval is blocked.
+    """
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -1030,6 +1169,35 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
         stop = override_stop or prop['proposed_stop']
         target = override_target or prop['proposed_target1']
         shares = override_shares or prop['proposed_shares']
+
+        # ── REAL-TIME MARKET REVALIDATION (must pass before anything else) ──
+        market_check = _revalidate_market_conditions(
+            prop['symbol'], float(entry), float(stop), float(target), int(shares))
+
+        if not market_check["passed"]:
+            # Block approval — update proposal with rejection reason
+            cur.execute("""
+                UPDATE paper_trade_proposals
+                SET action_state = 'BLOCKED',
+                    action_label = %s,
+                    latest_execution_readiness = 'BLOCKED_MARKET_CONDITIONS',
+                    updated_at = NOW()
+                WHERE id = %s
+            """, [market_check["message"][:500], proposal_id])
+            conn.commit()
+            conn.close()
+            return {
+                'success': False,
+                'message': market_check["message"],
+                'market_revalidation': market_check,
+                'blockers': market_check["blockers"],
+            }
+
+        # If market check adjusted the entry, use the recalibrated values
+        if market_check.get("adjusted_entry") and market_check["adjusted_entry"] != float(entry):
+            log.info(f"Proposal #{proposal_id}: entry recalibrated from {entry} to {market_check['adjusted_entry']}")
+            entry = market_check["adjusted_entry"]
+
         dollar_size = round(float(shares) * float(entry), 2)
         dollar_risk = round(abs(float(entry) - float(stop)) * int(shares), 2)
 
@@ -1103,6 +1271,10 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
         _write_audit(conn, 'paper_proposal_approved', prop['symbol'], {
             'proposal_id': proposal_id, 'paper_trade_id': paper_trade_id,
             'entry': float(entry), 'stop': float(stop), 'shares': int(shares),
+            'live_price': market_check.get('live_price'),
+            'price_drift_pct': market_check.get('price_drift_pct'),
+            'live_rr': market_check.get('live_rr'),
+            'quote_provider': market_check.get('provider'),
         })
         conn.close()
 
@@ -1113,7 +1285,8 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             'shares': int(shares), 'dollar_risk': dollar_risk,
             'account': prop.get('proposed_account', 'ALPACA_PAPER'),
             'risk_gate': rg_result,
-            'message': f'PAPER TRADE #{paper_trade_id} opened from proposal #{proposal_id}',
+            'market_revalidation': market_check,
+            'message': f'PAPER TRADE #{paper_trade_id} opened from proposal #{proposal_id}. {market_check["message"]}',
         }
     except Exception as e:
         try: conn.close()
