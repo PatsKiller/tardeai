@@ -671,9 +671,12 @@ def write_readiness(conn, rec: dict):
         },
     )
 
+    # Update readiness + sync action_state for dashboard display
+    action = "BLOCKED" if "BLOCKED" in rec["readiness_state"] else (
+        "PAPER_READY" if rec["readiness_state"] in ("READY_FOR_PAPER_SUBMIT",) else "NEEDS_REVIEW")
     cur.execute(
-        "UPDATE paper_trade_proposals SET latest_execution_readiness = %s WHERE id = %s",
-        (rec["readiness_state"], rec["proposal_id"]),
+        "UPDATE paper_trade_proposals SET latest_execution_readiness = %s, action_state = %s WHERE id = %s",
+        (rec["readiness_state"], action, rec["proposal_id"]),
     )
 
     conn.commit()
