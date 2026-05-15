@@ -2119,3 +2119,23 @@ Review human queue. Schedule collector. Build approval workflow later.
 
 ### Production Impact
 Paper proposals only. No broker/execution/live-trading changes.
+
+---
+
+## Hourly Auto-Proposals + Incubator Promoter — 2026-05-15
+
+### Changes
+1. **All orchestrator runs now have auto-proposals enabled** — removed `--skip-auto-proposals` from 12:00, 14:00, 16:00 runs (17:30 was already enabled)
+2. **Incubator promoter now runs hourly** — changed from every 2 hours (9,11,13,15,17) to hourly (7-17) during trading days
+3. **Stale cleanup unchanged** — still runs at 10:00 and 15:00
+
+### Schedule Summary
+| Time | Action |
+|------|--------|
+| 7:00-17:00 hourly | Incubator promoter (promote qualifying candidates) |
+| 10:00, 15:00 | Stale proposal cleanup (reject blocked/stale) |
+| 12:00, 14:00, 16:00 | Orchestrator scan + auto-proposals |
+| 17:30 | End-of-day orchestrator + auto-proposals |
+
+### Why
+Proposals were going stale because auto-proposals were disabled on most runs and the incubator promoter only ran every 2 hours. Now fresh opportunities are promoted hourly and stale ones are cleaned twice daily.
