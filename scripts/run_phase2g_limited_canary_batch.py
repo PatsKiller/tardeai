@@ -23,29 +23,61 @@ CANARY_QUERIES = {
         ("RTX", "Find risk evidence and stop placement for RTX"),
         ("AVAV", "Show risk synthesis and unprotected position evidence for AVAV"),
         ("LMT", "What prior risk synthesis evidence exists for LMT"),
+        ("NOC", "Show risk exposure and concentration for NOC"),
+        ("DRS", "Find risk synthesis evidence for DRS position"),
+        ("KBR", "What risk factors exist for KBR holdings"),
     ],
     "recovery_watch_review": [
         ("RTX", "What evidence supports recovery or re-entry for RTX"),
         ("IRDM", "Show recovery watch evidence and prior exit reasons for IRDM"),
         ("TDG", "Find recovery watch and re-entry evidence for TDG"),
+        ("BAH", "Show recovery watch signals and thesis for BAH"),
+        ("LHX", "What recovery evidence exists for LHX after stop-out"),
+        ("CACI", "Find recovery watch context for CACI"),
     ],
     "closed_trade_review": [
         ("None", "Find closed trades where MFE was high but realized profit was low"),
         ("None", "Show closed trades with early exit patterns"),
         ("None", "Find closed trades that followed their plan vs deviated"),
+        ("None", "What closed trades had stop placement errors"),
+        ("None", "Show closed trades where thesis was correct but execution failed"),
+    ],
+    "auto_journal_review": [
+        ("None", "Find automated journal entries with unusual patterns"),
+        ("None", "Show auto-generated trade reviews from the last week"),
+        ("None", "What automated journal entries mention momentum failure"),
     ],
     "manual_journal_review": [
         ("None", "Find journal evidence about stop placement decisions"),
         ("None", "Show manual journal entries about position sizing"),
+        ("None", "What manual journal reviews mention sector rotation"),
+        ("None", "Find journal entries about defense thesis changes"),
+    ],
+    "journal_pattern_review": [
+        ("None", "What behavioral patterns appear in recent journal entries"),
+        ("None", "Show journal patterns related to early exits"),
+        ("None", "Find journal pattern evidence for overtrading"),
     ],
     "proposal_review": [
         ("BLBD", "Find proposal evidence and prior outcomes for BLBD"),
         ("RKLB", "Show proposal review context and risk for RKLB"),
         ("None", "Find proposals that were approved but had negative outcomes"),
+        ("LDOS", "What proposal evidence exists for LDOS"),
+        ("None", "Show proposal review patterns for momentum scalp setups"),
     ],
     "rag_content_curation": [
         ("None", "Find low-quality RAG content that should be curated out"),
         ("None", "Show RAG content with high relevance to defense sector rotation"),
+        ("None", "Find RAG content about dividend growth strategies"),
+        ("None", "What RAG content exists for income-focused analysis"),
+    ],
+    "post_market_report_context": [
+        ("None", "Gather post-market evidence for daily portfolio summary"),
+        ("None", "Find end-of-day context for overnight analysis preparation"),
+    ],
+    "weekly_summary_context": [
+        ("None", "Find weekly summary evidence across all strategies"),
+        ("None", "Show weekly performance context for defense sector holdings"),
     ],
 }
 

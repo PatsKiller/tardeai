@@ -1826,3 +1826,28 @@ UNCHANGED — no routing, embedding, cron, .env, or broker changes.
 
 ### Rollback
 `./scripts/rollback_phase2g_canary.sh --disable`
+
+---
+
+## Phase 2G Continuation — 2026-05-14
+
+### Expanded Canary
+- 40/40 queries OK, 0 errors, 16.9s
+- 10 workflows tested
+- Avg diversity: 2.1, Avg latency: 421ms
+- Fallback: 40/40 (nomic-only — qwen3-embedding not loaded daytime)
+
+### Blocked Workflow Tests
+- telegram_realtime: BLOCKED (correct)
+- broker_execution: BLOCKED (correct)
+- risk_gate: BLOCKED (correct)
+
+### Scheduled Observation
+- 3 deep runs in last 72h, 0 with hybrid flag yet
+- First hybrid deep run expected tonight 23:00 UTC
+
+### Production Impact
+UNCHANGED — no routing, embedding, cron, .env, or broker changes.
+
+### Recommendation
+Prepare Phase 2H bounded approval proposal. Global promotion remains blocked.

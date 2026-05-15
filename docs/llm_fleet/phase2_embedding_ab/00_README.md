@@ -108,10 +108,12 @@ See `v4_1_phase2d_bounded_offline_promotion.md`.
 ## Phase 2G: Limited Canary (2026-05-14)
 
 - Canary config: `config/phase2g_hybrid_canary.yaml`
-- 16/16 queries OK across 6 workflows, 0 errors
-- Policy enforcement: blocked workflows correctly refused
+- Initial: 16/16 OK across 6 workflows
+- **Expanded: 40/40 OK across 10 workflows, 0 errors**
+- Blocked workflows: 3/3 correctly refused (telegram, broker, risk_gate)
+- Scheduled observation: awaiting first hybrid deep run tonight
 - Rollback: `./scripts/rollback_phase2g_canary.sh --disable`
-- Audit: `.venv/bin/python scripts/audit_phase2g_canary_status.py`
+- Recommendation: **prepare Phase 2H bounded approval proposal**
 - Phase 2H global promotion: **BLOCKED**
 
 ## Next Phase
