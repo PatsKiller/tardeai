@@ -1,5 +1,11 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Post-A-4 Pipeline Observation Day 1 — 2026-05-15
+
+First live-market evidence after A-4 pipeline repair. 4 proposals generated hourly (08-11 AM ET). 19 scan signals across 6 hours. 1/5 activated strategies (speculative_growth) produced a proposal. Pipeline is firing as designed. Morning brief renders correctly after 6ce832d fix. Paper account shows real equity (~$100K). Phase 6 tests: 83/83 clean. A-5 deferred pending 3-5 trading day observation window (through 2026-05-22).
+
+---
+
 ## Phase 6E — Scheduled Stale Proposal Sweeper — 2026-05-15
 
 ### Summary
