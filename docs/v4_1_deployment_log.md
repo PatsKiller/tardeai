@@ -1970,3 +1970,30 @@ None. qwen3:14b + nomic-embed-text restored.
 Reject gemma4:e4b for Phase 3 lightweight content model — it's too large (9.6 GB).
 Keep qwen3:14b for content tasks or test a truly small model (~2-4 GB).
 Remove gemma4:e4b to reclaim disk: `ollama rm gemma4:e4b`
+
+---
+
+## Phase 3B — gemma3:4b Smoke Test — 2026-05-14
+
+### gemma4:e4b
+REJECTED and REMOVED. 9.6 GB reclaimed.
+
+### gemma3:4b
+PULLED — 3.3 GB. Fits alongside qwen3:14b (13.3 GB total < 16 GB VRAM).
+
+### Smoke Test Results
+| Metric | Baseline (qwen3 /no_think) | Candidate (gemma3:4b) |
+|--------|---------------------------|----------------------|
+| Avg score | 3.2 | **3.9** |
+| Avg latency | 28,221ms | **6,870ms** |
+| Tests | 4 (1 timeout) | 12 (0 timeouts) |
+| Verdict | — | **CANDIDATE_BETTER** |
+
+### Key Finding
+gemma3:4b is lightweight (3.3 GB), 4x faster, and produces better media/prose output than qwen3 /no_think.
+
+### Production Impact
+None. qwen3:14b + nomic-embed-text restored.
+
+### Recommendation
+Continue Phase 3 pilot with gemma3:4b for approved media/prose workflows.

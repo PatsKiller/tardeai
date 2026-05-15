@@ -1,0 +1,337 @@
+{
+  "timestamp": "2026-05-14T22:17:25.908118",
+  "mode": "quick",
+  "candidate": "gemma3:4b",
+  "baseline": "qwen3:14b",
+  "baseline_mode": "no_think",
+  "total_tests": 17,
+  "baseline_tests": 4,
+  "candidate_tests": 12,
+  "timeouts": 1,
+  "elapsed_s": 285.3,
+  "baseline_avg_score": 3.2,
+  "candidate_avg_score": 3.9,
+  "baseline_avg_latency_ms": 28221.0,
+  "candidate_avg_latency_ms": 6870.0,
+  "best_candidate": {
+    "test_id": "news_digest",
+    "style": "plain",
+    "score": 4.0,
+    "latency": 1882.3
+  },
+  "verdict": "CANDIDATE_BETTER",
+  "results": [
+    {
+      "test_id": "summary_transcript",
+      "model": "qwen3:14b",
+      "style": "no_think",
+      "options": "default",
+      "response": "",
+      "latency_ms": 17325.6,
+      "eval_count": 160,
+      "load_ms": 1691.8,
+      "scores": {
+        "instruction": 0,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 3.2
+      }
+    },
+    {
+      "test_id": "news_digest",
+      "model": "qwen3:14b",
+      "style": "no_think",
+      "options": "default",
+      "response": "",
+      "latency_ms": 29248.6,
+      "eval_count": 160,
+      "load_ms": 13345.8,
+      "scores": {
+        "instruction": 0,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 3.2
+      }
+    },
+    {
+      "test_id": "prose_polish",
+      "model": "qwen3:14b",
+      "style": "no_think",
+      "options": "default",
+      "response": "",
+      "latency_ms": 43599.7,
+      "eval_count": 160,
+      "load_ms": 26740.5,
+      "scores": {
+        "instruction": 0,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 3.2
+      }
+    },
+    {
+      "test_id": "classify",
+      "model": "qwen3:14b",
+      "style": "no_think",
+      "options": "default",
+      "response": "",
+      "latency_ms": 90002.4,
+      "error": "timed out",
+      "eval_count": 0,
+      "timeout": true,
+      "scores": {
+        "instruction": 0,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 3.2
+      }
+    },
+    {
+      "test_id": "fact_extract",
+      "model": "qwen3:14b",
+      "style": "no_think",
+      "options": "default",
+      "response": "",
+      "latency_ms": 22711.2,
+      "eval_count": 160,
+      "load_ms": 3942.1,
+      "scores": {
+        "instruction": 0,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 3.2
+      }
+    },
+    {
+      "test_id": "summary_transcript",
+      "model": "gemma3:4b",
+      "style": "plain",
+      "options": "default",
+      "response": "Here\u2019s a 3-bullet summary of the earnings call transcript:\n\n*   **Strong Growth:** The company reported a 12% revenue increase in Q2.\n*   **Cautious Outlook:** Management anticipates a shift away from the defense sector.\n*   **New Regulations:**  Tighter stop-loss rules are being implemented for momentum trading positions. \n\n---\n\nWould you like me to elaborate on any of these points, or perhaps tailor the summary to a specific audience?",
+      "latency_ms": 5571.1,
+      "eval_count": 103,
+      "load_ms": 1650.9,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 3,
+        "safety": 5,
+        "total": 3.6
+      }
+    },
+    {
+      "test_id": "news_digest",
+      "model": "gemma3:4b",
+      "style": "plain",
+      "options": "default",
+      "response": "Lockheed Martin exceeded earnings expectations this quarter, driven by robust performance in its defense sector. This positive result prompted the company to increase its full-year forecasts due to increased international sales of key defense products.",
+      "latency_ms": 1882.3,
+      "eval_count": 42,
+      "load_ms": 244.1,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "prose_polish",
+      "model": "gemma3:4b",
+      "style": "plain",
+      "options": "default",
+      "response": "Here's a concise analyst paragraph summarizing the portfolio's performance:\n\n\u201cLast week\u2019s portfolio performance was characterized by volatility. Defense stocks faced headwinds due to budget concerns, while RTX rebounded, reflecting potential recovery trends. Income positions remained stable, providing a counterweight to the sector-specific fluctuations.\u201d",
+      "latency_ms": 2563.2,
+      "eval_count": 62,
+      "load_ms": 206.8,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "classify",
+      "model": "gemma3:4b",
+      "style": "plain",
+      "options": "default",
+      "response": "trade_journal",
+      "latency_ms": 519.5,
+      "eval_count": 4,
+      "load_ms": 211.0,
+      "scores": {
+        "instruction": 2,
+        "factuality": 3,
+        "formatting": 5,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "fact_extract",
+      "model": "gemma3:4b",
+      "style": "plain",
+      "options": "default",
+      "response": "Here are the factual statements extracted from the text:\n\n*   RTX closed at $127.50.\n*   The price increased by 2.3%.\n*   Trading volume was 1.2 times the average.\n*   The Relative Strength Index (RSI) is at 62.\n*   The stock is above the 200-day Moving Average.\n*   CFO bought shares according to Form 4 filings.",
+      "latency_ms": 22716.1,
+      "eval_count": 100,
+      "load_ms": 215.0,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "summary_transcript",
+      "model": "gemma3:4b",
+      "style": "system",
+      "options": "default",
+      "response": "*   Q2 revenue grew 12%.\n*   Management expresses caution regarding a shift away from the defense sector.\n*   New risk management guidelines mandate stricter stop-loss placement for momentum positions.",
+      "latency_ms": 20111.2,
+      "eval_count": 43,
+      "load_ms": 209.1,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "news_digest",
+      "model": "gemma3:4b",
+      "style": "system",
+      "options": "default",
+      "response": "Lockheed Martin announced stronger-than-anticipated quarterly earnings. The company increased its full-year guidance due to robust international sales of F-35 jets and missile defense systems.",
+      "latency_ms": 8515.0,
+      "eval_count": 37,
+      "load_ms": 212.4,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "prose_polish",
+      "model": "gemma3:4b",
+      "style": "system",
+      "options": "default",
+      "response": "Last week\u2019s portfolio performance was mixed. Defense stocks declined amid budget uncertainty, while recovery names, including RTX, demonstrated improvement. Income positions remained stable.",
+      "latency_ms": 3042.2,
+      "eval_count": 32,
+      "load_ms": 208.4,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "classify",
+      "model": "gemma3:4b",
+      "style": "system",
+      "options": "default",
+      "response": "news",
+      "latency_ms": 691.2,
+      "eval_count": 2,
+      "load_ms": 213.6,
+      "scores": {
+        "instruction": 0,
+        "factuality": 3,
+        "formatting": 5,
+        "concision": 5,
+        "safety": 5,
+        "total": 3.6
+      }
+    },
+    {
+      "test_id": "fact_extract",
+      "model": "gemma3:4b",
+      "style": "system",
+      "options": "default",
+      "response": "RTX closed at $127.50, up 2.3%. Volume was 1.2x average. RSI is at 62. Above 200-day MA. CFO bought shares per Form 4.",
+      "latency_ms": 4919.5,
+      "eval_count": 52,
+      "load_ms": 205.8,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    },
+    {
+      "test_id": "summary_transcript",
+      "model": "gemma3:4b",
+      "style": "chatml",
+      "options": "default",
+      "response": "Here\u2019s a 3-bullet summary of the earnings call transcript:\n\n*   **Strong Growth:** The company reported a 12% revenue growth in Q2.\n*   **Sector Shift Caution:** Management expressed a cautious outlook, anticipating a shift away from the defense sector.\n*   **New Risk Controls:**  The firm is implementing stricter stop-loss placement rules for momentum positions due to new risk management guidelines.",
+      "latency_ms": 7632.3,
+      "eval_count": 89,
+      "load_ms": 215.3,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 3,
+        "safety": 5,
+        "total": 3.6
+      }
+    },
+    {
+      "test_id": "news_digest",
+      "model": "gemma3:4b",
+      "style": "chatml",
+      "options": "default",
+      "response": "Lockheed Martin\u2019s recent quarterly earnings exceeded expectations, driven by robust demand for its key products like the F-35 and missile defense systems. This positive performance has prompted the company to revise its full-year guidance upwards.",
+      "latency_ms": 4275.0,
+      "eval_count": 47,
+      "load_ms": 205.6,
+      "scores": {
+        "instruction": 4,
+        "factuality": 3,
+        "formatting": 3,
+        "concision": 5,
+        "safety": 5,
+        "total": 4.0
+      }
+    }
+  ],
+  "notes": [
+    "qwen3 baseline used /no_think for fair media/prose comparison",
+    "gemma4:e4b is 9.6 GB \u2014 fails lightweight co-residency goal",
+    "no production routing changed"
+  ]
+}
