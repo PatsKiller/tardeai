@@ -13808,6 +13808,234 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
+    # ── Strategy Analytics Dashboard ─────────────────────────────────────────
+    if base_path.startswith("/api/v2/strategy-analytics/"):
+        _panel = base_path[len("/api/v2/strategy-analytics/"):].strip("/")
+
+        # 1. Scoreboard
+        if _panel == "scoreboard":
+            try:
+                rows = _db_query("""
+                    SELECT strategy_id,
+                        COUNT(*) FILTER (WHERE status='closed') as trades,
+                        COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
+                        COUNT(*) FILTER (WHERE status='closed' AND pnl <= 0) as losses,
+                        ROUND(AVG(r_multiple) FILTER (WHERE status='closed')::numeric, 2) as avg_r,
+                        ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as total_pnl,
+                        ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - filled_at)) / 3600) FILTER (WHERE status='closed' AND closed_at IS NOT NULL AND filled_at IS NOT NULL)::numeric, 1) as avg_hold_hours,
+                        ROUND((SUM(pnl) FILTER (WHERE status='closed' AND pnl > 0) / NULLIF(ABS(SUM(pnl) FILTER (WHERE status='closed' AND pnl <= 0)), 0))::numeric, 2) as profit_factor
+                    FROM paper_trades
+                    GROUP BY strategy_id
+                    ORDER BY strategy_id
+                """) or []
+                out = []
+                for r in rows:
+                    t = int(r.get('trades') or 0)
+                    w = int(r.get('wins') or 0)
+                    wr = round(w / t, 4) if t > 0 else 0
+                    if t == 0:
+                        status = "INACTIVE"
+                    elif t < 5:
+                        status = "TOO_FEW"
+                    elif wr > 0.50:
+                        status = "WORKING"
+                    elif wr >= 0.30:
+                        status = "TUNING"
+                    else:
+                        status = "NOT_WORKING"
+                    out.append({
+                        "strategy_id": r['strategy_id'],
+                        "trades": t, "wins": w,
+                        "losses": int(r.get('losses') or 0),
+                        "win_rate": round(wr, 4),
+                        "profit_factor": _json_clean(r.get('profit_factor')),
+                        "avg_hold_hours": _json_clean(r.get('avg_hold_hours')),
+                        "avg_r": _json_clean(r.get('avg_r')),
+                        "total_pnl": _json_clean(r.get('total_pnl')),
+                        "status": status,
+                    })
+                return 200, {"ok": True, "data": out}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # 2. Hold-times
+        if _panel == "hold-times":
+            try:
+                STRATEGY_HOLD_NORMS = {
+                    "gap_and_go":              {"min": 0.1, "norm": 2,   "max": 8},
+                    "momentum_scalp":          {"min": 0.1, "norm": 1,   "max": 4},
+                    "swing_breakout":          {"min": 12,  "norm": 48,  "max": 120},
+                    "swing_trade":             {"min": 12,  "norm": 72,  "max": 240},
+                    "earnings_catalyst":       {"min": 1,   "norm": 24,  "max": 72},
+                    "earnings_pre_buildup":    {"min": 24,  "norm": 120, "max": 336},
+                    "earnings_post_momentum":  {"min": 1,   "norm": 24,  "max": 120},
+                    "fib_retracement_bounce":  {"min": 4,   "norm": 48,  "max": 168},
+                    "covered_call_income":     {"min": 168, "norm": 504, "max": 1080},
+                    "core_growth_compounder":  {"min": 720, "norm": 2160,"max": 8760},
+                    "dividend_growth_compounder": {"min": 720, "norm": 2160, "max": 8760},
+                    "speculative_growth":      {"min": 24,  "norm": 168, "max": 720},
+                    "recovery_watch":          {"min": 24,  "norm": 168, "max": 720},
+                    "sector_rotation":         {"min": 168, "norm": 720, "max": 2160},
+                    "defense_thesis":          {"min": 168, "norm": 720, "max": 2160},
+                    "tax_loss_harvest":        {"min": 24,  "norm": 168, "max": 720},
+                }
+                rows = _db_query("""
+                    SELECT strategy_id,
+                        ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - filled_at)) / 3600)::numeric, 1) as avg_hold_hours,
+                        ROUND(MIN(EXTRACT(EPOCH FROM (closed_at - filled_at)) / 3600)::numeric, 1) as min_hold_hours,
+                        ROUND(MAX(EXTRACT(EPOCH FROM (closed_at - filled_at)) / 3600)::numeric, 1) as max_hold_hours,
+                        COUNT(*) as closed_trades
+                    FROM paper_trades
+                    WHERE status='closed' AND closed_at IS NOT NULL AND filled_at IS NOT NULL
+                    GROUP BY strategy_id
+                    ORDER BY strategy_id
+                """) or []
+                out = []
+                for r in rows:
+                    sid = r['strategy_id']
+                    avg_h = float(r.get('avg_hold_hours') or 0)
+                    norms = STRATEGY_HOLD_NORMS.get(sid)
+                    if norms:
+                        if avg_h < norms['min']:
+                            verdict = "TOO_SHORT"
+                        elif avg_h > norms['max']:
+                            verdict = "TOO_LONG"
+                        else:
+                            verdict = "APPROPRIATE"
+                    else:
+                        verdict = "NO_NORM"
+                    out.append({
+                        "strategy_id": sid,
+                        "avg_hold_hours": _json_clean(r.get('avg_hold_hours')),
+                        "min_hold_hours": _json_clean(r.get('min_hold_hours')),
+                        "max_hold_hours": _json_clean(r.get('max_hold_hours')),
+                        "closed_trades": int(r.get('closed_trades') or 0),
+                        "norms": norms,
+                        "verdict": verdict,
+                    })
+                return 200, {"ok": True, "data": out}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # 3. Exit-reasons
+        if _panel == "exit-reasons":
+            try:
+                rows = _db_query("""
+                    SELECT strategy_id, exit_reason, COUNT(*) as cnt
+                    FROM paper_trades
+                    WHERE status='closed' AND exit_reason IS NOT NULL
+                    GROUP BY strategy_id, exit_reason
+                    ORDER BY strategy_id, cnt DESC
+                """) or []
+                # Group by strategy
+                grouped = {}
+                for r in rows:
+                    sid = r['strategy_id']
+                    if sid not in grouped:
+                        grouped[sid] = []
+                    grouped[sid].append({
+                        "exit_reason": r['exit_reason'],
+                        "count": int(r.get('cnt') or 0),
+                    })
+                return 200, {"ok": True, "data": grouped}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # 4. Stop-quality
+        if _panel == "stop-quality":
+            try:
+                rows = _db_query("""
+                    SELECT pt.strategy_id,
+                        COUNT(*) as analyzed_trades,
+                        ROUND(100.0 * COUNT(*) FILTER (WHERE pa.stop_too_tight = true) / NULLIF(COUNT(*), 0), 1) as pct_stop_too_tight,
+                        ROUND(100.0 * COUNT(*) FILTER (WHERE pa.would_have_recovered = true) / NULLIF(COUNT(*), 0), 1) as pct_would_have_recovered,
+                        ROUND(100.0 * COUNT(*) FILTER (WHERE pa.held_too_short = true) / NULLIF(COUNT(*), 0), 1) as pct_held_too_short
+                    FROM post_trade_price_analysis pa
+                    JOIN paper_trades pt ON pt.id = pa.trade_id
+                    GROUP BY pt.strategy_id
+                    ORDER BY pt.strategy_id
+                """) or []
+                out = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+                return 200, {"ok": True, "data": out}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # 5. Finviz-health
+        if _panel == "finviz-health":
+            try:
+                health = _db_query("""
+                    SELECT
+                        COUNT(*) as total_rows,
+                        COUNT(DISTINCT symbol) as unique_symbols,
+                        COUNT(DISTINCT scanned_at::date) as days_of_history,
+                        COUNT(*) FILTER (WHERE scanned_at::date = CURRENT_DATE) as rows_today,
+                        ROUND(COUNT(*) FILTER (WHERE scanned_at >= CURRENT_DATE - INTERVAL '7 days')::numeric / 7, 0) as avg_rows_7d
+                    FROM trade_ai_scans
+                """, fetch="one") or {}
+                return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in health.items()}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # 6. Inactive-strategies
+        if _panel == "inactive-strategies":
+            try:
+                strat_dir = PROJECT_ROOT / "config" / "strategies"
+                yaml_strategies = []
+                if strat_dir.is_dir():
+                    for f in sorted(strat_dir.iterdir()):
+                        if f.suffix in ('.yaml', '.yml') and f.stem not in ('recommendation_schema', 'shared_risk_rules', 'strategy_schema'):
+                            yaml_strategies.append(f.stem)
+                active_rows = _db_query("""
+                    SELECT DISTINCT strategy_id FROM paper_trades
+                """) or []
+                active_ids = {r['strategy_id'] for r in active_rows}
+                inactive = []
+                for sid in yaml_strategies:
+                    if sid not in active_ids:
+                        # Check proposals
+                        prop = _db_query("""
+                            SELECT COUNT(*) as candidates_7d
+                            FROM paper_trade_proposals
+                            WHERE strategy_id = %s AND created_at >= CURRENT_DATE - INTERVAL '7 days'
+                        """, [sid], fetch="one") or {}
+                        inactive.append({
+                            "strategy_id": sid,
+                            "trades": 0,
+                            "candidates_7d": int(prop.get('candidates_7d') or 0),
+                        })
+                return 200, {"ok": True, "data": inactive}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # 7. Lesson-patterns
+        if _panel == "lesson-patterns":
+            try:
+                lessons = _db_query("""
+                    SELECT pa.trade_id, pt.strategy_id, pt.symbol, pa.lesson_text, pa.analyzed_at
+                    FROM post_trade_price_analysis pa
+                    JOIN paper_trades pt ON pt.id = pa.trade_id
+                    WHERE pa.lesson_text IS NOT NULL AND pa.lesson_text != ''
+                      AND pa.lesson_text NOT LIKE 'Lesson generation failed%%'
+                    ORDER BY pa.analyzed_at DESC
+                    LIMIT 50
+                """) or []
+                KEYWORDS = ["tight stop", "premature exit", "inverted stop", "hold longer"]
+                keyword_counts = {kw: 0 for kw in KEYWORDS}
+                for les in lessons:
+                    txt = (les.get('lesson_text') or '').lower()
+                    for kw in KEYWORDS:
+                        if kw in txt:
+                            keyword_counts[kw] += 1
+                out_lessons = [{k: _json_clean(v) for k, v in r.items()} for r in lessons]
+                return 200, {"ok": True, "data": {
+                    "recent_lessons": out_lessons,
+                    "keyword_counts": keyword_counts,
+                }}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        return 404, {"ok": False, "error": f"Unknown strategy-analytics panel: {_panel}"}
+
     if base_path == "/api/v2/automated-trade-journal":
         try:
             _acct = ((query or {}).get("account", ["ALPACA_PAPER"])[0]

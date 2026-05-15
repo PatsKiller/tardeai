@@ -30,6 +30,7 @@ const Risk = lazy(() => import('./pages/Risk'))
 const RiskRegime = lazy(() => import('./pages/RiskRegime'))
 const Research = lazy(() => import('./pages/Research'))
 const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
+const StrategyAnalytics = lazy(() => import('./pages/StrategyAnalytics'))
 
 // ── Paper Review (consolidated: Outcomes + TCA) ──
 const PaperReview = lazy(() => import('./pages/PaperReview'))
@@ -133,6 +134,7 @@ export default function App() {
           <Route path="paper-review" element={<SafePage><PaperReview /></SafePage>} />
           <Route path="plan-vs-performance" element={<SafePage><PlanVsPerformance /></SafePage>} />
           <Route path="strategy-admin" element={<SafePage><StrategyAdmin /></SafePage>} />
+          <Route path="strategy-analytics" element={<SafePage><StrategyAnalytics /></SafePage>} />
           <Route path="technical" element={<SafePage><Technical /></SafePage>} />
           <Route path="risk" element={<SafePage><Risk /></SafePage>} />
           <Route path="risk-regime" element={<SafePage><RiskRegime /></SafePage>} />
