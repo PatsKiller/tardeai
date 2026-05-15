@@ -1,5 +1,35 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 6B — Market Session Approval Policy — 2026-05-15
+
+### Summary
+Paper proposal approvals are now blocked outside regular trading hours. Only regular session (09:30-16:00 ET, Mon-Fri, non-holiday) is allowed.
+
+### Session Policy
+| Session | Allowed |
+|---------|---------|
+| Regular (9:30-16:00 ET Mon-Fri) | YES |
+| Pre-market | NO |
+| After-hours | NO |
+| Weekend | NO |
+| Holiday | NO |
+| Unknown/error | NO (fail-closed) |
+
+### Audit Integration
+The session gate fills the Phase 6C audit trail slot that was previously "not_implemented". Real session policy results are now recorded for every approval attempt.
+
+### Test Results
+- Unit tests: **17/17 passed**
+- API mock validation: **9/9 passed**
+- Regression: **53 total tests pass** (24 6A + 12 6C + 17 6B)
+
+### Safety Audit: 19/19 PASSED
+
+### Production Impact
+**Paper proposals only.** No broker, execution, or live-trading changes. Extended-hours approvals are not enabled.
+
+---
+
 ## Phase 6C — Paper Approval Audit Trail — 2026-05-15
 
 ### Summary

@@ -12614,13 +12614,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if ds in cautious_states:
                     approval_mode = 'cautious_confirmed' if ds == 'CAUTIOUS_PAPER_TEST' else 'first_sample_learning_confirmed'
 
-            # ── AUDIT: Session gate (Phase 6B — not yet implemented, record as skipped) ──
+            # ── GATE: Market Session Policy (Phase 6B) ──
+            _session_policy = None
+            try:
+                from phase6_market_session_policy import classify_market_session
+                _session_policy = classify_market_session()
+            except Exception as _sp_err:
+                _session_policy = {"ok": False, "session": "unknown", "allowed": False,
+                                   "reason": f"Session classification error: {_sp_err}. Blocked fail-closed."}
+
             if _audit_conn and audit_id:
                 update_approval_audit(_audit_conn, audit_id,
-                    session_policy={"status": "not_implemented", "note": "Phase 6B session gate pending"},
-                    gate="session_policy", gate_passed=True)
-                append_approval_audit_event(_audit_conn, audit_id, "session_policy", "skipped",
-                    message="Phase 6B session gate not yet implemented")
+                    session_policy=_session_policy,
+                    gate="session_policy", gate_passed=_session_policy.get("allowed", False))
+                append_approval_audit_event(_audit_conn, audit_id, "session_policy",
+                    "passed" if _session_policy.get("allowed") else "blocked",
+                    message=_session_policy.get("reason", ""))
+
+            if not _session_policy.get("allowed", False):
+                if _audit_conn and audit_id:
+                    finalize_approval_audit(_audit_conn, audit_id, "blocked_session",
+                        _session_policy.get("reason", "Session blocked"))
+                if _audit_conn:
+                    try: _audit_conn.close()
+                    except Exception: pass
+                return 400, {
+                    "ok": False,
+                    "error": _session_policy.get("reason", "Approval blocked: market session not allowed."),
+                    "message": _session_policy.get("reason", "Approval blocked: market session not allowed."),
+                    "market_session_policy": _session_policy,
+                    "market_revalidation": None,
+                    "approval_audit": {"audit_id": audit_id, "status": "blocked_session",
+                                       "gate_sequence": ["session_policy"], "audit_created": True},
+                }
 
             from paper_trade_logger import approve_proposal
             result = approve_proposal(int(pid),
@@ -12763,6 +12789,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "message": result.get('message', 'Approved for paper test' if result.get('success') else 'Approval failed'),
                 "paper_trade_id": result.get('paper_trade_id'),
                 "blockers": result.get('blockers', []),
+                "market_session_policy": _session_policy,
                 "market_revalidation": result.get('market_revalidation'),
                 "approval_audit": _audit_resp,
                 "alpaca_submission": alpaca_result,

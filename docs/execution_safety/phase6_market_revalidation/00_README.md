@@ -1,6 +1,6 @@
 # Phase 6 — Execution Safety: Market Revalidation
 
-**Status:** Phase 6A COMPLETE, Phase 6C COMPLETE
+**Status:** Phase 6A COMPLETE, Phase 6B COMPLETE, Phase 6C COMPLETE
 
 ## Purpose
 
@@ -70,6 +70,20 @@ from paper_trade_logger import validate_paper_proposal_live_market
 | v4_1_phase6a_safety_audit.md | Safety verification |
 | v4_1_phase6a_operator_runbook.md | Operator procedures |
 
+### Phase 6B — Market Session Policy Gate
+
+| Item | Status |
+|------|--------|
+| Session policy helper | IMPLEMENTED |
+| Regular-only policy | ENFORCED |
+| Pre-market/after-hours blocked | ENFORCED |
+| Weekend/holiday blocked | ENFORCED |
+| Unknown session fail-closed | CONFIRMED |
+| Wired into Phase 6C audit | CONFIRMED |
+| Unit tests (17/17) | PASSED |
+| API mock validation (9/9) | PASSED |
+| Safety audit (19/19) | PASSED |
+
 ### Phase 6C — Paper Approval Audit Trail
 
 | Item | Status |
@@ -102,7 +116,7 @@ from paper_trade_logger import validate_paper_proposal_live_market
 
 ## Future Phase 6 Items
 
-- Market-hours/after-hours approval policy (Phase 6B)
+- Extended-hours approval policy (stricter thresholds, operator approval required)
 - Approval simulator
 - Proposal stale-time sweeper enhancements
 - Operator approval dashboard panel
