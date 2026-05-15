@@ -1,8 +1,8 @@
 # Phase 3 — Media/Prose Model Pilot
 
-**Status:** AWAITING MODEL PULL
-**Candidate model:** gemma4:e4b (~3-4 GB)
-**Current production model:** qwen3:14b (STANDARD/REALTIME)
+**Status:** HOLD — gemma4:e4b is 9.6 GB (not 3-4 GB) and showed poor instruction-following
+**Candidate model:** gemma4:e4b (9.6 GB actual)
+**Current production model:** qwen3:14b (STANDARD/REALTIME, unchanged)
 
 ## Purpose
 

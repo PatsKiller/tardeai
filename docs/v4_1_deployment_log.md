@@ -1912,3 +1912,29 @@ None. Discovery only.
 
 ### Recommendation
 Approve pull gemma4:e4b. Then run smoke tests and limited offline pilot.
+
+---
+
+## Phase 3 Guarded Pull — gemma4:e4b — 2026-05-14
+
+### Pull Result
+SUCCEEDED — but model is 9.6 GB (documented estimate was 3-4 GB).
+
+### Smoke Test
+POOR — produced irrelevant output instead of following summarization instruction.
+- Generation: 120 tokens in 8.2s
+- Load time: ~54s
+- Output: off-topic, did not follow "summarize in 3 bullets" prompt
+
+### VRAM Impact
+9.6 GB — cannot coexist with qwen3:14b (10 GB) on 16 GB VRAM.
+Same evict/restore lifecycle burden as gemma3-overnight.
+
+### Production Models Restored
+qwen3:14b + nomic-embed-text restored after smoke test.
+
+### Recommendation
+HOLD Phase 3. Options: additional smoke tests, try smaller model, keep qwen3:14b for all tasks, or wait for gemma4 maturity (2026-08-11).
+
+### Cleanup Option
+`ollama rm gemma4:e4b` to reclaim 9.6 GB disk.
