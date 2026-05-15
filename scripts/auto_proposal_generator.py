@@ -164,6 +164,13 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
     max_float = float(filters.get('max_float_m', 99999))
     min_gap = float(filters.get('min_gap_pct', 0))
 
+    # Hard safety floors (cannot be overridden by config)
+    _MOMENTUM_STRATEGIES = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst',
+                            'screener', 'speculative_growth', 'earnings_post_momentum'}
+    _hard_min_price = 3.0 if strategy_id in _MOMENTUM_STRATEGIES else 1.0
+    if min_price < _hard_min_price:
+        min_price = _hard_min_price
+
     reasons = []
     if min_rvol > 0 and rvol < min_rvol:
         reasons.append(f"RVOL {rvol:.1f}x < {min_rvol}x")
