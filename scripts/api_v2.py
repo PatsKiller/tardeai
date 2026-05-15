@@ -14053,8 +14053,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         _pa["_error"] = "alpaca_keys_missing"
                 except Exception as _e:
                     _pa["_error"] = str(_e)[:100]
-            except Exception as _pa_err:
-                _pa["_outer_error"] = str(_pa_err)[:100]
+            except Exception:
+                pass  # paper_account defaults to zeros if fetch fails
 
             # 3. Overnight activity
             _oa = {"since": _since, "proposals_created": 0, "proposals_approved": 0,
