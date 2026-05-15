@@ -1,6 +1,6 @@
 # Phase 6 — Execution Safety: Market Revalidation
 
-**Status:** Phase 6A COMPLETE
+**Status:** Phase 6A COMPLETE, Phase 6C COMPLETE
 
 ## Purpose
 
@@ -70,9 +70,39 @@ from paper_trade_logger import validate_paper_proposal_live_market
 | v4_1_phase6a_safety_audit.md | Safety verification |
 | v4_1_phase6a_operator_runbook.md | Operator procedures |
 
+### Phase 6C — Paper Approval Audit Trail
+
+| Item | Status |
+|------|--------|
+| Audit schema (2 tables) | CREATED |
+| Audit helper module | IMPLEMENTED |
+| Wired into approval endpoint | IMPLEMENTED |
+| Fail-closed on audit failure | CONFIRMED |
+| Unit tests (12/12) | PASSED |
+| API mock validation (6/6) | PASSED |
+| Audit report script | IMPLEMENTED |
+| Safety audit | PASSED |
+| Operator runbook | COMPLETE |
+
+### Commands
+
+```bash
+# Phase 6A tests
+.venv/bin/python tests/test_phase6_market_revalidation.py
+
+# Phase 6C tests
+.venv/bin/python tests/test_phase6_approval_audit_trail.py
+
+# Phase 6C API mock validation
+.venv/bin/python scripts/test_phase6_approval_audit_api.py
+
+# Audit summary report
+.venv/bin/python scripts/report_phase6_approval_audit.py --since-days 7 --verbose
+```
+
 ## Future Phase 6 Items
 
-- Paper proposal approval audit trail
+- Market-hours/after-hours approval policy (Phase 6B)
 - Approval simulator
-- Market-hours/after-hours approval policy
 - Proposal stale-time sweeper enhancements
+- Operator approval dashboard panel
