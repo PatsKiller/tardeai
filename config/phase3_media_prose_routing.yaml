@@ -26,6 +26,11 @@ approved_workflows:
   - content_classification
   - neutral_market_digest
   - non_trading_social_draft
+  # Phase 3D additions
+  - markdown_cleanup
+  - plain_language_rewrite
+  - meeting_note_summary
+  - newsletter_digest
 
 blocked_workflows:
   - broker_execution

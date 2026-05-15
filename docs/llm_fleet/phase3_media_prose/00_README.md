@@ -7,11 +7,12 @@
 **Deep reasoning:** gemma3-overnight (unchanged)
 **Rejected:** gemma4:e4b (9.6 GB, removed)
 
-## Phase 3C Routing
+## Phase 3C/3D Routing
 
 - Config: `config/phase3_media_prose_routing.yaml`
-- 14 approved media/prose workflows
-- 12 blocked trading/execution workflows
+- **18 approved** media/prose workflows (14 original + 4 Phase 3D additions)
+- **12 blocked** trading/execution workflows
+- Phase 3D pilot: **15/15 OK, 0 fallbacks, avg 4.8s**
 - Router: `scripts/phase3_media_prose_router.py`
 - Audit: `.venv/bin/python scripts/audit_phase3_media_prose_routing.py`
 - Rollback: `./scripts/rollback_phase3_media_prose_routing.sh --disable`
