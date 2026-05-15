@@ -14032,14 +14032,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _pa["heat_pct"] = round(float(_open.get("risk", 0)) / _paper_size, 4) if _paper_size > 0 else 0
                 try:
                     import requests as _rq
-                    _ak = os.getenv("ALPACA_API_KEY", "")
-                    _as = os.getenv("ALPACA_SECRET_KEY", "")
-                    _r = _rq.get("https://paper-api.alpaca.markets/v2/account",
-                                 headers={"APCA-API-KEY-ID": _ak, "APCA-API-SECRET-KEY": _as}, timeout=5)
-                    if _r.ok:
-                        _acct = _r.json()
-                        _pa["equity"] = round(float(_acct.get("equity", 0)), 2)
-                        _pa["cash"] = round(float(_acct.get("cash", 0)), 2)
+                    # Read Alpaca keys from .env (api_v2 doesn't use dotenv)
+                    _env_lines = {}
+                    for _el in (PROJECT_ROOT / ".env").read_text().splitlines():
+                        if "=" in _el and not _el.startswith("#"):
+                            _ek, _ev = _el.split("=", 1)
+                            _env_lines[_ek.strip()] = _ev.strip()
+                    _ak = _env_lines.get("ALPACA_API_KEY", "")
+                    _as = _env_lines.get("ALPACA_SECRET_KEY", "")
+                    if _ak and _as:
+                        _r = _rq.get("https://paper-api.alpaca.markets/v2/account",
+                                     headers={"APCA-API-KEY-ID": _ak, "APCA-API-SECRET-KEY": _as}, timeout=5)
+                        if _r.ok:
+                            _acct = _r.json()
+                            _pa["equity"] = round(float(_acct.get("equity", 0)), 2)
+                            _pa["cash"] = round(float(_acct.get("cash", 0)), 2)
                 except Exception:
                     pass
             except Exception:
@@ -14369,6 +14376,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "recent_lessons": out_lessons,
                     "keyword_counts": keyword_counts,
                 }}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+        # Newly Activated Strategies (A-2)
+        if _panel == "newly-activated":
+            try:
+                _acts = _db_query("""
+                    SELECT sa.strategy_id, sa.activated_at, sa.activated_by,
+                           sa.pre_activation_defect, sa.fix_applied, sa.observation_window_days,
+                           EXTRACT(DAY FROM NOW() - sa.activated_at)::int as days_since_activation,
+                           (SELECT COUNT(*) FROM trade_ai_scans s
+                            WHERE s.strategy_hint = sa.strategy_id AND s.created_at > sa.activated_at) as candidates_since,
+                           (SELECT COUNT(*) FROM paper_trade_proposals p
+                            WHERE p.strategy_id = sa.strategy_id AND p.created_at > sa.activated_at) as proposals_since,
+                           (SELECT COUNT(*) FROM paper_trades t
+                            WHERE t.strategy_id = sa.strategy_id AND t.created_at > sa.activated_at) as trades_since
+                    FROM strategy_activations sa
+                    ORDER BY sa.activated_at DESC
+                """) or []
+                for _a in _acts:
+                    c = _a.get("candidates_since", 0) or 0
+                    p = _a.get("proposals_since", 0) or 0
+                    t = _a.get("trades_since", 0) or 0
+                    if t > 0:
+                        _a["status"] = "ACTIVE"
+                    elif p > 0:
+                        _a["status"] = "WORKING"
+                    elif c > 0:
+                        _a["status"] = "SCREENED_BUT_NOT_PROPOSED"
+                    else:
+                        days = _a.get("days_since_activation", 0) or 0
+                        _a["status"] = "DORMANT" if days >= 3 else "WAITING"
+                return 200, {"ok": True, "data": _acts}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
