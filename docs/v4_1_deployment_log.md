@@ -1,5 +1,63 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 6A — Paper Approval Market Revalidation Hardening — 2026-05-15
+
+### Summary
+Added mandatory live market revalidation gate to paper proposal approval flow. No proposal can be approved on stale pricing or unfavorable conditions.
+
+### Approval Flow Change
+```
+BEFORE: Approve → Risk Gate → Create Paper Trade → Submit to Alpaca
+AFTER:  Approve → Live Market Revalidation → Risk Gate → Create Paper Trade → Submit to Alpaca
+```
+
+### Block Conditions
+| Condition | Threshold |
+|-----------|-----------|
+| No live quote | BLOCK |
+| Stale quote | > 15 min → BLOCK |
+| Price drift | > 3% → BLOCK |
+| Stop breached | price <= stop → BLOCK |
+| Wide spread | > 1.5% → BLOCK |
+| R:R degraded | < 1.2:1 → BLOCK |
+| Moderate drift | 1.5-3% → WARN, adjust entry |
+
+### Test Results
+- Unit tests: **24/24 passed** (`tests/test_phase6_market_revalidation.py`)
+- API mock validation: **7/7 passed** (`scripts/test_phase6_market_revalidation_api.py`)
+
+### API Response Change
+`/api/v2/paper-proposals/approve` now returns `market_revalidation` object with live_price, drift, R:R, spread, blockers, warnings, and human-readable message.
+
+### Dashboard Change
+`PaperProposals.tsx` — approval success/failure now displays market revalidation summary (live price, drift, R:R, warnings) via alert dialog.
+
+### Safety Audit
+- ALPACA_MODE=paper: CONFIRMED
+- LLM_DISABLE_LIVE_EXECUTION=true: CONFIRMED
+- No .env change: CONFIRMED
+- No broker/holdings/execution change: CONFIRMED
+- All errors fail closed: CONFIRMED
+- No bypass path exists: CONFIRMED
+
+### Files Changed
+- `scripts/paper_trade_logger.py` — added `validate_paper_proposal_live_market()`, `_revalidate_market_conditions()`, modified `approve_proposal()`
+- `scripts/api_v2.py` — added `market_revalidation` to response
+- `apps/command-center-v2/src/pages/PaperProposals.tsx` — display revalidation in alerts
+- `tests/test_phase6_market_revalidation.py` — NEW (24 tests)
+- `scripts/test_phase6_market_revalidation_api.py` — NEW (7 scenarios)
+- `docs/execution_safety/phase6_market_revalidation/` — NEW (9 documents)
+
+### Production Impact
+**Paper proposals only.** No broker, execution, live-trading, or holdings changes. Existing risk gate preserved and strengthened with pre-gate market validation.
+
+### Rollback
+```bash
+git revert <phase6a-commit>
+```
+
+---
+
 ## Gate Results — 2026-05-11 17:50 ET
 
 ### Gate 0 — Live Environment Discovery: PASSED (with notes)
