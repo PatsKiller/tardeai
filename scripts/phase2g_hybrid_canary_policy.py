@@ -18,7 +18,7 @@ def is_workflow_allowed(workflow, policy=None):
         policy = load_policy()
     if not policy.get("enabled", False):
         return False
-    return workflow in policy.get("allowed_workflows", [])
+    return workflow in (policy.get("allowed_workflows") or policy.get("approved_workflows") or [])
 
 def is_workflow_blocked(workflow, policy=None):
     if policy is None:
@@ -55,7 +55,7 @@ def describe_policy(policy=None):
         "global_promotion_approved": policy.get("global_promotion_approved"),
         "production_embedding": policy.get("production_default_embedding"),
         "shadow_embedding": policy.get("shadow_embedding"),
-        "allowed_workflows": policy.get("allowed_workflows", []),
+        "allowed_workflows": policy.get("allowed_workflows") or policy.get("approved_workflows") or [],
         "blocked_workflows": policy.get("blocked_workflows", []),
         "limits": policy.get("canary_limits", {}),
     }

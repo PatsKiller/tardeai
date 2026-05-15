@@ -1,7 +1,7 @@
 # Phase 2 — Final Closeout Report
 
-**Date:** 2026-05-14
-**Status:** COMPLETE (bounded offline hybrid RAG)
+**Date:** 2026-05-14 (updated: Phase 2H bounded approval)
+**Status:** COMPLETE — all phases through Phase 2H
 **Global embedding promotion:** BLOCKED
 
 ## Summary
@@ -73,6 +73,15 @@ Hybrid retrieval is approved for offline deep overnight jobs only.
 - Holdings guard active
 - No broker/execution changes throughout Phase 2
 
+## Phase 2H: Bounded Offline Hybrid Approval
+
+- Hybrid RAG formally approved for 14 offline/deep/read-only workflows
+- 9 workflows explicitly blocked (market-hours, real-time, execution)
+- Policy config: `config/phase2h_bounded_hybrid_rag_policy.yaml`
+- Audit: `.venv/bin/python scripts/audit_phase2h_bounded_approval.py`
+- All blocked enforcement tests: PASS
+- Global production embedding promotion: BLOCKED
+
 ## Remaining Work (Not Phase 2)
 
 - Phase 3: Small media/prose model pilot
@@ -81,5 +90,8 @@ Hybrid retrieval is approved for offline deep overnight jobs only.
 
 ## Final Phase 2 Status
 
-**COMPLETE** for bounded offline hybrid RAG.
-**BLOCKED** for global production embedding promotion.
+**COMPLETE** — all phases 2A through 2H.
+**Phase 2H** approved bounded offline/deep hybrid RAG as production behavior.
+**BLOCKED** — global production embedding promotion remains a separate future decision.
+
+**Next recommended phase:** Phase 3 — Small media/prose model pilot.

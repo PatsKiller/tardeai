@@ -1851,3 +1851,40 @@ UNCHANGED — no routing, embedding, cron, .env, or broker changes.
 
 ### Recommendation
 Prepare Phase 2H bounded approval proposal. Global promotion remains blocked.
+
+---
+
+## Phase 2H Bounded Offline Hybrid Approval — 2026-05-14
+
+### Status
+APPROVED — bounded offline/deep/read-only hybrid RAG is production behavior.
+
+### What Is Approved
+14 offline workflows including daily/Friday deep queue, risk synthesis, recovery watch,
+journal reviews, proposal reviews, RAG curation, and offline report context.
+
+### What Is NOT Approved
+Global/default RAG routing. Market-hours. Real-time. Telegram/OpenClaw. Broker/execution/risk gates.
+
+### Policy
+`config/phase2h_bounded_hybrid_rag_policy.yaml`
+
+### Audit
+`.venv/bin/python scripts/audit_phase2h_bounded_approval.py` — ALL PASS
+
+### Production Model State
+- Production embedding: nomic-embed-text (unchanged, global default)
+- Shadow embedding: qwen3-embedding:8b (bounded hybrid only)
+- Standard inference: qwen3:14b
+- Deep reasoning: gemma3-overnight (via two-stage wrapper)
+
+### Production Impact
+No global RAG routing change. No production embedding change. No .env change.
+No broker/holdings/execution change.
+
+### Phase 2 Final Status
+COMPLETE — all phases 2A through 2H.
+Global production embedding promotion remains a separate future decision.
+
+### Next Phase
+Phase 3: Small media/prose model pilot.
