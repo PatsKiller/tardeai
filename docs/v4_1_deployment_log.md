@@ -1,5 +1,55 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Full Session Summary — 2026-05-15
+
+### 25 commits across 6 work streams:
+
+**Phase 6 Execution Safety (5 commits):**
+- 6A: Live market revalidation gate (f310f61)
+- 6B: Market session policy gate (6ef555e)
+- 6C: Approval audit trail (7ce7c4a)
+- 6D: Proposal stale-time sweeper (cadcd5c)
+- 6E: Scheduled sweeper cron (c6d0192)
+
+**A-Track Pipeline (4 commits):**
+- A-1: Hard risk governance gates (109d8b7)
+- A-2: 5 strategies activated (b41a013)
+- A-3.5: Morning brief automation (1db185f)
+- A-4: Systemic pipeline defect fix (79ffb31)
+
+**Promoter Quality (4 commits):**
+- RSI gate: screener strategy added to momentum group (aab9eab)
+- Spread gate + $3 price floor at promotion (58c908c)
+- Classification-based promoter for diversity (72a04df)
+- Hard price floor in auto_proposal_generator (cdd12fb)
+
+**Screener Overhaul (4 commits):**
+- Wire 8 quality screeners into run_windows + PM diversity (db8e631)
+- Screener reference docs (cf2a680)
+- Screener config modal with CRUD + gap analysis (9a29f6f)
+- 6 gap-fill screeners — 0 gaps remaining (059d479)
+
+**UI Fixes (4 commits):**
+- Morning brief render crash + paper account zeros + newly-activated endpoint (6ce832d)
+- Dashboard humanize crash + debug cleanup (42affa7)
+- TaxLots hooks, StrategyDesk Decimal, scoreboard PF, plan adherence (42846b6)
+- Datetime serialization in screener API (a4cd98e)
+
+**Documentation (5 commits):**
+- Post-A-4 observation Day 1 (2440f25)
+- Phase 6 README + deployment log updates (08999ec)
+- Promoter quality gate docs (52ae32b)
+- UI stabilization session summary (4ad1f13)
+
+### Final State
+- 83/83 Phase 6 tests passing
+- 18 Finviz screeners, 0 strategy gaps
+- Approval flow: Audit → Freshness → Session → Revalidation → Risk Gate → Paper Trade → Alpaca
+- Pipeline producing proposals hourly
+- A-5 observation clock running (ends 2026-05-22)
+
+---
+
 ## Promoter Quality Gates — Spread + Price Floor — 2026-05-15
 
 ### Summary
