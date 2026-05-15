@@ -1888,3 +1888,27 @@ Global production embedding promotion remains a separate future decision.
 
 ### Next Phase
 Phase 3: Small media/prose model pilot.
+
+---
+
+## Phase 3 Media/Prose Model — Discovery — 2026-05-14
+
+### Candidate
+`gemma4:e4b` — ~3-4 GB, documented in LLM Fleet Strategy v4.1 as Phase 3 MEDIA_CONTENT model
+
+### Status
+NOT INSTALLED. Pull required:
+```
+ollama pull gemma4:e4b
+```
+
+### Discovery
+7 media/content scripts identified as Phase 3 pilot candidates:
+youtube_transcript_ingest, transcript_slow_processor, content_scoring,
+topic_ingestion, topic_curator, aegis_morning_brief_delivery, agent_curation_hooks
+
+### Production Impact
+None. Discovery only.
+
+### Recommendation
+Approve pull gemma4:e4b. Then run smoke tests and limited offline pilot.
