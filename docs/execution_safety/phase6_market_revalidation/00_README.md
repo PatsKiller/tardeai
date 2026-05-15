@@ -24,7 +24,7 @@ Ensure no paper trade proposal can be approved on stale or unfavorable market co
 ### Approval Flow
 
 ```
-Approve → Live Market Revalidation → Risk Gate → Create Paper Trade → Submit to Alpaca
+Approve → Audit → Session Gate → Market Revalidation → Risk Gate → Paper Trade → Alpaca
 ```
 
 ### Block Conditions
@@ -98,20 +98,36 @@ from paper_trade_logger import validate_paper_proposal_live_market
 | Safety audit | PASSED |
 | Operator runbook | COMPLETE |
 
+### Incubator Promoter RSI Gate Fix
+
+| Item | Status |
+|------|--------|
+| `screener` added to momentum RSI gate (>= 80 blocks) | FIXED |
+| RSI value stored on proposal at promotion time | FIXED |
+| Root cause: FLYW promoted at RSI 83, dropped below stop | IDENTIFIED |
+
 ### Commands
 
 ```bash
-# Phase 6A tests
+# Phase 6A tests (24)
 .venv/bin/python tests/test_phase6_market_revalidation.py
 
-# Phase 6C tests
+# Phase 6B tests (17)
+.venv/bin/python tests/test_phase6_market_session_policy.py
+
+# Phase 6C tests (12)
 .venv/bin/python tests/test_phase6_approval_audit_trail.py
 
-# Phase 6C API mock validation
+# API mock validation
+.venv/bin/python scripts/test_phase6_market_revalidation_api.py
+.venv/bin/python scripts/test_phase6_market_session_policy_api.py
 .venv/bin/python scripts/test_phase6_approval_audit_api.py
 
 # Audit summary report
 .venv/bin/python scripts/report_phase6_approval_audit.py --since-days 7 --verbose
+
+# Session policy status
+.venv/bin/python scripts/phase6_market_session_policy.py --status --json
 ```
 
 ## Future Phase 6 Items
@@ -120,3 +136,4 @@ from paper_trade_logger import validate_paper_proposal_live_market
 - Approval simulator
 - Proposal stale-time sweeper enhancements
 - Operator approval dashboard panel
+- Rejection outcome labeling for Phase 5 feedback loop
