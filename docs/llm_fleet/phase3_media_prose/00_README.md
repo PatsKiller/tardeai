@@ -1,8 +1,9 @@
 # Phase 3 — Media/Prose Model Pilot
 
-**Status:** TIE — gemma4:e4b matches qwen3 quality but is 9.6 GB (not lightweight, fails co-residency goal)
-**Candidate model:** gemma4:e4b (9.6 GB actual)
+**Status:** CANDIDATE_BETTER — gemma3:4b passes Phase 3 (3.3 GB, 4x faster, better quality)
+**Candidate model:** gemma3:4b (3.3 GB) — replaces rejected gemma4:e4b
 **Current production model:** qwen3:14b (STANDARD/REALTIME, unchanged)
+**Rejected:** gemma4:e4b (9.6 GB, removed)
 
 ## Purpose
 
