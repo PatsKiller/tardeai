@@ -1,7 +1,13 @@
 # ⚠️  CRITICAL: finviz_url MUST use v=152 (custom view), NOT v=111 (overview).
 # v=111 ignores &c= columns and silently returns only default fields (no RVOL, Gap, Float).
 # Column IDs: 25=Float, 61=Gap, 63=AvgVol, 64=RelVol, 65=Price, 66=Change, 67=Volume
-version: '12.2'
+#
+# Quality overhaul 2026-05-15:
+# - Tightened prime/watchlist: price $5+, avgvol 500K+, cap $500M+ (smallover)
+# - Wired quality screeners into run_windows so they actually execute
+# - Added PM-specific screeners for breakout confirmation + volume continuation
+# - Removed junk penny stock / micro-cap screener settings
+version: '12.3'
 name: trade-ai-v12-screeners
 timezone: America/New_York
 
@@ -22,6 +28,9 @@ storage:
     - strategy_class
     - day_scalping_flag
 
+# ── Run Windows ──────────────────────────────────────────────────────
+# AM: momentum + quality pullback + earnings
+# PM: breakout confirmation + volume continuation + dividend/recovery
 run_windows:
   '0400':
     label: pre_market_initial
@@ -31,19 +40,19 @@ run_windows:
     active_screeners: [prime_setups, watchlist_setups]
   '0900':
     label: open_prep_final
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [prime_setups, watchlist_setups, oversold_quality, post_earnings_gappers]
   '1000':
     label: first_hour_read
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [prime_setups, watchlist_setups, quality_pullback, speculative_growth_breakouts, dividend_value_pullback, sector_leadership_rs]
   '1200':
     label: midday_refresh
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [pm_breakout_confirmation, pm_volume_continuation, quality_pullback]
   '1400':
     label: afternoon_check
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [pm_breakout_confirmation, pm_volume_continuation, speculative_growth_breakouts, dividend_value_pullback]
   '1600':
     label: close_read
-    active_screeners: [prime_setups, watchlist_setups]
+    active_screeners: [pm_volume_continuation, quality_pullback, defensive_quality, oversold_quality]
   '1730':
     label: post_close
     active_screeners: [prime_setups, watchlist_setups]
@@ -51,8 +60,10 @@ run_windows:
     label: test_run
     active_screeners: [prime_setups, watchlist_setups]
 
+# ── Screeners ────────────────────────────────────────────────────────
 screeners:
 
+  # ── Tier 1: Momentum / Scalp (AM — UNCHANGED per operator instruction) ──
   prime_setups:
     display_name: Prime Setups (Tier 1)
     group: core
@@ -69,94 +80,87 @@ screeners:
     description: RVOL>3x + gap>5% + price $1-$30 + float<100M. All markets.
     finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u100,sh_price_1to30,sh_relvol_o3,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
 
+  # ── Tier 2: Quality / Income / Dividend (AM + PM) ──
   quality_pullback:
-    description: Quality names pulling back to 50-day EMA or 61.8% Fib — feeds fib_retracement_bounce and income_add
-    url: https://elite.finviz.com/screener.ashx?v=152&f=cap_midover,fa_div_high,fa_payoutratio_u80,sh_avgvol_o500,ta_sma50_pa,ta_sma200_pa,ta_rsi_30to50
-    run_windows:
-      - '1000'
-      - '1300'
-      - '1600'
-    strategies:
-      - fib_retracement_bounce
-      - income_add
-      - swing_trade
-    min_score: 25
-    max_results: 30
-  oversold_quality:
-    description: Oversold quality names — feeds recovery_watch and tax_loss_harvest scanning
-    url: https://elite.finviz.com/screener.ashx?v=152&f=cap_midover,fa_roe_pos,ta_rsi_os30,ta_sma200_pa,sh_avgvol_o500
-    run_windows:
-      - '0900'
-      - '1500'
-    strategies:
-      - recovery_watch
-      - tax_loss_harvest
-    min_score: 20
-    max_results: 30
+    display_name: Quality Pullback (Fib / Income)
+    group: quality
+    status: active
+    strategy_class: swing_trade
+    description: "Mid+ cap quality names pulling back to support. Feeds swing_trade, fib_retracement, income."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,fa_div_high,fa_payoutratio_u80,sh_avgvol_o500,ta_sma50_pa,ta_sma200_pa,ta_rsi_30to50&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
   dividend_value_pullback:
-    description: Dividend aristocrats and kings on pullbacks — feeds dividend_growth_compounder and income_add
-    url: https://elite.finviz.com/screener.ashx?v=152&f=fa_div_pos,fa_payoutratio_u85,fa_divgrowth5y_o5,ta_rsi_30to50,sh_avgvol_o500
-    run_windows:
-      - '1000'
-      - '1400'
-    strategies:
-      - dividend_growth_compounder
-      - income_add
-      - international_dividend
-    min_score: 25
-    max_results: 30
-  post_earnings_gappers:
-    description: Stocks gapping up post-earnings — feeds earnings_post_momentum
-    url: https://elite.finviz.com/screener.ashx?v=152&f=earningsdate_yesterday,sh_avgvol_o500,sh_curvol_o2000,ta_gap_u5
-    run_windows:
-      - '0930'
-      - '1000'
-      - '1100'
-    strategies:
-      - earnings_post_momentum
-      - swing_breakout
-    min_score: 30
-    max_results: 20
-  sector_leadership_rs:
-    description: Sector ETFs ranked by 5-day relative strength vs SPY — feeds sector_rotation
-    url: https://elite.finviz.com/screener.ashx?v=152&t=XLF,XLE,XLK,XLV,XLI,XLU,XLP,XLB,XLRE,XLC,XLY
-    run_windows:
-      - '1000'
-      - '1500'
-    strategies:
-      - sector_rotation
-    min_score: 20
-    max_results: 11
-  covered_call_candidates:
-    description: Established holdings with elevated IV rank — feeds covered_call_income
-    url: https://elite.finviz.com/screener.ashx?v=152&f=cap_midover,sh_opt_optionshort,sh_avgvol_o1000
-    run_windows:
-      - '1100'
-    strategies:
-      - covered_call_income
-    min_score: 25
-    max_results: 20
-    requires_existing_position: true
-  speculative_growth_breakouts:
-    description: Small/mid-cap revenue growers with momentum — feeds speculative_growth
-    url: https://elite.finviz.com/screener.ashx?v=152&f=cap_smallover,fa_salesqoq_o20,sh_relvol_o2,ta_perf_4w20o,ta_rsi_50to70
-    run_windows:
-      - '1000'
-      - '1400'
-    strategies:
-      - speculative_growth
-      - swing_breakout
-    min_score: 35
-    max_results: 20
+    display_name: Dividend Value Pullback
+    group: quality
+    status: active
+    strategy_class: dividend_growth_compounder
+    description: "Dividend growers on pullback. 5y+ div growth, payout<85%, RSI 30-50."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=fa_div_pos,fa_payoutratio_u85,fa_divgrowth5y_o5,ta_rsi_30to50,sh_avgvol_o500&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  oversold_quality:
+    display_name: Oversold Quality (Recovery Watch)
+    group: quality
+    status: active
+    strategy_class: recovery_watch
+    description: "Mid+ cap with positive ROE, RSI oversold, above 200-day. Feeds recovery_watch."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,fa_roe_pos,ta_rsi_os30,ta_sma200_pa,sh_avgvol_o500&ft=3&o=relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
   defensive_quality:
-    description: Low-beta dividend payers and defensive names — feeds bond_income alternatives and reit_income
-    url: https://elite.finviz.com/screener.ashx?v=152&f=fa_div_high,fa_payoutratio_u85,ta_beta_u1,sec_realestate,sec_utilities,sec_consumerdefensive
-    run_windows:
-      - '1100'
-      - '1500'
-    strategies:
-      - reit_income
-      - international_dividend
-      - dividend_growth_compounder
-    min_score: 25
-    max_results: 20
+    display_name: Defensive Quality (REIT / Bond / Dividend)
+    group: quality
+    status: active
+    strategy_class: reit_income
+    description: "Low-beta dividend payers. REIT, utilities, consumer defensive. Payout<85%."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=fa_div_high,fa_payoutratio_u85,ta_beta_u1,sh_avgvol_o500&ft=3&sec_realestate,sec_utilities,sec_consumerdefensive&o=dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  # ── Tier 3: Event-Driven (AM) ──
+  post_earnings_gappers:
+    display_name: Post-Earnings Gappers
+    group: event
+    status: active
+    strategy_class: earnings_post_momentum
+    description: "Stocks gapping up post-earnings with volume. Feeds earnings_post_momentum."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=earningsdate_yesterday,sh_avgvol_o500,sh_curvol_o2000,ta_gap_u5&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  speculative_growth_breakouts:
+    display_name: Speculative Growth Breakouts
+    group: growth
+    status: active
+    strategy_class: speculative_growth
+    description: "Small/mid-cap revenue growers with momentum. Sales QoQ>20%, RVOL>2x, 4-week perf>20%."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallover,fa_salesqoq_o20,sh_relvol_o2,ta_perf_4w20o,ta_rsi_50to70&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  sector_leadership_rs:
+    display_name: Sector Leadership (Relative Strength)
+    group: sector
+    status: active
+    strategy_class: sector_rotation
+    description: "Sector ETFs ranked by relative strength — feeds sector_rotation."
+    finviz_url: "https://elite.finviz.com/export?v=152&t=XLF,XLE,XLK,XLV,XLI,XLU,XLP,XLB,XLRE,XLC,XLY&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  # ── Tier 4: PM-Specific (afternoon diversity) ──
+  pm_breakout_confirmation:
+    display_name: PM Breakout Confirmation
+    group: pm_diversity
+    status: active
+    strategy_class: swing_breakout
+    description: "Mid+ cap stocks breaking out of consolidation on volume. Above 20-day high, RVOL>2x. PM confirmation of AM setups."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,sh_avgvol_o500,sh_relvol_o2,ta_highlow20d_nh,ta_sma50_pa&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  pm_volume_continuation:
+    display_name: PM Volume Continuation
+    group: pm_diversity
+    status: active
+    strategy_class: swing_trade
+    description: "Stocks with sustained above-average volume into afternoon. Price $5+, RVOL>1.5x, positive change. Confirms morning momentum is holding."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallover,sh_avgvol_o500,sh_price_o5,sh_relvol_o1.5,ta_change_u&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  # ── Not wired (requires existing position) ──
+  covered_call_candidates:
+    display_name: Covered Call Candidates
+    group: options
+    status: active
+    strategy_class: covered_call_income
+    description: "Established holdings with elevated IV rank — feeds covered_call_income."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,sh_opt_optionshort,sh_avgvol_o1000&ft=3&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+    requires_existing_position: true
