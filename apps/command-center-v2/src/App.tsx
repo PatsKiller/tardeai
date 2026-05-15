@@ -5,6 +5,7 @@ import Shell from './components/Shell'
 // ── Core pages ──
 const Overview = lazy(() => import('./pages/Overview'))
 const MorningBrief = lazy(() => import('./pages/MorningBrief'))
+const MorningBriefBot = lazy(() => import('./pages/MorningBriefBot'))
 const Command = lazy(() => import('./pages/Command'))
 
 // ── Portfolio (consolidated: Holdings + Health + Intelligence) ──
@@ -112,6 +113,7 @@ export default function App() {
           <Route index element={<SafePage><Overview /></SafePage>} />
           <Route path="command" element={<SafePage><Command /></SafePage>} />
           <Route path="morning-brief" element={<SafePage><MorningBrief /></SafePage>} />
+          <Route path="bot-morning-brief" element={<SafePage><MorningBriefBot /></SafePage>} />
 
           {/* ── Portfolio (consolidated) ── */}
           <Route path="portfolio" element={<SafePage><PortfolioCommand /></SafePage>} />
