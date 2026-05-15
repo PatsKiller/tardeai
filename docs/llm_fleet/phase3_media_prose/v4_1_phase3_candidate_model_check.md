@@ -8,40 +8,37 @@
 
 ## Installation Status
 
-**NOT INSTALLED**
+**INSTALLED** (2026-05-14)
 
-```
-$ ollama list | grep gemma4
-(no output)
-```
-
-## Expected Specs
+## Actual Specs
 
 | Metric | Value |
 |--------|-------|
 | Model | gemma4:e4b |
-| Disk | ~3-4 GB |
-| VRAM | ~3-4 GB Q4 |
-| Can coexist with qwen3:14b | Yes (~13-14 GB total, fits 16 GB) |
-| Context | TBD after pull |
-| Architecture | Dense (not MoE) |
+| Disk | **9.6 GB** (larger than documented 3-4 GB estimate) |
+| VRAM | ~9.6 GB resident (does NOT fit alongside qwen3:14b on 16 GB) |
+| Can coexist with qwen3:14b | **NO** — 9.6 + 10 = 19.6 GB exceeds 16 GB VRAM |
+| Load time | ~54 seconds |
+| Architecture | Dense |
 
-## Pull Command
+## Smoke Test Result
 
-```bash
-ollama pull gemma4:e4b
-```
+**POOR QUALITY** — model generated irrelevant comparison instructions instead of summarizing the provided transcript topic. The prompt was clear ("Summarize this in 3 concise bullets") but the model produced off-topic output about comparison requests.
+
+- Generation latency: 8.2s for 120 tokens
+- Total time: 62s (including ~54s model load)
+- Output: incoherent, did not follow instruction
+
+## Critical Findings
+
+1. **Size mismatch**: 9.6 GB actual vs 3-4 GB documented. This changes the coexistence model — gemma4:e4b CANNOT coexist with qwen3:14b on 16 GB VRAM.
+2. **Quality concern**: smoke test produced irrelevant output. May need different prompt format or the model may not be suitable.
+3. **VRAM impact**: would require same evict/restore lifecycle as gemma3-overnight.
 
 ## Recommendation
 
-**Approve pull `gemma4:e4b` for Phase 3 media/prose pilot.**
-
-Do not pull without operator approval.
-
-## What Happens After Pull
-
-1. Verify disk/VRAM impact
-2. Run smoke tests (summarize, rewrite, classify, extract facts)
-3. Compare against qwen3:14b baseline for content workflows
-4. Evaluate coexistence with production models
-5. Create pilot wrapper if quality is acceptable
+**HOLD** — gemma4:e4b is larger than expected and showed poor instruction-following in smoke test. Options:
+1. Run additional smoke tests with different prompt formats
+2. Try a smaller model (e.g., gemma3:4b or phi-4-mini)
+3. Keep qwen3:14b for all local inference and accept current workload distribution
+4. Wait for gemma4 ecosystem to mature (revisit date: 2026-08-11 per strategy doc)
