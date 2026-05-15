@@ -1,0 +1,88 @@
+{
+  "date": "2026-05-15T09:44:42.498971",
+  "total": 9,
+  "passed": 9,
+  "scenarios": [
+    {
+      "scenario": "regular_session_wed",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "expected_session": "regular",
+      "actual_session": "regular",
+      "passed": true,
+      "reason": "Regular market session is open."
+    },
+    {
+      "scenario": "premarket_wed",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "premarket",
+      "actual_session": "premarket",
+      "passed": true,
+      "reason": "Pre-market approvals are disabled by policy."
+    },
+    {
+      "scenario": "afterhours_wed",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "afterhours",
+      "actual_session": "afterhours",
+      "passed": true,
+      "reason": "After-hours approvals are disabled by policy."
+    },
+    {
+      "scenario": "weekend_sat",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "weekend",
+      "actual_session": "weekend",
+      "passed": true,
+      "reason": "Market is closed for the weekend."
+    },
+    {
+      "scenario": "weekend_sun",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "weekend",
+      "actual_session": "weekend",
+      "passed": true,
+      "reason": "Market is closed for the weekend."
+    },
+    {
+      "scenario": "holiday_newyear",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "holiday",
+      "actual_session": "holiday",
+      "passed": true,
+      "reason": "Market is closed for a holiday."
+    },
+    {
+      "scenario": "closed_night",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "closed",
+      "actual_session": "closed",
+      "passed": true,
+      "reason": "Market is closed."
+    },
+    {
+      "scenario": "open_boundary_930",
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "expected_session": "regular",
+      "actual_session": "regular",
+      "passed": true,
+      "reason": "Regular market session is open."
+    },
+    {
+      "scenario": "close_boundary_1600",
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "expected_session": "afterhours",
+      "actual_session": "afterhours",
+      "passed": true,
+      "reason": "After-hours approvals are disabled by policy."
+    }
+  ]
+}
