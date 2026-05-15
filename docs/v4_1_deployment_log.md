@@ -1,5 +1,39 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Incubator Promoter RSI Gate Fix — 2026-05-15
+
+### Summary
+Fixed RSI gate gap that allowed FLYW to be promoted at RSI 83 as a `screener` strategy. The `screener` strategy was not in any RSI gate group, so only the catch-all at RSI >= 85 applied. FLYW then dropped below its stop loss within an hour.
+
+### Changes
+- Added `screener` to the momentum RSI gate group in `_check_rsi_gate()` — now blocks at RSI >= 80
+- RSI value is now stored on the proposal record (`rsi` column) at promotion time
+- `_check_rsi_gate()` returns 3 values: `(allowed, reason, rsi_value)` for audit/display
+
+### RSI Gate Thresholds (updated)
+
+| Strategy Group | Threshold | Strategies |
+|----------------|-----------|------------|
+| Momentum | >= 80 | momentum_scalp, gap_and_go, earnings_catalyst, speculative_growth, core_growth_compounder, **screener** |
+| Swing | >= 75 | swing_breakout, swing_trade, sector_rotation, defense_thesis |
+| Catch-all | >= 85 | Any non-exempt strategy |
+| Exempt | N/A | income_add, dividend_growth_compounder, high_yield_income_bdc, covered_call_income, bond_income, cash_or_stable, recovery_watch |
+
+### Root Cause
+FLYW was promoted by `incubator_proposal_promoter.py` with `strategy_id = 'screener'`. The RSI gate checked:
+1. Is `screener` in `_MOMENTUM`? No (was not listed)
+2. Is `screener` in `_SWING`? No
+3. Is RSI >= 85? No (was 83)
+4. Result: allowed — **incorrect**
+
+### Verification
+After fix: `_check_rsi_gate('FLYW', 'screener', conn)` returns `(False, 'RSI_83_overbought_blocks_screener', 82.9)`
+
+### Production Impact
+Paper proposals only. No broker/execution changes.
+
+---
+
 ## Phase 6B — Market Session Approval Policy — 2026-05-15
 
 ### Summary

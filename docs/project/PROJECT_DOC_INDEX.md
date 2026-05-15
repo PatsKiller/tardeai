@@ -136,6 +136,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-15 | **RSI gate fix**: `screener` strategy added to momentum RSI gate group (>= 80 blocks). FLYW at RSI 83 would have been blocked. RSI now stored on proposal at promotion. |
 | 2026-05-15 | **Phase 6B**: Market session policy gate. Approvals blocked outside regular hours (9:30-16:00 ET Mon-Fri non-holiday). 17 unit tests, 9 API mock scenarios. Wired into Phase 6C audit trail. |
 | 2026-05-15 | **Phase 6C**: Paper approval audit trail. Every approval attempt recorded with gate-by-gate outcomes. 2 tables, helper module, 12 unit tests, 6 API mock scenarios, report script. Fail-closed on audit failure. |
 | 2026-05-15 | **Phase 6A**: Paper approval market revalidation hardened. Live quote gate before risk gate. Blocks stale/unfavorable conditions. 24 unit tests, 7 API mock scenarios passed. Dashboard patched. Safety audit passed. Production unchanged. |
