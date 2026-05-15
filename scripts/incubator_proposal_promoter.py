@@ -456,6 +456,27 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             skipped += 1
             continue
 
+        # Strategy-aware minimum price — momentum/scalp need higher floor
+        _MOMENTUM_STRATEGIES = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst',
+                                'screener', 'speculative_growth', 'earnings_post_momentum'}
+        _min_price = 3.0 if strategy_id in _MOMENTUM_STRATEGIES else 1.0
+        if scan_price < _min_price:
+            results.append(f"SKIPPED: {symbol} (below_min_price ${scan_price:.2f} < ${_min_price:.0f} for {strategy_id})")
+            skipped += 1
+            continue
+
+        # Spread gate — block illiquid names at promotion time
+        try:
+            from market_quote_provider import get_best_quote
+            _quote = get_best_quote(symbol)
+            _spread = _quote.get("spread_pct") if _quote else None
+            if _spread is not None and _spread > 3.0:
+                results.append(f"SKIPPED: {symbol} (spread_{_spread:.1f}pct_too_wide)")
+                skipped += 1
+                continue
+        except Exception:
+            pass  # If quote fetch fails, let later gates catch it
+
         # RSI gate — block overbought at promotion time
         can_rsi, rsi_reason, rsi_value = _check_rsi_gate(symbol, strategy_id, conn)
         if not can_rsi:
