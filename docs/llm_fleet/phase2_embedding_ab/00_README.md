@@ -116,6 +116,19 @@ See `v4_1_phase2d_bounded_offline_promotion.md`.
 - Recommendation: **prepare Phase 2H bounded approval proposal**
 - Phase 2H global promotion: **BLOCKED**
 
+## Phase 2H: Bounded Offline Approval (2026-05-14)
+
+- **Phase 2H APPROVED** — bounded offline/deep hybrid RAG is production behavior
+- Policy: `config/phase2h_bounded_hybrid_rag_policy.yaml`
+- 14 approved workflows, 9 blocked workflows
+- Audit: `.venv/bin/python scripts/audit_phase2h_bounded_approval.py`
+- Global embedding promotion: **BLOCKED** (separate future decision)
+- nomic-embed-text remains global production default
+
+## Phase 2 Complete
+
+All phases 2A through 2H are complete. Global production embedding promotion is not part of Phase 2.
+
 ## Next Phase
 
 Phase 3: Small media/prose model pilot (pending operator approval).
