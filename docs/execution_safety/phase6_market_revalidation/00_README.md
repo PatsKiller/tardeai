@@ -1,6 +1,6 @@
 # Phase 6 — Execution Safety: Market Revalidation
 
-**Status:** Phase 6A COMPLETE, Phase 6B COMPLETE, Phase 6C COMPLETE, Phase 6D COMPLETE
+**Status:** Phase 6A-E COMPLETE
 
 ## Purpose
 
@@ -116,6 +116,16 @@ from paper_trade_logger import validate_paper_proposal_live_market
 ```
 Approve → Audit → Freshness Gate → Session Gate → Revalidation → Risk Gate → Paper Trade → Alpaca
 ```
+
+### Phase 6E — Scheduled Stale Sweeper
+
+| Item | Status |
+|------|--------|
+| Wrapper script (flock, safety gates) | IMPLEMENTED |
+| Cron: 08:15 dry-run, 08:25 apply, 16:10 report | SCHEDULED |
+| Rollback script | IMPLEMENTED |
+| Unit tests (12/12) | PASSED |
+| Safety audit (15/15) | PASSED |
 
 ### Incubator Promoter RSI Gate Fix
 

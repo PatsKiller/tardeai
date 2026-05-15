@@ -1,5 +1,36 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 6E — Scheduled Stale Proposal Sweeper — 2026-05-15
+
+### Summary
+Operationalized the Phase 6D stale sweeper with a safe scheduled wrapper and cron entries.
+
+### Schedule
+| Time (ET) | Mode | Purpose |
+|-----------|------|---------|
+| 08:15 M-F | dry-run | Pre-market freshness report |
+| 08:25 M-F | apply | Mark stale proposals before market open |
+| 16:10 M-F | report-only | End-of-day summary |
+
+### Files Added
+- `scripts/run_scheduled_stale_proposal_sweeper.sh` — wrapper with flock, safety gates, logging
+- `scripts/rollback_phase6e_stale_sweeper_cron.sh` — cron rollback helper
+- `tests/test_phase6e_scheduled_stale_sweeper.py` — 12 unit tests
+
+### Safety
+- Wrapper verifies ALPACA_MODE=paper + LLM_DISABLE=true + holdings > $1M
+- Defaults to dry-run (no args = dry-run)
+- Uses flock to prevent overlap
+- Never approves, creates trades, submits orders, or deletes proposals
+- Rollback removes only Phase 6E cron entries
+
+### Tests: 12/12 passed, 83/83 total regression
+
+### Production Impact
+Paper proposals only. Stale marking only. No execution changes.
+
+---
+
 ## Phase 6D — Proposal Stale-Time Sweeper — 2026-05-15
 
 ### Summary
