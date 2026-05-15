@@ -109,6 +109,11 @@
 | `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_api_validation_report.md` | API mock validation (7/7 passed) |
 | `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_safety_audit.md` | Safety audit — 15 checks all passed |
 | `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_operator_runbook.md` | Operator runbook — troubleshooting, rollback, emergency procedures |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6c_audit_trail_scope.md` | Phase 6C scope — approval audit trail |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6c_audit_schema_report.md` | Audit schema (2 tables, 10 indexes) |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6c_audit_trail_test_results.md` | Unit tests (12/12) + API mock (6/6) |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6c_audit_trail_safety_audit.md` | Safety audit — 17 checks |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6c_audit_trail_runbook.md` | Operator runbook — querying, troubleshooting |
 
 ### Discovery Artifacts
 | Document | Purpose |
@@ -127,6 +132,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-15 | **Phase 6C**: Paper approval audit trail. Every approval attempt recorded with gate-by-gate outcomes. 2 tables, helper module, 12 unit tests, 6 API mock scenarios, report script. Fail-closed on audit failure. |
 | 2026-05-15 | **Phase 6A**: Paper approval market revalidation hardened. Live quote gate before risk gate. Blocks stale/unfavorable conditions. 24 unit tests, 7 API mock scenarios passed. Dashboard patched. Safety audit passed. Production unchanged. |
 | 2026-05-14 | Phase 2 FINALIZED: Friday hybrid enabled. Phase 2D bounded offline promotion approved. Global embedding promotion blocked. Phase 2 closeout report written. |
 | 2026-05-14 | Phase 2C nightly enablement: daily 23:00 deep queue now uses --enable-hybrid-rag with two-stage lifecycle. Friday unchanged. Cron updated. Production RAG/embeddings unchanged. |

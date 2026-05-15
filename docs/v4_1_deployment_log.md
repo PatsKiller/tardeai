@@ -1,5 +1,43 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 6C — Paper Approval Audit Trail — 2026-05-15
+
+### Summary
+Every paper proposal approval attempt is now recorded in a durable audit trail with gate-by-gate outcomes. The operator can query exactly what happened at each gate for any approval attempt.
+
+### What Was Added
+- **DB schema**: `paper_proposal_approval_audit` (main) + `paper_proposal_approval_audit_events` (granular)
+- **Helper module**: `scripts/phase6_approval_audit.py` — create, update, finalize, append events
+- **Endpoint wiring**: `POST /api/v2/paper-proposals/approve` now creates audit row before gates, records each gate outcome, and returns `approval_audit` with `audit_id`
+- **Report script**: `scripts/report_phase6_approval_audit.py` — summary, filtering, JSON/MD output
+- **Tests**: 12 unit tests (all pass), 6 API mock scenarios (all pass)
+
+### Audit Flow
+```
+Request → Create audit (fail-closed if fails)
+  → Session gate → update audit
+  → Market revalidation → update audit
+  → Risk gate → update audit
+  → Paper trade creation → update audit
+  → Alpaca submission → update audit
+  → Finalize audit with outcome
+```
+
+### Fail-Closed Behavior
+If audit creation fails, the approval is blocked. Audit update/event failures are non-critical (logged, don't block).
+
+### Safety Audit
+- ALPACA_MODE=paper: CONFIRMED
+- LLM_DISABLE_LIVE_EXECUTION=true: CONFIRMED
+- No .env change: CONFIRMED
+- No secrets stored: CONFIRMED (IP/UA hashed)
+- All existing gates preserved: CONFIRMED
+
+### Production Impact
+**Paper proposals only.** Additive DB tables. No existing tables altered. No approval logic changed. No broker/holdings/execution changes.
+
+---
+
 ## Phase 6A — Paper Approval Market Revalidation Hardening — 2026-05-15
 
 ### Summary

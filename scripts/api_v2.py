@@ -12554,6 +12554,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     if method == "POST" and base_path == "/api/v2/paper-proposals/approve":
+        audit_id = None
+        _audit_conn = None
         try:
             body = body or {}
             pid = body.get('proposal_id')
@@ -12561,6 +12563,30 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "proposal_id required"}
             confirmed = body.get('confirmed', False)
             approval_mode = body.get('approval_mode', 'approve_ready')
+
+            # ── AUDIT: Create audit attempt before any gates ──
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            try:
+                from phase6_approval_audit import (
+                    create_approval_audit_attempt, update_approval_audit,
+                    append_approval_audit_event, finalize_approval_audit)
+                from session13_db import get_conn as _get_audit_conn
+                _audit_conn = _get_audit_conn()
+                # Load proposal snapshot for audit
+                _prop_snap = _db_query("SELECT * FROM paper_trade_proposals WHERE id=%s", [int(pid)], fetch="one") or {}
+                _prop_snap["proposal_id"] = int(pid)
+                audit_id = create_approval_audit_attempt(
+                    _audit_conn, _prop_snap,
+                    requested_by=body.get('requested_by', 'dashboard'),
+                    request_source='api',
+                    metadata={"confirmed": confirmed, "approval_mode": approval_mode})
+                append_approval_audit_event(_audit_conn, audit_id, "approval_started", "ok",
+                    message=f"Approval attempt for proposal #{pid}")
+            except Exception as _audit_err:
+                # Fail closed: if audit creation fails, block approval
+                return 400, {"ok": False, "error": f"Approval audit could not be created; approval blocked fail-closed. ({_audit_err})",
+                             "approval_audit": {"audit_id": None, "status": "error_fail_closed", "audit_created": False}}
 
             # Check decision state before approving
             rp = _db_query("""
@@ -12573,21 +12599,83 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 ds = rp.get('packet_status', '')
                 blocked_states = ('BLOCKED_BY_RISK_GATE', 'RESEARCH_INCOMPLETE', 'AI_REVIEW_MISSING', 'DATA_STALE', 'REJECT_RECOMMENDED')
                 if ds in blocked_states and not confirmed:
-                    return 400, {"ok": False, "error": f"Cannot approve: {ds}. Run research first or use confirmation.", "decision_state": ds}
+                    if _audit_conn and audit_id:
+                        finalize_approval_audit(_audit_conn, audit_id, "blocked_research",
+                            f"Research packet blocked: {ds}")
+                    return 400, {"ok": False, "error": f"Cannot approve: {ds}. Run research first or use confirmation.", "decision_state": ds,
+                                 "approval_audit": {"audit_id": audit_id, "status": "blocked_research", "audit_created": True}}
                 cautious_states = ('CAUTIOUS_PAPER_TEST', 'BACKTEST_INSUFFICIENT')
                 if ds in cautious_states and not confirmed:
-                    return 400, {"ok": False, "error": f"Requires confirmation: {ds}", "decision_state": ds, "needs_confirmation": True}
+                    if _audit_conn and audit_id:
+                        finalize_approval_audit(_audit_conn, audit_id, "blocked_needs_confirmation",
+                            f"Requires confirmation: {ds}")
+                    return 400, {"ok": False, "error": f"Requires confirmation: {ds}", "decision_state": ds, "needs_confirmation": True,
+                                 "approval_audit": {"audit_id": audit_id, "status": "blocked_needs_confirmation", "audit_created": True}}
                 if ds in cautious_states:
                     approval_mode = 'cautious_confirmed' if ds == 'CAUTIOUS_PAPER_TEST' else 'first_sample_learning_confirmed'
 
-            import sys as _sys
-            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            # ── AUDIT: Session gate (Phase 6B — not yet implemented, record as skipped) ──
+            if _audit_conn and audit_id:
+                update_approval_audit(_audit_conn, audit_id,
+                    session_policy={"status": "not_implemented", "note": "Phase 6B session gate pending"},
+                    gate="session_policy", gate_passed=True)
+                append_approval_audit_event(_audit_conn, audit_id, "session_policy", "skipped",
+                    message="Phase 6B session gate not yet implemented")
+
             from paper_trade_logger import approve_proposal
             result = approve_proposal(int(pid),
                 override_shares=body.get('shares'),
                 override_entry=body.get('entry'),
                 override_stop=body.get('stop'),
                 override_target=body.get('target'))
+
+            # ── AUDIT: Record market revalidation + risk gate results from approve_proposal ──
+            mr = result.get('market_revalidation') or {}
+            if _audit_conn and audit_id:
+                reval_passed = result.get('success', False) or mr.get('passed', False)
+                update_approval_audit(_audit_conn, audit_id,
+                    market_revalidation=mr,
+                    gate="market_revalidation", gate_passed=mr.get('passed', False),
+                    fields={
+                        "live_price": mr.get("live_price"),
+                        "adjusted_entry": mr.get("adjusted_entry"),
+                        "rr_at_approval": mr.get("live_rr"),
+                        "spread_pct": mr.get("live_spread_pct"),
+                        "quote_age_minutes": (mr.get("quote_age_seconds") or 0) / 60 if mr.get("quote_age_seconds") else None,
+                    })
+                append_approval_audit_event(_audit_conn, audit_id, "market_revalidation",
+                    "passed" if mr.get('passed') else "blocked",
+                    message=mr.get("message", ""))
+
+                if not mr.get('passed', True) and not result.get('success'):
+                    finalize_approval_audit(_audit_conn, audit_id, "blocked_market_revalidation",
+                        result.get('message', 'Market revalidation blocked'))
+                elif result.get('risk_gate') and result.get('risk_gate') != 'APPROVED' and not result.get('success'):
+                    # Risk gate blocked
+                    update_approval_audit(_audit_conn, audit_id,
+                        risk_gate={"result": result.get('risk_gate'), "codes": result.get('blockers', [])},
+                        gate="risk_gate", gate_passed=False)
+                    finalize_approval_audit(_audit_conn, audit_id, "blocked_risk_gate",
+                        result.get('message', 'Risk gate blocked'))
+                    append_approval_audit_event(_audit_conn, audit_id, "risk_gate", "blocked",
+                        message=result.get('message', ''))
+                elif result.get('success'):
+                    # Both gates passed — record risk gate pass + paper trade creation
+                    update_approval_audit(_audit_conn, audit_id,
+                        risk_gate={"result": result.get('risk_gate', 'APPROVED')},
+                        gate="risk_gate", gate_passed=True)
+                    append_approval_audit_event(_audit_conn, audit_id, "risk_gate", "passed")
+                    update_approval_audit(_audit_conn, audit_id,
+                        paper_trade={"paper_trade_id": result.get('paper_trade_id'),
+                                     "entry": result.get('entry'), "stop": result.get('stop'),
+                                     "target": result.get('target'), "shares": result.get('shares')},
+                        gate="paper_trade", gate_passed=True)
+                    append_approval_audit_event(_audit_conn, audit_id, "paper_trade_created", "ok",
+                        message=f"Paper trade #{result.get('paper_trade_id')} created")
+                else:
+                    # Generic failure (e.g., trade creation failed)
+                    finalize_approval_audit(_audit_conn, audit_id, "failed_trade_creation",
+                        result.get('message', 'Approval failed'))
 
             # Store research packet metadata on the paper trade
             if result.get('success') and result.get('paper_trade_id') and rp:
@@ -12636,6 +12724,37 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     alpaca_result = {"status": "failed", "error": str(_alpaca_err)}
                     print(f"  [instant-exec] Alpaca submit failed: {_alpaca_err}")
 
+            # ── AUDIT: Record Alpaca submission and finalize ──
+            if _audit_conn and audit_id:
+                if alpaca_result:
+                    alp_ok = alpaca_result.get('status') == 'submitted'
+                    update_approval_audit(_audit_conn, audit_id,
+                        alpaca_response=alpaca_result,
+                        gate="alpaca_submission", gate_passed=alp_ok)
+                    append_approval_audit_event(_audit_conn, audit_id, "alpaca_submission",
+                        "submitted" if alp_ok else "failed",
+                        message=str(alpaca_result.get('status', '')))
+                if result.get('success'):
+                    final_status = "approved_paper_submitted" if (alpaca_result and alpaca_result.get('status') == 'submitted') else "approved_pending_submission"
+                    finalize_approval_audit(_audit_conn, audit_id, final_status,
+                        result.get('message', 'Approved'))
+
+            # Build approval_audit response
+            _audit_resp = {"audit_id": audit_id, "status": "unknown", "audit_created": audit_id is not None}
+            if _audit_conn and audit_id:
+                try:
+                    _ar = _db_query("SELECT approval_status, gate_sequence FROM paper_proposal_approval_audit WHERE id=%s", [audit_id], fetch="one")
+                    if _ar:
+                        _audit_resp["status"] = _ar.get("approval_status", "unknown")
+                        _audit_resp["gate_sequence"] = _ar.get("gate_sequence", [])
+                except Exception:
+                    pass
+            if _audit_conn:
+                try:
+                    _audit_conn.close()
+                except Exception:
+                    pass
+
             return 200 if result.get('success') else 400, {
                 "ok": result.get('success', False),
                 "proposal_id": int(pid),
@@ -12645,11 +12764,26 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "paper_trade_id": result.get('paper_trade_id'),
                 "blockers": result.get('blockers', []),
                 "market_revalidation": result.get('market_revalidation'),
+                "approval_audit": _audit_resp,
                 "alpaca_submission": alpaca_result,
                 "data": result,
             }
         except Exception as e:
-            return 500, {"ok": False, "error": str(e), "message": str(e)}
+            # ── AUDIT: Record unexpected error fail-closed ──
+            if _audit_conn and audit_id:
+                try:
+                    finalize_approval_audit(_audit_conn, audit_id, "error_fail_closed", str(e)[:500])
+                    append_approval_audit_event(_audit_conn, audit_id, "error", "fail_closed",
+                        message=str(e)[:500])
+                except Exception:
+                    pass
+            if _audit_conn:
+                try:
+                    _audit_conn.close()
+                except Exception:
+                    pass
+            return 500, {"ok": False, "error": str(e), "message": str(e),
+                         "approval_audit": {"audit_id": audit_id, "status": "error_fail_closed", "audit_created": audit_id is not None}}
 
     if method == "POST" and base_path == "/api/v2/paper-proposals/reject":
         try:
