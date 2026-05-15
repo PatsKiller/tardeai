@@ -14007,6 +14007,145 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
+    # ── Morning Brief (Session A-3.5) ──────────────────────────────────────
+    if base_path == "/api/v2/morning-brief":
+        try:
+            from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+            _now = _dt.now(_tz.utc)
+            _since = (_now - _td(hours=15)).isoformat()  # ~5 PM yesterday
+
+            # 1. Holdings guard
+            _hg = {"ok": False, "portfolio_value": 0, "threshold": 1_000_000}
+            try:
+                _hj = _load_json(STATE_DIR / "holdings.json") or {}
+                _hv = _hj.get("portfolio_totals", {}).get("total_value", 0)
+                _hg = {"ok": _hv > 1_000_000, "portfolio_value": round(_hv, 2), "threshold": 1_000_000}
+            except Exception:
+                pass
+
+            # 2. Paper account
+            _pa = {"equity": 0, "open_positions": 0, "cash": 0, "heat_pct": 0}
+            try:
+                _paper_size = float(os.getenv("PAPER_ACCOUNT_SIZE", "100000"))
+                _open = _db_query("SELECT COUNT(*) as cnt, COALESCE(SUM(dollar_risk),0) as risk FROM paper_trades WHERE status='open'", fetch="one") or {}
+                _pa["open_positions"] = _open.get("cnt", 0)
+                _pa["heat_pct"] = round(float(_open.get("risk", 0)) / _paper_size, 4) if _paper_size > 0 else 0
+                try:
+                    import requests as _rq
+                    _ak = os.getenv("ALPACA_API_KEY", "")
+                    _as = os.getenv("ALPACA_SECRET_KEY", "")
+                    _r = _rq.get("https://paper-api.alpaca.markets/v2/account",
+                                 headers={"APCA-API-KEY-ID": _ak, "APCA-API-SECRET-KEY": _as}, timeout=5)
+                    if _r.ok:
+                        _acct = _r.json()
+                        _pa["equity"] = round(float(_acct.get("equity", 0)), 2)
+                        _pa["cash"] = round(float(_acct.get("cash", 0)), 2)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # 3. Overnight activity
+            _oa = {"since": _since, "proposals_created": 0, "proposals_approved": 0,
+                   "trades_opened": 0, "trades_closed": 0, "risk_gate_blocks": {}}
+            try:
+                _pc = _db_query("SELECT COUNT(*) as c FROM paper_trade_proposals WHERE created_at > %s", [_since], fetch="one") or {}
+                _oa["proposals_created"] = _pc.get("c", 0)
+                _ap = _db_query("SELECT COUNT(*) as c FROM paper_trade_proposals WHERE approved_at > %s", [_since], fetch="one") or {}
+                _oa["proposals_approved"] = _ap.get("c", 0)
+                _to = _db_query("SELECT COUNT(*) as c FROM paper_trades WHERE created_at > %s", [_since], fetch="one") or {}
+                _oa["trades_opened"] = _to.get("c", 0)
+                _tc = _db_query("SELECT COUNT(*) as c FROM paper_trades WHERE closed_at > %s", [_since], fetch="one") or {}
+                _oa["trades_closed"] = _tc.get("c", 0)
+                _rgb = _db_query("""SELECT reason_codes::text as r, COUNT(*) as c FROM audit_log
+                    WHERE event_type LIKE 'BLOCKED_%%' AND created_at > %s
+                    GROUP BY reason_codes::text""", [_since]) or []
+                _blocks = {}
+                for _b in _rgb:
+                    _rt = str(_b.get("r", ""))
+                    if "HEAT" in _rt: _blocks["H1_heat"] = _blocks.get("H1_heat", 0) + _b.get("c", 0)
+                    elif "CONCENTRATION" in _rt: _blocks["H2_concentration"] = _blocks.get("H2_concentration", 0) + _b.get("c", 0)
+                    elif "SECTOR" in _rt: _blocks["H3_sector"] = _blocks.get("H3_sector", 0) + _b.get("c", 0)
+                    else: _blocks["other"] = _blocks.get("other", 0) + _b.get("c", 0)
+                _oa["risk_gate_blocks"] = _blocks
+            except Exception:
+                pass
+
+            # 4. Strategy health
+            _sh = {"total_active": 0, "newly_activated": 0, "stuck_strategies": []}
+            try:
+                _act = _db_query("SELECT COUNT(DISTINCT strategy_id) as c FROM paper_trades WHERE status='open' OR closed_at > NOW() - INTERVAL '14 days'", fetch="one") or {}
+                _sh["total_active"] = _act.get("c", 0)
+                _na = _db_query("SELECT COUNT(*) as c FROM strategy_activations", fetch="one") or {}
+                _sh["newly_activated"] = _na.get("c", 0)
+                _stuck = _db_query("""SELECT sa.strategy_id FROM strategy_activations sa
+                    WHERE NOT EXISTS (SELECT 1 FROM paper_trade_proposals p WHERE p.strategy_id = sa.strategy_id AND p.created_at > sa.activated_at)
+                    AND sa.activated_at < NOW() - INTERVAL '3 days'""") or []
+                _sh["stuck_strategies"] = [s["strategy_id"] for s in _stuck]
+            except Exception:
+                pass
+
+            # 5. Closed trades 24h
+            _ct = []
+            try:
+                _rows = _db_query("""SELECT pt.symbol, pt.strategy_id, pt.pnl, pt.outcome_verdict, pt.exit_reason,
+                    pta.stop_too_tight, LEFT(pta.lesson_text, 150) as lesson
+                    FROM paper_trades pt LEFT JOIN post_trade_price_analysis pta ON pta.trade_id = pt.id
+                    WHERE pt.closed_at > NOW() - INTERVAL '24 hours' AND pt.lifecycle_state = 'closed'
+                    ORDER BY pt.closed_at DESC""") or []
+                _ct = [{k: _json_clean(v) for k, v in r.items()} for r in _rows]
+            except Exception:
+                pass
+
+            # 6. Alerts 24h
+            _al = {"urgent": 0, "digest": 0, "dashboard_only": 0}
+            try:
+                _ac = _db_query("""SELECT tier, COUNT(*) as c FROM alert_dispatch_log
+                    WHERE created_at > NOW() - INTERVAL '24 hours'
+                    GROUP BY tier""") or []
+                for _a in _ac:
+                    _t = str(_a.get("tier", "")).lower()
+                    if "urgent" in _t: _al["urgent"] = _a.get("c", 0)
+                    elif "digest" in _t: _al["digest"] = _a.get("c", 0)
+                    else: _al["dashboard_only"] = _al.get("dashboard_only", 0) + _a.get("c", 0)
+            except Exception:
+                pass
+
+            # 7. Action items
+            _items = []
+            try:
+                # A) Stuck strategies
+                for _s in _sh.get("stuck_strategies", []):
+                    _items.append({"severity": "warning", "code": "STUCK_STRATEGY",
+                                   "message": f"{_s}: 0 proposals since activation, 3+ days idle"})
+                # B) Stop pattern
+                _sp = _db_query("""SELECT strategy_id,
+                    ROUND(100.0 * COUNT(*) FILTER (WHERE stop_too_tight) / NULLIF(COUNT(*), 0), 0) as pct
+                    FROM post_trade_price_analysis GROUP BY strategy_id
+                    HAVING COUNT(*) >= 3 AND COUNT(*) FILTER (WHERE stop_too_tight) * 100.0 / COUNT(*) > 50""") or []
+                for _s in _sp:
+                    _items.append({"severity": "info", "code": "STOP_PATTERN",
+                                   "message": f"{_s['strategy_id']} stop_too_tight at {_s['pct']}%"})
+                # C) Heat approaching
+                if _pa.get("heat_pct", 0) > 0.045:
+                    _items.append({"severity": "warning", "code": "HEAT_APPROACHING",
+                                   "message": f"Heat at {_pa['heat_pct']:.1%}, approaching 6% hard limit"})
+            except Exception:
+                pass
+
+            return 200, {"ok": True, "data": {
+                "generated_at": _now.isoformat(),
+                "holdings_guard": _hg,
+                "paper_account": _pa,
+                "overnight_activity": _oa,
+                "strategy_health": _sh,
+                "closed_trades_24h": _ct,
+                "alerts_24h": _al,
+                "action_items": _items,
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Strategy Analytics Dashboard ─────────────────────────────────────────
     if base_path.startswith("/api/v2/strategy-analytics/"):
         _panel = base_path[len("/api/v2/strategy-analytics/"):].strip("/")

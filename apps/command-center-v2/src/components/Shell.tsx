@@ -78,6 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/system-health', label: 'System Health' },
     { to: '/strategy-admin', label: 'Strategy Admin' },
     { to: '/strategy-analytics', label: 'Strategy Analytics' },
+    { to: '/bot-morning-brief', label: 'Bot Morning Brief' },
     { to: '/weekly-learning', label: 'Weekly Learning' },
     { to: '/self-improvement', label: 'Self-Improvement' },
     { to: '/backtesting', label: 'Backtesting' },
