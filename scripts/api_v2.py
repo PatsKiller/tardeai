@@ -14425,10 +14425,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if _panel == "screeners":
             if method == "GET":
                 try:
-                    rows = _db_query("""SELECT id, display_name, description, group_name, strategy_class,
+                    _raw = _db_query("""SELECT id, display_name, description, group_name, strategy_class,
                         strategies, finviz_url, run_windows, status, enabled, quality_gates,
                         last_run_at, last_result_count, change_log, created_at, updated_at
                         FROM screener_config ORDER BY group_name, display_name""") or []
+                    rows = []
+                    for r in _raw:
+                        row = dict(r)
+                        for k in ('last_run_at', 'created_at', 'updated_at'):
+                            if row.get(k) and hasattr(row[k], 'isoformat'):
+                                row[k] = row[k].isoformat()
+                        rows.append(row)
                     # Strategy coverage gap analysis
                     ALL_STRATEGIES = [
                         'momentum_scalp','gap_and_go','swing_trade','swing_breakout',
