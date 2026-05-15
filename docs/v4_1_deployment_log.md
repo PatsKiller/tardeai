@@ -1,5 +1,43 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 6D — Proposal Stale-Time Sweeper — 2026-05-15
+
+### Summary
+Stale proposals are now flagged before an operator clicks approve. Strategy-aware freshness thresholds ensure old proposals don't hit the approval gates.
+
+### Approval Flow (complete)
+```
+Approve → Audit → Freshness Gate → Session Gate → Revalidation → Risk Gate → Paper Trade → Alpaca
+```
+
+### Stale Thresholds
+| Strategy | Stale After |
+|----------|-------------|
+| momentum_scalp, gap_and_go, scalp | 60 min |
+| screener, day_trade, momentum | 4 hours |
+| swing, swing_breakout | 3 trading days |
+| recovery_watch, defense_thesis | 5 trading days |
+| income, dividend, position | 10 trading days |
+| unknown | 24 hours |
+
+### Files Added
+- `scripts/phase6_proposal_staleness_policy.py` — pure classifier
+- `scripts/sweep_stale_paper_proposals.py` — sweeper (dry-run default)
+- `scripts/report_phase6_stale_proposals.py` — summary report
+- `scripts/create_phase6_stale_sweeper_schema.py` — audit table
+- `tests/test_phase6_proposal_stale_sweeper.py` — 18 unit tests
+
+### Test Results
+- Unit tests: **18/18 passed**
+- Full regression: **71/71 passed** (24 + 12 + 17 + 18)
+
+### Safety Audit: 20/20 PASSED
+
+### Production Impact
+Paper proposals only. Sweeper never deletes proposals, creates trades, or submits orders. Cron not scheduled — manual only until Phase 6E.
+
+---
+
 ## Incubator Promoter RSI Gate Fix — 2026-05-15
 
 ### Summary

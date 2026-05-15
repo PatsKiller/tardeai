@@ -12614,6 +12614,43 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if ds in cautious_states:
                     approval_mode = 'cautious_confirmed' if ds == 'CAUTIOUS_PAPER_TEST' else 'first_sample_learning_confirmed'
 
+            # ── GATE: Proposal Freshness (Phase 6D) ──
+            _proposal_freshness = None
+            try:
+                from phase6_proposal_staleness_policy import classify_proposal_staleness
+                _proposal_freshness = classify_proposal_staleness(_prop_snap)
+            except Exception as _pf_err:
+                _proposal_freshness = {"fresh": False, "status": "error",
+                                       "reason": f"Freshness check error: {_pf_err}. Blocked fail-closed."}
+
+            if _audit_conn and audit_id:
+                update_approval_audit(_audit_conn, audit_id,
+                    gate="proposal_freshness", gate_passed=_proposal_freshness.get("fresh", False),
+                    fields={"quote_age_minutes": _proposal_freshness.get("age_minutes")})
+                append_approval_audit_event(_audit_conn, audit_id, "proposal_freshness",
+                    "fresh" if _proposal_freshness.get("fresh") else "stale",
+                    message=_proposal_freshness.get("reason", ""))
+
+            if _proposal_freshness.get("status") == "terminal":
+                pass  # Terminal proposals will be caught by the status check above
+            elif not _proposal_freshness.get("fresh", False) and _proposal_freshness.get("status") != "terminal":
+                if _audit_conn and audit_id:
+                    finalize_approval_audit(_audit_conn, audit_id, "blocked_stale_proposal",
+                        _proposal_freshness.get("reason", "Proposal is stale"))
+                if _audit_conn:
+                    try: _audit_conn.close()
+                    except Exception: pass
+                return 400, {
+                    "ok": False,
+                    "error": _proposal_freshness.get("reason", "Proposal is stale or expired. Refresh before approving."),
+                    "message": _proposal_freshness.get("reason", "Proposal is stale or expired."),
+                    "proposal_freshness": _proposal_freshness,
+                    "market_session_policy": None,
+                    "market_revalidation": None,
+                    "approval_audit": {"audit_id": audit_id, "status": "blocked_stale_proposal",
+                                       "gate_sequence": ["proposal_freshness"], "audit_created": True},
+                }
+
             # ── GATE: Market Session Policy (Phase 6B) ──
             _session_policy = None
             try:
@@ -12789,6 +12826,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "message": result.get('message', 'Approved for paper test' if result.get('success') else 'Approval failed'),
                 "paper_trade_id": result.get('paper_trade_id'),
                 "blockers": result.get('blockers', []),
+                "proposal_freshness": _proposal_freshness,
                 "market_session_policy": _session_policy,
                 "market_revalidation": result.get('market_revalidation'),
                 "approval_audit": _audit_resp,
