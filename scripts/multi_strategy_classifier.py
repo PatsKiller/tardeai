@@ -301,36 +301,38 @@ def match_filters(scan: dict, filters: dict) -> tuple[bool, list[str], list[str]
             if perf_f > float(min_rs) * 100:
                 match_reasons.append(f"1m perf {perf_f:.1f}%")
 
-    # ── Social sentiment (from trade_ai_scans social columns) ──
-    social_score = scan.get("social_score")
-    social_sentiment = scan.get("social_sentiment")
-    social_bullish_pct = scan.get("social_bullish_pct")
+    # ── Supplemental signals (social, YouTube) ──
+    # These are SUPPLEMENTAL — they boost confidence but do NOT count
+    # toward the 2-match minimum for strategy classification.
+    # Without this separation, any stock with social mentions + price-in-range
+    # matches every strategy (MLGO-on-18-strategies bug).
+    supplemental_reasons = []
     social_reddit = scan.get("social_reddit") or 0
     social_stocktwits = scan.get("social_stocktwits") or 0
     social_wsb = scan.get("social_wsb") or 0
     total_social = int(social_reddit) + int(social_stocktwits) + int(social_wsb)
+    social_bullish_pct = scan.get("social_bullish_pct")
+    spike_ratio = scan.get("social_spike_ratio")
+    yt_count = scan.get("youtube_mention_count") or 0
 
     if total_social > 0:
-        match_reasons.append(f"social {total_social} mentions")
+        supplemental_reasons.append(f"social {total_social} mentions")
     if social_bullish_pct is not None and float(social_bullish_pct) >= 70:
-        match_reasons.append(f"social {float(social_bullish_pct):.0f}% bullish")
-
-    # ── Social volume spikes ──
-    spike_ratio = scan.get("social_spike_ratio")
+        supplemental_reasons.append(f"social {float(social_bullish_pct):.0f}% bullish")
     if spike_ratio is not None and float(spike_ratio) >= 2.0:
-        match_reasons.append(f"social spike {float(spike_ratio):.1f}x")
-
-    # ── YouTube transcript mentions ──
-    yt_mentions = scan.get("youtube_mentions")
-    yt_count = scan.get("youtube_mention_count") or 0
+        supplemental_reasons.append(f"social spike {float(spike_ratio):.1f}x")
     if yt_count > 0:
-        match_reasons.append(f"YouTube {yt_count} transcript mentions")
+        supplemental_reasons.append(f"YouTube {yt_count} transcript mentions")
 
     # ── Final verdict ──
-    # Must have zero rejections AND at least 2 positive criteria
+    # Must have zero rejections AND at least 2 STRATEGY-SPECIFIC criteria
+    # (social/YouTube are supplemental — they don't count toward the minimum)
     has_rejections = len(reject_reasons) > 0
     has_enough_criteria = len(match_reasons) >= 2
     matches = not has_rejections and has_enough_criteria
+    # Add supplemental to match_reasons AFTER the threshold check (for display only)
+    if matches:
+        match_reasons.extend(supplemental_reasons)
     return matches, match_reasons, reject_reasons
 
 
