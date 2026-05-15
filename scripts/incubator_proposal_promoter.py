@@ -78,12 +78,16 @@ RISK_BUDGET = 150  # dollars per trade
 STRATEGY_GROUPS = {
     'gap_and_go': 'MOMENTUM', 'momentum_scalp': 'MOMENTUM',
     'swing_breakout': 'MOMENTUM', 'earnings_catalyst': 'MOMENTUM',
+    'earnings_post_momentum': 'MOMENTUM', 'earnings_pre_buildup': 'MOMENTUM',
     'income_add': 'INCOME', 'dividend_growth_compounder': 'INCOME',
     'covered_call_income': 'INCOME', 'high_yield_income_bdc': 'INCOME',
+    'reit_income': 'INCOME', 'international_dividend': 'INCOME',
     'core_growth_compounder': 'GROWTH', 'sector_rotation': 'GROWTH',
     'defense_thesis': 'GROWTH', 'speculative_growth': 'GROWTH',
+    'core_index': 'GROWTH',
     'swing_trade': 'REVERSION', 'recovery_watch': 'REVERSION',
     'bond_income': 'REVERSION', 'cash_or_stable': 'REVERSION',
+    'fib_retracement_bounce': 'REVERSION', 'tax_loss_harvest': 'REVERSION',
 }
 MAX_ACTIVE_PROPOSALS = 20  # global ceiling
 MAX_PER_STRATEGY = 5  # per strategy group ceiling
