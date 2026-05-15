@@ -1,6 +1,6 @@
 # Phase 6 — Execution Safety: Market Revalidation
 
-**Status:** Phase 6A COMPLETE, Phase 6B COMPLETE, Phase 6C COMPLETE
+**Status:** Phase 6A COMPLETE, Phase 6B COMPLETE, Phase 6C COMPLETE, Phase 6D COMPLETE
 
 ## Purpose
 
@@ -97,6 +97,25 @@ from paper_trade_logger import validate_paper_proposal_live_market
 | Audit report script | IMPLEMENTED |
 | Safety audit | PASSED |
 | Operator runbook | COMPLETE |
+
+### Phase 6D — Proposal Stale-Time Sweeper
+
+| Item | Status |
+|------|--------|
+| Staleness policy helper | IMPLEMENTED |
+| Strategy-aware thresholds | CONFIGURED |
+| Sweeper script (dry-run default) | IMPLEMENTED |
+| Stale sweep audit table | CREATED |
+| Approval freshness gate | WIRED (before session gate) |
+| Unit tests (18/18) | PASSED |
+| Report script | IMPLEMENTED |
+| Safety audit (20/20) | PASSED |
+
+### Approval Flow (complete)
+
+```
+Approve → Audit → Freshness Gate → Session Gate → Revalidation → Risk Gate → Paper Trade → Alpaca
+```
 
 ### Incubator Promoter RSI Gate Fix
 
