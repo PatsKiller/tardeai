@@ -30,7 +30,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 DEFAULT_MAX_DOLLAR_SIZE = 2000
 DEFAULT_MAX_DOLLAR_RISK = 150
 DEFAULT_RISK_PER_TRADE = 150
-STRATEGY_PRIORITY = ["momentum_scalp", "gap_and_go", "swing_breakout", "earnings_catalyst", "sector_rotation"]
+STRATEGY_PRIORITY = ["momentum_scalp", "gap_and_go", "swing_breakout", "earnings_catalyst", "sector_rotation",
+                     "speculative_growth", "recovery_watch", "fib_retracement_bounce", "earnings_post_momentum", "swing_trade"]
 
 BASE = str(PROJECT_ROOT)
 PYTHON = str(PROJECT_ROOT / ".venv" / "bin" / "python")
