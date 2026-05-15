@@ -1007,19 +1007,178 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
         return {'success': False, 'message': f'Manual proposal failed: {e}'}
 
 
+def validate_paper_proposal_live_market(
+    symbol: str,
+    entry: float,
+    stop: float,
+    target: float,
+    shares: int,
+    live_quote: dict,
+    now: datetime = None,
+    max_quote_age_minutes: float = 15,
+    max_block_drift_pct: float = 3.0,
+    warn_drift_pct: float = 1.5,
+    max_spread_pct: float = 1.5,
+    min_rr: float = 1.2,
+) -> dict:
+    """Pure market revalidation — no side effects, fully unit-testable.
+
+    Args:
+        symbol: Ticker symbol.
+        entry: Proposed entry price.
+        stop: Proposed stop loss.
+        target: Proposed target price.
+        shares: Proposed share count.
+        live_quote: Quote dict from get_best_quote() or equivalent.
+        now: Current UTC datetime (defaults to utcnow).
+        max_quote_age_minutes: Block if quote older than this.
+        max_block_drift_pct: Block if price drift exceeds this.
+        warn_drift_pct: Warn and adjust entry if drift exceeds this.
+        max_spread_pct: Block if spread exceeds this.
+        min_rr: Block if risk/reward below this.
+
+    Returns:
+        dict with ok, blocked, warnings, reason, checks, original/adjusted values.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    result = {
+        "ok": False,
+        "blocked": True,
+        "warnings": [],
+        "reason": "",
+        "checks": {
+            "quote_available": False,
+            "quote_age_minutes": None,
+            "quote_fresh": False,
+            "entry_drift_pct": None,
+            "stop_breached": False,
+            "spread_pct": None,
+            "rr": None,
+        },
+        "original_entry": entry,
+        "adjusted_entry": None,
+        "live_price": None,
+        "bid": None,
+        "ask": None,
+        "timestamp": now.isoformat(),
+    }
+
+    # ── Guard: valid proposal parameters ──
+    if not entry or entry <= 0:
+        result["reason"] = f"Cannot approve: proposal for {symbol} has no valid entry price."
+        return result
+    if not stop or stop <= 0:
+        result["reason"] = f"Cannot approve: proposal for {symbol} has no valid stop loss."
+        return result
+    if not target or target <= 0:
+        result["reason"] = f"Cannot approve: proposal for {symbol} has no valid target."
+        return result
+
+    # ── Check: quote available ──
+    live_price = live_quote.get("last_price") if live_quote else None
+    if not live_price or live_price <= 0:
+        result["reason"] = f"Cannot approve: no live price available for {symbol}. Stale data cannot be trusted."
+        return result
+
+    result["checks"]["quote_available"] = True
+    result["live_price"] = live_price
+    result["bid"] = live_quote.get("bid")
+    result["ask"] = live_quote.get("ask")
+
+    # ── Check: quote freshness ──
+    qt = live_quote.get("quote_timestamp")
+    if qt:
+        if isinstance(qt, str):
+            try:
+                qt = datetime.fromisoformat(qt.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                qt = None
+        if qt and hasattr(qt, 'tzinfo') and qt.tzinfo is None:
+            qt = qt.replace(tzinfo=timezone.utc)
+        elif qt and isinstance(qt, (int, float)):
+            qt = datetime.fromtimestamp(qt, tz=timezone.utc)
+        try:
+            age_sec = (now - qt).total_seconds()
+            age_min = round(age_sec / 60, 1)
+            result["checks"]["quote_age_minutes"] = age_min
+            max_age_sec = max_quote_age_minutes * 60
+            if age_sec > max_age_sec:
+                result["checks"]["quote_fresh"] = False
+                result["reason"] = f"Cannot approve: quote for {symbol} is {age_min}min old. Need fresh market data."
+                return result
+            result["checks"]["quote_fresh"] = True
+        except Exception as e:
+            result["reason"] = f"Cannot approve: unable to determine quote freshness for {symbol}. Failing closed."
+            return result
+    else:
+        result["checks"]["quote_fresh"] = True  # No timestamp = trust provider (Alpaca real-time)
+
+    # ── Check: stop already breached (long) ──
+    if live_price <= stop:
+        result["checks"]["stop_breached"] = True
+        result["reason"] = (f"Not a good trade under current conditions: {symbol} is at ${live_price:.2f}, "
+                            f"already at or below stop loss ${stop:.2f}. Would immediately stop out.")
+        return result
+
+    # ── Check: price drift ──
+    drift_pct = abs(live_price - entry) / entry * 100
+    result["checks"]["entry_drift_pct"] = round(drift_pct, 2)
+
+    if drift_pct > max_block_drift_pct:
+        direction = "above" if live_price > entry else "below"
+        result["reason"] = (f"Not a good trade under current conditions: {symbol} is now ${live_price:.2f}, "
+                            f"{drift_pct:.1f}% {direction} proposed entry ${entry:.2f}. "
+                            f"Trade parameters are stale — resubmit with fresh analysis.")
+        return result
+
+    # ── Check: spread ──
+    spread_pct = live_quote.get("spread_pct")
+    result["checks"]["spread_pct"] = spread_pct
+    if spread_pct and spread_pct > max_spread_pct:
+        result["reason"] = (f"Not a good trade under current conditions: {symbol} spread is {spread_pct:.2f}%, "
+                            f"too wide for safe execution. Wait for tighter liquidity.")
+        return result
+
+    # ── Check: R:R at current price ──
+    current_risk = abs(live_price - stop)
+    current_reward = abs(target - live_price)
+    live_rr = round(current_reward / current_risk, 2) if current_risk > 0 else 0
+    result["checks"]["rr"] = live_rr
+
+    if live_rr < min_rr:
+        orig_risk = abs(entry - stop)
+        orig_rr = round(abs(target - entry) / orig_risk, 2) if orig_risk > 0 else 0
+        result["reason"] = (f"Not a good trade under current conditions: {symbol} R:R has degraded from "
+                            f"{orig_rr}:1 to {live_rr}:1 at current price ${live_price:.2f}. "
+                            f"Reward no longer justifies the risk.")
+        return result
+
+    # ── All checks passed ──
+    result["ok"] = True
+    result["blocked"] = False
+    adjusted_entry = live_price if drift_pct > warn_drift_pct else entry
+    result["adjusted_entry"] = adjusted_entry
+
+    if drift_pct > warn_drift_pct:
+        direction = "above" if live_price > entry else "below"
+        result["warnings"].append(f"price_adjusted: {drift_pct:.1f}% {direction}, entry recalibrated to ${live_price:.2f}")
+        result["reason"] = (f"Approved with adjustment: {symbol} moved {drift_pct:.1f}% {direction} proposed entry. "
+                            f"Entry recalibrated from ${entry:.2f} to ${live_price:.2f}. R:R={live_rr}:1.")
+    else:
+        result["adjusted_entry"] = entry
+        result["reason"] = (f"Market conditions confirmed: {symbol} at ${live_price:.2f} "
+                            f"(drift {drift_pct:.1f}%), R:R={live_rr}:1. Approved.")
+
+    return result
+
+
 def _revalidate_market_conditions(symbol: str, entry: float, stop: float, target: float, shares: int) -> dict:
-    """Real-time market revalidation at approval time.
+    """Fetch live quote and run market revalidation. Wrapper around validate_paper_proposal_live_market().
 
-    Fetches live quote and checks whether the trade still makes sense
-    under current market conditions. Returns pass/fail with details.
-
-    Thresholds:
-      - Price drift > 3% from proposed entry → BLOCK
-      - Stop already breached → BLOCK
-      - R:R degraded below 1.2 → BLOCK
-      - No live quote available → BLOCK
-      - Spread > 1.5% → BLOCK
-      - Price drift 1.5-3% → WARN (adjust entry to current price)
+    This function handles the side effect (quote fetching) then delegates
+    to the pure validation function. Used by approve_proposal().
     """
     result = {
         "passed": False,
@@ -1042,7 +1201,7 @@ def _revalidate_market_conditions(symbol: str, entry: float, stop: float, target
         "message": "",
     }
 
-    # ── Fetch live quote ──
+    # ── Fetch live quote (side effect) ──
     try:
         quote = get_best_quote(symbol)
     except Exception as e:
@@ -1050,93 +1209,35 @@ def _revalidate_market_conditions(symbol: str, entry: float, stop: float, target
         result["message"] = f"Cannot approve: failed to fetch live market data for {symbol}"
         return result
 
-    live_price = quote.get("last_price") if quote else None
-    if not live_price or live_price <= 0:
+    if not quote or not quote.get("last_price"):
         result["blockers"].append("no_live_quote")
         result["message"] = f"Cannot approve: no live price available for {symbol}. Stale data cannot be trusted."
         return result
 
-    result["live_price"] = live_price
+    # ── Delegate to pure validation ──
+    check = validate_paper_proposal_live_market(
+        symbol=symbol, entry=entry, stop=stop, target=target,
+        shares=shares, live_quote=quote)
+
+    # ── Map pure result to legacy format ──
+    result["live_price"] = check.get("live_price")
     result["provider"] = quote.get("provider", "unknown")
-    result["live_spread_pct"] = quote.get("spread_pct")
+    result["live_spread_pct"] = check["checks"].get("spread_pct")
+    result["price_drift_pct"] = check["checks"].get("entry_drift_pct")
+    result["live_rr"] = check["checks"].get("rr")
+    age_min = check["checks"].get("quote_age_minutes")
+    result["quote_age_seconds"] = round(age_min * 60) if age_min is not None else None
+    result["message"] = check.get("reason", "")
 
-    # Quote age check
-    qt = quote.get("quote_timestamp")
-    if qt:
-        from datetime import timezone as _tz
-        _now = datetime.now(_tz.utc)
-        if hasattr(qt, 'tzinfo') and qt.tzinfo is None:
-            qt = qt.replace(tzinfo=_tz.utc)
-        elif isinstance(qt, (int, float)):
-            qt = datetime.fromtimestamp(qt, tz=_tz.utc)
-        try:
-            age = (_now - qt).total_seconds()
-            result["quote_age_seconds"] = round(age)
-            if age > 900:  # 15 min
-                result["blockers"].append(f"stale_quote: {round(age)}s old")
-                result["message"] = f"Cannot approve: quote for {symbol} is {round(age/60)}min old. Need fresh market data."
-                return result
-        except Exception:
-            pass
-
-    # ── Check 1: Stop already breached ──
-    if live_price <= stop:
-        result["blockers"].append(f"stop_breached: price ${live_price:.2f} <= stop ${stop:.2f}")
-        result["message"] = (f"Not a good trade under current conditions: {symbol} is at ${live_price:.2f}, "
-                             f"already at or below stop loss ${stop:.2f}. Would immediately stop out.")
-        return result
-
-    # ── Check 2: Price drift ──
-    drift_pct = abs(live_price - entry) / entry * 100 if entry > 0 else 0
-    result["price_drift_pct"] = round(drift_pct, 2)
-
-    if drift_pct > 3.0:
-        direction = "above" if live_price > entry else "below"
-        result["blockers"].append(f"price_drift_{drift_pct:.1f}pct: ${live_price:.2f} vs entry ${entry:.2f}")
-        result["message"] = (f"Not a good trade under current conditions: {symbol} is now ${live_price:.2f}, "
-                             f"{drift_pct:.1f}% {direction} proposed entry ${entry:.2f}. "
-                             f"Trade parameters are stale — resubmit with fresh analysis.")
-        return result
-
-    # ── Check 3: Spread too wide ──
-    spread_pct = quote.get("spread_pct")
-    if spread_pct and spread_pct > 1.5:
-        result["blockers"].append(f"wide_spread: {spread_pct:.2f}%")
-        result["message"] = (f"Not a good trade under current conditions: {symbol} spread is {spread_pct:.2f}%, "
-                             f"too wide for safe execution. Wait for tighter liquidity.")
-        return result
-
-    # ── Check 4: Recalculate R:R with current price ──
-    current_risk = abs(live_price - stop)
-    current_reward = abs(target - live_price)
-    live_rr = round(current_reward / current_risk, 2) if current_risk > 0 else 0
-    result["live_rr"] = live_rr
-
-    if live_rr < 1.2:
-        result["blockers"].append(f"rr_degraded: {live_rr}:1 (min 1.2:1)")
-        orig_risk = abs(entry - stop)
-        orig_rr = round(abs(target - entry) / orig_risk, 2) if orig_risk > 0 else 0
-        result["message"] = (f"Not a good trade under current conditions: {symbol} R:R has degraded from "
-                             f"{orig_rr}:1 to {live_rr}:1 at current price ${live_price:.2f}. "
-                             f"Reward no longer justifies the risk.")
-        return result
-
-    # ── Passed all checks — recalibrate if needed ──
-    result["passed"] = True
-    adjusted_entry = live_price if drift_pct > 1.5 else entry
-    adjusted_dollar_risk = round(abs(adjusted_entry - stop) * int(shares), 2)
-    result["adjusted_entry"] = adjusted_entry
-    result["adjusted_shares"] = shares
-    result["adjusted_dollar_risk"] = adjusted_dollar_risk
-
-    if drift_pct > 1.5:
-        direction = "above" if live_price > entry else "below"
-        result["warnings"].append(f"price_adjusted: {drift_pct:.1f}% {direction}, entry recalibrated to ${live_price:.2f}")
-        result["message"] = (f"Approved with adjustment: {symbol} moved {drift_pct:.1f}% {direction} proposed entry. "
-                             f"Entry recalibrated from ${entry:.2f} to ${live_price:.2f}. R:R={live_rr}:1.")
+    if check["ok"]:
+        result["passed"] = True
+        result["warnings"] = check.get("warnings", [])
+        adjusted = check.get("adjusted_entry", entry)
+        result["adjusted_entry"] = adjusted
+        result["adjusted_shares"] = shares
+        result["adjusted_dollar_risk"] = round(abs(adjusted - stop) * int(shares), 2)
     else:
-        result["message"] = (f"Market conditions confirmed: {symbol} at ${live_price:.2f} "
-                             f"(drift {drift_pct:.1f}%), R:R={live_rr}:1. Approved.")
+        result["blockers"].append(check.get("reason", "blocked"))
 
     return result
 

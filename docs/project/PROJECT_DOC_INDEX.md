@@ -99,6 +99,17 @@
 | `docs/project/SYSTEM_FACTS_LATEST.md` | System facts snapshot (check freshness) |
 | `docs/IMPROVEMENT_PLAN_2026-05-11.md` | 8-phase improvement plan (all phases complete — historical) |
 
+### Execution Safety — Phase 6
+| Document | Purpose |
+|----------|---------|
+| `docs/execution_safety/phase6_market_revalidation/00_README.md` | **Phase 6 index** — market revalidation gate status, block conditions, commands |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_scope.md` | Phase 6A scope — approval flow, block conditions, safety gates |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_code_review.md` | Code review — fail-closed analysis, bypass search |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_test_results.md` | Unit test results (24/24 passed) |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_api_validation_report.md` | API mock validation (7/7 passed) |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_safety_audit.md` | Safety audit — 15 checks all passed |
+| `docs/execution_safety/phase6_market_revalidation/v4_1_phase6a_operator_runbook.md` | Operator runbook — troubleshooting, rollback, emergency procedures |
+
 ### Discovery Artifacts
 | Document | Purpose |
 |----------|---------|
@@ -116,6 +127,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-15 | **Phase 6A**: Paper approval market revalidation hardened. Live quote gate before risk gate. Blocks stale/unfavorable conditions. 24 unit tests, 7 API mock scenarios passed. Dashboard patched. Safety audit passed. Production unchanged. |
 | 2026-05-14 | Phase 2 FINALIZED: Friday hybrid enabled. Phase 2D bounded offline promotion approved. Global embedding promotion blocked. Phase 2 closeout report written. |
 | 2026-05-14 | Phase 2C nightly enablement: daily 23:00 deep queue now uses --enable-hybrid-rag with two-stage lifecycle. Friday unchanged. Cron updated. Production RAG/embeddings unchanged. |
 | 2026-05-14 | Phase 2C offline integration pilot: hybrid_rag_context_adapter.py created, queue runner updated with --use-hybrid-rag opt-in. 20/20 jobs passed. RAG context added where none existed. No production changes. |

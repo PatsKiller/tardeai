@@ -675,9 +675,19 @@ export default function PaperProposals() {
       const r = await fetch(`/api/v2/paper-proposals/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
       if (!d.ok) {
-        alert(d.message || d.error || `${action} failed`)
+        // Show block reason including market revalidation details
+        const mr = d.market_revalidation
+        let msg = d.message || d.error || `${action} failed`
+        if (mr && mr.live_price) msg += `\n\nLive: $${mr.live_price} | Drift: ${mr.price_drift_pct ?? '?'}% | R:R: ${mr.live_rr ?? '?'} | Spread: ${mr.live_spread_pct ?? '?'}%`
+        alert(msg)
+      } else if (action === 'approve' && d.message) {
+        // Show approval confirmation with market revalidation summary
+        const mr = d.market_revalidation || d.data?.market_revalidation
+        let msg = d.message
+        if (mr && mr.live_price) msg += `\n\nLive: $${mr.live_price} | Drift: ${mr.price_drift_pct ?? '?'}% | R:R: ${mr.live_rr ?? '?'}`
+        if (mr && mr.warnings?.length) msg += `\nWarnings: ${mr.warnings.join(', ')}`
+        alert(msg)
       } else if (d.message) {
-        // Show success message for approve (e.g. "Approved for paper test")
         console.log(`[${action}] ${d.message}`)
       }
       refetch()
