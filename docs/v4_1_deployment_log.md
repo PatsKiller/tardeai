@@ -2023,3 +2023,25 @@ No global routing change. qwen3:14b remains STANDARD/REALTIME. Media/prose routi
 
 ### Rollback
 `./scripts/rollback_phase3_media_prose_routing.sh --disable`
+
+---
+
+## Phase 3D — Expand Media/Prose Routing — 2026-05-14
+
+### Expansion
+4 new approved workflows: markdown_cleanup, plain_language_rewrite, meeting_note_summary, newsletter_digest.
+Total approved: 18. Blocked: 12 (unchanged).
+
+### Pilot
+15/15 items OK, 0 fallbacks, 0 failures.
+Avg latency: 4,815ms. All using gemma3:4b.
+Workflows tested: 15 distinct types.
+
+### Model Residency
+All 3 models co-resident: nomic (0.6 GB) + qwen3:14b (10 GB) + gemma3:4b (4.3 GB) = ~15 GB.
+
+### Production Impact
+None. qwen3:14b remains STANDARD/REALTIME. nomic remains embedding. Phase 2H unchanged. No .env/cron/broker changes.
+
+### Recommendation
+Keep enabled. Expand further as content integrations accumulate. Phase 3 is functionally complete.
