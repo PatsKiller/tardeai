@@ -1938,3 +1938,35 @@ HOLD Phase 3. Options: additional smoke tests, try smaller model, keep qwen3:14b
 
 ### Cleanup Option
 `ollama rm gemma4:e4b` to reclaim 9.6 GB disk.
+
+---
+
+## Phase 3A Quick Smoke Test — gemma4:e4b — 2026-05-14
+
+### Patch
+Stopped slow full-matrix run. Patched script: /no_think baseline, 90s timeout, lock, quick mode.
+
+### Results
+| Metric | Baseline (qwen3 /no_think) | Candidate (gemma4) |
+|--------|---------------------------|-------------------|
+| Avg score | 3.36 | 3.51 |
+| Avg latency | 15,918ms | 15,830ms |
+| Tests | 5 | 11 |
+| Timeouts | 0 | 1 |
+| Verdict | — | **TIE** |
+
+### Key Findings
+1. gemma4 quality matches qwen3 (TIE at ~3.4-3.5)
+2. First call timeout on cold load (~90s), subsequent calls fast (6-16s)
+3. "system" prompt style produced best results (score 4.0)
+4. Initial poor result was likely cold-load + wrong prompt format
+5. gemma4 is 9.6 GB — cannot coexist with qwen3:14b (fails lightweight goal)
+6. qwen3 baseline with /no_think returned empty for 4/5 tests (possible issue)
+
+### Production Impact
+None. qwen3:14b + nomic-embed-text restored.
+
+### Recommendation
+Reject gemma4:e4b for Phase 3 lightweight content model — it's too large (9.6 GB).
+Keep qwen3:14b for content tasks or test a truly small model (~2-4 GB).
+Remove gemma4:e4b to reclaim disk: `ollama rm gemma4:e4b`
