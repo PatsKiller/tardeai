@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, lazy, Suspense } from 'react'
 import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
+const ScreenerConfigModal = lazy(() => import('../components/ScreenerConfigModal'))
 
 const mono: React.CSSProperties = { fontFamily: 'monospace' }
 
@@ -732,6 +733,7 @@ export default function PaperProposals() {
   }
 
   const [promoteState, setPromoteState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [showScreenerConfig, setShowScreenerConfig] = useState(false)
   const [promoteResult, setPromoteResult] = useState<string>('')
 
   const runPromote = async () => {
@@ -819,6 +821,11 @@ export default function PaperProposals() {
               color: promoteState === 'running' ? '#A855F7' : promoteState === 'done' ? 'var(--green)' : promoteState === 'error' ? 'var(--red)' : '#A855F7',
               minWidth: 140 }}>
             {promoteState === 'running' ? 'Promoting...' : promoteState === 'done' ? promoteResult : promoteState === 'error' ? promoteResult : 'Promote from Incubator'}
+          </button>
+          <button onClick={() => setShowScreenerConfig(true)}
+            style={{ fontSize: 10, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+              background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: '#06B6D4' }}>
+            Screener Config
           </button>
         </div>
       } />
@@ -954,6 +961,12 @@ export default function PaperProposals() {
           <ProposalCard key={p.id} p={p} act={act} acting={acting} />
         ))}
       </div>
+
+      {showScreenerConfig && (
+        <Suspense fallback={null}>
+          <ScreenerConfigModal onClose={() => setShowScreenerConfig(false)} />
+        </Suspense>
+      )}
     </div>
   )
 }
