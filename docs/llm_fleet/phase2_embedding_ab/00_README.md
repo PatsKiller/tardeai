@@ -105,10 +105,18 @@ See `v4_1_phase2d_bounded_offline_promotion.md`.
 - **0% empty results** for both models
 - Production unchanged, global promotion blocked
 
+## Phase 2G: Limited Canary (2026-05-14)
+
+- Canary config: `config/phase2g_hybrid_canary.yaml`
+- 16/16 queries OK across 6 workflows, 0 errors
+- Policy enforcement: blocked workflows correctly refused
+- Rollback: `./scripts/rollback_phase2g_canary.sh --disable`
+- Audit: `.venv/bin/python scripts/audit_phase2g_canary_status.py`
+- Phase 2H global promotion: **BLOCKED**
+
 ## Next Phase
 
-Phase 2G: Limited canary (pending operator approval).
-Then Phase 3: Small media/prose model pilot.
+Phase 3: Small media/prose model pilot (pending operator approval).
 
 ## Monitoring and Rollback
 
