@@ -8125,6 +8125,11 @@ def _paper_proposals_enriched():
                 verdict_color = 'green'
                 verdict_reason = "Clean entry, all gates clear"
                 ready_count += 1
+            elif prop.get('action_state') == 'BLOCKED':
+                verdict = 'BLOCKED'
+                verdict_color = 'red'
+                verdict_reason = "Execution gates failed — run Check Execution for details"
+                review_count += 1
             else:
                 verdict = 'NEEDS_REVIEW'
                 verdict_color = 'yellow'
