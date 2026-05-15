@@ -544,8 +544,23 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         symbol_counts.setdefault(symbol, set()).add(STRATEGY_GROUPS.get(strategy_id, 'OTHER'))
         results.append(f"PROMOTED: {symbol} ({strategy_key}, score={score}, {screener_name})")
 
+    # Post-run: rank proposals per symbol (Phase 6)
+    promoted_symbols = set()
+    for r in results:
+        if r.startswith("PROMOTED:"):
+            sym = r.split("PROMOTED:")[1].strip().split(" ")[0]
+            promoted_symbols.add(sym)
+    if promoted_symbols:
+        try:
+            from auto_proposal_generator import rank_proposals_for_symbol
+            for sym in promoted_symbols:
+                rank_proposals_for_symbol(conn, sym, window_hours=24)
+        except Exception as e:
+            log.warning(f"[promoter] Ranking pass failed: {e}")
+
     cur.close()
-    conn.close()
+    if conn and not conn.closed:
+        conn.close()
     return results, promoted, skipped
 
 

@@ -282,6 +282,63 @@ def check_recently_closed(conn, symbol: str, strategy_id: str, cooldown_hours: i
     }
 
 
+def rank_proposals_for_symbol(conn, symbol: str, window_hours: int = 24):
+    """Rank all proposals for a symbol created within the window.
+
+    Rules (from design doc, operator decisions Q1/Q2):
+    - Rank within screener-matched set only (don't invent new strategies)
+    - Sort by signal_score DESC
+    - Top score gets is_top_pick=True, rank=1
+    - Anything within 5% of top AND confidence_score > 65 is tied (also top_pick)
+    - Everything else gets is_top_pick=False
+    - All get rank_among_peers and peer_group_id for audit
+
+    Returns number of proposals ranked.
+    """
+    cur = conn.cursor()
+    # Get all proposals for this symbol in the time window
+    cur.execute("""
+        SELECT id, strategy_id, signal_score, confidence_score
+        FROM paper_trade_proposals
+        WHERE symbol = %s
+          AND created_at > NOW() - (%s || ' hours')::interval
+          AND status NOT IN ('REJECTED', 'RISK_BLOCKED')
+        ORDER BY COALESCE(signal_score, 0) DESC, COALESCE(confidence_score, 0) DESC
+    """, [symbol, str(window_hours)])
+    rows = cur.fetchall()
+    if len(rows) <= 1:
+        # Single proposal or none — mark it as top pick if it exists
+        if rows:
+            cur.execute("""UPDATE paper_trade_proposals
+                SET is_top_pick=TRUE, rank_among_peers=1, peer_group_id=%s
+                WHERE id=%s""", [f"{symbol}_{rows[0][0]}", rows[0][0]])
+            conn.commit()
+        return len(rows)
+
+    peer_group_id = f"{symbol}_{rows[0][0]}"
+    top_score = float(rows[0][2] or 0)
+    threshold_5pct = top_score * 0.95  # within 5% of top
+
+    ranked = 0
+    for rank_idx, (pid, strat, score, conf) in enumerate(rows):
+        score_f = float(score or 0)
+        conf_f = float(conf or 0)
+        is_top = False
+        if rank_idx == 0:
+            is_top = True
+        elif score_f >= threshold_5pct and conf_f >= 65:
+            is_top = True  # tied — within 5% and high confidence
+        cur.execute("""UPDATE paper_trade_proposals
+            SET is_top_pick=%s, rank_among_peers=%s, peer_group_id=%s
+            WHERE id=%s""", [is_top, rank_idx + 1, peer_group_id, pid])
+        ranked += 1
+
+    conn.commit()
+    log.info(f"[ranker] {symbol}: ranked {ranked} proposals, "
+             f"top_score={top_score}, threshold={threshold_5pct:.1f}")
+    return ranked
+
+
 def check_rejection_cooldown(conn, symbol: str, force: bool = False) -> dict | None:
     """Check if symbol was recently rejected (24h cooldown). Returns skip reason or None."""
     if force:
@@ -802,6 +859,15 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     conn.commit()
                 except Exception:
                     conn.rollback()
+
+    # Post-run: rank proposals per symbol (Phase 6)
+    if not dry_run:
+        created_symbols = set(d["symbol"] for d in stats["details"] if d.get("decision") == "CREATED")
+        for sym in created_symbols:
+            try:
+                rank_proposals_for_symbol(conn, sym, window_hours=24)
+            except Exception as e:
+                log.warning(f"[ranker] Failed to rank {sym}: {e}")
 
     # Finalize run record
     if not dry_run and auto_run_id:

@@ -13748,11 +13748,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if _prop:
                     _competing = _db_query("""
                         SELECT id, strategy_id, signal_score, signal_grade,
-                               critic_confidence, status, paper_submit_state
+                               critic_confidence, status, paper_submit_state,
+                               is_top_pick, rank_among_peers
                         FROM paper_trade_proposals
                         WHERE symbol=%s
                           AND ABS(EXTRACT(EPOCH FROM (created_at - %s))) < 86400
-                        ORDER BY COALESCE(signal_score, 0) DESC
+                        ORDER BY COALESCE(rank_among_peers, 999), COALESCE(signal_score, 0) DESC
                     """, [_sym, _prop["created_at"]]) or []
 
                 # 6. Post-trade thesis outcome
