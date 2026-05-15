@@ -136,24 +136,68 @@
 | Score | 42+ screener, 30+ classification | By source |
 | Catalyst | Required for momentum (relaxed for income/dividend) | By strategy |
 
-## Strategy Coverage Map
+## New Screeners (Gap-Fill — 2026-05-15)
 
-| Strategy | Screeners That Feed It |
-|----------|----------------------|
-| momentum_scalp | prime_setups, watchlist_setups |
-| gap_and_go | prime_setups, watchlist_setups |
-| swing_trade | quality_pullback, pm_volume_continuation |
-| swing_breakout | pm_breakout_confirmation, post_earnings_gappers, speculative_growth_breakouts |
-| earnings_post_momentum | post_earnings_gappers |
-| speculative_growth | speculative_growth_breakouts |
-| fib_retracement_bounce | quality_pullback |
-| recovery_watch | oversold_quality |
-| dividend_growth_compounder | dividend_value_pullback, defensive_quality |
-| income_add | quality_pullback, dividend_value_pullback |
-| reit_income | defensive_quality |
-| international_dividend | dividend_value_pullback, defensive_quality |
-| sector_rotation | sector_leadership_rs |
-| covered_call_income | covered_call_candidates (requires position) |
-| defense_thesis | (classification-based only, no screener) |
-| core_growth_compounder | (classification-based only, no screener) |
-| bond_income | (classification-based only, no screener) |
+### earnings_catalyst_pre
+- **Strategy:** earnings_catalyst
+- **Criteria:** Earnings this week, mid+ cap, avg vol 500K+, RSI 40-65
+- **Run windows:** 0900, 1400
+- **Purpose:** Pre-earnings positioning (not post-earnings gappers)
+
+### high_yield_bdc_income
+- **Strategy:** high_yield_income_bdc
+- **Criteria:** Yield >5%, mid+ cap, avg vol 200K+, asset management sector
+- **Run windows:** 1200
+- **Purpose:** Income/defensive allocation — NOT swing-trade
+
+### bond_income_defensive
+- **Strategy:** bond_income
+- **Criteria:** Yield >2%, beta <0.5, avg vol 200K+, ETF/fund
+- **Run windows:** 1200
+- **Purpose:** Income/defensive allocation bucket — NOT swing-trade
+
+### defense_aerospace
+- **Strategy:** defense_thesis
+- **Criteria:** Aerospace/defense sector, mid+ cap, avg vol 500K+, above SMA200
+- **Run windows:** 1000
+- **Purpose:** Government revenue exposure thesis
+
+### core_growth_compounders
+- **Strategy:** core_growth_compounder
+- **Criteria:** EPS 5yr growth >10%, ROE >15%, mid+ cap, avg vol 500K+, above SMA200
+- **Run windows:** 1000
+- **Purpose:** Long-term compounding positions
+
+### core_index_etfs
+- **Strategy:** core_index
+- **Criteria:** Fixed set: SPY, QQQ, IWM, DIA, VTI, VXUS, AGG, BND, TLT, GLD, RSP
+- **Run windows:** 1600
+- **Purpose:** Core index allocation monitoring
+
+## Strategy Coverage Map — COMPLETE (0 gaps)
+
+| Strategy | Screeners | Type |
+|----------|-----------|------|
+| momentum_scalp | prime_setups, watchlist_setups | Momentum |
+| gap_and_go | prime_setups, watchlist_setups | Momentum |
+| swing_trade | quality_pullback, pm_volume_continuation | Swing |
+| swing_breakout | pm_breakout_confirmation, post_earnings_gappers, speculative_growth_breakouts | Swing |
+| earnings_catalyst | earnings_catalyst_pre, post_earnings_gappers | Event |
+| earnings_post_momentum | post_earnings_gappers | Event |
+| speculative_growth | speculative_growth_breakouts | Growth |
+| fib_retracement_bounce | quality_pullback | Technical |
+| recovery_watch | oversold_quality | Recovery |
+| tax_loss_harvest | oversold_quality | Tax |
+| sector_rotation | sector_leadership_rs | Sector |
+| dividend_growth_compounder | dividend_value_pullback, defensive_quality | Income |
+| income_add | quality_pullback, dividend_value_pullback | Income |
+| reit_income | defensive_quality | Income |
+| international_dividend | dividend_value_pullback, defensive_quality | Income |
+| high_yield_income_bdc | high_yield_bdc_income | Income |
+| bond_income | bond_income_defensive | Income/Defensive |
+| covered_call_income | covered_call_candidates | Options |
+| defense_thesis | defense_aerospace | Sector |
+| core_growth_compounder | core_growth_compounders | Growth |
+| core_index | core_index_etfs | Index |
+
+**Note on income/defensive strategies:** bond_income, high_yield_income_bdc, reit_income, and international_dividend are income/defensive allocation strategies with different expectations than swing/momentum. They should be evaluated on yield, stability, and allocation fit — not on swing-trade metrics.

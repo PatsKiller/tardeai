@@ -40,19 +40,19 @@ run_windows:
     active_screeners: [prime_setups, watchlist_setups]
   '0900':
     label: open_prep_final
-    active_screeners: [prime_setups, watchlist_setups, oversold_quality, post_earnings_gappers]
+    active_screeners: [prime_setups, watchlist_setups, oversold_quality, post_earnings_gappers, earnings_catalyst_pre]
   '1000':
     label: first_hour_read
-    active_screeners: [prime_setups, watchlist_setups, quality_pullback, speculative_growth_breakouts, dividend_value_pullback, sector_leadership_rs]
+    active_screeners: [prime_setups, watchlist_setups, quality_pullback, speculative_growth_breakouts, dividend_value_pullback, sector_leadership_rs, defense_aerospace, core_growth_compounders]
   '1200':
     label: midday_refresh
-    active_screeners: [pm_breakout_confirmation, pm_volume_continuation, quality_pullback]
+    active_screeners: [pm_breakout_confirmation, pm_volume_continuation, quality_pullback, high_yield_bdc_income, bond_income_defensive]
   '1400':
     label: afternoon_check
-    active_screeners: [pm_breakout_confirmation, pm_volume_continuation, speculative_growth_breakouts, dividend_value_pullback]
+    active_screeners: [pm_breakout_confirmation, pm_volume_continuation, speculative_growth_breakouts, dividend_value_pullback, earnings_catalyst_pre]
   '1600':
     label: close_read
-    active_screeners: [pm_volume_continuation, quality_pullback, defensive_quality, oversold_quality]
+    active_screeners: [pm_volume_continuation, quality_pullback, defensive_quality, oversold_quality, core_index_etfs]
   '1730':
     label: post_close
     active_screeners: [prime_setups, watchlist_setups]
@@ -154,6 +154,55 @@ screeners:
     strategy_class: swing_trade
     description: "Stocks with sustained above-average volume into afternoon. Price $5+, RVOL>1.5x, positive change. Confirms morning momentum is holding."
     finviz_url: "https://elite.finviz.com/export?v=152&f=cap_smallover,sh_avgvol_o500,sh_price_o5,sh_relvol_o1.5,ta_change_u&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  # ── Tier 5: Gap-fill screeners (covering previously unserved strategies) ──
+  earnings_catalyst_pre:
+    display_name: Pre-Earnings Catalyst
+    group: event
+    status: active
+    strategy_class: earnings_catalyst
+    description: "Upcoming earnings within 7 days, mid+ cap, avg vol 500K+, RSI 40-65 (not overbought). Feeds earnings_catalyst pre-event positioning."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,earningsdate_thisweek,sh_avgvol_o500,ta_rsi_nob40to65&ft=3&o=-relativevolume&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  high_yield_bdc_income:
+    display_name: High Yield BDC / CEF Income
+    group: income
+    status: active
+    strategy_class: high_yield_income_bdc
+    description: "BDC, CEF, and high-yield vehicles. Yield >5%, avg vol 200K+, mid+ cap. Income/defensive allocation — not swing-trade."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=fa_div_o5,cap_midover,sh_avgvol_o200,ind_assetmanagement&ft=3&o=-dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  bond_income_defensive:
+    display_name: Bond / Fixed Income (Defensive)
+    group: income
+    status: active
+    strategy_class: bond_income
+    description: "Bond ETFs and fixed income funds. Low beta, yield-focused, avg vol 200K+. Income/defensive allocation bucket — NOT swing-trade."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=fa_div_o2,ta_beta_u0.5,sh_avgvol_o200,ind_exchangetradedfund&ft=3&o=-dividend&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  defense_aerospace:
+    display_name: Defense / Aerospace Thesis
+    group: sector
+    status: active
+    strategy_class: defense_thesis
+    description: "Aerospace and defense sector, mid+ cap, avg vol 500K+, above SMA200. Government revenue exposure thesis."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,ind_aerospacedefense,sh_avgvol_o500,ta_sma200_pa&ft=3&o=-marketcap&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  core_growth_compounders:
+    display_name: Core Growth Compounders
+    group: growth
+    status: active
+    strategy_class: core_growth_compounder
+    description: "Large-cap quality compounders. EPS growth >10%, ROE >15%, mid+ cap, avg vol 500K+. Long-term position strategy."
+    finviz_url: "https://elite.finviz.com/export?v=152&f=cap_midover,fa_eps5years_o10,fa_roe_o15,sh_avgvol_o500,ta_sma200_pa&ft=3&o=-marketcap&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
+
+  core_index_etfs:
+    display_name: Core Index ETFs
+    group: index
+    status: active
+    strategy_class: core_index
+    description: "Major index ETFs for core allocation. SPY, QQQ, IWM, DIA, VTI, VXUS, AGG, BND, TLT, GLD, RSP."
+    finviz_url: "https://elite.finviz.com/export?v=152&t=SPY,QQQ,IWM,DIA,VTI,VXUS,AGG,BND,TLT,GLD,RSP&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67"
 
   # ── Not wired (requires existing position) ──
   covered_call_candidates:
