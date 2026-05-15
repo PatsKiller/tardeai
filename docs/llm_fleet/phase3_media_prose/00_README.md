@@ -1,6 +1,6 @@
 # Phase 3 — Media/Prose Model Pilot
 
-**Status:** HOLD — gemma4:e4b is 9.6 GB (not 3-4 GB) and showed poor instruction-following
+**Status:** TIE — gemma4:e4b matches qwen3 quality but is 9.6 GB (not lightweight, fails co-residency goal)
 **Candidate model:** gemma4:e4b (9.6 GB actual)
 **Current production model:** qwen3:14b (STANDARD/REALTIME, unchanged)
 
