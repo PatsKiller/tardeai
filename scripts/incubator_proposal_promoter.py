@@ -183,11 +183,11 @@ def _auto_expire_stale_proposals(conn):
 
 
 def _check_rsi_gate(symbol, strategy_id, conn):
-    """Block overbought promotions. Income/recovery exempt."""
+    """Block overbought promotions. Income/recovery exempt. Returns (allowed, reason, rsi_value)."""
     _EXEMPT = {'income_add', 'dividend_growth_compounder', 'high_yield_income_bdc',
                'covered_call_income', 'bond_income', 'cash_or_stable', 'recovery_watch'}
     if strategy_id in _EXEMPT:
-        return True, 'rsi_exempt'
+        return True, 'rsi_exempt', None
 
     cur = conn.cursor()
     cur.execute("""
@@ -201,19 +201,23 @@ def _check_rsi_gate(symbol, strategy_id, conn):
     """, [symbol, symbol])
     row = cur.fetchone()
     if not row or row[0] is None:
-        return True, 'rsi_unavailable'
+        return True, 'rsi_unavailable', None
     rsi = float(row[0])
 
-    _MOMENTUM = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst', 'speculative_growth', 'core_growth_compounder'}
+    # Strategies that block at RSI >= 80 (aggressive/momentum entries)
+    _MOMENTUM = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst', 'speculative_growth',
+                 'core_growth_compounder', 'screener'}
+    # Strategies that block at RSI >= 75 (swing entries)
     _SWING = {'swing_breakout', 'swing_trade', 'sector_rotation', 'defense_thesis'}
 
     if strategy_id in _MOMENTUM and rsi >= 80:
-        return False, f'RSI_{rsi:.0f}_overbought_blocks_{strategy_id}'
+        return False, f'RSI_{rsi:.0f}_overbought_blocks_{strategy_id}', rsi
     if strategy_id in _SWING and rsi >= 75:
-        return False, f'RSI_{rsi:.0f}_elevated_blocks_{strategy_id}'
+        return False, f'RSI_{rsi:.0f}_elevated_blocks_{strategy_id}', rsi
+    # Catch-all: any strategy at RSI >= 85 is severely overbought
     if rsi >= 85:
-        return False, f'RSI_{rsi:.0f}_severely_overbought'
-    return True, f'RSI_{rsi:.0f}_ok'
+        return False, f'RSI_{rsi:.0f}_severely_overbought', rsi
+    return True, f'RSI_{rsi:.0f}_ok', rsi
 
 
 def _check_promotion_gate(conn):
@@ -453,7 +457,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             continue
 
         # RSI gate — block overbought at promotion time
-        can_rsi, rsi_reason = _check_rsi_gate(symbol, strategy_id, conn)
+        can_rsi, rsi_reason, rsi_value = _check_rsi_gate(symbol, strategy_id, conn)
         if not can_rsi:
             results.append(f"SKIPPED: {symbol} ({rsi_reason})")
             skipped += 1
@@ -511,6 +515,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                  screener_name, source_table, discovery_source, source_run_label,
                  signal_score, signal_grade, catalyst, catalyst_verified,
                  setup_type, proposed_by, overnight_monitoring_enabled,
+                 rsi,
                  packet_state, packet_completion_pct,
                  llm_review_status, agent_review_status)
             VALUES (%s, %s, %s,
@@ -520,6 +525,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                     %s, 'incubator_universe', 'incubator', %s,
                     %s, %s, %s, %s,
                     %s, 'incubator_promoter', %s,
+                    %s,
                     'NEW', 0,
                     'NOT_REQUESTED', 'NOT_REQUESTED')
             RETURNING id
@@ -530,6 +536,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             screener_name, source_run_label,
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
+            rsi_value,
         ])
         new_id = cur.fetchone()['id']
 
