@@ -2065,3 +2065,29 @@ None. Read-only observability. No routing, .env, cron, or execution changes.
 
 ### Next Phase
 Phase 5: Feedback/learning loop.
+
+---
+
+## Phase 5 — Feedback/Learning Loop — 2026-05-14
+
+### Added
+- Feedback schema: llm_feedback_observations, llm_learning_recommendations, llm_prompt_experiments
+- Observation collector: 317 observations from deep_overnight_llm_results
+- Recommendation generator: 1 recommendation (pending_human_review)
+- Human review queue reporter
+- Rollback helper
+
+### Key Result
+Feedback pipeline operational. 1 recommendation pending human review:
+"Review deep_overnight output quality and add outcome labels" [low risk]
+
+### Safety
+- All recommendations are pending_human_review only
+- No auto-applied changes
+- No .env/cron/routing/execution changes
+
+### Production Impact
+None. Read-only feedback collection.
+
+### Next
+Review human queue. Schedule collector. Build approval workflow later.
