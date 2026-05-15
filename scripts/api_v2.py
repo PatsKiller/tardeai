@@ -8735,7 +8735,7 @@ def _strategy_desk():
             'strategies': [{k: _json_clean(v) for k, v in r.items()} for r in strategies],
             'signals_by_strategy': signals_by_strategy,
             'top_signals': top_signals[:20],
-            'performance_30d': perf_by_strategy,
+            'performance_30d': {k: {kk: _json_clean(vv) for kk, vv in v.items()} for k, v in perf_by_strategy.items()},
             'recent_transitions': [{k: _json_clean(v) for k, v in r.items()} for r in transitions],
             'pattern_summary': pattern_summary,
             'patterns_by_strategy': patterns_by_strategy,
@@ -14172,7 +14172,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         ROUND(AVG(r_multiple) FILTER (WHERE status='closed')::numeric, 2) as avg_r,
                         ROUND(SUM(pnl) FILTER (WHERE status='closed')::numeric, 2) as total_pnl,
                         ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - filled_at)) / 3600) FILTER (WHERE status='closed' AND closed_at IS NOT NULL AND filled_at IS NOT NULL)::numeric, 1) as avg_hold_hours,
-                        ROUND((SUM(pnl) FILTER (WHERE status='closed' AND pnl > 0) / NULLIF(ABS(SUM(pnl) FILTER (WHERE status='closed' AND pnl <= 0)), 0))::numeric, 2) as profit_factor
+                        ROUND((COALESCE(SUM(pnl) FILTER (WHERE status='closed' AND pnl > 0), 0) / NULLIF(ABS(COALESCE(SUM(pnl) FILTER (WHERE status='closed' AND pnl < 0), 0)), 0))::numeric, 2) as profit_factor
                     FROM paper_trades
                     GROUP BY strategy_id
                     ORDER BY strategy_id
@@ -14192,12 +14192,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         status = "TUNING"
                     else:
                         status = "NOT_WORKING"
+                    # Handle profit_factor edge cases
+                    pf = _json_clean(r.get('profit_factor'))
+                    if pf is None and t > 0:
+                        pf = float('inf') if w == t else 0.0  # all wins = inf, all losses = 0
                     out.append({
                         "strategy_id": r['strategy_id'],
                         "trades": t, "wins": w,
                         "losses": int(r.get('losses') or 0),
                         "win_rate": round(wr, 4),
-                        "profit_factor": _json_clean(r.get('profit_factor')),
+                        "profit_factor": pf if pf != float('inf') else 999.0,
                         "avg_hold_hours": _json_clean(r.get('avg_hold_hours')),
                         "avg_r": _json_clean(r.get('avg_r')),
                         "total_pnl": _json_clean(r.get('total_pnl')),
@@ -16337,7 +16341,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             winners = [t for t in closed if (float(t.get("pnl") or 0)) > 0]
             losers = [t for t in closed if (float(t.get("pnl") or 0)) < 0]
             win_rate = (len(winners) / len(closed) * 100) if closed else 0
-            plan_followed = [t for t in closed if t.get("followed_plan") or t.get("thesis_followed")]
+            # Plan adherence: trade exited via stop or target (planned exit) vs manual/time-stop/other
+            plan_exits = {'stop_hit', 'target_hit', 'stop_loss', 'target_reached', 'bracket_stop', 'bracket_target'}
+            plan_followed = [t for t in closed if (t.get("exit_reason") or "").lower() in plan_exits
+                             or t.get("followed_plan") or t.get("thesis_followed")]
             plan_rate = (len(plan_followed) / len(closed) * 100) if closed else 0
             avg_r_planned = 0
             avg_r_actual = 0

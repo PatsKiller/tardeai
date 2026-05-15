@@ -10,7 +10,9 @@ function useFetch<T>(url: string): { data: T | null; loading: boolean; refetch: 
   const [tick, setTick] = useState(0)
   useEffect(() => {
     setLoading(true)
-    fetch(url).then(r => r.json()).then(d => { if (d.ok) setData(d.data) }).catch(() => {}).finally(() => setLoading(false))
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 15000)
+    fetch(url, { signal: ctrl.signal }).then(r => r.json()).then(d => { if (d.ok) setData(d.data) }).catch(() => {}).finally(() => { clearTimeout(timer); setLoading(false) })
   }, [url, tick])
   return { data, loading, refetch: () => setTick(t => t + 1) }
 }
