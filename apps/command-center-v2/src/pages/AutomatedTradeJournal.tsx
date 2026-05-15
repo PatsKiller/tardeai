@@ -239,6 +239,187 @@ function TradeExpansion({ trade }: { trade: any }) {
   )
 }
 
+// ── Trade Intelligence Panel (Phase 7 — fetches from /api/v2/trade/{id}/intelligence) ──
+function TradeIntelligencePanel({ tradeId }: { tradeId: number }) {
+  const [intel, setIntel] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/v2/trade/${tradeId}/intelligence`).then(r => r.json())
+      .then(d => { if (d.ok) setIntel(d.data) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [tradeId])
+
+  if (loading) return <div style={{ padding: 12, color: 'var(--text3)', fontSize: 10 }}>Loading intelligence...</div>
+  if (!intel) return null
+
+  const reviews = intel.agent_reasoning?.reviews || []
+  const narratives = intel.agent_reasoning?.narratives || []
+  const competing = intel.competing_strategies || []
+  const postTrade = intel.post_trade?.price_analysis || null
+  const thesis = intel.post_trade?.thesis || null
+  const priorCtx = intel.prior_outcomes_context || ''
+  const proposal = intel.proposal
+
+  // Agent consensus: count non-BUY/GO verdicts
+  const agentWarning = narratives.length >= 2 && narratives.filter(
+    (n: any) => ['AVOID', 'SELL', 'TRIM'].includes(n.recommendation)
+  ).length >= Math.ceil(narratives.length / 2)
+
+  const secStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6, marginTop: 14 }
+  const cardBg: React.CSSProperties = { padding: '8px 12px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }
+
+  return (
+    <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(59,130,246,0.2)' }}>
+      {/* Agent Consensus Warning */}
+      {agentWarning && (
+        <div style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, marginBottom: 10, fontSize: 11, color: '#F87171' }}>
+          Agent Consensus Warning: {narratives.filter((n: any) => ['AVOID', 'SELL', 'TRIM'].includes(n.recommendation)).length} of {narratives.length} agents recommended AVOID/SELL before this trade was approved.
+        </div>
+      )}
+
+      {/* Original Thesis (best narrative) */}
+      {narratives.length > 0 && (
+        <>
+          <div style={secStyle}>ORIGINAL THESIS</div>
+          <div style={cardBg}>
+            {(() => {
+              const best = narratives.reduce((a: any, b: any) => (b.confidence || 0) > (a.confidence || 0) ? b : a, narratives[0])
+              return (
+                <div style={{ fontSize: 11, color: '#CBD5E1', lineHeight: 1.5 }}>
+                  <div style={{ fontStyle: 'italic', marginBottom: 4 }}>"{(best.narrative_preview || best.summary || '').slice(0, 300)}"</div>
+                  <div style={{ fontSize: 9, color: '#64748B' }}>-- {best.agent}, confidence {((best.confidence || 0) * 100).toFixed(0)}%</div>
+                </div>
+              )
+            })()}
+          </div>
+        </>
+      )}
+
+      {/* Competing Strategies */}
+      {competing.length > 1 && (
+        <>
+          <div style={secStyle}>STRATEGY SELECTION ({competing.length} considered)</div>
+          <div style={cardBg}>
+            {competing.map((c: any, i: number) => {
+              const isSelected = proposal && c.id === proposal.id
+              const isTop = c.is_top_pick
+              return (
+                <div key={i} style={{ display: 'flex', gap: 10, padding: '3px 0', fontSize: 11, color: isSelected ? '#60A5FA' : isTop ? '#E2E8F0' : '#64748B', fontWeight: isSelected ? 700 : 400 }}>
+                  <span style={{ minWidth: 16 }}>{isTop ? '\u2605' : ''}</span>
+                  <span style={{ minWidth: 180, ...mono }}>{c.strategy_id}</span>
+                  <span style={{ minWidth: 70, ...mono }}>score {c.signal_score ?? '--'}</span>
+                  <span style={{ minWidth: 50 }}>grade {c.signal_grade || '--'}</span>
+                  <span style={{ fontSize: 9, color: '#475569' }}>{c.status}{isSelected ? ' \u2190 THIS TRADE' : ''}</span>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Agent Reviews */}
+      {(reviews.length > 0 || narratives.length > 0) && (
+        <>
+          <div style={secStyle}>AGENT REVIEWS</div>
+          <div style={cardBg}>
+            {(narratives.length > 0 ? narratives : reviews).map((r: any, i: number) => (
+              <div key={i} style={{ padding: '4px 0', borderBottom: i < (narratives.length || reviews.length) - 1 ? '1px solid #1E293B' : 'none' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
+                  <span style={{ fontWeight: 600, fontSize: 10, color: '#94A3B8', minWidth: 75, textTransform: 'uppercase' }}>{r.agent || r.agent_name}</span>
+                  <span style={{
+                    ...pill(
+                      ['BUY', 'GO', 'ADD'].includes(r.recommendation || r.vote || '') ? 'green' :
+                      ['AVOID', 'SELL', 'TRIM'].includes(r.recommendation || r.vote || '') ? 'red' : 'amber'
+                    )
+                  }}>{r.recommendation || r.vote || '--'}</span>
+                  <span style={{ fontSize: 10, color: '#64748B', ...mono }}>{((r.confidence || 0) * (r.confidence > 1 ? 1 : 100)).toFixed(0)}%</span>
+                </div>
+                <div style={{ fontSize: 10, color: '#94A3B8', lineHeight: 1.4, paddingLeft: 83 }}>
+                  {(r.narrative_preview || r.summary || '').slice(0, 200)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Post-Trade Analysis Verdicts */}
+      {postTrade && (
+        <>
+          <div style={secStyle}>POST-TRADE ANALYSIS</div>
+          <div style={cardBg}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6 }}>
+              {postTrade.stop_too_tight != null && (
+                <div style={{ fontSize: 11 }}>
+                  <span style={{ color: '#64748B' }}>Stop too tight: </span>
+                  <span style={{ color: postTrade.stop_too_tight ? '#F87171' : '#4ADE80', fontWeight: 600 }}>
+                    {postTrade.stop_too_tight ? 'YES' : 'No'}
+                  </span>
+                </div>
+              )}
+              {postTrade.would_have_recovered != null && (
+                <div style={{ fontSize: 11 }}>
+                  <span style={{ color: '#64748B' }}>Would have recovered: </span>
+                  <span style={{ color: postTrade.would_have_recovered ? '#F59E0B' : '#4ADE80', fontWeight: 600 }}>
+                    {postTrade.would_have_recovered ? 'YES' : 'No'}
+                  </span>
+                  {postTrade.price_eod && <span style={{ color: '#475569', fontSize: 10 }}> (EOD: ${Number(postTrade.price_eod).toFixed(2)})</span>}
+                </div>
+              )}
+              {postTrade.held_too_short != null && (
+                <div style={{ fontSize: 11 }}>
+                  <span style={{ color: '#64748B' }}>Held too short: </span>
+                  <span style={{ color: postTrade.held_too_short ? '#F87171' : '#4ADE80', fontWeight: 600 }}>
+                    {postTrade.held_too_short ? 'YES' : 'No'}
+                  </span>
+                </div>
+              )}
+              {postTrade.thesis_outcome && (
+                <div style={{ fontSize: 11 }}>
+                  <span style={{ color: '#64748B' }}>Thesis: </span>
+                  <span style={{ color: postTrade.thesis_outcome === 'FULL' ? '#4ADE80' : postTrade.thesis_outcome === 'FAILED' ? '#F87171' : '#F59E0B', fontWeight: 600 }}>
+                    {postTrade.thesis_outcome}
+                  </span>
+                </div>
+              )}
+            </div>
+            {(postTrade.price_15min_after || postTrade.price_1h_after || postTrade.price_4h_after) && (
+              <div style={{ marginTop: 6, fontSize: 10, color: '#64748B', ...mono }}>
+                Post-exit: 15min ${Number(postTrade.price_15min_after || 0).toFixed(2)} | 1h ${Number(postTrade.price_1h_after || 0).toFixed(2)} | 4h ${Number(postTrade.price_4h_after || 0).toFixed(2)}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Lesson Learned */}
+      {postTrade?.lesson_text && !postTrade.lesson_text.startsWith('Lesson generation failed') && (
+        <>
+          <div style={secStyle}>LESSON LEARNED</div>
+          <div style={{ ...cardBg, borderLeft: '3px solid #F59E0B', padding: '10px 14px' }}>
+            <div style={{ fontSize: 11, color: '#E2E8F0', lineHeight: 1.5, fontStyle: 'italic' }}>
+              "{postTrade.lesson_text}"
+            </div>
+            <div style={{ fontSize: 9, color: '#475569', marginTop: 4 }}>-- {postTrade.lesson_model || 'qwen3:14b'}</div>
+          </div>
+        </>
+      )}
+
+      {/* Prior Outcomes Context */}
+      {priorCtx && (
+        <>
+          <div style={secStyle}>PRIOR OUTCOMES (visible to agents at proposal time)</div>
+          <div style={{ ...cardBg, fontSize: 10, color: '#64748B', whiteSpace: 'pre-wrap', lineHeight: 1.4, ...mono }}>
+            {priorCtx}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Professional Journal Entry (closed trade detail) ─────────────────────
 function JournalEntry({ tradeId }: { tradeId: number }) {
   const [detail, setDetail] = useState<any>(null)
@@ -272,6 +453,9 @@ function JournalEntry({ tradeId }: { tradeId: number }) {
 
   return (
     <div style={{ padding: '16px 20px', background: '#0B1120' }}>
+      {/* ── Trade Intelligence (Phase 7) ── */}
+      <TradeIntelligencePanel tradeId={tradeId} />
+
       {/* ── Classification ── */}
       <div style={secLbl}>TRADE CLASSIFICATION</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, padding: '8px 12px', background: '#0D1626', borderRadius: 6, marginBottom: 8 }}>
@@ -523,7 +707,7 @@ function AnalyticsSection({ account, closedTrades }: { account: string; closedTr
   const [analytics, setAnalytics] = useState<any>(null)
 
   useEffect(() => {
-    fetch(`/api/v2/paper-analytics`)
+    fetch(`/api/v2/automated-journal-analytics`)
       .then(r => r.json())
       .then(d => { if (d.ok) setAnalytics(d) })
       .catch(() => {})
@@ -941,8 +1125,8 @@ export default function AutomatedTradeJournal() {
   const fetchData = useCallback(() => {
     setLoading(true)
     Promise.all([
-      fetch('/api/v2/paper-journal').then(r => r.json()).catch(() => null),
-      fetch('/api/v2/paper-analytics').then(r => r.json()).catch(() => null),
+      fetch('/api/v2/automated-journal').then(r => r.json()).catch(() => null),
+      fetch('/api/v2/automated-journal-analytics').then(r => r.json()).catch(() => null),
     ]).then(([journal, analytics]) => {
       setData(journal)
       setAnalyticsData(analytics)
