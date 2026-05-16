@@ -421,6 +421,16 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     )
     signal_id = cur.fetchone()[0]
 
+    # Phase B-1c: also write to watchpool if strategy is watchpool-routed
+    try:
+        from strategy_watchpool import maybe_write_watchpool
+        cfg = _load_strategy_configs().get(strategy_id, {})
+        snapshot = {"price": float(scan.get("price") or 0), "rvol": float(scan.get("rvol") or 0),
+                    "score": float(scan.get("score") or 0), "signal_id": signal_id}
+        maybe_write_watchpool(strategy_id, symbol, scan.get("screener_id", "unknown"), snapshot, cfg)
+    except Exception as _wp_err:
+        log.warning(f"watchpool write non-fatal: {_wp_err}")
+
     return {"status": "inserted", "signal_id": signal_id, "symbol": symbol, "strategy_id": strategy_id}
 
 
