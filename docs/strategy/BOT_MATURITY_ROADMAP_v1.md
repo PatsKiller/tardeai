@@ -271,3 +271,13 @@ By 2026-11-15 (six months from today):
 | 4 | 2026-09-15 | Phase C complete | Stop_too_tight <30%, 200+ closed trades |
 | 5 | 2026-10-15 | Phase D complete | Regime-aware, attribution live |
 | 6 | 2026-11-15 | Phase E complete | Shadow mode done. Go/no-go decision |
+
+---
+
+## Design Inputs For Phase B-1
+
+The following design memos must be reviewed before Phase B-1 begins:
+
+- docs/_archive/design_questions/candidate_freshness_2026-05-15.md
+  (three-bucket TTL architecture; classifier prerequisite already met
+  via commit 409c055)
