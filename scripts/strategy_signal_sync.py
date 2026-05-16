@@ -161,7 +161,11 @@ def candidate_matches_strategy(scan: dict, cfg: dict) -> tuple:
     elif min_score > 0:
         match_reasons.append(f"score {score:.0f} >= {min_score}")
 
-    matches = len(reject_reasons) == 0
+    # Require no rejections AND at least 2 meaningful (non-trivial) match reasons.
+    # A "meaningful" match is one where the filter actually constrains the candidate,
+    # not just "price in [0-99999]" which passes everything.
+    meaningful = [r for r in match_reasons if "99999" not in r and "5000" not in r]
+    matches = len(reject_reasons) == 0 and len(meaningful) >= 2
     return matches, match_reasons, reject_reasons
 
 

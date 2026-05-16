@@ -1,139 +1,148 @@
 strategy_id: cash_or_stable
 display_name: Cash or Stable Value
-version: "1.0.0"
+version: 1.0.0
 status: UNVALIDATED
-purpose: "Money market funds, T-bills, and stable value positions for capital preservation. Dry powder management and defensive positioning."
-
-eligible_accounts: [taxable, rollover_ira, roth_ira]
+purpose: Money market funds, T-bills, and stable value positions for capital preservation.
+  Dry powder management and defensive positioning.
+eligible_accounts:
+- taxable
+- rollover_ira
+- roth_ira
 timeframe: position_long
 timeframe_class: CASH
-
 universe:
   price:
-    min: 1.00
-    max:
+    min: 1.0
+    max: null
   float_m:
-    max:
+    max: null
   rvol:
-    min:
-
+    min: null
 entry_criteria:
-  - id: CASH_VEHICLE
-    description: "Approved money market, T-bill ETF, or stable value fund (SPAXX, SGOV, BIL, SHV)"
-    metric: asset_class
-    operator: in
-    value: [money_market, tbill, stable_value]
-  - id: YIELD_POSITIVE
-    description: "Current yield is positive and competitive with alternatives"
-    metric: current_yield
-    operator: gte
-    value: 0.01
-  - id: NAV_STABLE
-    description: "NAV stable at $1.00 or ETF tracks short-duration with minimal volatility"
-    metric: nav_stability
-    operator: eq
-    value: true
-
+- id: CASH_VEHICLE
+  description: Approved money market, T-bill ETF, or stable value fund (SPAXX, SGOV,
+    BIL, SHV)
+  metric: asset_class
+  operator: in
+  value:
+  - money_market
+  - tbill
+  - stable_value
+- id: YIELD_POSITIVE
+  description: Current yield is positive and competitive with alternatives
+  metric: current_yield
+  operator: gte
+  value: 0.01
+- id: NAV_STABLE
+  description: NAV stable at $1.00 or ETF tracks short-duration with minimal volatility
+  metric: nav_stability
+  operator: eq
+  value: true
 auto_disqualifiers:
-  - id: CREDIT_RISK
-    description: "Fund holds significant non-government credit risk"
-  - id: DURATION_RISK
-    description: "Effective duration exceeds 0.5 years"
-  - id: BREAKING_THE_BUCK
-    description: "NAV has deviated below $0.995"
-
+- id: CREDIT_RISK
+  description: Fund holds significant non-government credit risk
+- id: DURATION_RISK
+  description: Effective duration exceeds 0.5 years
+- id: BREAKING_THE_BUCK
+  description: NAV has deviated below $0.995
 exit_rules:
   stop_method: fundamental
   target_method: level_based
-
 risk:
   risk_per_trade_pct: 0.001
   max_position_size: 100000
-  max_daily_trades:
+  max_daily_trades: null
   target_rr: 1.0
-
 scoring:
   min_score_go: 25
   min_score_wait: 15
-
 lifecycle:
   proposal_expiry_hours: 720
   overnight_allowed: true
-  max_hold_days:
-
+  max_hold_days: null
 execution:
   paper_allowed: true
   live_allowed: false
-
 agent_responsibilities:
-  maria: "Monitor yield environment and flag when redeployment into risk assets is warranted."
-  risk: "Verify cash allocation percentage aligns with market regime and risk posture."
-  steph: "Confirm cash placement optimizes yield across accounts and maintains liquidity needs."
-
+  maria: Monitor yield environment and flag when redeployment into risk assets is
+    warranted.
+  risk: Verify cash allocation percentage aligns with market regime and risk posture.
+  steph: Confirm cash placement optimizes yield across accounts and maintains liquidity
+    needs.
 co_enables:
-  promotes_to: [core_index, bond_income]
+  promotes_to:
+  - core_index
+  - bond_income
   strengthens: []
-
 validation_gate:
   min_closed_paper_trades: 30
   min_win_rate: 0.55
   min_profit_factor: 1.3
   min_calendar_months: 6
   human_approval_required: true
-
 prompt_context:
-  summary: "Cash and stable value strategy for capital preservation and dry powder management. Targets money market funds, T-bill ETFs, and stable value for near-zero volatility. Serves as deployment source when risk assets become attractive."
+  summary: Cash and stable value strategy for capital preservation and dry powder
+    management. Targets money market funds, T-bill ETFs, and stable value for near-zero
+    volatility. Serves as deployment source when risk assets become attractive.
   key_questions:
-    - "Is the current cash allocation appropriate for the market regime?"
-    - "Are yields competitive or should cash be redeployed into short-duration bonds?"
-    - "Is there sufficient liquidity across accounts for upcoming needs or opportunities?"
-
+  - Is the current cash allocation appropriate for the market regime?
+  - Are yields competitive or should cash be redeployed into short-duration bonds?
+  - Is there sufficient liquidity across accounts for upcoming needs or opportunities?
 screen_filters:
-  min_price: 1.00
-  max_price: 200.00
+  min_price: 1.0
+  max_price: 200.0
   max_beta: 0.1
-  asset_type: [money_market, treasury, stable_value]
+  asset_type:
+  - money_market
+  - treasury
+  - stable_value
   min_score: 0
 vix_rules:
-  max_vix_for_entry:
+  max_vix_for_entry: null
   elevated_vix_band:
-    - 30
-    - 50
+  - 30
+  - 50
   elevated_vix_changes:
     accelerate_screening: true
     prefer_short_duration: true
-  extreme_vix_threshold:
+  extreme_vix_threshold: null
   extreme_vix_action: accelerate_new_entries
-  exit_holdings_at_vix:
-  notes: Cash is always eligible — defensive allocation rises with VIX.
+  exit_holdings_at_vix: null
+  notes: "Cash is always eligible \u2014 defensive allocation rises with VIX."
 technical_indicators_required:
   gates: []
   preferred:
-    - yield_vs_t_bill_spread
+  - yield_vs_t_bill_spread
   irrelevant:
-    - vwap
-    - opening_range
-    - rsi
-    - ema
-    - fib
-    - bollinger
-    - macd
+  - vwap
+  - opening_range
+  - rsi
+  - ema
+  - fib
+  - bollinger
+  - macd
   note: Yield environment drives entry.
 performance_context:
-  last_updated:
+  last_updated: null
   closed_paper_trades: 0
-  win_rate:
-  avg_r_realized:
-  profit_factor:
-  max_drawdown_pct:
-  expectancy_per_trade:
-  best_trade_r:
-  worst_trade_r:
-  current_streak:
+  win_rate: null
+  avg_r_realized: null
+  profit_factor: null
+  max_drawdown_pct: null
+  expectancy_per_trade: null
+  best_trade_r: null
+  worst_trade_r: null
+  current_streak: null
   ready_for_review: false
   review_thresholds:
     min_trades: 30
     min_months: 6
     min_profit_factor: 1.25
     min_win_rate: 0.5
-  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM
+    prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 60
+  eval_cadence: weekly
+  watchpool: true
