@@ -3155,7 +3155,7 @@ def _agents_summary():
         WHERE from_agent NOT IN ('user','system')
         GROUP BY from_agent, to_agent ORDER BY cnt DESC LIMIT 10
     """) or []
-    agents_out = [{k: _json_clean(v) for k, v in r.items()} for r in agent_counts]
+    agents_out = [{k: _json_clean(v) for k, v in r.items()} | {"last_run": _json_clean(r.get("latest")), "actions_taken": int(r.get("total", 0))} for r in agent_counts]
     agent_names = {a.get('agent', '') for a in agents_out}
 
     # Add pipeline agents that don't write to watchlist_agent_results
@@ -3197,6 +3197,8 @@ def _agents_summary():
 
     for ea in extra_agents:
         if ea["agent"] not in agent_names:
+            ea["last_run"] = ea.get("latest")
+            ea["actions_taken"] = ea.get("total", 0)
             agents_out.append(ea)
 
     return {
