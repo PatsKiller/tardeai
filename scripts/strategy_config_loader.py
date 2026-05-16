@@ -163,12 +163,15 @@ def sync_to_db():
         """, [sid, version, config_hash, file_path, status,
               json.dumps(config, default=str)])
 
-        # Update strategy_registry
+        # Upsert strategy_registry (INSERT if missing, UPDATE if exists)
+        display = config.get("name", sid.replace("_", " ").title())
         cur.execute("""
-            UPDATE strategy_registry
-            SET config_hash=%s, yaml_version=%s, rules_source='yaml', last_yaml_sync_at=NOW()
-            WHERE strategy_id=%s
-        """, [config_hash, version, sid])
+            INSERT INTO strategy_registry (strategy_type, display_name, config_hash, yaml_version, active, last_yaml_sync_at)
+            VALUES (%s, %s, %s, %s, TRUE, NOW())
+            ON CONFLICT (strategy_type) DO UPDATE
+            SET config_hash=EXCLUDED.config_hash, yaml_version=EXCLUDED.yaml_version,
+                last_yaml_sync_at=NOW()
+        """, [sid, display, config_hash, version])
 
         # Cache prompt context
         prompt_ctx = get_strategy_prompt_context(sid)
