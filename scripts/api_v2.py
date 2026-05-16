@@ -13294,6 +13294,42 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # POST /api/v2/strategy-configs/{strategy_id}/freshness — update freshness config
+    if method == "POST" and "/strategy-configs/" in base_path and base_path.endswith("/freshness"):
+        try:
+            import yaml as _yaml, subprocess as _sp, shutil as _sh
+            _parts = base_path.split("/")
+            _sid = _parts[4]  # /api/v2/strategy-configs/{sid}/freshness
+            _yaml_path = PROJECT_ROOT / "config" / "strategies" / f"{_sid}.yaml"
+            if not _yaml_path.exists():
+                return 404, {"ok": False, "error": f"Strategy {_sid} YAML not found"}
+            _payload = body or {}
+            _allowed = {"watchpool", "rollback_to_legacy", "use_watchpool", "ttl_days", "bucket", "eval_cadence"}
+            _unknown = set(_payload.keys()) - _allowed
+            if _unknown:
+                return 400, {"ok": False, "error": f"Unknown fields: {sorted(_unknown)}"}
+            # Backup
+            _backup_dir = PROJECT_ROOT / "config" / "strategies_backup"
+            _backup_dir.mkdir(exist_ok=True)
+            _sh.copy2(_yaml_path, _backup_dir / f"{_sid}.yaml.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            # Load, merge freshness, write
+            with open(_yaml_path) as _f:
+                _cfg = _yaml.safe_load(_f) or {}
+            if "freshness" not in _cfg:
+                _cfg["freshness"] = {}
+            _cfg["freshness"].update(_payload)
+            with open(_yaml_path, "w") as _f:
+                _yaml.dump(_cfg, _f, sort_keys=False)
+            # Trigger sync
+            _sync = _sp.run([str(PROJECT_ROOT / ".venv/bin/python"),
+                             str(PROJECT_ROOT / "scripts/strategy_config_loader.py"), "--sync-db"],
+                            capture_output=True, text=True, timeout=30, cwd=str(PROJECT_ROOT))
+            return 200, {"ok": True, "strategy_id": _sid,
+                         "freshness": _cfg["freshness"],
+                         "sync_ok": _sync.returncode == 0}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if method == "POST" and base_path == "/api/v2/strategy-configs/sync-db":
         try:
             import subprocess as _sp
