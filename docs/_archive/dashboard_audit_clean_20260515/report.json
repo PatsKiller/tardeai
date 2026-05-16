@@ -1,0 +1,451 @@
+[
+  {
+    "page": "AIAnalyst",
+    "eps": 5,
+    "issues": [
+      {
+        "ep": "/api/v2/ai-ask",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "ActionCenter",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "AgentCalibration",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "AgentPipeline",
+    "eps": 3,
+    "issues": []
+  },
+  {
+    "page": "AlertsActions",
+    "eps": 5,
+    "issues": []
+  },
+  {
+    "page": "AlertsDashboard",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Approvals",
+    "eps": 5,
+    "issues": [
+      {
+        "ep": "/api/v2/approvals/decision",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "Attribution",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "AutomatedTradeJournal",
+    "eps": 4,
+    "issues": []
+  },
+  {
+    "page": "Backtesting",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "BrokerReconciliation",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "CIODashboard",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Command",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "ContentHealth",
+    "eps": 6,
+    "issues": [
+      {
+        "ep": "/api/v2/iris/hygiene-flag",
+        "type": "404",
+        "sev": "MEDIUM"
+      },
+      {
+        "ep": "/api/v2/admin/rag-backfill",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "Correlation",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Dividends",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "ExecutionQuality",
+    "eps": 3,
+    "issues": []
+  },
+  {
+    "page": "Forecast",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "GovernanceHub",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Inbox",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Incubator",
+    "eps": 3,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceEntities",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceHub",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceSources",
+    "eps": 12,
+    "issues": []
+  },
+  {
+    "page": "IntelligenceWhiteboard",
+    "eps": 3,
+    "issues": []
+  },
+  {
+    "page": "Journal",
+    "eps": 6,
+    "issues": [
+      {
+        "ep": "/api/v2/journal/bulk-suggest",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "JournalAnalytics",
+    "eps": 3,
+    "issues": []
+  },
+  {
+    "page": "JournalHub",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "JournalReports",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "LLMQueue",
+    "eps": 7,
+    "issues": []
+  },
+  {
+    "page": "LearningGovernance",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "LiveGovernance",
+    "eps": 4,
+    "issues": []
+  },
+  {
+    "page": "MorningBrief",
+    "eps": 10,
+    "issues": [
+      {
+        "ep": "/api/v2/ai-ask",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "MorningBriefBot",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Notifications",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Ops",
+    "eps": 5,
+    "issues": []
+  },
+  {
+    "page": "OpsHub",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Orchestration",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "OvernightDashboard",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Overview",
+    "eps": 18,
+    "issues": []
+  },
+  {
+    "page": "PaperGovernance",
+    "eps": 3,
+    "issues": []
+  },
+  {
+    "page": "PaperJournal",
+    "eps": 7,
+    "issues": []
+  },
+  {
+    "page": "PaperOutcomes",
+    "eps": 7,
+    "issues": []
+  },
+  {
+    "page": "PaperProposals",
+    "eps": 11,
+    "issues": []
+  },
+  {
+    "page": "PaperReview",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "PaperStatus",
+    "eps": 4,
+    "issues": []
+  },
+  {
+    "page": "PaperTradeIntelligence",
+    "eps": 8,
+    "issues": []
+  },
+  {
+    "page": "PipelineController",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "PipelineHealthMaster",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "PipelineHub",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "PlanVsPerformance",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Portfolio",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "PortfolioCommand",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "PortfolioIntelligence",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "PortfolioMonitor",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "Prospects",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "Rebalance",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Reports",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "Research",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "ResearchTopics",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Retirement",
+    "eps": 11,
+    "issues": []
+  },
+  {
+    "page": "Returns",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "Risk",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "RiskRegime",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "SelfImprovement",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "StoppedOutWatch",
+    "eps": 4,
+    "issues": []
+  },
+  {
+    "page": "StrategyAdmin",
+    "eps": 5,
+    "issues": []
+  },
+  {
+    "page": "StrategyAnalytics",
+    "eps": 7,
+    "issues": []
+  },
+  {
+    "page": "StrategyDesk",
+    "eps": 4,
+    "issues": [
+      {
+        "ep": "/api/v2/paper-proposals/from-signal",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "SystemHealth",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "SystemHub",
+    "eps": 0,
+    "issues": []
+  },
+  {
+    "page": "TaxLots",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "Technical",
+    "eps": 1,
+    "issues": []
+  },
+  {
+    "page": "TopicMonitor",
+    "eps": 6,
+    "issues": [
+      {
+        "ep": "/api/v2/topics/transcripts/review",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "TradeAI",
+    "eps": 3,
+    "issues": [
+      {
+        "ep": "/api/v2/indicators/batch",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "Watchlist",
+    "eps": 2,
+    "issues": [
+      {
+        "ep": "/api/v2/indicators/batch",
+        "type": "404",
+        "sev": "MEDIUM"
+      }
+    ]
+  },
+  {
+    "page": "WatchlistSymbolPage",
+    "eps": 2,
+    "issues": []
+  },
+  {
+    "page": "WeeklyLearning",
+    "eps": 0,
+    "issues": []
+  }
+]
