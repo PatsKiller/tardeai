@@ -1,0 +1,25 @@
+        strategy_id         | enabled | hash_prefix  | yaml_version |       last_yaml_sync_at       
+----------------------------+---------+--------------+--------------+-------------------------------
+ bond_income                | t       | bf3b316b966f | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ cash_or_stable             | t       | 4b3c520a7b9d | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ core_growth_compounder     | t       | 5bb7c0ef3e14 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ core_index                 | t       | 745069fa527c | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ covered_call_income        | t       | 330013e76704 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ defense_thesis             | t       | 1ff8be4f66ec | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ dividend_growth_compounder | t       | 6ee0e5e5cdc7 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ earnings_catalyst          | t       | 77a42932fdd2 | 1.0          | 2026-05-07 20:20:32.029891-04
+ gap_and_go                 | t       | d930e5972a9a | 1.0          | 2026-05-07 20:20:32.029891-04
+ high_yield_income_bdc      | t       | 294cc0dac69a | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ income_add                 | t       | c2a85ba11d49 | 1.0          | 2026-05-07 20:20:32.029891-04
+ international_dividend     | t       | ab93084bb505 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ invalid_non_security       | f       | NULL         |              | 
+ momentum_scalp             | t       | 6aba237a5eb9 | 1.0          | 2026-05-07 20:20:32.029891-04
+ recovery_watch             | t       | 435f8959ca6f | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ reit_income                | t       | 0ff245342419 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ sector_rotation            | t       | 19ef2df78fa9 | 1.0          | 2026-05-07 20:20:32.029891-04
+ speculative_growth         | t       | 0d82d68e7be3 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ swing_breakout             | t       | 6f2ed74d8809 | 1.0          | 2026-05-07 20:20:32.029891-04
+ swing_trade                | t       | 7e46936ccb39 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+ tax_loss_harvest           | t       | 276441efdd80 | 1.0.0        | 2026-05-07 20:20:32.029891-04
+(21 rows)
+

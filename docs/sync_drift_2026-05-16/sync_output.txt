@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/strategy_config_loader.py", line 236, in <module>
+    main()
+    ~~~~^^
+  File "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/strategy_config_loader.py", line 219, in main
+    count = sync_to_db()
+  File "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/strategy_config_loader.py", line 167, in sync_to_db
+    cur.execute("""
+    ~~~~~~~~~~~^^^^
+        INSERT INTO strategy_registry (strategy_type, config_hash, yaml_version, active, last_yaml_sync_at)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+            last_yaml_sync_at=NOW()
+            ^^^^^^^^^^^^^^^^^^^^^^^
+    """, [sid, config_hash, version])
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+psycopg2.errors.NotNullViolation: null value in column "display_name" of relation "strategy_registry" violates not-null constraint
+DETAIL:  Failing row contains (bond_income, null, null, null, 10, 30, null, null, null, null, null, null, null, {}, null, [], 2026-05-16 11:44:37.283203-04, null, f, f, f, null, null, [], {}, t, 1, 2026-05-16 11:44:37.283203-04, null, {}, [], UNVALIDATED, 0.50, 0.60, 0, 0, null, 2026-05-16 11:44:37.283203-04, null, null, null, null, null, null, null, null, null, null, d17430662655ff25, 1.0.0, yaml, 2026-05-16 11:44:37.283203-04).
+
