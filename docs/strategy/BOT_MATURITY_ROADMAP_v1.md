@@ -1,5 +1,15 @@
 # Automated Trade Bot Maturity Roadmap v1
 
+## Phase A: COMPLETE (2026-05-15)
+
+Phase A finished in 1 day (vs 14 allocated). All sub-phases shipped.
+Maturity score: 5.8 -> 7.5. Bot foundation solid.
+
+Closeout: docs/_archive/phase_a_closeout/PHASE_A_CLOSEOUT.md
+
+---
+
+
 **Goal:** Self-learning bot ready for real-money transition 6-8 months from 2026-05-15.
 **Author:** Session 43, planning pass
 **Status:** DRAFT -- pending operator review
