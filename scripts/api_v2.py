@@ -13255,6 +13255,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "GET" and base_path.startswith("/api/v2/strategy-configs/"):
         try:
             sid = base_path.split("/")[-1]
+            if sid in ("validate", "sync-db"):
+                return 405, {"ok": False, "error": f"/{sid} requires POST method"}
             import sys as _sys
             _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from strategy_config_loader import load_strategy_config, get_strategy_prompt_context
