@@ -23,7 +23,7 @@ export default function PaperOutcomes() {
   const { data: lcData } = useApi<any>('/api/v2/paper-proposals/lifecycle-events', 30000)
   const { data: outcomesData } = useApi<any>('/api/v2/paper-outcomes', 30000)
   const { data: summaryData } = useApi<any>('/api/v2/paper-dashboard-summary', 60000)
-  const { data: journalData } = useApi<any>('/api/v2/paper-journal', 60000)
+  const { data: journalData } = useApi<any>('/api/v2/automated-journal', 60000)
   const [runningOutcomes, setRunningOutcomes] = useState(false)
 
   const gov = govData?.data || govData || []

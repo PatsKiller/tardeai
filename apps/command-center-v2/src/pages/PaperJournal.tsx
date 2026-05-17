@@ -104,7 +104,7 @@ function TradeDetail({ tradeId }: { tradeId: number }) {
 }
 
 export default function PaperJournal() {
-  const { data, refetch } = useApi<any>('/api/v2/paper-journal', 60000)
+  const { data, refetch } = useApi<any>('/api/v2/automated-journal', 60000)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [expandedOpen, setExpandedOpen] = useState<number | null>(null)
   const [actionRunning, setActionRunning] = useState<string | null>(null)
