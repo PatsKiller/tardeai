@@ -1,5 +1,17 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 7 — Approval Simulator — 2026-05-16
+
+Read-only approval simulation: runs all Phase 6 gates (freshness, session, revalidation, risk) without creating trades, submitting orders, or mutating proposal state.
+
+- CLI: `scripts/simulate_paper_proposal_approval.py`
+- API: `POST /api/v2/paper-proposals/simulate-approval`
+- Returns: overall_status, blocking_gate, gate-by-gate results, paper_order_preview, next_action
+- Tests: 15/15 Phase 7 + 83/83 Phase 6 = **98/98 pass**
+- Dashboard: deferred (API-only for now)
+
+---
+
 ## Full Session Summary — 2026-05-15
 
 ### 25 commits across 6 work streams:

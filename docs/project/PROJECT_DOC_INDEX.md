@@ -136,6 +136,7 @@ Retained for historical reference but no longer authoritative.
 ## Change Log
 | Date | Change |
 |------|--------|
+| 2026-05-16 | **Phase 7**: Approval simulator. Read-only gate simulation, CLI + API endpoint, 15 tests, 98 total regression. No trades/orders/mutations. |
 | 2026-05-15 | **UI stabilization sweep**: TaxLots React #310, StrategyDesk Decimal, MorningBriefBot timeout, scoreboard PF, plan adherence 0→11.1%. Session docs archived. |
 | 2026-05-15 | **Screener config modal**: 18 screeners in DB, CRUD API, 4-tab modal (list/coverage/gaps/add), strategy coverage matrix, 0 gaps. |
 | 2026-05-15 | **6 gap-fill screeners**: earnings_catalyst_pre, high_yield_bdc, bond_income_defensive, defense_aerospace, core_growth_compounders, core_index_etfs. All 20 strategies covered. |

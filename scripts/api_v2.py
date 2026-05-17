@@ -12852,6 +12852,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e), "message": str(e),
                          "approval_audit": {"audit_id": audit_id, "status": "error_fail_closed", "audit_created": audit_id is not None}}
 
+    if method == "POST" and base_path == "/api/v2/paper-proposals/simulate-approval":
+        try:
+            body = body or {}
+            pid = body.get('proposal_id')
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            import sys as _sys
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from simulate_paper_proposal_approval import simulate_proposal, get_conn as _sim_conn
+            _sc = _sim_conn()
+            _sc_cur = _sc.cursor()
+            _sc_cur.execute("SELECT * FROM paper_trade_proposals WHERE id = %s", [int(pid)])
+            _prop = _sc_cur.fetchone()
+            if not _prop:
+                _sc.close()
+                return 404, {"ok": False, "error": f"Proposal #{pid} not found"}
+            sim = simulate_proposal(_sc, dict(_prop))
+            _sc.close()
+            return 200, {"ok": True, "simulation": sim}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if method == "POST" and base_path == "/api/v2/paper-proposals/reject":
         try:
             body = body or {}
