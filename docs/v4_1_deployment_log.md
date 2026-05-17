@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## DOC-CLEAN-1B — Archive Apply — 2026-05-17
+
+401 files archived to docs/_archive/. 0 deleted. 0 errors.
+Active tree: 246 docs. Archive: 526 docs. Canonical docs verified intact.
+Duplicate deletion deferred. Drive sync pending.
+Tests: 132/132. Safety: paper, live exec disabled.
+
+---
+
 ## DOC-CLEAN-1 — Documentation Cleanup (Stage 1) — 2026-05-17
 
 Inventory + classification of 767 local docs. Dry-run only.

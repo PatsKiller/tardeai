@@ -139,7 +139,8 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
-| 2026-05-17 | **DOC-CLEAN-1**: 767 docs inventoried. 123 active, 490 archive candidates, 7 duplicate groups. Hygiene score 3.5/10. Dry-run only — pending operator approval. |
+| 2026-05-17 | **DOC-CLEAN-1B**: 401 files archived. Active tree: 246 docs. Archive: 526 docs. Duplicates deferred. |
+| 2026-05-17 | **DOC-CLEAN-1**: 767 docs inventoried. 123 active, 490 archive candidates, 7 duplicate groups. Hygiene score 3.5/10. |
 | 2026-05-17 | **Drive sync fix**: folder hierarchy + deletion cleanup. 774 files synced to Trade_AI_Docs_v2 with proper subdirectories. |
 | 2026-05-17 | **BR-1**: Backup readiness 5.3/10. Daily DB healthy (867MB, 13.8h). P0: no offsite (rclone unconfigured). RPO/RTO + restore runbooks created. |
 | 2026-05-17 | **Phase 9A**: Maturity hardening. System facts, sample governance, agent evidence gate, data fragility. All strategies BLOCKED (insufficient). Auto-learning BLOCKED (weak evidence). |
