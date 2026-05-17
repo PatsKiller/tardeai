@@ -1,5 +1,18 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## DOC-CLEAN-1 — Documentation Cleanup (Stage 1) — 2026-05-17
+
+Inventory + classification of 767 local docs. Dry-run only.
+- Active keep: 123 (10 canonical + 113 current phase)
+- Archive candidates: 490
+- Artifacts: 34
+- Duplicate groups: 7
+- Hygiene score: 3.5/10
+- Drive sync script fixed: folder hierarchy + deletion cleanup
+- Stage 2 (local archive apply) pending operator approval
+
+---
+
 ## BR-1 — Backup and Restore Hardening — 2026-05-17
 
 Backup readiness scoring + RPO/RTO policy + restore drill runbooks + offsite plan.
