@@ -153,6 +153,44 @@ def main():
                 break
 
     log(f"sync done: {uploaded} uploaded, {unchanged} unchanged, {failed} failed")
+
+    # Upload a manifest summary to Drive root so operator can see sync state from Google
+    try:
+        folder_cache = load_json(FOLDER_CACHE, {})
+        drive_manifest = {
+            "last_sync_utc": datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
+            "files_uploaded_this_run": uploaded,
+            "files_unchanged": unchanged,
+            "files_failed": failed,
+            "total_files_tracked": len(manifest),
+            "total_folders": len(folder_cache),
+            "source": "ms01-openclaw",
+            "sync_script": "scripts/sync-docs-to-drive.py",
+            "files": sorted(manifest.keys()),
+            "folders": sorted(set('/'.join(k.split('/')[:-1]) for k in manifest.keys() if '/' in k)),
+        }
+        manifest_path = Path('/tmp/drive-sync-status.json')
+        manifest_path.write_text(json.dumps(drive_manifest, indent=2))
+        # Delete old manifest on Drive if exists
+        existing = find_existing_file(ROOT_FOLDER_ID, 'SYNC_STATUS.json')
+        if existing:
+            gog_delete(existing)
+        gog_upload(manifest_path, ROOT_FOLDER_ID)
+        # Rename on Drive isn't straightforward with gog, so upload with correct name
+        # Actually gog upload uses the local filename — rename the temp file
+        manifest_path2 = Path('/tmp/SYNC_STATUS.json')
+        manifest_path2.write_text(json.dumps(drive_manifest, indent=2))
+        existing2 = find_existing_file(ROOT_FOLDER_ID, 'SYNC_STATUS.json')
+        if not existing2:
+            # First upload used wrong name, delete and re-upload with right name
+            wrong = find_existing_file(ROOT_FOLDER_ID, 'drive-sync-status.json')
+            if wrong:
+                gog_delete(wrong)
+            gog_upload(manifest_path2, ROOT_FOLDER_ID)
+        log("SYNC_STATUS.json uploaded to Drive root")
+    except Exception as e:
+        log(f"manifest upload failed (non-fatal): {e}")
+
     return 0 if failed == 0 else 1
 
 if __name__ == "__main__":
