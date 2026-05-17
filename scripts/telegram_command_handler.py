@@ -2354,6 +2354,7 @@ def poll_and_process():
             "research ", "find ", "analyze ", "run screener ", "run promoter", "look for ",
             "alex ", "retirement ", "iris", "/iris_", "status", "help",
             "topics", "topic ", "add video", "add article",
+            "backup", "sync docs",
         ])
         has_url = "http://" in lower or "https://" in lower
         if not is_command and not has_url:
