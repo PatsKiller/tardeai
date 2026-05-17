@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-05-17T19:54:16.541257+00:00",
+  "latest_db_dump": "/home/johnclaw/db_backups/trade_ai_20260517_020003.sql.gz",
+  "db_dump_age_hours": 13.8,
+  "db_dump_size_mb": 867.2,
+  "scores": {
+    "local_db_backup": 10,
+    "full_backup_script": 10,
+    "backup_verification": 10,
+    "backup_cron": 8,
+    "offsite_target": 0,
+    "encryption_available": 7,
+    "restore_guide": 8,
+    "rpo_rto_policy": 0,
+    "manifest_checksum": 0,
+    "restore_drill": 0
+  },
+  "overall_score": 5.3,
+  "gaps": [
+    {
+      "priority": "P0",
+      "item": "No offsite backup configured (rclone has no remotes)"
+    },
+    {
+      "priority": "P1",
+      "item": "No backup manifest/checksum system"
+    },
+    {
+      "priority": "P1",
+      "item": "No restore drill executed"
+    },
+    {
+      "priority": "P2",
+      "item": "RPO/RTO policy not documented"
+    }
+  ],
+  "offsite_configured": false,
+  "encryption_available": true,
+  "rclone_installed": true
+}
