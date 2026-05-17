@@ -70,7 +70,7 @@ export default function Overview() {
   const { data: searchSrc } = useApi<SearchSourcesResp>('/api/v2/search-sources')
   const { data: irisData } = useApi<any>('/api/v2/iris/status')
   const { data: cmdData } = useApi<any>('/api/v2/command')
-  const { data: paperJournal } = useApi<any>('/api/v2/paper-journal')
+  const { data: paperJournal } = useApi<any>('/api/v2/automated-journal')
   const { data: recoveryWatch } = useApi<any>('/api/v2/stopped-out-watch')
   const [irisQ, setIrisQ] = useState('')
   const [irisA, setIrisA] = useState('')
