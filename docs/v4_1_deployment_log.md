@@ -1,5 +1,17 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 9A — Maturity Hardening — 2026-05-17
+
+Reports for proof, reliability, and governance:
+- Strategy sample governance: ALL 7 strategies blocked (insufficient closed trades, A-5 incomplete)
+- Agent learning evidence gate: BLOCKED (evidence quality "weak", 9 closed outcomes)
+- Data source fragility: Finviz healthy (513), Alpaca healthy (19), News healthy (610), YouTube unknown
+- System facts: 358 tables, 455 scripts, 99 crons, trading BLOCKED
+- Tests: 124/124 pass
+- No strategy activation, no auto-learning, no live trading, no cron added
+
+---
+
 ## Phase 8C — Lifecycle Dashboard Reporting — 2026-05-16
 
 Read-only API endpoints + report for operator visibility into Phase 8B lifecycle data.
