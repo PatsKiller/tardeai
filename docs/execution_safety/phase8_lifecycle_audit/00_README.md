@@ -1,6 +1,6 @@
 # Phase 8 — Paper Trade Lifecycle Audit
 
-**Status:** Phase 8A COMPLETE, Phase 8B COMPLETE (preliminary scoring)
+**Status:** Phase 8A COMPLETE, Phase 8B COMPLETE, Phase 8C COMPLETE (dashboard reporting)
 
 ## Phase 8A — Lifecycle Discovery (read-only)
 

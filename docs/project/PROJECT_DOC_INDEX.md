@@ -139,6 +139,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-16 | **Phase 8C**: Lifecycle dashboard reporting. 3 read-only API endpoints, report script, 7 tests. 114 total regression. |
 | 2026-05-16 | **Phase 8B**: Lifecycle outcome scoring. 23 outcomes backfilled, 6 strategy scorecards (all preliminary/insufficient). Human-review only. |
 | 2026-05-16 | **Phase 8A**: Lifecycle discovery. 83 proposals → 11 linked → 9 closed with full data. Joins strong. Phase 8B ready after A-5. |
 | 2026-05-16 | **Phase 7**: Approval simulator. Read-only gate simulation, CLI + API endpoint, 15 tests, 98 total regression. No trades/orders/mutations. |

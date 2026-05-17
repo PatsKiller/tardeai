@@ -12874,6 +12874,44 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Phase 8C Read-Only Lifecycle Endpoints ──
+    if method == "GET" and base_path == "/api/v2/phase8/lifecycle-summary":
+        try:
+            outcomes = _db_query("SELECT status, COUNT(*) as c FROM paper_trade_lifecycle_outcomes GROUP BY status") or []
+            conf = _db_query("SELECT confidence, COUNT(*) as c FROM paper_trade_lifecycle_outcomes GROUP BY confidence") or []
+            review = _db_query("SELECT COUNT(*) as c FROM paper_trade_lifecycle_outcomes WHERE requires_human_review=true", fetch="one") or {}
+            total = sum(r["c"] for r in outcomes)
+            return 200, {"ok": True, "generated_at": datetime.now().isoformat(),
+                "total": total, "by_status": {r["status"]: r["c"] for r in outcomes},
+                "by_confidence": {r["confidence"]: r["c"] for r in conf},
+                "requires_human_review": review.get("c", 0),
+                "scoring_status": "insufficient" if total < 20 else "preliminary",
+                "sample_quality": "insufficient" if total < 20 else "preliminary"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/phase8/strategy-scorecards":
+        try:
+            rows = _db_query("""SELECT strategy_name, closed_count, win_count, loss_count,
+                win_rate, avg_r_multiple, total_pnl, sample_quality, recommendation, recommendation_status
+                FROM paper_strategy_scorecards ORDER BY closed_count DESC""") or []
+            return 200, {"ok": True, "generated_at": datetime.now().isoformat(),
+                "scorecards": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "count": len(rows), "all_human_review_only": all(r.get("recommendation_status") == "human_review_only" for r in rows)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/phase8/outcome-review-queue":
+        try:
+            rows = _db_query("""SELECT id, symbol, strategy_name, paper_trade_id, proposal_id,
+                outcome_label, confidence, status, close_reason
+                FROM paper_trade_lifecycle_outcomes WHERE requires_human_review=true
+                ORDER BY created_at DESC LIMIT 50""") or []
+            return 200, {"ok": True, "generated_at": datetime.now().isoformat(),
+                "queue": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "count": len(rows)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if method == "POST" and base_path == "/api/v2/paper-proposals/reject":
         try:
             body = body or {}
