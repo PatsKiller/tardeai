@@ -68,6 +68,7 @@ _COMMANDS = {
     "risk status": "Show halt flags and risk gate summary",
     "add video <urls>": "Add YouTube videos to ingestion (paste 1+ URLs)",
     "add article <urls>": "Add article URLs to ingestion (paste 1+ URLs)",
+    "backup docs": "Sync latest documentation to Google Drive",
     "help": "List available commands",
 }
 
@@ -322,6 +323,8 @@ def parse_command(text: str) -> dict:
         return {"command": "halt_trading", "args": f"strategy:{text[14:].strip()}"}
     if lower.startswith("resume strategy "):
         return {"command": "resume_trading", "args": f"strategy:{text[16:].strip()}"}
+    if lower in ("backup docs", "backup documentation", "backup docs to google", "sync docs"):
+        return {"command": "backup_docs", "args": ""}
     if lower in ("risk status", "risk"):
         return {"command": "risk_status", "args": ""}
 
@@ -1479,6 +1482,25 @@ def process_command(cmd: dict) -> str:
             return "Unknown resume target"
         except Exception as e:
             return f"Resume error: {e}"
+
+    if command == "backup_docs":
+        try:
+            import subprocess
+            result = subprocess.run(
+                [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/sync-docs-to-drive.py")],
+                capture_output=True, text=True, timeout=600, cwd=str(PROJECT_ROOT)
+            )
+            # Parse last log line for summary
+            lines = result.stdout.strip().split('\n')
+            summary = lines[-1] if lines else "completed"
+            if result.returncode == 0:
+                return f"*\U0001f4e4 Docs backed up to Google Drive*\n\n{summary}"
+            else:
+                return f"*\u26a0 Backup had issues*\n\n{summary}\n\nstderr: {result.stderr[-200:]}"
+        except subprocess.TimeoutExpired:
+            return "\u26a0 Backup timed out (>10 min). Check logs/drive-docs-sync.log"
+        except Exception as e:
+            return f"Backup error: {e}"
 
     if command == "risk_status":
         try:
