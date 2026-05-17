@@ -1,5 +1,20 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 8B — Lifecycle Outcome Scoring — 2026-05-16
+
+Additive outcome labeling and preliminary strategy scorecards from Phase 8A lifecycle data.
+
+- Schema: paper_trade_lifecycle_outcomes + paper_strategy_scorecards
+- Backfill: 23 trades → 23 outcome records (9 closed, 14 cancelled/open)
+- Scorecards: 6 strategies, all "insufficient" sample (< 5 trades each)
+- Labels: win/loss/stopped/target_hit/breakeven/cancelled/open
+- All scorecards: human_review_only
+- A-5 observation not complete → scoring is PRELIMINARY
+- Tests: 107/107 pass (83 Phase 6 + 15 Phase 7 + 9 Phase 8B)
+- No strategy activation changes, no order submission, no cron
+
+---
+
 ## Phase 8A — Lifecycle Discovery — 2026-05-16
 
 Read-only discovery of paper trade lifecycle: proposal → approval → trade → close → outcome.
