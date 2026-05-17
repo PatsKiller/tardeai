@@ -1,5 +1,20 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 8A — Lifecycle Discovery — 2026-05-16
+
+Read-only discovery of paper trade lifecycle: proposal → approval → trade → close → outcome.
+
+Key findings:
+- 83 proposals, 11 linked to trades, 9 closed with complete data
+- All 9 closed have exit_reason + pnl + r_multiple + closed_at
+- 18/23 trades link back to proposal_id
+- Main gap: outcome_label column (trivially computed)
+- Phase 8B ready after A-5 observation window (2026-05-22)
+
+No mutations. No scoring. No labels created.
+
+---
+
 ## Phase 7 — Approval Simulator — 2026-05-16
 
 Read-only approval simulation: runs all Phase 6 gates (freshness, session, revalidation, risk) without creating trades, submitting orders, or mutating proposal state.
