@@ -1,5 +1,20 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 8C — Lifecycle Dashboard Reporting — 2026-05-16
+
+Read-only API endpoints + report for operator visibility into Phase 8B lifecycle data.
+
+- GET /api/v2/phase8/lifecycle-summary
+- GET /api/v2/phase8/strategy-scorecards
+- GET /api/v2/phase8/outcome-review-queue
+- Report: scripts/report_phase8_dashboard_readiness.py
+- Tests: 7 Phase 8C + 114 total regression pass
+- Dashboard UI: deferred (API-only for now)
+- A-5 not complete → scoring "preliminary"
+- All scorecards: human_review_only
+
+---
+
 ## Phase 8B — Lifecycle Outcome Scoring — 2026-05-16
 
 Additive outcome labeling and preliminary strategy scorecards from Phase 8A lifecycle data.
