@@ -139,6 +139,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-17 | **BR-1**: Backup readiness 5.3/10. Daily DB healthy (867MB, 13.8h). P0: no offsite (rclone unconfigured). RPO/RTO + restore runbooks created. |
 | 2026-05-17 | **Phase 9A**: Maturity hardening. System facts, sample governance, agent evidence gate, data fragility. All strategies BLOCKED (insufficient). Auto-learning BLOCKED (weak evidence). |
 | 2026-05-16 | **Phase 8C**: Lifecycle dashboard reporting. 3 read-only API endpoints, report script, 7 tests. 114 total regression. |
 | 2026-05-16 | **Phase 8B**: Lifecycle outcome scoring. 23 outcomes backfilled, 6 strategy scorecards (all preliminary/insufficient). Human-review only. |

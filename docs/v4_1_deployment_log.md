@@ -1,5 +1,16 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## BR-1 — Backup and Restore Hardening — 2026-05-17
+
+Backup readiness scoring + RPO/RTO policy + restore drill runbooks + offsite plan.
+
+- Readiness: 5.3/10. DB backup healthy (daily 2 AM, 867MB). Offsite: P0 gap.
+- rclone installed but no remotes configured — operator must run `rclone config`.
+- RPO/RTO, restore runbooks, offsite plan documented.
+- Tests: 132/132 pass. No secrets exposed. No trading changes.
+
+---
+
 ## Phase 9A — Maturity Hardening — 2026-05-17
 
 Reports for proof, reliability, and governance:
