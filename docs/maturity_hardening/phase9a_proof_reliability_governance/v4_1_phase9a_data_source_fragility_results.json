@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-05-17T19:12:51.853314+00:00",
+  "since_days": 7,
+  "sources": [
+    {
+      "name": "Finviz",
+      "records": 513,
+      "last_update": "2026-05-15 16:19:08.687159-04:00",
+      "key_configured": true,
+      "health": "healthy",
+      "impact": "critical",
+      "used_by": "proposals, screeners"
+    },
+    {
+      "name": "Alpaca Paper",
+      "records": 19,
+      "last_update": "2026-05-14 11:14:44.782807-04:00",
+      "key_configured": true,
+      "health": "healthy",
+      "impact": "critical",
+      "used_by": "paper trades, quotes"
+    },
+    {
+      "name": "News APIs",
+      "records": 610,
+      "last_update": "2026-05-16 17:46:14-04:00",
+      "key_configured": true,
+      "health": "healthy",
+      "impact": "medium",
+      "used_by": "agents, intelligence"
+    },
+    {
+      "name": "YouTube Transcripts",
+      "records": 0,
+      "health": "unknown",
+      "impact": "low"
+    }
+  ]
+}
