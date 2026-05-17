@@ -1,6 +1,6 @@
 # DOC-CLEAN-1 — MS01 Source Documentation Cleanup
 
-**Status:** Stage 1 COMPLETE (inventory + dry-run). Stage 2 pending operator approval.
+**Status:** Stage 1 COMPLETE, Stage 2 (1B archive) COMPLETE. Duplicate deletion pending.
 
 ## Summary
 
