@@ -1,0 +1,337 @@
+{
+  "generated_at": "2026-05-18T15:33:13.599602+00:00",
+  "total_strategies": 23,
+  "with_scoring_weights": 9,
+  "without_scoring_weights": 14,
+  "strategies": [
+    {
+      "strategy_id": "bond_income",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "cash_or_stable",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 3,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "core_growth_compounder",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "core_index",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 3,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "covered_call_income",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "defense_thesis",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "dividend_growth_compounder",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "earnings_catalyst",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "earnings_quality",
+        "options_activity",
+        "technical_setup",
+        "analyst_sentiment",
+        "catalyst",
+        "float"
+      ],
+      "weight_values": {
+        "earnings_quality": 25,
+        "options_activity": 20,
+        "technical_setup": 20,
+        "analyst_sentiment": 15,
+        "catalyst": 10,
+        "float": 10
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 0,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "earnings_post_momentum",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "beat_magnitude",
+        "gap_hold_quality",
+        "guidance_direction",
+        "technical_setup",
+        "sector_alignment",
+        "volume_confirmation"
+      ],
+      "weight_values": {
+        "beat_magnitude": 25,
+        "gap_hold_quality": 20,
+        "guidance_direction": 20,
+        "technical_setup": 15,
+        "sector_alignment": 10,
+        "volume_confirmation": 10
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 5,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "earnings_pre_buildup",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "options_activity",
+        "analyst_revisions",
+        "technical_setup",
+        "catalyst_quality",
+        "earnings_history",
+        "sector_alignment"
+      ],
+      "weight_values": {
+        "options_activity": 25,
+        "analyst_revisions": 20,
+        "technical_setup": 20,
+        "catalyst_quality": 15,
+        "earnings_history": 10,
+        "sector_alignment": 10
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 4,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "fib_retracement_bounce",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "fib_level_precision",
+        "trend_strength",
+        "volume_pattern",
+        "rsi_quality",
+        "sector_alignment",
+        "risk_reward"
+      ],
+      "weight_values": {
+        "fib_level_precision": 20,
+        "trend_strength": 20,
+        "volume_pattern": 15,
+        "rsi_quality": 15,
+        "sector_alignment": 15,
+        "risk_reward": 15
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 5,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "gap_and_go",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "gap",
+        "rvol",
+        "catalyst",
+        "float",
+        "price_action",
+        "price_range"
+      ],
+      "weight_values": {
+        "gap": 20,
+        "rvol": 15,
+        "catalyst": 12,
+        "float": 8,
+        "price_action": 10,
+        "price_range": 5
+      },
+      "total_weight": 70,
+      "entry_criteria_count": 5,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "high_yield_income_bdc",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "income_add",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "dividend_safety",
+        "yield_quality",
+        "technical_entry",
+        "income_gap_impact",
+        "ssdi_impact"
+      ],
+      "weight_values": {
+        "dividend_safety": 30,
+        "yield_quality": 25,
+        "technical_entry": 20,
+        "income_gap_impact": 15,
+        "ssdi_impact": 10
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 5,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "international_dividend",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "momentum_scalp",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "catalyst",
+        "rvol",
+        "price_action",
+        "float",
+        "price_range",
+        "sector_momentum"
+      ],
+      "weight_values": {
+        "catalyst": 15,
+        "rvol": 12,
+        "price_action": 10,
+        "float": 8,
+        "price_range": 5,
+        "sector_momentum": 5
+      },
+      "total_weight": 55,
+      "entry_criteria_count": 5,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "recovery_watch",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "reit_income",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "sector_rotation",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "relative_strength",
+        "momentum",
+        "breadth",
+        "macro_alignment",
+        "volume"
+      ],
+      "weight_values": {
+        "relative_strength": 30,
+        "momentum": 25,
+        "breadth": 20,
+        "macro_alignment": 15,
+        "volume": 10
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 4,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "speculative_growth",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "swing_breakout",
+      "has_scoring_weights": true,
+      "weight_keys": [
+        "technical_setup",
+        "volume_pattern",
+        "sector_momentum",
+        "fundamental_quality",
+        "catalyst",
+        "price_range"
+      ],
+      "weight_values": {
+        "technical_setup": 25,
+        "volume_pattern": 20,
+        "sector_momentum": 15,
+        "fundamental_quality": 15,
+        "catalyst": 10,
+        "price_range": 15
+      },
+      "total_weight": 100,
+      "entry_criteria_count": 5,
+      "fallback_required": false
+    },
+    {
+      "strategy_id": "swing_trade",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    },
+    {
+      "strategy_id": "tax_loss_harvest",
+      "has_scoring_weights": false,
+      "weight_keys": [],
+      "weight_values": {},
+      "total_weight": 0,
+      "entry_criteria_count": 4,
+      "fallback_required": true
+    }
+  ]
+}
