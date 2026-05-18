@@ -1,7 +1,7 @@
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level
-**Last updated:** 2026-05-11 (Session 29)
+**Last updated:** 2026-05-18 (PP-UX-2)
 
 ---
 
@@ -195,6 +195,43 @@ Trade reviews use 4 models deliberately for escalating depth — this is not a f
 | Monthly | Anthropic Claude | 1st of month | Strategic review of all weeklies |
 
 All tiers feed findings back into RAG for future proposal evaluation. Implemented in `multi_tier_trade_reviewer.py`.
+
+---
+
+## Paper Proposal Decision Workflow
+
+```
+Incubator → Promoter → Proposal → Enrichment Packet → Operator Review → Approval → Execution
+```
+
+Each pending proposal passes through a multi-layer decision packet before the operator can act:
+
+| Layer | What It Proves | Source |
+|-------|---------------|--------|
+| **Quote Trust** | Is the price from an execution-eligible source (Alpaca/Polygon with bid/ask)? Finviz/yfinance are display-only. | `proposal_quote_trust.py`, `market_quote_provider.py` |
+| **Strategy Fit** | Was the strategy selected by evaluating all 20+ YAMLs? Which rules passed/failed? Are there better alternatives? | `multi_setup_router.py`, `strategy_setup_matches` table |
+| **Technical Snapshot** | Are RSI, ATR, EMA alignment, VWAP, Fib levels, and ORB status computed? | `proposal_technical_snapshot.py`, `fib_swing_engine.py`, `opening_range_engine.py` |
+| **Backtest Evidence** | Is there sufficient historical sample data for this setup type? | `proposal_backtest_engine.py` |
+| **AI/Agent Review** | Have LLM and agent reviews been run? | `proposal_agent_review.py`, `proposal_llm_reviewer.py` |
+| **Execution Readiness** | Does the proposal pass risk gate, spread check, liquidity check, duplicate check? | `proposal_execution_readiness` table |
+| **Approval Gate** | Is the proposal decision-ready? All gates clear? | Phase 6 approval flow |
+
+The operator sees a **Trust Audit** panel per proposal showing quote trust status, strategy fit score with all evaluations, technical/backtest evidence, and structured approval blockers.
+
+**Approval is blocked** when: execution readiness not checked, quote is display-only/stale, RSI blocks, or proposal exceeds staleness policy.
+
+---
+
+## Governance & Maturity
+
+| System | Schedule | Purpose |
+|--------|----------|---------|
+| **GOV-1** System Facts + A1A | 07:40-07:50 M-F, 18:00-18:10 Sun | Automated documentation compliance |
+| **Phase 9C** Maturity Board | 07:55-08:00 M-F, 18:15-18:20 Sun | Consolidated maturity score + operator readiness |
+| **SP-1** Strategy Proof | On-demand | Evidence funnel, proof status per strategy |
+| **A-5 Observation** | Ends 2026-05-22 | 5-business-day validation window |
+
+Current maturity: **7.1/10**. Live trading: **BLOCKED**.
 
 ---
 
