@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-05-13
+**Last updated:** 2026-05-15
 
 ---
 
@@ -356,4 +356,39 @@ python3 scripts/send_alert_digest.py evening
 
 # View dashboard
 # http://192.168.50.16:7777/v2/alerts
+```
+
+---
+
+## Governance & Maturity
+
+```bash
+# Operator readiness summary (daily at 08:00 M-F, 18:20 Sun)
+.venv/bin/python scripts/report_operator_readiness_summary.py --verbose
+
+# Maturity control board (daily at 07:55 M-F, 18:15 Sun)
+bash scripts/run_scheduled_maturity_control_board.sh
+
+# Governance status (GOV-1: 07:50 M-F, 18:10 Sun)
+.venv/bin/python scripts/report_governance_status.py --verbose
+
+# Phase readiness gates
+.venv/bin/python scripts/report_phase_readiness_gates.py --verbose
+
+# A1A compliance check
+.venv/bin/python scripts/check_a1a_compliance.py --verbose
+
+# Strategy evidence funnel
+.venv/bin/python scripts/report_strategy_evidence_funnel.py --verbose
+
+# A-5 observation readiness
+.venv/bin/python scripts/report_a5_strategy_readiness.py --verbose
+
+# Check scheduled cron
+crontab -l | sed -n '/BEGIN GOV-1/,/END GOV-1/p'
+crontab -l | sed -n '/BEGIN Phase 9C/,/END Phase 9C/p'
+
+# Rollback (if needed)
+scripts/rollback_gov1_governance_cron.sh --status
+scripts/rollback_phase9c_maturity_cron.sh --status
 ```
