@@ -160,6 +160,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-18 | **R-2**: Family + liquidity gates. 1,162 incompatible blocked. Distribution: momentum_scalp 51, swing_trade 25. 15 tests. |
 | 2026-05-18 | **R-5**: YAML scoring_weights wired into router. earnings_post_momentum domination eliminated. Shadow: 78/81 top-match changed. 15 tests. |
 | 2026-05-18 | **STRAT-ARCH-1**: Architecture due diligence — 5 areas, 22 gaps, prioritized roadmap. YAML weights unused by router (R-5 critical). 15 tests. |
 | 2026-05-18 | **PAR-1**: Parallel hardening — quote freshness, route mismatch, source attribution, watchpool, regression runner, morning packet. 15 tests. |
