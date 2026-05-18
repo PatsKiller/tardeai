@@ -1,5 +1,15 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## BR-2A — Existing Drive Backup Target Validated — 2026-05-18
+
+rclone NOT required. Existing GOG/Google Drive validated as offsite transport.
+- Method: local backup → GPG encrypt → gog drive upload → Trade_AI_Backups/
+- GPG 2.4.8 available. GOG authenticated. Drive access confirmed.
+- BR-2 readiness: ready_for_encrypted_backup_apply (pending operator approval)
+- No secrets uploaded. No trading changes.
+
+---
+
 ## Phase 9B — Maturity Control Board — 2026-05-18
 
 Consolidated maturity board: 7.1/10 overall.

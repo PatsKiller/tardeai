@@ -139,6 +139,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-18 | **BR-2A**: GOG/Drive offsite target validated. GPG ready. rclone NOT required. Encrypted backup path ready. |
 | 2026-05-18 | **Phase 9B**: Maturity control board 7.1/10. Phase readiness gates. Live trading BLOCKED. 168 tests. |
 | 2026-05-18 | **GOV-1**: Scheduled system facts + A1A checks. Cron at 07:40/07:45/07:50 M-F + Sunday 18:00. 157 tests. |
 | 2026-05-18 | **SP-1**: Strategy proof governance. Evidence funnel + A-5 readiness. All 11 strategies blocked (A-5 incomplete). 145 tests. |
