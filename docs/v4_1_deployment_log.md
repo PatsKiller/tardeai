@@ -1,5 +1,18 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## PP-UX-2 — Proposal Trust Audit — 2026-05-18
+
+Added trust audit layer proving quote source, strategy fit, and technical evidence:
+- Quote trust classifier: Finviz/yfinance display-only, Alpaca/Polygon execution-eligible
+- Strategy fit audit: match scores, YAML rule pass/fail, alternatives, mismatch warnings
+- Technical/backtest audit: Fib/ORB/EMA/VWAP status, backtest quality, missing sections
+- Trust Audit panel on each card + compact summary line
+- Approval blocker when quote is display-only or stale
+- Tests: 21/21, PP-UX-1 regression 20/20, frontend build clean
+- Safety: all read-only, no execution/trading changes
+
+---
+
 ## PP-UX-1 — Paper Proposals Decision Packet Redesign — 2026-05-18
 
 Upgraded Paper Proposals from thin trade cards to full operator decision packets:

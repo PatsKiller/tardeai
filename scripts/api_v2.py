@@ -8110,6 +8110,131 @@ def _paper_proposals_enriched():
                 _blockers.append({'gate': 'rsi', 'reason': f"RSI {prop.get('rsi', 0):.0f} blocks approval", 'action': 'Wait for RSI to cool'})
             prop['approval_blockers'] = _blockers
 
+        # PP-UX-2: Trust audit enrichment — quote trust, strategy fit, technical/backtest
+        try:
+            from proposal_quote_trust import classify_quote_trust
+        except ImportError:
+            classify_quote_trust = None
+
+        for prop in proposals:
+            # Quote trust
+            qt = classify_quote_trust(prop) if classify_quote_trust else {
+                'quote_source': 'unknown', 'is_execution_eligible': False,
+                'quote_trust_status': 'NOT_CHECKED', 'next_action': 'Run Check Execution'
+            }
+
+            # Strategy fit from setup_stack or strategy_setup_matches
+            _ss = prop.get('setup_stack')
+            if isinstance(_ss, str):
+                try: _ss = json.loads(_ss)
+                except: _ss = None
+            _matches = _ss or []
+            _sid = prop.get('strategy_id', '')
+            _sel_match = next((m for m in _matches if m.get('strategy_id') == _sid), None)
+            _alts = [m for m in _matches if m.get('strategy_id') != _sid and m.get('match_status') != 'NO_MATCH']
+
+            if not _matches:
+                # Try to get from DB
+                try:
+                    _db_matches = _db_query("""
+                        SELECT strategy_id, match_score, match_status, criteria_met, criteria_failed,
+                               disqualifiers_hit, is_primary, reason
+                        FROM strategy_setup_matches
+                        WHERE symbol = %s
+                        ORDER BY created_at DESC, match_score DESC LIMIT 15
+                    """, [prop.get('symbol')]) or []
+                    for _m in _db_matches:
+                        for _f in ('criteria_met', 'criteria_failed', 'disqualifiers_hit'):
+                            _v = _m.get(_f)
+                            if isinstance(_v, str):
+                                try: _m[_f] = json.loads(_v)
+                                except: pass
+                    _matches = _db_matches
+                    _sel_match = next((m for m in _matches if m.get('strategy_id') == _sid), None)
+                    _alts = [m for m in _matches if m.get('strategy_id') != _sid and m.get('match_status') != 'NO_MATCH']
+                except Exception:
+                    pass
+
+            sf_status = 'PASS' if _sel_match and (_sel_match.get('match_score', 0) or 0) >= 60 else \
+                        'PARTIAL' if _sel_match and (_sel_match.get('match_score', 0) or 0) >= 40 else \
+                        'MISSING' if not _sel_match else 'FAIL'
+
+            _mismatch = None
+            if _matches and _sel_match:
+                _best = _matches[0] if _matches else None
+                if _best and _best.get('strategy_id') != _sid and (_best.get('match_score', 0) or 0) > ((_sel_match.get('match_score', 0) or 0) + 10):
+                    _mismatch = f"Best match {_best['strategy_id']} (score {_best.get('match_score')}) vs assigned {_sid} (score {_sel_match.get('match_score')})"
+
+            sf = {
+                'assigned_strategy_id': _sid,
+                'primary_strategy_id': prop.get('primary_strategy_id'),
+                'secondary_strategy_ids': prop.get('secondary_strategy_ids'),
+                'setup_stack_available': len(_matches) > 0,
+                'yaml_hash': prop.get('strategy_config_hash'),
+                'db_sync_status': 'synced' if prop.get('strategy_config_hash') and prop.get('strategy_config_hash') == (scfg or {}).get('_config_hash') else 'unknown',
+                'fit_status': sf_status,
+                'selected_match_score': _sel_match.get('match_score') if _sel_match else None,
+                'selected_match_status': _sel_match.get('match_status') if _sel_match else None,
+                'selected_criteria_met': _sel_match.get('criteria_met', []) if _sel_match else [],
+                'selected_criteria_failed': _sel_match.get('criteria_failed', []) if _sel_match else [],
+                'all_strategy_count': len(_matches),
+                'evaluated_count': len([m for m in _matches if m.get('match_status') != 'NO_MATCH']),
+                'passed_count': len([m for m in _matches if (m.get('match_score', 0) or 0) >= 40]),
+                'top_alternative': _alts[0]['strategy_id'] if _alts else None,
+                'mismatch_warning': _mismatch,
+                'missing_route_audit': len(_matches) == 0,
+                'strategy_evaluations': [
+                    {'strategy_id': m.get('strategy_id'), 'match_score': m.get('match_score'),
+                     'match_status': m.get('match_status'), 'is_primary': m.get('is_primary')}
+                    for m in _matches[:8]
+                ],
+            }
+
+            # Technical/backtest status (already enriched in earlier passes)
+            _ts = prop.get('technical_snapshot') or {}
+            _bt = prop.get('backtest_summary') or {}
+            _bt_sc = int(_bt.get('sample_size', 0) or 0)
+            tb = {
+                'technical_snapshot_exists': bool(_ts),
+                'technical_grade': _ts.get('technical_grade'),
+                'fib_status': 'available' if _ts.get('nearest_fib_level') else ('missing_required' if _sid in ('fib_retracement_bounce', 'swing_breakout', 'swing_trade', 'recovery_watch') else 'not_applicable'),
+                'orb_status': _ts.get('opening_range_status') or ('missing_required' if _sid in ('gap_and_go', 'momentum_scalp', 'earnings_catalyst') else 'not_applicable'),
+                'ema_status': _ts.get('ema_alignment') or ('missing' if _ts else 'not_checked'),
+                'vwap_status': 'available' if _ts.get('vwap_distance_pct') is not None else ('missing' if _ts else 'not_checked'),
+                'backtest_quality': _bt.get('backtest_quality') or ('SUFFICIENT' if _bt_sc >= 20 else 'LIMITED' if _bt_sc >= 5 else 'INSUFFICIENT' if _bt_sc > 0 else 'MISSING'),
+                'backtest_sample_count': _bt_sc,
+                'missing_required_sections': [s for s in [
+                    'technical_snapshot' if not _ts else None,
+                    'fib_levels' if _sid in ('fib_retracement_bounce', 'swing_breakout', 'swing_trade', 'recovery_watch') and not _ts.get('nearest_fib_level') else None,
+                    'opening_range' if _sid in ('gap_and_go', 'momentum_scalp', 'earnings_catalyst') and not _ts.get('opening_range_status') else None,
+                    'backtest' if not _bt else None,
+                ] if s],
+            }
+
+            # Readiness summary
+            _blockers = prop.get('approval_blockers', [])
+            _evidence_gaps = (prop.get('missing_data') or [])
+            readiness = {
+                'approval_allowed': prop.get('approval_allowed', False),
+                'approval_blockers': _blockers,
+                'evidence_gaps': _evidence_gaps,
+                'top_blocker': _blockers[0]['reason'] if _blockers else None,
+                'next_actions': [b['action'] for b in _blockers[:3]] if _blockers else [],
+            }
+
+            # Add quote-trust blocker if display-only
+            if qt.get('quote_trust_status') in ('DISPLAY_ONLY', 'STALE', 'NOT_CHECKED'):
+                _qt_blocker = {'gate': 'quote_trust', 'reason': f"Quote: {qt['quote_trust_status']} ({qt.get('quote_source', '?')})", 'action': qt.get('next_action', 'Run Check Execution')}
+                if _qt_blocker not in prop.get('approval_blockers', []):
+                    prop.setdefault('approval_blockers', []).append(_qt_blocker)
+
+            prop['trust_audit'] = {
+                'quote_trust': qt,
+                'strategy_fit': sf,
+                'technical_backtest': tb,
+                'readiness': readiness,
+            }
+
         # Session 25: Add screener_display_name and pipeline_stages to each proposal
         for prop in proposals:
             prop['screener_display_name'] = _resolve_screener_display(
