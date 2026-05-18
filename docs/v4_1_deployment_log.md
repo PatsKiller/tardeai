@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## ALERT-1 — Telegram Proposal Decision Alerts — 2026-05-18
+
+Telegram alerts for paper proposal decisions: ready/blocked/rebuild/review.
+DWSN dry-run: BLOCKED with rebuild action, no approve. Wired into promoter.
+Blocked proposals never show approve. Token redacted. Tests: 15/15 + PROMOTE-1 regression.
+
+---
+
 ## PROMOTE-1 — Pre-Promotion Readiness Gate — 2026-05-18
 
 Pre-promotion gate blocks candidates with R:R < 2.0, price drift > 8%, wide

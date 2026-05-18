@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-05-18T17:38:41.182871+00:00",
+  "mode": "dry_run",
+  "total_proposals": 1,
+  "alerts_sent": 0,
+  "results": [
+    {
+      "symbol": "DWSN",
+      "proposal_id": 95,
+      "alert_type": "BLOCKED_EXECUTION_FAILED",
+      "urgency": "MEDIUM",
+      "send_decision": {
+        "send": true,
+        "reason": "BLOCKED_EXECUTION_FAILED",
+        "key": "8fb7f7ead4a6"
+      },
+      "message_preview": "\u274c *Paper Proposal: DWSN*\nStrategy: momentum_scalp | BLOCKED EXECUTION FAILED\n\nSector: Energy\nCatalyst: \u2705 DAWSON GEOPHYSICAL REPORTS FIRST QUARTER 2026 RESULTS [Yahoo Finance]\n\nEntry: $3.91 | Stop: $3.71 | Target: $4.30\nR:R: 1.95:1 | Risk: $102 | Shares: 511\nQuote: alpaca \u2705 spread 14.8%\n\n*Blockers:*\n",
+      "sent": false,
+      "mode": "dry_run"
+    }
+  ]
+}

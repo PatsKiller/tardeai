@@ -682,6 +682,24 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         conn.commit()
         promoted += 1
         symbol_counts.setdefault(symbol, set()).add(STRATEGY_GROUPS.get(strategy_id, 'OTHER'))
+
+        # ALERT-1: Send Telegram alert for new proposal
+        try:
+            from telegram_proposal_alert_policy import build_proposal_alert_packet, format_telegram_message
+            _alert_pr = {
+                "id": new_id, "symbol": symbol, "strategy_id": strategy_id,
+                "proposed_entry": entry, "proposed_stop": stop, "proposed_target1": target,
+                "proposed_shares": shares, "proposed_rr": rr, "status": "PENDING",
+                "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
+                "sector": c.get("sector"), "industry": c.get("industry"),
+                "approval_blockers": [],
+            }
+            _pkt = build_proposal_alert_packet(_alert_pr)
+            _msg = format_telegram_message(_pkt)
+            from telegram_alert import send_telegram
+            send_telegram(_msg)
+        except Exception as _ae:
+            log.warning(f"[alert] Telegram alert failed for #{new_id}: {_ae}")
         results.append(f"PROMOTED: {symbol} ({strategy_key}, score={score}, {screener_name})")
 
     # Post-run: rank proposals per symbol (Phase 6)
