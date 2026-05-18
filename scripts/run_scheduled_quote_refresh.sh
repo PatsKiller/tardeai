@@ -7,13 +7,15 @@ PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/proactive_quote_refresh.log"
 LOCK="/tmp/tradeai_quote_refresh.lock"
 TS=$(date '+%Y-%m-%d %H:%M:%S')
-MODE="${1:---mode}"
-shift || true
-MODE_VAL="${1:-pending}"
-shift || true
-LIMIT_FLAG="${1:---limit}"
-shift || true
-LIMIT_VAL="${1:-50}"
+MODE_VAL="pending"
+LIMIT_VAL="50"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mode) shift; MODE_VAL="${1:-pending}" ;;
+    --limit) shift; LIMIT_VAL="${1:-50}" ;;
+  esac
+  shift || true
+done
 
 log() { echo "$TS [quote-refresh] $*" >> "$LOG"; echo "$TS [quote-refresh] $*"; }
 
@@ -31,7 +33,8 @@ DOW=$(date +%u)
 [ "$DOW" -gt 5 ] && { log "SKIP: weekend"; exit 0; }
 
 log "Starting mode=$MODE_VAL limit=$LIMIT_VAL"
-exec {fd}>"$LOCK" && flock -n "$fd" || { log "Locked, skipping"; exit 0; }
+(
+flock -n 9 || { log "Locked, skipping"; exit 0; }
 
 $PY "$PROJ/scripts/run_proactive_quote_refresh.py" \
   --mode "$MODE_VAL" \
@@ -40,3 +43,4 @@ $PY "$PROJ/scripts/run_proactive_quote_refresh.py" \
   2>&1 | while IFS= read -r line; do log "$line"; done
 
 log "Finished"
+) 9>"$LOCK"
