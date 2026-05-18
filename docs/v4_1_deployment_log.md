@@ -1,5 +1,19 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SP-2B — Route Audit Backfill and Strategy Assignment Repair — 2026-05-18
+
+Root cause: neither auto_proposal_generator nor incubator_proposal_promoter calls
+store_setup_matches. 74/83 proposals missing route audit.
+- Root cause report: confirmed 3 bypass paths
+- Backfill dry-run: 72 processed, 46 mismatches, 2 skipped
+- Invalid strategy: 6 proposals with strategy_id='screener'
+- Config drift: 3 drifted (gap_and_go, momentum_scalp, swing_breakout)
+- API blockers added: route_audit_missing, invalid_strategy
+- Backfill --apply NOT run (deferred to operator)
+- Tests: 17/17, SP-2 16/16, PP-UX-2 21/21 regression. No mutations.
+
+---
+
 ## SP-2 — Strategy Watch Horizon and Finviz Screener Audit — 2026-05-18
 
 Read-only strategy intelligence and screener quality audit:

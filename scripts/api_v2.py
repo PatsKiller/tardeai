@@ -8228,6 +8228,16 @@ def _paper_proposals_enriched():
                 if _qt_blocker not in prop.get('approval_blockers', []):
                     prop.setdefault('approval_blockers', []).append(_qt_blocker)
 
+            # SP-2B: Add route audit and invalid strategy blockers
+            if sf.get('missing_route_audit'):
+                _ra_blocker = {'gate': 'route_audit', 'reason': 'Route audit missing — strategy assignment unverified', 'action': 'Run route audit backfill or wait for SP-2C fix'}
+                prop.setdefault('approval_blockers', []).append(_ra_blocker)
+
+            _valid_yaml_ids = set(_strategy_yaml_cache.keys()) if _strategy_yaml_cache else set()
+            if prop.get('strategy_id') and prop['strategy_id'] not in _valid_yaml_ids and _valid_yaml_ids:
+                _inv_blocker = {'gate': 'invalid_strategy', 'reason': f"strategy_id='{prop['strategy_id']}' is not a valid YAML strategy", 'action': 'Rebuild proposal with valid strategy'}
+                prop.setdefault('approval_blockers', []).append(_inv_blocker)
+
             prop['trust_audit'] = {
                 'quote_trust': qt,
                 'strategy_fit': sf,
