@@ -1,5 +1,16 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## STRAT-ARCH-1 — Strategy Architecture Due Diligence — 2026-05-18
+
+Deep architecture audit: 5 areas, 22 gaps identified, prioritized roadmap.
+Key finding: YAML scoring_weights exist but router uses flat +10 (R-5 critical fix).
+Router: momentum_scalp too broad (no family gating), no score normalization.
+Quotes: no proactive refresh, 47% proposals with bad/missing quotes.
+Taxonomy: 1 strategy with zero criteria invisible to router.
+Tests: 15/15 + PAR-1 15/15 regression. No mutations. All human_review_only.
+
+---
+
 ## PAR-1 — Parallel Hardening (No Backup) — 2026-05-18
 
 Quote freshness: 42/83 exec-eligible, 22 stale. Route mismatches: 70 (mostly needs_more_data).
