@@ -500,6 +500,8 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         <span>AI review: <strong style={{ color: ard.color === 'green' ? '#22C55E' : ard.color === 'red' ? '#EF4444' : '#F59E0B' }}>{ard.text}</strong></span>
         <span>Risk gate: <strong style={{ color: rgd.color === 'green' ? '#22C55E' : rgd.color === 'red' ? '#EF4444' : '#F59E0B' }}>{rgd.text}</strong></span>
         {p.staleness_policy && <span>Max age: <strong style={{ color: p.staleness_policy.is_stale ? '#EF4444' : '#22C55E' }}>{p.staleness_policy.max_age_hours}h ({p.staleness_policy.is_stale ? 'STALE' : 'OK'})</strong></span>}
+        {p.trust_audit?.quote_trust && <span>Quote: <strong style={{ color: p.trust_audit.quote_trust.is_execution_eligible ? '#22C55E' : '#EF4444' }}>{p.trust_audit.quote_trust.quote_source} ({p.trust_audit.quote_trust.is_execution_eligible ? 'exec' : 'display'})</strong></span>}
+        {p.trust_audit?.strategy_fit && <span>Strategy fit: <strong style={{ color: p.trust_audit.strategy_fit.fit_status === 'PASS' ? '#22C55E' : p.trust_audit.strategy_fit.fit_status === 'PARTIAL' ? '#F59E0B' : '#EF4444' }}>{p.trust_audit.strategy_fit.fit_status}</strong></span>}
       </div>
 
       {/* G. ACTION WORKFLOW — numbered steps */}
@@ -631,6 +633,82 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{(p.missing_data || []).map((m: string, i: number) => <span key={i} style={{ ...pill('red'), fontSize: 8 }}>{m}</span>)}</div>
             </div>
           )}
+
+          {/* TRUST AUDIT PANEL */}
+          {p.trust_audit && (() => {
+            const ta = p.trust_audit
+            const qt = ta.quote_trust || {}
+            const sf = ta.strategy_fit || {}
+            const tb = ta.technical_backtest || {}
+            const qtColor = qt.quote_trust_status === 'EXECUTION_ELIGIBLE' ? '#22C55E' : qt.quote_trust_status === 'DISPLAY_ONLY' ? '#EF4444' : qt.quote_trust_status === 'STALE' ? '#F59E0B' : '#94A3B8'
+            const sfColor = sf.fit_status === 'PASS' ? '#22C55E' : sf.fit_status === 'PARTIAL' ? '#F59E0B' : sf.fit_status === 'FAIL' ? '#EF4444' : '#94A3B8'
+            return (
+              <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ ...secLbl, marginTop: 0 }}>Trust Audit</div>
+
+                {/* Quote Trust */}
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: qtColor, marginBottom: 3 }}>Quote Trust: {qt.quote_trust_status || 'NOT_CHECKED'}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                    {kv('Source', qt.quote_source || '?')}
+                    {kv('Exec Eligible', qt.is_execution_eligible ? 'YES' : 'NO', qt.is_execution_eligible ? '#22C55E' : '#EF4444')}
+                    {kv('Quote Age', qt.quote_age_seconds != null ? `${Math.round(Number(qt.quote_age_seconds))}s` : '--')}
+                    {kv('Session', qt.market_session || '?')}
+                  </div>
+                  {qt.display_only_reason && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 2 }}>{qt.display_only_reason}</div>}
+                  {qt.next_action && <div style={{ fontSize: 8, color: '#60A5FA', marginTop: 1 }}>Next: {qt.next_action}</div>}
+                </div>
+
+                {/* Strategy Fit */}
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: sfColor, marginBottom: 3 }}>
+                    Strategy Fit: {sf.fit_status || 'MISSING'}
+                    {sf.selected_match_score != null && <span style={{ fontWeight: 400, color: 'var(--text3)' }}> (score {sf.selected_match_score})</span>}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                    {kv('Strategies Evaluated', `${sf.evaluated_count ?? 0}/${sf.all_strategy_count ?? 0}`)}
+                    {kv('Passed', String(sf.passed_count ?? 0))}
+                    {kv('Top Alternative', sf.top_alternative || 'none')}
+                    {kv('YAML/DB Sync', sf.db_sync_status || '?')}
+                  </div>
+                  {sf.mismatch_warning && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 2 }}>WARNING: {sf.mismatch_warning}</div>}
+                  {sf.missing_route_audit && <div style={{ fontSize: 8, color: '#F59E0B', marginTop: 2 }}>No route audit data — strategy assignment unverified</div>}
+                  {sf.selected_criteria_met?.length > 0 && <div style={{ fontSize: 8, color: '#22C55E', marginTop: 2 }}>Met: {sf.selected_criteria_met.join(', ')}</div>}
+                  {sf.selected_criteria_failed?.length > 0 && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 1 }}>Failed: {sf.selected_criteria_failed.join(', ')}</div>}
+                  {sf.strategy_evaluations?.length > 0 && (
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ fontSize: 8, color: 'var(--text3)', marginBottom: 2 }}>All evaluations:</div>
+                      {sf.strategy_evaluations.map((ev: any, i: number) => (
+                        <div key={i} style={{ fontSize: 8, color: ev.strategy_id === sf.assigned_strategy_id ? '#22C55E' : ev.match_status === 'NO_MATCH' ? 'var(--text3)' : '#F59E0B' }}>
+                          {ev.is_primary ? '\u2605 ' : '\u2022 '}{ev.strategy_id}: {ev.match_status} ({ev.match_score ?? '?'})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Technical / Backtest */}
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text2)', marginBottom: 3 }}>Technical / Backtest</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+                    {kv('Tech Grade', tb.technical_grade || (tb.technical_snapshot_exists ? 'OK' : 'MISSING'), tb.technical_snapshot_exists ? undefined : '#EF4444')}
+                    {kv('Fib', tb.fib_status || '?', tb.fib_status === 'available' ? '#22C55E' : tb.fib_status === 'missing_required' ? '#EF4444' : undefined)}
+                    {kv('ORB', tb.orb_status || '?', tb.orb_status === 'confirmed' ? '#22C55E' : tb.orb_status === 'missing_required' ? '#EF4444' : undefined)}
+                    {kv('Backtest', `${tb.backtest_quality || '?'} n=${tb.backtest_sample_count ?? 0}`, tb.backtest_quality === 'SUFFICIENT' ? '#22C55E' : tb.backtest_quality === 'LIMITED' ? '#F59E0B' : tb.backtest_quality === 'MISSING' ? '#EF4444' : undefined)}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginTop: 4 }}>
+                    {kv('EMA', tb.ema_status || '?')}
+                    {kv('VWAP', tb.vwap_status || '?')}
+                    {kv('Missing Sections', String((tb.missing_required_sections || []).length), (tb.missing_required_sections || []).length > 0 ? '#EF4444' : '#22C55E')}
+                    {kv('Tech Snapshot', tb.technical_snapshot_exists ? 'Yes' : 'No', tb.technical_snapshot_exists ? '#22C55E' : '#EF4444')}
+                  </div>
+                  {(tb.missing_required_sections || []).length > 0 && (
+                    <div style={{ fontSize: 8, color: '#EF4444', marginTop: 2 }}>Missing required: {(tb.missing_required_sections || []).join(', ')}</div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Enrichment actions */}
           <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
