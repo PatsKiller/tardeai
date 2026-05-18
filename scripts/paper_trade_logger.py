@@ -852,6 +852,17 @@ def create_proposal(symbol: str, strategy_id: str = 'momentum_scalp',
             q_pass, json.dumps(q_codes) if q_codes else None, not q_pass,
         ])
         proposal_id = cur.fetchone()[0]
+
+        # SP-2C: Generate route audit evidence
+        try:
+            from proposal_route_audit_integration import ensure_route_audit_for_proposal
+            ensure_route_audit_for_proposal(
+                conn, proposal_id, symbol, strategy_id,
+                plan, source="paper_trade_logger_scan"
+            )
+        except Exception:
+            pass
+
         conn.commit()
 
         _write_audit(conn, 'paper_proposal_created', symbol, {
@@ -986,6 +997,18 @@ def create_manual_proposal(symbol: str, shares: int, entry: float, stop: float,
             RETURNING id
         """, vals)
         proposal_id = cur.fetchone()[0]
+
+        # SP-2C: Generate route audit evidence
+        try:
+            from proposal_route_audit_integration import ensure_route_audit_for_proposal
+            _payload = {"symbol": symbol, "price": entry, "score": 0, "decision": "MANUAL"}
+            ensure_route_audit_for_proposal(
+                conn, proposal_id, symbol, strategy_id,
+                _payload, source="paper_trade_logger_manual"
+            )
+        except Exception:
+            pass
+
         conn.commit()
         conn.close()
 

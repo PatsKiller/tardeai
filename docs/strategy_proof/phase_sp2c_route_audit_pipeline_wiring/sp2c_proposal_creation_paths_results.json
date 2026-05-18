@@ -1,0 +1,40 @@
+{
+  "paths": [
+    {
+      "file": "scripts/auto_proposal_generator.py",
+      "function": "create_auto_proposal",
+      "source": "screener signals",
+      "creates_proposal": true,
+      "route_audit_wired": true,
+      "store_matches_wired": false,
+      "route_audit_status": "wired"
+    },
+    {
+      "file": "scripts/incubator_proposal_promoter.py",
+      "function": "promote (main loop)",
+      "source": "incubator candidates",
+      "creates_proposal": true,
+      "route_audit_wired": true,
+      "store_matches_wired": false,
+      "route_audit_status": "wired"
+    },
+    {
+      "file": "scripts/paper_trade_logger.py",
+      "function": "create_paper_proposal_from_scan",
+      "source": "manual scan-based",
+      "creates_proposal": true,
+      "route_audit_wired": true,
+      "store_matches_wired": false,
+      "route_audit_status": "wired"
+    },
+    {
+      "file": "scripts/paper_trade_logger.py",
+      "function": "create_paper_proposal_from_signal",
+      "source": "manual signal-based",
+      "creates_proposal": true,
+      "route_audit_wired": true,
+      "store_matches_wired": false,
+      "route_audit_status": "wired"
+    }
+  ]
+}
