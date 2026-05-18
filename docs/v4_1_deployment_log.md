@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## B-1C — Bucket 2 Migration and Scalp Boundary Guard — 2026-05-18
+
+Bucket 2 watchpool operational: 9 MULTI_DAY strategies, DWSN first entry today.
+Scalp boundary: clean, no leakage. Trade AI momentum_scalp YAML preserved.
+Migration dry-run: no missing strategies, no blockers. DB sync deferred.
+SP-2C: still awaiting first live proposal. Tests: 13/13 + 17/17 regression.
+
+---
+
 ## A-5 Monday Observation — 2026-05-18
 
 Observation-only. NOT the final A-5 review.

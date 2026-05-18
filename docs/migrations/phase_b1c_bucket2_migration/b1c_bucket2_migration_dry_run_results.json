@@ -1,0 +1,22 @@
+{
+  "generated_at": "2026-05-18T14:13:21.951537+00:00",
+  "mode": "dry_run",
+  "yaml_strategies": 23,
+  "db_strategies": 24,
+  "missing_in_db": [],
+  "stale_in_db": [
+    "invalid_non_security"
+  ],
+  "freshness_issues": [],
+  "watchpool_state": [
+    {
+      "strategy_id": "speculative_growth",
+      "current_status": "ACTIVE",
+      "c": 1
+    }
+  ],
+  "blockers": [],
+  "actions": [],
+  "sync_applied": false,
+  "rollback": null
+}
