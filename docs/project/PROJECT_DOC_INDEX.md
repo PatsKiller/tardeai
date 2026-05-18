@@ -139,6 +139,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-18 | **GOV-1**: Scheduled system facts + A1A checks. Cron at 07:40/07:45/07:50 M-F + Sunday 18:00. 157 tests. |
 | 2026-05-18 | **SP-1**: Strategy proof governance. Evidence funnel + A-5 readiness. All 11 strategies blocked (A-5 incomplete). 145 tests. |
 | 2026-05-18 | **DOC-CLEAN-1C**: 7 byte-identical duplicates deleted. 769 docs remaining. 0 non-identical deletes. |
 | 2026-05-17 | **DOC-CLEAN-1B**: 401 files archived. Active tree: 246 docs. Archive: 526 docs. Duplicates deferred. |

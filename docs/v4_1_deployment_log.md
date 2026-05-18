@@ -1,5 +1,17 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## GOV-1 — Scheduled System Facts + A1A Checks — 2026-05-18
+
+Operationalized governance with scheduled cron:
+- System facts: 07:40 M-F + Sun 18:00
+- A1A check: 07:45 M-F + Sun 18:05
+- Governance status: 07:50 M-F + Sun 18:10
+- All wrappers: safety guards, flock, logs, rollback
+- Smoke test: healthy (0 A1A findings)
+- Tests: 157/157. No trading changes.
+
+---
+
 ## SP-1 — Strategy Proof Governance — 2026-05-18
 
 Read-only strategy evidence funnel + proof policy + A-5 readiness.
