@@ -528,6 +528,22 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
                          auto_run_id: int, available_cols: set,
                          auto_context: dict = None) -> int | None:
     """Insert a PENDING paper proposal. Returns proposal_id."""
+    # PROMOTE-1: Pre-promotion readiness gate
+    try:
+        from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
+        _pre = evaluate_pre_promotion_readiness({
+            "symbol": signal.get("symbol"), "strategy_id": signal.get("strategy_id"),
+            "proposed_entry": signal.get("entry_high"), "proposed_stop": signal.get("stop_loss"),
+            "proposed_target1": signal.get("target_1"), "proposed_rr": signal.get("rr"),
+            "catalyst": signal.get("catalyst"), "catalyst_verified": signal.get("catalyst_verified"),
+            "discovery_source": "screener",
+        })
+        if _pre["blockers"]:
+            log.warning(f"[auto_gen] BLOCKED by pre-promotion gate: {signal.get('symbol')} — {_pre['blockers']}")
+            return None
+    except Exception as _e:
+        log.warning(f"[auto_gen] Pre-promotion check failed: {_e}")
+
     entry = float(signal.get("entry_high") or 0)
     stop = float(signal.get("stop_loss") or 0)
     target = float(signal.get("target_1") or 0)
