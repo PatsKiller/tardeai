@@ -277,16 +277,62 @@ def select_primary_strategy(matches: list) -> list:
 
 
 def route_symbol(symbol: str, signal: dict, configs: dict) -> dict:
-    """Route a symbol through all strategies, return setup stack.
+    """Route a symbol through all strategies with eligibility + family gates, return setup stack.
 
+    R-2: Apply eligibility and family gates before YAML-weighted scoring.
     The proposal's strategy_id is always the primary. The router adds
     secondary matches but does not override the assigned strategy.
     """
     proposal_strategy = signal.get("strategy_id", "momentum_scalp")
 
+    # R-2: Pre-gate eligibility
+    try:
+        from strategy_eligibility_gate_policy import evaluate_basic_eligibility, evaluate_liquidity_eligibility, evaluate_quote_eligibility
+        basic_elig = evaluate_basic_eligibility(signal)
+        quote_elig = evaluate_quote_eligibility(signal)
+    except ImportError:
+        basic_elig = {"eligible": True, "status": "PASS", "blockers": [], "warnings": []}
+        quote_elig = {"eligible": True, "status": "PASS", "blockers": [], "warnings": []}
+
+    # R-2: Family classification
+    try:
+        from strategy_family_gate_policy import classify_candidate_family, family_gate_allows_strategy
+        candidate_family_info = classify_candidate_family(signal)
+        candidate_family = candidate_family_info["candidate_family"]
+    except ImportError:
+        candidate_family = "UNKNOWN"
+        family_gate_allows_strategy = None
+
     matches = []
     for sid, config in configs.items():
+        # R-2: Apply family gate — skip incompatible strategies
+        family_blocked = False
+        family_reason = None
+        if family_gate_allows_strategy:
+            fg = family_gate_allows_strategy(signal, config)
+            if not fg["allowed"]:
+                family_blocked = True
+                family_reason = fg["reason"]
+
         match = evaluate_strategy_match(config, signal)
+
+        # Attach R-2 metadata
+        match["candidate_family"] = candidate_family
+        match["strategy_family"] = None
+        try:
+            from strategy_family_gate_policy import strategy_family_for_config
+            match["strategy_family"] = strategy_family_for_config(config)
+        except ImportError:
+            pass
+        match["family_gate_blocked"] = family_blocked
+        match["family_gate_reason"] = family_reason
+        match["eligibility_status"] = basic_elig["status"]
+        match["quote_eligibility_status"] = quote_elig["status"]
+
+        if family_blocked:
+            match["match_status"] = "BLOCKED_BY_FAMILY"
+            match["is_blocked"] = True
+
         if match["match_status"] != "NO_MATCH" or match["is_blocked"]:
             matches.append(match)
 
@@ -297,9 +343,12 @@ def route_symbol(symbol: str, signal: dict, configs: dict) -> dict:
             "secondary_strategy_ids": [],
             "setup_stack": [],
             "match_count": 0,
+            "candidate_family": candidate_family,
+            "eligibility_status": basic_elig["status"],
+            "scoring_model_version": "yaml_weighted_v1_family_gate_v1",
         }
 
-    # Mark the proposal's own strategy as primary
+    # Mark the proposal's own strategy as primary (even if family-blocked)
     for m in matches:
         if m["strategy_id"] == proposal_strategy:
             m["is_primary"] = True
@@ -308,7 +357,7 @@ def route_symbol(symbol: str, signal: dict, configs: dict) -> dict:
         else:
             m["is_primary"] = False
 
-    # Rank secondaries by score
+    # Rank secondaries by score (exclude blocked)
     secondaries = sorted(
         [m for m in matches if not m["is_primary"] and not m.get("is_blocked")],
         key=lambda m: -m["match_score"]
@@ -320,7 +369,10 @@ def route_symbol(symbol: str, signal: dict, configs: dict) -> dict:
     blocked = [m for m in matches if m.get("is_blocked") and not m.get("is_primary")]
     for m in blocked:
         m["priority_rank"] = 99
-        m["reason"] = f"BLOCKED: {m['disqualifiers_hit']}"
+        if m.get("family_gate_blocked"):
+            m["reason"] = f"BLOCKED_BY_FAMILY: {m.get('family_gate_reason', '')}"
+        else:
+            m["reason"] = f"BLOCKED: {m.get('disqualifiers_hit', [])}"
 
     primary_match = next((m for m in matches if m["is_primary"]), None)
     all_ranked = ([primary_match] if primary_match else []) + secondaries + blocked
@@ -331,6 +383,9 @@ def route_symbol(symbol: str, signal: dict, configs: dict) -> dict:
         "secondary_strategy_ids": [m["strategy_id"] for m in secondaries[:5]],
         "setup_stack": all_ranked,
         "match_count": len(all_ranked),
+        "candidate_family": candidate_family,
+        "eligibility_status": basic_elig["status"],
+        "scoring_model_version": "yaml_weighted_v1_family_gate_v1",
     }
 
 

@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## R-2 — Strategy Family and Liquidity Gates — 2026-05-18
+
+Eligibility, liquidity, and strategy family gates added before YAML-weighted scoring.
+1,162 incompatible family evaluations blocked. Distribution: momentum_scalp 51,
+swing_trade 25, +4 others. DIVIDEND_CORE_COMPOUNDER blocked for intraday candidates.
+Tests: 15/15 + R-5 15/15 + SP-2C 17/17 regression. No YAML/activation/trade changes.
+
+---
+
 ## R-5 — Wire YAML Scoring Weights into Router — 2026-05-18
 
 Router now uses YAML scoring_weights instead of flat +10. 9 strategies have
