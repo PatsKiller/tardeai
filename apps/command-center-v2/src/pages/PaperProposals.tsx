@@ -405,29 +405,67 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     }}>
       {showConfirm && <ConfirmModal p={p} onConfirm={handleConfirmApprove} onCancel={() => setShowConfirm(false)} />}
 
-      {/* ROW 1 — STATUS BAR (colored by verdict) */}
+      {/* A. HEADER — symbol, sector/industry, strategy, grade, age */}
       <div style={{ padding: '8px 14px', background: vc.bg, borderBottom: `1px solid ${vc.text}30`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4, borderRadius: '6px 6px 0 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: vc.text }}>{p.operator_verdict === 'READY' ? '\u2705' : p.operator_verdict === 'BLOCKED' ? '\ud83d\uded1' : p.operator_verdict === 'ENTRY_MISSED' ? '\u26d4' : p.operator_verdict === 'STALE_QUOTE' ? '\ud83d\udd70' : '\u26a0\ufe0f'} {(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')}</span>
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_id}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_display_name || p.strategy_id}</span>
+          {(p.sector || p.industry) && <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 500 }}>{[p.sector, p.industry].filter(Boolean).join(' / ')}</span>}
+          {!p.sector && !p.industry && <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 600 }}>Sector: Missing</span>}
           {p.signal_grade && <span style={pill(p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'green' : p.signal_grade === 'B' ? 'amber' : 'red')}>{p.signal_grade} {p.signal_score}pts</span>}
           {p.strategy_trade_count > 0 && <span style={{ fontSize: 9, color: (p.strategy_win_rate ?? 0) >= 50 ? '#22C55E' : '#F59E0B', fontWeight: 600 }}>{p.strategy_win_rate}% WR</span>}
+          {p.strategy_timeframe_class && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { bg: 'rgba(148,163,184,0.12)' }).bg, color: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { text: '#94A3B8' }).text, fontWeight: 600 }}>{(p.strategy_timeframe_class || '').replace(/_/g, ' ')}</span>}
         </div>
-        <span style={{ fontSize: 9, fontWeight: 600, color: p.age_color === 'green' ? '#22C55E' : p.age_color === 'red' ? '#EF4444' : '#F59E0B', ...mono }}>{p.age_display || ''}</span>
-      </div>
-      {/* Verdict reason */}
-      <div style={{ padding: '4px 14px 6px', fontSize: 10, color: vc.text, background: `${vc.bg}80` }}>{p.operator_verdict_reason || bannerText}</div>
-
-      {/* ROW 2 — KEY NUMBERS */}
-      <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, fontSize: 11, ...mono }}>
-        <div><div style={lbl}>Entry</div><div style={{ fontWeight: 700, color: 'var(--text0)' }}>${Number(entry).toFixed(2)}</div></div>
-        <div><div style={lbl}>Current</div><div style={{ fontWeight: 700, color: driftColor }}>${curPrice ? Number(curPrice).toFixed(2) : '--'}{driftPct != null ? ` (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)` : ''}</div></div>
-        <div><div style={lbl}>Stop</div><div style={{ fontWeight: 700, color: '#EF4444' }}>${Number(stop).toFixed(2)}</div></div>
-        <div><div style={lbl}>Target</div><div style={{ fontWeight: 700, color: '#22C55E' }}>${Number(target).toFixed(2)}</div></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {p.staleness_policy?.is_stale && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,0.15)', color: '#EF4444', fontWeight: 700 }}>STALE</span>}
+          <span style={{ fontSize: 9, fontWeight: 600, color: p.age_color === 'green' ? '#22C55E' : p.age_color === 'red' ? '#EF4444' : '#F59E0B', ...mono }}>{p.age_display || ''}</span>
+        </div>
       </div>
 
-      {/* ROW 3 — TRADE METRICS */}
+      {/* B. DECISION BANNER — verdict reason + approval blockers */}
+      <div style={{ padding: '5px 14px 6px', background: `${vc.bg}80`, borderBottom: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 10, color: vc.text, fontWeight: 600 }}>{p.operator_verdict_reason || bannerText}</div>
+        {(p.approval_blockers || []).length > 0 && (
+          <div style={{ marginTop: 3 }}>
+            {(p.approval_blockers || []).slice(0, 3).map((b: any, i: number) => (
+              <div key={i} style={{ fontSize: 9, color: '#EF4444', marginTop: 1 }}>
+                {'\u2022'} {b.reason} {b.action && <span style={{ color: '#60A5FA' }}> — {b.action}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {effectiveNextActions.length > 0 && (p.approval_blockers || []).length === 0 && bannerDetail && (
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{bannerDetail}</div>
+        )}
+      </div>
+
+      {/* C. WHY THIS SETUP? — strategy description + catalyst */}
+      {(p.strategy_description || p.catalyst) && (
+        <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>
+          {p.strategy_description && <div><strong style={{ color: 'var(--text1)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Strategy:</strong> {p.strategy_description}</div>}
+          {p.catalyst && <div style={{ marginTop: 2 }}><strong style={{ color: 'var(--text1)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Catalyst:</strong> {p.catalyst_verified ? '\u2705' : '\u26a0\ufe0f'} {typeof p.catalyst === 'string' ? p.catalyst.slice(0, 200) : 'Verified'}</div>}
+          {p.other_strategy_count > 0 && <span style={{ fontSize: 9, color: '#F59E0B', fontWeight: 600 }}>+{p.other_strategy_count} other {p.other_strategy_count === 1 ? 'strategy' : 'strategies'}</span>}
+        </div>
+      )}
+
+      {/* D. TRADE PLAN RATIONALE — entry/stop/target with reasoning */}
+      <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, fontSize: 11, ...mono }}>
+          <div><div style={lbl}>Entry</div><div style={{ fontWeight: 700, color: 'var(--text0)' }}>${Number(entry).toFixed(2)}</div></div>
+          <div><div style={lbl}>Current</div><div style={{ fontWeight: 700, color: driftColor }}>${curPrice ? Number(curPrice).toFixed(2) : '--'}{driftPct != null ? ` (${driftPct > 0 ? '+' : ''}${driftPct.toFixed(1)}%)` : ''}</div></div>
+          <div><div style={lbl}>Stop</div><div style={{ fontWeight: 700, color: '#EF4444' }}>${Number(stop).toFixed(2)}</div></div>
+          <div><div style={lbl}>Target</div><div style={{ fontWeight: 700, color: '#22C55E' }}>${Number(target).toFixed(2)}</div></div>
+        </div>
+        {/* Rationale lines */}
+        <div style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)', lineHeight: 1.5 }}>
+          {p.entry_rationale && <div>Entry: {p.entry_rationale}</div>}
+          {p.stop_rationale && <div>Stop: {p.stop_rationale}</div>}
+          {p.target_rationale && <div>Target: {p.target_rationale}</div>}
+        </div>
+      </div>
+
+      {/* TRADE METRICS */}
       <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 16, fontSize: 10, ...mono, color: 'var(--text2)', flexWrap: 'wrap' }}>
         <span>R:R <strong style={{ color: computedRR >= 2 ? '#22C55E' : computedRR >= 1.5 ? '#F59E0B' : '#EF4444' }}>{computedRR.toFixed(1)}x</strong></span>
         <span>Risk <strong>${computedRisk.toFixed(0)}</strong></span>
@@ -438,41 +476,57 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           : p.rsi_flag === 'ELEVATED' ? <span>RSI <strong style={{ color: '#F97316' }}>{Number(rsiVal).toFixed(0)} {'\u2191'}</strong></span>
           : <span>RSI <strong style={{ color: rsiColor }}>{Number(rsiVal).toFixed(0)}</strong></span>
         )}
+        {p.float_m && <span>Float <strong>{Number(p.float_m).toFixed(1)}M</strong></span>}
+        {p.gap_pct && <span>Gap <strong>{Number(p.gap_pct) > 0 ? '+' : ''}{Number(p.gap_pct).toFixed(1)}%</strong></span>}
       </div>
 
-      {/* ROW 4 — VALIDATION TIMESTAMPS */}
+      {/* E. EVIDENCE TILES */}
+      <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))', gap: 4 }}>
+        {tiles.map(t => <MetricTile key={t.label} label={t.label} value={t.value} status={t.status} tileColor={t.tileColor} onClick={() => setActiveTab(t.tab)} />)}
+      </div>
+
+      {/* F. MISSING DATA + VALIDATION (when blockers exist) */}
+      {((p.missing_data || []).length > 0 || (p.approval_blockers || []).length > 0) && (
+        <div style={{ padding: '5px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {(p.missing_data || []).map((m: string, i: number) => <span key={i} style={{ ...pill('red'), fontSize: 8 }}>{m}</span>)}
+          {(p.missing_data || []).length > 0 && <span style={{ fontSize: 8, color: '#EF4444', fontWeight: 600 }}>({(p.missing_data || []).length} gaps)</span>}
+        </div>
+      )}
+
+      {/* VALIDATION TIMESTAMPS */}
       <div style={{ padding: '5px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text3)', flexWrap: 'wrap' }}>
         <span>Created: <strong style={{ color: p.age_color === 'green' ? '#22C55E' : p.age_color === 'red' ? '#EF4444' : '#F59E0B' }}>{p.age_display || '--'}</strong></span>
         <span>Price check: <strong style={{ color: lpt.color === 'green' ? '#22C55E' : lpt.color === 'red' ? '#EF4444' : '#F59E0B' }}>{lpt.text}</strong></span>
         <span>AI review: <strong style={{ color: ard.color === 'green' ? '#22C55E' : ard.color === 'red' ? '#EF4444' : '#F59E0B' }}>{ard.text}</strong></span>
         <span>Risk gate: <strong style={{ color: rgd.color === 'green' ? '#22C55E' : rgd.color === 'red' ? '#EF4444' : '#F59E0B' }}>{rgd.text}</strong></span>
+        {p.staleness_policy && <span>Max age: <strong style={{ color: p.staleness_policy.is_stale ? '#EF4444' : '#22C55E' }}>{p.staleness_policy.max_age_hours}h ({p.staleness_policy.is_stale ? 'STALE' : 'OK'})</strong></span>}
       </div>
 
-      {/* ROW 5 — ONE LINE THESIS */}
-      <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--text2)', lineHeight: 1.4, maxHeight: 36, overflow: 'hidden' }}>
-        {p.thesis_display || thesisLine}
-        {p.other_strategy_count > 0 && <span style={{ marginLeft: 8, fontSize: 9, color: '#F59E0B', fontWeight: 600 }}>+{p.other_strategy_count} other {p.other_strategy_count === 1 ? 'strategy' : 'strategies'}</span>}
-      </div>
-
-      {/* ROW 6 — ACTION BUTTONS */}
+      {/* G. ACTION WORKFLOW — numbered steps */}
       <div style={{ padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => runAction('refreshPrice', `/api/v2/paper-proposals/refresh-data`, { proposal_id: p.id })} disabled={runningAction !== null}
           style={{ ...btnStyle('rgba(59,130,246,0.15)', '#60A5FA'), border: '1px solid rgba(59,130,246,0.3)', fontSize: 9 }}>
-          {runningAction === 'refreshPrice' ? 'Refreshing...' : '\u21bb Refresh Price'}
+          {runningAction === 'refreshPrice' ? 'Refreshing...' : '1. Refresh Price'}
         </button>
         <button onClick={() => runAction('checkExec', `/api/v2/paper-proposals/check-execution-readiness`, { proposal_id: p.id })} disabled={runningAction !== null}
           style={{ ...btnStyle('rgba(168,85,247,0.15)', '#A855F7'), border: '1px solid rgba(168,85,247,0.3)', fontSize: 9 }}>
-          {runningAction === 'checkExec' ? 'Checking...' : '\u2699 Check Execution'}
+          {runningAction === 'checkExec' ? 'Checking...' : '2. Check Execution'}
         </button>
         <button onClick={() => runAction('aiReview', `/api/v2/paper-proposals/run-ai-review`, { proposal_id: p.id })} disabled={runningAction !== null}
           style={{ ...btnStyle('rgba(168,85,247,0.15)', '#A855F7'), border: '1px solid rgba(168,85,247,0.3)', fontSize: 9 }}>
-          {runningAction === 'aiReview' ? 'Running...' : '\ud83e\udde0 AI Review'}
+          {runningAction === 'aiReview' ? 'Running...' : '3. AI Review'}
         </button>
         <div style={{ flex: 1 }} />
-        <button onClick={handleApprove} disabled={p.is_blocked || (approveDisabled && !canApproveWithConfirm)}
-          title={p.operator_verdict !== 'READY' ? (p.operator_verdict_reason || 'Not ready') : 'Approve for paper test'}
+        <button onClick={handleApprove}
+          disabled={p.is_blocked || (approveDisabled && !canApproveWithConfirm) || (p.approval_blockers || []).some((b: any) => b.gate === 'execution' || b.gate === 'rsi')}
+          title={
+            (p.approval_blockers || []).length > 0
+              ? `Blocked: ${(p.approval_blockers || []).map((b: any) => b.reason).join('; ')}`
+              : p.operator_verdict !== 'READY' ? (p.operator_verdict_reason || 'Not ready')
+              : 'Approve for paper test'
+          }
           style={{ ...btnStyle(p.operator_verdict === 'READY' ? '#22C55E' : 'rgba(148,163,184,0.2)', p.operator_verdict === 'READY' ? '#fff' : '#94A3B8'), fontSize: 10, padding: '5px 14px', border: p.operator_verdict === 'READY' ? 'none' : '1px solid rgba(148,163,184,0.3)' }}>
-          {acting[p.id] === 'approve' ? 'Approving...' : '\u2713 Approve'}
+          {acting[p.id] === 'approve' ? 'Approving...' : '4. Approve'}
         </button>
         <button onClick={() => act(p.id, 'reject')} style={{ ...btnStyle('rgba(239,68,68,0.12)', '#EF4444'), fontSize: 10, border: '1px solid rgba(239,68,68,0.3)' }}>
           {acting[p.id] === 'reject' ? 'Rejecting...' : '\u2717 Reject'}
@@ -483,11 +537,41 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         </button>
       </div>
 
-      {/* FULL DETAILS DRAWER (collapsed by default) */}
+      {/* I. DETAILS DRAWER */}
       {showDetails && (
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)' }}>
           {/* Pipeline step badges */}
           <PipelineChevron stages={p.pipeline_stages || []} />
+
+          {/* Strategy entry criteria */}
+          {p.strategy_entry_criteria && p.strategy_entry_criteria.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={secLbl}>Strategy Entry Criteria</div>
+              {p.strategy_entry_criteria.map((c: any, i: number) => (
+                <div key={i} style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 1, paddingLeft: 8 }}>{'\u2022'} {c.description || c.id}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Strategy disqualifiers */}
+          {p.strategy_disqualifiers && p.strategy_disqualifiers.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div style={secLbl}>Auto-Disqualifiers</div>
+              {p.strategy_disqualifiers.map((d: any, i: number) => (
+                <div key={i} style={{ fontSize: 9, color: '#F59E0B', marginBottom: 1, paddingLeft: 8 }}>{'\u2022'} {d.description || d.id}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Strategy risk rules */}
+          {p.strategy_risk_rules && (
+            <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {kv('Risk/Trade', p.strategy_risk_rules.risk_per_trade_pct != null ? `${(p.strategy_risk_rules.risk_per_trade_pct * 100).toFixed(2)}%` : '--')}
+              {kv('Max Size', p.strategy_risk_rules.max_position_size != null ? `$${p.strategy_risk_rules.max_position_size.toLocaleString()}` : '--')}
+              {kv('Stop Method', p.strategy_risk_rules.stop_method || '--')}
+              {kv('Target Method', p.strategy_risk_rules.target_method || '--')}
+            </div>
+          )}
 
           {/* Support / Reject case */}
           {p.approve_case && (
@@ -507,6 +591,16 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             ].map(m => kv(m.l, m.v))}
           </div>
 
+          {/* Sector / relative performance */}
+          {(p.sector || p.vs_sector_pct != null) && (
+            <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+              {kv('Sector', p.sector || 'Missing', p.sector ? undefined : '#EF4444')}
+              {kv('Industry', p.industry || 'Missing', p.industry ? undefined : '#EF4444')}
+              {kv('vs Sector', p.vs_sector_pct != null ? `${Number(p.vs_sector_pct) > 0 ? '+' : ''}${Number(p.vs_sector_pct).toFixed(1)}%` : '--', p.vs_sector_pct != null ? (Number(p.vs_sector_pct) > 0 ? '#22C55E' : '#EF4444') : undefined)}
+              {kv('Sector ETF', p.sector_etf || '--')}
+            </div>
+          )}
+
           {/* Agent reviews */}
           {p.agent_reviews?.length > 0 && (
             <div style={{ marginTop: 8 }}>
@@ -514,6 +608,18 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               {p.agent_reviews.map((ar: any, i: number) => (
                 <div key={i} style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 2 }}>
                   <strong>{ar.agent_name || ar.agent}</strong>: {ar.verdict || ar.vote} ({ar.confidence}%) — {(ar.summary || ar.reasoning || '').slice(0, 100)}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* News */}
+          {p.news?.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={secLbl}>Recent News ({p.news.length})</div>
+              {p.news.map((n: any, i: number) => (
+                <div key={i} style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 2 }}>
+                  {n.sentiment === 'positive' ? '\u2191' : n.sentiment === 'negative' ? '\u2193' : '\u2022'} {n.title} <span style={{ color: 'var(--text3)' }}>({n.source})</span>
                 </div>
               ))}
             </div>
@@ -877,17 +983,45 @@ export default function PaperProposals() {
         </div>
       )}
 
-      {/* Run health banner */}
-      {runHealth?.latest_run && (
+      {/* H. RUN HEALTH + INCUBATOR DIAGNOSTICS PANEL */}
+      {(runHealth?.latest_run || summary.incubator_diagnostics) && (
         <div style={{
-          padding: '6px 14px', marginBottom: 10, borderRadius: 6, fontSize: 11, fontWeight: 600,
-          background: runHealth.latest_run.status === 'RUN_HEALTHY' ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
-          border: `1px solid ${runHealth.latest_run.status === 'RUN_HEALTHY' ? 'rgba(34,197,94,0.25)' : 'rgba(245,158,11,0.25)'}`,
-          color: runHealth.latest_run.status === 'RUN_HEALTHY' ? '#4ADE80' : '#FBBF24',
+          padding: '8px 14px', marginBottom: 10, borderRadius: 6, fontSize: 10,
+          background: runHealth?.latest_run?.status === 'RUN_HEALTHY' ? 'rgba(34,197,94,0.06)' : 'rgba(245,158,11,0.06)',
+          border: `1px solid ${runHealth?.latest_run?.status === 'RUN_HEALTHY' ? 'rgba(34,197,94,0.2)' : 'rgba(245,158,11,0.2)'}`,
         }}>
-          Latest run: {runHealth.latest_run.run_label} &middot; {runHealth.latest_run.symbols_scanned} symbols &middot; {runHealth.latest_run.go_count} GO &middot; {runHealth.strategy_signals?.today_count ?? 0} signals &middot; {runHealth.trade_plans?.planned ?? 0} planned
-          {runHealth.paper_proposals?.blocked_reasons?.length > 0 && (
-            <span style={{ color: '#F87171', marginLeft: 8 }}>&middot; {runHealth.paper_proposals.blocked_reasons.join('; ')}</span>
+          {runHealth?.latest_run && (
+            <div style={{ fontWeight: 600, color: runHealth.latest_run.status === 'RUN_HEALTHY' ? '#4ADE80' : '#FBBF24', marginBottom: 4 }}>
+              Latest run: {runHealth.latest_run.run_label} &middot; {runHealth.latest_run.status?.replace(/_/g, ' ')}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', color: 'var(--text2)' }}>
+            {runHealth?.latest_run && <>
+              <span>Scanned: <strong>{runHealth.latest_run.symbols_scanned}</strong></span>
+              <span>GO: <strong>{runHealth.latest_run.go_count}</strong></span>
+              <span>Signals: <strong>{runHealth.strategy_signals?.today_count ?? 0}</strong></span>
+              <span>Planned: <strong>{runHealth.trade_plans?.planned ?? 0}</strong></span>
+            </>}
+            {summary.incubator_diagnostics && <>
+              <span>Incubator ready: <strong>{summary.incubator_diagnostics.ready_count}</strong></span>
+              <span>Pending: <strong>{summary.incubator_diagnostics.pending_proposals}/{summary.incubator_diagnostics.pending_limit}</strong></span>
+              <span>Headroom: <strong>{summary.incubator_diagnostics.headroom}</strong></span>
+            </>}
+          </div>
+          {runHealth?.latest_run?.status !== 'RUN_HEALTHY' && runHealth?.latest_run && (
+            <div style={{ marginTop: 4, fontSize: 9, color: '#F59E0B' }}>
+              Why underfilled: Only {runHealth.latest_run.go_count} GO candidates from {runHealth.latest_run.symbols_scanned} scanned symbols
+            </div>
+          )}
+          {summary.incubator_diagnostics?.promotion_blocked_reason && (
+            <div style={{ marginTop: 3, fontSize: 9, color: '#F59E0B' }}>
+              Incubator promotion: {summary.incubator_diagnostics.promotion_blocked_reason}
+            </div>
+          )}
+          {runHealth?.paper_proposals?.blocked_reasons?.length > 0 && (
+            <div style={{ marginTop: 3, fontSize: 9, color: '#F87171' }}>
+              {runHealth.paper_proposals.blocked_reasons.join(' | ')}
+            </div>
           )}
         </div>
       )}
