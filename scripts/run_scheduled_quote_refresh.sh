@@ -33,8 +33,9 @@ DOW=$(date +%u)
 [ "$DOW" -gt 5 ] && { log "SKIP: weekend"; exit 0; }
 
 log "Starting mode=$MODE_VAL limit=$LIMIT_VAL"
-(
-flock -n 9 || { log "Locked, skipping"; exit 0; }
+
+# Note: flock is handled by the cron entry itself (/usr/bin/flock -n $LOCK)
+# No internal flock needed — would double-lock and always skip.
 
 $PY "$PROJ/scripts/run_proactive_quote_refresh.py" \
   --mode "$MODE_VAL" \
@@ -43,4 +44,3 @@ $PY "$PROJ/scripts/run_proactive_quote_refresh.py" \
   2>&1 | while IFS= read -r line; do log "$line"; done
 
 log "Finished"
-) 9>"$LOCK"
