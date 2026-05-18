@@ -390,6 +390,21 @@ curl -s -X POST http://localhost:7777/api/v2/paper-proposals/promote-from-incuba
 
 ---
 
+## Strategy Intelligence (SP-2)
+
+```bash
+# Watch horizon — candidate maturity per strategy
+.venv/bin/python scripts/report_strategy_watch_horizon.py --verbose --since-days 30
+
+# Finviz screener quality audit
+.venv/bin/python scripts/report_finviz_screener_quality.py --verbose --since-days 30
+
+# Strategy assignment engine audit (route evidence, YAML/DB sync)
+.venv/bin/python scripts/report_strategy_assignment_engine_audit.py --verbose --since-days 30
+```
+
+---
+
 ## Governance & Maturity
 
 ```bash

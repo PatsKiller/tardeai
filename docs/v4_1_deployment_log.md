@@ -1,5 +1,17 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SP-2 — Strategy Watch Horizon and Finviz Screener Audit — 2026-05-18
+
+Read-only strategy intelligence and screener quality audit:
+- Watch horizon policy: 23 strategies with min/max watch days, required confirmations
+- Watch horizon report: 1,139 candidates, 12 strategies, 28 expired momentum_scalp
+- Screener quality audit: 18 screeners, cross-reference naming gap found
+- Assignment engine audit: 74/83 proposals missing route audit, 6 "screener" strategy, 9 YAML/DB drift
+- Screener optimization design: human-review-only, shadow A/B testing framework
+- Tests: 16/16, SP-1 regression 13/13. No mutations, no screener changes.
+
+---
+
 ## PP-UX-2 — Proposal Trust Audit — 2026-05-18
 
 Added trust audit layer proving quote source, strategy fit, and technical evidence:
