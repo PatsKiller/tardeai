@@ -1,5 +1,18 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## A-5 Monday Observation — 2026-05-18
+
+Observation-only. NOT the final A-5 review.
+- Day 3 of A-5 (1 market day). A-5 final blocked until 2026-05-22.
+- 22 proposals since A-5 start (all May 15). 0 Monday proposals yet (market just opened).
+- 9 closed trades: 2W/7L, +$44.95. Too few for conclusions.
+- 2 GO candidates today (GOVX, DWSN). Promoter not yet fired.
+- SP-2C route audit: wired but awaiting first live exercise.
+- Maturity 7.1/10. All strategies blocked_a5_incomplete.
+- Tests: 63/63. Safety: paper, LLM_DISABLE=true, holdings $1.19M.
+
+---
+
 ## SP-2C — Wire Route Audit into Proposal Creation Pipeline — 2026-05-18
 
 Wired `ensure_route_audit_for_proposal()` into all 4 proposal creation paths:

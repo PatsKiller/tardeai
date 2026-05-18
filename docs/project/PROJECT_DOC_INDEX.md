@@ -160,6 +160,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-18 | **A-5 Monday Observation**: Day 3, 22 proposals, 9 closed trades, SP-2C awaiting live exercise. NOT final A-5. |
 | 2026-05-18 | **SP-2C**: Route audit wired into all 4 proposal creation paths. Future proposals get 23-strategy evaluation automatically. 17 tests. |
 | 2026-05-18 | **SP-2B**: Route audit repair. Root cause: proposal generators bypass router. 74/83 missing, 46 mismatches, 6 invalid strategy. Backfill applied (72 proposals). 17 tests. |
 | 2026-05-18 | **SP-2**: Strategy watch horizon + Finviz screener audit. 1,139 candidates audited. 74/83 proposals missing route audit. 13 strategies never selected. 16 tests. |
