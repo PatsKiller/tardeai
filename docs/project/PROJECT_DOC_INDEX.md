@@ -160,6 +160,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-18 | **STRAT-ARCH-1**: Architecture due diligence — 5 areas, 22 gaps, prioritized roadmap. YAML weights unused by router (R-5 critical). 15 tests. |
 | 2026-05-18 | **PAR-1**: Parallel hardening — quote freshness, route mismatch, source attribution, watchpool, regression runner, morning packet. 15 tests. |
 | 2026-05-18 | **B-1C**: Bucket 2 watchpool operational, scalp boundary clean, migration dry-run no blockers. 13 tests. |
 | 2026-05-18 | **A-5 Monday Observation**: Day 3, 22 proposals, 9 closed trades, SP-2C awaiting live exercise. NOT final A-5. |
