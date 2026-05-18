@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-05-18
 
 ---
 
@@ -356,6 +356,36 @@ python3 scripts/send_alert_digest.py evening
 
 # View dashboard
 # http://192.168.50.16:7777/v2/alerts
+```
+
+---
+
+## Paper Proposals
+
+```bash
+# View pending proposals (JSON)
+curl -s http://localhost:7777/api/v2/paper-proposals | python3 -m json.tool | head -50
+
+# Strategy fit audit (why was this strategy assigned?)
+.venv/bin/python scripts/report_proposal_strategy_fit_audit.py --verbose
+
+# Technical/backtest evidence audit
+.venv/bin/python scripts/report_proposal_technical_backtest_audit.py --verbose
+
+# Quote trust check (which proposals have execution-eligible quotes?)
+# Shown in trust_audit.quote_trust in the API response
+
+# Pipeline run health
+curl -s http://localhost:7777/api/v2/pipeline-run-health | python3 -m json.tool
+
+# Auto-proposal diagnostics
+curl -s http://localhost:7777/api/v2/auto-proposal-diagnostics | python3 -m json.tool
+
+# Enrich all proposals (fills missing data gaps)
+curl -s -X POST http://localhost:7777/api/v2/paper-proposals/enrich-all | python3 -m json.tool
+
+# Promote from incubator
+curl -s -X POST http://localhost:7777/api/v2/paper-proposals/promote-from-incubator | python3 -m json.tool
 ```
 
 ---
