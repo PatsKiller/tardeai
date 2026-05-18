@@ -1,5 +1,15 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SP-2C — Wire Route Audit into Proposal Creation Pipeline — 2026-05-18
+
+Wired `ensure_route_audit_for_proposal()` into all 4 proposal creation paths:
+auto_proposal_generator, incubator_promoter, paper_trade_logger (scan + manual).
+Every future proposal now gets 23-strategy evaluation at creation time.
+Original strategy_id preserved. Invalid strategy_id flagged as blocker.
+Tests: 17/17, SP-2B 17/17 regression. No strategy/YAML/trade/execution changes.
+
+---
+
 ## SP-2B — Route Audit Backfill and Strategy Assignment Repair — 2026-05-18
 
 Root cause: neither auto_proposal_generator nor incubator_proposal_promoter calls

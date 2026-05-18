@@ -635,6 +635,23 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         ])
         new_id = cur.fetchone()['id']
 
+        # SP-2C: Generate route audit evidence
+        try:
+            from proposal_route_audit_integration import ensure_route_audit_for_proposal
+            _candidate = {
+                "symbol": symbol, "price": entry, "rvol": c.get("rvol_latest"),
+                "float_m": c.get("float_m"), "gap_pct": c.get("gap_latest"),
+                "score": score, "decision": "GO",
+                "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
+                "sector": c.get("sector"), "industry": c.get("industry"),
+            }
+            ensure_route_audit_for_proposal(
+                conn, new_id, symbol, strategy_id,
+                _candidate, source="incubator_promoter"
+            )
+        except Exception as _e:
+            log.warning(f"[route_audit] Failed for promoted proposal #{new_id}: {_e}")
+
         # Mark as promoted
         cur.execute("""
             UPDATE incubator_universe

@@ -608,7 +608,20 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         f"INSERT INTO paper_trade_proposals ({cols_str}) VALUES ({placeholders}) RETURNING id",
         list(insert_data.values())
     )
-    return cur.fetchone()[0]
+    proposal_id = cur.fetchone()[0]
+
+    # SP-2C: Generate route audit evidence
+    try:
+        from proposal_route_audit_integration import ensure_route_audit_for_proposal
+        ensure_route_audit_for_proposal(
+            conn, proposal_id, signal["symbol"],
+            signal.get("strategy_id", ""),
+            signal, source="auto_proposal_generator"
+        )
+    except Exception as _e:
+        log.warning(f"[route_audit] Failed for proposal #{proposal_id}: {_e}")
+
+    return proposal_id
 
 
 def record_decision(conn, run_label: str, signal: dict, decision: str,
