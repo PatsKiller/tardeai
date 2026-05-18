@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-18T14:31:47.319290+00:00",
+  "date": "2026-05-18",
+  "safety": {
+    "alpaca_mode": "paper",
+    "llm_disable": "true",
+    "holdings": 1195443.64
+  },
+  "a5_status": "in_progress",
+  "a5_end_date": "2026-05-22",
+  "governance": "healthy",
+  "maturity_score": 7.1,
+  "live_trading": "BLOCKED",
+  "phase_8d": "blocked",
+  "allowed_actions": [
+    "A-5 observation check",
+    "SP-2 shadow outcomes",
+    "DOC-CLEAN-1D review triage",
+    "Live-readiness dashboard"
+  ],
+  "blocked_actions": [
+    "Final A-5 review",
+    "Phase 8D strategy quality",
+    "Live trading"
+  ],
+  "operator_required": [
+    "BR-2 offsite backup"
+  ],
+  "next_action": "A-5 observation check",
+  "backup_note": "Skipped in PAR-1 \u2014 BR-2B deferred"
+}
