@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-05-18T01:57:30.249946+00:00",
+  "since_date": "2026-05-15",
+  "elapsed_days": 3,
+  "market_days": 1,
+  "a5_complete": false,
+  "a5_end_date": "2026-05-22",
+  "total_proposals": 22,
+  "strategies_represented": 7,
+  "a5_final_review_ready": false,
+  "strategies": [
+    {
+      "strategy_id": "momentum_scalp",
+      "proposals": 12,
+      "trades": 0,
+      "closed": 3,
+      "proof_status": "blocked_a5_incomplete"
+    },
+    {
+      "strategy_id": "recovery_watch",
+      "proposals": 4,
+      "trades": 0,
+      "closed": 0,
+      "proof_status": "blocked_a5_incomplete"
+    },
+    {
+      "strategy_id": "gap_and_go",
+      "proposals": 2,
+      "trades": 0,
+      "closed": 0,
+      "proof_status": "blocked_a5_incomplete"
+    },
+    {
+      "strategy_id": "screener",
+      "proposals": 1,
+      "trades": 0,
+      "closed": 1,
+      "proof_status": "blocked_a5_incomplete"
+    },
+    {
+      "strategy_id": "swing_breakout",
+      "proposals": 1,
+      "trades": 0,
+      "closed": 2,
+      "proof_status": "blocked_a5_incomplete"
+    },
+    {
+      "strategy_id": "speculative_growth",
+      "proposals": 1,
+      "trades": 0,
+      "closed": 0,
+      "proof_status": "blocked_a5_incomplete"
+    },
+    {
+      "strategy_id": "swing_trade",
+      "proposals": 1,
+      "trades": 0,
+      "closed": 1,
+      "proof_status": "blocked_a5_incomplete"
+    }
+  ]
+}

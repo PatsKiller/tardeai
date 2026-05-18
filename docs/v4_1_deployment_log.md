@@ -1,5 +1,17 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SP-1 — Strategy Proof Governance — 2026-05-18
+
+Read-only strategy evidence funnel + proof policy + A-5 readiness.
+- 11 strategies tracked through proposal→close funnel
+- All 11: blocked_a5_incomplete (A-5 ends 2026-05-22)
+- Proof statuses: blocked/insufficient/observing/preliminary/review_ready/decision_ready
+- All decisions: human_review_only, never auto-activate
+- Tests: 145/145 pass (13 SP-1 + 132 prior)
+- No strategy activation, no trades, no orders, no cron
+
+---
+
 ## DOC-CLEAN-1B — Archive Apply — 2026-05-17
 
 401 files archived to docs/_archive/. 0 deleted. 0 errors.
