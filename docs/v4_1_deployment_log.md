@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## PROMOTE-1 — Pre-Promotion Readiness Gate — 2026-05-18
+
+Pre-promotion gate blocks candidates with R:R < 2.0, price drift > 8%, wide
+spread, or invalid strategy from becoming actionable proposals. DWSN root cause:
+promoted with R:R 1.95, price moved 14%, spread 14.8%. Gate wired into both
+incubator promoter and auto proposal generator. Tests: 15/15 + Q-1/SP-2C regression.
+
+---
+
 ## B-1E — Navigation Audit + Bucket 3 — 2026-05-18
 
 5 orphan pages added to menu: Approvals (Trading), Paper Journal/Outcomes/Reports

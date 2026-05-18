@@ -600,6 +600,23 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             promoted += 1
             continue
 
+        # PROMOTE-1: Pre-promotion readiness gate
+        try:
+            from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
+            _pre_check = evaluate_pre_promotion_readiness({
+                "symbol": symbol, "strategy_id": strategy_id,
+                "proposed_entry": entry, "proposed_stop": stop, "proposed_target1": target,
+                "proposed_rr": rr, "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
+                "discovery_source": "incubator",
+            })
+            if _pre_check["blockers"]:
+                log.warning(f"[promoter] BLOCKED by pre-promotion gate: {symbol} — {_pre_check['blockers']}")
+                skipped += 1
+                results.append(f"BLOCKED_PRE_PROMOTION: {symbol} ({strategy_key}) — {_pre_check['blockers'][:2]}")
+                continue
+        except Exception as _e:
+            log.warning(f"[promoter] Pre-promotion check failed for {symbol}: {_e}")
+
         # INSERT proposal
         cur.execute("""
             INSERT INTO paper_trade_proposals
