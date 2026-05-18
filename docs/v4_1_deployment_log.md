@@ -1,5 +1,17 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Phase 9B — Maturity Control Board — 2026-05-18
+
+Consolidated maturity board: 7.1/10 overall.
+- Healthy: execution safety (9.0), architecture (8.7), governance (8.0), operational (8.0)
+- Blocked: strategy proof (4.0), backup (5.3 P0), agent learning (weak), live readiness
+- Phase 8D: blocked until A-5 complete
+- BR-2: operator_required (rclone)
+- Live trading: BLOCKED
+- Tests: 168/168. No trading changes.
+
+---
+
 ## GOV-1 — Scheduled System Facts + A1A Checks — 2026-05-18
 
 Operationalized governance with scheduled cron:
