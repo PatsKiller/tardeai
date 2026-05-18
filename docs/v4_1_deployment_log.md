@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## B-1E — Navigation Audit + Bucket 3 — 2026-05-18
+
+5 orphan pages added to menu: Approvals (Trading), Paper Journal/Outcomes/Reports
+(Journal), Paper Governance (System). Bucket 3: 12 LONG_CYCLE strategies validated,
+no migration needed. 16 low-priority orphans documented. Frontend build clean.
+
+---
+
 ## Q-1 — Proactive Quote Refresh — 2026-05-18
 
 Provider trust policy + target selection + scheduled refresh for pending proposals

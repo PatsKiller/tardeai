@@ -38,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/prospects', label: 'Prospects' },
     { to: '/strategy-desk', label: 'Strategy Desk' },
     { to: '/paper-proposals', label: 'Paper Proposals' },
+    { to: '/approvals', label: 'Approvals' },
     { to: '/paper-status', label: 'Paper Status' },
     { to: '/paper-review', label: 'Paper Review' },
     { to: '/plan-vs-performance', label: 'Plan vs Performance' },
@@ -61,6 +62,9 @@ const NAV_GROUPS: NavGroup[] = [
   ]},
   { label: 'Journal', items: [
     { to: '/journal', label: 'Trade Journal' },
+    { to: '/paper-journal', label: 'Paper Journal' },
+    { to: '/paper-outcomes', label: 'Paper Outcomes' },
+    { to: '/journal-reports', label: 'Journal Reports' },
   ]},
   { label: 'Intelligence', items: [
     { to: '/overnight', label: 'Overnight Brief' },
@@ -75,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/ops', label: 'Operations' },
     { to: '/pipeline', label: 'Pipeline' },
     { to: '/governance', label: 'Governance' },
+    { to: '/paper-governance', label: 'Paper Governance' },
     { to: '/system-health', label: 'System Health' },
     { to: '/strategy-admin', label: 'Strategy Admin' },
     { to: '/strategy-analytics', label: 'Strategy Analytics' },
