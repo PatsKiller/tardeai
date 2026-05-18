@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-05-18T17:00:18.199250+00:00",
+  "mode": "all",
+  "dry_run": true,
+  "total_targets": 6,
+  "refreshed": 0,
+  "failed": 0,
+  "results": [
+    {
+      "symbol": "DWSN",
+      "source": "paper_proposal",
+      "status": "dry_run",
+      "action": "would_refresh"
+    },
+    {
+      "symbol": "OSG",
+      "source": "incubator_candidate",
+      "status": "dry_run",
+      "action": "would_refresh"
+    },
+    {
+      "symbol": "BLBD",
+      "source": "incubator_candidate",
+      "status": "dry_run",
+      "action": "would_refresh"
+    },
+    {
+      "symbol": "NNE",
+      "source": "incubator_candidate",
+      "status": "dry_run",
+      "action": "would_refresh"
+    },
+    {
+      "symbol": "FTRE",
+      "source": "incubator_candidate",
+      "status": "dry_run",
+      "action": "would_refresh"
+    },
+    {
+      "symbol": "AVTX",
+      "source": "incubator_candidate",
+      "status": "dry_run",
+      "action": "would_refresh"
+    }
+  ]
+}

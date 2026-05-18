@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## Q-1 — Proactive Quote Refresh — 2026-05-18
+
+Provider trust policy + target selection + scheduled refresh for pending proposals
+and incubator candidates. Cron: */5 9-15 M-F pending, 09:20/12:00/15:30 incubator.
+6 targets identified (1 pending DWSN, 5 incubator stale). Finviz/yfinance remain
+display-only. Tests: 20/20 + R-2 15/15 regression. No trades/orders/approval changes.
+
+---
+
 ## R-2 — Strategy Family and Liquidity Gates — 2026-05-18
 
 Eligibility, liquidity, and strategy family gates added before YAML-weighted scoring.
