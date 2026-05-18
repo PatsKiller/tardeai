@@ -1,5 +1,23 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## PP-UX-1 — Paper Proposals Decision Packet Redesign — 2026-05-18
+
+Upgraded Paper Proposals from thin trade cards to full operator decision packets:
+- Sector/industry display (or explicit "Missing" flag)
+- Strategy description, entry criteria, disqualifiers from YAML
+- Entry/stop/target rationale with reasoning
+- Structured approval blockers with action steps
+- Guided workflow (1. Refresh, 2. Check Execution, 3. AI Review, 4. Approve)
+- Staleness policy per timeframe class with STALE badge
+- Evidence tiles + missing data visible in main card
+- Run-health panel with incubator diagnostics and underfilled explanation
+- Approve disabled when execution/RSI blockers exist
+- News, sector metrics, strategy risk rules in details drawer
+- Tests: 20/20, regression 50/50, frontend build clean
+- Safety: read-only enrichment, no execution/trading changes
+
+---
+
 ## BR-2A — Existing Drive Backup Target Validated — 2026-05-18
 
 rclone NOT required. Existing GOG/Google Drive validated as offsite transport.

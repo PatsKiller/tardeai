@@ -7991,6 +7991,125 @@ def _paper_proposals_enriched():
         except Exception:
             pass  # non-critical institutional enrichment
 
+        # PP-UX-1: Enrich with strategy YAML metadata and trade plan rationale
+        _strategy_yaml_cache = {}
+        try:
+            from strategy_config_loader import load_strategy_config
+        except ImportError:
+            load_strategy_config = None
+
+        for prop in proposals:
+            sid = prop.get('strategy_id') or ''
+            # Load strategy YAML (cached)
+            if load_strategy_config and sid and sid not in _strategy_yaml_cache:
+                try:
+                    _strategy_yaml_cache[sid] = load_strategy_config(sid)
+                except Exception:
+                    _strategy_yaml_cache[sid] = None
+            scfg = _strategy_yaml_cache.get(sid) or {}
+
+            prop['strategy_description'] = scfg.get('purpose') or None
+            prop['strategy_display_name'] = scfg.get('display_name') or sid.replace('_', ' ').title()
+            prop['strategy_timeframe_display'] = scfg.get('timeframe') or prop.get('proposal_timeframe_class') or None
+            prop['strategy_timeframe_class'] = scfg.get('timeframe_class') or prop.get('proposal_timeframe_class') or None
+            prop['strategy_status'] = scfg.get('status') or None
+
+            # Entry criteria from YAML
+            _ec = scfg.get('entry_criteria') or []
+            prop['strategy_entry_criteria'] = [
+                {'id': c.get('id', ''), 'description': c.get('description', '')}
+                for c in _ec
+            ] if _ec else None
+
+            # Risk rules from YAML
+            _risk = scfg.get('risk') or {}
+            prop['strategy_risk_rules'] = {
+                'risk_per_trade_pct': _risk.get('risk_per_trade_pct'),
+                'max_position_size': _risk.get('max_position_size'),
+                'max_daily_trades': _risk.get('max_daily_trades'),
+                'stop_method': (scfg.get('exit_rules') or {}).get('stop_method'),
+                'target_method': (scfg.get('exit_rules') or {}).get('target_method'),
+            } if _risk else None
+
+            # Auto-disqualifiers
+            _adq = scfg.get('auto_disqualifiers') or []
+            prop['strategy_disqualifiers'] = [
+                {'id': d.get('id', ''), 'description': d.get('description', '')}
+                for d in _adq
+            ] if _adq else None
+
+            # Entry/stop/target rationale
+            _entry = float(prop.get('proposed_entry') or 0)
+            _stop = float(prop.get('proposed_stop') or 0)
+            _t1 = float(prop.get('proposed_target1') or 0)
+            _shares = int(prop.get('proposed_shares') or 0)
+            _atr = float(prop.get('atr') or 0)
+
+            # Entry rationale
+            entry_parts = []
+            if prop.get('scan_price'):
+                entry_parts.append(f"Based on scan price ${float(prop['scan_price']):.2f}")
+            elif _entry:
+                entry_parts.append(f"Entry at ${_entry:.2f}")
+            if prop.get('discovery_source'):
+                entry_parts.append(f"Source: {prop['discovery_source']}")
+            entry_parts.append("Requires fresh price check before approval")
+            prop['entry_rationale'] = ". ".join(entry_parts) if entry_parts else None
+
+            # Stop rationale
+            stop_parts = []
+            stop_method = (scfg.get('exit_rules') or {}).get('stop_method', 'atr_based')
+            if _entry > 0 and _stop > 0:
+                stop_pct = abs(_entry - _stop) / _entry * 100
+                stop_parts.append(f"{stop_pct:.1f}% below entry")
+                if _atr > 0:
+                    stop_atr = abs(_entry - _stop) / _atr
+                    stop_parts.append(f"{stop_atr:.1f}x ATR")
+                stop_parts.append(f"Method: {stop_method}")
+                if _shares:
+                    stop_parts.append(f"Dollar risk: ${abs(_entry - _stop) * _shares:.0f}")
+            prop['stop_rationale'] = ". ".join(stop_parts) if stop_parts else None
+
+            # Target rationale
+            target_parts = []
+            target_method = (scfg.get('exit_rules') or {}).get('target_method', 'rr_based')
+            if _entry > 0 and _t1 > 0:
+                t_pct = (_t1 - _entry) / _entry * 100
+                target_parts.append(f"{t_pct:.1f}% above entry")
+                if _entry > _stop > 0:
+                    rr = (_t1 - _entry) / (_entry - _stop)
+                    target_parts.append(f"R:R {rr:.1f}x")
+                target_parts.append(f"Method: {target_method}")
+            prop['target_rationale'] = ". ".join(target_parts) if target_parts else None
+
+            # Staleness policy (strategy-dependent max age hours)
+            _tc = prop.get('strategy_timeframe_class') or ''
+            staleness_hours = {'INTRADAY': 4, 'SHORT_SWING': 48, 'MEDIUM_SWING': 96, 'POSITION': 168}.get(_tc, 72)
+            age_h = prop.get('age_hours') or 0
+            prop['staleness_policy'] = {
+                'max_age_hours': staleness_hours,
+                'timeframe_class': _tc,
+                'is_stale': age_h > staleness_hours if age_h else False,
+                'action': 'Rebuild or expire proposal' if age_h and age_h > staleness_hours else None,
+            }
+
+            # Structured approval blockers
+            _blockers = []
+            if not prop.get('execution_readiness'):
+                _blockers.append({'gate': 'execution', 'reason': 'Risk gate not checked', 'action': 'Run Check Execution'})
+            elif prop.get('execution_readiness', {}).get('readiness_state', '').startswith('BLOCKED'):
+                _blockers.append({'gate': 'execution', 'reason': f"Execution: {prop['execution_readiness'].get('readiness_state', '')}", 'action': 'Review execution blockers'})
+            if not prop.get('rsi') and not (prop.get('technical_snapshot') or {}).get('rsi_14'):
+                _blockers.append({'gate': 'technical', 'reason': 'No technical snapshot', 'action': 'Run Technical Snapshot'})
+            if not prop.get('agent_reviews') or len(prop.get('agent_reviews', [])) == 0:
+                if not prop.get('llm_analysis'):
+                    _blockers.append({'gate': 'ai_review', 'reason': 'AI review never run', 'action': 'Run AI Review'})
+            if prop.get('staleness_policy', {}).get('is_stale'):
+                _blockers.append({'gate': 'staleness', 'reason': f"Proposal is {age_h:.0f}h old (max {staleness_hours}h)", 'action': 'Rebuild or expire'})
+            if prop.get('rsi_flag_blocks_approval'):
+                _blockers.append({'gate': 'rsi', 'reason': f"RSI {prop.get('rsi', 0):.0f} blocks approval", 'action': 'Wait for RSI to cool'})
+            prop['approval_blockers'] = _blockers
+
         # Session 25: Add screener_display_name and pipeline_stages to each proposal
         for prop in proposals:
             prop['screener_display_name'] = _resolve_screener_display(
@@ -8333,6 +8452,18 @@ def _paper_proposals_enriched():
                     f"Refresh prices or dismiss stale proposals to unlock "
                     f"the {incubator_ready_count} candidates in the incubator."
                 ) if ready_count == 0 and len(pending_list) > 0 else None,
+                "incubator_diagnostics": {
+                    "ready_count": incubator_ready_count,
+                    "pending_proposals": len(pending_list),
+                    "pending_limit": 20,
+                    "headroom": max(0, 20 - len(pending_list)),
+                    "last_promotion_run": last_promotion_run,
+                    "promotion_blocked_reason": (
+                        "Pending proposals at limit (20)" if len(pending_list) >= 20
+                        else "No incubator candidates ready" if incubator_ready_count == 0
+                        else None
+                    ),
+                },
                 "by_strategy": [{**v, 'strategy_id': k}
                                 for k, v in sorted(by_strat.items(),
                                                    key=lambda x: x[1].get('win_rate', 0),
