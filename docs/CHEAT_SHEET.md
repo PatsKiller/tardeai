@@ -401,6 +401,19 @@ curl -s -X POST http://localhost:7777/api/v2/paper-proposals/promote-from-incuba
 
 # Strategy assignment engine audit (route evidence, YAML/DB sync)
 .venv/bin/python scripts/report_strategy_assignment_engine_audit.py --verbose --since-days 30
+
+# Route audit root cause
+.venv/bin/python scripts/report_route_audit_root_cause.py --verbose --since-days 30
+
+# Route audit backfill (dry-run first!)
+.venv/bin/python scripts/backfill_proposal_route_audit.py --dry-run --verbose --since-days 30
+# .venv/bin/python scripts/backfill_proposal_route_audit.py --apply --verbose  # operator approval required
+
+# Invalid strategy assignments
+.venv/bin/python scripts/report_invalid_strategy_assignments.py --verbose --since-days 30
+
+# YAML/DB config drift
+.venv/bin/python scripts/report_strategy_config_drift.py --verbose
 ```
 
 ---
