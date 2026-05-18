@@ -1,5 +1,15 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## PAR-1 — Parallel Hardening (No Backup) — 2026-05-18
+
+Quote freshness: 42/83 exec-eligible, 22 stale. Route mismatches: 70 (mostly needs_more_data).
+Source attribution: all 83 from allowed sources, no leakage. Watchpool: 1 active (DWSN).
+Invalid strategy workflow designed (6 screener proposals). Canonical regression runner added.
+Operator morning packet consolidates governance/maturity/A-5 status.
+Tests: 15/15 + 10/10 regression suites. No backup/encryption work.
+
+---
+
 ## B-1C — Bucket 2 Migration and Scalp Boundary Guard — 2026-05-18
 
 Bucket 2 watchpool operational: 9 MULTI_DAY strategies, DWSN first entry today.

@@ -418,6 +418,32 @@ curl -s -X POST http://localhost:7777/api/v2/paper-proposals/promote-from-incuba
 
 ---
 
+## Operator Reports (PAR-1)
+
+```bash
+# Morning packet — consolidated daily status
+.venv/bin/python scripts/report_operator_morning_packet.py --verbose
+
+# Quote freshness audit
+.venv/bin/python scripts/report_quote_freshness_provider_audit.py --verbose --since-days 30
+
+# Route mismatch review (human-review-only)
+.venv/bin/python scripts/report_route_mismatch_human_review.py --verbose --since-days 30
+
+# Source attribution audit
+.venv/bin/python scripts/report_proposal_source_attribution.py --verbose --since-days 30
+
+# Bucket 2 watchpool status
+.venv/bin/python scripts/report_bucket2_watchpool_status.py --verbose
+
+# Canonical regression runner
+scripts/run_tradeai_regression.sh --quick    # 10 suites
+scripts/run_tradeai_regression.sh --full     # all suites + BR-2A
+scripts/run_tradeai_regression.sh --frontend # includes frontend build
+```
+
+---
+
 ## Governance & Maturity
 
 ```bash
