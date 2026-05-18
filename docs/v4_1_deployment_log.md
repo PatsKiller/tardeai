@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## R-5 — Wire YAML Scoring Weights into Router — 2026-05-18
+
+Router now uses YAML scoring_weights instead of flat +10. 9 strategies have
+weights, 14 fall back. Shadow comparison: earnings_post_momentum dropped from
+72/81 top-match to 0. Distribution now momentum_scalp 69, gap_and_go 11,
+swing_trade 1. No YAML changes. Tests: 15/15 + SP-2C/SP-2B regression.
+
+---
+
 ## STRAT-ARCH-1 — Strategy Architecture Due Diligence — 2026-05-18
 
 Deep architecture audit: 5 areas, 22 gaps identified, prioritized roadmap.

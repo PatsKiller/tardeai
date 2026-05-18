@@ -45,14 +45,51 @@ except ImportError:
     INTRADAY_STRATEGIES = {"momentum_scalp", "gap_and_go"}  # safe fallback
 
 
+def _criterion_to_factor(criterion_id: str) -> str:
+    """Map a criterion ID to a scoring_weights factor name."""
+    cid = criterion_id.upper()
+    FACTOR_MAP = {
+        "CATALYST": "catalyst", "CATALYST_VERIFIED": "catalyst",
+        "FUNDAMENTAL_CATALYST": "catalyst", "RECOVERY_CATALYST": "catalyst",
+        "RVOL": "rvol", "RVOL_SURGE": "rvol", "VOLUME_SURGE": "rvol",
+        "VOLUME_CONFIRMATION": "volume_confirmation",
+        "PRICE_RANGE": "price_range", "PRICE_ACTION": "price_action",
+        "FLOAT": "float", "FLOAT_LOW": "float", "LOW_FLOAT": "float",
+        "GAP": "gap", "GAP_UP": "gap", "GAP_UP_CONFIRMED": "gap",
+        "GAP_HOLD_30MIN": "gap_hold_quality",
+        "TECHNICAL": "technical_setup", "TECHNICAL_SETUP": "technical_setup",
+        "STRUCTURE_BREAKOUT": "technical_setup", "BREAKOUT_LEVEL": "technical_setup",
+        "BASE_FORMATION": "technical_setup", "TREND_ALIGNMENT": "technical_setup",
+        "DRAWDOWN_MAGNITUDE": "technical_setup", "RECOVERY_SIGNAL": "technical_setup",
+        "ENTRY_WINDOW": "price_action", "ENTRY_TIMING": "price_action",
+        "EARNINGS": "earnings_quality", "BEAT_MAGNITUDE": "beat_magnitude",
+        "GUIDANCE": "guidance_direction", "GUIDANCE_NOT_NEGATIVE": "guidance_direction",
+        "POST_EARNINGS_WINDOW": "beat_magnitude",
+        "SECTOR": "sector_momentum", "SECTOR_MOMENTUM": "sector_momentum",
+        "SECTOR_ALIGNMENT": "sector_alignment",
+        "NOT_VALUE_TRAP": "fundamental_quality",
+        "REVENUE_TREND": "fundamental_quality",
+        "VOLUME_PATTERN": "volume_pattern",
+        "FIB_RETRACEMENT": "technical_setup", "FIB_LEVEL": "technical_setup",
+    }
+    return FACTOR_MAP.get(cid, "general")
+
+DEFAULT_CRITERION_WEIGHT = 10  # Fallback when no scoring_weights or no factor match
+
+
 def evaluate_strategy_match(config: dict, signal: dict) -> dict:
-    """Evaluate how well a signal matches a strategy config."""
+    """Evaluate how well a signal matches a strategy config.
+
+    R-5: Uses YAML scoring_weights when available instead of flat +10.
+    """
     sid = config.get("strategy_id", "?")
     criteria_met = []
     criteria_failed = []
     disqualifiers_hit = []
     missing_data = []
-    score = 0
+    raw_weighted_score = 0
+    scoring_weights = config.get("scoring_weights") or {}
+    weights_used = bool(scoring_weights)
 
     # Check entry criteria
     for criterion in (config.get("entry_criteria") or []):
@@ -88,7 +125,10 @@ def evaluate_strategy_match(config: dict, signal: dict) -> dict:
 
             if passed:
                 criteria_met.append(cid)
-                score += 10
+                # R-5: Use YAML scoring_weights factor weight
+                factor = _criterion_to_factor(cid)
+                weight = scoring_weights.get(factor, DEFAULT_CRITERION_WEIGHT) if weights_used else DEFAULT_CRITERION_WEIGHT
+                raw_weighted_score += weight
             else:
                 criteria_failed.append(cid)
         except (ValueError, TypeError):
@@ -98,11 +138,10 @@ def evaluate_strategy_match(config: dict, signal: dict) -> dict:
     for disq in (config.get("auto_disqualifiers") or []):
         did = disq.get("id", "?")
         condition = disq.get("condition", "")
-        # Simple condition evaluation
         if _check_disqualifier(condition, signal):
             disqualifiers_hit.append(did)
 
-    # Scoring adjustments
+    # Scoring adjustments — use YAML weights for bonus factors too
     universe = config.get("universe", {})
     if isinstance(universe, dict):
         price_cfg = universe.get("price", {})
@@ -110,36 +149,58 @@ def evaluate_strategy_match(config: dict, signal: dict) -> dict:
             min_p = price_cfg.get("min")
             max_p = price_cfg.get("max")
             price = signal.get("price") or signal.get("proposed_entry")
+            price_weight = scoring_weights.get("price_range", 5) if weights_used else 5
             if price and min_p and float(price) >= float(min_p):
-                score += 5
+                raw_weighted_score += price_weight
             if price and max_p and float(price) <= float(max_p):
-                score += 5
+                raw_weighted_score += price_weight
 
         rvol_cfg = universe.get("rvol", {})
         if isinstance(rvol_cfg, dict):
             min_rvol = rvol_cfg.get("min")
             rvol = signal.get("rvol") or signal.get("relative_volume")
+            rvol_weight = scoring_weights.get("rvol", 15) if weights_used else 15
             if rvol and min_rvol and float(rvol) >= float(min_rvol):
-                score += 15
+                raw_weighted_score += rvol_weight
 
-    # Bonus for catalyst match
+    # Bonus for catalyst match — use YAML catalyst weight
+    catalyst_weight = scoring_weights.get("catalyst", 10) if weights_used else 10
     if signal.get("catalyst") and signal.get("catalyst_verified"):
-        score += 10
+        raw_weighted_score += catalyst_weight
     elif signal.get("catalyst"):
-        score += 5
+        raw_weighted_score += max(1, catalyst_weight // 2)
 
-    # Determine match status
+    # Calculate max possible score for normalization
+    max_possible = 0
+    for criterion in (config.get("entry_criteria") or []):
+        factor = _criterion_to_factor(criterion.get("id", ""))
+        max_possible += scoring_weights.get(factor, DEFAULT_CRITERION_WEIGHT) if weights_used else DEFAULT_CRITERION_WEIGHT
+    # Add bonus maximums
+    if universe and isinstance(universe, dict):
+        if universe.get("price"):
+            max_possible += (scoring_weights.get("price_range", 5) if weights_used else 5) * 2
+        if universe.get("rvol"):
+            max_possible += scoring_weights.get("rvol", 15) if weights_used else 15
+    max_possible += catalyst_weight
+
+    # Normalized score (0-100) — floor at 50 to prevent bonus-only strategies from inflating
+    max_possible = max(max_possible, 50)
+    normalized_score = min(100, round(raw_weighted_score / max_possible * 100))
+
+    # Determine match status using normalized score
     is_blocked = len(disqualifiers_hit) > 0
     match_status = "BLOCKED" if is_blocked else (
-        "STRONG_MATCH" if score >= 50 else
-        "MODERATE_MATCH" if score >= 30 else
-        "WEAK_MATCH" if score >= 10 else
+        "STRONG_MATCH" if normalized_score >= 60 else
+        "MODERATE_MATCH" if normalized_score >= 35 else
+        "WEAK_MATCH" if normalized_score >= 15 else
         "NO_MATCH"
     )
 
     return {
         "strategy_id": sid,
-        "match_score": score,
+        "match_score": normalized_score,
+        "raw_weighted_score": raw_weighted_score,
+        "max_possible_weighted_score": max_possible,
         "match_status": match_status,
         "criteria_met": criteria_met,
         "criteria_failed": criteria_failed,
@@ -147,6 +208,8 @@ def evaluate_strategy_match(config: dict, signal: dict) -> dict:
         "missing_data": missing_data,
         "is_blocked": is_blocked,
         "is_execution_strategy": sid in EXECUTION_STRATEGIES,
+        "scoring_model_version": "yaml_weighted_v1",
+        "scoring_weights_used": weights_used,
     }
 
 
