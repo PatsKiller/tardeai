@@ -1,5 +1,14 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SCREENER-ARCH-3 — Ticker Catalog Lifecycle — 2026-05-19
+
+Membership tables created (screener_symbol_membership + _history). Falloff policy
+added (retain by TTL, no silent deletion). Catalog report: 1,139 incubator, 4,872
+classified, 5,043 watchlist. 8/15 done, 5 deferred to ARCH-3B (importer write).
+Tests: 12/12 + ARCH-2B regression.
+
+---
+
 ## SCREENER-ARCH-2B — Broad Screener Cap Overrides — 2026-05-19
 
 Per-screener 10,000 cap for 4 broad ETF/income screeners. All 4 now fully EXHAUSTED:
