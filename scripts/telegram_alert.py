@@ -62,21 +62,15 @@ def _smart_split(text: str, limit: int) -> list[str]:
     return chunks
 
 
-def send_telegram(message: str) -> bool:
-    """Send a message via Telegram bot. Returns True on success."""
-    if not _enabled():
-        return False
-    token   = _token()
-    if not token or not _chat_ids():
-        print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+def _raw_send_telegram(message: str, chat_ids: list = None) -> bool:
+    """Low-level Telegram send. No routing — called after router approval."""
+    token = _token()
+    targets = chat_ids or _chat_ids()
+    if not token or not targets:
         return False
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
-        chat_ids = _chat_ids()
-        if not chat_ids:
-            print("[telegram] No chat IDs configured")
-            return False
-        for cid in chat_ids:
+        for cid in targets:
             for chunk in chunks:
                 resp = requests.post(
                     TELEGRAM_API.format(token=token),
@@ -84,7 +78,6 @@ def send_telegram(message: str) -> bool:
                     timeout=10,
                 )
                 if not resp.ok:
-                    # Markdown parse failure — retry without parse_mode
                     resp2 = requests.post(
                         TELEGRAM_API.format(token=token),
                         json={"chat_id": cid, "text": chunk},
@@ -96,6 +89,34 @@ def send_telegram(message: str) -> bool:
     except Exception as e:
         print(f"[telegram] Error: {e}")
         return False
+
+
+def send_telegram(message: str, bypass_router: bool = False) -> bool:
+    """Send a message via Telegram bot. Routes through operator alert policy.
+
+    Args:
+        message: The message to send.
+        bypass_router: If True, skip the alert router (for P0 system alerts).
+    """
+    if not _enabled():
+        return False
+    if not _token() or not _chat_ids():
+        print("[telegram] Skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
+        return False
+
+    # Route through central alert router unless bypassed
+    if not bypass_router:
+        try:
+            from telegram_alert_router import should_send_telegram, mark_sent, classify_alert
+            if not should_send_telegram(message):
+                level = classify_alert(message)
+                print(f"[telegram] Suppressed ({level}): {message[:60]}...")
+                return False
+            mark_sent(message)
+        except ImportError:
+            pass  # Router not available — send normally
+
+    return _raw_send_telegram(message)
 
 
 def build_telegram_message(
