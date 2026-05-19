@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-05-19T20:13:23.361494+00:00",
+  "p0_immediate": [],
+  "p1_digest": [],
+  "p2_dashboard": {
+    "pending_proposals_count": 0,
+    "open_trades_error": "column \"entry_date\" does not exist\nLINE 1: SELECT id, symbol, strategy_id, entry_date, entry_price FROM...\n                                        ^\nHINT:  Perhaps you meant to reference the column \"paper_trades.entry_time\".\n",
+    "watchpool_error": "current transaction is aborted, commands ignored until end of transaction block\n"
+  },
+  "p3_log": {
+    "system_health_status": "unknown",
+    "system_health_message": "",
+    "log_file_count": 953
+  },
+  "page_destinations": {
+    "pending_proposals": "/v2/approvals",
+    "open_trades": "/v2/paper-journal",
+    "watchpool_candidates": "/v2/trade-ai",
+    "system_health": "/v2/risk"
+  }
+}
