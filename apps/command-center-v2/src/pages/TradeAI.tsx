@@ -243,9 +243,10 @@ export default function TradeAI() {
       }}>
         <MetricTile label="VIX" value={tai.vix?.toFixed(1) ?? '—'} deltaColor={tai.vix != null ? (tai.vix > 25 ? 'var(--red)' : tai.vix > 18 ? 'var(--amber)' : 'var(--green)') : undefined} />
         <MetricTile label="Regime" value={`${regimeEmoji} ${tai.breadth}`} />
-        <MetricTile label="GO" value={String(tai.go_count)} deltaColor="var(--green)" />
-        <MetricTile label="WAIT" value={String(tai.wait_count)} deltaColor="var(--amber)" />
-        <MetricTile label="NO GO" value={String(tai.avoid_count)} deltaColor={tai.avoid_count > 0 ? 'var(--red)' : 'var(--text3)'} />
+        <MetricTile label="Run GO" value={String(tai.go_count)} deltaColor="var(--green)" delta="current run" />
+        <MetricTile label="Run WAIT" value={String(tai.wait_count)} deltaColor="var(--amber)" delta="current run" />
+        <MetricTile label="Run NO GO" value={String(tai.avoid_count)} deltaColor={tai.avoid_count > 0 ? 'var(--red)' : 'var(--text3)'} delta="current run" />
+        <MetricTile label="Universe" value={String(tai.universe_count ?? (tai.tickers || []).length)} delta="tracked symbols" />
         <MetricTile label="Top Ticker" value={tai.top_ticker || '—'} delta={`Score: ${tai.top_score}`} />
         <MetricTile label="Deltas" value={String(tai.delta_events)} delta="score/decision changes vs prior run" />
         <MetricTile label="Iris" value={irisStatus?.overall === 'ok' ? 'CLEAN' : `${(irisStatus?.checks || []).filter((c: any) => c.status === 'warn').length} WARN`}
