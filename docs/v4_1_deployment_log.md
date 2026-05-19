@@ -2,9 +2,11 @@
 
 ## SCREENER-ARCH-2 — Full FinViz Ingestion — 2026-05-19
 
-FinViz export returns complete CSV — no pagination needed. Removed 500 cap, replaced
-with emergency 5000. New ticker incubator cap raised 10→200. Documented ingestion
-method, catalog lifecycle, and full pagination design. Tests: 13/13 + regression.
+Full ingestion proven: ~41,000 rows, 2,973 new tickers, 23/27 screeners exhausted.
+Removed 50-row and 500-row caps. Emergency 5,000 cap for 4 broad ETF/income screeners.
+All 27 screeners now freshly run. 7/22 deliverables done, 14 deferred to ARCH-2B/3/4/5.
+Catalog, membership lifecycle, strategy-fit, schedule, coverage alerts are deferred.
+Tests: 55/55 regression.
 
 ---
 
