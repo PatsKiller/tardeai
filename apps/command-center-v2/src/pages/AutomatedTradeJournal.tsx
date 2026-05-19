@@ -1194,6 +1194,57 @@ export default function AutomatedTradeJournal() {
               deltaColor={pnlColor(unrealizedPnl)} />
           </div>
 
+          {/* JOURNAL-UX-1: Closed Trade Postmortem Dashboard */}
+          {closedTrades.length > 0 && (
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+              <SectionHeader title="Closed Trade Review" />
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)', fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '4px 8px', textAlign: 'left' }}>Symbol</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Strategy</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>P&L</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>R</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Why Closed</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Exit Quality</th>
+                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Lesson</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {closedTrades.slice(0, 10).map((t: any) => {
+                    const pnl = Number(t.pnl || 0)
+                    const r = Number(t.r_multiple || 0)
+                    const reason = (t.exit_reason || '').replace(/_/g, ' ')
+                    const exitQ = t.exit_reason?.includes('target') ? 'Good' :
+                                  t.exit_reason?.includes('stop_hit_instant') ? 'Review' :
+                                  t.exit_reason?.includes('stop') ? 'Acceptable' :
+                                  t.exit_reason?.includes('time_stop') ? (pnl >= 0 ? 'OK' : 'Early') :
+                                  t.exit_reason?.includes('manual') || t.exit_reason?.includes('stale') ? 'Review' :
+                                  t.exit_reason?.includes('phantom') || t.exit_reason?.includes('never_filled') ? 'N/A' : 'Review'
+                    const lesson = t.exit_reason?.includes('target') ? 'Strategy followed' :
+                                   t.exit_reason?.includes('stop_hit_instant') ? 'Check entry/spread' :
+                                   t.exit_reason?.includes('stop') ? 'Check stop distance' :
+                                   t.exit_reason?.includes('time_stop') ? 'Setup did not move' :
+                                   t.exit_reason?.includes('manual') || t.exit_reason?.includes('stale') ? 'Define explicit exit rule' :
+                                   t.exit_reason?.includes('phantom') || t.exit_reason?.includes('never_filled') ? 'Execution gap' : 'Review'
+                    const qColor = exitQ === 'Good' ? '#22C55E' : exitQ === 'Acceptable' || exitQ === 'OK' ? '#F59E0B' : exitQ === 'N/A' ? '#64748B' : '#EF4444'
+                    return (
+                      <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '4px 8px', fontWeight: 700, color: 'var(--text0)' }}>{t.symbol}</td>
+                        <td style={{ padding: '4px 6px', color: 'var(--text2)' }}>{t.strategy_id}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', color: pnl > 0 ? '#22C55E' : pnl < 0 ? '#EF4444' : 'var(--text3)' }}>${pnl.toFixed(0)}</td>
+                        <td style={{ padding: '4px 6px', textAlign: 'right', color: r >= 1 ? '#22C55E' : r >= 0 ? '#F59E0B' : '#EF4444' }}>{r.toFixed(2)}R</td>
+                        <td style={{ padding: '4px 6px', color: 'var(--text2)', fontSize: 9 }}>{reason}</td>
+                        <td style={{ padding: '4px 6px' }}><span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: `${qColor}20`, color: qColor, fontWeight: 600 }}>{exitQ}</span></td>
+                        <td style={{ padding: '4px 6px', color: 'var(--text3)', fontSize: 9, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lesson}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Strategy Breakdown */}
           {analyticsData?.by_strategy?.length > 0 && (
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
