@@ -1,0 +1,231 @@
+{
+  "generated_at": "2026-05-19T20:28:23.210606+00:00",
+  "catalog": {
+    "total": 1139,
+    "active": 1129
+  },
+  "membership": {
+    "present": 1311,
+    "dropped": 727
+  },
+  "reentered_symbols": 55,
+  "scan_coverage": {
+    "symbols_scanned_last_3d": 1559
+  },
+  "missing_data": {
+    "rvol_null": 13,
+    "price_null": 0,
+    "sector_null": 0,
+    "float_m_null": 0
+  },
+  "strategy_inventory": [
+    {
+      "strategy_id": "bond_income",
+      "file": "bond_income.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "cash_or_stable",
+      "file": "cash_or_stable.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "CASH",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "core_growth_compounder",
+      "file": "core_growth_compounder.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "core_index",
+      "file": "core_index.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "covered_call_income",
+      "file": "covered_call_income.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "defense_thesis",
+      "file": "defense_thesis.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "dividend_growth_compounder",
+      "file": "dividend_growth_compounder.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "earnings_catalyst",
+      "file": "earnings_catalyst.yaml",
+      "status": "DEPRECATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": true,
+      "has_entry_criteria": false,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "earnings_post_momentum",
+      "file": "earnings_post_momentum.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "earnings_pre_buildup",
+      "file": "earnings_pre_buildup.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "fib_retracement_bounce",
+      "file": "fib_retracement_bounce.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "gap_and_go",
+      "file": "gap_and_go.yaml",
+      "status": "TESTING",
+      "timeframe_class": "INTRADAY",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "high_yield_income_bdc",
+      "file": "high_yield_income_bdc.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "income_add",
+      "file": "income_add.yaml",
+      "status": "TESTING",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "international_dividend",
+      "file": "international_dividend.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "momentum_scalp",
+      "file": "momentum_scalp.yaml",
+      "status": "TESTING",
+      "timeframe_class": "INTRADAY",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "recovery_watch",
+      "file": "recovery_watch.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "MEDIUM_SWING",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "reit_income",
+      "file": "reit_income.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "POSITION",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "sector_rotation",
+      "file": "sector_rotation.yaml",
+      "status": "TESTING",
+      "timeframe_class": "MEDIUM_SWING",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "speculative_growth",
+      "file": "speculative_growth.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "swing_breakout",
+      "file": "swing_breakout.yaml",
+      "status": "TESTING",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": true,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "swing_trade",
+      "file": "swing_trade.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    },
+    {
+      "strategy_id": "tax_loss_harvest",
+      "file": "tax_loss_harvest.yaml",
+      "status": "UNVALIDATED",
+      "timeframe_class": "SHORT_SWING",
+      "has_scoring_weights": false,
+      "has_entry_criteria": true,
+      "has_auto_disqualifiers": true
+    }
+  ],
+  "strategy_count": 23
+}

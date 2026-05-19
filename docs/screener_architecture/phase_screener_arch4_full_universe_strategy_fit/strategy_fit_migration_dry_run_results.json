@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-05-19T20:28:29.652211+00:00",
+  "mode": "dry_run",
+  "table": "universe_strategy_fit_audit",
+  "table_existed": false,
+  "actions": [
+    {
+      "type": "create_table",
+      "table": "universe_strategy_fit_audit",
+      "sql": "CREATE TABLE IF NOT EXISTS universe_strategy_fit_audit (\n    id SERIAL PRIMARY KEY,\n    audit_run_id VARCHAR(64) NOT NULL,\n    symbol VARCHAR(10) NOT NULL,\n    strategy_id VARCHAR(64) NOT NULL,\n    strategy_family VARCHAR(32),\n    evaluated_at TIMESTAMPTZ DEFAULT NOW(),\n    quote_status VARCHAR(20),\n    liquidity_gate_status VARCHAR(20),\n    family_gate_status VARCHAR(20),\n    required_data_status VARCHAR(20),\n    missing_fields TEXT,\n    scoring_weights_used BOOLEAN,\n    raw_score INTEGER DEFAULT 0,\n    normalized_score INTEGER DEFAULT 0,\n    match_strength VARCHAR(20),\n    criteria_met TEXT,\n    criteria_failed TEXT,\n    blockers TEXT,\n    top_match_for_symbol BOOLEAN DEFAULT FALSE,\n    recommendation VARCHAR(40),\n    human_review_only BOOLEAN DEFAULT TRUE,\n    created_at TIMESTAMPTZ DEFAULT NOW(),\n    UNIQUE(audit_run_id, symbol, strategy_id)\n);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_usfa_audit_run_id",
+      "column": "audit_run_id",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_usfa_audit_run_id ON universe_strategy_fit_audit (audit_run_id);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_usfa_symbol",
+      "column": "symbol",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_usfa_symbol ON universe_strategy_fit_audit (symbol);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_usfa_strategy_id",
+      "column": "strategy_id",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_usfa_strategy_id ON universe_strategy_fit_audit (strategy_id);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_usfa_match_strength",
+      "column": "match_strength",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_usfa_match_strength ON universe_strategy_fit_audit (match_strength);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_usfa_recommendation",
+      "column": "recommendation",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_usfa_recommendation ON universe_strategy_fit_audit (recommendation);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_usfa_top_match",
+      "column": "top_match_for_symbol",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_usfa_top_match ON universe_strategy_fit_audit (top_match_for_symbol);"
+    }
+  ]
+}

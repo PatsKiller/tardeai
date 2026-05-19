@@ -8963,6 +8963,32 @@ def _incubator_lifecycle_summary_api():
         return {'ok': False, 'error': str(e)}
 
 
+def _strategy_fit_summary_api():
+    """GET /api/v2/strategy-fit/summary — read-only strategy-fit audit summary."""
+    try:
+        run_id = _db_query("SELECT audit_run_id FROM universe_strategy_fit_audit ORDER BY created_at DESC LIMIT 1", fetch="one")
+        if not run_id: return {'ok': True, 'audit_run_id': None, 'message': 'No audit runs yet'}
+        rid = run_id['audit_run_id']
+        total_sym = _db_query("SELECT count(DISTINCT symbol) as c FROM universe_strategy_fit_audit WHERE audit_run_id=%s", [rid], fetch="one")
+        total_strat = _db_query("SELECT count(DISTINCT strategy_id) as c FROM universe_strategy_fit_audit WHERE audit_run_id=%s", [rid], fetch="one")
+        total_eval = _db_query("SELECT count(*) as c FROM universe_strategy_fit_audit WHERE audit_run_id=%s", [rid], fetch="one")
+        by_strength = _db_query("SELECT match_strength, count(*) as c FROM universe_strategy_fit_audit WHERE audit_run_id=%s GROUP BY match_strength ORDER BY c DESC", [rid])
+        by_rec = _db_query("SELECT recommendation, count(*) as c FROM universe_strategy_fit_audit WHERE audit_run_id=%s GROUP BY recommendation ORDER BY c DESC", [rid])
+        top_matches = _db_query("SELECT strategy_id, count(*) as c FROM universe_strategy_fit_audit WHERE audit_run_id=%s AND top_match_for_symbol=TRUE GROUP BY strategy_id ORDER BY c DESC LIMIT 10", [rid])
+        return {
+            'ok': True,
+            'audit_run_id': rid,
+            'symbols_evaluated': int(total_sym.get('c', 0)),
+            'strategies_evaluated': int(total_strat.get('c', 0)),
+            'total_evaluations': int(total_eval.get('c', 0)),
+            'by_strength': [{k: _json_clean(v) for k, v in r.items()} for r in (by_strength or [])],
+            'by_recommendation': [{k: _json_clean(v) for k, v in r.items()} for r in (by_rec or [])],
+            'top_matches': [{k: _json_clean(v) for k, v in r.items()} for r in (top_matches or [])],
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
 def _journal_closed_action_dashboard():
     """GET /api/v2/journal/closed-trades/action-dashboard — read-only daily summary."""
     try:
@@ -11560,6 +11586,7 @@ ROUTES = {
     "/api/v2/ticker-catalog/summary": lambda: _ticker_catalog_summary_api(),
     "/api/v2/screener-membership/summary": lambda: _screener_membership_summary_api(),
     "/api/v2/incubator-lifecycle/summary": lambda: _incubator_lifecycle_summary_api(),
+    "/api/v2/strategy-fit/summary": lambda: _strategy_fit_summary_api(),
     "/api/v2/proposal-quality-review": lambda: _proposal_quality_review_api(),
     "/api/v2/queue/summary": lambda: _queue_summary(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
