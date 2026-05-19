@@ -5886,10 +5886,18 @@ def trade_ai():
             "top_score": rs.get("top_score", 0),
         })
 
-    # Recalculate counts from actual ticker decisions (reflects live overlay)
+    # Universe counts (all tickers from today + yesterday — may be larger than latest run)
     go_count = sum(1 for t in tickers if t.get("decision") == "GO")
     wait_count = sum(1 for t in tickers if t.get("decision") == "WAIT")
     avoid_count = sum(1 for t in tickers if t.get("decision") not in ("GO", "WAIT"))
+
+    # SCALP-COUNT-1: Current-run counts filtered to latest run_label only
+    _current_run_label = latest.get("run_label", "")
+    _current_run_tickers = [t for t in tickers if t.get("scan_run_label") == _current_run_label] if _current_run_label else tickers
+    current_run_go = sum(1 for t in _current_run_tickers if t.get("decision") == "GO")
+    current_run_wait = sum(1 for t in _current_run_tickers if t.get("decision") == "WAIT")
+    current_run_nogo = sum(1 for t in _current_run_tickers if t.get("decision") not in ("GO", "WAIT"))
+    current_run_total = len(_current_run_tickers)
 
     # Run health enrichment
     _latest_run_label = latest.get("run_label", "")
@@ -5925,17 +5933,25 @@ def trade_ai():
         "latest_run_label": _latest_run_label,
         "latest_run_timestamp": _latest_run_timestamp,
         "latest_run_symbols_scanned": latest.get("ticker_count", 0),
-        "latest_run_go_count": go_count,
-        "latest_run_wait_count": wait_count,
-        "latest_run_no_go_count": avoid_count,
+        "latest_run_go_count": current_run_go,
+        "latest_run_wait_count": current_run_wait,
+        "latest_run_no_go_count": current_run_nogo,
+        "current_run_scanned": current_run_total,
+        "current_run_go": current_run_go,
+        "current_run_wait": current_run_wait,
+        "current_run_nogo": current_run_nogo,
         "run_health_status": _run_health_status,
         "vix": latest.get("vix"),
         "breadth": latest.get("breadth", ""),
         "market_regime": latest.get("breadth", latest.get("market_regime", "Neutral")),
-        "go_count": go_count,
-        "wait_count": wait_count,
-        "avoid_count": avoid_count,
-        "ticker_count": latest.get("ticker_count", 0),
+        "go_count": current_run_go,
+        "wait_count": current_run_wait,
+        "avoid_count": current_run_nogo,
+        "ticker_count": current_run_total or latest.get("ticker_count", 0),
+        "universe_count": len(tickers),
+        "universe_go": go_count,
+        "universe_wait": wait_count,
+        "universe_nogo": avoid_count,
         "top_ticker": latest.get("top_ticker", ""),
         "top_score": latest.get("top_score", 0),
         "delta_events": latest.get("delta_events", 0),
