@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SCREENER-ARCH-3B — Membership Backfill — 2026-05-19
+
+Backfilled 1,941 symbols from 2,951 scan pairs. Membership table populated with all
+present status + entered events. Catalog reports: 5,071 classified, 5,242 watchlist.
+7/13 done, 6 deferred (dropped/reentered detection, API). Tests: 11/11 + regression.
+
+---
+
 ## SCREENER-ARCH-3 — Ticker Catalog Lifecycle — 2026-05-19
 
 Membership tables created (screener_symbol_membership + _history). Falloff policy
