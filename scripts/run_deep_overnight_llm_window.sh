@@ -28,6 +28,7 @@
 set -uo pipefail
 
 PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+set -a; source "$PROJ/.env"; set +a
 PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/deep_overnight_llm_window.log"
 LOCK_FILE="/tmp/tradeai_deep_llm_window.lock"
