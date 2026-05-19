@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## WATCH-2 — Watchpool Maturity Alerts — 2026-05-19
+
+Watchpool maturity + no-leads diagnostic. 200 candidates audited: 98 need quote
+refresh, 69 maturing, 31 stale, 1 near trigger. No-leads: system_quiet_but_explained
+(64 scanned, 0 GO, 79 incubator ready). Cron 5x/day M-F. Tests: 16/16 + regression.
+
+---
+
 ## ALERT-3C — Dedicated Proposal Channel Configured — 2026-05-18
 
 Dedicated Telegram group "TradeAI Proposal Decisions" (***5571) configured and
