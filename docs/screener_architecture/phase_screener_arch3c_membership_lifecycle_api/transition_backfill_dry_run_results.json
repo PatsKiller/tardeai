@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-05-19T18:43:19.890420+00:00",
+  "mode": "dry_run",
+  "since_days": 14,
+  "screeners_analyzed": 4,
+  "runs_analyzed": 14,
+  "entered": 97,
+  "present": 3626,
+  "dropped": 1257,
+  "stale": 0,
+  "expired": 0,
+  "reentered": 55,
+  "mass_drop_protections": 8,
+  "partial_runs_skipped": 0,
+  "events_already_existing": 0,
+  "events_to_create": 5035,
+  "events_created": 0
+}

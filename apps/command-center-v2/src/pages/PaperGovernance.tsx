@@ -30,6 +30,9 @@ const GATES = [
 export default function PaperGovernance() {
   const { data: govData, loading: gLoading } = useApi<any>('/api/v2/paper-performance-governance', 60000)
   const { data: summaryData, loading: sLoading } = useApi<any>('/api/v2/paper-dashboard-summary', 60000)
+  const { data: catalogData } = useApi<any>('/api/v2/ticker-catalog/summary', 60000)
+  const { data: membershipData } = useApi<any>('/api/v2/screener-membership/summary', 60000)
+  const { data: lifecycleData } = useApi<any>('/api/v2/incubator-lifecycle/summary', 60000)
   const [running, setRunning] = useState(false)
 
   const runGovernance = async () => {
@@ -149,6 +152,24 @@ export default function PaperGovernance() {
               {kv('Strategies Learning', summary.strategies_in_learning_mode ?? 0)}
               {kv('Last Reconciliation', summary.last_reconciliation ? new Date(summary.last_reconciliation).toLocaleString() : 'Never')}
               {kv('Last TCA Run', summary.last_tca_run ? new Date(summary.last_tca_run).toLocaleString() : 'Never')}
+            </div>
+          </>
+        )}
+
+        {/* SCREENER-ARCH-3C: Scanner Catalog Lifecycle */}
+        {(catalogData || membershipData || lifecycleData) && (
+          <>
+            <h3 style={{ fontSize: 13, color: 'var(--text1)', marginTop: 24, marginBottom: 8 }}>Scanner Catalog Lifecycle</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              {kv('Cataloged Tickers', catalogData?.cataloged_tickers ?? '--')}
+              {kv('Active in Universe', catalogData?.active_in_universe ?? '--')}
+              {kv('Present Memberships', membershipData?.present ?? '--', 'var(--green)')}
+              {kv('Dropped', membershipData?.dropped ?? '--', membershipData?.dropped > 0 ? 'var(--amber)' : undefined)}
+              {kv('Reentered', membershipData?.reentered_events ?? '--', membershipData?.reentered_events > 0 ? '#60A5FA' : undefined)}
+              {kv('Source Missing', lifecycleData?.source_missing ?? '--', lifecycleData?.source_missing > 0 ? 'var(--amber)' : undefined)}
+              {kv('Dropped from All', membershipData?.dropped_from_all_screeners ?? '--', membershipData?.dropped_from_all_screeners > 0 ? 'var(--red)' : undefined)}
+              {kv('Data Confidence', membershipData?.dropped !== undefined ? (membershipData.dropped_from_all_screeners > membershipData.present ? 'NEEDS_REVIEW' : membershipData.dropped > 0 ? 'PARTIAL' : 'GOOD') : '--',
+                membershipData?.dropped_from_all_screeners > membershipData?.present ? 'var(--red)' : membershipData?.dropped > 0 ? 'var(--amber)' : 'var(--green)')}
             </div>
           </>
         )}
