@@ -8871,6 +8871,98 @@ def _incubator_health_api():
         return {'ok': False, 'error': str(e)}
 
 
+def _ticker_catalog_summary_api():
+    """GET /api/v2/ticker-catalog/summary — read-only catalog overview."""
+    try:
+        total = _db_query("SELECT count(*) as c FROM incubator_universe", fetch="one") or {}
+        active = _db_query("SELECT count(*) as c FROM incubator_universe WHERE status='ACTIVE'", fetch="one") or {}
+        expired = _db_query("SELECT count(*) as c FROM incubator_universe WHERE status='EXPIRED' OR lifecycle_state='expired'", fetch="one") or {}
+        new_24h = _db_query("SELECT count(*) as c FROM incubator_universe WHERE first_seen_at > NOW() - INTERVAL '24 hours'", fetch="one") or {}
+        new_7d = _db_query("SELECT count(*) as c FROM incubator_universe WHERE first_seen_at > NOW() - INTERVAL '7 days'", fetch="one") or {}
+        by_strategy = _db_query("SELECT strategy_id, count(*) as c FROM incubator_universe WHERE status='ACTIVE' GROUP BY strategy_id ORDER BY c DESC LIMIT 15") or []
+        stale = _db_query("""
+            SELECT count(DISTINCT iu.symbol) as c FROM incubator_universe iu
+            JOIN screener_symbol_membership ssm ON ssm.symbol = iu.symbol
+            WHERE iu.status='ACTIVE' AND ssm.membership_status IN ('stale','expired')
+        """, fetch="one") or {}
+        return {
+            'ok': True,
+            'cataloged_tickers': int(total.get('c', 0)),
+            'active_in_universe': int(active.get('c', 0)),
+            'inactive_or_expired': int(expired.get('c', 0)),
+            'new_last_24h': int(new_24h.get('c', 0)),
+            'new_last_7d': int(new_7d.get('c', 0)),
+            'stale_tickers': int(stale.get('c', 0)),
+            'by_strategy': [{k: _json_clean(v) for k, v in r.items()} for r in by_strategy],
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _screener_membership_summary_api():
+    """GET /api/v2/screener-membership/summary — read-only membership lifecycle."""
+    try:
+        total = _db_query("SELECT count(*) as c FROM screener_symbol_membership", fetch="one") or {}
+        by_status = _db_query("SELECT membership_status, count(*) as c FROM screener_symbol_membership GROUP BY membership_status ORDER BY c DESC") or []
+        by_event = _db_query("SELECT event_type, count(*) as c FROM screener_symbol_membership_history GROUP BY event_type ORDER BY c DESC") or []
+        multi = _db_query("SELECT count(*) as c FROM (SELECT symbol FROM screener_symbol_membership GROUP BY symbol HAVING count(*) > 1) sub", fetch="one") or {}
+        dropped_all = _db_query("""
+            SELECT count(DISTINCT symbol) as c FROM screener_symbol_membership
+            WHERE membership_status IN ('dropped','stale','expired')
+            AND symbol NOT IN (SELECT symbol FROM screener_symbol_membership WHERE membership_status = 'present')
+        """, fetch="one") or {}
+        status_map = {r['membership_status']: int(r['c']) for r in by_status}
+        event_map = {r['event_type']: int(r['c']) for r in by_event}
+        return {
+            'ok': True,
+            'total_memberships': int(total.get('c', 0)),
+            'present': status_map.get('present', 0),
+            'dropped': status_map.get('dropped', 0),
+            'stale': status_map.get('stale', 0),
+            'expired': status_map.get('expired', 0),
+            'entered_events': event_map.get('entered', 0),
+            'dropped_events': event_map.get('dropped', 0),
+            'reentered_events': event_map.get('reentered', 0),
+            'multi_screener_symbols': int(multi.get('c', 0)),
+            'dropped_from_all_screeners': int(dropped_all.get('c', 0)),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _incubator_lifecycle_summary_api():
+    """GET /api/v2/incubator-lifecycle/summary — read-only lifecycle overview."""
+    try:
+        active = _db_query("SELECT count(*) as c FROM incubator_universe WHERE status='ACTIVE'", fetch="one") or {}
+        source_missing = _db_query("""
+            SELECT count(DISTINCT iu.symbol) as c FROM incubator_universe iu
+            LEFT JOIN screener_symbol_membership ssm ON ssm.symbol = iu.symbol AND ssm.membership_status = 'present'
+            WHERE iu.status='ACTIVE' AND ssm.symbol IS NULL
+        """, fetch="one") or {}
+        retained = _db_query("""
+            SELECT count(DISTINCT iu.symbol) as c FROM incubator_universe iu
+            JOIN screener_symbol_membership ssm ON ssm.symbol = iu.symbol
+            WHERE iu.status='ACTIVE' AND ssm.membership_status = 'dropped'
+        """, fetch="one") or {}
+        expired = _db_query("SELECT count(*) as c FROM incubator_universe WHERE status='EXPIRED' OR lifecycle_state='expired'", fetch="one") or {}
+        archived = _db_query("SELECT count(*) as c FROM incubator_universe WHERE status='ROLLED_OFF'", fetch="one") or {}
+        reentered = _db_query("""
+            SELECT count(DISTINCT symbol) as c FROM screener_symbol_membership_history
+            WHERE event_type = 'reentered'
+        """, fetch="one") or {}
+        return {
+            'ok': True,
+            'active_candidates': int(active.get('c', 0)),
+            'source_missing': int(source_missing.get('c', 0)),
+            'retained_by_ttl': int(retained.get('c', 0)),
+            'expired': int(expired.get('c', 0)),
+            'archived': int(archived.get('c', 0)),
+            'reentered': int(reentered.get('c', 0)),
+        }
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
 def _proposal_quality_review_api():
     """GET /api/v2/proposal-quality-review — proposal quality reviews."""
     try:
@@ -11413,6 +11505,9 @@ ROUTES = {
     "/api/v2/incubator": lambda: _incubator_api(),
     "/api/v2/incubator-events": lambda: _incubator_events_api(),
     "/api/v2/incubator-health": lambda: _incubator_health_api(),
+    "/api/v2/ticker-catalog/summary": lambda: _ticker_catalog_summary_api(),
+    "/api/v2/screener-membership/summary": lambda: _screener_membership_summary_api(),
+    "/api/v2/incubator-lifecycle/summary": lambda: _incubator_lifecycle_summary_api(),
     "/api/v2/proposal-quality-review": lambda: _proposal_quality_review_api(),
     "/api/v2/queue/summary": lambda: _queue_summary(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
