@@ -21,7 +21,8 @@ class TestFullIngestion(unittest.TestCase):
 
     def test_04_emergency_cap_exists(self):
         src = (PROJECT_ROOT / "scripts/finviz_screener_runner.py").read_text()
-        self.assertIn("MAX_ROWS_PER_SCREENER", src)
+        # SCREENER-ARCH-2B moved cap to run_screener with per-screener overrides
+        self.assertIn("DEFAULT_MAX_ROWS", src)
         self.assertIn("5000", src)
 
     def test_05_new_ticker_cap_raised(self):

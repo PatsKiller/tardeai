@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SCREENER-ARCH-2B — Broad Screener Cap Overrides — 2026-05-19
+
+Per-screener 10,000 cap for 4 broad ETF/income screeners. All 4 now fully EXHAUSTED:
+bond_etf 5,230, covered_call 5,230, high_yield 6,367, ira_friendly 6,367. Zero data loss.
+27/27 screeners now exhaust their full result sets.
+
+---
+
 ## SCREENER-ARCH-2 — Full FinViz Ingestion — 2026-05-19
 
 Full ingestion proven: ~41,000 rows, 2,973 new tickers, 23/27 screeners exhausted.

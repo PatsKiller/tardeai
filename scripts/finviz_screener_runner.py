@@ -76,15 +76,7 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
         except Exception as e:
             print(f"  [screener] HTML fallback error: {e}")
 
-    # SCREENER-ARCH-2: FinViz export returns ALL matching rows as single CSV.
-    # No pagination needed — just return the full result set.
-    # Emergency cap at 5000 to prevent memory issues on malformed responses.
-    MAX_ROWS_PER_SCREENER = 5000
-    total_fetched = len(tickers)
-    if total_fetched > MAX_ROWS_PER_SCREENER:
-        print(f"  [screener] WARNING: {total_fetched} rows fetched, capped at {MAX_ROWS_PER_SCREENER} (EMERGENCY_CAP)")
-        return tickers[:MAX_ROWS_PER_SCREENER]
-    return tickers
+    return tickers  # Full CSV result — capping handled by caller with screener_id context
 
 
 def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
@@ -114,12 +106,32 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
 
         print(f"  [{sid}] Fetching {s['display_name']}...")
         tickers = _fetch_screener_tickers(url, cookie)
+
+        # SCREENER-ARCH-2B: Per-screener cap overrides for broad ETF/income screeners
+        SCREENER_CAP_OVERRIDES = {
+            "bond_etf_income": 10000,
+            "covered_call_etf": 10000,
+            "high_yield_income": 10000,
+            "ira_income_friendly": 10000,
+        }
+        DEFAULT_MAX_ROWS = 5000
+        effective_cap = SCREENER_CAP_OVERRIDES.get(sid, DEFAULT_MAX_ROWS)
+        cap_status = "EXHAUSTED"
+        raw_count = len(tickers)
+        if raw_count > effective_cap:
+            cap_status = "ROW_LIMIT_REACHED"
+            print(f"  [screener] WARNING: {raw_count} rows fetched, capped at {effective_cap} ({sid})")
+            tickers = tickers[:effective_cap]
+
         new_tickers = [t for t in tickers if t not in known]
 
         screener_result = {
             "screener_id": sid,
             "strategy_type": strategy,
             "total_found": len(tickers),
+            "raw_fetched": raw_count,
+            "effective_cap": effective_cap,
+            "cap_status": cap_status,
             "new_tickers": len(new_tickers),
             "sample": new_tickers[:10],
         }
