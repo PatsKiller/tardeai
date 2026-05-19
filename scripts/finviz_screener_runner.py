@@ -76,9 +76,15 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
         except Exception as e:
             print(f"  [screener] HTML fallback error: {e}")
 
-    # SCREENER-ARCH-1: Raised cap from 50 to 500 per screener.
-    # Finviz export returns all matching rows — the old [:50] was artificial truncation.
-    return tickers[:500]
+    # SCREENER-ARCH-2: FinViz export returns ALL matching rows as single CSV.
+    # No pagination needed — just return the full result set.
+    # Emergency cap at 5000 to prevent memory issues on malformed responses.
+    MAX_ROWS_PER_SCREENER = 5000
+    total_fetched = len(tickers)
+    if total_fetched > MAX_ROWS_PER_SCREENER:
+        print(f"  [screener] WARNING: {total_fetched} rows fetched, capped at {MAX_ROWS_PER_SCREENER} (EMERGENCY_CAP)")
+        return tickers[:MAX_ROWS_PER_SCREENER]
+    return tickers
 
 
 def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
@@ -120,7 +126,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
         results.append(screener_result)
 
         if not dry_run and new_tickers:
-            for ticker in new_tickers[:10]:  # Cap new additions per screener
+            for ticker in new_tickers[:200]:  # SCREENER-ARCH-2: raised from 10 to 200 per screener
                 # Auto-classify with the screener's strategy type
                 cur.execute("""
                     INSERT INTO ticker_strategy_classifications

@@ -14,7 +14,8 @@ class TestPaginationFix(unittest.TestCase):
     def test_02_cap_raised_above_50(self):
         src = (PROJECT_ROOT / "scripts/finviz_screener_runner.py").read_text()
         self.assertNotIn("tickers[:50]", src)
-        self.assertIn("tickers[:500]", src)
+        # SCREENER-ARCH-2 replaced [:500] with full return + emergency 5000 cap
+        self.assertIn("MAX_ROWS_PER_SCREENER", src)
 
     def test_03_inventory_compiles(self):
         import py_compile
