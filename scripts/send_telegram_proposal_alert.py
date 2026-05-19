@@ -8,7 +8,7 @@ Usage:
     .venv/bin/python scripts/send_telegram_proposal_alert.py --symbol DWSN --dry-run --verbose
     .venv/bin/python scripts/send_telegram_proposal_alert.py --mode pending --send --verbose
 """
-import argparse, json, logging, sys
+import argparse, json, logging, os, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -129,8 +129,29 @@ def main():
 
         if check["send"] and not args.dry_run:
             try:
+                # ALERT-3: Route to dedicated proposal channel
+                from telegram_alert_routing_policy import telegram_destination_for_alert, redact_telegram_destination
+                dest = telegram_destination_for_alert(packet)
+                result["destination"] = redact_telegram_destination(dest)
+
                 from telegram_alert import send_telegram
-                ok = send_telegram(message)
+                # Use dedicated chat_id if available, with optional thread_id
+                import requests
+                token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                if dest.get("chat_id") and token:
+                    payload = {"chat_id": dest["chat_id"], "text": message, "parse_mode": "Markdown"}
+                    if dest.get("thread_id"):
+                        payload["message_thread_id"] = int(dest["thread_id"])
+                    resp = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
+                    ok = resp.ok
+                    if not ok:
+                        # Retry without Markdown
+                        payload["parse_mode"] = None
+                        resp2 = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
+                        ok = resp2.ok
+                else:
+                    ok = send_telegram(message)  # Fallback to default
+
                 result["sent"] = ok
                 sent_count += 1 if ok else 0
                 _log_alert(check["key"], pr.get("id"), pr.get("symbol"),

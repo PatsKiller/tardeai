@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## ALERT-3 — Dedicated Proposal Channel and Page — 2026-05-18
+
+Proposal alerts routed to dedicated Telegram channel via TRADEAI_PROPOSAL_ALERT_CHAT_ID.
+Proposal Alerts page added at /proposal-alerts under Trading tab. Chat IDs redacted.
+Tests: 14/14 + ALERT-2/MISS-1 regression. Frontend build clean.
+
+---
+
 ## MISS-1 — Missed Opportunity and Alert SLA Audit — 2026-05-18
 
 Missed opportunity audit: 32 proposals, 8 rebuild required, 12 missed (price moved),

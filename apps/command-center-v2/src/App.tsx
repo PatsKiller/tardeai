@@ -23,6 +23,7 @@ const Prospects = lazy(() => import('./pages/Prospects'))
 const StrategyDesk = lazy(() => import('./pages/StrategyDesk'))
 const PaperStatus = lazy(() => import('./pages/PaperStatus'))
 const PaperProposals = lazy(() => import('./pages/PaperProposals'))
+const ProposalAlerts = lazy(() => import('./pages/ProposalAlerts'))
 const Incubator = lazy(() => import('./pages/Incubator'))
 const ExecutionQuality = lazy(() => import('./pages/ExecutionQuality'))
 const BrokerReconciliation = lazy(() => import('./pages/BrokerReconciliation'))
@@ -130,6 +131,7 @@ export default function App() {
           <Route path="strategy-desk" element={<SafePage><StrategyDesk /></SafePage>} />
           <Route path="paper-status" element={<SafePage><PaperStatus /></SafePage>} />
           <Route path="paper-proposals" element={<SafePage><PaperProposals /></SafePage>} />
+          <Route path="proposal-alerts" element={<SafePage><ProposalAlerts /></SafePage>} />
           <Route path="incubator" element={<SafePage><Incubator /></SafePage>} />
           <Route path="execution-quality" element={<SafePage><ExecutionQuality /></SafePage>} />
           <Route path="broker-reconciliation" element={<SafePage><BrokerReconciliation /></SafePage>} />
