@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SCREENER-ARCH-1 — Full Screener Coverage — 2026-05-19
+
+Critical fix: 50-row hard cap in finviz_screener_runner.py raised to 500. The cap
+was Python-side truncation (`tickers[:50]`), not a Finviz API limit. 25/27 screeners
+were capped. 8 stale screeners identified. Inventory/freshness report added.
+
+---
+
 ## SCALP-COUNT-1 — Fix Live Scalp Current-Run Counts — 2026-05-19
 
 GO/WAIT/NO GO cards now show current-run counts filtered by run_label, not universe.

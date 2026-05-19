@@ -76,7 +76,9 @@ def _fetch_screener_tickers(url: str, cookie: str) -> list:
         except Exception as e:
             print(f"  [screener] HTML fallback error: {e}")
 
-    return tickers[:50]  # Cap at 50 per screener
+    # SCREENER-ARCH-1: Raised cap from 50 to 500 per screener.
+    # Finviz export returns all matching rows — the old [:50] was artificial truncation.
+    return tickers[:500]
 
 
 def run_screener(screener_id: str = None, dry_run: bool = False) -> dict:
