@@ -44,6 +44,8 @@ interface TradeAIData {
   top_ticker: string; top_score: number; delta_events: number
   latest_run_label?: string; latest_run_timestamp?: string; latest_run_symbols_scanned?: number
   latest_run_go_count?: number; latest_run_wait_count?: number; latest_run_no_go_count?: number
+  current_run_scanned?: number; current_run_go?: number; current_run_wait?: number; current_run_nogo?: number
+  universe_count?: number; universe_go?: number; universe_wait?: number; universe_nogo?: number
   run_health_status?: string; today_strategy_signal_count?: number
   tickers: Ticker[]; sectors: Record<string, number>; run_history: RunHistoryItem[]
 }
@@ -212,7 +214,7 @@ export default function TradeAI() {
 
   return (
     <>
-      <PageHeader title="Trade AI" subtitle={`Run ${tai.run_label} | ${tai.run_date} | ${tai.ticker_count} tickers scanned`} />
+      <PageHeader title="Trade AI" subtitle={`Run ${tai.run_label} | ${tai.run_date} | ${tai.current_run_scanned ?? tai.ticker_count} scanned this run${tai.universe_count ? ` · ${tai.universe_count} universe` : ''}`} />
       {/* Run health banner */}
       {tai.run_health_status && (
         <div style={{
@@ -267,7 +269,7 @@ export default function TradeAI() {
             color: filter === f ? (decisionColor[f] || 'var(--accent)') : 'var(--text2)',
             cursor: 'pointer', fontFamily: 'var(--mono)',
           }}>
-            {f} {f !== 'ALL' ? `(${(tai.tickers || []).filter(t => t.decision === f).length})` : `(${(tai.tickers || []).length})`}
+            {f === 'ALL' ? 'Universe' : f} {f !== 'ALL' ? `(${(tai.tickers || []).filter(t => t.decision === f).length})` : `(${(tai.tickers || []).length})`}
           </button>
         ))}
       </div>

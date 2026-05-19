@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SCALP-COUNT-1 — Fix Live Scalp Current-Run Counts — 2026-05-19
+
+GO/WAIT/NO GO cards now show current-run counts filtered by run_label, not universe.
+Header shows "X scanned this run · Y universe". ALL tab renamed to Universe.
+Root cause: DB query pulled today+yesterday distinct symbols (~1418) but run scanned 64.
+
+---
+
 ## WATCH-2 — Watchpool Maturity Alerts — 2026-05-19
 
 Watchpool maturity + no-leads diagnostic. 200 candidates audited: 98 need quote
