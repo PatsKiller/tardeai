@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## MISS-1 — Missed Opportunity and Alert SLA Audit — 2026-05-18
+
+Missed opportunity audit: 32 proposals, 8 rebuild required, 12 missed (price moved),
+31 alerts missing (pre-ALERT-1). DWSN classified as avoided bad trade (R:R 1.95 at
+creation). SLA tracking added. Tests: 10/10 + ALERT-2/Q-1 regression.
+
+---
+
 ## ALERT-2 — Telegram Proposal Callbacks — 2026-05-18
 
 Telegram callback handling: approve/reject/rebuild/watch/details. DWSN approve
