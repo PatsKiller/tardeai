@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## SCREENER-ARCH-2 — Full FinViz Ingestion — 2026-05-19
+
+FinViz export returns complete CSV — no pagination needed. Removed 500 cap, replaced
+with emergency 5000. New ticker incubator cap raised 10→200. Documented ingestion
+method, catalog lifecycle, and full pagination design. Tests: 13/13 + regression.
+
+---
+
 ## SCREENER-ARCH-1 — Full Screener Coverage — 2026-05-19
 
 Critical fix: 50-row hard cap in finviz_screener_runner.py raised to 500. The cap
