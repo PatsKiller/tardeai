@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-05-19T00:11:32.874721+00:00",
+  "result": {
+    "callback_id": "f9e31afa2a99",
+    "proposal_id": 95,
+    "symbol": "DWSN",
+    "action": "REBUILD",
+    "classification": {
+      "action": "REBUILD",
+      "allowed": true,
+      "paper_only": true,
+      "blockers": [],
+      "response_text": "REBUILD allowed for DWSN #latest"
+    },
+    "dry_run": true,
+    "applied": false,
+    "success": false,
+    "message": "DRY RUN: REBUILD would execute for DWSN"
+  }
+}

@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## ALERT-2 — Telegram Proposal Callbacks — 2026-05-18
+
+Telegram callback handling: approve/reject/rebuild/watch/details. DWSN approve
+correctly blocked (5 blockers). DWSN rebuild allowed. Alert messages now include
+/ptapprove and /ptreject commands. Tests: 17/17 + ALERT-1/Q-1 regression.
+
+---
+
 ## ALERT-1 — Telegram Proposal Decision Alerts — 2026-05-18
 
 Telegram alerts for paper proposal decisions: ready/blocked/rebuild/review.

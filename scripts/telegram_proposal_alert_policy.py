@@ -55,6 +55,7 @@ def build_proposal_alert_packet(proposal: dict) -> dict:
     return {
         "alert_type": alert_state,
         "urgency": "HIGH" if alert_state == "ACTIONABLE_READY" else "MEDIUM" if "BLOCKED" in alert_state else "LOW",
+        "proposal_id": proposal.get("id"),
         "symbol": proposal.get("symbol"),
         "strategy_id": proposal.get("strategy_id"),
         "strategy_display": proposal.get("strategy_display_name") or proposal.get("strategy_id"),
@@ -137,5 +138,13 @@ def format_telegram_message(packet: dict) -> str:
         lines.append("_Approve Paper available_")
     else:
         lines.append("_Approval blocked — review required_")
+
+    # ALERT-2: Add Telegram command shortcuts
+    pid = packet.get("proposal_id") or "?"
+    lines.append("")
+    if packet["approval_allowed"]:
+        lines.append(f"`/ptapprove {pid}`")
+    lines.append(f"`/ptreject {pid}`")
+    lines.append(f"`paper status`  |  Details: /v2/paper-proposals")
 
     return "\n".join(lines)
