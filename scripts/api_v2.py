@@ -8963,6 +8963,55 @@ def _incubator_lifecycle_summary_api():
         return {'ok': False, 'error': str(e)}
 
 
+def _journal_closed_action_dashboard():
+    """GET /api/v2/journal/closed-trades/action-dashboard — read-only daily summary."""
+    try:
+        from closed_trade_postmortem_model import build_postmortem, build_daily_summary
+        trades = _db_query("""SELECT * FROM paper_trades WHERE status='closed' ORDER BY closed_at DESC""") or []
+        postmortems = [build_postmortem(t) for t in trades]
+        summary = build_daily_summary(postmortems)
+        return {'ok': True, **summary}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _journal_closed_action_items():
+    """GET /api/v2/journal/closed-trades/action-items — read-only action queue."""
+    try:
+        from closed_trade_postmortem_model import build_postmortem
+        trades = _db_query("""SELECT * FROM paper_trades WHERE status='closed' ORDER BY closed_at DESC""") or []
+        postmortems = [build_postmortem(t) for t in trades]
+        items = [
+            {'trade_id': pm['trade_id'], 'symbol': pm['symbol'], 'strategy': pm['strategy'],
+             'action_priority': pm['action_priority'], 'action_owner': pm['action_owner'],
+             'next_operator_action': pm['next_operator_action'], 'reason': pm['dashboard_verdict'],
+             'human_review_only': True}
+            for pm in postmortems if pm['action_priority'] != 'none'
+        ]
+        priority_order = {'urgent': 0, 'high': 1, 'medium': 2, 'low': 3}
+        items.sort(key=lambda x: priority_order.get(x['action_priority'], 4))
+        return {'ok': True, 'action_items': items, 'count': len(items)}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def _journal_closed_lessons():
+    """GET /api/v2/journal/closed-trades/lessons — read-only lessons summary."""
+    try:
+        from closed_trade_postmortem_model import build_postmortem
+        trades = _db_query("""SELECT * FROM paper_trades WHERE status='closed' ORDER BY closed_at DESC""") or []
+        postmortems = [build_postmortem(t) for t in trades]
+        lessons = [
+            {'symbol': pm['symbol'], 'strategy': pm['strategy'], 'lesson_category': pm['lesson_category'],
+             'improved_lesson': pm['improved_lesson'], 'rule_feedback': pm['rule_feedback'],
+             'confidence_delta': pm['confidence_delta'], 'human_review_only': True}
+            for pm in postmortems
+        ]
+        return {'ok': True, 'lessons': lessons, 'count': len(lessons)}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
 def _proposal_quality_review_api():
     """GET /api/v2/proposal-quality-review — proposal quality reviews."""
     try:
@@ -11490,6 +11539,9 @@ ROUTES = {
     "/api/v2/journal/analytics": journal_analytics,
     "/api/v2/journal/report": _journal_report,
     "/api/v2/journal/agent-coaching": _journal_agent_coaching,
+    "/api/v2/journal/closed-trades/action-dashboard": _journal_closed_action_dashboard,
+    "/api/v2/journal/closed-trades/action-items": _journal_closed_action_items,
+    "/api/v2/journal/closed-trades/lessons": _journal_closed_lessons,
     "/api/v2/risk": risk,
     "/api/v2/tax-lots": tax_lots,
     "/api/v2/correlation": correlation,

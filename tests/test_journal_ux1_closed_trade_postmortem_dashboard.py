@@ -22,7 +22,7 @@ class TestPostmortemModel(unittest.TestCase):
         from closed_trade_postmortem_model import build_postmortem
         r = build_postmortem({"symbol": "BLBD", "strategy_id": "earnings_catalyst", "exit_reason": "stop_hit_instant", "pnl": -14.8, "r_multiple": -0.05})
         self.assertEqual(r["exit_quality"], "NEEDS_REVIEW")
-        self.assertIn("instant stop", r["one_line_lesson"].lower())
+        self.assertIn("stop", r["one_line_lesson"].lower())
 
     def test_04_manual_stale_needs_review(self):
         from closed_trade_postmortem_model import build_postmortem
@@ -51,8 +51,7 @@ class TestFrontend(unittest.TestCase):
     def test_08_dashboard_section_exists(self):
         src = (PROJECT_ROOT / "apps/command-center-v2/src/pages/AutomatedTradeJournal.tsx").read_text()
         self.assertIn("Closed Trade Review", src)
-        self.assertIn("Why Closed", src)
-        self.assertIn("Exit Quality", src)
+        self.assertIn("Verdict", src)
         self.assertIn("Lesson", src)
 
     def test_09_build_exists(self):

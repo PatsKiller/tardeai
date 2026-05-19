@@ -1,0 +1,34 @@
+{
+  "generated_at": "2026-05-19T19:15:06.929561+00:00",
+  "date": "today",
+  "closed_trades": 10,
+  "wins": 3,
+  "losses": 4,
+  "realized_pnl": 101.02,
+  "avg_r": 0.09,
+  "best_trade": {
+    "symbol": "INFU",
+    "pnl": 67.83,
+    "reason": "manual_stale_close"
+  },
+  "worst_trade": {
+    "symbol": "FLYW",
+    "pnl": -15.39,
+    "reason": "position_closed_in_alpaca"
+  },
+  "generic_lessons_count": 2,
+  "specific_lessons_count": 8,
+  "missing_operator_actions": 2,
+  "missing_confidence_impact": 0,
+  "needs_review_count": 8,
+  "gaps": {
+    "no_daily_summary_cards": true,
+    "no_best_worst_trade_highlight": true,
+    "no_action_queue": true,
+    "no_mistake_classification": true,
+    "no_rule_feedback": true,
+    "generic_lessons": true,
+    "no_confidence_delta_visible": true,
+    "narrative_above_summary": true
+  }
+}

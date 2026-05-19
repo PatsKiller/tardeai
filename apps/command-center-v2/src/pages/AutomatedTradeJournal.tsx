@@ -1117,6 +1117,7 @@ type InnerTab = typeof INNER_TABS[number]
 export default function AutomatedTradeJournal() {
   const [data, setData] = useState<any>(null)
   const [analyticsData, setAnalyticsData] = useState<any>(null)
+  const [actionDash, setActionDash] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [account, setAccount] = useState('ALPACA_PAPER')
   const [expandedId, setExpandedId] = useState<number | null>(null)
@@ -1127,9 +1128,11 @@ export default function AutomatedTradeJournal() {
     Promise.all([
       fetch('/api/v2/automated-journal').then(r => r.json()).catch(() => null),
       fetch('/api/v2/automated-journal-analytics').then(r => r.json()).catch(() => null),
-    ]).then(([journal, analytics]) => {
+      fetch('/api/v2/journal/closed-trades/action-dashboard').then(r => r.json()).catch(() => null),
+    ]).then(([journal, analytics, dash]) => {
       setData(journal)
       setAnalyticsData(analytics)
+      setActionDash(dash?.data || dash)
       setLoading(false)
     })
   }, [])
@@ -1194,49 +1197,119 @@ export default function AutomatedTradeJournal() {
               deltaColor={pnlColor(unrealizedPnl)} />
           </div>
 
-          {/* JOURNAL-UX-1: Closed Trade Postmortem Dashboard */}
-          {closedTrades.length > 0 && (
+          {/* JOURNAL-UX-1B: Today's Trade Lessons — Action Dashboard */}
+          {actionDash && actionDash.closed_today_count > 0 && (
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
-              <SectionHeader title="Closed Trade Review" />
+              <SectionHeader title="Today's Trade Lessons" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 12 }}>
+                <div style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Closed</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{actionDash.closed_today_count}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>{actionDash.win_loss_summary}</div>
+                </div>
+                <div style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>P&L / Avg R</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: actionDash.total_realized_pnl > 0 ? '#22C55E' : actionDash.total_realized_pnl < 0 ? '#EF4444' : 'var(--text0)' }}>${actionDash.total_realized_pnl?.toFixed(0)}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>{actionDash.daily_avg_r?.toFixed(2)}R avg</div>
+                </div>
+                <div style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Best Trade</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#22C55E' }}>{actionDash.best_trade?.symbol || '--'}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>{actionDash.best_trade?.reason}</div>
+                </div>
+                <div style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Review Item</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#EF4444' }}>{actionDash.worst_trade?.symbol || '--'}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>{actionDash.worst_trade?.reason}</div>
+                </div>
+                <div style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Main Lesson</div>
+                  <div style={{ fontSize: 9, color: 'var(--text1)', lineHeight: 1.3, maxHeight: 40, overflow: 'hidden' }}>{actionDash.top_lesson?.substring(0, 120)}</div>
+                </div>
+                <div style={{ background: 'var(--bg0)', borderRadius: 6, padding: '8px 12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Next Action</div>
+                  <div style={{ fontSize: 9, color: '#60A5FA', lineHeight: 1.3, maxHeight: 40, overflow: 'hidden' }}>{actionDash.top_action_item?.substring(0, 120)}</div>
+                </div>
+              </div>
+
+              {/* Action Queue */}
+              {actionDash.trades_needing_review?.length > 0 && (
+                <>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Action Queue</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace', marginBottom: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '3px 8px', textAlign: 'left' }}>Priority</th>
+                        <th style={{ padding: '3px 6px', textAlign: 'left' }}>Symbol</th>
+                        <th style={{ padding: '3px 6px', textAlign: 'left' }}>Strategy</th>
+                        <th style={{ padding: '3px 6px', textAlign: 'left' }}>Issue</th>
+                        <th style={{ padding: '3px 6px', textAlign: 'left' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {actionDash.trades_needing_review.map((item: any, i: number) => {
+                        const pColor = item.priority === 'urgent' || item.priority === 'high' ? '#EF4444' : item.priority === 'medium' ? '#F59E0B' : '#64748B'
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '3px 8px' }}><span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: `${pColor}20`, color: pColor, fontWeight: 600, textTransform: 'uppercase' }}>{item.priority}</span></td>
+                            <td style={{ padding: '3px 6px', fontWeight: 700, color: 'var(--text0)' }}>{item.symbol}</td>
+                            <td style={{ padding: '3px 6px', color: 'var(--text2)' }}>{item.strategy}</td>
+                            <td style={{ padding: '3px 6px', color: 'var(--text2)', fontSize: 9 }}>{item.issue?.replace(/_/g, ' ')}</td>
+                            <td style={{ padding: '3px 6px', color: 'var(--text3)', fontSize: 9, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.action}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              )}
+
+              {/* Enhanced Closed Trade Review table */}
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Closed Trade Review</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)', fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>
-                    <th style={{ padding: '4px 8px', textAlign: 'left' }}>Symbol</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Strategy</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>P&L</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'right' }}>R</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Why Closed</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Exit Quality</th>
-                    <th style={{ padding: '4px 6px', textAlign: 'left' }}>Lesson</th>
+                    <th style={{ padding: '3px 8px', textAlign: 'left' }}>Symbol</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'left' }}>Strategy</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'right' }}>P&L</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'right' }}>R</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'left' }}>Exit</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'left' }}>Verdict</th>
+                    <th style={{ padding: '3px 6px', textAlign: 'left' }}>Lesson</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {closedTrades.slice(0, 10).map((t: any) => {
+                  {closedTrades.slice(0, 15).map((t: any) => {
                     const pnl = Number(t.pnl || 0)
                     const r = Number(t.r_multiple || 0)
                     const reason = (t.exit_reason || '').replace(/_/g, ' ')
-                    const exitQ = t.exit_reason?.includes('target') ? 'Good' :
-                                  t.exit_reason?.includes('stop_hit_instant') ? 'Review' :
-                                  t.exit_reason?.includes('stop') ? 'Acceptable' :
-                                  t.exit_reason?.includes('time_stop') ? (pnl >= 0 ? 'OK' : 'Early') :
-                                  t.exit_reason?.includes('manual') || t.exit_reason?.includes('stale') ? 'Review' :
-                                  t.exit_reason?.includes('phantom') || t.exit_reason?.includes('never_filled') ? 'N/A' : 'Review'
-                    const lesson = t.exit_reason?.includes('target') ? 'Strategy followed' :
-                                   t.exit_reason?.includes('stop_hit_instant') ? 'Check entry/spread' :
-                                   t.exit_reason?.includes('stop') ? 'Check stop distance' :
-                                   t.exit_reason?.includes('time_stop') ? 'Setup did not move' :
-                                   t.exit_reason?.includes('manual') || t.exit_reason?.includes('stale') ? 'Define explicit exit rule' :
-                                   t.exit_reason?.includes('phantom') || t.exit_reason?.includes('never_filled') ? 'Execution gap' : 'Review'
-                    const qColor = exitQ === 'Good' ? '#22C55E' : exitQ === 'Acceptable' || exitQ === 'OK' ? '#F59E0B' : exitQ === 'N/A' ? '#64748B' : '#EF4444'
+                    const vMap: Record<string, [string, string]> = {
+                      'target_hit': ['Clean Win', '#22C55E'], 'stop_hit_instant': ['Bad Entry', '#EF4444'],
+                      'stop_hit': [Math.abs(r) <= 1 ? 'Rule Loss' : 'Bad Exit', Math.abs(r) <= 1 ? '#F59E0B' : '#EF4444'],
+                      'time_stop_intraday_1545': [pnl >= 0 ? 'Good Exit' : 'Early Exit', pnl >= 0 ? '#22C55E' : '#F59E0B'],
+                      'time_stop_max_0d': [pnl >= 0 ? 'Good Exit' : 'Early Exit', pnl >= 0 ? '#22C55E' : '#F59E0B'],
+                      'manual_stale_close': ['Late Exit', '#EF4444'], 'manual_close': ['Late Exit', '#EF4444'],
+                      'position_closed_in_alpaca': ['Broker Review', '#64748B'],
+                      'phantom_no_alpaca_position': ['Data Review', '#64748B'],
+                      'order_never_filled_on_alpaca': ['Data Review', '#64748B'],
+                    }
+                    const [verdict, vColor] = vMap[t.exit_reason] || ['Review', '#64748B']
+                    const lesson = t.exit_reason?.includes('target') ? 'Target discipline followed' :
+                                   t.exit_reason?.includes('stop_hit_instant') ? 'Review entry spread/stop placement' :
+                                   t.exit_reason?.includes('stop') ? (Math.abs(r) > 0.5 ? 'Review stop distance' : 'Loss within risk') :
+                                   t.exit_reason?.includes('time_stop') ? (pnl >= 0 ? 'Capital protected' : 'Check holding window') :
+                                   t.exit_reason?.includes('manual') || t.exit_reason?.includes('stale') ? 'Add explicit exit rule' :
+                                   t.exit_reason?.includes('phantom') || t.exit_reason?.includes('never_filled') ? 'Check execution pipeline' :
+                                   t.exit_reason?.includes('position_closed') ? 'Check broker activity' : 'Classify exit'
                     return (
                       <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '4px 8px', fontWeight: 700, color: 'var(--text0)' }}>{t.symbol}</td>
-                        <td style={{ padding: '4px 6px', color: 'var(--text2)' }}>{t.strategy_id}</td>
-                        <td style={{ padding: '4px 6px', textAlign: 'right', color: pnl > 0 ? '#22C55E' : pnl < 0 ? '#EF4444' : 'var(--text3)' }}>${pnl.toFixed(0)}</td>
-                        <td style={{ padding: '4px 6px', textAlign: 'right', color: r >= 1 ? '#22C55E' : r >= 0 ? '#F59E0B' : '#EF4444' }}>{r.toFixed(2)}R</td>
-                        <td style={{ padding: '4px 6px', color: 'var(--text2)', fontSize: 9 }}>{reason}</td>
-                        <td style={{ padding: '4px 6px' }}><span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: `${qColor}20`, color: qColor, fontWeight: 600 }}>{exitQ}</span></td>
-                        <td style={{ padding: '4px 6px', color: 'var(--text3)', fontSize: 9, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lesson}</td>
+                        <td style={{ padding: '3px 8px', fontWeight: 700, color: 'var(--text0)' }}>{t.symbol}</td>
+                        <td style={{ padding: '3px 6px', color: 'var(--text2)', fontSize: 9 }}>{t.strategy_id}</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: pnl > 0 ? '#22C55E' : pnl < 0 ? '#EF4444' : 'var(--text3)' }}>${pnl.toFixed(0)}</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: r >= 1 ? '#22C55E' : r >= 0 ? '#F59E0B' : '#EF4444' }}>{r.toFixed(2)}R</td>
+                        <td style={{ padding: '3px 6px', color: 'var(--text2)', fontSize: 9 }}>{reason}</td>
+                        <td style={{ padding: '3px 6px' }}><span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: `${vColor}20`, color: vColor, fontWeight: 600 }}>{verdict}</span></td>
+                        <td style={{ padding: '3px 6px', color: 'var(--text3)', fontSize: 9, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lesson}</td>
                       </tr>
                     )
                   })}
