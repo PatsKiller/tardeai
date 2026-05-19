@@ -2,6 +2,7 @@
 # WATCH-2: Scheduled watchpool maturity alerts. No trades. No orders.
 set -euo pipefail
 PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+set -a; source "$PROJ/.env"; set +a
 PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/watchpool_alerts.log"
 TS=$(date '+%Y-%m-%d %H:%M:%S')

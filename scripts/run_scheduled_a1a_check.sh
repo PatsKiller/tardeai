@@ -3,6 +3,7 @@
 set -euo pipefail
 
 PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+set -a; source "$PROJ/.env"; set +a
 PY="$PROJ/.venv/bin/python"
 LOG="$PROJ/logs/governance_a1a_check.log"
 LOCK="/tmp/tradeai_a1a_check.lock"
