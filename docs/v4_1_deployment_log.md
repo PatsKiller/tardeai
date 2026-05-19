@@ -1,5 +1,13 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## ALERT-3C — Dedicated Proposal Channel Configured — 2026-05-18
+
+Dedicated Telegram group "TradeAI Proposal Decisions" (***5571) configured and
+verified. Test alert sent successfully — arrived in dedicated channel only, not
+general. Blocked DWSN has no approve. Poller restored. 46/46 tests pass.
+
+---
+
 ## ALERT-3 — Dedicated Proposal Channel and Page — 2026-05-18
 
 Proposal alerts routed to dedicated Telegram channel via TRADEAI_PROPOSAL_ALERT_CHAT_ID.
