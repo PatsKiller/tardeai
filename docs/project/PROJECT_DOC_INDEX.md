@@ -160,6 +160,7 @@ Retained for historical reference but no longer authoritative.
 | Date | Change |
 |------|--------|
 | 2026-05-16 | Phase 2 early install review added. Observed 2 Phase 1 scheduled runs and 1 Phase 2 scheduled run, safety remains green, no unsafe strings, dashboards/APIs return 200, freeze remains active. Added review and runbook docs under docs/project. |
+| 2026-05-18 | **MISS-1**: Missed opportunity audit. 32 proposals, 8 rebuild, 12 missed. DWSN = avoided bad trade. 10 tests. |
 | 2026-05-18 | **ALERT-2**: Telegram callbacks — approve/reject/rebuild/watch. DWSN approve blocked (5 gates). 17 tests. |
 | 2026-05-18 | **ALERT-1**: Telegram proposal decision alerts. DWSN blocked alert generated. Blocked = no approve. 15 tests. |
 | 2026-05-18 | **PROMOTE-1**: Pre-promotion readiness gate. R:R/price/spread/strategy checks before proposal creation. DWSN root cause fixed. 15 tests. |
