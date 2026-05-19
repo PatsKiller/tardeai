@@ -1,0 +1,36 @@
+# SCREENER-ARCH-5: Screener Schedule Registry
+# Metadata only. No secrets. No credentials.
+
+sessions:
+  premarket:
+    description: "Pre-market gap/catalyst scans"
+    run_times_et: ["07:00", "08:00"]
+    allow_premarket: true
+  market_open:
+    description: "Active intraday/momentum setups"
+    run_times_et: ["10:00"]
+    allow_intraday: true
+  intraday:
+    description: "Momentum continuation, maturity refresh"
+    run_times_et: ["12:00", "14:00"]
+    allow_intraday: true
+  after_close:
+    description: "Swing, position, dividend, ETF, sector rotation"
+    run_times_et: ["16:00", "18:00"]
+    allow_after_hours: true
+  overnight:
+    description: "Fundamentals, news, catalysts refresh"
+    run_times_et: ["17:30"]
+    notes: "orchestrator 1730 run covers this"
+
+stale_thresholds:
+  daily: 24
+  weekly: 192
+  biweekly: 384
+  monthly: 840
+
+alert_policy:
+  stale_screener_p0_threshold: 3
+  stale_screener_p1: true
+  success_level: P3_LOG_ONLY
+  route_through_ops_hygiene: true
