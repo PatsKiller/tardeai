@@ -283,7 +283,7 @@ export default function TradeAI() {
           return (
             <div key={type} style={{ flex: 1, padding: '6px 10px', background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                <span style={{ fontSize: 8, color: type === 'GO' ? 'var(--green)' : type === 'WAIT' ? 'var(--amber)' : 'var(--text2)', fontWeight: 700 }}>{type} ({syms.length})</span>
+                <span style={{ fontSize: 8, color: type === 'GO' ? 'var(--green)' : type === 'WAIT' ? 'var(--amber)' : 'var(--text2)', fontWeight: 700 }}>{type === 'ALL' ? 'Universe' : type} ({syms.length})</span>
                 {syms.length > 0 && <button onClick={() => { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); setCopied(type); setTimeout(() => setCopied(null), 1500) }} style={{ fontSize: 8, padding: '1px 6px', border: '1px solid var(--border)', borderRadius: 3, background: copied === type ? 'var(--green-dim)' : 'var(--bg-card)', color: copied === type ? 'var(--green)' : 'var(--text2)', cursor: 'pointer', fontFamily: 'var(--mono)' }}>{copied === type ? '\u2713' : 'Copy'}</button>}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text0)', fontFamily: 'var(--mono)', wordBreak: 'break-all', userSelect: 'all', cursor: 'text', minHeight: 16 }}>
