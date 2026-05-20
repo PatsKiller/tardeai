@@ -1,0 +1,2424 @@
+{
+  "report": "ATP-2 Research Cadence Inventory",
+  "generated_at": "2026-05-19T21:38:56.488441",
+  "total_cron_jobs": 118,
+  "categories_found": [
+    "agent",
+    "catalyst_news",
+    "digest",
+    "enrichment",
+    "governance",
+    "incubator",
+    "morning_packet",
+    "other",
+    "quote_refresh",
+    "screener",
+    "system",
+    "watchpool"
+  ],
+  "sessions_found": [
+    "after_close",
+    "evening",
+    "market_hours",
+    "market_open",
+    "overnight",
+    "premarket",
+    "unknown"
+  ],
+  "atp2_slots_covered": [
+    "eod",
+    "evening",
+    "premarket_4am",
+    "premarket_7am",
+    "premarket_9am"
+  ],
+  "atp2_slots_missing": [
+    "overnight",
+    "proposal_revalidation_30min"
+  ],
+  "coverage_pct": 71.4,
+  "by_category": {
+    "other": [
+      {
+        "script": "run_alex_daily.py",
+        "session": "premarket",
+        "schedule": "0 5",
+        "is_frequent": false
+      },
+      {
+        "script": "telegram_smart_alerts.py",
+        "session": "premarket",
+        "schedule": "0 6",
+        "is_frequent": false
+      },
+      {
+        "script": "classify_candidates.py",
+        "session": "premarket",
+        "schedule": "35 6",
+        "is_frequent": false
+      },
+      {
+        "script": "materialize_income_engine.py",
+        "session": "premarket",
+        "schedule": "55 6",
+        "is_frequent": false
+      },
+      {
+        "script": "cio_decision_engine.py",
+        "session": "premarket",
+        "schedule": "0 7",
+        "is_frequent": false
+      },
+      {
+        "script": "sync_dividend_data.py",
+        "session": "premarket",
+        "schedule": "5 7",
+        "is_frequent": false
+      },
+      {
+        "script": "write_state_freshness_history.py",
+        "session": "premarket",
+        "schedule": "15 7",
+        "is_frequent": false
+      },
+      {
+        "script": "price_db_sync.py",
+        "session": "premarket",
+        "schedule": "20 7",
+        "is_frequent": false
+      },
+      {
+        "script": "system_health_alerts.py",
+        "session": "premarket",
+        "schedule": "25 7",
+        "is_frequent": false
+      },
+      {
+        "script": "recovery_watch_daily.py",
+        "session": "premarket",
+        "schedule": "30 7",
+        "is_frequent": false
+      },
+      {
+        "script": "portfolio_level_qa.py",
+        "session": "premarket",
+        "schedule": "40 7",
+        "is_frequent": false
+      },
+      {
+        "script": "record_decision_outcome.py",
+        "session": "premarket",
+        "schedule": "50 7",
+        "is_frequent": false
+      },
+      {
+        "script": "iterate_research_topics.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "system_health_alerts.py",
+        "session": "market_hours",
+        "schedule": "10 12,15",
+        "is_frequent": false
+      },
+      {
+        "script": "run_alex_daily.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "generate_weekly_docx.py",
+        "session": "overnight",
+        "schedule": "0 21",
+        "is_frequent": false
+      },
+      {
+        "script": "run_alex_daily.py",
+        "session": "market_open",
+        "schedule": "0 9",
+        "is_frequent": false
+      },
+      {
+        "script": "overnight_batch.py",
+        "session": "overnight",
+        "schedule": "0 20",
+        "is_frequent": false
+      },
+      {
+        "script": "paper_execution_sweep.py",
+        "session": "market_open",
+        "schedule": "*/5 9-16",
+        "is_frequent": true
+      },
+      {
+        "script": "paper_trade_monitor.py",
+        "session": "market_open",
+        "schedule": "*/5 9-16",
+        "is_frequent": true
+      },
+      {
+        "script": "market_regime_collector.py",
+        "session": "premarket",
+        "schedule": "30 6",
+        "is_frequent": false
+      },
+      {
+        "script": "market_regime_classifier.py",
+        "session": "premarket",
+        "schedule": "35 6",
+        "is_frequent": false
+      },
+      {
+        "script": "market_regime_collector.py",
+        "session": "after_close",
+        "schedule": "5 16",
+        "is_frequent": false
+      },
+      {
+        "script": "open_trade_monitor.py",
+        "session": "market_open",
+        "schedule": "*/15 9-16",
+        "is_frequent": true
+      },
+      {
+        "script": "portfolio_orchestrator.py",
+        "session": "premarket",
+        "schedule": "15 7",
+        "is_frequent": false
+      },
+      {
+        "script": "alert_missing_conditions.py",
+        "session": "premarket",
+        "schedule": "30 7",
+        "is_frequent": false
+      },
+      {
+        "script": "feedback_loop_processor.py",
+        "session": "overnight",
+        "schedule": "30 20",
+        "is_frequent": false
+      },
+      {
+        "script": "auto_research.py",
+        "session": "overnight",
+        "schedule": "0 21",
+        "is_frequent": false
+      },
+      {
+        "script": "youtube_transcript_ingest.py",
+        "session": "evening",
+        "schedule": "0 19",
+        "is_frequent": false
+      },
+      {
+        "script": "intel_auto_discovery.py",
+        "session": "premarket",
+        "schedule": "40 6",
+        "is_frequent": false
+      },
+      {
+        "script": "intel_auto_discovery.py",
+        "session": "market_hours",
+        "schedule": "40 12",
+        "is_frequent": false
+      },
+      {
+        "script": "sec_data_ingest.py",
+        "session": "overnight",
+        "schedule": "0 20",
+        "is_frequent": false
+      },
+      {
+        "script": "external_market_data_ingest.py",
+        "session": "premarket",
+        "schedule": "15 7",
+        "is_frequent": false
+      },
+      {
+        "script": "external_market_data_ingest.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "youtube_channel_discovery.py",
+        "session": "market_hours",
+        "schedule": "0 10",
+        "is_frequent": false
+      },
+      {
+        "script": "transcript_purge.log 2>&1",
+        "session": "overnight",
+        "schedule": "0 3",
+        "is_frequent": false
+      },
+      {
+        "script": "alpaca_paper_adapter.py",
+        "session": "market_hours",
+        "schedule": "0 10-16",
+        "is_frequent": false
+      },
+      {
+        "script": "multi_tier_trade_reviewer.py",
+        "session": "market_hours",
+        "schedule": "0 10",
+        "is_frequent": false
+      },
+      {
+        "script": "multi_tier_trade_reviewer.py",
+        "session": "market_hours",
+        "schedule": "0 11",
+        "is_frequent": false
+      },
+      {
+        "script": "deep_overnight_llm_window.log 2>&1",
+        "session": "overnight",
+        "schedule": "0 23",
+        "is_frequent": false
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "session": "market_hours",
+        "schedule": "0 12",
+        "is_frequent": false
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "session": "market_hours",
+        "schedule": "0 14",
+        "is_frequent": false
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "session": "after_close",
+        "schedule": "0 16",
+        "is_frequent": false
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "session": "after_close",
+        "schedule": "30 17",
+        "is_frequent": false
+      },
+      {
+        "script": "rebalance_verifier.py",
+        "session": "market_hours",
+        "schedule": "30 10",
+        "is_frequent": false
+      },
+      {
+        "script": "rescan_tickets.py",
+        "session": "evening",
+        "schedule": "0 18",
+        "is_frequent": false
+      },
+      {
+        "script": "populate_performance_context.py",
+        "session": "overnight",
+        "schedule": "30 2",
+        "is_frequent": false
+      },
+      {
+        "script": "deep_llm_friday_extended.log 2>&1",
+        "session": "after_close",
+        "schedule": "0 16",
+        "is_frequent": false
+      },
+      {
+        "script": "data_gap_resolver.py",
+        "session": "market_hours",
+        "schedule": "0 10-16",
+        "is_frequent": false
+      },
+      {
+        "script": "data_gap_resolver.py",
+        "session": "evening",
+        "schedule": "0 18",
+        "is_frequent": false
+      },
+      {
+        "script": "data_gap_resolver.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "alpaca_paper_reconciler.py",
+        "session": "market_open",
+        "schedule": "35 9",
+        "is_frequent": false
+      },
+      {
+        "script": "alpaca_paper_reconciler.py",
+        "session": "after_close",
+        "schedule": "5 16",
+        "is_frequent": false
+      },
+      {
+        "script": "run_pipeline.py",
+        "session": "overnight",
+        "schedule": "0 20",
+        "is_frequent": false
+      },
+      {
+        "script": "stale_proposal_sweeper.log 2>&1",
+        "session": "market_open",
+        "schedule": "15 8",
+        "is_frequent": false
+      },
+      {
+        "script": "stale_proposal_sweeper.log 2>&1",
+        "session": "market_open",
+        "schedule": "25 8",
+        "is_frequent": false
+      },
+      {
+        "script": "stale_proposal_sweeper.log 2>&1",
+        "session": "after_close",
+        "schedule": "10 16",
+        "is_frequent": false
+      },
+      {
+        "script": "strategy_config_loader.py",
+        "session": "overnight",
+        "schedule": "0 3",
+        "is_frequent": false
+      },
+      {
+        "script": "sync-docs-to-drive.py",
+        "session": "unknown",
+        "schedule": "5 *",
+        "is_frequent": false
+      },
+      {
+        "script": "telegram_command_handler.py",
+        "session": "unknown",
+        "schedule": "*/2 *",
+        "is_frequent": true
+      },
+      {
+        "script": "maturity_control_board.log 2>&1",
+        "session": "premarket",
+        "schedule": "55 7",
+        "is_frequent": false
+      },
+      {
+        "script": "report_operator_readiness_summary.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "maturity_control_board.log 2>&1",
+        "session": "evening",
+        "schedule": "15 18",
+        "is_frequent": false
+      },
+      {
+        "script": "report_operator_readiness_summary.py",
+        "session": "evening",
+        "schedule": "20 18",
+        "is_frequent": false
+      },
+      {
+        "script": "afterhours_candidate_preparation.log 2>&1",
+        "session": "after_close",
+        "schedule": "30 17",
+        "is_frequent": false
+      }
+    ],
+    "agent": [
+      {
+        "script": "agent_router_cron.sh full",
+        "session": "premarket",
+        "schedule": "15 6",
+        "is_frequent": false
+      },
+      {
+        "script": "agent_intelligence_cron.sh daily",
+        "session": "premarket",
+        "schedule": "25 6",
+        "is_frequent": false
+      },
+      {
+        "script": "agent_router_cron.sh light",
+        "session": "market_hours",
+        "schedule": "0 10-15",
+        "is_frequent": false
+      },
+      {
+        "script": "agent_intelligence_cron.sh intraday",
+        "session": "market_hours",
+        "schedule": "30 11,14",
+        "is_frequent": false
+      },
+      {
+        "script": "agent_router_cron.sh deep",
+        "session": "premarket",
+        "schedule": "30 7",
+        "is_frequent": false
+      },
+      {
+        "script": "agent_intelligence_cron.sh deep",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      }
+    ],
+    "catalyst_news": [
+      {
+        "script": "news_ingestion.py",
+        "session": "premarket",
+        "schedule": "30 6",
+        "is_frequent": false
+      },
+      {
+        "script": "news_ingestion.py",
+        "session": "market_hours",
+        "schedule": "30 12",
+        "is_frequent": false
+      },
+      {
+        "script": "news_ingestion.py",
+        "session": "evening",
+        "schedule": "30 18",
+        "is_frequent": false
+      }
+    ],
+    "watchpool": [
+      {
+        "script": "sync_watchlist_items_to_db.py",
+        "session": "premarket",
+        "schedule": "45 6",
+        "is_frequent": false
+      },
+      {
+        "script": "materialize_watchlist_strategy_cards.py",
+        "session": "premarket",
+        "schedule": "50 6",
+        "is_frequent": false
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "session": "premarket",
+        "schedule": "*/15 6-19",
+        "is_frequent": true
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "session": "overnight",
+        "schedule": "*/5 20-23",
+        "is_frequent": true
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "session": "overnight",
+        "schedule": "*/5 0-5",
+        "is_frequent": true
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "session": "unknown",
+        "schedule": "*/10 *",
+        "is_frequent": true
+      },
+      {
+        "script": "watchlist_hygiene.py",
+        "session": "market_open",
+        "schedule": "30 9",
+        "is_frequent": false
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "session": "market_open",
+        "schedule": "35 9",
+        "is_frequent": false
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "session": "market_hours",
+        "schedule": "5 10",
+        "is_frequent": false
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "session": "market_hours",
+        "schedule": "30 11",
+        "is_frequent": false
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "session": "market_hours",
+        "schedule": "30 13",
+        "is_frequent": false
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "session": "market_hours",
+        "schedule": "30 15",
+        "is_frequent": false
+      }
+    ],
+    "enrichment": [
+      {
+        "script": "finviz_enrichment.py",
+        "session": "premarket",
+        "schedule": "10 7",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_enrichment.py",
+        "session": "market_hours",
+        "schedule": "0 13",
+        "is_frequent": false
+      },
+      {
+        "script": "llm_intelligence_enrichment.py",
+        "session": "premarket",
+        "schedule": "20 7",
+        "is_frequent": false
+      }
+    ],
+    "morning_packet": [
+      {
+        "script": "aegis_morning_brief_delivery.py",
+        "session": "market_open",
+        "schedule": "5 8",
+        "is_frequent": false
+      },
+      {
+        "script": "send_morning_brief.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      }
+    ],
+    "screener": [
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "market_hours",
+        "schedule": "0 10",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "after_close",
+        "schedule": "0 16",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "premarket",
+        "schedule": "0 7",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "market_hours",
+        "schedule": "0 12",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "market_hours",
+        "schedule": "0 14",
+        "is_frequent": false
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "session": "evening",
+        "schedule": "0 18",
+        "is_frequent": false
+      }
+    ],
+    "system": [
+      {
+        "script": "backup_verify.py",
+        "session": "premarket",
+        "schedule": "0 6",
+        "is_frequent": false
+      },
+      {
+        "script": "cleanup_stale_proposals.py",
+        "session": "market_hours",
+        "schedule": "0 10",
+        "is_frequent": false
+      },
+      {
+        "script": "cleanup_stale_proposals.py",
+        "session": "market_hours",
+        "schedule": "0 15",
+        "is_frequent": false
+      },
+      {
+        "script": "classifier_health_check.py",
+        "session": "premarket",
+        "schedule": "55 7",
+        "is_frequent": false
+      }
+    ],
+    "governance": [
+      {
+        "script": "gemma3_calibration_scorer.py",
+        "session": "overnight",
+        "schedule": "30 21",
+        "is_frequent": false
+      },
+      {
+        "script": "paper_performance_governance.py",
+        "session": "market_open",
+        "schedule": "0 8,20",
+        "is_frequent": false
+      },
+      {
+        "script": "governance_system_facts.log 2>&1",
+        "session": "premarket",
+        "schedule": "40 7",
+        "is_frequent": false
+      },
+      {
+        "script": "governance_a1a_check.log 2>&1",
+        "session": "premarket",
+        "schedule": "45 7",
+        "is_frequent": false
+      },
+      {
+        "script": "report_governance_status.py",
+        "session": "premarket",
+        "schedule": "50 7",
+        "is_frequent": false
+      },
+      {
+        "script": "governance_system_facts.log 2>&1",
+        "session": "evening",
+        "schedule": "0 18",
+        "is_frequent": false
+      },
+      {
+        "script": "governance_a1a_check.log 2>&1",
+        "session": "evening",
+        "schedule": "5 18",
+        "is_frequent": false
+      },
+      {
+        "script": "report_governance_status.py",
+        "session": "evening",
+        "schedule": "10 18",
+        "is_frequent": false
+      }
+    ],
+    "incubator": [
+      {
+        "script": "incubator_proposal_promoter.py",
+        "session": "premarket",
+        "schedule": "0 7,8,9,10,11,12,13,14,15,16,17",
+        "is_frequent": false
+      }
+    ],
+    "digest": [
+      {
+        "script": "send_alert_digest.py",
+        "session": "market_open",
+        "schedule": "0 8",
+        "is_frequent": false
+      },
+      {
+        "script": "send_alert_digest.py",
+        "session": "after_close",
+        "schedule": "0 16",
+        "is_frequent": false
+      },
+      {
+        "script": "closed_trade_digest_cron.log 2>&1",
+        "session": "after_close",
+        "schedule": "30 16",
+        "is_frequent": false
+      }
+    ],
+    "quote_refresh": [
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "session": "market_open",
+        "schedule": "*/5 9-15",
+        "is_frequent": true
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "session": "market_open",
+        "schedule": "20 9",
+        "is_frequent": false
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "session": "market_hours",
+        "schedule": "0 12",
+        "is_frequent": false
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "session": "market_hours",
+        "schedule": "30 15",
+        "is_frequent": false
+      }
+    ]
+  },
+  "by_session": {
+    "premarket": [
+      {
+        "script": "run_alex_daily.py",
+        "category": "other",
+        "schedule": "0 5"
+      },
+      {
+        "script": "telegram_smart_alerts.py",
+        "category": "other",
+        "schedule": "0 6"
+      },
+      {
+        "script": "agent_router_cron.sh full",
+        "category": "agent",
+        "schedule": "15 6"
+      },
+      {
+        "script": "agent_intelligence_cron.sh daily",
+        "category": "agent",
+        "schedule": "25 6"
+      },
+      {
+        "script": "news_ingestion.py",
+        "category": "catalyst_news",
+        "schedule": "30 6"
+      },
+      {
+        "script": "classify_candidates.py",
+        "category": "other",
+        "schedule": "35 6"
+      },
+      {
+        "script": "sync_watchlist_items_to_db.py",
+        "category": "watchpool",
+        "schedule": "45 6"
+      },
+      {
+        "script": "materialize_watchlist_strategy_cards.py",
+        "category": "watchpool",
+        "schedule": "50 6"
+      },
+      {
+        "script": "materialize_income_engine.py",
+        "category": "other",
+        "schedule": "55 6"
+      },
+      {
+        "script": "cio_decision_engine.py",
+        "category": "other",
+        "schedule": "0 7"
+      },
+      {
+        "script": "sync_dividend_data.py",
+        "category": "other",
+        "schedule": "5 7"
+      },
+      {
+        "script": "finviz_enrichment.py",
+        "category": "enrichment",
+        "schedule": "10 7"
+      },
+      {
+        "script": "write_state_freshness_history.py",
+        "category": "other",
+        "schedule": "15 7"
+      },
+      {
+        "script": "price_db_sync.py",
+        "category": "other",
+        "schedule": "20 7"
+      },
+      {
+        "script": "system_health_alerts.py",
+        "category": "other",
+        "schedule": "25 7"
+      },
+      {
+        "script": "recovery_watch_daily.py",
+        "category": "other",
+        "schedule": "30 7"
+      },
+      {
+        "script": "portfolio_level_qa.py",
+        "category": "other",
+        "schedule": "40 7"
+      },
+      {
+        "script": "record_decision_outcome.py",
+        "category": "other",
+        "schedule": "50 7"
+      },
+      {
+        "script": "agent_router_cron.sh deep",
+        "category": "agent",
+        "schedule": "30 7"
+      },
+      {
+        "script": "market_regime_collector.py",
+        "category": "other",
+        "schedule": "30 6"
+      },
+      {
+        "script": "market_regime_classifier.py",
+        "category": "other",
+        "schedule": "35 6"
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "category": "watchpool",
+        "schedule": "*/15 6-19"
+      },
+      {
+        "script": "portfolio_orchestrator.py",
+        "category": "other",
+        "schedule": "15 7"
+      },
+      {
+        "script": "llm_intelligence_enrichment.py",
+        "category": "enrichment",
+        "schedule": "20 7"
+      },
+      {
+        "script": "alert_missing_conditions.py",
+        "category": "other",
+        "schedule": "30 7"
+      },
+      {
+        "script": "intel_auto_discovery.py",
+        "category": "other",
+        "schedule": "40 6"
+      },
+      {
+        "script": "external_market_data_ingest.py",
+        "category": "other",
+        "schedule": "15 7"
+      },
+      {
+        "script": "backup_verify.py",
+        "category": "system",
+        "schedule": "0 6"
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 7"
+      },
+      {
+        "script": "incubator_proposal_promoter.py",
+        "category": "incubator",
+        "schedule": "0 7,8,9,10,11,12,13,14,15,16,17"
+      },
+      {
+        "script": "classifier_health_check.py",
+        "category": "system",
+        "schedule": "55 7"
+      },
+      {
+        "script": "governance_system_facts.log 2>&1",
+        "category": "governance",
+        "schedule": "40 7"
+      },
+      {
+        "script": "governance_a1a_check.log 2>&1",
+        "category": "governance",
+        "schedule": "45 7"
+      },
+      {
+        "script": "report_governance_status.py",
+        "category": "governance",
+        "schedule": "50 7"
+      },
+      {
+        "script": "maturity_control_board.log 2>&1",
+        "category": "other",
+        "schedule": "55 7"
+      }
+    ],
+    "market_open": [
+      {
+        "script": "iterate_research_topics.py",
+        "category": "other",
+        "schedule": "0 8"
+      },
+      {
+        "script": "aegis_morning_brief_delivery.py",
+        "category": "morning_packet",
+        "schedule": "5 8"
+      },
+      {
+        "script": "agent_intelligence_cron.sh deep",
+        "category": "agent",
+        "schedule": "0 8"
+      },
+      {
+        "script": "run_alex_daily.py",
+        "category": "other",
+        "schedule": "0 8"
+      },
+      {
+        "script": "run_alex_daily.py",
+        "category": "other",
+        "schedule": "0 9"
+      },
+      {
+        "script": "paper_execution_sweep.py",
+        "category": "other",
+        "schedule": "*/5 9-16"
+      },
+      {
+        "script": "paper_trade_monitor.py",
+        "category": "other",
+        "schedule": "*/5 9-16"
+      },
+      {
+        "script": "open_trade_monitor.py",
+        "category": "other",
+        "schedule": "*/15 9-16"
+      },
+      {
+        "script": "watchlist_hygiene.py",
+        "category": "watchpool",
+        "schedule": "30 9"
+      },
+      {
+        "script": "external_market_data_ingest.py",
+        "category": "other",
+        "schedule": "0 8"
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 8"
+      },
+      {
+        "script": "data_gap_resolver.py",
+        "category": "other",
+        "schedule": "0 8"
+      },
+      {
+        "script": "send_alert_digest.py",
+        "category": "digest",
+        "schedule": "0 8"
+      },
+      {
+        "script": "alpaca_paper_reconciler.py",
+        "category": "other",
+        "schedule": "35 9"
+      },
+      {
+        "script": "stale_proposal_sweeper.log 2>&1",
+        "category": "other",
+        "schedule": "15 8"
+      },
+      {
+        "script": "stale_proposal_sweeper.log 2>&1",
+        "category": "other",
+        "schedule": "25 8"
+      },
+      {
+        "script": "send_morning_brief.py",
+        "category": "morning_packet",
+        "schedule": "0 8"
+      },
+      {
+        "script": "paper_performance_governance.py",
+        "category": "governance",
+        "schedule": "0 8,20"
+      },
+      {
+        "script": "report_operator_readiness_summary.py",
+        "category": "other",
+        "schedule": "0 8"
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "category": "quote_refresh",
+        "schedule": "*/5 9-15"
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "category": "quote_refresh",
+        "schedule": "20 9"
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "category": "watchpool",
+        "schedule": "35 9"
+      }
+    ],
+    "market_hours": [
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 10"
+      },
+      {
+        "script": "agent_router_cron.sh light",
+        "category": "agent",
+        "schedule": "0 10-15"
+      },
+      {
+        "script": "news_ingestion.py",
+        "category": "catalyst_news",
+        "schedule": "30 12"
+      },
+      {
+        "script": "finviz_enrichment.py",
+        "category": "enrichment",
+        "schedule": "0 13"
+      },
+      {
+        "script": "system_health_alerts.py",
+        "category": "other",
+        "schedule": "10 12,15"
+      },
+      {
+        "script": "agent_intelligence_cron.sh intraday",
+        "category": "agent",
+        "schedule": "30 11,14"
+      },
+      {
+        "script": "intel_auto_discovery.py",
+        "category": "other",
+        "schedule": "40 12"
+      },
+      {
+        "script": "youtube_channel_discovery.py",
+        "category": "other",
+        "schedule": "0 10"
+      },
+      {
+        "script": "alpaca_paper_adapter.py",
+        "category": "other",
+        "schedule": "0 10-16"
+      },
+      {
+        "script": "multi_tier_trade_reviewer.py",
+        "category": "other",
+        "schedule": "0 10"
+      },
+      {
+        "script": "multi_tier_trade_reviewer.py",
+        "category": "other",
+        "schedule": "0 11"
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "category": "other",
+        "schedule": "0 12"
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "category": "other",
+        "schedule": "0 14"
+      },
+      {
+        "script": "rebalance_verifier.py",
+        "category": "other",
+        "schedule": "30 10"
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 12"
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 14"
+      },
+      {
+        "script": "data_gap_resolver.py",
+        "category": "other",
+        "schedule": "0 10-16"
+      },
+      {
+        "script": "cleanup_stale_proposals.py",
+        "category": "system",
+        "schedule": "0 10"
+      },
+      {
+        "script": "cleanup_stale_proposals.py",
+        "category": "system",
+        "schedule": "0 15"
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "category": "quote_refresh",
+        "schedule": "0 12"
+      },
+      {
+        "script": "proactive_quote_refresh_cron.log 2>&1",
+        "category": "quote_refresh",
+        "schedule": "30 15"
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "category": "watchpool",
+        "schedule": "5 10"
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "category": "watchpool",
+        "schedule": "30 11"
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "category": "watchpool",
+        "schedule": "30 13"
+      },
+      {
+        "script": "watchpool_alerts_cron.log 2>&1",
+        "category": "watchpool",
+        "schedule": "30 15"
+      }
+    ],
+    "after_close": [
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 16"
+      },
+      {
+        "script": "market_regime_collector.py",
+        "category": "other",
+        "schedule": "5 16"
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "category": "other",
+        "schedule": "0 16"
+      },
+      {
+        "script": "trade_ai_orchestrator.py",
+        "category": "other",
+        "schedule": "30 17"
+      },
+      {
+        "script": "deep_llm_friday_extended.log 2>&1",
+        "category": "other",
+        "schedule": "0 16"
+      },
+      {
+        "script": "send_alert_digest.py",
+        "category": "digest",
+        "schedule": "0 16"
+      },
+      {
+        "script": "alpaca_paper_reconciler.py",
+        "category": "other",
+        "schedule": "5 16"
+      },
+      {
+        "script": "stale_proposal_sweeper.log 2>&1",
+        "category": "other",
+        "schedule": "10 16"
+      },
+      {
+        "script": "closed_trade_digest_cron.log 2>&1",
+        "category": "digest",
+        "schedule": "30 16"
+      },
+      {
+        "script": "afterhours_candidate_preparation.log 2>&1",
+        "category": "other",
+        "schedule": "30 17"
+      }
+    ],
+    "evening": [
+      {
+        "script": "news_ingestion.py",
+        "category": "catalyst_news",
+        "schedule": "30 18"
+      },
+      {
+        "script": "youtube_transcript_ingest.py",
+        "category": "other",
+        "schedule": "0 19"
+      },
+      {
+        "script": "finviz_screener_runner.py",
+        "category": "screener",
+        "schedule": "0 18"
+      },
+      {
+        "script": "rescan_tickets.py",
+        "category": "other",
+        "schedule": "0 18"
+      },
+      {
+        "script": "data_gap_resolver.py",
+        "category": "other",
+        "schedule": "0 18"
+      },
+      {
+        "script": "governance_system_facts.log 2>&1",
+        "category": "governance",
+        "schedule": "0 18"
+      },
+      {
+        "script": "governance_a1a_check.log 2>&1",
+        "category": "governance",
+        "schedule": "5 18"
+      },
+      {
+        "script": "report_governance_status.py",
+        "category": "governance",
+        "schedule": "10 18"
+      },
+      {
+        "script": "maturity_control_board.log 2>&1",
+        "category": "other",
+        "schedule": "15 18"
+      },
+      {
+        "script": "report_operator_readiness_summary.py",
+        "category": "other",
+        "schedule": "20 18"
+      }
+    ],
+    "overnight": [
+      {
+        "script": "generate_weekly_docx.py",
+        "category": "other",
+        "schedule": "0 21"
+      },
+      {
+        "script": "overnight_batch.py",
+        "category": "other",
+        "schedule": "0 20"
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "category": "watchpool",
+        "schedule": "*/5 20-23"
+      },
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "category": "watchpool",
+        "schedule": "*/5 0-5"
+      },
+      {
+        "script": "feedback_loop_processor.py",
+        "category": "other",
+        "schedule": "30 20"
+      },
+      {
+        "script": "auto_research.py",
+        "category": "other",
+        "schedule": "0 21"
+      },
+      {
+        "script": "sec_data_ingest.py",
+        "category": "other",
+        "schedule": "0 20"
+      },
+      {
+        "script": "transcript_purge.log 2>&1",
+        "category": "other",
+        "schedule": "0 3"
+      },
+      {
+        "script": "deep_overnight_llm_window.log 2>&1",
+        "category": "other",
+        "schedule": "0 23"
+      },
+      {
+        "script": "gemma3_calibration_scorer.py",
+        "category": "governance",
+        "schedule": "30 21"
+      },
+      {
+        "script": "populate_performance_context.py",
+        "category": "other",
+        "schedule": "30 2"
+      },
+      {
+        "script": "run_pipeline.py",
+        "category": "other",
+        "schedule": "0 20"
+      },
+      {
+        "script": "strategy_config_loader.py",
+        "category": "other",
+        "schedule": "0 3"
+      }
+    ],
+    "unknown": [
+      {
+        "script": "process_watchlist_agent_jobs.py",
+        "category": "watchpool",
+        "schedule": "*/10 *"
+      },
+      {
+        "script": "sync-docs-to-drive.py",
+        "category": "other",
+        "schedule": "5 *"
+      },
+      {
+        "script": "telegram_command_handler.py",
+        "category": "other",
+        "schedule": "*/2 *"
+      }
+    ]
+  },
+  "slot_details": {
+    "eod": {
+      "status": "covered",
+      "expected_categories": [
+        "screener",
+        "enrichment",
+        "digest"
+      ],
+      "expected_sessions": [
+        "after_close"
+      ],
+      "matched_jobs": [
+        "finviz_screener_runner.py",
+        "send_alert_digest.py",
+        "closed_trade_digest_cron.log 2>&1"
+      ]
+    },
+    "evening": {
+      "status": "covered",
+      "expected_categories": [
+        "enrichment",
+        "catalyst_news",
+        "strategy_fit"
+      ],
+      "expected_sessions": [
+        "evening"
+      ],
+      "matched_jobs": [
+        "news_ingestion.py"
+      ]
+    },
+    "overnight": {
+      "status": "missing",
+      "expected_categories": [
+        "agent",
+        "catalyst_news",
+        "technical"
+      ],
+      "expected_sessions": [
+        "overnight"
+      ],
+      "matched_jobs": []
+    },
+    "premarket_4am": {
+      "status": "covered",
+      "expected_categories": [
+        "screener",
+        "quote_refresh"
+      ],
+      "expected_sessions": [
+        "premarket"
+      ],
+      "matched_jobs": [
+        "finviz_screener_runner.py"
+      ]
+    },
+    "premarket_7am": {
+      "status": "covered",
+      "expected_categories": [
+        "strategy_fit",
+        "enrichment"
+      ],
+      "expected_sessions": [
+        "premarket"
+      ],
+      "matched_jobs": [
+        "finviz_enrichment.py",
+        "llm_intelligence_enrichment.py"
+      ]
+    },
+    "premarket_9am": {
+      "status": "covered",
+      "expected_categories": [
+        "quote_refresh",
+        "proposal_revalidation"
+      ],
+      "expected_sessions": [
+        "premarket",
+        "market_open"
+      ],
+      "matched_jobs": [
+        "proactive_quote_refresh_cron.log 2>&1",
+        "proactive_quote_refresh_cron.log 2>&1"
+      ]
+    },
+    "proposal_revalidation_30min": {
+      "status": "missing",
+      "expected_categories": [
+        "proposal_revalidation"
+      ],
+      "expected_sessions": [
+        "market_hours",
+        "premarket",
+        "market_open"
+      ],
+      "matched_jobs": []
+    }
+  },
+  "raw_jobs": [
+    {
+      "script": "run_alex_daily.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 5,
+      "minute": 0,
+      "cron_line": "0 5 * * 1-5 cd $PROJ && $PY scripts/run_alex_daily.py --daily --telegram >> logs/alex_daily.log 2>&1"
+    },
+    {
+      "script": "telegram_smart_alerts.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 0,
+      "cron_line": "0 6 * * 1-5 cd $PROJ && $PY scripts/telegram_smart_alerts.py --check-all --telegram >> logs/smart_alerts.log 2>&1"
+    },
+    {
+      "script": "agent_router_cron.sh full",
+      "category": "agent",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 15,
+      "cron_line": "15 6 * * 1-5 $PROJ/scripts/agent_router_cron.sh full"
+    },
+    {
+      "script": "agent_intelligence_cron.sh daily",
+      "category": "agent",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 25,
+      "cron_line": "25 6 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh daily"
+    },
+    {
+      "script": "news_ingestion.py",
+      "category": "catalyst_news",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 30,
+      "cron_line": "30 6 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1"
+    },
+    {
+      "script": "classify_candidates.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 35,
+      "cron_line": "35 6 * * 1-5 cd $PROJ && $PY scripts/classify_candidates.py >> logs/classify_candidates_cron.log 2>&1"
+    },
+    {
+      "script": "sync_watchlist_items_to_db.py",
+      "category": "watchpool",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 45,
+      "cron_line": "45 6 * * 1-5 cd $PROJ && $PY scripts/sync_watchlist_items_to_db.py >> logs/watchlist_sync.log 2>&1"
+    },
+    {
+      "script": "materialize_watchlist_strategy_cards.py",
+      "category": "watchpool",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 50,
+      "cron_line": "50 6 * * 1-5 cd $PROJ && $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1"
+    },
+    {
+      "script": "materialize_income_engine.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 55,
+      "cron_line": "55 6 * * 1-5 cd $PROJ && $PY scripts/materialize_income_engine.py >> logs/income_engine.log 2>&1"
+    },
+    {
+      "script": "cio_decision_engine.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 0,
+      "cron_line": "0 7 * * 1-5 cd $PROJ && $PY scripts/cio_decision_engine.py --run >> logs/cio_decisions.log 2>&1"
+    },
+    {
+      "script": "sync_dividend_data.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 5,
+      "cron_line": "5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1"
+    },
+    {
+      "script": "finviz_enrichment.py",
+      "category": "enrichment",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 10,
+      "cron_line": "10 7 * * 1-5 cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1"
+    },
+    {
+      "script": "write_state_freshness_history.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 15,
+      "cron_line": "15 7 * * 1-5 cd $PROJ && $PY scripts/write_state_freshness_history.py >> logs/state_freshness_db_cron.log 2>&1"
+    },
+    {
+      "script": "price_db_sync.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 20,
+      "cron_line": "20 7 * * 1-5 cd $PROJ && $PY scripts/price_db_sync.py >> logs/price_db_sync.log 2>&1"
+    },
+    {
+      "script": "system_health_alerts.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 25,
+      "cron_line": "25 7 * * 1-5 cd $PROJ && $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "recovery_watch_daily.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 30,
+      "cron_line": "30 7 * * 1-5 cd $PROJ && $PY scripts/recovery_watch_daily.py >> logs/recovery_watch.log 2>&1"
+    },
+    {
+      "script": "portfolio_level_qa.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 40,
+      "cron_line": "40 7 * * 1-5 cd $PROJ && $PY scripts/portfolio_level_qa.py >> logs/portfolio_qa.log 2>&1"
+    },
+    {
+      "script": "record_decision_outcome.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 50,
+      "cron_line": "50 7 * * 1-5 cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1"
+    },
+    {
+      "script": "iterate_research_topics.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 1-5 cd $PROJ && $PY scripts/iterate_research_topics.py --telegram >> logs/research_iterate.log 2>&1"
+    },
+    {
+      "script": "aegis_morning_brief_delivery.py",
+      "category": "morning_packet",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 5,
+      "cron_line": "5 8 * * 1-5 cd $PROJ && $PY scripts/aegis_morning_brief_delivery.py >> logs/aegis_brief.log 2>&1"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10 * * 1-5 cd $PROJ && $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "agent_router_cron.sh light",
+      "category": "agent",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10-15 * * 1-5 $PROJ/scripts/agent_router_cron.sh light"
+    },
+    {
+      "script": "news_ingestion.py",
+      "category": "catalyst_news",
+      "session": "market_hours",
+      "hour": 12,
+      "minute": 30,
+      "cron_line": "30 12 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1"
+    },
+    {
+      "script": "finviz_enrichment.py",
+      "category": "enrichment",
+      "session": "market_hours",
+      "hour": 13,
+      "minute": 0,
+      "cron_line": "0 13 * * 1-5 cd $PROJ && $PY scripts/finviz_enrichment.py >> logs/finviz_enrichment.log 2>&1"
+    },
+    {
+      "script": "system_health_alerts.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 12,
+      "minute": 10,
+      "cron_line": "10 12,15 * * 1-5 cd $PROJ && $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "agent_intelligence_cron.sh intraday",
+      "category": "agent",
+      "session": "market_hours",
+      "hour": 11,
+      "minute": 30,
+      "cron_line": "30 11,14 * * 1-5 $PROJ/scripts/agent_intelligence_cron.sh intraday"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 0,
+      "cron_line": "0 16 * * 1-5 cd $PROJ && $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "news_ingestion.py",
+      "category": "catalyst_news",
+      "session": "evening",
+      "hour": 18,
+      "minute": 30,
+      "cron_line": "30 18 * * * cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1"
+    },
+    {
+      "script": "agent_router_cron.sh deep",
+      "category": "agent",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 30,
+      "cron_line": "30 7 * * 0 $PROJ/scripts/agent_router_cron.sh deep"
+    },
+    {
+      "script": "agent_intelligence_cron.sh deep",
+      "category": "agent",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 0 $PROJ/scripts/agent_intelligence_cron.sh deep"
+    },
+    {
+      "script": "run_alex_daily.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 0 cd $PROJ && $PY scripts/run_alex_daily.py --weekly --telegram >> logs/alex_weekly.log 2>&1"
+    },
+    {
+      "script": "generate_weekly_docx.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 21,
+      "minute": 0,
+      "cron_line": "0 21 * * 0 cd $PROJ && flock -n /tmp/weekly_docx.lock $PY scripts/generate_weekly_docx.py >> logs/weekly_docx.log 2>&1"
+    },
+    {
+      "script": "run_alex_daily.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 9,
+      "minute": 0,
+      "cron_line": "0 9 1 * * cd $PROJ && $PY scripts/run_alex_daily.py --monthly --telegram >> logs/alex_monthly.log 2>&1"
+    },
+    {
+      "script": "overnight_batch.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 20,
+      "minute": 0,
+      "cron_line": "0 20 * * 1-5 cd $PROJ && $PY scripts/overnight_batch.py --telegram >> logs/overnight_batch.log 2>&1"
+    },
+    {
+      "script": "paper_execution_sweep.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 9,
+      "minute": null,
+      "cron_line": "*/5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_sweep.lock $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1"
+    },
+    {
+      "script": "paper_trade_monitor.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 9,
+      "minute": null,
+      "cron_line": "*/5 9-16 * * 1-5 cd $PROJ && flock -n /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1"
+    },
+    {
+      "script": "market_regime_collector.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 30,
+      "cron_line": "30 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1"
+    },
+    {
+      "script": "market_regime_classifier.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 35,
+      "cron_line": "35 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1"
+    },
+    {
+      "script": "market_regime_collector.py",
+      "category": "other",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 5,
+      "cron_line": "5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1"
+    },
+    {
+      "script": "open_trade_monitor.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 9,
+      "minute": null,
+      "cron_line": "*/15 9-16 * * 1-5 cd $PROJ && flock -n /tmp/open_trade_monitor.lock $PY scripts/open_trade_monitor.py >> logs/open_trade_monitor.log 2>&1"
+    },
+    {
+      "script": "process_watchlist_agent_jobs.py",
+      "category": "watchpool",
+      "session": "premarket",
+      "hour": 6,
+      "minute": null,
+      "cron_line": "*/15 6-19 * * 1-5 cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] skipped \u2014 previous instance still running\" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap\" >> $PROJ/logs/watchlist_agent_jobs.log"
+    },
+    {
+      "script": "process_watchlist_agent_jobs.py",
+      "category": "watchpool",
+      "session": "overnight",
+      "hour": 20,
+      "minute": null,
+      "cron_line": "*/5 20-23 * * 1-5 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [deep-llm-lock] skipped \u2014 deep overnight LLM window active\" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] skipped \u2014 previous instance still running\" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap\" >> $PROJ/logs/watchlist_agent_jobs.log"
+    },
+    {
+      "script": "process_watchlist_agent_jobs.py",
+      "category": "watchpool",
+      "session": "overnight",
+      "hour": 0,
+      "minute": null,
+      "cron_line": "*/5 0-5 * * 2-6 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [deep-llm-lock] skipped \u2014 deep overnight LLM window active\" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] skipped \u2014 previous instance still running\" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap\" >> $PROJ/logs/watchlist_agent_jobs.log"
+    },
+    {
+      "script": "process_watchlist_agent_jobs.py",
+      "category": "watchpool",
+      "session": "unknown",
+      "hour": null,
+      "minute": null,
+      "cron_line": "*/10 * * * 0,6 cd $PROJ && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [flock] skipped \u2014 previous instance still running\" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo \"$(date +\\%Y-\\%m-\\%d\\ \\%H:\\%M:\\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap\" >> $PROJ/logs/watchlist_agent_jobs.log"
+    },
+    {
+      "script": "portfolio_orchestrator.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 15,
+      "cron_line": "15 7 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_orch.lock $PY scripts/portfolio_orchestrator.py >> logs/portfolio_orchestrator.log 2>&1"
+    },
+    {
+      "script": "llm_intelligence_enrichment.py",
+      "category": "enrichment",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 20,
+      "cron_line": "20 7 * * 1-5 cd $PROJ && flock -n /tmp/llm_enrichment.lock $PY scripts/llm_intelligence_enrichment.py >> logs/llm_enrichment.log 2>&1"
+    },
+    {
+      "script": "alert_missing_conditions.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 30,
+      "cron_line": "30 7 * * 1-5 cd $PROJ && flock -n /tmp/alert_missing.lock $PY scripts/alert_missing_conditions.py >> logs/alert_missing.log 2>&1"
+    },
+    {
+      "script": "feedback_loop_processor.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 20,
+      "minute": 30,
+      "cron_line": "30 20 * * 1-5 cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1"
+    },
+    {
+      "script": "auto_research.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 21,
+      "minute": 0,
+      "cron_line": "0 21 * * 1-5 cd $PROJ && $PY scripts/auto_research.py --check --telegram >> logs/auto_research.log 2>&1"
+    },
+    {
+      "script": "youtube_transcript_ingest.py",
+      "category": "other",
+      "session": "evening",
+      "hour": 19,
+      "minute": 0,
+      "cron_line": "0 19 * * 1-5 cd $PROJ && $PY scripts/youtube_transcript_ingest.py --all-channels >> logs/youtube_ingest.log 2>&1"
+    },
+    {
+      "script": "intel_auto_discovery.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 40,
+      "cron_line": "40 6 * * 1-5 cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1"
+    },
+    {
+      "script": "intel_auto_discovery.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 12,
+      "minute": 40,
+      "cron_line": "40 12 * * 1-5 cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1"
+    },
+    {
+      "script": "watchlist_hygiene.py",
+      "category": "watchpool",
+      "session": "market_open",
+      "hour": 9,
+      "minute": 30,
+      "cron_line": "30 9 * * 0 cd $PROJ && $PY scripts/watchlist_hygiene.py --telegram >> logs/watchlist_hygiene.log 2>&1"
+    },
+    {
+      "script": "sec_data_ingest.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 20,
+      "minute": 0,
+      "cron_line": "0 20 * * 1-5 cd $PROJ && $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1"
+    },
+    {
+      "script": "external_market_data_ingest.py",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 15,
+      "cron_line": "15 7 * * 1-5 cd $PROJ && $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1"
+    },
+    {
+      "script": "external_market_data_ingest.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 1 cd $PROJ && $PY scripts/external_market_data_ingest.py --fundamentals >> logs/market_data.log 2>&1"
+    },
+    {
+      "script": "backup_verify.py",
+      "category": "system",
+      "session": "premarket",
+      "hour": 6,
+      "minute": 0,
+      "cron_line": "0 6 1 * * cd $PROJ && flock -n /tmp/backup_verify.lock $PY scripts/backup_verify.py >> logs/backup_verify.log 2>&1"
+    },
+    {
+      "script": "youtube_channel_discovery.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1"
+    },
+    {
+      "script": "transcript_purge.log 2>&1",
+      "category": "other",
+      "session": "overnight",
+      "hour": 3,
+      "minute": 0,
+      "cron_line": "0 3 1 * * cd $PROJ && $PY -c \"import sys; sys.path.insert(0,'scripts'); from transcript_processor import set_purge_dates; set_purge_dates()\" && $PY -c \"import psycopg2; from pathlib import Path; pw=''; [exec('pw=l.split(\\\"=\\\",1)[1].strip()') for l in Path('.env').read_text().splitlines() if l.startswith('DB_PASSWORD=')]; conn=psycopg2.connect(host='localhost',dbname='trade_ai',user='trade_ai',password=pw); cur=conn.cursor(); cur.execute('DELETE FROM youtube_transcripts WHERE purge_after IS NOT NULL AND purge_after < CURRENT_DATE'); print(f'Purged {cur.rowcount} expired transcripts'); conn.commit(); conn.close()\" >> logs/transcript_purge.log 2>&1"
+    },
+    {
+      "script": "alpaca_paper_adapter.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10-16 * * 1-5 cd $PROJ && flock -n /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync-only >> logs/alpaca_paper_adapter.log 2>&1"
+    },
+    {
+      "script": "multi_tier_trade_reviewer.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1"
+    },
+    {
+      "script": "multi_tier_trade_reviewer.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 11,
+      "minute": 0,
+      "cron_line": "0 11 1 * * cd $PROJ && flock -n /tmp/monthly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier monthly >> logs/monthly_trade_review.log 2>&1"
+    },
+    {
+      "script": "deep_overnight_llm_window.log 2>&1",
+      "category": "other",
+      "session": "overnight",
+      "hour": 23,
+      "minute": 0,
+      "cron_line": "0 23 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag >> logs/deep_overnight_llm_window.log 2>&1"
+    },
+    {
+      "script": "trade_ai_orchestrator.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 12,
+      "minute": 0,
+      "cron_line": "0 12 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1200 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1"
+    },
+    {
+      "script": "trade_ai_orchestrator.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 14,
+      "minute": 0,
+      "cron_line": "0 14 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1400 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1"
+    },
+    {
+      "script": "trade_ai_orchestrator.py",
+      "category": "other",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 0,
+      "cron_line": "0 16 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1600 --no-llm --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1"
+    },
+    {
+      "script": "trade_ai_orchestrator.py",
+      "category": "other",
+      "session": "after_close",
+      "hour": 17,
+      "minute": 30,
+      "cron_line": "30 17 * * 1-5 cd $PROJ && flock -n /tmp/screener_pm.lock $PY scripts/trade_ai_orchestrator.py --run-label 1730 --no-alerts --allow-underfilled >> logs/screener_pm.log 2>&1"
+    },
+    {
+      "script": "rebalance_verifier.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 30,
+      "cron_line": "30 10 * * 0 cd $PROJ && flock -n /tmp/rebalance_verify.lock $PY scripts/rebalance_verifier.py >> logs/rebalance_verifier.log 2>&1"
+    },
+    {
+      "script": "gemma3_calibration_scorer.py",
+      "category": "governance",
+      "session": "overnight",
+      "hour": 21,
+      "minute": 30,
+      "cron_line": "30 21 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/gemma3_calibration_scorer.py >> logs/gemma3_calibration.log 2>&1"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 0,
+      "cron_line": "0 7 * * 1-5  cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 1-5  cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "market_hours",
+      "hour": 12,
+      "minute": 0,
+      "cron_line": "0 12 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "market_hours",
+      "hour": 14,
+      "minute": 0,
+      "cron_line": "0 14 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "finviz_screener_runner.py",
+      "category": "screener",
+      "session": "evening",
+      "hour": 18,
+      "minute": 0,
+      "cron_line": "0 18 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
+    },
+    {
+      "script": "incubator_proposal_promoter.py",
+      "category": "incubator",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 0,
+      "cron_line": "0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5  cd $PROJ && flock -n /tmp/incubator_promoter.lock $PY scripts/incubator_proposal_promoter.py --run >> logs/incubator_promoter.log 2>&1"
+    },
+    {
+      "script": "rescan_tickets.py",
+      "category": "other",
+      "session": "evening",
+      "hour": 18,
+      "minute": 0,
+      "cron_line": "0 18 * * * cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/rescan_tickets.py >> logs/rescan.log 2>&1"
+    },
+    {
+      "script": "populate_performance_context.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 2,
+      "minute": 30,
+      "cron_line": "30 2 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/populate_performance_context.py --apply >> logs/perf_context.log 2>&1"
+    },
+    {
+      "script": "deep_llm_friday_extended.log 2>&1",
+      "category": "other",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 0,
+      "cron_line": "0 16 * * 5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_deep_llm_window.lock bash scripts/run_deep_overnight_llm_window.sh --enable-hybrid-rag --force-window --max-jobs 200 --allow-over-hard-max >> logs/deep_llm_friday_extended.log 2>&1"
+    },
+    {
+      "script": "data_gap_resolver.py",
+      "category": "other",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py >> logs/data_gap_resolver.log 2>&1"
+    },
+    {
+      "script": "data_gap_resolver.py",
+      "category": "other",
+      "session": "evening",
+      "hour": 18,
+      "minute": 0,
+      "cron_line": "0 18 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py --pre-overnight >> logs/data_gap_resolver_pre_overnight.log 2>&1"
+    },
+    {
+      "script": "data_gap_resolver.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py --weekly-audit >> logs/data_gap_resolver_weekly.log 2>&1"
+    },
+    {
+      "script": "send_alert_digest.py",
+      "category": "digest",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/send_alert_digest.py morning >> logs/alert_digest.log 2>&1"
+    },
+    {
+      "script": "send_alert_digest.py",
+      "category": "digest",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 0,
+      "cron_line": "0 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/send_alert_digest.py evening >> logs/alert_digest.log 2>&1"
+    },
+    {
+      "script": "alpaca_paper_reconciler.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 9,
+      "minute": 35,
+      "cron_line": "35 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py >> logs/alpaca_reconciler.log 2>&1"
+    },
+    {
+      "script": "alpaca_paper_reconciler.py",
+      "category": "other",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 5,
+      "cron_line": "5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py >> logs/alpaca_reconciler.log 2>&1"
+    },
+    {
+      "script": "run_pipeline.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 20,
+      "minute": 0,
+      "cron_line": "0 20 * * 6 cd /home/johnclaw/nyc-dof-auction && .venv/bin/python3 scripts/run_pipeline.py >> logs/pipeline.log 2>&1"
+    },
+    {
+      "script": "cleanup_stale_proposals.py",
+      "category": "system",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 0,
+      "cron_line": "0 10 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1"
+    },
+    {
+      "script": "cleanup_stale_proposals.py",
+      "category": "system",
+      "session": "market_hours",
+      "hour": 15,
+      "minute": 0,
+      "cron_line": "0 15 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1"
+    },
+    {
+      "script": "stale_proposal_sweeper.log 2>&1",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 15,
+      "cron_line": "15 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --dry-run >> logs/stale_proposal_sweeper.log 2>&1"
+    },
+    {
+      "script": "stale_proposal_sweeper.log 2>&1",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 25,
+      "cron_line": "25 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --apply >> logs/stale_proposal_sweeper.log 2>&1"
+    },
+    {
+      "script": "stale_proposal_sweeper.log 2>&1",
+      "category": "other",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 10,
+      "cron_line": "10 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n -E 99 /tmp/tradeai_stale_proposal_sweeper.lock ./scripts/run_scheduled_stale_proposal_sweeper.sh --report-only >> logs/stale_proposal_sweeper.log 2>&1"
+    },
+    {
+      "script": "send_morning_brief.py",
+      "category": "morning_packet",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/send_morning_brief.py >> logs/morning_brief.log 2>&1"
+    },
+    {
+      "script": "classifier_health_check.py",
+      "category": "system",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 55,
+      "cron_line": "55 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/monitoring/classifier_health_check.py >> logs/classifier_health.log 2>&1"
+    },
+    {
+      "script": "paper_performance_governance.py",
+      "category": "governance",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8,20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/paper_performance_governance.py --apply >> logs/governance.log 2>&1"
+    },
+    {
+      "script": "strategy_config_loader.py",
+      "category": "other",
+      "session": "overnight",
+      "hour": 3,
+      "minute": 0,
+      "cron_line": "0 3 * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/strategy_config_loader.py --sync-db >> logs/strategy_config_sync.log 2>&1"
+    },
+    {
+      "script": "sync-docs-to-drive.py",
+      "category": "other",
+      "session": "unknown",
+      "hour": null,
+      "minute": 5,
+      "cron_line": "5 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/sync-docs-to-drive.py >> /home/johnclaw/logs/drive-docs-sync.log 2>&1"
+    },
+    {
+      "script": "telegram_command_handler.py",
+      "category": "other",
+      "session": "unknown",
+      "hour": null,
+      "minute": null,
+      "cron_line": "*/2 * * * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/telegram_command_handler.py --poll >> logs/telegram_commands.log 2>&1"
+    },
+    {
+      "script": "governance_system_facts.log 2>&1",
+      "category": "governance",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 40,
+      "cron_line": "40 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_system_facts.lock ./scripts/run_scheduled_system_facts.sh >> logs/governance_system_facts.log 2>&1"
+    },
+    {
+      "script": "governance_a1a_check.log 2>&1",
+      "category": "governance",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 45,
+      "cron_line": "45 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1"
+    },
+    {
+      "script": "report_governance_status.py",
+      "category": "governance",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 50,
+      "cron_line": "50 7 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/report_governance_status.py --output-json docs/governance/governance_status_latest.json --output-md docs/governance/governance_status_latest.md >> logs/governance_status.log 2>&1"
+    },
+    {
+      "script": "governance_system_facts.log 2>&1",
+      "category": "governance",
+      "session": "evening",
+      "hour": 18,
+      "minute": 0,
+      "cron_line": "0 18 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_system_facts.lock ./scripts/run_scheduled_system_facts.sh >> logs/governance_system_facts.log 2>&1"
+    },
+    {
+      "script": "governance_a1a_check.log 2>&1",
+      "category": "governance",
+      "session": "evening",
+      "hour": 18,
+      "minute": 5,
+      "cron_line": "5 18 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1"
+    },
+    {
+      "script": "report_governance_status.py",
+      "category": "governance",
+      "session": "evening",
+      "hour": 18,
+      "minute": 10,
+      "cron_line": "10 18 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/report_governance_status.py --output-json docs/governance/governance_status_latest.json --output-md docs/governance/governance_status_latest.md >> logs/governance_status.log 2>&1"
+    },
+    {
+      "script": "maturity_control_board.log 2>&1",
+      "category": "other",
+      "session": "premarket",
+      "hour": 7,
+      "minute": 55,
+      "cron_line": "55 7 * * 1-5 /usr/bin/flock -n /tmp/tradeai_maturity_control_board.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_maturity_control_board.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/maturity_control_board.log 2>&1"
+    },
+    {
+      "script": "report_operator_readiness_summary.py",
+      "category": "other",
+      "session": "market_open",
+      "hour": 8,
+      "minute": 0,
+      "cron_line": "0 8 * * 1-5 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_operator_readiness_summary.py --output-json /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/maturity_hardening/operator_readiness_latest.json --output-md /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/maturity_hardening/operator_readiness_latest.md >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/operator_readiness.log 2>&1"
+    },
+    {
+      "script": "maturity_control_board.log 2>&1",
+      "category": "other",
+      "session": "evening",
+      "hour": 18,
+      "minute": 15,
+      "cron_line": "15 18 * * 0 /usr/bin/flock -n /tmp/tradeai_maturity_control_board.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_maturity_control_board.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/maturity_control_board.log 2>&1"
+    },
+    {
+      "script": "report_operator_readiness_summary.py",
+      "category": "other",
+      "session": "evening",
+      "hour": 18,
+      "minute": 20,
+      "cron_line": "20 18 * * 0 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_operator_readiness_summary.py --output-json /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/maturity_hardening/operator_readiness_latest.json --output-md /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/maturity_hardening/operator_readiness_latest.md >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/operator_readiness.log 2>&1"
+    },
+    {
+      "script": "proactive_quote_refresh_cron.log 2>&1",
+      "category": "quote_refresh",
+      "session": "market_open",
+      "hour": 9,
+      "minute": null,
+      "cron_line": "*/5 9-15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1"
+    },
+    {
+      "script": "proactive_quote_refresh_cron.log 2>&1",
+      "category": "quote_refresh",
+      "session": "market_open",
+      "hour": 9,
+      "minute": 20,
+      "cron_line": "20 9 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode incubator --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1"
+    },
+    {
+      "script": "proactive_quote_refresh_cron.log 2>&1",
+      "category": "quote_refresh",
+      "session": "market_hours",
+      "hour": 12,
+      "minute": 0,
+      "cron_line": "0 12 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode incubator --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1"
+    },
+    {
+      "script": "proactive_quote_refresh_cron.log 2>&1",
+      "category": "quote_refresh",
+      "session": "market_hours",
+      "hour": 15,
+      "minute": 30,
+      "cron_line": "30 15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode incubator --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1"
+    },
+    {
+      "script": "watchpool_alerts_cron.log 2>&1",
+      "category": "watchpool",
+      "session": "market_open",
+      "hour": 9,
+      "minute": 35,
+      "cron_line": "35 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "watchpool_alerts_cron.log 2>&1",
+      "category": "watchpool",
+      "session": "market_hours",
+      "hour": 10,
+      "minute": 5,
+      "cron_line": "5 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "watchpool_alerts_cron.log 2>&1",
+      "category": "watchpool",
+      "session": "market_hours",
+      "hour": 11,
+      "minute": 30,
+      "cron_line": "30 11 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode diagnostic --limit 50 >> logs/watchpool_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "watchpool_alerts_cron.log 2>&1",
+      "category": "watchpool",
+      "session": "market_hours",
+      "hour": 13,
+      "minute": 30,
+      "cron_line": "30 13 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "watchpool_alerts_cron.log 2>&1",
+      "category": "watchpool",
+      "session": "market_hours",
+      "hour": 15,
+      "minute": 30,
+      "cron_line": "30 15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1"
+    },
+    {
+      "script": "closed_trade_digest_cron.log 2>&1",
+      "category": "digest",
+      "session": "after_close",
+      "hour": 16,
+      "minute": 30,
+      "cron_line": "30 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_closed_trade_digest_cron.sh >> logs/closed_trade_digest_cron.log 2>&1"
+    },
+    {
+      "script": "afterhours_candidate_preparation.log 2>&1",
+      "category": "other",
+      "session": "after_close",
+      "hour": 17,
+      "minute": 30,
+      "cron_line": "30 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_afterhours_candidate_preparation.sh >> logs/afterhours_candidate_preparation.log 2>&1"
+    }
+  ]
+}
