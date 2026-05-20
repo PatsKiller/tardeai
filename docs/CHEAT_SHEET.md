@@ -87,8 +87,9 @@ grep LIVE_TRADING .env    # Must show: false
 # Dedicated group: TRADEAI_PROPOSAL_ALERT_CHAT_ID in .env
 # Fallback: standard TELEGRAM_CHAT_ID
 
-# Dashboard URL (Tailscale HTTPS — works from cellular):
-# https://ms01-openclaw.tail163d14.ts.net/v2/
+# Dashboard URLs (Tailscale HTTPS — works from cellular):
+# v2 Dashboard:  https://ms01-openclaw.tail163d14.ts.net/
+# DOF Auctions:  https://ms01-openclaw.tail163d14.ts.net:8443/
 # Alerts include "Open in Dashboard" button when TAILSCALE_HOSTNAME is set
 
 # Callback poller (processes button presses + commands):
