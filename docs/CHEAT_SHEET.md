@@ -50,9 +50,42 @@ curl -s http://localhost:7777/api/v2/journal/closed-trades/action-dashboard | py
 # Pipeline health (44 stages)
 curl -s http://localhost:7777/api/v2/pipeline-health-master | python3 -m json.tool
 
+# Risk regime status
+curl -s http://localhost:7777/api/v2/risk-regime/status | python3 -m json.tool
+
+# Attribution alpha vs benchmark
+curl -s http://localhost:7777/api/v2/attribution | python3 -c "import json,sys; d=json.load(sys.stdin).get('data',{}); print(f'Alpha: {d.get(\"alpha_annualized\")}% | Port CAGR: {d.get(\"port_cagr\")}% | Bench CAGR: {d.get(\"bench_cagr\")}%')"
+
+# Agent queue health
+.venv/bin/python scripts/run_agent_queue_health.py --verbose
+
 # Verify paper mode (CRITICAL)
 grep ALPACA_MODE .env     # Must show: paper
 grep LIVE_TRADING .env    # Must show: false
+```
+
+---
+
+## Proposal Alert System (Telegram)
+
+```bash
+# Telegram commands (in proposal decisions group or standard chat)
+/ptpending                          # List all PENDING proposals
+/ptapprove 1234                     # Approve as proposed
+/ptapprove 1234 shares=200          # Approve with share override
+/ptapprove 1234 target=2.50 stop=2.08  # Approve with price overrides
+/ptreject 1234 too volatile         # Reject with reason
+/ptstatus 1234                      # Show proposal details
+
+# Inline buttons on alerts (callback_data, works from cellular):
+# [Approve] [Reject] [½× Shares] [2× Shares] [More Info]
+
+# Alert throttling: 30-min cooldown per (proposal, alert_type), max 5 total
+# Auto-expiry: TARGET_HIT_BEFORE_APPROVAL, OVER_ALERTED (5+ alerts, 2h+)
+# Trailing stop moves send rich notification with locked profit amount
+
+# Dedicated group: TRADEAI_PROPOSAL_ALERT_CHAT_ID in .env
+# Fallback: standard TELEGRAM_CHAT_ID
 ```
 
 ---
