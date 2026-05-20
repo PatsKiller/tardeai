@@ -1,7 +1,7 @@
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level
-**Last updated:** 2026-05-18 (PP-UX-2)
+**Last updated:** 2026-05-20 (ATP-1B)
 
 ---
 
