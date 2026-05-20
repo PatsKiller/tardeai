@@ -14318,6 +14318,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             healthy = 0
             warnings = 0
             critical = 0
+            never_run = 0
+            latest_run_ts = None
             for group_id, stages in STAGE_REGISTRY.items():
                 label, desc = GROUP_LABELS[group_id]
                 stage_list = []
@@ -14342,6 +14344,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         if row.get('started_at'):
                             td = now - row['started_at']
                             minutes_ago = int(td.total_seconds() / 60)
+                            if latest_run_ts is None or row['started_at'] > latest_run_ts:
+                                latest_run_ts = row['started_at']
                     # Derive color
                     if last_status == 'running':
                         color = 'blue'
@@ -14350,6 +14354,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         critical += 1
                     elif last_run_at is None:
                         color = 'gray'
+                        never_run += 1
+                        if cadence_h > 0 and cadence_h < 168:
+                            warnings += 1
+                            color = 'amber'
                     elif cadence_h == 0:
                         color = 'green' if last_status == 'success' else 'red'
                         if color == 'green':
@@ -14392,7 +14400,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "warnings": warnings,
                     "critical": critical,
                     "total_stages": total_stages,
-                    "last_full_cycle": now.strftime("%I:%M %p"),
+                    "never_run": never_run,
+                    "last_full_cycle": latest_run_ts.strftime("%I:%M %p") if latest_run_ts else "No runs recorded",
                 },
                 "groups": groups,
             }
