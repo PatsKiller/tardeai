@@ -50,7 +50,11 @@ def _ensure_benchmarks_in_cache(cache: Dict, cache_path: Path) -> None:
                     print(f"  [attribution] ⚠️  {sym}: no data")
                     continue
                 prices = {}
-                for idx, price in hist["Close"].items():
+                close_col = hist["Close"]
+                # yfinance >= 0.2.x returns MultiIndex columns; flatten
+                if hasattr(close_col, "columns"):
+                    close_col = close_col.iloc[:, 0]
+                for idx, price in close_col.items():
                     try:
                         d = idx.date() if hasattr(idx, "date") else idx
                         if float(price) > 0:

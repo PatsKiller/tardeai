@@ -10,7 +10,7 @@
 | LLM-FIX-1 | FIXED | `overnight_recovery_verdicts` was phantom name; actual pipeline uses `deep_overnight_llm_results` (1116 results). Wired actionable outcome extraction. |
 | AGENT-FIX-1 | FIXED | fused_signals.overall_signal column mismatch poisoned transactions; 125 stuck jobs recovered. |
 | COUNT-TRUTH-1 | FIXED | Added scope-specific labels (Paper Open/Closed, All-Time Decisions, Pending Review, etc.) |
-| ATTR-1 | No tables | No attribution/benchmark tables exist | Create tables + run attribution pipeline |
+| ATTR-1 | FIXED | Benchmark prices missing from cache due to yfinance MultiIndex column change; SPY/ITA/AGG fetched, alpha=+1.02% |
 
 ## Key Findings
 
