@@ -5867,10 +5867,9 @@ def trade_ai():
 
     # Sector breakdown from tickers (basic)
     sectors: dict = {}
+    _ec_cache = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
     for t in tickers:
-        # Use enrichment cache for sector if available
-        ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
-        sec = (ec.get(t["symbol"], {}) or {}).get("sector", "Unknown") if isinstance(ec.get(t["symbol"]), dict) else "Unknown"
+        sec = (_ec_cache.get(t["symbol"], {}) or {}).get("sector", "Unknown") if isinstance(_ec_cache.get(t["symbol"]), dict) else "Unknown"
         sectors[sec] = sectors.get(sec, 0) + 1
 
     # Run history for sparkline
