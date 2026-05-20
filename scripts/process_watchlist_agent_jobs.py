@@ -448,14 +448,14 @@ def _get_sentiment_social_context(symbol: str) -> str:
 
         # Fused signals (if available)
         cur.execute("""
-            SELECT overall_signal, confidence, component_scores, created_at
+            SELECT direction, confidence, fused_score, severity, created_at
             FROM fused_signals
             WHERE symbol = %s AND created_at > NOW() - INTERVAL '14 days'
             ORDER BY created_at DESC LIMIT 1
         """, [symbol])
         fused = cur.fetchone()
         if fused:
-            parts.append(f"=== Fused Signal ===\n  Signal: {fused['overall_signal']} | Confidence: {float(fused['confidence'] or 0):.0%}\n=== End Fused Signal ===")
+            parts.append(f"=== Fused Signal ===\n  Signal: {fused['direction']} | Confidence: {float(fused['confidence'] or 0):.0%} | Score: {float(fused['fused_score'] or 0):.2f}\n=== End Fused Signal ===")
 
         conn.close()
     except Exception as e:
@@ -1871,7 +1871,14 @@ def process_jobs(limit: int = 10):
         except Exception:
             pass
 
-        # Update job
+        # Update job — recover from poisoned transaction if needed
+        try:
+            cur.execute("SELECT 1")  # test transaction health
+        except Exception:
+            conn.rollback()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            print(f"  [recovery] {symbol}: rolled back poisoned transaction")
+
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
 
         # Update watchlist item status
