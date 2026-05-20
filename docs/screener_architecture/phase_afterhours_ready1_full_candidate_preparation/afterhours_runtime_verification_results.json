@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-05-20T00:59:29.305530+00:00",
+  "run_date": "2026-05-19",
+  "verdict": "PASS",
+  "checks": [
+    {
+      "check": "afterhours_readiness_run exists for date",
+      "pass": true,
+      "detail": "afterhours_2026-05-19_after_close"
+    },
+    {
+      "check": "symbols_considered > 0",
+      "pass": true,
+      "detail": 1311
+    },
+    {
+      "check": "afterhours_candidate_snapshot rows exist",
+      "pass": true,
+      "detail": 1311
+    },
+    {
+      "check": "no new trades/orders/proposals from afterhours system",
+      "pass": true,
+      "detail": "no afterhours trades/orders/proposals found"
+    },
+    {
+      "check": "readiness classifications exist",
+      "pass": true,
+      "detail": {
+        "blocked_by_strategy_fit": 331,
+        "needs_data": 619,
+        "no_fit": 136,
+        "ready_for_review": 39,
+        "watchpool_candidate": 186
+      }
+    }
+  ]
+}
