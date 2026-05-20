@@ -8388,12 +8388,14 @@ def _paper_proposals_enriched():
                 verdict_color = 'red'
                 verdict_reason = "Quote never checked — click Refresh Price then Check Execution"
                 unknown_quote_count += 1
+                review_count += 1
                 prop['approval_allowed'] = False
             elif 'STALE' in (prop.get('last_price_source') or '').upper() or 'STALE' in ls.upper():
                 verdict = 'STALE_QUOTE'
                 verdict_color = 'orange'
                 verdict_reason = "Price data is stale — refresh before approving"
                 stale_count += 1
+                review_count += 1
                 prop['approval_allowed'] = False
             elif ds in ('BLOCKED_BY_RISK_GATE', 'RESEARCH_INCOMPLETE', 'AI_REVIEW_MISSING'):
                 verdict = 'NEEDS_REVIEW'
