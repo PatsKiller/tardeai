@@ -1094,6 +1094,13 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 json_response(self, 500, {"ok": False, "error": str(_v2e)})
                 return
 
+        # Root redirect → /v2/
+        if path == "/" or path == "":
+            self.send_response(302)
+            self.send_header("Location", "/v2/")
+            self.end_headers()
+            return
+
         # Command Center v2 — serve built app at /v2/
         if path == "/v2" or path.startswith("/v2/"):
             _v2_dist = PROJECT_ROOT / "apps" / "command-center-v2" / "dist"
