@@ -45,38 +45,41 @@ def build_digest_message(summary, date_str):
 
     best = summary.get("best_trade") or {}
     worst = summary.get("worst_trade") or {}
-    top_lesson = summary.get("top_lesson", "No lesson")[:120]
-    top_action = summary.get("top_action_item", "No action needed")
+    top_lesson = summary.get("top_lesson", "No lesson")[:150]
+    top_action = summary.get("top_action_item", "")
 
-    # Build action items from trades needing review
+    # Build real action items only (no padding)
     review_items = summary.get("trades_needing_review", [])
     actions = []
-    if top_action and top_action != "No action needed":
+    if top_action and top_action not in ("No action needed", "No action needed — review P&L and confirm strategy confidence"):
         actions.append(top_action[:80])
     for item in review_items[:2]:
-        action_text = f"{item.get('symbol', '?')}: {item.get('action', 'review')}"
-        actions.append(action_text[:80])
-    while len(actions) < 3:
-        actions.append("No additional action")
+        act = item.get("action", "")
+        if act and act != "No action needed":
+            actions.append(f"{item.get('symbol', '?')}: {act[:60]}")
 
-    msg = (
-        f"Closed Trade Review -- {date_str}\n"
-        f"Closed: {summary['closed_today_count']} | {summary.get('win_loss_summary', 'N/A')}\n"
-        f"P&L: ${summary['total_realized_pnl']} | Avg R: {summary['daily_avg_r']}R\n"
-        f"\n"
-        f"Best: {best.get('symbol', '?')} ({best.get('reason', '?')})\n"
-        f"Review: {worst.get('symbol', '?')} ({worst.get('reason', '?')})\n"
-        f"\n"
-        f"Lesson: {top_lesson}\n"
-        f"\n"
-        f"Actions:\n"
-        f"1. {actions[0]}\n"
-        f"2. {actions[1]}\n"
-        f"3. {actions[2]}\n"
-        f"\n"
-        f"Dashboard: Paper Journal"
-    )
-    return msg
+    lines = [
+        f"Closed Trade Review -- {date_str}",
+        f"Closed: {summary['closed_today_count']} | {summary.get('win_loss_summary', 'N/A')}",
+        f"P&L: ${summary['total_realized_pnl']} | Avg R: {summary['daily_avg_r']}R",
+        "",
+        f"Best: {best.get('symbol', '?')} -- {best.get('reason', '?')}",
+    ]
+
+    # Only show review item if different from best
+    if worst.get("symbol") != best.get("symbol") or worst.get("reason") != best.get("reason"):
+        lines.append(f"Review: {worst.get('symbol', '?')} -- {worst.get('reason', '?')}")
+
+    lines += ["", f"Lesson: {top_lesson}"]
+
+    if actions:
+        lines += ["", "Actions:"]
+        for i, a in enumerate(actions[:3], 1):
+            lines.append(f"{i}. {a}")
+
+    lines += ["", "Review: Paper Journal"]
+
+    return "\n".join(lines)
 
 
 def run(args):
@@ -123,13 +126,10 @@ def run(args):
 
     if args.output_json:
         Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
-        print(json.dumps(report, indent=2, default=str))
+        Path(args.output_json).write_text(json.dumps(report, indent=2, default=str))
     if args.output_md:
-        print(f"\n## Closed Trade Digest")
-        print(f"- Date: {date_str}")
-        print(f"- Closed: {summary['closed_today_count']}")
-        print(f"- P&L: ${summary['total_realized_pnl']}")
-        print(f"```\n{message}\n```")
+        Path(args.output_md).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output_md).write_text(f"# Closed Trade Digest\n\nDate: {date_str}\nClosed: {summary['closed_today_count']}\nP&L: ${summary['total_realized_pnl']}\n\n```\n{message}\n```\n")
 
     return report
 
