@@ -81,33 +81,37 @@ def format_proposal_alert(proposal, alert_type, current_price):
         f"Reply: `/ptapprove {pid}` or `/ptapprove {pid} shares=200 target=2.50`"
     )
 
-    # ALL callback_data — NO url: buttons
+    # Callback buttons — all use callback_data (works from cellular via bot poll)
+    rows = []
     if alert_type in ("NEW_PROPOSAL", "TARGET_CROSSED", "LARGE_MOVE", "STALE"):
-        keyboard = {
-            "inline_keyboard": [
-                [
-                    {"text": "\u2705 Approve", "callback_data": f"ptapprove:{pid}"},
-                    {"text": "\u274c Reject", "callback_data": f"ptreject:{pid}"},
-                ],
-                [
-                    {"text": "\u00bd\u00d7 Shares", "callback_data": f"ptapprove_half:{pid}"},
-                    {"text": "2\u00d7 Shares", "callback_data": f"ptapprove_2x:{pid}"},
-                ],
-                [
-                    {"text": "\u2139\ufe0f More Info", "callback_data": f"ptinfo:{pid}"},
-                ],
-            ]
-        }
-    elif alert_type == "STOP_CROSSED":
-        keyboard = {
-            "inline_keyboard": [[
+        rows = [
+            [
+                {"text": "\u2705 Approve", "callback_data": f"ptapprove:{pid}"},
                 {"text": "\u274c Reject", "callback_data": f"ptreject:{pid}"},
+            ],
+            [
+                {"text": "\u00bd\u00d7 Shares", "callback_data": f"ptapprove_half:{pid}"},
+                {"text": "2\u00d7 Shares", "callback_data": f"ptapprove_2x:{pid}"},
+            ],
+            [
                 {"text": "\u2139\ufe0f More Info", "callback_data": f"ptinfo:{pid}"},
-            ]]
-        }
-    else:
-        keyboard = None  # EXPIRED — informational only
+            ],
+        ]
+    elif alert_type == "STOP_CROSSED":
+        rows = [[
+            {"text": "\u274c Reject", "callback_data": f"ptreject:{pid}"},
+            {"text": "\u2139\ufe0f More Info", "callback_data": f"ptinfo:{pid}"},
+        ]]
 
+    # URL button — only when Tailscale FQDN is configured (HTTPS, no port)
+    tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
+    if tailscale_host and rows:
+        rows.append([
+            {"text": "\U0001f4ca Open in Dashboard",
+             "url": f"https://{tailscale_host}/v2/paper-proposals?id={pid}"},
+        ])
+
+    keyboard = {"inline_keyboard": rows} if rows else None
     return msg, keyboard
 
 
