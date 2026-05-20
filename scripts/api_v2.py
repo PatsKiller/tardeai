@@ -7869,8 +7869,9 @@ def _paper_proposals_enriched():
             paper_ready = trade_plan_exists and (intel >= 50 or has_catalyst or has_agent_reviews)
             prop['paper_ready'] = paper_ready
 
-            # Override approval_allowed for paper trading
-            if paper_ready and not prop.get('approval_allowed'):
+            # Override approval_allowed for paper trading — but only if quote/execution gates are met
+            has_quote = bool(prop.get('last_price_checked_at') or prop.get('execution_readiness'))
+            if paper_ready and not prop.get('approval_allowed') and has_quote:
                 prop['approval_allowed'] = True
             # Assign decision_state if missing but paper-ready
             if not prop.get('decision_state') and paper_ready:
@@ -8320,7 +8321,7 @@ def _paper_proposals_enriched():
             pass
 
         # Add strategy perf, operator verdict, age to each proposal
-        ready_count = 0; review_count = 0; stale_count = 0; missed_count = 0
+        ready_count = 0; review_count = 0; stale_count = 0; missed_count = 0; unknown_quote_count = 0; exec_missing_count = 0
         for prop in pending_list:
             sid = prop.get('strategy_id')
             if sid and sid in strategy_perf:
@@ -8382,11 +8383,18 @@ def _paper_proposals_enriched():
                 drift_str = f" {drift:+.1f}%" if drift else ""
                 verdict_reason = f"Price moved{drift_str} out of entry zone"
                 missed_count += 1
+            elif not prop.get('last_price_checked_at') and not prop.get('execution_readiness'):
+                verdict = 'UNKNOWN_QUOTE'
+                verdict_color = 'red'
+                verdict_reason = "Quote never checked — click Refresh Price then Check Execution"
+                unknown_quote_count += 1
+                prop['approval_allowed'] = False
             elif 'STALE' in (prop.get('last_price_source') or '').upper() or 'STALE' in ls.upper():
                 verdict = 'STALE_QUOTE'
                 verdict_color = 'orange'
                 verdict_reason = "Price data is stale — refresh before approving"
                 stale_count += 1
+                prop['approval_allowed'] = False
             elif ds in ('BLOCKED_BY_RISK_GATE', 'RESEARCH_INCOMPLETE', 'AI_REVIEW_MISSING'):
                 verdict = 'NEEDS_REVIEW'
                 verdict_color = 'yellow'
@@ -8407,6 +8415,44 @@ def _paper_proposals_enriched():
                 verdict_color = 'yellow'
                 verdict_reason = "Review data completeness before approving"
                 review_count += 1
+
+            # Track execution readiness missing
+            if not prop.get('execution_readiness') and verdict not in ('UNKNOWN_QUOTE',):
+                exec_missing_count += 1
+
+            # Block approval if execution readiness missing or R:R below minimum
+            rr = None
+            try:
+                rr = float(prop.get('risk_reward', {}).get('rr') or prop.get('proposed_rr') or 0)
+            except (TypeError, ValueError):
+                pass
+            if rr is not None and 0 < rr < 2.0:
+                prop['approval_allowed'] = False
+                if verdict == 'NEEDS_REVIEW':
+                    verdict_reason = f"R:R {rr:.2f} below 2.0 minimum — needs wider target or tighter stop"
+
+            # Primary blocker annotation
+            blockers = []
+            if not prop.get('last_price_checked_at'):
+                blockers.append("quote_never_checked")
+            if not prop.get('execution_readiness'):
+                blockers.append("execution_readiness_missing")
+            if rr is not None and 0 < rr < 2.0:
+                blockers.append(f"rr_below_minimum_{rr:.2f}")
+            if (prop.get('llm_review_status') or 'NOT_REQUESTED') in ('NOT_REQUESTED', 'not run'):
+                blockers.append("ai_review_missing")
+            if (prop.get('backtest_status') or 'not run') == 'not run':
+                blockers.append("backtest_missing")
+            prop['primary_blockers'] = blockers
+            prop['primary_blocker'] = blockers[0] if blockers else None
+
+            # High RVOL/gap warning
+            scan_rvol = prop.get('scan_rvol')
+            scan_gap = prop.get('scan_gap_pct')
+            if scan_rvol and float(scan_rvol or 0) > 50:
+                prop['high_rvol_warning'] = f"RVOL {float(scan_rvol):.1f}x — requires market-open review"
+            if scan_gap and abs(float(scan_gap or 0)) > 20:
+                prop['high_gap_warning'] = f"Gap {float(scan_gap):+.1f}% — requires market-open review"
 
             # Specific verdict reason (replaces generic "Review data completeness")
             if verdict == 'NEEDS_REVIEW':
@@ -8594,6 +8640,8 @@ def _paper_proposals_enriched():
                 "ready_count": ready_count,
                 "needs_review_count": review_count,
                 "stale_count": stale_count,
+                "unknown_quote_count": unknown_quote_count,
+                "exec_missing_count": exec_missing_count,
                 "entry_missed_count": missed_count,
                 "expired_today": len(expired_today) if isinstance(expired_today, list) else expired_today,
                 "incubator_ready_count": incubator_ready_count,
