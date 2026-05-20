@@ -161,7 +161,7 @@ def main():
             indicators.append(vix_ind)
 
         if not dry_run:
-            save_indicators(conn, indicators)
+            save_indicators(conn, indicators, dry_run=False)
 
         missing = []
         for sym in INDEX_SYMBOLS:

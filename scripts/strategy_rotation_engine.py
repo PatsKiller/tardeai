@@ -159,7 +159,7 @@ def main():
             signals = [s for s in signals if s["strategy_id"] == args.strategy]
         alignments = check_alignments(conn, snap_id, regime) if snap_id and regime != "no_regime_snapshot" else []
         if not dry_run:
-            save_signals(conn, signals, alignments)
+            save_signals(conn, signals, alignments, dry_run=False)
 
         by_signal = {}
         for s in signals:

@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-05-20T15:52:56.843643+00:00",
+  "snapshot": {
+    "snapshot_id": "RS_20260520155002_e1388e2f",
+    "generated_at": "2026-05-20 11:50:02.277407-04:00",
+    "regime_label": "high_volatility",
+    "confidence": "0.43",
+    "trend_state": "bearish",
+    "volatility_state": "high_vol",
+    "breadth_state": "narrow",
+    "summary": "Regime: high_volatility (conf=43%)",
+    "stale_data": false,
+    "missing_data": [],
+    "inputs": {
+      "vix_close": "normal",
+      "finviz_health": "risk_on",
+      "market_session": "neutral",
+      "scan_score_avg": "bearish",
+      "scan_breadth_24h": "narrow",
+      "gap_volatility_proxy": "high_vol",
+      "news_sentiment_proxy": "neutral"
+    }
+  },
+  "snapshot_age_hours": 0.0,
+  "indicators_count": 20,
+  "indicators_latest": "2026-05-20 11:49:56.749514-04:00",
+  "rotation_signals_count": 0,
+  "rotation_signals_latest": null,
+  "latest_run": {
+    "run_id": "RUN_20260520155002_e9f1ccde",
+    "status": "success",
+    "started_at": "2026-05-20 11:50:02.275482-04:00",
+    "finished_at": "2026-05-20 11:50:02.282033-04:00",
+    "indicators_read": 7,
+    "snapshots_created": 1,
+    "errors": []
+  },
+  "classifier_exists": true,
+  "collector_exists": true,
+  "rotation_engine_exists": true,
+  "wrapper_exists": true,
+  "cron_found": true,
+  "wrapper_cron_found": false,
+  "log_exists": true,
+  "log_tail": [
+    "Regime: high_volatility (conf=43%, stale=False)",
+    "Regime: high_volatility (conf=43%, stale=False)",
+    "Regime: high_volatility (conf=43%, stale=False)",
+    "Regime: high_volatility (conf=43%, stale=False)",
+    "Regime: high_volatility (conf=43%, stale=False)"
+  ],
+  "root_cause": "fresh",
+  "recommended_fix": "none \u2014 snapshot is fresh"
+}
