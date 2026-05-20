@@ -1,3 +1,9 @@
+> **UPDATE / SUPERSEDED STATUS — 2026-05-20**
+> This diagnostic report reflects the pre-fix state. It has been superseded by REGIME-CRON-1 (commit 03baf9d).
+> Current status: **FIXED**.
+> Current result: dry_run default issue fixed; snapshot fresh, run log recording.
+> Safety: no trades, no orders, no live trading.
+
 # Regime Cron Staleness Report
 Generated: 2026-05-20T15:21:57.807401+00:00
 
