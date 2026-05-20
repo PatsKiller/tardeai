@@ -1,3 +1,9 @@
+> **UPDATE / SUPERSEDED STATUS — 2026-05-20**
+> This diagnostic report reflects the pre-fix state. It has been superseded by AGENT-WORKER-1 (commit 00a6967).
+> Current status: **FIXED**.
+> Current result: worker not running was misdiagnosis; cron-triggered batch; schema mismatch fixed; 125 stuck jobs recovered.
+> Safety: no trades, no orders, no live trading.
+
 # Agent Queue Health Report
 Generated: 2026-05-20T15:21:57.927381+00:00
 

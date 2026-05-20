@@ -1,3 +1,9 @@
+> **UPDATE / SUPERSEDED STATUS — 2026-05-20**
+> This diagnostic report reflects the pre-fix state. It has been superseded by DOC-RECON-1 (commit multiple).
+> Current status: **FIXED**.
+> Current result: all 5 workstreams fixed; smoke test findings superseded.
+> Safety: no trades, no orders, no live trading.
+
 # Post-Audit Integration Smoke Test
 Generated: 2026-05-20T15:22:13.978304+00:00
 

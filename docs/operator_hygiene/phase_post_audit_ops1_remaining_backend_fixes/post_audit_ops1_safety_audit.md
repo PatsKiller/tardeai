@@ -1,3 +1,9 @@
+> **UPDATE / SUPERSEDED STATUS — 2026-05-20**
+> This diagnostic report reflects the pre-fix state. It has been superseded by DOC-RECON-1 (commit multiple).
+> Current status: **FIXED**.
+> Current result: safety confirmed across all fixes; paper mode preserved.
+> Safety: no trades, no orders, no live trading.
+
 # POST-AUDIT-OPS-1 — Safety Audit
 
 | Check | Status |

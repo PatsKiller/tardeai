@@ -1,6 +1,8 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
 **Last updated:** 2026-05-20
+**POST-AUDIT-OPS-1:** 5/5 FIXED (REGIME-CRON-1, AGENT-WORKER-1, LLM-FIX-1, COUNT-TRUTH-1, ATTR-1)
+**Remaining:** A-5 final review after 2026-05-22
 
 ---
 

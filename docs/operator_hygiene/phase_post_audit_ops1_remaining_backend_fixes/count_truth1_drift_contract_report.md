@@ -1,3 +1,9 @@
+> **UPDATE / SUPERSEDED STATUS — 2026-05-20**
+> This diagnostic report reflects the pre-fix state. It has been superseded by COUNT-TRUTH-1 (commit d8ef77f).
+> Current status: **FIXED**.
+> Current result: scope-specific labels added to PaperGovernance, PaperJournal, CIODashboard.
+> Safety: no trades, no orders, no live trading.
+
 # Count Truth Drift Contract Report
 Generated: 2026-05-20T15:21:57.996794+00:00
 
