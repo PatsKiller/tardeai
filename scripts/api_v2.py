@@ -11587,6 +11587,8 @@ ROUTES = {
     "/api/v2/screener-membership/summary": lambda: _screener_membership_summary_api(),
     "/api/v2/incubator-lifecycle/summary": lambda: _incubator_lifecycle_summary_api(),
     "/api/v2/strategy-fit/summary": lambda: _strategy_fit_summary_api(),
+    "/api/v2/journal/lesson-memory/summary": lambda: {"ok": True, "total": len(_db_query("SELECT 1 FROM trade_lesson_memory") or []), "by_category": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT lesson_category, count(*) as c FROM trade_lesson_memory GROUP BY lesson_category ORDER BY c DESC") or [])], "by_strategy": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT strategy_id, count(*) as c FROM trade_lesson_memory GROUP BY strategy_id ORDER BY c DESC") or [])], "pending_review": len(_db_query("SELECT 1 FROM trade_lesson_memory WHERE operator_review_status='pending'") or [])},
+    "/api/v2/journal/strategy-lessons/summary": lambda: {"ok": True, "rollups": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT strategy_id, closed_trades, wins, losses, avg_r, realized_pnl, review_recommendation, updated_at FROM strategy_lesson_rollup ORDER BY closed_trades DESC") or [])]},
     "/api/v2/screener-schedule/summary": lambda: {"ok": True, "screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, schedule, active, last_run, results_count FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])], "total": len(_db_query("SELECT 1 FROM finviz_screeners WHERE active=TRUE") or [])},
     "/api/v2/proposal-quality-review": lambda: _proposal_quality_review_api(),
     "/api/v2/queue/summary": lambda: _queue_summary(),
