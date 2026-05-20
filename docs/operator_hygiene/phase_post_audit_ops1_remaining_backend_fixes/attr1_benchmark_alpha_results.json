@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-05-20T15:21:58.060724+00:00",
+  "tables_found": [],
+  "data_present": false,
+  "row_counts": {},
+  "root_cause": "no_benchmark_tables",
+  "recommended_fix": "create attribution/benchmark tables; run the performance attribution pipeline to populate"
+}

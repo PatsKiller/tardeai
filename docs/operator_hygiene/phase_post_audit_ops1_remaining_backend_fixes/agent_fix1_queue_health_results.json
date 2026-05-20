@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-05-20T15:21:57.927381+00:00",
+  "status_counts": {
+    "failed": 307,
+    "completed": 1763,
+    "processing": 95,
+    "queued": 1121
+  },
+  "oldest_queued": "2026-05-19T10:23:13.281633-04:00",
+  "worker_running": false,
+  "root_cause": "worker process not running; queue backlog: 1121 queued jobs; oldest queued job is 25.0h old",
+  "recommended_fix": "start the agent job worker process"
+}
