@@ -67,8 +67,20 @@ def run_report(verbose=False):
         {
             "source_table": "paper_trade_proposals",
             "filter": "status = 'pending'",
-            "sql": "SELECT COUNT(*) FROM paper_trade_proposals WHERE status = 'pending'",
+            "sql": "SELECT COUNT(*) FROM paper_trade_proposals WHERE status = 'pending' OR status = 'PENDING'",
             "label": "proposals_pending",
+        },
+        {
+            "source_table": "watchlist_agent_jobs",
+            "filter": "status = 'queued'",
+            "sql": "SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status = 'queued'",
+            "label": "agent_jobs_queued",
+        },
+        {
+            "source_table": "deep_overnight_llm_queue",
+            "filter": "status = 'pending'",
+            "sql": "SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status = 'pending'",
+            "label": "overnight_llm_pending",
         },
     ]
 

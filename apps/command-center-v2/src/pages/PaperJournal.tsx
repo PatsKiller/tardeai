@@ -158,11 +158,11 @@ export default function PaperJournal() {
 
       {/* Stats Tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 14 }}>
-        <MetricTile label="Closed" value={stats.closed ?? 0} />
-        <MetricTile label="Open" value={stats.open ?? 0} />
+        <MetricTile label="Paper Closed" value={stats.closed ?? 0} />
+        <MetricTile label="Paper Open" value={stats.open ?? 0} />
         <MetricTile label="Wins" value={stats.wins ?? 0} deltaColor="var(--green)" />
         <MetricTile label="Losses" value={stats.losses ?? 0} deltaColor="var(--red)" />
-        <MetricTile label="Win Rate" value={stats.win_rate != null ? fmtPct(stats.win_rate, 1) : '--'}
+        <MetricTile label="Win Rate (all paper)" value={stats.win_rate != null ? fmtPct(stats.win_rate, 1) : '--'}
           deltaColor={(stats.win_rate ?? 0) >= 50 ? 'var(--green)' : 'var(--red)'} />
         <MetricTile label="Total P&L" value={stats.total_pnl != null ? fmt$(stats.total_pnl, 2) : '--'}
           deltaColor={pnlColor(stats.total_pnl)} />
