@@ -20,7 +20,7 @@ HOLDINGS_OK=$($PY -c 'import json; d=json.load(open("'"$PROJ"'/data/portfolios/s
 [ "$HOLDINGS_OK" != "OK" ] && { log "ABORT: holdings guard failed"; exit 1; }
 
 log "Starting"
-exec {fd}>"$LOCK" && flock -n "$fd" || { log "Locked, skipping"; exit 0; }
+exec {fd}>"$LOCK" && flock -n "$fd" || { log "Locked, skipping"; $PY -c "import sys; sys.path.insert(0,'$PROJ/scripts'); from pipeline_run_telemetry import record_stage_run; from datetime import datetime,timezone; record_stage_run('a1a_compliance','Governance','skipped',datetime.now(timezone.utc),datetime.now(timezone.utc),source='cron_flock_blocked')" 2>/dev/null || true; exit 0; }
 _TELEM_START=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
 
 mkdir -p "$PROJ/docs/governance"
