@@ -9960,8 +9960,11 @@ def _intelligence_entities():
 
 def _pipeline_health():
     """GET /api/v2/pipeline-health — pipeline execution status last 24hr."""
-    runs = _db_query("""SELECT script_name, status, rows_processed,
-        ROUND(duration_sec::numeric,1) as duration_sec, error_message, run_type, triggered_by, started_at, completed_at
+    runs = _db_query("""SELECT pipeline_key as script_name, status,
+        (summary->>'rows_produced')::int as rows_processed,
+        ROUND(duration_seconds::numeric,1) as duration_sec,
+        summary->>'errors' as error_message,
+        run_label as run_type, trigger_source as triggered_by, started_at, finished_at as completed_at
         FROM pipeline_runs WHERE started_at > NOW()-INTERVAL '24 hours' ORDER BY started_at DESC LIMIT 100""") or []
     actions = _db_query("""SELECT action_type, target, reason, success, result, created_at
         FROM watchdog_actions WHERE created_at > NOW()-INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 50""") or []
@@ -9969,8 +9972,8 @@ def _pipeline_health():
         COUNT(CASE WHEN status='failed' THEN 1 END) as failed, COUNT(CASE WHEN run_type='retry' THEN 1 END) as retries
         FROM pipeline_runs WHERE started_at > NOW()-INTERVAL '24 hours'""", fetch="one") or {}
     schedule = _db_query("""SELECT ps.script_name, ps.display_name, ps.critical, ps.expected_hour, ps.expected_min,
-        (SELECT status FROM pipeline_runs WHERE script_name=ps.script_name ORDER BY started_at DESC LIMIT 1) as last_status,
-        (SELECT started_at FROM pipeline_runs WHERE script_name=ps.script_name ORDER BY started_at DESC LIMIT 1) as last_run
+        (SELECT status FROM pipeline_runs WHERE pipeline_key=ps.script_name ORDER BY started_at DESC LIMIT 1) as last_status,
+        (SELECT started_at FROM pipeline_runs WHERE pipeline_key=ps.script_name ORDER BY started_at DESC LIMIT 1) as last_run
         FROM pipeline_schedule ps WHERE ps.active=true ORDER BY ps.expected_hour, ps.expected_min""") or []
     return {
         "stats": {k: _json_clean(v) for k, v in stats.items()} if stats else {},
@@ -14326,8 +14329,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 for script_name, display, cadence_h in stages:
                     total_stages += 1
                     row = _db_query("""
-                        SELECT status, started_at, completed_at, rows_processed, duration_sec, error_message
-                        FROM pipeline_runs WHERE script_name=%s ORDER BY started_at DESC LIMIT 1
+                        SELECT status, started_at, finished_at as completed_at,
+                               (summary->>'rows_produced')::int as rows_processed,
+                               duration_seconds as duration_sec,
+                               summary->>'errors' as error_message
+                        FROM pipeline_runs WHERE pipeline_key=%s ORDER BY started_at DESC LIMIT 1
                     """, [script_name], fetch="one")
                     last_run_at = None
                     last_status = None
