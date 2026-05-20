@@ -77,11 +77,11 @@ export default function PaperGovernance() {
 
         {/* Summary Tiles */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16, padding: 16, background: 'var(--bg1)', borderRadius: 8, border: '1px solid var(--border)' }}>
-          {kv('Open Trades', summary.open_paper_trades ?? totalTrades)}
-          {kv('Closed Trades', summary.closed_paper_trades ?? totalClosed)}
-          {kv('Strategies', strategiesWithData)}
+          {kv('Paper Open', summary.open_paper_trades ?? totalTrades)}
+          {kv('Paper Closed', summary.closed_paper_trades ?? totalClosed)}
+          {kv('Strategies w/ Data', strategiesWithData)}
           {kv('Live Eligible', liveEligible, liveEligible > 0 ? 'var(--green)' : 'var(--red)')}
-          {kv('Outcome Reviews', summary.outcome_reviews ?? 0)}
+          {kv('Pending Reviews', summary.outcome_reviews ?? 0)}
           {kv('Recon Issues', summary.reconciliation_issues ?? 0, (summary.reconciliation_issues || 0) > 0 ? 'var(--red)' : 'var(--green)')}
         </div>
 

@@ -9,7 +9,7 @@
 | REGIME-CRON-1 | FIXED | save_*() defaulted dry_run=True; callers never passed False. Snapshot now fresh. |
 | LLM-FIX-1 | FIXED | `overnight_recovery_verdicts` was phantom name; actual pipeline uses `deep_overnight_llm_results` (1116 results). Wired actionable outcome extraction. |
 | AGENT-FIX-1 | FIXED | fused_signals.overall_signal column mismatch poisoned transactions; 125 stuck jobs recovered. |
-| COUNT-TRUTH-1 | Scope drift | Different pages use different filters (expected) | Label counts with scope |
+| COUNT-TRUTH-1 | FIXED | Added scope-specific labels (Paper Open/Closed, All-Time Decisions, Pending Review, etc.) |
 | ATTR-1 | No tables | No attribution/benchmark tables exist | Create tables + run attribution pipeline |
 
 ## Key Findings

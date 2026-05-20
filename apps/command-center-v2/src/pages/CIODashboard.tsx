@@ -80,10 +80,10 @@ export default function CIODashboard() {
 
       {/* Summary tiles */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 10, marginBottom: 14 }}>
-        <MetricTile label="Total Decisions" value={String(decisions.length)} />
-        <MetricTile label="Critical/High" value={String(critical.length)} deltaColor={critical.length > 0 ? 'var(--red)' : undefined} />
-        <MetricTile label="Human Review" value={String(dashboard?.human_review_pending ?? humanReview.length)} deltaColor={humanReview.length > 0 ? 'var(--amber)' : undefined} />
-        <MetricTile label="Rotations" value={String(dashboard?.pending_rotations || 0)} />
+        <MetricTile label="All-Time Decisions" value={String(decisions.length)} />
+        <MetricTile label="Critical/High (active)" value={String(critical.length)} deltaColor={critical.length > 0 ? 'var(--red)' : undefined} />
+        <MetricTile label="Pending Review" value={String(dashboard?.human_review_pending ?? humanReview.length)} deltaColor={humanReview.length > 0 ? 'var(--amber)' : undefined} />
+        <MetricTile label="Pending Rotations" value={String(dashboard?.pending_rotations || 0)} />
         <MetricTile label="Draft Plans" value={String(dashboard?.draft_plans || 0)} />
         <MetricTile label="MARL Sims" value={String(dashboard?.marl_simulations || 0)} delta="shadow portfolio optimization" tooltip="Multi-Agent Reinforcement Learning shadow simulations. Agents practice allocation decisions in parallel — results inform confidence scoring but don't trigger actions." />
       </div>
