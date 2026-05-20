@@ -12,7 +12,8 @@ const Loading = () => <div style={{ color: 'var(--text3)', padding: 20 }}>Loadin
 export default function JournalHub() {
   const [searchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const defaultTab = tabParam === 'automated-journal' ? 'automated' : undefined
+  const tabMap: Record<string, string> = { 'automated-journal': 'automated', 'analytics': 'analytics', 'reports': 'reports', 'entries': 'entries', 'automated': 'automated' }
+  const defaultTab = tabParam ? tabMap[tabParam] || undefined : undefined
 
   return (
     <TabPage
