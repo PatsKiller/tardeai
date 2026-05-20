@@ -10,7 +10,7 @@
 | Lesson memory report | done | by category/strategy/review status |
 | Digest builder dry-run | done | Clean formatted digest |
 | Digest sender dry-run | done | P1_DIGEST route confirmed |
-| TEST digest sent | not sent | Awaiting operator approval |
+| TEST digest sent | done | sent_test confirmed 2026-05-20 |
 | Production digest | deferred | Awaiting test approval |
 | API endpoints | done | 2 read-only endpoints |
 | Dashboard integration | deferred | API only |
