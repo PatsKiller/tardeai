@@ -339,8 +339,22 @@ export default function AIAnalyst() {
             {/* Parsed markdown for all tabs */}
             {tabSections.map(section => {
               const blocks = parseContent(section.content)
+              const genAt = data?.generated_at ? new Date(data.generated_at) : null
+              const ageHrs = genAt ? (Date.now() - genAt.getTime()) / 3600000 : 999
+              const isStale = ageHrs > 24
+              const hasOldDate = section.content?.includes('April 5, 2025') || section.content?.includes('April 2025')
               return (
                 <div key={section.key} style={{ background: 'rgba(16,20,28,0.92)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '20px 24px' }}>
+                  {(isStale || hasOldDate) && (
+                    <div style={{ marginBottom: 10, padding: '6px 10px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 3, background: 'rgba(239,68,68,0.2)', color: '#EF4444', fontWeight: 700 }}>STALE</span>
+                      <span style={{ fontSize: 10, color: '#EF4444' }}>
+                        {isStale ? `Generated ${Math.floor(ageHrs)}h ago` : 'Content references old dates'}
+                        {hasOldDate ? ' — content references April 2025' : ''}
+                        . Regenerate with current context.
+                      </span>
+                    </div>
+                  )}
                   {blocks.map((block, idx) => <RenderBlock key={idx} block={block} />)}
                 </div>
               )

@@ -152,7 +152,7 @@ export default function App() {
 
           {/* ── Journal (consolidated) ── */}
           <Route path="journal" element={<SafePage><JournalHub /></SafePage>} />
-          <Route path="automated-journal" element={<Navigate to="/v2/journal?tab=automated-journal" replace />} />
+          <Route path="automated-journal" element={<Navigate to="/journal?tab=automated-journal" replace />} />
 
           {/* ── Intelligence (consolidated) ── */}
           <Route path="overnight" element={<SafePage><OvernightDashboard /></SafePage>} />
@@ -188,8 +188,8 @@ export default function App() {
           {/* ── Legacy redirects (old routes → consolidated pages) ── */}
           <Route path="portfolio-monitor" element={<SafePage><PortfolioCommand /></SafePage>} />
           <Route path="portfolio-intelligence" element={<SafePage><PortfolioCommand /></SafePage>} />
-          <Route path="journal-analytics" element={<Navigate to="/v2/journal?tab=analytics" replace />} />
-          <Route path="journal-reports" element={<Navigate to="/v2/journal?tab=reports" replace />} />
+          <Route path="journal-analytics" element={<Navigate to="/journal?tab=analytics" replace />} />
+          <Route path="journal-reports" element={<Navigate to="/journal?tab=reports" replace />} />
           <Route path="paper-journal" element={<SafePage><JournalHub /></SafePage>} />
           <Route path="paper-outcomes" element={<SafePage><PaperReview /></SafePage>} />
           <Route path="paper-trade-intelligence" element={<SafePage><PaperReview /></SafePage>} />
@@ -199,16 +199,16 @@ export default function App() {
           <Route path="notifications" element={<SafePage><Inbox /></SafePage>} />
           <Route path="actions" element={<SafePage><Inbox /></SafePage>} />
           <Route path="paper-governance" element={<SafePage><GovernanceHub /></SafePage>} />
-          <Route path="learning-governance" element={<Navigate to="/v2/governance?tab=learning" replace />} />
+          <Route path="learning-governance" element={<Navigate to="/governance?tab=learning" replace />} />
           <Route path="approvals" element={<SafePage><GovernanceHub /></SafePage>} />
-          <Route path="broker-recon" element={<Navigate to="/v2/broker-reconciliation" replace />} />
-          <Route path="system-hub" element={<Navigate to="/v2/ops" replace />} />
+          <Route path="broker-recon" element={<Navigate to="/broker-reconciliation" replace />} />
+          <Route path="system-hub" element={<Navigate to="/ops" replace />} />
           <Route path="hub" element={<SafePage><OpsHub /></SafePage>} />
           <Route path="orchestration" element={<SafePage><OpsHub /></SafePage>} />
           <Route path="intelligence-sources" element={<SafePage><IntelligenceHub /></SafePage>} />
           <Route path="intelligence-entities" element={<SafePage><IntelligenceHub /></SafePage>} />
           <Route path="intelligence-whiteboard" element={<SafePage><IntelligenceHub /></SafePage>} />
-          <Route path="content-health" element={<Navigate to="/v2/intelligence?tab=content-health" replace />} />
+          <Route path="content-health" element={<Navigate to="/intelligence?tab=content-health" replace />} />
           <Route path="live-governance" element={<SafePage><GovernanceHub /></SafePage>} />
           <Route path="correlation" element={<SafePage><Risk /></SafePage>} />
           <Route path="forecast" element={<SafePage><div style={{ padding: 40, color: 'var(--text3)' }}><h2>Forecast</h2><p>Forecast module not activated yet. This route is reserved for a future forecast module.</p></div></SafePage>} />
