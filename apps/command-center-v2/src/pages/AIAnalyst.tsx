@@ -281,6 +281,9 @@ export default function AIAnalyst() {
                         <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                           {report.provider && <span>{report.provider} · </span>}
                           {report.generated_at ? timeAgo(report.generated_at) : ''}
+                          {report.generated_at && (Date.now() - new Date(report.generated_at).getTime()) > 86400000 && (
+                            <span style={{ marginLeft: 6, fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,0.15)', color: '#EF4444', fontWeight: 600 }}>STALE</span>
+                          )}
                         </div>
                       </div>
                       <div style={{ fontSize: 12, lineHeight: 1.7, color: 'var(--text1)', whiteSpace: 'pre-wrap', maxHeight: 400, overflowY: 'auto', fontFamily: 'var(--sans)' }}>
