@@ -14380,6 +14380,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         else:
                             color = 'green'
                             healthy += 1
+                    # PIPE-OPS-2: Add owner metadata
+                    _owner = {}
+                    try:
+                        from pipeline_stage_owner_map import get_stage_owner
+                        _owner = get_stage_owner(script_name) or {}
+                    except ImportError:
+                        pass
+
+                    # Never-run subtype
+                    _nr_subtype = None
+                    if last_run_at is None:
+                        if not _owner.get('owning_script'):
+                            _nr_subtype = 'never_run_owner_unknown'
+                        elif _owner.get('safe_dry_run_cmd') is None and script_name in ('risk_gate', 'alpaca_paper'):
+                            _nr_subtype = 'never_run_on_demand'
+                        elif cadence_h >= 168:
+                            _nr_subtype = 'never_run_on_demand'
+                        else:
+                            _nr_subtype = 'never_run_telemetry_missing'
+
+                    # Recommended action
+                    _action = _owner.get('operator_next_action', 'Review stage configuration')
+                    if color == 'green':
+                        _action = 'No action needed'
+                    elif _nr_subtype == 'never_run_on_demand':
+                        _action = _owner.get('operator_next_action', 'On-demand — no daily action expected')
+
                     stage_list.append({
                         'id': script_name,
                         'label': display,
@@ -14391,6 +14418,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         'error_message': error_msg,
                         'cadence_h': cadence_h,
                         'minutes_ago': minutes_ago,
+                        'owner_script': _owner.get('owning_script'),
+                        'owner_wrapper': _owner.get('owning_wrapper'),
+                        'cron_pattern': _owner.get('cron_pattern'),
+                        'log_paths': _owner.get('log_paths', []),
+                        'output_tables': _owner.get('output_tables', []),
+                        'failure_hint': _owner.get('failure_hint'),
+                        'recommended_action': _action,
+                        'never_run_subtype': _nr_subtype,
+                        'safe_dry_run_cmd': _owner.get('safe_dry_run_cmd'),
                     })
                 groups.append({
                     'id': group_id,
