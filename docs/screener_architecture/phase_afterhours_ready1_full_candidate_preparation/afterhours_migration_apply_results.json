@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-05-20T00:57:07.512667+00:00",
+  "mode": "apply",
+  "tables": {
+    "afterhours_candidate_snapshot": false,
+    "afterhours_readiness_run": false
+  },
+  "actions": [
+    {
+      "type": "create_table",
+      "table": "afterhours_candidate_snapshot",
+      "sql": "CREATE TABLE IF NOT EXISTS afterhours_candidate_snapshot (\n    id SERIAL PRIMARY KEY,\n    snapshot_id VARCHAR(64),\n    run_date DATE,\n    session VARCHAR(20),\n    symbol VARCHAR(10) NOT NULL,\n    source_screeners TEXT,\n    catalog_status VARCHAR(20),\n    membership_status VARCHAR(20),\n    strategy_fit_status VARCHAR(20),\n    top_strategy VARCHAR(64),\n    top_strategy_score INTEGER,\n    quote_status VARCHAR(20),\n    readiness_status VARCHAR(40),\n    blockers TEXT,\n    next_required_action TEXT,\n    proposal_candidate_allowed BOOLEAN DEFAULT FALSE,\n    executable_now BOOLEAN DEFAULT FALSE,\n    human_review_only BOOLEAN DEFAULT TRUE,\n    created_at TIMESTAMPTZ DEFAULT NOW(),\n    UNIQUE(snapshot_id, symbol)\n);"
+    },
+    {
+      "type": "create_table",
+      "table": "afterhours_readiness_run",
+      "sql": "CREATE TABLE IF NOT EXISTS afterhours_readiness_run (\n    id SERIAL PRIMARY KEY,\n    run_id VARCHAR(64),\n    run_date DATE,\n    session VARCHAR(20),\n    started_at TIMESTAMPTZ DEFAULT NOW(),\n    symbols_considered INTEGER DEFAULT 0,\n    strategy_fit_evaluated INTEGER DEFAULT 0,\n    ready_for_review INTEGER DEFAULT 0,\n    proposal_candidate_pending INTEGER DEFAULT 0,\n    needs_data INTEGER DEFAULT 0,\n    blocked INTEGER DEFAULT 0,\n    no_fit INTEGER DEFAULT 0,\n    run_status VARCHAR(20),\n    underfilled_reason TEXT,\n    created_at TIMESTAMPTZ DEFAULT NOW(),\n    UNIQUE(run_id)\n);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_acs_symbol",
+      "column": "symbol",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_acs_symbol ON afterhours_candidate_snapshot (symbol);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_acs_readiness_status",
+      "column": "readiness_status",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_acs_readiness_status ON afterhours_candidate_snapshot (readiness_status);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_acs_run_date",
+      "column": "run_date",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_acs_run_date ON afterhours_candidate_snapshot (run_date);"
+    },
+    {
+      "type": "create_index",
+      "index": "idx_acs_top_strategy",
+      "column": "top_strategy",
+      "sql": "CREATE INDEX IF NOT EXISTS idx_acs_top_strategy ON afterhours_candidate_snapshot (top_strategy);"
+    }
+  ]
+}
