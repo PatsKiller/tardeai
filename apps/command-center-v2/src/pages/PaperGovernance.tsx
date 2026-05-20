@@ -121,7 +121,9 @@ export default function PaperGovernance() {
             <tbody>
               {gov.length === 0 && (
                 <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontStyle: 'italic' }}>
-                  No closed paper trades yet. Governance analytics will activate after paper trades close.
+                  {summaryData?.summary?.closed_paper_trades > 0
+                    ? `${summaryData.summary.closed_paper_trades} closed paper trades exist, but no strategy has enough trades for scorecard eligibility yet. Scorecards activate when a strategy reaches the minimum sample size.`
+                    : 'No closed paper trades yet. Governance analytics will activate after paper trades close.'}
                 </td></tr>
               )}
               {gov.map((g: any) => {
