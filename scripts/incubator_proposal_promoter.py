@@ -600,7 +600,18 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             promoted += 1
             continue
 
-        # PROMOTE-1: Pre-promotion readiness gate
+        # ATP-5: Get scan age for quote-age gate
+        _scan_age_hours = None
+        try:
+            cur.execute("""SELECT EXTRACT(EPOCH FROM NOW() - MAX(scanned_at))/3600 as age_h
+                FROM trade_ai_scans WHERE symbol = %s""", [symbol])
+            _sa_row = cur.fetchone()
+            if _sa_row and _sa_row[0] is not None:
+                _scan_age_hours = float(_sa_row[0] if isinstance(_sa_row, tuple) else _sa_row.get('age_h', 0))
+        except Exception:
+            pass
+
+        # PROMOTE-1: Pre-promotion readiness gate (with ATP-5 quote-age data)
         try:
             from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
             _pre_check = evaluate_pre_promotion_readiness({
@@ -608,6 +619,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                 "proposed_entry": entry, "proposed_stop": stop, "proposed_target1": target,
                 "proposed_rr": rr, "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
                 "discovery_source": "incubator",
+                "scan_age_hours": _scan_age_hours,
             })
             if _pre_check["blockers"]:
                 log.warning(f"[promoter] BLOCKED by pre-promotion gate: {symbol} — {_pre_check['blockers']}")
