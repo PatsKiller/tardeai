@@ -180,10 +180,14 @@ function NavDropdown({ group, pendingApprovals }: { group: NavGroup; pendingAppr
 }
 
 export default function Shell() {
-  // utilOpen state removed — utilities dropdown consolidated into main nav
   const [personalOpen, setPersonalOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
   const { data } = useApi<OverviewMini>('/api/v2/overview', 30000)
+
+  // Close drawer on route change
+  useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
   const regime = data?.trade_ai?.breadth || '—'
   const setupState = `${data?.trade_ai?.go_count ?? 0} GO · ${data?.trade_ai?.wait_count ?? 0} WAIT · ${data?.trade_ai?.no_go_count ?? 0} NO GO`
@@ -191,8 +195,32 @@ export default function Shell() {
 
   return (
     <div className={styles.shell}>
+      {/* Mobile drawer */}
+      {drawerOpen && <div className={styles.backdrop} onClick={() => setDrawerOpen(false)} />}
+      <div className={`${styles.drawer} ${drawerOpen ? styles.drawerOpen : ''}`}>
+        <div className={styles.drawerHeader}>
+          <span style={{ fontWeight: 800, fontSize: 14, color: '#fff' }}>⚡ Command Center</span>
+          <button onClick={() => setDrawerOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text2)', fontSize: 20, cursor: 'pointer', minWidth: 44, minHeight: 44 }}>✕</button>
+        </div>
+        {NAV_GROUPS.map(group => (
+          <div key={group.label} className={styles.drawerGroup}>
+            <div className={styles.drawerGroupLabel}>{group.label}</div>
+            {group.items.map(item => (
+              <NavLink key={item.to} to={item.to} end={item.to === '/'}
+                className={({ isActive }) => isActive ? styles.drawerLinkActive : styles.drawerLink}
+                onClick={() => setDrawerOpen(false)}>
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        ))}
+      </div>
+
       <header className={styles.header}>
         <div className={styles.tape}>
+          <button className={styles.hamburger} onClick={() => setDrawerOpen(true)} aria-label="Open menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
           <div className={styles.brandWrap}>
             <span className={styles.brandBolt}>⚡</span>
             <span className={styles.brand}>Command Center</span>

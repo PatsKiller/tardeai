@@ -208,11 +208,136 @@
   max-width: 1400px;
 }
 
+/* Hamburger button — hidden on desktop */
+.hamburger {
+  display: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text1);
+  padding: 8px;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Drawer backdrop — mobile only */
+.backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(0,0,0,0.55);
+}
+
+/* Drawer panel — off-screen by default */
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  width: 280px;
+  background: var(--bg1);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+}
+.drawerOpen {
+  transform: translateX(0);
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.drawerGroup {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.drawerGroupLabel {
+  padding: 6px 16px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+.drawerLink {
+  display: block;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text1);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.drawerLink:hover { background: var(--bg3); }
+.drawerLinkActive {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--accent-bright);
+  font-weight: 700;
+  background: rgba(74, 144, 244, 0.08);
+  min-height: 44px;
+}
+
 @media (max-width: 1400px) {
   .tape {
     grid-template-columns: 220px repeat(4, minmax(92px, auto)) auto auto;
   }
   .metric:nth-child(n + 7):nth-child(-n + 9) {
     display: none;
+  }
+}
+
+/* ── Mobile: < 768px ── */
+@media (max-width: 767px) {
+  .hamburger {
+    display: flex;
+  }
+  .backdrop {
+    display: block;
+  }
+
+  /* Collapse tape to brand + hamburger + portfolio + today only */
+  .tape {
+    grid-template-columns: auto 1fr 1fr auto;
+    min-height: 48px;
+  }
+  .metric:nth-child(n + 5) { display: none; }
+  .live { display: none; }
+  .utilityBtn { display: none; }
+  .brandWrap { padding: 6px 8px; }
+  .brand { font-size: 12px; }
+
+  /* Hide desktop nav row — use drawer instead */
+  .navRow { display: none; }
+
+  /* Reduce main padding */
+  .main {
+    padding: 12px 12px 24px;
+  }
+}
+
+/* ── Tablet: 768–1023px ── */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .tape {
+    grid-template-columns: 200px repeat(5, minmax(80px, auto)) auto;
+  }
+  .metric:nth-child(n + 8) { display: none; }
+  .main {
+    padding: 16px 16px 28px;
   }
 }
