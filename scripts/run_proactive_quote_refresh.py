@@ -77,6 +77,24 @@ def main():
                     conn = _get_conn()
                     if conn:
                         store_quote(conn, symbol, quote)
+                        # Q-1C: Write back to pending proposals so UNKNOWN_QUOTE clears
+                        try:
+                            cur = conn.cursor()
+                            _src = quote.get("provider", "unknown")
+                            _px = float(quote.get("last_price") or 0)
+                            cur.execute("""
+                                UPDATE paper_trade_proposals SET
+                                    last_price_checked_at = NOW(),
+                                    last_price_source = %s,
+                                    current_price = %s,
+                                    updated_at = NOW()
+                                WHERE symbol = %s AND status = 'PENDING'
+                            """, [_src, _px, symbol])
+                            conn.commit()
+                        except Exception as _we:
+                            log.warning(f"  Proposal writeback failed for {symbol}: {_we}")
+                            try: conn.rollback()
+                            except: pass
                         conn.close()
                     result["status"] = "refreshed"
                     result["provider"] = quote.get("provider")

@@ -299,7 +299,9 @@ def _mini_context(portfolio: Dict, analysis: Dict = None, rebalancing: Dict = No
     held_symbols = [h.get('symbol', '') for h in holdings[:20] if h.get('symbol') and '-' not in h.get('symbol', '')]
     market_intel = _fetch_market_intelligence(held_symbols) if held_symbols else ""
 
-    base = f"""PORTFOLIO: ${totals.get('total_value',0):,.0f} | Gain: ${totals.get('total_gain',0):+,.0f}
+    from datetime import date as _d
+    base = f"""DATE: {_d.today().strftime('%B %d, %Y')}
+PORTFOLIO: ${totals.get('total_value',0):,.0f} | Gain: ${totals.get('total_gain',0):+,.0f}
 Dividends: ${divs.get('total_annual_income',0):,.0f}/yr
 Owner: {personal.get('owner','John Whiting')}, age {personal.get('age','?')}, SSDI income ${personal.get('ssdi_annual',0) or 0:,.0f}/yr, conservative
 
@@ -801,7 +803,10 @@ def _exec_summary(portfolio: Dict, analysis: Dict, rebalancing: Dict, personal: 
     held_symbols = [h['symbol'] for h in holdings[:15]]
     market_intel = _fetch_market_intelligence(held_symbols) if held_symbols else ""
 
-    prompt = f"""Portfolio morning brief for {owner} (age {age}):
+    from datetime import date as _d
+    _today = _d.today().strftime('%B %d, %Y')
+    prompt = f"""Portfolio morning brief for {owner} (age {age}).
+TODAY'S DATE: {_today}. All references must use this date. Do not reference old dates as current.
 Total: ${totals.get('total_value',0):,.0f} | Gain: +${totals.get('total_gain',0):,.0f} (+{totals.get('total_gain_pct',0):.1f}%)
 Annual dividends: ${analysis.get('dividends',{}).get('total_annual_income',0):,.0f}/yr
 Rebalancing needed: ${rebalancing.get('total_to_rebalance',0):,.0f} net
