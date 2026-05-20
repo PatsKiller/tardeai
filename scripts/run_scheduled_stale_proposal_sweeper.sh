@@ -39,7 +39,9 @@ if [ "$HOLDINGS_OK" != "OK" ]; then
 fi
 
 log "Starting mode=$MODE"
+_TELEM_START=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
 
+set +e
 case "$MODE" in
     --dry-run)
         $PY "$PROJ/scripts/sweep_stale_paper_proposals.py" --dry-run --limit 200 --verbose 2>&1 | while IFS= read -r line; do log "$line"; done
@@ -55,5 +57,8 @@ case "$MODE" in
         exit 1
         ;;
 esac
+_EXIT=$?; set -e
+_TELEM_STATUS="success"; [ $_EXIT -ne 0 ] && _TELEM_STATUS="failed"
+$PY -c "import sys; sys.path.insert(0,'$PROJ/scripts'); from pipeline_run_telemetry import record_stage_run; from datetime import datetime,timezone; record_stage_run('stale_proposal_sweeper','Proposal Pipeline','$_TELEM_STATUS',datetime.fromisoformat('$_TELEM_START'),datetime.now(timezone.utc),source='cron')" 2>/dev/null || true
 
 log "Finished mode=$MODE"
