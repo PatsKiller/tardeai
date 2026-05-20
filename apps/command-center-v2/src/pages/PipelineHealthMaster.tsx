@@ -149,7 +149,7 @@ export default function PipelineHealthMaster() {
               const w = summary?.warnings ?? 0
               const c = summary?.critical ?? 0
               const total = summary?.total_stages ?? 31
-              if (h === 0 && w === 0 && c === 0) return <span style={{ color: '#60A5FA' }}>{total}/{total} stages nominal (no runs yet today)</span>
+              if (h === 0 && w === 0 && c === 0) return <span style={{ color: '#F59E0B' }}>0/{total} stages completed today — waiting for schedule</span>
               return <span style={{ color: c > 0 ? '#EF4444' : w > 0 ? '#F59E0B' : '#10B981' }}>{h}/{total} stages healthy</span>
             })()}
           </span>
