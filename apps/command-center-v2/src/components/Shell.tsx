@@ -37,7 +37,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/trade-ai', label: 'Trade AI' },
     { to: '/prospects', label: 'Prospects' },
     { to: '/strategy-desk', label: 'Strategy Desk' },
-    { to: '/paper-proposals', label: 'Paper Proposals' },
+    { to: '/paper-proposals', label: 'Automated Trade Proposals' },
     { to: '/proposal-alerts', label: 'Proposal Alerts' },
     { to: '/approvals', label: 'Approvals' },
     { to: '/paper-status', label: 'Paper Status' },

@@ -984,7 +984,7 @@ export default function PaperProposals() {
 
   return (
     <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 40 }}>
-      <PageHeader title="Paper Proposals" subtitle={`${pending.length} pending${summary.expired_today ? ` \u00b7 ${summary.expired_today} expired today` : ''}${summary.incubator_ready_count ? ` \u00b7 ${summary.incubator_ready_count} incubator ready` : ''}`} actions={
+      <PageHeader title="Automated Trade Proposals" subtitle={`${pending.length} pending${summary.expired_today ? ` \u00b7 ${summary.expired_today} expired today` : ''}${summary.incubator_ready_count ? ` \u00b7 ${summary.incubator_ready_count} incubator ready` : ''}`} actions={
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => setShowAll(!showAll)} style={{ padding: '4px 10px', fontSize: 10, background: showAll ? 'rgba(59,130,246,0.2)' : 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: showAll ? '#60A5FA' : 'var(--text2)', cursor: 'pointer' }}>
             {showAll ? `All (${filtered.length})` : 'Top 5'}
