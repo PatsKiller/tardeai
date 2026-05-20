@@ -686,6 +686,7 @@ export default function Retirement() {
                       <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--sans)' }}>{p.symbol}</span>
                       <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, fontWeight: 700, background: 'rgba(240,185,11,0.12)', color: 'var(--amber)', textTransform: 'uppercase' }}>{p.action}</span>
                       {p.irmaa_risk && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: 'var(--red-dim)', color: 'var(--red)' }}>IRMAA RISK</span>}
+                      {(p.shares_to_sell || 0) === 0 && <span style={{ fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: 'rgba(107,114,128,0.15)', color: '#6B7280' }}>NOT HELD — RESEARCH ONLY</span>}
                       <span style={{ fontSize: 10, color: 'var(--text2)', fontWeight: 600 }}>{p.account_name || 'Unknown'}</span>
                       <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
                         <div style={{ fontSize: 18, fontWeight: 800, color: p.confidence >= 0.7 ? 'var(--green)' : 'var(--amber)' }}>{(p.confidence * 100).toFixed(0)}%</div>
@@ -696,7 +697,9 @@ export default function Retirement() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 10, fontSize: 10 }}>
                       <div>
                         <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Shares</div>
-                        <div style={{ fontWeight: 700, color: 'var(--text0)' }}>{p.shares_to_sell?.toFixed(1) || '—'}</div>
+                        <div style={{ fontWeight: 700, color: (p.shares_to_sell || 0) > 0 ? 'var(--text0)' : 'var(--text3)' }}>
+                          {(p.shares_to_sell || 0) > 0 ? p.shares_to_sell?.toFixed(1) : '0 — not held'}
+                        </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>Target</div>
