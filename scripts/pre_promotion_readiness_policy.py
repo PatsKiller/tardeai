@@ -46,7 +46,27 @@ def evaluate_pre_promotion_readiness(candidate: dict) -> dict:
         if computed_rr < MIN_RR:
             blockers.append(f"rr_below_minimum: {computed_rr:.2f} < {MIN_RR}")
 
-    # 4. Price/quote freshness
+    # 4. Quote age gate (ATP-5)
+    QUOTE_AGE_HARD_EXPIRE_HOURS = 168  # 7 days
+    QUOTE_AGE_STALE_HOURS = {"momentum_scalp": 0.25, "gap_and_go": 0.25, "swing_trade": 4, "swing_breakout": 4, "default": 24}
+    quote_age_hours = candidate.get("quote_age_hours")
+    quote_checked_at = candidate.get("last_price_checked_at") or candidate.get("quote_checked_at")
+    scan_age_hours = candidate.get("scan_age_hours") or candidate.get("latest_scan_age_hours")
+
+    # Use scan age as fallback if quote_age not provided
+    effective_quote_age = quote_age_hours or scan_age_hours
+
+    if effective_quote_age is None and quote_checked_at is None:
+        blockers.append("quote_never_checked: cannot promote without any quote data")
+    elif effective_quote_age is not None:
+        if float(effective_quote_age) > QUOTE_AGE_HARD_EXPIRE_HOURS:
+            blockers.append(f"quote_extremely_stale: {float(effective_quote_age):.0f}h > {QUOTE_AGE_HARD_EXPIRE_HOURS}h hard limit")
+        else:
+            stale_threshold = QUOTE_AGE_STALE_HOURS.get(sid, QUOTE_AGE_STALE_HOURS["default"])
+            if float(effective_quote_age) > stale_threshold:
+                warnings.append(f"quote_stale: {float(effective_quote_age):.1f}h > {stale_threshold}h threshold for {sid}")
+
+    # 4b. Price/quote freshness (drift check)
     quote_price = candidate.get("quote_price") or candidate.get("current_price")
     if quote_price and entry > 0:
         drift = abs(float(quote_price) - entry) / entry * 100
@@ -86,7 +106,7 @@ def evaluate_pre_promotion_readiness(candidate: dict) -> dict:
         "blockers": blockers,
         "warnings": warnings,
         "promote_ready": status == "promote_ready",
-        "gate_version": "pre_promotion_v1",
+        "gate_version": "pre_promotion_v2_quote_age",
     }
 
 
