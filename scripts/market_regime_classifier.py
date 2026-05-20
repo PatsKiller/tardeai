@@ -126,25 +126,68 @@ def classify(conn, snapshot_id=None):
 
 
 def save_snapshot(conn, snapshot, dry_run=True):
-    if dry_run: return
+    if dry_run: return False
     cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO market_regime_snapshots
-            (snapshot_id, generated_at, market_session, regime_label, regime_score, confidence,
-             volatility_state, trend_state, breadth_state, liquidity_state,
-             leadership_state, risk_appetite_state, macro_state, data_freshness_state,
-             stale_data, missing_data, inputs, summary)
-        VALUES (%s, NOW(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        ON CONFLICT (snapshot_id) DO NOTHING
-    """, [snapshot["snapshot_id"], snapshot["market_session"], snapshot["regime_label"],
-          snapshot["regime_score"], snapshot["confidence"],
-          snapshot["volatility_state"], snapshot["trend_state"], snapshot["breadth_state"],
-          snapshot["liquidity_state"], snapshot["leadership_state"],
-          snapshot["risk_appetite_state"], snapshot["macro_state"],
-          snapshot["data_freshness_state"], snapshot["stale_data"],
-          json.dumps(snapshot["missing_data"]), json.dumps(snapshot["inputs"]),
-          snapshot["summary"]])
-    conn.commit()
+    # Transaction health check (AGENT-WORKER-1 lesson)
+    try:
+        cur.execute("SELECT 1")
+    except Exception:
+        conn.rollback()
+    try:
+        cur.execute("""
+            INSERT INTO market_regime_snapshots
+                (snapshot_id, generated_at, market_session, regime_label, regime_score, confidence,
+                 volatility_state, trend_state, breadth_state, liquidity_state,
+                 leadership_state, risk_appetite_state, macro_state, data_freshness_state,
+                 stale_data, missing_data, inputs, summary)
+            VALUES (%s, NOW(), %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (snapshot_id) DO NOTHING
+        """, [snapshot["snapshot_id"], snapshot["market_session"], snapshot["regime_label"],
+              snapshot["regime_score"], snapshot["confidence"],
+              snapshot["volatility_state"], snapshot["trend_state"], snapshot["breadth_state"],
+              snapshot["liquidity_state"], snapshot["leadership_state"],
+              snapshot["risk_appetite_state"], snapshot["macro_state"],
+              snapshot["data_freshness_state"], snapshot["stale_data"],
+              json.dumps(snapshot["missing_data"]), json.dumps(snapshot["inputs"]),
+              snapshot["summary"]])
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"ERROR: snapshot write failed: {e}")
+        return False
+
+
+def _record_run_log(conn, run_id, mode, started_at, status, snapshot_id=None,
+                    indicators_read=0, error_msg=None):
+    """Write to risk_regime_run_log."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")  # transaction health check
+    except Exception:
+        conn.rollback()
+        cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO risk_regime_run_log
+                (run_id, mode, started_at, finished_at, status,
+                 indicators_read, snapshots_created, rotation_signals_created,
+                 alignments_created, errors, summary)
+            VALUES (%s, %s, %s, NOW(), %s, %s, %s, 0, 0, %s, %s)
+            ON CONFLICT (run_id) DO UPDATE SET
+                finished_at=NOW(), status=EXCLUDED.status,
+                indicators_read=EXCLUDED.indicators_read,
+                snapshots_created=EXCLUDED.snapshots_created,
+                errors=EXCLUDED.errors, summary=EXCLUDED.summary
+        """, [run_id, mode, started_at, status, indicators_read,
+              1 if status == "success" else 0,
+              json.dumps([error_msg] if error_msg else []),
+              json.dumps({"snapshot_id": snapshot_id, "status": status})])
+        conn.commit()
+    except Exception as e:
+        try: conn.rollback()
+        except Exception: pass
+        print(f"WARNING: run_log write failed: {e}")
 
 
 def _get_previous_regime(conn):
@@ -190,6 +233,9 @@ def main():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--latest", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--output-json", type=str)
+    parser.add_argument("--output-md", type=str)
+    parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
     dry_run = not args.apply
@@ -207,19 +253,44 @@ def main():
             print(json.dumps(out, indent=2, default=str) if args.json else str(out))
             return
 
+        started_at = datetime.now(timezone.utc)
+        run_id = _uid("RUN_")
         snapshot = classify(conn)
-        if not dry_run:
-            # Check for regime change before saving
-            prev = _get_previous_regime(conn)
-            save_snapshot(conn, snapshot)
-            if prev and prev != snapshot["regime_label"]:
-                _alert_regime_change(prev, snapshot)
 
-        out = {"mode": "dry_run" if dry_run else "applied", **snapshot}
-        if args.json:
-            print(json.dumps(out, indent=2, default=str))
+        write_ok = False
+        if not dry_run:
+            prev = _get_previous_regime(conn)
+            write_ok = save_snapshot(conn, snapshot, dry_run=False)
+            if write_ok and prev and prev != snapshot["regime_label"]:
+                _alert_regime_change(prev, snapshot)
+            _record_run_log(conn, run_id, "apply", started_at,
+                            "success" if write_ok else "failed",
+                            snapshot_id=snapshot["snapshot_id"] if write_ok else None,
+                            indicators_read=len(snapshot.get("inputs", {})),
+                            error_msg="snapshot write failed" if not write_ok else None)
+
+        out = {"mode": "dry_run" if dry_run else "applied",
+               "write_ok": write_ok if not dry_run else None,
+               "run_id": run_id, **snapshot}
+
+        if args.json or args.verbose:
+            print(json.dumps(out, indent=2, default=str) if args.json else
+                  f"Regime: {snapshot['regime_label']} (conf={snapshot['confidence']:.0%}, stale={snapshot['stale_data']}, write={'OK' if write_ok else 'FAIL' if not dry_run else 'DRY'})")
         else:
             print(f"Regime: {snapshot['regime_label']} (conf={snapshot['confidence']:.0%}, stale={snapshot['stale_data']})")
+
+        if args.output_json:
+            Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.output_json).write_text(json.dumps(out, indent=2, default=str))
+        if args.output_md:
+            Path(args.output_md).parent.mkdir(parents=True, exist_ok=True)
+            md = [f"# Market Regime Classifier ({'DRY RUN' if dry_run else 'APPLY'})\n",
+                  f"- Regime: {snapshot['regime_label']}", f"- Confidence: {snapshot['confidence']:.0%}",
+                  f"- Stale: {snapshot['stale_data']}", f"- Snapshot ID: {snapshot['snapshot_id']}",
+                  f"- Write: {'OK' if write_ok else 'FAIL' if not dry_run else 'DRY RUN'}"]
+            if snapshot.get("missing_data"):
+                md.append(f"- Missing: {', '.join(snapshot['missing_data'])}")
+            Path(args.output_md).write_text("\n".join(md))
     finally:
         conn.close()
 
