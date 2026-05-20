@@ -171,8 +171,15 @@ def main():
 
             if not args.dry_run and not deduped:
                 try:
-                    from telegram_alert import send_telegram
-                    send_telegram(msg, bypass_router=True)
+                    # Use rich alerter with inline buttons + throttling
+                    from proposal_alerter import maybe_send_threshold_alert
+                    alert_type_map = {
+                        "target_crossed_before_review": "TARGET_CROSSED",
+                        "stop_crossed_pending": "STOP_CROSSED",
+                        "large_move_before_review": "LARGE_MOVE",
+                    }
+                    rich_type = alert_type_map.get(alert["type"], alert["type"])
+                    maybe_send_threshold_alert(prop["id"], rich_type, float(prop.get("current_price") or 0))
                     mark_sent(prop, alert)
                     entry["sent"] = True
                 except Exception as e:
