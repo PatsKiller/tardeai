@@ -13,5 +13,10 @@ LLM_DISABLE=$(grep '^LLM_DISABLE_LIVE_EXECUTION=' "$PROJ/.env" | cut -d= -f2-)
 [ "$LLM_DISABLE" != "true" ] && { log "ABORT: LLM_DISABLE=$LLM_DISABLE"; exit 1; }
 DOW=$(date +%u); [ "$DOW" -gt 5 ] && { log "SKIP: weekend"; exit 0; }
 log "Starting after-hours candidate preparation"
+_TELEM_START=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+set +e
 $PY "$PROJ/scripts/run_afterhours_candidate_preparation.py" --session after_close --date today --run-strategy-fit --prepare-candidates --apply 2>&1 | while IFS= read -r line; do log "$line"; done
+_EXIT=$?; set -e
+_TELEM_STATUS="success"; [ $_EXIT -ne 0 ] && _TELEM_STATUS="failed"
+$PY -c "import sys; sys.path.insert(0,'$PROJ/scripts'); from pipeline_run_telemetry import record_stage_run; from datetime import datetime,timezone; record_stage_run('afterhours_candidate_prep','Proposal Pipeline','$_TELEM_STATUS',datetime.fromisoformat('$_TELEM_START'),datetime.now(timezone.utc),source='cron')" 2>/dev/null || true
 log "Finished"

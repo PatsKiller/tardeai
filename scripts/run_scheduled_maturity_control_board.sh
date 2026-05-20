@@ -21,17 +21,12 @@ HOLDINGS_OK=$($PY -c 'import json; d=json.load(open("'"$PROJ"'/data/portfolios/s
 
 log "Starting"
 exec {fd}>"$LOCK" && flock -n "$fd" || { log "Locked, skipping"; exit 0; }
-
+_TELEM_START=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
 mkdir -p "$PROJ/docs/maturity_hardening"
-
-$PY "$PROJ/scripts/report_maturity_control_board.py" \
-  --output-json "$PROJ/docs/maturity_hardening/maturity_control_board_latest.json" \
-  --output-md "$PROJ/docs/maturity_hardening/maturity_control_board_latest.md" \
-  --verbose 2>&1 | while IFS= read -r line; do log "$line"; done
-
-$PY "$PROJ/scripts/report_phase_readiness_gates.py" \
-  --output-json "$PROJ/docs/maturity_hardening/phase_readiness_latest.json" \
-  --output-md "$PROJ/docs/maturity_hardening/phase_readiness_latest.md" \
-  --verbose 2>&1 | while IFS= read -r line; do log "$line"; done
-
+set +e
+$PY "$PROJ/scripts/report_maturity_control_board.py" --output-json "$PROJ/docs/maturity_hardening/maturity_control_board_latest.json" --output-md "$PROJ/docs/maturity_hardening/maturity_control_board_latest.md" --verbose 2>&1 | while IFS= read -r line; do log "$line"; done
+$PY "$PROJ/scripts/report_phase_readiness_gates.py" --output-json "$PROJ/docs/maturity_hardening/phase_readiness_latest.json" --output-md "$PROJ/docs/maturity_hardening/phase_readiness_latest.md" --verbose 2>&1 | while IFS= read -r line; do log "$line"; done
+_EXIT=$?; set -e
+_TELEM_STATUS="success"; [ $_EXIT -ne 0 ] && _TELEM_STATUS="failed"
+$PY -c "import sys; sys.path.insert(0,'$PROJ/scripts'); from pipeline_run_telemetry import record_stage_run; from datetime import datetime,timezone; record_stage_run('maturity_control_board','Governance','$_TELEM_STATUS',datetime.fromisoformat('$_TELEM_START'),datetime.now(timezone.utc),source='cron')" 2>/dev/null || true
 log "Finished"

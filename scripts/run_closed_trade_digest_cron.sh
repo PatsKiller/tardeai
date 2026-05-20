@@ -14,6 +14,8 @@ LLM_DISABLE=$(grep '^LLM_DISABLE_LIVE_EXECUTION=' "$PROJ/.env" | cut -d= -f2-)
 DOW=$(date +%u); [ "$DOW" -gt 5 ] && { log "SKIP: weekend"; exit 0; }
 
 MODE="${1:---send}"
+_TELEM_START=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+set +e
 if [ "$MODE" = "--dry-run" ]; then
   log "Starting dry-run"
   $PY "$PROJ/scripts/send_closed_trade_digest.py" --date today --dry-run 2>&1 | while IFS= read -r line; do log "$line"; done
@@ -21,4 +23,7 @@ else
   log "Starting production send"
   $PY "$PROJ/scripts/send_closed_trade_digest.py" --date today --send 2>&1 | while IFS= read -r line; do log "$line"; done
 fi
+_EXIT=$?; set -e
+_TELEM_STATUS="success"; [ $_EXIT -ne 0 ] && _TELEM_STATUS="failed"
+$PY -c "import sys; sys.path.insert(0,'$PROJ/scripts'); from pipeline_run_telemetry import record_stage_run; from datetime import datetime,timezone; record_stage_run('closed_trade_digest','Intelligence','$_TELEM_STATUS',datetime.fromisoformat('$_TELEM_START'),datetime.now(timezone.utc),source='cron')" 2>/dev/null || true
 log "Finished"
