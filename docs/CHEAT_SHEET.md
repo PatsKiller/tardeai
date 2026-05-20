@@ -86,6 +86,16 @@ grep LIVE_TRADING .env    # Must show: false
 
 # Dedicated group: TRADEAI_PROPOSAL_ALERT_CHAT_ID in .env
 # Fallback: standard TELEGRAM_CHAT_ID
+
+# Dashboard URL (Tailscale HTTPS — works from cellular):
+# https://ms01-openclaw.tail163d14.ts.net/v2/
+# Alerts include "Open in Dashboard" button when TAILSCALE_HOSTNAME is set
+
+# Callback poller (processes button presses + commands):
+# Runs as daemon, cron keepalive every 2 min
+pgrep -f 'run_telegram_callback_poller.py' || echo "NOT RUNNING"
+# Manual start:
+nohup .venv/bin/python scripts/run_telegram_callback_poller.py --daemon >> logs/telegram_callback_poller.log 2>&1 &
 ```
 
 ---
