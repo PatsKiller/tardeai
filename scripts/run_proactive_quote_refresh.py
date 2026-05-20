@@ -128,6 +128,31 @@ def main():
     if args.verbose:
         log.info(f"Summary: {len(targets)} targets, {refreshed} refreshed, {failed} failed")
 
+    # ATP-ALERT-1: Run alert evaluator after quote refresh
+    if not args.dry_run and refreshed > 0:
+        try:
+            from run_atp_alert_evaluator import evaluate_proposals, classify_alert, build_telegram_message, is_deduped, mark_sent
+            from db_adapter import _get_conn as _gc2
+            _ac = _gc2()
+            if _ac:
+                _props = evaluate_proposals(_ac)
+                _ac.close()
+                for _p in _props:
+                    _alerts = classify_alert(_p)
+                    if _alerts:
+                        for _a in _alerts:
+                            if not is_deduped(_p, _a):
+                                _msg = build_telegram_message(_p, _a)
+                                try:
+                                    from telegram_alert import send_telegram
+                                    send_telegram(_msg, bypass_router=True)
+                                    mark_sent(_p, _a)
+                                    log.info(f"  ALERT sent: {_p['symbol']} {_a['type']} [{_a['severity']}]")
+                                except Exception as _te:
+                                    log.warning(f"  Alert send failed: {_te}")
+        except Exception as _ae:
+            log.warning(f"  Alert evaluation skipped: {_ae}")
+
     if args.output_json:
         Path(args.output_json).write_text(json.dumps(report, indent=2, default=str))
     if args.output_md:
