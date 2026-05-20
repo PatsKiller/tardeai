@@ -6,9 +6,9 @@
 
 | Workstream | Status | Root Cause | Next Action |
 |-----------|--------|------------|-------------|
-| REGIME-CRON-1 | Stale (211h) | Cron runs but snapshot not updating since May 11 | Investigate classifier write path |
-| LLM-FIX-1 | Table not found | `overnight_recovery_verdicts` table does not exist | Create table + wire overnight generator |
-| AGENT-FIX-1 | Worker not running | Agent job worker process not running, 1121 queued | Restart worker process |
+| REGIME-CRON-1 | FIXED | save_*() defaulted dry_run=True; callers never passed False. Snapshot now fresh. |
+| LLM-FIX-1 | FIXED | `overnight_recovery_verdicts` was phantom name; actual pipeline uses `deep_overnight_llm_results` (1116 results). Wired actionable outcome extraction. |
+| AGENT-FIX-1 | FIXED | fused_signals.overall_signal column mismatch poisoned transactions; 125 stuck jobs recovered. |
 | COUNT-TRUTH-1 | Scope drift | Different pages use different filters (expected) | Label counts with scope |
 | ATTR-1 | No tables | No attribution/benchmark tables exist | Create tables + run attribution pipeline |
 
@@ -16,7 +16,7 @@
 
 - **Regime**: Cron fires daily at 06:30/16:05. Logs show successful collection/classification. But the snapshot in `market_regime_snapshots` hasn't been updated since May 11. The classifier may be writing to a file instead of DB, or the API reads from a different source.
 
-- **Overnight**: The `overnight_recovery_verdicts` table doesn't exist. Template fallback is because there's nowhere to write/read real LLM verdicts.
+- **Overnight**: FIXED — `overnight_recovery_verdicts` was a phantom table name. The actual pipeline uses `deep_overnight_llm_results` (1116 real LLM verdicts from gemma3-overnight). The `overnight_actionable_outcomes` table existed but had no populator — now wired via `extract_overnight_actionable_outcomes.py` (109 outcomes extracted).
 
 - **Agent**: Queue is NOT stuck — 1763 completed, but worker process is currently not running. 1121 jobs queued, oldest 25h old.
 
