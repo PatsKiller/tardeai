@@ -129,6 +129,47 @@ export default function PipelineHealthMaster() {
         }
       />
 
+      {/* Status Legend */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10, padding: '6px 10px', background: 'rgba(16,20,28,0.6)', borderRadius: 8, fontSize: 9, fontFamily: 'monospace' }}>
+        {[
+          { icon: '\u2705', label: 'Healthy', color: '#10B981', desc: 'Ran successfully' },
+          { icon: '\ud83d\udd52', label: 'Waiting', color: '#3B82F6', desc: 'Before scheduled window' },
+          { icon: '\u26a0\ufe0f', label: 'Needs Attention', color: '#F59E0B', desc: 'Window passed, no run/data' },
+          { icon: '\ud83d\udfe0', label: 'Blocked', color: '#F97316', desc: 'Dependency or gate blocked' },
+          { icon: '\u26d4', label: 'Failed', color: '#EF4444', desc: 'Ran and failed' },
+          { icon: '\u25fb', label: 'Manual/On-Demand', color: '#6B7280', desc: 'Weekly or manual only' },
+          { icon: '\ud83e\uddea', label: 'Dry-Run', color: '#A855F7', desc: 'Test only, not production' },
+        ].map(s => (
+          <span key={s.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <span>{s.icon}</span>
+            <span style={{ color: s.color, fontWeight: 600 }}>{s.label}</span>
+            <span style={{ color: 'var(--text3)' }}>— {s.desc}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* KPI Tiles */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 12 }}>
+        {[
+          { label: 'Completed', value: summary?.healthy ?? 0, color: '#10B981', hint: 'Stages with successful telemetry' },
+          { label: 'Warnings', value: summary?.warnings ?? 0, color: '#F59E0B', hint: 'Window passed or no telemetry' },
+          { label: 'Critical', value: summary?.critical ?? 0, color: '#EF4444', hint: 'Failed stages' },
+          { label: 'Never Run', value: (summary as any)?.never_run ?? 0, color: '#6B7280', hint: 'No production telemetry exists' },
+          { label: 'Waiting', value: Math.max(0, (summary?.total_stages ?? 31) - (summary?.healthy ?? 0) - (summary?.warnings ?? 0) - (summary?.critical ?? 0) - ((summary as any)?.never_run ?? 0)), color: '#3B82F6', hint: 'Before scheduled window' },
+          { label: 'Last Cycle', value: summary?.last_full_cycle ?? '-', color: 'var(--text2)', hint: 'Most recent pipeline run' },
+        ].map(kpi => (
+          <div key={kpi.label} style={{ background: 'rgba(16,20,28,0.9)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }} title={kpi.hint}>
+            <div style={{ fontSize: typeof kpi.value === 'number' ? 18 : 11, fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{kpi.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Explanation */}
+      <div style={{ fontSize: 9, color: 'var(--text3)', padding: '4px 10px', marginBottom: 10, fontStyle: 'italic', lineHeight: 1.5 }}>
+        Pipeline Health separates stage registry from run telemetry. A stage can be registered but never run. Yellow means the expected window passed without telemetry. Gray means manual/on-demand. No stage is marked healthy unless telemetry proves it ran.
+      </div>
+
       {/* Summary bar */}
       <div style={{
         display: 'flex',
@@ -226,10 +267,17 @@ export default function PipelineHealthMaster() {
                           {stage.label}
                         </div>
                         <div style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }}>
-                          {formatAgo(stage.minutes_ago)}
+                          {(() => {
+                            const c = stage.status_color
+                            if (c === 'green') return '\u2705 Healthy'
+                            if (c === 'blue') return '\ud83d\udd52 Running'
+                            if (c === 'amber') return '\u26a0\ufe0f Attention'
+                            if (c === 'red') return '\u26d4 Failed'
+                            return '\u25fb No telemetry'
+                          })()}
                         </div>
-                        <div style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }}>
-                          {stage.rows_processed != null ? `${stage.rows_processed.toLocaleString()} rows` : ''}
+                        <div style={{ fontSize: 8, color: 'var(--text3)', fontFamily: 'monospace' }}>
+                          {formatAgo(stage.minutes_ago)} {stage.rows_processed != null && stage.rows_processed > 0 ? `· ${stage.rows_processed.toLocaleString()} rows` : ''}
                         </div>
                       </div>
 
