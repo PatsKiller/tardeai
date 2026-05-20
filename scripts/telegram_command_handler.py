@@ -1589,14 +1589,27 @@ def process_command(cmd: dict) -> str:
     if command == "pt_approve":
         try:
             from paper_trade_logger import approve_proposal
+            from telegram_callback_handler import parse_pt_command
             parts = args.split()
             if not parts:
-                return "\u274c Usage: /ptapprove ID [shares entry stop target]"
-            pid = int(parts[0])
-            overrides = {}
-            if len(parts) >= 5:
-                overrides = {'override_shares': int(parts[1]), 'override_entry': float(parts[2]),
-                             'override_stop': float(parts[3]), 'override_target': float(parts[4])}
+                return "\u274c Usage: /ptapprove ID [shares=N target=N stop=N]"
+            # Support both positional (legacy) and key=value (new) syntax
+            has_kv = any("=" in p for p in parts[1:])
+            if has_kv:
+                pid, kv_overrides = parse_pt_command("/ptapprove " + args)
+                overrides = {}
+                if kv_overrides.get("shares"):
+                    overrides["override_shares"] = kv_overrides["shares"]
+                if kv_overrides.get("target"):
+                    overrides["override_target"] = kv_overrides["target"]
+                if kv_overrides.get("stop"):
+                    overrides["override_stop"] = kv_overrides["stop"]
+            else:
+                pid = int(parts[0])
+                overrides = {}
+                if len(parts) >= 5:
+                    overrides = {'override_shares': int(parts[1]), 'override_entry': float(parts[2]),
+                                 'override_stop': float(parts[3]), 'override_target': float(parts[4])}
             result = approve_proposal(pid, **overrides)
             if result.get('success'):
                 return (f"\u2705 PAPER TRADE #{result['paper_trade_id']} OPENED\n"

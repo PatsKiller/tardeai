@@ -68,7 +68,7 @@ def _save_offset(offset: int):
 
 
 def poll_updates() -> list[dict]:
-    """Fetch new Telegram messages since last offset."""
+    """Fetch new Telegram messages and callback queries since last offset."""
     token = _token()
     if not token:
         return []
@@ -76,7 +76,8 @@ def poll_updates() -> list[dict]:
     try:
         resp = requests.get(
             f"{TELEGRAM_API.format(token=token)}/getUpdates",
-            params={"offset": offset, "timeout": 5, "limit": 20},
+            params={"offset": offset, "timeout": 5, "limit": 20,
+                    "allowed_updates": json.dumps(["message", "callback_query"])},
             timeout=15,
         )
         data = resp.json()
@@ -119,7 +120,7 @@ def _db_write(sql, params=None):
 
 
 def process_replies():
-    """Poll Telegram, parse replies, update stop_confirmations."""
+    """Poll Telegram, parse replies + callback queries, update stop_confirmations."""
     updates = poll_updates()
     if not updates:
         print("  [telegram_reply] No new messages")
@@ -129,6 +130,16 @@ def process_replies():
     processed = 0
 
     for update in updates:
+        # Handle callback queries (inline button presses)
+        if "callback_query" in update:
+            try:
+                from telegram_callback_handler import handle_callback_query
+                handle_callback_query(update["callback_query"])
+                processed += 1
+            except Exception as e:
+                print(f"  [telegram_reply] callback_query error: {e}")
+            continue
+
         msg = update.get("message", {})
         chat_id = str(msg.get("chat", {}).get("id", ""))
         text = msg.get("text", "")
