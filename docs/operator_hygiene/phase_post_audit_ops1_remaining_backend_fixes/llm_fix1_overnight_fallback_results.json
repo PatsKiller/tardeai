@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-05-20T15:21:57.868302+00:00",
+  "table_exists": false,
+  "verdict_count_7d": 0,
+  "distinct_verdict_count_7d": 0,
+  "template_fallback_detected": false,
+  "ollama_reachable": false,
+  "root_cause": "table_not_found",
+  "recommended_fix": null
+}
