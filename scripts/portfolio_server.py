@@ -515,7 +515,7 @@ def write_holdings(data: dict) -> None:
 
 
 def json_response(handler, status: int, data: dict) -> None:
-    body = json.dumps(data).encode("utf-8")
+    body = json.dumps(data, default=str).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(body)))
