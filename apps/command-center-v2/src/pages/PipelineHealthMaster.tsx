@@ -295,13 +295,27 @@ export default function PipelineHealthMaster() {
                           minWidth: 160,
                           lineHeight: 1.6,
                         }}>
-                          <div><span style={{ color: 'var(--text3)' }}>script:</span> {stage.id}</div>
+                          <div><span style={{ color: 'var(--text3)' }}>script:</span> {(stage as any).owner_script || stage.id}</div>
                           <div><span style={{ color: 'var(--text3)' }}>status:</span>{' '}
                             <span style={{ color: colors.border }}>{stage.last_status ?? 'unknown'}</span>
                           </div>
                           <div><span style={{ color: 'var(--text3)' }}>last run:</span> {formatTimestamp(stage.last_run_at)}</div>
                           <div><span style={{ color: 'var(--text3)' }}>duration:</span> {formatDuration(stage.duration_sec)}</div>
-                          <div><span style={{ color: 'var(--text3)' }}>cadence:</span> every {stage.cadence_h}h</div>
+                          <div><span style={{ color: 'var(--text3)' }}>cadence:</span> {(stage as any).cron_pattern || `every ${stage.cadence_h}h`}</div>
+                          {(stage as any).output_tables?.length > 0 && (
+                            <div><span style={{ color: 'var(--text3)' }}>output:</span> {(stage as any).output_tables.join(', ')}</div>
+                          )}
+                          {(stage as any).never_run_subtype && (
+                            <div><span style={{ color: '#F59E0B' }}>why:</span> {(stage as any).never_run_subtype.replace(/_/g, ' ')}</div>
+                          )}
+                          {(stage as any).recommended_action && (
+                            <div style={{ marginTop: 3, padding: '2px 4px', background: 'rgba(59,130,246,0.1)', borderRadius: 3, color: '#60A5FA' }}>
+                              {(stage as any).recommended_action}
+                            </div>
+                          )}
+                          {(stage as any).failure_hint && (
+                            <div><span style={{ color: 'var(--text3)' }}>hint:</span> {(stage as any).failure_hint}</div>
+                          )}
                           <div><span style={{ color: 'var(--text3)' }}>next expected:</span>{' '}
                             {stage.last_run_at && stage.cadence_h
                               ? new Date(new Date(stage.last_run_at).getTime() + stage.cadence_h * 3600_000).toLocaleTimeString()
