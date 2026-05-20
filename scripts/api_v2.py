@@ -8647,9 +8647,9 @@ def _paper_proposals_enriched():
                 "incubator_ready_count": incubator_ready_count,
                 "last_promotion_run": last_promotion_run,
                 "pipeline_health_message": (
-                    f"{missed_count} missed entries, {stale_count} stale quotes. "
-                    f"Refresh prices or dismiss stale proposals to unlock "
-                    f"the {incubator_ready_count} candidates in the incubator."
+                    f"{unknown_quote_count} unknown quotes, {stale_count} stale quotes, {missed_count} missed entries. "
+                    f"Refresh prices and check execution before approval. "
+                    f"{incubator_ready_count} incubator candidates available."
                 ) if ready_count == 0 and len(pending_list) > 0 else None,
                 "incubator_diagnostics": {
                     "ready_count": incubator_ready_count,

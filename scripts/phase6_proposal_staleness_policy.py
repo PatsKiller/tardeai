@@ -136,6 +136,54 @@ def classify_proposal_staleness(proposal: dict, now=None) -> dict:
         remaining = threshold - age_min
         result["reason"] = f"Fresh ({age_min}min old, {remaining}min until stale)."
 
+    # ATP-4/Q-2: Quote-age check — override fresh if quote is stale/unknown
+    quote_checked_at = proposal.get("last_price_checked_at")
+    quote_age_minutes = None
+    if quote_checked_at:
+        if isinstance(quote_checked_at, str):
+            try:
+                quote_checked_at = datetime.fromisoformat(quote_checked_at.replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                quote_checked_at = None
+        if quote_checked_at:
+            if quote_checked_at.tzinfo is None:
+                quote_checked_at = quote_checked_at.replace(tzinfo=timezone.utc)
+            quote_age_minutes = int((now - quote_checked_at).total_seconds() / 60)
+
+    result["quote_checked_at"] = quote_checked_at.isoformat() if quote_checked_at else None
+    result["quote_age_minutes"] = quote_age_minutes
+    result["quote_status"] = "unknown"
+
+    if quote_checked_at is None:
+        result["quote_status"] = "never_checked"
+        if result["status"] == "fresh":
+            result["requires_refresh"] = True
+            result["reason"] += " Quote never checked — needs refresh before approval."
+    elif quote_age_minutes is not None:
+        # Quote-age thresholds (stricter than proposal age)
+        QUOTE_STALE_MINUTES = {
+            "momentum_scalp": 15, "gap_and_go": 15, "scalp": 15,
+            "swing_trade": 60, "swing_breakout": 60, "swing": 60,
+            "earnings_catalyst": 60, "fib_retracement_bounce": 60,
+            "default": 240,  # 4 hours for most strategies
+        }
+        quote_threshold = QUOTE_STALE_MINUTES.get(strategy, QUOTE_STALE_MINUTES["default"])
+        result["quote_threshold_minutes"] = quote_threshold
+
+        if quote_age_minutes > quote_threshold:
+            result["quote_status"] = "stale"
+            result["requires_refresh"] = True
+            if result["status"] == "fresh":
+                result["reason"] += f" Quote stale ({quote_age_minutes}min > {quote_threshold}min threshold)."
+        else:
+            result["quote_status"] = "fresh"
+
+    # Hard expire recommendation for extremely stale quotes (>72h on any active proposal)
+    if quote_age_minutes and quote_age_minutes > 4320:  # 72 hours
+        result["quote_status"] = "extremely_stale"
+        result["requires_refresh"] = True
+        result["reason"] += f" Quote {quote_age_minutes // 60}h old — expire or rebuild recommended."
+
     return result
 
 

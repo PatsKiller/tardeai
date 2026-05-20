@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-05-20T02:41:31.708867+00:00",
+  "proposals": [
+    {
+      "proposal_id": 102,
+      "symbol": "INGM",
+      "strategy_id": "dividend_growth_compounder",
+      "proposal_age_hours": 5.7,
+      "quote_age_hours": 8.3,
+      "proposal_staleness": "fresh",
+      "quote_status": "never_checked",
+      "mismatch": false,
+      "recommendation": "refresh_quote"
+    },
+    {
+      "proposal_id": 101,
+      "symbol": "SIF",
+      "strategy_id": "defense_thesis",
+      "proposal_age_hours": 5.7,
+      "quote_age_hours": 277.9,
+      "proposal_staleness": "fresh",
+      "quote_status": "never_checked",
+      "mismatch": true,
+      "recommendation": "expire"
+    },
+    {
+      "proposal_id": 100,
+      "symbol": "NVST",
+      "strategy_id": "recovery_watch",
+      "proposal_age_hours": 8.7,
+      "quote_age_hours": 300.7,
+      "proposal_staleness": "fresh",
+      "quote_status": "never_checked",
+      "mismatch": true,
+      "recommendation": "expire"
+    },
+    {
+      "proposal_id": 99,
+      "symbol": "CODX",
+      "strategy_id": "swing_trade",
+      "proposal_age_hours": 9.7,
+      "quote_age_hours": 13.0,
+      "proposal_staleness": "fresh",
+      "quote_status": "never_checked",
+      "mismatch": false,
+      "recommendation": "refresh_quote"
+    },
+    {
+      "proposal_id": 98,
+      "symbol": "DOC",
+      "strategy_id": "reit_income",
+      "proposal_age_hours": 9.7,
+      "quote_age_hours": 317.0,
+      "proposal_staleness": "fresh",
+      "quote_status": "never_checked",
+      "mismatch": true,
+      "recommendation": "expire"
+    }
+  ],
+  "mismatches": 3
+}
