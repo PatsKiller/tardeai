@@ -26,7 +26,7 @@ export default function RiskRegime() {
   const { data: profiles } = useApi<any>(`/api/v2/strategy-rotation/profiles?_r=${rk}`)
   const { data: alignments } = useApi<any>(`/api/v2/strategy-rotation/alignments?_r=${rk}`)
 
-  const r = regime?.data
+  const r = regime || null
   const tabBtn = (t: string, label: string) => (
     <button onClick={() => setTab(t)} style={{
       ...btn, background: tab === t ? 'var(--accent)' : 'var(--bg1)', color: tab === t ? '#fff' : 'var(--text1)'
@@ -59,20 +59,20 @@ export default function RiskRegime() {
 
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
         {tabBtn('regime', 'Regime')}
-        {tabBtn('indicators', `Indicators (${(indicators?.data||[]).length})`)}
-        {tabBtn('rotation', `Rotation (${(signals?.data||[]).length})`)}
-        {tabBtn('profiles', `Profiles (${(profiles?.data||[]).length})`)}
-        {tabBtn('alignment', `Alignment (${(alignments?.data||[]).length})`)}
+        {tabBtn('indicators', `Indicators (${(indicators||[]).length})`)}
+        {tabBtn('rotation', `Rotation (${(signals||[]).length})`)}
+        {tabBtn('profiles', `Profiles (${(profiles||[]).length})`)}
+        {tabBtn('alignment', `Alignment (${(alignments||[]).length})`)}
       </div>
 
       {tab === 'indicators' && (
         <Card title="Regime Indicators">
-          {!(indicators?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No indicators</div> : (
+          {!(indicators?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No indicators</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['Key','Group','Value','Signal','Source'].map(h => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(indicators.data as any[]).map((i: any) => (
+              <tbody>{((Array.isArray(indicators) ? indicators : []) as any[]).map((i: any) => (
                 <tr key={i.indicator_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontWeight:600 }}>{i.indicator_key}</td>
                   <td style={td}>{i.indicator_group}</td>
@@ -88,12 +88,12 @@ export default function RiskRegime() {
 
       {tab === 'rotation' && (
         <Card title="Strategy Rotation Signals">
-          {!(signals?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No signals</div> : (
+          {!(signals?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No signals</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['Strategy','Signal','Strength','Confidence','Action','Reason'].map(h => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(signals.data as any[]).map((s: any) => (
+              <tbody>{((Array.isArray(signals) ? signals : []) as any[]).map((s: any) => (
                 <tr key={s.signal_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontWeight:600 }}>{s.strategy_id}</td>
                   <td style={td}>{dot(s.signal)}{s.signal}</td>
@@ -110,12 +110,12 @@ export default function RiskRegime() {
 
       {tab === 'profiles' && (
         <Card title="Strategy Regime Profiles">
-          {!(profiles?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No profiles</div> : (
+          {!(profiles?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No profiles</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['Strategy','Favored','Disfavored','Vol','Trend','Horizon'].map(h => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(profiles.data as any[]).map((p: any) => (
+              <tbody>{((Array.isArray(profiles) ? profiles : []) as any[]).map((p: any) => (
                 <tr key={p.strategy_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontWeight:600 }}>{p.strategy_id}</td>
                   <td style={{ ...td, fontSize:10 }}>{(p.favored_regimes||[]).join(', ')}</td>
@@ -132,12 +132,12 @@ export default function RiskRegime() {
 
       {tab === 'alignment' && (
         <Card title="Trade / Proposal Regime Alignment">
-          {!(alignments?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No alignments</div> : (
+          {!(alignments?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No alignments</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['Symbol','Strategy','Type','Alignment','Score','Regime','Reason'].map(h => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(alignments.data as any[]).map((a: any) => (
+              <tbody>{((Array.isArray(alignments) ? alignments : []) as any[]).map((a: any) => (
                 <tr key={a.alignment_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontWeight:600 }}>{a.symbol}</td>
                   <td style={td}>{a.strategy_id}</td>
