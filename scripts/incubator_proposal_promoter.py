@@ -176,6 +176,35 @@ def _auto_expire_stale_proposals(conn):
         log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: RSI >= 80")
     expired += cur.rowcount
 
+    # Rule 6: Target hit before approval — the CODX fix
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'EXPIRED', expiry_reason = 'AUTO: Target hit before approval',
+            expired_at = NOW(), expired_reason = 'TARGET_HIT_BEFORE_APPROVAL'
+        WHERE status = 'PENDING'
+          AND current_price IS NOT NULL AND proposed_target1 IS NOT NULL
+          AND proposed_target1 > 0
+          AND current_price >= proposed_target1
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: target hit before approval")
+    expired += cur.rowcount
+
+    # Rule 7: Over-alerted — 5+ alerts, >2h old, still PENDING
+    cur.execute("""
+        UPDATE paper_trade_proposals
+        SET status = 'EXPIRED', expiry_reason = 'AUTO: Over-alerted (5+ alerts, 2h+ old)',
+            expired_at = NOW(), expired_reason = 'OVER_ALERTED'
+        WHERE status = 'PENDING'
+          AND COALESCE(alert_count, 0) >= 5
+          AND created_at < NOW() - INTERVAL '2 hours'
+        RETURNING id, symbol, strategy_id
+    """)
+    for r in cur.fetchall():
+        log.info(f"  [auto-expire] {r['symbol']} {r['strategy_id']}: over-alerted")
+    expired += cur.rowcount
+
     conn.commit()
     if expired > 0:
         log.info(f"[auto-expiry] Expired {expired} stale proposals")

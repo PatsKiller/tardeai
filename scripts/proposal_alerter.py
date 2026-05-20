@@ -30,7 +30,7 @@ def _token():
 def _chat_targets():
     """Return list of chat IDs to send to. Prefers decisions group."""
     targets = []
-    g = os.environ.get("TELEGRAM_PROPOSAL_DECISIONS_CHAT_ID", "").strip()
+    g = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
     if g:
         targets.append(g)
     else:
