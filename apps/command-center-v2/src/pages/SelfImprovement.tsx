@@ -19,7 +19,7 @@ export default function SelfImprovement() {
   const { data: queue } = useApi<any>(`/api/v2/self-improvement/review-queue?_r=${rk}`)
   const { data: health } = useApi<any>(`/api/v2/self-improvement/component-health?_r=${rk}`)
 
-  const s = status?.data || {}
+  const s = status || {}
   const safety = s.safety || {}
   const paper = s.paper_trading || {}
   const learning = s.learning || {}
@@ -28,8 +28,8 @@ export default function SelfImprovement() {
   const pipe = s.pipeline || {}
   const warnings = s.warnings || []
   const actions = s.recommended_actions || []
-  const queueItems = queue?.data || []
-  const components = health?.data || []
+  const queueItems = (Array.isArray(queue) ? queue : queue?.items || queue?.data || []) as any[]
+  const components = (Array.isArray(health) ? health : health?.components || health?.data || []) as any[]
 
   const link = (route: string, label: string) => (
     <button onClick={() => navigate(route)} style={{ ...btn, fontSize:9, padding:'2px 8px' }}>{label} →</button>
