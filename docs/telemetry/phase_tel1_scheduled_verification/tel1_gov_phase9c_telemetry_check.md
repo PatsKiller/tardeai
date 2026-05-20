@@ -12,6 +12,6 @@
 
 All 3 GOV-1/Phase 9C jobs hit "Locked, skipping" — another process held the flock, or the lock file was stale from a previous run. The telemetry call is placed AFTER the main work, so when the wrapper skips due to flock, telemetry is never reached.
 
-## Fix Needed
+## Fix Applied
 
-The telemetry call should also record "skipped" status when flock prevents execution. Currently the wrapper exits before reaching the telemetry line.
+Commit `aa083ac` patched all 3 wrappers to record `skipped` with `source='cron_flock_blocked'` at the flock exit point. Next time they hit a lock (tomorrow 07:40-07:55), a "skipped" telemetry row will appear in pipeline_runs instead of silence.
