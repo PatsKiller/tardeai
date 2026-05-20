@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-05-18
+**Last updated:** 2026-05-20
 
 ---
 
@@ -25,8 +25,27 @@ PGPASSWORD=$(grep DB_PASSWORD .env | cut -d= -f2) psql -h localhost -U trade_ai 
 # Ollama / GPU status
 curl -s http://localhost:11434/api/tags | python3 -c "import json,sys; print([m['name'] for m in json.load(sys.stdin)['models']])"
 
-# Paper proposals status
+# Automated Trade Proposals status
 curl -s http://localhost:7777/api/v2/paper-proposals | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'Pending: {d.get(\"summary\",{}).get(\"pending\")}')"
+
+# After-hours readiness
+curl -s http://localhost:7777/api/v2/afterhours-readiness/summary | python3 -m json.tool
+
+# Strategy-fit audit
+curl -s http://localhost:7777/api/v2/strategy-fit/summary | python3 -m json.tool
+
+# Lesson memory
+curl -s http://localhost:7777/api/v2/journal/lesson-memory/summary | python3 -m json.tool
+
+# Screener schedule
+curl -s http://localhost:7777/api/v2/screener-schedule/summary | python3 -m json.tool
+
+# Catalog lifecycle
+curl -s http://localhost:7777/api/v2/ticker-catalog/summary | python3 -m json.tool
+curl -s http://localhost:7777/api/v2/screener-membership/summary | python3 -m json.tool
+
+# Journal action dashboard
+curl -s http://localhost:7777/api/v2/journal/closed-trades/action-dashboard | python3 -m json.tool
 
 # Pipeline health (44 stages)
 curl -s http://localhost:7777/api/v2/pipeline-health-master | python3 -m json.tool

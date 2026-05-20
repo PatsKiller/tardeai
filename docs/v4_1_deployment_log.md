@@ -1,5 +1,91 @@
 # LLM Fleet v4.1 — Deployment Log
 
+## ATP-1B — Research Workflow Answers — 2026-05-20
+
+Direct operator answers: current vs target schedule, candidate breakdown (619 no-fit,
+327 family gate blocks, 39 ready for review, 186 watchpool). Paper Proposals renamed
+to Automated Trade Proposals. Page/menu recommendations documented. ATP-2 gaps
+identified for future overnight/premarket research cadence. Tests: 11/11.
+
+---
+
+## AFTERHOURS-READY-1 — After-Hours Candidate Preparation — 2026-05-20
+
+Full after-hours readiness runner evaluates 1,311 symbols against ARCH-4 strategy-fit
+data. Root cause: 17:30 RUN_UNDERFILLED was intentional narrow pass. Added readiness
+snapshot tables, cron wrapper, API endpoint. 39 ready, 186 watchpool, 619 needs-data.
+Tests: 17/17. Runtime verification: PASS (5/5).
+
+---
+
+## JOURNAL-UX-2B — Digest Formatting + Cron — 2026-05-20
+
+Cleaned digest format (no padded actions). Cron installed: 16:30 ET M-F.
+TEST digest sent and validated. Rollback script available. Tests: 20/20.
+
+---
+
+## JOURNAL-UX-2 — Persistent Lessons + Digest — 2026-05-20
+
+Lesson memory: 10 lessons persisted, 6 strategy rollups, 1 repeated pattern detected.
+Digest builder + sender with P1_DIGEST routing through OPS-HYGIENE. 3 tables created.
+API: lesson-memory/summary + strategy-lessons/summary. Tests: 24/24.
+
+---
+
+## VERIFY-1 + SCREENER-ARCH-5 — Implementation Proof + Schedule — 2026-05-19
+
+All 10 implementation claims verified REAL with 3+ evidence types. 27 active screeners,
+0 stale, 0 orphaned. Schedule registry + health alert + API endpoint. Tests: 16/16.
+
+---
+
+## SCREENER-ARCH-4 — Full Universe Strategy-Fit Audit — 2026-05-19
+
+30,015 audit rows: 1,305 symbols x 23 strategies. STRONG: 42, MODERATE: 341.
+Top matches: earnings_pre_buildup (835), swing_trade (244), recovery_watch (120).
+16 zero-match strategies. API: strategy-fit/summary. Tests: 18/18.
+
+---
+
+## OPS-HYGIENE-1 — Operator Alert Surface — 2026-05-19
+
+Central alert router with P0/P1/P2/P3 policy. ~93% Telegram reduction estimate.
+telegram_alert.py patched to route through router. Config: operator_alert_policy.yaml.
+5 operator reports. Tests: 34/34.
+
+---
+
+## SCREENER-ARCH-3D — Falloff Lifecycle Apply — 2026-05-19
+
+993 safe lifecycle state updates: 885 source_missing, 153 active, 89 needs_refresh.
+136 expire candidates blocked (requires --operator-approved-expire). Tests: 21/21.
+
+---
+
+## JOURNAL-UX-1B — Closed Trade Action Dashboard — 2026-05-19
+
+Dashboard-first action view: 6 summary cards, action queue, upgraded verdicts.
+10 dashboard verdicts, 9 mistake types, 0 generic lessons. 3 read-only API endpoints.
+Tests: 29/29.
+
+---
+
+## Cron Wrapper DB Fix — 2026-05-19
+
+All 8 wrapper scripts + 9 cron entries fixed to load .env for DB credentials.
+Verified by actual cron runs (watchpool, telegram, quote refresh).
+
+---
+
+## SCREENER-ARCH-3C — Membership Transition Lifecycle — 2026-05-19
+
+Prior-vs-current comparison: 5,035 events created. 727 dropped, 55 reentered.
+Mass-drop protection: 8 runs protected. 3 read-only API endpoints + dashboard card.
+Tests: 23/23.
+
+---
+
 ## SCREENER-ARCH-3B — Membership Backfill — 2026-05-19
 
 Backfilled 1,941 symbols from 2,951 scan pairs. Membership table populated with all
