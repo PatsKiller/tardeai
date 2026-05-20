@@ -5382,6 +5382,9 @@ def attribution():
         "snapshot_count": a.get("snapshot_count", 0),
         "note": a.get("note", ""),
         "last_updated": a.get("last_updated", ""),
+        "bench_sharpe": a.get("bench_sharpe"),
+        "bench_sortino": a.get("bench_sortino"),
+        "bench_maxdd": a.get("bench_maxdd"),
     }
 
 

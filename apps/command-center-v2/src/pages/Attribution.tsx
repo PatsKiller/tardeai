@@ -12,26 +12,42 @@ interface AttributionData {
   alpha_annualized: number | null
   inception_return: number | null
   port_sharpe: number | null
+  bench_sharpe: number | null
   port_sortino: number | null
+  bench_sortino: number | null
   port_maxdd: number | null
+  bench_maxdd: number | null
   top_gainers: { symbol: string; gain: number }[]
   top_losers: { symbol: string; loss: number }[]
   note?: string
   last_updated?: string
+  snapshot_count?: number
 }
 
 export default function Attribution() {
   const { data } = useApi<AttributionData>('/api/v2/attribution')
   if (!data) return <div style={{ color: 'var(--text3)', padding: 40 }}>Loading attribution…</div>
 
+  const missingBench = data.bench_cagr == null
+  const missingAlpha = data.alpha_annualized == null
+  const unavailableReason = !data.has_data ? 'Attribution data not yet generated. Run the attribution pipeline.'
+    : missingBench && missingAlpha ? 'Benchmark price history unavailable — benchmark CAGR and alpha cannot be computed.'
+    : missingAlpha ? 'Alpha requires both portfolio and benchmark CAGR.'
+    : null
+
   return (
     <>
-      <PageHeader title={`Performance Attribution vs ${data.benchmark_label || 'Benchmark'}`} subtitle={data.last_updated ? `Updated ${data.last_updated}` : 'Attribution context'} />
+      <PageHeader title={`Performance Attribution vs ${data.benchmark_label || 'Benchmark'}`} subtitle={data.last_updated ? `Updated ${data.last_updated}${data.snapshot_count ? ` (${data.snapshot_count} days)` : ''}` : 'Attribution context'} />
+      {unavailableReason && (
+        <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 11, color: 'var(--amber)' }}>
+          {unavailableReason}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8, marginBottom: 12 }}>
-        <MetricTile label="Alpha" value={data.alpha_annualized != null ? fmtPct(data.alpha_annualized, 1) : 'N/A'} deltaColor={deltaColor(data.alpha_annualized ?? 0)} tooltip={data.alpha_annualized == null ? 'Alpha unavailable — insufficient benchmark return data for full period. Alpha = Portfolio CAGR minus Benchmark CAGR.' : 'Excess return vs blended benchmark'} />
-        <MetricTile label="Portfolio CAGR" value={data.port_cagr != null ? fmtPct(data.port_cagr, 1) + '/yr' : '—'} deltaColor="var(--green)" tooltip="Compound Annual Growth Rate since inception" />
-        <MetricTile label="Benchmark CAGR" value={data.bench_cagr != null ? fmtPct(data.bench_cagr, 1) + '/yr' : '—'} tooltip={data.bench_cagr == null ? 'Benchmark CAGR unavailable — insufficient price history for ITA component. Run price cache rebuild via Actions.' : `Blended: ${data.benchmark_label}`} />
-        <MetricTile label="Sharpe Ratio" value={data.port_sharpe != null ? data.port_sharpe.toFixed(2) : '—'} tooltip="Sharpe >1.0 = good risk-adjusted return. Measures return per unit of total risk." />
+        <MetricTile label="Alpha (annualized)" value={data.alpha_annualized != null ? fmtPct(data.alpha_annualized, 1) : 'Unavailable'} deltaColor={data.alpha_annualized != null ? deltaColor(data.alpha_annualized) : 'var(--text3)'} tooltip={data.alpha_annualized == null ? 'Alpha unavailable — requires both portfolio and benchmark CAGR from real return data.' : 'Excess return vs blended benchmark (portfolio CAGR minus benchmark CAGR)'} />
+        <MetricTile label="Portfolio CAGR" value={data.port_cagr != null ? fmtPct(data.port_cagr, 1) + '/yr' : 'Unavailable'} deltaColor={data.port_cagr != null ? 'var(--green)' : 'var(--text3)'} tooltip="Compound Annual Growth Rate from price-cache reconstruction" />
+        <MetricTile label="Benchmark CAGR" value={data.bench_cagr != null ? fmtPct(data.bench_cagr, 1) + '/yr' : 'Unavailable'} deltaColor={data.bench_cagr != null ? undefined : 'var(--text3)'} tooltip={data.bench_cagr == null ? 'Benchmark CAGR unavailable — benchmark prices not cached. Run attribution refresh.' : `Blended: ${data.benchmark_label}`} />
+        <MetricTile label="Sharpe (port / bench)" value={data.port_sharpe != null ? `${data.port_sharpe.toFixed(2)}${data.bench_sharpe != null ? ' / ' + data.bench_sharpe.toFixed(2) : ''}` : 'Unavailable'} tooltip="Sharpe >1.0 = good risk-adjusted return. Measures return per unit of total risk." />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: 12 }}>
         <Card title="Top Contributors / Detractors">
@@ -57,9 +73,9 @@ export default function Attribution() {
             </div>
           </div>
           <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
-            <SmallStat label="Sortino" value={data.port_sortino != null ? data.port_sortino.toFixed(2) : '—'} />
-            <SmallStat label="Max Drawdown" value={data.port_maxdd != null ? fmtPct(data.port_maxdd, 1) : '—'} color="var(--red)" />
-            <SmallStat label="Inception Return" value={data.inception_return != null ? fmtPct(data.inception_return, 1) : '—'} color="var(--green)" />
+            <SmallStat label="Sortino (port / bench)" value={data.port_sortino != null ? `${data.port_sortino.toFixed(2)}${data.bench_sortino != null ? ' / ' + data.bench_sortino.toFixed(2) : ''}` : 'Unavailable'} />
+            <SmallStat label="Max Drawdown (port / bench)" value={data.port_maxdd != null ? `${fmtPct(data.port_maxdd, 1)}${data.bench_maxdd != null ? ' / ' + fmtPct(data.bench_maxdd, 1) : ''}` : 'Unavailable'} color="var(--red)" />
+            <SmallStat label="Inception Return" value={data.inception_return != null ? fmtPct(data.inception_return, 1) : 'Unavailable'} color="var(--green)" />
           </div>
           {data.port_maxdd != null && (
             <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>
