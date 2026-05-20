@@ -15,6 +15,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PROJ = Path(__file__).resolve().parent.parent
+from dotenv import load_dotenv
+load_dotenv(PROJ / ".env")
+
+PROJ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJ / "scripts"))
 
 from db_adapter import _get_conn
