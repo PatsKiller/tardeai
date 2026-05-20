@@ -400,7 +400,18 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
             cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", [new_stop, tid])
             if not dry_run:
                 _update_stop_on_alpaca(conn, trade, new_stop)
-            send_telegram(f"📈 {msg}", dry_run, no_telegram)
+            locked = (new_stop - entry) * shares if new_stop > entry and shares else 0
+            strategy = trade.get('strategy_id', '?')
+            rich_msg = (
+                f"\U0001f4c8 *TRAILING STOP MOVED*\n\n"
+                f"*{symbol}* — `{strategy}`\n"
+                f"Entry ${entry:.2f}  |  Now ${price:.2f}  |  R: {r_mult:.1f}\n"
+                f"Stop: ${stop:.2f} \u2192 *${new_stop:.2f}*\n"
+                f"Locked profit: ${locked:,.0f}\n\n"
+                f"Trade `#{tid}`\n"
+                f"_Automated — no action needed_"
+            )
+            send_telegram(rich_msg, dry_run, no_telegram)
             alerts.append(('TRAILING_STOP', symbol))
             stop = new_stop
 

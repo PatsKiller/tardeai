@@ -27,7 +27,7 @@ def _token():
 
 def _allowed_chat_ids():
     chats = set()
-    g = os.environ.get("TELEGRAM_PROPOSAL_DECISIONS_CHAT_ID", "").strip()
+    g = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
     if g:
         chats.add(g)
     std = os.environ.get("TELEGRAM_CHAT_ID", "")
