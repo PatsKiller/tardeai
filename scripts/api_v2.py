@@ -11228,19 +11228,22 @@ def _global_alerts():
         alerts.append({
             "severity": "critical",
             "message": f"{len(triggered)} stop(s) triggered: {', '.join(triggered[:5])}",
-            "action": "Review at /v2/recovery",
+            "action": "Review stops",
+            "link": "/recovery",
         })
     if heat > 5:
         alerts.append({
             "severity": "warning",
             "message": f"Portfolio heat {heat:.1f}% — above 5% threshold",
-            "action": "Reduce exposure or add stops",
+            "action": "Review risk",
+            "link": "/risk",
         })
     if no_stop > 5:
         alerts.append({
             "severity": "warning",
             "message": f"{no_stop} positions without stop losses",
-            "action": "Set stops at /v2/portfolio",
+            "action": "Set stops",
+            "link": "/portfolio",
         })
 
     # Data freshness
@@ -11253,7 +11256,8 @@ def _global_alerts():
                 alerts.append({
                     "severity": "info",
                     "message": f"Data is {age_h:.0f}h old",
-                    "action": "Pipeline may need attention",
+                    "action": "Check pipeline",
+                    "link": "/pipeline",
                 })
         except Exception:
             pass
@@ -11269,7 +11273,8 @@ def _global_alerts():
                 alerts.append({
                     "severity": "info",
                     "message": f"Rebalance data is {days} days old",
-                    "action": "Refresh requires API credits",
+                    "action": "View rebalance",
+                    "link": "/rebalance",
                 })
     except Exception:
         pass

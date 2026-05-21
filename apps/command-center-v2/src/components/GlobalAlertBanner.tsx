@@ -2,11 +2,13 @@
    Root cause: portfolio_orchestrator.py fires both urgent_alert + draft_alert for same stop condition.
    Fix: add sent_today check in alert_dispatcher.py before sending */
 import { useApi } from '../hooks/useApi'
+import { useNavigate } from 'react-router-dom'
 
 interface Alert {
   severity: 'critical' | 'warning' | 'info'
   message: string
   action: string
+  link?: string
 }
 
 interface AlertData {
@@ -24,6 +26,8 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; icon: string
 
 export default function GlobalAlertBanner() {
   const { data } = useApi<AlertData>('/api/v2/global-alerts', 60000)
+  const navigate = useNavigate()
+
   // Deduplicate alerts by message to prevent identical banners stacking
   const seen = new Set<string>()
   const alerts = (data?.alerts || []).filter(a => {
@@ -38,9 +42,11 @@ export default function GlobalAlertBanner() {
     <div style={{ padding: '0 16px', marginBottom: 8 }}>
       {alerts.map((a, i) => {
         const s = SEVERITY_STYLES[a.severity] || SEVERITY_STYLES.info
+        const clickable = !!a.link
         return (
           <div
             key={i}
+            onClick={clickable ? () => navigate(a.link!) : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -51,7 +57,11 @@ export default function GlobalAlertBanner() {
               border: `1px solid ${s.border}`,
               borderRadius: 4,
               fontSize: 11,
+              cursor: clickable ? 'pointer' : 'default',
+              transition: 'background 120ms ease',
             }}
+            onMouseEnter={clickable ? (e) => { e.currentTarget.style.background = s.bg.replace(/[\d.]+\)$/, '0.15)') } : undefined}
+            onMouseLeave={clickable ? (e) => { e.currentTarget.style.background = s.bg } : undefined}
           >
             <span style={{
               width: 18, height: 18, borderRadius: '50%',
@@ -62,7 +72,14 @@ export default function GlobalAlertBanner() {
               {s.icon}
             </span>
             <span style={{ color: 'var(--text1)', flex: 1 }}>{a.message}</span>
-            <span style={{ color: 'var(--text3)', fontSize: 10 }}>{a.action}</span>
+            <span style={{
+              color: clickable ? s.border : 'var(--text3)',
+              fontSize: 10,
+              fontWeight: clickable ? 600 : 400,
+              textDecoration: clickable ? 'underline' : 'none',
+            }}>
+              {a.action} {clickable ? '→' : ''}
+            </span>
           </div>
         )
       })}
