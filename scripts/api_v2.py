@@ -16989,6 +16989,78 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Trailing Stop Analysis ────────────────────────────────────────────
+    if base_path == "/api/v2/backtesting/trailing-stop-analysis":
+        try:
+            _q = query or {}
+            strategy_filter = _q.get("strategy")
+            q = """
+                SELECT tsa.trade_id, tsa.symbol, tsa.strategy_id,
+                       tsa.entry_price, tsa.fixed_stop_price, tsa.fixed_pnl_pct,
+                       tsa.high_water_mark, tsa.high_water_pct_gain,
+                       tsa.trail_5pct_pnl, tsa.trail_8pct_pnl,
+                       tsa.trail_10pct_pnl, tsa.trail_15pct_pnl,
+                       tsa.optimal_trail_pct, tsa.optimal_trail_pnl,
+                       tsa.recommendation, tsa.lesson_text,
+                       pt.entry_time::date as trade_date,
+                       pt.exit_price as actual_exit,
+                       pt.pnl as actual_pnl
+                FROM trailing_stop_analysis tsa
+                JOIN paper_trades pt ON pt.id = tsa.trade_id
+            """
+            p = []
+            if strategy_filter:
+                q += " WHERE tsa.strategy_id = %s"
+                p.append(strategy_filter)
+            q += " ORDER BY tsa.analyzed_at DESC LIMIT 100"
+            trades_data = _db_query(q, p) or []
+
+            strategy_recs = _db_query("""
+                SELECT strategy_id,
+                       COUNT(*) as trades,
+                       ROUND(AVG(fixed_pnl_pct)::numeric, 2) as avg_fixed_pnl,
+                       ROUND(AVG(high_water_pct_gain)::numeric, 2) as avg_max_potential,
+                       ROUND((AVG(trail_5pct_pnl)  FILTER (WHERE trail_5pct_pnl  IS NOT NULL))::numeric, 2) as avg_5pct,
+                       ROUND((AVG(trail_8pct_pnl)  FILTER (WHERE trail_8pct_pnl  IS NOT NULL))::numeric, 2) as avg_8pct,
+                       ROUND((AVG(trail_10pct_pnl) FILTER (WHERE trail_10pct_pnl IS NOT NULL))::numeric, 2) as avg_10pct,
+                       ROUND((AVG(trail_15pct_pnl) FILTER (WHERE trail_15pct_pnl IS NOT NULL))::numeric, 2) as avg_15pct,
+                       ROUND(AVG(optimal_trail_pct)::numeric, 1) as avg_optimal_pct,
+                       MODE() WITHIN GROUP (ORDER BY recommendation) as recommended_trail,
+                       ROUND(AVG(CASE WHEN optimal_trail_pct IS NOT NULL
+                                      THEN optimal_trail_pnl - fixed_pnl_pct ELSE 0 END)::numeric, 2) as avg_improvement
+                FROM trailing_stop_analysis
+                GROUP BY strategy_id
+                ORDER BY avg_improvement DESC
+            """) or []
+
+            return 200, {
+                "ok": True,
+                "data": {
+                    "trades": trades_data,
+                    "strategy_recommendations": strategy_recs,
+                    "summary": {
+                        "total_analyzed": len(trades_data),
+                        "strategies_analyzed": len(strategy_recs),
+                        "avg_improvement": round(
+                            sum(float(r.get('avg_improvement') or 0) for r in strategy_recs) /
+                            max(len(strategy_recs), 1), 2
+                        ),
+                    }
+                }
+            }
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/run-trailing-analysis" and method == "POST":
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/trailing_stop_analyzer.py")],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": "Trailing stop analysis started in background"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 32: Unified Self-Improvement Command Center ───────────────
     if base_path in ("/api/v2/self-improvement/status", "/api/v2/self-improvement/summary"):
         try:

@@ -11,29 +11,37 @@ interface BtResult { result_id: number; run_id: string; strategy_id: string; run
 interface BtTrade { simulated_trade_id: string; run_id: string; strategy_id: string; symbol: string; entry_price: number; exit_price: number; pnl: number; r_multiple: number; exit_reason: string }
 interface MissedOpp { proposal_id: number; symbol: string; strategy_id: string; proposal_status: string; proposed_date: string; proposed_entry: number; proposed_target: number; proposed_stop: number; simulated_pnl: number | null; simulated_r: number | null; verdict: 'WOULD_WIN' | 'WOULD_LOSE' | null }
 interface MissedData { total_missed: number; would_win: number; would_lose: number; pnl_left_on_table: number; opportunities: MissedOpp[] }
+interface TrailData {
+  trades: any[]
+  strategy_recommendations: any[]
+  summary: { total_analyzed: number; strategies_analyzed: number; avg_improvement: number }
+}
 
+// ── Null-safe formatters ──
 function wrColor(wr: number) { return wr >= 55 ? '#22c55e' : wr >= 35 ? '#f59e0b' : '#ef4444' }
-function fmt$(n: number) { return (n >= 0 ? '+' : '-') + '$' + Math.abs(n).toFixed(2) }
-function fmtR(n: number) { return (n >= 0 ? '+' : '') + n.toFixed(2) + 'R' }
+function fmt$(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toFixed(2) }
+function fmtR(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '') + v.toFixed(2) + 'R' }
+function safeStr(s: string | null | undefined, fallback = 'unknown') { return (s ?? fallback).replace(/_/g, ' ') }
+function safeNum(n: number | null | undefined) { return Number(n ?? 0) }
 
 const WrTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload
   return (
     <div style={{ background: 'rgba(20,20,30,0.95)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6, color: '#e2e8f0' }}>{label?.replace(/_/g, ' ')}</div>
+      <div style={{ fontWeight: 600, marginBottom: 6, color: '#e2e8f0' }}>{safeStr(label)}</div>
       {d && <>
-        <div style={{ color: wrColor(d.win_rate || d.wr || 0), fontWeight: 600 }}>{(d.win_rate || d.wr || 0).toFixed(1)}% win rate</div>
+        <div style={{ color: wrColor(safeNum(d.win_rate || d.wr)), fontWeight: 600 }}>{safeNum(d.win_rate || d.wr).toFixed(1)}% win rate</div>
         {d.trades != null && <div style={{ color: '#94a3b8' }}>n = {d.trades} trades</div>}
         {d.avg_r != null && <div style={{ color: '#94a3b8' }}>avg R {fmtR(d.avg_r)}</div>}
-        {d.total_pnl != null && <div style={{ color: d.total_pnl >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(d.total_pnl)}</div>}
+        {d.total_pnl != null && <div style={{ color: safeNum(d.total_pnl) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(d.total_pnl)}</div>}
         <div style={{ color: '#64748b', fontSize: 11, marginTop: 6 }}>Click to filter trades</div>
       </>}
     </div>
   )
 }
 
-type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs'
+type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing'
 
 export default function Backtesting() {
   const [status, setStatus] = useState<BtStatus | null>(null)
@@ -41,6 +49,7 @@ export default function Backtesting() {
   const [results, setResults] = useState<BtResult[]>([])
   const [trades, setTrades] = useState<BtTrade[]>([])
   const [missed, setMissed] = useState<MissedData | null>(null)
+  const [trailData, setTrailData] = useState<TrailData | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<TabId>('overview')
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null)
@@ -50,12 +59,13 @@ export default function Backtesting() {
   useEffect(() => {
     (async () => {
       setLoading(true)
-      const [st, ru, re, tr, mi] = await Promise.allSettled([
+      const [st, ru, re, tr, mi, trail] = await Promise.allSettled([
         fetch('/api/v2/backtesting/status').then(r => r.json()),
         fetch('/api/v2/backtesting/runs').then(r => r.json()),
         fetch('/api/v2/backtesting/results').then(r => r.json()),
         fetch('/api/v2/backtesting/trades').then(r => r.json()),
         fetch('/api/v2/backtesting/missed-opportunities').then(r => r.json()),
+        fetch('/api/v2/backtesting/trailing-stop-analysis').then(r => r.json()).catch(() => ({ ok: false })),
       ])
       if (st.status === 'fulfilled') setStatus(st.value.data ?? st.value)
       if (ru.status === 'fulfilled') setRuns(ru.value.data ?? [])
@@ -63,11 +73,20 @@ export default function Backtesting() {
         const raw: BtResult[] = re.value.data ?? []
         setResults(raw.map(r => ({
           ...r,
-          equity_curve: r.equity_curve_json ? (() => { try { return JSON.parse(r.equity_curve_json!) } catch { return [] } })() : [],
+          equity_curve: (() => {
+            if (!r.equity_curve_json) return []
+            try {
+              const parsed = typeof r.equity_curve_json === 'string'
+                ? JSON.parse(r.equity_curve_json)
+                : r.equity_curve_json
+              return Array.isArray(parsed) ? parsed : []
+            } catch { return [] }
+          })(),
         })))
       }
       if (tr.status === 'fulfilled') setTrades(tr.value.data ?? [])
       if (mi.status === 'fulfilled' && mi.value.ok) setMissed(mi.value.data)
+      if (trail.status === 'fulfilled' && trail.value?.ok) setTrailData(trail.value.data)
       setLoading(false)
     })()
   }, [])
@@ -79,18 +98,24 @@ export default function Backtesting() {
       if (!s || s === 'unknown') return
       if (!m[s]) m[s] = { n: 0, wins: 0, pnl: 0, rs: [] }
       m[s].n++
-      if ((t.pnl ?? 0) > 0) m[s].wins++
-      m[s].pnl += Number(t.pnl ?? 0)
-      if (t.r_multiple != null) m[s].rs.push(Number(t.r_multiple))
+      if (safeNum(t.pnl) > 0) m[s].wins++
+      m[s].pnl += safeNum(t.pnl)
+      if (t.r_multiple != null) m[s].rs.push(safeNum(t.r_multiple))
     })
-    return Object.entries(m).map(([strategy, v]) => ({
-      strategy, trades: v.n,
-      win_rate: v.n > 0 ? Math.round(100 * v.wins / v.n) : 0,
-      wr: v.n > 0 ? Math.round(100 * v.wins / v.n) : 0,
-      total_pnl: Math.round(v.pnl * 100) / 100,
-      avg_r: v.rs.length > 0 ? Math.round(v.rs.reduce((a, b) => a + b, 0) / v.rs.length * 100) / 100 : 0,
-    })).sort((a, b) => b.win_rate - a.win_rate)
-  }, [trades])
+    return Object.entries(m).map(([strategy, v]) => {
+      const bestResult = results.find(r => r.strategy_id === strategy)
+      return {
+        strategy, trades: v.n,
+        win_rate: v.n > 0 ? Math.round(100 * v.wins / v.n) : 0,
+        wr: v.n > 0 ? Math.round(100 * v.wins / v.n) : 0,
+        total_pnl: Math.round(v.pnl * 100) / 100,
+        avg_r: v.rs.length > 0 ? Math.round(v.rs.reduce((a, b) => a + b, 0) / v.rs.length * 100) / 100 : 0,
+        profit_factor: bestResult?.profit_factor ?? null,
+        expectancy_r: bestResult?.expectancy_r ?? null,
+        max_drawdown: bestResult?.max_drawdown_pct ?? null,
+      }
+    }).sort((a, b) => b.win_rate - a.win_rate)
+  }, [trades, results])
 
   const filteredTrades = useMemo(() => selectedStrategy ? trades.filter(t => t.strategy_id === selectedStrategy) : trades, [trades, selectedStrategy])
 
@@ -100,7 +125,7 @@ export default function Backtesting() {
       { label: '<-2R', min: -99, max: -2 }, { label: '-2 to -1', min: -2, max: -1 },
       { label: '-1 to 0', min: -1, max: 0 }, { label: '0 to 1', min: 0, max: 1 },
       { label: '1 to 2', min: 1, max: 2 }, { label: '>2R', min: 2, max: 99 },
-    ].map(b => ({ ...b, count: src.filter(t => t.r_multiple != null && t.r_multiple > b.min && t.r_multiple <= b.max).length }))
+    ].map(b => ({ ...b, count: src.filter(t => t.r_multiple != null && safeNum(t.r_multiple) > b.min && safeNum(t.r_multiple) <= b.max).length }))
   }, [trades, selectedStrategy])
 
   const flagged = strategyStats.filter(s => s.win_rate < 35 && s.trades >= 3)
@@ -124,6 +149,7 @@ export default function Backtesting() {
     { id: 'missed', label: `Missed (${missed?.total_missed ?? 0})` },
     { id: 'results', label: `Results (${results.length})` },
     { id: 'runs', label: `Runs (${runs.length})` },
+    { id: 'trailing', label: `Trail Analysis (${trailData?.summary?.total_analyzed ?? 0})` },
   ]
 
   return (
@@ -165,14 +191,14 @@ export default function Backtesting() {
       {flagged.length > 0 && (
         <div style={{ display: 'flex', gap: 10, padding: '10px 16px', marginBottom: 16, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, fontSize: 12, color: '#fca5a5' }}>
           <span style={{ color: '#f87171' }}>Warning</span>
-          <span><strong>Low win rate: </strong>{flagged.map(s => `${s.strategy.replace(/_/g, ' ')} ${s.win_rate}%`).join(' | ')}</span>
+          <span><strong>Low win rate: </strong>{flagged.map(s => `${safeStr(s.strategy)} ${s.win_rate}%`).join(' | ')}</span>
         </div>
       )}
 
       {/* Filter chip */}
       {selectedStrategy && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 12px', marginBottom: 14, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: 20, fontSize: 12, color: '#a5b4fc' }}>
-          <span>Filtered: <strong>{selectedStrategy.replace(/_/g, ' ')}</strong></span>
+          <span>Filtered: <strong>{safeStr(selectedStrategy)}</strong></span>
           <button onClick={() => setSelectedStrategy(null)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 14, padding: 0 }}>x</button>
         </div>
       )}
@@ -198,7 +224,7 @@ export default function Backtesting() {
               <BarChart data={strategyStats} layout="vertical" margin={{ top: 0, right: 50, bottom: 0, left: 150 }} onClick={handleStrategyClick} style={{ cursor: 'pointer' }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.06)" />
                 <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} axisLine={{ stroke: 'rgba(255,255,255,0.1)' }} tickLine={false} />
-                <YAxis dataKey="strategy" type="category" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.6)' }} width={148} tickFormatter={s => s.replace(/_/g, ' ')} axisLine={false} tickLine={false} />
+                <YAxis dataKey="strategy" type="category" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.6)' }} width={148} tickFormatter={s => safeStr(s)} axisLine={false} tickLine={false} />
                 <Tooltip content={<WrTooltip />} />
                 <ReferenceLine x={50} stroke="rgba(245,158,11,0.4)" strokeDasharray="4 2" />
                 <Bar dataKey="win_rate" radius={[0, 4, 4, 0]}>
@@ -227,7 +253,7 @@ export default function Backtesting() {
                 {[
                   { label: 'Would win', value: missed?.would_win ?? 0, color: '#4ade80' },
                   { label: 'Would lose', value: missed?.would_lose ?? 0, color: '#f87171' },
-                  { label: 'Left on table', value: `$${(missed?.pnl_left_on_table ?? 0).toFixed(2)}`, color: '#fbbf24' },
+                  { label: 'Left on table', value: `$${safeNum(missed?.pnl_left_on_table).toFixed(2)}`, color: '#fbbf24' },
                 ].map(k => (
                   <div key={k.label} style={{ textAlign: 'center', padding: '10px 8px', background: 'rgba(255,255,255,0.04)', borderRadius: 8 }}>
                     <div style={{ fontSize: 22, fontWeight: 600, color: k.color }}>{k.value}</div>
@@ -247,12 +273,12 @@ export default function Backtesting() {
           <div style={secTitle}>Strategy performance — click row to filter trades</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              {['Strategy', 'Trades', 'Win rate', 'Avg R', 'Total P&L'].map(h => <th key={h} style={{ textAlign: h === 'Strategy' ? 'left' : 'right', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{h}</th>)}
+              {['Strategy', 'Trades', 'Win rate', 'Avg R', 'Total P&L', 'Profit Factor', 'Exp R', 'Max DD'].map(h => <th key={h} style={{ textAlign: h === 'Strategy' ? 'left' : 'right', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{h}</th>)}
             </tr></thead>
             <tbody>{strategyStats.map(s => (
               <tr key={s.strategy} onClick={() => { setSelectedStrategy(p => p === s.strategy ? null : s.strategy); setTab('trades') }}
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', background: selectedStrategy === s.strategy ? 'rgba(99,102,241,0.1)' : 'transparent' }}>
-                <td style={{ padding: '10px 12px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{s.strategy.replace(/_/g, ' ')}</td>
+                <td style={{ padding: '10px 12px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{safeStr(s.strategy)}</td>
                 <td style={{ padding: '10px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{s.trades}</td>
                 <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
@@ -264,6 +290,15 @@ export default function Backtesting() {
                 </td>
                 <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 13, fontWeight: 500, color: s.avg_r >= 0 ? '#4ade80' : '#f87171' }}>{fmtR(s.avg_r)}</td>
                 <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 13, fontWeight: 500, color: s.total_pnl >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(s.total_pnl)}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: s.profit_factor != null ? (safeNum(s.profit_factor) >= 1.5 ? '#4ade80' : safeNum(s.profit_factor) >= 1 ? '#fbbf24' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
+                  {s.profit_factor != null ? safeNum(s.profit_factor).toFixed(2) : '—'}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: s.expectancy_r != null ? (safeNum(s.expectancy_r) >= 0 ? '#86efac' : '#fca5a5') : 'rgba(255,255,255,0.25)' }}>
+                  {s.expectancy_r != null ? fmtR(s.expectancy_r) : '—'}
+                </td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12, color: s.max_drawdown != null ? '#f87171' : 'rgba(255,255,255,0.25)' }}>
+                  {s.max_drawdown != null ? `${safeNum(s.max_drawdown).toFixed(1)}%` : '—'}
+                </td>
               </tr>
             ))}</tbody>
           </table>
@@ -275,7 +310,7 @@ export default function Backtesting() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <div style={secTitle}>R-multiple distribution{selectedStrategy ? ` — ${selectedStrategy.replace(/_/g, ' ')}` : ''}</div>
+              <div style={secTitle}>R-multiple distribution{selectedStrategy ? ` — ${safeStr(selectedStrategy)}` : ''}</div>
               {selectedStrategy && <button onClick={() => setSelectedStrategy(null)} style={{ fontSize: 11, color: 'rgba(160,160,255,0.7)', background: 'none', border: '1px solid rgba(100,100,255,0.3)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>Clear filter</button>}
             </div>
             <ResponsiveContainer width="100%" height={160}>
@@ -296,12 +331,12 @@ export default function Backtesting() {
                 </tr></thead>
                 <tbody>{filteredTrades.map(t => (
                   <tr key={t.simulated_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '8px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{t.strategy_id.replace(/_/g, ' ')}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${Number(t.entry_price).toFixed(2)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${Number(t.exit_price).toFixed(2)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: (t.pnl ?? 0) >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(t.pnl ?? 0)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: (t.r_multiple ?? 0) >= 0 ? '#86efac' : '#fca5a5' }}>{fmtR(t.r_multiple ?? 0)}</td>
+                    <td style={{ padding: '8px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
+                    <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.entry_price).toFixed(2)}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.exit_price).toFixed(2)}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: safeNum(t.pnl) >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(t.pnl)}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', color: safeNum(t.r_multiple) >= 0 ? '#86efac' : '#fca5a5' }}>{fmtR(t.r_multiple)}</td>
                     <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{t.exit_reason || '—'}</td>
                   </tr>
                 ))}</tbody>
@@ -318,7 +353,7 @@ export default function Backtesting() {
             {[
               { label: 'Would have won', value: missed.would_win, color: '#4ade80', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.25)' },
               { label: 'Would have lost', value: missed.would_lose, color: '#f87171', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.25)' },
-              { label: 'P&L left on table', value: `$${missed.pnl_left_on_table.toFixed(2)}`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.25)' },
+              { label: 'P&L left on table', value: `$${safeNum(missed.pnl_left_on_table).toFixed(2)}`, color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', border: 'rgba(251,191,36,0.25)' },
             ].map(k => (
               <div key={k.label} style={{ background: k.bg, border: `1px solid ${k.border}`, borderRadius: 12, padding: 20, textAlign: 'center' }}>
                 <div style={{ fontSize: 32, fontWeight: 700, color: k.color }}>{k.value}</div>
@@ -327,23 +362,23 @@ export default function Backtesting() {
             ))}
           </div>
           <div style={card}>
-            <div style={secTitle}>All {missed.opportunities.length} missed proposals</div>
+            <div style={secTitle}>All {(missed.opportunities ?? []).length} missed proposals</div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                   {['Date', 'Symbol', 'Strategy', 'Status', 'Entry', 'Target', 'Stop', 'Sim P&L', 'Sim R', 'Outcome'].map(h => <th key={h} style={{ textAlign: ['Date', 'Symbol', 'Strategy', 'Status', 'Outcome'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>)}
                 </tr></thead>
-                <tbody>{missed.opportunities.map(o => (
+                <tbody>{(missed.opportunities ?? []).map(o => (
                   <tr key={o.proposal_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: o.verdict === 'WOULD_WIN' ? 'rgba(34,197,94,0.03)' : 'transparent' }}>
-                    <td style={{ padding: '7px 10px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{o.proposed_date}</td>
-                    <td style={{ padding: '7px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{o.symbol}</td>
-                    <td style={{ padding: '7px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{o.strategy_id.replace(/_/g, ' ')}</td>
-                    <td style={{ padding: '7px 10px' }}><span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: o.proposal_status.toLowerCase().includes('exp') ? 'rgba(251,191,36,0.15)' : 'rgba(239,68,68,0.15)', color: o.proposal_status.toLowerCase().includes('exp') ? '#fbbf24' : '#f87171' }}>{o.proposal_status}</span></td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>${Number(o.proposed_entry || 0).toFixed(2)}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>${Number(o.proposed_target || 0).toFixed(2)}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>${Number(o.proposed_stop || 0).toFixed(2)}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: o.simulated_pnl == null ? 'rgba(255,255,255,0.25)' : o.simulated_pnl >= 0 ? '#4ade80' : '#f87171' }}>{o.simulated_pnl == null ? '—' : fmt$(o.simulated_pnl)}</td>
-                    <td style={{ padding: '7px 10px', textAlign: 'right', color: o.simulated_r == null ? 'rgba(255,255,255,0.25)' : o.simulated_r >= 0 ? '#86efac' : '#fca5a5' }}>{o.simulated_r == null ? '—' : fmtR(o.simulated_r)}</td>
+                    <td style={{ padding: '7px 10px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{o.proposed_date ?? '—'}</td>
+                    <td style={{ padding: '7px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{o.symbol ?? '—'}</td>
+                    <td style={{ padding: '7px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(o.strategy_id)}</td>
+                    <td style={{ padding: '7px 10px' }}><span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: (o.proposal_status ?? '').toLowerCase().includes('exp') ? 'rgba(251,191,36,0.15)' : 'rgba(239,68,68,0.15)', color: (o.proposal_status ?? '').toLowerCase().includes('exp') ? '#fbbf24' : '#f87171' }}>{o.proposal_status ?? '—'}</span></td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>${safeNum(o.proposed_entry).toFixed(2)}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>${safeNum(o.proposed_target).toFixed(2)}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>${safeNum(o.proposed_stop).toFixed(2)}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: o.simulated_pnl == null ? 'rgba(255,255,255,0.25)' : safeNum(o.simulated_pnl) >= 0 ? '#4ade80' : '#f87171' }}>{o.simulated_pnl == null ? '—' : fmt$(o.simulated_pnl)}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: o.simulated_r == null ? 'rgba(255,255,255,0.25)' : safeNum(o.simulated_r) >= 0 ? '#86efac' : '#fca5a5' }}>{o.simulated_r == null ? '—' : fmtR(o.simulated_r)}</td>
                     <td style={{ padding: '7px 10px' }}>{o.verdict === 'WOULD_WIN' ? <span style={{ color: '#4ade80', fontWeight: 600, fontSize: 11 }}>Win</span> : o.verdict === 'WOULD_LOSE' ? <span style={{ color: '#f87171', fontSize: 11 }}>Loss</span> : <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>—</span>}</td>
                   </tr>
                 ))}</tbody>
@@ -360,14 +395,14 @@ export default function Backtesting() {
             <div style={card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                 <div>
-                  <div style={secTitle}>Equity curve — {selectedResult.strategy_id?.replace(/_/g, ' ')}</div>
+                  <div style={secTitle}>Equity curve — {safeStr(selectedResult.strategy_id)}</div>
                   <div style={{ display: 'flex', gap: 16, marginTop: -10 }}>
                     {[
-                      { l: 'Win rate', v: `${selectedResult.win_rate?.toFixed(1)}%`, c: wrColor(selectedResult.win_rate ?? 0) },
-                      { l: 'PF', v: selectedResult.profit_factor?.toFixed(2) ?? '—', c: '#e2e8f0' },
-                      { l: 'P&L', v: fmt$(selectedResult.total_pnl ?? 0), c: (selectedResult.total_pnl ?? 0) >= 0 ? '#4ade80' : '#f87171' },
-                      { l: 'Max DD', v: `${selectedResult.max_drawdown_pct?.toFixed(1) ?? '—'}%`, c: '#f87171' },
-                      { l: 'Exp R', v: fmtR(selectedResult.expectancy_r ?? 0), c: (selectedResult.expectancy_r ?? 0) >= 0 ? '#86efac' : '#fca5a5' },
+                      { l: 'Win rate', v: `${safeNum(selectedResult.win_rate).toFixed(1)}%`, c: wrColor(safeNum(selectedResult.win_rate)) },
+                      { l: 'PF', v: selectedResult.profit_factor != null ? safeNum(selectedResult.profit_factor).toFixed(2) : '—', c: '#e2e8f0' },
+                      { l: 'P&L', v: fmt$(selectedResult.total_pnl), c: safeNum(selectedResult.total_pnl) >= 0 ? '#4ade80' : '#f87171' },
+                      { l: 'Max DD', v: selectedResult.max_drawdown_pct != null ? `${safeNum(selectedResult.max_drawdown_pct).toFixed(1)}%` : '—', c: '#f87171' },
+                      { l: 'Exp R', v: fmtR(selectedResult.expectancy_r), c: safeNum(selectedResult.expectancy_r) >= 0 ? '#86efac' : '#fca5a5' },
                     ].map(k => <div key={k.l} style={{ textAlign: 'center' }}><div style={{ fontSize: 16, fontWeight: 600, color: k.c }}>{k.v}</div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{k.l}</div></div>)}
                   </div>
                 </div>
@@ -375,12 +410,12 @@ export default function Backtesting() {
               </div>
               <ResponsiveContainer width="100%" height={180}>
                 <AreaChart data={selectedResult.equity_curve} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-                  <defs><linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={(selectedResult.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444'} stopOpacity={0.3} /><stop offset="95%" stopColor={(selectedResult.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444'} stopOpacity={0} /></linearGradient></defs>
+                  <defs><linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={safeNum(selectedResult.total_pnl) >= 0 ? '#22c55e' : '#ef4444'} stopOpacity={0.3} /><stop offset="95%" stopColor={safeNum(selectedResult.total_pnl) >= 0 ? '#22c55e' : '#ef4444'} stopOpacity={0} /></linearGradient></defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                   <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.3)' }} tickFormatter={d => d?.slice(5) || d} interval="preserveStartEnd" axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={v => `$${Number(v).toFixed(0)}`} tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={v => `$${safeNum(v).toFixed(0)}`} tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.3)' }} axisLine={false} tickLine={false} />
                   <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="3 3" />
-                  <Area type="monotone" dataKey="value" dot={false} stroke={(selectedResult.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444'} fill="url(#curveGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="value" dot={false} stroke={safeNum(selectedResult.total_pnl) >= 0 ? '#22c55e' : '#ef4444'} fill="url(#curveGrad)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -394,24 +429,24 @@ export default function Backtesting() {
                   style={{ ...card, cursor: 'pointer', border: sel ? '1px solid rgba(99,102,241,0.6)' : '1px solid rgba(255,255,255,0.08)', background: sel ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.04)', padding: '14px 16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                     <div>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: wrColor(r.win_rate ?? 0), lineHeight: 1 }}>{(r.win_rate ?? 0).toFixed(1)}%</div>
-                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>{r.strategy_id?.replace(/_/g, ' ')?.slice(0, 22)}</div>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: wrColor(safeNum(r.win_rate)), lineHeight: 1 }}>{safeNum(r.win_rate).toFixed(1)}%</div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>{safeStr(r.strategy_id)?.slice(0, 22)}</div>
                     </div>
-                    <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: 'rgba(34,197,94,0.12)', color: '#86efac' }}>{r.run_type?.replace(/_/g, ' ')}</span>
+                    <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: 'rgba(34,197,94,0.12)', color: '#86efac' }}>{safeStr(r.run_type)}</span>
                   </div>
                   <div style={{ height: 4, borderRadius: 2, overflow: 'hidden', background: 'rgba(239,68,68,0.3)', marginBottom: 8 }}>
                     <div style={{ height: '100%', width: `${winPct}%`, borderRadius: 2, background: '#22c55e' }} />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
                     <span>{r.wins}W / {r.losses}L</span>
-                    <span style={{ color: (r.total_pnl ?? 0) >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(r.total_pnl ?? 0)}</span>
+                    <span style={{ color: safeNum(r.total_pnl) >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(r.total_pnl)}</span>
                   </div>
                   {r.equity_curve && r.equity_curve.length > 2 && (
                     <div style={{ marginTop: 8, height: 36 }}>
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={r.equity_curve}>
                           <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)" />
-                          <Line type="monotone" dataKey="value" dot={false} stroke={(r.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444'} strokeWidth={1.5} />
+                          <Line type="monotone" dataKey="value" dot={false} stroke={safeNum(r.total_pnl) >= 0 ? '#22c55e' : '#ef4444'} strokeWidth={1.5} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -435,22 +470,165 @@ export default function Backtesting() {
                   background: runFilter === f ? 'rgba(99,102,241,0.2)' : 'transparent',
                   border: runFilter === f ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
                   color: runFilter === f ? '#a5b4fc' : 'rgba(255,255,255,0.4)',
-                }}>{f === 'all' ? 'All' : f.replace(/_/g, ' ')}</button>
+                }}>{f === 'all' ? 'All' : safeStr(f)}</button>
               ))}
             </div>
           </div>
           {runs.filter(r => runFilter === 'all' || r.run_type === runFilter).map(r => (
             <div key={r.run_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', marginBottom: 4, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600, background: r.run_type === 'replay_trades' ? 'rgba(34,197,94,0.15)' : 'rgba(139,92,246,0.15)', color: r.run_type === 'replay_trades' ? '#86efac' : '#c4b5fd' }}>{r.run_type.replace(/_/g, ' ')}</span>
-                <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{r.strategy_id?.replace(/_/g, ' ')}</span>
+                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600, background: r.run_type === 'replay_trades' ? 'rgba(34,197,94,0.15)' : 'rgba(139,92,246,0.15)', color: r.run_type === 'replay_trades' ? '#86efac' : '#c4b5fd' }}>{safeStr(r.run_type)}</span>
+                <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{safeStr(r.strategy_id)}</span>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.start_date} - {r.end_date}</div>
-                <div style={{ fontSize: 11, color: '#4ade80', marginTop: 2 }}>{r.status}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.start_date ?? '—'} - {r.end_date ?? '—'}</div>
+                <div style={{ fontSize: 11, color: '#4ade80', marginTop: 2 }}>{r.status ?? '—'}</div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TRAIL ANALYSIS */}
+      {tab === 'trailing' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {(!trailData || (trailData.trades?.length ?? 0) === 0) ? (
+            <div style={{ ...card, textAlign: 'center', padding: '40px 24px' }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>
+                Trailing Stop Analysis Not Yet Run
+              </div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 20, maxWidth: 500, margin: '0 auto 20px' }}>
+                Simulates what would have happened if fixed stops were replaced with trailing stops (5%, 8%, 10%, 15%) for each closed trade. Fetches historical price data to find the high-water mark and determines the optimal trail percentage per strategy.
+              </div>
+              <button
+                onClick={() => {
+                  fetch('/api/v2/backtesting/run-trailing-analysis', { method: 'POST' })
+                    .then(() => alert('Trailing analysis started. Refresh in a few minutes.'))
+                    .catch(console.error)
+                }}
+                style={{
+                  padding: '10px 24px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  background: 'rgba(99,102,241,0.2)', color: '#a5b4fc',
+                  border: '1px solid rgba(99,102,241,0.4)', cursor: 'pointer',
+                }}
+              >
+                Run Trailing Stop Analysis
+              </button>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 12 }}>
+                Or run manually: <code>python3 scripts/trailing_stop_analyzer.py</code>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Strategy recommendations table */}
+              <div style={card}>
+                <div style={secTitle}>Strategy trailing stop recommendations</div>
+                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 16, marginTop: -8 }}>
+                  Based on {trailData.summary?.total_analyzed ?? 0} closed trades. Shows whether trailing stops would have improved outcomes vs fixed stops.
+                </p>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                      {['Strategy', 'Trades', 'Avg fixed P&L', 'Max potential', '5% trail', '8% trail', 'Optimal %', 'Improvement', 'Recommendation'].map(h => (
+                        <th key={h} style={{
+                          textAlign: h === 'Strategy' || h === 'Recommendation' ? 'left' : 'right',
+                          padding: '8px 10px', fontSize: 10, fontWeight: 600,
+                          color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '.05em',
+                        }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(trailData.strategy_recommendations || []).map((rec: any) => (
+                      <tr key={rec.strategy_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        <td style={{ padding: '9px 10px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{safeStr(rec.strategy_id)}</td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{rec.trades}</td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_fixed_pnl) >= 0 ? '#4ade80' : '#f87171' }}>
+                          {safeNum(rec.avg_fixed_pnl).toFixed(1)}%
+                        </td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>
+                          {safeNum(rec.avg_max_potential).toFixed(1)}%
+                        </td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_5pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>
+                          {rec.avg_5pct != null ? `${safeNum(rec.avg_5pct).toFixed(1)}%` : '—'}
+                        </td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_8pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>
+                          {rec.avg_8pct != null ? `${safeNum(rec.avg_8pct).toFixed(1)}%` : '—'}
+                        </td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#818cf8' }}>
+                          {rec.avg_optimal_pct != null ? `${safeNum(rec.avg_optimal_pct).toFixed(0)}%` : '—'}
+                        </td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 600, fontSize: 13, color: safeNum(rec.avg_improvement) > 0 ? '#4ade80' : '#f87171' }}>
+                          {safeNum(rec.avg_improvement) > 0 ? '+' : ''}{safeNum(rec.avg_improvement).toFixed(1)}%
+                        </td>
+                        <td style={{ padding: '9px 10px' }}>
+                          <span style={{
+                            fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
+                            background: (rec.recommended_trail ?? '') === 'keep_fixed' ? 'rgba(156,163,175,0.15)' : 'rgba(99,102,241,0.2)',
+                            color: (rec.recommended_trail ?? '') === 'keep_fixed' ? '#9ca3af' : '#a5b4fc',
+                          }}>
+                            {safeStr(rec.recommended_trail, '—')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Per-trade detail */}
+              <div style={card}>
+                <div style={secTitle}>Trade-by-trade trailing stop analysis</div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                        {['Symbol', 'Strategy', 'Fixed stop P&L', 'Max potential', '5% trail', '8% trail', '10% trail', 'Optimal', 'Lesson'].map(h => (
+                          <th key={h} style={{
+                            textAlign: ['Symbol', 'Strategy', 'Lesson'].includes(h) ? 'left' : 'right',
+                            padding: '7px 8px', fontSize: 10, fontWeight: 600,
+                            color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '.05em',
+                          }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(trailData.trades || []).map((t: any) => (
+                        <tr key={t.trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '7px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
+                          <td style={{ padding: '7px 8px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
+                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: safeNum(t.fixed_pnl_pct) >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                            {safeNum(t.fixed_pnl_pct).toFixed(1)}%
+                          </td>
+                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>
+                            +{safeNum(t.high_water_pct_gain).toFixed(1)}%
+                          </td>
+                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_5pct_pnl != null ? (safeNum(t.trail_5pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
+                            {t.trail_5pct_pnl != null ? `${safeNum(t.trail_5pct_pnl).toFixed(1)}%` : '—'}
+                          </td>
+                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_8pct_pnl != null ? (safeNum(t.trail_8pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
+                            {t.trail_8pct_pnl != null ? `${safeNum(t.trail_8pct_pnl).toFixed(1)}%` : '—'}
+                          </td>
+                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_10pct_pnl != null ? (safeNum(t.trail_10pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
+                            {t.trail_10pct_pnl != null ? `${safeNum(t.trail_10pct_pnl).toFixed(1)}%` : '—'}
+                          </td>
+                          <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, color: '#818cf8', fontSize: 12 }}>
+                            {t.optimal_trail_pct != null
+                              ? `${safeNum(t.optimal_trail_pct).toFixed(0)}% → ${safeNum(t.optimal_trail_pnl).toFixed(1)}%`
+                              : 'Fixed best'}
+                          </td>
+                          <td style={{ padding: '7px 8px', maxWidth: 200, fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'normal', lineHeight: 1.4 }}>
+                            {t.lesson_text ? (String(t.lesson_text).slice(0, 120) + (String(t.lesson_text).length > 120 ? '...' : '')) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
