@@ -42,7 +42,7 @@ def _get_stop_overrides() -> set:
     if _t.time() - _override_cache["ts"] < 60:
         return _override_cache["symbols"]
     try:
-        rows = _db_query("SELECT DISTINCT symbol FROM stop_decisions WHERE decision='HOLD_OVERRIDE' AND decided_at > NOW() - INTERVAL '24 hours'") or []
+        rows = _db_query("SELECT DISTINCT symbol FROM stop_decisions WHERE decision='HOLD_OVERRIDE' AND decided_at > NOW() - INTERVAL '96 hours'") or []
         syms = {r["symbol"] for r in rows}
         sn = _db_query("SELECT symbol FROM stop_snooze WHERE snoozed_until > NOW()") or []
         syms.update(r["symbol"] for r in sn)
