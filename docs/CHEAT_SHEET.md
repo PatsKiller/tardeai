@@ -1,6 +1,6 @@
 # Trade AI v12 -- Operator Cheat Sheet
 
-**Last updated:** 2026-05-20
+**Last updated:** 2026-05-21
 **POST-AUDIT-OPS-1:** 5/5 FIXED (REGIME-CRON-1, AGENT-WORKER-1, LLM-FIX-1, COUNT-TRUTH-1, ATTR-1)
 **Remaining:** A-5 final review after 2026-05-22
 
@@ -68,10 +68,13 @@ grep LIVE_TRADING .env    # Must show: false
 
 ---
 
-## Proposal Alert System (Telegram)
+## Real-Time Alert System (Telegram)
+
+**Architecture:** Proposal alerts fire immediately on creation (inline hook). Replies detected
+via long-poll daemon (1-2 sec). Stop proximity checks every 2 min. End-to-end latency: ~10 sec.
 
 ```bash
-# Telegram commands (in proposal decisions group or standard chat)
+# ── Proposal Commands ──
 /ptpending                          # List all PENDING proposals
 /ptapprove 1234                     # Approve as proposed
 /ptapprove 1234 shares=200          # Approve with share override
@@ -79,8 +82,22 @@ grep LIVE_TRADING .env    # Must show: false
 /ptreject 1234 too volatile         # Reject with reason
 /ptstatus 1234                      # Show proposal details
 
-# Inline buttons on alerts (callback_data, works from cellular):
+# Inline buttons on proposal alerts:
 # [Approve] [Reject] [½× Shares] [2× Shares] [More Info]
+
+# ── Stop Proximity Alert Buttons (on near-stop alerts) ──
+# [🛑 Stop Out Now] [📉 Trail 5%]
+# [📉 Trail 8%]     [⏸ Hold]
+# Stop Out: immediately closes position at market + updates Alpaca
+# Trail X%: switches to trailing stop X% below current price (stops only move UP)
+# Hold: logs decision, continues monitoring
+
+# ── Stop Decision Commands ──
+/stopexit RTX                       # Honor stop, record EXIT
+/stophold RTX                       # Override, record HOLD
+/stopdelay RTX 30                   # Snooze alert 30 min
+/stopset RTX stop=178.50            # Move stop to specific price
+paper status                        # List pending proposals
 
 # Alert throttling: 30-min cooldown per (proposal, alert_type), max 5 total
 # Auto-expiry: TARGET_HIT_BEFORE_APPROVAL, OVER_ALERTED (5+ alerts, 2h+)
@@ -92,26 +109,16 @@ grep LIVE_TRADING .env    # Must show: false
 # Dashboard URLs (Tailscale HTTPS — works from cellular):
 # v2 Dashboard:  https://ms01-openclaw.tail163d14.ts.net/
 # DOF Auctions:  https://ms01-openclaw.tail163d14.ts.net:8443/
-# Alerts include "Open in Dashboard" button when TAILSCALE_HOSTNAME is set
 
-# Stop decision commands (in proposal decisions group):
-/stopexit RTX                       # Honor stop, record EXIT
-/stophold RTX                       # Override, record HOLD
-/stopdelay RTX 30                   # Snooze alert 30 min
-/stopset RTX stop=178.50            # Move stop to specific price
-paper status                        # List pending proposals
-
-# Stop alert buttons (on triggered stop alerts):
-# [Honor Stop (Exit)] [Override (Hold)]
-# [Postpone 30m] [Postpone 2h]
-# [Tighten Stop] [Loosen Stop 5%]
-# [More Context] [Open in Dashboard]
-
-# Callback poller (processes button presses + commands):
-# Runs as daemon, cron keepalive every 2 min
+# ── Telegram Daemon Status ──
 pgrep -f 'run_telegram_callback_poller.py' || echo "NOT RUNNING"
 # Manual start:
 bash scripts/run_telegram_poller_daemon.sh &
+
+# ── Trailing Stop Analysis ──
+# Run for all closed trades (backfill):
+.venv/bin/python scripts/trailing_stop_analyzer.py
+# Results visible in Backtesting > Trail Analysis tab
 ```
 
 ---

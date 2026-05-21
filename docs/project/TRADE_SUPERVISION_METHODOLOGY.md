@@ -2,7 +2,7 @@
 
 How the Trade AI v12 system monitors active positions, generates execution adjustments, conducts after-hours research, and carries insights forward into the next trading session.
 
-**Last verified:** 2026-05-11 (Session 38)  
+**Last verified:** 2026-05-21 (Real-time alerts, stop proximity buttons, 2-min monitoring)  
 **Source of truth:** Actual crontab, script source code, and Alpaca API integration  
 **Sections:** 17 (monitoring, alerts, execution, pre-market, intraday, after-hours, regime, MFE/MAE, page, data hygiene, gaps)
 
@@ -14,12 +14,14 @@ Trade supervision operates on four concurrent layers:
 
 | Layer | Frequency | Hours (ET) | Purpose |
 |-------|-----------|------------|---------|
-| **Position Management** | Every 5 min | 9:00 AM - 4:00 PM | Stop-hit/target-hit auto-close, trailing stops, P&L sync |
-| **Situational Alerts** | Every 15 min | Market hours | Near-stop, negative news, staleness, volume |
+| **Position Management** | Every 2 min | 9:00 AM - 4:00 PM | Stop-hit/target-hit auto-close, trailing stops, P&L sync |
+| **Situational Alerts** | Every 2 min | Market hours | Near-stop (graduated), negative news, staleness, volume |
+| **Proposal Alerts** | Real-time (immediate) | Market hours | Telegram alert with action buttons within seconds of proposal creation |
+| **Telegram Reply Detection** | Real-time (long-poll) | 24/7 | Operator replies detected within 1-2 seconds via persistent daemon |
 | **Execution Safety Net** | Every 5 min | 9:00 AM - 4:00 PM | Submit approved-but-unexecuted proposals |
 | **Post-Close Analysis** | On close + nightly + weekly + monthly | Various | Multi-tier LLM reviews, learning loop |
 
-All monitoring layers are **time-sliced cron jobs**, not event-driven. Between intervals, positions are protected by bracket orders on Alpaca (limit entry + stop-loss + take-profit) which execute at the broker level regardless of whether our system is running.
+Monitoring uses a **hybrid architecture**: position management and situational alerts run on 2-minute cron cycles, while proposal alerts fire immediately via an inline hook in `auto_proposal_generator.py`. Telegram replies are detected in real-time via a persistent long-poll daemon (`run_telegram_callback_poller.py`). Between intervals, positions are protected by bracket orders on Alpaca (limit entry + stop-loss + take-profit) which execute at the broker level regardless of whether our system is running.
 
 ### Post-Close Analysis Layer
 
@@ -91,14 +93,14 @@ The monitor checks these conditions in priority order. Stop-hit and target-hit a
 
 ### R-Multiple Trailing Stop Rules
 
-Stops only move UP (profit protection), never down. Current implementation uses a single threshold:
+Stops only move UP (profit protection), never down. 4-tier system enforced in `open_trade_monitor.py`:
 
 | Condition | New Stop Level | Effect | Status |
 |-----------|---------------|--------|--------|
-| R >= 1.0 | Entry + 50% of gains | Locks half of profit | **Enforced** in `open_trade_monitor.py` |
-| R >= 1.5 | Entry + 0.5R | Locks 0.5R profit | Planned (not yet enforced) |
-| R >= 2.0 | Entry + 1.0R | Locks 1.0R profit | Planned |
-| R >= 3.0 | Entry + 2.0R | Tight trail, locks 2.0R | Planned |
+| R >= 1.0 | Entry (breakeven) | Eliminates loss risk | **Enforced** |
+| R >= 1.5 | Entry + 0.5R | Locks 0.5R profit | **Enforced** |
+| R >= 2.0 | Entry + 1.0R | Locks 1.0R profit | **Enforced** |
+| R >= 3.0 | Entry + 2.0R | Tight trail, locks 2.0R | **Enforced** |
 | >= 80% to target | Entry + 65% of target move | Aggressive lock near target | Planned |
 | At or above target | Position closed (market sell) | Full exit | **Enforced** (auto-close) |
 
@@ -123,18 +125,32 @@ Stops only move UP (profit protection), never down. Current implementation uses 
 ## 3. Situational Alert Layer
 
 **Script:** `scripts/open_trade_monitor.py`  
-**Schedule:** Every 15 minutes during market hours  
+**Schedule:** Every 2 minutes during market hours (`*/2 9-16 * * 1-5`)  
 **Deduplication:** 30-minute window per trade per alert type
 
 ### Alert types generated
 
 | Alert Type | Trigger | Severity | Action |
 |------------|---------|----------|--------|
-| `NEAR_STOP` | Price within 75% of stop distance | CRITICAL | Telegram + DB alert + Risk curation event |
+| `STOP_WARNING` | Price consumed 50% of risk (halfway to stop) | WARN | Telegram with inline buttons: Trail 5% / Trail 8% / Hold |
+| `NEAR_STOP` | Price consumed 75% of risk (critical proximity) | CRITICAL | Telegram with inline buttons: Stop Out Now / Trail 5% / Trail 8% / Hold |
 | `NEAR_TARGET` | Price within 80% of target distance | INFO | Telegram + DB alert + Risk curation event |
 | `STALE_TRADE` | Open > 3 hours, R < 0.5 (not moving) | WARN | Telegram + DB alert, sets `stale_flag` |
 | `EXTENDED_PROFIT` | R >= 1.5 | INFO | Telegram + DB alert |
 | `NEGATIVE_NEWS` | Headline matches negative keywords | WARN | Telegram + DB alert + Maria curation event |
+
+### Stop Proximity Alert Buttons
+
+When a trade approaches its stop, the Telegram alert includes inline action buttons:
+
+| Button | Callback Data | Action |
+|--------|--------------|--------|
+| Stop Out Now | `stopout:{trade_id}` | Immediately closes position at market, updates Alpaca, logs risk action |
+| Trail 5% | `trail:{trade_id}:5` | Switches to 5% trailing stop below current price (stop only moves UP) |
+| Trail 8% | `trail:{trade_id}:8` | Switches to 8% trailing stop below current price |
+| Hold | `stophold:{trade_id}` | Logs operator hold decision, continues monitoring |
+
+Callbacks are processed by `telegram_callback_handler.py` via the long-poll daemon. End-to-end latency from button tap to trade action: **2-6 seconds**.
 
 ### Negative news keyword scan
 
