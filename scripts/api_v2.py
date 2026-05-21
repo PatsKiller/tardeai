@@ -5552,7 +5552,8 @@ def rebalance():
         "status": yo.get("status", ""),
         "is_stale": is_stale,
         "stale_days": stale_days,
-        "stale_note": f"Rebalance data is {stale_days} days old. Refreshing requires Anthropic API credits or manual run of portfolio_yaml_advisor.py." if is_stale else None,
+        "stale_note": f"Rebalance data is {stale_days} days old. Click Refresh to regenerate." if is_stale else None,
+        "model_used": opus.get("_model_used") or yo.get("_model_used") or (yo.get("model") if yo.get("model") else None),
         "ground_truth": gt,
         "recommendations": recommendations,
         "summary": summary,
@@ -16377,6 +16378,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not row:
                 return 404, {"ok": False, "error": "Recheck not found"}
             return 200, {"ok": True, "data": {k: _json_clean(v) for k, v in row.items()}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/rebalance/refresh" and method == "POST":
+        try:
+            import subprocess as _sp
+            _proc = _sp.Popen(
+                [str(PROJECT_ROOT / ".venv/bin/python"),
+                 str(PROJECT_ROOT / "scripts/portfolio_yaml_advisor.py")],
+                cwd=str(PROJECT_ROOT),
+                stdout=_sp.PIPE, stderr=_sp.STDOUT,
+            )
+            # Don't wait — run async, return immediately
+            return 200, {"ok": True, "message": "Rebalance refresh started", "pid": _proc.pid}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

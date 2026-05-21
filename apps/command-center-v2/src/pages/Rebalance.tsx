@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -24,16 +25,41 @@ interface RebalanceData {
   bond_strategy_lines?: string[]
   summary?: string
   computed_values?: { total_value?: number; income_target?: number; income_current?: number; income_gap?: number }
+  model_used?: string | null
+  is_stale?: boolean
+  stale_note?: string | null
 }
 
 export default function Rebalance() {
   const navigate = useNavigate()
-  const { data } = useApi<RebalanceData>('/api/v2/rebalance')
+  const { data, refetch } = useApi<RebalanceData>('/api/v2/rebalance')
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMsg, setRefreshMsg] = useState('')
+
   if (!data) return <div style={{ color: 'var(--text3)', padding: 40 }}>Loading rebalance...</div>
 
   const genDate = data.generated_at ? new Date(data.generated_at) : null
   const genLabel = genDate ? `${genDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} (${timeAgo(data.generated_at)})` : 'Pending'
   const stale = genDate ? (Date.now() - genDate.getTime()) > 7 * 86400000 : true
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    setRefreshMsg('')
+    try {
+      const r = await fetch('/api/v2/rebalance/refresh', { method: 'POST' })
+      const d = await r.json()
+      if (d.ok) {
+        setRefreshMsg('Refresh started — reloading in 60s...')
+        setTimeout(() => { refetch(); setRefreshing(false); setRefreshMsg('') }, 60000)
+      } else {
+        setRefreshMsg(`Failed: ${d.error || 'unknown'}`)
+        setRefreshing(false)
+      }
+    } catch (e) {
+      setRefreshMsg(`Error: ${e}`)
+      setRefreshing(false)
+    }
+  }
 
   return (
     <>
@@ -42,12 +68,27 @@ export default function Rebalance() {
         ⚠️ Advisory only — all actions require manual execution at your broker (Fidelity/Schwab). This app does not place or cancel orders.
       </div>
 
-      {/* Freshness banner */}
-      {stale && (
-        <div style={{ padding: '6px 12px', background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 'var(--radius)', marginBottom: 12, fontSize: 10, color: 'var(--amber)' }}>
-          Rebalance data is stale (generated {genLabel}). Run pipeline to refresh.
-        </div>
-      )}
+      {/* Freshness + model + refresh */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {stale && (
+          <div style={{ padding: '6px 12px', background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 'var(--radius)', fontSize: 10, color: 'var(--amber)', flex: 1 }}>
+            Rebalance data is stale (generated {genLabel}).
+          </div>
+        )}
+        {data.model_used && (
+          <div style={{ padding: '4px 8px', background: 'var(--accent-dim)', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', fontSize: 9, color: 'var(--accent)' }}>
+            LLM: {data.model_used}
+          </div>
+        )}
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          style={{ padding: '6px 14px', fontSize: 10, fontWeight: 600, border: '1px solid var(--accent)', borderRadius: 'var(--radius)', background: refreshing ? 'var(--bg3)' : 'var(--accent-dim)', color: 'var(--accent)', cursor: refreshing ? 'wait' : 'pointer' }}
+        >
+          {refreshing ? 'Refreshing...' : '↻ Refresh Rebalance'}
+        </button>
+        {refreshMsg && <span style={{ fontSize: 10, color: 'var(--text2)' }}>{refreshMsg}</span>}
+      </div>
 
       {/* Key Metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
