@@ -153,12 +153,25 @@ def handle_callback_query(cb):
             pass
 
     elif action == "stophold":
-        result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, "operator override via Telegram")
-        _post_confirmation(chat_id, message_id, result, f"OVERRIDE -- {sym} held by {user_name}, watching")
-        answer_callback(cb_id, f"{sym}: override logged")
+        # Handle both stophold:SYMBOL and stophold:TRADE_ID (numeric)
+        hold_sym = sym
+        if sym.isdigit():
+            # Resolve trade ID to symbol
+            try:
+                from db_adapter import _get_conn
+                _c = _get_conn()
+                _cur = _c.cursor()
+                _cur.execute("SELECT symbol FROM paper_trades WHERE id=%s", (int(sym),))
+                _r = _cur.fetchone()
+                hold_sym = _r[0] if _r else sym
+            except Exception:
+                pass
+        result = _handle_stop_decision(hold_sym, "HOLD_OVERRIDE", user_id, "operator override via Telegram")
+        _post_confirmation(chat_id, message_id, result, f"OVERRIDE -- {hold_sym} held by {user_name}, watching")
+        answer_callback(cb_id, f"{hold_sym}: override logged")
         try:
             from email_notifier import send_email
-            send_email(f"Trade AI: {sym} STOP OVERRIDE — holding", f"Stop overridden for {sym}.\nDecision: HOLD\nBy: {user_name}")
+            send_email(f"Trade AI: {hold_sym} STOP OVERRIDE — holding", f"Stop overridden for {hold_sym}.\nDecision: HOLD\nBy: {user_name}")
         except Exception:
             pass
 
@@ -187,6 +200,40 @@ def handle_callback_query(cb):
             info = f"Could not load context for {sym}"
         send_reply(chat_id, message_id, info)
         answer_callback(cb_id, "Context posted")
+
+    # ── Stop proximity buttons (stopout:TRADE_ID, trail:TRADE_ID:PCT, stophold:TRADE_ID) ──
+    elif action == "stopout":
+        # Immediate stop-out by trade ID
+        try:
+            trade_id = int(parts[1])
+        except (IndexError, ValueError):
+            answer_callback(cb_id, "Bad trade ID")
+            return
+        result = _execute_stop_out(trade_id, user_id, user_name)
+        if result.get("ok"):
+            _post_confirmation(chat_id, message_id, result,
+                               f"STOPPED OUT -- {result.get('symbol', '?')} closed by {user_name} at {now_short}")
+            answer_callback(cb_id, f"{result.get('symbol', '?')}: stopped out")
+        else:
+            send_reply(chat_id, message_id, f"Stop-out failed: {result.get('error', 'unknown')}")
+            answer_callback(cb_id, f"Failed: {result.get('error', '?')[:60]}")
+
+    elif action == "trail":
+        # Switch to trailing stop at given percentage
+        try:
+            trade_id = int(parts[1])
+            trail_pct = float(parts[2]) if len(parts) > 2 else 5.0
+        except (IndexError, ValueError):
+            answer_callback(cb_id, "Bad trail params")
+            return
+        result = _switch_to_trailing_stop(trade_id, trail_pct, user_id, user_name)
+        if result.get("ok"):
+            _post_confirmation(chat_id, message_id, result,
+                               f"TRAILING STOP SET -- {result.get('symbol', '?')} now trailing at {trail_pct}% by {user_name}")
+            answer_callback(cb_id, f"{result.get('symbol', '?')}: trail {trail_pct}%")
+        else:
+            send_reply(chat_id, message_id, f"Trail switch failed: {result.get('error', 'unknown')}")
+            answer_callback(cb_id, f"Failed: {result.get('error', '?')[:60]}")
 
     else:
         answer_callback(cb_id, f"Unknown: {action}")
@@ -457,3 +504,152 @@ def parse_pt_command(text, pid_from_reply=None):
             pid = int(part)
 
     return pid, overrides
+
+
+def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
+    """Immediately close a paper trade at market. Called from stop proximity alert."""
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        if not conn:
+            return {"ok": False, "error": "no DB connection"}
+
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, symbol, strategy_id, entry_price, stop_loss, current_price, status
+            FROM paper_trades WHERE id = %s
+        """, (trade_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "error": f"trade #{trade_id} not found"}
+
+        cols = [d[0] for d in cur.description]
+        trade = dict(zip(cols, row))
+
+        if trade["status"] != "open":
+            return {"ok": False, "error": f"trade #{trade_id} status is {trade['status']}, not open",
+                    "symbol": trade["symbol"]}
+
+        symbol = trade["symbol"]
+        exit_price = float(trade["current_price"] or trade["stop_loss"] or 0)
+        entry_price = float(trade["entry_price"] or 0)
+        pnl = exit_price - entry_price if entry_price else 0
+
+        # Close the trade
+        cur.execute("""
+            UPDATE paper_trades
+            SET status = 'closed', exit_price = %s, exit_reason = 'operator_stop_out',
+                exit_time = NOW(), closed_at = NOW(),
+                pnl = %s, decision_state = 'OPERATOR_STOP_OUT'
+            WHERE id = %s
+        """, (exit_price, pnl, trade_id))
+
+        # Log the risk action
+        cur.execute("""
+            INSERT INTO paper_trade_risk_actions (paper_trade_id, symbol, action_type, old_value, new_value,
+                                                  trigger_price, trigger_reason)
+            VALUES (%s, %s, 'operator_stop_out', %s, %s, %s, %s)
+        """, (trade_id, symbol, trade["stop_loss"], exit_price, exit_price,
+              f"operator {user_name} stop-out via Telegram"))
+
+        conn.commit()
+
+        # Submit close order to Alpaca if applicable
+        try:
+            _close_alpaca_position(conn, trade)
+        except Exception as e:
+            log.warning(f"Alpaca close failed for {symbol}: {e}")
+
+        return {"ok": True, "symbol": symbol, "exit_price": exit_price,
+                "pnl": round(pnl, 2), "trade_id": trade_id}
+
+    except Exception as e:
+        log.error(f"Stop-out failed for trade #{trade_id}: {e}")
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _switch_to_trailing_stop(trade_id: int, trail_pct: float, user_id: str, user_name: str) -> dict:
+    """Switch a trade from fixed stop to trailing stop at trail_pct%."""
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        if not conn:
+            return {"ok": False, "error": "no DB connection"}
+
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, symbol, strategy_id, entry_price, stop_loss, current_price, status
+            FROM paper_trades WHERE id = %s
+        """, (trade_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "error": f"trade #{trade_id} not found"}
+
+        cols = [d[0] for d in cur.description]
+        trade = dict(zip(cols, row))
+
+        if trade["status"] != "open":
+            return {"ok": False, "error": f"trade #{trade_id} not open",
+                    "symbol": trade["symbol"]}
+
+        symbol = trade["symbol"]
+        price = float(trade["current_price"] or trade["entry_price"] or 0)
+        old_stop = float(trade["stop_loss"] or 0)
+
+        # Calculate new trailing stop: trail_pct% below current high (use current price as baseline)
+        new_stop = round(price * (1 - trail_pct / 100), 2)
+
+        # Only move stop UP (never widen risk)
+        if new_stop <= old_stop:
+            new_stop = old_stop
+
+        cur.execute("""
+            UPDATE paper_trades
+            SET stop_loss = %s, decision_state = 'TRAILING_STOP_ACTIVE'
+            WHERE id = %s
+        """, (new_stop, trade_id))
+
+        cur.execute("""
+            INSERT INTO paper_trade_risk_actions (paper_trade_id, symbol, action_type, old_value, new_value,
+                                                  trigger_price, trigger_reason)
+            VALUES (%s, %s, 'trailing_stop_switch', %s, %s, %s, %s)
+        """, (trade_id, symbol, old_stop, new_stop, price,
+              f"operator {user_name} switched to {trail_pct}% trail via Telegram"))
+
+        conn.commit()
+
+        # Update Alpaca stop order if applicable
+        try:
+            from open_trade_monitor import _update_stop_on_alpaca
+            _update_stop_on_alpaca(conn, trade, new_stop)
+        except Exception as e:
+            log.warning(f"Alpaca stop update failed for {symbol}: {e}")
+
+        return {"ok": True, "symbol": symbol, "old_stop": old_stop,
+                "new_stop": new_stop, "trail_pct": trail_pct, "trade_id": trade_id}
+
+    except Exception as e:
+        log.error(f"Trail switch failed for trade #{trade_id}: {e}")
+        return {"ok": False, "error": str(e)[:200]}
+
+
+def _close_alpaca_position(conn, trade):
+    """Submit a close order to Alpaca for the given trade."""
+    symbol = trade.get("symbol")
+    if not symbol:
+        return
+    try:
+        import requests
+        key = os.environ.get("ALPACA_API_KEY", "")
+        secret = os.environ.get("ALPACA_SECRET_KEY", "")
+        if not key or not secret:
+            return
+        base = "https://paper-api.alpaca.markets"
+        headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+        resp = requests.delete(f"{base}/v2/positions/{symbol}", headers=headers, timeout=10)
+        if resp.ok:
+            log.info(f"Alpaca position closed for {symbol}")
+        else:
+            log.warning(f"Alpaca close {symbol}: {resp.status_code} {resp.text[:100]}")
+    except Exception as e:
+        log.warning(f"Alpaca close {symbol}: {e}")

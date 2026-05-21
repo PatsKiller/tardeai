@@ -172,6 +172,59 @@ def send_telegram(message, dry_run=False, no_telegram=False):
         log.warning(f"Telegram send failed: {e}")
 
 
+def send_telegram_with_buttons(message, buttons, dry_run=False, no_telegram=False):
+    """Send a Telegram message with inline keyboard buttons.
+
+    buttons: list of rows, each row is list of (text, callback_data) tuples.
+    Example: [[("Stop Out", "stopout:42"), ("Trail 5%", "trail:42:5")]]
+    """
+    if dry_run or no_telegram:
+        log.info(f"[telegram-skip] {message[:100]} [+buttons]")
+        return
+    try:
+        import urllib.request
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        if not token:
+            for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+                if line.startswith("TELEGRAM_BOT_TOKEN="):
+                    token = line.split("=", 1)[1].strip()
+        if not token:
+            log.warning("No TELEGRAM_BOT_TOKEN for button alert")
+            return
+
+        chat_ids = []
+        cid = os.environ.get("TRADEAI_PROPOSAL_ALERT_CHAT_ID", "").strip()
+        if cid:
+            chat_ids.append(cid)
+        for c in os.environ.get("TELEGRAM_CHAT_ID", "").split(","):
+            if c.strip() and c.strip() not in chat_ids:
+                chat_ids.append(c.strip())
+
+        keyboard = {"inline_keyboard": [
+            [{"text": text, "callback_data": cb} for text, cb in row]
+            for row in buttons
+        ]}
+
+        for chat_id in chat_ids:
+            payload = json.dumps({
+                "chat_id": chat_id,
+                "text": message,
+                "reply_markup": json.dumps(keyboard),
+            }).encode()
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                urllib.request.urlopen(req, timeout=10)
+            except Exception as e:
+                log.warning(f"Button alert send failed for {chat_id}: {e}")
+    except Exception as e:
+        log.warning(f"send_telegram_with_buttons failed: {e}")
+
+
 def _log_risk_action(conn, trade_id, symbol, action_type, old_value, new_value, trigger_price, trigger_reason):
     """Log a risk management action to paper_trade_risk_actions."""
     try:
@@ -415,19 +468,62 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
             alerts.append(('TRAILING_STOP', symbol))
             stop = new_stop
 
-    # ── Near Stop ──
+    # ── Near Stop — graduated alerts with action buttons ──
     if stop > 0 and entry > stop:
         stop_dist = entry - stop
+        pct_to_stop = ((price - stop) / price * 100) if price > 0 else 999
+        pct_consumed = (entry - price) / stop_dist * 100 if stop_dist > 0 else 0
+
+        # CRITICAL: within 25% of stop (75% of risk consumed)
         if price <= entry - 0.75 * stop_dist:
             if not already_alerted(conn, tid, 'NEAR_STOP'):
-                msg = f"NEAR STOP: {symbol} at ${price:.2f} (stop ${stop:.2f}, entry ${entry:.2f})"
+                pnl_now = (price - entry) * shares if shares else 0
+                msg = (
+                    f"🔴 *STOP PROXIMITY CRITICAL*\n\n"
+                    f"*{symbol}* — `{sid}`\n"
+                    f"Entry ${entry:.2f}  |  Now ${price:.2f}  |  Stop ${stop:.2f}\n"
+                    f"Distance to stop: {pct_to_stop:.1f}% (${price - stop:.2f})\n"
+                    f"P&L: ${pnl_now:+,.0f}  |  Risk consumed: {pct_consumed:.0f}%\n\n"
+                    f"Trade `#{tid}` — *action required*"
+                )
                 alert_id = insert_alert(conn, tid, symbol, sid, 'NEAR_STOP', 'CRITICAL',
                                         f'{symbol} near stop', msg,
-                                        {'price': price, 'stop': stop, 'entry': entry})
+                                        {'price': price, 'stop': stop, 'entry': entry,
+                                         'pct_to_stop': round(pct_to_stop, 2)})
                 insert_curation_event(conn, tid, symbol, sid, 'Risk', 'OPEN_TRADE_ALERT',
                                       msg, {'alert_id': alert_id, 'type': 'NEAR_STOP'})
-                send_telegram(f"🔴 {msg}", dry_run, no_telegram)
+                buttons = [
+                    [("🛑 Stop Out Now", f"stopout:{tid}"),
+                     ("📉 Trail 5%", f"trail:{tid}:5")],
+                    [("📉 Trail 8%", f"trail:{tid}:8"),
+                     ("⏸ Hold", f"stophold:{tid}")],
+                ]
+                send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
                 alerts.append(('NEAR_STOP', symbol))
+
+        # WARNING: within 50% of stop (50% of risk consumed)
+        elif price <= entry - 0.50 * stop_dist:
+            if not already_alerted(conn, tid, 'STOP_WARNING'):
+                pnl_now = (price - entry) * shares if shares else 0
+                msg = (
+                    f"⚠️ *STOP WARNING*\n\n"
+                    f"*{symbol}* — `{sid}`\n"
+                    f"Entry ${entry:.2f}  |  Now ${price:.2f}  |  Stop ${stop:.2f}\n"
+                    f"Distance to stop: {pct_to_stop:.1f}% (${price - stop:.2f})\n"
+                    f"P&L: ${pnl_now:+,.0f}  |  Risk consumed: {pct_consumed:.0f}%\n\n"
+                    f"Trade `#{tid}` — monitoring"
+                )
+                insert_alert(conn, tid, symbol, sid, 'STOP_WARNING', 'WARN',
+                             f'{symbol} approaching stop', msg,
+                             {'price': price, 'stop': stop, 'entry': entry,
+                              'pct_to_stop': round(pct_to_stop, 2)})
+                buttons = [
+                    [("📉 Trail 5%", f"trail:{tid}:5"),
+                     ("📉 Trail 8%", f"trail:{tid}:8"),
+                     ("⏸ Hold", f"stophold:{tid}")],
+                ]
+                send_telegram_with_buttons(msg, buttons, dry_run, no_telegram)
+                alerts.append(('STOP_WARNING', symbol))
 
     # ── Near Target ──
     if target > 0 and entry < target:
