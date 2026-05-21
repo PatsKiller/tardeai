@@ -1,0 +1,129 @@
+# Candidate Source Registry — SCREENER-MAP-1
+# Maps source types to strategies and providers.
+# Status: SHADOW sources require validation before producing proposals.
+# This registry is read-only metadata — it does not activate strategies.
+
+version: "1.0"
+
+sources:
+  # ── Finviz Momentum/Gap/Breakout ──
+  finviz_momentum:
+    source_type: finviz
+    strategies: [momentum_scalp, gap_and_go, swing_breakout]
+    screener_ids: [prime_setups, watchlist_setups]
+    schedule: premarket_and_market
+    status: ACTIVE
+    human_review_only: false
+
+  # ── Finviz Swing/Technical ──
+  finviz_swing:
+    source_type: finviz
+    strategies: [swing_trade, swing_breakout, fib_retracement_bounce, recovery_watch]
+    screener_ids: [oversold_reversion, swing_momentum, quality_pullback, pm_breakout_confirmation, recovery_candidates]
+    schedule: market_hours
+    status: ACTIVE
+    human_review_only: true
+
+  # ── Finviz Dividend/Income ──
+  finviz_dividend_income:
+    source_type: finviz
+    strategies: [income_add, dividend_growth_compounder, reit_income, high_yield_income_bdc]
+    screener_ids: [income_candidates, dividend_aristocrats, div_growth_quality, dividend_growth, high_yield_bdc_reit, high_yield_income, ira_income_friendly, reit_income_scan, taxable_qualified_div, value_income]
+    schedule: evening_and_market
+    status: ACTIVE
+    human_review_only: true
+
+  # ── Finviz Earnings ──
+  finviz_earnings:
+    source_type: finviz
+    strategies: [earnings_catalyst, earnings_pre_buildup, earnings_post_momentum]
+    screener_ids: [earnings_catalyst_pre, post_earnings_gappers]
+    schedule: premarket_and_evening
+    status: ACTIVE
+    human_review_only: true
+    notes: "Screeners find candidates but lack actual earnings calendar dates. SCREENER-MAP-2 should add earnings date provider."
+
+  # ── Finviz Sector/Defense ──
+  finviz_sector:
+    source_type: finviz
+    strategies: [sector_rotation, defense_thesis]
+    screener_ids: [sector_leaders, defense_basket, defense_momentum, sector_leadership_rs, defense_aerospace]
+    schedule: market_hours
+    status: ACTIVE
+    human_review_only: true
+
+  # ── Finviz Growth/Core ──
+  finviz_core_growth:
+    source_type: finviz
+    strategies: [core_growth_compounder, speculative_growth, core_index]
+    screener_ids: [core_compounder_value, quality_compounders, roth_growth, speculative_catalyst, tactical_momentum, core_index_broad, core_growth_compounders, speculative_growth_breakouts]
+    schedule: market_hours
+    status: ACTIVE
+    human_review_only: true
+
+  # ── Finviz Bond/Defensive ──
+  finviz_bond:
+    source_type: finviz
+    strategies: [bond_income, cash_or_stable]
+    screener_ids: [bond_income_defensive, bond_etf_income, defensive_quality]
+    schedule: evening
+    status: ACTIVE
+    human_review_only: true
+
+  # ── Finviz Covered Call ──
+  finviz_covered_call:
+    source_type: finviz
+    strategies: [covered_call_income]
+    screener_ids: [covered_call_etf, covered_call_candidates, covered_call_rotation, etf_income]
+    schedule: evening
+    status: SHADOW
+    human_review_only: true
+    notes: "Screeners find candidates but lack options chain data. Needs options liquidity provider."
+
+  # ── Finviz International ──
+  finviz_international:
+    source_type: finviz
+    strategies: [international_dividend]
+    screener_ids: [intl_dividend]
+    schedule: evening
+    status: ACTIVE
+    human_review_only: true
+
+  # ── Finviz Tax Loss ──
+  finviz_tax:
+    source_type: finviz
+    strategies: [tax_loss_harvest]
+    screener_ids: []
+    schedule: quarterly
+    status: SHADOW
+    notes: "Tax loss harvesting is operator-triggered, not screener-driven."
+
+  # ── Non-Finviz: Earnings Calendar (STUB) ──
+  earnings_calendar:
+    source_type: earnings_calendar
+    strategies: [earnings_pre_buildup, earnings_post_momentum]
+    provider: NOT_CONFIGURED
+    schedule: evening_and_premarket
+    status: SHADOW
+    human_review_only: true
+    notes: "Finviz screeners find earnings candidates but actual earnings dates need a calendar API (Alpha Vantage, Earnings Whispers, or Yahoo)."
+
+  # ── Non-Finviz: Options Chain (STUB) ──
+  options_chain:
+    source_type: options_chain
+    strategies: [covered_call_income]
+    provider: NOT_CONFIGURED
+    schedule: evening
+    status: BLOCKED_PROVIDER_MISSING
+    human_review_only: true
+    notes: "Covered call analysis needs options chain data. Consider Alpaca options API or CBOE data."
+
+  # ── Non-Finviz: Technical Pattern (internal) ──
+  technical_pattern:
+    source_type: technical_pattern
+    strategies: [fib_retracement_bounce, swing_trade]
+    provider: internal_ohlcv
+    schedule: evening_and_premarket
+    status: SHADOW
+    human_review_only: true
+    notes: "Uses OHLC cache + RSI/Fibonacci calculations. Already partially implemented via trade_backtest_engine.py technicals."
