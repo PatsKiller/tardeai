@@ -45,6 +45,9 @@ export default function Backtesting() {
       {/* Run Buttons */}
       <RunPanel onDone={() => setRk(k => k + 1)} />
 
+      {/* LLM Analysis + Incubator Backtest */}
+      <AnalyzerPanel onDone={() => setRk(k => k + 1)} />
+
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
         {tabBtn('overview', 'Overview')}
         {tabBtn('runs', `Runs (${(runs?.data||[]).length})`)}
@@ -153,6 +156,56 @@ export default function Backtesting() {
           )}
         </Card>
       )}
+    </div>
+  )
+}
+
+function AnalyzerPanel({ onDone }: { onDone: () => void }) {
+  const [running, setRunning] = useState('')
+  const [msg, setMsg] = useState('')
+
+  const run = useCallback(async (endpoint: string, label: string) => {
+    setRunning(label)
+    setMsg('')
+    try {
+      const r = await fetch(endpoint, { method: 'POST' })
+      const d = await r.json()
+      if (d.ok) {
+        setMsg(`${d.message} — refreshing in 45s...`)
+        setTimeout(() => { onDone(); setRunning(''); setMsg('') }, 45000)
+      } else {
+        setMsg(`Failed: ${d.error || 'unknown'}`)
+        setRunning('')
+      }
+    } catch (e) { setMsg(`Error: ${e}`); setRunning('') }
+  }, [onDone])
+
+  return (
+    <div style={{ padding: '10px 14px', marginBottom: 12, background: 'var(--bg1)', border: '1px solid var(--accent)', borderRadius: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>LLM Trade Analysis + Incubator Strategy Testing</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <button disabled={!!running} onClick={() => run('/api/v2/backtesting/analyze-trades', 'LLM Analysis')}
+          style={{ ...runBtn, border: '1px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--accent)', opacity: running ? 0.5 : 1 }}>
+          {running === 'LLM Analysis' ? 'Analyzing...' : '🧠 LLM Grade Trades (entry timing, thesis)'}
+        </button>
+        <button disabled={!!running} onClick={() => run('/api/v2/backtesting/all-incubator', 'All Incubator')}
+          style={{ ...runBtn, border: '1px solid var(--purple)', background: 'rgba(168,139,250,.08)', color: 'var(--purple)', opacity: running ? 0.5 : 1 }}>
+          {running === 'All Incubator' ? 'Running...' : '🔬 Backtest All Strategies on Incubator'}
+        </button>
+      </div>
+      <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6 }}>Test strategy on incubator symbols (Finviz charts included):</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {STRATEGIES.filter(s => !['momentum_scalp', 'gap_and_go'].includes(s)).map(s => (
+          <button key={s} disabled={!!running}
+            onClick={() => run(`/api/v2/backtesting/backtest-incubator/${s}`, s)}
+            style={{ fontSize: 9, padding: '3px 8px', border: '1px solid var(--purple)', borderRadius: 3,
+              background: running === s ? 'var(--purple)' : 'rgba(168,139,250,.05)',
+              color: running === s ? '#fff' : 'var(--purple)', cursor: running ? 'wait' : 'pointer' }}>
+            {running === s ? '...' : s.replace(/_/g, ' ')}
+          </button>
+        ))}
+      </div>
+      {msg && <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 6 }}>{msg}</div>}
     </div>
   )
 }

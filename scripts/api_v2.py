@@ -16922,6 +16922,43 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/backtesting/analyze-trades" and method == "POST":
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
+                       "--analyze-trades", "--limit", "5", "--verbose",
+                       "--output-json", str(PROJECT_ROOT / "data/portfolios/state/backtest_analysis_latest.json")],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": "LLM trade analysis started (5 trades)"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/backtesting/backtest-incubator/") and method == "POST":
+        strat = base_path.split("/")[-1]
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
+                       "--backtest-strategy", strat, "--limit", "20", "--verbose",
+                       "--output-json", str(PROJECT_ROOT / f"data/portfolios/state/backtest_incubator_{strat}.json")],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": f"Incubator backtest for {strat} started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/all-incubator" and method == "POST":
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/backtest_analyzer.py"),
+                       "--all-strategies", "--limit", "15", "--verbose",
+                       "--output-json", str(PROJECT_ROOT / "data/portfolios/state/backtest_incubator_all.json")],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": "All-strategy incubator backtest started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 32: Unified Self-Improvement Command Center ───────────────
     if base_path in ("/api/v2/self-improvement/status", "/api/v2/self-improvement/summary"):
         try:
