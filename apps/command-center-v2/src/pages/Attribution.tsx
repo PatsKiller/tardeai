@@ -4,6 +4,7 @@ import MetricTile from '../components/MetricTile'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, deltaColor } from '../lib/format'
 
+interface AcctData { display_name: string; total_value: number; positions: number; total_gain: number }
 interface AttributionData {
   has_data: boolean
   benchmark_label: string
@@ -22,6 +23,7 @@ interface AttributionData {
   note?: string
   last_updated?: string
   snapshot_count?: number
+  accounts?: Record<string, AcctData>
 }
 
 export default function Attribution() {
@@ -84,6 +86,24 @@ export default function Attribution() {
           )}
         </Card>
       </div>
+
+      {/* Per-account breakdown */}
+      {data.accounts && Object.keys(data.accounts).length > 0 && (
+        <Card title="Per-Account Breakdown">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
+            {Object.entries(data.accounts).map(([key, acct]) => (
+              <div key={key} style={{ background: 'var(--bg2)', border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '14px 16px' }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>{acct.display_name}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(acct.total_value)}</div>
+                <div style={{ fontSize: 11, color: acct.total_gain >= 0 ? 'var(--green)' : 'var(--red)', marginTop: 4 }}>
+                  {acct.total_gain >= 0 ? '+' : ''}{fmt$(acct.total_gain)} gain
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{acct.positions} positions</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </>
   )
 }

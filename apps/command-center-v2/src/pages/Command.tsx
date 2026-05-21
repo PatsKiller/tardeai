@@ -36,7 +36,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 export default function Command() {
-  const { data: cmd, loading, error, refetch } = useApi<CommandData>('/api/v2/command')
+  const { data: cmd, loading, error, refetch } = useApi<CommandData>('/api/v2/command', 300_000)
 
   if (loading) return <div style={{ padding: 20, color: 'var(--text3)' }}>Loading command briefing...</div>
   if (error || !cmd) return (

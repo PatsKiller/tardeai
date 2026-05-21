@@ -88,7 +88,7 @@ export default function RiskRegime() {
 
       {tab === 'rotation' && (
         <Card title="Strategy Rotation Signals">
-          {!(signals?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No signals</div> : (
+          {!(signals?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No rotation signals yet. Signals are generated when the regime classifier runs and detects regime changes. Current regime: {r?.regime_label?.replace(/_/g,' ') || '—'}. <button onClick={() => fetch('/api/v2/risk-regime/run', {method:'POST'}).then(()=>setRk(k=>k+1))} style={{...btn, marginLeft:8}}>Run classifier</button></div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['Strategy','Signal','Strength','Confidence','Action','Reason'].map(h => <th key={h} style={th}>{h}</th>)}
@@ -132,7 +132,7 @@ export default function RiskRegime() {
 
       {tab === 'alignment' && (
         <Card title="Trade / Proposal Regime Alignment">
-          {!(alignments?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No alignments</div> : (
+          {!(alignments?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No alignment data yet. Alignments are computed when new proposals or trades are evaluated against the current regime ({r?.regime_label?.replace(/_/g,' ') || '—'}). Submit a proposal to generate alignment scores.</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['Symbol','Strategy','Type','Alignment','Score','Regime','Reason'].map(h => <th key={h} style={th}>{h}</th>)}
