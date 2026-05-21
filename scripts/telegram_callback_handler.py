@@ -144,13 +144,23 @@ def handle_callback_query(cb):
 
     if action == "stopexit":
         result = _handle_stop_decision(sym, "EXIT", user_id, "operator honored stop via Telegram")
-        _post_confirmation(chat_id, message_id, result, f"STOP HONORED \u2014 {sym} marked for exit by {user_name}")
+        _post_confirmation(chat_id, message_id, result, f"STOP HONORED -- {sym} marked for exit by {user_name}")
         answer_callback(cb_id, f"{sym}: stop honored" if result.get("ok") else f"Failed: {result.get('error', '?')[:80]}")
+        try:
+            from email_notifier import send_email
+            send_email(f"Trade AI: {sym} STOP HONORED — exit", f"Stop honored for {sym}.\nDecision: EXIT\nBy: {user_name}")
+        except Exception:
+            pass
 
     elif action == "stophold":
         result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, "operator override via Telegram")
-        _post_confirmation(chat_id, message_id, result, f"OVERRIDE \u2014 {sym} held by {user_name}, watching")
+        _post_confirmation(chat_id, message_id, result, f"OVERRIDE -- {sym} held by {user_name}, watching")
         answer_callback(cb_id, f"{sym}: override logged")
+        try:
+            from email_notifier import send_email
+            send_email(f"Trade AI: {sym} STOP OVERRIDE — holding", f"Stop overridden for {sym}.\nDecision: HOLD\nBy: {user_name}")
+        except Exception:
+            pass
 
     elif action == "stopdelay":
         mins = int(parts[2]) if len(parts) > 2 else 30
@@ -246,6 +256,18 @@ def _run_approve(pid, user_id, overrides):
             except Exception as ae:
                 alpaca_status = f"error: {ae}"
                 log.error(f"Telegram approve → Alpaca failed: {ae}")
+
+            # Email confirmation
+            try:
+                from email_notifier import notify_approval_result
+                notify_approval_result(
+                    result.get("symbol", p["symbol"]), result.get("shares", eff_shares),
+                    result.get("entry", float(p.get("proposed_entry") or 0)),
+                    result.get("stop", float(p.get("proposed_stop") or 0)),
+                    result.get("target", float(p.get("proposed_target1") or 0)),
+                    result.get("risk_gate", "?"), alpaca_status, broker_order_id or "")
+            except Exception:
+                pass
 
             return {
                 "ok": True,
