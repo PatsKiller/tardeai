@@ -233,17 +233,43 @@ def position_size(portfolio_value: float, risk_pct: float,
 
 # ── Stop alert check ──────────────────────────────────────────────────────────
 
+def _get_overridden_symbols() -> set:
+    """Get symbols with active HOLD_OVERRIDE decisions (last 24h)."""
+    try:
+        import psycopg2
+        pw = ""
+        for line in (Path(__file__).resolve().parent.parent / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
+        conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+        cur = conn.cursor()
+        cur.execute("""SELECT DISTINCT symbol FROM stop_decisions
+            WHERE decision = 'HOLD_OVERRIDE'
+            AND decided_at > NOW() - INTERVAL '24 hours'""")
+        syms = {r[0] for r in cur.fetchall()}
+        # Also check snooze table
+        cur.execute("SELECT symbol FROM stop_snooze WHERE snoozed_until > NOW()")
+        syms.update(r[0] for r in cur.fetchall())
+        conn.close()
+        return syms
+    except Exception:
+        return set()
+
+
 def check_stop_alerts(risk_data: Dict) -> List[Dict]:
-    """Return list of alert-worthy stop events."""
+    """Return list of alert-worthy stop events. Respects operator overrides."""
+    overridden = _get_overridden_symbols()
     alerts = []
     for p in risk_data.get("positions", []):
         status = p.get("status","")
+        sym = p.get("symbol", "")
+        if sym in overridden:
+            continue  # operator chose HOLD_OVERRIDE — suppress alert
         if status == "TRIGGERED":
             alerts.append({
                 "type":    "STOP_TRIGGERED",
                 "severity":"CRITICAL",
-                "symbol":  p["symbol"],
-                "msg": (f"🚨 STOP TRIGGERED: {p['symbol']} @ ${p['price']:.2f} "
+                "symbol":  sym,
+                "msg": (f"🚨 STOP TRIGGERED: {sym} @ ${p['price']:.2f} "
                         f"— stop was ${p['stop_price']:.2f} | "
                         f"Max loss: ${p.get('max_loss_dollar',0):,.0f}")
             })
@@ -251,8 +277,8 @@ def check_stop_alerts(risk_data: Dict) -> List[Dict]:
             alerts.append({
                 "type":    "STOP_NEAR",
                 "severity":"HIGH",
-                "symbol":  p["symbol"],
-                "msg": (f"⚠️ STOP ALERT: {p['symbol']} within {p['dist_pct']:.1f}% of stop "
+                "symbol":  sym,
+                "msg": (f"⚠️ STOP ALERT: {sym} within {p['dist_pct']:.1f}% of stop "
                         f"(price: ${p['price']:.2f} | stop: ${p['stop_price']:.2f})")
             })
     return alerts
