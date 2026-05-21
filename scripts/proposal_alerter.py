@@ -157,6 +157,18 @@ def send_proposal_alert(proposal, alert_type, current_price):
         except Exception:
             log.exception(f"send_proposal_alert exception chat={chat_id}")
 
+    # Email notification
+    try:
+        from email_notifier import notify_proposal
+        entry = float(proposal.get("proposed_entry") or proposal.get("entry_price") or 0)
+        stop = float(proposal.get("proposed_stop") or proposal.get("stop_price") or 0)
+        target = float(proposal.get("proposed_target1") or proposal.get("target_price") or 0)
+        shares = int(proposal.get("proposed_shares") or proposal.get("shares") or 0)
+        notify_proposal(proposal.get("symbol", "?"), proposal.get("strategy_id", "?"),
+                        entry, stop, target, shares, proposal.get("id", 0))
+    except Exception:
+        pass
+
 
 def _store_proposal_message_link(proposal_id, chat_id, message_id):
     """Persist (chat_id, message_id) → proposal_id for reply resolution."""
@@ -404,3 +416,13 @@ def send_stop_alert(symbol, account=""):
             urllib.request.urlopen(req, timeout=10)
         except Exception:
             log.exception(f"send_stop_alert failed chat={chat_id}")
+
+    # Email notification
+    try:
+        from email_notifier import notify_stop_triggered
+        notify_stop_triggered(
+            symbol, data.get("current_price", 0), data.get("stop_price", 0),
+            data.get("current_pnl_dollars", 0), data.get("current_pnl_pct", 0),
+            data.get("regime_label", ""), data.get("portfolio_triggered_count", 0))
+    except Exception:
+        pass
