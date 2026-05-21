@@ -33,6 +33,26 @@ def _load_json(path: Path):
         return None
 
 
+# Cache overridden symbols for 60s so we don't query DB on every page load
+_override_cache = {"symbols": set(), "ts": 0}
+
+def _get_stop_overrides() -> set:
+    """Get symbols with HOLD_OVERRIDE (24h) or active snooze. Cached 60s."""
+    import time as _t
+    if _t.time() - _override_cache["ts"] < 60:
+        return _override_cache["symbols"]
+    try:
+        rows = _db_query("SELECT DISTINCT symbol FROM stop_decisions WHERE decision='HOLD_OVERRIDE' AND decided_at > NOW() - INTERVAL '24 hours'") or []
+        syms = {r["symbol"] for r in rows}
+        sn = _db_query("SELECT symbol FROM stop_snooze WHERE snoozed_until > NOW()") or []
+        syms.update(r["symbol"] for r in sn)
+        _override_cache["symbols"] = syms
+        _override_cache["ts"] = _t.time()
+        return syms
+    except Exception:
+        return _override_cache["symbols"]
+
+
 _COUNTRY_FLAGS = {
     "usa": "🇺🇸", "united states": "🇺🇸", "us": "🇺🇸",
     "canada": "🇨🇦", "israel": "🇮🇱", "china": "🇨🇳",
@@ -1418,7 +1438,8 @@ def _aegis_chat_context():
     _heat = _pt.get("day_change_pct", 0)
     # Risk data for stop count
     _risk = _load_json(STATE_DIR / "risk_management.json") or {}
-    _triggered = len([p for p in _risk.get("positions", []) if p.get("status") == "TRIGGERED"])
+    _ov_ctx = _get_stop_overrides()
+    _triggered = len([p for p in _risk.get("positions", []) if p.get("status") == "TRIGGERED" and p.get("symbol") not in _ov_ctx])
     _unprotected = len([p for p in _risk.get("positions", []) if not p.get("has_stop") and not p.get("stop_price")])
     _live_summary = f"Portfolio ${_pv:,.0f}. Heat {_heat:.1f}%. {_triggered} stops triggered, {_unprotected} unprotected."
     # Also get Aegis brief for additional context
@@ -1534,8 +1555,9 @@ def _compose_morning_brief(summary_text, steph_items, cc_items, rotations, recov
     # 1. Immediate risk
     risk_parts = []
     _rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    triggered = [p for p in _rm.get("positions", []) if p.get("status") == "TRIGGERED"]
-    danger = [p for p in _rm.get("positions", []) if p.get("status") == "DANGER"]
+    _stop_ov = _get_stop_overrides()
+    triggered = [p for p in _rm.get("positions", []) if p.get("status") == "TRIGGERED" and p.get("symbol") not in _stop_ov]
+    danger = [p for p in _rm.get("positions", []) if p.get("status") == "DANGER" and p.get("symbol") not in _stop_ov]
     unprotected = [p for p in _rm.get("positions", []) if p.get("status") == "NO STOP" and (p.get("market_value") or 0) > 5000]
     if triggered:
         risk_parts.append(f"{len(triggered)} stop(s) TRIGGERED: {', '.join(p.get('symbol','') for p in triggered)}. Check /v2/risk immediately.")
@@ -10732,7 +10754,8 @@ def _morning_command():
     cash = sum(p.get("market_value", 0) for p in holdings if p.get("is_cash"))
     heat = rm.get("portfolio_heat_pct", 0)
     no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
-    triggered = sum(1 for p in rm.get("positions", []) if p.get("status") == "TRIGGERED")
+    _cmd_ov = _get_stop_overrides()
+    triggered = sum(1 for p in rm.get("positions", []) if p.get("status") == "TRIGGERED" and p.get("symbol") not in _cmd_ov)
 
     # ── Top movers today (from holdings with perf data) ──
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
@@ -11197,6 +11220,9 @@ def _global_alerts():
     heat = rm.get("portfolio_heat_pct", 0)
     no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
     triggered = [p.get("symbol", "?") for p in rm.get("positions", []) if p.get("status") == "TRIGGERED"]
+
+    # Filter out operator-overridden symbols (HOLD_OVERRIDE in last 24h or snoozed)
+    triggered = [s for s in triggered if s not in _get_stop_overrides()]
 
     if triggered:
         alerts.append({
