@@ -32,7 +32,8 @@ export default function Backtesting() {
   const { data: trades } = useApi<any>(`/api/v2/backtesting/trades?_r=${rk}`)
   const { data: challengers } = useApi<any>(`/api/v2/champion-challenger?_r=${rk}`)
 
-  const s = status?.data || {}
+  const { data: missed } = useApi<any>(`/api/v2/backtesting/missed-opportunities?_r=${rk}`)
+  const s = status?.data || status || {}
   const tabBtn = (t: string, label: string) => (
     <button onClick={() => setTab(t)} style={{
       ...btn, background: tab === t ? 'var(--accent)' : 'var(--bg1)', color: tab === t ? '#fff' : 'var(--text1)'
@@ -45,8 +46,12 @@ export default function Backtesting() {
         <button onClick={() => setRk(k=>k+1)} style={btn}>Refresh</button>
       }/>
 
-      <div style={{ padding:'8px 14px', marginBottom:12, borderRadius:6, background:'rgba(240,185,11,.08)', border:'1px solid #f0b90b' }}>
-        <span style={{ fontSize:12, fontWeight:700, color:'#f0b90b' }}>SIMULATED EVIDENCE ONLY — Not live trading proof. Backtests use simplified models.</span>
+      <div style={{ padding:'8px 14px', marginBottom:12, borderRadius:6, background:'rgba(240,185,11,.08)', border:'1px solid #f0b90b', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ fontSize:12, fontWeight:700, color:'#f0b90b' }}>SIMULATED EVIDENCE ONLY — Not live trading proof.</span>
+        <span style={{ fontSize:9, color:'#f0b90b', cursor:'help', borderBottom:'1px dashed #f0b90b' }}
+          title="Backtests replay your signals against historical prices but do NOT account for: slippage (real fills may differ), bid/ask spread costs, or market impact. Use backtests to compare strategies directionally — not as precise P&L forecasts.">
+          [what does this mean?]
+        </span>
       </div>
 
       {/* Run Buttons */}
@@ -57,22 +62,84 @@ export default function Backtesting() {
 
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
         {tabBtn('overview', 'Overview')}
-        {tabBtn('runs', `Runs (${(runs?.data||[]).length})`)}
+        {tabBtn('runs', `Runs (${s.runs_total ?? 0})`)}
         {tabBtn('results', `Results (${(results?.data||[]).length})`)}
-        {tabBtn('trades', `Trades (${(trades?.data||[]).length})`)}
-        {tabBtn('challengers', `Challengers (${(challengers?.data||[]).length})`)}
+        {tabBtn('trades', `Trades (${s.trades_total ?? 0})`)}
+        {tabBtn('missed', `Missed (${missed?.data?.total_missed ?? 0})`)}
+        {tabBtn('challengers', `Challengers (${s.challengers_total ?? 0})`)}
       </div>
 
       {tab === 'overview' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:10 }}>
-          {[['Datasets', s.datasets_total], ['Runs', s.runs_total], ['Sim Trades', s.trades_total],
-            ['Challengers', s.challengers_total], ['Comparisons', s.comparisons_total]
-          ].map(([l,v]) => (
-            <Card key={String(l)} compact title={String(l)}>
+        <>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(150px,1fr))', gap:10, marginBottom:14 }}>
+          {([['Datasets', s.datasets_total], ['Runs', s.runs_total], ['Sim Trades', s.trades_total],
+            ['Challengers', s.challengers_total], ['Results', (results?.data||[]).length],
+          ] as [string,any][]).map(([l,v]) => (
+            <Card key={l} compact title={l}>
               <div style={{ fontSize:24, fontWeight:700 }}>{v ?? 0}</div>
             </Card>
           ))}
         </div>
+        {/* Strategy summary table from results */}
+        {(results?.data?.length ?? 0) > 0 && (
+          <Card title="Strategy Performance Summary">
+            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
+              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {['Strategy','Type','Trades','Win%','PF','Avg R','Total P&L','Max DD'].map(h => <th key={h} style={th}>{h}</th>)}
+              </tr></thead>
+              <tbody>{(results.data as any[]).map((r: any, i: number) => (
+                <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <td style={{ ...td, fontWeight:600 }}>{r.strategy_id?.split(',')[0]}</td>
+                  <td style={td}><span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--accent-dim)', color:'var(--accent)' }}>{r.run_type || '?'}</span></td>
+                  <td style={td}>{r.simulated_trades ?? r.total_trades}</td>
+                  <td style={{ ...td, color: Number(r.win_rate)>=50?'#0ecb81':Number(r.win_rate)>=35?'#f0b90b':'#f6465d', fontWeight:600 }}>{n(r.win_rate,1)}%</td>
+                  <td style={td}>{n(r.profit_factor)}</td>
+                  <td style={td}>{n(r.avg_r_multiple || r.expectancy_r)}</td>
+                  <td style={{ ...td, color: Number(r.total_pnl)>0?'#0ecb81':'#f6465d' }}>${n(r.total_pnl)}</td>
+                  <td style={{ ...td, color:'#f6465d' }}>{r.max_drawdown_pct ? n(r.max_drawdown_pct,1)+'%' : '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </Card>
+        )}
+        </>
+      )}
+
+      {tab === 'missed' && (
+        <Card title="Missed Opportunities — What We Left on the Table">
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10, marginBottom:12 }}>
+            <div style={{ padding:10, background:'var(--green-dim)', borderRadius:6, textAlign:'center' }}>
+              <div style={{ fontSize:20, fontWeight:700, color:'var(--green)' }}>{missed?.data?.would_win ?? 0}</div>
+              <div style={{ fontSize:9, color:'var(--text3)' }}>Would Have Won</div>
+            </div>
+            <div style={{ padding:10, background:'var(--red-dim)', borderRadius:6, textAlign:'center' }}>
+              <div style={{ fontSize:20, fontWeight:700, color:'var(--red)' }}>{missed?.data?.would_lose ?? 0}</div>
+              <div style={{ fontSize:9, color:'var(--text3)' }}>Would Have Lost</div>
+            </div>
+            <div style={{ padding:10, background:'var(--amber-dim)', borderRadius:6, textAlign:'center' }}>
+              <div style={{ fontSize:20, fontWeight:700, color:'var(--amber)' }}>${n(missed?.data?.pnl_left_on_table)}</div>
+              <div style={{ fontSize:9, color:'var(--text3)' }}>P&L Left on Table</div>
+            </div>
+          </div>
+          {(missed?.data?.opportunities?.length ?? 0) > 0 ? (
+            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
+              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
+                {['Date','Symbol','Strategy','Status','Sim P&L','Sim R','Verdict'].map(h => <th key={h} style={th}>{h}</th>)}
+              </tr></thead>
+              <tbody>{(missed.data.opportunities as any[]).map((o: any, i: number) => (
+                <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
+                  <td style={td}>{String(o.proposed_date||'').slice(0,10)}</td>
+                  <td style={{ ...td, fontWeight:600 }}>{o.symbol}</td>
+                  <td style={td}>{o.strategy_id}</td>
+                  <td style={td}><span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--bg3)', color:'var(--text3)' }}>{o.proposal_status}</span></td>
+                  <td style={{ ...td, color: Number(o.simulated_pnl)>0?'#0ecb81':'#f6465d' }}>{o.simulated_pnl != null ? '$'+n(o.simulated_pnl) : '—'}</td>
+                  <td style={td}>{o.simulated_r != null ? n(o.simulated_r,1) : '—'}</td>
+                  <td style={td}>{Number(o.simulated_pnl)>0 ? '🟢 Win' : Number(o.simulated_pnl)<0 ? '🔴 Loss' : '—'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          ) : <div style={{ color:'var(--text3)', padding:16 }}>No matched missed opportunities. Run "Replay Untaken Proposals" first.</div>}
+        </Card>
       )}
 
       {tab === 'results' && (

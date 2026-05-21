@@ -16868,7 +16868,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/backtesting/results":
         try:
-            rows = _db_query("SELECT result_id, run_id, strategy_id, simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, sample_size_status, created_at FROM strategy_backtest_results ORDER BY created_at DESC LIMIT 20") or []
+            rows = _db_query("SELECT id as result_id, run_id, strategy_id, run_type, total_trades as simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, total_pnl, avg_pnl, avg_r_multiple, max_drawdown_pct, equity_curve_json, sample_size, created_at FROM strategy_backtest_results WHERE run_id IS NOT NULL ORDER BY created_at DESC LIMIT 30") or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
@@ -16919,6 +16919,36 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        "--replay-trades", "--strategy", strat, "--apply", "--verbose"],
                       cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
             return 200, {"ok": True, "message": f"Replay {strat} backtest started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/missed-opportunities":
+        try:
+            rows = _db_query("""SELECT ptp.id as proposal_id, ptp.symbol, ptp.strategy_id,
+                ptp.status as proposal_status, ptp.expiry_reason,
+                ptp.created_at::date as proposed_date,
+                ptp.proposed_entry, ptp.proposed_target1 as proposed_target,
+                ptp.proposed_stop as proposed_stop,
+                sbt.pnl as simulated_pnl, sbt.r_multiple as simulated_r,
+                sbt.exit_reason as simulated_exit_reason
+                FROM paper_trade_proposals ptp
+                LEFT JOIN strategy_backtest_trades sbt
+                    ON sbt.symbol = ptp.symbol AND sbt.strategy_id LIKE '%' || ptp.strategy_id || '%'
+                    AND ABS(EXTRACT(EPOCH FROM (sbt.signal_time::timestamptz - ptp.created_at))/3600) < 72
+                WHERE ptp.status IN ('EXPIRED','REJECTED','expired')
+                ORDER BY ABS(COALESCE(sbt.pnl,0)) DESC LIMIT 50""") or []
+            matched = [r for r in rows if r.get("simulated_pnl") is not None]
+            would_win = sum(1 for r in matched if float(r.get("simulated_pnl") or 0) > 0)
+            would_lose = sum(1 for r in matched if float(r.get("simulated_pnl") or 0) < 0)
+            left_on_table = sum(float(r["simulated_pnl"]) for r in matched if float(r.get("simulated_pnl") or 0) > 0)
+            return 200, {"ok": True, "data": {
+                "total_missed": len(rows),
+                "matched_to_backtest": len(matched),
+                "would_win": would_win,
+                "would_lose": would_lose,
+                "pnl_left_on_table": round(left_on_table, 2),
+                "opportunities": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+            }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
