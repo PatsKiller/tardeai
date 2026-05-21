@@ -115,16 +115,36 @@ def poll_once(timeout=25):
         if chat_id not in allowed or not text:
             continue
 
-        # Route proposal commands
+        # Route all recognized commands
         lower = text.lower()
+        handled = False
+        # Proposal commands
         if lower.startswith("/ptapprove") or lower.startswith("/ptreject") or \
            lower.startswith("/ptpending") or lower.startswith("/ptstatus"):
             try:
                 _handle_proposal_command(msg, text, chat_id)
-                processed += 1
-                log.info(f"command: {text[:40]} from chat={chat_id}")
+                handled = True
             except Exception as e:
                 log.error(f"command error: {e}")
+        # Stop decision commands
+        elif lower.startswith("/stopexit") or lower.startswith("/stophold") or \
+             lower.startswith("/stopdelay") or lower.startswith("/stopset"):
+            try:
+                _handle_stop_command(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"stop command error: {e}")
+        # Paper status shortcut
+        elif lower in ("paper status", "/paper status", "paper pending", "/paper pending"):
+            try:
+                _handle_proposal_command(msg, "/ptpending", chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"paper status error: {e}")
+
+        if handled:
+            processed += 1
+            log.info(f"command: {text[:40]} from chat={chat_id}")
 
     return processed
 
@@ -227,6 +247,102 @@ def _handle_proposal_command(msg, text, chat_id):
             urllib.request.urlopen(req, timeout=10)
         except Exception as e:
             log.error(f"reply send failed: {e}")
+
+
+def _handle_stop_command(msg, text, chat_id):
+    """Route /stop* text commands."""
+    import urllib.request
+    token = _token()
+    lower = text.lower()
+    message_id = msg.get("message_id")
+    user_id = str(msg.get("from", {}).get("id", ""))
+    user_name = msg.get("from", {}).get("first_name", "operator")
+    parts = text.split()
+    response = None
+
+    if lower.startswith("/stopexit"):
+        sym = parts[1].upper() if len(parts) > 1 else None
+        if not sym:
+            response = "Usage: /stopexit SYMBOL"
+        else:
+            from telegram_callback_handler import _handle_stop_decision
+            result = _handle_stop_decision(sym, "EXIT", user_id, f"operator honored stop via /stopexit")
+            if result.get("ok"):
+                response = f"STOP HONORED -- {sym} marked for exit by {user_name}"
+            else:
+                response = f"FAILED: {result.get('error', 'unknown')}"
+
+    elif lower.startswith("/stophold"):
+        sym = parts[1].upper() if len(parts) > 1 else None
+        if not sym:
+            response = "Usage: /stophold SYMBOL"
+        else:
+            from telegram_callback_handler import _handle_stop_decision
+            result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, f"operator override via /stophold")
+            if result.get("ok"):
+                response = f"OVERRIDE -- {sym} held by {user_name}, watching"
+            else:
+                response = f"FAILED: {result.get('error', 'unknown')}"
+
+    elif lower.startswith("/stopdelay"):
+        sym = parts[1].upper() if len(parts) > 1 else None
+        mins = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 30
+        if not sym:
+            response = "Usage: /stopdelay SYMBOL [minutes]"
+        else:
+            from telegram_callback_handler import _handle_stop_snooze
+            result = _handle_stop_snooze(sym, mins, user_id)
+            if result.get("ok"):
+                response = f"POSTPONED -- {sym} snoozed {mins} min"
+            else:
+                response = f"FAILED: {result.get('error', 'unknown')}"
+
+    elif lower.startswith("/stopset"):
+        # /stopset RTX stop=178.50
+        sym = parts[1].upper() if len(parts) > 1 else None
+        stop_val = None
+        for p in parts[2:]:
+            if p.startswith("stop="):
+                try:
+                    stop_val = float(p.split("=")[1])
+                except ValueError:
+                    pass
+        if not sym or stop_val is None:
+            response = "Usage: /stopset SYMBOL stop=PRICE"
+        else:
+            try:
+                from db_adapter import _get_conn
+                conn = _get_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT id, stop_loss FROM paper_trades WHERE symbol=%s AND status='open' LIMIT 1", (sym,))
+                row = cur.fetchone()
+                if row:
+                    old_stop = float(row[1])
+                    cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", (stop_val, row[0]))
+                    conn.commit()
+                    response = f"STOP SET -- {sym} stop ${old_stop:.2f} -> ${stop_val:.2f}"
+                else:
+                    response = f"No open paper trade found for {sym}"
+                conn.close()
+            except Exception as e:
+                response = f"FAILED: {e}"
+
+    if response:
+        payload = json.dumps({
+            "chat_id": chat_id,
+            "reply_to_message_id": message_id,
+            "text": response,
+        }).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as e:
+            log.error(f"stop reply send failed: {e}")
 
 
 def main():
