@@ -39,7 +39,7 @@ def _allowed_chat_ids():
 
 def _tg_post(method, data):
     """POST to Telegram API."""
-    import urllib.request
+    import urllib.request, urllib.error
     token = _token()
     payload = json.dumps(data).encode()
     req = urllib.request.Request(
@@ -51,9 +51,13 @@ def _tg_post(method, data):
     try:
         resp = urllib.request.urlopen(req, timeout=10)
         return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode() if hasattr(e, "read") else ""
+        log.error(f"Telegram {method} failed: {e} body={body[:300]}")
+        return {"ok": False, "error": body}
     except Exception as e:
         log.error(f"Telegram {method} failed: {e}")
-        return {}
+        return {"ok": False, "error": str(e)}
 
 
 def answer_callback(cb_id, text, show_alert=False):
@@ -65,12 +69,19 @@ def answer_callback(cb_id, text, show_alert=False):
 
 
 def send_reply(chat_id, reply_to_message_id, text):
-    _tg_post("sendMessage", {
+    result = _tg_post("sendMessage", {
         "chat_id": chat_id,
         "reply_to_message_id": reply_to_message_id,
         "text": text,
         "parse_mode": "Markdown",
     })
+    # Retry without Markdown if parse failed
+    if not result.get("ok"):
+        _tg_post("sendMessage", {
+            "chat_id": chat_id,
+            "reply_to_message_id": reply_to_message_id,
+            "text": text,
+        })
 
 
 def handle_callback_query(cb):
@@ -247,8 +258,9 @@ def _run_reject(pid, user_id, reason):
 
 def _post_confirmation(chat_id, original_msg_id, result, label):
     sym = result.get("symbol", "?")
+    # Use plain text to avoid Markdown parse errors with special chars
     if result.get("ok"):
-        body = f"\u2014 *{label}*\n"
+        body = f"{label}\n"
         if result.get("shares"):
             body += (f"{sym}: shares={result['shares']} "
                      f"entry=${result.get('entry_price', 0):.2f} "
@@ -258,8 +270,13 @@ def _post_confirmation(chat_id, original_msg_id, result, label):
         else:
             body += f"{sym}: {result.get('message', 'done')}"
     else:
-        body = f"\u2014 *{label} FAILED*: {result.get('error', 'unknown')}"
-    send_reply(chat_id, original_msg_id, body)
+        body = f"{label} FAILED: {result.get('error', 'unknown')}"
+    # Send without Markdown to avoid parse errors
+    _tg_post("sendMessage", {
+        "chat_id": chat_id,
+        "reply_to_message_id": original_msg_id,
+        "text": body,
+    })
 
 
 def _short_result(result):
