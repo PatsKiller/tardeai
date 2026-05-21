@@ -8,9 +8,16 @@ const runBtn: React.CSSProperties = { fontSize:10, padding:'6px 12px', border:'1
 
 const STRATEGIES = [
   'momentum_scalp', 'swing_breakout', 'swing_trade', 'gap_and_go',
-  'recovery_watch', 'earnings_catalyst', 'speculative_growth',
-  'sector_rotation', 'dividend_growth_compounder', 'defense_thesis',
+  'recovery_watch', 'earnings_catalyst', 'earnings_post_momentum',
+  'earnings_pre_buildup', 'speculative_growth', 'sector_rotation',
+  'fib_retracement_bounce', 'dividend_growth_compounder', 'defense_thesis',
+  'core_growth_compounder', 'core_index', 'covered_call_income',
+  'high_yield_income_bdc', 'income_add', 'reit_income',
+  'international_dividend', 'bond_income', 'tax_loss_harvest', 'cash_or_stable',
 ]
+
+// Scalp/intraday strategies — excluded from daily-bar incubator backtests
+const SCALP_STRATEGIES = new Set(['momentum_scalp', 'gap_and_go'])
 const n = (v: unknown, d=2) => typeof v === 'number' ? v.toFixed(d) : '—'
 const th: React.CSSProperties = { padding:'6px 8px', textAlign:'left', color:'#848e9c', fontSize:10 }
 const td: React.CSSProperties = { padding:'6px 8px', fontSize:11 }
@@ -195,7 +202,7 @@ function AnalyzerPanel({ onDone }: { onDone: () => void }) {
       </div>
       <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 6 }}>Test strategy on incubator symbols (Finviz charts included):</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {STRATEGIES.filter(s => !['momentum_scalp', 'gap_and_go'].includes(s)).map(s => (
+        {STRATEGIES.filter(s => !SCALP_STRATEGIES.has(s)).map(s => (
           <button key={s} disabled={!!running}
             onClick={() => run(`/api/v2/backtesting/backtest-incubator/${s}`, s)}
             style={{ fontSize: 9, padding: '3px 8px', border: '1px solid var(--purple)', borderRadius: 3,
