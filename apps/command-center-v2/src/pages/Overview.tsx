@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import OpenTradesCard from '../components/OpenTradesCard'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import MetricTile from '../components/MetricTile'
@@ -312,6 +313,9 @@ export default function Overview() {
               />
             </Card>
           )}
+
+          <SectionHeader title="Open Paper Trades" />
+          <OpenTradesCard />
 
           <SectionHeader title="Portfolio Events" count={eventCards.length} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

@@ -1,4 +1,5 @@
 import React from 'react'
+import OpenTradesCard from '../components/OpenTradesCard'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
@@ -53,6 +54,9 @@ export default function PaperStatus() {
       <PageHeader title="Paper Trading Status" subtitle="Alpaca paper account health and today's activity" actions={
         <button onClick={refetch} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
       } />
+
+      {/* Open trades intelligence */}
+      <OpenTradesCard />
 
       {/* Alpaca API Card */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>

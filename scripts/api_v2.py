@@ -14666,6 +14666,83 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Open Trades Intelligence ──
+    if base_path == "/api/v2/open-trades":
+        try:
+            raw = _db_query("""
+                SELECT id, symbol, strategy_id, shares,
+                       entry_price, current_price, stop_loss, target_1,
+                       unrealized_pnl, pnl, r_multiple,
+                       created_at, broker_order_id, broker_status,
+                       catalyst_at_entry, score_at_entry
+                FROM paper_trades WHERE status = 'open'
+                ORDER BY created_at DESC
+            """) or []
+            trail_recs = {}
+            _tr = _db_query("""
+                SELECT strategy_id,
+                       MODE() WITHIN GROUP (ORDER BY recommendation) as rec,
+                       ROUND(AVG(high_water_pct_gain)::numeric, 1) as max_pot,
+                       ROUND(AVG(CASE WHEN optimal_trail_pct IS NOT NULL
+                                     THEN optimal_trail_pnl - fixed_pnl_pct ELSE 0
+                                END)::numeric, 1) as improvement,
+                       ROUND(AVG(optimal_trail_pct)::numeric, 0) as optimal_pct
+                FROM trailing_stop_analysis GROUP BY strategy_id
+            """) or []
+            for r in _tr:
+                trail_recs[r["strategy_id"]] = r
+
+            trades = []
+            for t in raw:
+                entry = float(t.get("entry_price") or 0)
+                cur = float(t.get("current_price") or entry)
+                stop = float(t.get("stop_loss") or 0)
+                tgt = float(t.get("target_1") or 0)
+                shares = int(t.get("shares") or 0)
+                _pnl = float(t.get("unrealized_pnl") or t.get("pnl") or 0)
+                risk = abs(entry - stop) if entry and stop else 1
+                r_m = round((cur - entry) / risk, 2) if risk else None
+                rr = round((tgt - entry) / risk, 2) if risk and tgt else None
+
+                tr = trail_recs.get(t.get("strategy_id"), {})
+                rec = tr.get("rec", "keep_fixed") or "keep_fixed"
+                if rec.startswith("use_trail"):
+                    trail_advice = f"Consider {float(tr.get('optimal_pct',5)):.0f}% trailing stop (+{float(tr.get('improvement',0)):.1f}% vs fixed)"
+                else:
+                    trail_advice = f"Keep fixed stop (avg max potential +{float(tr.get('max_pot',0)):.1f}%)"
+
+                flags = []
+                if _pnl < 0: flags.append("below_entry")
+                if cur and stop and (cur - stop) / cur < 0.02: flags.append("near_stop")
+                if r_m and r_m < -0.5: flags.append("losing_momentum")
+                if r_m and r_m > 0.8: flags.append("consider_partial_exit")
+
+                trades.append({
+                    "id": t["id"], "symbol": t["symbol"],
+                    "strategy_id": t.get("strategy_id"),
+                    "shares": shares,
+                    "entry_price": entry, "current_price": cur,
+                    "stop_loss": stop, "target_1": tgt,
+                    "pnl": round(_pnl, 2),
+                    "pnl_pct": round((cur - entry) / entry * 100, 2) if entry else 0,
+                    "r_multiple": r_m, "rr_ratio": rr,
+                    "dist_to_stop_pct": round((stop - cur) / cur * 100, 2) if cur else None,
+                    "dist_to_stop_usd": round((stop - cur) * shares, 2) if cur else None,
+                    "dist_to_target_pct": round((tgt - cur) / cur * 100, 2) if cur and tgt else None,
+                    "dist_to_target_usd": round((tgt - cur) * shares, 2) if cur and tgt and shares else None,
+                    "risk_flags": flags,
+                    "trail_recommendation": rec,
+                    "trail_advice": trail_advice,
+                    "opened_at": str(t.get("created_at") or ""),
+                    "catalyst": t.get("catalyst_at_entry"),
+                })
+            return 200, {"ok": True, "data": {
+                "trades": trades, "count": len(trades),
+                "total_unrealized_pnl": round(sum(x["pnl"] for x in trades), 2),
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Trade Intelligence Aggregator (Phase 3, Session 42) ──
     if base_path.startswith("/api/v2/trade/") and base_path.endswith("/intelligence"):
         _tid_str = base_path[len("/api/v2/trade/"):-len("/intelligence")].strip("/")
