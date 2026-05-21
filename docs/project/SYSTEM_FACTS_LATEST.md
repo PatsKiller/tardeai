@@ -1,11 +1,11 @@
 # System Facts — Latest
 
-Generated: 2026-05-17T15:24:54.168555
+Generated: 2026-05-17T22:16:19.356180
 
 ## Runtime
 - Hostname: ms01-openclaw
 - Python: 3.13.7
-- Git: main @ cf22b12
+- Git: main @ 48fa421
 
 ## Database
 - Connected: True
@@ -14,7 +14,7 @@ Generated: 2026-05-17T15:24:54.168555
 - paper_trade_proposals: 83
 - paper_trades: 23
 - watchlist_agent_results: 5517
-- news_articles: 3577
+- news_articles: 3655
 - topic_monitor: 17
 - content_embeddings: 15491
 - pipeline_stages: 44
@@ -24,7 +24,7 @@ Generated: 2026-05-17T15:24:54.168555
 - blocked_content: 2
 
 ## Codebase
-- python_script_count: 455
+- python_script_count: 462
 - sql_migration_count: 42
 - yaml_config_count: 41
 - json_config_count: 6
@@ -36,7 +36,7 @@ Generated: 2026-05-17T15:24:54.168555
 ## Safety
 - ALPACA_MODE: paper
 - Live trading: BLOCKED
-- Holdings: $1,189,109
+- Holdings: $1,192,220
 - Holdings guard: PASSED
 - Blocked reasons: policy_live_trading_allowed_false, validation_days_insufficient, closed_trade_sample_insufficient, win_rate_below_threshold, governance_not_approved
 
@@ -45,18 +45,18 @@ Generated: 2026-05-17T15:24:54.168555
 - **docs/v4_1_phase1_pilot_report.md**: strategy_count claimed=5 actual=23
 - **docs/CHEAT_SHEET.md**: table_count claimed=330 actual=358
 - **docs/CHEAT_SHEET.md**: strategy_count claimed=20 actual=23
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=455
-- **docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md**: python_script_count claimed=5 actual=455
-- **docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md**: python_script_count claimed=3 actual=455
-- **docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md**: python_script_count claimed=3 actual=455
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/CHEAT_SHEET.md**: python_script_count claimed=3 actual=462
+- **docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md**: python_script_count claimed=5 actual=462
+- **docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md**: python_script_count claimed=3 actual=462
+- **docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md**: python_script_count claimed=3 actual=462
 - **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=330 actual=358
 - **docs/ARCHITECTURE_OVERVIEW.md**: table_count claimed=334 actual=358
 - **docs/ARCHITECTURE_OVERVIEW.md**: strategy_count claimed=20 actual=23
@@ -64,14 +64,14 @@ Generated: 2026-05-17T15:24:54.168555
 - **docs/ARCHITECTURE_OVERVIEW.md**: cron_job_count claimed=63 actual=99
 - **docs/ARCHITECTURE_OVERVIEW.md**: frontend_page_count claimed=73 actual=78
 - **docs/RESTORE_GUIDE.md**: table_count claimed=334 actual=358
-- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=455
-- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=455
+- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=462
+- **docs/RESTORE_GUIDE.md**: python_script_count claimed=3 actual=462
 - **docs/llm_fleet_strategy_v3_4_1.md**: cron_job_count claimed=2 actual=99
 - **docs/llm_fleet_strategy_v3_4_1.md**: cron_job_count claimed=2 actual=99
 - **docs/llm_fleet_strategy_v3_4_1.md**: cron_job_count claimed=2 actual=99
-- **docs/llm_fleet_strategy_v3_4_1.md**: python_script_count claimed=3 actual=455
-- **docs/llm_fleet_strategy_v3_4_1.md**: python_script_count claimed=3 actual=455
-- **docs/llm_fleet_strategy_v3_4_1.md**: python_script_count claimed=3 actual=455
+- **docs/llm_fleet_strategy_v3_4_1.md**: python_script_count claimed=3 actual=462
+- **docs/llm_fleet_strategy_v3_4_1.md**: python_script_count claimed=3 actual=462
+- **docs/llm_fleet_strategy_v3_4_1.md**: python_script_count claimed=3 actual=462
 - **docs/v4_1_phase1h_daily_deep_overnight_llm_window.md**: strategy_count claimed=34 actual=23
 - **docs/v4_1_phase1h_daily_deep_overnight_llm_window.md**: cron_job_count claimed=0 actual=99
 - **docs/v4_1_phase1_final_audit.md**: strategy_count claimed=33 actual=23
@@ -80,13 +80,14 @@ Generated: 2026-05-17T15:24:54.168555
 - **docs/MASTER_SYSTEM_DOCUMENTATION.md**: strategy_count claimed=20 actual=23
 - **docs/MASTER_SYSTEM_DOCUMENTATION.md**: strategy_count claimed=20 actual=23
 - **docs/MASTER_SYSTEM_DOCUMENTATION.md**: strategy_count claimed=20 actual=23
-- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=56 actual=455
-- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=376 actual=455
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=56 actual=462
+- **docs/MASTER_SYSTEM_DOCUMENTATION.md**: python_script_count claimed=376 actual=462
 - **docs/v4_1_phase1_final_closeout_report.md**: strategy_count claimed=34 actual=23
 - **docs/v4_1_phase1_final_closeout_report.md**: cron_job_count claimed=0 actual=99
 - **docs/SYSTEM_AUDIT_2026-05-11.md**: frontend_page_count claimed=40 actual=78
 - **docs/v4_1_phase1c_controlled_expansion_report.md**: strategy_count claimed=2 actual=23
 - **docs/v4_1_deployment_log.md**: table_count claimed=336 actual=358
+- **docs/v4_1_deployment_log.md**: strategy_count claimed=11 actual=23
 - **docs/v4_1_deployment_log.md**: strategy_count claimed=7 actual=23
 - **docs/v4_1_deployment_log.md**: strategy_count claimed=6 actual=23
 - **docs/v4_1_deployment_log.md**: strategy_count claimed=5 actual=23
@@ -104,9 +105,10 @@ Generated: 2026-05-17T15:24:54.168555
 - **docs/v4_1_deployment_log.md**: cron_job_count claimed=13 actual=99
 - **docs/v4_1_deployment_log.md**: cron_job_count claimed=3 actual=99
 - **docs/v4_1_deployment_log.md**: cron_job_count claimed=2 actual=99
-- **docs/v4_1_deployment_log.md**: python_script_count claimed=5 actual=455
-- **docs/v4_1_deployment_log.md**: python_script_count claimed=5 actual=455
-- **docs/v4_1_deployment_log.md**: python_script_count claimed=7 actual=455
+- **docs/v4_1_deployment_log.md**: python_script_count claimed=455 actual=462
+- **docs/v4_1_deployment_log.md**: python_script_count claimed=5 actual=462
+- **docs/v4_1_deployment_log.md**: python_script_count claimed=5 actual=462
+- **docs/v4_1_deployment_log.md**: python_script_count claimed=7 actual=462
 - **docs/COST_MODEL.md**: table_count claimed=334 actual=358
 - **docs/IMPROVEMENT_PLAN_2026-05-11.md**: frontend_page_count claimed=61 actual=78
 - **docs/IMPROVEMENT_PLAN_2026-05-11.md**: frontend_page_count claimed=40 actual=78
