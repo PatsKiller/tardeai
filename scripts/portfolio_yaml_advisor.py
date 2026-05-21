@@ -335,79 +335,105 @@ Respond ONLY in this exact JSON format — no preamble, no markdown:
 # ── Opus call ──────────────────────────────────────────────────────────────────
 
 def call_opus(prompt: str, log: logging.Logger) -> Optional[Dict]:
-    """Call Claude Opus with the advisor prompt. Returns parsed JSON."""
+    """Call Claude Opus with the advisor prompt, falling back through LLM router.
+    Returns parsed JSON dict or None."""
+    import re
     log.info("─" * 50)
-    log.info("STAGE 3: Calling Claude Opus")
+    log.info("STAGE 3: Calling LLM for rebalance analysis")
 
+    raw_text = None
+    model_used = "unknown"
+
+    # Try 1: Claude Opus (preferred for complex financial analysis)
     try:
         import anthropic
-    except ImportError:
+        api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if api_key:
+            client = anthropic.Anthropic(api_key=api_key)
+            model = "claude-opus-4-6"
+            log.info(f"  Trying: {model}")
+            try:
+                response = client.messages.create(
+                    model=model, max_tokens=4000,
+                    thinking={"type": "adaptive", "budget_tokens": 8000},
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            except Exception:
+                log.warning("  Extended thinking unavailable — retrying without")
+                response = client.messages.create(
+                    model=model, max_tokens=4000,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            text_blocks = [b.text for b in response.content if hasattr(b, "text")]
+            raw_text = "\n".join(text_blocks).strip()
+            model_used = model
+            log.info(f"  Claude response: {len(raw_text):,} chars, "
+                     f"{response.usage.input_tokens:,} in / {response.usage.output_tokens:,} out")
+    except Exception as e:
+        log.warning(f"  Claude failed: {e}")
+
+    # Try 2: LLM router (Grok → local qwen3)
+    if not raw_text:
+        log.info("  Falling back to LLM router (Grok/local)")
         try:
-            import subprocess
-            subprocess.run([sys.executable, "-m", "pip", "install", "anthropic", "-q"], check=True)
-            import anthropic
+            from llm_router import get_llm_response
+            result = get_llm_response(
+                task_type="cio_synthesis",
+                prompt=prompt,
+                high_impact=True,
+                max_tokens=4000,
+                local_timeout=120,
+            )
+            raw_text = result.get("response", "")
+            model_used = result.get("model_used", "router_fallback")
+            log.info(f"  Router response: {len(raw_text):,} chars via {model_used}")
+            if result.get("fallback_reason"):
+                log.info(f"  Fallback reason: {result['fallback_reason']}")
         except Exception as e:
-            log.error(f"  Cannot import anthropic: {e}")
+            log.error(f"  LLM router also failed: {e}")
+
+    # Try 3: Direct local LLM (last resort)
+    if not raw_text:
+        log.info("  Last resort: direct local LLM (qwen3:14b)")
+        try:
+            from local_llm_config import get_local_llm_model, get_local_llm_base_url
+            import urllib.request
+            url = get_local_llm_base_url().rstrip("/") + "/api/chat"
+            payload = json.dumps({
+                "model": get_local_llm_model(),
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            }).encode()
+            req = urllib.request.Request(url, data=payload,
+                headers={"Content-Type": "application/json"}, method="POST")
+            resp = urllib.request.urlopen(req, timeout=180)
+            data = json.loads(resp.read())
+            raw_text = data.get("message", {}).get("content", "")
+            model_used = get_local_llm_model()
+            log.info(f"  Local LLM response: {len(raw_text):,} chars via {model_used}")
+        except Exception as e:
+            log.error(f"  Local LLM failed: {e}")
             return None
 
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        log.error("  ANTHROPIC_API_KEY not set in .env")
+    if not raw_text:
+        log.error("  All LLM providers failed — no rebalance analysis generated")
         return None
 
-    client = anthropic.Anthropic(api_key=api_key)
-    model  = "claude-opus-4-6"
-
-    log.info(f"  Model: {model}")
-    log.info(f"  Sending {len(prompt):,} char prompt...")
-
-    try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=4000,
-            thinking={"type": "adaptive", "budget_tokens": 8000},
-            messages=[{"role": "user", "content": prompt}],
-        )
-    except Exception:
-        # Fallback: try without extended thinking (older API)
-        log.warning("  Extended thinking unavailable — retrying without")
-        response = client.messages.create(
-            model=model,
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-    # Extract text content
-    text_blocks = [b.text for b in response.content if hasattr(b, "text")]
-    raw_text = "\n".join(text_blocks).strip()
-
-    log.info(f"  Response length: {len(raw_text):,} chars")
-    log.info(f"  Input tokens:    {response.usage.input_tokens:,}")
-    log.info(f"  Output tokens:   {response.usage.output_tokens:,}")
-
-    # Log full raw response for auditability
-    log.debug("  ── RAW OPUS RESPONSE ──────────────────────────────────")
-    for line in raw_text.split("\n"):
-        log.debug(f"  {line}")
-    log.debug("  ── END RAW RESPONSE ───────────────────────────────────")
+    log.info(f"  Final model: {model_used}")
 
     # Parse JSON
-    import re
     json_match = re.search(r"\{[\s\S]*\}", raw_text)
     if not json_match:
-        log.error("  Could not extract JSON from Opus response")
-        log.error(f"  Response was {len(raw_text)} chars — first 1000:")
-        for line in raw_text[:1000].split("\n"):
-            log.error(f"  | {line}")
+        log.error(f"  Could not extract JSON from {model_used} response ({len(raw_text)} chars)")
         return None
 
     try:
         result = json.loads(json_match.group())
-        log.info(f"  Parsed successfully: {len(result.get('suggestions', []))} suggestion(s)")
+        result["_model_used"] = model_used
+        log.info(f"  Parsed: {len(result.get('suggestions', []))} suggestion(s) from {model_used}")
         return result
     except json.JSONDecodeError as e:
         log.error(f"  JSON parse error: {e}")
-        log.error(f"  Raw text: {raw_text[:500]}")
         return None
 
 
