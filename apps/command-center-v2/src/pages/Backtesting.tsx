@@ -1,304 +1,353 @@
 import { useState, useCallback, useMemo } from 'react'
+import { Bar } from 'react-chartjs-2'
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip as CJTooltip } from 'chart.js'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
+import MetricTile from '../components/MetricTile'
 import { useApi } from '../hooks/useApi'
 
-const btn: React.CSSProperties = { fontSize:10, padding:'4px 10px', border:'1px solid var(--border)', borderRadius:4, background:'var(--bg1)', color:'var(--text1)', cursor:'pointer' }
-const runBtn: React.CSSProperties = { fontSize:10, padding:'6px 12px', border:'1px solid var(--green)', borderRadius:4, background:'var(--green-dim)', color:'var(--green)', cursor:'pointer', fontWeight:600 }
+ChartJS.register(CategoryScale, LinearScale, BarElement, CJTooltip)
 
 const STRATEGIES = [
-  'momentum_scalp', 'swing_breakout', 'swing_trade', 'gap_and_go',
-  'recovery_watch', 'earnings_catalyst', 'earnings_post_momentum',
-  'earnings_pre_buildup', 'speculative_growth', 'sector_rotation',
-  'fib_retracement_bounce', 'dividend_growth_compounder', 'defense_thesis',
-  'core_growth_compounder', 'core_index', 'covered_call_income',
-  'high_yield_income_bdc', 'income_add', 'reit_income',
-  'international_dividend', 'bond_income', 'tax_loss_harvest', 'cash_or_stable',
+  'momentum_scalp','swing_breakout','swing_trade','gap_and_go','recovery_watch',
+  'earnings_catalyst','earnings_post_momentum','earnings_pre_buildup','speculative_growth',
+  'sector_rotation','fib_retracement_bounce','dividend_growth_compounder','defense_thesis',
+  'core_growth_compounder','core_index','covered_call_income','high_yield_income_bdc',
+  'income_add','reit_income','international_dividend','bond_income','tax_loss_harvest','cash_or_stable',
 ]
-const SCALP_STRATEGIES = new Set(['momentum_scalp', 'gap_and_go'])
+const SCALPS = new Set(['momentum_scalp', 'gap_and_go'])
 const n = (v: unknown, d=2) => typeof v === 'number' ? v.toFixed(d) : '—'
-const th: React.CSSProperties = { padding:'6px 8px', textAlign:'left', color:'#848e9c', fontSize:10, textTransform:'uppercase' }
-const td: React.CSSProperties = { padding:'6px 8px', fontSize:11 }
+const wrColor = (wr: number) => wr >= 55 ? '#0ecb81' : wr >= 35 ? '#f0b90b' : '#f6465d'
+
+const th: React.CSSProperties = { padding:'6px 8px', textAlign:'left', color:'var(--text3)', fontSize:9, textTransform:'uppercase', letterSpacing:'.4px', fontWeight:600 }
+const td: React.CSSProperties = { padding:'5px 8px', fontSize:11 }
+const tabStyle = (active: boolean): React.CSSProperties => ({
+  padding:'8px 14px', fontSize:11, fontWeight: active?600:400, cursor:'pointer', border:'none',
+  borderBottom: active?'2px solid var(--accent)':'2px solid transparent',
+  background:'transparent', color: active?'var(--accent)':'var(--text3)', whiteSpace:'nowrap',
+})
 
 export default function Backtesting() {
   const [rk, setRk] = useState(0)
   const [tab, setTab] = useState('overview')
 
-  // useApi unwraps {ok, data} — so status IS the data object, runs IS the array
   const { data: statusRaw } = useApi<any>(`/api/v2/backtesting/status?_r=${rk}`)
   const { data: runsArr } = useApi<any>(`/api/v2/backtesting/runs?_r=${rk}`)
   const { data: resultsArr } = useApi<any>(`/api/v2/backtesting/results?_r=${rk}`)
   const { data: tradesArr } = useApi<any>(`/api/v2/backtesting/trades?_r=${rk}`)
   const { data: missedRaw } = useApi<any>(`/api/v2/backtesting/missed-opportunities?_r=${rk}`)
-  const { data: challengersArr } = useApi<any>(`/api/v2/champion-challenger?_r=${rk}`)
 
-  // Normalize — useApi already unwraps, but status/missed are objects not arrays
   const s = statusRaw || {}
-  const runs = Array.isArray(runsArr) ? runsArr : runsArr?.data || []
-  const results = Array.isArray(resultsArr) ? resultsArr : resultsArr?.data || []
-  const trades = Array.isArray(tradesArr) ? tradesArr : tradesArr?.data || []
+  const runs: any[] = Array.isArray(runsArr) ? runsArr : []
+  const results: any[] = Array.isArray(resultsArr) ? resultsArr : []
+  const trades: any[] = Array.isArray(tradesArr) ? tradesArr : []
   const missed = missedRaw || {}
-  const challengers = Array.isArray(challengersArr) ? challengersArr : challengersArr?.data || []
+  const opps: any[] = missed.opportunities || []
 
-  // Derive per-strategy stats from trades
-  const strategyStats = useMemo(() => {
-    const byS: Record<string, {n:number, wins:number, pnl:number, rs:number[]}> = {}
+  // Strategy stats from trades
+  const stratStats = useMemo(() => {
+    const m: Record<string, {n:number;w:number;pnl:number;rs:number[]}> = {}
     trades.forEach((t: any) => {
       const sid = t.strategy_id || 'unknown'
-      if (!byS[sid]) byS[sid] = {n:0, wins:0, pnl:0, rs:[]}
-      byS[sid].n++
-      if ((t.pnl || 0) > 0) byS[sid].wins++
-      byS[sid].pnl += Number(t.pnl || 0)
-      if (t.r_multiple != null) byS[sid].rs.push(Number(t.r_multiple))
+      if (!m[sid]) m[sid] = {n:0,w:0,pnl:0,rs:[]}
+      m[sid].n++; if ((t.pnl||0)>0) m[sid].w++
+      m[sid].pnl += Number(t.pnl||0)
+      if (t.r_multiple!=null) m[sid].rs.push(Number(t.r_multiple))
     })
-    return Object.entries(byS)
-      .map(([strategy, v]) => ({
-        strategy, trades: v.n,
-        win_rate: v.n > 0 ? Math.round(100 * v.wins / v.n) : 0,
-        total_pnl: Math.round(v.pnl * 100) / 100,
-        avg_r: v.rs.length > 0 ? Math.round(v.rs.reduce((a, b) => a+b, 0) / v.rs.length * 100) / 100 : 0,
-      }))
-      .sort((a, b) => b.win_rate - a.win_rate)
+    return Object.entries(m).map(([strategy,v]) => ({
+      strategy, trades:v.n,
+      wr: v.n>0 ? Math.round(100*v.w/v.n) : 0,
+      pnl: Math.round(v.pnl*100)/100,
+      avgR: v.rs.length>0 ? Math.round(v.rs.reduce((a,b)=>a+b,0)/v.rs.length*100)/100 : 0,
+    })).sort((a,b) => b.wr - a.wr)
   }, [trades])
 
-  const tabBtn = (t: string, label: string) => (
-    <button onClick={() => setTab(t)} style={{
-      ...btn, background: tab === t ? 'var(--accent)' : 'var(--bg1)', color: tab === t ? '#fff' : 'var(--text1)'
-    }}>{label}</button>
-  )
+  // R-multiple buckets
+  const rBuckets = useMemo(() => {
+    const b = [{l:'<-2R',mn:-99,mx:-2},{l:'-2 to -1',mn:-2,mx:-1},{l:'-1 to 0',mn:-1,mx:0},
+               {l:'0 to 1',mn:0,mx:1},{l:'1 to 2',mn:1,mx:2},{l:'>2R',mn:2,mx:99}]
+    return b.map(x => ({...x, count: trades.filter((t:any) => t.r_multiple!=null && t.r_multiple>x.mn && t.r_multiple<=x.mx).length}))
+  }, [trades])
+
+  const flagged = stratStats.filter(ss => ss.wr<35 && ss.trades>=3)
 
   return (
-    <div style={{ padding:'16px 24px', maxWidth:1200 }}>
+    <div style={{ maxWidth:1200 }}>
       <PageHeader title="Backtesting" subtitle="Enterprise price-replay backtester with LLM analysis" actions={
-        <button onClick={() => setRk(k=>k+1)} style={btn}>Refresh</button>
+        <button onClick={() => setRk(k=>k+1)} style={{ fontSize:10, padding:'4px 10px', border:'1px solid var(--border)', borderRadius:4, background:'var(--bg1)', color:'var(--text1)', cursor:'pointer' }}>Refresh</button>
       }/>
 
-      <div style={{ padding:'8px 14px', marginBottom:12, borderRadius:6, background:'rgba(240,185,11,.08)', border:'1px solid #f0b90b', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <span style={{ fontSize:12, fontWeight:700, color:'#f0b90b' }}>SIMULATED EVIDENCE ONLY — Not live trading proof.</span>
-        <span style={{ fontSize:9, color:'#f0b90b', cursor:'help', borderBottom:'1px dashed #f0b90b' }}
-          title="Backtests replay your signals against historical prices but do NOT account for: slippage (real fills may differ), bid/ask spread costs, or market impact. Use backtests to compare strategies directionally — not as precise P&L forecasts.">
-          [what does this mean?]
-        </span>
+      {/* Disclaimer */}
+      <div style={{ padding:'6px 12px', marginBottom:10, borderRadius:6, background:'rgba(240,185,11,.06)', border:'1px solid rgba(240,185,11,.3)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ fontSize:11, color:'#f0b90b' }}>SIMULATED EVIDENCE ONLY — not live trading proof.</span>
+        <span style={{ fontSize:9, color:'#f0b90b', cursor:'help', borderBottom:'1px dashed' }}
+          title="Backtests replay signals against historical prices. They don't account for slippage, spread, or market impact. Use for directional strategy comparison only.">[?]</span>
       </div>
 
-      <RunPanel onDone={() => setRk(k => k + 1)} />
-      <AnalyzerPanel onDone={() => setRk(k => k + 1)} />
+      {/* Action panels */}
+      <RunPanel onDone={() => setRk(k=>k+1)} />
+      <AnalyzerPanel onDone={() => setRk(k=>k+1)} />
 
-      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-        {tabBtn('overview', 'Overview')}
-        {tabBtn('runs', `Runs (${s.runs_total ?? runs.length})`)}
-        {tabBtn('results', `Results (${results.length})`)}
-        {tabBtn('trades', `Trades (${s.trades_total ?? trades.length})`)}
-        {tabBtn('missed', `Missed (${missed.total_missed ?? 0})`)}
-        {tabBtn('challengers', `Challengers (${s.challengers_total ?? 0})`)}
+      {/* KPI tiles */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:8, marginBottom:12 }}>
+        <MetricTile label="Datasets" value={String(s.datasets_total ?? 0)} />
+        <MetricTile label="Runs" value={String(s.runs_total ?? 0)} />
+        <MetricTile label="Sim Trades" value={String(s.trades_total ?? 0)} />
+        <MetricTile label="Results" value={String(results.length)} />
+        <MetricTile label="Flagged" value={String(flagged.length)} deltaColor={flagged.length>0?'var(--red)':undefined} />
+        <MetricTile label="Missed" value={String(missed.total_missed ?? 0)} />
+      </div>
+
+      {/* Alert */}
+      {flagged.length > 0 && (
+        <div style={{ padding:'8px 12px', marginBottom:12, borderRadius:6, background:'var(--red-dim)', border:'1px solid var(--red)', fontSize:11, color:'var(--red)' }}>
+          ⚠ Low win rate: {flagged.map(ss => `${ss.strategy.replace(/_/g,' ')} ${ss.wr}%`).join(' · ')} — review before approving more proposals.
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)', marginBottom:14, overflowX:'auto' }}>
+        {[['overview','Overview'],['strategy',`Strategy (${stratStats.length})`],['trades',`Sim Trades (${trades.length})`],
+          ['missed',`Missed (${missed.total_missed??0})`],['results',`Results (${results.length})`],['runs',`Runs (${s.runs_total??runs.length})`],
+        ].map(([id,label]) => (
+          <button key={id} onClick={() => setTab(id)} style={tabStyle(tab===id)}>{label}</button>
+        ))}
       </div>
 
       {/* ── OVERVIEW ── */}
       {tab === 'overview' && (
-        <>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px,1fr))', gap:10, marginBottom:14 }}>
-          {([['Datasets', s.datasets_total], ['Runs', s.runs_total], ['Sim Trades', s.trades_total],
-            ['Results', results.length], ['Challengers', s.challengers_total],
-          ] as [string,any][]).map(([l,v]) => (
-            <Card key={l} compact title={l}>
-              <div style={{ fontSize:24, fontWeight:700 }}>{v ?? 0}</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          {/* Win rate chart */}
+          <Card title="Win Rate by Strategy">
+            {stratStats.length > 0 && (
+              <div style={{ height: Math.max(200, stratStats.length * 28) }}>
+                <Bar data={{
+                  labels: stratStats.map(ss => ss.strategy.replace(/_/g,' ')),
+                  datasets: [{ data: stratStats.map(ss => ss.wr), backgroundColor: stratStats.map(ss => wrColor(ss.wr)), borderRadius:3, maxBarThickness:18 }]
+                }} options={{
+                  indexAxis:'y' as const, responsive:true, maintainAspectRatio:false,
+                  plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx => `${ctx.raw}% win rate` }} },
+                  scales:{ x:{min:0,max:100,ticks:{callback:v=>`${v}%`,color:'var(--text3)',font:{size:9}},grid:{color:'rgba(255,255,255,.05)'},border:{display:false}},
+                           y:{ticks:{color:'var(--text2)',font:{size:10}},grid:{display:false},border:{display:false}} }
+                }} />
+              </div>
+            )}
+          </Card>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            {/* R-multiple distribution */}
+            <Card title="R-Multiple Distribution">
+              <div style={{ height:160 }}>
+                <Bar data={{
+                  labels: rBuckets.map(b => b.l),
+                  datasets: [{ data: rBuckets.map(b => b.count), backgroundColor: rBuckets.map(b => b.mn>=0?'#0ecb81':'#f6465d'), borderRadius:3 }]
+                }} options={{
+                  responsive:true, maintainAspectRatio:false,
+                  plugins:{ legend:{display:false} },
+                  scales:{ x:{ticks:{color:'var(--text3)',font:{size:9}},grid:{display:false},border:{display:false}},
+                           y:{ticks:{color:'var(--text3)',font:{size:9}},grid:{color:'rgba(255,255,255,.05)'},border:{display:false}} }
+                }} />
+              </div>
             </Card>
-          ))}
-        </div>
 
-        {/* Low win rate warning */}
-        {strategyStats.filter(ss => ss.win_rate < 35 && ss.trades >= 3).length > 0 && (
-          <div style={{ padding:'8px 12px', marginBottom:12, borderRadius:6, background:'var(--red-dim)', border:'1px solid var(--red)', fontSize:11, color:'var(--red)' }}>
-            ⚠ Low win rate: {strategyStats.filter(ss => ss.win_rate < 35 && ss.trades >= 3).map(ss => `${ss.strategy} ${ss.win_rate}%`).join(' · ')} — review before approving more proposals.
+            {/* Missed summary */}
+            <Card title="Missed Proposals Impact">
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8 }}>
+                <div style={{ padding:10, background:'var(--green-dim)', borderRadius:6, textAlign:'center' }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:'var(--green)' }}>{missed.would_win ?? 0}</div>
+                  <div style={{ fontSize:8, color:'var(--text3)' }}>Would Win</div>
+                </div>
+                <div style={{ padding:10, background:'var(--red-dim)', borderRadius:6, textAlign:'center' }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:'var(--red)' }}>{missed.would_lose ?? 0}</div>
+                  <div style={{ fontSize:8, color:'var(--text3)' }}>Would Lose</div>
+                </div>
+                <div style={{ padding:10, background:'var(--amber-dim)', borderRadius:6, textAlign:'center' }}>
+                  <div style={{ fontSize:22, fontWeight:700, color:'var(--amber)' }}>${n(missed.pnl_left_on_table)}</div>
+                  <div style={{ fontSize:8, color:'var(--text3)' }}>Left on Table</div>
+                </div>
+              </div>
+            </Card>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Strategy performance from trades */}
-        {strategyStats.length > 0 && (
-          <Card title="Strategy Performance (from sim trades)">
-            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
+      {/* ── STRATEGY ── */}
+      {tab === 'strategy' && stratStats.length > 0 && (
+        <Card title="Strategy Performance">
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
+              {['Strategy','Trades','Win Rate','','Avg R','Total P&L'].map(h => <th key={h} style={th}>{h}</th>)}
+            </tr></thead>
+            <tbody>{stratStats.map(ss => (
+              <tr key={ss.strategy} style={{ borderBottom:'1px solid var(--border-subtle)' }}>
+                <td style={{ ...td, fontWeight:600 }}>{ss.strategy.replace(/_/g,' ')}</td>
+                <td style={{ ...td, color:'var(--text3)' }}>{ss.trades}</td>
+                <td style={{ ...td, width:120 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ flex:1, height:6, background:'var(--bg3)', borderRadius:3, overflow:'hidden' }}>
+                      <div style={{ width:`${ss.wr}%`, height:'100%', borderRadius:3, background:wrColor(ss.wr) }}/>
+                    </div>
+                  </div>
+                </td>
+                <td style={{ ...td, fontWeight:600, color:wrColor(ss.wr), width:40 }}>{ss.wr}%</td>
+                <td style={{ ...td, color:ss.avgR>=0?'#0ecb81':'#f6465d' }}>{ss.avgR>=0?'+':''}{ss.avgR.toFixed(2)}</td>
+                <td style={{ ...td, color:ss.pnl>=0?'#0ecb81':'#f6465d', fontWeight:600 }}>{ss.pnl>=0?'+':''}${Math.abs(ss.pnl).toFixed(2)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+          <div style={{ fontSize:9, color:'var(--text3)', marginTop:8 }}>Small samples — treat as directional signal. &lt;5 trades may be statistically unreliable.</div>
+        </Card>
+      )}
+
+      {/* ── TRADES ── */}
+      {tab === 'trades' && (
+        <>
+        <Card title="R-Multiple Distribution" style={{ marginBottom:12 }}>
+          <div style={{ height:160 }}>
+            <Bar data={{ labels: rBuckets.map(b=>b.l), datasets:[{data:rBuckets.map(b=>b.count), backgroundColor:rBuckets.map(b=>b.mn>=0?'#0ecb81':'#f6465d'), borderRadius:3}] }}
+              options={{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+                scales:{x:{ticks:{color:'var(--text3)',font:{size:9}},grid:{display:false},border:{display:false}},y:{ticks:{color:'var(--text3)',font:{size:9}},grid:{color:'rgba(255,255,255,.05)'},border:{display:false}}} }} />
+          </div>
+        </Card>
+        <Card title={`Simulated Trades (${trades.length})`}>
+          <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
+              {['Symbol','Strategy','Entry','Exit','P&L','R','Exit'].map(h => <th key={h} style={th}>{h}</th>)}
+            </tr></thead>
+            <tbody>{trades.slice(0,50).map((t:any,i:number) => (
+              <tr key={i} style={{ borderBottom:'1px solid var(--border-subtle)' }}>
+                <td style={{ ...td, fontWeight:600 }}>{t.symbol}</td>
+                <td style={{ ...td, fontSize:9, color:'var(--text3)' }}>{(t.strategy_id||'').replace(/_/g,' ')}</td>
+                <td style={td}>${n(t.entry_price)}</td>
+                <td style={td}>${n(t.exit_price)}</td>
+                <td style={{ ...td, color:Number(t.pnl)>0?'#0ecb81':'#f6465d', fontWeight:600 }}>{Number(t.pnl)>0?'+':''}${n(t.pnl)}</td>
+                <td style={{ ...td, color:Number(t.r_multiple)>=0?'#0ecb81':'#f6465d' }}>{n(t.r_multiple,1)}</td>
+                <td style={{ ...td, fontSize:9, color:'var(--text3)' }}>{t.exit_reason||'—'}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </Card>
+        </>
+      )}
+
+      {/* ── MISSED ── */}
+      {tab === 'missed' && (
+        <>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:12 }}>
+          <div style={{ padding:14, background:'var(--green-dim)', borderRadius:8, textAlign:'center' }}>
+            <div style={{ fontSize:28, fontWeight:700, color:'var(--green)' }}>{missed.would_win??0}</div>
+            <div style={{ fontSize:10, color:'var(--text3)' }}>Would Have Won</div>
+          </div>
+          <div style={{ padding:14, background:'var(--red-dim)', borderRadius:8, textAlign:'center' }}>
+            <div style={{ fontSize:28, fontWeight:700, color:'var(--red)' }}>{missed.would_lose??0}</div>
+            <div style={{ fontSize:10, color:'var(--text3)' }}>Would Have Lost</div>
+          </div>
+          <div style={{ padding:14, background:'var(--amber-dim)', borderRadius:8, textAlign:'center' }}>
+            <div style={{ fontSize:28, fontWeight:700, color:'var(--amber)' }}>${n(missed.pnl_left_on_table)}</div>
+            <div style={{ fontSize:10, color:'var(--text3)' }}>P&L Left on Table</div>
+          </div>
+        </div>
+        <div style={{ fontSize:9, color:'var(--text3)', padding:'6px 10px', background:'var(--bg3)', borderRadius:4, marginBottom:10 }}>
+          Proposals that expired or were rejected. Simulated outcome based on actual price data after expiry. Not predictive.
+        </div>
+        <Card title={`Missed Opportunities (${opps.length})`}>
+          {opps.length === 0 ? <div style={{ color:'var(--text3)', padding:16 }}>Run "Replay Untaken Proposals" first.</div> : (
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Strategy','Trades','Win %','Avg R','Total P&L'].map(h => <th key={h} style={th}>{h}</th>)}
+                {['Date','Symbol','Strategy','Status','Sim P&L','Sim R','Verdict'].map(h => <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{strategyStats.map(ss => (
-                <tr key={ss.strategy} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ ...td, fontWeight:600 }}>{ss.strategy}</td>
-                  <td style={td}>{ss.trades}</td>
-                  <td style={{ ...td, color: ss.win_rate>=50?'#0ecb81':ss.win_rate>=35?'#f0b90b':'#f6465d', fontWeight:600 }}>{ss.win_rate}%</td>
-                  <td style={{ ...td, color: ss.avg_r>=0?'#0ecb81':'#f6465d' }}>{ss.avg_r>=0?'+':''}{ss.avg_r.toFixed(2)}</td>
-                  <td style={{ ...td, color: ss.total_pnl>=0?'#0ecb81':'#f6465d' }}>{ss.total_pnl>=0?'+':''}${Math.abs(ss.total_pnl).toFixed(2)}</td>
+              <tbody>{opps.map((o:any,i:number) => (
+                <tr key={i} style={{ borderBottom:'1px solid var(--border-subtle)' }}>
+                  <td style={{ ...td, fontSize:9 }}>{String(o.proposed_date||'').slice(0,10)}</td>
+                  <td style={{ ...td, fontWeight:600 }}>{o.symbol}</td>
+                  <td style={{ ...td, fontSize:9 }}>{(o.strategy_id||'').replace(/_/g,' ')}</td>
+                  <td style={td}><span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--bg3)', color:'var(--text3)' }}>{o.proposal_status}</span></td>
+                  <td style={{ ...td, color:Number(o.simulated_pnl)>0?'#0ecb81':Number(o.simulated_pnl)<0?'#f6465d':'var(--text3)', fontWeight:600 }}>
+                    {o.simulated_pnl!=null ? (Number(o.simulated_pnl)>0?'+':'')+'$'+n(o.simulated_pnl) : '—'}
+                  </td>
+                  <td style={{ ...td, color:Number(o.simulated_r)>=0?'#0ecb81':'#f6465d' }}>{o.simulated_r!=null ? n(o.simulated_r,1) : '—'}</td>
+                  <td style={td}>{Number(o.simulated_pnl)>0?'🟢':Number(o.simulated_pnl)<0?'🔴':'—'}</td>
                 </tr>
               ))}</tbody>
             </table>
-          </Card>
-        )}
+          )}
+        </Card>
+        </>
+      )}
 
-        {/* Aggregated results summary */}
-        {results.length > 0 && (
-          <Card title={`Aggregated Run Results (${results.length})`} style={{ marginTop:12 }}>
-            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
-              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Strategy','Type','Trades','Win%','PF','Avg R','P&L','Max DD'].map(h => <th key={h} style={th}>{h}</th>)}
-              </tr></thead>
-              <tbody>{results.map((r: any, i: number) => (
-                <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ ...td, fontWeight:600 }}>{(r.strategy_id||'').split(',')[0]}</td>
-                  <td style={td}><span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--accent-dim)', color:'var(--accent)' }}>{r.run_type||'?'}</span></td>
-                  <td style={td}>{r.simulated_trades ?? r.total_trades}</td>
-                  <td style={{ ...td, color: Number(r.win_rate)>=50?'#0ecb81':Number(r.win_rate)>=35?'#f0b90b':'#f6465d', fontWeight:600 }}>{n(r.win_rate,1)}%</td>
-                  <td style={td}>{n(r.profit_factor)}</td>
-                  <td style={td}>{n(r.avg_r_multiple || r.expectancy_r)}</td>
-                  <td style={{ ...td, color: Number(r.total_pnl)>0?'#0ecb81':'#f6465d' }}>${n(r.total_pnl)}</td>
-                  <td style={{ ...td, color:'#f6465d' }}>{r.max_drawdown_pct ? n(r.max_drawdown_pct,1)+'%' : '—'}</td>
-                </tr>
-              ))}</tbody>
-            </table>
+      {/* ── RESULTS ── */}
+      {tab === 'results' && (
+        <>
+        {results.length === 0 ? <div style={{ color:'var(--text3)', padding:20 }}>No results. Run backtest_results_aggregator.py.</div> : (
+          <>
+          <Card title={`Win Rate Across ${results.length} Runs`} style={{ marginBottom:12 }}>
+            <div style={{ height:200 }}>
+              <Bar data={{
+                labels: results.filter((r:any)=>r.win_rate!=null).slice(0,20).map((r:any) => (r.strategy_id||'?').split(',')[0].replace(/_/g,' ').slice(0,14)),
+                datasets:[{data:results.filter((r:any)=>r.win_rate!=null).slice(0,20).map((r:any)=>r.win_rate),
+                  backgroundColor:results.filter((r:any)=>r.win_rate!=null).slice(0,20).map((r:any)=>wrColor(r.win_rate||0)),borderRadius:3}]
+              }} options={{
+                responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+                scales:{x:{ticks:{color:'var(--text3)',font:{size:8},maxRotation:45},grid:{display:false},border:{display:false}},
+                        y:{min:0,max:100,ticks:{callback:v=>`${v}%`,color:'var(--text3)',font:{size:9}},grid:{color:'rgba(255,255,255,.05)'},border:{display:false}}}
+              }} />
+            </div>
           </Card>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px,1fr))', gap:10 }}>
+            {results.map((r:any,i:number) => {
+              const winPct = (r.total_trades||r.simulated_trades)>0 ? Math.round((r.wins||0)/((r.total_trades||r.simulated_trades)||1)*100) : 0
+              return (
+                <div key={i} style={{ padding:12, background:'var(--bg3)', borderRadius:8, border:'1px solid var(--border)' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                    <span style={{ fontSize:11, fontWeight:600 }}>{(r.strategy_id||'?').split(',')[0].replace(/_/g,' ')}</span>
+                    <span style={{ fontSize:7, padding:'1px 4px', borderRadius:3, background:'var(--accent-dim)', color:'var(--accent)' }}>{r.run_type||'?'}</span>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, textAlign:'center', fontSize:10 }}>
+                    <div><div style={{ fontSize:16, fontWeight:700, color:wrColor(r.win_rate||0) }}>{n(r.win_rate,1)}%</div><div style={{ fontSize:7, color:'var(--text3)' }}>WR</div></div>
+                    <div><div style={{ fontSize:12, fontWeight:600 }}>{r.total_trades||r.simulated_trades||0}</div><div style={{ fontSize:7, color:'var(--text3)' }}>Trades</div></div>
+                    <div><div style={{ fontSize:12, fontWeight:600, color:Number(r.total_pnl)>=0?'#0ecb81':'#f6465d' }}>${n(r.total_pnl)}</div><div style={{ fontSize:7, color:'var(--text3)' }}>P&L</div></div>
+                  </div>
+                  <div style={{ marginTop:6 }}>
+                    <div style={{ display:'flex', height:4, borderRadius:2, overflow:'hidden' }}>
+                      <div style={{ width:`${winPct}%`, background:'#0ecb81' }}/>
+                      <div style={{ flex:1, background:'#f6465d' }}/>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:7, color:'var(--text3)', marginTop:2 }}><span>{r.wins||0}W</span><span>{r.losses||0}L</span></div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          </>
         )}
         </>
       )}
 
       {/* ── RUNS ── */}
       {tab === 'runs' && (
-        <Card title={`Backtest Runs (${runs.length} loaded)`}>
-          {runs.length === 0 ? <div style={{ color:'#848e9c', padding:16 }}>No runs yet. Use the buttons above to start a backtest.</div> : (
-            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
-              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Run ID','Strategy','Type','Status','Period','Created'].map(h => <th key={h} style={th}>{h}</th>)}
-              </tr></thead>
-              <tbody>{runs.map((r: any) => (
-                <tr key={r.run_id} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ ...td, fontSize:9 }}>{r.run_id?.slice(-15)}</td>
-                  <td style={{ ...td, fontWeight:600 }}>{r.strategy_id}</td>
-                  <td style={td}><span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background: r.run_type?.includes('replay')?'var(--accent-dim)':'var(--amber-dim)', color: r.run_type?.includes('replay')?'var(--accent)':'var(--amber)' }}>{r.run_type}</span></td>
-                  <td style={td}><span style={{ color: r.status==='completed'?'#0ecb81':'#f0b90b' }}>{r.status}</span></td>
-                  <td style={td}>{r.start_date} → {r.end_date}</td>
-                  <td style={{ ...td, fontSize:9 }}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </Card>
-      )}
-
-      {/* ── RESULTS ── */}
-      {tab === 'results' && (
-        <Card title={`Backtest Results (${results.length})`}>
-          {results.length === 0 ? <div style={{ color:'#848e9c', padding:16 }}>No results aggregated yet. Run the backtester then the aggregator.</div> : (
-            <>
-            {/* Result cards */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px,1fr))', gap:10, marginBottom:14 }}>
-              {results.slice(0, 12).map((r: any, i: number) => (
-                <div key={i} style={{ padding:12, background:'var(--bg3)', borderRadius:8, border:'1px solid var(--border)' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                    <span style={{ fontSize:11, fontWeight:600 }}>{(r.strategy_id||'').split(',')[0]}</span>
-                    <span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--accent-dim)', color:'var(--accent)' }}>{r.run_type||'?'}</span>
+        <Card title={`Backtest Runs (${runs.length} loaded, ${s.runs_total??'?'} total)`}>
+          {runs.length === 0 ? <div style={{ color:'var(--text3)', padding:16 }}>No runs yet.</div> : (
+            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+              {runs.map((r:any) => (
+                <div key={r.run_id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', borderRadius:6, border:'1px solid transparent' }}
+                  onMouseEnter={e=>{e.currentTarget.style.background='var(--bg3)';e.currentTarget.style.borderColor='var(--border)'}}
+                  onMouseLeave={e=>{e.currentTarget.style.background='';e.currentTarget.style.borderColor='transparent'}}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:8, padding:'1px 6px', borderRadius:3, fontWeight:600,
+                      background: (r.run_type||'').includes('replay_trade')?'var(--green-dim)':
+                        (r.run_type||'').includes('proposal')?'rgba(168,139,250,.1)':'var(--amber-dim)',
+                      color: (r.run_type||'').includes('replay_trade')?'var(--green)':
+                        (r.run_type||'').includes('proposal')?'var(--purple)':'var(--amber)',
+                    }}>{(r.run_type||'?').replace(/_/g,' ')}</span>
+                    <span style={{ fontSize:11, fontWeight:500 }}>{(r.strategy_id||'').split(',').length>3?`${(r.strategy_id||'').split(',').length} strategies`:(r.strategy_id||'').replace(/_/g,' ')}</span>
                   </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:6, fontSize:10, textAlign:'center' }}>
-                    <div><div style={{ fontSize:18, fontWeight:700, color: Number(r.win_rate)>=50?'#0ecb81':Number(r.win_rate)>=35?'#f0b90b':'#f6465d' }}>{n(r.win_rate,1)}%</div><div style={{ color:'var(--text3)', fontSize:8 }}>Win Rate</div></div>
-                    <div><div style={{ fontSize:14, fontWeight:600 }}>{r.simulated_trades ?? r.total_trades}</div><div style={{ color:'var(--text3)', fontSize:8 }}>Trades</div></div>
-                    <div><div style={{ fontSize:14, fontWeight:600, color: Number(r.total_pnl)>=0?'#0ecb81':'#f6465d' }}>${n(r.total_pnl)}</div><div style={{ color:'var(--text3)', fontSize:8 }}>P&L</div></div>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:9, color:'var(--text3)' }}>{r.start_date} → {r.end_date}</div>
+                    <div style={{ fontSize:9, color:'#0ecb81' }}>{r.status}</div>
                   </div>
-                  {r.wins != null && r.losses != null && (r.wins+r.losses) > 0 && (
-                    <div style={{ marginTop:8 }}>
-                      <div style={{ display:'flex', height:4, borderRadius:2, overflow:'hidden' }}>
-                        <div style={{ width:`${r.wins/(r.wins+r.losses)*100}%`, background:'#0ecb81' }}/>
-                        <div style={{ flex:1, background:'#f6465d' }}/>
-                      </div>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:8, color:'var(--text3)', marginTop:2 }}><span>{r.wins}W</span><span>{r.losses}L</span></div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
-            </>
-          )}
-        </Card>
-      )}
-
-      {/* ── TRADES ── */}
-      {tab === 'trades' && (
-        <Card title={`Simulated Trades (${trades.length} loaded, ${s.trades_total ?? '?'} total)`}>
-          {trades.length === 0 ? <div style={{ color:'#848e9c', padding:16 }}>No simulated trades yet.</div> : (
-            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
-              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Symbol','Strategy','Entry','Exit','P&L','R','Exit Reason'].map(h => <th key={h} style={th}>{h}</th>)}
-              </tr></thead>
-              <tbody>{trades.slice(0,50).map((t: any, i: number) => (
-                <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ ...td, fontWeight:600 }}>{t.symbol}</td>
-                  <td style={{ ...td, fontSize:9 }}>{t.strategy_id}</td>
-                  <td style={td}>${n(t.entry_price)}</td>
-                  <td style={td}>${n(t.exit_price)}</td>
-                  <td style={{ ...td, color: Number(t.pnl)>0?'#0ecb81':'#f6465d', fontWeight:600 }}>{Number(t.pnl)>0?'+':''}${n(t.pnl)}</td>
-                  <td style={{ ...td, color: Number(t.r_multiple)>=0?'#0ecb81':'#f6465d' }}>{n(t.r_multiple,1)}</td>
-                  <td style={{ ...td, fontSize:9 }}>{t.exit_reason}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </Card>
-      )}
-
-      {/* ── MISSED ── */}
-      {tab === 'missed' && (
-        <Card title="Missed Opportunities — What We Left on the Table">
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:10, marginBottom:12 }}>
-            <div style={{ padding:10, background:'var(--green-dim)', borderRadius:6, textAlign:'center' }}>
-              <div style={{ fontSize:24, fontWeight:700, color:'var(--green)' }}>{missed.would_win ?? 0}</div>
-              <div style={{ fontSize:9, color:'var(--text3)' }}>Would Have Won</div>
-            </div>
-            <div style={{ padding:10, background:'var(--red-dim)', borderRadius:6, textAlign:'center' }}>
-              <div style={{ fontSize:24, fontWeight:700, color:'var(--red)' }}>{missed.would_lose ?? 0}</div>
-              <div style={{ fontSize:9, color:'var(--text3)' }}>Would Have Lost</div>
-            </div>
-            <div style={{ padding:10, background:'var(--amber-dim)', borderRadius:6, textAlign:'center' }}>
-              <div style={{ fontSize:24, fontWeight:700, color:'var(--amber)' }}>${n(missed.pnl_left_on_table)}</div>
-              <div style={{ fontSize:9, color:'var(--text3)' }}>P&L Left on Table</div>
-            </div>
-          </div>
-          <div style={{ fontSize:9, color:'var(--text3)', padding:'6px 10px', background:'var(--bg3)', borderRadius:4, marginBottom:10 }}>
-            These are proposals that expired or were rejected. The simulated outcome shows what would have happened based on actual price data.
-          </div>
-          {(missed.opportunities?.length ?? 0) > 0 ? (
-            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
-              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['Date','Symbol','Strategy','Status','Sim P&L','Sim R','Verdict'].map(h => <th key={h} style={th}>{h}</th>)}
-              </tr></thead>
-              <tbody>{(missed.opportunities as any[]).map((o: any, i: number) => (
-                <tr key={i} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ ...td, fontSize:9 }}>{String(o.proposed_date||'').slice(0,10)}</td>
-                  <td style={{ ...td, fontWeight:600 }}>{o.symbol}</td>
-                  <td style={{ ...td, fontSize:9 }}>{o.strategy_id}</td>
-                  <td style={td}><span style={{ fontSize:8, padding:'1px 4px', borderRadius:3, background:'var(--bg3)', color:'var(--text3)' }}>{o.proposal_status}</span></td>
-                  <td style={{ ...td, color: Number(o.simulated_pnl)>0?'#0ecb81':Number(o.simulated_pnl)<0?'#f6465d':'var(--text3)' }}>{o.simulated_pnl != null ? (Number(o.simulated_pnl)>0?'+':'')+'$'+n(o.simulated_pnl) : '—'}</td>
-                  <td style={{ ...td, color: Number(o.simulated_r)>=0?'#0ecb81':'#f6465d' }}>{o.simulated_r != null ? n(o.simulated_r,1) : '—'}</td>
-                  <td style={td}>{Number(o.simulated_pnl)>0 ? '🟢 Win' : Number(o.simulated_pnl)<0 ? '🔴 Loss' : '—'}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          ) : <div style={{ color:'var(--text3)', padding:16 }}>No matched missed opportunities. Run "Replay Untaken Proposals" first.</div>}
-        </Card>
-      )}
-
-      {/* ── CHALLENGERS ── */}
-      {tab === 'challengers' && (
-        <Card title="Champion/Challenger Experiments">
-          {challengers.length === 0 ? <div style={{ color:'#848e9c', padding:16 }}>No challengers defined yet.</div> : (
-            <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
-              <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
-                {['ID','Name','Strategy','Type','Status'].map(h => <th key={h} style={th}>{h}</th>)}
-              </tr></thead>
-              <tbody>{challengers.map((c: any) => (
-                <tr key={c.challenger_id} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ ...td, fontSize:9 }}>{c.challenger_id?.slice(-12)}</td>
-                  <td style={td}>{c.name}</td>
-                  <td style={td}>{c.strategy_id}</td>
-                  <td style={td}>{c.challenger_type}</td>
-                  <td style={td}>{c.status}</td>
-                </tr>
-              ))}</tbody>
-            </table>
           )}
         </Card>
       )}
@@ -307,77 +356,71 @@ export default function Backtesting() {
 }
 
 function AnalyzerPanel({ onDone }: { onDone: () => void }) {
-  const [running, setRunning] = useState('')
-  const [msg, setMsg] = useState('')
-  const run = useCallback(async (endpoint: string, label: string) => {
+  const [running, setRunning] = useState(''); const [msg, setMsg] = useState('')
+  const run = useCallback(async (ep: string, label: string) => {
     setRunning(label); setMsg('')
-    try {
-      const r = await fetch(endpoint, { method: 'POST' })
-      const d = await r.json()
-      if (d.ok) { setMsg(`${d.message} — refreshing in 45s...`); setTimeout(() => { onDone(); setRunning(''); setMsg('') }, 45000) }
-      else { setMsg(`Failed: ${d.error || 'unknown'}`); setRunning('') }
-    } catch (e) { setMsg(`Error: ${e}`); setRunning('') }
-  }, [onDone])
+    try { const r = await fetch(ep,{method:'POST'}); const d = await r.json()
+      if(d.ok){setMsg(`${d.message} — refreshing in 45s...`);setTimeout(()=>{onDone();setRunning('');setMsg('')},45000)}
+      else{setMsg(`Failed: ${d.error||'?'}`);setRunning('')}
+    } catch(e){setMsg(`Error: ${e}`);setRunning('')}
+  },[onDone])
   return (
-    <div style={{ padding:'10px 14px', marginBottom:12, background:'var(--bg1)', border:'1px solid var(--accent)', borderRadius:8 }}>
-      <div style={{ fontSize:11, fontWeight:700, color:'var(--accent)', marginBottom:8 }}>LLM Trade Analysis + Incubator Strategy Testing</div>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
-        <button disabled={!!running} onClick={() => run('/api/v2/backtesting/analyze-trades', 'LLM Analysis')}
-          style={{ ...runBtn, border:'1px solid var(--accent)', background:'var(--accent-dim)', color:'var(--accent)', opacity:running?0.5:1 }}>
-          {running === 'LLM Analysis' ? 'Analyzing...' : '🧠 LLM Grade Trades'}
+    <div style={{ padding:'8px 12px', marginBottom:10, background:'var(--bg1)', border:'1px solid var(--accent)', borderRadius:6 }}>
+      <div style={{ fontSize:10, fontWeight:700, color:'var(--accent)', marginBottom:6 }}>LLM Analysis + Incubator Testing</div>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:6 }}>
+        <button disabled={!!running} onClick={()=>run('/api/v2/backtesting/analyze-trades','LLM')}
+          style={{ fontSize:9, padding:'3px 8px', border:'1px solid var(--accent)', borderRadius:3, background:'var(--accent-dim)', color:'var(--accent)', cursor:'pointer', fontWeight:600, opacity:running?.5:1 }}>
+          {running==='LLM'?'...':'🧠 LLM Grade Trades'}
         </button>
-        <button disabled={!!running} onClick={() => run('/api/v2/backtesting/all-incubator', 'All Incubator')}
-          style={{ ...runBtn, border:'1px solid var(--purple)', background:'rgba(168,139,250,.08)', color:'var(--purple)', opacity:running?0.5:1 }}>
-          {running === 'All Incubator' ? 'Running...' : '🔬 Backtest All on Incubator'}
+        <button disabled={!!running} onClick={()=>run('/api/v2/backtesting/all-incubator','All')}
+          style={{ fontSize:9, padding:'3px 8px', border:'1px solid var(--purple)', borderRadius:3, background:'rgba(168,139,250,.08)', color:'var(--purple)', cursor:'pointer', fontWeight:600, opacity:running?.5:1 }}>
+          {running==='All'?'...':'🔬 All Strategies on Incubator'}
         </button>
       </div>
-      <div style={{ fontSize:9, color:'var(--text3)', marginBottom:4 }}>Per-strategy incubator backtest:</div>
       <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-        {STRATEGIES.filter(s => !SCALP_STRATEGIES.has(s)).map(s => (
-          <button key={s} disabled={!!running} onClick={() => run(`/api/v2/backtesting/backtest-incubator/${s}`, s)}
-            style={{ fontSize:8, padding:'2px 6px', border:'1px solid var(--purple)', borderRadius:3, background:running===s?'var(--purple)':'rgba(168,139,250,.05)', color:running===s?'#fff':'var(--purple)', cursor:running?'wait':'pointer' }}>
-            {running === s ? '...' : s.replace(/_/g, ' ')}
+        {STRATEGIES.filter(s=>!SCALPS.has(s)).map(s=>(
+          <button key={s} disabled={!!running} onClick={()=>run(`/api/v2/backtesting/backtest-incubator/${s}`,s)}
+            style={{ fontSize:7, padding:'1px 5px', border:'1px solid var(--purple)', borderRadius:2, background:running===s?'var(--purple)':'rgba(168,139,250,.05)', color:running===s?'#fff':'var(--purple)', cursor:running?'wait':'pointer' }}>
+            {running===s?'..':s.replace(/_/g,' ')}
           </button>
         ))}
       </div>
-      {msg && <div style={{ fontSize:10, color:'var(--green)', marginTop:6 }}>{msg}</div>}
+      {msg&&<div style={{fontSize:9,color:'var(--green)',marginTop:4}}>{msg}</div>}
     </div>
   )
 }
 
 function RunPanel({ onDone }: { onDone: () => void }) {
-  const [running, setRunning] = useState('')
-  const [msg, setMsg] = useState('')
-  const run = useCallback(async (endpoint: string, label: string) => {
+  const [running, setRunning] = useState(''); const [msg, setMsg] = useState('')
+  const run = useCallback(async (ep: string, label: string) => {
     setRunning(label); setMsg('')
-    try {
-      const r = await fetch(endpoint, { method: 'POST' })
-      const d = await r.json()
-      if (d.ok) { setMsg(`${label} started — refreshing in 30s...`); setTimeout(() => { onDone(); setRunning(''); setMsg('') }, 30000) }
-      else { setMsg(`Failed: ${d.error || 'unknown'}`); setRunning('') }
-    } catch (e) { setMsg(`Error: ${e}`); setRunning('') }
-  }, [onDone])
+    try { const r = await fetch(ep,{method:'POST'}); const d = await r.json()
+      if(d.ok){setMsg(`${label} started...`);setTimeout(()=>{onDone();setRunning('');setMsg('')},30000)}
+      else{setMsg(`Failed: ${d.error||'?'}`);setRunning('')}
+    } catch(e){setMsg(`Error: ${e}`);setRunning('')}
+  },[onDone])
   return (
-    <div style={{ padding:'10px 14px', marginBottom:12, background:'var(--bg1)', border:'1px solid var(--border)', borderRadius:8 }}>
-      <div style={{ fontSize:11, fontWeight:700, color:'var(--text1)', marginBottom:8 }}>Enterprise Price-Replay Backtester (Real OHLC)</div>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
-        <button disabled={!!running} onClick={() => run('/api/v2/backtesting/run-replay-trades', 'Replay Trades')} style={{ ...runBtn, opacity:running?0.5:1 }}>
-          {running === 'Replay Trades' ? 'Running...' : '▶ Replay Actual Trades'}
+    <div style={{ padding:'8px 12px', marginBottom:10, background:'var(--bg1)', border:'1px solid var(--border)', borderRadius:6 }}>
+      <div style={{ fontSize:10, fontWeight:700, color:'var(--text1)', marginBottom:6 }}>Enterprise Price-Replay (Real OHLC)</div>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:6 }}>
+        <button disabled={!!running} onClick={()=>run('/api/v2/backtesting/run-replay-trades','RT')}
+          style={{ fontSize:9, padding:'3px 8px', border:'1px solid var(--green)', borderRadius:3, background:'var(--green-dim)', color:'var(--green)', cursor:'pointer', fontWeight:600, opacity:running?.5:1 }}>
+          {running==='RT'?'...':'▶ Replay Trades'}
         </button>
-        <button disabled={!!running} onClick={() => run('/api/v2/backtesting/run-replay-proposals', 'Replay Proposals')} style={{ ...runBtn, opacity:running?0.5:1 }}>
-          {running === 'Replay Proposals' ? 'Running...' : '▶ Replay Untaken Proposals'}
+        <button disabled={!!running} onClick={()=>run('/api/v2/backtesting/run-replay-proposals','RP')}
+          style={{ fontSize:9, padding:'3px 8px', border:'1px solid var(--green)', borderRadius:3, background:'var(--green-dim)', color:'var(--green)', cursor:'pointer', fontWeight:600, opacity:running?.5:1 }}>
+          {running==='RP'?'...':'▶ Replay Proposals'}
         </button>
       </div>
-      <div style={{ fontSize:9, color:'var(--text3)', marginBottom:4 }}>Per-strategy replay:</div>
       <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
-        {STRATEGIES.map(s => (
-          <button key={s} disabled={!!running} onClick={() => run(`/api/v2/backtesting/run-strategy/${s}`, s)}
-            style={{ fontSize:8, padding:'2px 6px', border:'1px solid var(--border)', borderRadius:3, background:running===s?'var(--accent)':'var(--bg2)', color:running===s?'#fff':'var(--text2)', cursor:running?'wait':'pointer' }}>
-            {running === s ? '...' : s.replace(/_/g, ' ')}
+        {STRATEGIES.map(s=>(
+          <button key={s} disabled={!!running} onClick={()=>run(`/api/v2/backtesting/run-strategy/${s}`,s)}
+            style={{ fontSize:7, padding:'1px 5px', border:'1px solid var(--border)', borderRadius:2, background:running===s?'var(--accent)':'var(--bg2)', color:running===s?'#fff':'var(--text3)', cursor:running?'wait':'pointer' }}>
+            {running===s?'..':s.replace(/_/g,' ')}
           </button>
         ))}
       </div>
-      {msg && <div style={{ fontSize:10, color:'var(--green)', marginTop:6 }}>{msg}</div>}
+      {msg&&<div style={{fontSize:9,color:'var(--green)',marginTop:4}}>{msg}</div>}
     </div>
   )
 }
