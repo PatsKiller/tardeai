@@ -108,6 +108,30 @@ def _enrich_proposal_async(proposal_id: int, symbol: str):
     return t
 
 
+def _send_proposal_alert_async(proposal_id: int, symbol: str):
+    """Send Telegram alert immediately after proposal creation. Non-blocking."""
+    import threading
+
+    def _run():
+        try:
+            import subprocess
+            r = subprocess.run(
+                [PYTHON, f'{BASE}/scripts/send_telegram_proposal_alert.py',
+                 '--proposal-id', str(proposal_id), '--send'],
+                capture_output=True, text=True, timeout=30, cwd=BASE,
+                env={**os.environ},
+            )
+            if r.returncode == 0:
+                log.info(f"Telegram alert sent for proposal #{proposal_id} ({symbol})")
+            else:
+                log.warning(f"Telegram alert failed for #{proposal_id}: {r.stderr[-200:] if r.stderr else r.stdout[-200:]}")
+        except Exception as e:
+            log.warning(f"Telegram alert error for #{proposal_id}: {e}")
+
+    t = threading.Thread(target=_run, daemon=True, name=f'alert-{proposal_id}')
+    t.start()
+
+
 def get_conn():
     import psycopg2
     password = os.getenv("DB_PASSWORD")
@@ -885,6 +909,9 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
 
                 # Session 23: kick off enrichment pipeline in background
                 _enrich_proposal_async(proposal_id, sym)
+
+                # Real-time Telegram alert — fire immediately, non-blocking
+                _send_proposal_alert_async(proposal_id, sym)
 
         except Exception as e:
             stats["errors"] += 1
