@@ -39,6 +39,7 @@ def score_dividend_income_candidate(candidate: dict) -> dict:
 
     # ── Dividend Yield (0-25 pts) ──
     div_yield = (candidate.get("dividend_yield") or
+                 enrichment.get("div_yield_pct") or  # Finviz enrichment field name
                  enrichment.get("dividend_yield") or
                  enrichment.get("dividendYield") or
                  enrichment.get("forwardDividendYield"))
@@ -114,25 +115,35 @@ def score_dividend_income_candidate(candidate: dict) -> dict:
     # ── Income Safety / Fundamentals (0-15 pts) ──
     pe = enrichment.get("pe") or enrichment.get("trailingPE")
     market_cap = enrichment.get("market_cap_b")
+    roe = enrichment.get("roe_pct")
+    debt_eq = enrichment.get("total_debt_equity") or enrichment.get("lt_debt_equity")
     safety_score = 0
 
     if pe is not None and float(pe) > 0:
         pe_val = float(pe)
         if pe_val <= 20:
-            safety_score += 8
+            safety_score += 5
             passed.append(f"PE {pe_val:.1f} (value)")
         elif pe_val <= 35:
-            safety_score += 5
+            safety_score += 3
         else:
             warnings.append(f"PE {pe_val:.1f} (expensive for income)")
 
+    if roe is not None and float(roe) > 10:
+        safety_score += 3
+        passed.append(f"ROE {float(roe):.1f}% (profitable)")
+
     if market_cap is not None and float(market_cap) >= 2.0:
-        safety_score += 7
+        safety_score += 5
         passed.append(f"market cap ${float(market_cap):.1f}B (institutional)")
     elif market_cap is not None:
-        safety_score += 3
+        safety_score += 2
     else:
         missing.append("market_cap")
+
+    if debt_eq is not None and float(debt_eq) < 1.5:
+        safety_score += 2
+        passed.append(f"debt/equity {float(debt_eq):.1f} (manageable)")
 
     # ── Liquidity (0-10 pts) ──
     avg_vol = (candidate.get("avg_volume") or enrichment.get("avg_vol_m") or
