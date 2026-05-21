@@ -16887,6 +16887,41 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Enterprise Backtest triggers ──
+    if base_path == "/api/v2/backtesting/run-replay-trades" and method == "POST":
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
+                       "--replay-trades", "--apply", "--verbose"],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": "Replay trades backtest started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/run-replay-proposals" and method == "POST":
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
+                       "--replay-proposals", "--apply", "--verbose"],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": "Replay proposals backtest started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path.startswith("/api/v2/backtesting/run-strategy/") and method == "POST":
+        strat = base_path.split("/")[-1]
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/enterprise_backtester.py"),
+                       "--replay-trades", "--strategy", strat, "--apply", "--verbose"],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": f"Replay {strat} backtest started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 32: Unified Self-Improvement Command Center ───────────────
     if base_path in ("/api/v2/self-improvement/status", "/api/v2/self-improvement/summary"):
         try:
