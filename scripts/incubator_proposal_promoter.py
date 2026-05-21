@@ -568,22 +568,32 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             skipped += 1
             continue
 
-        # Spread gate — block illiquid names at promotion time
+        # Spread gate — family-specific threshold (MAP-4)
         try:
             from market_quote_provider import get_best_quote
+            from promoter_family_threshold_policy import get_family_thresholds, get_strategy_family
             _quote = get_best_quote(symbol)
             _spread = _quote.get("spread_pct") if _quote else None
-            if _spread is not None and _spread > 3.0:
-                results.append(f"SKIPPED: {symbol} (spread_{_spread:.1f}pct_too_wide)")
+            _family_th = get_family_thresholds(strategy_id)
+            _max_spread = _family_th.get("max_spread_pct", 3.0)
+            _family = get_strategy_family(strategy_id)
+            if _spread is not None and _spread > _max_spread:
+                results.append(f"SKIPPED: {symbol} (spread_{_spread:.1f}pct > {_max_spread}% for {_family})")
                 skipped += 1
                 continue
         except Exception:
-            pass  # If quote fetch fails, let later gates catch it
+            pass  # If quote/policy fetch fails, let later gates catch it
 
         # RSI gate — block overbought at promotion time
         can_rsi, rsi_reason, rsi_value = _check_rsi_gate(symbol, strategy_id, conn)
         if not can_rsi:
             results.append(f"SKIPPED: {symbol} ({rsi_reason})")
+            skipped += 1
+            continue
+
+        # MAP-4: Block generic strategy_id='screener' — must be a real strategy
+        if strategy_id == 'screener':
+            results.append(f"SKIPPED: {symbol} (generic_strategy_id_screener — classify first)")
             skipped += 1
             continue
 
