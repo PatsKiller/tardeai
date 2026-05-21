@@ -153,3 +153,30 @@ def format_telegram_message(packet: dict) -> str:
     lines.append(f"`paper status`  |  Details: /v2/paper-proposals")
 
     return "\n".join(lines)
+
+
+def build_proposal_inline_keyboard(packet: dict) -> dict | None:
+    """Build inline keyboard buttons for proposal alerts."""
+    pid = packet.get("proposal_id")
+    if not pid:
+        return None
+
+    rows = []
+    if packet.get("approval_allowed"):
+        rows.append([
+            {"text": "Approve", "callback_data": f"ptapprove:{pid}"},
+            {"text": "Reject", "callback_data": f"ptreject:{pid}"},
+        ])
+        rows.append([
+            {"text": "\u00bd\u00d7 Shares", "callback_data": f"ptapprove_half:{pid}"},
+            {"text": "2\u00d7 Shares", "callback_data": f"ptapprove_2x:{pid}"},
+            {"text": "More Info", "callback_data": f"ptinfo:{pid}"},
+        ])
+    else:
+        rows.append([
+            {"text": "Approve", "callback_data": f"ptapprove:{pid}"},
+            {"text": "Reject", "callback_data": f"ptreject:{pid}"},
+            {"text": "More Info", "callback_data": f"ptinfo:{pid}"},
+        ])
+
+    return {"inline_keyboard": rows}
