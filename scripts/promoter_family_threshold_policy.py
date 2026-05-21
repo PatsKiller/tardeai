@@ -93,7 +93,7 @@ FAMILY_THRESHOLDS = {
     'DIVIDEND_INCOME': {
         'max_spread_pct': 8.0,
         'min_rvol': 0.0,
-        'min_score': 10,
+        'min_score': 15,  # MAP-5: lowered from 30 (momentum default) to 15 for income
         'require_catalyst': False,
         'require_fresh_quote': True,
         'require_market_hours': False,
@@ -102,6 +102,7 @@ FAMILY_THRESHOLDS = {
         'require_options_chain': False,
         'require_technical_pattern': False,
         'min_avg_volume': 50000,
+        'use_dividend_scoring': True,  # MAP-5: use dividend_income_scoring_policy
     },
     'FIXED_INCOME': {
         'max_spread_pct': 10.0,

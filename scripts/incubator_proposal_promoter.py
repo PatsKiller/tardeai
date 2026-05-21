@@ -356,8 +356,8 @@ _CLASSIFICATION_STRATEGIES = {
     'international_dividend',
 }
 
-# Lower score floor for under-represented strategies
-_DIVERSITY_SCORE_FLOOR = 30
+# MAP-5: Lower score floor for income/dividend/non-momentum strategies
+_DIVERSITY_SCORE_FLOOR = 15
 
 
 def fetch_classification_candidates(cur, limit=10):
