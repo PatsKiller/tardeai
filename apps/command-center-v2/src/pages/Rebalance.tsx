@@ -75,7 +75,7 @@ export default function Rebalance() {
 
   return (
     <>
-      <PageHeader title="Rebalancing" subtitle="AI + Portfolio Baseline" />
+      <PageHeader title="Rebalancing" subtitle={`AI + Portfolio Baseline${data.model_used ? ` — powered by ${data.model_used}` : ''}`} />
       <div style={{ padding: '8px 14px', marginBottom: 12, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 11, color: 'var(--amber)', fontWeight: 600 }}>
         ⚠️ Advisory only — all actions require manual execution at your broker (Fidelity/Schwab). This app does not place or cancel orders.
       </div>
