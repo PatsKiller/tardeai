@@ -643,26 +643,47 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             continue
 
         # ATP-5: Get scan age for quote-age gate
+        # MAP-5D: Also check market_quote_snapshots for quote age
         _scan_age_hours = None
+        _quote_age_hours = None
+        _quote_checked_at = None
         try:
             cur.execute("""SELECT EXTRACT(EPOCH FROM NOW() - MAX(scanned_at))/3600 as age_h
                 FROM trade_ai_scans WHERE symbol = %s""", [symbol])
             _sa_row = cur.fetchone()
-            if _sa_row and _sa_row[0] is not None:
-                _scan_age_hours = float(_sa_row[0] if isinstance(_sa_row, tuple) else _sa_row.get('age_h', 0))
-        except Exception:
-            pass
+            if _sa_row and _sa_row.get('age_h') is not None:
+                _scan_age_hours = float(_sa_row['age_h'])
+        except Exception as _e1:
+            log.warning(f"[promoter] scan_age query failed for {symbol}: {_e1}")
+            try: conn.rollback()
+            except: pass
+        try:
+            cur.execute("""SELECT EXTRACT(EPOCH FROM NOW() - MAX(created_at))/3600 as age_h,
+                MAX(created_at) as checked_at
+                FROM market_quote_snapshots WHERE symbol = %s""", [symbol])
+            _qa_row = cur.fetchone()
+            if _qa_row and _qa_row.get('age_h') is not None:
+                _quote_age_hours = float(_qa_row['age_h'])
+                _quote_checked_at = _qa_row.get('checked_at')
+        except Exception as _e2:
+            log.warning(f"[promoter] quote_age query failed for {symbol}: {_e2}")
+            try: conn.rollback()
+            except: pass
 
         # PROMOTE-1: Pre-promotion readiness gate (with ATP-5 quote-age data)
         try:
             from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
-            _pre_check = evaluate_pre_promotion_readiness({
+            _gate_input = {
                 "symbol": symbol, "strategy_id": strategy_id,
                 "proposed_entry": entry, "proposed_stop": stop, "proposed_target1": target,
                 "proposed_rr": rr, "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
                 "discovery_source": "incubator",
                 "scan_age_hours": _scan_age_hours,
-            })
+                "quote_age_hours": _quote_age_hours,
+                "quote_checked_at": _quote_checked_at,
+            }
+            log.debug(f"[promoter] gate: {symbol} scan_age={_scan_age_hours}, quote_age={_quote_age_hours}")
+            _pre_check = evaluate_pre_promotion_readiness(_gate_input)
             if _pre_check["blockers"]:
                 log.warning(f"[promoter] BLOCKED by pre-promotion gate: {symbol} — {_pre_check['blockers']}")
                 skipped += 1
