@@ -244,7 +244,7 @@ def _get_overridden_symbols() -> set:
         cur = conn.cursor()
         cur.execute("""SELECT DISTINCT symbol FROM stop_decisions
             WHERE decision = 'HOLD_OVERRIDE'
-            AND decided_at > NOW() - INTERVAL '24 hours'""")
+            AND decided_at > NOW() - INTERVAL '96 hours'""")
         syms = {r[0] for r in cur.fetchall()}
         # Also check snooze table
         cur.execute("SELECT symbol FROM stop_snooze WHERE snoozed_until > NOW()")
