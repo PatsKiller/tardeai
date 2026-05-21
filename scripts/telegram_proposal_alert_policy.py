@@ -18,7 +18,7 @@ def classify_proposal_alert_state(proposal: dict) -> str:
 
     if verdict == "READY" or (status == "PENDING" and not blockers and rr >= 2.0):
         return "ACTIONABLE_READY"
-    if "BLOCKED" in readiness.upper() or "BLOCKED" in verdict.upper():
+    if "BLOCKED" in (readiness or "").upper() or "BLOCKED" in (verdict or "").upper():
         if any("price_moved" in str(b) or "rr_below" in str(b) for b in blockers):
             return "BLOCKED_NEEDS_REBUILD"
         return "BLOCKED_EXECUTION_FAILED"
@@ -95,6 +95,11 @@ def should_send_alert(proposal: dict, recent_keys: set = None) -> dict:
     return {"send": True, "reason": state, "key": key}
 
 
+def _esc_md(s: str) -> str:
+    """Escape Markdown V1 special characters in free text."""
+    return str(s).replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
+
+
 def format_telegram_message(packet: dict) -> str:
     """Format alert packet as Telegram message text."""
     emoji = {"ACTIONABLE_READY": "\u2705", "BLOCKED_NEEDS_REBUILD": "\u26a0\ufe0f",
@@ -103,7 +108,7 @@ def format_telegram_message(packet: dict) -> str:
 
     lines = [
         f"{emoji} *Paper Proposal: {packet['symbol']}*",
-        f"Strategy: {packet['strategy_display']} | {packet['alert_type'].replace('_', ' ')}",
+        f"Strategy: {_esc_md(packet['strategy_display'])} | {packet['alert_type'].replace('_', ' ')}",
         "",
     ]
 
@@ -113,7 +118,7 @@ def format_telegram_message(packet: dict) -> str:
     if packet.get("catalyst"):
         cv = "\u2705" if packet.get("catalyst_verified") else "\u26a0\ufe0f"
         cat = packet["catalyst"] if isinstance(packet["catalyst"], str) else "Yes"
-        lines.append(f"Catalyst: {cv} {cat[:80]}")
+        lines.append(f"Catalyst: {cv} {_esc_md(cat[:80])}")
 
     lines.append("")
     lines.append(f"Entry: ${packet['entry']:.2f} | Stop: ${packet['stop']:.2f} | Target: ${packet['target']:.2f}")

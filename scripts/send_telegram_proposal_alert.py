@@ -146,7 +146,7 @@ def main():
                     ok = resp.ok
                     if not ok:
                         # Retry without Markdown
-                        payload["parse_mode"] = None
+                        del payload["parse_mode"]
                         resp2 = requests.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload, timeout=10)
                         ok = resp2.ok
                 else:
