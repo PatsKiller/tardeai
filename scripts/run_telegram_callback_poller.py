@@ -243,16 +243,22 @@ def main():
         return
 
     # Daemon mode — continuous long poll
-    log.info("Starting Telegram callback poller (long-poll)")
+    log.info("Starting Telegram callback poller (long-poll, PID %d)", os.getpid())
+    sys.stdout.flush()
+    consecutive_errors = 0
     while True:
         try:
-            poll_once(timeout=25)
+            n = poll_once(timeout=25)
+            if n > 0:
+                log.info(f"Processed {n} updates")
+            consecutive_errors = 0
         except KeyboardInterrupt:
             log.info("Stopped")
             break
         except Exception:
-            log.exception("poll error")
-            time.sleep(5)
+            consecutive_errors += 1
+            log.exception(f"poll error (consecutive: {consecutive_errors})")
+            time.sleep(min(5 * consecutive_errors, 60))
 
 
 if __name__ == "__main__":
