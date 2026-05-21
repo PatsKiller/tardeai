@@ -49,8 +49,20 @@ export default function Rebalance() {
       const r = await fetch('/api/v2/rebalance/refresh', { method: 'POST' })
       const d = await r.json()
       if (d.ok) {
-        setRefreshMsg('Refresh started — reloading in 60s...')
-        setTimeout(() => { refetch(); setRefreshing(false); setRefreshMsg('') }, 60000)
+        setRefreshMsg('Refresh running — will auto-reload when done...')
+        // Poll every 10s until generated_at changes
+        const checkInterval = setInterval(() => {
+          fetch('/api/v2/rebalance').then(r => r.json()).then(rd => {
+            const newGen = (rd.data || rd).generated_at
+            if (newGen && newGen !== data.generated_at) {
+              clearInterval(checkInterval)
+              setRefreshMsg('Done! Reloading...')
+              setTimeout(() => { refetch(); setRefreshing(false); setRefreshMsg('') }, 1000)
+            }
+          }).catch(() => {})
+        }, 10000)
+        // Safety timeout after 3 min
+        setTimeout(() => { clearInterval(checkInterval); refetch(); setRefreshing(false); setRefreshMsg('') }, 180000)
       } else {
         setRefreshMsg(`Failed: ${d.error || 'unknown'}`)
         setRefreshing(false)
