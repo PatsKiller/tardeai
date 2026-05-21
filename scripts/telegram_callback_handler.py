@@ -230,6 +230,23 @@ def _run_approve(pid, user_id, overrides):
 
         result = approve_proposal(pid, **override_kwargs)
         if result.get("success"):
+            # Instant execution: submit to Alpaca paper
+            alpaca_status = "not_attempted"
+            broker_order_id = None
+            try:
+                from proposal_paper_submitter import submit_paper
+                from session13_db import get_conn as _get_sub_conn
+                sub_conn = _get_sub_conn()
+                if sub_conn:
+                    alpaca_result = submit_paper(sub_conn, pid, dry_run=False)
+                    sub_conn.close()
+                    alpaca_status = alpaca_result.get("status", "unknown")
+                    broker_order_id = alpaca_result.get("order_id")
+                    log.info(f"Telegram approve → Alpaca: {alpaca_status} order={broker_order_id}")
+            except Exception as ae:
+                alpaca_status = f"error: {ae}"
+                log.error(f"Telegram approve → Alpaca failed: {ae}")
+
             return {
                 "ok": True,
                 "symbol": result.get("symbol", p["symbol"]),
@@ -238,6 +255,8 @@ def _run_approve(pid, user_id, overrides):
                 "stop_price": result.get("stop", float(p.get("proposed_stop") or 0)),
                 "target_price": result.get("target", float(p.get("proposed_target1") or 0)),
                 "risk_gate_decision": result.get("risk_gate", "?"),
+                "alpaca_status": alpaca_status,
+                "broker_order_id": broker_order_id,
             }
         return {"ok": False, "symbol": p["symbol"], "error": result.get("message", "Approval failed")}
     except Exception as e:
@@ -267,6 +286,10 @@ def _post_confirmation(chat_id, original_msg_id, result, label):
                      f"stop=${result.get('stop_price', 0):.2f} "
                      f"target=${result.get('target_price', 0):.2f}\n"
                      f"Risk gate: {result.get('risk_gate_decision', '?')}")
+            if result.get("alpaca_status"):
+                body += f"\nAlpaca: {result['alpaca_status']}"
+                if result.get("broker_order_id"):
+                    body += f" (order {result['broker_order_id'][:12]}...)"
         else:
             body += f"{sym}: {result.get('message', 'done')}"
     else:
