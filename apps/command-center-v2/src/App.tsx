@@ -31,6 +31,8 @@ const Technical = lazy(() => import('./pages/Technical'))
 const Risk = lazy(() => import('./pages/Risk'))
 const RiskRegime = lazy(() => import('./pages/RiskRegime'))
 const Research = lazy(() => import('./pages/Research'))
+const Correlation = lazy(() => import('./pages/Correlation'))
+const Forecast = lazy(() => import('./pages/Forecast'))
 const StrategyAdmin = lazy(() => import('./pages/StrategyAdmin'))
 const StrategyAnalytics = lazy(() => import('./pages/StrategyAnalytics'))
 
@@ -210,8 +212,8 @@ export default function App() {
           <Route path="intelligence-whiteboard" element={<SafePage><IntelligenceHub /></SafePage>} />
           <Route path="content-health" element={<Navigate to="/intelligence?tab=content-health" replace />} />
           <Route path="live-governance" element={<SafePage><GovernanceHub /></SafePage>} />
-          <Route path="correlation" element={<SafePage><Risk /></SafePage>} />
-          <Route path="forecast" element={<SafePage><div style={{ padding: 40, color: 'var(--text3)' }}><h2>Forecast</h2><p>Forecast module not activated yet. This route is reserved for a future forecast module.</p></div></SafePage>} />
+          <Route path="correlation" element={<SafePage><Correlation /></SafePage>} />
+          <Route path="forecast" element={<SafePage><Forecast /></SafePage>} />
           <Route path="proposals" element={<Navigate to="../paper-proposals" replace />} />
           <Route path="strategy" element={<Navigate to="../strategy-desk" replace />} />
 

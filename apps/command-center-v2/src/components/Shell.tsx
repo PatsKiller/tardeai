@@ -189,7 +189,8 @@ export default function Shell() {
   // Close drawer on route change
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
 
-  const regime = data?.trade_ai?.breadth || '—'
+  const { data: regimeData } = useApi<any>('/api/v2/risk-regime/status', 60000)
+  const regime = regimeData?.regime_label?.replace(/_/g, ' ')?.replace(/\b\w/g, (c: string) => c.toUpperCase()) || data?.trade_ai?.breadth || '—'
   const setupState = `${data?.trade_ai?.go_count ?? 0} GO · ${data?.trade_ai?.wait_count ?? 0} WAIT · ${data?.trade_ai?.no_go_count ?? 0} NO GO`
   const pendingApprovals = data?.pending_approvals ?? 0
 

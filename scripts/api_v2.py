@@ -5407,7 +5407,40 @@ def attribution():
         "bench_sharpe": a.get("bench_sharpe"),
         "bench_sortino": a.get("bench_sortino"),
         "bench_maxdd": a.get("bench_maxdd"),
+        "accounts": _attribution_accounts(),
     }
+
+
+def _attribution_accounts():
+    """Extract per-account breakdown from holdings.json."""
+    try:
+        h = _load_json(STATE_DIR / "holdings.json") or {}
+        summaries = h.get("account_summaries") or {}
+        if not summaries:
+            # Build from holdings array
+            accts: dict = {}
+            for pos in h.get("holdings", []):
+                acct = pos.get("account", pos.get("broker", "unknown"))
+                if acct not in accts:
+                    accts[acct] = {"display_name": acct, "total_value": 0, "positions": 0, "total_gain": 0}
+                accts[acct]["total_value"] += float(pos.get("market_value", 0) or 0)
+                accts[acct]["positions"] += 1
+                accts[acct]["total_gain"] += float(pos.get("gain_total", pos.get("unrealized_gain", 0)) or 0)
+            return accts
+        # Use pre-computed summaries
+        out = {}
+        labels = {"fidelity_401k": "Fidelity 401k", "schwab_rollover_ira": "Schwab Rollover IRA",
+                  "schwab_roth": "Schwab Roth IRA", "schwab_taxable": "Schwab Taxable"}
+        for k, v in summaries.items():
+            out[k] = {
+                "display_name": labels.get(k, k),
+                "total_value": float(v.get("total_value", v.get("market_value", 0)) or 0),
+                "positions": int(v.get("position_count", v.get("positions", 0)) or 0),
+                "total_gain": float(v.get("total_gain", v.get("unrealized_gain", 0)) or 0),
+            }
+        return out
+    except Exception:
+        return {}
 
 
 def correlation():
@@ -14040,6 +14073,50 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             items = _db_query("SELECT * FROM broker_reconciliation_items ORDER BY created_at DESC LIMIT 50") or []
             return 200, {"ok": True, "runs": [{k: _json_clean(v) for k, v in r.items()} for r in runs],
                          "items": [{k: _json_clean(v) for k, v in i.items()} for i in items]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "GET" and base_path == "/api/v2/governance":
+        try:
+            gov_rows = _db_query("SELECT * FROM paper_performance_governance ORDER BY created_at DESC LIMIT 23") or []
+            pt_stats = _db_query("""
+                SELECT COUNT(*) FILTER (WHERE status='closed') as closed,
+                       COUNT(*) FILTER (WHERE status='open') as open,
+                       COUNT(DISTINCT strategy_id) as strategies,
+                       ROUND(AVG(CASE WHEN pnl > 0 THEN 100.0 ELSE 0 END)::numeric, 1) as win_rate,
+                       ROUND((SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END) /
+                              NULLIF(ABS(SUM(CASE WHEN pnl < 0 THEN pnl ELSE 0 END)), 0))::numeric, 2) as profit_factor,
+                       MIN(created_at) as first_trade
+                FROM paper_trades
+            """, fetch="one") or {}
+            import datetime as _dt
+            days = 0
+            if pt_stats.get('first_trade'):
+                ft = pt_stats['first_trade']
+                days = (_dt.datetime.now(_dt.timezone.utc) - (ft if ft.tzinfo else ft.replace(tzinfo=_dt.timezone.utc))).days
+            closed = int(pt_stats.get('closed') or 0)
+            wr = float(pt_stats.get('win_rate') or 0)
+            pf = float(pt_stats.get('profit_factor') or 0)
+            g6 = days >= 180
+            g30 = closed >= 30
+            gwr = wr >= 45
+            gpf = pf >= 1.3
+            return 200, {"ok": True, "data": {
+                "live_trading_enabled": False,
+                "paper_open": int(pt_stats.get('open') or 0),
+                "paper_closed": closed,
+                "days_trading": days,
+                "win_rate": wr, "profit_factor": pf,
+                "strategies_traded": int(pt_stats.get('strategies') or 0),
+                "strategies_with_data": len(gov_rows),
+                "gates_met": sum([g6, g30, gwr, gpf]), "gates_total": 4,
+                "gates": {
+                    "6_months": {"met": g6, "current": f"{days} days", "required": "180 days"},
+                    "30_closed": {"met": g30, "current": closed, "required": 30},
+                    "win_rate_45": {"met": gwr, "current": f"{wr:.1f}%", "required": "45%"},
+                    "profit_factor_1_3": {"met": gpf, "current": f"{pf:.2f}", "required": "1.3"},
+                },
+            }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
