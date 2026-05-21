@@ -16381,6 +16381,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/rebalance/review" and method == "POST":
+        try:
+            b = body or {}
+            if b.get("action") == "mark_all_reviewed":
+                _db_write("UPDATE paper_trade_proposals SET status='REVIEWED' WHERE status='PENDING' AND strategy_id='rebalance'")
+                # Update yaml_advisor_output status
+                import json as _rj
+                _yo_path = STATE_DIR / "yaml_advisor_output.json"
+                if _yo_path.exists():
+                    _yo = _rj.loads(_yo_path.read_text())
+                    _yo["status"] = "reviewed"
+                    _yo["reviewed_at"] = datetime.now().isoformat()
+                    _yo_path.write_text(_rj.dumps(_yo, indent=2, default=str))
+                return 200, {"ok": True, "message": "All suggestions marked reviewed"}
+            else:
+                idx = b.get("index", 0)
+                decision = b.get("decision", "acknowledged")
+                _yo_path = STATE_DIR / "yaml_advisor_output.json"
+                if _yo_path.exists():
+                    _yo = _rj.loads(_yo_path.read_text()) if '_rj' in dir() else __import__('json').loads(_yo_path.read_text())
+                    reviews = _yo.get("reviews", {})
+                    reviews[str(idx)] = {"decision": decision, "at": datetime.now().isoformat()}
+                    _yo["reviews"] = reviews
+                    if all(str(i) in reviews for i in range(len(_yo.get("opus_output", {}).get("suggestions", [])))):
+                        _yo["status"] = "reviewed"
+                        _yo["reviewed_at"] = datetime.now().isoformat()
+                    import json as _rj2
+                    _yo_path.write_text(_rj2.dumps(_yo, indent=2, default=str))
+                return 200, {"ok": True, "index": idx, "decision": decision}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/rebalance/refresh" and method == "POST":
         try:
             import subprocess as _sp

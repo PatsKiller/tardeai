@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -35,6 +35,34 @@ export default function Rebalance() {
   const { data, refetch } = useApi<RebalanceData>('/api/v2/rebalance')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
+
+  const [reviewed, setReviewed] = useState<Record<number, string>>({})
+  const [statusMsg, setStatusMsg] = useState('')
+
+  const markReviewed = useCallback(async (index: number, decision: string) => {
+    setReviewed(prev => ({ ...prev, [index]: decision }))
+    try {
+      await fetch('/api/v2/rebalance/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index, decision, reviewed_at: new Date().toISOString() }),
+      })
+    } catch { /* best effort */ }
+  }, [])
+
+  const markAllReviewed = useCallback(async () => {
+    const all: Record<number, string> = {}
+    ;(data?.suggestions || []).forEach((_, i) => { all[i] = 'acknowledged' })
+    setReviewed(all)
+    setStatusMsg('All suggestions reviewed')
+    try {
+      await fetch('/api/v2/rebalance/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_all_reviewed' }),
+      })
+    } catch { /* best effort */ }
+  }, [data])
 
   if (!data) return <div style={{ color: 'var(--text3)', padding: 40 }}>Loading rebalance...</div>
 
@@ -162,7 +190,7 @@ export default function Rebalance() {
       {/* Legacy metric row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
         <MetricTile label="Ground Truth" value={fmt$(data.ground_truth?.total_portfolio ?? 0)} delta={`as of ${data.ground_truth?.as_of || '\u2014'}`} />
-        <MetricTile label="Status" value={data.status?.replace(/_/g, ' ') || 'pending'} deltaColor={data.status === 'approved' ? 'var(--green)' : 'var(--amber)'} />
+        <MetricTile label="Status" value={Object.keys(reviewed).length === (data.suggestions?.length || 0) && Object.keys(reviewed).length > 0 ? 'reviewed' : (data.status?.replace(/_/g, ' ') || 'pending')} deltaColor={Object.keys(reviewed).length === (data.suggestions?.length || 0) && Object.keys(reviewed).length > 0 ? 'var(--green)' : 'var(--amber)'} />
         <MetricTile label="Generated" value={genLabel} deltaColor={stale ? 'var(--amber)' : 'var(--text2)'} />
         <MetricTile label="Review Mode" value="Advisory" delta="manual approval required" />
       </div>
@@ -215,7 +243,15 @@ export default function Rebalance() {
 
       {(data.suggestions?.length ?? 0) > 0 && (
         <>
-          <SectionHeader title="AI Suggestions" count={data.suggestions!.length} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <SectionHeader title="AI Suggestions" count={data.suggestions!.length} />
+            {Object.keys(reviewed).length < data.suggestions!.length && (
+              <button onClick={markAllReviewed} style={{ fontSize: 9, padding: '3px 10px', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}>
+                ✓ Mark All Reviewed
+              </button>
+            )}
+            {statusMsg && <span style={{ fontSize: 9, color: 'var(--green)' }}>{statusMsg}</span>}
+          </div>
           <Card>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {data.suggestions!.map((sug, i) => (
@@ -227,11 +263,21 @@ export default function Rebalance() {
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text1)', lineHeight: 1.5 }}>{sug.rationale}</div>
                   {sug.do_not_apply_if && <div style={{ fontSize: 9, color: 'var(--red)', marginTop: 4 }}>Do not apply if: {sug.do_not_apply_if}</div>}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     {sug.type === 'update_target' && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'var(--amber-dim)', color: 'var(--amber)' }}>Requires YAML change</span>}
                     {sug.type === 'update_notes' && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'var(--bg3)', color: 'var(--text3)' }}>Config note update</span>}
                     {sug.type === 'trade_action' && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'var(--green-dim)', color: 'var(--green)' }}>Account-level action</span>}
-                    <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'var(--bg3)', color: 'var(--text3)' }}>Advisory — requires human review</span>
+                    {reviewed[i] ? (
+                      <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 3, background: reviewed[i] === 'accepted' ? 'var(--green-dim)' : 'var(--bg3)', color: reviewed[i] === 'accepted' ? 'var(--green)' : 'var(--text3)', fontWeight: 600 }}>
+                        {reviewed[i] === 'accepted' ? '✓ Accepted' : reviewed[i] === 'deferred' ? '⏸ Deferred' : '✓ Acknowledged'}
+                      </span>
+                    ) : (
+                      <>
+                        <button onClick={() => markReviewed(i, 'accepted')} style={{ fontSize: 8, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--green)', background: 'var(--green-dim)', color: 'var(--green)', cursor: 'pointer', fontWeight: 600 }}>✓ Accept</button>
+                        <button onClick={() => markReviewed(i, 'acknowledged')} style={{ fontSize: 8, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}>👁 Acknowledge</button>
+                        <button onClick={() => markReviewed(i, 'deferred')} style={{ fontSize: 8, padding: '2px 8px', borderRadius: 3, border: '1px solid var(--text3)', background: 'var(--bg3)', color: 'var(--text3)', cursor: 'pointer' }}>⏸ Defer</button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
