@@ -32,17 +32,23 @@ def _get_conn():
 
 
 def get_signals(conn, strategy_id=None):
-    """Get historical signals from trade_ai_scans."""
+    """Get historical GO signals from trade_ai_scans."""
     cur = conn.cursor()
     sql = """
         SELECT symbol, price, scanned_at, score, source, gap_pct, rvol
         FROM trade_ai_scans
-        WHERE price > 0 AND symbol IS NOT NULL
+        WHERE price > 0 AND symbol IS NOT NULL AND decision = 'GO'
     """
     params = []
+    # Filter by strategy via proposal classification if available
     if strategy_id:
-        sql += " AND source ILIKE %s"
-        params.append(f"%{strategy_id}%")
+        cur2 = conn.cursor()
+        cur2.execute("""SELECT DISTINCT symbol FROM paper_trade_proposals
+            WHERE strategy_id = %s AND created_at > NOW() - INTERVAL '90 days'""", [strategy_id])
+        strat_symbols = [r[0] for r in cur2.fetchall()]
+        if strat_symbols:
+            sql += " AND symbol = ANY(%s)"
+            params.append(strat_symbols)
     sql += " ORDER BY scanned_at ASC LIMIT 5000"
     cur.execute(sql, params)
     return [{"symbol": r[0], "price": _f(r[1]), "time": r[2], "score": r[3],
