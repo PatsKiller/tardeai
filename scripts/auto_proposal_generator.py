@@ -555,12 +555,24 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
     # PROMOTE-1: Pre-promotion readiness gate
     try:
         from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
+        # Compute scan age from fired_at — screener signals have fresh price data from Finviz
+        _scan_age = 0.5  # Default: assume recent
+        _fired = signal.get("fired_at")
+        if _fired and hasattr(_fired, 'timestamp'):
+            try:
+                _now = datetime.now(timezone.utc)
+                _fa = _fired if _fired.tzinfo else _fired.replace(tzinfo=timezone.utc)
+                _scan_age = max(0.01, (_now - _fa).total_seconds() / 3600)
+            except Exception:
+                pass
+
         _pre = evaluate_pre_promotion_readiness({
             "symbol": signal.get("symbol"), "strategy_id": signal.get("strategy_id"),
             "proposed_entry": signal.get("entry_high"), "proposed_stop": signal.get("stop_loss"),
             "proposed_target1": signal.get("target_1"), "proposed_rr": signal.get("rr"),
             "catalyst": signal.get("catalyst"), "catalyst_verified": signal.get("catalyst_verified"),
             "discovery_source": "screener",
+            "scan_age_hours": _scan_age,
         })
         if _pre["blockers"]:
             log.warning(f"[auto_gen] BLOCKED by pre-promotion gate: {signal.get('symbol')} — {_pre['blockers']}")
