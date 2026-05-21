@@ -1401,20 +1401,25 @@ export default function AutomatedTradeJournal() {
                     {closedTrades.map((t: any, i: number) => {
                       const isExpanded = expandedId === t.id
                       const verdict = t.outcome_verdict || (t.pnl > 0 ? 'WIN' : t.pnl < 0 ? 'LOSS' : '--')
+                      const pnlVal = Number(t.pnl ?? 0)
+                      const rVal = Number(t.r_multiple ?? 0)
+                      const fmtPnl = pnlVal === 0 ? '$0.00' : `${pnlVal < 0 ? '-' : '+'}$${Math.abs(pnlVal).toFixed(2)}`
+                      const fmtRm = t.r_multiple != null ? `${rVal >= 0 ? '+' : ''}${rVal.toFixed(2)}R` : '--'
+                      const exitLabel = (t.exit_reason || '').replace(/_/g, ' ').replace(/position closed in alpaca/i, 'broker close')
                       return (
                         <tbody key={t.id}>
                           <tr onClick={() => setExpandedId(isExpanded ? null : t.id)}
                             style={{ background: isExpanded ? 'rgba(59,130,246,0.08)' : i % 2 ? 'var(--bg0)' : 'transparent', cursor: 'pointer' }}>
                             <td style={{ ...tdStyle, width: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 10 }}>{isExpanded ? '▲' : '▼'}</td>
                             <td style={{ ...tdStyle, fontWeight: 700, ...mono }}>{t.symbol}</td>
-                            <td style={{ ...tdStyle, fontSize: 10, color: 'var(--text2)' }}>{t.strategy_id}</td>
-                            <td style={{ ...tdStyle, ...mono }}>{fmt$(t.entry_price, 2)}</td>
-                            <td style={{ ...tdStyle, ...mono }}>{fmt$(t.exit_price, 2)}</td>
-                            <td style={{ ...tdStyle, ...mono, fontSize: 10 }}>{t.shares || '--'}</td>
-                            <td style={{ ...tdStyle, ...mono, color: pnlColor(t.pnl), fontWeight: 600 }}>{t.pnl != null ? fmt$(t.pnl, 2) : '--'}</td>
-                            <td style={{ ...tdStyle, ...mono, color: pnlColor(t.r_multiple) }}>{t.r_multiple != null ? `${Number(t.r_multiple).toFixed(2)}R` : '--'}</td>
+                            <td style={{ ...tdStyle, fontSize: 10, color: 'var(--text2)' }}>{(t.strategy_id || '').replace(/_/g, ' ')}</td>
+                            <td style={{ ...tdStyle, ...mono, textAlign: 'right' }}>{fmt$(t.entry_price, 2)}</td>
+                            <td style={{ ...tdStyle, ...mono, textAlign: 'right' }}>{fmt$(t.exit_price, 2)}</td>
+                            <td style={{ ...tdStyle, ...mono, fontSize: 10, textAlign: 'right' }}>{t.shares || '--'}</td>
+                            <td style={{ ...tdStyle, ...mono, color: pnlColor(t.pnl), fontWeight: 600, textAlign: 'right' }}>{fmtPnl}</td>
+                            <td style={{ ...tdStyle, ...mono, color: pnlColor(t.r_multiple), textAlign: 'right' }}>{fmtRm}</td>
                             <td style={tdStyle}><span style={pill(verdict === 'WIN' || verdict === 'CORRECT' ? 'green' : verdict === 'LOSS' || verdict === 'WRONG' ? 'red' : 'amber')}>{verdict}</span></td>
-                            <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)' }}>{(t.exit_reason || '').slice(0, 30)}</td>
+                            <td style={{ ...tdStyle, fontSize: 9, color: 'var(--text3)' }}>{exitLabel.slice(0, 25)}</td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.iris_curated ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.iris_curated ? '✓' : '-'}</span></td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.aegis_summarized ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.aegis_summarized ? '✓' : '-'}</span></td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}><span style={{ color: t.post_trade_analyzed ? 'var(--green)' : 'var(--text3)', fontSize: 10 }}>{t.post_trade_analyzed ? '✓' : '-'}</span></td>
