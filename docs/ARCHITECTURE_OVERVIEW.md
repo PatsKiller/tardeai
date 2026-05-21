@@ -1,7 +1,7 @@
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level
-**Last updated:** 2026-05-20 (ATP-1B)
+**Last updated:** 2026-05-21 (Real-time alerts + trailing stop analysis)
 
 ---
 
@@ -51,12 +51,13 @@ Trade AI v12 is a fully automated profit-seeking trading intelligence platform t
 
 | Service | Responsibility | Scale |
 |---------|---------------|-------|
-| **Portfolio Server** (:7777) | Central API hub. Serves 80+ REST endpoints and the React SPA. All client-facing traffic routes through here. | 11,700 LOC handler |
-| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 334 tables |
+| **Portfolio Server** (:7777) | Central API hub. Serves 80+ REST endpoints and the React SPA. All client-facing traffic routes through here. | 17,000+ LOC handler |
+| **PostgreSQL** (:5432) | Single source of truth. All persistent state -- trades, proposals, enrichment, agent results, pipeline health. | 350+ tables |
 | **Ollama LLM** (:11434) | Local inference engine. Strategy classification, proposal review, health checks. GPU-accelerated on Intel Arc B50 (Vulkan). | ~15s/chunk, toll-gated |
-| **OpenClaw Gateway** (:18789) | Conversational AI routing. 4 agents accessible via Telegram + WhatsApp. Handles natural language queries about portfolio, risk, and strategy. | 4 agents |
-| **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. 142 scheduled jobs from 4 AM to midnight. | 63 crontab entries |
-| **React SPA** | Operator dashboard. 73 pages covering portfolio, watchlist, proposals, strategy admin, risk, journal, governance. | 91 React components |
+| **OpenClaw Gateway** (:18789) | Conversational AI routing. 6 agents accessible via Telegram + WhatsApp. Handles natural language queries about portfolio, risk, and strategy. | 6 agents |
+| **Telegram Long-Poll Daemon** | Persistent background process polling Telegram for operator replies (approve/reject/stop actions). 25-second long-poll, 1-2 second reply detection. | Single daemon |
+| **Cron Scheduler** | Orchestrates the 31-stage pipeline across 7 groups. Key intervals: 2-min trade monitor, 2-min proposal alerts, 5-min execution sweep. | 65+ crontab entries |
+| **React SPA** | Operator dashboard. 73 pages covering portfolio, watchlist, proposals, strategy admin, risk, journal, backtesting (7 tabs). | 91 React components |
 
 ---
 
@@ -76,6 +77,40 @@ Trade AI v12 is a fully automated profit-seeking trading intelligence platform t
 | 5 | **Proposals** | Incubator promotion gates, proposal generation, enrichment packets, LLM 4-chunk review | Paper trade proposals with full research packets |
 | 6 | **Execution** | Risk gate validation, bracket order creation, Alpaca paper submission, fill reconciliation, TCA | Paper trades with execution quality metrics |
 | 7 | **Overnight** | Portfolio reconciliation, agent scoring, strategy review, embedding refresh, weekly builds | Performance grades, cleaned state, updated indices |
+
+---
+
+## Real-Time Notification Architecture (2026-05-21)
+
+```
+Proposal Created (auto_proposal_generator.py)
+        |
+        v (immediate, daemon thread)
+send_telegram_proposal_alert.py --send
+        |
+        v (< 5 seconds)
+Operator sees alert in Telegram with inline buttons
+        |
+        v (1-2 seconds via long-poll daemon)
+Callback detected by run_telegram_callback_poller.py
+        |
+        v (2-5 seconds)
+Action executed: approve → Alpaca order / reject / trail stop / stop out
+```
+
+**Latency chain:**
+
+| Stage | Mechanism | Latency |
+|-------|-----------|---------|
+| Proposal → Alert | Inline hook (daemon thread) | ~5 sec |
+| Alert → Operator sees | Telegram push notification | < 1 sec |
+| Operator taps button → Detected | Long-poll daemon (25s timeout) | 1-2 sec |
+| Action executed | Direct DB + Alpaca API | 2-5 sec |
+| **Total end-to-end** | | **~10 seconds** |
+
+**Stop proximity alerts** use the same real-time path. When a trade consumes 50% or 75% of its risk budget, the operator receives inline buttons to stop out, switch to trailing stop, or hold.
+
+**Trailing stop analysis** (`scripts/trailing_stop_analyzer.py`) backfills closed trades with simulated trailing stop outcomes (5/8/10/15% trail vs fixed), determines optimal trail per strategy, and feeds recommendations into `agent_intelligence_rules`. Results visible in Backtesting > Trail Analysis tab.
 
 ---
 

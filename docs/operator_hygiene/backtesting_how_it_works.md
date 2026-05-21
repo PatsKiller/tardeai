@@ -155,6 +155,30 @@ When run with `--all-strategies`:
 | `challenger_definitions` | Champion/challenger experiment configs (empty — not yet used) |
 | `champion_challenger_results` | A/B comparison results (empty — not yet used) |
 
-## Dashboard
+## Dashboard (Rewritten 2026-05-21)
 
-View at `/v2/backtesting` — shows runs, trades, results, and challenger comparisons.
+View at `/v2/backtesting` — 7 interactive tabs using recharts:
+
+| Tab | Content |
+|-----|---------|
+| **Overview** | Win rate by strategy (clickable bars), R-multiple histogram, missed proposals impact |
+| **Strategy** | Table with win rate, avg R, total P&L, profit factor, expectancy R, max drawdown. Click row → filters Trades tab |
+| **Trades** | All simulated trades with symbol, strategy, entry/exit, P&L, R-multiple. Null strategy_ids handled gracefully |
+| **Missed** | Proposals not traded: would-win/would-lose counts, P&L left on table, full table |
+| **Results** | Per-run result cards with mini equity curve sparklines. Click card → expand full equity curve with KPIs |
+| **Runs** | All backtest runs with type filter (replay_trades, replay_proposals, champion) |
+| **Trail Analysis** | Trailing stop simulation results. Per-strategy table: fixed P&L vs 5%/8%/10%/15% trail P&L, optimal %, recommendation. Per-trade detail with LLM-generated lessons |
+
+### Trailing Stop Analysis Engine
+
+**Script:** `scripts/trailing_stop_analyzer.py`
+
+For each closed trade, fetches Alpaca OHLCV bars for the holding period and simulates 4 trailing stop percentages vs the fixed stop actually used. Determines high-water mark, optimal trail %, and improvement.
+
+**API endpoints:**
+- `GET /api/v2/backtesting/trailing-stop-analysis` — returns per-trade and per-strategy results
+- `POST /api/v2/backtesting/run-trailing-analysis` — triggers background backfill
+
+**Database:** `trailing_stop_analysis` table with per-trade simulation results, `agent_intelligence_rules` for strategy-level recommendations.
+
+**Key findings (2026-05-21, 7 trades):** Average improvement of +3.09% vs fixed stops. EVC (screener): 5% trail would have turned -5.05% loss into +4.94% gain.
