@@ -57,23 +57,28 @@ export default function SelfImprovement() {
         <span style={{ fontSize:10, color:'var(--text3)' }}>{(safety.blocked_reasons||[]).length} block reasons</span>
       </div>
 
-      {/* Overview Cards */}
+      {/* Overview Cards — clickable */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(160px,1fr))', gap:8, marginBottom:14 }}>
-        {[['Paper Closed', paper.closed, paper.low_sample ? 'LOW SAMPLE' : ''],
-          ['Paper Open', paper.open, ''],
-          ['Pending Proposals', paper.pending_proposals, ''],
-          ['Learning Recs', learning.recommendations_pending, learning.recommendations_pending > 0 ? 'REVIEW' : ''],
-          ['Config Proposals', learning.config_proposals_pending, learning.config_proposals_pending > 0 ? 'APPROVAL' : ''],
-          ['Agent Recs', agents.recommendations, ''],
-          ['Backtest Runs', bt.runs, ''],
-          ['Pipeline Fails', pipe.failures, pipe.failures > 0 ? 'CHECK' : ''],
-          ['Warnings', warnings.length, ''],
-        ].map(([label, val, badge]) => (
-          <div key={String(label)} style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:6,
-            background: badge ? 'rgba(240,185,11,.05)' : 'transparent' }}>
-            <div style={{ fontSize:10, color:'#848e9c' }}>{String(label)}</div>
+        {([['Paper Closed', paper.closed, paper.low_sample ? 'LOW SAMPLE' : '', '/paper-journal'],
+          ['Paper Open', paper.open, '', '/paper-status'],
+          ['Pending Proposals', paper.pending_proposals, '', '/paper-proposals'],
+          ['Learning Recs', learning.recommendations_pending, learning.recommendations_pending > 0 ? 'REVIEW' : '', '/governance?tab=learning'],
+          ['Config Proposals', learning.config_proposals_pending, learning.config_proposals_pending > 0 ? 'APPROVAL' : '', '/governance?tab=learning'],
+          ['Agent Recs', agents.recommendations, '', '/agent-calibration'],
+          ['Backtest Runs', bt.runs, '', '/backtesting'],
+          ['Pipeline Fails', pipe.failures, pipe.failures > 0 ? 'CHECK' : '', '/pipeline'],
+          ['Warnings', warnings.length, '', ''],
+        ] as [string, any, string, string][]).map(([label, val, badge, route]) => (
+          <div key={label} onClick={route ? () => navigate(route) : undefined}
+            style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:6,
+            background: badge ? 'rgba(240,185,11,.05)' : 'transparent',
+            cursor: route ? 'pointer' : 'default', transition: 'background 120ms' }}
+            onMouseEnter={route ? (e) => { e.currentTarget.style.background = 'var(--bg3)' } : undefined}
+            onMouseLeave={route ? (e) => { e.currentTarget.style.background = badge ? 'rgba(240,185,11,.05)' : 'transparent' } : undefined}>
+            <div style={{ fontSize:10, color:'#848e9c' }}>{label}</div>
             <div style={{ fontSize:20, fontWeight:700 }}>{val ?? 0}</div>
-            {badge && <div style={{ fontSize:9, color:'#f0b90b', fontWeight:600 }}>{String(badge)}</div>}
+            {badge && <div style={{ fontSize:9, color:'#f0b90b', fontWeight:600 }}>{badge}</div>}
+            {route && <div style={{ fontSize:8, color:'var(--accent)', marginTop:2 }}>View →</div>}
           </div>
         ))}
       </div>
@@ -98,13 +103,25 @@ export default function SelfImprovement() {
       {/* Component Health */}
       <Card title="Component Health" style={{ marginBottom:14 }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px,1fr))', gap:6 }}>
-          {components.map((c: any) => (
-            <div key={c.component_key} style={{ padding:'6px 10px', border:'1px solid var(--border)', borderRadius:4,
-              fontSize:11, display:'flex', justifyContent:'space-between' }}>
-              <span>{dot(c.status)}{c.component_name}</span>
-              <span style={{ color:'var(--text3)', fontSize:10 }}>{c.status}</span>
-            </div>
-          ))}
+          {components.map((c: any) => {
+            const routes: Record<string, string> = {
+              'agent-calibration': '/agent-calibration', 'backtesting': '/backtesting',
+              'execution-revalidation': '/paper-status', 'ingestion-sources': '/intelligence',
+              'learning-governance': '/governance?tab=learning', 'paper-trading': '/paper-journal',
+              'pipeline-controller': '/pipeline', 'safety-gate': '/risk', 'weekly-digest': '/weekly-learning',
+            }
+            const route = routes[c.component_key] || ''
+            return (
+              <div key={c.component_key} onClick={route ? () => navigate(route) : undefined}
+                style={{ padding:'6px 10px', border:'1px solid var(--border)', borderRadius:4,
+                fontSize:11, display:'flex', justifyContent:'space-between', cursor: route ? 'pointer' : 'default' }}
+                onMouseEnter={route ? (e) => { e.currentTarget.style.background = 'var(--bg3)' } : undefined}
+                onMouseLeave={route ? (e) => { e.currentTarget.style.background = '' } : undefined}>
+                <span>{dot(c.status)}{c.component_name}</span>
+                <span style={{ color: route ? 'var(--accent)' : 'var(--text3)', fontSize:10 }}>{c.status} {route ? '→' : ''}</span>
+              </div>
+            )
+          })}
           {components.length === 0 && <div style={{ color:'#848e9c', fontSize:11, padding:8 }}>Run snapshot first to populate health</div>}
         </div>
       </Card>
@@ -112,9 +129,17 @@ export default function SelfImprovement() {
       {/* Quick Links */}
       <Card title="Subsystem Dashboards" style={{ marginBottom:14 }}>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          {['/v2/learning-governance', '/v2/agent-calibration', '/v2/weekly-learning',
-            '/v2/backtesting', '/v2/paper-trade-intelligence', '/v2/pipeline-controller'].map(r => (
-            <button key={r} onClick={() => navigate(r)} style={btn}>{r.replace('/v2/', '')}</button>
+          {[
+            ['/governance?tab=learning', 'Learning Governance'],
+            ['/agent-calibration', 'Agent Calibration'],
+            ['/weekly-learning', 'Weekly Learning'],
+            ['/backtesting', 'Backtesting'],
+            ['/paper-journal', 'Paper Trade Intelligence'],
+            ['/pipeline', 'Pipeline Controller'],
+            ['/paper-proposals', 'Trade Proposals'],
+            ['/risk', 'Risk Management'],
+          ].map(([route, label]) => (
+            <button key={route} onClick={() => navigate(route)} style={{ ...btn, fontWeight:600 }}>{label} →</button>
           ))}
         </div>
       </Card>
@@ -122,11 +147,25 @@ export default function SelfImprovement() {
       {/* Warnings */}
       {warnings.length > 0 && (
         <Card title={`Warnings (${warnings.length})`}>
-          {warnings.map((w: any, i: number) => (
-            <div key={i} style={{ fontSize:11, padding:'4px 0', borderBottom:'1px solid var(--border)' }}>
-              {dot(w.type === 'low_sample' ? 'info' : 'warning')}{w.msg}
-            </div>
-          ))}
+          {warnings.map((w: any, i: number) => {
+            const msg = w.msg || ''
+            const route = msg.includes('closed trades') ? '/paper-journal'
+              : msg.includes('recommendation') ? '/governance?tab=learning'
+              : msg.includes('material change') || msg.includes('reapproval') ? '/paper-proposals'
+              : msg.includes('pipeline') ? '/pipeline'
+              : msg.includes('stop') ? '/risk'
+              : ''
+            return (
+              <div key={i} onClick={route ? () => navigate(route) : undefined}
+                style={{ fontSize:11, padding:'6px 0', borderBottom:'1px solid var(--border)',
+                cursor: route ? 'pointer' : 'default', display:'flex', justifyContent:'space-between', alignItems:'center' }}
+                onMouseEnter={route ? (e) => { e.currentTarget.style.background = 'var(--bg3)' } : undefined}
+                onMouseLeave={route ? (e) => { e.currentTarget.style.background = '' } : undefined}>
+                <span>{dot(w.type === 'low_sample' ? 'info' : 'warning')}{msg}</span>
+                {route && <span style={{ fontSize:9, color:'var(--accent)' }}>View →</span>}
+              </div>
+            )
+          })}
         </Card>
       )}
     </div>
