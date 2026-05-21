@@ -33,6 +33,25 @@ from typing import Dict, Optional, Any
 
 # ── Platform detection ────────────────────────────────────────────────────────
 
+def _load_dotenv_if_needed():
+    """Load .env file into os.environ if DB_PASSWORD not already set.
+    Handles cron context where env vars aren't inherited."""
+    if os.getenv("DB_PASSWORD"):
+        return  # already set
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip()
+                if key.startswith("DB_") and key not in os.environ:
+                    os.environ[key] = val
+
+_load_dotenv_if_needed()
+
+
 def _db_enabled() -> bool:
     """Return True if running on Linux with DB credentials configured."""
     if platform.system() != "Linux":
