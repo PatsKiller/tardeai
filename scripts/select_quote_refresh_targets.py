@@ -81,8 +81,13 @@ def main():
                 "priority": 1,
             })
 
-    # Incubator candidates
+    # Incubator candidates — use family-specific min_score thresholds (MAP-5D)
     if args.mode in ("incubator", "all"):
+        try:
+            from promoter_family_threshold_policy import get_family_thresholds
+        except ImportError:
+            get_family_thresholds = None
+
         rows = _db_query("""
             SELECT iu.symbol, iu.strategy_id, iu.latest_score,
                    mqs.provider as last_provider, mqs.created_at as last_checked
@@ -91,11 +96,24 @@ def main():
                 SELECT provider, created_at FROM market_quote_snapshots
                 WHERE symbol = iu.symbol ORDER BY created_at DESC LIMIT 1
             ) mqs ON true
-            WHERE iu.status = 'ACTIVE' AND iu.latest_score >= 38
+            WHERE iu.status = 'ACTIVE' AND iu.latest_score >= 5
             AND iu.promoted_to_proposal_at IS NULL
             ORDER BY iu.latest_score DESC, mqs.created_at ASC NULLS FIRST
             LIMIT %s
-        """, [args.limit]) or []
+        """, [args.limit * 3]) or []  # fetch more, filter by family threshold
+
+        # Filter by family-specific min_score
+        if get_family_thresholds:
+            filtered = []
+            for r in rows:
+                th = get_family_thresholds(r.get("strategy_id", ""))
+                min_score = th.get("min_score", 38)
+                if (r.get("latest_score") or 0) >= min_score:
+                    filtered.append(r)
+            rows = filtered[:args.limit]
+        else:
+            # Fallback: use old threshold
+            rows = [r for r in rows if (r.get("latest_score") or 0) >= 38][:args.limit]
 
         for r in rows:
             age = None
