@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Line, Bar } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Filler, Tooltip } from 'chart.js'
+import OpenTradesCard from '../components/OpenTradesCard'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
 import MetricTile from '../components/MetricTile'
@@ -1161,6 +1162,9 @@ export default function AutomatedTradeJournal() {
           <button onClick={fetchData} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
         </div>
       } />
+
+      {/* Open positions — live intel */}
+      <OpenTradesCard />
 
       {/* Inner tab bar */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 14, borderBottom: '1px solid var(--border)' }}>
