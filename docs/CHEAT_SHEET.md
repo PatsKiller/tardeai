@@ -94,11 +94,24 @@ grep LIVE_TRADING .env    # Must show: false
 # DOF Auctions:  https://ms01-openclaw.tail163d14.ts.net:8443/
 # Alerts include "Open in Dashboard" button when TAILSCALE_HOSTNAME is set
 
+# Stop decision commands (in proposal decisions group):
+/stopexit RTX                       # Honor stop, record EXIT
+/stophold RTX                       # Override, record HOLD
+/stopdelay RTX 30                   # Snooze alert 30 min
+/stopset RTX stop=178.50            # Move stop to specific price
+paper status                        # List pending proposals
+
+# Stop alert buttons (on triggered stop alerts):
+# [Honor Stop (Exit)] [Override (Hold)]
+# [Postpone 30m] [Postpone 2h]
+# [Tighten Stop] [Loosen Stop 5%]
+# [More Context] [Open in Dashboard]
+
 # Callback poller (processes button presses + commands):
 # Runs as daemon, cron keepalive every 2 min
 pgrep -f 'run_telegram_callback_poller.py' || echo "NOT RUNNING"
 # Manual start:
-nohup .venv/bin/python scripts/run_telegram_callback_poller.py --daemon >> logs/telegram_callback_poller.log 2>&1 &
+bash scripts/run_telegram_poller_daemon.sh &
 ```
 
 ---
