@@ -397,9 +397,16 @@ def main():
                 print(f"  LOSS {l['symbol']:8s} {l['pnl_pct']:.1f}% chart={l.get('charts',{}).get('daily','')}")
 
     if args.all_strategies:
-        strategies = ['swing_breakout', 'swing_trade', 'recovery_watch', 'earnings_catalyst',
-                      'speculative_growth', 'sector_rotation', 'dividend_growth_compounder',
-                      'defense_thesis', 'core_growth_compounder']
+        # All 23 strategies minus intraday scalps (can't model with daily bars)
+        strategies = [
+            'swing_breakout', 'swing_trade', 'recovery_watch', 'earnings_catalyst',
+            'earnings_post_momentum', 'earnings_pre_buildup', 'speculative_growth',
+            'sector_rotation', 'fib_retracement_bounce', 'dividend_growth_compounder',
+            'defense_thesis', 'core_growth_compounder', 'core_index',
+            'covered_call_income', 'high_yield_income_bdc', 'income_add',
+            'reit_income', 'international_dividend', 'bond_income',
+            'tax_loss_harvest', 'cash_or_stable',
+        ]
         all_bt = {}
         for sid in strategies:
             log.info(f"Backtesting {sid}...")

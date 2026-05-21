@@ -1,19 +1,71 @@
 # How Backtesting Works — Current State (2026-05-21)
 
-## What It Is
+## Two Backtesting Engines
 
-The backtester is a **simplified Monte Carlo simulation** that takes historical screener signals and asks: "If we had traded every GO signal with a fixed stop/target model, what would the results look like?"
+### 1. Enterprise Price-Replay Backtester (NEW — Real OHLC)
 
-It does **not** replay actual market data bar-by-bar. It uses the screener's GO decision + score as the only input and simulates outcomes probabilistically.
+**`enterprise_backtester.py`** — Replays actual daily OHLC bars from yfinance against historical signals. Deterministic results from real price data.
 
-## What It Tests
+**Modes:**
+- **Replay Actual Trades** — Takes every closed trade from journal, replays entry date forward with real high/low bars, checks if stop/target hit. Compares replay result to actual outcome.
+- **Replay Untaken Proposals** — Takes proposals that were rejected/expired (never traded), replays to see what would have happened.
+- **Per-Strategy Replay** — Filter to one of 23 strategies.
 
-**Screener GO signals** — every time the Trade AI screener marked a symbol as "GO" with a score, the backtester treats that as a hypothetical entry signal and simulates the trade outcome.
+**What it measures:**
+- Real P&L from actual price bars (not simulated)
+- MAE (max adverse excursion — worst drawdown from entry)
+- MFE (max favorable excursion — best unrealized profit from entry)
+- Hold time, exit reason (stop/target/timeout)
+- Replay vs actual comparison (outcome match rate)
 
-It is NOT testing:
-- Past trades you actually took (that's the Paper Journal)
-- Trades you missed (that would require a different engine)
-- Real price action after the signal (no OHLCV bar replay)
+### 2. LLM Trade Analyzer + Strategy Incubator Backtester
+
+**`backtest_analyzer.py`** — Three capabilities:
+
+**A) LLM Entry/Exit Grading** — For each closed trade, asks the LLM:
+- Was entry early, optimal, late, or chased?
+- What was the optimal entry price?
+- Was the thesis correct?
+- Grade: A-F for entry and exit
+- Includes Finviz daily+weekly chart URLs for visual context
+
+**B) Strategy Pattern Backtesting on Incubator** — Takes a strategy (e.g. fib_retracement_bounce), finds all incubator symbols classified for it, replays the signal date forward with strategy-specific stop/target from YAML configs using real OHLC bars.
+
+**C) Finviz Chart Integration** — Every result includes clickable chart URLs for visual pattern verification.
+
+### 3. Legacy Probability Backtester (Original)
+
+**`strategy_backtester.py`** — The original placeholder. Uses score-based probability simulation, not real price data. Still available but superseded by the enterprise engine.
+
+## All 23 Strategies
+
+| # | Strategy | Type | Backtest-able |
+|---|----------|------|--------------|
+| 1 | momentum_scalp | Intraday | NO (daily bars) |
+| 2 | gap_and_go | Intraday | NO (daily bars) |
+| 3 | swing_breakout | Multi-day | YES |
+| 4 | swing_trade | Multi-day | YES |
+| 5 | recovery_watch | Multi-day | YES |
+| 6 | earnings_catalyst | Event | YES |
+| 7 | earnings_post_momentum | Event | YES |
+| 8 | earnings_pre_buildup | Event | YES |
+| 9 | speculative_growth | Growth | YES |
+| 10 | sector_rotation | Rotation | YES |
+| 11 | fib_retracement_bounce | Technical | YES |
+| 12 | dividend_growth_compounder | Income | YES |
+| 13 | defense_thesis | Thematic | YES |
+| 14 | core_growth_compounder | Core | YES |
+| 15 | core_index | Core | YES |
+| 16 | covered_call_income | Income | YES |
+| 17 | high_yield_income_bdc | Income | YES |
+| 18 | income_add | Income | YES |
+| 19 | reit_income | Income | YES |
+| 20 | international_dividend | Income | YES |
+| 21 | bond_income | Fixed income | YES |
+| 22 | tax_loss_harvest | Tax | YES |
+| 23 | cash_or_stable | Defensive | YES |
+
+21 of 23 strategies are backtest-able with daily bars. The 2 intraday strategies (momentum_scalp, gap_and_go) require minute-level data not yet available.
 
 ## How Simulation Works
 
