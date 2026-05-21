@@ -91,43 +91,84 @@ def handle_callback_query(cb):
         answer_callback(cb_id, "Invalid action")
         return
 
-    action, pid_str = data.split(":", 1)
-    try:
-        pid = int(pid_str)
-    except ValueError:
-        answer_callback(cb_id, "Bad proposal ID")
-        return
-
+    parts = data.split(":")
+    action = parts[0]
     now_short = datetime.now().strftime("%H:%M ET")
 
-    if action == "ptapprove":
-        result = _run_approve(pid, user_id, {})
-        _post_confirmation(chat_id, message_id, result, f"APPROVED by {user_name} at {now_short}")
-        answer_callback(cb_id, _short_result(result))
+    # ── Proposal buttons (ptapprove:123, ptreject:123, ptinfo:123) ──
+    if action in ("ptapprove", "ptapprove_half", "ptapprove_2x", "ptreject", "ptinfo"):
+        try:
+            pid = int(parts[1]) if len(parts) > 1 else None
+        except ValueError:
+            answer_callback(cb_id, "Bad proposal ID")
+            return
+        if pid is None:
+            answer_callback(cb_id, "Missing proposal ID")
+            return
 
-    elif action == "ptapprove_half":
-        result = _run_approve(pid, user_id, {"shares_multiplier": 0.5})
-        _post_confirmation(chat_id, message_id, result, f"APPROVED \u00bd\u00d7 by {user_name} at {now_short}")
-        answer_callback(cb_id, _short_result(result))
+        if action == "ptapprove":
+            result = _run_approve(pid, user_id, {})
+            _post_confirmation(chat_id, message_id, result, f"APPROVED by {user_name} at {now_short}")
+            answer_callback(cb_id, _short_result(result))
+        elif action == "ptapprove_half":
+            result = _run_approve(pid, user_id, {"shares_multiplier": 0.5})
+            _post_confirmation(chat_id, message_id, result, f"APPROVED \u00bd\u00d7 by {user_name} at {now_short}")
+            answer_callback(cb_id, _short_result(result))
+        elif action == "ptapprove_2x":
+            result = _run_approve(pid, user_id, {"shares_multiplier": 2.0})
+            _post_confirmation(chat_id, message_id, result, f"APPROVED 2\u00d7 by {user_name} at {now_short}")
+            answer_callback(cb_id, _short_result(result))
+        elif action == "ptreject":
+            result = _run_reject(pid, user_id, "telegram_inline_reject")
+            _post_confirmation(chat_id, message_id, result, f"REJECTED by {user_name} at {now_short}")
+            answer_callback(cb_id, _short_result(result))
+        elif action == "ptinfo":
+            from proposal_alerter import build_proposal_info
+            send_reply(chat_id, message_id, build_proposal_info(pid))
+            answer_callback(cb_id, "Details posted")
+        return
 
-    elif action == "ptapprove_2x":
-        result = _run_approve(pid, user_id, {"shares_multiplier": 2.0})
-        _post_confirmation(chat_id, message_id, result, f"APPROVED 2\u00d7 by {user_name} at {now_short}")
-        answer_callback(cb_id, _short_result(result))
+    # ── Stop decision buttons (stopexit:RTX, stophold:RTX, etc.) ──
+    sym = parts[1] if len(parts) > 1 else ""
 
-    elif action == "ptreject":
-        result = _run_reject(pid, user_id, "telegram_inline_reject")
-        _post_confirmation(chat_id, message_id, result, f"REJECTED by {user_name} at {now_short}")
-        answer_callback(cb_id, _short_result(result))
+    if action == "stopexit":
+        result = _handle_stop_decision(sym, "EXIT", user_id, "operator honored stop via Telegram")
+        _post_confirmation(chat_id, message_id, result, f"STOP HONORED \u2014 {sym} marked for exit by {user_name}")
+        answer_callback(cb_id, f"{sym}: stop honored" if result.get("ok") else f"Failed: {result.get('error', '?')[:80]}")
 
-    elif action == "ptinfo":
-        from proposal_alerter import build_proposal_info
-        info_text = build_proposal_info(pid)
-        send_reply(chat_id, message_id, info_text)
-        answer_callback(cb_id, "Details posted")
+    elif action == "stophold":
+        result = _handle_stop_decision(sym, "HOLD_OVERRIDE", user_id, "operator override via Telegram")
+        _post_confirmation(chat_id, message_id, result, f"OVERRIDE \u2014 {sym} held by {user_name}, watching")
+        answer_callback(cb_id, f"{sym}: override logged")
+
+    elif action == "stopdelay":
+        mins = int(parts[2]) if len(parts) > 2 else 30
+        result = _handle_stop_snooze(sym, mins, user_id)
+        _post_confirmation(chat_id, message_id, result, f"POSTPONED \u2014 {sym} snoozed {mins} min")
+        answer_callback(cb_id, f"{sym}: snoozed {mins}m")
+
+    elif action == "stoptighten":
+        send_reply(chat_id, message_id, f"Reply `/stopset {sym} stop=<price>` to set the new stop level")
+        answer_callback(cb_id, "Reply with new stop level")
+
+    elif action == "stoploosen":
+        pct = float(parts[2]) if len(parts) > 2 else 5.0
+        result = _handle_stop_loosen(sym, pct, user_id)
+        _post_confirmation(chat_id, message_id, result, f"STOP LOOSENED \u2014 {sym} stop moved down {pct}%")
+        answer_callback(cb_id, f"{sym}: stop loosened {pct}%")
+
+    elif action == "stopinfo":
+        from stop_alert_assembler import assemble_stop_alert_data
+        data = assemble_stop_alert_data(sym)
+        if data:
+            info = _build_stop_info(data)
+        else:
+            info = f"Could not load context for {sym}"
+        send_reply(chat_id, message_id, info)
+        answer_callback(cb_id, "Context posted")
 
     else:
-        answer_callback(cb_id, f"Unknown action: {action}")
+        answer_callback(cb_id, f"Unknown: {action}")
 
 
 def _run_approve(pid, user_id, overrides):
@@ -225,6 +266,90 @@ def _short_result(result):
     if result.get("ok"):
         return f"{result.get('symbol', '?')} OK"
     return f"Failed: {result.get('error', 'unknown')[:100]}"
+
+
+def _handle_stop_decision(symbol, decision, user_id, notes=""):
+    """Record a stop decision (EXIT or HOLD_OVERRIDE). Paper mode only."""
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO stop_decisions (symbol, decision, decided_by, decided_at, notes)
+            VALUES (%s, %s, %s, NOW(), %s)""", (symbol, decision, user_id, notes))
+        conn.commit()
+        conn.close()
+        return {"ok": True, "symbol": symbol, "decision": decision, "message": decision}
+    except Exception as e:
+        return {"ok": False, "symbol": symbol, "error": str(e)[:200]}
+
+
+def _handle_stop_snooze(symbol, minutes, user_id):
+    """Snooze stop alert for N minutes."""
+    try:
+        from db_adapter import _get_conn
+        from datetime import timedelta
+        snooze_until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO stop_snooze (symbol, snoozed_until, snoozed_by, created_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (symbol) DO UPDATE SET snoozed_until=%s, snoozed_by=%s""",
+            (symbol, snooze_until, user_id, snooze_until, user_id))
+        conn.commit()
+        conn.close()
+        return {"ok": True, "symbol": symbol, "message": f"snoozed until {snooze_until.strftime('%H:%M UTC')}"}
+    except Exception as e:
+        return {"ok": False, "symbol": symbol, "error": str(e)[:200]}
+
+
+def _handle_stop_loosen(symbol, pct, user_id):
+    """Loosen stop by pct%. Updates paper_trades stop_loss."""
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT id, stop_loss FROM paper_trades WHERE symbol=%s AND status='open' LIMIT 1", (symbol,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return {"ok": False, "symbol": symbol, "error": "no open paper trade found"}
+        tid, old_stop = row[0], float(row[1])
+        new_stop = round(old_stop * (1 - pct / 100), 2)
+        cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", (new_stop, tid))
+        conn.commit()
+        conn.close()
+        return {"ok": True, "symbol": symbol, "message": f"stop ${old_stop:.2f} \u2192 ${new_stop:.2f}"}
+    except Exception as e:
+        return {"ok": False, "symbol": symbol, "error": str(e)[:200]}
+
+
+def _build_stop_info(data):
+    """Extended context for the More Context button."""
+    sym = data["symbol"]
+    rsi = data.get("rsi")
+    pnl = data.get("current_pnl_dollars")
+    regime = (data.get("regime_label") or "unknown").upper().replace("_", " ")
+    heat = data.get("portfolio_heat_pct", 0)
+    n = data.get("portfolio_triggered_count", 0)
+    sector = data.get("sector_note", "")
+    tax = data.get("tax_note", "")
+
+    lines = [f"*Extended Context \u2014 {sym}*", ""]
+    if rsi:
+        rsi_note = "(OVERSOLD)" if rsi < 30 else "(NEUTRAL)" if rsi < 60 else "(ELEVATED)"
+        lines.append(f"RSI: {rsi:.0f} {rsi_note}")
+    if pnl is not None:
+        lines.append(f"Unrealized: {'${:,.0f}'.format(pnl)} {'LOSS' if pnl < 0 else 'GAIN'}")
+    lines += ["", f"Regime: {regime}", f"Heat: {heat:.1f}%", f"Triggered: {n}"]
+    if sector:
+        lines += ["", f"Sector: {sector}"]
+    if tax:
+        lines.append(f"Tax: {tax}")
+    lines += ["", "Commands:",
+              f"  `/stopexit {sym}` \u2014 honor stop",
+              f"  `/stophold {sym}` \u2014 override, keep holding",
+              f"  `/stopdelay {sym} 30` \u2014 snooze 30 min"]
+    return "\n".join(lines)
 
 
 def resolve_proposal_from_reply(chat_id, reply_msg_id):

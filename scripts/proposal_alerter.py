@@ -264,3 +264,143 @@ def build_proposal_info(pid):
         lines.append(f"Blocked: {p['approval_blocked_reason']}")
 
     return "\n".join(lines)
+
+
+# ── Stop-triggered decision alerts ──────────────────────────────────────────
+
+def format_stop_alert(data):
+    """Format a rich stop-triggered decision alert. Returns (msg, keyboard)."""
+    sym = data["symbol"]
+    acct = (data.get("account") or "").replace("schwab_", "").replace("_", " ").title()
+    current = data["current_price"]
+    stop = data["stop_price"]
+    mv = data.get("market_value") or 0
+    cb = data.get("cost_basis") or 0
+    shares = data.get("shares") or 0
+    rsi = data.get("rsi")
+    day_chg = data.get("day_change_pct") or 0
+    pct_below = data.get("pct_below_stop") or 0
+    pnl = data.get("current_pnl_dollars")
+    pnl_pct = data.get("current_pnl_pct")
+    stop_pnl = data.get("stop_pnl_dollars")
+    regime = (data.get("regime_label") or "unknown").upper().replace("_", " ")
+    regime_conf = int((data.get("regime_confidence") or 0) * 100)
+    trend = (data.get("trend_state") or "unknown").upper()
+    heat = data.get("portfolio_heat_pct") or 0
+    n_triggered = data.get("portfolio_triggered_count") or 0
+    triggered_syms = ", ".join(data.get("triggered_symbols", []))
+    tax_note = data.get("tax_note", "")
+    sector_note = data.get("sector_note", "")
+    holding = data.get("holding_period", "unknown")
+    acquired = data.get("acquired_date", "?")
+
+    pnl_icon = "\U0001f534" if (pnl or 0) < 0 else "\U0001f7e2"
+    below_str = f"{abs(pct_below):.1f}% below stop" if pct_below < 0 else f"{abs(pct_below):.1f}% above stop"
+    hold_label = "\u26a1 SHORT-TERM" if holding == "short" else "\U0001f4c5 LONG-TERM"
+
+    lines = [
+        "\U0001f6d1 *STOP TRIGGERED — DECISION REQUIRED*",
+        "",
+        f"*{sym}* \u2014 `{acct}`",
+        f"Now ${current:.2f}  |  Stop ${stop:.2f}  |  {below_str}",
+    ]
+    if rsi:
+        lines.append(f"Today: {'+' if day_chg >= 0 else ''}{day_chg:.1f}%  |  RSI: {rsi:.0f}")
+    else:
+        lines.append(f"Today: {'+' if day_chg >= 0 else ''}{day_chg:.1f}%")
+
+    lines += [
+        "",
+        "*\U0001f4b0 YOUR POSITION*",
+        f"Invested: ${cb:,.0f}  |  {shares:.2f} shares @ {hold_label}",
+        f"Current value: ${mv:,.0f}  |  Acquired: {acquired}",
+        "",
+        "*\U0001f4ca EXIT P&L*",
+    ]
+    if pnl is not None:
+        lines.append(f"{pnl_icon} Exit NOW @ ${current:.2f}:  {'+' if pnl >= 0 else ''}${pnl:,.0f}  ({'+' if (pnl_pct or 0) >= 0 else ''}{pnl_pct:.1f}%)")
+    if stop_pnl is not None:
+        sp_icon = "\U0001f534" if stop_pnl < 0 else "\U0001f7e2"
+        lines.append(f"{sp_icon} Exit at stop ${stop:.2f}:  {'+' if stop_pnl >= 0 else ''}${stop_pnl:,.0f}")
+    if tax_note:
+        lines.append(f"\u26a0\ufe0f Tax: _{tax_note}_")
+
+    lines += [
+        "",
+        "*\U0001f321\ufe0f MARKET CONDITIONS*",
+        f"Regime: {regime} ({regime_conf}%)  |  Trend: {trend}",
+        f"Portfolio heat: {heat:.1f}%  |  Stops triggered: {n_triggered}",
+    ]
+    if triggered_syms:
+        lines.append(f"Triggered: `{triggered_syms}`")
+    if sector_note:
+        lines += ["", f"\U0001f4cc _{sector_note}_"]
+    lines += ["", f"Reply: `/stopexit {sym}` to honor  |  `/stophold {sym}` to override"]
+
+    msg = "\n".join(lines)
+
+    rows = [
+        [
+            {"text": "\U0001f534 Honor Stop (Exit)", "callback_data": f"stopexit:{sym}"},
+            {"text": "\u23f8\ufe0f Override (Hold)", "callback_data": f"stophold:{sym}"},
+        ],
+        [
+            {"text": "\u23f0 Postpone 30m", "callback_data": f"stopdelay:{sym}:30"},
+            {"text": "\u23f0 Postpone 2h", "callback_data": f"stopdelay:{sym}:120"},
+        ],
+        [
+            {"text": "\u2191 Tighten Stop", "callback_data": f"stoptighten:{sym}"},
+            {"text": "\u2193 Loosen Stop 5%", "callback_data": f"stoploosen:{sym}:5"},
+        ],
+        [
+            {"text": "\u2139\ufe0f More Context", "callback_data": f"stopinfo:{sym}"},
+        ],
+    ]
+    tailscale_host = os.environ.get("TAILSCALE_HOSTNAME", "").strip()
+    if tailscale_host:
+        rows.append([{"text": "\U0001f4ca Open in Dashboard", "url": f"https://{tailscale_host}/v2/risk"}])
+
+    return msg, {"inline_keyboard": rows}
+
+
+def send_stop_alert(symbol, account=""):
+    """Assemble and send a rich stop-triggered decision alert."""
+    import urllib.request
+    try:
+        from stop_alert_assembler import assemble_stop_alert_data
+        data = assemble_stop_alert_data(symbol, account)
+    except Exception as e:
+        log.exception(f"stop_alert assembly failed for {symbol}")
+        data = None
+
+    if not data:
+        try:
+            from telegram_alert import send_telegram
+            send_telegram(f"\U0001f6a8 STOP TRIGGERED: {symbol} \u2014 data assembly failed, check /v2/risk")
+        except Exception:
+            pass
+        return
+
+    msg, keyboard = format_stop_alert(data)
+    token = _token()
+    if not token:
+        return
+
+    targets = _chat_targets()
+    for chat_id in targets:
+        payload = json.dumps({
+            "chat_id": chat_id,
+            "text": msg,
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps(keyboard),
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(req, timeout=10)
+        except Exception:
+            log.exception(f"send_stop_alert failed chat={chat_id}")
