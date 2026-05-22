@@ -45,8 +45,15 @@ Frontend shows "New today: 2 (ATM: 0 · manual: 2)".
 **Commit:** `fdbf0e0`
 
 ### Issue 7 (NEW): Quote status banner contradicts per-card status
-**Status:** DEFERRED — the quote banner is on `PaperProposals.tsx`, not the ATM page.
-Requires separate investigation of proposal trust_audit data flow.
+**Root cause:** The banner's `UNKNOWN_QUOTE` check used `last_price_checked_at` and
+`execution_readiness` fields independently, while the per-card display used
+`classify_quote_trust()` from `proposal_quote_trust.py`. A proposal with
+`last_price_checked_at` set but no `execution_readiness` would show "0 unknown"
+in the banner but "NOT_CHECKED" on the card.
+**Fix:** Banner now uses the already-computed `trust_audit.quote_trust.quote_trust_status`
+from `classify_quote_trust()` for both UNKNOWN_QUOTE and STALE_QUOTE verdicts.
+Both banner counts and per-card status now derive from the same source.
+**Commit:** `e41fcda`
 
 ## Telemetry Snapshot
 
