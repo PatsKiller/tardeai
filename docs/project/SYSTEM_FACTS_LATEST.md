@@ -112,3 +112,26 @@ Generated: 2026-05-17T22:16:19.356180
 - **docs/COST_MODEL.md**: table_count claimed=334 actual=358
 - **docs/IMPROVEMENT_PLAN_2026-05-11.md**: frontend_page_count claimed=61 actual=78
 - **docs/IMPROVEMENT_PLAN_2026-05-11.md**: frontend_page_count claimed=40 actual=78
+## 2026-05-22 Current Project Context — ATM Safety Override
+
+- ATM active mode executed paper trades/orders on 2026-05-22.
+- This invalidates older assumptions that proposals remained pending and no orders/trades were created.
+- ATM active execution is now the top containment priority.
+- Live trading remains blocked.
+- ALPACA_MODE remains paper.
+- LLM_DISABLE_LIVE_EXECUTION remains true.
+- ATM-SAFE-1 is the next required phase.
+- Maturity is provisionally downgraded from 7.6 to 6.4 until containment is complete.
+
+**Contradictions with prior state:**
+- Prior: paper_trade_proposals stayed in PENDING, no broker orders created
+- Now: ATM active mode approved 4 proposals, created paper_trades, submitted Alpaca orders, received fills
+- Prior: audit_log captured all events
+- Now: audit_log.event column missing, all approval audit writes failed silently
+- Prior: quote fetch provided live prices
+- Now: quote fetch returned 404 (wrong API URL), validated_price fallback used instead
+
+**Updated counts (2026-05-22):**
+- paper_trade_proposals: 124+ (up from 83)
+- paper_trades: 33 (up from 23) — includes 5 open, 9 closed, orphans cleaned
+- ATM decision_log entries today: 82
