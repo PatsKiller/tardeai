@@ -14,10 +14,15 @@ const MODE_COLORS: Record<string, string> = {
   disabled: '#6b7280', dry_run: '#f59e0b', active: '#22c55e', paused: '#ef4444',
 }
 
+const PREDICT_COLORS: Record<string, string> = {
+  would_approve: '#4ade80', would_reject: '#f87171', would_defer: '#f59e0b', would_skip: '#9ca3af',
+}
+
 interface ATMStatus {
   mode: string; paused_until: string; pause_reason: string | null
   last_state_change_at: string; last_state_change_by: string
   last_evaluated_at: string; config_hash: string | null
+  is_market_hours: boolean; next_expected_cycle: string
   accounts: any[]; decisions_today: Record<string, number>
 }
 
@@ -51,6 +56,9 @@ export default function AutomatedTradeMode() {
     refetch()
   }
 
+  // Staleness: only warn during market hours
+  const isStale = lastEvalAge != null && lastEvalAge > 20 && status?.is_market_hours
+
   return (
     <div style={{ padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Header */}
@@ -73,10 +81,15 @@ export default function AutomatedTradeMode() {
           {status?.pause_reason && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>({status.pause_reason})</span>}
         </div>
         <div style={{ textAlign: 'right', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-          <div>Last evaluated: {lastEvalAge != null ? `${lastEvalAge}m ago` : 'never'}</div>
-          {lastEvalAge != null && lastEvalAge > 20 && (
-            <span style={{ color: '#f59e0b', fontWeight: 600 }}>STALE - check cron</span>
-          )}
+          <div>
+            Last evaluated: {lastEvalAge != null ? `${lastEvalAge}m ago` : 'never'}
+            {isStale && <span style={{ color: '#f59e0b', fontWeight: 600, marginLeft: 6 }}>STALE - check cron</span>}
+            {lastEvalAge != null && lastEvalAge > 20 && !status?.is_market_hours && (
+              <span style={{ color: 'rgba(255,255,255,0.3)', marginLeft: 6 }}>
+                (market closed, next: {status?.next_expected_cycle || '?'})
+              </span>
+            )}
+          </div>
           <div>Hash: {status?.config_hash || 'none'}</div>
         </div>
       </div>
@@ -103,12 +116,29 @@ export default function AutomatedTradeMode() {
       {/* Per-account strip */}
       {(status?.accounts || []).filter((a: any) => a.enabled).length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, overflowX: 'auto' }}>
-          {(status?.accounts || []).filter((a: any) => a.enabled).map((a: any) => (
-            <div key={a.account_label} style={{ ...card, minWidth: 180, padding: '12px 16px' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{a.account_label}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>{a.broker} / {a.mode}</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Positions: {a.positions_open ?? 0}</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>New today: {a.new_today ?? 0}</div>
+          {(status?.accounts || []).filter((a: any) => a.enabled).map((a: any) => {
+            const manual = (a.new_today ?? 0) - (a.new_today_atm ?? 0)
+            return (
+              <div key={a.account_label} style={{ ...card, minWidth: 200, padding: '12px 16px' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', marginBottom: 8 }}>{a.account_label}</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>{a.broker} / {a.mode}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>Positions: {a.positions_open ?? 0}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
+                  New today: {a.new_today ?? 0}
+                  {(a.new_today ?? 0) > 0 && (
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginLeft: 6 }}>
+                      (ATM: {a.new_today_atm ?? 0} · manual: {manual >= 0 ? manual : 0})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {/* Ghost cards for disabled accounts */}
+          {(status?.accounts || []).filter((a: any) => !a.enabled).map((a: any) => (
+            <div key={a.account_label} style={{ ...card, minWidth: 180, padding: '12px 16px', opacity: 0.35, borderStyle: 'dashed' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>{a.account_label}</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Disabled</div>
             </div>
           ))}
         </div>
@@ -136,24 +166,35 @@ export default function AutomatedTradeMode() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                {['ID', 'Symbol', 'Strategy', 'Account', 'Override', 'Entry', 'Stop'].map(h => (
-                  <th key={h} style={{ textAlign: h === 'Symbol' || h === 'Strategy' || h === 'Account' ? 'left' : 'right', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
+                {['ID', 'Symbol', 'Strategy', 'Account', 'Override', 'Predicted', 'Entry', 'Stop'].map(h => (
+                  <th key={h} style={{ textAlign: h === 'Symbol' || h === 'Strategy' || h === 'Account' || h === 'Predicted' ? 'left' : 'right', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
-                {(queue || []).map((q: any) => (
-                  <tr key={q.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>#{q.id}</td>
-                    <td style={{ padding: '6px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{q.symbol}</td>
-                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{(q.strategy_id || '').replace(/_/g, ' ')}</td>
-                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{q.target_account}</td>
-                    <td style={{ padding: '6px 8px', fontSize: 11 }}>
-                      {q.atm_action ? <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: q.atm_action === 'force_approve' ? 'rgba(245,158,11,0.2)' : 'rgba(156,163,175,0.2)', color: q.atm_action === 'force_approve' ? '#fbbf24' : '#9ca3af' }}>{q.atm_action.replace(/_/g, ' ')}</span> : '—'}
-                    </td>
-                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right' }}>${Number(q.proposed_entry || 0).toFixed(2)}</td>
-                    <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right' }}>${Number(q.proposed_stop || 0).toFixed(2)}</td>
-                  </tr>
-                ))}
+                {(queue || []).map((q: any) => {
+                  const predColor = PREDICT_COLORS[q.predicted_decision] || '#9ca3af'
+                  return (
+                    <tr key={q.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>#{q.id}</td>
+                      <td style={{ padding: '6px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{q.symbol}</td>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{(q.strategy_id || '').replace(/_/g, ' ')}</td>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{q.target_account}</td>
+                      <td style={{ padding: '6px 8px', fontSize: 11 }}>
+                        {q.atm_action ? <span style={{ padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: q.atm_action === 'force_approve' ? 'rgba(245,158,11,0.2)' : 'rgba(156,163,175,0.2)', color: q.atm_action === 'force_approve' ? '#fbbf24' : '#9ca3af' }}>{q.atm_action.replace(/_/g, ' ')}</span> : '—'}
+                      </td>
+                      <td style={{ padding: '6px 8px', fontSize: 10 }}>
+                        <span style={{ padding: '1px 6px', borderRadius: 4, fontWeight: 600, background: `${predColor}20`, color: predColor }}>
+                          {(q.predicted_decision || '').replace(/_/g, ' ')}
+                        </span>
+                        {q.predicted_reason && (
+                          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>{q.predicted_reason}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right' }}>${Number(q.proposed_entry || 0).toFixed(2)}</td>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right' }}>${Number(q.proposed_stop || 0).toFixed(2)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -166,18 +207,27 @@ export default function AutomatedTradeMode() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              {['Strategy', 'Health', 'Eligible', 'B-1 Excluded', 'Same-Day Skip'].map(h => (
+              {['Strategy', 'Health', 'Trades (30d)', 'Eligible', 'B-1 Excluded', 'Same-Day Skip'].map(h => (
                 <th key={h} style={{ textAlign: h === 'Strategy' ? 'left' : 'center', padding: '6px 10px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {(health || []).map((s: any) => (
+              {(Array.isArray(health) ? health : []).map((s: any) => (
                 <tr key={s.strategy_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '7px 10px', fontWeight: 500, color: 'rgba(255,255,255,0.8)' }}>{(s.strategy_id || '').replace(/_/g, ' ')}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'center' }}>
-                    <span style={{ fontWeight: 600, color: s.classifier_health >= 0.5 ? '#4ade80' : s.classifier_health > 0 ? '#f59e0b' : 'rgba(255,255,255,0.3)' }}>
-                      {s.classifier_health > 0 ? s.classifier_health.toFixed(3) : '—'}
-                    </span>
+                    {s.has_baseline ? (
+                      <span style={{ fontWeight: 600, color: s.classifier_health >= 0.5 ? '#4ade80' : s.classifier_health > 0 ? '#f59e0b' : 'rgba(255,255,255,0.5)' }}>
+                        {s.classifier_health.toFixed(3)}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>
+                        0.00 <span style={{ fontSize: 9 }}>(no baseline)</span>
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: '7px 10px', textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                    {s.closed_trades ?? 0}{s.closed_trades > 0 ? ` (${s.wins}W)` : ''}
                   </td>
                   <td style={{ padding: '7px 10px', textAlign: 'center', color: s.eligible ? '#4ade80' : '#f87171' }}>{s.eligible ? 'Yes' : 'No'}</td>
                   <td style={{ padding: '7px 10px', textAlign: 'center', color: s.bucket2_excluded ? '#f59e0b' : 'rgba(255,255,255,0.3)' }}>{s.bucket2_excluded ? 'Yes' : '—'}</td>
@@ -186,6 +236,10 @@ export default function AutomatedTradeMode() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', fontSize: 10, color: 'rgba(255,255,255,0.3)', lineHeight: 1.5 }}>
+          Strategies showing "0.00 (no baseline)" have no classifier baseline yet (need 3+ closed trades in 30 days).
+          ATM will block them unless min_classifier_health is set to 0 in Settings.
         </div>
       </div>
 
@@ -198,13 +252,20 @@ export default function AutomatedTradeMode() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                {['Time', 'Symbol', 'Strategy', 'Account', 'Decision', 'Trade ID'].map(h => (
+                {['Time', 'Symbol', 'Strategy', 'Account', 'Decision', 'Blocker', 'Trade ID'].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {(decisions || []).map((d: any) => {
                   const dc = d.decision?.includes('approved') ? '#4ade80' : d.decision?.includes('rejected') ? '#f87171' : '#f59e0b'
+                  const firstBlocker = (() => {
+                    try {
+                      const reasons = typeof d.rejection_reasons === 'string' ? JSON.parse(d.rejection_reasons) : d.rejection_reasons
+                      if (Array.isArray(reasons) && reasons.length > 0) return reasons[0]?.gate || '—'
+                    } catch {}
+                    return '—'
+                  })()
                   return (
                     <tr key={d.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '6px 8px', fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{String(d.decided_at || '').slice(0, 16)}</td>
@@ -212,6 +273,7 @@ export default function AutomatedTradeMode() {
                       <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{(d.strategy_id || '').replace(/_/g, ' ')}</td>
                       <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{d.target_account}</td>
                       <td style={{ padding: '6px 8px' }}><span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: `${dc}20`, color: dc }}>{(d.decision || '').replace(/_/g, ' ')}</span></td>
+                      <td style={{ padding: '6px 8px', fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{firstBlocker}</td>
                       <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{d.trade_id ? `#${d.trade_id}` : '—'}</td>
                     </tr>
                   )
