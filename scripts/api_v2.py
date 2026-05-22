@@ -17231,10 +17231,43 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 FROM paper_trades WHERE created_at::date = CURRENT_DATE GROUP BY target_account
             """) or []
             today_map = {r["target_account"]: r["new_today"] for r in today}
+            # ATM-approved trades today per account
+            atm_today = _db_query("""
+                SELECT target_account, COUNT(*) as atm_count
+                FROM paper_trades
+                WHERE created_at::date = CURRENT_DATE AND atm_decision_id IS NOT NULL
+                GROUP BY target_account
+            """) or []
+            atm_today_map = {r["target_account"]: r["atm_count"] for r in atm_today}
             decisions_today = _db_query("""
                 SELECT decision, COUNT(*) as cnt FROM atm_decision_log
                 WHERE decided_at::date = CURRENT_DATE GROUP BY decision
             """) or []
+            # Market hours awareness
+            import pytz
+            _et = pytz.timezone("US/Eastern")
+            _now_et = __import__("datetime").datetime.now(_et)
+            _is_weekday = _now_et.weekday() < 5
+            _start_h, _start_m = 9, 35
+            _stop_h, _stop_m = 15, 30
+            _in_hours = _is_weekday and ((_now_et.hour > _start_h or (_now_et.hour == _start_h and _now_et.minute >= _start_m))
+                         and (_now_et.hour < _stop_h or (_now_et.hour == _stop_h and _now_et.minute <= _stop_m)))
+            # Next expected cycle
+            if _in_hours:
+                _next_min = 15 - (_now_et.minute % 15)
+                _next = _now_et + __import__("datetime").timedelta(minutes=_next_min)
+                _next_str = _next.strftime("%H:%M ET")
+            elif _is_weekday and _now_et.hour < _start_h or (_now_et.hour == _start_h and _now_et.minute < _start_m):
+                _next_str = f"{_start_h}:{_start_m:02d} ET today"
+            else:
+                # After hours or weekend — next weekday 09:35
+                _days_ahead = 1
+                if _now_et.weekday() == 4:  # Friday
+                    _days_ahead = 3
+                elif _now_et.weekday() == 5:  # Saturday
+                    _days_ahead = 2
+                _next_day = (_now_et + __import__("datetime").timedelta(days=_days_ahead)).strftime("%a")
+                _next_str = f"{_next_day} {_start_h}:{_start_m:02d} ET"
             return 200, {"ok": True, "data": {
                 "mode": st.get("mode", "disabled"),
                 "paused_until": str(st.get("paused_until") or ""),
@@ -17243,8 +17276,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "last_state_change_by": st.get("last_state_change_by"),
                 "last_evaluated_at": str(st.get("last_evaluated_at") or ""),
                 "config_hash": st.get("config_hash"),
+                "is_market_hours": _in_hours,
+                "next_expected_cycle": _next_str,
                 "accounts": [{**a, "positions_open": pos_map.get(a["account_label"], 0),
-                               "new_today": today_map.get(a["account_label"], 0)}
+                               "new_today": today_map.get(a["account_label"], 0),
+                               "new_today_atm": atm_today_map.get(a["account_label"], 0)}
                               for a in accts],
                 "decisions_today": {r["decision"]: r["cnt"] for r in decisions_today},
             }}
@@ -17297,22 +17333,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/atm/strategy-health":
         try:
             import sys as _sys; _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-            from atm_classifier_health import get_health
+            from atm_classifier_health import get_health_detail
             from atm_config_manager import load_config, is_bucket2_excluded, is_same_day_skip, get_strategy_filter
             cfg, _ = load_config()
             sf = get_strategy_filter()
+            min_health = sf.get("min_classifier_health", 0.5)
             strats = _db_query("SELECT DISTINCT strategy_id FROM strategy_signals WHERE strategy_id IS NOT NULL") or []
             result = []
             for s in strats:
                 sid = s["strategy_id"]
-                h = get_health(sid)
+                detail = get_health_detail(sid)
                 result.append({
-                    "strategy_id": sid, "classifier_health": h,
-                    "eligible": h >= sf.get("min_classifier_health", 0.5),
+                    "strategy_id": sid,
+                    "classifier_health": detail["score"],
+                    "has_baseline": detail["has_baseline"],
+                    "closed_trades": detail["closed_trades"],
+                    "wins": detail["wins"],
+                    "avg_r": detail["avg_r"],
+                    "eligible": detail["score"] >= min_health,
                     "bucket2_excluded": is_bucket2_excluded(sid),
                     "same_day_skip": is_same_day_skip(sid),
                 })
-            return 200, {"ok": True, "data": sorted(result, key=lambda x: -x["classifier_health"])}
+            return 200, {"ok": True, "data": sorted(result, key=lambda x: (-x["classifier_health"], x["strategy_id"])),
+                         "min_classifier_health": min_health}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
@@ -17336,6 +17379,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/atm/queue-preview":
         try:
+            import sys as _sys; _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from atm_config_manager import (load_config, get_enabled_accounts,
+                                             is_bucket2_excluded, is_same_day_skip, get_strategy_filter)
+            from atm_classifier_health import get_health
+            _qp_cfg, _ = load_config()
+            _qp_sf = get_strategy_filter()
+            _qp_min_health = _qp_sf.get("min_classifier_health", 0.5)
+            _qp_enabled = set(get_enabled_accounts())
             rows = _db_query("""
                 SELECT id, symbol, strategy_id, target_account, status, atm_action,
                        proposed_entry, proposed_stop, proposed_target1, proposed_shares
@@ -17343,6 +17394,37 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 WHERE status = 'PENDING'
                 ORDER BY created_at ASC LIMIT 20
             """) or []
+            # Predict decision for each proposal
+            for r in rows:
+                sid = r.get("strategy_id") or ""
+                target = r.get("target_account") or ""
+                action = r.get("atm_action")
+                if action == "force_approve":
+                    r["predicted_decision"] = "would_approve"
+                    r["predicted_reason"] = "force_approve override"
+                elif action == "force_reject":
+                    r["predicted_decision"] = "would_reject"
+                    r["predicted_reason"] = "force_reject override"
+                elif action == "force_skip":
+                    r["predicted_decision"] = "would_skip"
+                    r["predicted_reason"] = "force_skip override"
+                elif target not in _qp_enabled:
+                    r["predicted_decision"] = "would_defer"
+                    r["predicted_reason"] = f"account {target} not enabled"
+                elif is_bucket2_excluded(sid):
+                    r["predicted_decision"] = "would_defer"
+                    r["predicted_reason"] = "B-1 bucket2 observation active"
+                elif is_same_day_skip(sid):
+                    r["predicted_decision"] = "would_defer"
+                    r["predicted_reason"] = "same_day_strategy_atm_cadence_too_slow"
+                else:
+                    h = get_health(sid)
+                    if h < _qp_min_health:
+                        r["predicted_decision"] = "would_reject"
+                        r["predicted_reason"] = f"classifier_health {h:.3f} < {_qp_min_health}"
+                    else:
+                        r["predicted_decision"] = "would_approve"
+                        r["predicted_reason"] = "all gates pass"
             return 200, {"ok": True, "data": rows}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
