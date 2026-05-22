@@ -8441,17 +8441,20 @@ def _paper_proposals_enriched():
                 drift_str = f" {drift:+.1f}%" if drift else ""
                 verdict_reason = f"Price moved{drift_str} out of entry zone"
                 missed_count += 1
-            elif not prop.get('last_price_checked_at') and not prop.get('execution_readiness'):
+            elif prop.get('trust_audit', {}).get('quote_trust', {}).get('quote_trust_status') in ('NOT_CHECKED', None):
                 verdict = 'UNKNOWN_QUOTE'
                 verdict_color = 'red'
-                verdict_reason = "Quote never checked — click Refresh Price then Check Execution"
+                _qt_next = prop.get('trust_audit', {}).get('quote_trust', {}).get('next_action', 'Run Check Execution')
+                verdict_reason = f"Quote never checked — {_qt_next}"
                 unknown_quote_count += 1
                 review_count += 1
                 prop['approval_allowed'] = False
-            elif 'STALE' in (prop.get('last_price_source') or '').upper() or 'STALE' in ls.upper():
+            elif prop.get('trust_audit', {}).get('quote_trust', {}).get('quote_trust_status') in ('STALE', 'DISPLAY_ONLY', 'MISSING_BID_ASK'):
+                _qts = prop['trust_audit']['quote_trust']['quote_trust_status']
+                _qt_src = prop['trust_audit']['quote_trust'].get('quote_source', '?')
                 verdict = 'STALE_QUOTE'
                 verdict_color = 'orange'
-                verdict_reason = "Price data is stale — refresh before approving"
+                verdict_reason = f"Quote: {_qts} ({_qt_src}) — refresh before approving"
                 stale_count += 1
                 review_count += 1
                 prop['approval_allowed'] = False
