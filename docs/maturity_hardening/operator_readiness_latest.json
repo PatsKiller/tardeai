@@ -1,41 +1,20 @@
 {
-  "generated_at": "2026-05-22T20:30:00+00:00",
-  "trigger": "ATM-SAFE-1 containment complete",
-  "overall_maturity": 6.2,
-  "execution_safety": 7.5,
-  "paper_execution_governance": 6.5,
-  "auditability": 7.0,
+  "generated_at": "2026-05-22T22:00:00+00:00",
+  "trigger": "STOP-V2.0 through V2.3 complete",
+  "overall_maturity": 7.0,
+  "execution_safety": 8.5,
+  "paper_execution_governance": 7.5,
+  "stop_protection_maturity": 8.5,
+  "auditability": 7.5,
   "quote_readiness": 7.0,
   "strategy_proof": 3.5,
   "live_trading_readiness": 2.0,
-  "operational_maturity": 7.5,
+  "operational_maturity": 8.0,
   "atm_mode": "dry_run",
   "atm_frozen_by": "atm-safe-1",
-  "a4_met": false,
-  "a5_met": false,
-  "governance_status": "contained",
-  "allowed_actions": [
-    "Continue paper trading for baselines",
-    "Answer 7 ATM decisions",
-    "Design Stop Management v2",
-    "Re-enable ATM dry_run observation"
-  ],
-  "blocked_actions": [
-    "ATM active mode",
-    "Live trading",
-    "Restore classifier_health threshold"
-  ],
-  "operator_required": [
-    "7 ATM decisions",
-    "ATM re-enable approval",
-    "Stop Mgmt v2 design review"
-  ],
-  "top_blockers": [
-    "strategy_proof: 0 strategies with 3+ closed trades (need baselines)",
-    "classifier_health: min=0.0 (temp bypass, must restore to 0.50)",
-    "stop_management: software-only stops, no broker-level protection",
-    "live_readiness: paper-only by design, maturity 6.2 < 7.0 threshold"
-  ],
+  "broker_stops_reconciled": "5/5",
+  "unified_supervisor": "installed, */3 market hours",
+  "stop_v2_complete": true,
   "live_trading": "BLOCKED",
-  "recommended_next": "Continue paper trading, answer ATM decisions, Stop Mgmt v2 design"
+  "recommended_next": "ATM re-enable decision package, STOP-V2 burn-in, A-5 strategy proof"
 }

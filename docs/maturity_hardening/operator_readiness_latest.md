@@ -1,5 +1,5 @@
-# Operator Readiness — 6.2/10
+# Operator Readiness — 7.0/10
 
-ATM: dry_run (frozen by ATM-SAFE-1) | Live trading: BLOCKED | Paper: 5 open positions
+ATM: dry_run (frozen) | Live trading: BLOCKED | Stop protection: 5/5 verified | STOP-V2 complete
 
-**Next:** Continue paper trading for strategy baselines, answer 7 ATM decisions, Stop Mgmt v2
+**Next:** ATM re-enable decision package, STOP-V2 burn-in, continue A-5 strategy proof

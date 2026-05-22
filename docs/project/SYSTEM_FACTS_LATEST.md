@@ -48,10 +48,11 @@ Generated: 2026-05-22T20:30:00Z (post ATM-SAFE-1)
 - Avg R: 0.13R
 - Open: 5 positions (NWG, NVDA, AGNC, CMCSA, ASPN)
 
-## Maturity
-- Overall: 6.2 / 10.0
-- Execution safety: 7.5
-- Paper governance: 6.5
+## Maturity (post-STOP-V2)
+- Overall: 7.0 / 10.0
+- Execution safety: 8.5
+- Paper governance: 7.5
+- Stop protection: 8.5 (NEW)
 - Auditability: 7.0
 - Quote readiness: 7.0
 - Strategy proof: 3.5
