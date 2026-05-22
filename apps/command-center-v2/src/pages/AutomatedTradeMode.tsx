@@ -37,10 +37,15 @@ export default function AutomatedTradeMode() {
 
   const mode = status?.mode || 'disabled'
   const modeColor = MODE_COLORS[mode] || '#6b7280'
+  const isDryRun = mode === 'dry_run'
   const dt = status?.decisions_today || {}
-  const approved = (dt.approved || 0) + (dt.force_approved || 0)
-  const rejected = (dt.rejected || 0) + (dt.force_rejected || 0)
-  const deferred = (dt.deferred || 0) + (dt.dry_run_approved || 0) + (dt.dry_run_rejected || 0)
+  const approved = isDryRun
+    ? (dt.dry_run_approved || 0)
+    : (dt.approved || 0) + (dt.force_approved || 0)
+  const rejected = isDryRun
+    ? (dt.dry_run_rejected || 0)
+    : (dt.rejected || 0) + (dt.force_rejected || 0)
+  const deferred = dt.deferred || 0
 
   const lastEvalAge = (() => {
     if (!status?.last_evaluated_at) return null
@@ -145,16 +150,19 @@ export default function AutomatedTradeMode() {
       )}
 
       {/* Activity + Capacity tiles */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 20 }}>
         {[
           { label: 'Proposals seen', value: approved + rejected + deferred },
-          { label: 'Auto-approved', value: approved, color: '#4ade80' },
-          { label: 'Rejected', value: rejected, color: '#f87171' },
+          { label: isDryRun ? 'Would approve' : 'Auto-approved', value: approved, color: '#4ade80' },
+          { label: isDryRun ? 'Would reject' : 'Rejected', value: rejected, color: '#f87171' },
+          { label: 'Deferred', value: deferred, color: '#f59e0b' },
           { label: 'Queue', value: (queue || []).length },
         ].map(k => (
-          <div key={k.label} style={{ ...card, textAlign: 'center', padding: '14px 16px' }}>
+          <div key={k.label} style={{ ...card, textAlign: 'center', padding: '14px 16px', borderColor: isDryRun ? 'rgba(245,158,11,0.15)' : undefined }}
+               title={isDryRun ? 'DRY_RUN mode — these are decisions ATM would have made if ACTIVE' : undefined}>
             <div style={{ fontSize: 24, fontWeight: 600, color: k.color || 'rgba(255,255,255,0.9)' }}>{k.value}</div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>{k.label}</div>
+            {isDryRun && <div style={{ fontSize: 8, color: 'rgba(245,158,11,0.5)', marginTop: 2 }}>dry run</div>}
           </div>
         ))}
       </div>
