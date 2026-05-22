@@ -340,9 +340,9 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
     cur = conn.cursor()
     cur.execute("""
         UPDATE paper_trades SET current_price=%s, unrealized_pnl=%s,
-               r_multiple=%s, monitored_at=NOW()
+               pnl=%s, r_multiple=%s, monitored_at=NOW(), updated_at=NOW()
         WHERE id=%s
-    """, [price, pnl, r_mult, tid])
+    """, [price, pnl, pnl, r_mult, tid])
 
     now = datetime.now(timezone.utc)
     age_hours = (now - entry_time).total_seconds() / 3600 if entry_time else 0
