@@ -9,9 +9,9 @@ version: 1
 
 defaults:
   position_limits:
-    max_concurrent: 10
-    max_new_per_day: 6
-    max_pct_per_trade: 1.0
+    max_concurrent: 2
+    max_new_per_day: 1
+    max_pct_per_trade: 0.10
     max_pct_per_strategy: 25
     max_pct_per_sector: 35
   strategy_filter:
@@ -22,7 +22,7 @@ defaults:
     whitelist: []
     blacklist: []
   kill_switches:
-    daily_loss_pct_hard_pause: 10.0
+    daily_loss_pct_hard_pause: 0.25
   operating_hours:
     start_et: "09:35"
     stop_new_entries_et: "15:30"
@@ -37,9 +37,9 @@ accounts:
   alpaca_paper:
     enabled: true
     position_limits:
-      max_concurrent: 15
-      max_new_per_day: 10
-      max_pct_per_trade: 1.0
+      max_concurrent: 2
+      max_new_per_day: 1
+      max_pct_per_trade: 0.10
 
 global:
   daily_loss_pct_hard_pause_aggregate: 10.0
