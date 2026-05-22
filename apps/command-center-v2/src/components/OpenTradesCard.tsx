@@ -11,7 +11,7 @@ interface OpenTrade {
   opened_at: string; catalyst: string | null
 }
 
-interface OpenTradesData { trades: OpenTrade[]; count: number; total_unrealized_pnl: number }
+interface OpenTradesData { trades: OpenTrade[]; count: number; total_unrealized_pnl: number; last_updated_at?: string }
 
 const pf = (v: number | null) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
 const uf = (v: number | null) => v == null ? '—' : `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`
@@ -27,6 +27,11 @@ export default function OpenTradesCard() {
 
   return (
     <div>
+      {data.last_updated_at && (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', marginBottom: 8, textAlign: 'right' }}>
+          Prices updated {new Date(data.last_updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </div>
+      )}
       {data.trades.map(t => {
         const isUp = (t.pnl ?? 0) >= 0
         const range = (t.target_1 ?? 0) - (t.stop_loss ?? 0)

@@ -14641,7 +14641,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        dollar_risk, pnl, unrealized_pnl, r_multiple, pnl_pct,
                        status, outcome_verdict, exit_reason, catalyst_at_entry, catalyst_verified,
                        risk_gate_result, entry_time, exit_time, created_at, closed_at, proposal_id,
-                       post_trade_analyzed, iris_curated, aegis_summarized, submitted_at, filled_at
+                       post_trade_analyzed, iris_curated, aegis_summarized, submitted_at, filled_at,
+                       updated_at, last_synced_at
                 FROM paper_trades
                 ORDER BY created_at DESC LIMIT 200
             """) or []
@@ -14658,7 +14659,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             losses = sum(1 for t in real_closed if (t.get('pnl') or 0) < 0)
             total_pnl = sum(float(t.get('pnl') or 0) for t in closed_t)
             wr = round(wins / len(real_closed), 3) if real_closed else None
+            # Compute last-updated timestamp from most recent trade update
+            _last_updated = None
+            for _t in trades:
+                for _ts_key in ("updated_at", "last_synced_at", "closed_at", "created_at"):
+                    _ts = _t.get(_ts_key)
+                    if _ts and (not _last_updated or str(_ts) > str(_last_updated)):
+                        _last_updated = _ts
             return 200, {"ok": True,
+                "last_updated_at": _json_clean(_last_updated),
                 "stats": {"closed": len(closed_t), "open": len(open_t), "wins": wins, "losses": losses,
                           "win_rate": wr, "total_pnl": round(total_pnl, 2),
                           "real_trade_count": len(real_closed)},
@@ -14677,7 +14686,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        entry_price, current_price, stop_loss, target_1,
                        unrealized_pnl, pnl, r_multiple,
                        created_at, broker_order_id, broker_status,
-                       catalyst_at_entry, score_at_entry
+                       catalyst_at_entry, score_at_entry,
+                       updated_at, last_synced_at
                 FROM paper_trades WHERE status = 'open'
                 ORDER BY created_at DESC
             """) or []
@@ -14739,9 +14749,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "opened_at": str(t.get("created_at") or ""),
                     "catalyst": t.get("catalyst_at_entry"),
                 })
+            # Most recent update timestamp from open trades
+            _ot_updated = None
+            for _t in raw:
+                for _tk in ("updated_at", "last_synced_at", "created_at"):
+                    _tv = _t.get(_tk)
+                    if _tv and (not _ot_updated or str(_tv) > str(_ot_updated)):
+                        _ot_updated = _tv
             return 200, {"ok": True, "data": {
                 "trades": trades, "count": len(trades),
                 "total_unrealized_pnl": round(sum(x["pnl"] for x in trades), 2),
+                "last_updated_at": _json_clean(_ot_updated),
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}

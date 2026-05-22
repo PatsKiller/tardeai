@@ -1159,6 +1159,7 @@ export default function AutomatedTradeJournal() {
           </select>
           {data?.alpaca_connected && <span style={pill('green')}>ALPACA LIVE</span>}
           {data?.alpaca_connected === false && <span style={pill('red')}>ALPACA OFFLINE</span>}
+          {data?.last_updated_at && <span style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }}>Updated {new Date(data.last_updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
           <button onClick={fetchData} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
         </div>
       } />

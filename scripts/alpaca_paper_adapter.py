@@ -18,6 +18,7 @@ load_dotenv(PROJECT_ROOT / '.env')
 log = logging.getLogger(__name__)
 
 PAPER_BASE_URL = 'https://paper-api.alpaca.markets'
+DATA_BASE_URL = 'https://data.alpaca.markets'
 MAX_POSITIONS = 3
 MAX_POSITION_SIZE = 2000
 MIN_SCORE_ALPACA = 45
@@ -40,6 +41,17 @@ class AlpacaPaperAdapter:
             'APCA-API-SECRET-KEY': self.secret_key,
         }
 
+        # Smoke test: verify data API connectivity on init
+        if self.enabled and self.api_key:
+            try:
+                import requests
+                resp = requests.get(f'{DATA_BASE_URL}/v2/stocks/SPY/quotes/latest',
+                                    headers=self.headers, timeout=5)
+                if resp.status_code != 200:
+                    log.warning(f"[alpaca] Data API smoke test failed: SPY quotes returned {resp.status_code}")
+            except Exception as e:
+                log.warning(f"[alpaca] Data API smoke test failed: {e}")
+
     def _api_get(self, path):
         import requests
         resp = requests.get(f'{self.base_url}{path}', headers=self.headers, timeout=10)
@@ -49,6 +61,13 @@ class AlpacaPaperAdapter:
     def _api_post(self, path, data):
         import requests
         resp = requests.post(f'{self.base_url}{path}', headers=self.headers, json=data, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _data_get(self, path):
+        """GET from Alpaca data API (data.alpaca.markets) for market data."""
+        import requests
+        resp = requests.get(f'{DATA_BASE_URL}{path}', headers=self.headers, timeout=10)
         resp.raise_for_status()
         return resp.json()
 
@@ -279,28 +298,55 @@ class AlpacaPaperAdapter:
         # If current price is below entry (better price), use market order.
         # If current price is significantly above entry, use limit at entry for value.
         current_price = None
+        _price_source = None
         try:
-            # Try latest trade first (most reliable)
-            trade_data = self._api_get(f'/v2/stocks/{symbol}/trades/latest')
-            current_price = float(trade_data.get('trade', {}).get('p', 0))
-            if not current_price:
-                # Fallback to quote (bid/ask)
-                quote = self._api_get(f'/v2/stocks/{symbol}/quotes/latest')
-                current_price = float(quote.get('quote', {}).get('ap') or quote.get('quote', {}).get('bp') or 0)
-            if not current_price:
-                # Last fallback: yfinance
+            # Primary: quotes/latest from data API (bid/ask mid-price)
+            quote = self._data_get(f'/v2/stocks/{symbol}/quotes/latest')
+            ask = float(quote.get('quote', {}).get('ap') or 0)
+            bid = float(quote.get('quote', {}).get('bp') or 0)
+            if ask and bid:
+                current_price = round((ask + bid) / 2, 4)
+                _price_source = "data_api_quote_mid"
+            elif ask:
+                current_price = ask
+                _price_source = "data_api_quote_ask"
+            elif bid:
+                current_price = bid
+                _price_source = "data_api_quote_bid"
+        except Exception as _qe:
+            log.warning(f"[alpaca] Data API quote failed for {symbol}: {_qe}")
+
+        if not current_price:
+            try:
+                # Fallback 1: bars/latest from data API
+                bar = self._data_get(f'/v2/stocks/{symbol}/bars/latest')
+                current_price = float(bar.get('bar', {}).get('c', 0))
+                if current_price:
+                    _price_source = "data_api_bar_close"
+            except Exception as _be:
+                log.warning(f"[alpaca] Data API bar failed for {symbol}: {_be}")
+
+        if not current_price:
+            try:
+                # Fallback 2: yfinance
                 import yfinance as yf
                 t = yf.Ticker(symbol)
                 h = t.history(period='1d')
                 if not h.empty:
                     current_price = float(h['Close'].iloc[-1])
-        except Exception as _qe:
-            log.warning(f"[alpaca] Quote fetch failed for {symbol}: {_qe}")
+                    _price_source = "yfinance"
+            except Exception:
+                pass
 
-        # Use validated price from revalidator if adapter fetch failed
+        # Last resort: validated price from revalidator
         if not current_price and validated_price:
             current_price = validated_price
-            log.info(f"[alpaca] Using validated_price ${validated_price:.2f} for {symbol}")
+            _price_source = "validated_price_fallback"
+
+        if _price_source:
+            log.info(f"[alpaca] {symbol} price=${current_price:.2f} source={_price_source}")
+        if _price_source and "fallback" in _price_source:
+            log.warning(f"[alpaca] {symbol}: using fallback price source ({_price_source})")
 
         # ── HARD SAFETY GATE 1: Stop already breached ──
         if current_price and stop_price and current_price <= stop_price:
@@ -381,42 +427,49 @@ class AlpacaPaperAdapter:
                     if fill_status in ('canceled', 'cancelled', 'rejected', 'expired'):
                         log.error(f"[alpaca] {symbol} order {fill_status} — aborting")
                         return {'status': 'error', 'reason': f'order_{fill_status}', 'order_id': order_id}
-                    # ── Gap 3 fix: Partial fill rejection ──
+                    # partially_filled is usually transient for market orders — keep polling
                     if fill_status == 'partially_filled':
-                        log.error(f"[alpaca] {symbol} PARTIAL FILL: {filled_qty}/{shares} — canceling remainder")
-                        try:
-                            self._api_delete(f'/v2/orders/{order_id}')
-                        except Exception:
-                            pass
-                        if filled_qty > 0:
-                            # Close the partial position immediately
-                            try:
-                                self._api_delete(f'/v2/positions/{symbol}')
-                                log.info(f"[alpaca] {symbol} partial position closed")
-                            except Exception:
-                                pass
-                        return {'status': 'error', 'reason': f'partial_fill_rejected ({filled_qty}/{shares})'}
+                        log.info(f"[alpaca] {symbol} partially filled {filled_qty}/{shares} — waiting for completion (attempt {_attempt+1}/8)")
                 except Exception as _fce:
                     log.warning(f"[alpaca] Fill check attempt {_attempt}: {_fce}")
             else:
-                # Timed out waiting for fill
-                if not use_market:
-                    # Limit order still pending — that's OK, monitor will track it
+                # Loop exhausted without a 'filled' break — check final state
+                try:
+                    _final = self._api_get(f'/v2/orders/{order_id}')
+                    fill_status = _final.get('status', 'unknown')
+                    filled_qty = int(float(_final.get('filled_qty', 0)))
+                    fill_price = float(_final.get('filled_avg_price', 0)) or entry_price
+                except Exception:
+                    fill_status = 'unknown'
+
+                if fill_status == 'filled':
+                    log.info(f"[alpaca] {symbol} FILLED (late confirm) @ ${fill_price:.2f} ({filled_qty} shares)")
+                elif fill_status == 'partially_filled' and filled_qty > 0:
+                    # Genuine partial fill — cancel remainder but keep what we got
+                    log.warning(f"[alpaca] {symbol} PARTIAL FILL confirmed: {filled_qty}/{shares} — canceling remainder, keeping filled shares")
+                    try:
+                        self._api_delete(f'/v2/orders/{order_id}')
+                    except Exception:
+                        pass
+                    fill_status = 'filled'  # treat partial as filled for downstream (stop placement, DB record)
+                    shares = filled_qty     # adjust expected shares to actual fill
+                elif not use_market:
                     log.info(f"[alpaca] {symbol} limit order pending (not yet filled)")
                     fill_status = 'pending_new'
                 else:
-                    log.error(f"[alpaca] {symbol} market order fill timeout — checking final state")
+                    log.error(f"[alpaca] {symbol} market order final status={fill_status} filled={filled_qty} — canceling")
                     try:
-                        _final = self._api_get(f'/v2/orders/{order_id}')
-                        fill_status = _final.get('status', 'unknown')
-                        if fill_status != 'filled':
-                            log.error(f"[alpaca] {symbol} final status={fill_status} — canceling")
-                            self._api_delete(f'/v2/orders/{order_id}')
-                            return {'status': 'error', 'reason': f'fill_timeout_status_{fill_status}'}
-                        fill_price = float(_final.get('filled_avg_price', entry_price))
-                        filled_qty = int(float(_final.get('filled_qty', 0)))
+                        self._api_delete(f'/v2/orders/{order_id}')
                     except Exception:
-                        return {'status': 'error', 'reason': 'fill_verification_failed'}
+                        pass
+                    if filled_qty > 0:
+                        # Some shares filled before cancel — treat as partial fill, keep them
+                        log.warning(f"[alpaca] {symbol} salvaging {filled_qty} filled shares from canceled order")
+                        fill_status = 'filled'
+                        fill_price = float(_final.get('filled_avg_price', 0)) or entry_price
+                        shares = filled_qty
+                    else:
+                        return {'status': 'error', 'reason': f'fill_timeout_status_{fill_status}'}
 
             # ── Universal stop validation (Fix 5) ──
             # Validate stop against actual fill price on ALL order types
@@ -654,6 +707,30 @@ class AlpacaPaperAdapter:
             ORDER BY tas.symbol, tas.score DESC
         """, [MIN_SCORE_ALPACA])
         return cur.fetchall()
+
+
+def get_latest_quote(symbol: str) -> dict:
+    """Standalone helper: fetch latest quote for a symbol via data API."""
+    import requests, os
+    headers = {
+        'APCA-API-KEY-ID': os.getenv('ALPACA_API_KEY', ''),
+        'APCA-API-SECRET-KEY': os.getenv('ALPACA_SECRET_KEY', ''),
+    }
+    result = {'symbol': symbol, 'price': None, 'source': None, 'bid': None, 'ask': None}
+    try:
+        resp = requests.get(f'{DATA_BASE_URL}/v2/stocks/{symbol}/quotes/latest',
+                            headers=headers, timeout=10)
+        resp.raise_for_status()
+        q = resp.json().get('quote', {})
+        ask = float(q.get('ap') or 0)
+        bid = float(q.get('bp') or 0)
+        result['ask'] = ask
+        result['bid'] = bid
+        result['price'] = round((ask + bid) / 2, 4) if ask and bid else (ask or bid)
+        result['source'] = 'data_api_quote'
+    except Exception as e:
+        result['error'] = str(e)
+    return result
 
 
 def main():
