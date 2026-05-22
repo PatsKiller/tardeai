@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-21T12:00:01.339697+00:00",
+  "generated_at": "2026-05-22T12:00:01.416461+00:00",
   "overall_maturity": 7.1,
-  "a5_complete": false,
+  "a5_complete": true,
   "a5_end_date": "2026-05-22",
   "governance_status": "healthy",
   "allowed_actions": [
@@ -27,6 +27,6 @@
     "live_readiness: A-5 observation not complete"
   ],
   "live_trading": "BLOCKED",
-  "strategy_decisions": "BLOCKED",
+  "strategy_decisions": "review_ready",
   "recommended_next": "A-5 observation check"
 }

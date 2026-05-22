@@ -2,12 +2,11 @@ strategy_id: speculative_growth
 display_name: Speculative Growth
 version: 1.0.0
 status: UNVALIDATED
-purpose: High-growth small/mid-cap names with strong momentum thesis. Higher risk
-  tolerance for outsized upside potential.
+purpose: High-growth small/mid-cap names with strong momentum thesis. Higher risk tolerance for outsized upside potential.
 eligible_accounts:
-- taxable
-- rollover_ira
-- roth_ira
+  - taxable
+  - rollover_ira
+  - roth_ira
 timeframe: swing_3_to_21d
 timeframe_class: SHORT_SWING
 universe:
@@ -19,35 +18,35 @@ universe:
   rvol:
     min: 1.5
 entry_criteria:
-- id: REVENUE_GROWTH
-  description: Revenue growth >20% YoY or accelerating QoQ
-  metric: revenue_growth_yoy
-  operator: gte
-  value: 0.2
-- id: MOMENTUM_SCORE
-  description: Relative strength rank in top 20% of universe
-  metric: rs_rank_percentile
-  operator: gte
-  value: 80
-- id: INSTITUTIONAL_INTEREST
-  description: Rising institutional ownership or notable fund entry
-  metric: inst_ownership_trend
-  operator: eq
-  value: rising
-- id: BREAKOUT_PATTERN
-  description: Price breaking above consolidation or basing pattern
-  metric: breakout_confirmed
-  operator: eq
-  value: true
+  - id: REVENUE_GROWTH
+    description: Revenue growth >20% YoY or accelerating QoQ
+    metric: revenue_growth_yoy
+    operator: gte
+    value: 0.2
+  - id: MOMENTUM_SCORE
+    description: Relative strength rank in top 20% of universe
+    metric: rs_rank_percentile
+    operator: gte
+    value: 80
+  - id: INSTITUTIONAL_INTEREST
+    description: Rising institutional ownership or notable fund entry
+    metric: inst_ownership_trend
+    operator: eq
+    value: rising
+  - id: BREAKOUT_PATTERN
+    description: Price breaking above consolidation or basing pattern
+    metric: breakout_confirmed
+    operator: eq
+    value: true
 auto_disqualifiers:
-- id: CASH_BURN_CRITICAL
-  description: Less than 6 months cash runway without profitability path
-- id: DILUTION_RISK
-  description: Recent shelf registration or ATM offering filed
-- id: INSIDER_SELLING_HEAVY
-  description: Insider selling >5% of holdings in last 30 days
-- id: NO_REVENUE
-  description: Pre-revenue company with no clear monetization timeline
+  - id: CASH_BURN_CRITICAL
+    description: Less than 6 months cash runway without profitability path
+  - id: DILUTION_RISK
+    description: Recent shelf registration or ATM offering filed
+  - id: INSIDER_SELLING_HEAVY
+    description: Insider selling >5% of holdings in last 30 days
+  - id: NO_REVENUE
+    description: Pre-revenue company with no clear monetization timeline
 exit_rules:
   stop_method: atr_based
   target_method: trailing
@@ -72,10 +71,10 @@ agent_responsibilities:
   steph: Confirm position sizing appropriate for speculative allocation bucket.
 co_enables:
   promotes_to:
-  - core_growth_compounder
+    - core_growth_compounder
   strengthens:
-  - swing_trade
-  - swing_breakout
+    - swing_trade
+    - swing_breakout
 validation_gate:
   min_closed_paper_trades: 30
   min_win_rate: 0.55
@@ -83,13 +82,11 @@ validation_gate:
   min_calendar_months: 6
   human_approval_required: true
 prompt_context:
-  summary: Speculative growth strategy targeting small/mid-cap names with strong revenue
-    growth and momentum. Higher risk tolerance with strict dilution and cash burn
-    guardrails. Holds 3-21 days.
+  summary: Speculative growth strategy targeting small/mid-cap names with strong revenue growth and momentum. Higher risk tolerance with strict dilution and cash burn guardrails. Holds 3-21 days.
   key_questions:
-  - Is revenue growth accelerating or decelerating?
-  - What is the dilution risk from shelf registrations or convertible notes?
-  - Does institutional ownership trend support the momentum thesis?
+    - Is revenue growth accelerating or decelerating?
+    - What is the dilution risk from shelf registrations or convertible notes?
+    - Does institutional ownership trend support the momentum thesis?
 screen_filters:
   min_price: 2.0
   max_price: 50.0
@@ -100,8 +97,8 @@ screen_filters:
 vix_rules:
   max_vix_for_entry: 25
   elevated_vix_band:
-  - 22
-  - 30
+    - 22
+    - 30
   elevated_vix_changes:
     position_size_multiplier: 0.5
     require_aplus_grade: true
@@ -109,51 +106,49 @@ vix_rules:
   extreme_vix_threshold: 30
   extreme_vix_action: pause_new_entries
   exit_holdings_at_vix: 35
-  notes: "Speculative names are first to break in volatility \u2014 exit existing\
-    \ at VIX 35."
+  notes: "Speculative names are first to break in volatility — exit existing at VIX 35."
 technical_indicators_required:
   gates:
-  - id: RS_RANK_TOP_20PCT
-    condition: RS rank percentile >= 80
-    metric: rs_rank_percentile
-    operator: gte
-    value: 80
-  - id: BREAKOUT_CONFIRMED
-    condition: price breaking above consolidation
-    metric: breakout_confirmed
-    operator: eq
-    value: true
-  - id: EMA_50_RISING
-    condition: EMA(50) slope > 0
-    metric: ema_50_slope_5d
-    operator: gt
-    value: 0
+    - id: RS_RANK_TOP_20PCT
+      condition: RS rank percentile >= 80
+      metric: rs_rank_percentile
+      operator: gte
+      value: 80
+    - id: BREAKOUT_CONFIRMED
+      condition: price breaking above consolidation
+      metric: breakout_confirmed
+      operator: eq
+      value: true
+    - id: EMA_50_RISING
+      condition: EMA(50) slope > 0
+      metric: ema_50_slope_5d
+      operator: gt
+      value: 0
   preferred:
-  - atr_14_pct
-  - volume_trend
-  - fib_618_distance
+    - atr_14_pct
+    - volume_trend
+    - fib_618_distance
   irrelevant:
-  - vwap
-  - opening_range
+    - vwap
+    - opening_range
 performance_context:
-  last_updated: null
+  last_updated: '2026-05-22T06:30:01+00:00'
   closed_paper_trades: 0
-  win_rate: null
-  avg_r_realized: null
-  profit_factor: null
-  max_drawdown_pct: null
-  expectancy_per_trade: null
-  best_trade_r: null
-  worst_trade_r: null
-  current_streak: null
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
   ready_for_review: false
   review_thresholds:
     min_trades: 30
     min_months: 6
     min_profit_factor: 1.25
     min_win_rate: 0.5
-  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM
-    prompts to evaluate proposal context.
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
 freshness:
   bucket: MULTI_DAY
   ttl_days: 10

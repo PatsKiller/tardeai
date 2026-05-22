@@ -1,6 +1,6 @@
 # Operator Readiness — 7.1/10
 
-A-5: in progress | Live trading: BLOCKED
+A-5: complete | Live trading: BLOCKED
 
 **Next:** A-5 observation check
 
