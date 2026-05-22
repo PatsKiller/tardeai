@@ -9,7 +9,7 @@ version: 1
 
 defaults:
   position_limits:
-    max_concurrent: 2
+    max_concurrent: 6
     max_new_per_day: 1
     max_pct_per_trade: 0.10
     max_pct_per_strategy: 25
@@ -37,7 +37,7 @@ accounts:
   alpaca_paper:
     enabled: true
     position_limits:
-      max_concurrent: 2
+      max_concurrent: 6
       max_new_per_day: 1
       max_pct_per_trade: 0.10
 
