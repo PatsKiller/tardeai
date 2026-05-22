@@ -39,6 +39,37 @@ psql -h localhost -U trade_ai -d trade_ai -c "
 
 ---
 
+## Step 1b: B-1 Expiration Verification
+
+B-1 observation window was set to expire 2026-05-25. On Monday 2026-05-26
+it should be expired. Verify:
+
+```bash
+# 1. Confirm date is after 2026-05-25
+date +%Y-%m-%d  # must be >= 2026-05-26
+
+# 2. Confirm B-1 config
+grep observation_end config/atm_config.yaml  # shows 2026-05-25
+
+# 3. Confirm B-1 strategies no longer deferred
+python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+from atm_config_manager import is_bucket2_excluded
+for s in ['swing_breakout','swing_trade','earnings_post_momentum','recovery_watch','fib_retracement_bounce']:
+    print(f'  {s}: excluded={is_bucket2_excluded(s)}')
+"
+# All should show excluded=False on 2026-05-26+
+```
+
+**Important:** B-1 expiry means these strategies CAN flow through ATM gates
+again. It does NOT mean they are auto-approved — they still must pass all
+gates (quote, risk, enrichment, classifier health, position limits, etc.).
+
+`same_day_skip` still excludes `momentum_scalp` and `gap_and_go` from
+ATM active approval regardless of B-1 status.
+
+---
+
 ## Step 2: Apply Config (09:33 ET)
 
 Edit `config/atm_config.yaml`:
