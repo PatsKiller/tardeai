@@ -15399,7 +15399,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             trades = _db_query("""
                 SELECT id, symbol, strategy_id, account, entry_price, exit_price,
                        current_price, shares, stop_loss, target_1, target_2, dollar_risk, dollar_size,
-                       pnl, unrealized_pnl, r_multiple, pnl_pct,
+                       COALESCE(pnl, unrealized_pnl) as pnl, unrealized_pnl, r_multiple, pnl_pct,
                        status, outcome_verdict, exit_reason,
                        market_regime, vix_at_entry,
                        catalyst_at_entry, catalyst_verified, intel_readiness,
