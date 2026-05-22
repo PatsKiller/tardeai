@@ -22,7 +22,7 @@ MAX_WORKERS = 3
 QUOTE_MAX_AGE_SECONDS = 600        # 10 min
 TECHNICAL_MAX_AGE_SECONDS = 3600   # 1 hour
 AI_REVIEW_MAX_AGE_SECONDS = 86400  # 24 hours
-AI_REVIEW_TIMEOUT = 60             # seconds
+AI_REVIEW_TIMEOUT = 120            # seconds (analyzer does DB queries + LLM call)
 
 
 def _get_conn():
@@ -276,12 +276,11 @@ def enrich_proposal(proposal, force_all=False):
     else:
         first_error = first_error or "technical"
 
-    # Step 3: AI review (skip if not forced and already reviewed recently)
-    steps_total += 1
-    if _step_ai_review(conn, proposal):
-        steps_ok += 1
-    else:
-        first_error = first_error or "ai_review"
+    # Step 3: AI review (non-blocking — timeout doesn't prevent COMPLETE)
+    _ai_ok = _step_ai_review(conn, proposal)
+    if not _ai_ok:
+        log.info(f"  #{pid} {symbol}: ai_review skipped/timed out (non-blocking)")
+    # AI review is optional — don't count it toward pass/fail
 
     # Step 4: Risk gate (only if NULL)
     if not proposal.get("risk_gate_result") or force_all:
