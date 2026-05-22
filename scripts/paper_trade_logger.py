@@ -716,7 +716,7 @@ def _write_audit(conn, event: str, symbol: str, details: dict):
         import json
         cur = conn.cursor()
         cur.execute("""
-            INSERT INTO audit_log (event, symbol, details, created_at)
+            INSERT INTO audit_log (event_type, symbol, input_snapshot, created_at)
             VALUES (%s, %s, %s, %s)
         """, (event, symbol, json.dumps(details, default=str),
               datetime.now(timezone.utc)))

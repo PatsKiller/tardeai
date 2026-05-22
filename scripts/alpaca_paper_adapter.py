@@ -348,6 +348,11 @@ class AlpacaPaperAdapter:
         if _price_source and "fallback" in _price_source:
             log.warning(f"[alpaca] {symbol}: using fallback price source ({_price_source})")
 
+        # ── FAIL-CLOSED: Block if no live price available ──
+        if not current_price:
+            log.error(f"[alpaca] BLOCKED {symbol}: no price source available — fail-closed")
+            return {'status': 'blocked', 'reason': 'no_price_source: all quote providers failed'}
+
         # ── HARD SAFETY GATE 1: Stop already breached ──
         if current_price and stop_price and current_price <= stop_price:
             log.error(f"[alpaca] BLOCKED {symbol}: price ${current_price:.2f} <= stop ${stop_price:.2f} — would immediately stop out")
