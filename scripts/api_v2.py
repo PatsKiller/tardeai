@@ -17438,7 +17438,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             changed_by = (body or {}).get("changed_by", "dashboard")
             if new_mode not in ("disabled", "dry_run", "active", "paused"):
                 return 400, {"ok": False, "error": f"Invalid mode: {new_mode}"}
-            conn = _get_conn()
+            from db_adapter import _get_conn as _gc_mode
+            conn = _gc_mode()
             cur = conn.cursor()
             cur.execute("SELECT mode FROM atm_state WHERE id=1")
             old = cur.fetchone()[0]
@@ -17458,7 +17459,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             set_by = (body or {}).get("set_by", "dashboard")
             if not pid or action not in ("force_approve", "force_reject", "force_skip", None, "clear"):
                 return 400, {"ok": False, "error": "Invalid proposal_id or action"}
-            conn = _get_conn()
+            from db_adapter import _get_conn as _gc_action
+            conn = _gc_action()
             cur = conn.cursor()
             if action == "clear":
                 cur.execute("UPDATE paper_trade_proposals SET atm_action=NULL, atm_action_set_by=NULL, atm_action_set_at=NULL WHERE id=%s", (pid,))
