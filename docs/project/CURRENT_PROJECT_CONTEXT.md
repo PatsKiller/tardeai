@@ -23,23 +23,22 @@ ATM (Automated Trade Mode) v1 exists and has been used in both dry-run and activ
 - **Active execution submitted paper orders** for NWG, NVDA, AGNC, CMCSA
 - **ATM active execution must be frozen** until ATM-SAFE-1 containment completes
 
-**ATM mode is currently: active** (set by operator via dashboard 2026-05-22 11:25 ET).  
+**ATM mode is currently: dry_run** (frozen by ATM-SAFE-1 at 16:13:49 ET 2026-05-22).  
 Do NOT change ATM mode without explicit operator command.
 
-## 3. Critical Open Issue — ATM-SAFE-1
+## 3. ATM-SAFE-1 Containment — COMPLETE
 
-ATM-SAFE-1 containment is **required before any further enhancements**.
+ATM-SAFE-1 containment completed 2026-05-22. All items resolved:
 
-The ATM active-mode event on 2026-05-22 revealed:
-- Partial-fill race condition → **FIXED** (adapter now polls through partially_filled)
-- Stale proposal retry loop → **FIXED** (expiry logic added, 4h/5-attempt/enrichment-failed)
+- Partial-fill race condition → **FIXED** (adapter polls through partially_filled)
+- Stale proposal retry loop → **FIXED** (expiry logic, enrichment-failed tracking)
 - Quote fetch 404 → **FIXED** (switched to data.alpaca.markets)
-- NWG/NVDA missing stops → **FIXED** (manual stops placed, DB synced)
+- NWG/NVDA missing stops → **FIXED** (stops placed, DB synced)
+- audit_log schema mismatch → **FIXED** (event→event_type, details→input_snapshot)
+- Quote fail-closed → **FIXED** (blocks order if no price source)
+- Paper execution containment → **FIXED** (enrichment pre-check, risk gate on promoter)
 
-Remaining ATM-SAFE-1 items:
-- audit_log.event column missing (schema mismatch, audit trail lost)
-- Validated-price fallback did not fail-closed (mitigated but not eliminated)
-- Paper execution containment gate hardening
+**Maturity score post-containment: 6.2/10.0**
 
 ## 4. Recent Paper Executions
 
