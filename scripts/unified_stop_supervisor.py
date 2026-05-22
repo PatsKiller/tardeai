@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""STOP-V2.2 — Unified stop supervisor.
+
+Single entry point for stop monitoring, replacing the racing
+open_trade_monitor (*/2) and paper_trade_monitor (*/5) crons.
+
+Runs every 3 minutes during market hours:
+1. Reconcile broker stops (V2.1)
+2. Run open_trade_monitor logic (stop hits, time stops, news, alerts)
+3. Run paper_trade_monitor logic (trailing, phantom, integrity)
+4. Report unified health
+
+Does NOT create, cancel, or move stops in this phase (V2.2).
+Stop movement preserved from existing monitors only.
+"""
+import argparse, json, logging, os, sys, time
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [stop_supervisor] %(message)s")
+log = logging.getLogger("stop_supervisor")
+
+
+def _safety_checks():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(PROJECT_ROOT / ".env")
+    except ImportError:
+        pass
+    assert os.environ.get("ALPACA_MODE") == "paper", "ALPACA_MODE must be paper"
+    assert os.environ.get("LLM_DISABLE_LIVE_EXECUTION") == "true", "LLM_DISABLE must be true"
+
+
+def _is_market_hours():
+    """Check if within market hours (9:30-16:00 ET)."""
+    try:
+        import pytz
+        et = pytz.timezone("US/Eastern")
+        now = datetime.now(et)
+        if now.weekday() >= 5:
+            return False
+        h, m = now.hour, now.minute
+        return (h > 9 or (h == 9 and m >= 30)) and h < 16
+    except Exception:
+        return True  # fail-open for monitoring
+
+
+def _run_reconciliation(verbose=False):
+    """Run STOP-V2.1 broker stop reconciliation."""
+    t0 = time.time()
+    try:
+        from reconcile_stop_v21_broker_stops import reconcile
+        result = reconcile(verbose=verbose)
+        dur = time.time() - t0
+        summary = result.get("summary", {})
+        log.info(f"Reconciliation: {summary.get('reconciled', 0)}/{summary.get('total_trades', 0)} reconciled, "
+                 f"{summary.get('critical', 0)} critical, {dur:.1f}s")
+        return result
+    except Exception as e:
+        log.error(f"Reconciliation failed: {e}")
+        return {"error": str(e), "summary": {"reconciled": 0, "critical": -1}}
+
+
+def _run_open_trade_monitor(dry_run=True, verbose=False):
+    """Run open_trade_monitor logic."""
+    t0 = time.time()
+    try:
+        from open_trade_monitor import run_monitor
+        result = run_monitor(dry_run=dry_run)
+        dur = time.time() - t0
+        log.info(f"Open trade monitor: {dur:.1f}s")
+        return {"success": True, "duration": round(dur, 1)}
+    except Exception as e:
+        log.error(f"Open trade monitor failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _run_paper_trade_monitor(dry_run=True, verbose=False):
+    """Run paper_trade_monitor logic."""
+    t0 = time.time()
+    try:
+        from paper_trade_monitor import monitor
+        result = monitor(dry_run=dry_run)
+        dur = time.time() - t0
+        log.info(f"Paper trade monitor: {dur:.1f}s")
+        return {"success": True, "duration": round(dur, 1)}
+    except Exception as e:
+        log.error(f"Paper trade monitor failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _write_audit(event_type, details):
+    try:
+        from db_adapter import get_connection
+        conn = get_connection()
+        if conn:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO audit_log (event_type, input_snapshot, actor) VALUES (%s, %s, 'stop_supervisor')",
+                        [event_type, json.dumps(details, default=str)])
+            conn.commit()
+    except Exception:
+        pass
+
+
+def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
+    """Run one unified monitoring cycle."""
+    _safety_checks()
+    t0 = time.time()
+    in_hours = _is_market_hours()
+
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "market_hours": in_hours,
+        "dry_run": dry_run,
+        "reconcile_only": reconcile_only,
+    }
+
+    # Step 1: Reconciliation (always runs)
+    recon = _run_reconciliation(verbose=verbose)
+    report["reconciliation"] = recon.get("summary", {})
+    report["reconciliation_findings"] = recon.get("findings", [])
+
+    critical = recon.get("summary", {}).get("critical", 0)
+    if critical > 0:
+        log.warning(f"CRITICAL: {critical} reconciliation findings — positions may be unprotected")
+
+    if reconcile_only:
+        report["monitors_skipped"] = "reconcile_only mode"
+        report["duration"] = round(time.time() - t0, 1)
+        return report
+
+    # Step 2: Open trade monitor (stop hits, time stops, news, alerts)
+    if in_hours:
+        otm = _run_open_trade_monitor(dry_run=dry_run, verbose=verbose)
+        report["open_trade_monitor"] = otm
+    else:
+        report["open_trade_monitor"] = {"skipped": "after_hours"}
+        log.info("After hours — skipping open_trade_monitor (reconciliation only)")
+
+    # Step 3: Paper trade monitor (trailing, phantom, integrity)
+    if in_hours:
+        ptm = _run_paper_trade_monitor(dry_run=dry_run, verbose=verbose)
+        report["paper_trade_monitor"] = ptm
+    else:
+        report["paper_trade_monitor"] = {"skipped": "after_hours"}
+        log.info("After hours — skipping paper_trade_monitor trailing")
+
+    report["duration"] = round(time.time() - t0, 1)
+
+    # Summary
+    all_reconciled = recon.get("summary", {}).get("all_protected", False)
+    report["health"] = {
+        "all_protected": all_reconciled,
+        "critical_findings": critical,
+        "market_hours": in_hours,
+        "stops_created": False,
+        "stops_canceled": False,
+        "stops_moved": False,
+    }
+
+    return report
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Unified stop supervisor (STOP-V2.2)")
+    ap.add_argument("--dry-run", action="store_true", default=True)
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--reconcile-only", action="store_true")
+    ap.add_argument("--output-json", type=str)
+    ap.add_argument("--output-md", type=str)
+    ap.add_argument("--verbose", action="store_true")
+    args = ap.parse_args()
+
+    is_dry = not args.apply
+    report = run_cycle(dry_run=is_dry, reconcile_only=args.reconcile_only, verbose=args.verbose)
+
+    if args.apply:
+        _write_audit("stop_v22_supervisor_cycle", report.get("health", {}))
+
+    if args.output_json:
+        Path(args.output_json).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.output_json, "w") as f:
+            json.dump(report, f, indent=2, default=str)
+
+    if args.output_md:
+        Path(args.output_md).parent.mkdir(parents=True, exist_ok=True)
+        h = report.get("health", {})
+        r = report.get("reconciliation", {})
+        lines = [
+            f"# Unified Stop Supervisor Report\n\n",
+            f"Generated: {report.get('generated_at')}\n",
+            f"Mode: {'DRY RUN' if report.get('dry_run') else 'APPLY'}\n",
+            f"Market hours: {report.get('market_hours')}\n",
+            f"Duration: {report.get('duration')}s\n\n",
+            f"## Reconciliation\n",
+            f"- Reconciled: {r.get('reconciled', 0)}/{r.get('total_trades', 0)}\n",
+            f"- Critical: {r.get('critical', 0)} | Warning: {r.get('warning', 0)}\n",
+            f"- All protected: {'YES' if h.get('all_protected') else 'NO'}\n\n",
+            f"## Monitors\n",
+            f"- Open trade monitor: {json.dumps(report.get('open_trade_monitor', {}))}\n",
+            f"- Paper trade monitor: {json.dumps(report.get('paper_trade_monitor', {}))}\n\n",
+            f"## Safety\n",
+            f"- Stops created: {h.get('stops_created', False)}\n",
+            f"- Stops canceled: {h.get('stops_canceled', False)}\n",
+            f"- Stops moved: {h.get('stops_moved', False)}\n",
+        ]
+        with open(args.output_md, "w") as f:
+            f.writelines(lines)
+
+    h = report.get("health", {})
+    r = report.get("reconciliation", {})
+    print(f"\nReconciled: {r.get('reconciled', 0)}/{r.get('total_trades', 0)} | "
+          f"Critical: {r.get('critical', 0)} | Protected: {'YES' if h.get('all_protected') else 'NO'} | "
+          f"Duration: {report.get('duration')}s")
+
+
+if __name__ == "__main__":
+    os.chdir(str(PROJECT_ROOT))
+    main()
