@@ -15,7 +15,10 @@ defaults:
     max_pct_per_strategy: 25
     max_pct_per_sector: 35
   strategy_filter:
-    min_classifier_health: 0.50
+    # TEMPORARY: lowered from 0.50 to 0.0 during DRY_RUN cold-start
+    # (0 closed trades per strategy → health=0.0 → gate blocks everything)
+    # Restore to 0.50 once ≥3 paper trades close per active strategy.
+    min_classifier_health: 0.0
     whitelist: []
     blacklist: []
   kill_switches:
