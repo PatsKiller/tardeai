@@ -148,6 +148,46 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
         report["paper_trade_monitor"] = {"skipped": "after_hours"}
         log.info("After hours — skipping paper_trade_monitor trailing")
 
+    # Step 4: Strategy-aware trailing recommendations (V2.3)
+    trailing_recs = []
+    try:
+        from strategy_trailing_policy import recommend_stop, get_strategy_family
+        from db_adapter import get_connection as _gc_trail
+        _tc = _gc_trail()
+        if _tc:
+            _tcur = _tc.cursor()
+            _tcur.execute("""
+                SELECT id, symbol, strategy_id, entry_price, planned_stop, stop_loss, current_price
+                FROM paper_trades WHERE status='open'
+            """)
+            _tcols = [d[0] for d in _tcur.description]
+            for _trow in _tcur.fetchall():
+                _t = dict(zip(_tcols, _trow))
+                rec = recommend_stop(
+                    _t["strategy_id"] or "unknown",
+                    float(_t["entry_price"] or 0),
+                    float(_t["planned_stop"] or _t["stop_loss"] or 0),
+                    float(_t["stop_loss"] or 0),
+                    float(_t["current_price"] or 0),
+                    market_hours=in_hours,
+                )
+                rec["trade_id"] = _t["id"]
+                rec["symbol"] = _t["symbol"]
+                trailing_recs.append(rec)
+                if verbose and rec.get("action") != "hold":
+                    log.info(f"  #{_t['id']} {_t['symbol']}: {rec['action']} — {rec.get('reason','')}")
+    except Exception as e:
+        log.warning(f"Trailing policy check failed: {e}")
+
+    report["trailing_recommendations"] = trailing_recs
+    report["trailing_summary"] = {
+        "total": len(trailing_recs),
+        "hold": sum(1 for r in trailing_recs if r.get("action") == "hold"),
+        "recommend_trail": sum(1 for r in trailing_recs if r.get("action") == "recommend_trail"),
+        "recommend_deferred": sum(1 for r in trailing_recs if r.get("action") == "recommend_deferred"),
+        "recommend_review": sum(1 for r in trailing_recs if r.get("action") == "recommend_review"),
+    }
+
     report["duration"] = round(time.time() - t0, 1)
 
     # Summary
