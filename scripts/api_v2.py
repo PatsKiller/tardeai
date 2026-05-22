@@ -17215,6 +17215,176 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── ATM (Automated Trade Mode) endpoints ─────────────────────────────
+    if base_path == "/api/v2/atm/status":
+        try:
+            st = _db_query("SELECT * FROM atm_state WHERE id=1", fetch="one") or {}
+            accts = _db_query("SELECT account_label, broker, mode, enabled FROM accounts ORDER BY id") or []
+            # Per-account positions
+            pos = _db_query("""
+                SELECT target_account, COUNT(*) as open_count
+                FROM paper_trades WHERE status='open' GROUP BY target_account
+            """) or []
+            pos_map = {r["target_account"]: r["open_count"] for r in pos}
+            today = _db_query("""
+                SELECT target_account, COUNT(*) as new_today
+                FROM paper_trades WHERE created_at::date = CURRENT_DATE GROUP BY target_account
+            """) or []
+            today_map = {r["target_account"]: r["new_today"] for r in today}
+            decisions_today = _db_query("""
+                SELECT decision, COUNT(*) as cnt FROM atm_decision_log
+                WHERE decided_at::date = CURRENT_DATE GROUP BY decision
+            """) or []
+            return 200, {"ok": True, "data": {
+                "mode": st.get("mode", "disabled"),
+                "paused_until": str(st.get("paused_until") or ""),
+                "pause_reason": st.get("pause_reason"),
+                "last_state_change_at": str(st.get("last_state_change_at") or ""),
+                "last_state_change_by": st.get("last_state_change_by"),
+                "last_evaluated_at": str(st.get("last_evaluated_at") or ""),
+                "config_hash": st.get("config_hash"),
+                "accounts": [{**a, "positions_open": pos_map.get(a["account_label"], 0),
+                               "new_today": today_map.get(a["account_label"], 0)}
+                              for a in accts],
+                "decisions_today": {r["decision"]: r["cnt"] for r in decisions_today},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/config" and method == "GET":
+        try:
+            import sys as _sys; _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from atm_config_manager import load_config
+            cfg, h = load_config()
+            return 200, {"ok": True, "data": {"config": cfg, "hash": h}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/config" and method == "POST":
+        try:
+            import sys as _sys; _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from atm_config_manager import save_config
+            new_hash = save_config(body, body.get("_changed_by", "dashboard"))
+            return 200, {"ok": True, "hash": new_hash}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/config-history":
+        try:
+            _lim = int((query or {}).get("limit", 20))
+            rows = _db_query("SELECT * FROM atm_config_history ORDER BY changed_at DESC LIMIT %s",
+                             (_lim,)) or []
+            return 200, {"ok": True, "data": rows}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/decisions":
+        try:
+            _lim = int((query or {}).get("limit", 20))
+            _acct = (query or {}).get("account_label")
+            q = "SELECT * FROM atm_decision_log"
+            p = []
+            if _acct:
+                q += " WHERE target_account = %s"
+                p.append(_acct)
+            q += " ORDER BY decided_at DESC LIMIT %s"
+            p.append(_lim)
+            rows = _db_query(q, p) or []
+            return 200, {"ok": True, "data": rows}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/strategy-health":
+        try:
+            import sys as _sys; _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from atm_classifier_health import get_health
+            from atm_config_manager import load_config, is_bucket2_excluded, is_same_day_skip, get_strategy_filter
+            cfg, _ = load_config()
+            sf = get_strategy_filter()
+            strats = _db_query("SELECT DISTINCT strategy_id FROM strategy_signals WHERE strategy_id IS NOT NULL") or []
+            result = []
+            for s in strats:
+                sid = s["strategy_id"]
+                h = get_health(sid)
+                result.append({
+                    "strategy_id": sid, "classifier_health": h,
+                    "eligible": h >= sf.get("min_classifier_health", 0.5),
+                    "bucket2_excluded": is_bucket2_excluded(sid),
+                    "same_day_skip": is_same_day_skip(sid),
+                })
+            return 200, {"ok": True, "data": sorted(result, key=lambda x: -x["classifier_health"])}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/accounts":
+        try:
+            rows = _db_query("""
+                SELECT a.*, COALESCE(p.open_count, 0) as positions_open,
+                       COALESCE(t.new_today, 0) as new_today
+                FROM accounts a
+                LEFT JOIN (SELECT target_account, COUNT(*) as open_count
+                           FROM paper_trades WHERE status='open' GROUP BY target_account) p
+                    ON p.target_account = a.account_label
+                LEFT JOIN (SELECT target_account, COUNT(*) as new_today
+                           FROM paper_trades WHERE created_at::date = CURRENT_DATE GROUP BY target_account) t
+                    ON t.target_account = a.account_label
+                ORDER BY a.id
+            """) or []
+            return 200, {"ok": True, "data": rows}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/queue-preview":
+        try:
+            rows = _db_query("""
+                SELECT id, symbol, strategy_id, target_account, status, atm_action,
+                       proposed_entry, proposed_stop, proposed_target1, proposed_shares
+                FROM paper_trade_proposals
+                WHERE status = 'PENDING'
+                ORDER BY created_at ASC LIMIT 20
+            """) or []
+            return 200, {"ok": True, "data": rows}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/mode" and method == "POST":
+        try:
+            new_mode = (body or {}).get("mode", "disabled")
+            changed_by = (body or {}).get("changed_by", "dashboard")
+            if new_mode not in ("disabled", "dry_run", "active", "paused"):
+                return 400, {"ok": False, "error": f"Invalid mode: {new_mode}"}
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT mode FROM atm_state WHERE id=1")
+            old = cur.fetchone()[0]
+            cur.execute("UPDATE atm_state SET mode=%s, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                        (new_mode, changed_by))
+            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s,%s,%s)",
+                        (old, new_mode, changed_by))
+            conn.commit()
+            return 200, {"ok": True, "old_mode": old, "new_mode": new_mode}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/proposal-action" and method == "POST":
+        try:
+            pid = (body or {}).get("proposal_id")
+            action = (body or {}).get("action")
+            set_by = (body or {}).get("set_by", "dashboard")
+            if not pid or action not in ("force_approve", "force_reject", "force_skip", None, "clear"):
+                return 400, {"ok": False, "error": "Invalid proposal_id or action"}
+            conn = _get_conn()
+            cur = conn.cursor()
+            if action == "clear":
+                cur.execute("UPDATE paper_trade_proposals SET atm_action=NULL, atm_action_set_by=NULL, atm_action_set_at=NULL WHERE id=%s", (pid,))
+            else:
+                cur.execute("UPDATE paper_trade_proposals SET atm_action=%s, atm_action_set_by=%s, atm_action_set_at=NOW() WHERE id=%s",
+                            (action, set_by, pid))
+            conn.commit()
+            return 200, {"ok": True, "proposal_id": pid, "action": action}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 32: Unified Self-Improvement Command Center ───────────────
     if base_path in ("/api/v2/self-improvement/status", "/api/v2/self-improvement/summary"):
         try:
