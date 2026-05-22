@@ -40,6 +40,19 @@ ATM-SAFE-1 containment completed 2026-05-22. All items resolved:
 
 **Maturity score post-containment: 6.2/10.0**
 
+## 3a. Stop Management V2 — COMPLETE
+
+All 4 phases completed 2026-05-22:
+
+- **V2.0:** planned_stop + stop_order_id backfilled on all 5 open trades
+- **V2.1:** Broker stop reconciliation engine — 5/5 GTC stops verified
+- **V2.2:** Racing monitors merged into unified_stop_supervisor (*/3)
+- **V2.3:** Strategy-aware trailing tiers (momentum/swing/income/position)
+
+**Maturity score post-STOP-V2: 7.0/10.0** (up from 6.2)
+
+Next: ATM re-enable decision package, STOP-V2 burn-in, A-5 strategy proof
+
 ## 4. Recent Paper Executions
 
 All on Alpaca paper account (2026-05-22):
