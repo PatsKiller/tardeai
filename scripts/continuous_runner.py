@@ -499,7 +499,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
 
 def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
     cmd = [sys.executable, str(root/"scripts"/"trade_ai_orchestrator.py"),
-           "--run-label", run_label, "--date", date_str, "--skip-market-check"]
+           "--run-label", run_label, "--date", date_str, "--skip-market-check",
+           "--allow-underfilled"]
     print(f"  [FULL] Launching complete pipeline...")
     try:
         subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
