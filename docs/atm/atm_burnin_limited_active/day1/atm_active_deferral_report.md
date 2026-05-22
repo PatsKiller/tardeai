@@ -27,3 +27,12 @@
 - Daily counter resets at midnight → 0 entries used
 - Concurrent positions may change over weekend (stops/targets)
 - Re-run preflight before enabling active mode
+
+## B-1 Observation Decision
+
+- **Decision:** Leave B-1 exclusion until auto-expiry (2026-05-25)
+- **Do NOT remove early**
+- On Monday, verify B-1 has expired before burn-in
+- B-1 expiry allows bucket2 strategies to flow through ATM gates again
+- B-1 expiry does NOT auto-approve — all ATM gates still apply
+- `same_day_skip` still excludes momentum_scalp and gap_and_go
