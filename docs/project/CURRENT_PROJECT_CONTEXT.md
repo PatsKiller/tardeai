@@ -53,6 +53,17 @@ All 4 phases completed 2026-05-22:
 
 Next: ATM re-enable decision package, STOP-V2 burn-in, A-5 strategy proof
 
+## 3b. A-5 Final Observation Review — FAIL / EXTEND
+
+Reviewed 2026-05-22. Decision: **Phase 8D BLOCKED**.
+
+- 11 closed trades across 7 strategies (8 clean after filtering orphans)
+- 0 strategies have 3+ closed trades (minimum for baseline)
+- Strategy proof score remains 3.5/10
+- Agent learning remains BLOCKED
+- Continue observation via ATM active (limited caps)
+- Re-review when total closed trades ≥ 20 or any strategy reaches 5+ closed
+
 ## 4. Recent Paper Executions
 
 All on Alpaca paper account (2026-05-22):
