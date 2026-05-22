@@ -216,15 +216,16 @@ def run_cycle():
         _telegram_both(f"ATM KILL SWITCH FIRED: aggregate daily P&L {total_pnl_pct:.1f}% — ATM PAUSED")
         return
 
-    # ── Load pending proposals ──
+    # ── Load pending proposals (exclude already-expired) ──
     cur = conn.cursor()
     cur.execute("""
         SELECT p.id, p.symbol, p.strategy_id, p.target_account,
                p.atm_action, p.status, p.proposed_entry, p.proposed_stop,
                p.proposed_target1, p.proposed_shares,
-               p.enrichment_status, p.enrichment_last_attempt_at, p.enrichment_failures
+               p.enrichment_status, p.enrichment_last_attempt_at, p.enrichment_failures,
+               p.created_at, p.atm_evaluation_count, p.atm_last_failure_reason
         FROM paper_trade_proposals p
-        WHERE p.status = 'PENDING'
+        WHERE p.status = 'PENDING' AND p.atm_expired_at IS NULL
         ORDER BY p.created_at ASC
     """)
     cols = [d[0] for d in cur.description]
@@ -245,6 +246,7 @@ def run_cycle():
 
     approved_count = 0
     rejected_count = 0
+    expired_this_cycle = []  # for batched Telegram
 
     for p in proposals:
         pid = p["id"]
@@ -258,6 +260,49 @@ def run_cycle():
         acct = account_info.get(target, {})
         acct_broker = acct.get("broker", "unknown")
         acct_mode = acct.get("mode", "unknown")
+
+        # ── 1: Stale proposal expiry check ──
+        expiry_reason = None
+        proposal_age_hours = 0
+        try:
+            _created = p.get("created_at")
+            if _created:
+                if hasattr(_created, 'tzinfo') and _created.tzinfo:
+                    proposal_age_hours = (datetime.now(timezone.utc) - _created).total_seconds() / 3600
+                else:
+                    proposal_age_hours = (datetime.utcnow() - _created).total_seconds() / 3600
+        except Exception:
+            pass
+
+        eval_count = p.get("atm_evaluation_count") or 0
+        last_fail = p.get("atm_last_failure_reason") or ""
+
+        # Condition 1: proposal age > 4 hours
+        if proposal_age_hours > 4:
+            expiry_reason = f"age_exceeded_4h ({proposal_age_hours:.1f}h)"
+        # Condition 2: 5+ consecutive approve_proposal_failed with same reason
+        elif eval_count >= 5 and "approve_proposal_failed" in last_fail:
+            expiry_reason = f"persistent_approval_failure ({eval_count} attempts)"
+        # Condition 3: enrichment permanently failed
+        elif (p.get("enrichment_status") == "FAILED"
+              and (p.get("enrichment_failures") or 0) >= 3):
+            expiry_reason = f"enrichment_failed_3x"
+
+        if expiry_reason:
+            cur.execute("""
+                UPDATE paper_trade_proposals
+                SET atm_expired_at = NOW(), atm_expiry_reason = %s
+                WHERE id = %s
+            """, (expiry_reason, pid))
+            conn.commit()
+            _log_decision(conn, pid, sym, sid, target,
+                          acct.get("broker", "unknown"), acct.get("mode", "unknown"),
+                          "rejected",
+                          [{"gate": "atm_expired", "detail": expiry_reason}],
+                          0, 0, 0, 0, 0, 0, 0, False, config_hash, mode)
+            expired_this_cycle.append(f"{sym} ({expiry_reason})")
+            log.info(f"  {sym}: EXPIRED — {expiry_reason}")
+            continue
 
         pos_open = _count_positions(conn, target)
         pos_total = sum(_count_positions(conn, a) for a in enabled_accounts)
@@ -387,14 +432,24 @@ def run_cycle():
             result = approve_proposal(pid)
 
             if not result.get("success"):
+                fail_reason = result.get("message", "unknown")[:200]
                 reasons.append({"gate": "approve_proposal_failed",
-                                "detail": result.get("message", "unknown")[:200]})
+                                "detail": fail_reason})
                 _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
                              "rejected", reasons, health, pos_open, pos_total,
                              new_today, new_total, pnl_acct, total_pnl_pct,
                              b1_flag, config_hash, mode)
+                # Track evaluation count for expiry detection
+                cur.execute("""
+                    UPDATE paper_trade_proposals
+                    SET atm_evaluation_count = atm_evaluation_count + 1,
+                        atm_last_evaluation_at = NOW(),
+                        atm_last_failure_reason = %s
+                    WHERE id = %s
+                """, (f"approve_proposal_failed: {fail_reason[:150]}", pid))
+                conn.commit()
                 rejected_count += 1
-                log.warning(f"  {sym}: REJECTED by hard gates ({result.get('message', '')[:80]})")
+                log.warning(f"  {sym}: REJECTED by hard gates ({fail_reason[:80]})")
                 continue
 
             # Submit to broker
@@ -447,8 +502,17 @@ def run_cycle():
                          b1_flag, config_hash, mode)
             rejected_count += 1
 
+    # Batched Telegram for expired proposals
+    if expired_this_cycle:
+        _telegram_both(
+            f"ATM expired {len(expired_this_cycle)} proposal(s) this cycle:\n"
+            + "\n".join(f"  - {e}" for e in expired_this_cycle)
+        )
+
+    expired_count = len(expired_this_cycle)
+    deferred_count = len(proposals) - approved_count - rejected_count - expired_count
     log.info(f"ATM cycle complete: {approved_count} approved, {rejected_count} rejected, "
-             f"{len(proposals) - approved_count - rejected_count} deferred")
+             f"{expired_count} expired, {deferred_count} deferred")
 
 
 if __name__ == "__main__":
