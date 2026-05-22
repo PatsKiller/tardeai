@@ -1,0 +1,56 @@
+# Automated Trade Mode v1 configuration
+# Per-account caps. Global state machine. No broker hardcoded.
+#
+# ATM does NOT control where trades execute. That is governed by:
+#   - ALPACA_MODE / LLM_DISABLE_LIVE_EXECUTION (existing env flags)
+#   - accounts table routing_adapter / mode fields
+#   - the proposal's target_account assignment
+version: 1
+
+defaults:
+  position_limits:
+    max_concurrent: 10
+    max_new_per_day: 6
+    max_pct_per_trade: 1.0
+    max_pct_per_strategy: 25
+    max_pct_per_sector: 35
+  strategy_filter:
+    min_classifier_health: 0.50
+    whitelist: []
+    blacklist: []
+  kill_switches:
+    daily_loss_pct_hard_pause: 10.0
+  operating_hours:
+    start_et: "09:35"
+    stop_new_entries_et: "15:30"
+
+# Same-day strategies that the 15-min ATM cron is too slow for.
+same_day_skip_strategies:
+  - momentum_scalp
+  - gap_and_go
+
+# Per-account overrides. account_label must exist in accounts table.
+accounts:
+  alpaca_paper:
+    enabled: true
+    position_limits:
+      max_concurrent: 15
+      max_new_per_day: 10
+      max_pct_per_trade: 1.0
+
+global:
+  daily_loss_pct_hard_pause_aggregate: 10.0
+  manual_kill_switch_only: true
+  config_backup_dir: "config/.atm_config_backups"
+
+# B-1 observation window protection.
+b1_tracking:
+  enabled: true
+  observation_end: "2026-05-25"
+  exclude_bucket2_during_observation: true
+  bucket2_strategies:
+    - swing_breakout
+    - swing_trade
+    - earnings_post_momentum
+    - recovery_watch
+    - fib_retracement_bounce
