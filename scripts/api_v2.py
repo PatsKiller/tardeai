@@ -17472,6 +17472,42 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/atm/enrichment-status":
+        try:
+            proposals = _db_query("""
+                SELECT id, symbol, strategy_id, enrichment_status, enrichment_failures,
+                       enrichment_last_attempt_at, enrichment_last_error
+                FROM paper_trade_proposals
+                WHERE status = 'PENDING'
+                ORDER BY created_at ASC
+            """) or []
+            last_run = _db_query("SELECT last_enrichment_at FROM atm_state WHERE id=1", fetch="one") or {}
+            # Per-proposal step detail from enrichment_log (latest per step)
+            for p in proposals:
+                steps = _db_query("""
+                    SELECT step, success, duration_seconds, error_message, completed_at
+                    FROM enrichment_log
+                    WHERE proposal_id = %s
+                    ORDER BY completed_at DESC
+                """, (p["id"],)) or []
+                # Deduplicate to latest per step
+                seen = {}
+                for s in steps:
+                    if s["step"] not in seen:
+                        seen[s["step"]] = s
+                p["steps"] = seen
+            summary = {
+                "total": len(proposals),
+                "complete": sum(1 for p in proposals if p.get("enrichment_status") == "COMPLETE"),
+                "in_progress": sum(1 for p in proposals if p.get("enrichment_status") == "IN_PROGRESS"),
+                "pending": sum(1 for p in proposals if p.get("enrichment_status") in (None, "PENDING")),
+                "failed": sum(1 for p in proposals if p.get("enrichment_status") == "FAILED"),
+            }
+            return 200, {"ok": True, "data": proposals, "summary": summary,
+                         "last_enrichment_at": str(last_run.get("last_enrichment_at") or "")}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 32: Unified Self-Improvement Command Center ───────────────
     if base_path in ("/api/v2/self-improvement/status", "/api/v2/self-improvement/summary"):
         try:

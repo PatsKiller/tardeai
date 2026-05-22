@@ -32,6 +32,7 @@ export default function AutomatedTradeMode() {
   const { data: health } = useApi<any[]>('/api/v2/atm/strategy-health', 60000)
   const { data: queue } = useApi<any[]>('/api/v2/atm/queue-preview', 15000)
   const { data: configData } = useApi<any>('/api/v2/atm/config', 60000)
+  const { data: enrichResp } = useApi<any>('/api/v2/atm/enrichment-status', 15000)
   const [showModal, setShowModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState<string | null>(null)
 
@@ -200,6 +201,73 @@ export default function AutomatedTradeMode() {
                       </td>
                       <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right' }}>${Number(q.proposed_entry || 0).toFixed(2)}</td>
                       <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)', textAlign: 'right' }}>${Number(q.proposed_stop || 0).toFixed(2)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Enrichment status */}
+      {enrichResp && (
+        <div style={{ ...card, marginBottom: 20 }}>
+          <div style={secTitle}>
+            Enrichment status
+            <span style={{ fontSize: 10, fontWeight: 400, color: 'rgba(255,255,255,0.3)', marginLeft: 10 }}>
+              Last run: {enrichResp.last_enrichment_at ? (() => {
+                const d = new Date(enrichResp.last_enrichment_at)
+                if (isNaN(d.getTime())) return '—'
+                const m = Math.floor((Date.now() - d.getTime()) / 60000)
+                return m < 1 ? 'just now' : `${m}m ago`
+              })() : 'never'}
+            </span>
+          </div>
+          {enrichResp.summary && (
+            <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 12 }}>
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}>Total: <strong>{enrichResp.summary.total}</strong></span>
+              <span style={{ color: '#4ade80' }}>Complete: <strong>{enrichResp.summary.complete}</strong></span>
+              {enrichResp.summary.in_progress > 0 && <span style={{ color: '#f59e0b' }}>In progress: <strong>{enrichResp.summary.in_progress}</strong></span>}
+              {enrichResp.summary.pending > 0 && <span style={{ color: 'rgba(255,255,255,0.4)' }}>Pending: <strong>{enrichResp.summary.pending}</strong></span>}
+              {enrichResp.summary.failed > 0 && <span style={{ color: '#f87171' }}>Failed: <strong>{enrichResp.summary.failed}</strong></span>}
+            </div>
+          )}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                {['ID', 'Symbol', 'Status', 'Last Attempt', 'Retries', 'Steps'].map(h => (
+                  <th key={h} style={{ textAlign: h === 'Symbol' || h === 'Status' || h === 'Steps' ? 'left' : 'right', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {((enrichResp as any)?.data || []).map((e: any) => {
+                  const sc = e.enrichment_status === 'COMPLETE' ? '#4ade80' : e.enrichment_status === 'FAILED' ? '#f87171' : e.enrichment_status === 'IN_PROGRESS' ? '#f59e0b' : 'rgba(255,255,255,0.4)'
+                  const steps = e.steps || {}
+                  const stepList = ['refresh_price', 'technical', 'ai_review', 'risk_gate', 'readiness']
+                  return (
+                    <tr key={e.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>#{e.id}</td>
+                      <td style={{ padding: '6px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{e.symbol}</td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: `${sc}20`, color: sc }}>{e.enrichment_status || 'pending'}</span>
+                      </td>
+                      <td style={{ padding: '6px 8px', fontSize: 10, color: 'rgba(255,255,255,0.4)', textAlign: 'right' }}>
+                        {e.enrichment_last_attempt_at ? (() => {
+                          const d = new Date(e.enrichment_last_attempt_at)
+                          if (isNaN(d.getTime())) return '—'
+                          const m = Math.floor((Date.now() - d.getTime()) / 60000)
+                          return m < 1 ? 'just now' : `${m}m ago`
+                        })() : '—'}
+                      </td>
+                      <td style={{ padding: '6px 8px', fontSize: 11, color: e.enrichment_failures > 0 ? '#f87171' : 'rgba(255,255,255,0.4)', textAlign: 'right' }}>{e.enrichment_failures || 0}</td>
+                      <td style={{ padding: '6px 8px', fontSize: 9 }}>
+                        {stepList.map(s => {
+                          const st = steps[s]
+                          const c = !st ? 'rgba(255,255,255,0.15)' : st.success ? '#4ade80' : '#f87171'
+                          return <span key={s} title={`${s}: ${st ? (st.success ? `ok (${st.duration_seconds}s)` : st.error_message || 'failed') : 'not run'}`} style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: c, marginRight: 3 }} />
+                        })}
+                      </td>
                     </tr>
                   )
                 })}
