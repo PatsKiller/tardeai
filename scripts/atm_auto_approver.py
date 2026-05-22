@@ -153,9 +153,14 @@ def run_cycle():
     state = _get_atm_state(conn)
     mode = state.get("mode", "disabled")
 
-    # Always update heartbeat
+    # Always update heartbeat + config_hash
     cur = conn.cursor()
-    cur.execute("UPDATE atm_state SET last_evaluated_at = NOW() WHERE id = 1")
+    try:
+        from atm_config_manager import load_config as _lc
+        _, _ch = _lc()
+    except Exception:
+        _ch = None
+    cur.execute("UPDATE atm_state SET last_evaluated_at = NOW(), config_hash = COALESCE(%s, config_hash) WHERE id = 1", (_ch,))
     conn.commit()
 
     if mode == "disabled":
