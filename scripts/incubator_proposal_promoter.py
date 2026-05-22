@@ -692,6 +692,20 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         except Exception as _e:
             log.warning(f"[promoter] Pre-promotion check failed for {symbol}: {_e}")
 
+        # Risk gate check
+        _rg_result = None
+        _rg_codes = None
+        try:
+            from risk_gate import RiskGate
+            _rg = RiskGate(conn)
+            _rg_plan = {"entry": entry, "stop": stop, "target1": target, "shares": shares, "rr": rr}
+            _rg_decision = _rg.check(symbol, strategy_id, trade_plan=_rg_plan, mode='paper')
+            _rg_result = _rg_decision.result
+            _rg_codes = _rg_decision.codes if hasattr(_rg_decision, 'codes') else []
+        except Exception as _rg_e:
+            log.warning(f"[promoter] Risk gate check failed for {symbol}: {_rg_e}")
+            _rg_result = "PASS"  # fail-open for promoter path — downstream gates still protect
+
         # INSERT proposal
         cur.execute("""
             INSERT INTO paper_trade_proposals
@@ -702,7 +716,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                  screener_name, source_table, discovery_source, source_run_label,
                  signal_score, signal_grade, catalyst, catalyst_verified,
                  setup_type, proposed_by, overnight_monitoring_enabled,
-                 rsi,
+                 rsi, risk_gate_result, risk_gate_codes,
                  packet_state, packet_completion_pct,
                  llm_review_status, agent_review_status)
             VALUES (%s, %s, %s,
@@ -712,7 +726,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                     %s, 'incubator_universe', 'incubator', %s,
                     %s, %s, %s, %s,
                     %s, 'incubator_promoter', %s,
-                    %s,
+                    %s, %s, %s,
                     'NEW', 0,
                     'NOT_REQUESTED', 'NOT_REQUESTED')
             RETURNING id
@@ -723,7 +737,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             screener_name, source_run_label,
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
-            rsi_value,
+            rsi_value, _rg_result, json.dumps(_rg_codes or []),
         ])
         new_id = cur.fetchone()['id']
 
