@@ -141,6 +141,13 @@ def poll_once(timeout=25):
                 handled = True
             except Exception as e:
                 log.error(f"paper status error: {e}")
+        # ATM commands
+        elif lower.startswith("/atm"):
+            try:
+                _handle_atm_command(msg, text, chat_id)
+                handled = True
+            except Exception as e:
+                log.error(f"atm command error: {e}")
 
         if handled:
             processed += 1
@@ -343,6 +350,230 @@ def _handle_stop_command(msg, text, chat_id):
             urllib.request.urlopen(req, timeout=10)
         except Exception as e:
             log.error(f"stop reply send failed: {e}")
+
+
+_atm_pending_confirm = {}  # chat_id -> (timestamp, action)
+
+
+def _handle_atm_command(msg, text, chat_id):
+    """Handle /atm commands."""
+    import urllib.request, time as _time
+    token = _token()
+    message_id = msg.get("message_id")
+    parts = text.strip().split()
+    sub = parts[1].lower() if len(parts) > 1 else "status"
+
+    response = ""
+
+    if sub == "status":
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT mode, paused_until, last_state_change_at, last_state_change_by, last_evaluated_at, config_hash FROM atm_state WHERE id=1")
+            r = cur.fetchone()
+            mode, pu, lsc, lscb, le, ch = r if r else ("?",)*6
+            cur.execute("SELECT account_label, enabled FROM accounts ORDER BY id")
+            accts = cur.fetchall()
+            acct_lines = "\n".join(f"  {a[0]}: {'ON' if a[1] else 'off'}" for a in accts)
+            le_age = ""
+            if le:
+                from datetime import datetime, timezone
+                age_min = (datetime.now(timezone.utc) - le.replace(tzinfo=timezone.utc if le.tzinfo is None else le.tzinfo)).total_seconds() / 60
+                le_age = f" ({age_min:.0f}m ago)"
+            response = (f"ATM Status: {mode.upper()}\n"
+                        f"Paused until: {pu or 'n/a'}\n"
+                        f"Last change: {lscb} at {str(lsc)[:19]}\n"
+                        f"Last evaluated: {str(le)[:19]}{le_age}\n"
+                        f"Config hash: {ch or 'none'}\n"
+                        f"Accounts:\n{acct_lines}")
+        except Exception as e:
+            response = f"ATM status error: {e}"
+
+    elif sub == "on":
+        _atm_pending_confirm[chat_id] = (_time.time(), "atm_on")
+        try:
+            from atm_config_manager import get_enabled_accounts
+            ea = get_enabled_accounts()
+            response = (f"ATM will be set to ACTIVE across {len(ea)} account(s): {', '.join(ea)}\n\n"
+                        f"Reply YES within 30 seconds to confirm.")
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "off":
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT mode FROM atm_state WHERE id=1")
+            old = cur.fetchone()[0]
+            cur.execute("UPDATE atm_state SET mode='disabled', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
+            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'disabled', %s)", (old, f"telegram:{chat_id}"))
+            conn.commit()
+            response = "ATM DISABLED"
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "dryrun":
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT mode FROM atm_state WHERE id=1")
+            old = cur.fetchone()[0]
+            cur.execute("UPDATE atm_state SET mode='dry_run', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
+            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'dry_run', %s)", (old, f"telegram:{chat_id}"))
+            conn.commit()
+            response = "ATM set to DRY_RUN mode (evaluates but does not approve)"
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "pause":
+        duration = parts[2] if len(parts) > 2 else "4h"
+        try:
+            from datetime import datetime, timezone, timedelta
+            if duration == "until-tomorrow":
+                import pytz
+                et = pytz.timezone("US/Eastern")
+                tomorrow = datetime.now(et).replace(hour=9, minute=30, second=0) + timedelta(days=1)
+                pu = tomorrow.astimezone(timezone.utc)
+            elif duration.endswith("h"):
+                pu = datetime.now(timezone.utc) + timedelta(hours=int(duration[:-1]))
+            else:
+                pu = datetime.now(timezone.utc) + timedelta(hours=4)
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT mode FROM atm_state WHERE id=1")
+            old = cur.fetchone()[0]
+            cur.execute("UPDATE atm_state SET mode='paused', paused_until=%s, pause_reason=%s, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1",
+                        (pu, f"telegram_pause_{duration}", f"telegram:{chat_id}"))
+            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by, reason) VALUES (%s, 'paused', %s, %s)",
+                        (old, f"telegram:{chat_id}", f"pause_{duration}"))
+            conn.commit()
+            response = f"ATM PAUSED until {str(pu)[:19]} UTC"
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "resume":
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT mode FROM atm_state WHERE id=1")
+            old = cur.fetchone()[0]
+            cur.execute("UPDATE atm_state SET mode='active', paused_until=NULL, pause_reason=NULL, last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
+            cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'active', %s)", (old, f"telegram:{chat_id}"))
+            conn.commit()
+            response = "ATM RESUMED (ACTIVE)"
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "last":
+        n = min(int(parts[2]), 20) if len(parts) > 2 and parts[2].isdigit() else 10
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT decided_at, symbol, strategy_id, target_account, decision FROM atm_decision_log ORDER BY decided_at DESC LIMIT %s", (n,))
+            rows = cur.fetchall()
+            if not rows:
+                response = "No ATM decisions yet."
+            else:
+                lines = [f"Last {len(rows)} ATM decisions:"]
+                for r in rows:
+                    lines.append(f"  {str(r[0])[:16]} {r[1]} {(r[2] or '?')[:15]} -> {r[3]} = {r[4]}")
+                response = "\n".join(lines)
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "accounts":
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("SELECT account_label, broker, mode, enabled, auto_execution_capable FROM accounts ORDER BY id")
+            rows = cur.fetchall()
+            lines = ["ATM Accounts:"]
+            for r in rows:
+                status = "ENABLED" if r[3] else "disabled"
+                auto = "auto" if r[4] else "manual"
+                lines.append(f"  {r[0]}: {r[1]}/{r[2]} [{status}] ({auto})")
+            response = "\n".join(lines)
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "queue":
+        try:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, symbol, strategy_id, target_account, atm_action
+                FROM paper_trade_proposals WHERE status='PENDING'
+                ORDER BY created_at ASC LIMIT 10
+            """)
+            rows = cur.fetchall()
+            if not rows:
+                response = "ATM queue: 0 pending proposals"
+            else:
+                lines = [f"ATM queue: {len(rows)} pending:"]
+                for r in rows:
+                    override = f" [{r[4]}]" if r[4] else ""
+                    lines.append(f"  #{r[0]} {r[1]} ({(r[2] or '?')[:15]}) -> {r[3]}{override}")
+                response = "\n".join(lines)
+        except Exception as e:
+            response = f"Error: {e}"
+
+    elif sub == "config":
+        try:
+            from atm_config_manager import load_config
+            import yaml
+            cfg, h = load_config()
+            txt = yaml.dump(cfg, default_flow_style=False)
+            if len(txt) > 3800:
+                txt = txt[:3800] + "\n... (truncated)"
+            response = f"ATM Config (hash: {h}):\n{txt}"
+        except Exception as e:
+            response = f"Error: {e}"
+
+    else:
+        response = ("ATM commands:\n"
+                     "/atm status\n/atm on\n/atm off\n/atm dryrun\n"
+                     "/atm pause [4h|24h|until-tomorrow]\n/atm resume\n"
+                     "/atm config\n/atm last [N]\n/atm accounts\n/atm queue")
+
+    # Check for YES confirmation
+    if text.strip().upper() == "YES" and chat_id in _atm_pending_confirm:
+        ts, action = _atm_pending_confirm[chat_id]
+        if _time.time() - ts <= 30 and action == "atm_on":
+            del _atm_pending_confirm[chat_id]
+            try:
+                from db_adapter import _get_conn
+                conn = _get_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT mode FROM atm_state WHERE id=1")
+                old = cur.fetchone()[0]
+                cur.execute("UPDATE atm_state SET mode='active', last_state_change_at=NOW(), last_state_change_by=%s WHERE id=1", (f"telegram:{chat_id}",))
+                cur.execute("INSERT INTO atm_state_events (old_mode, new_mode, changed_by) VALUES (%s, 'active', %s)", (old, f"telegram:{chat_id}"))
+                conn.commit()
+                response = "ATM ACTIVATED"
+            except Exception as e:
+                response = f"Activation error: {e}"
+        else:
+            del _atm_pending_confirm[chat_id]
+            response = "Confirmation expired. Run /atm on again."
+
+    if response:
+        payload = json.dumps({"chat_id": chat_id, "text": response,
+                              "reply_to_message_id": message_id}).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload, headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as e:
+            log.error(f"ATM reply send failed: {e}")
 
 
 def main():
