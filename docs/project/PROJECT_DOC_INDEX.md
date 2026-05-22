@@ -244,3 +244,24 @@ Retained for historical reference but no longer authoritative.
 | 2026-05-12 | Added FOCUSED_IMPROVEMENT_PLAN.md (corrected architect assessment, 7 gaps, maturity path). |
 | 2026-05-12 | Added A1A protocol, LLM fleet v4.1 docs, Phase 1H doc, test reports, discovery artifacts. Flagged v3.4.1 as superseded. |
 | 2026-05-11 | Initial index (Session 29, Phases 1-8) |
+
+---
+
+## 2026-05-22 ATM / Proposal / Execution Safety Context
+
+| Document | Path | Status |
+|----------|------|--------|
+| ATM_V1_BUILD_PROMPT | `docs/prompts/ATM_V1_BUILD_PROMPT.md` | canonical |
+| ATM_RUNBOOK | `docs/operator/ATM_RUNBOOK.md` | canonical |
+| ATM_V1_BUILD_2026-05-22 | `docs/sessions/ATM_V1_BUILD_2026-05-22.md` | canonical |
+| SUPPLY_TRIAGE_2026-05-22 | `docs/audits/SUPPLY_TRIAGE_2026-05-22.md` | canonical |
+| PROPOSAL_SUPPLY_AUDIT_2026-05-22 | `docs/audits/PROPOSAL_SUPPLY_AUDIT_2026-05-22.md` | canonical |
+| ATM_V1_DAY1_DASHBOARD_2026-05-22 | `docs/sessions/ATM_V1_DAY1_DASHBOARD_2026-05-22.md` | canonical |
+| ATM_PRE_ACTIVE_FIXES_2026-05-22 | `docs/sessions/ATM_PRE_ACTIVE_FIXES_2026-05-22.md` | canonical |
+| AUTO_ENRICHMENT_2026-05-22 | `docs/sessions/AUTO_ENRICHMENT_2026-05-22.md` | canonical |
+| ATM_APPROVE_FAILED_2026-05-22 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | canonical |
+| STOP_MGMT_DISCOVERY_2026-05-23 | `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | canonical |
+| Context Sync 2026-05-22 | `docs/project/context_sync_2026_05_22/` | canonical (directory) |
+| CURRENT_PROJECT_CONTEXT | `docs/project/CURRENT_PROJECT_CONTEXT.md` | canonical |
+
+**Note:** `docs/current_state/SYSTEM_FACTS_LATEST.md` is a stale duplicate of `docs/project/SYSTEM_FACTS_LATEST.md`.

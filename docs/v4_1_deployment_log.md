@@ -2932,3 +2932,42 @@ Paper proposals only. No broker/execution/live-trading changes.
 
 ### Why
 Proposals were going stale because auto-proposals were disabled on most runs and the incubator promoter only ran every 2 hours. Now fresh opportunities are promoted hourly and stale ones are cleaned twice daily.
+
+---
+
+## 2026-05-22 — ATM Context Sync and Safety Reclassification
+
+### Summary
+- Today's ATM documentation was read and ingested from Google Drive
+- ATM active mode executed paper trades/orders (NWG, NVDA, AGNC, CMCSA)
+- audit_log schema mismatch discovered (event column missing)
+- Quote fetch 404 fallback issue discovered (wrong API URL — paper-api vs data.alpaca.markets)
+- Partial-fill race condition in alpaca_paper_adapter.py discovered and fixed
+- Stale proposal retry loop discovered and fixed (expiry logic added)
+- Stop management system fully mapped (discovery only, no changes)
+
+### Current Status
+- ATM-SAFE-1 containment required before further enhancements
+- Do not proceed with feature work before containment
+- No live trading enabled by this context-sync phase
+- This phase made documentation/context updates only (plus 3 P1 bug fixes and UI improvements)
+
+### Maturity Impact
+- Prior estimate: 7.6 / 10
+- Revised: 6.4 / 10
+- Reason: paper execution governance issue — ATM active mode executed without all safety gates hardened
+- Not live-money critical, but paper execution automation crossed expected boundaries
+
+### Fixes Applied (code)
+1. `alpaca_paper_adapter.py`: partial-fill race condition fixed
+2. `alpaca_paper_adapter.py`: quote endpoint switched to data.alpaca.markets
+3. `atm_auto_approver.py`: stale proposal expiry logic added (4h age, 5 failures, enrichment failed)
+4. `api_v2.py` + frontend: last_updated_at timestamps on journal/open-trades
+5. `Shell.tsx`: ATM moved to Trading menu, Backtesting to Strategy, orphaned pages added
+
+### DB Changes Applied
+- 5 columns added to paper_trade_proposals (atm_evaluation_count, atm_last_evaluation_at, atm_last_failure_reason, atm_expired_at, atm_expiry_reason)
+- Index idx_proposals_atm_active created
+- NWG/NVDA paper_trades synced to open status with stops
+- Orphan pending stubs #30, #32 closed
+- ARM/BCS evaluation counts backfilled from decision log
