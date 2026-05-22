@@ -329,8 +329,8 @@ def fetch_candidates(cur, force_symbol=None, limit=10):
                 ORDER BY scanned_at DESC LIMIT 1
             ) s ON true
             WHERE iu.status = 'ACTIVE'
-              AND iu.latest_score >= 42
-              AND (iu.catalyst_verified = true OR iu.latest_score >= 48)
+              AND iu.latest_score >= 38
+              AND (iu.catalyst_verified = true OR iu.latest_score >= 45)
               AND iu.promoted_to_proposal_at IS NULL
               AND iu.days_active >= 1
               AND COALESCE(iu.llm_screen_verdict, 'HOLD') != 'DROP'
