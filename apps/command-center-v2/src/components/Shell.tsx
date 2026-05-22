@@ -46,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/execution-quality', label: 'Execution Quality' },
     { to: '/broker-reconciliation', label: 'Broker Recon' },
     { to: '/incubator', label: 'Incubator' },
+    { to: '/automated-trade-mode', label: 'ATM' },
   ]},
   { label: 'Strategy', items: [
     { to: '/watchlist', label: 'Watchlist' },
@@ -55,6 +56,9 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/risk-regime', label: 'Risk Regime' },
     { to: '/technical', label: 'Technical' },
     { to: '/research', label: 'Research' },
+    { to: '/backtesting', label: 'Backtesting' },
+    { to: '/correlation', label: 'Correlation' },
+    { to: '/forecast', label: 'Forecast' },
   ]},
   { label: 'Retirement', items: [
     { to: '/retirement', label: 'Retirement' },
@@ -87,8 +91,6 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/bot-morning-brief', label: 'Bot Morning Brief' },
     { to: '/weekly-learning', label: 'Weekly Learning' },
     { to: '/self-improvement', label: 'Self-Improvement' },
-    { to: '/backtesting', label: 'Backtesting' },
-    { to: '/automated-trade-mode', label: 'ATM' },
   ]},
 ]
 
