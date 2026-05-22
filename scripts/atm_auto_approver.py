@@ -221,7 +221,8 @@ def run_cycle():
     cur.execute("""
         SELECT p.id, p.symbol, p.strategy_id, p.target_account,
                p.atm_action, p.status, p.proposed_entry, p.proposed_stop,
-               p.proposed_target1, p.proposed_shares
+               p.proposed_target1, p.proposed_shares,
+               p.enrichment_status, p.enrichment_last_attempt_at, p.enrichment_failures
         FROM paper_trade_proposals p
         WHERE p.status = 'PENDING'
         ORDER BY p.created_at ASC
@@ -264,6 +265,26 @@ def run_cycle():
         new_total = sum(_count_new_today(conn, a) for a in enabled_accounts)
         pnl_acct = _daily_pnl_pct(conn, target)
         health = get_health(sid)
+
+        # ── 2a-pre: Enrichment freshness check ──
+        _enrich_status = p.get("enrichment_status")
+        _enrich_failures = p.get("enrichment_failures") or 0
+        if _enrich_status == "FAILED" and _enrich_failures >= 3:
+            reasons.append({"gate": "enrichment_failed_3x"})
+            _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                         "deferred", reasons, health, pos_open, pos_total,
+                         new_today, new_total, pnl_acct, total_pnl_pct,
+                         b1_flag, config_hash, mode)
+            log.info(f"  {sym}: deferred (enrichment failed 3x)")
+            continue
+        if _enrich_status not in ("COMPLETE",):
+            reasons.append({"gate": "not_yet_enriched", "detail": f"status={_enrich_status}"})
+            _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                         "deferred", reasons, health, pos_open, pos_total,
+                         new_today, new_total, pnl_acct, total_pnl_pct,
+                         b1_flag, config_hash, mode)
+            log.info(f"  {sym}: deferred (not yet enriched, status={_enrich_status})")
+            continue
 
         # ── 2a: Per-proposal override ──
         atm_action = p.get("atm_action")
