@@ -38,6 +38,15 @@ def _policy():
 # ── Classification patterns ──────────────────────────────────────────────────
 
 _P2_PATTERNS = [
+    # ALERT-FATIGUE-1: Suppress proposal noise from Telegram
+    (r"ATP REVIEW ALERT", "atp_review_noise"),
+    (r"STOP CROSSED.*PENDING|STOP_CROSSED_PENDING", "stop_crossed_pending"),
+    (r"LARGE MOVE.*BEFORE REVIEW|LARGE_MOVE_BEFORE_REVIEW", "large_move_pending"),
+    (r"Approval:\s*BLOCKED", "approval_blocked"),
+    (r"Status:\s*PENDING.*Paper mode", "pending_paper_noise"),
+    (r"No order submitted", "no_order_noise"),
+    (r"PROPOSAL.*(?:REJECTED|DENIED|DEFERRED|EXPIRED|BLOCKED)", "proposal_rejected"),
+    (r"dry.run.*(?:approved|rejected|deferred)", "dry_run_decision"),
     # WAIT/AVOID/RVOL-only
     (r"\bWAIT\b", "wait_signal"),
     (r"\bAVOID\b", "avoid_signal"),

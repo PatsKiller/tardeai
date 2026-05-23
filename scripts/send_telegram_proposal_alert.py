@@ -128,7 +128,17 @@ def main():
             "send_decision": check, "message_preview": message[:300],
         }
 
-        if check["send"] and not args.dry_run:
+        # ALERT-FATIGUE-1: Check central router before sending
+        _router_ok = True
+        try:
+            from telegram_alert_router import should_send_telegram
+            if not should_send_telegram(message):
+                _router_ok = False
+                result["suppressed_by_router"] = True
+        except ImportError:
+            pass
+
+        if check["send"] and not args.dry_run and _router_ok:
             try:
                 # ALERT-3: Route to dedicated proposal channel
                 from telegram_alert_routing_policy import telegram_destination_for_alert, redact_telegram_destination
