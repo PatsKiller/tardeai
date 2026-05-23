@@ -166,7 +166,7 @@ def main():
                 action_result["applied"] = True
 
             elif action == "OPEN_DETAILS":
-                action_result["message"] = f"Details: http://192.168.50.16:7777/v2/paper-proposals"
+                action_result["message"] = f"Details: https://ms01-openclaw.tail163d14.ts.net/v2/paper-proposals"
                 action_result["success"] = True
 
             _log_callback(cb_key, proposal.get("id"), symbol, action, True, True,

@@ -664,7 +664,7 @@ def send_journal_reminder():
                 f"*{unannotated} trades* still need annotation ({total} total).\n"
                 f"Coverage: {pct}% complete\n\n"
                 f"Unannotated trades have no setup type, entry reason, or lessons.\n"
-                f"👉 http://192.168.50.16:7777/v2/journal"
+                f"👉 https://ms01-openclaw.tail163d14.ts.net/v2/journal"
             )
             import requests
             token = os.getenv('TELEGRAM_BOT_TOKEN','')

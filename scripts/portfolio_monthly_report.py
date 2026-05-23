@@ -887,7 +887,7 @@ def _build_telegram_payload(month_name, date_str, holdings, periods,
         f"<b>\U0001f3af GOLDEN WINDOW</b>\n{gw_note}\n\n"
         f"<b>\U0001f4cb TOP MOVERS</b>\n{tg_mover_lines}\n"
         f"<i>Signals are mechanical rules, not investment advice.</i>\n\n"
-        f"<a href='http://192.168.50.16:7777/reports/monthly/monthly_{date_str}.html'>\U0001f4c4 Full Report</a>"
+        f"<a href='https://ms01-openclaw.tail163d14.ts.net/reports/monthly/monthly_{date_str}.html'>\U0001f4c4 Full Report</a>"
     )
 
 
