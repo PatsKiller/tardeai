@@ -252,7 +252,14 @@ def run_cycle():
         pid = p["id"]
         sym = p["symbol"]
         sid = p["strategy_id"] or "unknown"
-        target = p["target_account"] or "alpaca_paper"
+        target = p["target_account"]
+        if not target:
+            reasons.append({"gate": "account_resolution_missing", "detail": "proposal has no target_account"})
+            _log_decision(conn, pid, sym, sid, "UNRESOLVED", "unknown", "unknown",
+                         "deferred", reasons, 0, 0, 0, 0, 0, 0, 0,
+                         False, config_hash, mode)
+            log.info(f"  {sym}: deferred (no target_account on proposal)")
+            continue
         reasons = []
         decision = None
         b1_flag = False

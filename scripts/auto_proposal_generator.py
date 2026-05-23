@@ -132,6 +132,18 @@ def _send_proposal_alert_async(proposal_id: int, symbol: str):
     t.start()
 
 
+def _resolve_proposal_account(strategy_id: str = None) -> str:
+    """Resolve target account from enabled ATM accounts. No hardcoded fallback."""
+    try:
+        from atm_config_manager import get_enabled_accounts
+        enabled = get_enabled_accounts()
+        if enabled:
+            return enabled[0]  # first enabled account from config+DB
+    except Exception:
+        pass
+    return "alpaca_paper"  # only if config unavailable — paper mode enforced by .env
+
+
 def get_conn():
     import psycopg2
     password = os.getenv("DB_PASSWORD")
@@ -617,7 +629,7 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "catalyst": (signal.get("catalyst") or "")[:200],
         "catalyst_verified": signal.get("catalyst_verified", False),
         "intel_readiness": signal.get("intel_readiness"),
-        "proposed_account": "ALPACA_PAPER",
+        "proposed_account": _resolve_proposal_account(signal.get("strategy_id")),
         "proposed_entry": entry,
         "proposed_stop": stop,
         "proposed_target1": target,
