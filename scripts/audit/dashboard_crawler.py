@@ -18,7 +18,15 @@ DEFAULT_OUT = str(PROJECT_ROOT / "docs" / "playwright")
 
 DEFAULT_BASES = [
     "http://localhost:7777",
+    "http://localhost:7776",
 ]
+
+# Per-port route files — 7777 auto-refreshed from sidebar, others static
+AUDIT_DIR = Path(__file__).parent
+PORT_ROUTES = {
+    "7777": AUDIT_DIR / "routes.json",
+    "7776": AUDIT_DIR / "routes_7776.json",
+}
 
 PER_ROUTE_TIMEOUT_MS = 25000
 WAIT_AFTER_LOAD_MS = 1200
@@ -122,17 +130,14 @@ def main():
     ap.add_argument("--bases", nargs="*", default=DEFAULT_BASES,
                     help="Base URLs to crawl (default: localhost:7777)")
     ap.add_argument("--out", default=DEFAULT_OUT, help="Parent dir for audit output")
-    ap.add_argument("--routes", default=str(ROUTES_FILE),
-                    help="Routes JSON file from extract_routes.py")
     args = ap.parse_args()
 
-    # Always refresh routes from live sidebar before crawling
+    # Auto-refresh 7777 routes from live sidebar
     sys.path.insert(0, str(Path(__file__).parent))
     from extract_routes import main as extract_routes_main
-    print("Refreshing route list from live sidebar...")
+    print("Refreshing 7777 route list from live sidebar...")
     extract_routes_main()
 
-    routes = json.loads(Path(args.routes).read_text())
     ts = datetime.now().strftime("%Y%m%d_%H%M")
     out_path = Path(args.out)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -142,7 +147,14 @@ def main():
     all_summaries = []
     for base in args.bases:
         port = base.rsplit(":", 1)[-1]
-        print(f"\n=== Crawling {base} ===")
+
+        # Load per-port route file
+        routes_file = PORT_ROUTES.get(port, ROUTES_FILE)
+        if not routes_file.exists():
+            print(f"\n=== SKIP {base} — no route file {routes_file.name} ===")
+            continue
+        routes = json.loads(routes_file.read_text())
+        print(f"\n=== Crawling {base} ({len(routes)} routes from {routes_file.name}) ===")
 
         # Crawl into a temp directory
         tmp_dir = out_path / f"_tmp_{port}_{ts}"
