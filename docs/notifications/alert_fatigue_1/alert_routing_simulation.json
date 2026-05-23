@@ -1,0 +1,105 @@
+{
+  "passed": 14,
+  "failed": 0,
+  "total": 14,
+  "results": [
+    {
+      "message": "ATP REVIEW ALERT -- STOP CROSSED PENDING\nSymbol: ASPN\nApprov",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "ATP REVIEW ALERT -- LARGE MOVE BEFORE REVIEW\nSymbol: NWG\nSta",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "PROPOSAL REJECTED: BCS dividend_growth_compounder \u2014 classifi",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "PROPOSAL DEFERRED: MUD recovery_watch \u2014 B-1 bucket2",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "PROPOSAL DENIED: ARM \u2014 quote stale",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "dry_run_approved: CMCSA dividend_growth_compounder",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "TRADE OPENED: CMCSA 120 shares @ $24.97 \u2014 dividend_growth_co",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P1_DIGEST",
+      "pass": true
+    },
+    {
+      "message": "TRADE CLOSED: INFU earnings_catalyst \u2014 target hit @ $9.34 P&",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P1_DIGEST",
+      "pass": true
+    },
+    {
+      "message": "STOP HIT: GCTS momentum_scalp \u2014 stopped @ $1.37 P&L -$225",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P1_DIGEST",
+      "pass": true
+    },
+    {
+      "message": "TRAILING STOP TRIGGERED: FLYW swing_trade \u2014 trailed to $16.5",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P1_DIGEST",
+      "pass": true
+    },
+    {
+      "message": "CRITICAL NEWS AUTO-CLOSE: XYZ \u2014 trading halt detected",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P0_INTERRUPT",
+      "pass": true
+    },
+    {
+      "message": "Approval: BLOCKED\nNo order submitted\nPaper mode.",
+      "expected": "suppressed",
+      "actual": "suppressed",
+      "level": "P2_DASHBOARD_ONLY",
+      "pass": true
+    },
+    {
+      "message": "ENTRY_FILLED: NWG 189 shares @ $15.84",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P1_DIGEST",
+      "pass": true
+    },
+    {
+      "message": "EXIT_FILLED: ASPN 553 shares @ $5.96",
+      "expected": "primary",
+      "actual": "primary",
+      "level": "P1_DIGEST",
+      "pass": true
+    }
+  ]
+}

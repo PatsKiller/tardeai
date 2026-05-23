@@ -117,6 +117,16 @@ def format_proposal_alert(proposal, alert_type, current_price):
 
 def send_proposal_alert(proposal, alert_type, current_price):
     """Send alert to dedicated decisions group or fallback standard chats."""
+    # ALERT-FATIGUE-1: Check router before sending
+    try:
+        from telegram_alert_router import should_send_telegram
+        msg_preview, _ = format_proposal_alert(proposal, alert_type, current_price)
+        if not should_send_telegram(msg_preview):
+            log.info(f"[alert_router] Suppressed {alert_type} for {proposal.get('symbol', '?')} — non-actionable")
+            return
+    except ImportError:
+        pass  # router not available, fall through to original behavior
+
     import urllib.request
     token = _token()
     if not token:
