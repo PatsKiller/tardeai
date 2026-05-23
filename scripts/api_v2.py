@@ -16988,6 +16988,171 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Per-agent comprehensive dashboard ────────────────
+    if base_path == "/api/v2/agent-dashboard":
+        try:
+            agent_id = (query or {}).get("agent", [""])[0] if isinstance((query or {}).get("agent"), list) else (query or {}).get("agent", "")
+            if not agent_id:
+                return 400, {"ok": False, "error": "agent parameter required"}
+
+            # Agent identity
+            AGENT_IDENTITIES = {
+                "steph": {"display": "Steph", "emoji": "📊", "role": "Income guardian / allocation strategist", "model": "qwen3:14b"},
+                "maria": {"display": "Maria", "emoji": "🔬", "role": "Research analyst / catalyst verification", "model": "qwen3:14b"},
+                "maria_research": {"display": "Maria Research", "emoji": "🔬", "role": "Deep research / two-pass RAG analysis", "model": "qwen3:14b"},
+                "risk_agent": {"display": "Risk", "emoji": "🛡️", "role": "Risk management / stop coverage / portfolio heat", "model": "qwen3:14b"},
+                "tax_agent": {"display": "Tax", "emoji": "💰", "role": "Tax optimization / Roth conversion / harvest", "model": "qwen3:14b"},
+                "alex": {"display": "Alex", "emoji": "👔", "role": "CIO / escalation arbiter / strategic oversight", "model": "qwen3:14b"},
+                "aegis": {"display": "Aegis", "emoji": "🏛️", "role": "Portfolio surveillance / overnight analysis", "model": "qwen3:14b"},
+                "iris": {"display": "Iris", "emoji": "📚", "role": "Intelligence librarian / RAG coverage / taxonomy", "model": "qwen3:14b"},
+                "social_scalp": {"display": "Social Scalp", "emoji": "📡", "role": "Social mention scanner / GO-WAIT-AVOID", "model": "qwen3:14b"},
+                "scalp_critic": {"display": "Scalp Critic", "emoji": "🎯", "role": "Post-scan critic / catalyst validation", "model": "qwen3:14b"},
+            }
+            # Match agent_id loosely
+            identity = AGENT_IDENTITIES.get(agent_id, {"display": agent_id, "emoji": "🤖", "role": "Agent", "model": "qwen3:14b"})
+
+            # DB names this agent might use
+            db_names = [agent_id]
+            if agent_id == "steph": db_names.extend(["steph_allocation"])
+            if agent_id == "risk": db_names.extend(["risk_agent"])
+            if agent_id == "tax": db_names.extend(["tax_agent"])
+            if agent_id == "aegis": db_names.extend(["aegis_core"])
+            agent_filter = " OR ".join(f"agent ILIKE '%{n}%'" for n in db_names)
+
+            # Stats
+            stats_row = _db_query(f"""
+                SELECT COUNT(*) as total, AVG(confidence) as avg_conf,
+                       MAX(created_at) as last_run,
+                       AVG(CASE WHEN created_at > NOW()-INTERVAL '30 days' THEN confidence END) as avg_conf_30d
+                FROM watchlist_agent_results WHERE {agent_filter}
+            """, fetch="one") or {}
+
+            # Confidence histogram (30d)
+            histogram = _db_query(f"""
+                SELECT width_bucket(confidence, 0, 1, 10) as bucket, COUNT(*) as cnt
+                FROM watchlist_agent_results
+                WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '30 days' AND confidence IS NOT NULL
+                GROUP BY 1 ORDER BY 1
+            """) or []
+
+            # Confidence trend (14d rolling, last 90d)
+            trend = _db_query(f"""
+                SELECT created_at::date as date, AVG(confidence) as avg, COUNT(*) as n
+                FROM watchlist_agent_results
+                WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '90 days'
+                GROUP BY 1 ORDER BY 1
+            """) or []
+
+            # Decision mix (30d)
+            mix = _db_query(f"""
+                SELECT recommendation, COUNT(*) as cnt
+                FROM watchlist_agent_results
+                WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '30 days'
+                GROUP BY 1 ORDER BY 2 DESC
+            """) or []
+
+            # Recent results (25)
+            recent = _db_query(f"""
+                SELECT id, symbol, recommendation, confidence, summary,
+                       created_at, model_used, reason_codes, request_type
+                FROM watchlist_agent_results
+                WHERE {agent_filter}
+                ORDER BY created_at DESC LIMIT 25
+            """) or []
+
+            # Top symbols
+            top_syms = _db_query(f"""
+                SELECT symbol, COUNT(*) as cnt, AVG(confidence) as avg_conf
+                FROM watchlist_agent_results
+                WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '90 days'
+                GROUP BY 1 ORDER BY 2 DESC LIMIT 15
+            """) or []
+
+            # Debates
+            debates = _db_query(f"""
+                SELECT id, symbol, debate_type, agents_involved, outcome_summary,
+                       winning_view, created_at, resolved
+                FROM agent_debate_log
+                WHERE agents_involved::text ILIKE '%{agent_id}%'
+                ORDER BY created_at DESC LIMIT 10
+            """) or []
+
+            # Intelligence rules / outcome lessons
+            lessons = _db_query(f"""
+                SELECT id, rule_type, strategy_id, symbol, rule_text, confidence_adjustment,
+                       source_trade_id, created_at, changed_by
+                FROM agent_intelligence_rules
+                WHERE changed_by ILIKE '%{agent_id}%' OR changed_by ILIKE '%{db_names[0]}%'
+                ORDER BY created_at DESC LIMIT 10
+            """) or []
+
+            # Calibration
+            cal_count = _db_query("SELECT COUNT(*) as n FROM agent_calibration_windows", fetch="one") or {}
+
+            # Performance history
+            perf = _db_query(f"""
+                SELECT * FROM agent_performance_history
+                WHERE agent_name ILIKE '%{agent_id}%' OR agent_name ILIKE '%{db_names[0]}%'
+                ORDER BY created_at DESC LIMIT 20
+            """) or []
+
+            # Agent-specific data
+            agent_specific = {}
+            if agent_id in ("steph", "steph_allocation"):
+                try:
+                    _h = _load_json(STATE_DIR / "holdings.json") or {}
+                    _divs = _load_json(STATE_DIR / "dividend_calendar.json") or {}
+                    agent_specific = {
+                        "type": "income_tracker",
+                        "income_target": 55000,
+                        "current_income": sum(float(h.get("annual_dividend", 0) or 0) for h in _h.get("holdings", [])),
+                        "top_income_positions": sorted(
+                            [{"symbol": h.get("symbol"), "income": float(h.get("annual_dividend", 0) or 0),
+                              "account": h.get("account", "")}
+                             for h in _h.get("holdings", []) if float(h.get("annual_dividend", 0) or 0) > 0],
+                            key=lambda x: -x["income"])[:10],
+                    }
+                except Exception:
+                    pass
+            elif agent_id in ("aegis", "aegis_core"):
+                agent_specific = {"type": "overnight_findings",
+                    "briefs": [{k: _json_clean(v) for k, v in r.items()} for r in
+                        (_db_query("SELECT id, brief_date, key_findings, created_at FROM aegis_portfolio_briefs ORDER BY created_at DESC LIMIT 5") or [])]}
+            elif agent_id == "iris":
+                agent_specific = {"type": "coverage",
+                    "runs": [{k: _json_clean(v) for k, v in r.items()} for r in
+                        (_db_query("SELECT id, run_type, symbols_processed, created_at FROM iris_run_log ORDER BY created_at DESC LIMIT 10") or [])]}
+
+            result = {
+                "agent_id": agent_id,
+                "identity": identity,
+                "stats": {
+                    "lifetime_analyses": int(stats_row.get("total", 0) or 0),
+                    "avg_confidence_all": round(float(stats_row.get("avg_conf", 0) or 0), 3),
+                    "avg_confidence_30d": round(float(stats_row.get("avg_conf_30d", 0) or 0), 3),
+                    "last_run_at": _json_clean(stats_row.get("last_run")),
+                    "status": "healthy" if stats_row.get("last_run") and str(stats_row["last_run"]) > str(datetime.now() - timedelta(hours=72)) else "stale",
+                },
+                "confidence_histogram": [{k: _json_clean(v) for k, v in r.items()} for r in histogram],
+                "confidence_trend": [{k: _json_clean(v) for k, v in r.items()} for r in trend],
+                "decision_mix": {r["recommendation"]: r["cnt"] for r in mix},
+                "recent_results": [{k: _json_clean(v) for k, v in r.items()} for r in recent],
+                "top_symbols": [{k: _json_clean(v) for k, v in r.items()} for r in top_syms],
+                "debates": [{k: _json_clean(v) for k, v in r.items()} for r in debates],
+                "outcome_lessons": [{k: _json_clean(v) for k, v in r.items()} for r in lessons],
+                "calibration": {
+                    "samples": int(cal_count.get("n", 0) or 0),
+                    "samples_needed": 20,
+                    "ready": int(cal_count.get("n", 0) or 0) >= 20,
+                },
+                "performance_history": [{k: _json_clean(v) for k, v in r.items()} for r in perf],
+                "agent_specific": agent_specific,
+            }
+            return 200, {"ok": True, "data": result}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 30: Weekly Learning Digest + Thesis Review ────────────────
     if base_path == "/api/v2/weekly-learning-digest":
         try:
