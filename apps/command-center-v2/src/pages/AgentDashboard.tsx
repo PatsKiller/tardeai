@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { timeAgo } from '../lib/format'
+import { RACIMatrix } from '../components/RACIMatrix'
+import { EscalationLadder } from '../components/EscalationLadder'
 
 const card: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 20px', marginBottom: 16 }
 const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'rgba(255,255,255,0.4)', marginBottom: 14 }
@@ -18,6 +20,24 @@ export default function AgentDashboard() {
   const stats = d.stats || {}
   const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [mixPeriod, setMixPeriod] = useState('30d')
+  const [raciData, setRaciData] = useState<any>(null)
+  const [traceData, setTraceData] = useState<any>(null)
+  const [traceLoading, setTraceLoading] = useState(false)
+
+  // Fetch RACI on agent change
+  useEffect(() => {
+    if (!agentId) return
+    fetch(`/api/v2/agent-detail/raci?agent=${agentId}`).then(r => r.json()).then(setRaciData).catch(() => {})
+  }, [agentId])
+
+  // Fetch escalation trace on row expand
+  useEffect(() => {
+    if (!expandedRow) { setTraceData(null); return }
+    setTraceLoading(true)
+    fetch(`/api/v2/agent-detail/escalation-trace?result_id=${expandedRow}`)
+      .then(r => r.json()).then(d => { setTraceData(d); setTraceLoading(false) })
+      .catch(() => setTraceLoading(false))
+  }, [expandedRow])
 
   const statusColor = stats.status === 'healthy' ? '#4ade80' : stats.status === 'stale' ? '#f59e0b' : '#f87171'
 
@@ -67,6 +87,9 @@ export default function AgentDashboard() {
           </div>
         ))}
       </div>
+
+      {/* Section 2: RACI Matrix */}
+      <RACIMatrix data={raciData} onPeerClick={(peer) => navigate(`/agent-dashboard/${peer}`)} />
 
       {/* Section 3: Confidence Histogram + Section 4: Decision Mix — side by side */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
@@ -174,6 +197,7 @@ export default function AgentDashboard() {
                           {r.summary || 'No detailed summary available.'}
                           {r.reason_codes && <div style={{ marginTop: 8, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Reasons: {typeof r.reason_codes === 'string' ? r.reason_codes : JSON.stringify(r.reason_codes)}</div>}
                           {r.model_used && <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>Model: {r.model_used}</div>}
+                          <EscalationLadder data={traceData} loading={traceLoading} />
                         </td></tr>
                       )}
                     </>
