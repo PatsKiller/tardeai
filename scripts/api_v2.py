@@ -3219,10 +3219,8 @@ def _agents_summary():
 
     # Enrich agents from their actual home tables (not just watchlist_agent_results)
     _AGENT_HOME_TABLES = [
-        ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM alert_events WHERE source ILIKE '%%alex%%'"),
-        ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM cio_decisions WHERE created_by ILIKE '%%alex%%'"),
-        ("aegis", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM aegis_portfolio_briefs"),
-        ("tax_agent", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM alert_events WHERE source ILIKE '%%tax%%'"),
+        ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM cio_decisions"),
+        ("aegis", "SELECT COUNT(*) as cnt, MAX(observed_at) as latest FROM aegis_portfolio_briefs"),
     ]
     for _agent_name, _sql in _AGENT_HOME_TABLES:
         try:
@@ -3246,19 +3244,6 @@ def _agents_summary():
                             ea["total"] = max(ea.get("total", 0), int(_row.get("cnt", 0)))
         except Exception:
             pass
-    # Enrich aegis from aegis_portfolio_briefs
-    try:
-        aegis_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM aegis_portfolio_briefs", fetch="one")
-        if aegis_row and aegis_row.get("latest"):
-            for a in agents_out:
-                if a.get("agent") == "aegis" or (a.get("agent", "").lower() == "aegis"):
-                    db_latest = a.get("last_run") or ""
-                    brief_latest = str(aegis_row.get("latest", ""))
-                    if brief_latest > str(db_latest):
-                        a["last_run"] = _json_clean(aegis_row["latest"])
-                        a["actions_taken"] = max(a.get("actions_taken", 0), int(aegis_row.get("cnt", 0)))
-    except Exception:
-        pass
 
     for ea in extra_agents:
         if ea["agent"] not in agent_names:
