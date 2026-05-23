@@ -3217,6 +3217,33 @@ def _agents_summary():
                 ea["total"] = int(iris_row.get("cnt", 0))
                 ea["latest"] = _json_clean(iris_row.get("latest"))
 
+    # Enrich alex from alert_events (runs daily but doesn't write watchlist_agent_results)
+    try:
+        alex_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM alert_events WHERE source ILIKE '%%alex%%'", fetch="one")
+        if alex_row and alex_row.get("latest"):
+            for a in agents_out:
+                if a.get("agent") == "alex":
+                    db_latest = a.get("last_run") or ""
+                    alert_latest = str(alex_row.get("latest", ""))
+                    if alert_latest > str(db_latest):
+                        a["last_run"] = _json_clean(alex_row["latest"])
+                        a["actions_taken"] = max(a.get("actions_taken", 0), int(alex_row.get("cnt", 0)))
+    except Exception:
+        pass
+    # Enrich aegis from aegis_portfolio_briefs
+    try:
+        aegis_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM aegis_portfolio_briefs", fetch="one")
+        if aegis_row and aegis_row.get("latest"):
+            for a in agents_out:
+                if a.get("agent") == "aegis" or (a.get("agent", "").lower() == "aegis"):
+                    db_latest = a.get("last_run") or ""
+                    brief_latest = str(aegis_row.get("latest", ""))
+                    if brief_latest > str(db_latest):
+                        a["last_run"] = _json_clean(aegis_row["latest"])
+                        a["actions_taken"] = max(a.get("actions_taken", 0), int(aegis_row.get("cnt", 0)))
+    except Exception:
+        pass
+
     for ea in extra_agents:
         if ea["agent"] not in agent_names:
             ea["last_run"] = ea.get("latest")
@@ -10790,7 +10817,10 @@ def _morning_command():
     total = sum(p.get("market_value", 0) for p in holdings)
     cash = sum(p.get("market_value", 0) for p in holdings if p.get("is_cash"))
     heat = rm.get("portfolio_heat_pct", 0)
-    no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
+    _STOP_EXEMPT = {"fidelity_401k", "schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable"}
+    no_stop = sum(1 for p in rm.get("positions", [])
+                  if p.get("status") == "NO STOP"
+                  and (p.get("account", "") or "").lower() not in _STOP_EXEMPT)
     _cmd_ov = _get_stop_overrides()
     triggered = sum(1 for p in rm.get("positions", []) if p.get("status") == "TRIGGERED" and p.get("symbol") not in _cmd_ov)
 
@@ -11255,7 +11285,11 @@ def _global_alerts():
 
     alerts = []
     heat = rm.get("portfolio_heat_pct", 0)
-    no_stop = sum(1 for p in rm.get("positions", []) if p.get("status") == "NO STOP")
+    # Exclude retirement/buy-and-hold accounts from stop-loss alert
+    _STOP_EXEMPT_ACCOUNTS = {"fidelity_401k", "schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable"}
+    no_stop = sum(1 for p in rm.get("positions", [])
+                  if p.get("status") == "NO STOP"
+                  and (p.get("account", "") or "").lower() not in _STOP_EXEMPT_ACCOUNTS)
     triggered = [p.get("symbol", "?") for p in rm.get("positions", []) if p.get("status") == "TRIGGERED"]
 
     # Filter out operator-overridden symbols (HOLD_OVERRIDE in last 24h or snoozed)
