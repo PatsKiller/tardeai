@@ -17124,14 +17124,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 try:
                     _h = _load_json(STATE_DIR / "holdings.json") or {}
                     _divs = _load_json(STATE_DIR / "dividend_calendar.json") or {}
+                    _payers = _divs.get("payers", []) if isinstance(_divs, dict) else []
                     agent_specific = {
                         "type": "income_tracker",
                         "income_target": 55000,
-                        "current_income": sum(float(h.get("annual_dividend", 0) or 0) for h in _h.get("holdings", [])),
+                        "current_income": float(_divs.get("total_annual", 0)) if isinstance(_divs, dict) else 0,
+                        "qualified_annual": float(_divs.get("qualified_annual", 0)) if isinstance(_divs, dict) else 0,
+                        "monthly_average": float(_divs.get("monthly_average", 0)) if isinstance(_divs, dict) else 0,
                         "top_income_positions": sorted(
-                            [{"symbol": h.get("symbol"), "income": float(h.get("annual_dividend", 0) or 0),
-                              "account": h.get("account", "")}
-                             for h in _h.get("holdings", []) if float(h.get("annual_dividend", 0) or 0) > 0],
+                            [{"symbol": p.get("symbol"), "income": float(p.get("annual_income", 0) or 0),
+                              "yield_pct": p.get("yield_pct"), "account": p.get("account", "")}
+                             for p in _payers if float(p.get("annual_income", 0) or 0) > 0],
                             key=lambda x: -x["income"])[:10],
                     }
                 except Exception:
