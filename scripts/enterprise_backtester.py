@@ -389,6 +389,8 @@ def main():
     p.add_argument("--replay-trades", action="store_true", help="Replay actual closed trades")
     p.add_argument("--replay-proposals", action="store_true", help="Replay untaken proposals")
     p.add_argument("--strategy", type=str, help="Filter to one strategy")
+    p.add_argument("--account", type=str, help="Filter to one account label (e.g. schwab_rollover_ira)")
+    p.add_argument("--broker", type=str, help="Filter to one broker (e.g. schwab, alpaca)")
     p.add_argument("--exclude-scalps", action="store_true", default=True,
                    help="Skip scalp strategies unless traded (default: on)")
     p.add_argument("--include-scalps", action="store_true", help="Include scalp strategies")
@@ -421,10 +423,20 @@ def main():
             "shares": float(t.get("shares") or 1), "pnl": float(t.get("pnl") or 0),
             "exit_reason": t.get("exit_reason", "?"),
             "entry_time": t.get("entry_date"), "closed_at": t.get("close_date"),
-            "source": "real"} for t in real_trades]
+            "account": t.get("account", ""), "source": "real"} for t in real_trades]
 
         if args.strategy:
             trades = [t for t in trades if t.get("strategy_id") == args.strategy]
+        if args.account:
+            trades = [t for t in trades if (t.get("account") or "").lower() == args.account.lower()]
+            log.info(f"Account filter '{args.account}': {len(trades)} trades")
+        if args.broker:
+            broker_map = {"schwab": ["schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable"],
+                          "alpaca": ["alpaca_paper", "ALPACA_PAPER", "TOS_PAPER"],
+                          "fidelity": ["fidelity_401k"]}
+            allowed = {a.lower() for a in broker_map.get(args.broker.lower(), [args.broker.lower()])}
+            trades = [t for t in trades if (t.get("account") or "").lower() in allowed]
+            log.info(f"Broker filter '{args.broker}': {len(trades)} trades")
         if args.exclude_scalps:
             # Keep scalps only if actually traded
             trades = [t for t in trades if t.get("strategy_id") not in SCALP_STRATEGIES
