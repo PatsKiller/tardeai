@@ -2557,7 +2557,8 @@ def risk():
             "account": p.get("account", ""),
             "stop_price": p.get("stop_price"), "current_price": p.get("current_price") or p.get("price", 0),
             "distance_pct": p.get("distance_pct"), "max_loss": p.get("max_loss") or p.get("max_loss_dollar", 0),
-            "status": p.get("status", ""), "triggered": p.get("triggered", False),
+            "status": p.get("status", ""),
+            "triggered": bool(p.get("triggered")) or (isinstance(p.get("distance_pct"), (int, float)) and p["distance_pct"] < 0),
             "has_stop": bool(p.get("stop_price")),
             "rsi": p.get("rsi"), "day_change_pct": p.get("day_change_pct"),
             "distance_to_stop_pct": p.get("distance_to_stop_pct") or p.get("distance_pct"),
@@ -10971,11 +10972,37 @@ def _morning_command():
             "symbols_scanned": screener_status.get("symbols_scanned"),
         },
         "pipeline": {"ok": pipeline_ok, "note": pipeline_note},
-        "freshness": {
-            "last_refresh": freshness.get("completed_at"),
-            "status": freshness.get("status", "unknown"),
-        },
+        "freshness": _compute_freshness(freshness),
     }
+
+
+def _compute_freshness(freshness):
+    """Use most recent of _freshness.json or pipeline_runs for last_refresh.
+    On weekends with recent pipeline activity, suppress stale warnings."""
+    from datetime import datetime, timezone
+    file_ts = freshness.get("completed_at")
+    # Check latest pipeline run
+    pr = _db_query("SELECT MAX(run_completed_at) as latest FROM pipeline_runs WHERE status='success'", fetch="one")
+    db_ts = pr.get("latest") if pr else None
+    # Pick most recent
+    best = file_ts
+    if db_ts:
+        db_str = str(db_ts)
+        if not best or db_str > str(best):
+            best = db_str
+    # Weekend awareness: if it's Sat/Sun and best is within 48h, mark fresh
+    now = datetime.now(timezone.utc)
+    status = freshness.get("status", "unknown")
+    if best:
+        try:
+            from dateutil.parser import parse as dtparse
+            best_dt = dtparse(str(best))
+            age_hours = (now - best_dt.astimezone(timezone.utc)).total_seconds() / 3600
+            if now.weekday() >= 5 and age_hours < 48:
+                status = "fresh"
+        except Exception:
+            pass
+    return {"last_refresh": _json_clean(best), "status": status}
 
 
 # ── Intelligence enrichment for portfolio holdings ────────────────────────
@@ -17049,6 +17076,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        AVG(CASE WHEN created_at > NOW()-INTERVAL '30 days' THEN confidence END) as avg_conf_30d
                 FROM watchlist_agent_results WHERE {agent_filter}
             """, fetch="one") or {}
+
+            # Enrich stats from home tables (agents that don't write to watchlist_agent_results)
+            _HOME_TABLES = {
+                "alex": "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM cio_decisions",
+                "aegis": "SELECT COUNT(*) as cnt, MAX(observed_at) as latest FROM aegis_portfolio_briefs",
+            }
+            if agent_id in _HOME_TABLES:
+                _ht = _db_query(_HOME_TABLES[agent_id], fetch="one")
+                if _ht and _ht.get("latest"):
+                    cur_last = str(stats_row.get("last_run") or "")
+                    ht_last = str(_ht["latest"])
+                    if ht_last > cur_last:
+                        stats_row["last_run"] = _ht["latest"]
+                    stats_row["total"] = max(int(stats_row.get("total") or 0), int(_ht.get("cnt") or 0))
 
             # Confidence histogram (30d)
             histogram = _db_query(f"""
