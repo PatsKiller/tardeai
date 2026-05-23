@@ -351,7 +351,9 @@ export default function AgentDashboard() {
           background: d.sla.color === 'green' ? 'rgba(74,222,128,0.06)' : d.sla.color === 'amber' ? 'rgba(245,158,11,0.08)' : 'rgba(248,113,113,0.08)',
           border: `1px solid ${d.sla.color === 'green' ? 'rgba(74,222,128,0.2)' : d.sla.color === 'amber' ? 'rgba(245,158,11,0.25)' : 'rgba(248,113,113,0.25)'}`,
           color: d.sla.color === 'green' ? '#4ade80' : d.sla.color === 'amber' ? '#f59e0b' : '#f87171' }}>
-          Data freshness: {d.sla.age_minutes != null ? `${Math.round(d.sla.age_minutes)}m ago` : 'unknown'} · SLA: ≤{d.sla.sla_minutes}m · {d.sla.color === 'green' ? '🟢' : d.sla.color === 'amber' ? '🟡' : '🔴'}
+          {d.sla.color === 'green' ? '🟢' : d.sla.color === 'amber' ? '🟡' : '🔴'}{' '}
+          {d.sla.reason || `${d.sla.age_minutes != null ? Math.round(d.sla.age_minutes) + 'm ago' : 'unknown'}`}
+          {d.sla.window && <span style={{ marginLeft: 8, opacity: 0.6 }}>({d.sla.window})</span>}
         </div>
       )}
 
