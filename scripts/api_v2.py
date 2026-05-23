@@ -17170,8 +17170,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 # Handoffs involving this agent
                 handoffs = _db_query(f"""
-                    SELECT id, from_agent, to_agent, symbol, handoff_type, created_at,
-                           confidence_delta, outcome
+                    SELECT id, from_agent, to_agent, intent, confidence, reason,
+                           action_type, status, created_at
                     FROM agent_handoffs
                     WHERE from_agent ILIKE '%{agent_id}%' OR to_agent ILIKE '%{agent_id}%'
                     ORDER BY created_at DESC LIMIT 20
@@ -17190,15 +17190,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 import json as _json_mod
                 llm_log = PROJECT_ROOT / "logs" / "llm_routing_audit.jsonl"
                 llm_entries = []
+                # LLM routing: caller field is empty, so we show system-wide stats
+                # (all agents share process_watchlist_agent_jobs.py)
                 if llm_log.exists():
                     with open(llm_log) as f:
-                        for line in f:
-                            try:
-                                entry = _json_mod.loads(line.strip())
-                                if agent_id.lower() in (entry.get("caller") or "").lower():
-                                    llm_entries.append(entry)
-                            except Exception:
-                                pass
+                        lines = f.readlines()
+                    for line in lines[-200:]:  # last 200 entries
+                        try:
+                            llm_entries.append(_json_mod.loads(line.strip()))
+                        except Exception:
+                            pass
                 # Summarize last 100 relevant entries
                 llm_entries = llm_entries[-100:]
                 by_provider = {}
@@ -17222,26 +17223,54 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 result["llm_total_calls"] = 0
 
             try:
-                # SLA status
+                # SLA status — calendar-aware
                 last_result = _db_query(f"SELECT MAX(created_at) as ts FROM watchlist_agent_results WHERE {agent_filter}", fetch="one") or {}
                 last_ts = last_result.get("ts")
                 if last_ts:
-                    age_min = (datetime.now() - last_ts).total_seconds() / 60 if hasattr(last_ts, 'total_seconds') else 999
                     try:
                         age_min = (datetime.now(last_ts.tzinfo) - last_ts).total_seconds() / 60
                     except Exception:
-                        age_min = 30
+                        age_min = (datetime.now() - last_ts.replace(tzinfo=None)).total_seconds() / 60
                 else:
                     age_min = 999
-                sla_min = 15  # market hours default
+
+                # Determine current window (ET)
+                import pytz
+                _et = pytz.timezone("US/Eastern")
+                _now_et = datetime.now(_et)
+                _dow = _now_et.weekday()
+                _hr = _now_et.hour
+                if _dow >= 5:  # Sat/Sun
+                    _window = "weekend"
+                    _sla_min = None  # no SLA on weekend
+                    _color = "green" if age_min < 4320 else "amber"  # 72h = 3 days
+                    _reason = f"Weekend idle — last update {age_min/60:.1f}h ago (expected idle until Mon)"
+                elif 9 <= _hr < 16:
+                    _window = "market_hours"
+                    _sla_min = 15
+                    _color = "green" if age_min <= 15 else "amber" if age_min <= 60 else "red"
+                    _reason = f"Market hours: {age_min:.0f}m vs SLA {_sla_min}m"
+                elif 16 <= _hr < 23:
+                    _window = "evening"
+                    _sla_min = 60
+                    _color = "green" if age_min <= 60 else "amber" if age_min <= 180 else "red"
+                    _reason = f"Evening: {age_min:.0f}m vs SLA {_sla_min}m"
+                else:
+                    _window = "overnight"
+                    _sla_min = None
+                    _color = "green" if age_min < 720 else "amber"
+                    _reason = f"Overnight idle — {age_min/60:.1f}h since last"
+
                 result["sla"] = {
                     "last_data_at": _json_clean(last_ts),
                     "age_minutes": round(age_min, 1),
-                    "sla_minutes": sla_min,
-                    "color": "green" if age_min <= sla_min else "amber" if age_min <= sla_min * 4 else "red",
+                    "sla_minutes": _sla_min,
+                    "window": _window,
+                    "color": _color,
+                    "reason": _reason,
                 }
             except Exception:
-                result["sla"] = {"color": "gray", "age_minutes": None}
+                result["sla"] = {"color": "gray", "age_minutes": None, "window": "unknown"}
 
             return 200, {"ok": True, "data": result}
         except Exception as e:
