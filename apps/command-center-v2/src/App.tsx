@@ -64,6 +64,7 @@ const WeeklyLearning = lazy(() => import('./pages/WeeklyLearning'))
 const Backtesting = lazy(() => import('./pages/Backtesting'))
 const SelfImprovement = lazy(() => import('./pages/SelfImprovement'))
 const AutomatedTradeMode = lazy(() => import('./pages/AutomatedTradeMode'))
+const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 
 // ── Inbox (consolidated: Alerts + Notifications + Actions) ──
 const Inbox = lazy(() => import('./pages/Inbox'))
@@ -167,6 +168,7 @@ export default function App() {
           {/* ── Agents & Pipeline (consolidated) ── */}
           <Route path="agent-pipeline" element={<SafePage><AgentPipeline /></SafePage>} />
           <Route path="agent-calibration" element={<SafePage><AgentCalibration /></SafePage>} />
+          <Route path="agent-dashboard/:agentId" element={<SafePage><AgentDashboard /></SafePage>} />
           <Route path="pipeline" element={<SafePage><PipelineHub /></SafePage>} />
           <Route path="weekly-learning" element={<SafePage><WeeklyLearning /></SafePage>} />
           <Route path="backtesting" element={<SafePage><Backtesting /></SafePage>} />

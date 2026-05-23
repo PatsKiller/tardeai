@@ -301,13 +301,17 @@ export default function AIAnalyst() {
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, color: 'var(--text1)', fontFamily: 'var(--sans)' }}>Agent Collaboration</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
                   {(agentsData?.agents || []).map(agent => (
-                    <div key={agent.agent} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                    <div key={agent.agent} onClick={() => navigate(`/agent-dashboard/${agent.agent}`)}
+                      style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)')}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', fontFamily: 'var(--sans)' }}>{agent.agent}</span>
                         <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 9999, fontWeight: 700, background: agent.status === 'active' ? 'rgba(14,203,129,0.12)' : 'rgba(255,255,255,0.06)', color: agent.status === 'active' ? 'var(--green)' : 'var(--text3)' }}>{agent.status}</span>
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--text2)', fontFamily: 'var(--sans)' }}>{agent.actions_taken} actions</div>
                       <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>Last run: {agent.last_run ? timeAgo(agent.last_run) : '—'}</div>
+                      <div style={{ fontSize: 8, color: 'rgba(99,102,241,0.5)', marginTop: 4 }}>Click for details</div>
                     </div>
                   ))}
                 </div>
