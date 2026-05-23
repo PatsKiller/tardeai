@@ -17148,6 +17148,101 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "performance_history": [{k: _json_clean(v) for k, v in r.items()} for r in perf],
                 "agent_specific": agent_specific,
             }
+
+            # V2 additions: event queue, handoffs, LLM routing, SLA
+            try:
+                # Event queue for this agent
+                events = _db_query(f"""
+                    SELECT event_type, symbol, priority, status, created_at, processed_at
+                    FROM agent_event_queue
+                    WHERE agents_to_notify::text ILIKE '%{agent_id}%'
+                    ORDER BY created_at DESC LIMIT 20
+                """) or []
+                result["event_queue"] = [{k: _json_clean(v) for k, v in r.items()} for r in events]
+                result["event_summary"] = {}
+                for e in events:
+                    et = e.get("event_type", "?")
+                    result["event_summary"][et] = result["event_summary"].get(et, 0) + 1
+            except Exception:
+                result["event_queue"] = []
+                result["event_summary"] = {}
+
+            try:
+                # Handoffs involving this agent
+                handoffs = _db_query(f"""
+                    SELECT id, from_agent, to_agent, symbol, handoff_type, created_at,
+                           confidence_delta, outcome
+                    FROM agent_handoffs
+                    WHERE from_agent ILIKE '%{agent_id}%' OR to_agent ILIKE '%{agent_id}%'
+                    ORDER BY created_at DESC LIMIT 20
+                """) or []
+                result["handoffs"] = [{k: _json_clean(v) for k, v in r.items()} for r in handoffs]
+                result["handoff_summary"] = {
+                    "outgoing": sum(1 for h in handoffs if agent_id.lower() in (h.get("from_agent") or "").lower()),
+                    "incoming": sum(1 for h in handoffs if agent_id.lower() in (h.get("to_agent") or "").lower()),
+                }
+            except Exception:
+                result["handoffs"] = []
+                result["handoff_summary"] = {"outgoing": 0, "incoming": 0}
+
+            try:
+                # LLM routing summary (from jsonl tail)
+                import json as _json_mod
+                llm_log = PROJECT_ROOT / "logs" / "llm_routing_audit.jsonl"
+                llm_entries = []
+                if llm_log.exists():
+                    with open(llm_log) as f:
+                        for line in f:
+                            try:
+                                entry = _json_mod.loads(line.strip())
+                                if agent_id.lower() in (entry.get("caller") or "").lower():
+                                    llm_entries.append(entry)
+                            except Exception:
+                                pass
+                # Summarize last 100 relevant entries
+                llm_entries = llm_entries[-100:]
+                by_provider = {}
+                for e in llm_entries:
+                    p = e.get("provider", "unknown")
+                    if p not in by_provider:
+                        by_provider[p] = {"calls": 0, "ok": 0, "total_ms": 0, "fallbacks": 0}
+                    by_provider[p]["calls"] += 1
+                    if e.get("status") == "ok": by_provider[p]["ok"] += 1
+                    by_provider[p]["total_ms"] += e.get("latency_ms", 0)
+                    if e.get("fallback"): by_provider[p]["fallbacks"] += 1
+                result["llm_routing"] = {
+                    p: {"calls": v["calls"], "success_rate": round(v["ok"]/max(v["calls"],1)*100,1),
+                        "avg_latency_ms": round(v["total_ms"]/max(v["calls"],1)),
+                        "fallbacks": v["fallbacks"]}
+                    for p, v in by_provider.items()
+                }
+                result["llm_total_calls"] = sum(v["calls"] for v in by_provider.values())
+            except Exception:
+                result["llm_routing"] = {}
+                result["llm_total_calls"] = 0
+
+            try:
+                # SLA status
+                last_result = _db_query(f"SELECT MAX(created_at) as ts FROM watchlist_agent_results WHERE {agent_filter}", fetch="one") or {}
+                last_ts = last_result.get("ts")
+                if last_ts:
+                    age_min = (datetime.now() - last_ts).total_seconds() / 60 if hasattr(last_ts, 'total_seconds') else 999
+                    try:
+                        age_min = (datetime.now(last_ts.tzinfo) - last_ts).total_seconds() / 60
+                    except Exception:
+                        age_min = 30
+                else:
+                    age_min = 999
+                sla_min = 15  # market hours default
+                result["sla"] = {
+                    "last_data_at": _json_clean(last_ts),
+                    "age_minutes": round(age_min, 1),
+                    "sla_minutes": sla_min,
+                    "color": "green" if age_min <= sla_min else "amber" if age_min <= sla_min * 4 else "red",
+                }
+            except Exception:
+                result["sla"] = {"color": "gray", "age_minutes": None}
+
             return 200, {"ok": True, "data": result}
         except Exception as e:
             import traceback; traceback.print_exc()

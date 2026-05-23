@@ -288,6 +288,73 @@ export default function AgentDashboard() {
         </div>
       )}
 
+      {/* Section 10: Event Queue & Escalation Map */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        <div style={card}>
+          <div style={secTitle}>Incoming Events ({(d.event_queue || []).length})</div>
+          {Object.keys(d.event_summary || {}).length === 0 ? (
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>No events routed to this agent recently</div>
+          ) : (
+            Object.entries(d.event_summary || {}).map(([type, cnt]) => (
+              <div key={type} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 11 }}>
+                <span style={{ color: 'rgba(255,255,255,0.6)' }}>{type.replace(/_/g, ' ')}</span>
+                <span style={{ fontWeight: 600, color: type.includes('STOP') || type.includes('CRITICAL') ? '#f87171' : '#f59e0b' }}>{String(cnt)}</span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={card}>
+          <div style={secTitle}>Handoffs (out: {d.handoff_summary?.outgoing || 0} / in: {d.handoff_summary?.incoming || 0})</div>
+          {(d.handoffs || []).length === 0 ? (
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>No handoffs involving this agent</div>
+          ) : (
+            (d.handoffs || []).slice(0, 8).map((h: any) => (
+              <div key={h.id} style={{ padding: '4px 0', fontSize: 10, color: 'rgba(255,255,255,0.5)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                <span style={{ color: '#a5b4fc' }}>{h.from_agent}</span> → <span style={{ color: '#a5b4fc' }}>{h.to_agent}</span>
+                {h.symbol && <span style={{ marginLeft: 6, fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{h.symbol}</span>}
+                <span style={{ marginLeft: 6, color: 'rgba(255,255,255,0.25)' }}>{h.created_at ? timeAgo(h.created_at) : ''}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Section 11: LLM Routing */}
+      {Object.keys(d.llm_routing || {}).length > 0 && (
+        <div style={card}>
+          <div style={secTitle}>LLM Routing ({d.llm_total_calls || 0} calls)</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              {['Provider', 'Calls', 'Success Rate', 'Avg Latency', 'Fallbacks'].map(h => (
+                <th key={h} style={{ textAlign: h === 'Provider' ? 'left' : 'right', padding: '6px 8px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)' }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {Object.entries(d.llm_routing || {}).map(([provider, stats]: [string, any]) => (
+                <tr key={provider} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <td style={{ padding: '6px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>{provider}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{stats.calls}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: 11, color: stats.success_rate >= 95 ? '#4ade80' : '#f59e0b' }}>{stats.success_rate}%</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{(stats.avg_latency_ms / 1000).toFixed(1)}s</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', fontSize: 11, color: stats.fallbacks > 0 ? '#f87171' : 'rgba(255,255,255,0.3)' }}>{stats.fallbacks}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* SLA Status Banner */}
+      {d.sla && (
+        <div style={{ padding: '8px 14px', marginBottom: 16, borderRadius: 8, fontSize: 10,
+          background: d.sla.color === 'green' ? 'rgba(74,222,128,0.06)' : d.sla.color === 'amber' ? 'rgba(245,158,11,0.08)' : 'rgba(248,113,113,0.08)',
+          border: `1px solid ${d.sla.color === 'green' ? 'rgba(74,222,128,0.2)' : d.sla.color === 'amber' ? 'rgba(245,158,11,0.25)' : 'rgba(248,113,113,0.25)'}`,
+          color: d.sla.color === 'green' ? '#4ade80' : d.sla.color === 'amber' ? '#f59e0b' : '#f87171' }}>
+          Data freshness: {d.sla.age_minutes != null ? `${Math.round(d.sla.age_minutes)}m ago` : 'unknown'} · SLA: ≤{d.sla.sla_minutes}m · {d.sla.color === 'green' ? '🟢' : d.sla.color === 'amber' ? '🟡' : '🔴'}
+        </div>
+      )}
+
       {/* Performance History */}
       {(d.performance_history || []).length > 0 && (
         <div style={card}>
