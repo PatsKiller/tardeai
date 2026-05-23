@@ -18,6 +18,12 @@ Run at 09:00 ET (35 min before market open).
 ## Inputs (5 min)
 - [ ] Agent results from Friday: `psql -c "SELECT agent, MAX(created_at)::date FROM watchlist_agent_results WHERE created_at > NOW()-INTERVAL '72 hours' GROUP BY 1;"`
 - [ ] News articles recent: `psql -c "SELECT COUNT(*) FROM news_articles WHERE created_at > NOW()-INTERVAL '72 hours';"`
+  - Should be >50. If 0, run manually: `.venv/bin/python scripts/news_ingestion.py --priority`
+- [ ] Verify news cron fired this morning: check `logs/news_ingestion.log` mtime
+
+## Known degraded inputs (acknowledged for burn-in week)
+- News gap 5/21-5/22 (system reboot, articles lost). See docs/_findings/news_ingestion_gap_2026-05-24.md
+- 192 fresh articles ingested 5/23 via manual run. Monitor cron on Monday.
 
 ## Mode (1 min)
 - [ ] `grep ALPACA_MODE .env` → paper
