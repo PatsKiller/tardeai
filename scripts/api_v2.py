@@ -14476,6 +14476,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 stage_list = []
                 for script_name, display, cadence_h in stages:
                     total_stages += 1
+                    # Check both pipeline_runs (new telemetry) and pipeline_stage_runs (old orchestrator)
                     row = _db_query("""
                         SELECT status, started_at, finished_at as completed_at,
                                (summary->>'rows_produced')::int as rows_processed,
@@ -14483,6 +14484,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                summary->>'errors' as error_message
                         FROM pipeline_runs WHERE pipeline_key=%s ORDER BY started_at DESC LIMIT 1
                     """, [script_name], fetch="one")
+                    if not row or not row.get('started_at'):
+                        row = _db_query("""
+                            SELECT status, started_at, finished_at as completed_at,
+                                   NULL::int as rows_processed,
+                                   duration_seconds as duration_sec,
+                                   error_message
+                            FROM pipeline_stage_runs WHERE stage_key=%s ORDER BY started_at DESC LIMIT 1
+                        """, [script_name], fetch="one") or row
                     last_run_at = None
                     last_status = None
                     rows_processed = 0
@@ -14500,18 +14509,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             minutes_ago = int(td.total_seconds() / 60)
                             if latest_run_ts is None or row['started_at'] > latest_run_ts:
                                 latest_run_ts = row['started_at']
-                    # Derive color
+                    # Weekend awareness
+                    import pytz as _ptz
+                    _et_now = _dt.now(_ptz.timezone("US/Eastern"))
+                    _is_weekend = _et_now.weekday() >= 5
+
+                    # Derive color (calendar-aware)
                     if last_status == 'running':
                         color = 'blue'
                     elif last_status == 'failed':
                         color = 'red'
                         critical += 1
                     elif last_run_at is None:
-                        color = 'gray'
-                        never_run += 1
-                        if cadence_h > 0 and cadence_h < 168:
-                            warnings += 1
-                            color = 'amber'
+                        if _is_weekend:
+                            color = 'green'
+                            healthy += 1
+                        else:
+                            color = 'gray'
+                            never_run += 1
+                            if cadence_h > 0 and cadence_h < 168:
+                                warnings += 1
+                                color = 'amber'
                     elif cadence_h == 0:
                         color = 'green' if last_status == 'success' else 'red'
                         if color == 'green':
@@ -14520,10 +14538,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             critical += 1
                     else:
                         hours_since = (minutes_ago or 99999) / 60
-                        if hours_since > cadence_h * 2:
-                            color = 'red'
-                            critical += 1
-                        elif hours_since > cadence_h * 1.5:
+                        # On weekends, relax thresholds (most stages don't run)
+                        _mult = 4 if _is_weekend else 2
+                        _warn_mult = 3 if _is_weekend else 1.5
+                        if hours_since > cadence_h * _mult:
+                            color = 'red' if not _is_weekend else 'amber'
+                            if color == 'red': critical += 1
+                            else: warnings += 1
+                        elif hours_since > cadence_h * _warn_mult:
                             color = 'amber'
                             warnings += 1
                         else:
