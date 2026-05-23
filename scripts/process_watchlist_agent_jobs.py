@@ -1965,6 +1965,14 @@ def _auto_queue_new_symbols():
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    # Skip auto-queue if backlog is already large
+    cur.execute("SELECT COUNT(*) as cnt FROM watchlist_agent_jobs WHERE status = 'queued'")
+    backlog = cur.fetchone()["cnt"]
+    if backlog > 50:
+        print(f"[watchlist-agent] Skipping auto-queue — backlog too large ({backlog} queued)")
+        conn.close()
+        return 0
+
     # Find active watchlist symbols with NO agent jobs at all
     cur.execute("""
         SELECT wi.symbol, tsc.strategy_type
