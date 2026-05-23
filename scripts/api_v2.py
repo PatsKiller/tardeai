@@ -3217,19 +3217,35 @@ def _agents_summary():
                 ea["total"] = int(iris_row.get("cnt", 0))
                 ea["latest"] = _json_clean(iris_row.get("latest"))
 
-    # Enrich alex from alert_events (runs daily but doesn't write watchlist_agent_results)
-    try:
-        alex_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM alert_events WHERE source ILIKE '%%alex%%'", fetch="one")
-        if alex_row and alex_row.get("latest"):
-            for a in agents_out:
-                if a.get("agent") == "alex":
-                    db_latest = a.get("last_run") or ""
-                    alert_latest = str(alex_row.get("latest", ""))
-                    if alert_latest > str(db_latest):
-                        a["last_run"] = _json_clean(alex_row["latest"])
-                        a["actions_taken"] = max(a.get("actions_taken", 0), int(alex_row.get("cnt", 0)))
-    except Exception:
-        pass
+    # Enrich agents from their actual home tables (not just watchlist_agent_results)
+    _AGENT_HOME_TABLES = [
+        ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM alert_events WHERE source ILIKE '%%alex%%'"),
+        ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM cio_decisions WHERE created_by ILIKE '%%alex%%'"),
+        ("aegis", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM aegis_portfolio_briefs"),
+        ("tax_agent", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM alert_events WHERE source ILIKE '%%tax%%'"),
+    ]
+    for _agent_name, _sql in _AGENT_HOME_TABLES:
+        try:
+            _row = _db_query(_sql, fetch="one")
+            if _row and _row.get("latest"):
+                # Update in agents_out list
+                for a in agents_out:
+                    if a.get("agent") == _agent_name:
+                        _cur = a.get("last_run") or ""
+                        _new = str(_row.get("latest", ""))
+                        if _new > str(_cur):
+                            a["last_run"] = _json_clean(_row["latest"])
+                            a["actions_taken"] = max(a.get("actions_taken", 0), int(_row.get("cnt", 0)))
+                # Also update in extra_agents
+                for ea in extra_agents:
+                    if ea["agent"] == _agent_name:
+                        _cur = ea.get("latest") or ""
+                        _new = str(_row.get("latest", ""))
+                        if _new > str(_cur):
+                            ea["latest"] = _json_clean(_row["latest"])
+                            ea["total"] = max(ea.get("total", 0), int(_row.get("cnt", 0)))
+        except Exception:
+            pass
     # Enrich aegis from aegis_portfolio_briefs
     try:
         aegis_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM aegis_portfolio_briefs", fetch="one")
