@@ -58,6 +58,12 @@ def main():
         if tv["href"] not in {r["href"] for r in routes}:
             routes.append(tv)
 
+    # Routes that trigger side effects — skip during crawl
+    SKIP_ROUTES = {"/v2/morning-brief", "/v2/bot-morning-brief"}
+    for r in routes:
+        if r["href"] in SKIP_ROUTES:
+            r["skip_in_crawler"] = True
+
     ROUTES_FILE.write_text(json.dumps(routes, indent=2))
     print(f"Wrote {len(routes)} routes to {ROUTES_FILE}")
 

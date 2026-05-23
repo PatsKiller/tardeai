@@ -7,7 +7,7 @@
   {
     "href": "/v2/morning-brief",
     "label": "Daily Brief",
-    "name": "morning-brief",
+    "name": "morning_brief",
     "skip_in_crawler": true
   },
   {
@@ -48,7 +48,7 @@
   {
     "href": "/v2/trade-ai",
     "label": "Trade AI",
-    "name": "trade-ai"
+    "name": "trade_ai"
   },
   {
     "href": "/v2/prospects",
@@ -58,17 +58,17 @@
   {
     "href": "/v2/strategy-desk",
     "label": "Strategy Desk",
-    "name": "strategy-desk"
+    "name": "strategy_desk"
   },
   {
     "href": "/v2/paper-proposals",
     "label": "Automated Trade Proposals",
-    "name": "paper-proposals"
+    "name": "paper_proposals"
   },
   {
     "href": "/v2/proposal-alerts",
     "label": "Proposal Alerts",
-    "name": "proposal-alerts"
+    "name": "proposal_alerts"
   },
   {
     "href": "/v2/approvals",
@@ -78,27 +78,27 @@
   {
     "href": "/v2/paper-status",
     "label": "Paper Status",
-    "name": "paper-status"
+    "name": "paper_status"
   },
   {
     "href": "/v2/paper-review",
     "label": "Paper Review",
-    "name": "paper-review"
+    "name": "paper_review"
   },
   {
     "href": "/v2/plan-vs-performance",
     "label": "Plan vs Performance",
-    "name": "plan-vs-performance"
+    "name": "plan_vs_performance"
   },
   {
     "href": "/v2/execution-quality",
     "label": "Execution Quality",
-    "name": "execution-quality"
+    "name": "execution_quality"
   },
   {
     "href": "/v2/broker-reconciliation",
     "label": "Broker Recon",
-    "name": "broker-reconciliation"
+    "name": "broker_reconciliation"
   },
   {
     "href": "/v2/incubator",
@@ -108,7 +108,7 @@
   {
     "href": "/v2/automated-trade-mode",
     "label": "ATM",
-    "name": "automated-trade-mode"
+    "name": "automated_trade_mode"
   },
   {
     "href": "/v2/watchlist",
@@ -133,7 +133,7 @@
   {
     "href": "/v2/risk-regime",
     "label": "Risk Regime",
-    "name": "risk-regime"
+    "name": "risk_regime"
   },
   {
     "href": "/v2/technical",
@@ -168,7 +168,7 @@
   {
     "href": "/v2/ai-analyst",
     "label": "AI Analyst",
-    "name": "ai-analyst"
+    "name": "ai_analyst"
   },
   {
     "href": "/v2/reports",
@@ -183,17 +183,17 @@
   {
     "href": "/v2/paper-journal",
     "label": "Paper Journal",
-    "name": "paper-journal"
+    "name": "paper_journal"
   },
   {
     "href": "/v2/paper-outcomes",
     "label": "Paper Outcomes",
-    "name": "paper-outcomes"
+    "name": "paper_outcomes"
   },
   {
     "href": "/v2/journal-reports",
     "label": "Journal Reports",
-    "name": "journal-reports"
+    "name": "journal_reports"
   },
   {
     "href": "/v2/overnight",
@@ -208,22 +208,22 @@
   {
     "href": "/v2/topic-monitor",
     "label": "Topic Monitor",
-    "name": "topic-monitor"
+    "name": "topic_monitor"
   },
   {
     "href": "/v2/research-topics",
     "label": "Research Topics",
-    "name": "research-topics"
+    "name": "research_topics"
   },
   {
     "href": "/v2/agent-pipeline",
     "label": "Agent Pipeline",
-    "name": "agent-pipeline"
+    "name": "agent_pipeline"
   },
   {
     "href": "/v2/agent-calibration",
     "label": "Agent Calibration",
-    "name": "agent-calibration"
+    "name": "agent_calibration"
   },
   {
     "href": "/v2/alerts",
@@ -248,38 +248,38 @@
   {
     "href": "/v2/paper-governance",
     "label": "Paper Governance",
-    "name": "paper-governance"
+    "name": "paper_governance"
   },
   {
     "href": "/v2/system-health",
     "label": "System Health",
-    "name": "system-health"
+    "name": "system_health"
   },
   {
     "href": "/v2/strategy-admin",
     "label": "Strategy Admin",
-    "name": "strategy-admin"
+    "name": "strategy_admin"
   },
   {
     "href": "/v2/strategy-analytics",
     "label": "Strategy Analytics",
-    "name": "strategy-analytics"
+    "name": "strategy_analytics"
   },
   {
     "href": "/v2/bot-morning-brief",
     "label": "Bot Morning Brief",
-    "name": "bot-morning-brief",
+    "name": "bot_morning_brief",
     "skip_in_crawler": true
   },
   {
     "href": "/v2/weekly-learning",
     "label": "Weekly Learning",
-    "name": "weekly-learning"
+    "name": "weekly_learning"
   },
   {
     "href": "/v2/self-improvement",
     "label": "Self-Improvement",
-    "name": "self-improvement"
+    "name": "self_improvement"
   },
   {
     "href": "/v2/agent-dashboard/steph",

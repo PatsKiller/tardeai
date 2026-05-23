@@ -1,10 +1,11 @@
 """
 Crawl every route in scripts/audit/routes.json against one or more base URLs.
 Capture: full-page PNG, console messages, network failures, timing.
-Output: /tmp/audit_<timestamp>/<port>/<route_name>.png + manifest.json
+Output: docs/playwright/audit_<timestamp>.tgz (keeps last 3 runs).
 """
 import argparse
 import json
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -12,6 +13,8 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 ROUTES_FILE = Path(__file__).parent / "routes.json"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_OUT = str(PROJECT_ROOT / "docs" / "playwright")
 
 DEFAULT_BASES = [
     "http://localhost:7777",
@@ -118,52 +121,73 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bases", nargs="*", default=DEFAULT_BASES,
                     help="Base URLs to crawl (default: localhost:7777)")
-    ap.add_argument("--out", default="/tmp", help="Parent dir for audit output")
+    ap.add_argument("--out", default=DEFAULT_OUT, help="Parent dir for audit output")
     ap.add_argument("--routes", default=str(ROUTES_FILE),
                     help="Routes JSON file from extract_routes.py")
     args = ap.parse_args()
 
+    # Always refresh routes from live sidebar before crawling
+    sys.path.insert(0, str(Path(__file__).parent))
+    from extract_routes import main as extract_routes_main
+    print("Refreshing route list from live sidebar...")
+    extract_routes_main()
+
     routes = json.loads(Path(args.routes).read_text())
     ts = datetime.now().strftime("%Y%m%d_%H%M")
-    root_out = Path(args.out) / f"audit_{ts}"
-    root_out.mkdir(parents=True, exist_ok=True)
-
-    all_results = {}
-    for base in args.bases:
-        print(f"\n=== Crawling {base} ===")
-        all_results[base] = crawl_base(base, routes, root_out)
-
-    manifest = {
-        "run_id": ts,
-        "started_at": datetime.now().isoformat(),
-        "bases": args.bases,
-        "route_count": len(routes),
-        "totals": {
-            base: {
-                "ok": sum(1 for r in all_results[base] if r["status"] == "ok"),
-                "timeout": sum(1 for r in all_results[base] if r["status"] == "timeout"),
-                "error": sum(1 for r in all_results[base] if r["status"] == "error"),
-                "skipped": sum(1 for r in all_results[base] if r["status"] == "skipped"),
-                "console_error_routes": sum(1 for r in all_results[base] if r["console_error_count"] > 0),
-                "network_failure_routes": sum(1 for r in all_results[base] if r["network_failure_count"] > 0),
-            } for base in args.bases
-        },
-        "results": all_results,
-    }
-    (root_out / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    out_path = Path(args.out)
+    out_path.mkdir(parents=True, exist_ok=True)
 
     import tarfile
-    tarball = Path(args.out) / f"audit_{ts}.tgz"
-    with tarfile.open(tarball, "w:gz") as tf:
-        tf.add(root_out, arcname=f"audit_{ts}")
-    print(f"\nDone.")
-    print(f"  Screenshots: {root_out}")
-    print(f"  Manifest:    {root_out}/manifest.json")
-    print(f"  Tarball:     {tarball}")
+
+    all_summaries = []
     for base in args.bases:
-        t = manifest["totals"][base]
-        print(f"  {base}: {t['ok']} ok / {t['timeout']} timeout / {t['error']} error / "
-              f"{t['skipped']} skipped / {t['console_error_routes']} routes with console errors")
+        port = base.rsplit(":", 1)[-1]
+        print(f"\n=== Crawling {base} ===")
+
+        # Crawl into a temp directory
+        tmp_dir = out_path / f"_tmp_{port}_{ts}"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        port_dir = tmp_dir / port
+        port_dir.mkdir(parents=True, exist_ok=True)
+        results = crawl_base(base, routes, tmp_dir)
+
+        totals = {
+            "ok": sum(1 for r in results if r["status"] == "ok"),
+            "timeout": sum(1 for r in results if r["status"] == "timeout"),
+            "error": sum(1 for r in results if r["status"] == "error"),
+            "skipped": sum(1 for r in results if r["status"] == "skipped"),
+            "console_error_routes": sum(1 for r in results if r["console_error_count"] > 0),
+            "network_failure_routes": sum(1 for r in results if r["network_failure_count"] > 0),
+        }
+
+        manifest = {
+            "run_id": ts,
+            "started_at": datetime.now().isoformat(),
+            "base": base,
+            "port": port,
+            "route_count": len(routes),
+            "totals": totals,
+            "results": results,
+        }
+        (port_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+        # Delete old tarballs for this port, then create new one
+        for old in out_path.glob(f"audit_{port}_*.tgz"):
+            old.unlink()
+            print(f"  Deleted old: {old.name}")
+
+        tarball = out_path / f"audit_{port}_{ts}.tgz"
+        with tarfile.open(tarball, "w:gz") as tf:
+            tf.add(tmp_dir, arcname=f"audit_{port}_{ts}")
+        shutil.rmtree(tmp_dir)
+
+        all_summaries.append((base, port, tarball, totals))
+
+    print(f"\nDone.")
+    for base, port, tarball, totals in all_summaries:
+        print(f"  {base}: {tarball.name}")
+        print(f"    {totals['ok']} ok / {totals['timeout']} timeout / {totals['error']} error / "
+              f"{totals['skipped']} skipped / {totals['console_error_routes']} console errors")
 
 
 if __name__ == "__main__":
