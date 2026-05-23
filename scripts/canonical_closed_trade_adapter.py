@@ -15,7 +15,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 # Account capability policy
 BACKTEST_ENABLED = {
     "alpaca_paper", "ALPACA_PAPER", "TOS_PAPER",
-    "schwab_rollover_ira", "schwab_roth_ira", "schwab_taxable",
+    "schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable",
 }
 EXECUTION_ENABLED = {"alpaca_paper"}  # only paper execution
 
@@ -62,15 +62,16 @@ def extract_canonical(account_label=None, broker=None, verbose=False):
         cur.execute("""
             SELECT id as source_trade_id, 'trade_closed' as source_table,
                    account as account_label,
-                   COALESCE(broker, 'unknown') as broker,
-                   symbol, strategy_id,
-                   entry_time, exit_time,
-                   entry_price, exit_price, shares as quantity,
+                   CASE WHEN account ILIKE '%schwab%' THEN 'schwab'
+                        WHEN account ILIKE '%fidelity%' THEN 'fidelity'
+                        ELSE 'unknown' END as broker,
+                   symbol, NULL as strategy_id,
+                   open_date::timestamptz as entry_time, close_date::timestamptz as exit_time,
+                   buy_price as entry_price, sell_price as exit_price, shares as quantity,
                    pnl as realized_pnl, r_multiple as realized_r,
-                   stop_loss as planned_stop, target_1 as planned_target,
+                   stop_used as planned_stop, NULL::numeric as planned_target,
                    NULL::int as proposal_id
             FROM trade_closed
-            WHERE status = 'closed'
         """)
         cols2 = [d[0] for d in cur.description]
         rows += [dict(zip(cols2, r)) for r in cur.fetchall()]
