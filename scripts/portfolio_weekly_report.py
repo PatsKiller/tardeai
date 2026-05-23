@@ -1103,7 +1103,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         f"1W: <b>{w_chg:+.2f}%</b> | YTD: {ytd_chg:+.2f}%\n\n"
         f"{_clean_md(narratives.get('performance',''))[:300]}\n\n"
         f"🎯 {_clean_md(narratives.get('action',''))[:200]}\n\n"
-        f"<a href='http://192.168.50.16:7777/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
+        f"<a href='https://ms01-openclaw.tail163d14.ts.net/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
     )
     _send_telegram(tg_msg)
 

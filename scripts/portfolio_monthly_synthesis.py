@@ -368,7 +368,7 @@ def run_monthly_synthesis(project_root: str = ".") -> Optional[Path]:
         f"<b>${total_val:,.0f}</b> | 1M: {m_chg:+.2f}%\n\n"
         f"{narratives.get('synthesis','')[:400]}\n\n"
         f"<i>Roth:</i> {narratives.get('roth','')[:200]}\n\n"
-        f"<a href='http://192.168.50.16:7777/data/portfolios/reports/monthly/monthly_{date_str}.html'>📄 Full Report</a>"
+        f"<a href='https://ms01-openclaw.tail163d14.ts.net/data/portfolios/reports/monthly/monthly_{date_str}.html'>📄 Full Report</a>"
     )
     _send_telegram(tg_msg)
     print(f"[monthly-synthesis] Done. Report: {html_path}")
