@@ -17277,6 +17277,105 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import traceback; traceback.print_exc()
             return 500, {"ok": False, "error": str(e)}
 
+    # ── V3: RACI matrix endpoint ────────────────
+    if base_path == "/api/v2/agent-detail/raci":
+        try:
+            agent_id = (query or {}).get("agent", [""])[0] if isinstance((query or {}).get("agent"), list) else (query or {}).get("agent", "")
+            if not agent_id:
+                return 400, {"ok": False, "error": "agent required"}
+            import yaml as _yaml
+            raci_path = PROJECT_ROOT / "config" / "agent_raci.yaml"
+            if not raci_path.exists():
+                return 200, {"ok": True, "data": {"processes": [], "note": "config/agent_raci.yaml not found"}}
+            raci = _yaml.safe_load(open(raci_path))
+            # Filter to processes where this agent appears
+            agent_lower = agent_id.lower()
+            my_processes = []
+            for p in raci.get("processes", []):
+                raci_map = p.get("raci", {})
+                my_role = None
+                for k, v in raci_map.items():
+                    if k.lower() == agent_lower or agent_lower in k.lower():
+                        my_role = v
+                        break
+                if my_role:
+                    co_actors = [{"agent": k, "role": v} for k, v in raci_map.items() if k.lower() != agent_lower and agent_lower not in k.lower()]
+                    my_processes.append({**p, "this_role": my_role, "co_actors": co_actors})
+            # Peer summary
+            peer_counts = {}
+            for p in my_processes:
+                for ca in p.get("co_actors", []):
+                    peer = ca["agent"]
+                    peer_counts.setdefault(peer, {"count": 0, "roles": []})
+                    peer_counts[peer]["count"] += 1
+                    peer_counts[peer]["roles"].append(ca["role"])
+            peer_summary = [{"peer": k, "process_count": v["count"],
+                             "dominant_relationship": max(set(v["roles"]), key=v["roles"].count) if v["roles"] else "?"}
+                            for k, v in sorted(peer_counts.items(), key=lambda x: -x[1]["count"])]
+            return 200, {"ok": True, "data": {"agent": agent_id, "processes": my_processes, "peer_summary": peer_summary}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── V3: Escalation trace endpoint ────────────────
+    if base_path == "/api/v2/agent-detail/escalation-trace":
+        try:
+            result_id = (query or {}).get("result_id", [""])[0] if isinstance((query or {}).get("result_id"), list) else (query or {}).get("result_id", "")
+            if not result_id:
+                return 400, {"ok": False, "error": "result_id required"}
+            # Get the analysis
+            analysis = _db_query("SELECT id, agent, symbol, recommendation, confidence, created_at FROM watchlist_agent_results WHERE id=%s", (result_id,), fetch="one")
+            if not analysis:
+                return 404, {"ok": False, "error": "result not found"}
+            sym = analysis["symbol"]
+            ts = analysis["created_at"]
+            trace = []
+            # Step 1: triggering event
+            events = _db_query("""
+                SELECT id, event_type, priority, created_at FROM agent_event_queue
+                WHERE symbol=%s AND created_at BETWEEN %s - INTERVAL '30 minutes' AND %s
+                ORDER BY created_at DESC LIMIT 1
+            """, (sym, ts, ts)) or []
+            if events:
+                e = events[0]
+                trace.append({"step": 1, "type": "event", "label": f"{e['event_type']}", "ts": _json_clean(e["created_at"])})
+            # Step 2: the analysis itself
+            trace.append({"step": 2, "type": "agent_call", "is_focus": True,
+                          "label": f"{analysis['agent']}: {analysis['recommendation']} (conf {analysis['confidence']})",
+                          "ts": _json_clean(ts)})
+            # Step 3: peer recs at same time
+            peers = _db_query("""
+                SELECT agent, recommendation, confidence, created_at FROM watchlist_agent_results
+                WHERE symbol=%s AND id != %s AND created_at BETWEEN %s - INTERVAL '24 hours' AND %s + INTERVAL '24 hours'
+                ORDER BY created_at DESC LIMIT 5
+            """, (sym, result_id, ts, ts)) or []
+            for p in peers:
+                trace.append({"step": 3, "type": "peer_call",
+                              "label": f"{p['agent']}: {p['recommendation']} (conf {p['confidence']})",
+                              "ts": _json_clean(p["created_at"])})
+            # Step 4: debate if any
+            debates = _db_query("""
+                SELECT id, debate_type, outcome_summary, winning_view, created_at FROM agent_debate_log
+                WHERE symbol=%s AND created_at BETWEEN %s - INTERVAL '1 hour' AND %s + INTERVAL '1 hour'
+                ORDER BY created_at DESC LIMIT 1
+            """, (sym, ts, ts)) or []
+            if debates:
+                d = debates[0]
+                trace.append({"step": 4, "type": "debate", "label": f"Debate: {d['debate_type']}",
+                              "detail": d["outcome_summary"], "ts": _json_clean(d["created_at"])})
+            # Step 5: human queue
+            jdq = _db_query("""
+                SELECT id, status, created_at FROM john_decision_queue
+                WHERE symbol=%s AND created_at BETWEEN %s - INTERVAL '1 hour' AND %s + INTERVAL '2 hours'
+                ORDER BY created_at DESC LIMIT 1
+            """, (sym, ts, ts)) or []
+            if jdq:
+                j = jdq[0]
+                trace.append({"step": 5, "type": "human_queue", "label": f"Queued for operator ({j['status']})",
+                              "ts": _json_clean(j["created_at"])})
+            return 200, {"ok": True, "data": {"result_id": result_id, "symbol": sym, "trace": trace}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 30: Weekly Learning Digest + Thesis Review ────────────────
     if base_path == "/api/v2/weekly-learning-digest":
         try:
