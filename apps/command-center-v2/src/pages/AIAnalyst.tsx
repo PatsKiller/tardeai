@@ -163,13 +163,17 @@ export default function AIAnalyst() {
         Advisory only — all trades must be executed manually at your broker (Fidelity/Schwab). This app does not place or cancel orders.
       </div>
 
-      {/* Stale warning */}
-      {data?.is_stale && data?.stale_warning && (
-        <div style={{ padding: '10px 14px', marginBottom: 12, borderRadius: 8, background: 'rgba(246,70,93,0.08)', border: '1px solid rgba(246,70,93,0.3)' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#f6465d' }}>STALE ANALYSIS</div>
-          <div style={{ fontSize: 11, color: '#f6465d', marginTop: 4 }}>{data.stale_warning}</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
-            To regenerate: <code>python3 scripts/portfolio_ai_analyst.py</code>
+      {/* Narrative source banner — always shown */}
+      {data?.has_data && (
+        <div style={{ padding: '8px 14px', marginBottom: 12, borderRadius: 8, background: data?.is_stale ? 'rgba(246,70,93,0.08)' : 'rgba(74,144,244,0.06)', border: `1px solid ${data?.is_stale ? 'rgba(246,70,93,0.3)' : 'rgba(74,144,244,0.15)'}` }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: data?.is_stale ? '#f6465d' : '#4a90f4' }}>
+            {data?.is_stale ? 'STALE ANALYSIS' : 'HISTORICAL NARRATIVE + CURRENT OVERLAYS'}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+            {data?.is_stale ? data.stale_warning : `Narrative generated ${data.generated_at ? new Date(data.generated_at).toLocaleDateString() : 'unknown'} with current data overlays (portfolio total, TLH, stops). Action items require manual review — regenerate for fully current advisory.`}
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>
+            Regenerate: <code style={{ fontSize: 9 }}>python3 scripts/portfolio_ai_analyst.py</code>
           </div>
         </div>
       )}
