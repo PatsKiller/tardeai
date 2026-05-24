@@ -117,6 +117,8 @@ def check_pipeline_critical() -> list:
             SELECT pipeline_key, status, started_at, summary->>'errors' as error
             FROM pipeline_runs
             WHERE status = 'failed' AND started_at > NOW() - INTERVAL '4 hours'
+              AND status != 'test_artifact'
+              AND COALESCE(trigger_source, 'cron') != 'manual_test'
             ORDER BY started_at DESC LIMIT 5
         """)
         for r in cur.fetchall():
