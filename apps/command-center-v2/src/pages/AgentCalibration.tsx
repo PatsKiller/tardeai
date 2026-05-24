@@ -46,7 +46,19 @@ export default function AgentCalibration() {
         {tabBtn('proposals', `Weight Proposals (${(proposals?.data||[]).length})`)}
       </div>
 
-      {tab === 'overview' && (
+      {tab === 'overview' && (<>
+        {(s.recommendations_total ?? 0) === 0 && (s.calibration_events_total ?? 0) === 0 && (
+          <div style={{ padding:'10px 14px', marginBottom:12, borderRadius:6,
+            background:'rgba(240,185,11,.08)', border:'1px solid rgba(240,185,11,.3)' }}>
+            <span style={{ fontSize:12, fontWeight:700, color:'#f0b90b' }}>
+              INSUFFICIENT DATA — Calibration requires scored trade outcomes. No graded outcomes yet.
+            </span>
+            <div style={{ fontSize:10, color:'#848e9c', marginTop:4 }}>
+              Agent accuracy cannot be computed until paper trades close and outcomes are scored.
+              The system needs 10+ scored outcomes to begin calibration.
+            </div>
+          </div>
+        )}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:10 }}>
           {[['Recommendations', s.recommendations_total], ['Outcome Links', s.outcome_links_total],
             ['Calibration Events', s.calibration_events_total], ['Windows', s.calibration_windows_total],
@@ -62,7 +74,7 @@ export default function AgentCalibration() {
             </Card>
           ))}
         </div>
-      )}
+      </>)}
 
       {tab === 'windows' && (
         <Card title="Agent Calibration Windows">

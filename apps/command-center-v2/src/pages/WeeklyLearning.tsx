@@ -83,7 +83,22 @@ export default function WeeklyLearning() {
               </div>
             )}
           </Card>
-        ) : <Card title="Latest Digest"><div style={{ color:'#848e9c', padding:16 }}>No digest generated yet. Run weekly_learning_digest.py</div></Card>
+        ) : <Card title="Latest Digest">
+          <div style={{ padding:16 }}>
+            <div style={{ padding:'10px 14px', marginBottom:12, borderRadius:6, background:'rgba(240,185,11,.08)', border:'1px solid rgba(240,185,11,.3)' }}>
+              <span style={{ fontSize:12, fontWeight:700, color:'#f0b90b' }}>NO DIGEST GENERATED</span>
+              <div style={{ fontSize:10, color:'#848e9c', marginTop:4 }}>
+                Weekly learning digests are generated from closed trade outcomes and agent recommendations.
+                The system needs closed paper trades with scored outcomes to produce a meaningful digest.
+              </div>
+            </div>
+            <div style={{ fontSize:10, color:'#848e9c' }}>
+              <div><strong>Script:</strong> <code>scripts/weekly_learning_digest.py</code></div>
+              <div><strong>Schedule:</strong> Manual (run weekly after trade review)</div>
+              <div><strong>Status:</strong> Waiting for sufficient scored trade outcomes</div>
+            </div>
+          </div>
+        </Card>
       )}
 
       {tab === 'reviews' && (

@@ -17,8 +17,18 @@ BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
 BRAVE_NEWS_URL = "https://api.search.brave.com/res/v1/news/search"
 MAX_RESULTS = 5
 REQUEST_TIMEOUT = 10
-DAILY_BUDGET = 30
+DAILY_BUDGET = 25
+MONTHLY_BUDGET = 850  # Reserve 150 for P0/manual searches out of 1000
 SKIP_WEEKENDS = True
+CALLER_CAPS = {
+    "portfolio_news": 10,
+    "catalyst_intelligence": 10,
+    "topic_ingestion": 5,
+    "web_news_fetcher": 5,
+    "default": 25,
+}
+MONTHLY_WARN_PCT = 70
+MONTHLY_CRITICAL_PCT = 90
 _search_cache: Dict[str, Any] = {}
 _cache_ttl_web = 300       # 5 min for web search
 _cache_ttl_news = 3600     # 60 min for news search
@@ -44,9 +54,10 @@ def _save_budget(data: dict):
         pass
 
 
-def _check_budget() -> bool:
-    """Return True if we can make a Brave API call today."""
+def _check_budget(caller: str = "default") -> bool:
+    """Return True if we can make a Brave API call today. Enforces per-caller and monthly caps."""
     today = datetime.now().strftime("%Y-%m-%d")
+    month = datetime.now().strftime("%Y-%m")
     is_weekend = datetime.now().weekday() >= 5
 
     if SKIP_WEEKENDS and is_weekend:
@@ -54,24 +65,52 @@ def _check_budget() -> bool:
 
     budget = _load_budget()
     if budget.get("date") != today:
-        budget = {"date": today, "calls": 0, "skipped_weekend": 0, "skipped_budget": 0}
+        # Preserve monthly counter, reset daily
+        monthly = budget.get("monthly_calls", {})
+        budget = {"date": today, "calls": 0, "skipped_weekend": 0, "skipped_budget": 0,
+                  "caller_calls": {}, "monthly_calls": monthly}
 
+    # Monthly budget check
+    month_total = budget.get("monthly_calls", {}).get(month, 0)
+    if month_total >= MONTHLY_BUDGET:
+        budget["skipped_budget"] = budget.get("skipped_budget", 0) + 1
+        _save_budget(budget)
+        return False
+
+    # Daily budget check
     if budget["calls"] >= DAILY_BUDGET:
         budget["skipped_budget"] = budget.get("skipped_budget", 0) + 1
         _save_budget(budget)
         return False
 
+    # Per-caller cap check
+    caller_key = caller.split("/")[-1].replace(".py", "")
+    cap = CALLER_CAPS.get(caller_key, CALLER_CAPS["default"])
+    caller_today = budget.get("caller_calls", {}).get(caller_key, 0)
+    if caller_today >= cap:
+        return False
+
     return True
 
 
-def _record_call():
+def _record_call(caller: str = "default"):
     """Record a successful Brave API call against today's budget."""
     today = datetime.now().strftime("%Y-%m-%d")
+    month = datetime.now().strftime("%Y-%m")
     budget = _load_budget()
     if budget.get("date") != today:
-        budget = {"date": today, "calls": 0, "skipped_weekend": 0, "skipped_budget": 0}
+        monthly = budget.get("monthly_calls", {})
+        budget = {"date": today, "calls": 0, "skipped_weekend": 0, "skipped_budget": 0,
+                  "caller_calls": {}, "monthly_calls": monthly}
     budget["calls"] = budget.get("calls", 0) + 1
     budget["last_call"] = datetime.now().isoformat()
+    # Track per-caller
+    caller_key = caller.split("/")[-1].replace(".py", "")
+    cc = budget.setdefault("caller_calls", {})
+    cc[caller_key] = cc.get(caller_key, 0) + 1
+    # Track monthly
+    mc = budget.setdefault("monthly_calls", {})
+    mc[month] = mc.get(month, 0) + 1
     _save_budget(budget)
 
 def _get_api_key(project_root: str = ".") -> Optional[str]:
@@ -93,11 +132,11 @@ def _cached(k, ttl=None):
 
 def _cache_set(k, data): _search_cache[k] = {"ts": time.time(), "data": data}
 
-def search(query, count=MAX_RESULTS, freshness=None, project_root="."):
+def search(query, count=MAX_RESULTS, freshness=None, project_root=".", caller="default"):
     ck = f"web:{query}:{freshness}"
     cached = _cached(ck, _cache_ttl_web)
     if cached is not None: return cached
-    if not _check_budget():
+    if not _check_budget(caller):
         return []
     api_key = _get_api_key(project_root)
     if not api_key: return []
@@ -114,18 +153,18 @@ def search(query, count=MAX_RESULTS, freshness=None, project_root="."):
             except Exception: pass
             data = json.loads(raw)
         results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age","")} for i in data.get("web",{}).get("results",[])]
-        _record_call()
+        _record_call(caller)
         _cache_set(ck, results)
         return results
     except Exception as e:
         print(f"  [brave-search] Error: {e}")
         return []
 
-def search_news(query, count=MAX_RESULTS, freshness="pd", project_root="."):
+def search_news(query, count=MAX_RESULTS, freshness="pd", project_root=".", caller="default"):
     ck = f"news:{query}:{freshness}"
     cached = _cached(ck, _cache_ttl_news)
     if cached is not None: return cached
-    if not _check_budget():
+    if not _check_budget(caller):
         return []
     api_key = _get_api_key(project_root)
     if not api_key: return []
@@ -141,7 +180,7 @@ def search_news(query, count=MAX_RESULTS, freshness="pd", project_root="."):
             except Exception: pass
             data = json.loads(raw)
         results = [{"title": i.get("title",""), "url": i.get("url",""), "description": i.get("description",""), "age": i.get("age",""), "source": i.get("meta_url",{}).get("hostname","")} for i in data.get("results",[])]
-        _record_call()
+        _record_call(caller)
         _cache_set(ck, results)
         return results
     except Exception as e:
@@ -169,14 +208,25 @@ def get_budget_status() -> dict:
     """Return current budget status for monitoring/alerting."""
     budget = _load_budget()
     today = datetime.now().strftime("%Y-%m-%d")
+    month = datetime.now().strftime("%Y-%m")
     if budget.get("date") != today:
-        return {"date": today, "calls": 0, "limit": DAILY_BUDGET, "remaining": DAILY_BUDGET,
-                "is_weekend": datetime.now().weekday() >= 5, "skip_weekends": SKIP_WEEKENDS}
+        monthly = budget.get("monthly_calls", {})
+        budget = {"date": today, "calls": 0, "caller_calls": {}, "monthly_calls": monthly}
+    month_total = budget.get("monthly_calls", {}).get(month, 0)
+    month_pct = round(month_total / MONTHLY_BUDGET * 100, 1) if MONTHLY_BUDGET else 0
+    alert_level = "ok"
+    if month_pct >= MONTHLY_CRITICAL_PCT:
+        alert_level = "critical"
+    elif month_pct >= MONTHLY_WARN_PCT:
+        alert_level = "warning"
     return {
-        "date": budget.get("date"), "calls": budget.get("calls", 0),
-        "limit": DAILY_BUDGET, "remaining": max(0, DAILY_BUDGET - budget.get("calls", 0)),
+        "date": budget.get("date"), "calls_today": budget.get("calls", 0),
+        "daily_limit": DAILY_BUDGET, "daily_remaining": max(0, DAILY_BUDGET - budget.get("calls", 0)),
+        "monthly_total": month_total, "monthly_limit": MONTHLY_BUDGET,
+        "monthly_pct": month_pct, "monthly_alert": alert_level,
+        "caller_caps": CALLER_CAPS,
+        "caller_today": budget.get("caller_calls", {}),
         "skipped_budget": budget.get("skipped_budget", 0),
-        "skipped_weekend": budget.get("skipped_weekend", 0),
         "last_call": budget.get("last_call"),
         "is_weekend": datetime.now().weekday() >= 5,
         "skip_weekends": SKIP_WEEKENDS,
