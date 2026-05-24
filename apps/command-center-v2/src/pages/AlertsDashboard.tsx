@@ -45,12 +45,12 @@ export default function AlertsDashboard() {
       {/* Volume stats */}
       <Card style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13 }}>
+          <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SYSTEM</span><br /><span style={{ color: '#f6465d', fontWeight: 700 }}>{v.system ?? data.system_alert_count ?? 0}</span></div>
           <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SENT</span><br /><span style={{ color: '#0ecb81', fontWeight: 700 }}>{v.sent}</span></div>
           <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SUPPRESSED</span><br /><span style={{ color: '#f0b90b', fontWeight: 700 }}>{v.suppressed}</span></div>
           <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>QUEUED</span><br /><span style={{ color: '#4a90f4', fontWeight: 700 }}>{v.queued}</span></div>
-          <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>DASHBOARD</span><br /><span style={{ color: 'var(--text2)', fontWeight: 700 }}>{v.dashboard_only}</span></div>
+          <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>DISPATCHED</span><br /><span style={{ color: 'var(--text2)', fontWeight: 700 }}>{v.dashboard_only}</span></div>
           <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>TOTAL</span><br /><span style={{ fontWeight: 700 }}>{v.total}</span></div>
-          <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>REDUCTION</span><br /><span style={{ color: reduction > 50 ? '#0ecb81' : '#f0b90b', fontWeight: 700 }}>{reduction}%</span></div>
         </div>
       </Card>
 

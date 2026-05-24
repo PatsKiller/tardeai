@@ -5312,13 +5312,36 @@ def _data_product_health():
     now = datetime.now()
     products = []
 
+    # Product metadata: owner, schedule, remediation, weekend behavior
+    _PRODUCT_META = {
+        "portfolio_snapshot": {"owner": "portfolio_price_cache.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/portfolio_price_cache.py", "weekend_ok": True, "category": "market_data"},
+        "risk_snapshot": {"owner": "risk_manager.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/risk_manager.py", "weekend_ok": True, "category": "market_data"},
+        "dividend_calendar": {"owner": "dividend_tracker.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/dividend_tracker.py", "weekend_ok": True, "category": "market_data"},
+        "ai_analyst_cache": {"owner": "portfolio_ai_analyst.py", "schedule": "manual", "remediation": ".venv/bin/python scripts/portfolio_ai_analyst.py", "weekend_ok": True, "category": "generated"},
+        "news_articles": {"owner": "news_ingestion.py", "schedule": "*/30 M-F + 06:30/12:30/18:30", "remediation": ".venv/bin/python scripts/news_ingestion.py --priority", "weekend_ok": False, "category": "intelligence"},
+        "cio_decisions": {"owner": "cio_decision_engine.py", "schedule": "daily 07:00 ET M-F", "remediation": ".venv/bin/python scripts/cio_decision_engine.py --run", "weekend_ok": True, "category": "decisions"},
+        "agent_jobs_completed": {"owner": "process_watchlist_agent_jobs.py", "schedule": "*/10-15", "remediation": ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 5", "weekend_ok": False, "category": "agent_ops"},
+    }
+
     def _check(name, max_h, age_h, source):
+        meta = _PRODUCT_META.get(name, {})
         if age_h is None:
-            products.append({"product": name, "status": "unknown", "age_hours": None, "max_stale_hours": max_h, "source": source})
+            status = "unknown"
+            stale_class = "unknown"
         elif age_h > max_h:
-            products.append({"product": name, "status": "stale", "age_hours": round(age_h, 1), "max_stale_hours": max_h, "source": source})
+            status = "stale"
+            stale_class = "weekend_market_closed" if _is_weekend and meta.get("weekend_ok") and meta.get("category") == "market_data" else "actionable"
         else:
-            products.append({"product": name, "status": "fresh", "age_hours": round(age_h, 1), "max_stale_hours": max_h, "source": source})
+            status = "fresh"
+            stale_class = None
+        products.append({
+            "product": name, "status": status, "age_hours": round(age_h, 1) if age_h is not None else None,
+            "max_stale_hours": max_h, "source": source,
+            "stale_reason": stale_class,
+            "owner": meta.get("owner"), "schedule": meta.get("schedule"),
+            "remediation": meta.get("remediation"),
+            "weekend_market_closed": _is_weekend and meta.get("weekend_ok", False),
+        })
 
     def _file_age(path):
         if not path.exists(): return None
@@ -11016,10 +11039,24 @@ def _research_topics_unified():
         t["article_count"] = ac
         t["transcript_count"] = tc
 
+        # Determine precise gap reason
+        _gap_reason = None
+        _gap_detail = None
         if ac == 0 and tc == 0:
+            _gap_reason = "zero_articles_and_transcripts"
+            _gap_detail = "No matching articles or transcripts found for this topic"
+        elif ac == 0:
+            _gap_reason = "zero_articles"
+            _gap_detail = f"No articles found ({tc} transcripts exist)"
+        elif tc == 0:
+            _gap_reason = "zero_transcripts"
+            _gap_detail = f"No transcripts found ({ac} articles exist)"
+
+        if _gap_reason:
             gaps.append({"topic_id": tid, "display_name": t.get("display_name"),
-                         "last_searched": _json_clean(t.get("last_searched")), "reason": "zero_content",
-                         "articles": 0, "transcripts": 0})
+                         "last_searched": _json_clean(t.get("last_searched")),
+                         "reason": _gap_reason, "detail": _gap_detail,
+                         "articles": ac, "transcripts": tc})
         elif t.get("last_searched"):
             try:
                 ls = datetime.fromisoformat(str(t["last_searched"]).replace("Z", "+00:00")).replace(tzinfo=None)
@@ -11027,7 +11064,8 @@ def _research_topics_unified():
                 if age_days > 14:
                     gaps.append({"topic_id": tid, "display_name": t.get("display_name"),
                                  "last_searched": _json_clean(t.get("last_searched")), "age_days": age_days,
-                                 "reason": "stale_search", "articles": ac, "transcripts": tc})
+                                 "reason": "stale_search", "detail": f"Last searched {age_days} days ago (>14 day SLA)",
+                                 "articles": ac, "transcripts": tc})
             except Exception:
                 pass
     # Create RESEARCH_GAP_DETECTED events for new gaps and queue agent jobs

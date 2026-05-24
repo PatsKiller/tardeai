@@ -10,6 +10,7 @@ import { fmt$, fmtPct, deltaColor } from '../lib/format'
 interface Holding {
   symbol: string; name: string; account: string; market_value: number; portfolio_pct: number; price: number
   signal: string; rsi: number | null; sma20_pct: number | null; sma50_pct: number | null; sma200_pct: number | null; week52_high_pct: number | null; beta: number | null; pi_score?: number | null
+  analyst_rating?: string | null; recom_score?: number | null; forward_pe?: number | null; peg?: number | null; eps_next_y?: string | null; perf_ytd_pct?: number | null
 }
 interface HoldingsData { holdings: Holding[]; count: number }
 
@@ -65,7 +66,7 @@ export default function Technical() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 12 }}>
               <Stat label="RSI" value={h.rsi != null ? h.rsi.toFixed(0) : '—'} color={h.rsi != null ? deltaColor(50 - h.rsi) : 'var(--text3)'} />
               <Stat label="SMA200" value={h.sma200_pct != null ? fmtPct(h.sma200_pct, 1) : '—'} color={deltaColor(h.sma200_pct)} />
-              <Stat label="Target↑" value={h.week52_high_pct != null ? fmtPct(-h.week52_high_pct, 0) : '—'} color={deltaColor(-(h.week52_high_pct ?? 0))} />
+              <Stat label="Analyst" value={h.analyst_rating?.replace('Strong ', '').replace(' ', '') || '—'} color={h.analyst_rating?.includes('Buy') ? 'var(--green)' : h.analyst_rating?.includes('Sell') ? 'var(--red)' : 'var(--text3)'} />
               <Stat label="Beta" value={h.beta != null ? h.beta.toFixed(2) : '—'} />
             </div>
             <div style={{ marginTop: 12 }}>
@@ -98,6 +99,21 @@ export default function Technical() {
                 <DrawerStat label="SMA200" value={selected.sma200_pct != null ? fmtPct(selected.sma200_pct, 1) : '—'} color={deltaColor(selected.sma200_pct)} />
                 <DrawerStat label="52W from High" value={selected.week52_high_pct != null ? fmtPct(selected.week52_high_pct, 1) : '—'} color={deltaColor(selected.week52_high_pct)} />
               </div>
+            </DrawerSection>
+            <DrawerSection title="Analyst & Fundamentals">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                <DrawerStat label="Analyst Rating" value={selected.analyst_rating || 'N/A'} color={selected.analyst_rating?.includes('Buy') ? 'var(--green)' : selected.analyst_rating?.includes('Sell') ? 'var(--red)' : undefined} />
+                <DrawerStat label="Recom Score" value={selected.recom_score != null ? String(selected.recom_score) : 'N/A'} />
+                <DrawerStat label="Forward P/E" value={selected.forward_pe != null ? Number(selected.forward_pe).toFixed(1) : 'N/A'} />
+                <DrawerStat label="PEG" value={selected.peg != null ? Number(selected.peg).toFixed(2) : 'N/A'} />
+                <DrawerStat label="EPS Next Y" value={selected.eps_next_y != null ? `${selected.eps_next_y}%` : 'N/A'} />
+                <DrawerStat label="YTD Perf" value={selected.perf_ytd_pct != null ? fmtPct(selected.perf_ytd_pct, 1) : 'N/A'} color={deltaColor(selected.perf_ytd_pct)} />
+              </div>
+              {(!selected.analyst_rating && !selected.forward_pe) && (
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4, fontStyle: 'italic' }}>
+                  Analyst/fundamental data unavailable for this asset type (ETF, mutual fund, or no coverage).
+                </div>
+              )}
             </DrawerSection>
             <DrawerSection title="Drillthrough">
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
