@@ -44,9 +44,10 @@ Generated: 2026-05-24 | Active docs (excludes _archive)
 - `v4_1_phase1h_daily_deep_overnight_llm_window.md` (22KB)
 - `yaml_vs_db_audit_2026-05-16.md` (4KB)
 
-## _findings (11 files)
+## _findings (12 files)
 - `_findings/agent_queue_stuck_2026-05-20.md` (136B)
 - `_findings/attribution_benchmark_2026-05-20.md` (140B)
+- `_findings/brave_search_api_usage_audit_2026-05.md` (4KB)
 - `_findings/count_drift_2026-05-20.md` (130B)
 - `_findings/monday_morning_state_20260525.md` (1KB)
 - `_findings/news_ingestion_gap_2026-05-24.md` (1KB)
@@ -1132,4 +1133,4 @@ Generated: 2026-05-24 | Active docs (excludes _archive)
 - `yaml_patches_s34/docs/CLAUDE_CODE_HANDOFF_S34.md` (9KB)
 - `yaml_patches_s34/docs/README.md` (3KB)
 
-**Total: 1042 active files across 44 sections**
+**Total: 1043 active files across 44 sections**
