@@ -74,10 +74,15 @@ def run_fail(run_id: Optional[int], error_message: str = ''):
 
 
 class PipelineRun:
-    def __init__(self, script_name: str, run_label: str = None, triggered_by: str = 'cron'):
+    def __init__(self, script_name: str, run_label: str = None, triggered_by: str = None):
         self.script_name = script_name
         self.run_label = run_label
-        self.triggered_by = triggered_by
+        # Auto-detect if running from cron or interactive
+        if triggered_by is None:
+            import sys
+            self.triggered_by = 'cron' if not sys.stdin.isatty() else 'manual'
+        else:
+            self.triggered_by = triggered_by
         self.run_id = None
         self._rows = 0
 
