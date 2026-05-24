@@ -1,0 +1,16 @@
+
+=== Command Center Data Consistency Check ===
+
+  ✅ [PASS] Canonical holdings: $1,201,120.25 / 47 positions
+  ❌ [FAIL] Phantom accounts: Zero-value accounts in summaries: ['258']
+  ❌ [FAIL] Attribution API phantoms: API returns zero-value: ['258']
+  ❌ [FAIL] Rebalance income: income_current=$0 but dividend_calendar has $14,408
+  ❌ [FAIL] CIO duplicates: Duplicate symbols: ['VANG-FTSE-SOC', 'AB-DISC-Z', 'FID-DIVINTL', 'FCNTX', 'PFLT', 'HTGC', 'FID-CONTRA-F', 'SCHD', 'MAIN', 'ARCC', 'V', 'SS-SMMD', 'CSWC', 'SCHG']
+  ⚠️ [WARN] Retirement delta: Retirement $0 vs canonical $1,201,120 (delta $1,201,120)
+  ⚠️ [WARN] AI Analyst freshness: No staleness indicator (generated_at=2026-05-22T07:03:23.202628)
+  ⚠️ [WARN] Overview snapshot_source: No snapshot_source metadata
+  ⚠️ [WARN] Rebalance snapshot_source: No snapshot_source metadata
+  ⚠️ [WARN] Retirement snapshot_source: No snapshot_source metadata
+
+=== Summary ===
+  PASS: 1  WARN: 5  FAIL: 4

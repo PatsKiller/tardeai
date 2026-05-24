@@ -1,0 +1,12 @@
+{
+  "ok": 65,
+  "timeout": 0,
+  "error": 0,
+  "skipped": 2,
+  "console_error_routes": 2,
+  "network_failure_routes": 1
+}
+/v2/morning-brief skipped http= None console= 0 network= 0 error= skip_in_crawler
+/v2/trade-ai ok http= 200 console= 1 network= 0 error= None
+/v2/reports ok http= 200 console= 7 network= 7 error= None
+/v2/bot-morning-brief skipped http= None console= 0 network= 0 error= skip_in_crawler
