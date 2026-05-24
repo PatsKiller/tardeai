@@ -206,7 +206,7 @@ export default function App() {
           <Route path="actions" element={<SafePage><Inbox /></SafePage>} />
           <Route path="paper-governance" element={<Navigate to="/v2/governance" replace />} />
           <Route path="learning-governance" element={<Navigate to="/governance?tab=learning" replace />} />
-          <Route path="approvals" element={<SafePage><GovernanceHub /></SafePage>} />
+          <Route path="approvals" element={<Navigate to="/v2/governance" replace />} />
           <Route path="broker-recon" element={<Navigate to="/broker-reconciliation" replace />} />
           <Route path="system-hub" element={<Navigate to="/ops" replace />} />
           <Route path="hub" element={<SafePage><OpsHub /></SafePage>} />
