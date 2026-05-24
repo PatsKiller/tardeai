@@ -338,7 +338,7 @@ Manual/interactive script runs now record `trigger_source='manual'` in pipeline_
 - **Commits this session:** 50+
 - **Crontab:** 327 lines (was ~160)
 - **Pipeline:** 19/26 healthy, 0 critical, 0 never-run
-- **Playwright:** 61 OK, 0 console errors, 0 network failures
+- **Playwright:** 60 OK screenshots, 1 skipped, 0 console errors, 0 network failures, 0 duplicate screenshots
 - **Documentation:** 268 active files, 21 sections (was 1,043)
 
 ### Automation Fully Implemented
@@ -358,3 +358,16 @@ Manual/interactive script runs now record `trigger_source='manual'` in pipeline_
 |---------|--------|
 | AI Analyst regeneration | Operator runs portfolio_ai_analyst.py when needed. Staleness detected and displayed. |
 | Weekly learning digest | Manual after trade review. Needs scored outcomes first. |
+
+
+---
+
+## 11. Monday Validation Checklist (2026-05-25 09:00 ET)
+
+1. [ ] **Market data freshness:** Confirm holdings.json and risk_management.json refresh after 07:00 ET pipeline run. System Health should show all products fresh.
+2. [ ] **Health reports:** Confirm 08:30 AM Telegram + email health report arrived from alert_dispatcher_unified.py. Check for any critical/stale alerts.
+3. [ ] **Iris auto-remediation:** Check logs/iris_freshness.log for 07:30 AM run. Verify it detected and remediated any stale products.
+4. [ ] **Agent backlog:** Confirm watchlist_agent_jobs queued count < 100 after weekend drain. Check agent_pipeline page.
+5. [ ] **Pipeline stages:** Confirm 0 never-run, 0 critical after Monday crons fire. All 26 stages should show recent telemetry.
+6. [ ] **Playwright rerun:** Run  and verify 0 console errors, 0 network failures, 0 duplicates.
+7. [ ] **Command page:** Verify Morning Command shows fresh data with no stale banner.
