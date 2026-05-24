@@ -15107,6 +15107,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         'failure_hint': _owner.get('failure_hint'),
                         'recommended_action': _action,
                         'never_run_subtype': _nr_subtype,
+                        'warning_reason': (
+                            "Test artifact — last run was manual test" if last_status == 'test_artifact'
+                            else "Weekly schedule — next run per cron" if color == 'amber' and cadence_h >= 168
+                            else "On-demand — runs when triggered" if cadence_h == 0
+                            else f"Stale — last ran {minutes_ago // 60}h ago (expected every {cadence_h}h)" if color == 'amber' and minutes_ago and minutes_ago > cadence_h * 60
+                            else None
+                        ),
                         'safe_dry_run_cmd': _owner.get('safe_dry_run_cmd'),
                     })
                 groups.append({

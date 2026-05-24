@@ -141,8 +141,8 @@ function NavDropdown({ group, pendingApprovals }: { group: NavGroup; pendingAppr
         {group.label}
         <span style={{ fontSize: 8, opacity: 0.5 }}>{open ? '▲' : '▼'}</span>
         {group.label === 'System' && pendingApprovals > 0 && (
-          <span style={{ marginLeft: 2, fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--red)', color: '#fff', verticalAlign: 'super' }}>
-            {pendingApprovals}
+          <span style={{ marginLeft: 2, fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: 'var(--amber)', color: '#000', verticalAlign: 'super' }} title={`${pendingApprovals} pending CIO approvals`}>
+            {pendingApprovals} approvals
           </span>
         )}
       </button>
