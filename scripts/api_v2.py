@@ -3143,7 +3143,48 @@ def _alerts(query: dict = None):
 
     where = " WHERE " + " AND ".join(conditions) if conditions else ""
     rows = _db_query(f"SELECT * FROM alert_events{where} ORDER BY created_at DESC LIMIT 100", params) or []
-    return {"count": len(rows), "alerts": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+    alerts_out = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+
+    # Add synthetic system alerts for stale data products (only if no filter applied)
+    if not conditions:
+        _stale_alerts = _generate_stale_data_alerts()
+        alerts_out = _stale_alerts + alerts_out
+
+    return {"count": len(alerts_out), "alerts": alerts_out}
+
+
+def _generate_stale_data_alerts():
+    """Generate synthetic alerts for stale data products."""
+    alerts = []
+    now = datetime.now()
+    checks = [
+        ("holdings.json", STATE_DIR / "holdings.json", 24, "Portfolio snapshot stale"),
+        ("risk_management.json", STATE_DIR / "risk_management.json", 24, "Risk snapshot stale"),
+    ]
+    for label, path, max_h, msg in checks:
+        if path.exists():
+            age_h = (now - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600
+            if age_h > max_h:
+                alerts.append({
+                    "id": f"sys_stale_{label}", "alert_type": "data_staleness",
+                    "severity": "warning", "symbol": None,
+                    "source_script": "system_health_check",
+                    "raw_text": f"{msg}: {age_h:.0f}h old (max {max_h}h)",
+                    "created_at": _json_clean(now), "data_quality_status": "stale",
+                    "parsed_payload": {"product": label, "age_hours": round(age_h, 1), "max_hours": max_h},
+                })
+    # Check agent queue backlog
+    q = _db_query("SELECT COUNT(*) as cnt FROM watchlist_agent_jobs WHERE status='queued'", fetch="one")
+    if q and int(q.get("cnt", 0)) > 50:
+        alerts.append({
+            "id": "sys_agent_backlog", "alert_type": "system_health",
+            "severity": "warning", "symbol": None,
+            "source_script": "system_health_check",
+            "raw_text": f"Agent job queue backlog: {q['cnt']} queued",
+            "created_at": _json_clean(now), "data_quality_status": "valid",
+            "parsed_payload": {"queued": q["cnt"]},
+        })
+    return alerts
 
 
 def _alex_recent():
@@ -5096,6 +5137,34 @@ def _system_health_dashboard():
         cron_count = 0
     # Screeners
     screeners = _db_query("SELECT COUNT(*) as cnt FROM finviz_screeners WHERE active=TRUE", fetch="one") or {}
+    # Data product freshness summary
+    _freshness_items = []
+    for _label, _sql, _max_h in [
+        ("holdings", None, 24),
+        ("risk_mgmt", None, 24),
+        ("news", "SELECT MAX(created_at) FROM news_articles", 6),
+        ("cio_decisions", "SELECT MAX(created_at) FROM cio_decisions", 48),
+        ("agent_jobs", "SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'", 2),
+    ]:
+        if _sql:
+            _row = _db_query(_sql, fetch="one")
+            _ts = _row.get("max") if _row else None
+        else:
+            _path = STATE_DIR / f"{_label.replace('_mgmt','_management')}.json"
+            _ts = datetime.fromtimestamp(_path.stat().st_mtime).isoformat() if _path.exists() else None
+        _age_h = None
+        if _ts:
+            try:
+                _dt = datetime.fromisoformat(str(_ts).replace("Z", "+00:00")).replace(tzinfo=None)
+                _age_h = round((datetime.now() - _dt).total_seconds() / 3600, 1)
+            except Exception:
+                pass
+        _status = "fresh" if _age_h is not None and _age_h <= _max_h else ("stale" if _age_h is not None else "unknown")
+        _freshness_items.append({"product": _label, "age_hours": _age_h, "max_stale_hours": _max_h, "status": _status})
+
+    _fresh_count = sum(1 for f in _freshness_items if f["status"] == "fresh")
+    _stale_count = sum(1 for f in _freshness_items if f["status"] == "stale")
+
     return {
         "llm": llm,
         "db_tables": key_tables,
@@ -5103,7 +5172,11 @@ def _system_health_dashboard():
         "cron_jobs": cron_count,
         "finviz_screeners": screeners.get("cnt", 0),
         "validation_suites": 7,
-        "note": "System health dashboard. All data from DB.",
+        "data_freshness": {
+            "summary": f"{_fresh_count}/{len(_freshness_items)} fresh, {_stale_count} stale",
+            "products": _freshness_items,
+        },
+        "note": "System health dashboard with data product freshness.",
     }
 
 
@@ -10301,8 +10374,11 @@ def _agent_calibration():
     total_outcomes = (_db_query("SELECT COUNT(*) as cnt FROM agent_recommendation_outcomes", fetch="one") or {}).get("cnt", 0)
     total_trades = (_db_query("SELECT COUNT(*) as cnt FROM trade_closed", fetch="one") or {}).get("cnt", 0)
 
+    _insufficient = len(calibration) == 0 and total_outcomes < 10
     return {
         "has_data": len(calibration) > 0,
+        "insufficient_sample": _insufficient,
+        "insufficient_note": "Calibration requires scored outcomes from closed trades. Currently insufficient data to compute accuracy." if _insufficient else None,
         "total_outcomes_scored": total_outcomes,
         "total_trades": total_trades,
         "calibration": [{k: _json_clean(v) for k, v in r.items()} for r in calibration],
@@ -11708,7 +11784,11 @@ ROUTES = {
     "/api/v2/search-sources": lambda: _search_sources_status(),
     "/api/v2/autonomy-progress": lambda: _autonomy_progress(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
-    "/api/v2/research-topics": lambda: {"topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])]},
+    "/api/v2/research-topics": lambda: {
+        "topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])],
+        "topic_monitor_count": (_db_query("SELECT COUNT(*) as cnt FROM topic_monitor WHERE enabled=true", fetch="one") or {}).get("cnt", 0),
+        "note": "Research Topics tracks user-initiated research. Topic Monitor (separate page) tracks automated intelligence gathering. They use different data models.",
+    },
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
@@ -14576,15 +14656,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         color = 'red'
                         critical += 1
                     elif last_run_at is None:
-                        if _is_weekend:
-                            color = 'green'
-                            healthy += 1
+                        # Never-run is never healthy — mark as gray/amber
+                        never_run += 1
+                        if cadence_h > 0 and cadence_h < 168:
+                            color = 'amber'
+                            warnings += 1
                         else:
                             color = 'gray'
-                            never_run += 1
-                            if cadence_h > 0 and cadence_h < 168:
-                                warnings += 1
-                                color = 'amber'
                     elif cadence_h == 0:
                         color = 'green' if last_status == 'success' else 'red'
                         if color == 'green':
@@ -15569,14 +15647,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # Fetch alerts per trade
             alerts_by_trade = {}
             if _trade_ids:
-                _alerts = _db_query("""
+                _trade_alerts = _db_query("""
                     SELECT paper_trade_id, alert_type, severity, title, message,
                            data, created_at
                     FROM open_trade_alerts
                     WHERE paper_trade_id = ANY(%s)
                     ORDER BY created_at ASC
                 """, [_trade_ids]) or []
-                for al in _alerts:
+                for al in _trade_alerts:
                     tid = al['paper_trade_id']
                     alerts_by_trade.setdefault(tid, []).append(
                         {k: _json_clean(v) for k, v in al.items()})
