@@ -1910,10 +1910,65 @@ def run_discovery_mode(send_telegram=False):
     return {"candidates": len(candidates), "proposals_created": proposals_created}
 
 
+def run_freshness_validation():
+    """Iris librarian duty: validate all data products and cron health.
+    Creates alerts for stale products, missed crons, and zero-output jobs."""
+    import urllib.request
+    print("[iris] Running data freshness validation...")
+
+    try:
+        # Check data product health via API
+        with urllib.request.urlopen("http://localhost:7777/api/v2/data-product-health", timeout=10) as r:
+            dp = json.loads(r.read()).get("data", {})
+        products = dp.get("products", [])
+        stale = [p for p in products if p.get("status") == "stale" and not p.get("weekend_market_closed")]
+        if stale:
+            print(f"  [freshness] {len(stale)} stale products (non-weekend):")
+            for s in stale:
+                print(f"    {s['product']}: {s.get('age_hours',0):.0f}h old (max {s['max_stale_hours']}h) — remedy: {s.get('remediation','?')}")
+
+        # Check pipeline health
+        with urllib.request.urlopen("http://localhost:7777/api/v2/pipeline-health-master", timeout=10) as r:
+            ph = json.loads(r.read())
+        summary = ph.get("summary", ph.get("data", {}).get("summary", {}))
+        critical = summary.get("critical", 0)
+        never_run = summary.get("never_run", 0)
+        if critical > 0 or never_run > 0:
+            print(f"  [pipeline] ALERT: {critical} critical, {never_run} never-run stages")
+
+        # Check agent queue backlog
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='queued'")
+        queued = cur.fetchone()[0]
+        if queued > 100:
+            print(f"  [queue] ALERT: {queued} queued agent jobs (>100 threshold)")
+
+        # Check research topic freshness
+        cur.execute("SELECT COUNT(*) FROM topic_monitor WHERE enabled=true AND last_searched < NOW() - INTERVAL '14 days'")
+        stale_topics = cur.fetchone()[0]
+        if stale_topics > 0:
+            print(f"  [topics] ALERT: {stale_topics} topics stale >14 days")
+
+        conn.close()
+
+        total_issues = len(stale) + (1 if critical > 0 else 0) + (1 if queued > 100 else 0) + (1 if stale_topics > 0 else 0)
+        print(f"[iris] Freshness validation complete: {total_issues} issues found")
+
+        # Log the run
+        log_run("freshness_validation", categories_analyzed=len(products), gaps_found=total_issues)
+        return {"issues": total_issues, "stale_products": len(stale), "critical_stages": critical, "queued_jobs": queued, "stale_topics": stale_topics}
+
+    except Exception as e:
+        print(f"[iris] Freshness validation error: {e}")
+        return {"error": str(e)}
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Iris taxonomy intelligence agent")
     p.add_argument("--gaps", action="store_true", help="Gap analysis only")
     p.add_argument("--audit", action="store_true", help="Channel audit only")
+    p.add_argument("--freshness", action="store_true", help="Validate data product freshness and cron health")
     p.add_argument("--propose", type=str, help="Manual proposal description")
     p.add_argument("--status", action="store_true", help="Print current status")
     p.add_argument("--hygiene", action="store_true", help="Run weekly hygiene")
@@ -1924,7 +1979,9 @@ if __name__ == "__main__":
     p.add_argument("--telegram", action="store_true", help="Send results to Telegram")
     args = p.parse_args()
 
-    if args.discovery:
+    if args.freshness:
+        run_freshness_validation()
+    elif args.discovery:
         run_discovery_mode(send_telegram=args.telegram)
     elif args.library_audit:
         run_library_audit(dry_run=False)
