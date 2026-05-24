@@ -274,3 +274,58 @@ Manual/interactive script runs now record `trigger_source='manual'` in pipeline_
 | Weekend freshness context | "Weekend — market data refreshes Monday 07:00 ET" |
 | Research gap logic | Correct article/transcript counting per topic |
 | Alert badge | Confirmed correct: "Approvals 11" is CIO queue, not alerts |
+
+---
+
+## 9. Agent Intelligence Pipeline Completion (2026-05-24 18:30 ET)
+
+### Crontab: 311 lines (was ~160 at session start)
+
+### Added Cron Entries This Session
+| Script | Schedule | Purpose |
+|--------|----------|---------|
+| social_ingest | every 6h | Social media intelligence gathering |
+| fred_data_ingest | daily 6:15 AM | FRED macro data |
+| symbol_enrichment | daily 7:30 AM M-F | Finviz fundamental enrichment |
+| rag_indexer | every 4h | RAG knowledge base indexing |
+| indicator_engine | daily 8 AM M-F | Technical indicator computation |
+| premarket_watcher | 7-9 AM M-F */15 | Pre-market price/volume monitoring |
+| agent_watchlist_engine | daily 7 AM | Watchlist agent routing |
+| pipeline_watchdog | every 2h | Pipeline health monitoring |
+| incubator_rolloff_engine | daily 10 AM M-F | Incubator candidate expiry |
+| proposal_enrichment_loop | */15 9-16 M-F | Proposal quote/tech refresh |
+| proposal_lifecycle | */30 9-16 M-F | Proposal status management |
+| risk_gate | hourly 9-16 M-F | Risk gate validation |
+| agent_outcome_scorer | weekly Sun 11 AM | Agent outcome scoring |
+| strategy_weekly_review | weekly Sun 10:30 AM | Strategy performance review |
+| alert_dispatcher_unified | daily 8:30 AM + 4:30 PM | Health report via Telegram + email |
+| iris_taxonomy_agent | weekly Sun 10 AM + daily 7 AM gaps | Taxonomy intelligence |
+| aegis_overnight | daily 8 PM | Overnight surveillance |
+| aegis_surveillance | daily 8 AM M-F | Morning surveillance |
+| aegis_social_sentiment | 11 AM + 3 PM M-F | Social sentiment analysis |
+| aegis_transcript_discovery | daily 9 AM M-F | YouTube transcript discovery |
+| alex_hygiene | daily 7:15 AM M-F | Alex governance hygiene |
+| topic_ingestion | weekly Wed+Sat 9 AM | Topic research ingestion |
+| aegis_synthesis | daily 9 PM | Aegis data synthesis |
+| aegis_nightly_ingestion | daily 7 PM | Aegis nightly data collection |
+
+### Pipeline Status After Completion
+- 19/26 healthy, 4 warnings (specific reasons), 0 critical, 0 never-run
+- All 26 pipeline stages scheduled
+- All agents (Maria, Steph, Risk, Tax, Alex, Aegis, Iris) have active crons
+- Daily health report at 8:30 AM + 4:30 PM via Telegram + email
+
+### Intelligence Pipeline Coverage
+| Area | Scheduled | Status |
+|------|-----------|--------|
+| News ingestion | 3× daily | Active |
+| Topic research | 2× weekly | Active |
+| Agent LLM analysis | */10-15 continuous | Active |
+| RAG indexing | every 4h | Active |
+| Screener pipeline | 13 cron entries | Active |
+| Incubator/proposals | 24 cron entries | Active |
+| Aegis surveillance | 6 cron entries | Active |
+| Alex governance | 4 cron entries | Active |
+| Iris taxonomy | 2 cron entries | Active |
+| Outcome scoring | weekly | Active |
+| Health reporting | 2× daily | Active |

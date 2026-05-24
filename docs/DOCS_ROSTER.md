@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Roster
 
-Generated: 2026-05-24 16:09 ET | Final
+Generated: 2026-05-24 18:45 ET | Agent pipeline complete
 
 ## (root) (16 files)
 - `A1A.md` (4KB)
@@ -17,7 +17,7 @@ Generated: 2026-05-24 16:09 ET | Final
 - `MASTER_SYSTEM_DOCUMENTATION.md` (109KB)
 - `MONDAY_BURNIN_CHECKLIST.md` (2KB)
 - `OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` (8KB)
-- `REMEDIATION_SUMMARY_2026-05-24.md` (17KB)
+- `REMEDIATION_SUMMARY_2026-05-24.md` (20KB)
 - `RESTORE_GUIDE.md` (10KB)
 
 ## _findings (6 files)
@@ -82,8 +82,8 @@ Generated: 2026-05-24 16:09 ET | Final
 ## maturity_hardening (15 files)
 - `maturity_hardening/maturity_control_board_latest.json` (3KB)
 - `maturity_hardening/maturity_control_board_latest.md` (1KB)
-- `maturity_hardening/operator_readiness_latest.json` (661B)
-- `maturity_hardening/operator_readiness_latest.md` (218B)
+- `maturity_hardening/operator_readiness_latest.json` (901B)
+- `maturity_hardening/operator_readiness_latest.md` (326B)
 - `maturity_hardening/phase_readiness_latest.json` (1KB)
 - `maturity_hardening/phase_readiness_latest.md` (687B)
 - `maturity_hardening/post_stop_v2_maturity_refresh/00_README.md` (323B)
