@@ -133,10 +133,10 @@ These appear as cards on the Alert Dashboard page with severity, type, detail, a
 
 | Gap | Status | Remediation |
 |-----|--------|-------------|
-| Email alerts | Not configured | System uses Telegram only. Email can be added via OpenClaw gateway if needed. |
-| Brave budget exhaustion alert | Budget tracks 70%/90% thresholds but doesn't send Telegram | Add to morning brief: "Brave usage: X% of monthly budget" |
-| Pipeline stage failure Telegram | Failures logged in pipeline_runs but no Telegram auto-send | Wire `pipeline_watchdog.py` to send Telegram on critical stages |
-| AI Analyst auto-regeneration | Staleness detected but no auto-regen trigger | Add to daily pipeline: regenerate when inputs change |
+| Email alerts | **IMPLEMENTED** (commit 535173c) | `alert_dispatcher_unified.py` sends via gog Gmail to john@jwwhiting.com |
+| Brave budget exhaustion alert | **IMPLEMENTED** (commit 535173c) | Dispatcher checks 70%/90% monthly thresholds, sends Telegram + email |
+| Pipeline stage failure Telegram | **IMPLEMENTED** (commit 535173c) | Dispatcher detects `status=failed` in pipeline_runs, sends Telegram + email. Test artifacts filtered (commit aad4318). |
+| AI Analyst auto-regeneration | **Manual by operator choice** | Staleness detected with `is_stale` flag + `stale_warning`. Operator runs `portfolio_ai_analyst.py` when needed. |
 
 ---
 
