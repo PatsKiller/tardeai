@@ -49,11 +49,9 @@ def main():
                 "name": f"agent_dashboard_{a}",
             })
 
-    # Known tab-variant pages
-    tab_variants = [
-        {"href": "/v2/pipeline?tab=stage-controller", "label": "Pipeline - Stage Controller",
-         "name": "pipeline_stage_controller"},
-    ]
+    # Known tab-variant pages (only add if component actually reads ?tab= param)
+    # PipelineHub does NOT read ?tab= — removed pipeline_stage_controller
+    tab_variants = []
     for tv in tab_variants:
         if tv["href"] not in {r["href"] for r in routes}:
             routes.append(tv)

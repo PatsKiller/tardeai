@@ -144,7 +144,7 @@ def main():
           "agent_calibration MAX(computed_at)",
           ".venv/bin/python scripts/agent_calibration_engine.py")
 
-    check("topic_monitor", 336,
+    check("topic_monitor", 168,
           _db_age_hours("SELECT MAX(last_searched) FROM topic_monitor WHERE enabled=true"),
           "topic_monitor MAX(last_searched)",
           "curl -X POST localhost:7777/api/v2/topics/run")
@@ -153,9 +153,10 @@ def main():
           _db_age_hours("SELECT MAX(created_at) FROM paper_trade_proposals WHERE status='pending'"),
           "paper_trade_proposals MAX(created_at) pending")
 
-    check("watchlist_agent_jobs", 2,
+    _agent_max = 48 if _now().weekday() >= 5 else 2  # Weekend: 48h, weekday: 2h
+    check("watchlist_agent_jobs", _agent_max,
           _db_age_hours("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"),
-          "watchlist_agent_jobs MAX completed",
+          f"watchlist_agent_jobs MAX completed (weekend={_now().weekday() >= 5})",
           ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 5")
 
     check("weekly_learning", 168,
