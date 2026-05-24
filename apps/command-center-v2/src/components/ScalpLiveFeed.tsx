@@ -103,10 +103,13 @@ export default function ScalpLiveFeed() {
     async function tryWs() {
       if (unmounted) return
       try {
-        // Probe WS availability via API before attempting connection (avoids browser console error)
-        const probe = await fetch(`/api/v2/scalp/live`).catch(() => null)
-        if (!probe || !probe.ok) return // WS server likely down, stay on polling
+        // Check if WS server is running by probing its port via a quick fetch
+        // If fetch to the WS port fails, don't attempt WebSocket (avoids browser console error)
         const wsHost = window.location.hostname
+        const wsProbe = await fetch(`http://${wsHost}:${WS_PORT}/`, { signal: AbortSignal.timeout(2000) }).catch(() => null)
+        // WS server returns upgrade-required or similar; any response means it's alive
+        // If null (connection refused), skip WS entirely
+        if (!wsProbe) return
         ws = new WebSocket(`ws://${wsHost}:${WS_PORT}`)
         wsRef.current = ws
 

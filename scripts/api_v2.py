@@ -18626,13 +18626,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     ORDER BY created_at DESC LIMIT 20
                 """) or []
 
+                # System/data-product alerts (synthetic, always current)
+                _sys_alerts = _generate_stale_data_alerts()
+
                 data = {
                     'volume_stats': {k: _json_clean(v) for k, v in (vol or {}).items()},
                     'by_tier': [{k: _json_clean(v) for k, v in r.items()} for r in by_tier],
                     'suppressed': [{k: _json_clean(v) for k, v in r.items()} for r in suppressed],
                     'digest_pending': [{k: _json_clean(v) for k, v in r.items()} for r in digest_pending],
                     'urgent_recent': [{k: _json_clean(v) for k, v in r.items()} for r in urgent],
+                    'system_alerts': _sys_alerts,
+                    'system_alert_count': len(_sys_alerts),
                 }
+                # Adjust total to include system alerts
+                data['volume_stats']['total'] = int(data['volume_stats'].get('total') or 0) + len(_sys_alerts)
+                data['volume_stats']['system'] = len(_sys_alerts)
                 return 200, {"ok": True, "data": data}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
