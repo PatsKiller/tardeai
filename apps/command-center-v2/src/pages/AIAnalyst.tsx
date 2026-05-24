@@ -20,7 +20,7 @@ import { DoughnutChart, BarChartJS } from '../components/charts'
 */
 
 interface AISection { key: string; title: string; content: string }
-interface AIData { has_data: boolean; sections: AISection[]; generated_at: string; run_type: string; model: string }
+interface AIData { has_data: boolean; sections: AISection[]; generated_at: string; run_type: string; model: string; is_stale?: boolean; stale_warning?: string; input_manifest?: Record<string, unknown>; tlh_summary?: { taxable_candidates: number; total_taxable_loss: number; top_candidates: Array<{symbol: string; loss: number}>; note: string } }
 interface AIReport { id: number; report_type: string; title: string; content: string; provider: string; cost: number; generated_at: string }
 interface AIReportsResp { reports: AIReport[] }
 interface AlexAnalysis { symbol: string; trigger: string; severity: string; created_at: string; summary?: string }
@@ -162,6 +162,28 @@ export default function AIAnalyst() {
       <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
         Advisory only — all trades must be executed manually at your broker (Fidelity/Schwab). This app does not place or cancel orders.
       </div>
+
+      {/* Stale warning */}
+      {data?.is_stale && data?.stale_warning && (
+        <div style={{ padding: '10px 14px', marginBottom: 12, borderRadius: 8, background: 'rgba(246,70,93,0.08)', border: '1px solid rgba(246,70,93,0.3)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#f6465d' }}>STALE ANALYSIS</div>
+          <div style={{ fontSize: 11, color: '#f6465d', marginTop: 4 }}>{data.stale_warning}</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+            To regenerate: <code>python3 scripts/portfolio_ai_analyst.py</code>
+          </div>
+        </div>
+      )}
+
+      {/* TLH Summary */}
+      {data?.tlh_summary && data.tlh_summary.taxable_candidates > 0 && (
+        <div style={{ padding: '10px 14px', marginBottom: 12, borderRadius: 8, background: 'rgba(14,203,129,0.06)', border: '1px solid rgba(14,203,129,0.2)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#0ecb81' }}>TAX-LOSS HARVESTING: {data.tlh_summary.taxable_candidates} taxable candidates · ${Math.abs(data.tlh_summary.total_taxable_loss).toLocaleString()} harvestable</div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+            Top: {data.tlh_summary.top_candidates.slice(0, 5).map(c => `${c.symbol} ($${Math.abs(c.loss).toLocaleString()})`).join(', ')}
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{data.tlh_summary.note}</div>
+        </div>
+      )}
 
       {/* ── Ask AI ── */}
       <div style={{ background: 'rgba(16,20,28,0.92)', backdropFilter: 'blur(12px)', border: '1px solid rgba(74,144,244,0.25)', borderRadius: 12, padding: '18px 20px', marginBottom: 24 }}>
