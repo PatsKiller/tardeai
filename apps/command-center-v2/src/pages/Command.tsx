@@ -20,7 +20,7 @@ interface CommandData {
   cio_pending: { symbol: string; action: string; priority: string }[]
   screener: { status: string; symbols_scanned: number }
   pipeline: { ok: boolean; note: string }
-  freshness: { last_refresh: string; status: string }
+  freshness: { last_refresh: string; status: string; context?: string; is_weekend?: boolean; age_display?: string }
   llm_intelligence?: Record<string, { content?: string; error?: string }>
   social_highlights?: { symbol: string; summary: string }[]
 }
@@ -53,7 +53,7 @@ export default function Command() {
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', margin: 0 }}>Morning Command</h2>
-        <FreshnessBadge lastRefresh={cmd.freshness?.last_refresh} label="Data" />
+        <FreshnessBadge lastRefresh={cmd.freshness?.last_refresh} label="Data" context={cmd.freshness?.context} isWeekend={cmd.freshness?.is_weekend} />
         <button onClick={refetch} style={{ padding: '3px 10px', fontSize: 10, border: '1px solid var(--border1, #2a2a3a)', borderRadius: 4, background: 'transparent', color: 'var(--accent, #4a90f4)', cursor: 'pointer', fontFamily: 'monospace' }}>Refresh</button>
       </div>
 

@@ -102,15 +102,30 @@ export default function SystemHealth() {
       {/* Data Product Freshness */}
       {data?.data_freshness && (
         <Card title={`Data Product Health — ${data.data_freshness.summary}`} style={{ marginTop: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
             {(data.data_freshness.products || []).map((p: any) => {
-              const color = p.status === 'fresh' ? '#0ecb81' : p.status === 'stale' ? '#f6465d' : '#848e9c'
+              const isWeekendStale = p.stale_reason === 'weekend_market_closed'
+              const color = p.status === 'fresh' ? '#0ecb81' : isWeekendStale ? '#4a90f4' : p.status === 'stale' ? '#f6465d' : '#848e9c'
+              const statusLabel = p.status === 'fresh' ? 'Fresh' : isWeekendStale ? 'Weekend Paused' : p.status === 'stale' ? 'Stale — Action Needed' : 'Unknown'
               return (
-                <div key={p.product} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid ${color}33`, background: `${color}08` }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color }}>{p.product}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                <div key={p.product} title={p.remediation || ''} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid ${color}33`, background: `${color}08`, cursor: p.remediation ? 'help' : 'default' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color }}>{p.product}</span>
+                    <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${color}22`, color }}>{statusLabel}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
                     {p.age_hours != null ? `${Math.round(p.age_hours)}h old` : 'unknown'} / max {p.max_stale_hours}h
                   </div>
+                  {p.owner && (
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                      Owner: {p.owner} · {p.schedule || 'manual'}
+                    </div>
+                  )}
+                  {p.stale_reason && p.stale_reason !== 'weekend_market_closed' && p.remediation && (
+                    <div style={{ fontSize: 9, color: '#f6465d', marginTop: 2 }}>
+                      Fix: <code style={{ fontSize: 8 }}>{p.remediation}</code>
+                    </div>
+                  )}
                 </div>
               )
             })}
