@@ -177,11 +177,14 @@ export default function AIAnalyst() {
       {/* TLH Summary */}
       {data?.tlh_summary && data.tlh_summary.taxable_candidates > 0 && (
         <div style={{ padding: '10px 14px', marginBottom: 12, borderRadius: 8, background: 'rgba(14,203,129,0.06)', border: '1px solid rgba(14,203,129,0.2)' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#0ecb81' }}>TAX-LOSS HARVESTING: {data.tlh_summary.taxable_candidates} taxable candidates · ${Math.abs(data.tlh_summary.total_taxable_loss).toLocaleString()} harvestable</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#0ecb81' }}>TAX-LOSS HARVESTING: {data.tlh_summary.taxable_candidates} taxable lot groups · ${Math.abs(data.tlh_summary.total_taxable_loss).toLocaleString()} lot-level losses</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
             Top: {data.tlh_summary.top_candidates.slice(0, 5).map(c => `${c.symbol} ($${Math.abs(c.loss).toLocaleString()})`).join(', ')}
           </div>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{data.tlh_summary.note}</div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2, fontStyle: 'italic' }}>
+            Note: Lot-level losses (cost basis vs current price per tax lot) differ from portfolio-level unrealized gain/loss shown on the Tax page. Review individual lots before harvesting. Manual review required.
+          </div>
         </div>
       )}
 
