@@ -63,10 +63,12 @@ export default function Technical() {
               </div>
               <div style={{ width: 48, height: 48, borderRadius: 999, border: `3px solid ${piTone(h.pi_score ?? 0)}`, display: 'grid', placeItems: 'center', color: piTone(h.pi_score ?? 0), fontWeight: 800 }}>{h.pi_score}</div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 12 }}>
               <Stat label="RSI" value={h.rsi != null ? h.rsi.toFixed(0) : '—'} color={h.rsi != null ? deltaColor(50 - h.rsi) : 'var(--text3)'} />
               <Stat label="SMA200" value={h.sma200_pct != null ? fmtPct(h.sma200_pct, 1) : '—'} color={deltaColor(h.sma200_pct)} />
               <Stat label="Analyst" value={h.analyst_rating?.replace('Strong ', '').replace(' ', '') || '—'} color={h.analyst_rating?.includes('Buy') ? 'var(--green)' : h.analyst_rating?.includes('Sell') ? 'var(--red)' : 'var(--text3)'} />
+              <Stat label="Fwd P/E" value={h.forward_pe != null ? Number(h.forward_pe).toFixed(1) : '—'} />
+              <Stat label="YTD" value={h.perf_ytd_pct != null ? fmtPct(h.perf_ytd_pct, 1) : '—'} color={deltaColor(h.perf_ytd_pct)} />
               <Stat label="Beta" value={h.beta != null ? h.beta.toFixed(2) : '—'} />
             </div>
             <div style={{ marginTop: 12 }}>
