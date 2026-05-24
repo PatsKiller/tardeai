@@ -1955,6 +1955,37 @@ def run_freshness_validation():
         total_issues = len(stale) + (1 if critical > 0 else 0) + (1 if queued > 100 else 0) + (1 if stale_topics > 0 else 0)
         print(f"[iris] Freshness validation complete: {total_issues} issues found")
 
+        # AUTO-REMEDIATE: run the remediation command for stale products
+        if stale:
+            import subprocess
+            for s in stale:
+                cmd = s.get("remediation")
+                if cmd and not s.get("weekend_market_closed"):
+                    print(f"  [auto-remediate] Running: {cmd}")
+                    try:
+                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120,
+                                                cwd=str(PROJECT_ROOT))
+                        if result.returncode == 0:
+                            print(f"    ✅ Success")
+                        else:
+                            print(f"    ❌ Failed (exit {result.returncode}): {result.stderr[:100]}")
+                    except subprocess.TimeoutExpired:
+                        print(f"    ⏰ Timeout after 120s")
+                    except Exception as e:
+                        print(f"    ❌ Error: {e}")
+
+        # AUTO-REMEDIATE: drain agent queue if backlogged
+        if queued > 100:
+            print(f"  [auto-remediate] Draining agent queue ({queued} queued)...")
+            try:
+                import subprocess
+                subprocess.run(
+                    [str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/process_watchlist_agent_jobs.py"), "--limit", "5"],
+                    capture_output=True, text=True, timeout=180, cwd=str(PROJECT_ROOT))
+                print(f"    ✅ Drained 5 jobs")
+            except Exception as e:
+                print(f"    ❌ Drain error: {e}")
+
         # Log the run
         log_run("freshness_validation", categories_analyzed=len(products), gaps_found=total_issues)
         return {"issues": total_issues, "stale_products": len(stale), "critical_stages": critical, "queued_jobs": queued, "stale_topics": stale_topics}
