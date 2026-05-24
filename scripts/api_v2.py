@@ -14980,7 +14980,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                (summary->>'rows_produced')::int as rows_processed,
                                duration_seconds as duration_sec,
                                summary->>'errors' as error_message
-                        FROM pipeline_runs WHERE pipeline_key=%s AND status != 'test_artifact' ORDER BY started_at DESC LIMIT 1
+                        FROM pipeline_runs WHERE pipeline_key=%s ORDER BY started_at DESC LIMIT 1
                     """, [script_name], fetch="one")
                     if not row or not row.get('started_at'):
                         row = _db_query("""
@@ -15026,6 +15026,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     # Derive color (calendar-aware)
                     if last_status == 'running':
                         color = 'blue'
+                    elif last_status == 'test_artifact':
+                        color = 'amber'
+                        warnings += 1
                     elif last_status == 'failed':
                         color = 'red'
                         critical += 1
