@@ -100,9 +100,12 @@ export default function ScalpLiveFeed() {
     let unmounted = false
     let ws: WebSocket | null = null
 
-    function tryWs() {
+    async function tryWs() {
       if (unmounted) return
       try {
+        // Probe WS availability via API before attempting connection (avoids browser console error)
+        const probe = await fetch(`/api/v2/scalp/live`).catch(() => null)
+        if (!probe || !probe.ok) return // WS server likely down, stay on polling
         const wsHost = window.location.hostname
         ws = new WebSocket(`ws://${wsHost}:${WS_PORT}`)
         wsRef.current = ws
