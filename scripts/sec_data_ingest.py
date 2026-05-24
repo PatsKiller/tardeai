@@ -13,6 +13,16 @@ import json, os, sys, time
 from datetime import datetime, date
 from pathlib import Path
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -213,18 +223,20 @@ def test():
 
 
 if __name__ == "__main__":
-    if "--test" in sys.argv:
-        test()
-    elif "--form4" in sys.argv:
-        sym = None
-        if "--symbol" in sys.argv:
-            idx = sys.argv.index("--symbol")
-            if idx + 1 < len(sys.argv):
-                sym = [sys.argv[idx + 1].upper()]
-        result = ingest_form4(sym)
-        print(json.dumps(result, indent=2))
-    elif "--all" in sys.argv:
-        result = ingest_form4()
-        print(json.dumps(result, indent=2))
-    else:
-        print("Usage: --test | --form4 [--symbol V] | --all")
+    with PipelineRun("sec_data_ingest") as _run:
+        if "--test" in sys.argv:
+            test()
+        elif "--form4" in sys.argv:
+            sym = None
+            if "--symbol" in sys.argv:
+                idx = sys.argv.index("--symbol")
+                if idx + 1 < len(sys.argv):
+                    sym = [sys.argv[idx + 1].upper()]
+            result = ingest_form4(sym)
+            print(json.dumps(result, indent=2))
+        elif "--all" in sys.argv:
+            result = ingest_form4()
+            print(json.dumps(result, indent=2))
+        else:
+            print("Usage: --test | --form4 [--symbol V] | --all")
+

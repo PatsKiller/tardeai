@@ -30,6 +30,16 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 # ── env / config ────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / '.env')
 DB_CONFIG = dict(
@@ -336,4 +346,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with PipelineRun("strategy_weekly_review") as _run:
+        main()
+

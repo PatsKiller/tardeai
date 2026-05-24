@@ -23,6 +23,16 @@ _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 from local_llm_config import get_local_llm_model, get_local_llm_base_url
+
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
 OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
 OLLAMA_MODEL = get_local_llm_model()
 
@@ -2012,9 +2022,11 @@ def _auto_queue_new_symbols():
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=10)
-    args = parser.parse_args()
-    _auto_queue_new_symbols()  # Check for new symbols first
-    process_jobs(args.limit)
+    with PipelineRun("process_watchlist_agent_jobs") as _run:
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--limit", type=int, default=10)
+        args = parser.parse_args()
+        _auto_queue_new_symbols()  # Check for new symbols first
+        process_jobs(args.limit)
+

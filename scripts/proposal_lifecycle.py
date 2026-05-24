@@ -10,6 +10,16 @@ Usage:
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 # ── Strategy Expiry Map ────────────────────────────────────────────────────
 
 STRATEGY_EXPIRY_HOURS = {
@@ -240,9 +250,11 @@ def evaluate_lifecycle_status(strategy_id, current_price, entry_price,
 
 
 if __name__ == "__main__":
-    strategies = sorted(STRATEGY_EXPIRY_HOURS.keys())
-    print(f"{'Strategy':32} {'Hours':>5} {'Max':>5} {'Class':15} {'Overnight':>9} {'Intraday':>8}")
-    print("-" * 90)
-    for s in strategies:
-        print(f"{s:32} {get_expiry_hours(s):5} {get_max_expiry_hours(s):5} "
-              f"{get_timeframe_class(s):15} {str(is_overnight(s)):>9} {str(is_intraday(s)):>8}")
+    with PipelineRun("proposal_lifecycle") as _run:
+        strategies = sorted(STRATEGY_EXPIRY_HOURS.keys())
+        print(f"{'Strategy':32} {'Hours':>5} {'Max':>5} {'Class':15} {'Overnight':>9} {'Intraday':>8}")
+        print("-" * 90)
+        for s in strategies:
+            print(f"{s:32} {get_expiry_hours(s):5} {get_max_expiry_hours(s):5} "
+                  f"{get_timeframe_class(s):15} {str(is_overnight(s)):>9} {str(is_intraday(s)):>8}")
+

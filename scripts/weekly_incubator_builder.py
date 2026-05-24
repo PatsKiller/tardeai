@@ -21,6 +21,16 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from session13_db import get_conn
 from multi_strategy_classifier import load_all_strategies, classify_symbol, load_enrichment_cache
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 log = logging.getLogger("weekly_incubator_builder")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
@@ -319,4 +329,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with PipelineRun("weekly_incubator_builder") as _run:
+        main()
+
