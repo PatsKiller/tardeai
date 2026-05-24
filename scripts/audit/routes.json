@@ -181,16 +181,6 @@
     "name": "journal"
   },
   {
-    "href": "/v2/paper-journal",
-    "label": "Paper Journal",
-    "name": "paper_journal"
-  },
-  {
-    "href": "/v2/paper-outcomes",
-    "label": "Paper Outcomes",
-    "name": "paper_outcomes"
-  },
-  {
     "href": "/v2/journal-reports",
     "label": "Journal Reports",
     "name": "journal_reports"
@@ -244,11 +234,6 @@
     "href": "/v2/governance",
     "label": "Governance",
     "name": "governance"
-  },
-  {
-    "href": "/v2/paper-governance",
-    "label": "Paper Governance",
-    "name": "paper_governance"
   },
   {
     "href": "/v2/system-health",
