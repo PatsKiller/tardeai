@@ -16,6 +16,16 @@ from typing import Optional
 
 import yaml
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -480,48 +490,50 @@ def _get_conn():
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    with PipelineRun("risk_gate") as _run:
+        logging.basicConfig(level=logging.INFO)
 
-    if '--test' in sys.argv:
-        conn = _get_conn()
-        gate = RiskGate(conn)
+        if '--test' in sys.argv:
+            conn = _get_conn()
+            gate = RiskGate(conn)
 
-        print("=== Risk Gate Self-Test ===\n")
+            print("=== Risk Gate Self-Test ===\n")
 
-        # Test 1: Basic approval (discovery context)
-        d = gate.check('FTCI', 'momentum_scalp', {'stop_loss': 4.50}, 'taxable', 'paper', 'discovery')
-        print(f"1. Discovery check:  {d.result} (approved={d.approved})")
+            # Test 1: Basic approval (discovery context)
+            d = gate.check('FTCI', 'momentum_scalp', {'stop_loss': 4.50}, 'taxable', 'paper', 'discovery')
+            print(f"1. Discovery check:  {d.result} (approved={d.approved})")
 
-        # Test 2: IRA scalp should be rejected
-        d = gate.check('FTCI', 'momentum_scalp', {'stop_loss': 4.50}, 'rollover_ira', 'paper', 'paper_trade')
-        print(f"2. IRA scalp:        {d.result} reason={d.reason_codes}")
-        assert not d.approved, "IRA scalp should be rejected"
+            # Test 2: IRA scalp should be rejected
+            d = gate.check('FTCI', 'momentum_scalp', {'stop_loss': 4.50}, 'rollover_ira', 'paper', 'paper_trade')
+            print(f"2. IRA scalp:        {d.result} reason={d.reason_codes}")
+            assert not d.approved, "IRA scalp should be rejected"
 
-        # Test 3: No stop defined
-        d = gate.check('FTCI', 'momentum_scalp', {}, 'taxable', 'paper', 'paper_trade')
-        print(f"3. No stop:          {d.result} reason={d.reason_codes}")
-        assert not d.approved, "No stop should be rejected"
+            # Test 3: No stop defined
+            d = gate.check('FTCI', 'momentum_scalp', {}, 'taxable', 'paper', 'paper_trade')
+            print(f"3. No stop:          {d.result} reason={d.reason_codes}")
+            assert not d.approved, "No stop should be rejected"
 
-        # Test 4: Halt check
-        halt = gate.check_halt('momentum_scalp', 'paper')
-        print(f"4. Halt check:       {halt or 'None (no halt)'}")
+            # Test 4: Halt check
+            halt = gate.check_halt('momentum_scalp', 'paper')
+            print(f"4. Halt check:       {halt or 'None (no halt)'}")
 
-        # Test 5: Income without SSDI
-        d = gate.check('SCHD', 'income_add', {'stop_loss': 25}, 'rollover_ira', 'paper', 'paper_trade')
-        print(f"5. Income no SSDI:   {d.result} reason={d.reason_codes}")
-        assert not d.approved, "Income without SSDI should be rejected"
+            # Test 5: Income without SSDI
+            d = gate.check('SCHD', 'income_add', {'stop_loss': 25}, 'rollover_ira', 'paper', 'paper_trade')
+            print(f"5. Income no SSDI:   {d.result} reason={d.reason_codes}")
+            assert not d.approved, "Income without SSDI should be rejected"
 
-        # Test 6: Unknown strategy in live mode
-        d = gate.check('FTCI', 'unknown_strategy', {'stop_loss': 4.50}, 'taxable', 'live', 'live_trade')
-        print(f"6. Unknown live:     {d.result} reason={d.reason_codes}")
-        assert not d.approved, "Unknown strategy live should be rejected"
+            # Test 6: Unknown strategy in live mode
+            d = gate.check('FTCI', 'unknown_strategy', {'stop_loss': 4.50}, 'taxable', 'live', 'live_trade')
+            print(f"6. Unknown live:     {d.result} reason={d.reason_codes}")
+            assert not d.approved, "Unknown strategy live should be rejected"
 
-        # Test 7: Social-only catalyst in paper_trade context
-        d = gate.check('FTCI', 'momentum_scalp', {'stop_loss': 4.50}, 'taxable', 'paper', 'paper_trade',
-                       extra={'source': 'stocktwits', 'catalyst_verified': False})
-        print(f"7. Social-only:      {d.result} reason={d.reason_codes}")
+            # Test 7: Social-only catalyst in paper_trade context
+            d = gate.check('FTCI', 'momentum_scalp', {'stop_loss': 4.50}, 'taxable', 'paper', 'paper_trade',
+                           extra={'source': 'stocktwits', 'catalyst_verified': False})
+            print(f"7. Social-only:      {d.result} reason={d.reason_codes}")
 
-        conn.close()
-        print("\n=== All risk gate tests passed ===")
-    else:
-        print("Usage: python3 scripts/risk_gate.py --test")
+            conn.close()
+            print("\n=== All risk gate tests passed ===")
+        else:
+            print("Usage: python3 scripts/risk_gate.py --test")
+

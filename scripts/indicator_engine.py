@@ -20,6 +20,16 @@ import pandas_ta as ta
 import yaml
 import yfinance as yf
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 logger = logging.getLogger(__name__)
 
 # Load config once at module import
@@ -1070,21 +1080,23 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
 # ── CLI Test Mode ─────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    import sys
-    logging.basicConfig(level=logging.INFO)
-    symbol = sys.argv[1] if len(sys.argv) > 1 else 'AMD'
-    profile = sys.argv[2] if len(sys.argv) > 2 else 'scalp'
-    print(f"\nRunning {profile} confluence analysis for {symbol}...")
-    result = analyze_confluence(symbol, profile)
-    if result.get('ok'):
-        print(f"\nConfluence: {result['confluence_tier']} ({result['signals_bullish']} bullish, "
-              f"{result['signals_bearish']} bearish, {result['signals_neutral']} neutral)")
-        print(f"Bullish badges: {result['strategy_badges']}")
-        print(f"Bearish badges: {result['bearish_badges']}")
-        print(f"Entry quality: {result['entry_quality']}")
-        print(f"Stop: ${result['stop_price']} | Target: ${result['target_price']}")
-        print(f"ADX regime: {result['adx_regime']}")
-        if result.get('key_levels'):
-            print(f"Key levels: {json.dumps(result['key_levels'], indent=2)}")
-    else:
-        print(f"FAILED: {result.get('error')}")
+    with PipelineRun("indicator_engine") as _run:
+        import sys
+        logging.basicConfig(level=logging.INFO)
+        symbol = sys.argv[1] if len(sys.argv) > 1 else 'AMD'
+        profile = sys.argv[2] if len(sys.argv) > 2 else 'scalp'
+        print(f"\nRunning {profile} confluence analysis for {symbol}...")
+        result = analyze_confluence(symbol, profile)
+        if result.get('ok'):
+            print(f"\nConfluence: {result['confluence_tier']} ({result['signals_bullish']} bullish, "
+                  f"{result['signals_bearish']} bearish, {result['signals_neutral']} neutral)")
+            print(f"Bullish badges: {result['strategy_badges']}")
+            print(f"Bearish badges: {result['bearish_badges']}")
+            print(f"Entry quality: {result['entry_quality']}")
+            print(f"Stop: ${result['stop_price']} | Target: ${result['target_price']}")
+            print(f"ADX regime: {result['adx_regime']}")
+            if result.get('key_levels'):
+                print(f"Key levels: {json.dumps(result['key_levels'], indent=2)}")
+        else:
+            print(f"FAILED: {result.get('error')}")
+

@@ -22,6 +22,16 @@ from external_market_data_ingest import (
     ingest_fred, get_macro_context, _get_conn, _env, FRED_SERIES
 )
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 
 def ingest_history(days: int = 90) -> dict:
     """Fetch historical observations for all FRED series (backfill)."""
@@ -136,22 +146,24 @@ def test():
 
 
 if __name__ == "__main__":
-    if "--test" in sys.argv:
-        test()
-    elif "--ingest" in sys.argv:
-        result = ingest_fred()
-        print(f"FRED ingest: {result}")
-    elif "--context" in sys.argv:
-        print(get_macro_context() or "(no FRED data)")
-    elif "--history" in sys.argv:
-        days = 90
-        for i, a in enumerate(sys.argv):
-            if a == "--days" and i + 1 < len(sys.argv):
-                days = int(sys.argv[i + 1])
-        result = ingest_history(days)
-        print(f"FRED history: {result}")
-        show_status()
-    elif "--status" in sys.argv:
-        show_status()
-    else:
-        print("Usage: --test | --ingest | --context | --history [--days 90] | --status")
+    with PipelineRun("fred_data_ingest") as _run:
+        if "--test" in sys.argv:
+            test()
+        elif "--ingest" in sys.argv:
+            result = ingest_fred()
+            print(f"FRED ingest: {result}")
+        elif "--context" in sys.argv:
+            print(get_macro_context() or "(no FRED data)")
+        elif "--history" in sys.argv:
+            days = 90
+            for i, a in enumerate(sys.argv):
+                if a == "--days" and i + 1 < len(sys.argv):
+                    days = int(sys.argv[i + 1])
+            result = ingest_history(days)
+            print(f"FRED history: {result}")
+            show_status()
+        elif "--status" in sys.argv:
+            show_status()
+        else:
+            print("Usage: --test | --ingest | --context | --history [--days 90] | --status")
+

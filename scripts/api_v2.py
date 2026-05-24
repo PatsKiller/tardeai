@@ -331,6 +331,14 @@ def portfolio_holdings():
             "cost_basis": basis_map.get((sym, p.get("account", "")), p.get("cost_basis")),
             "gain_loss": round(p.get("market_value", 0) - basis_map.get((sym, p.get("account", "")), p.get("cost_basis") or p.get("market_value", 0)), 2),
             "pi_score": _pi_score(pi_input) if (e_cache or t_snap) else None,
+            "analyst_rating": e_cache.get("analyst_rating"),
+            "recom_score": e_cache.get("recom_score"),
+            "insider_own_pct": e_cache.get("insider_own_pct"),
+            "inst_own_pct": e_cache.get("inst_own_pct"),
+            "forward_pe": e_cache.get("forward_pe"),
+            "peg": e_cache.get("peg"),
+            "eps_next_y": e_cache.get("eps_next_y"),
+            "perf_ytd_pct": e_cache.get("perf_ytd_pct"),
             "is_cash": bool(p.get("is_cash")),
             # LLM health assessment
             "llm_health": (llm_health_map.get(sym) or {}).get('holdings_llm_health'),
@@ -2846,7 +2854,60 @@ def ai_analyst():
         "is_stale": _ai_stale,
         "stale_warning": f"This analysis was generated {gen_at} and may not reflect current portfolio state (${_canonical_total:,.0f}). Regenerate for current recommendations." if _ai_stale else None,
         "input_manifest": _input_manifest,
+        "tlh_summary": _build_tlh_summary(),
     }
+
+
+def _build_tlh_summary():
+    """Build tax-loss harvesting summary for AI Analyst. Only taxable accounts."""
+    try:
+        lots = _load_json(STATE_DIR / "tax_lots.json") or {}
+        holdings = _load_json(STATE_DIR / "holdings.json") or {}
+        h_prices = {h["symbol"]: h.get("price", 0) for h in holdings.get("holdings", []) if h.get("symbol")}
+
+        taxable_losses = []
+        total_unrealized = 0
+        # tax_lots.json is keyed by "symbol:account"
+        for key, lot_list in lots.items():
+            if not isinstance(lot_list, list):
+                continue
+            acct = key.split(":")[-1] if ":" in key else ""
+            if "taxable" not in acct.lower():
+                continue
+            sym = key.split(":")[0] if ":" in key else key
+            price = h_prices.get(sym, 0)
+            for lot in lot_list:
+                shares = float(lot.get("shares_remaining", 0) or 0)
+                cost_per = float(lot.get("cost_per_share", 0) or 0)
+                basis = shares * cost_per
+                current = shares * price if price else 0
+                gain = current - basis if basis > 0 else 0
+                if gain < -50:
+                    taxable_losses.append({"symbol": sym, "loss": round(gain, 2), "basis": round(basis, 2), "current": round(current, 2)})
+                    total_unrealized += gain
+
+        # Aggregate by symbol
+        by_sym = {}
+        for tl in taxable_losses:
+            s = tl["symbol"]
+            by_sym.setdefault(s, {"symbol": s, "loss": 0, "basis": 0, "current": 0})
+            by_sym[s]["loss"] += tl["loss"]
+            by_sym[s]["basis"] += tl["basis"]
+            by_sym[s]["current"] += tl["current"]
+        agg = sorted(by_sym.values(), key=lambda x: x["loss"])
+        for a in agg:
+            a["loss"] = round(a["loss"], 2)
+            a["basis"] = round(a["basis"], 2)
+            a["current"] = round(a["current"], 2)
+
+        return {
+            "taxable_candidates": len(agg),
+            "total_taxable_loss": round(total_unrealized, 2),
+            "top_candidates": agg[:10],
+            "note": f"Only taxable account lots shown ({len(agg)} symbols with losses). IRA/401k losses cannot be harvested." if agg else "No material taxable losses to harvest.",
+        }
+    except Exception:
+        return {"taxable_candidates": 0, "total_taxable_loss": 0, "top_candidates": [], "note": "Tax lot data unavailable."}
 
 
 def ai_ask(body: dict):
@@ -10941,6 +11002,34 @@ def _research_topics_unified():
                                  "last_searched": _json_clean(t.get("last_searched")), "age_days": age_days, "reason": "stale_search"})
             except Exception:
                 pass
+    # Create RESEARCH_GAP_DETECTED events for new gaps and queue agent jobs
+    if gaps:
+        for g in gaps:
+            _topic_id = g.get("topic_id", "")
+            # Check if we already created an event for this topic recently
+            existing = _db_query(
+                "SELECT id FROM alert_events WHERE alert_type='data_staleness' AND symbol=%s AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1",
+                [f"topic:{_topic_id}"], fetch="one")
+            if not existing:
+                try:
+                    from db_adapter import _execute
+                    _execute("""INSERT INTO alert_events (alert_uid, alert_type, symbol, severity, source_script, raw_text, data_quality_status)
+                        VALUES (%s, 'data_staleness', %s, 'warning', 'research_topics_api',
+                                %s, 'stale')
+                        ON CONFLICT (alert_uid) DO NOTHING""",
+                        [f"research_gap_{_topic_id}_{datetime.now().strftime('%Y%m%d')}",
+                         f"topic:{_topic_id}",
+                         f"Research gap: {g.get('display_name', _topic_id)} — {g.get('reason', 'stale')} (last searched: {g.get('last_searched', 'never')})"])
+                    # Queue agent job for Iris to investigate the gap
+                    _execute("""INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status)
+                        VALUES (%s, %s, 'iris', 'research_gap', 1, %s, 'queued')
+                        ON CONFLICT DO NOTHING""",
+                        [f"gap_{_topic_id}_{datetime.now().strftime('%Y%m%d')}",
+                         f"topic:{_topic_id}",
+                         f"Research gap detected for {g.get('display_name', _topic_id)}: {g.get('reason')}. Investigate alternative sources."])
+                except Exception:
+                    pass
+
     return {
         "user_topics": [{k: _json_clean(v) for k, v in r.items()} for r in user_topics],
         "user_topic_count": len(user_topics),
@@ -10948,7 +11037,8 @@ def _research_topics_unified():
         "monitor_topic_count": len(monitor_topics),
         "research_gaps": gaps,
         "gap_count": len(gaps),
-        "note": "User Research Topics are operator-initiated advisories. Topic Monitor Library tracks automated intelligence gathering. Gaps shown below need operator attention.",
+        "gaps_escalated": len(gaps) > 0,
+        "note": "User Research Topics are operator-initiated advisories. Topic Monitor Library tracks automated intelligence gathering. Gaps escalated to Iris agent for investigation.",
     }
 
 

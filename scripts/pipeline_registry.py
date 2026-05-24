@@ -31,12 +31,13 @@ def run_start(script_name: str, run_label: str = None, triggered_by: str = 'cron
         conn = _get_conn()
         if not conn: return None
         cur = conn.cursor()
-        cur.execute("""INSERT INTO pipeline_runs (script_name, run_label, triggered_by, started_at, status)
+        cur.execute("""INSERT INTO pipeline_runs (pipeline_key, run_label, trigger_source, started_at, status)
             VALUES (%s, %s, %s, NOW(), 'running') RETURNING id""", [script_name, run_label, triggered_by])
         run_id = cur.fetchone()[0]
         conn.commit(); conn.close()
         return run_id
-    except Exception:
+    except Exception as e:
+        log.debug(f"pipeline_registry run_start error: {e}")
         return None
 
 
@@ -46,8 +47,9 @@ def run_complete(run_id: Optional[int], rows_processed: int = 0):
         conn = _get_conn()
         if not conn: return
         cur = conn.cursor()
-        cur.execute("""UPDATE pipeline_runs SET status='success', completed_at=NOW(),
-            rows_processed=%s, duration_sec=EXTRACT(EPOCH FROM (NOW()-started_at)) WHERE id=%s""",
+        cur.execute("""UPDATE pipeline_runs SET status='success', finished_at=NOW(),
+            duration_seconds=EXTRACT(EPOCH FROM (NOW()-started_at)),
+            summary=jsonb_build_object('rows_produced', %s) WHERE id=%s""",
             [rows_processed, run_id])
         conn.commit(); conn.close()
     except Exception:
@@ -60,8 +62,9 @@ def run_fail(run_id: Optional[int], error_message: str = ''):
         conn = _get_conn()
         if not conn: return
         cur = conn.cursor()
-        cur.execute("""UPDATE pipeline_runs SET status='failed', completed_at=NOW(),
-            error_message=%s, duration_sec=EXTRACT(EPOCH FROM (NOW()-started_at)) WHERE id=%s""",
+        cur.execute("""UPDATE pipeline_runs SET status='failed', finished_at=NOW(),
+            duration_seconds=EXTRACT(EPOCH FROM (NOW()-started_at)),
+            summary=jsonb_build_object('errors', %s) WHERE id=%s""",
             [str(error_message)[:500], run_id])
         conn.commit(); conn.close()
     except Exception:

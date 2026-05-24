@@ -18,6 +18,16 @@ import json, sys
 from datetime import datetime
 from pathlib import Path
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -1069,44 +1079,46 @@ def test():
 
 
 if __name__ == "__main__":
-    tg = "--telegram" in sys.argv
-    if "--test" in sys.argv:
-        test()
-    elif "--promote" in sys.argv:
-        promote_qualified_intel()
-    elif "--propose" in sys.argv:
-        propose_watchlist_adds()
-    elif "--discovery" in sys.argv:
-        generate_discovery_summary(send_telegram=tg)
-    elif "--rotate" in sys.argv:
-        propose_rotations()
-    elif "--health" in sys.argv:
-        weekly_health_check(send_telegram=tg)
-    elif "--all" in sys.argv or "--daily" in sys.argv:
-        promote_qualified_intel()
-        propose_watchlist_adds()
-        propose_rotations()
-        generate_discovery_summary(send_telegram=tg)
-    elif "--weekly" in sys.argv:
-        promote_qualified_intel()
-        propose_watchlist_adds()
-        propose_rotations()
-        generate_discovery_summary(send_telegram=tg)
-        weekly_health_check(send_telegram=tg)
-    elif "--autonomy-summary" in sys.argv:
-        weekly_autonomy_summary(send_telegram=tg)
-    elif "--status" in sys.argv:
-        show_status()
-    else:
-        print("Usage:")
-        print("  --test              Full test run")
-        print("  --daily / --all     Promote + propose + rotate + discovery")
-        print("  --weekly            Daily + weekly health check")
-        print("  --promote           Promote high-Q intel only")
-        print("  --propose           Propose watchlist adds only")
-        print("  --rotate            Propose rotations only")
-        print("  --discovery         Discovery summary only")
-        print("  --health [--force]  Weekly retirement health check")
-        print("  --autonomy-summary  Weekly autonomy progress report")
-        print("  --status            Show current counts")
-        print("  Add --telegram to send alerts")
+    with PipelineRun("agent_watchlist_engine") as _run:
+        tg = "--telegram" in sys.argv
+        if "--test" in sys.argv:
+            test()
+        elif "--promote" in sys.argv:
+            promote_qualified_intel()
+        elif "--propose" in sys.argv:
+            propose_watchlist_adds()
+        elif "--discovery" in sys.argv:
+            generate_discovery_summary(send_telegram=tg)
+        elif "--rotate" in sys.argv:
+            propose_rotations()
+        elif "--health" in sys.argv:
+            weekly_health_check(send_telegram=tg)
+        elif "--all" in sys.argv or "--daily" in sys.argv:
+            promote_qualified_intel()
+            propose_watchlist_adds()
+            propose_rotations()
+            generate_discovery_summary(send_telegram=tg)
+        elif "--weekly" in sys.argv:
+            promote_qualified_intel()
+            propose_watchlist_adds()
+            propose_rotations()
+            generate_discovery_summary(send_telegram=tg)
+            weekly_health_check(send_telegram=tg)
+        elif "--autonomy-summary" in sys.argv:
+            weekly_autonomy_summary(send_telegram=tg)
+        elif "--status" in sys.argv:
+            show_status()
+        else:
+            print("Usage:")
+            print("  --test              Full test run")
+            print("  --daily / --all     Promote + propose + rotate + discovery")
+            print("  --weekly            Daily + weekly health check")
+            print("  --promote           Promote high-Q intel only")
+            print("  --propose           Propose watchlist adds only")
+            print("  --rotate            Propose rotations only")
+            print("  --discovery         Discovery summary only")
+            print("  --health [--force]  Weekly retirement health check")
+            print("  --autonomy-summary  Weekly autonomy progress report")
+            print("  --status            Show current counts")
+            print("  Add --telegram to send alerts")
+

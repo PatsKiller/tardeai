@@ -20,6 +20,16 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from session13_db import get_conn
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 log = logging.getLogger("daily_incubator_refresh")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
@@ -261,4 +271,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with PipelineRun("daily_incubator_refresh") as _run:
+        main()
+

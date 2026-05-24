@@ -20,6 +20,16 @@ from typing import Optional
 
 import requests
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -656,19 +666,21 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
 
 
 if __name__ == '__main__':
-    import sys, psycopg2
-    logging.basicConfig(level=logging.INFO)
-    symbol = sys.argv[1].upper() if len(sys.argv) > 1 else 'AMD'
-    score = int(sys.argv[2]) if len(sys.argv) > 2 else 45
-    pw = ''
-    for line in (PROJECT_ROOT / '.env').read_text().splitlines():
-        if line.startswith('DB_PASSWORD='): pw = line.split('=', 1)[1].strip()
-    conn = psycopg2.connect(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai', password=pw)
-    result = enrich_symbol(symbol, score, conn, force_full=True)
-    print(f"\n=== ENRICHMENT: {symbol} (score={score}) ===")
-    for k, v in result.items():
-        if k != 'finviz': print(f"  {k}: {v}")
-    if result.get('finviz'):
-        fv = result['finviz']
-        print(f"  Finviz: price=${fv.get('price')} RSI={fv.get('rsi')} RVOL={fv.get('rvol')} analyst={fv.get('analyst_rating','?')}")
-    conn.close()
+    with PipelineRun("symbol_enrichment") as _run:
+        import sys, psycopg2
+        logging.basicConfig(level=logging.INFO)
+        symbol = sys.argv[1].upper() if len(sys.argv) > 1 else 'AMD'
+        score = int(sys.argv[2]) if len(sys.argv) > 2 else 45
+        pw = ''
+        for line in (PROJECT_ROOT / '.env').read_text().splitlines():
+            if line.startswith('DB_PASSWORD='): pw = line.split('=', 1)[1].strip()
+        conn = psycopg2.connect(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai', password=pw)
+        result = enrich_symbol(symbol, score, conn, force_full=True)
+        print(f"\n=== ENRICHMENT: {symbol} (score={score}) ===")
+        for k, v in result.items():
+            if k != 'finviz': print(f"  {k}: {v}")
+        if result.get('finviz'):
+            fv = result['finviz']
+            print(f"  Finviz: price=${fv.get('price')} RSI={fv.get('rsi')} RVOL={fv.get('rvol')} analyst={fv.get('analyst_rating','?')}")
+        conn.close()
+

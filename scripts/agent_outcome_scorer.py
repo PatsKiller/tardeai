@@ -15,6 +15,16 @@ from pathlib import Path
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -314,40 +324,42 @@ def update_source_performance(conn):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-    conn = _get_conn()
+    with PipelineRun("agent_outcome_scorer") as _run:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+        conn = _get_conn()
 
-    print("=== Agent Outcome Scorer ===")
-    scored = match_and_score(conn)
-    print(f"Unscored pairs found: {len(scored)}")
+        print("=== Agent Outcome Scorer ===")
+        scored = match_and_score(conn)
+        print(f"Unscored pairs found: {len(scored)}")
 
-    saved = save_outcomes(conn, scored)
-    print(f"Outcomes saved: {saved}")
+        saved = save_outcomes(conn, scored)
+        print(f"Outcomes saved: {saved}")
 
-    rebuild_calibration(conn)
-    print("Calibration rebuilt")
+        rebuild_calibration(conn)
+        print("Calibration rebuilt")
 
-    write_calibration_to_rules(conn)
-    print("Calibration written to agent_intelligence_rules")
+        write_calibration_to_rules(conn)
+        print("Calibration written to agent_intelligence_rules")
 
-    update_source_performance(conn)
-    print("Source performance updated")
+        update_source_performance(conn)
+        print("Source performance updated")
 
-    # Summary
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM agent_recommendation_outcomes")
-    print(f"\nTotal scored outcomes: {cur.fetchone()[0]}")
+        # Summary
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM agent_recommendation_outcomes")
+        print(f"\nTotal scored outcomes: {cur.fetchone()[0]}")
 
-    cur.execute("""
-        SELECT agent_name, accuracy_pct, correct_count, wrong_count, trending
-        FROM agent_calibration WHERE window_days=90 AND strategy_type IS NULL ORDER BY agent_name
-    """)
-    rows = cur.fetchall()
-    if rows:
-        print("Agent accuracy (90d):")
-        for agent, acc, correct, wrong, trend in rows:
-            print(f"  {agent}: {acc:.0f}% ({correct}✓/{wrong}✗) {trend or ''}" if acc else f"  {agent}: N/A")
-    else:
-        print("No calibration data yet — need 3+ closed trades per agent")
+        cur.execute("""
+            SELECT agent_name, accuracy_pct, correct_count, wrong_count, trending
+            FROM agent_calibration WHERE window_days=90 AND strategy_type IS NULL ORDER BY agent_name
+        """)
+        rows = cur.fetchall()
+        if rows:
+            print("Agent accuracy (90d):")
+            for agent, acc, correct, wrong, trend in rows:
+                print(f"  {agent}: {acc:.0f}% ({correct}✓/{wrong}✗) {trend or ''}" if acc else f"  {agent}: N/A")
+        else:
+            print("No calibration data yet — need 3+ closed trades per agent")
 
-    conn.close()
+        conn.close()
+

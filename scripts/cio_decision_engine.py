@@ -12,6 +12,16 @@ import json, os, sys, hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
@@ -195,21 +205,23 @@ def build_cio_decisions() -> list:
 
 
 if __name__ == "__main__":
-    if "--symbol" in sys.argv:
-        sym = sys.argv[sys.argv.index("--symbol") + 1].upper()
-        decisions = build_cio_decisions()
-        matched = [d for d in decisions if d["symbol"] == sym]
-        if "--json" in sys.argv:
-            print(json.dumps(matched, indent=2, default=str))
+    with PipelineRun("cio_decision_engine") as _run:
+        if "--symbol" in sys.argv:
+            sym = sys.argv[sys.argv.index("--symbol") + 1].upper()
+            decisions = build_cio_decisions()
+            matched = [d for d in decisions if d["symbol"] == sym]
+            if "--json" in sys.argv:
+                print(json.dumps(matched, indent=2, default=str))
+            else:
+                for d in matched:
+                    print(f"  {d['symbol']:>6} {d['action']:>16} {d['priority']:>8} conf={d['confidence_raw']:.2f} hr={d['human_review_required']} — {d['rationale'][:80]}")
+        elif "--run" in sys.argv:
+            decisions = build_cio_decisions()
+            critical = [d for d in decisions if d["priority"] in ("high", "critical")]
+            hr = [d for d in decisions if d["human_review_required"]]
+            print(f"[cio] Generated {len(decisions)} decisions: {len(critical)} high/critical, {len(hr)} need human review")
+            if "--json" in sys.argv:
+                print(json.dumps(decisions[:10], indent=2, default=str))
         else:
-            for d in matched:
-                print(f"  {d['symbol']:>6} {d['action']:>16} {d['priority']:>8} conf={d['confidence_raw']:.2f} hr={d['human_review_required']} — {d['rationale'][:80]}")
-    elif "--run" in sys.argv:
-        decisions = build_cio_decisions()
-        critical = [d for d in decisions if d["priority"] in ("high", "critical")]
-        hr = [d for d in decisions if d["human_review_required"]]
-        print(f"[cio] Generated {len(decisions)} decisions: {len(critical)} high/critical, {len(hr)} need human review")
-        if "--json" in sys.argv:
-            print(json.dumps(decisions[:10], indent=2, default=str))
-    else:
-        print("Usage: --run [--json] | --symbol SCHD [--json]")
+            print("Usage: --run [--json] | --symbol SCHD [--json]")
+

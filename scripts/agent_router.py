@@ -26,6 +26,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from agent_reliability import get_agent_reliability
 
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = PROJECT_ROOT / "config" / "agents.json"
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
@@ -459,7 +469,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with PipelineRun("agent_router") as _run:
+        raise SystemExit(main())
 
 
 def _attach_reliability_context(route):

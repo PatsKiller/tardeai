@@ -52,6 +52,16 @@ except ImportError:
     _HAS_DASHBOARD_COPIER = False
 
 import sys
+
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
 # Force UTF-8 output so emojis work when piped to log files on Windows
 if hasattr(sys.stdout, 'reconfigure'):
     try:
@@ -873,4 +883,6 @@ def main():
                         allow_underfilled=args.allow_underfilled)
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with PipelineRun("trade_ai_orchestrator") as _run:
+        raise SystemExit(main())
+
