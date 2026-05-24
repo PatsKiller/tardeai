@@ -237,10 +237,9 @@ function buildDet(t){{
   var clab={{has_catalyst:'Catalyst',has_high_impact:'High Impact',has_fresh_catalyst:'Fresh <12h',rvol_3:'RVOL≥3x',rvol_5:'RVOL≥5x',float_50:'Float≤50M',price_ok:'Price OK',gap_5:'Gap≥5%',chg_10:'Chg≥10%'}};
   var ch='<div class="dg"><div class="dg-lbl">Criteria</div><div class="crit-wrap">';
   Object.keys(clab).forEach(function(k){{var m=t.criteria[k];ch+='<span class="crit '+(m?'met':'unmet')+'">'+(m?'✅':'⬜')+' '+clab[k]+'</span>';}});ch+='</div></div>';
-  var chart='<div class="dg"><div class="dg-lbl">Daily Chart (login to Finviz Elite)</div>'+
-    '<div class="chart-container"><a href="'+fu+'" target="_blank">'+
-    '<img src="'+cu+'" alt="'+t.sym+'" onerror="this.parentElement.parentElement.innerHTML=\\'<div class=chart-fallback><a href='+fu+' target=_blank style=color:#1A73E8>Open '+t.sym+' on Finviz Elite →</a></div>\\">'+
-    '</a></div></div>';
+  var chart='<div class="dg"><div class="dg-lbl">Daily Chart</div>'+
+    '<div class="chart-container"><a href="'+fu+'" target="_blank" style="color:#1A73E8;font-size:13px;padding:12px;display:block;text-align:center;background:#1a1a2e;border-radius:6px">'+
+    '📊 Open '+t.sym+' on Finviz Elite →</a></div></div>';
   var cath='<div class="dg" style="grid-column:span 2;min-width:200px"><div class="dg-lbl">Catalysts (click headline for summary)</div>';
   if(t.cats&&t.cats.length){{
     t.cats.slice(0,5).forEach(function(c){{
