@@ -1,8 +1,13 @@
 [
   {
     "href": "/v2/command",
-    "label": "Command",
+    "label": "Morning Command",
     "name": "command"
+  },
+  {
+    "href": "/v2/inbox",
+    "label": "Inbox",
+    "name": "inbox"
   },
   {
     "href": "/v2/morning-brief",
@@ -11,13 +16,8 @@
     "skip_in_crawler": true
   },
   {
-    "href": "/v2/inbox",
-    "label": "Inbox",
-    "name": "inbox"
-  },
-  {
     "href": "/v2/portfolio",
-    "label": "Portfolio Command",
+    "label": "Holdings",
     "name": "portfolio"
   },
   {
@@ -36,79 +36,34 @@
     "name": "attribution"
   },
   {
-    "href": "/v2/tax",
-    "label": "Tax & Lots",
-    "name": "tax"
+    "href": "/v2/risk",
+    "label": "Risk Dashboard",
+    "name": "risk"
   },
   {
-    "href": "/v2/rebalance",
-    "label": "Rebalance",
-    "name": "rebalance"
+    "href": "/v2/alerts",
+    "label": "Alert Dashboard",
+    "name": "alerts"
   },
   {
-    "href": "/v2/trade-ai",
-    "label": "Trade AI",
-    "name": "trade_ai"
+    "href": "/v2/risk-regime",
+    "label": "Risk Regime",
+    "name": "risk_regime"
   },
   {
-    "href": "/v2/prospects",
-    "label": "Prospects",
-    "name": "prospects"
+    "href": "/v2/recovery",
+    "label": "Recovery Watch",
+    "name": "recovery"
   },
   {
-    "href": "/v2/strategy-desk",
-    "label": "Strategy Desk",
-    "name": "strategy_desk"
+    "href": "/v2/ai-analyst",
+    "label": "AI Advisory",
+    "name": "ai_analyst"
   },
   {
-    "href": "/v2/paper-proposals",
-    "label": "Automated Trade Proposals",
-    "name": "paper_proposals"
-  },
-  {
-    "href": "/v2/proposal-alerts",
-    "label": "Proposal Alerts",
-    "name": "proposal_alerts"
-  },
-  {
-    "href": "/v2/approvals",
-    "label": "Approvals",
-    "name": "approvals"
-  },
-  {
-    "href": "/v2/paper-status",
-    "label": "Paper Status",
-    "name": "paper_status"
-  },
-  {
-    "href": "/v2/paper-review",
-    "label": "Paper Review",
-    "name": "paper_review"
-  },
-  {
-    "href": "/v2/plan-vs-performance",
-    "label": "Plan vs Performance",
-    "name": "plan_vs_performance"
-  },
-  {
-    "href": "/v2/execution-quality",
-    "label": "Execution Quality",
-    "name": "execution_quality"
-  },
-  {
-    "href": "/v2/broker-reconciliation",
-    "label": "Broker Recon",
-    "name": "broker_reconciliation"
-  },
-  {
-    "href": "/v2/incubator",
-    "label": "Incubator",
-    "name": "incubator"
-  },
-  {
-    "href": "/v2/automated-trade-mode",
-    "label": "ATM",
-    "name": "automated_trade_mode"
+    "href": "/v2/technical",
+    "label": "Technical / PI",
+    "name": "technical"
   },
   {
     "href": "/v2/watchlist",
@@ -121,44 +76,79 @@
     "name": "cio"
   },
   {
-    "href": "/v2/recovery",
-    "label": "Recovery Watch",
-    "name": "recovery"
+    "href": "/v2/research-topics",
+    "label": "Research Intelligence",
+    "name": "research_topics"
   },
   {
-    "href": "/v2/risk",
-    "label": "Risk",
-    "name": "risk"
-  },
-  {
-    "href": "/v2/risk-regime",
-    "label": "Risk Regime",
-    "name": "risk_regime"
-  },
-  {
-    "href": "/v2/technical",
-    "label": "Technical",
-    "name": "technical"
+    "href": "/v2/topic-monitor",
+    "label": "Topic Monitor",
+    "name": "topic_monitor"
   },
   {
     "href": "/v2/research",
-    "label": "Research",
+    "label": "Ticker Research",
     "name": "research"
   },
   {
-    "href": "/v2/backtesting",
-    "label": "Backtesting",
-    "name": "backtesting"
+    "href": "/v2/intelligence",
+    "label": "Intelligence Hub",
+    "name": "intelligence"
   },
   {
-    "href": "/v2/correlation",
-    "label": "Correlation",
-    "name": "correlation"
+    "href": "/v2/overnight",
+    "label": "Overnight Brief",
+    "name": "overnight"
   },
   {
-    "href": "/v2/forecast",
-    "label": "Forecast",
-    "name": "forecast"
+    "href": "/v2/system-health",
+    "label": "System Health",
+    "name": "system_health"
+  },
+  {
+    "href": "/v2/pipeline",
+    "label": "Pipeline Stages",
+    "name": "pipeline"
+  },
+  {
+    "href": "/v2/agent-pipeline",
+    "label": "Agent Pipeline",
+    "name": "agent_pipeline"
+  },
+  {
+    "href": "/v2/paper-proposals",
+    "label": "Proposals",
+    "name": "paper_proposals"
+  },
+  {
+    "href": "/v2/paper-review",
+    "label": "Paper Review",
+    "name": "paper_review"
+  },
+  {
+    "href": "/v2/paper-status",
+    "label": "Paper Status",
+    "name": "paper_status"
+  },
+  {
+    "href": "/v2/automated-trade-mode",
+    "label": "ATM Mode",
+    "name": "automated_trade_mode"
+  },
+  {
+    "href": "/v2/incubator",
+    "label": "Incubator",
+    "name": "incubator"
+  },
+  {
+    "href": "/v2/tax",
+    "label": "Tax & Lots",
+    "name": "tax"
+  },
+  {
+    "href": "/v2/rebalance",
+    "label": "Rebalance",
+    "name": "rebalance"
   },
   {
     "href": "/v2/retirement",
@@ -166,13 +156,8 @@
     "name": "retirement"
   },
   {
-    "href": "/v2/ai-analyst",
-    "label": "AI Analyst",
-    "name": "ai_analyst"
-  },
-  {
     "href": "/v2/reports",
-    "label": "Reports",
+    "label": "Reports Hub",
     "name": "reports"
   },
   {
@@ -186,59 +171,9 @@
     "name": "journal_reports"
   },
   {
-    "href": "/v2/overnight",
-    "label": "Overnight Brief",
-    "name": "overnight"
-  },
-  {
-    "href": "/v2/intelligence",
-    "label": "Intelligence Hub",
-    "name": "intelligence"
-  },
-  {
-    "href": "/v2/topic-monitor",
-    "label": "Topic Monitor",
-    "name": "topic_monitor"
-  },
-  {
-    "href": "/v2/research-topics",
-    "label": "Research Topics",
-    "name": "research_topics"
-  },
-  {
-    "href": "/v2/agent-pipeline",
-    "label": "Agent Pipeline",
-    "name": "agent_pipeline"
-  },
-  {
-    "href": "/v2/agent-calibration",
-    "label": "Agent Calibration",
-    "name": "agent_calibration"
-  },
-  {
-    "href": "/v2/alerts",
-    "label": "Alert Dashboard",
-    "name": "alerts"
-  },
-  {
-    "href": "/v2/ops",
-    "label": "Operations",
-    "name": "ops"
-  },
-  {
-    "href": "/v2/pipeline",
-    "label": "Pipeline",
-    "name": "pipeline"
-  },
-  {
     "href": "/v2/governance",
     "label": "Governance",
     "name": "governance"
-  },
-  {
-    "href": "/v2/system-health",
-    "label": "System Health",
-    "name": "system_health"
   },
   {
     "href": "/v2/strategy-admin",
@@ -247,14 +182,13 @@
   },
   {
     "href": "/v2/strategy-analytics",
-    "label": "Strategy Analytics",
+    "label": "Analytics",
     "name": "strategy_analytics"
   },
   {
-    "href": "/v2/bot-morning-brief",
-    "label": "Bot Morning Brief",
-    "name": "bot_morning_brief",
-    "skip_in_crawler": true
+    "href": "/v2/agent-calibration",
+    "label": "Agent Calibration",
+    "name": "agent_calibration"
   },
   {
     "href": "/v2/weekly-learning",
@@ -262,9 +196,69 @@
     "name": "weekly_learning"
   },
   {
+    "href": "/v2/ops",
+    "label": "Operations",
+    "name": "ops"
+  },
+  {
     "href": "/v2/self-improvement",
     "label": "Self-Improvement",
     "name": "self_improvement"
+  },
+  {
+    "href": "/v2/backtesting",
+    "label": "Backtesting",
+    "name": "backtesting"
+  },
+  {
+    "href": "/v2/trade-ai",
+    "label": "Trade AI Live",
+    "name": "trade_ai"
+  },
+  {
+    "href": "/v2/prospects",
+    "label": "Prospects",
+    "name": "prospects"
+  },
+  {
+    "href": "/v2/strategy-desk",
+    "label": "Strategy Desk",
+    "name": "strategy_desk"
+  },
+  {
+    "href": "/v2/correlation",
+    "label": "Correlation",
+    "name": "correlation"
+  },
+  {
+    "href": "/v2/forecast",
+    "label": "Forecast",
+    "name": "forecast"
+  },
+  {
+    "href": "/v2/broker-reconciliation",
+    "label": "Broker Recon",
+    "name": "broker_reconciliation"
+  },
+  {
+    "href": "/v2/execution-quality",
+    "label": "Execution Quality",
+    "name": "execution_quality"
+  },
+  {
+    "href": "/v2/plan-vs-performance",
+    "label": "Plan vs Perf",
+    "name": "plan_vs_performance"
+  },
+  {
+    "href": "/v2/proposal-alerts",
+    "label": "Proposal Alerts",
+    "name": "proposal_alerts"
+  },
+  {
+    "href": "/v2/approvals",
+    "label": "Approvals",
+    "name": "approvals"
   },
   {
     "href": "/v2/agent-dashboard/steph",
