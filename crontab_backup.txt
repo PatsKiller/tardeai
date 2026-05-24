@@ -286,3 +286,18 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 30 10 * * 0 cd $PROJ && $PY scripts/strategy_weekly_review.py >> logs/strategy_weekly_review.log 2>&1
 # Daily health report via alert dispatcher (8:30 AM and 4:30 PM)
 30 8,16 * * * cd $PROJ && $PY scripts/alert_dispatcher_unified.py >> logs/alert_dispatcher.log 2>&1
+# Iris Taxonomy Agent (weekly Sunday 10 AM + daily gap check 7 AM)
+0 10 * * 0 cd $PROJ && $PY scripts/iris_taxonomy_agent.py >> logs/iris_taxonomy.log 2>&1
+0 7 * * * cd $PROJ && $PY scripts/iris_taxonomy_agent.py --gaps >> logs/iris_taxonomy.log 2>&1
+
+# ── Agent Cron Entries (added 2026-05-24) ──
+# Aegis Overnight (daily 8 PM)
+0 20 * * * cd $PROJ && $PY scripts/aegis_overnight.py >> logs/aegis_overnight.log 2>&1
+# Aegis Surveillance (daily 8 AM)
+0 8 * * 1-5 cd $PROJ && $PY scripts/aegis_surveillance.py >> logs/aegis_surveillance.log 2>&1
+# Aegis Social Sentiment (daily 11 AM and 3 PM)
+0 11,15 * * 1-5 cd $PROJ && timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1
+# Aegis Transcript Discovery (daily 9 AM)
+0 9 * * 1-5 cd $PROJ && timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1
+# Alex Hygiene (daily 7:15 AM)
+15 7 * * 1-5 cd $PROJ && $PY scripts/alex_hygiene.py >> logs/alex_hygiene.log 2>&1
