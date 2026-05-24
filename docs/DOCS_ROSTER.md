@@ -1,9 +1,10 @@
 # Trade AI v12 — Documentation Roster
 
-Generated: 2026-05-24 18:45 ET | Agent pipeline complete
+Generated: 2026-05-24 19:08 ET | Session final
 
-## (root) (16 files)
+## (root) (17 files)
 - `A1A.md` (4KB)
+- `AGENT_ROSTER.md` (6KB)
 - `APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` (5KB)
 - `ARCHITECTURE_OVERVIEW.md` (14KB)
 - `CHEAT_SHEET.md` (21KB)
@@ -306,4 +307,9 @@ Generated: 2026-05-24 18:45 ET | Agent pipeline complete
 - `ui_audits/post_8b348c3/screenshots/topic_monitor.png` (454KB)
 - `ui_audits/post_8b348c3/screenshots/weekly_learning.png` (76KB)
 
-**Total: 264 active files across 20 sections**
+## ui_ux (3 files)
+- `ui_ux/COMMAND_CENTER_UI_CONSOLIDATION_REVIEW.md` (3KB)
+- `ui_ux/NAVIGATION_REDESIGN_PROPOSAL.md` (2KB)
+- `ui_ux/PAGE_OVERLAP_MATRIX.md` (2KB)
+
+**Total: 268 active files across 21 sections**
