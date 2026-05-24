@@ -14,7 +14,7 @@ Defines dashboard-critical data products, their expected cadence, staleness thre
 | retirement_roadmap | retirement_planner.py | weekly | 168 | retirement_roadmap.json | Retirement | P2 |
 | cio_decisions | cio_decision_engine.py | daily 7am ET | 48 | cio_decisions table | CIO | P1 |
 | agent_calibration | agent_calibration_engine.py | weekly | 168 | agent_calibration table | Agent Calibration, CIO | P1 |
-| topic_monitor | topic_ingestion.py | manual/on-demand | 336 | topic_monitor table | Topic Monitor | P1 |
+| topic_monitor | topic_ingestion.py | weekly (manual trigger) | 168 | topic_monitor table | Topic Monitor | P1 |
 | incubator_universe | weekly_incubator_builder.py | weekly | 168 | incubator_candidates table | Incubator | P2 |
 | paper_proposals | continuous_runner.py | */15 market hours | 4 | paper_trade_proposals table | Paper Proposals, ATM | P1 |
 | paper_outcomes | agent_outcome_scorer.py | weekly | 168 | trade_thesis_outcomes table | Paper Outcomes | P2 |

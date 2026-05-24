@@ -330,10 +330,5 @@
     "href": "/v2/agent-dashboard/maria_research",
     "label": "Agent: maria_research",
     "name": "agent_dashboard_maria_research"
-  },
-  {
-    "href": "/v2/pipeline?tab=stage-controller",
-    "label": "Pipeline - Stage Controller",
-    "name": "pipeline_stage_controller"
   }
 ]
