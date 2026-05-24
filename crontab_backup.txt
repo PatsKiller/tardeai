@@ -309,3 +309,19 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 21 * * * cd $PROJ && $PY scripts/aegis_synthesis.py >> logs/aegis_synthesis.log 2>&1
 # Aegis nightly ingestion (daily 7 PM)
 0 19 * * * cd $PROJ && $PY scripts/aegis_nightly_ingestion.py >> logs/aegis_nightly.log 2>&1
+# Iris freshness validation (daily 7:30 AM)
+30 7 * * * cd $PROJ && $PY scripts/iris_taxonomy_agent.py --freshness >> logs/iris_freshness.log 2>&1
+
+# ── Agent Infrastructure (added 2026-05-24 final audit) ──
+# Agent calibration engine (weekly Sunday 12 PM)
+0 12 * * 0 cd $PROJ && $PY scripts/agent_calibration_engine.py >> logs/agent_calibration.log 2>&1
+# Agent event router (every 30 min)
+*/30 * * * * cd $PROJ && timeout 5m $PY scripts/agent_event_router.py >> logs/agent_event_router.log 2>&1
+# Agent outcome linker (daily 11 AM)
+0 11 * * 1-5 cd $PROJ && $PY scripts/agent_outcome_linker.py >> logs/agent_outcome_linker.log 2>&1
+# Agent recommendation normalizer (daily 8:30 AM)
+30 8 * * 1-5 cd $PROJ && $PY scripts/agent_recommendation_normalizer.py >> logs/agent_rec_normalizer.log 2>&1
+# Auto proposal generator (every 30 min market hours)
+*/30 9-16 * * 1-5 cd $PROJ && timeout 5m $PY scripts/auto_proposal_generator.py >> logs/auto_proposal.log 2>&1
+# Alex government research (weekly Monday 6 AM)
+0 6 * * 1 cd $PROJ && timeout 10m $PY scripts/alex_gov_research.py --refresh >> logs/alex_gov_research.log 2>&1
