@@ -14835,7 +14835,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 ],
                 'enrichment': [
                     ('finviz_enrichment', 'Finviz Enrichment', 6),
-                    ('catalyst_enrichment', 'Catalyst Enrichment', 6),
+                    # catalyst_enrichment removed — library module called by continuous_runner/daily_incubator_refresh
                     ('symbol_enrichment', 'Symbol Enrichment', 12),
                     ('rag_indexer', 'RAG Indexer', 8),
                 ],
@@ -14861,15 +14861,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 ],
                 'execution': [
                     ('risk_gate', 'Risk Gate', 0),
-                    ('alpaca_paper', 'Alpaca Paper', 0),
-                    ('broker_reconciliation', 'Broker Recon', 24),
-                    ('execution_quality', 'Exec Quality', 24),
+                    # alpaca_paper, broker_reconciliation, execution_quality removed — no standalone scripts
                 ],
                 'overnight': [
                     ('overnight_batch', 'Overnight Batch', 24),
                     ('agent_outcome_scorer', 'Outcome Scorer', 24),
                     ('strategy_weekly_review', 'Weekly Review', 168),
-                    ('overnight_batch_embeddings', 'Embeddings', 24),
+                    # overnight_batch_embeddings removed — no standalone script
                 ],
             }
             GROUP_LABELS = {
