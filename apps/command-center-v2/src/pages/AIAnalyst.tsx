@@ -183,8 +183,11 @@ export default function AIAnalyst() {
           </div>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{data.tlh_summary.note}</div>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2, fontStyle: 'italic' }}>
-            Note: Lot-level losses (cost basis vs current price per tax lot) differ from portfolio-level unrealized gain/loss shown on the Tax page. Review individual lots before harvesting. Manual review required.
+            Note: Lot-level losses (cost basis vs current price per tax lot) differ from portfolio-level unrealized gain/loss shown on the Tax page (-$95,500). Review individual lots before harvesting.
           </div>
+          <a href="/v2/tax" style={{ display: 'inline-block', marginTop: 6, fontSize: 10, padding: '3px 10px', border: '1px solid rgba(14,203,129,0.3)', borderRadius: 6, color: '#0ecb81', textDecoration: 'none' }}>
+            View Tax Lots & Harvest Candidates →
+          </a>
         </div>
       )}
 
