@@ -301,3 +301,11 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 9 * * 1-5 cd $PROJ && timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1
 # Alex Hygiene (daily 7:15 AM)
 15 7 * * 1-5 cd $PROJ && $PY scripts/alex_hygiene.py >> logs/alex_hygiene.log 2>&1
+
+# ── Intelligence Pipeline Gaps Fixed (2026-05-24) ──
+# Topic ingestion (weekly Wednesday + Saturday for broad coverage)
+0 9 * * 3,6 cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --all >> logs/topic_ingestion.log 2>&1
+# Aegis synthesis (daily 9 PM, after overnight data collection)
+0 21 * * * cd $PROJ && $PY scripts/aegis_synthesis.py >> logs/aegis_synthesis.log 2>&1
+# Aegis nightly ingestion (daily 7 PM)
+0 19 * * * cd $PROJ && $PY scripts/aegis_nightly_ingestion.py >> logs/aegis_nightly.log 2>&1
