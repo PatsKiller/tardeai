@@ -358,7 +358,11 @@ def portfolio_performance():
     accounts = perf.get("accounts", {})
     repriced_list = perf.get("reconstructed", [])
 
-    result = {"current_value": perf.get("current_value", 0), "periods": {}, "accounts": {},
+    # Use canonical holdings.json total, not stale performance_history snapshot
+    _canonical = (_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0)
+    _perf_val = perf.get("current_value", 0)
+    result = {"current_value": _canonical or _perf_val, "periods": {}, "accounts": {},
+              "snapshot_source": "holdings.json (canonical)" if _canonical else "performance_history.json (snapshot)",
               "snapshot_count": perf.get("snapshot_count", 0),
               "warning": "Periods marked 'estimated' use repriced current holdings at historical prices. After position changes (buys/sells), these may be inaccurate." if repriced_list else None}
     for k, v in periods.items():
@@ -2686,7 +2690,9 @@ def retirement():
     gw = r.get("golden_window") or {}
     tl = r.get("timeline") or []
 
-    total = accounts.get("portfolio_total") or accounts.get("total") or 0
+    # Use canonical holdings total as primary, fall back to roadmap snapshot
+    _canonical_h = _load_json(STATE_DIR / "holdings.json") or {}
+    total = _canonical_h.get("portfolio_totals", {}).get("total_value") or accounts.get("portfolio_total") or accounts.get("total") or 0
     roth = accounts.get("roth") or accounts.get("roth_balance") or 0
     traditional = accounts.get("traditional") or accounts.get("traditional_ira") or accounts.get("pre_tax") or 0
     taxable = accounts.get("taxable") or 0
@@ -3184,6 +3190,46 @@ def _generate_stale_data_alerts():
             "created_at": _json_clean(now), "data_quality_status": "valid",
             "parsed_payload": {"queued": q["cnt"]},
         })
+    # Check portfolio heat above threshold
+    rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    heat = rm.get("portfolio_heat_pct", 0)
+    if heat and float(heat) > 5.0:
+        alerts.append({
+            "id": "sys_risk_heat", "alert_type": "concentration_alert",
+            "severity": "warning", "symbol": None,
+            "source_script": "system_health_check",
+            "raw_text": f"Portfolio heat {float(heat):.1f}% above 5% threshold",
+            "created_at": _json_clean(now), "data_quality_status": "valid",
+            "parsed_payload": {"heat_pct": float(heat), "threshold": 5.0},
+        })
+    # Check triggered stops
+    positions = rm.get("positions", [])
+    triggered = [p for p in positions if p.get("status") == "TRIGGERED"]
+    if triggered:
+        syms = ", ".join(p.get("symbol", "?") for p in triggered[:7])
+        alerts.append({
+            "id": "sys_stops_triggered", "alert_type": "stop_triggered",
+            "severity": "urgent", "symbol": None,
+            "source_script": "system_health_check",
+            "raw_text": f"{len(triggered)} stops triggered: {syms}",
+            "created_at": _json_clean(now), "data_quality_status": "valid",
+            "parsed_payload": {"count": len(triggered), "symbols": [p.get("symbol") for p in triggered]},
+        })
+    # Check pipeline warnings
+    try:
+        ph = _db_query("SELECT COUNT(*) as cnt FROM pipeline_stage_runs WHERE status='warning' AND started_at > NOW() - INTERVAL '48 hours'", fetch="one")
+        pw = int((ph or {}).get("cnt", 0))
+        if pw > 5:
+            alerts.append({
+                "id": "sys_pipeline_warnings", "alert_type": "system_health",
+                "severity": "warning", "symbol": None,
+                "source_script": "system_health_check",
+                "raw_text": f"Pipeline: {pw} stage warnings in last 48h",
+                "created_at": _json_clean(now), "data_quality_status": "valid",
+                "parsed_payload": {"warning_count": pw},
+            })
+    except Exception:
+        pass
     return alerts
 
 
@@ -5177,6 +5223,57 @@ def _system_health_dashboard():
             "products": _freshness_items,
         },
         "note": "System health dashboard with data product freshness.",
+    }
+
+
+def _data_product_health():
+    """GET /api/v2/data-product-health — freshness status for all dashboard-critical data products."""
+    now = datetime.now()
+    products = []
+
+    def _check(name, max_h, age_h, source):
+        if age_h is None:
+            products.append({"product": name, "status": "unknown", "age_hours": None, "max_stale_hours": max_h, "source": source})
+        elif age_h > max_h:
+            products.append({"product": name, "status": "stale", "age_hours": round(age_h, 1), "max_stale_hours": max_h, "source": source})
+        else:
+            products.append({"product": name, "status": "fresh", "age_hours": round(age_h, 1), "max_stale_hours": max_h, "source": source})
+
+    def _file_age(path):
+        if not path.exists(): return None
+        return (now - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600
+
+    def _db_age(sql):
+        try:
+            r = _db_query(sql, fetch="one")
+            if not r: return None
+            ts = list(r.values())[0]
+            if not ts: return None
+            dt = ts.replace(tzinfo=None) if hasattr(ts, 'replace') else datetime.fromisoformat(str(ts))
+            return (now - dt).total_seconds() / 3600
+        except Exception:
+            return None
+
+    _is_weekend = now.weekday() >= 5
+    _wk = 48 if _is_weekend else None  # Weekend relaxed threshold
+
+    _check("portfolio_snapshot", _wk or 24, _file_age(STATE_DIR / "holdings.json"), "holdings.json")
+    _check("risk_snapshot", _wk or 24, _file_age(STATE_DIR / "risk_management.json"), "risk_management.json")
+    _check("dividend_calendar", _wk or 48, _file_age(STATE_DIR / "dividend_calendar.json"), "dividend_calendar.json")
+    _check("ai_analyst_cache", _wk or 48, _file_age(STATE_DIR / "ai_analysis_cache.json"), "ai_analysis_cache.json")
+    _check("news_articles", _wk or 6, _db_age("SELECT MAX(created_at) FROM news_articles"), "news_articles table")
+    _check("cio_decisions", _wk or 48, _db_age("SELECT MAX(created_at) FROM cio_decisions"), "cio_decisions table")
+    _check("agent_jobs_completed", _wk or 2, _db_age("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"), "watchlist_agent_jobs")
+
+    fresh = sum(1 for p in products if p["status"] == "fresh")
+    stale = sum(1 for p in products if p["status"] == "stale")
+    unknown = sum(1 for p in products if p["status"] == "unknown")
+
+    return {
+        "summary": f"{fresh}/{len(products)} fresh, {stale} stale, {unknown} unknown",
+        "overall_status": "healthy" if stale == 0 and unknown == 0 else ("degraded" if stale <= 2 else "unhealthy"),
+        "is_weekend": _is_weekend,
+        "products": products,
     }
 
 
@@ -11087,12 +11184,18 @@ def _compute_freshness(freshness):
     # Check latest pipeline run
     pr = _db_query("SELECT MAX(run_completed_at) as latest FROM pipeline_runs WHERE status='success'", fetch="one")
     db_ts = pr.get("latest") if pr else None
-    # Pick most recent
+    # Also check holdings.json mtime as most relevant freshness signal
+    holdings_ts = None
+    _hp = STATE_DIR / "holdings.json"
+    if _hp.exists():
+        holdings_ts = datetime.fromtimestamp(_hp.stat().st_mtime, tz=timezone.utc).isoformat()
+    # Pick most recent of all sources
     best = file_ts
-    if db_ts:
-        db_str = str(db_ts)
-        if not best or db_str > str(best):
-            best = db_str
+    for _candidate in [db_ts, holdings_ts]:
+        if _candidate:
+            _cs = str(_candidate)
+            if not best or _cs > str(best):
+                best = _cs
     # Weekend awareness: if it's Sat/Sun and best is within 48h, mark fresh
     now = datetime.now(timezone.utc)
     status = freshness.get("status", "unknown")
@@ -11746,6 +11849,7 @@ ROUTES = {
     "/api/v2/agent-performance": lambda: {"history": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM agent_performance_history ORDER BY created_at DESC LIMIT 50") or [])]},
     "/api/v2/llm/health": lambda: _llm_health(),
     "/api/v2/system-health": lambda: _system_health_dashboard(),
+    "/api/v2/data-product-health": lambda: _data_product_health(),
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),
     "/api/v2/llm-spend": lambda: _llm_spend(),
     "/api/v2/youtube-audit": lambda: _youtube_audit(),
