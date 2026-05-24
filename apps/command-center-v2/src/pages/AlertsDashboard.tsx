@@ -10,12 +10,16 @@ type SuppressedRow = { alert_type: string; symbol: string | null; suppressed_cou
 type DigestRow = { digest_slot: string; queued: number }
 type UrgentRow = { alert_type: string; symbol: string | null; message: string; created_at: string; action_taken: string }
 
+type SystemAlert = { id: string; alert_type: string; severity: string; raw_text: string; created_at: string; parsed_payload?: Record<string, unknown> }
+
 type AlertsData = {
-  volume_stats: VolumeStats
+  volume_stats: VolumeStats & { system?: number }
   by_tier: TierRow[]
   suppressed: SuppressedRow[]
   digest_pending: DigestRow[]
   urgent_recent: UrgentRow[]
+  system_alerts?: SystemAlert[]
+  system_alert_count?: number
 }
 
 const btn: React.CSSProperties = { fontSize: 10, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg1)', color: 'var(--text1)', cursor: 'pointer' }
@@ -127,7 +131,29 @@ export default function AlertsDashboard() {
         </Card>
       )}
 
-      {v.total === 0 && (
+      {/* System / data-product alerts */}
+      {(data.system_alerts?.length ?? 0) > 0 && (
+        <Card title={`System Alerts (${data.system_alerts?.length})`} style={{ marginTop: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Type</th><th style={th}>Severity</th><th style={th}>Detail</th><th style={th}>Time</th></tr></thead>
+            <tbody>
+              {data.system_alerts?.map((a, i) => {
+                const sevColor = a.severity === 'urgent' ? '#f6465d' : a.severity === 'warning' ? '#f0b90b' : '#848e9c'
+                return (
+                  <tr key={i}>
+                    <td style={td}><span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', fontFamily: 'monospace' }}>{a.alert_type}</span></td>
+                    <td style={{ ...td, color: sevColor, fontWeight: 600 }}>{a.severity}</td>
+                    <td style={td}>{a.raw_text}</td>
+                    <td style={{ ...td, fontSize: 10, color: '#848e9c' }}>{a.created_at ? timeAgo(a.created_at) : ''}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {v.total === 0 && (!data.system_alerts || data.system_alerts.length === 0) && (
         <Card style={{ marginTop: 20 }}>
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text3)' }}>
             <div style={{ fontSize: 14, marginBottom: 8 }}>No alerts classified in the last 24 hours</div>

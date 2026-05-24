@@ -9551,13 +9551,24 @@ def _system_controls_api():
 def _scalp_live_poll():
     """Return recent scalp signals from ringbuffer file for HTTP polling."""
     sig_file = PROJECT_ROOT / "data" / "scalp_live_signals.json"
+    # Check if WS server is running by testing the port
+    ws_available = False
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.5)
+        s.connect(("localhost", 7778))
+        s.close()
+        ws_available = True
+    except Exception:
+        pass
     if not sig_file.exists():
-        return {"signals": [], "count": 0}
+        return {"signals": [], "count": 0, "ws_available": ws_available}
     try:
         signals = json.loads(sig_file.read_text())
-        return {"signals": signals[:30], "count": len(signals)}
+        return {"signals": signals[:30], "count": len(signals), "ws_available": ws_available}
     except Exception:
-        return {"signals": [], "count": 0}
+        return {"signals": [], "count": 0, "ws_available": ws_available}
 
 
 # ── Indicator Engine Endpoints ─────────────────────────────────────────────
