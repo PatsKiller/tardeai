@@ -2787,6 +2787,9 @@ def retirement():
                            for p in (div_cal.get("payers") or [])[:8]],
         },
         "intelligence_brief": narrative_lines,
+        "canonical_total": (_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0),
+        "snapshot_delta": round(float((_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0)) - float(total), 2) if total else None,
+        "snapshot_source": f"retirement_roadmap.json (generated {r.get('generated_at', 'unknown')})",
     }
 
 
@@ -2800,12 +2803,23 @@ def ai_analyst():
         content = cache.get(key)
         if content:
             sections.append({"key": key, "title": key.replace("_", " ").title(), "content": content})
+    # Compute staleness
+    _ai_stale = True
+    gen_at = cache.get("generated_at")
+    if gen_at:
+        try:
+            from datetime import datetime
+            _gen_dt = datetime.fromisoformat(str(gen_at).replace("Z", "+00:00")).replace(tzinfo=None)
+            _ai_stale = (datetime.now() - _gen_dt).total_seconds() > 48 * 3600
+        except Exception:
+            pass
     return {
         "has_data": len(sections) > 0,
         "sections": sections,
-        "generated_at": cache.get("generated_at"),
+        "generated_at": gen_at,
         "run_type": cache.get("run_type"),
         "model": cache.get("model"),
+        "is_stale": _ai_stale,
     }
 
 
@@ -5106,7 +5120,9 @@ def _llm_health():
 
 def _cio_decisions_enriched():
     """GET /api/v2/cio-decisions — enriched with account from holdings."""
-    rows = _db_query("SELECT * FROM cio_decisions ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, created_at DESC LIMIT 50") or []
+    rows = _db_query("SELECT DISTINCT ON (symbol) * FROM cio_decisions ORDER BY symbol, created_at DESC") or []
+    _prio = {'critical': 0, 'high': 1, 'normal': 2}
+    rows = sorted(rows, key=lambda r: (_prio.get(r.get('priority', 'normal'), 3), str(r.get('created_at', ''))))[:50]
     # Build symbol→account map from holdings
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
     acct_map = {}
@@ -5461,9 +5477,12 @@ def _attribution_accounts():
         labels = {"fidelity_401k": "Fidelity 401k", "schwab_rollover_ira": "Schwab Rollover IRA",
                   "schwab_roth": "Schwab Roth IRA", "schwab_taxable": "Schwab Taxable"}
         for k, v in summaries.items():
+            tv = float(v.get("total_value", v.get("market_value", 0)) or 0)
+            if tv <= 0:
+                continue  # Skip phantom/zero-value accounts
             out[k] = {
                 "display_name": labels.get(k, k),
-                "total_value": float(v.get("total_value", v.get("market_value", 0)) or 0),
+                "total_value": tv,
                 "positions": int(v.get("position_count", v.get("positions", 0)) or 0),
                 "total_gain": float(v.get("total_gain", v.get("unrealized_gain", 0)) or 0),
             }
@@ -5630,6 +5649,13 @@ def rebalance():
         "yaml_health_notes": yaml_notes,
         "llm_suggestions": {k: _json_clean(v) for k, v in (_db_query("SELECT content, generated_at FROM llm_intelligence_cache WHERE section='rebalance_suggestions'", fetch="one") or {}).items()},
         "deep_analysis": _get_deep_rebalance_analysis(),
+        "computed_values": {
+            "total_value": (_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0),
+            "income_target": 55000,
+            "income_current": float((_load_json(STATE_DIR / "dividend_calendar.json") or {}).get("total_annual", 0)),
+            "income_gap": round(55000 - float((_load_json(STATE_DIR / "dividend_calendar.json") or {}).get("total_annual", 0)), 2),
+        },
+        "snapshot_source": "holdings.json filtered > $50 market value",
     }
 
 
@@ -10973,6 +10999,7 @@ def _morning_command():
         },
         "pipeline": {"ok": pipeline_ok, "note": pipeline_note},
         "freshness": _compute_freshness(freshness),
+        "snapshot_source": "holdings.json portfolio_totals (canonical, all positions)",
     }
 
 
