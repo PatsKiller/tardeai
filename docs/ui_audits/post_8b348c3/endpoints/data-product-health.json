@@ -1,0 +1,59 @@
+{
+    "ok": true,
+    "data": {
+        "summary": "4/7 fresh, 3 stale, 0 unknown",
+        "overall_status": "unhealthy",
+        "is_weekend": true,
+        "products": [
+            {
+                "product": "portfolio_snapshot",
+                "status": "fresh",
+                "age_hours": 46.3,
+                "max_stale_hours": 48,
+                "source": "holdings.json"
+            },
+            {
+                "product": "risk_snapshot",
+                "status": "stale",
+                "age_hours": 55.1,
+                "max_stale_hours": 48,
+                "source": "risk_management.json"
+            },
+            {
+                "product": "dividend_calendar",
+                "status": "stale",
+                "age_hours": 54.9,
+                "max_stale_hours": 48,
+                "source": "dividend_calendar.json"
+            },
+            {
+                "product": "ai_analyst_cache",
+                "status": "fresh",
+                "age_hours": 0.4,
+                "max_stale_hours": 48,
+                "source": "ai_analysis_cache.json"
+            },
+            {
+                "product": "news_articles",
+                "status": "fresh",
+                "age_hours": 22.6,
+                "max_stale_hours": 48,
+                "source": "news_articles table"
+            },
+            {
+                "product": "cio_decisions",
+                "status": "stale",
+                "age_hours": 103.1,
+                "max_stale_hours": 48,
+                "source": "cio_decisions table"
+            },
+            {
+                "product": "agent_jobs_completed",
+                "status": "fresh",
+                "age_hours": 44.1,
+                "max_stale_hours": 48,
+                "source": "watchlist_agent_jobs"
+            }
+        ]
+    }
+}

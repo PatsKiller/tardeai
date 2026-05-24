@@ -1,0 +1,1977 @@
+{
+    "ok": true,
+    "data": {
+        "jobs": [
+            {
+                "id": "gap_ssdi_cash_shield_20260524",
+                "symbol": "topic:ssdi_cash_shield",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.228708-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_ssdi_20260524",
+                "symbol": "topic:ssdi",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.218559-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_disability_retirement_20260524",
+                "symbol": "topic:disability_retirement",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.208590-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_trust_estate_20260524",
+                "symbol": "topic:trust_estate",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.200823-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_top_yield_dividend_20260524",
+                "symbol": "topic:top_yield_dividend",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.194044-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_roth_conversion_20260524",
+                "symbol": "topic:roth_conversion",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.188094-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_irmaa_20260524",
+                "symbol": "topic:irmaa",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.182780-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_ai_datacenter_buildout_20260524",
+                "symbol": "topic:ai_datacenter_buildout",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.177650-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_swing_setups_20260524",
+                "symbol": "topic:swing_setups",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.171525-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_emerging_sentiment_20260524",
+                "symbol": "topic:emerging_sentiment",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.165091-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_dividend_income_20260524",
+                "symbol": "topic:dividend_income",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.159465-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_defense_sector_20260524",
+                "symbol": "topic:defense_sector",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.154169-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_covered_call_income_20260524",
+                "symbol": "topic:covered_call_income",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.149044-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_ai_network_layer_20260524",
+                "symbol": "topic:ai_network_layer",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.144054-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_ai_chip_materials_20260524",
+                "symbol": "topic:ai_chip_materials",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.139205-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_bond_rates_20260524",
+                "symbol": "topic:bond_rates",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.134449-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_tax_loss_harvest_20260524",
+                "symbol": "topic:tax_loss_harvest",
+                "requested_agent": "iris",
+                "request_type": "research_gap",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-24T13:45:08.129228-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_astl_maria_ca4cd7",
+                "symbol": "ASTL",
+                "requested_agent": "maria_research",
+                "request_type": "enrichment",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.184108-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_amgn_maria_0b14c6",
+                "symbol": "AMGN",
+                "requested_agent": "maria_research",
+                "request_type": "enrichment",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.165831-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_noc_catalyst_29f7b6",
+                "symbol": "NOC",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.146638-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_tdg_catalyst_5ac043",
+                "symbol": "TDG",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.126339-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_avav_catalyst_a83152",
+                "symbol": "AVAV",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.107608-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_bah_catalyst_6db7d0",
+                "symbol": "BAH",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.086625-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_kbr_catalyst_2e1b62",
+                "symbol": "KBR",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.061193-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_caci_catalyst_1dc0e0",
+                "symbol": "CACI",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.036063-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_lhx_catalyst_1baa43",
+                "symbol": "LHX",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:02.015568-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_drs_catalyst_336ae3",
+                "symbol": "DRS",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:01.994502-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_irdm_catalyst_a79b2a",
+                "symbol": "IRDM",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:01.978922-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_ldos_catalyst_b26ab8",
+                "symbol": "LDOS",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:01.966079-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_lmt_catalyst_bb179f",
+                "symbol": "LMT",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:01.954799-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "gap_rtx_catalyst_c62760",
+                "symbol": "RTX",
+                "requested_agent": "maria_research",
+                "request_type": "catalyst_research",
+                "status": "queued",
+                "priority": 1,
+                "submitted_from": "gap_resolver",
+                "created_at": "2026-05-24T08:00:01.940132-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chiq_maria_726f7e",
+                "symbol": "CHIQ",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chiq_steph_209333",
+                "symbol": "CHIQ",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chiq_risk_agent_eff966",
+                "symbol": "CHIQ",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chmg_maria_de15cc",
+                "symbol": "CHMG",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chmg_steph_bf20af",
+                "symbol": "CHMG",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chmg_risk_agent_b4b6e7",
+                "symbol": "CHMG",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chnl_maria_55a1ba",
+                "symbol": "CHNL",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chnl_steph_2dbfcc",
+                "symbol": "CHNL",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chnl_risk_agent_3caaf2",
+                "symbol": "CHNL",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chnu_maria_5d4e6e",
+                "symbol": "CHNU",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chnu_steph_c03de6",
+                "symbol": "CHNU",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chnu_risk_agent_f45836",
+                "symbol": "CHNU",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chpg_maria_6a875b",
+                "symbol": "CHPG",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chpg_steph_b06a1b",
+                "symbol": "CHPG",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chpg_risk_agent_02df52",
+                "symbol": "CHPG",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:58:47.192986-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_che_maria_6433ef",
+                "symbol": "CHE",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_che_steph_2ff30c",
+                "symbol": "CHE",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_che_risk_agent_e952ef",
+                "symbol": "CHE",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chgg_maria_164199",
+                "symbol": "CHGG",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chgg_steph_17e4a0",
+                "symbol": "CHGG",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chgg_risk_agent_ab782e",
+                "symbol": "CHGG",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chgx_maria_f2f2eb",
+                "symbol": "CHGX",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chgx_steph_de2e97",
+                "symbol": "CHGX",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chgx_risk_agent_807103",
+                "symbol": "CHGX",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chh_maria_d3b2ed",
+                "symbol": "CHH",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chh_steph_ab6948",
+                "symbol": "CHH",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chh_risk_agent_5aa7f9",
+                "symbol": "CHH",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chi_maria_263ca3",
+                "symbol": "CHI",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chi_steph_4b3e74",
+                "symbol": "CHI",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chi_risk_agent_ffbef4",
+                "symbol": "CHI",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:12:13.599308-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chat_maria_5842eb",
+                "symbol": "CHAT",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chat_steph_803846",
+                "symbol": "CHAT",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chat_risk_agent_de27d2",
+                "symbol": "CHAT",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chau_maria_036576",
+                "symbol": "CHAU",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chau_steph_630f55",
+                "symbol": "CHAU",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chau_risk_agent_4e4991",
+                "symbol": "CHAU",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chco_maria_d1cf48",
+                "symbol": "CHCO",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chco_steph_ce9e44",
+                "symbol": "CHCO",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chco_risk_agent_c54c43",
+                "symbol": "CHCO",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chd_maria_24b6bf",
+                "symbol": "CHD",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chd_steph_e98cce",
+                "symbol": "CHD",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chd_risk_agent_c4626f",
+                "symbol": "CHD",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chdn_maria_41198f",
+                "symbol": "CHDN",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chdn_steph_560d37",
+                "symbol": "CHDN",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_chdn_risk_agent_a75e69",
+                "symbol": "CHDN",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:08:06.537142-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_cgus_maria_e4353f",
+                "symbol": "CGUS",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:06:10.542487-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_cgus_steph_045988",
+                "symbol": "CGUS",
+                "requested_agent": "steph",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:06:10.542487-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_cgus_risk_agent_4860ae",
+                "symbol": "CGUS",
+                "requested_agent": "risk_agent",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:06:10.542487-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            },
+            {
+                "id": "auto_cgv_maria_6cab6a",
+                "symbol": "CGV",
+                "requested_agent": "maria",
+                "request_type": "full_analysis",
+                "status": "queued",
+                "priority": 2,
+                "submitted_from": "command_center",
+                "created_at": "2026-05-23T18:06:10.542487-04:00",
+                "started_at": null,
+                "completed_at": null,
+                "payload_text": "{}"
+            }
+        ],
+        "results": [
+            {
+                "symbol": "AKTX",
+                "agent": "maria",
+                "recommendation": "HOLD",
+                "confidence": 0.6,
+                "summary": "AKTX: neutral sentiment, HOLD signal. No catalyst identified. AKTX shares are range-bound with RSI in overbought territory, and no new catalysts have been reported, leading to a HOLD recommendation.",
+                "created_at": "2026-05-23T19:13:47.977944-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "AKTX risk_agent: AVOID",
+                        "rag_score": 0.4689,
+                        "source_type": "agent_result"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "risk_agent"
+                ]
+            },
+            {
+                "symbol": "AKTX",
+                "agent": "risk_agent",
+                "recommendation": "AVOID",
+                "confidence": 0.78,
+                "summary": "AKTX at $12.06 exhibits overbought momentum (RSI 76.77) on an unverified preclinical catalyst with price well above short-term SMAs but below the SMA200; elevated portfolio heat (7.1%) and after-hours illiquidity argue against entry.",
+                "created_at": "2026-05-23T19:11:14.411496-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [],
+                "peer_notes_symbols": []
+            },
+            {
+                "symbol": "AOUT",
+                "agent": "maria",
+                "recommendation": "HOLD",
+                "confidence": 0.6,
+                "summary": "AOUT: neutral sentiment, HOLD signal. No catalyst identified. No new material catalysts have been identified in the last 7 days, and there is insufficient evidence to support a buy or sell signal based on current fundamentals.",
+                "created_at": "2026-05-23T19:13:12.867859-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [],
+                "peer_notes_symbols": []
+            },
+            {
+                "symbol": "AVAV",
+                "agent": "maria_research",
+                "recommendation": "NEUTRAL",
+                "confidence": 0.0,
+                "summary": "STALE_DATA_SKIP",
+                "created_at": "2026-05-23T18:18:07.448616-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "AVAV synthesis: IGNORE",
+                        "rag_score": 0.6499,
+                        "source_type": "agent_synthesis"
+                    },
+                    {
+                        "title": "AVAV outcome: IGNORE",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "AVAV outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "AVAV outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "AVAV outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "AVXX",
+                "agent": "maria",
+                "recommendation": "HOLD",
+                "confidence": 0.6,
+                "summary": "AVXX: neutral sentiment, HOLD signal. No catalyst identified. No new material catalysts or significant news events have been identified, and confidence in the current information is moderate.",
+                "created_at": "2026-05-23T19:03:25.245473-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "$AVAV  \n$AVXX &lt;--- is looking sooo tempting here, ma get ",
+                        "rag_score": 0.3789,
+                        "source_type": "social_post"
+                    }
+                ],
+                "peer_notes_symbols": []
+            },
+            {
+                "symbol": "AVXX",
+                "agent": "risk_agent",
+                "recommendation": "NEUTRAL",
+                "confidence": 0.45,
+                "summary": "AVXX exhibits weak technicals (0/100 score) in a ranging regime with ATR $1.05 and no clear catalyst or price support; portfolio heat at 7.1% (elevated) biases against new exposure or additions.",
+                "created_at": "2026-05-23T19:05:59.380819-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "AVXX steph: HOLD",
+                        "rag_score": 0.5156,
+                        "source_type": "agent_result"
+                    },
+                    {
+                        "title": "AVXX maria: HOLD",
+                        "rag_score": 0.3947,
+                        "source_type": "agent_result"
+                    },
+                    {
+                        "title": "$AVAV  \n$AVXX &lt;--- is looking sooo tempting here, ma get ",
+                        "rag_score": 0.3789,
+                        "source_type": "social_post"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "AVXX",
+                "agent": "steph",
+                "recommendation": "HOLD",
+                "confidence": 0.42,
+                "summary": "AVXX shows weak technicals (0/100 score, ranging regime) with no catalyst or income data; HOLD recommended due to insufficient fresh allocation/income metrics and after-hours illiquidity.",
+                "created_at": "2026-05-23T19:04:02.839091-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "AVXX maria: HOLD",
+                        "rag_score": 0.3947,
+                        "source_type": "agent_result"
+                    },
+                    {
+                        "title": "$AVAV  \n$AVXX &lt;--- is looking sooo tempting here, ma get ",
+                        "rag_score": 0.3789,
+                        "source_type": "social_post"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria"
+                ]
+            },
+            {
+                "symbol": "AWAY",
+                "agent": "maria",
+                "recommendation": "HOLD",
+                "confidence": 0.6,
+                "summary": "AWAY: neutral sentiment, HOLD signal. No catalyst identified. No new material catalysts have been identified in the last 7 days, and there is insufficient evidence to support a BUY or SELL decision.",
+                "created_at": "2026-05-23T19:02:41.066755-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "[Week 16 - 1980] Discussing A Berkshire Hathaway Shareholder",
+                        "rag_score": 0.5325,
+                        "source_type": "social_post"
+                    },
+                    {
+                        "title": "$SPY $QQQ $XLE $USO  $BRK.B  Berkshire Hathaway has NEVER he",
+                        "rag_score": 0.5267,
+                        "source_type": "social_post"
+                    },
+                    {
+                        "title": "Feeling stressed about moving away from the family before re",
+                        "rag_score": 0.5224,
+                        "source_type": "social_post"
+                    },
+                    {
+                        "title": "Laid off at 40. $3.4M liquid + massive severance runway. Do ",
+                        "rag_score": 0.5195,
+                        "source_type": "social_post"
+                    },
+                    {
+                        "title": "Berkshire releases Q1 Earnings - Operating earnings up 18% a",
+                        "rag_score": 0.5183,
+                        "source_type": "social_post"
+                    }
+                ],
+                "peer_notes_symbols": []
+            },
+            {
+                "symbol": "AWI",
+                "agent": "steph",
+                "recommendation": "AVOID",
+                "confidence": 0.65,
+                "summary": "AWI scores 4/65 on the Trade AI scan with negative technicals (RSI 38.5, all SMAs lower) and sector underperformance, making it unsuitable for the income target.",
+                "created_at": "2026-05-23T19:00:44.828005-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [],
+                "peer_notes_symbols": []
+            },
+            {
+                "symbol": "BAH",
+                "agent": "maria_research",
+                "recommendation": "TRIM",
+                "confidence": 0.52,
+                "summary": "BAH exhibits solid defense/government consulting moat but faces weak momentum, triggered stop at $74.87, and elevated portfolio heat; Q4 earnings catalyst exists yet overall setup favors caution on the tiny position.",
+                "created_at": "2026-05-23T18:16:08.359664-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "BAH outcome: IGNORE",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "BAH outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "BAH outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "BAH outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "BAH synthesis: IGNORE",
+                        "rag_score": 0.6425,
+                        "source_type": "agent_synthesis"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "CACI",
+                "agent": "maria_research",
+                "recommendation": "RESEARCH_MORE",
+                "confidence": 0.5,
+                "summary": "LOW_CONFIDENCE_SKIP",
+                "created_at": "2026-05-23T18:08:06.577565-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "CACI synthesis: IGNORE",
+                        "rag_score": 0.6509,
+                        "source_type": "agent_synthesis"
+                    },
+                    {
+                        "title": "CACI outcome: IGNORE",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "CACI outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "CACI outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "CACI outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "KBR",
+                "agent": "maria_research",
+                "recommendation": "AVOID",
+                "confidence": 0.72,
+                "summary": "KBR shows cheap valuation (fwd PE 7.7x) but weak technical structure with price below all SMAs, triggered stop at $33.50, and no identifiable near-term catalyst; defense exposure offers long-term optionality but current momentum is negative.",
+                "created_at": "2026-05-23T18:12:13.652997-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "KBR synthesis: BUY",
+                        "rag_score": 0.6773,
+                        "source_type": "agent_synthesis"
+                    },
+                    {
+                        "title": "KBR outcome: BUY",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "KBR outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "KBR outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "KBR outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "LDOS",
+                "agent": "maria_research",
+                "recommendation": "TRIM",
+                "confidence": 0.68,
+                "summary": "LDOS exhibits solid gov/defense IT services moat but faces clear technical breakdown with active stop triggered and price ~20% below 200-SMA; micro 0.1% position and elevated portfolio heat favor exiting.",
+                "created_at": "2026-05-23T18:14:11.565849-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "LDOS outcome: ADD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "LDOS outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "LDOS outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "LDOS outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "LDOS steph: HOLD",
+                        "rag_score": 0.6176,
+                        "source_type": "agent_result"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "NOC",
+                "agent": "maria_research",
+                "recommendation": "SELL",
+                "confidence": 0.65,
+                "summary": "NOC shows deteriorating technicals with active stop triggered at $612 and price now ~$550, amid sector underperformance and absent near-term catalysts; business remains high-quality but valuation offers limited margin of safety after recent defense rotation.",
+                "created_at": "2026-05-23T18:58:47.229262-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "NOC outcome: BUY",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "NOC outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "NOC outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "NOC outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "NOC steph: SELL",
+                        "rag_score": 0.6174,
+                        "source_type": "agent_result"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            },
+            {
+                "symbol": "TDG",
+                "agent": "maria_research",
+                "recommendation": "RESEARCH_MORE",
+                "confidence": 0.5,
+                "summary": "LOW_CONFIDENCE_SKIP",
+                "created_at": "2026-05-23T18:20:01.687446-04:00",
+                "model_used": "qwen3:14b",
+                "status": "completed",
+                "rag_sources_used": [
+                    {
+                        "title": "TDG outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "TDG outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "TDG outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "TDG outcome: HOLD",
+                        "rag_score": 0.6496,
+                        "source_type": "decision_outcome"
+                    },
+                    {
+                        "title": "TDG steph: SELL",
+                        "rag_score": 0.6462,
+                        "source_type": "agent_result"
+                    }
+                ],
+                "peer_notes_symbols": [
+                    "maria",
+                    "risk_agent",
+                    "steph"
+                ]
+            }
+        ],
+        "handoffs": [
+            {
+                "symbol": "AVXX",
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "reason": "",
+                "escalated": true,
+                "created_at": "2026-05-23T19:08:01.984308-04:00"
+            }
+        ],
+        "events": [
+            {
+                "id": 522,
+                "event_type": "TOPIC_INTELLIGENCE",
+                "symbol": "TOPIC:disability_retirement",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Alex",
+                    "Aegis"
+                ],
+                "trigger_text": "{\"topic\": \"Disability Retirement\", \"message\": \"7 new curated articles for Disability Retirement. Use RAG to access.\", \"new_approved\": 7, \"sample_titles\": [\"The Retirement Secret Pension Holders NEVER Realize Until It\u2019s Too Late\", \"How Social Security Fits Into a Tax-Efficient Retirement Plan (Strategy Breakdow\", \"The Retirement Timeline I Walk Every New Client Through\", \"How To Apply for Social Security Retirement Benefits Online (Full 2026 Guide)\", \"Understanding Social Security and Your Retirement Strategy\"]}",
+                "created_at": "2026-05-10T11:52:50.642222-04:00",
+                "processed_at": "2026-05-10T12:09:07.387773-04:00"
+            },
+            {
+                "id": 521,
+                "event_type": "TOPIC_INTELLIGENCE",
+                "symbol": "TOPIC:covered_call_income",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Steph",
+                    "Alex"
+                ],
+                "trigger_text": "{\"topic\": \"Covered Call Income\", \"message\": \"55 new curated articles for Covered Call Income. Use RAG to access.\", \"new_approved\": 55, \"sample_titles\": [\"Top Covered Call ETFs: 7 Best Funds for Income\", \"Covered Call Strategy: How to Generate Income from Stocks You Own (2026 ...\", \"Can $1 Million in Covered Call ETFs Replace a Salary?\", \"How Much Do You Really Need Invested to Replace an $80,000 Salary With Dividends\", \"How Much Do You Really Need Invested to Replace an $80,000 Salary With Dividends\"]}",
+                "created_at": "2026-05-10T11:52:50.638817-04:00",
+                "processed_at": "2026-05-10T12:07:53.413457-04:00"
+            },
+            {
+                "id": 520,
+                "event_type": "TOPIC_INTELLIGENCE",
+                "symbol": "TOPIC:dividend_income",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Steph",
+                    "Alex"
+                ],
+                "trigger_text": "{\"topic\": \"Dividend Income Strategy\", \"message\": \"38 new curated articles for Dividend Income Strategy. Use RAG to access.\", \"new_approved\": 38, \"sample_titles\": [\"Investing in Dividend Stocks for Retirement Income - Cabot Wealth Network\", \"Put $10,000 Into These High-Yield Dividend Stocks and Collect Passive Income Yea\", \"Want Safe Dividend Income in 2026 and Beyond? Invest in This Ultra-High-Yield St\", \"Can Dividend Stocks Really Pay for Your Retirement?  #financialfreedom #investin\", \"3 Top Dividend Stocks to Maximize Your Retirement Income - Yahoo Finance\"]}",
+                "created_at": "2026-05-10T11:52:50.628886-04:00",
+                "processed_at": "2026-05-10T12:05:02.078647-04:00"
+            },
+            {
+                "id": 519,
+                "event_type": "TOPIC_INTELLIGENCE",
+                "symbol": "TOPIC:covered_call_income",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Steph",
+                    "Alex"
+                ],
+                "trigger_text": "{\"topic\": \"Covered Call Income\", \"message\": \"15 new curated articles for Covered Call Income. Use RAG to access.\", \"new_approved\": 15, \"sample_titles\": [\"How Much Do You Really Need Invested to Replace an $80,000 Salary With Dividends\", \"How Much Do You Really Need Invested to Replace an $80,000 Salary With Dividends\", \"4 ETFs That Can Replace a $60,000 Salary and You Never Sell a Share\", \"What a $1 Million Dividend Portfolio Actually Pays After Taxes\", \"How to Build $5,000 a Month in Dividend Income\"]}",
+                "created_at": "2026-05-10T10:38:32.173471-04:00",
+                "processed_at": "2026-05-10T10:50:41.806009-04:00"
+            },
+            {
+                "id": 518,
+                "event_type": "CONTENT_GAP",
+                "symbol": "SCHD",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Maria"
+                ],
+                "trigger_text": "{\"detail\": \"No recent agent analysis\", \"gap_type\": \"stale_analysis\"}",
+                "created_at": "2026-05-10T09:38:51.731714-04:00",
+                "processed_at": "2026-05-10T09:42:21.038242-04:00"
+            },
+            {
+                "id": 517,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "BAH",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 60.9, \"last_analysis\": \"2026-05-07 20:18:43\"}",
+                "created_at": "2026-05-10T09:15:01.556960-04:00",
+                "processed_at": "2026-05-10T09:21:42.035123-04:00"
+            },
+            {
+                "id": 516,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "DRS",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 50.2, \"last_analysis\": \"2026-05-08 06:47:03\"}",
+                "created_at": "2026-05-10T09:00:01.864561-04:00",
+                "processed_at": "2026-05-10T09:06:39.263818-04:00"
+            },
+            {
+                "id": 515,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "WM-BLAIR",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 54.9, \"last_analysis\": \"2026-05-08 01:50:01\"}",
+                "created_at": "2026-05-10T08:45:01.965947-04:00",
+                "processed_at": "2026-05-10T08:58:37.641222-04:00"
+            },
+            {
+                "id": 514,
+                "event_type": "STOP_TRIGGERED",
+                "symbol": "KBR",
+                "priority": "urgent",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"risk_management + holdings\", \"account\": \"schwab_taxable\", \"stop_price\": 33.5, \"distance_pct\": -3.33, \"current_price\": 32.42}",
+                "created_at": "2026-05-10T08:45:01.948696-04:00",
+                "processed_at": "2026-05-10T08:51:44.769094-04:00"
+            },
+            {
+                "id": 513,
+                "event_type": "RSI_EXTREME",
+                "symbol": "SCHG",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk"
+                ],
+                "trigger_text": "{\"rsi\": 75.2, \"source\": \"enrichment_cache\", \"direction\": \"overbought\", \"threshold\": 75}",
+                "created_at": "2026-05-10T08:45:01.884886-04:00",
+                "processed_at": "2026-05-10T08:54:05.567824-04:00"
+            },
+            {
+                "id": 512,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "VANG-FTSE-SOC",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 54.5, \"last_analysis\": \"2026-05-08 01:47:02\"}",
+                "created_at": "2026-05-10T08:15:01.558335-04:00",
+                "processed_at": "2026-05-10T08:45:03.878964-04:00"
+            },
+            {
+                "id": 511,
+                "event_type": "STOP_TRIGGERED",
+                "symbol": "NOC",
+                "priority": "urgent",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"risk_management + holdings\", \"account\": \"schwab_taxable\", \"stop_price\": 612.04, \"distance_pct\": -11.59, \"current_price\": 548.48}",
+                "created_at": "2026-05-10T08:15:01.554166-04:00",
+                "processed_at": "2026-05-10T08:40:21.728100-04:00"
+            },
+            {
+                "id": 510,
+                "event_type": "STOP_TRIGGERED",
+                "symbol": "LDOS",
+                "priority": "urgent",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"risk_management + holdings\", \"account\": \"schwab_taxable\", \"stop_price\": 142.76, \"distance_pct\": -10.43, \"current_price\": 129.28}",
+                "created_at": "2026-05-10T08:15:01.550195-04:00",
+                "processed_at": "2026-05-10T08:35:39.484048-04:00"
+            },
+            {
+                "id": 509,
+                "event_type": "STOP_TRIGGERED",
+                "symbol": "LMT",
+                "priority": "urgent",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"risk_management + holdings\", \"account\": \"schwab_taxable\", \"stop_price\": 590.0, \"distance_pct\": -16.11, \"current_price\": 508.14}",
+                "created_at": "2026-05-10T08:15:01.546630-04:00",
+                "processed_at": "2026-05-10T08:31:00.249345-04:00"
+            },
+            {
+                "id": 508,
+                "event_type": "STOP_TRIGGERED",
+                "symbol": "LHX",
+                "priority": "urgent",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"risk_management + holdings\", \"account\": \"schwab_taxable\", \"stop_price\": 322.32, \"distance_pct\": -7.39, \"current_price\": 300.14}",
+                "created_at": "2026-05-10T08:15:01.540256-04:00",
+                "processed_at": "2026-05-10T08:26:18.515849-04:00"
+            },
+            {
+                "id": 507,
+                "event_type": "STOP_TRIGGERED",
+                "symbol": "RTX",
+                "priority": "urgent",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"risk_management + holdings\", \"account\": \"schwab_taxable\", \"stop_price\": 180.71, \"distance_pct\": -2.22, \"current_price\": 176.79}",
+                "created_at": "2026-05-10T08:15:01.521824-04:00",
+                "processed_at": "2026-05-10T08:21:39.828018-04:00"
+            },
+            {
+                "id": 506,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "TRP-LVAL",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 54.4, \"last_analysis\": \"2026-05-08 01:38:17\"}",
+                "created_at": "2026-05-10T08:00:01.146160-04:00",
+                "processed_at": "2026-05-10T08:05:31.224803-04:00"
+            },
+            {
+                "id": 505,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "SS-SMMD",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 54.2, \"last_analysis\": \"2026-05-08 01:34:06\"}",
+                "created_at": "2026-05-10T07:45:01.127885-04:00",
+                "processed_at": "2026-05-10T07:51:09.893590-04:00"
+            },
+            {
+                "id": 504,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "SS-GACEQ",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 54.2, \"last_analysis\": \"2026-05-08 01:20:01\"}",
+                "created_at": "2026-05-10T07:30:01.670539-04:00",
+                "processed_at": "2026-05-10T07:36:02.814642-04:00"
+            },
+            {
+                "id": 503,
+                "event_type": "PORTFOLIO_FRESH_NEEDED",
+                "symbol": "SP500-D",
+                "priority": "normal",
+                "status": "done",
+                "agents_to_notify": [
+                    "Risk",
+                    "Steph"
+                ],
+                "trigger_text": "{\"source\": \"watchlist_agent_results\", \"hours_since\": 54.0, \"last_analysis\": \"2026-05-08 01:17:02\"}",
+                "created_at": "2026-05-10T07:15:01.140177-04:00",
+                "processed_at": "2026-05-10T07:21:00.442683-04:00"
+            }
+        ],
+        "proposals": [
+            {
+                "symbol": "ARM",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.65,
+                "status": "proposed",
+                "created_at": "2026-05-08T19:00:02.012528-04:00"
+            },
+            {
+                "symbol": "ALNT",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "AINT",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "LOOKS",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "VEEE",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "AMRC",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "ANEL",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "ANDE",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "AOSL",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "DPRO",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "OBDC",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "SKK",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.75,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "MWH",
+                "action": "rotate",
+                "strategy_type": "core_growth_compounder",
+                "confidence": 0.75,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "ANVS",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.75,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "ADUS",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "AFCG",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-07T19:00:01.982535-04:00"
+            },
+            {
+                "symbol": "ABSI",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-05T19:00:01.303884-04:00"
+            },
+            {
+                "symbol": "ABEO",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-05T19:00:01.303884-04:00"
+            },
+            {
+                "symbol": "ABTC",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-05T19:00:01.303884-04:00"
+            },
+            {
+                "symbol": "ALIS",
+                "action": "rotate",
+                "strategy_type": "swing_trade",
+                "confidence": 0.85,
+                "status": "proposed",
+                "created_at": "2026-05-05T19:00:01.303884-04:00"
+            }
+        ],
+        "debates": [],
+        "summary": {
+            "queued": 80,
+            "processing": 0,
+            "completed": 0,
+            "failed": 0,
+            "total_24h": 80,
+            "events_pending": 0,
+            "events_done": 20,
+            "handoffs_24h": 1,
+            "analyses_24h": 15,
+            "proposals_pending": 20,
+            "debates_24h": 0
+        }
+    }
+}

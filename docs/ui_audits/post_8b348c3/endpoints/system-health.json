@@ -1,0 +1,101 @@
+{
+    "ok": true,
+    "data": {
+        "llm": {
+            "local": {
+                "available": true,
+                "latency": 0.001,
+                "model": "qwen3:14b",
+                "resident_models": [
+                    "qwen3:14b",
+                    "nomic-embed-text:latest"
+                ]
+            },
+            "grok": {
+                "available": true,
+                "configured": true
+            },
+            "claude": {
+                "available": true,
+                "configured": true
+            },
+            "openai": {
+                "available": true,
+                "configured": true
+            },
+            "daily_spend": 0.0,
+            "daily_budget": 1.5,
+            "budget_remaining": 1.5
+        },
+        "db_tables": {
+            "watchlist_agent_results": 6583,
+            "watchlist_final_synthesis": 1262,
+            "cio_decisions": 732,
+            "news_articles": 4311,
+            "fused_signals": 2362,
+            "decision_outcomes": 1272,
+            "ticker_strategy_classifications": 9410
+        },
+        "cio_decisions": [
+            {
+                "action": "HOLD",
+                "cnt": 212
+            },
+            {
+                "action": "ADD_REVIEW",
+                "cnt": 168
+            },
+            {
+                "action": "HUMAN_REVIEW",
+                "cnt": 158
+            },
+            {
+                "action": "ADD_ON_PULLBACK",
+                "cnt": 102
+            },
+            {
+                "action": "RESEARCH_MORE",
+                "cnt": 92
+            }
+        ],
+        "cron_jobs": 143,
+        "finviz_screeners": 27,
+        "validation_suites": 7,
+        "data_freshness": {
+            "summary": "0/5 fresh, 5 stale",
+            "products": [
+                {
+                    "product": "holdings",
+                    "age_hours": 46.3,
+                    "max_stale_hours": 24,
+                    "status": "stale"
+                },
+                {
+                    "product": "risk_mgmt",
+                    "age_hours": 55.1,
+                    "max_stale_hours": 24,
+                    "status": "stale"
+                },
+                {
+                    "product": "news",
+                    "age_hours": 22.6,
+                    "max_stale_hours": 6,
+                    "status": "stale"
+                },
+                {
+                    "product": "cio_decisions",
+                    "age_hours": 103.1,
+                    "max_stale_hours": 48,
+                    "status": "stale"
+                },
+                {
+                    "product": "agent_jobs",
+                    "age_hours": 44.1,
+                    "max_stale_hours": 2,
+                    "status": "stale"
+                }
+            ]
+        },
+        "note": "System health dashboard with data product freshness."
+    }
+}

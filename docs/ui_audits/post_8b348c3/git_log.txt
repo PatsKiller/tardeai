@@ -1,0 +1,3 @@
+8b348c3 fix: all deferred items — pipeline telemetry (16 scripts), research gaps + agent routing, TLH summary, technical data
+ae828f9 fix: AI Analyst stale blocking + research topics unified + pipeline log fallback + system health data products + incubator blockers
+0227891 chore: update routes.json after duplicate route removal (63 routes)
