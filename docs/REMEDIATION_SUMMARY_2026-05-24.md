@@ -329,3 +329,32 @@ Manual/interactive script runs now record `trigger_source='manual'` in pipeline_
 | Iris taxonomy | 2 cron entries | Active |
 | Outcome scoring | weekly | Active |
 | Health reporting | 2× daily | Active |
+
+---
+
+## 10. Session Close State (2026-05-24 19:15 ET)
+
+### Final Metrics
+- **Commits this session:** 50+
+- **Crontab:** 327 lines (was ~160)
+- **Pipeline:** 19/26 healthy, 0 critical, 0 never-run
+- **Playwright:** 61 OK, 0 console errors, 0 network failures
+- **Documentation:** 268 active files, 21 sections (was 1,043)
+
+### Automation Fully Implemented
+| Feature | Script | Cron | Evidence |
+|---------|--------|------|----------|
+| Email alerts | alert_dispatcher_unified.py | daily 8:30 AM + 4:30 PM | Verified: email sent to john@jwwhiting.com |
+| Brave budget alerts | alert_dispatcher_unified.py | same | Checks 70%/90% monthly thresholds |
+| Pipeline failure alerts | alert_dispatcher_unified.py | same | Detects status=failed, filters test_artifact |
+| Iris freshness validation | iris_taxonomy_agent.py --freshness | daily 7:30 AM | Validates data products, pipeline, queue, topics |
+| Iris auto-remediation | iris_taxonomy_agent.py --freshness | daily 7:30 AM | Runs remediation commands for stale products, drains agent queue |
+| All pipeline stages | 26 scripts | various | All registered in crontab, all writing PipelineRun telemetry |
+| All agents | Maria/Steph/Risk/Tax/Alex/Aegis/Iris | various | All have cron entries and produce telemetry |
+| Agent infrastructure | calibration/event_router/outcome_linker/normalizer/auto_proposal | various | All scheduled |
+
+### Manual by Operator Choice
+| Feature | Reason |
+|---------|--------|
+| AI Analyst regeneration | Operator runs portfolio_ai_analyst.py when needed. Staleness detected and displayed. |
+| Weekly learning digest | Manual after trade review. Needs scored outcomes first. |

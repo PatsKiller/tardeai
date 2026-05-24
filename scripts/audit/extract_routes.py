@@ -56,8 +56,11 @@ def main():
         if tv["href"] not in {r["href"] for r in routes}:
             routes.append(tv)
 
-    # Routes that trigger side effects — skip during crawl
+    # Routes that trigger side effects or are redirects — skip during crawl
     SKIP_ROUTES = {"/v2/morning-brief", "/v2/bot-morning-brief"}
+    # Redirect routes that produce duplicate screenshots
+    REDIRECT_ROUTES = {"/v2/approvals", "/v2/paper-journal", "/v2/paper-outcomes", "/v2/paper-governance"}
+    routes = [r for r in routes if r["href"] not in REDIRECT_ROUTES]
     for r in routes:
         if r["href"] in SKIP_ROUTES:
             r["skip_in_crawler"] = True

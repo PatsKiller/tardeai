@@ -196,17 +196,17 @@ export default function App() {
           <Route path="portfolio-intelligence" element={<SafePage><PortfolioCommand /></SafePage>} />
           <Route path="journal-analytics" element={<Navigate to="/journal?tab=analytics" replace />} />
           <Route path="journal-reports" element={<Navigate to="/journal?tab=reports" replace />} />
-          <Route path="paper-journal" element={<Navigate to="/v2/journal" replace />} />
-          <Route path="paper-outcomes" element={<Navigate to="/v2/paper-review" replace />} />
+          <Route path="paper-journal" element={<Navigate to="../journal" replace />} />
+          <Route path="paper-outcomes" element={<Navigate to="../paper-review" replace />} />
           <Route path="paper-trade-intelligence" element={<SafePage><PaperReview /></SafePage>} />
           <Route path="pipeline-health-master" element={<SafePage><PipelineHub /></SafePage>} />
           <Route path="pipeline-controller" element={<SafePage><PipelineHub /></SafePage>} />
           <Route path="alerts" element={<SafePage><Inbox /></SafePage>} />
           <Route path="notifications" element={<SafePage><Inbox /></SafePage>} />
           <Route path="actions" element={<SafePage><Inbox /></SafePage>} />
-          <Route path="paper-governance" element={<Navigate to="/v2/governance" replace />} />
+          <Route path="paper-governance" element={<Navigate to="../governance" replace />} />
           <Route path="learning-governance" element={<Navigate to="/governance?tab=learning" replace />} />
-          <Route path="approvals" element={<Navigate to="/v2/governance" replace />} />
+          <Route path="approvals" element={<Navigate to="../governance" replace />} />
           <Route path="broker-recon" element={<Navigate to="/broker-reconciliation" replace />} />
           <Route path="system-hub" element={<Navigate to="/ops" replace />} />
           <Route path="hub" element={<SafePage><OpsHub /></SafePage>} />

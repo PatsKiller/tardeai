@@ -256,11 +256,6 @@
     "name": "proposal_alerts"
   },
   {
-    "href": "/v2/approvals",
-    "label": "Approvals",
-    "name": "approvals"
-  },
-  {
     "href": "/v2/agent-dashboard/steph",
     "label": "Agent: steph",
     "name": "agent_dashboard_steph"
