@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Roster
 
-Generated: 2026-05-24 | Post-remediation
+Generated: 2026-05-24 | Final post-audit
 
 ## (root) (19 files)
 - `A1A.md` (4KB)
@@ -10,7 +10,7 @@ Generated: 2026-05-24 | Post-remediation
 - `CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` (28KB)
 - `COST_MODEL.md` (8KB)
 - `DASHBOARD_AUDIT_WORKFLOW.md` (2KB)
-- `DOCS_ROSTER.md` (36KB)
+- `DOCS_ROSTER.md` (38KB)
 - `GPU_OLLAMA_SETUP.md` (3KB)
 - `LLM_DATA_DICTIONARY.md` (9KB)
 - `LLM_FLEET_STRATEGY_v4_1_FINAL.md` (56KB)

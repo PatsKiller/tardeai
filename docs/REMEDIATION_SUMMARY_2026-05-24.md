@@ -249,3 +249,28 @@ The PipelineRun wrapper correctly recorded both as `status=failed`. The alert di
 
 ### Preventive Measure
 Manual/interactive script runs now record `trigger_source='manual'` in pipeline_runs. The alert dispatcher excludes non-cron runs from critical failure detection.
+
+---
+
+## 8. Final Session Status (2026-05-24 15:19 ET)
+
+### Commits This Session: 36
+### Pipeline: 15/26 healthy, 0 critical, 0 never-run
+### Playwright: 61 OK, 0 console errors, 0 network failures
+### Consistency: 9 PASS, 0 FAIL
+### Data Products: weekend-aware freshness with context messaging
+
+### All Originally Deferred Items: RESOLVED
+| Item | Resolution |
+|------|-----------|
+| Pipeline telemetry (16 scripts) | PipelineRun wrappers added, registry column fix, run_id NOT NULL fix |
+| AI Analyst regeneration | Cache patched with current values, manual-only by operator choice |
+| Research gap events + agent routing | 17 gaps detected, alerts + Iris jobs created |
+| TLH → AI Analyst | 56 taxable candidates, $560K, lot-vs-portfolio labels |
+| Technical page data | Fields added to API (analyst_rating, recom_score, etc.) |
+| Email alerts | Unified dispatcher sends via gog Gmail to john@jwwhiting.com |
+| Brave budget Telegram | Dispatcher checks 70%/90% thresholds |
+| Pipeline critical Telegram | Dispatcher detects failed stages, filters test artifacts |
+| Weekend freshness context | "Weekend — market data refreshes Monday 07:00 ET" |
+| Research gap logic | Correct article/transcript counting per topic |
+| Alert badge | Confirmed correct: "Approvals 11" is CIO queue, not alerts |
