@@ -28,11 +28,13 @@ def _get_conn():
 
 def run_start(script_name: str, run_label: str = None, triggered_by: str = 'cron') -> Optional[int]:
     try:
+        import uuid
         conn = _get_conn()
         if not conn: return None
         cur = conn.cursor()
-        cur.execute("""INSERT INTO pipeline_runs (pipeline_key, run_label, trigger_source, started_at, status)
-            VALUES (%s, %s, %s, NOW(), 'running') RETURNING id""", [script_name, run_label, triggered_by])
+        _run_id = f"{script_name}_{uuid.uuid4().hex[:8]}"
+        cur.execute("""INSERT INTO pipeline_runs (run_id, pipeline_key, run_label, trigger_source, started_at, status)
+            VALUES (%s, %s, %s, %s, NOW(), 'running') RETURNING id""", [_run_id, script_name, run_label, triggered_by])
         run_id = cur.fetchone()[0]
         conn.commit(); conn.close()
         return run_id
