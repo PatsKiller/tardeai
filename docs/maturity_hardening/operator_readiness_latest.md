@@ -1,5 +1,9 @@
-# Operator Readiness — 7.0/10
+# Operator Readiness — 7.1/10
 
-ATM: dry_run (frozen) | Live trading: BLOCKED | Stop protection: 5/5 verified | STOP-V2 complete
+A-5: complete | Live trading: BLOCKED
 
-**Next:** ATM re-enable decision package, STOP-V2 burn-in, continue A-5 strategy proof
+**Next:** A-5 observation check
+
+## Allowed: A-5 observation check, SP-2 shadow outcomes, DOC-CLEAN-1D review triage, Live-readiness dashboard
+## Blocked: Final A-5 review, Phase 8D strategy quality, Live trading
+## Operator Required: BR-2 offsite backup

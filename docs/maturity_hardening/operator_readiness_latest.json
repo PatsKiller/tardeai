@@ -1,20 +1,32 @@
 {
-  "generated_at": "2026-05-22T22:00:00+00:00",
-  "trigger": "STOP-V2.0 through V2.3 complete",
-  "overall_maturity": 7.0,
-  "execution_safety": 8.5,
-  "paper_execution_governance": 7.5,
-  "stop_protection_maturity": 8.5,
-  "auditability": 7.5,
-  "quote_readiness": 7.0,
-  "strategy_proof": 3.5,
-  "live_trading_readiness": 2.0,
-  "operational_maturity": 8.0,
-  "atm_mode": "dry_run",
-  "atm_frozen_by": "atm-safe-1",
-  "broker_stops_reconciled": "5/5",
-  "unified_supervisor": "installed, */3 market hours",
-  "stop_v2_complete": true,
+  "generated_at": "2026-05-24T22:20:01.903687+00:00",
+  "overall_maturity": 7.1,
+  "a5_complete": true,
+  "a5_end_date": "2026-05-22",
+  "governance_status": "healthy",
+  "allowed_actions": [
+    "A-5 observation check",
+    "SP-2 shadow outcomes",
+    "DOC-CLEAN-1D review triage",
+    "Live-readiness dashboard"
+  ],
+  "blocked_actions": [
+    "Final A-5 review",
+    "Phase 8D strategy quality",
+    "Live trading"
+  ],
+  "waiting_actions": [],
+  "operator_required": [
+    "BR-2 offsite backup"
+  ],
+  "top_blockers": [
+    "strategy_proof: insufficient closed trades",
+    "agent_learning: Evidence quality: weak",
+    "backup_recovery: P0: No offsite backup configured",
+    "backup_recovery: No restore drill executed",
+    "live_readiness: A-5 observation not complete"
+  ],
   "live_trading": "BLOCKED",
-  "recommended_next": "ATM re-enable decision package, STOP-V2 burn-in, A-5 strategy proof"
+  "strategy_decisions": "review_ready",
+  "recommended_next": "A-5 observation check"
 }
