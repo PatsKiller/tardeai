@@ -10985,21 +10985,49 @@ def _research_topics_unified():
         """) or []
     except Exception:
         monitor_topics = []
-    # Identify gaps: topics with 0 articles and stale search
+    # Count articles/transcripts per topic using the same logic as topic monitor endpoint
+    topic_article_counts = {}
+    try:
+        _ac_rows = _db_query("""
+            SELECT t.topic_id,
+                   (SELECT COUNT(*) FROM news_articles
+                    WHERE ingested_at > NOW() - INTERVAL '1 day' * t.max_age_days
+                    AND (title ILIKE '%%' || REPLACE(t.topic_id, '_', ' ') || '%%'
+                         OR source_query ILIKE '%%' || t.topic_id || '%%')) as articles,
+                   (SELECT COUNT(*) FROM youtube_transcripts
+                    WHERE added_by = 'topic_ingestion'
+                    AND ingested_at > NOW() - INTERVAL '1 day' * t.max_age_days
+                    AND (title ILIKE '%%' || REPLACE(t.topic_id, '_', ' ') || '%%')) as transcripts
+            FROM topic_monitor t WHERE t.enabled = true
+        """) or []
+        for r in _ac_rows:
+            topic_article_counts[r["topic_id"]] = {"articles": int(r.get("articles") or 0), "transcripts": int(r.get("transcripts") or 0)}
+    except Exception:
+        pass
+
+    # Identify gaps using actual article/transcript counts
     gaps = []
     for t in monitor_topics:
-        ac = int(t.get("article_count") or 0)
-        tc = int(t.get("transcript_count") or 0)
+        tid = t.get("topic_id", "")
+        counts = topic_article_counts.get(tid, {"articles": 0, "transcripts": 0})
+        ac = counts["articles"]
+        tc = counts["transcripts"]
+        # Enrich the topic with counts for frontend display
+        t["article_count"] = ac
+        t["transcript_count"] = tc
+
         if ac == 0 and tc == 0:
-            gaps.append({"topic_id": t.get("topic_id"), "display_name": t.get("display_name"),
-                         "last_searched": _json_clean(t.get("last_searched")), "reason": "zero_content"})
+            gaps.append({"topic_id": tid, "display_name": t.get("display_name"),
+                         "last_searched": _json_clean(t.get("last_searched")), "reason": "zero_content",
+                         "articles": 0, "transcripts": 0})
         elif t.get("last_searched"):
             try:
                 ls = datetime.fromisoformat(str(t["last_searched"]).replace("Z", "+00:00")).replace(tzinfo=None)
                 age_days = (datetime.now() - ls).days
-                if age_days > 7:
-                    gaps.append({"topic_id": t.get("topic_id"), "display_name": t.get("display_name"),
-                                 "last_searched": _json_clean(t.get("last_searched")), "age_days": age_days, "reason": "stale_search"})
+                if age_days > 14:
+                    gaps.append({"topic_id": tid, "display_name": t.get("display_name"),
+                                 "last_searched": _json_clean(t.get("last_searched")), "age_days": age_days,
+                                 "reason": "stale_search", "articles": ac, "transcripts": tc})
             except Exception:
                 pass
     # Create RESEARCH_GAP_DETECTED events for new gaps and queue agent jobs
@@ -11391,7 +11419,23 @@ def _compute_freshness(freshness):
                 status = "fresh"
         except Exception:
             pass
-    return {"last_refresh": _json_clean(best), "status": status}
+    _is_weekend = now.weekday() >= 5
+    _age_display = None
+    if best:
+        try:
+            from dateutil.parser import parse as dtparse
+            _bd = dtparse(str(best)).astimezone(timezone.utc)
+            _ah = (now - _bd).total_seconds() / 3600
+            _age_display = f"{int(_ah)}h"
+        except Exception:
+            pass
+    return {
+        "last_refresh": _json_clean(best),
+        "status": status,
+        "is_weekend": _is_weekend,
+        "age_display": _age_display,
+        "context": "Weekend — market data refreshes Monday 07:00 ET. Pipeline stages resume on market open." if _is_weekend and status == "fresh" else None,
+    }
 
 
 # ── Intelligence enrichment for portfolio holdings ────────────────────────
@@ -14898,7 +14942,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                (summary->>'rows_produced')::int as rows_processed,
                                duration_seconds as duration_sec,
                                summary->>'errors' as error_message
-                        FROM pipeline_runs WHERE pipeline_key=%s ORDER BY started_at DESC LIMIT 1
+                        FROM pipeline_runs WHERE pipeline_key=%s AND status != 'test_artifact' ORDER BY started_at DESC LIMIT 1
                     """, [script_name], fetch="one")
                     if not row or not row.get('started_at'):
                         row = _db_query("""
