@@ -221,3 +221,31 @@ Fresh: 5/7 | Stale: 2/7 (risk + dividend — weekend, market closed) | Unknown: 
 2. Verify pipeline health: `curl http://localhost:7777/api/v2/pipeline-health-master`
 3. Verify data product health: `curl http://localhost:7777/api/v2/data-product-health`
 4. Verify alerts: `curl http://localhost:7777/api/v2/alerts-dashboard`
+
+---
+
+## 7. Post-Remediation Incident: False-Alarm Pipeline Alert (2026-05-24 14:52 ET)
+
+### Incident
+Telegram alert dispatched: "2 pipeline_critical failures — agent_router and trade_ai_orchestrator."
+
+### Root Cause
+Both failures were caused by manual test runs during the verification session:
+- `agent_router`: ran without required `--message` flag (argparse exit code 2, 0.01s)
+- `trade_ai_orchestrator`: ran on Saturday (market closed check returned False, 0.14s)
+
+The PipelineRun wrapper correctly recorded both as `status=failed`. The alert dispatcher correctly detected failures and sent Telegram + email. The system worked as designed — but couldn't distinguish "manual test with wrong args" from "real cron failure."
+
+### Why No Auto-Resolution
+- These aren't retryable failures — they're wrong invocations
+- PipelineRun is a telemetry recorder, not a retry framework
+- The cron scheduler only runs these scripts on weekdays with correct arguments
+
+### Fix Applied (commit aad4318)
+1. Marked 2 test runs as `test_artifact` status (won't trigger future alerts)
+2. Alert dispatcher now filters `test_artifact` and `manual_test` trigger sources
+3. PipelineRun auto-detects cron vs interactive via `sys.stdin.isatty()`
+4. Pipeline health after cleanup: 16/26 healthy, 0 critical, 0 never-run
+
+### Preventive Measure
+Manual/interactive script runs now record `trigger_source='manual'` in pipeline_runs. The alert dispatcher excludes non-cron runs from critical failure detection.

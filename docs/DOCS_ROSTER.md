@@ -1,8 +1,8 @@
 # Trade AI v12 — Documentation Roster
 
-Generated: 2026-05-24 | Post-cleanup
+Generated: 2026-05-24 | Post-remediation
 
-## (root) (18 files)
+## (root) (19 files)
 - `A1A.md` (4KB)
 - `APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` (5KB)
 - `ARCHITECTURE_OVERVIEW.md` (14KB)
@@ -10,13 +10,14 @@ Generated: 2026-05-24 | Post-cleanup
 - `CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md` (28KB)
 - `COST_MODEL.md` (8KB)
 - `DASHBOARD_AUDIT_WORKFLOW.md` (2KB)
-- `DOCS_ROSTER.md` (90KB)
+- `DOCS_ROSTER.md` (36KB)
 - `GPU_OLLAMA_SETUP.md` (3KB)
 - `LLM_DATA_DICTIONARY.md` (9KB)
 - `LLM_FLEET_STRATEGY_v4_1_FINAL.md` (56KB)
 - `MASTER_SYSTEM_DOCUMENTATION.md` (109KB)
 - `MONDAY_BURNIN_CHECKLIST.md` (2KB)
 - `OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` (8KB)
+- `REMEDIATION_SUMMARY_2026-05-24.md` (16KB)
 - `RESTORE_GUIDE.md` (10KB)
 - `openclaw_aegis_morning_brief_2026-05-21.md` (3KB)
 - `openclaw_aegis_morning_brief_2026-05-22.md` (3KB)
@@ -452,7 +453,7 @@ Generated: 2026-05-24 | Post-cleanup
 - `telemetry/phase_tel1_scheduled_verification/tel1_runtime_health.md` (402B)
 - `telemetry/phase_tel1_scheduled_verification/tel1_safety_audit.md` (422B)
 
-## ui_audits (28 files)
+## ui_audits (55 files)
 - `ui_audits/2026-05-23_command_center_fix/FIX_SUMMARY.md` (3KB)
 - `ui_audits/2026-05-23_command_center_fix/ROOT_CAUSE_MATRIX.md` (4KB)
 - `ui_audits/2026-05-23_command_center_fix/discovery/alpaca_mode.txt` (18B)
@@ -481,6 +482,33 @@ Generated: 2026-05-24 | Post-cleanup
 - `ui_audits/audit_7777_20260524_1001_fix/discovery/git_head.txt` (83B)
 - `ui_audits/audit_7777_20260524_1001_fix/discovery/holdings_guard.txt` (66B)
 - `ui_audits/audit_7777_20260524_1001_fix/discovery/safety_flags.txt` (50B)
+- `ui_audits/post_8b348c3/VERIFICATION_MATRIX.md` (5KB)
+- `ui_audits/post_8b348c3/consistency_check.txt` (851B)
+- `ui_audits/post_8b348c3/endpoints/agent-pipeline.json` (80KB)
+- `ui_audits/post_8b348c3/endpoints/ai-analyst.json` (29KB)
+- `ui_audits/post_8b348c3/endpoints/alerts.json` (101KB)
+- `ui_audits/post_8b348c3/endpoints/data-product-health.json` (2KB)
+- `ui_audits/post_8b348c3/endpoints/pipeline-health-master.json` (38KB)
+- `ui_audits/post_8b348c3/endpoints/research-topics.json` (32KB)
+- `ui_audits/post_8b348c3/endpoints/system-health.json` (3KB)
+- `ui_audits/post_8b348c3/endpoints/topics.json` (46KB)
+- `ui_audits/post_8b348c3/freshness_check.txt` (2KB)
+- `ui_audits/post_8b348c3/git_log.txt` (344B)
+- `ui_audits/post_8b348c3/git_status.txt` (0B)
+- `ui_audits/post_8b348c3/manifest_summary.txt` (87B)
+- `ui_audits/post_8b348c3/npm_build.txt` (98B)
+- `ui_audits/post_8b348c3/screenshots/agent_pipeline.png` (470KB)
+- `ui_audits/post_8b348c3/screenshots/ai_analyst.png` (395KB)
+- `ui_audits/post_8b348c3/screenshots/alerts.png` (93KB)
+- `ui_audits/post_8b348c3/screenshots/incubator.png` (1737KB)
+- `ui_audits/post_8b348c3/screenshots/paper_proposals.png` (379KB)
+- `ui_audits/post_8b348c3/screenshots/pipeline.png` (184KB)
+- `ui_audits/post_8b348c3/screenshots/research_topics.png` (631KB)
+- `ui_audits/post_8b348c3/screenshots/system_health.png` (169KB)
+- `ui_audits/post_8b348c3/screenshots/tax.png` (176KB)
+- `ui_audits/post_8b348c3/screenshots/technical.png` (326KB)
+- `ui_audits/post_8b348c3/screenshots/topic_monitor.png` (454KB)
+- `ui_audits/post_8b348c3/screenshots/weekly_learning.png` (76KB)
 
 ## v4_1_discovery (2 files)
 - `v4_1_discovery/phase1h_2300_0300_schedule_audit.md` (4KB)
@@ -502,4 +530,4 @@ Generated: 2026-05-24 | Post-cleanup
 - `yaml_patches_s34/docs/CLAUDE_CODE_HANDOFF_S34.md` (9KB)
 - `yaml_patches_s34/docs/README.md` (3KB)
 
-**Total: 430 active files across 35 sections**
+**Total: 458 active files across 35 sections**
