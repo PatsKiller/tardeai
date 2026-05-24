@@ -99,6 +99,25 @@ export default function SystemHealth() {
         </div>
       </Card>
 
+      {/* Data Product Freshness */}
+      {data?.data_freshness && (
+        <Card title={`Data Product Health — ${data.data_freshness.summary}`} style={{ marginTop: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+            {(data.data_freshness.products || []).map((p: any) => {
+              const color = p.status === 'fresh' ? '#0ecb81' : p.status === 'stale' ? '#f6465d' : '#848e9c'
+              return (
+                <div key={p.product} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid ${color}33`, background: `${color}08` }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color }}>{p.product}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                    {p.age_hours != null ? `${Math.round(p.age_hours)}h old` : 'unknown'} / max {p.max_stale_hours}h
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
       {/* System Info */}
       <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(16,20,28,0.92)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, fontSize: 10, color: 'var(--text3)' }}>
         Cron jobs: {data?.cron_jobs || 0} | Finviz screeners: {data?.finviz_screeners || screeners?.screeners?.length || 0} active | Validation suites: {data?.validation_suites || 0}

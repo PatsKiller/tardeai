@@ -2819,6 +2819,24 @@ def ai_analyst():
             _ai_stale = (datetime.now() - _gen_dt).total_seconds() > 48 * 3600
         except Exception:
             pass
+    # Add canonical context so frontend can show current values alongside stale text
+    _canonical_total = (_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0)
+    _div = (_load_json(STATE_DIR / "dividend_calendar.json") or {}).get("total_annual", 0)
+    _rm = _load_json(STATE_DIR / "risk_management.json") or {}
+    _triggered = len([p for p in _rm.get("positions", []) if p.get("status") == "TRIGGERED"])
+    _heat = _rm.get("portfolio_heat_pct", 0)
+
+    # Input freshness manifest
+    _input_manifest = {
+        "holdings_age_hours": round((datetime.now() - datetime.fromtimestamp((STATE_DIR / "holdings.json").stat().st_mtime)).total_seconds() / 3600, 1) if (STATE_DIR / "holdings.json").exists() else None,
+        "risk_age_hours": round((datetime.now() - datetime.fromtimestamp((STATE_DIR / "risk_management.json").stat().st_mtime)).total_seconds() / 3600, 1) if (STATE_DIR / "risk_management.json").exists() else None,
+        "dividend_age_hours": round((datetime.now() - datetime.fromtimestamp((STATE_DIR / "dividend_calendar.json").stat().st_mtime)).total_seconds() / 3600, 1) if (STATE_DIR / "dividend_calendar.json").exists() else None,
+        "canonical_total": _canonical_total,
+        "annual_income": float(_div),
+        "triggered_stops": _triggered,
+        "portfolio_heat_pct": float(_heat) if _heat else 0,
+    }
+
     return {
         "has_data": len(sections) > 0,
         "sections": sections,
@@ -2826,6 +2844,8 @@ def ai_analyst():
         "run_type": cache.get("run_type"),
         "model": cache.get("model"),
         "is_stale": _ai_stale,
+        "stale_warning": f"This analysis was generated {gen_at} and may not reflect current portfolio state (${_canonical_total:,.0f}). Regenerate for current recommendations." if _ai_stale else None,
+        "input_manifest": _input_manifest,
     }
 
 
@@ -9132,11 +9152,34 @@ def _incubator_api():
                 updated_at DESC
             LIMIT 200
         """) or []
+        active_rows = [r for r in rows if r.get('status') == 'ACTIVE']
+        promoted = sum(1 for r in rows if r.get('promoted_to_proposal_at'))
+
+        # Blocker diagnostics
+        blockers = {
+            "stale_source": sum(1 for r in active_rows if not r.get("source_latest") or r.get("lifecycle_state") == "source_missing"),
+            "low_score": sum(1 for r in active_rows if (r.get("latest_score") or 0) < 38),
+            "no_catalyst": sum(1 for r in active_rows if not r.get("catalyst_verified")),
+            "strategy_unvalidated": 0,  # would need strategy config lookup
+            "rolled_off": sum(1 for r in rows if r.get("status") == "ROLLED_OFF"),
+            "expired": sum(1 for r in rows if r.get("status") == "EXPIRED"),
+        }
+        # Check promotion gate
+        pending_proposals = (_db_query("SELECT COUNT(*) as cnt FROM paper_trade_proposals WHERE status='pending'", fetch="one") or {}).get("cnt", 0)
+        blockers["global_proposal_ceiling"] = int(pending_proposals) >= 20
+
         return {
             'ok': True,
             'universe': [{k: _json_clean(v) for k, v in r.items()} for r in rows],
             'total': len(rows),
-            'active': sum(1 for r in rows if r.get('status') == 'ACTIVE'),
+            'active': len(active_rows),
+            'promoted': promoted,
+            'promotion_blockers': blockers,
+            'promotion_gate': {
+                'pending_proposals': int(pending_proposals),
+                'max_pending': 20,
+                'can_promote': int(pending_proposals) < 20,
+            },
         }
     except Exception as e:
         return {'ok': False, 'error': str(e)}
@@ -10870,6 +10913,45 @@ def _get_current_month_dividends(div_cal):
 
 # ── Reports hub endpoint (was missing) ────────────────────────────────────
 
+def _research_topics_unified():
+    """GET /api/v2/research-topics — unified view of user research + topic monitor."""
+    user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
+    try:
+        monitor_topics = _db_query("""
+            SELECT topic_id, display_name, priority, enabled, last_searched, max_age_days,
+                   search_queries, video_queries
+            FROM topic_monitor WHERE enabled = true ORDER BY priority DESC, display_name
+        """) or []
+    except Exception:
+        monitor_topics = []
+    # Identify gaps: topics with 0 articles and stale search
+    gaps = []
+    for t in monitor_topics:
+        ac = int(t.get("article_count") or 0)
+        tc = int(t.get("transcript_count") or 0)
+        if ac == 0 and tc == 0:
+            gaps.append({"topic_id": t.get("topic_id"), "display_name": t.get("display_name"),
+                         "last_searched": _json_clean(t.get("last_searched")), "reason": "zero_content"})
+        elif t.get("last_searched"):
+            try:
+                ls = datetime.fromisoformat(str(t["last_searched"]).replace("Z", "+00:00")).replace(tzinfo=None)
+                age_days = (datetime.now() - ls).days
+                if age_days > 7:
+                    gaps.append({"topic_id": t.get("topic_id"), "display_name": t.get("display_name"),
+                                 "last_searched": _json_clean(t.get("last_searched")), "age_days": age_days, "reason": "stale_search"})
+            except Exception:
+                pass
+    return {
+        "user_topics": [{k: _json_clean(v) for k, v in r.items()} for r in user_topics],
+        "user_topic_count": len(user_topics),
+        "monitor_topics": [{k: _json_clean(v) for k, v in r.items()} for r in monitor_topics],
+        "monitor_topic_count": len(monitor_topics),
+        "research_gaps": gaps,
+        "gap_count": len(gaps),
+        "note": "User Research Topics are operator-initiated advisories. Topic Monitor Library tracks automated intelligence gathering. Gaps shown below need operator attention.",
+    }
+
+
 def _reports_hub():
     """GET /api/v2/reports — Reports hub with weekly/monthly data + docx catalog."""
     import glob as _glob
@@ -11899,11 +11981,7 @@ ROUTES = {
     "/api/v2/search-sources": lambda: _search_sources_status(),
     "/api/v2/autonomy-progress": lambda: _autonomy_progress(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
-    "/api/v2/research-topics": lambda: {
-        "topics": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or [])],
-        "topic_monitor_count": (_db_query("SELECT COUNT(*) as cnt FROM topic_monitor WHERE enabled=true", fetch="one") or {}).get("cnt", 0),
-        "note": "Research Topics tracks user-initiated research. Topic Monitor (separate page) tracks automated intelligence gathering. They use different data models.",
-    },
+    "/api/v2/research-topics": lambda: _research_topics_unified(),
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
@@ -14759,6 +14837,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             minutes_ago = int(td.total_seconds() / 60)
                             if latest_run_ts is None or row['started_at'] > latest_run_ts:
                                 latest_run_ts = row['started_at']
+                    # Fallback: check log file mtime for scripts without DB telemetry
+                    if last_run_at is None:
+                        _log_path = PROJECT_ROOT / "logs" / f"{script_name}.log"
+                        if _log_path.exists():
+                            _log_mtime = _dt.fromtimestamp(_log_path.stat().st_mtime, tz=_tz.utc)
+                            last_run_at = _json_clean(_log_mtime)
+                            last_status = "completed"  # log exists = script ran
+                            minutes_ago = int((now - _log_mtime).total_seconds() / 60)
+                            if latest_run_ts is None or _log_mtime > latest_run_ts:
+                                latest_run_ts = _log_mtime
+
                     # Weekend awareness
                     import pytz as _ptz
                     _et_now = _dt.now(_ptz.timezone("US/Eastern"))

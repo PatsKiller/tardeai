@@ -87,6 +87,9 @@ function FindingsBlock({ findings }: { findings: string }) {
 
 export default function ResearchTopics() {
   const [topics, setTopics] = useState<ResearchTopic[]>([])
+  const [monitorTopics, setMonitorTopics] = useState<any[]>([])
+  const [gaps, setGaps] = useState<any[]>([])
+  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<'all' | 'high' | 'normal'>('all')
@@ -96,7 +99,11 @@ export default function ResearchTopics() {
       const res = await fetch('/api/v2/research-topics')
       if (!res.ok) throw new Error(`API ${res.status}`)
       const data = await res.json()
-      setTopics(data.topics || [])
+      const d = data.data || data
+      setTopics(d.user_topics || d.topics || [])
+      setMonitorTopics(d.monitor_topics || [])
+      setGaps(d.research_gaps || [])
+      setNote(d.note || '')
       setError(null)
     } catch (e: any) {
       setError(e.message)
@@ -126,7 +133,7 @@ export default function ResearchTopics() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ color: COLORS.muted, fontSize: 12 }}>
-            {topics.length} topics &middot; {totalIterations} total iterations
+            {topics.length} advisories &middot; {monitorTopics.length} monitor topics &middot; {gaps.length} gaps
             {highCount > 0 && <> &middot; <span style={{ color: COLORS.orange }}>{highCount} high priority</span></>}
           </span>
         </div>
@@ -207,8 +214,52 @@ export default function ResearchTopics() {
       {!loading && filtered.length === 0 && (
         <div style={{ ...cardStyle, textAlign: 'center', padding: 40 }}>
           <p style={{ color: COLORS.muted, fontSize: 14 }}>
-            {filter !== 'all' ? `No ${filter}-priority topics found.` : 'No active research topics. Send "research <topic>" via Telegram to create one.'}
+            {filter !== 'all' ? `No ${filter}-priority topics found.` : 'No active research advisories. Send "research <topic>" via Telegram to create one.'}
           </p>
+        </div>
+      )}
+
+      {/* Topic Monitor Library */}
+      {monitorTopics.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2 style={{ color: COLORS.text, fontSize: 16, marginBottom: 12 }}>
+            Topic Monitor Library ({monitorTopics.length} topics)
+          </h2>
+          <p style={{ color: COLORS.muted, fontSize: 11, marginBottom: 12 }}>{note}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+            {monitorTopics.map((t: any) => (
+              <div key={t.topic_id} style={{ ...cardStyle, padding: 12, marginBottom: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: COLORS.text, fontSize: 12, fontWeight: 600 }}>{t.display_name}</span>
+                  <span style={{ fontSize: 10, color: COLORS.muted }}>{t.article_count} articles / {t.transcript_count} transcripts</span>
+                </div>
+                <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 4 }}>
+                  Last searched: {t.last_searched ? timeAgo(t.last_searched) : 'never'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Research Gaps */}
+      {gaps.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2 style={{ color: COLORS.red, fontSize: 16, marginBottom: 12 }}>
+            Research Gaps ({gaps.length})
+          </h2>
+          {gaps.map((g: any, i: number) => (
+            <div key={i} style={{ ...cardStyle, padding: 12, marginBottom: 8, borderColor: COLORS.red + '44' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: COLORS.text, fontSize: 12, fontWeight: 600 }}>{g.display_name}</span>
+                <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: COLORS.red + '22', color: COLORS.red }}>{g.reason}</span>
+              </div>
+              <div style={{ fontSize: 10, color: COLORS.muted, marginTop: 4 }}>
+                Last searched: {g.last_searched ? timeAgo(g.last_searched) : 'never'}
+                {g.age_days && <> — {g.age_days} days stale</>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
