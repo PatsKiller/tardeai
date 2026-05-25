@@ -17829,12 +17829,78 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             """) or []
             scoring["collaboration_event_timeline"] = _jc(_timeline)
 
+            # ── Per-handoff drilldown data (recent, with timestamps) ──
+            handoff_details = _db_query("""
+                SELECT id, from_agent, to_agent, symbol, intent, status,
+                       escalated, confidence, reason, created_at,
+                       EXTRACT(EPOCH FROM (NOW() - created_at)) / 3600 as age_hours
+                FROM agent_handoffs
+                ORDER BY created_at DESC LIMIT 50
+            """) or []
+
+            # ── Agent quality metrics (from calibration) ──
+            agent_quality = _db_query("""
+                SELECT agent_name, accuracy, calibration_error,
+                       overconfidence_score, underconfidence_score,
+                       resolved, correct, incorrect, sample_size_status,
+                       created_at as scored_at
+                FROM agent_calibration_windows
+                ORDER BY agent_name
+            """) or []
+
+            # ── Stale data products with duration ──
+            stale_products = _db_query("""
+                SELECT state_file, ok, age_hours, max_age_hours,
+                       ROUND(CAST(age_hours - max_age_hours AS numeric), 1) as hours_overdue,
+                       checked_at, source_script
+                FROM state_freshness_history
+                WHERE checked_at = (SELECT MAX(checked_at) FROM state_freshness_history)
+                ORDER BY ok ASC, age_hours DESC
+            """) or []
+
+            # ── RACI process health (enrich with last-run timestamps) ──
+            import yaml as _yaml
+            _raci_path2 = PROJECT_ROOT / "config" / "agent_raci.yaml"
+            _raci_health = []
+            if _raci_path2.exists():
+                try:
+                    _rcfg = _yaml.safe_load(_raci_path2.read_text()) or {}
+                    for p in _rcfg.get("processes", []):
+                        agents_in = list((p.get("raci") or {}).keys())
+                        # Find latest handoff/result for agents in this process
+                        _latest_activity = None
+                        for a in agents_in:
+                            _la = _db_query(f"SELECT MAX(created_at) as t FROM watchlist_agent_results WHERE agent=%s", [a], fetch="one")
+                            if _la and _la.get("t"):
+                                if not _latest_activity or _la["t"] > _latest_activity:
+                                    _latest_activity = _la["t"]
+                        _age_h = None
+                        if _latest_activity:
+                            _age_h = round((_now_utc - _latest_activity.replace(tzinfo=timezone.utc if _latest_activity.tzinfo is None else _latest_activity.tzinfo)).total_seconds() / 3600, 1)
+                        _raci_health.append({
+                            "process_id": p.get("id"),
+                            "process_name": p.get("name"),
+                            "trigger": p.get("trigger"),
+                            "frequency": p.get("frequency"),
+                            "agents": agents_in,
+                            "roles": p.get("raci", {}),
+                            "last_activity": _json_clean(_latest_activity),
+                            "age_hours": _age_h,
+                            "health": "fresh" if _age_h and _age_h < 24 else ("stale" if _age_h and _age_h < 72 else "unknown"),
+                        })
+                except Exception:
+                    pass
+
             return 200, {"ok": True, "data": {
                 "summary": summary,
                 "john_next_actions": john_actions[:7],
                 "mission_groups": missions,
                 "agent_network": _jc(network),
                 "scoring": scoring,
+                "handoff_details": _jc(handoff_details),
+                "agent_quality": _jc(agent_quality),
+                "stale_products": _jc(stale_products),
+                "raci_health": _raci_health,
             }}
         except Exception as e:
             import traceback; traceback.print_exc()
