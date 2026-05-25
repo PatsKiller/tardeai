@@ -20,9 +20,17 @@ interface NavGroup { label: string; items: NavItem[] }
 
 const NAV_GROUPS: NavGroup[] = [
   { label: 'Command', items: [
-    { to: '/command', label: 'Morning Command' },
+    { to: '/command', label: 'Command Center' },
+    { to: '/agent-collaboration', label: 'Agent Collaboration' },
     { to: '/inbox', label: 'Inbox' },
     { to: '/morning-brief', label: 'Daily Brief' },
+  ]},
+  { label: 'Trading', items: [
+    { to: '/trade-ai', label: 'Trade AI' },
+    { to: '/prospects', label: 'Prospects' },
+    { to: '/strategy-desk', label: 'Strategy Desk' },
+    { to: '/incubator', label: 'Incubator' },
+    { to: '/automated-trade-mode', label: 'ATM Mode' },
   ]},
   { label: 'Portfolio', items: [
     { to: '/portfolio', label: 'Holdings' },
@@ -49,48 +57,43 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/intelligence', label: 'Intelligence Hub' },
     { to: '/overnight', label: 'Overnight Brief' },
   ]},
-  { label: 'Pipeline & Health', items: [
-    { to: '/system-health', label: 'System Health' },
+  { label: 'System & Pipeline', items: [
+    { to: '/ops', label: 'Ops Center' },
     { to: '/pipeline', label: 'Pipeline Stages' },
+    { to: '/system-health', label: 'System Health' },
     { to: '/agent-pipeline', label: 'Agent Pipeline' },
-    { to: '/agent-collaboration', label: 'Agent Collaboration' },
   ]},
   { label: 'Paper Trading', items: [
     { to: '/paper-proposals', label: 'Proposals' },
     { to: '/paper-review', label: 'Paper Review' },
     { to: '/paper-status', label: 'Paper Status' },
-    { to: '/automated-trade-mode', label: 'ATM Mode' },
-    { to: '/incubator', label: 'Incubator' },
+    { to: '/execution-quality', label: 'Execution Quality' },
+    { to: '/proposal-alerts', label: 'Proposal Alerts' },
   ]},
   { label: 'Tax & Rebalance', items: [
     { to: '/tax', label: 'Tax & Lots' },
     { to: '/rebalance', label: 'Rebalance' },
     { to: '/retirement', label: 'Retirement' },
   ]},
+  { label: 'Learning & Improvement', items: [
+    { to: '/self-improvement', label: 'Self-Improvement' },
+    { to: '/agent-calibration', label: 'Agent Calibration' },
+    { to: '/weekly-learning', label: 'Weekly Learning' },
+  ]},
+  { label: 'Governance & Admin', items: [
+    { to: '/governance', label: 'Governance Hub' },
+    { to: '/strategy-admin', label: 'Strategy Admin' },
+    { to: '/strategy-analytics', label: 'Strategy Analytics' },
+    { to: '/correlation', label: 'Correlation' },
+    { to: '/forecast', label: 'Forecast' },
+    { to: '/broker-reconciliation', label: 'Broker Recon' },
+    { to: '/plan-vs-performance', label: 'Plan vs Perf' },
+  ]},
   { label: 'Reports', items: [
     { to: '/reports', label: 'Reports Hub' },
     { to: '/journal', label: 'Trade Journal' },
     { to: '/journal-reports', label: 'Journal Reports' },
-  ]},
-  { label: 'Admin', items: [
-    { to: '/governance', label: 'Governance' },
-    { to: '/strategy-admin', label: 'Strategy Admin' },
-    { to: '/strategy-analytics', label: 'Analytics' },
-    { to: '/agent-calibration', label: 'Agent Calibration' },
-    { to: '/weekly-learning', label: 'Weekly Learning' },
-    { to: '/ops', label: 'Operations' },
-    { to: '/self-improvement', label: 'Self-Improvement' },
     { to: '/backtesting', label: 'Backtesting' },
-    { to: '/trade-ai', label: 'Trade AI Live' },
-    { to: '/prospects', label: 'Prospects' },
-    { to: '/strategy-desk', label: 'Strategy Desk' },
-    { to: '/correlation', label: 'Correlation' },
-    { to: '/forecast', label: 'Forecast' },
-    { to: '/broker-reconciliation', label: 'Broker Recon' },
-    { to: '/execution-quality', label: 'Execution Quality' },
-    { to: '/plan-vs-performance', label: 'Plan vs Perf' },
-    { to: '/proposal-alerts', label: 'Proposal Alerts' },
-    { to: '/approvals', label: 'Approvals' },
   ]},
 ]
 
