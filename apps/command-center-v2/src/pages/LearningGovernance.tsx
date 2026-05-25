@@ -24,7 +24,12 @@ export default function LearningGovernance() {
   const { data: recs } = useApi<any>(`/api/v2/learning/recommendations?_r=${rk}`)
   const { data: props } = useApi<any>(`/api/v2/learning/config-proposals?_r=${rk}`)
 
-  const s = status?.data || {}
+  // useApi unwraps { ok, data } — status IS the data object directly
+  const s = status || {}
+  const hypotheses: any[] = hyps || []
+  const experiments: any[] = exps || []
+  const recommendations: any[] = recs || []
+  const configProposals: any[] = props || []
   const tabBtn = (t: string, label: string) => (
     <button onClick={() => setTab(t)} style={{
       ...btn, background: tab === t ? 'var(--accent)' : 'var(--bg1)',
@@ -55,10 +60,10 @@ export default function LearningGovernance() {
 
       <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
         {tabBtn('overview', 'Overview')}
-        {tabBtn('hypotheses', `Hypotheses (${(hyps?.data||[]).length})`)}
-        {tabBtn('experiments', `Experiments (${(exps?.data||[]).length})`)}
-        {tabBtn('recommendations', `Recommendations (${(recs?.data||[]).length})`)}
-        {tabBtn('proposals', `Config Proposals (${(props?.data||[]).length})`)}
+        {tabBtn('hypotheses', `Hypotheses (${hypotheses.length})`)}
+        {tabBtn('experiments', `Experiments (${experiments.length})`)}
+        {tabBtn('recommendations', `Recommendations (${recommendations.length})`)}
+        {tabBtn('proposals', `Config Proposals (${configProposals.length})`)}
       </div>
 
       {tab === 'overview' && (
@@ -82,13 +87,13 @@ export default function LearningGovernance() {
 
       {tab === 'hypotheses' && (
         <Card title="Learning Hypotheses">
-          {!(hyps?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No hypotheses yet. Run learning engines first.</div> : (
+          {!hypotheses.length ? <div style={{ color:'#848e9c', padding:16 }}>No hypotheses yet. Run learning engines first.</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['ID','Title','Domain','Type','Status','Sample','Confidence','Risk','Source','Created'].map(h =>
                   <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(hyps.data as any[]).map((h: any) => (
+              <tbody>{(hypotheses as any[]).map((h: any) => (
                 <tr key={h.hypothesis_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontSize:9 }}>{h.hypothesis_id?.slice(-12)}</td>
                   <td style={{ ...td, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.title}</td>
@@ -107,13 +112,13 @@ export default function LearningGovernance() {
 
       {tab === 'experiments' && (
         <Card title="Shadow Experiments">
-          {!(exps?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No experiments yet.</div> : (
+          {!experiments.length ? <div style={{ color:'#848e9c', padding:16 }}>No experiments yet.</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['ID','Name','Domain','Type','Status','Sample','MinSample','Conclusion','Created'].map(h =>
                   <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(exps.data as any[]).map((e: any) => (
+              <tbody>{(experiments as any[]).map((e: any) => (
                 <tr key={e.experiment_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontSize:9 }}>{e.experiment_id?.slice(-12)}</td>
                   <td style={{ ...td, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{e.name}</td>
@@ -132,13 +137,13 @@ export default function LearningGovernance() {
 
       {tab === 'recommendations' && (
         <Card title="Learning Recommendations">
-          {!(recs?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No recommendations yet.</div> : (
+          {!recommendations.length ? <div style={{ color:'#848e9c', padding:16 }}>No recommendations yet.</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['ID','Title','Domain','Type','Status','Sample','Confidence','Risk','Created'].map(h =>
                   <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(recs.data as any[]).map((r: any) => (
+              <tbody>{(recommendations as any[]).map((r: any) => (
                 <tr key={r.recommendation_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontSize:9 }}>{r.recommendation_id?.slice(-12)}</td>
                   <td style={{ ...td, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</td>
@@ -157,13 +162,13 @@ export default function LearningGovernance() {
 
       {tab === 'proposals' && (
         <Card title="Config Change Proposals">
-          {!(props?.data?.length) ? <div style={{ color:'#848e9c', padding:16 }}>No config proposals yet.</div> : (
+          {!configProposals.length ? <div style={{ color:'#848e9c', padding:16 }}>No config proposals yet.</div> : (
             <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse' }}>
               <thead><tr style={{ borderBottom:'1px solid var(--border)' }}>
                 {['ID','Domain','Target','Change','Status','Risk','Approved By','Created'].map(h =>
                   <th key={h} style={th}>{h}</th>)}
               </tr></thead>
-              <tbody>{(props.data as any[]).map((p: any) => (
+              <tbody>{(configProposals as any[]).map((p: any) => (
                 <tr key={p.proposal_id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ ...td, fontSize:9 }}>{p.proposal_id?.slice(-12)}</td>
                   <td style={td}>{p.domain}</td><td style={td}>{p.target_key}</td>

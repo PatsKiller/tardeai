@@ -107,6 +107,12 @@ def is_market_open(now=None):
     return current_market_session(now) == "regular"
 
 
+def is_trading_day(now=None):
+    """Return True if today is a regular trading day (not weekend, not holiday)."""
+    session = current_market_session(now)
+    return session not in ("weekend", "holiday")
+
+
 def next_regular_session_open(now=None):
     """Return next regular session open time."""
     et = _to_eastern(now) if now else _eastern_now()

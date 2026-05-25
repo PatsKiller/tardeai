@@ -1,0 +1,200 @@
+{
+    "ok": true,
+    "data": {
+        "as_of": "2026-05-24",
+        "current_age": 58.8,
+        "key_dates": {
+            "fra": "2034-08-20",
+            "disability_end": "2036-02-19",
+            "golden_window_start": "2036-02-19",
+            "golden_window_end": "2040-08-20",
+            "rmd_age": "2040-08-20",
+            "days_to_golden": 3558,
+            "years_to_golden": 9.7,
+            "loan_deadline": "2027-12-31",
+            "days_to_loan_deadline": 586
+        },
+        "accounts": {
+            "total": 1201291.0,
+            "roth": 44260.0,
+            "traditional": 1079918.0,
+            "taxable": 77113.0
+        },
+        "loan": {
+            "balance": 21735,
+            "deadline": "2027-12-31",
+            "days_remaining": 586,
+            "monthly_to_payoff": 1113.0
+        },
+        "timeline": [
+            {
+                "age": 58,
+                "year": 2025,
+                "conservative": 1201291.0,
+                "base": 1201291.0,
+                "aggressive": 1201291.0,
+                "milestone": ""
+            },
+            {
+                "age": 59,
+                "year": 2026,
+                "conservative": 1274362.0,
+                "base": 1298388.0,
+                "aggressive": 1323615.0,
+                "milestone": "Age 59 \u2014 No Early Withdrawal Penalty"
+            },
+            {
+                "age": 60,
+                "year": 2027,
+                "conservative": 1351452.0,
+                "base": 1402767.0,
+                "aggressive": 1457682.0,
+                "milestone": ""
+            },
+            {
+                "age": 61,
+                "year": 2028,
+                "conservative": 1432782.0,
+                "base": 1514974.0,
+                "aggressive": 1604619.0,
+                "milestone": ""
+            },
+            {
+                "age": 62,
+                "year": 2029,
+                "conservative": 1518585.0,
+                "base": 1635598.0,
+                "aggressive": 1765663.0,
+                "milestone": ""
+            },
+            {
+                "age": 63,
+                "year": 2030,
+                "conservative": 1609107.0,
+                "base": 1765267.0,
+                "aggressive": 1942167.0,
+                "milestone": ""
+            },
+            {
+                "age": 64,
+                "year": 2031,
+                "conservative": 1704608.0,
+                "base": 1904662.0,
+                "aggressive": 2135615.0,
+                "milestone": ""
+            },
+            {
+                "age": 65,
+                "year": 2032,
+                "conservative": 1805361.0,
+                "base": 2054512.0,
+                "aggressive": 2347634.0,
+                "milestone": ""
+            },
+            {
+                "age": 66,
+                "year": 2033,
+                "conservative": 1911656.0,
+                "base": 2215600.0,
+                "aggressive": 2580006.0,
+                "milestone": ""
+            },
+            {
+                "age": 67,
+                "year": 2034,
+                "conservative": 2023797.0,
+                "base": 2388770.0,
+                "aggressive": 2834687.0,
+                "milestone": "SS Retirement @ FRA"
+            },
+            {
+                "age": 68,
+                "year": 2035,
+                "conservative": 2142106.0,
+                "base": 2574928.0,
+                "aggressive": 3113817.0,
+                "milestone": "\ud83d\udfe1 Golden Window Opens \u2014 Disability Ends"
+            },
+            {
+                "age": 69,
+                "year": 2036,
+                "conservative": 2266922.0,
+                "base": 2775048.0,
+                "aggressive": 3419743.0,
+                "milestone": "\ud83d\udfe1 Golden Window Opens \u2014 Disability Ends"
+            },
+            {
+                "age": 70,
+                "year": 2037,
+                "conservative": 2398603.0,
+                "base": 2990176.0,
+                "aggressive": 3755039.0,
+                "milestone": ""
+            },
+            {
+                "age": 71,
+                "year": 2038,
+                "conservative": 2537526.0,
+                "base": 3221440.0,
+                "aggressive": 4122522.0,
+                "milestone": ""
+            },
+            {
+                "age": 72,
+                "year": 2039,
+                "conservative": 2684090.0,
+                "base": 3470048.0,
+                "aggressive": 4525285.0,
+                "milestone": ""
+            },
+            {
+                "age": 73,
+                "year": 2040,
+                "conservative": 2838715.0,
+                "base": 3737301.0,
+                "aggressive": 4966712.0,
+                "milestone": "RMD Age \u2014 Complete Roth Conversion"
+            },
+            {
+                "age": 74,
+                "year": 2041,
+                "conservative": 3001844.0,
+                "base": 4024599.0,
+                "aggressive": 5450516.0,
+                "milestone": ""
+            },
+            {
+                "age": 75,
+                "year": 2042,
+                "conservative": 3173945.0,
+                "base": 4333444.0,
+                "aggressive": 5980766.0,
+                "milestone": ""
+            },
+            {
+                "age": 76,
+                "year": 2043,
+                "conservative": 3355512.0,
+                "base": 4665452.0,
+                "aggressive": 6561919.0,
+                "milestone": ""
+            },
+            {
+                "age": 77,
+                "year": 2044,
+                "conservative": 3547065.0,
+                "base": 5022361.0,
+                "aggressive": 7198864.0,
+                "milestone": ""
+            },
+            {
+                "age": 78,
+                "year": 2045,
+                "conservative": 3749154.0,
+                "base": 5406038.0,
+                "aggressive": 7896954.0,
+                "milestone": ""
+            },
+            {
+                "age": 79,
+                "year": 2046,

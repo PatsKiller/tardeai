@@ -17418,6 +17418,276 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Agent Collaboration Dashboard v3 — Mission-Group Cockpit ─────────
+    if base_path == "/api/v2/agent-collaboration":
+        try:
+            from datetime import datetime, timezone, timedelta
+            _now_utc = datetime.now(timezone.utc)
+            _jc = lambda rows: [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+
+            # MISSION GROUPS — cluster raw threads into operator packs
+            # ══════════════════════════════════════════════════════════
+
+            missions = []
+
+            # ── M1: Risk & Stops — triggered stops ──
+            stops = _db_query("""
+                SELECT e.symbol, e.priority, e.created_at,
+                       b.thesis_status, b.what_changed, b.confidence
+                FROM agent_event_queue e
+                LEFT JOIN LATERAL (
+                    SELECT thesis_status, what_changed, confidence
+                    FROM aegis_portfolio_briefs WHERE symbol=e.symbol
+                    ORDER BY observed_at DESC LIMIT 1
+                ) b ON true
+                WHERE e.event_type='STOP_TRIGGERED' AND e.status='pending'
+                ORDER BY e.created_at DESC
+            """) or []
+            if stops:
+                syms = [s["symbol"] for s in stops]
+                missions.append({
+                    "mission_id": "risk_stop_review",
+                    "mission_type": "risk",
+                    "title": f"Stop Review — {len(stops)} triggered positions",
+                    "severity": "critical",
+                    "status": "blocked",
+                    "thread_count": len(stops),
+                    "blocked_count": len(stops),
+                    "ready_count": 0,
+                    "agents": ["Risk", "Aegis", "Steph"],
+                    "primary_owner": "operator",
+                    "primary_blocker": f"{len(stops)} stops breached",
+                    "next_action": {"label": f"Review stop breach: {', '.join(syms[:5])}", "reason": "Positions hit stop prices — decide hold/sell/adjust", "url": "/v2/recovery-watch"},
+                    "updated_at": _json_clean(stops[0]["created_at"]),
+                    "threads": [{
+                        "subject": s["symbol"], "status": "blocked",
+                        "detail": s.get("what_changed") or f"{s['symbol']} stop triggered",
+                        "thesis": s.get("thesis_status"),
+                        "confidence": _json_clean(s.get("confidence")),
+                    } for s in stops],
+                })
+
+            # ── M1b: Portfolio heat ──
+            heat_alerts = _db_query("""
+                SELECT symbol, severity, created_at FROM alert_events
+                WHERE alert_type='strategic_alert' AND severity='warning'
+                AND created_at > NOW() - INTERVAL '7 days'
+                ORDER BY created_at DESC LIMIT 3
+            """) or []
+            if heat_alerts:
+                missions.append({
+                    "mission_id": "risk_heat", "mission_type": "risk",
+                    "title": "Portfolio heat above threshold",
+                    "severity": "high", "status": "ready",
+                    "thread_count": 1, "blocked_count": 0, "ready_count": 1,
+                    "agents": ["Risk", "Aegis"],
+                    "primary_owner": "operator", "primary_blocker": None,
+                    "next_action": {"label": "Review portfolio heat and concentration", "reason": "Heat 7.2% above 5% threshold", "url": "/v2/risk"},
+                    "updated_at": _json_clean(heat_alerts[0]["created_at"]),
+                    "threads": [],
+                })
+
+            # ── M2: Paper Proposals ──
+            proposals = _db_query("""
+                SELECT id, symbol, setup_type, status, signal_score, signal_decision, created_at
+                FROM paper_trade_proposals
+                WHERE status IN ('PENDING','RISK_BLOCKED','APPROVED_FOR_PAPER_TEST')
+                ORDER BY CASE status WHEN 'PENDING' THEN 0 WHEN 'RISK_BLOCKED' THEN 1 ELSE 2 END, created_at DESC
+            """) or []
+            if proposals:
+                pending = [p for p in proposals if p["status"] == "PENDING"]
+                risk_bl = [p for p in proposals if p["status"] == "RISK_BLOCKED"]
+                running = [p for p in proposals if p["status"] == "APPROVED_FOR_PAPER_TEST"]
+                missions.append({
+                    "mission_id": "proposals", "mission_type": "paper_proposal",
+                    "title": f"Paper Proposal Queue — {len(pending)} ready, {len(risk_bl)} blocked, {len(running)} running",
+                    "severity": "high" if pending else "medium",
+                    "status": "ready" if pending else ("blocked" if risk_bl else "running"),
+                    "thread_count": len(proposals), "blocked_count": len(risk_bl), "ready_count": len(pending),
+                    "agents": ["Maria", "Steph", "Risk"],
+                    "primary_owner": "operator" if pending else "system",
+                    "primary_blocker": f"{len(risk_bl)} risk-gated" if risk_bl else None,
+                    "next_action": {"label": f"Approve/reject {len(pending)} proposals: {', '.join(p['symbol'] for p in pending[:4])}", "reason": "Proposals awaiting operator decision", "url": "/v2/paper-proposals"} if pending else {"label": f"Review {len(risk_bl)} risk-blocked proposals", "reason": "Risk gate preventing execution"},
+                    "updated_at": _json_clean(proposals[0]["created_at"]),
+                    "threads": [{
+                        "subject": p["symbol"], "status": "ready" if p["status"]=="PENDING" else ("blocked" if p["status"]=="RISK_BLOCKED" else "running"),
+                        "detail": f"{p.get('setup_type','')} — {p['status']}",
+                        "signal": p.get("signal_decision"),
+                    } for p in proposals],
+                })
+
+            # ── M3: Aegis Brief Follow-ups (needs Steph) ──
+            steph_count = (_db_query("SELECT COUNT(*) as c FROM aegis_portfolio_briefs WHERE needs_steph_review=true AND observed_at > NOW()-INTERVAL '48 hours'", fetch="one") or {}).get("c", 0)
+            if steph_count:
+                missions.append({
+                    "mission_id": "aegis_steph_followup", "mission_type": "morning_brief",
+                    "title": f"Aegis briefs — {steph_count} need Steph review",
+                    "severity": "medium", "status": "waiting",
+                    "thread_count": steph_count, "blocked_count": 0, "ready_count": 0,
+                    "agents": ["Aegis", "Steph"],
+                    "primary_owner": "Steph", "primary_blocker": None,
+                    "next_action": {"label": f"Ask Steph to review {steph_count} flagged briefs", "reason": "Aegis synthesis identified items needing technical follow-up"},
+                    "updated_at": _json_clean((_db_query("SELECT MAX(observed_at) as t FROM aegis_portfolio_briefs WHERE needs_steph_review=true AND observed_at > NOW()-INTERVAL '48 hours'", fetch="one") or {}).get("t")),
+                    "threads": [],
+                })
+
+            # ── M4: Research & Content Intelligence — stale topics ──
+            stale_topics = _db_query("""
+                SELECT symbol, created_at FROM alert_events
+                WHERE alert_type='data_staleness' AND created_at > NOW()-INTERVAL '7 days'
+                ORDER BY created_at DESC
+            """) or []
+            if stale_topics:
+                missions.append({
+                    "mission_id": "research_stale", "mission_type": "research_gap",
+                    "title": f"Stale research topics — {len(stale_topics)} waiting",
+                    "severity": "medium", "status": "stale",
+                    "thread_count": len(stale_topics), "blocked_count": 0, "ready_count": 0,
+                    "agents": ["Iris", "Aegis"],
+                    "primary_owner": "Iris", "primary_blocker": "Content stale",
+                    "next_action": {"label": f"Send {len(stale_topics)} stale topics to Iris for refresh", "reason": "Intelligence sources outdated — agents working with old data"},
+                    "updated_at": _json_clean(stale_topics[0]["created_at"]),
+                    "threads": [{
+                        "subject": s["symbol"].replace("topic:", ""), "status": "stale",
+                        "detail": f"Data staleness alert",
+                    } for s in stale_topics],
+                })
+
+            # ── M5: Debates / Escalations ──
+            debates = _db_query("""
+                SELECT symbol, participants, consensus_recommendation, consensus_score,
+                       escalated_to_alex, status, created_at
+                FROM agent_debate_log ORDER BY created_at DESC LIMIT 10
+            """) or []
+            if debates:
+                missions.append({
+                    "mission_id": "debates", "mission_type": "ticker",
+                    "title": f"Agent debates — {len(debates)} logged, {sum(1 for d in debates if d.get('escalated_to_alex'))} escalated to Alex",
+                    "severity": "medium", "status": "completed",
+                    "thread_count": len(debates), "blocked_count": 0, "ready_count": 0,
+                    "agents": list(set(a for d in debates for a in (d.get("participants") or []))),
+                    "primary_owner": "system", "primary_blocker": None,
+                    "next_action": {"label": "Review debate outcomes", "reason": "Agent disagreements resolved — verify consensus"},
+                    "updated_at": _json_clean(debates[0]["created_at"]),
+                    "threads": [{
+                        "subject": d["symbol"], "status": d.get("status", "completed"),
+                        "detail": f"Consensus: {d.get('consensus_recommendation')} ({float(d.get('consensus_score') or 0):.0%})",
+                    } for d in debates],
+                })
+
+            # ── M6: Agent Telemetry Health ──
+            telem_items = []
+            for tbl, label, last in [
+                ("agent_debate_log", "Debate telemetry", None),
+                ("agent_handoffs", "Handoff telemetry", None),
+                ("agent_event_queue", "Event queue", None),
+            ]:
+                row = _db_query(f"SELECT MAX(created_at) as t FROM {tbl}", fetch="one") or {}
+                ts = row.get("t")
+                if ts:
+                    hrs = (_now_utc - ts.replace(tzinfo=timezone.utc if ts.tzinfo is None else ts.tzinfo)).total_seconds() / 3600
+                    if hrs > 48:
+                        telem_items.append({"source": label, "last": _json_clean(ts), "hours_stale": round(hrs)})
+            if telem_items:
+                missions.append({
+                    "mission_id": "telemetry_health", "mission_type": "system_health",
+                    "title": f"Agent telemetry stale — {len(telem_items)} sources",
+                    "severity": "low", "status": "stale",
+                    "thread_count": len(telem_items), "blocked_count": 0, "ready_count": 0,
+                    "agents": [], "primary_owner": "system",
+                    "primary_blocker": "Telemetry feeds inactive",
+                    "next_action": {"label": "Verify agent crons running on Monday", "reason": f"{', '.join(t['source'] for t in telem_items)} stale"},
+                    "updated_at": _json_clean(telem_items[0]["last"]) if telem_items else None,
+                    "threads": [{"subject": t["source"], "status": "stale", "detail": f"Last activity {t['hours_stale']}h ago"} for t in telem_items],
+                })
+
+            # ── M7: Handoff escalations to operator ──
+            esc_handoffs = _db_query("""
+                SELECT symbol, from_agent, intent, created_at
+                FROM agent_handoffs WHERE to_agent='human_review'
+                AND created_at > NOW()-INTERVAL '7 days'
+                ORDER BY created_at DESC LIMIT 10
+            """) or []
+            if esc_handoffs:
+                missions.append({
+                    "mission_id": "operator_escalations", "mission_type": "alert",
+                    "title": f"Operator escalations — {len(esc_handoffs)} items",
+                    "severity": "high", "status": "ready",
+                    "thread_count": len(esc_handoffs), "blocked_count": 0, "ready_count": len(esc_handoffs),
+                    "agents": list(set(h["from_agent"] for h in esc_handoffs)),
+                    "primary_owner": "operator", "primary_blocker": None,
+                    "next_action": {"label": f"Review {len(esc_handoffs)} agent escalations", "reason": "Agents escalated conflicts/questions to operator", "url": None},
+                    "updated_at": _json_clean(esc_handoffs[0]["created_at"]),
+                    "threads": [{
+                        "subject": h["symbol"] or "system", "status": "ready",
+                        "detail": h["intent"][:80],
+                    } for h in esc_handoffs],
+                })
+
+            # ── John's Next Actions (derived from missions) ──
+            john_actions = []
+            for m in missions:
+                if m.get("next_action") and m.get("primary_owner") == "operator":
+                    john_actions.append({
+                        "mission_id": m["mission_id"],
+                        "label": m["next_action"]["label"],
+                        "reason": m["next_action"].get("reason", ""),
+                        "severity": m["severity"],
+                        "url": m["next_action"].get("url"),
+                    })
+            # Also add stale/system items as lower-priority actions
+            for m in missions:
+                if m.get("next_action") and m.get("primary_owner") != "operator" and m["status"] in ("stale", "waiting"):
+                    john_actions.append({
+                        "mission_id": m["mission_id"],
+                        "label": m["next_action"]["label"],
+                        "reason": m["next_action"].get("reason", ""),
+                        "severity": m["severity"],
+                        "url": m["next_action"].get("url"),
+                    })
+
+            # ── Summary ──
+            _aegis_latest = _db_query("SELECT MAX(observed_at) as t FROM aegis_portfolio_briefs", fetch="one") or {}
+            _latest_ts = None
+            for m in missions:
+                u = m.get("updated_at")
+                if u and (not _latest_ts or u > str(_latest_ts)):
+                    _latest_ts = u
+            _dow = datetime.now().weekday()
+            _hrs_trust = 999
+            if _aegis_latest.get("t"):
+                _hrs_trust = (_now_utc - _aegis_latest["t"].replace(tzinfo=timezone.utc if _aegis_latest["t"].tzinfo is None else _aegis_latest["t"].tzinfo)).total_seconds() / 3600
+            _trust = "fresh" if _hrs_trust < 12 else ("weekend" if _dow in (5,6) and _hrs_trust < 60 else ("stale" if _hrs_trust < 48 else "degraded"))
+
+            summary = {
+                "total_missions": len(missions),
+                "active_missions": sum(1 for m in missions if m["status"] not in ("completed",)),
+                "blocked_missions": sum(1 for m in missions if m["status"] == "blocked"),
+                "ready_for_operator": sum(1 for m in missions if m["primary_owner"] == "operator" and m["status"] in ("ready", "blocked")),
+                "stale_missions": sum(1 for m in missions if m["status"] == "stale"),
+                "last_aegis_synthesis_at": _json_clean(_aegis_latest.get("t")),
+                "system_trust_state": _trust,
+            }
+
+            # ── Agent network ──
+            network = _db_query("""
+                SELECT from_agent, to_agent, COUNT(*) as cnt,
+                  COUNT(*) FILTER (WHERE escalated=true) as escalated,
+                  MAX(created_at) as latest
+                FROM agent_handoffs GROUP BY from_agent, to_agent
+                ORDER BY cnt DESC
+            """) or []
+
+            return 200, {"ok": True, "data": {
+                "summary": summary,
+                "john_next_actions": john_actions[:7],
+                "mission_groups": missions,
+                "agent_network": _jc(network),
+            }}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Session 29: Agent Calibration endpoints ───────────────────────────
     if base_path == "/api/v2/agent-calibration/status":
         try:
@@ -17432,6 +17702,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 status[f"{label}_total"] = r["c"] if r else 0
             agents = _db_query("SELECT DISTINCT agent_name FROM agent_recommendation_registry ORDER BY agent_name") or []
             status["agents"] = [a["agent_name"] for a in agents]
+            # Freshness timestamps
+            _ts = _db_query("SELECT MAX(created_at) as t FROM agent_calibration_windows", fetch="one")
+            status["last_calibration_run"] = _json_clean(_ts["t"]) if _ts and _ts.get("t") else None
+            _ts2 = _db_query("SELECT MAX(recommendation_time) as t FROM agent_recommendation_registry", fetch="one")
+            status["last_recommendation"] = _json_clean(_ts2["t"]) if _ts2 and _ts2.get("t") else None
+            _ts3 = _db_query("SELECT MAX(created_at) as t FROM agent_recommendation_outcome_links", fetch="one")
+            status["last_outcome_link"] = _json_clean(_ts3["t"]) if _ts3 and _ts3.get("t") else None
             return 200, {"ok": True, "data": status}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
