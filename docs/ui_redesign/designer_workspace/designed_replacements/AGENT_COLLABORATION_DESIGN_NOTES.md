@@ -1,90 +1,110 @@
-# Agent Collaboration & Outcomes — Design Notes (v2.0 RACI)
+# Agent Collaboration, RACI & Outcomes -- Design Notes (v3.0)
 
 **Date:** 2026-05-24
 **Target:** `apps/command-center-v2/src/pages/AgentCollaboration.tsx`
 
-## What Changed (v1 -> v2)
+## What Changed (v2 to v3)
 
-| Area | v1 (Decision Operations) | v2 (Collaboration & Outcomes + RACI) |
-|------|--------------------------|--------------------------------------|
-| Title | "Decision Operations" | "Agent Collaboration & Outcomes" |
-| Scorecard | Ready, Blocked, Active, Stale, Trust | Ready for John, Blocked, **Waiting on Agent**, Stale, Trust |
-| Scorecard clicks | Ready + Blocked only | All cards clickable as filters |
-| Filter chips | All, Ready, Blocked, Waiting, Stale, Running | + **Completed** |
-| Agent chips | Display only | **Clickable** — filter missions by agent |
-| Agent filter | None | Clearable chip with active indicator |
-| Inspector sections | Header, Next Action, Blocker, Agents, Items, Stats | A-H structured: Summary, **RACI**, Why This Matters, Blockers, Agent Contributions, What John Should Do, Mission Items, Stats |
-| RACI integration | None | **RACIMatrix component** embedded in inspector |
-| RACI Map | None | **Tab toggle** — fetches all agents' RACI data |
-| Collaboration scoring | None | **Honest gap message** + link to /agent-calibration |
-| View tabs | None | Missions / RACI Map toggle |
+| Area | v2 (Collaboration & Outcomes + RACI) | v3 (Collaboration, RACI & Outcomes) |
+|------|---------------------------------------|--------------------------------------|
+| Title | "Agent Collaboration & Outcomes" | "Agent Collaboration, RACI & Outcomes" |
+| Subtitle | "How agents coordinate..." | "Mission ownership, handoffs, blockers, stale work, and collaboration quality" |
+| Scorecard | Ready for John, Blocked, Waiting, Stale, Trust | **Needs John**, Blocked, Waiting on Agent, Stale, System Trust (same data, renamed) |
+| Tabs | 2 (Missions, RACI Map) | **4** (Missions, Collaboration Flow, RACI Map, Outcome Quality) |
+| Inspector sections | A-H (Summary, RACI, Why This Matters, Blockers, Contributions, Action, Items, Stats) | A-H restructured: Summary, **Collaboration Timeline**, RACI, Contributions, **Blockers/Staleness**, Action, Items, Stats |
+| Timeline | None | **Inferred from mission state** (labeled as inferred) |
+| RACI label | Unlabeled | **"Owner-level RACI fallback"** label shown |
+| Collaboration Flow | None | **New tab** -- grouped handoff history from agent_network |
+| Outcome Quality | Single "Collaboration Quality" box | **Full tab** with observable good/bad signals + missing fields list |
+| RACI Map | Flat list | **Collapsible sections** per agent |
+| Blocker cards | Red blocker only | Red blocker + **orange stale card** with owner and action |
+| StatusBadge | Display only | **Clickable** on mission cards (filters by status) |
+| Filter indicators | Agent filter only | **All active filters** shown with individual clear buttons |
+| John's Next Actions | Separate section | Removed (redundant with Needs John scorecard + mission inspector) |
 
-## RACI Integration Details
+## 4 Tabs Added
 
-### RACIMatrix.tsx found and reused: YES
+1. **Missions** (default) -- Status/type/time filter rows, two-pane mission queue + inspector
+2. **Collaboration Flow** -- Handoff history from agent_network, grouped into Agent-to-Agent, System-to-Agent, Agent-to-Operator
+3. **RACI Map** -- Collapsible per-agent RACI from config/agent_raci.yaml via RACIMatrix component
+4. **Outcome Quality** -- Observable good/bad signals as StateCards + missing API fields list
+
+## RACIMatrix.tsx Reused: YES
+
 - Location: `apps/command-center-v2/src/components/RACIMatrix.tsx`
-- Already used by: `AgentDashboard.tsx`
+- Used in: Mission inspector (Section C) and RACI Map tab
 - Export: `export function RACIMatrix({ data, onPeerClick }: Props)`
-- Props: `data` (any — expects `data.processes` and `data.peer_summary`), `onPeerClick` (function)
+- No modifications to the component
 
-### RACI API exists: YES
-- Endpoint: `GET /api/v2/agent-detail/raci?agent=<agent_name>`
-- Returns: processes with RACI roles and co_actors, peer_summary
+## Mission-Level RACI: NO
 
-### RACI config: `config/agent_raci.yaml`
-- 9 processes defined: daily_batch, overnight_surveillance, morning_brief, alex_daily, alex_weekly, iris_hygiene, scalp_scan, event_routing, stop_surveillance
-- 9 agents mapped: maria, steph, aegis, alex, risk_agent, tax_agent, iris, social_scalp, scalp_critic
+Per-mission RACI assignment does not exist in the API. The inspector shows the primary owner's full RACI context as a fallback. This is explicitly labeled as "owner-level RACI fallback" in the UI so the operator knows the limitation.
 
-### What RACI data EXISTS
-- Per-agent process ownership (R/A/C/I roles)
-- Co-actors per process (agent + role pairs)
-- Peer summary (dominant_relationship, process_count)
-- Trigger and frequency metadata
+## Collaboration Timeline: INFERRED
 
-### What RACI data is MISSING
-- **Per-mission RACI** — only per-agent RACI exists. The RACI API returns an agent's role across all their processes, not role assignment for a specific mission. The inspector shows the owner's full RACI context as a proxy.
-- **Historical collaboration outcomes** — no event log of which agent collaborations led to good/bad decisions
-- **Mission-level role assignment** — missions have `agents[]` and `primary_owner` but no RACI role per agent per mission
+The timeline in Section B is reconstructed from mission state fields (primary_owner, agents, primary_blocker, status). It is explicitly labeled as "inferred from mission state" in the UI. Steps shown:
+- Detected / assigned to owner
+- Collaboration with other agents (if agents.length > 1)
+- Blocked (if primary_blocker exists)
+- Current state (ready/completed/stale/in progress)
 
-## What Is Now Clickable
+No `collaboration_event_timeline` field exists in the API.
+
+## What Is Clickable
 
 | Element | Action | Result |
 |---------|--------|--------|
-| Scorecard cards (Ready, Blocked, Waiting, Stale) | Click | Sets status filter |
-| Filter chips (All through Completed) | Click | Sets status filter, clears selection |
-| AgentChip in mission queue | Click | Sets agent filter (toggle) |
-| AgentChip in inspector Agent Contributions | Click | Sets agent filter |
+| StateCard (Needs John) | Click | Filters missions to status=ready, switches to Missions tab |
+| StateCard (Blocked) | Click | Filters missions to status=blocked |
+| StateCard (Waiting on Agent) | Click | Filters missions to status=waiting |
+| StateCard (Stale) | Click | Filters missions to status=stale |
+| Status filter chips (All-Completed) | Click | Sets status filter, clears selection |
+| Type filter chips (All Types-Ticker) | Click | Sets task type filter |
+| Time filter chips (All Time-30d) | Click | Sets time filter |
+| Active filter clear buttons (x) | Click | Clears individual filter |
+| "Clear all" button | Click | Resets all filters |
+| AgentChip in mission queue | Click | Toggles agent filter |
 | AgentChip in inspector owner | Click | Sets agent filter |
+| AgentChip in inspector contributions | Click | Sets agent filter |
+| AgentChip in collaboration flow | Click | Sets agent filter, switches to Missions tab |
+| AgentChip in blocker/stale cards | Click | Sets agent filter |
+| StatusBadge on mission cards | Click | Filters by that status |
+| StatusBadge in inspector header | Click | Filters by that status |
 | RACIMatrix peer buttons | Click | Sets agent filter |
-| John's Next Actions items | Click | Selects that mission |
-| Missions / RACI Map tabs | Click | Switches view |
-| Collaboration Quality link | Click | Navigates to /agent-calibration |
-| RACI Map "Agent Dashboard" link | Click | Navigates to /agent-dashboard |
+| RACI Map collapsible headers | Click | Toggles section expand/collapse |
+| Mission cards in queue | Click | Selects mission in inspector |
+| Tab buttons | Click | Switches tab |
+| "Open Page" ActionButton | Click | Navigates to action URL |
+| "View Agent Calibration" | Click | Navigates to /agent-calibration |
 
-## Filters Added
+## Filters
 
-- **Status filter "Completed"** — shows finished missions (v1 had no completed state)
-- **Agent filter** — new dimension: filter missions by any involved agent or primary owner
-- **Combined filtering** — status + agent filters stack (AND logic)
+- **Status**: All, Ready, Blocked, Waiting, Stale, Running, Completed
+- **Task type**: All Types, Risk, Proposals, Research, System, Alerts, Ticker
+- **Time**: All Time, 24h, 7 Days, 30 Days
+- **Agent**: Any agent (set via AgentChip click, cleared via x button)
+- All filters stack with AND logic
+- Active filters shown as clearable chips above the mission queue
 
-## Backend Telemetry Needed for Collaboration Scoring
+## Missing API Fields for True Scoring (7 fields)
 
-The "Collaboration Quality" section honestly states that scoring is not yet possible. To enable it, the backend would need:
+1. `collaboration_outcome` -- Success/partial/failure per mission
+2. `handoff_resolution_time` -- Time between agent handoffs
+3. `agent_agreement_score` -- How often agents agree on recommendations
+4. `evidence_completeness` -- Whether evidence was gathered before decision
+5. `per_mission_raci` -- Dynamic RACI role assignment per mission
+6. `collaboration_event_timeline` -- Full event log of collaboration steps
+7. `decision_accuracy_tracking` -- Agent recommendation vs actual outcome
 
-1. **Outcome events** — log when a mission completes with outcome (success/partial/failure)
-2. **Agent contribution attribution** — which agent's recommendation led to the decision
-3. **Decision accuracy tracking** — for trade decisions, compare agent recommendation to actual P&L
-4. **Collaboration friction metrics** — time between agent handoffs, number of re-escalations
-5. **Per-mission RACI assignment** — dynamic role assignment per mission, not just static process roles
+These are listed in the Outcome Quality tab with descriptions. The UI does not fabricate scores.
 
-Until this telemetry exists, the page links to Agent Calibration for per-agent accuracy data.
+## Safety
 
-## Safety Constraints Preserved
-
-- No trading or approval execution logic
-- No new backend endpoints required
+- No trading execution
+- No approval bypass
+- No backend changes or new endpoints
 - Same primary API: `useApi('/api/v2/agent-collaboration')`
-- RACI fetch uses `useState + fetch` (not useApi) for dynamic agent parameter
-- No inline secrets or credentials
-- All navigation uses `window.location.href` (no router dependency added)
+- RACI fetch uses `useState + fetch` for dynamic agent parameter
+- All navigation uses `window.location.href`
 - Original file SHA256 recorded for traceability
+- Correct prop signatures: `name` (not agent), `children` (not label), `title` (not label)
