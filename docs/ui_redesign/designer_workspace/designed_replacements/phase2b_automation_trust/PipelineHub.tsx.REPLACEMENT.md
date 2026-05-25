@@ -1,3 +1,27 @@
+# PipelineHub.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/PipelineHub.tsx`
+- **Original SHA256**: `58a46df8622af09ccd98ff1e794704c13cf38a2dc5b51cc78078268cd6bdba55`
+
+## Changes
+
+- Title: "Pipeline Operations" -> "Pipeline Health"
+- Subtitle added: "Stage health, run history, and freshness"
+- Tab labels renamed:
+  - "Health Overview" -> "Stage Health"
+  - "Stage Controller" -> "Stage Controller" (unchanged)
+- Same fragment+subtitle approach as OpsHub to avoid modifying TabPage
+
+## What did NOT change
+
+- Same 2 lazy-loaded child tabs (PipelineHealthMaster, PipelineController)
+- Same import paths
+- Same Loading fallback
+- No new dependencies
+
+## Full Replacement
+
+```tsx
 import { lazy, Suspense } from 'react'
 import TabPage from '../components/TabPage'
 
@@ -22,3 +46,4 @@ export default function PipelineHub() {
     </>
   )
 }
+```

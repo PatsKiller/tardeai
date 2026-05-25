@@ -1,3 +1,32 @@
+# SystemHealth.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/SystemHealth.tsx`
+- **Original SHA256**: `f2ed031181c2d2dbbfe04b8f9b94f07d7505230c9645ca91e9bb5f8636a8acd7`
+
+## Changes
+
+- Title: "System Health" -> "System Health & Services"
+- Subtitle updated to: "Data products, services, LLM router, and freshness"
+- Replaced inline `const btn` with `ActionButton` shared primitive
+- Replaced hardcoded status color logic in Data Product Health with `StatusBadge`
+- Added proper empty state for Data Product section when `data?.data_freshness` is missing
+- Preserved weekend/holiday context (`weekend_market_closed` logic)
+- Kept Orchestration navigation button
+- Kept system info footer
+
+## What did NOT change
+
+- API calls: `useApi('/api/v2/system-health')`, `useApi('/api/v2/finviz-screeners')` -- identical
+- Data access patterns: `data?.llm`, `data?.db_tables`, `data?.cio_decisions`, `data?.data_freshness` -- identical
+- All MetricTile configurations for LLM Router -- identical
+- DB State grid rendering -- identical
+- CIO Decision Distribution rendering -- identical
+- Finviz Screeners rendering -- identical
+- Ollama offline warning -- identical
+
+## Full Replacement
+
+```tsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
@@ -22,8 +51,8 @@ export default function SystemHealth() {
     <>
       <PageHeader title="System Health & Services" subtitle="Data products, services, LLM router, and freshness" actions={
         <div style={{ display: 'flex', gap: 6 }}>
-          <ActionButton onClick={() => navigate('/orchestration')} variant="secondary">Orchestration</ActionButton>
-          <ActionButton onClick={() => setRk(k => k + 1)} variant="secondary">Refresh</ActionButton>
+          <ActionButton label="Orchestration" onClick={() => navigate('/orchestration')} variant="secondary" />
+          <ActionButton label="Refresh" onClick={() => setRk(k => k + 1)} variant="secondary" />
         </div>
       } />
 
@@ -150,3 +179,4 @@ export default function SystemHealth() {
     </>
   )
 }
+```

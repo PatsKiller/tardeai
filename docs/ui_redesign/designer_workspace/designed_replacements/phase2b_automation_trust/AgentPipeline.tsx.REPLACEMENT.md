@@ -1,3 +1,31 @@
+# AgentPipeline.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/AgentPipeline.tsx`
+- **Original SHA256**: `184f18a89be83638d15287ab586a94e104ed79b75239c27058d4887e58714aa1`
+
+## Changes
+
+- Title: "Agent Pipeline" -> "Agent Pipeline & Queue"
+- Subtitle updated to: "Agent jobs, queue flow, handoffs, and health"
+- Replaced inline `Badge` function with `StatusBadge` shared primitive
+- Replaced inline agent color lookups with `AgentChip` shared primitive
+- Added `StateCard` for summary tiles (Queued/Processing/Completed/Failed)
+- Added `SeverityBadge` for error categorization
+- Added proper empty states for all sections
+- Agent health section uses `AgentChip` for agent name rendering
+
+## What did NOT change
+
+- API calls: `/api/v2/agent-pipeline`, `/api/v2/system-health`, `/api/v2/agent-health` -- identical
+- All TypeScript interfaces (Job, RagSource, Result, Handoff, Event, Proposal, Debate, Summary, PipelineData, LlmProvider, SystemHealth, AgentHealthEntry, AgentHealthData) -- identical
+- All data transformation logic (parsePeerNotes, getRagDisplay, getTierBadge, getErrorBadge, getEventTypeStyle, parseContentGapSymbol) -- identical
+- All state variables and filtering logic -- identical
+- LLM budget tile layout and logic -- identical
+- Table column structures -- identical
+
+## Full Replacement
+
+```tsx
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -199,7 +227,7 @@ export default function AgentPipeline() {
               const borderColor = stale ? 'var(--red)' : underused ? 'var(--amber)' : 'var(--border-subtle)'
               return (
                 <div key={a.agent} style={{ padding: '6px 10px', background: 'var(--bg2)', border: `1px solid ${borderColor}`, borderRadius: 8, fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <AgentChip name={a.agent} />
+                  <AgentChip agent={a.agent} />
                   <span style={{ color: 'var(--text3)' }}>:</span>
                   <span style={{ color: 'var(--text2)' }}>{a.total_analyses} analyses</span>
                   <span style={{ color: 'var(--text3)' }}>|</span>
@@ -211,13 +239,13 @@ export default function AgentPipeline() {
             })}
             {/* Static aegis card */}
             <div style={{ padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border-subtle)', borderRadius: 8, fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <AgentChip name="aegis" />
+              <AgentChip agent="aegis" />
               <span style={{ color: 'var(--text3)' }}>:</span>
               <span style={{ color: 'var(--text2)' }}>nightly synthesis</span>
             </div>
             {/* Static iris card */}
             <div style={{ padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border-subtle)', borderRadius: 8, fontSize: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <AgentChip name="iris" />
+              <AgentChip agent="iris" />
               <span style={{ color: 'var(--text3)' }}>:</span>
               <span style={{ color: 'var(--text2)' }}>library audit</span>
             </div>
@@ -227,10 +255,10 @@ export default function AgentPipeline() {
 
       {/* Summary tiles using StateCard */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, marginTop: 12, flexWrap: 'wrap' }}>
-        <StateCard title="Queued" value={summary.queued} />
-        <StateCard title="Processing" value={summary.processing} />
-        <StateCard title="Completed" value={summary.completed} />
-        <StateCard title="Failed" value={summary.failed} />
+        <StateCard label="Queued" value={summary.queued} color="var(--amber)" />
+        <StateCard label="Processing" value={summary.processing} color="var(--accent)" />
+        <StateCard label="Completed" value={summary.completed} color="var(--green)" />
+        <StateCard label="Failed" value={summary.failed} color="var(--red)" />
       </div>
 
       {/* F. Filter chips */}
@@ -239,10 +267,11 @@ export default function AgentPipeline() {
         {(['all', 'completed', 'failed', 'queued'] as JobFilter[]).map(f => (
           <ActionButton
             key={f}
+            label={f}
             onClick={() => { setJobFilter(f); setJobLimit(50) }}
             variant={jobFilter === f ? 'primary' : 'ghost'}
             size="sm"
-          >{f}</ActionButton>
+          />
         ))}
       </div>
 
@@ -264,7 +293,7 @@ export default function AgentPipeline() {
                 {filteredJobs.slice(0, jobLimit).map(j => (
                   <tr key={j.id}>
                     <td style={{ ...tdStyle, fontWeight: 600, color: 'var(--text0)' }}>{j.symbol}</td>
-                    <td style={tdStyle}><AgentChip name={j.requested_agent} /></td>
+                    <td style={tdStyle}><AgentChip agent={j.requested_agent} /></td>
                     <td style={{ ...tdStyle, color: 'var(--text2)' }}>{j.request_type}</td>
                     <td style={tdStyle}><StatusBadge status={statusKey(j.status)} label={j.status} /></td>
                     <td style={{ ...tdStyle, color: 'var(--text2)' }}>{j.priority}</td>
@@ -282,7 +311,7 @@ export default function AgentPipeline() {
         </div>
         {filteredJobs.length > jobLimit && (
           <div style={{ textAlign: 'center', marginTop: 8 }}>
-            <ActionButton onClick={() => setJobLimit(l => l + 50)} variant="ghost" size="sm">{`Show more (${filteredJobs.length - jobLimit} remaining)`}</ActionButton>
+            <ActionButton label={`Show more (${filteredJobs.length - jobLimit} remaining)`} onClick={() => setJobLimit(l => l + 50)} variant="ghost" size="sm" />
           </div>
         )}
       </Card>
@@ -315,7 +344,7 @@ export default function AgentPipeline() {
                       return (
                         <tr key={j.id}>
                           <td style={{ ...tdStyle, fontWeight: 600, color: 'var(--text0)' }}>{j.symbol}</td>
-                          <td style={tdStyle}><AgentChip name={j.requested_agent} /></td>
+                          <td style={tdStyle}><AgentChip agent={j.requested_agent} /></td>
                           <td style={{ ...tdStyle, color: 'var(--text2)', fontSize: 9 }}>{timeAgo(j.created_at)}</td>
                           <td style={tdStyle}><SeverityBadge severity={err.severity} label={err.label} /></td>
                         </tr>
@@ -354,7 +383,7 @@ export default function AgentPipeline() {
                   return (
                     <tr key={`${r.symbol}-${r.agent}-${i}`}>
                       <td style={{ ...tdStyle, fontWeight: 600, color: 'var(--text0)' }}>{r.symbol}</td>
-                      <td style={tdStyle}><AgentChip name={r.agent} /></td>
+                      <td style={tdStyle}><AgentChip agent={r.agent} /></td>
                       <td style={{ ...tdStyle, color: r.recommendation?.toLowerCase().includes('buy') ? 'var(--green)' : r.recommendation?.toLowerCase().includes('sell') ? 'var(--red)' : 'var(--text1)' }}>{r.recommendation}</td>
                       <td style={{ ...tdStyle, color: r.confidence >= 70 ? 'var(--green)' : r.confidence >= 50 ? 'var(--amber)' : 'var(--text2)' }}>{r.confidence}%</td>
                       <td style={{ ...tdStyle, color: 'var(--text3)', fontSize: 9 }}>{r.model_used}</td>
@@ -395,9 +424,9 @@ export default function AgentPipeline() {
               {handoffs.map((h, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center' }}>
                   <span style={{ fontWeight: 600, color: 'var(--text0)', width: 50 }}>{h.symbol}</span>
-                  <AgentChip name={h.from_agent} />
+                  <AgentChip agent={h.from_agent} />
                   <span style={{ color: 'var(--text3)' }}>&rarr;</span>
-                  <AgentChip name={h.to_agent} />
+                  <AgentChip agent={h.to_agent} />
                   {h.escalated && <StatusBadge status="red" label="ESCALATED" />}
                   <span style={{ marginLeft: 'auto', color: 'var(--text3)', fontSize: 9 }}>{timeAgo(h.created_at)}</span>
                 </div>
@@ -495,3 +524,4 @@ export default function AgentPipeline() {
     </>
   )
 }
+```
