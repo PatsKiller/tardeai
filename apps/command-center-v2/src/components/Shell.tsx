@@ -63,10 +63,10 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/system-health', label: 'System Health' },
     { to: '/agent-pipeline', label: 'Agent Pipeline' },
   ]},
-  { label: 'Paper Trading', items: [
+  { label: 'Automated Trading', items: [
     { to: '/paper-proposals', label: 'Proposals' },
-    { to: '/paper-review', label: 'Paper Review' },
-    { to: '/paper-status', label: 'Paper Status' },
+    { to: '/paper-review', label: 'Trade Review' },
+    { to: '/paper-status', label: 'Trade Status' },
     { to: '/execution-quality', label: 'Execution Quality' },
     { to: '/proposal-alerts', label: 'Proposal Alerts' },
   ]},

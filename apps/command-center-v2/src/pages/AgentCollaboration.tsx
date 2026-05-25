@@ -21,6 +21,25 @@ function timeAgo(ts: string | null | undefined): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+function fmtHours(h: number | null | undefined): string {
+  if (h == null) return '--'
+  if (h < 1) return `${Math.round(h * 60)}m`
+  if (h < 24) return `${h.toFixed(1)}h`
+  return `${(h / 24).toFixed(1)}d`
+}
+
+function accuracyColor(acc: number): string {
+  if (acc >= 70) return 'var(--green)'
+  if (acc >= 50) return 'var(--amber)'
+  return 'var(--red)'
+}
+
+function healthColor(h: string): string {
+  if (h === 'fresh') return 'var(--green)'
+  if (h === 'stale') return 'var(--red)'
+  return 'var(--text3)'
+}
+
 function inferTimeline(m: any): { step: string; detail: string }[] {
   const steps: { step: string; detail: string }[] = []
   if (m.primary_owner) {
@@ -137,12 +156,23 @@ export default function AgentCollaboration() {
   const [raciMapLoading, setRaciMapLoading] = useState(false)
   const [raciCollapsed, setRaciCollapsed] = useState<Record<string, boolean>>({})
 
+  // Flow tab: expanded agent pairs for handoff drilldown
+  const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set())
+
+  // Quality tab: show/hide fresh products
+  const [showFreshProducts, setShowFreshProducts] = useState(false)
+
   const { data: collab } = useApi<any>(`/api/v2/agent-collaboration?_r=${rk}`, 60000)
 
   const summary = collab?.summary || {}
   const johnActions: any[] = collab?.john_next_actions || []
   const allMissions: any[] = collab?.mission_groups || []
   const agentNetwork: any[] = collab?.agent_network || []
+  const handoffDetails: any[] = collab?.handoff_details || []
+  const agentQuality: any[] = collab?.agent_quality || []
+  const staleProducts: any[] = collab?.stale_products || []
+  const raciHealth: any[] = collab?.raci_health || []
+  const scoring = collab?.scoring || {}
 
   // Derived waiting count
   const waitingCount = Math.max(0,
@@ -251,20 +281,107 @@ export default function AgentCollaboration() {
   // Flow data
   const flowGroups = useMemo(() => groupFlows(agentNetwork), [agentNetwork])
 
-  // Quality signals
-  const qualitySignals = useMemo(() => {
-    const completed = allMissions.filter(m => m.status === 'completed').length
-    const stale = summary.stale_missions ?? 0
-    const blocked = summary.blocked_missions ?? 0
-    const ready = summary.ready_for_operator ?? 0
-    const totalHandoffs = agentNetwork.reduce((acc: number, e: any) => acc + (e.cnt || 0), 0)
-    const completedHandoffs = agentNetwork.reduce((acc: number, e: any) => acc + Math.max(0, (e.cnt || 0) - (e.open || 0)), 0)
-    const openHandoffs = totalHandoffs - completedHandoffs
-    const escalations = agentNetwork.reduce((acc: number, e: any) => acc + (e.escalated || 0), 0)
-    const agentsWithRaci = Object.keys(raciMapData).length
-    const agentsMissingRaci = KNOWN_AGENTS.length - agentsWithRaci
-    return { completed, stale, blocked, ready, totalHandoffs, completedHandoffs, openHandoffs, escalations, agentsWithRaci, agentsMissingRaci }
-  }, [allMissions, summary, agentNetwork, raciMapData])
+  // Toggle flow drilldown
+  const toggleFlowExpand = (key: string) => {
+    setExpandedFlows(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  // Get handoff details for a specific agent pair
+  const getHandoffsForPair = (from: string, to: string) => {
+    return handoffDetails.filter(h => h.from_agent === from && h.to_agent === to)
+  }
+
+  // Check if a flow edge is stale (>48h since latest)
+  const isFlowStale = (latest: string | null): boolean => {
+    if (!latest) return true
+    const d = new Date(latest)
+    if (isNaN(d.getTime())) return true
+    return (Date.now() - d.getTime()) > 48 * 3600000
+  }
+
+  // Render a single flow edge row with drilldown capability
+  const renderFlowEdge = (e: FlowEdge, i: number, showFromAsChip: boolean, showToAsChip: boolean) => {
+    const flowKey = `${e.from_agent}→${e.to_agent}`
+    const isExpanded = expandedFlows.has(flowKey)
+    const stale = isFlowStale(e.latest)
+    const pairHandoffs = getHandoffsForPair(e.from_agent, e.to_agent)
+
+    return (
+      <div key={i}>
+        <div style={{
+          padding: '8px 12px', borderRadius: 'var(--radius)',
+          background: e.open > 0 ? 'rgba(245,158,11,0.06)' : 'var(--bg1)',
+          border: `1px solid ${e.open > 0 ? 'rgba(245,158,11,.2)' : stale ? 'rgba(245,158,11,.15)' : 'var(--border)'}`,
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          cursor: 'pointer',
+        }}
+        onClick={() => toggleFlowExpand(flowKey)}>
+          {showFromAsChip ? (
+            <span onClick={(ev) => { ev.stopPropagation(); handleAgentClick(e.from_agent) }} style={{ cursor: 'pointer' }}>
+              <AgentChip name={e.from_agent} />
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', minWidth: 80 }}>{e.from_agent.replace(/_/g, ' ')}</span>
+          )}
+          <span style={{ fontSize: 10, color: 'var(--text3)' }}>-&gt;</span>
+          {showToAsChip ? (
+            <span onClick={(ev) => { ev.stopPropagation(); handleAgentClick(e.to_agent) }} style={{ cursor: 'pointer' }}>
+              <AgentChip name={e.to_agent} />
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)' }}>{e.to_agent.replace(/_/g, ' ')}</span>
+          )}
+          <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>Total: {e.cnt}</span>
+          <span style={{ fontSize: 10, color: 'var(--green)' }}>Done: {e.completed}</span>
+          {e.open > 0 && <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 700 }}>Open: {e.open}</span>}
+          {e.escalated > 0 && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>Esc: {e.escalated}</span>}
+          {stale && (
+            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--amber)', background: 'rgba(245,158,11,0.1)', padding: '1px 6px', borderRadius: 3 }}>
+              STALE
+            </span>
+          )}
+          <span style={{ fontSize: 9, color: 'var(--text3)' }}>Last: {timeAgo(e.latest)}</span>
+          <span style={{ fontSize: 10, color: 'var(--text3)' }}>{isExpanded ? '-' : '+'}</span>
+        </div>
+
+        {/* Drilldown: individual handoffs for this pair */}
+        {isExpanded && (
+          <div style={{ marginLeft: 20, marginTop: 4, marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {pairHandoffs.length === 0 ? (
+              <div style={{ fontSize: 10, color: 'var(--text3)', padding: '6px 10px', background: 'var(--bg2)', borderRadius: 4 }}>
+                No detailed handoff records available for this pair.
+              </div>
+            ) : (
+              pairHandoffs.map((h: any) => (
+                <div key={h.id} style={{
+                  padding: '6px 10px', borderRadius: 4, background: 'var(--bg2)',
+                  borderLeft: `3px solid ${h.status === 'completed' ? 'var(--green)' : h.escalated ? 'var(--red)' : 'var(--amber)'}`,
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                }}>
+                  <StatusBadge status={h.status || 'unknown'} />
+                  {h.symbol && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text0)' }}>{h.symbol}</span>}
+                  <span style={{ fontSize: 10, color: 'var(--text2)' }}>{h.intent || 'handoff'}</span>
+                  {h.confidence != null && (
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>conf: {Number(h.confidence).toFixed(2)}</span>
+                  )}
+                  {h.escalated && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--red)' }}>ESCALATED</span>}
+                  {h.reason && <span style={{ fontSize: 9, color: 'var(--text3)', flex: 1 }}>{h.reason}</span>}
+                  <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>
+                    {h.age_hours != null ? fmtHours(h.age_hours) + ' ago' : timeAgo(h.created_at)}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div style={{ padding: '16px 24px', maxWidth: 1440 }}>
@@ -278,7 +395,7 @@ export default function AgentCollaboration() {
         }
       />
 
-      {/* ═══ OPERATOR DECISION SUMMARY ═══ */}
+      {/* OPERATOR DECISION SUMMARY */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, marginBottom: 16 }}>
         <StateCard compact title="Needs John" value={summary.ready_for_operator ?? 0} status="ready"
           actionLabel={summary.ready_for_operator > 0 ? 'Show ready' : undefined}
@@ -297,7 +414,7 @@ export default function AgentCollaboration() {
         </StateCard>
       </div>
 
-      {/* ═══ TAB BAR ═══ */}
+      {/* TAB BAR */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 12, borderBottom: '1px solid var(--border)', paddingBottom: 8 }}>
         {TAB_ITEMS.map(t => (
           <ActionButton key={t.key}
@@ -491,7 +608,7 @@ export default function AgentCollaboration() {
                       x
                     </button>
 
-                    {/* A. Mission Summary */}
+                    {/* A. Mission Summary with timestamps */}
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6, color: 'var(--text0)' }}>
                         {selected.title}
@@ -512,6 +629,24 @@ export default function AgentCollaboration() {
                           {timeAgo(selected.updated_at)}
                         </span>
                       </div>
+                      {/* Timestamps row */}
+                      <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: 9, color: 'var(--text3)' }}>
+                        {selected.created_at && <span>Created: {timeAgo(selected.created_at)}</span>}
+                        {selected.updated_at && <span>Updated: {timeAgo(selected.updated_at)}</span>}
+                        {selected.age_hours != null && <span>Age: {fmtHours(selected.age_hours)}</span>}
+                      </div>
+                      {/* Stale duration info */}
+                      {selected.status === 'stale' && (selected.stale_duration || selected.last_successful || selected.expected_refresher) && (
+                        <div style={{
+                          marginTop: 6, padding: '6px 10px', borderRadius: 4,
+                          background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,.15)',
+                          fontSize: 10, color: 'var(--amber)',
+                        }}>
+                          {selected.stale_duration && <span>Stale for: {fmtHours(selected.stale_duration)} </span>}
+                          {selected.last_successful && <span>Last success: {timeAgo(selected.last_successful)} </span>}
+                          {selected.expected_refresher && <span>Expected refresher: {selected.expected_refresher}</span>}
+                        </div>
+                      )}
                     </div>
 
                     {/* B. Collaboration Timeline (inferred) */}
@@ -698,15 +833,15 @@ export default function AgentCollaboration() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* TAB 2: COLLABORATION FLOW                                         */}
+      {/* TAB 2: COLLABORATION FLOW with drilldown                          */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {viewTab === 'flow' && (
         <div>
           <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic', marginBottom: 16, padding: '6px 10px', background: 'var(--bg2)', borderRadius: 'var(--radius)' }}>
-            Derived from handoff history, not full collaboration events. Open handoffs are highlighted as actionable.
+            Click any flow row to expand recent handoff details. Stale flows (&gt;48h) are flagged.
           </div>
 
-          {agentNetwork.length === 0 ? (
+          {agentNetwork.length === 0 && handoffDetails.length === 0 ? (
             <Card title="">
               <div style={{ textAlign: 'center', padding: 32, color: 'var(--text3)' }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>No Handoff Data</div>
@@ -726,29 +861,7 @@ export default function AgentCollaboration() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {flowGroups.agentToAgent.map((e, i) => (
-                      <div key={i} style={{
-                        padding: '8px 12px', borderRadius: 'var(--radius)',
-                        background: e.open > 0 ? 'rgba(245,158,11,0.06)' : 'var(--bg1)',
-                        border: `1px solid ${e.open > 0 ? 'rgba(245,158,11,.2)' : 'var(--border)'}`,
-                        display: 'flex', alignItems: 'center', gap: 8,
-                      }}>
-                        <span onClick={() => handleAgentClick(e.from_agent)} style={{ cursor: 'pointer' }}>
-                          <AgentChip name={e.from_agent} />
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text3)' }}>-&gt;</span>
-                        <span onClick={() => handleAgentClick(e.to_agent)} style={{ cursor: 'pointer' }}>
-                          <AgentChip name={e.to_agent} />
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>
-                          Total: {e.cnt}
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--green)' }}>Done: {e.completed}</span>
-                        {e.open > 0 && <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 700 }}>Open: {e.open}</span>}
-                        {e.escalated > 0 && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>Esc: {e.escalated}</span>}
-                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>{timeAgo(e.latest)}</span>
-                      </div>
-                    ))}
+                    {flowGroups.agentToAgent.map((e, i) => renderFlowEdge(e, i, true, true))}
                   </div>
                 )}
               </div>
@@ -764,25 +877,7 @@ export default function AgentCollaboration() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {flowGroups.systemToAgent.map((e, i) => (
-                      <div key={i} style={{
-                        padding: '8px 12px', borderRadius: 'var(--radius)',
-                        background: e.open > 0 ? 'rgba(245,158,11,0.06)' : 'var(--bg1)',
-                        border: `1px solid ${e.open > 0 ? 'rgba(245,158,11,.2)' : 'var(--border)'}`,
-                        display: 'flex', alignItems: 'center', gap: 8,
-                      }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', minWidth: 80 }}>{e.from_agent.replace(/_/g, ' ')}</span>
-                        <span style={{ fontSize: 10, color: 'var(--text3)' }}>-&gt;</span>
-                        <span onClick={() => handleAgentClick(e.to_agent)} style={{ cursor: 'pointer' }}>
-                          <AgentChip name={e.to_agent} />
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>Total: {e.cnt}</span>
-                        <span style={{ fontSize: 10, color: 'var(--green)' }}>Done: {e.completed}</span>
-                        {e.open > 0 && <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 700 }}>Open: {e.open}</span>}
-                        {e.escalated > 0 && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>Esc: {e.escalated}</span>}
-                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>{timeAgo(e.latest)}</span>
-                      </div>
-                    ))}
+                    {flowGroups.systemToAgent.map((e, i) => renderFlowEdge(e, i, false, true))}
                   </div>
                 )}
               </div>
@@ -798,25 +893,7 @@ export default function AgentCollaboration() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {flowGroups.agentToOperator.map((e, i) => (
-                      <div key={i} style={{
-                        padding: '8px 12px', borderRadius: 'var(--radius)',
-                        background: e.open > 0 ? 'rgba(245,158,11,0.06)' : 'var(--bg1)',
-                        border: `1px solid ${e.open > 0 ? 'rgba(245,158,11,.2)' : 'var(--border)'}`,
-                        display: 'flex', alignItems: 'center', gap: 8,
-                      }}>
-                        <span onClick={() => handleAgentClick(e.from_agent)} style={{ cursor: 'pointer' }}>
-                          <AgentChip name={e.from_agent} />
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--text3)' }}>-&gt;</span>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)' }}>{e.to_agent.replace(/_/g, ' ')}</span>
-                        <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>Total: {e.cnt}</span>
-                        <span style={{ fontSize: 10, color: 'var(--green)' }}>Done: {e.completed}</span>
-                        {e.open > 0 && <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 700 }}>Open: {e.open}</span>}
-                        {e.escalated > 0 && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>Esc: {e.escalated}</span>}
-                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>{timeAgo(e.latest)}</span>
-                      </div>
-                    ))}
+                    {flowGroups.agentToOperator.map((e, i) => renderFlowEdge(e, i, true, false))}
                   </div>
                 )}
               </div>
@@ -826,7 +903,7 @@ export default function AgentCollaboration() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* TAB 3: RACI MAP                                                   */}
+      {/* TAB 3: RACI MAP with health context                               */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {viewTab === 'raci' && (
         <div>
@@ -834,6 +911,73 @@ export default function AgentCollaboration() {
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>System-Wide RACI Map</div>
             <ActionButton variant="ghost" size="sm" onClick={loadRaciMap}>Reload</ActionButton>
           </div>
+
+          {/* RACI Health from API */}
+          {raciHealth.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                Process Health
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {raciHealth.map((proc: any) => {
+                  const isStale = proc.health === 'stale'
+                  const isUnknown = proc.health === 'unknown'
+                  return (
+                    <div key={proc.process_id || proc.process_name} style={{
+                      padding: '8px 12px', borderRadius: 'var(--radius)',
+                      background: isStale ? 'rgba(245,158,11,0.06)' : 'var(--bg1)',
+                      border: `1px solid ${isStale ? 'rgba(245,158,11,.2)' : 'var(--border)'}`,
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                    }}>
+                      {/* Health badge */}
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 3,
+                        color: healthColor(proc.health),
+                        background: isStale ? 'rgba(245,158,11,0.1)' : isUnknown ? 'var(--bg2)' : 'rgba(14,203,129,0.1)',
+                        textTransform: 'uppercase',
+                      }}>
+                        {proc.health}
+                      </span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)' }}>
+                        {(proc.process_name || proc.process_id || '').replace(/_/g, ' ')}
+                      </span>
+                      {proc.trigger && (
+                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>trigger: {proc.trigger}</span>
+                      )}
+                      {proc.frequency && (
+                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>freq: {proc.frequency}</span>
+                      )}
+                      {/* Agents involved */}
+                      {(proc.agents || []).length > 0 && (
+                        <span style={{ display: 'inline-flex', gap: 3 }}>
+                          {(proc.agents as string[]).slice(0, 4).map((a: string) => (
+                            <span key={a} onClick={() => handleAgentClick(a)} style={{ cursor: 'pointer' }}>
+                              <AgentChip name={a} />
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>
+                        Last activity: {timeAgo(proc.last_activity)}
+                        {proc.age_hours != null ? ` (${fmtHours(proc.age_hours)})` : ''}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Stale process explanation */}
+              {raciHealth.some((p: any) => p.health === 'stale') && (
+                <div style={{
+                  marginTop: 8, padding: '8px 12px', borderRadius: 'var(--radius)',
+                  background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,.15)',
+                  fontSize: 10, color: 'var(--amber)',
+                }}>
+                  Stale processes have not run within their expected frequency window. Check cron schedules and agent health.
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ fontSize: 11, color: 'var(--text3)', fontStyle: 'italic', marginBottom: 16 }}>
             Process-to-mission mapping is not available yet. Showing process-level RACI per agent from config/agent_raci.yaml.
           </div>
@@ -884,68 +1028,197 @@ export default function AgentCollaboration() {
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 16 }}>Collaboration Outcome Quality</div>
 
-          {/* Observable Good Signals */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
-              Observable Good Signals
+          {/* Agent Quality Section */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
+              Agent Quality (Accuracy & Calibration)
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-              <StateCard compact title="Ready Missions" value={qualitySignals.ready} status="ready" />
-              <StateCard compact title="Completed Missions" value={qualitySignals.completed} status="fresh" />
-              <StateCard compact title="Handoffs Completed" value={qualitySignals.completedHandoffs} status="fresh" />
-            </div>
+            {agentQuality.length === 0 ? (
+              <div style={{ fontSize: 11, color: 'var(--text3)', padding: '12px 16px', background: 'var(--bg2)', borderRadius: 'var(--radius)' }}>
+                No agent quality data available. Quality metrics appear as agents produce scored outcomes.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {agentQuality.map((aq: any) => {
+                  const acc = typeof aq.accuracy === 'number' ? aq.accuracy : null
+                  const accPct = acc != null ? (acc * 100) : null
+                  return (
+                    <div key={aq.agent_name} style={{
+                      padding: '10px 14px', borderRadius: 'var(--radius)',
+                      background: 'var(--bg1)', border: '1px solid var(--border)',
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                    }}>
+                      <span onClick={() => handleAgentClick(aq.agent_name)} style={{ cursor: 'pointer' }}>
+                        <AgentChip name={aq.agent_name} size="md" />
+                      </span>
+
+                      {/* Accuracy */}
+                      {accPct != null && (
+                        <span style={{
+                          fontSize: 12, fontWeight: 800,
+                          color: accuracyColor(accPct),
+                        }}>
+                          {accPct.toFixed(1)}% accuracy
+                        </span>
+                      )}
+
+                      {/* Calibration error */}
+                      {aq.calibration_error != null && (
+                        <span style={{ fontSize: 10, color: 'var(--text2)' }}>
+                          Cal err: {(aq.calibration_error * 100).toFixed(1)}%
+                        </span>
+                      )}
+
+                      {/* Correct / Resolved */}
+                      <span style={{ fontSize: 10, color: 'var(--green)' }}>
+                        {aq.correct ?? 0} correct
+                      </span>
+                      <span style={{ fontSize: 10, color: 'var(--text2)' }}>
+                        {aq.resolved ?? 0} resolved
+                      </span>
+                      {aq.incorrect != null && aq.incorrect > 0 && (
+                        <span style={{ fontSize: 10, color: 'var(--red)' }}>
+                          {aq.incorrect} incorrect
+                        </span>
+                      )}
+
+                      {/* Overconfidence / Underconfidence */}
+                      {aq.overconfidence_score != null && aq.overconfidence_score > 0.1 && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--amber)', background: 'rgba(245,158,11,0.1)', padding: '1px 6px', borderRadius: 3 }}>
+                          Overconf: {(aq.overconfidence_score * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {aq.underconfidence_score != null && aq.underconfidence_score > 0.1 && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', background: 'var(--bg2)', padding: '1px 6px', borderRadius: 3 }}>
+                          Underconf: {(aq.underconfidence_score * 100).toFixed(0)}%
+                        </span>
+                      )}
+
+                      {/* Sample size */}
+                      {aq.sample_size_status && (
+                        <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>
+                          {aq.sample_size_status}
+                        </span>
+                      )}
+                      {aq.scored_at && (
+                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>
+                          {timeAgo(aq.scored_at)}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Observable Bad Signals */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
-              Observable Bad Signals
+          {/* Stale Products Section */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
+              Data Product Freshness
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-              <StateCard compact title="Stale Missions" value={qualitySignals.stale} status={qualitySignals.stale > 0 ? 'stale' : 'fresh'} />
-              <StateCard compact title="Blocked Missions" value={qualitySignals.blocked} status={qualitySignals.blocked > 0 ? 'blocked' : 'fresh'} />
-              <StateCard compact title="Open Handoffs" value={qualitySignals.openHandoffs} status={qualitySignals.openHandoffs > 0 ? 'warning' : 'fresh'} />
-              <StateCard compact title="Escalations" value={qualitySignals.escalations} status={qualitySignals.escalations > 10 ? 'warning' : 'fresh'} />
-              <StateCard compact title="Agents Missing RACI" value={qualitySignals.agentsMissingRaci} status={qualitySignals.agentsMissingRaci > 0 ? 'warning' : 'fresh'} />
-            </div>
-          </div>
+            {staleProducts.length === 0 ? (
+              <div style={{ fontSize: 11, color: 'var(--text3)', padding: '12px 16px', background: 'var(--bg2)', borderRadius: 'var(--radius)' }}>
+                No data product freshness info available.
+              </div>
+            ) : (() => {
+              const staleOnes = staleProducts.filter((p: any) => !p.ok)
+              const freshOnes = staleProducts.filter((p: any) => p.ok)
+              return (
+                <div>
+                  {/* Stale products shown prominently */}
+                  {staleOnes.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
+                      {staleOnes.map((p: any) => (
+                        <div key={p.state_file} style={{
+                          padding: '8px 12px', borderRadius: 'var(--radius)',
+                          background: 'rgba(246,70,93,0.06)', border: '1px solid rgba(246,70,93,.2)',
+                          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                        }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--red)', background: 'rgba(246,70,93,0.1)', padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase' }}>
+                            STALE
+                          </span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>
+                            {p.state_file}
+                          </span>
+                          <span style={{ fontSize: 10, color: 'var(--text2)' }}>
+                            Age: {fmtHours(p.age_hours)} / max {fmtHours(p.max_age_hours)}
+                          </span>
+                          {p.hours_overdue != null && p.hours_overdue > 0 && (
+                            <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>
+                              {fmtHours(p.hours_overdue)} overdue
+                            </span>
+                          )}
+                          {p.source_script && (
+                            <span style={{ fontSize: 9, color: 'var(--text3)' }}>src: {p.source_script}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-          {/* Missing Fields for True Scoring */}
-          <div style={{
-            padding: '14px 18px', borderRadius: 'var(--radius)',
-            background: 'var(--bg1)', border: '1px solid var(--border)',
-          }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
-              Missing API Fields for True Collaboration Scoring
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>
-              True collaboration scoring requires outcome event history. The following fields are not yet available in the API:
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {[
-                { field: 'collaboration_outcome', desc: 'Success/partial/failure per mission' },
-                { field: 'handoff_resolution_time', desc: 'Time between agent handoffs' },
-                { field: 'agent_agreement_score', desc: 'How often agents agree on recommendations' },
-                { field: 'evidence_completeness', desc: 'Whether evidence was gathered before decision' },
-                { field: 'per_mission_raci', desc: 'Dynamic RACI role assignment per mission' },
-                { field: 'collaboration_event_timeline', desc: 'Full event log of collaboration steps' },
-                { field: 'decision_accuracy_tracking', desc: 'Agent recommendation vs actual outcome' },
-              ].map(item => (
-                <div key={item.field} style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px',
-                  background: 'var(--bg2)', borderRadius: 4,
-                }}>
-                  <code style={{ fontSize: 10, fontWeight: 700, color: 'var(--amber)', fontFamily: 'monospace', minWidth: 200 }}>{item.field}</code>
-                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{item.desc}</span>
+                  {/* Fresh products collapsed */}
+                  {freshOnes.length > 0 && (
+                    <div>
+                      <ActionButton variant="ghost" size="sm" onClick={() => setShowFreshProducts(!showFreshProducts)}>
+                        {showFreshProducts ? 'Hide' : 'Show'} {freshOnes.length} fresh products
+                      </ActionButton>
+                      {showFreshProducts && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+                          {freshOnes.map((p: any) => (
+                            <div key={p.state_file} style={{
+                              padding: '5px 10px', borderRadius: 4, background: 'var(--bg2)',
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              borderLeft: '3px solid var(--green)',
+                            }}>
+                              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--green)' }}>OK</span>
+                              <span style={{ fontSize: 10, color: 'var(--text1)', fontFamily: 'monospace' }}>{p.state_file}</span>
+                              <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>
+                                Age: {fmtHours(p.age_hours)} / max {fmtHours(p.max_age_hours)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {staleOnes.length === 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600, padding: '6px 10px', background: 'rgba(14,203,129,0.06)', borderRadius: 'var(--radius)', marginBottom: 8 }}>
+                      All {freshOnes.length} data products are fresh.
+                    </div>
+                  )}
                 </div>
-              ))}
+              )
+            })()}
+          </div>
+
+          {/* Scoring Section (from existing API) */}
+          {Object.keys(scoring).length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>
+                System Scoring (Aggregate)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+                {Object.entries(scoring).map(([key, val]) => (
+                  <StateCard compact key={key} title={key.replace(/_/g, ' ')} value={typeof val === 'number' ? (val as number).toFixed(2) : String(val ?? '--')} status="fresh" />
+                ))}
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-              For per-agent accuracy data, see Agent Calibration.
-              <ActionButton variant="secondary" size="sm" onClick={() => window.location.href = '/agent-calibration'}>
-                View Agent Calibration
-              </ActionButton>
-            </div>
+          )}
+
+          {/* Link to Agent Calibration */}
+          <div style={{
+            padding: '12px 16px', borderRadius: 'var(--radius)',
+            background: 'var(--bg1)', border: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--text2)' }}>
+              For detailed per-agent calibration curves and accuracy history, see Agent Calibration.
+            </span>
+            <ActionButton variant="secondary" size="sm" onClick={() => window.location.href = '/agent-calibration'}>
+              View Agent Calibration
+            </ActionButton>
           </div>
         </div>
       )}
