@@ -1,3 +1,14 @@
+# SelfImprovement.tsx -- Phase 5 Polish Replacement
+
+**Original hash:** `fc411dfaa7f87fbbaf82f89cb6476cbe79d19d4aa9213c68e4eb90adc44e4831`
+**Original location:** `apps/command-center-v2/src/pages/SelfImprovement.tsx`
+**Original lines:** 173
+
+---
+
+## Full replacement file
+
+```tsx
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
@@ -283,3 +294,4 @@ export default function SelfImprovement() {
     </div>
   )
 }
+```
