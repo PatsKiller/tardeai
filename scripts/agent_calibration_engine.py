@@ -313,8 +313,8 @@ def main():
         windows = aggregate_windows(events, window_days=window_days)
 
         if not dry_run:
-            save_events(conn, events)
-            save_windows(conn, windows)
+            save_events(conn, events, dry_run=False)
+            save_windows(conn, windows, dry_run=False)
 
         out = {
             "mode": "dry_run" if dry_run else "applied",

@@ -1,0 +1,74 @@
+{
+    "ok": true,
+    "data": {
+        "volume_stats": {
+            "sent": 0,
+            "suppressed": 0,
+            "queued": 0,
+            "dashboard_only": 0,
+            "total": 3,
+            "system": 3
+        },
+        "by_tier": [],
+        "suppressed": [],
+        "digest_pending": [
+            {
+                "digest_slot": "morning",
+                "queued": 1
+            }
+        ],
+        "urgent_recent": [],
+        "system_alerts": [
+            {
+                "id": "sys_agent_backlog",
+                "alert_type": "system_health",
+                "severity": "warning",
+                "symbol": null,
+                "source_script": "system_health_check",
+                "raw_text": "Agent job queue backlog: 278 queued",
+                "created_at": "2026-05-25T10:28:13.467219",
+                "data_quality_status": "valid",
+                "parsed_payload": {
+                    "queued": 278
+                }
+            },
+            {
+                "id": "sys_risk_heat",
+                "alert_type": "concentration_alert",
+                "severity": "warning",
+                "symbol": null,
+                "source_script": "system_health_check",
+                "raw_text": "Portfolio heat 7.2% above 5% threshold",
+                "created_at": "2026-05-25T10:28:13.467219",
+                "data_quality_status": "valid",
+                "parsed_payload": {
+                    "heat_pct": 7.23,
+                    "threshold": 5.0
+                }
+            },
+            {
+                "id": "sys_stops_triggered",
+                "alert_type": "stop_triggered",
+                "severity": "urgent",
+                "symbol": null,
+                "source_script": "system_health_check",
+                "raw_text": "7 stops triggered: PFLT, RTX, LHX, LMT, NOC, LDOS, KBR",
+                "created_at": "2026-05-25T10:28:13.467219",
+                "data_quality_status": "valid",
+                "parsed_payload": {
+                    "count": 7,
+                    "symbols": [
+                        "PFLT",
+                        "RTX",
+                        "LHX",
+                        "LMT",
+                        "NOC",
+                        "LDOS",
+                        "KBR"
+                    ]
+                }
+            }
+        ],
+        "system_alert_count": 3
+    }
+}

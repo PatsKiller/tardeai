@@ -1,0 +1,100 @@
+{
+    "ok": true,
+    "data": {
+        "portfolio_value": 1201291.0,
+        "total_cash": 24498.13,
+        "today_change": 4274.95,
+        "today_pct": 0.36,
+        "position_count": 43,
+        "account_count": 5,
+        "as_of": "2026-05-25",
+        "last_repriced": "2026-05-25 10:15:00 ET",
+        "periods": {
+            "1D": {
+                "change_pct": 0.17,
+                "change": 2061.12,
+                "estimated": false
+            },
+            "1W": {
+                "change_pct": 0.76,
+                "change": 9070.98,
+                "estimated": false
+            },
+            "1M": {
+                "change_pct": -0.33,
+                "change": -3933.61,
+                "estimated": false
+            },
+            "3M": {
+                "change_pct": -0.69,
+                "change": -8330.72,
+                "estimated": false
+            },
+            "6M": {
+                "change_pct": -0.69,
+                "change": -8290.58,
+                "estimated": false
+            },
+            "YTD": {
+                "change_pct": -0.69,
+                "change": -8290.58,
+                "estimated": false
+            },
+            "1Y": {
+                "change_pct": null,
+                "change": null,
+                "estimated": false
+            }
+        },
+        "sectors": [
+            {
+                "name": "Other",
+                "value": 667553.24
+            },
+            {
+                "name": "us_large_blend",
+                "value": 209047.71000000002
+            },
+            {
+                "name": "international",
+                "value": 107146.75
+            },
+            {
+                "name": "us_large_value",
+                "value": 79154.09
+            },
+            {
+                "name": "us_small",
+                "value": 78335.95999999999
+            },
+            {
+                "name": "us_large_growth",
+                "value": 52129.05
+            }
+        ],
+        "top_movers": [
+            {
+                "symbol": "SCHD",
+                "name": "SCHWAB U.S. DIVIDEND EQUITY ET",
+                "day_change": 2393.2,
+                "day_change_pct": 1.8
+            },
+            {
+                "symbol": "TRP-LVAL",
+                "name": "TRP LargeCap Val I",
+                "day_change": 1482.53,
+                "day_change_pct": 2.8395
+            },
+            {
+                "symbol": "V",
+                "name": "VISA INC CLASS CLASS A",
+                "day_change": -677.35,
+                "day_change_pct": -0.68
+            },
+            {
+                "symbol": "V",
+                "name": "VISA INC CLASS CLASS A",
+                "day_change": -292.72,
+                "day_change_pct": -0.68
+            },
+            {
