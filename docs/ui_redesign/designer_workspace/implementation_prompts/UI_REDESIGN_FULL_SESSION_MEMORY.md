@@ -80,3 +80,33 @@ Trade_AI_Docs_v2/ui_redesign/
 - Phase 4: Governance & Approvals redesign
 - Phase 5: Self-Improvement enhancement (enhance only, do not rebuild)
 - Phase 6: Design token standardization (CSS variables)
+
+## Phase 4 Governance & Approvals
+
+Phase 4 completed successfully in three staged commits.
+
+Commits:
+- ad6a581 — Phase 4A Governance smaller pages
+- 4764eca — Phase 4B Approvals page
+- 316eb12 — Phase 4C Paper Proposals page
+
+Pages redesigned:
+- GovernanceHub.tsx
+- PaperGovernance.tsx
+- LearningGovernance.tsx
+- PaperReview.tsx
+- ProposalAlerts.tsx
+- Approvals.tsx
+- PaperProposals.tsx
+
+Design purpose:
+Separate policy, pending operator decisions, approvals, proposal review, and audit trail.
+
+Safety:
+No backend API contracts changed. No live trading execution added. No broker writes. No approval bypass.
+
+Validation:
+Build passed. Smoke tests passed (12/12). Playwright 47/47. Drive sync completed.
+
+Next phase:
+Phase 5 — Self-Improvement polish.
