@@ -1,0 +1,159 @@
+# Source Export: SystemHealth.tsx
+
+- **Original path:** apps/command-center-v2/src/pages/SystemHealth.tsx
+- **Git branch:** main
+- **Git commit:** d3fefdb9bd7af34f2ec2a6b0a31d89f24dbc8421
+- **Export timestamp:** 2026-05-25T11:38:05-04:00
+- **SHA256:** f2ed031181c2d2dbbfe04b8f9b94f07d7505230c9645ca91e9bb5f8636a8acd7
+- **File size:** 9167 bytes
+- **Exists:** YES
+
+```tsx
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import PageHeader from '../components/PageHeader'
+import Card from '../components/Card'
+import SectionHeader from '../components/SectionHeader'
+import MetricTile from '../components/MetricTile'
+import { useApi } from '../hooks/useApi'
+
+export default function SystemHealth() {
+  const navigate = useNavigate()
+  const [rk, setRk] = useState(0)
+  const { data } = useApi<any>(`/api/v2/system-health?_r=${rk}`)
+  const { data: screeners } = useApi<any>(`/api/v2/finviz-screeners?_r=${rk}`)
+
+  const llm = data?.llm || {}
+  const db = data?.db_tables || {}
+  const cio = data?.cio_decisions || []
+
+  return (
+    <>
+      <PageHeader title="System Health" subtitle="API keys, DB state, screener status — for scheduled jobs & services see Orchestration" actions={
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => navigate('/orchestration')} style={btn}>Orchestration →</button>
+          <button onClick={() => setRk(k => k + 1)} style={btn}>Refresh</button>
+        </div>
+      } />
+
+      {/* LLM Router */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
+        <MetricTile label="Local Ollama" value={llm?.local?.available ? 'Online' : 'Offline'}
+          deltaColor={llm?.local?.available ? 'var(--green)' : 'var(--red)'}
+          delta={llm?.local?.available ? `${llm.local.model || 'qwen3'}` : 'fallback to cloud APIs'}
+          tooltip="Local LLM for fast/cheap analysis. When offline, falls back to Claude API (higher cost). Restart: systemctl --user start ollama" />
+        <MetricTile label="Claude" value={llm?.claude?.configured ? 'Ready' : 'No Key'}
+          deltaColor={llm?.claude?.configured ? 'var(--green)' : 'var(--text3)'}
+          delta={llm?.claude?.configured ? 'ANTHROPIC_API_KEY set' : 'check .env file'}
+          tooltip="API keys loaded from .env file. 'No Key' = ANTHROPIC_API_KEY not found." />
+        <MetricTile label="Grok" value={llm?.grok?.configured ? 'Ready' : 'No Key'}
+          deltaColor={llm?.grok?.configured ? 'var(--green)' : 'var(--amber)'}
+          delta={llm?.grok?.configured ? 'XAI_API_KEY set' : 'optional — Claude is primary'}
+          tooltip="xAI Grok API. Optional fallback when Claude is unavailable." />
+        <MetricTile label="Daily Spend" value={`$${(llm?.daily_spend || 0).toFixed(4)}`}
+          delta={`of $${(llm?.daily_budget || 2).toFixed(2)} budget`}
+          deltaColor={(llm?.daily_spend || 0) > (llm?.daily_budget || 2) ? 'var(--red)' : 'var(--green)'}
+          tooltip="LLM API spend today. Budget: $2/day. Local calls are free. Tracked in logs/llm_router.log." />
+        <MetricTile label="Budget Left" value={`$${(llm?.budget_remaining || 0).toFixed(2)}`}
+          deltaColor={(llm?.budget_remaining || 0) > 0.5 ? 'var(--green)' : (llm?.budget_remaining || 0) > 0 ? 'var(--amber)' : 'var(--red)'}
+          delta={(llm?.budget_remaining || 0) <= 0 ? 'EXCEEDED — local only' : 'remaining today'} />
+      </div>
+
+      {!llm?.local?.available && (
+        <div style={{ padding: '8px 12px', marginBottom: 12, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
+          Ollama is offline — all LLM calls route to cloud APIs (higher cost). To restart: SSH to server and run <code style={{ background: 'var(--bg3)', padding: '1px 4px', borderRadius: 3 }}>systemctl --user start ollama</code>
+        </div>
+      )}
+
+      {/* DB State */}
+      <Card>
+        <SectionHeader title="Database State" />
+        {Object.keys(db).length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: 12 }}>
+            {Object.entries(db).map(([t, c]) => (
+              <div key={t} style={{ fontSize: 10 }}>
+                <div style={{ color: 'var(--text3)', fontSize: 8 }}>{t.replace('watchlist_', 'wl_').replace('ticker_', 'tk_')}</div>
+                <div style={{ fontWeight: 700, color: Number(c) > 0 ? 'var(--text1)' : 'var(--text3)' }}>{Number(c).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: 14, color: 'var(--text3)', fontSize: 11 }}>Database state unavailable — check Ops page for table inventory or verify DB connection.</div>
+        )}
+      </Card>
+
+      {/* CIO Decisions */}
+      <Card>
+        <SectionHeader title="CIO Decision Distribution" />
+        <div style={{ padding: 12 }}>
+          {cio.map((d: any, i: number) => (
+            <div key={i} style={{ display: 'flex', gap: 8, fontSize: 10, padding: '3px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--accent)', minWidth: 120 }}>{d.action}</span>
+              <span style={{ color: 'var(--text2)' }}>{d.cnt}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Finviz Screeners */}
+      <Card>
+        <SectionHeader title="Finviz Screeners" count={screeners?.screeners?.length} />
+        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+          {(screeners?.screeners || []).map((s: any) => (
+            <div key={s.screener_id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 11, minWidth: 180 }}>{s.display_name}</span>
+              <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 99, background: 'rgba(74,144,244,0.1)', color: 'var(--accent)' }}>{s.strategy_type?.replace(/_/g, ' ')}</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)', flex: 1 }}>{s.description?.slice(0, 60)}</span>
+              <a href={s.finviz_url} target="_blank" rel="noreferrer" style={{ fontSize: 9, color: 'var(--accent)' }}>Open</a>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Data Product Freshness */}
+      {data?.data_freshness && (
+        <Card title={`Data Product Health — ${data.data_freshness.summary}`} style={{ marginTop: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
+            {(data.data_freshness.products || []).map((p: any) => {
+              const isWeekendStale = p.stale_reason === 'weekend_market_closed'
+              const color = p.status === 'fresh' ? '#0ecb81' : isWeekendStale ? '#4a90f4' : p.status === 'stale' ? '#f6465d' : '#848e9c'
+              const statusLabel = p.status === 'fresh' ? 'Fresh' : isWeekendStale ? 'Weekend Paused' : p.status === 'stale' ? 'Stale — Action Needed' : 'Unknown'
+              return (
+                <div key={p.product} title={p.remediation || ''} style={{ padding: '8px 12px', borderRadius: 6, border: `1px solid ${color}33`, background: `${color}08`, cursor: p.remediation ? 'help' : 'default' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color }}>{p.product}</span>
+                    <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: `${color}22`, color }}>{statusLabel}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3 }}>
+                    {p.age_hours != null ? `${Math.round(p.age_hours)}h old` : 'unknown'} / max {p.max_stale_hours}h
+                  </div>
+                  {p.owner && (
+                    <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                      Owner: {p.owner} · {p.schedule || 'manual'}
+                    </div>
+                  )}
+                  {p.stale_reason && p.stale_reason !== 'weekend_market_closed' && p.remediation && (
+                    <div style={{ fontSize: 9, color: '#f6465d', marginTop: 2 }}>
+                      Fix: <code style={{ fontSize: 8 }}>{p.remediation}</code>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* System Info */}
+      <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(16,20,28,0.92)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, fontSize: 10, color: 'var(--text3)' }}>
+        Cron jobs: {data?.cron_jobs || 0} | Finviz screeners: {data?.finviz_screeners || screeners?.screeners?.length || 0} active | Validation suites: {data?.validation_suites || 0}
+        {data?.finviz_screeners === 0 && screeners?.screeners?.length > 0 && (
+          <span style={{ color: 'var(--amber)', marginLeft: 8 }}>Note: DB shows {screeners.screeners.length} screeners — health check may query different source</span>
+        )}
+      </div>
+    </>
+  )
+}
+
+const btn: React.CSSProperties = { padding: '4px 12px', fontSize: 10, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, background: 'rgba(255,255,255,0.04)', color: 'var(--text1)', cursor: 'pointer', fontFamily: 'var(--sans)' }
+```
