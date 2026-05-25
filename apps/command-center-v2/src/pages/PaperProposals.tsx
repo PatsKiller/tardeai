@@ -1,21 +1,16 @@
 import React, { useState, useCallback, lazy, Suspense } from 'react'
 import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
+import { StatusBadge } from '../components/StatusBadge'
+import { StateCard } from '../components/StateCard'
+import { ActionButton } from '../components/ActionButton'
 const ScreenerConfigModal = lazy(() => import('../components/ScreenerConfigModal'))
 
 const mono: React.CSSProperties = { fontFamily: 'monospace' }
 
-// ── Style helpers ──────────────────────────────────────────────────────
+// -- Style helpers --
 const lbl: React.CSSProperties = { fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }
 const secLbl: React.CSSProperties = { fontSize: 10, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, marginTop: 14 }
-const pill = (color: string): React.CSSProperties => ({
-  fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
-  background: color === 'green' ? 'rgba(34,197,94,0.15)' : color === 'red' ? 'rgba(239,68,68,0.15)' : color === 'blue' ? 'rgba(59,130,246,0.15)' : 'rgba(251,191,36,0.15)',
-  color: color === 'green' ? 'var(--green)' : color === 'red' ? 'var(--red)' : color === 'blue' ? '#60A5FA' : 'var(--amber)',
-})
-const btnStyle = (bg: string, color: string = '#fff'): React.CSSProperties => ({
-  padding: '5px 12px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 5, cursor: 'pointer', color, background: bg,
-})
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '3px 5px', fontSize: 11, ...mono,
   background: 'var(--bg0)', border: '1px solid var(--border)', borderRadius: 4,
@@ -28,7 +23,7 @@ const kv = (label: string, value: any, color?: string) => (
   </div>
 )
 
-// ── Action-state color map ─────────────────────────────────────────────
+// -- Action-state color map --
 const ACTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   PAPER_READY:   { bg: 'rgba(34,197,94,0.15)',  text: 'var(--green)', border: 'rgba(34,197,94,0.35)' },
   CAUTION:       { bg: 'rgba(251,191,36,0.12)', text: '#F59E0B',     border: 'rgba(251,191,36,0.3)' },
@@ -38,7 +33,13 @@ const ACTION_COLORS: Record<string, { bg: string; text: string; border: string }
   LEARNING_MODE: { bg: 'rgba(251,191,36,0.12)', text: '#F59E0B',     border: 'rgba(251,191,36,0.3)' },
 }
 
-// ── Normalizer ─────────────────────────────────────────────────────────
+// Status mapping for action states
+const actionStateToStatus: Record<string, string> = {
+  PAPER_READY: 'ready', CAUTION: 'warning', BLOCKED: 'blocked',
+  NEEDS_REVIEW: 'waiting', MISSING_DATA: 'stale', LEARNING_MODE: 'paused',
+}
+
+// -- Normalizer --
 const KEY_FIELDS = [
   'catalyst', 'catalyst_confidence', 'technical_context', 'technical_snapshot',
   'agent_reviews', 'llm_analysis', 'backtest_summary', 'execution_readiness',
@@ -61,7 +62,6 @@ function normalizeProposal(p: any) {
   const missingData: string[] = Array.isArray(p.missing_data) ? p.missing_data : []
   const blockers: string[] = Array.isArray(er.blockers) ? er.blockers : []
 
-  // actionState
   let actionState = 'CAUTION'
   const readinessState = String(er.readiness_state || '').toUpperCase()
   if (readinessState.includes('BLOCKED')) {
@@ -69,7 +69,6 @@ function normalizeProposal(p: any) {
   } else if (missingData.length >= 4 && !readinessState.includes('BLOCKED')) {
     actionState = 'MISSING_DATA'
   } else if (readinessState === 'READY_FOR_PAPER_SUBMIT' || readinessState === 'READY_ORB_CONFIRMED') {
-    // Check all gates
     const riskOk = er.risk_gate_ok !== false
     const priceOk = er.price_ok !== false
     const quoteOk = er.quote_fresh !== false
@@ -83,14 +82,10 @@ function normalizeProposal(p: any) {
     actionState = 'LEARNING_MODE'
   }
 
-  // topBlocker
   const topBlocker = blockers.length > 0 ? blockers[0] : 'None'
-
-  // primaryStrategy: use strategy_id
   const primaryStrategy = p.strategy_id || 'unknown'
   const strategyMismatch = p.primary_strategy_id != null && p.primary_strategy_id !== p.strategy_id
 
-  // nextActions
   const nextActions: string[] = []
   const _nTc = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
   const _nTs = p.technical_snapshot || {}
@@ -101,7 +96,6 @@ function normalizeProposal(p: any) {
   if (er.quote_age_seconds != null && Number(er.quote_age_seconds) > 300) nextActions.push('Check Execution during market hours')
   if (!p.backtest_summary) nextActions.push('Run Backtest')
 
-  // dataCompleteness
   let filledCount = 0
   for (const f of KEY_FIELDS) {
     const v = p[f]
@@ -111,10 +105,8 @@ function normalizeProposal(p: any) {
   }
   const dataCompleteness = Math.round((filledCount / KEY_FIELDS.length) * 100)
 
-  // missingBySection
   const missingBySection: Record<string, string[]> = {}
   for (const item of missingData) {
-    // Try to match to a known section
     let section = 'Other'
     const lower = item.toLowerCase()
     if (lower.includes('catalyst') || lower.includes('news')) section = 'Catalyst'
@@ -130,7 +122,7 @@ function normalizeProposal(p: any) {
   return { actionState, topBlocker, primaryStrategy, strategyMismatch, nextActions, dataCompleteness, missingBySection }
 }
 
-// ── Metric tile component ──────────────────────────────────────────────
+// -- Metric tile component --
 function MetricTile({ label, value, status, tileColor, onClick }: {
   label: string; value: string; status: string; tileColor: 'green' | 'amber' | 'red' | 'gray'; onClick?: () => void
 }) {
@@ -161,7 +153,7 @@ function MetricTile({ label, value, status, tileColor, onClick }: {
   )
 }
 
-// ── Confirm modal ──────────────────────────────────────────────────────
+// -- Confirm modal --
 function ConfirmModal({ p, onConfirm, onCancel }: { p: any; onConfirm: () => void; onCancel: () => void }) {
   const reasons = p.approval_blocked_reason ? p.approval_blocked_reason.split(';').map((r: string) => r.trim()) : ['Non-standard approval']
   return (
@@ -176,15 +168,15 @@ function ConfirmModal({ p, onConfirm, onCancel }: { p: any; onConfirm: () => voi
           Approve only if this is an intentional paper-learning test.
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={btnStyle('var(--bg0)', 'var(--text2)')}>Cancel</button>
-          <button onClick={onConfirm} style={btnStyle('var(--amber)', '#000')}>Approve as paper-learning test</button>
+          <ActionButton variant="secondary" size="md" onClick={onCancel}>Cancel</ActionButton>
+          <ActionButton variant="primary" size="md" onClick={onConfirm} style={{ background: 'var(--amber)', color: '#000' }}>Approve as paper-learning test</ActionButton>
         </div>
       </div>
     </div>
   )
 }
 
-// ── Proposal card ──────────────────────────────────────────────────────
+// -- Proposal card --
 function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: string, overrides?: any) => void; acting: Record<number, string> }) {
   const [editing, setEditing] = useState(false)
   const [shares, setShares] = useState(p.proposed_shares || 0)
@@ -252,11 +244,10 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     { key: 'missing', label: 'Missing' },
   ]
 
-  // ── Build metric tiles ──
+  // Build metric tiles
   const er = p.execution_readiness || {}
   const _tcRaw = typeof p.technical_context === 'string' ? JSON.parse(p.technical_context || '{}') : (p.technical_context || {})
   const _tsSnap = p.technical_snapshot || {}
-  // Merge: technical_snapshot has fresher data than technical_context
   const tc = {
     ..._tcRaw,
     rsi: _tsSnap.rsi_14 ?? _tcRaw.rsi,
@@ -308,7 +299,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     {
       label: 'Catalyst',
       value: p.catalyst_quality?.catalyst_quality_score != null ? `${p.catalyst_quality.catalyst_quality_score}%` : p.catalyst_verified ? 'Yes' : '--',
-      status: p.catalyst_quality?.catalyst_grade || (p.catalyst_verified ? `Verified${p.catalyst ? '' : ''}` : 'Unverified'),
+      status: p.catalyst_quality?.catalyst_grade || (p.catalyst_verified ? 'Verified' : 'Unverified'),
       tileColor: p.catalyst_quality?.catalyst_quality_score >= 70 ? 'green' : p.catalyst_verified ? 'green' : p.catalyst ? 'amber' : 'gray',
       tab: 'catalyst',
     },
@@ -344,36 +335,33 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     },
   ]
 
-  // Session 26: Use server-side action_state when available
   const effectiveActionState = p.action_state || norm.actionState
   const effectiveTopBlocker = p.top_blocker || norm.topBlocker
   const effectiveNextActions: string[] = p.next_actions || norm.nextActions
   const packetPct = p.packet_completion_pct || norm.dataCompleteness
 
-  // ── Build decision banner text ──
   let bannerText = ''
   let bannerDetail = ''
   if (effectiveActionState === 'BLOCKED') {
-    bannerText = `BLOCKED — ${effectiveTopBlocker}`
+    bannerText = `BLOCKED -- ${effectiveTopBlocker}`
     bannerDetail = effectiveNextActions.length > 0 ? `Next: ${effectiveNextActions[0]}` : ''
   } else if (effectiveActionState === 'PAPER_READY') {
-    bannerText = 'PAPER READY — All gates pass. Review thesis before submitting.'
+    bannerText = 'PAPER READY -- All gates pass. Review thesis before submitting.'
     bannerDetail = ''
   } else if (effectiveActionState === 'MISSING_DATA') {
-    bannerText = `MISSING DATA — ${p.action_label || `${(p.missing_data || []).length} fields missing`}`
+    bannerText = `MISSING DATA -- ${p.action_label || `${(p.missing_data || []).length} fields missing`}`
     bannerDetail = effectiveNextActions.length > 0 ? `Next: ${effectiveNextActions.join(', ')}` : ''
   } else if (effectiveActionState === 'NEEDS_REVIEW') {
-    bannerText = `NEEDS REVIEW — ${p.action_label || 'Agent or data review pending'}`
+    bannerText = `NEEDS REVIEW -- ${p.action_label || 'Agent or data review pending'}`
     bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
   } else if (norm.actionState === 'LEARNING_MODE') {
-    bannerText = 'LEARNING MODE — Cautious paper test, not fully validated'
+    bannerText = 'LEARNING MODE -- Cautious paper test, not fully validated'
     bannerDetail = ''
   } else {
-    bannerText = `CAUTION — ${norm.topBlocker !== 'None' ? norm.topBlocker : 'Review data before proceeding'}`
+    bannerText = `CAUTION -- ${norm.topBlocker !== 'None' ? norm.topBlocker : 'Review data before proceeding'}`
     bannerDetail = norm.nextActions.length > 0 ? `Next: ${norm.nextActions[0]}` : ''
   }
 
-  // Compact computed values
   const curPrice = p.current_price_display || p.current_price || p.scan_price || p.live_price_at_execution
   const driftPct = p.price_drift_display ?? (curPrice && entry > 0 ? Math.round((curPrice - entry) / entry * 1000) / 10 : null)
   const driftColor = Math.abs(driftPct || 0) < 2 ? '#22C55E' : Math.abs(driftPct || 0) < 5 ? '#F59E0B' : '#EF4444'
@@ -405,32 +393,32 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
     }}>
       {showConfirm && <ConfirmModal p={p} onConfirm={handleConfirmApprove} onCancel={() => setShowConfirm(false)} />}
 
-      {/* A. HEADER — symbol, sector/industry, strategy, grade, age */}
+      {/* A. HEADER */}
       <div style={{ padding: '8px 14px', background: vc.bg, borderBottom: `1px solid ${vc.text}30`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4, borderRadius: '6px 6px 0 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: vc.text }}>{p.operator_verdict === 'READY' ? '\u2705' : p.operator_verdict === 'BLOCKED' ? '\ud83d\uded1' : p.operator_verdict === 'ENTRY_MISSED' ? '\u26d4' : p.operator_verdict === 'STALE_QUOTE' ? '\ud83d\udd70' : '\u26a0\ufe0f'} {(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')}</span>
+          <StatusBadge status={actionStateToStatus[effectiveActionState] || 'warning'} label={(p.operator_verdict || 'REVIEW').replace(/_/g, ' ')} />
           <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text0)', ...mono }}>{p.symbol}</span>
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{p.strategy_display_name || p.strategy_id}</span>
           {(p.sector || p.industry) && <span style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 500 }}>{[p.sector, p.industry].filter(Boolean).join(' / ')}</span>}
           {!p.sector && !p.industry && <span style={{ fontSize: 9, color: '#EF4444', fontWeight: 600 }}>Sector: Missing</span>}
-          {p.signal_grade && <span style={pill(p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'green' : p.signal_grade === 'B' ? 'amber' : 'red')}>{p.signal_grade} {p.signal_score}pts</span>}
+          {p.signal_grade && <StatusBadge status={p.signal_grade === 'A' || p.signal_grade === 'A+' ? 'ready' : p.signal_grade === 'B' ? 'warning' : 'blocked'} label={`${p.signal_grade} ${p.signal_score}pts`} />}
           {p.strategy_trade_count > 0 && <span style={{ fontSize: 9, color: (p.strategy_win_rate ?? 0) >= 50 ? '#22C55E' : '#F59E0B', fontWeight: 600 }}>{p.strategy_win_rate}% WR</span>}
           {p.strategy_timeframe_class && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { bg: 'rgba(148,163,184,0.12)' }).bg, color: (TIMEFRAME_COLORS[p.strategy_timeframe_class?.toLowerCase()] || { text: '#94A3B8' }).text, fontWeight: 600 }}>{(p.strategy_timeframe_class || '').replace(/_/g, ' ')}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {p.staleness_policy?.is_stale && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,0.15)', color: '#EF4444', fontWeight: 700 }}>STALE</span>}
+          {p.staleness_policy?.is_stale && <StatusBadge status="stale" label="STALE" />}
           <span style={{ fontSize: 9, fontWeight: 600, color: p.age_color === 'green' ? '#22C55E' : p.age_color === 'red' ? '#EF4444' : '#F59E0B', ...mono }}>{p.age_display || ''}</span>
         </div>
       </div>
 
-      {/* B. DECISION BANNER — verdict reason + approval blockers */}
+      {/* B. DECISION BANNER */}
       <div style={{ padding: '5px 14px 6px', background: `${vc.bg}80`, borderBottom: '1px solid var(--border)' }}>
         <div style={{ fontSize: 10, color: vc.text, fontWeight: 600 }}>{p.operator_verdict_reason || bannerText}</div>
         {(p.approval_blockers || []).length > 0 && (
           <div style={{ marginTop: 3 }}>
             {(p.approval_blockers || []).slice(0, 3).map((b: any, i: number) => (
               <div key={i} style={{ fontSize: 9, color: '#EF4444', marginTop: 1 }}>
-                {'\u2022'} {b.reason} {b.action && <span style={{ color: '#60A5FA' }}> — {b.action}</span>}
+                {'\u2022'} {b.reason} {b.action && <span style={{ color: '#60A5FA' }}> -- {b.action}</span>}
               </div>
             ))}
           </div>
@@ -440,7 +428,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         )}
       </div>
 
-      {/* C. WHY THIS SETUP? — strategy description + catalyst */}
+      {/* C. WHY THIS SETUP? */}
       {(p.strategy_description || p.catalyst) && (
         <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border)', fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>
           {p.strategy_description && <div><strong style={{ color: 'var(--text1)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.3px' }}>Strategy:</strong> {p.strategy_description}</div>}
@@ -449,7 +437,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         </div>
       )}
 
-      {/* D. TRADE PLAN RATIONALE — entry/stop/target with reasoning */}
+      {/* D. TRADE PLAN RATIONALE */}
       <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, fontSize: 11, ...mono }}>
           <div><div style={lbl}>Entry</div><div style={{ fontWeight: 700, color: 'var(--text0)' }}>${Number(entry).toFixed(2)}</div></div>
@@ -457,7 +445,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
           <div><div style={lbl}>Stop</div><div style={{ fontWeight: 700, color: '#EF4444' }}>${Number(stop).toFixed(2)}</div></div>
           <div><div style={lbl}>Target</div><div style={{ fontWeight: 700, color: '#22C55E' }}>${Number(target).toFixed(2)}</div></div>
         </div>
-        {/* Rationale lines */}
         <div style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)', lineHeight: 1.5 }}>
           {p.entry_rationale && <div>Entry: {p.entry_rationale}</div>}
           {p.stop_rationale && <div>Stop: {p.stop_rationale}</div>}
@@ -485,10 +472,10 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         {tiles.map(t => <MetricTile key={t.label} label={t.label} value={t.value} status={t.status} tileColor={t.tileColor} onClick={() => setActiveTab(t.tab)} />)}
       </div>
 
-      {/* F. MISSING DATA + VALIDATION (when blockers exist) */}
+      {/* F. MISSING DATA + VALIDATION */}
       {((p.missing_data || []).length > 0 || (p.approval_blockers || []).length > 0) && (
         <div style={{ padding: '5px 14px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {(p.missing_data || []).map((m: string, i: number) => <span key={i} style={{ ...pill('red'), fontSize: 8 }}>{m}</span>)}
+          {(p.missing_data || []).map((m: string, i: number) => <StatusBadge key={i} status="blocked" label={m} size="sm" />)}
           {(p.missing_data || []).length > 0 && <span style={{ fontSize: 8, color: '#EF4444', fontWeight: 600 }}>({(p.missing_data || []).length} gaps)</span>}
         </div>
       )}
@@ -504,22 +491,22 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
         {p.trust_audit?.strategy_fit && <span>Strategy fit: <strong style={{ color: p.trust_audit.strategy_fit.fit_status === 'PASS' ? '#22C55E' : p.trust_audit.strategy_fit.fit_status === 'PARTIAL' ? '#F59E0B' : '#EF4444' }}>{p.trust_audit.strategy_fit.fit_status}</strong></span>}
       </div>
 
-      {/* G. ACTION WORKFLOW — numbered steps */}
+      {/* G. ACTION WORKFLOW */}
       <div style={{ padding: '8px 14px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button onClick={() => runAction('refreshPrice', `/api/v2/paper-proposals/refresh-data`, { proposal_id: p.id })} disabled={runningAction !== null}
-          style={{ ...btnStyle('rgba(59,130,246,0.15)', '#60A5FA'), border: '1px solid rgba(59,130,246,0.3)', fontSize: 9 }}>
+        <ActionButton variant="secondary" size="sm" loading={runningAction === 'refreshPrice'} disabled={runningAction !== null} onClick={() => runAction('refreshPrice', `/api/v2/paper-proposals/refresh-data`, { proposal_id: p.id })} style={{ border: '1px solid rgba(59,130,246,0.3)', color: '#60A5FA' }}>
           {runningAction === 'refreshPrice' ? 'Refreshing...' : '1. Refresh Price'}
-        </button>
-        <button onClick={() => runAction('checkExec', `/api/v2/paper-proposals/check-execution-readiness`, { proposal_id: p.id })} disabled={runningAction !== null}
-          style={{ ...btnStyle('rgba(168,85,247,0.15)', '#A855F7'), border: '1px solid rgba(168,85,247,0.3)', fontSize: 9 }}>
+        </ActionButton>
+        <ActionButton variant="secondary" size="sm" loading={runningAction === 'checkExec'} disabled={runningAction !== null} onClick={() => runAction('checkExec', `/api/v2/paper-proposals/check-execution-readiness`, { proposal_id: p.id })} style={{ border: '1px solid rgba(168,85,247,0.3)', color: '#A855F7' }}>
           {runningAction === 'checkExec' ? 'Checking...' : '2. Check Execution'}
-        </button>
-        <button onClick={() => runAction('aiReview', `/api/v2/paper-proposals/run-ai-review`, { proposal_id: p.id })} disabled={runningAction !== null}
-          style={{ ...btnStyle('rgba(168,85,247,0.15)', '#A855F7'), border: '1px solid rgba(168,85,247,0.3)', fontSize: 9 }}>
+        </ActionButton>
+        <ActionButton variant="secondary" size="sm" loading={runningAction === 'aiReview'} disabled={runningAction !== null} onClick={() => runAction('aiReview', `/api/v2/paper-proposals/run-ai-review`, { proposal_id: p.id })} style={{ border: '1px solid rgba(168,85,247,0.3)', color: '#A855F7' }}>
           {runningAction === 'aiReview' ? 'Running...' : '3. AI Review'}
-        </button>
+        </ActionButton>
         <div style={{ flex: 1 }} />
-        <button onClick={handleApprove}
+        <ActionButton
+          variant={p.operator_verdict === 'READY' ? 'primary' : 'disabled'}
+          size="md"
+          loading={acting[p.id] === 'approve'}
           disabled={p.is_blocked || (approveDisabled && !canApproveWithConfirm) || (p.approval_blockers || []).some((b: any) => b.gate === 'execution' || b.gate === 'rsi')}
           title={
             (p.approval_blockers || []).length > 0
@@ -527,25 +514,24 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
               : p.operator_verdict !== 'READY' ? (p.operator_verdict_reason || 'Not ready')
               : 'Approve for paper test'
           }
-          style={{ ...btnStyle(p.operator_verdict === 'READY' ? '#22C55E' : 'rgba(148,163,184,0.2)', p.operator_verdict === 'READY' ? '#fff' : '#94A3B8'), fontSize: 10, padding: '5px 14px', border: p.operator_verdict === 'READY' ? 'none' : '1px solid rgba(148,163,184,0.3)' }}>
+          onClick={handleApprove}
+          style={p.operator_verdict === 'READY' ? { background: '#22C55E', color: '#fff' } : {}}
+        >
           {acting[p.id] === 'approve' ? 'Approving...' : '4. Approve'}
-        </button>
-        <button onClick={() => act(p.id, 'reject')} style={{ ...btnStyle('rgba(239,68,68,0.12)', '#EF4444'), fontSize: 10, border: '1px solid rgba(239,68,68,0.3)' }}>
+        </ActionButton>
+        <ActionButton variant="danger" size="md" loading={acting[p.id] === 'reject'} onClick={() => act(p.id, 'reject')}>
           {acting[p.id] === 'reject' ? 'Rejecting...' : '\u2717 Reject'}
-        </button>
-        <button onClick={() => setShowDetails(!showDetails)}
-          style={{ fontSize: 9, padding: '4px 8px', background: 'none', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text3)', cursor: 'pointer' }}>
+        </ActionButton>
+        <ActionButton variant="ghost" size="sm" onClick={() => setShowDetails(!showDetails)}>
           {showDetails ? '\u25b2 Hide' : '\u25bc Details'}
-        </button>
+        </ActionButton>
       </div>
 
       {/* I. DETAILS DRAWER */}
       {showDetails && (
         <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.15)' }}>
-          {/* Pipeline step badges */}
           <PipelineChevron stages={p.pipeline_stages || []} />
 
-          {/* Strategy entry criteria */}
           {p.strategy_entry_criteria && p.strategy_entry_criteria.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <div style={secLbl}>Strategy Entry Criteria</div>
@@ -555,7 +541,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             </div>
           )}
 
-          {/* Strategy disqualifiers */}
           {p.strategy_disqualifiers && p.strategy_disqualifiers.length > 0 && (
             <div style={{ marginTop: 6 }}>
               <div style={secLbl}>Auto-Disqualifiers</div>
@@ -565,7 +550,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             </div>
           )}
 
-          {/* Strategy risk rules */}
           {p.strategy_risk_rules && (
             <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {kv('Risk/Trade', p.strategy_risk_rules.risk_per_trade_pct != null ? `${(p.strategy_risk_rules.risk_per_trade_pct * 100).toFixed(2)}%` : '--')}
@@ -575,7 +559,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             </div>
           )}
 
-          {/* Support / Reject case */}
           {p.approve_case && (
             <div style={{ marginTop: 8 }}><div style={secLbl}>Support Case</div><div style={{ fontSize: 10, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4, lineHeight: 1.5 }}>{p.approve_case}</div></div>
           )}
@@ -583,7 +566,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             <div style={{ marginTop: 8 }}><div style={secLbl}>Reject Case</div><div style={{ fontSize: 10, color: 'var(--text2)', padding: '6px 8px', background: 'var(--bg0)', borderRadius: 4, lineHeight: 1.5 }}>{p.reject_case}</div></div>
           )}
 
-          {/* Technical context */}
           <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
             {[
               { l: 'RSI', v: rsiVal ? Number(rsiVal).toFixed(0) : '--' },
@@ -593,7 +575,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             ].map(m => kv(m.l, m.v))}
           </div>
 
-          {/* Sector / relative performance */}
           {(p.sector || p.vs_sector_pct != null) && (
             <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {kv('Sector', p.sector || 'Missing', p.sector ? undefined : '#EF4444')}
@@ -603,19 +584,17 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             </div>
           )}
 
-          {/* Agent reviews */}
           {p.agent_reviews?.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <div style={secLbl}>Agent Reviews ({p.agent_reviews.length})</div>
               {p.agent_reviews.map((ar: any, i: number) => (
                 <div key={i} style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 2 }}>
-                  <strong>{ar.agent_name || ar.agent}</strong>: {ar.verdict || ar.vote} ({ar.confidence}%) — {(ar.summary || ar.reasoning || '').slice(0, 100)}
+                  <strong>{ar.agent_name || ar.agent}</strong>: {ar.verdict || ar.vote} ({ar.confidence}%) -- {(ar.summary || ar.reasoning || '').slice(0, 100)}
                 </div>
               ))}
             </div>
           )}
 
-          {/* News */}
           {p.news?.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <div style={secLbl}>Recent News ({p.news.length})</div>
@@ -627,26 +606,23 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             </div>
           )}
 
-          {/* Missing data */}
           {(p.missing_data || []).length > 0 && (
             <div style={{ marginTop: 8 }}><div style={secLbl}>Missing ({(p.missing_data || []).length})</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{(p.missing_data || []).map((m: string, i: number) => <span key={i} style={{ ...pill('red'), fontSize: 8 }}>{m}</span>)}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{(p.missing_data || []).map((m: string, i: number) => <StatusBadge key={i} status="blocked" label={m} size="sm" />)}</div>
             </div>
           )}
 
-          {/* TRUST AUDIT PANEL */}
           {p.trust_audit && (() => {
             const ta = p.trust_audit
             const qt = ta.quote_trust || {}
-            const sf = ta.strategy_fit || {}
+            const sf2 = ta.strategy_fit || {}
             const tb = ta.technical_backtest || {}
             const qtColor = qt.quote_trust_status === 'EXECUTION_ELIGIBLE' ? '#22C55E' : qt.quote_trust_status === 'DISPLAY_ONLY' ? '#EF4444' : qt.quote_trust_status === 'STALE' ? '#F59E0B' : '#94A3B8'
-            const sfColor = sf.fit_status === 'PASS' ? '#22C55E' : sf.fit_status === 'PARTIAL' ? '#F59E0B' : sf.fit_status === 'FAIL' ? '#EF4444' : '#94A3B8'
+            const sfColor = sf2.fit_status === 'PASS' ? '#22C55E' : sf2.fit_status === 'PARTIAL' ? '#F59E0B' : sf2.fit_status === 'FAIL' ? '#EF4444' : '#94A3B8'
             return (
               <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ ...secLbl, marginTop: 0 }}>Trust Audit</div>
 
-                {/* Quote Trust */}
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: qtColor, marginBottom: 3 }}>Quote Trust: {qt.quote_trust_status || 'NOT_CHECKED'}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
@@ -659,27 +635,26 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                   {qt.next_action && <div style={{ fontSize: 8, color: '#60A5FA', marginTop: 1 }}>Next: {qt.next_action}</div>}
                 </div>
 
-                {/* Strategy Fit */}
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: sfColor, marginBottom: 3 }}>
-                    Strategy Fit: {sf.fit_status || 'MISSING'}
-                    {sf.selected_match_score != null && <span style={{ fontWeight: 400, color: 'var(--text3)' }}> (score {sf.selected_match_score})</span>}
+                    Strategy Fit: {sf2.fit_status || 'MISSING'}
+                    {sf2.selected_match_score != null && <span style={{ fontWeight: 400, color: 'var(--text3)' }}> (score {sf2.selected_match_score})</span>}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-                    {kv('Strategies Evaluated', `${sf.evaluated_count ?? 0}/${sf.all_strategy_count ?? 0}`)}
-                    {kv('Passed', String(sf.passed_count ?? 0))}
-                    {kv('Top Alternative', sf.top_alternative || 'none')}
-                    {kv('YAML/DB Sync', sf.db_sync_status || '?')}
+                    {kv('Strategies Evaluated', `${sf2.evaluated_count ?? 0}/${sf2.all_strategy_count ?? 0}`)}
+                    {kv('Passed', String(sf2.passed_count ?? 0))}
+                    {kv('Top Alternative', sf2.top_alternative || 'none')}
+                    {kv('YAML/DB Sync', sf2.db_sync_status || '?')}
                   </div>
-                  {sf.mismatch_warning && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 2 }}>WARNING: {sf.mismatch_warning}</div>}
-                  {sf.missing_route_audit && <div style={{ fontSize: 8, color: '#F59E0B', marginTop: 2 }}>No route audit data — strategy assignment unverified</div>}
-                  {sf.selected_criteria_met?.length > 0 && <div style={{ fontSize: 8, color: '#22C55E', marginTop: 2 }}>Met: {sf.selected_criteria_met.join(', ')}</div>}
-                  {sf.selected_criteria_failed?.length > 0 && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 1 }}>Failed: {sf.selected_criteria_failed.join(', ')}</div>}
-                  {sf.strategy_evaluations?.length > 0 && (
+                  {sf2.mismatch_warning && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 2 }}>WARNING: {sf2.mismatch_warning}</div>}
+                  {sf2.missing_route_audit && <div style={{ fontSize: 8, color: '#F59E0B', marginTop: 2 }}>No route audit data -- strategy assignment unverified</div>}
+                  {sf2.selected_criteria_met?.length > 0 && <div style={{ fontSize: 8, color: '#22C55E', marginTop: 2 }}>Met: {sf2.selected_criteria_met.join(', ')}</div>}
+                  {sf2.selected_criteria_failed?.length > 0 && <div style={{ fontSize: 8, color: '#EF4444', marginTop: 1 }}>Failed: {sf2.selected_criteria_failed.join(', ')}</div>}
+                  {sf2.strategy_evaluations?.length > 0 && (
                     <div style={{ marginTop: 4 }}>
                       <div style={{ fontSize: 8, color: 'var(--text3)', marginBottom: 2 }}>All evaluations:</div>
-                      {sf.strategy_evaluations.map((ev: any, i: number) => (
-                        <div key={i} style={{ fontSize: 8, color: ev.strategy_id === sf.assigned_strategy_id ? '#22C55E' : ev.match_status === 'NO_MATCH' ? 'var(--text3)' : '#F59E0B' }}>
+                      {sf2.strategy_evaluations.map((ev: any, i: number) => (
+                        <div key={i} style={{ fontSize: 8, color: ev.strategy_id === sf2.assigned_strategy_id ? '#22C55E' : ev.match_status === 'NO_MATCH' ? 'var(--text3)' : '#F59E0B' }}>
                           {ev.is_primary ? '\u2605 ' : '\u2022 '}{ev.strategy_id}: {ev.match_status} ({ev.match_score ?? '?'})
                         </div>
                       ))}
@@ -687,7 +662,6 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
                   )}
                 </div>
 
-                {/* Technical / Backtest */}
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text2)', marginBottom: 3 }}>Technical / Backtest</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
@@ -710,15 +684,13 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
             )
           })()}
 
-          {/* Enrichment actions */}
           <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => runAction('enrich', `/api/v2/paper-proposals/enrich-all`, { proposal_id: p.id })} style={{ ...btnStyle('rgba(148,163,184,0.1)', '#94A3B8'), fontSize: 9, border: '1px solid var(--border)' }}>Enrich All</button>
-            <button onClick={() => runAction('research', `/api/v2/paper-proposals/run-research`, { proposal_id: p.id })} style={{ ...btnStyle('rgba(148,163,184,0.1)', '#94A3B8'), fontSize: 9, border: '1px solid var(--border)' }}>Run Research</button>
-            <button onClick={() => runAction('backtest', `/api/v2/paper-proposals/run-backtest`, { proposal_id: p.id })} style={{ ...btnStyle('rgba(148,163,184,0.1)', '#94A3B8'), fontSize: 9, border: '1px solid var(--border)' }}>Run Backtest</button>
-            <button onClick={() => runAction('indicators', `/api/v2/paper-proposals/run-indicators`, { proposal_id: p.id })} style={{ ...btnStyle('rgba(148,163,184,0.1)', '#94A3B8'), fontSize: 9, border: '1px solid var(--border)' }}>Run Indicators</button>
+            <ActionButton variant="ghost" size="sm" loading={runningAction === 'enrich'} onClick={() => runAction('enrich', `/api/v2/paper-proposals/enrich-all`, { proposal_id: p.id })}>Enrich All</ActionButton>
+            <ActionButton variant="ghost" size="sm" loading={runningAction === 'research'} onClick={() => runAction('research', `/api/v2/paper-proposals/run-research`, { proposal_id: p.id })}>Run Research</ActionButton>
+            <ActionButton variant="ghost" size="sm" loading={runningAction === 'backtest'} onClick={() => runAction('backtest', `/api/v2/paper-proposals/run-backtest`, { proposal_id: p.id })}>Run Backtest</ActionButton>
+            <ActionButton variant="ghost" size="sm" loading={runningAction === 'indicators'} onClick={() => runAction('indicators', `/api/v2/paper-proposals/run-indicators`, { proposal_id: p.id })}>Run Indicators</ActionButton>
             {p.tos_order_string && (
-              <button onClick={() => { navigator.clipboard.writeText(p.tos_order_string); alert('TOS copied') }}
-                style={{ ...btnStyle('var(--bg0)', 'var(--text2)'), border: '1px solid var(--border)', fontSize: 9 }}>Copy TOS</button>
+              <ActionButton variant="ghost" size="sm" onClick={() => { navigator.clipboard.writeText(p.tos_order_string); alert('TOS copied') }}>Copy TOS</ActionButton>
             )}
           </div>
         </div>
@@ -727,10 +699,7 @@ function ProposalCard({ p, act, acting }: { p: any; act: (id: number, action: st
   )
 }
 
-// NOTE: Old ProposalCard content replaced with compact 6-row layout.
-// PipelineChevron, LifecycleBadge, BlockerBanner still used in details drawer.
-// All removed from previous code below this marker. Functions kept for compatibility.
-// ── Lifecycle sort priority (IN ZONE first, ENTRY MISSED last) ─────────
+// -- Lifecycle sort priority --
 const LIFECYCLE_PRIORITY: Record<string, number> = {
   ENTRY_ZONE_VALID: 1, ACTIVE: 2, ACTIVE_MONITORING: 2,
   NEEDS_REVIEW: 3, ENTRY_MISSED: 4, STALE: 5, EXPIRED: 6, UNKNOWN: 7,
@@ -740,7 +709,7 @@ const ACTION_SORT: Record<string, number> = {
   NEEDS_REVIEW: 4, MISSING_DATA: 5, BLOCKED: 6,
 }
 
-// ── Timeframe pill colors ─────────────────────────────────────────────
+// -- Timeframe pill colors --
 const TIMEFRAME_COLORS: Record<string, { bg: string; text: string }> = {
   intraday: { bg: 'rgba(249,115,22,0.15)', text: '#F97316' },
   short_swing: { bg: 'rgba(59,130,246,0.15)', text: '#60A5FA' },
@@ -748,26 +717,19 @@ const TIMEFRAME_COLORS: Record<string, { bg: string; text: string }> = {
   position: { bg: 'rgba(34,197,94,0.15)', text: '#22C55E' },
 }
 
-// ── Lifecycle badge ───────────────────────────────────────────────────
+// -- Lifecycle badge --
 function LifecycleBadge({ status, riskGateResult, isBlocked }: { status: string; riskGateResult?: string; isBlocked?: boolean }) {
-  // Red BLOCKED only when risk gate rejected or explicit is_blocked
   if (riskGateResult === 'REJECTED' || riskGateResult === 'FAIL' || isBlocked) {
-    return <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.15)', color: '#EF4444' }}>BLOCKED</span>
+    return <StatusBadge status="blocked" label="BLOCKED" />
   }
-  const map: Record<string, { label: string; bg: string; color: string }> = {
-    ENTRY_ZONE_VALID: { label: 'IN ZONE', bg: 'rgba(34,197,94,0.15)', color: '#22C55E' },
-    ACTIVE: { label: 'ACTIVE', bg: 'rgba(20,184,166,0.15)', color: '#14B8A6' },
-    ACTIVE_MONITORING: { label: 'ACTIVE', bg: 'rgba(20,184,166,0.15)', color: '#14B8A6' },
-    ENTRY_MISSED: { label: 'ENTRY MISSED', bg: 'rgba(251,191,36,0.15)', color: '#F59E0B' },
-    NEEDS_REVIEW: { label: 'NEEDS REVIEW', bg: 'rgba(251,191,36,0.15)', color: '#F59E0B' },
-    STALE: { label: 'STALE', bg: 'rgba(148,163,184,0.12)', color: '#94A3B8' },
-    EXPIRED: { label: 'EXPIRED', bg: 'rgba(148,163,184,0.12)', color: '#94A3B8' },
+  const map: Record<string, string> = {
+    ENTRY_ZONE_VALID: 'ready', ACTIVE: 'running', ACTIVE_MONITORING: 'running',
+    ENTRY_MISSED: 'warning', NEEDS_REVIEW: 'warning', STALE: 'stale', EXPIRED: 'unknown',
   }
-  const m = map[status] || { label: status?.replace(/_/g, ' ') || 'UNKNOWN', bg: 'rgba(148,163,184,0.12)', color: '#94A3B8' }
-  return <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: m.bg, color: m.color }}>{m.label}</span>
+  return <StatusBadge status={map[status] || 'unknown'} label={status?.replace(/_/g, ' ') || 'UNKNOWN'} />
 }
 
-// ── Pipeline chevron (8 stages) ───────────────────────────────────────
+// -- Pipeline chevron (8 stages) --
 function PipelineChevron({ stages }: { stages: any[] }) {
   if (!stages || stages.length === 0) return null
   const statusIcon: Record<string, { icon: string; color: string }> = {
@@ -797,35 +759,35 @@ function PipelineChevron({ stages }: { stages: any[] }) {
   )
 }
 
-// ── Blocker banner ────────────────────────────────────────────────────
+// -- Blocker banner --
 function BlockerBanner({ p, norm }: { p: any; norm: any }) {
   const lc = p.lifecycle_status || p.entry_zone_status || ''
   const rg = p.risk_gate_result
   if (rg === 'REJECTED' || rg === 'FAIL') {
     return (
       <div style={{ padding: '6px 16px', background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.2)', fontSize: 10, fontWeight: 600, color: '#EF4444' }}>
-        RISK GATE REJECTED — {p.risk_gate_codes ? JSON.stringify(p.risk_gate_codes) : 'Review risk parameters'}
+        RISK GATE REJECTED -- {p.risk_gate_codes ? JSON.stringify(p.risk_gate_codes) : 'Review risk parameters'}
       </div>
     )
   }
   if (lc === 'ENTRY_MISSED') {
     return (
       <div style={{ padding: '6px 16px', background: 'rgba(251,191,36,0.08)', borderBottom: '1px solid rgba(251,191,36,0.2)', fontSize: 10, fontWeight: 600, color: '#F59E0B' }}>
-        ENTRY MISSED — price moved {p.price_drift_pct != null ? `${Math.abs(p.price_drift_pct).toFixed(1)}%` : '?'} from zone (${p.proposed_entry?.toFixed(2)} entry, ${p.current_price?.toFixed(2) || '?'} current). Review or dismiss.
+        ENTRY MISSED -- price moved {p.price_drift_pct != null ? `${Math.abs(p.price_drift_pct).toFixed(1)}%` : '?'} from zone (${p.proposed_entry?.toFixed(2)} entry, ${p.current_price?.toFixed(2) || '?'} current). Review or dismiss.
       </div>
     )
   }
   if (lc === 'ENTRY_ZONE_VALID' && norm.actionState !== 'BLOCKED') {
     return (
       <div style={{ padding: '6px 16px', background: 'rgba(34,197,94,0.06)', borderBottom: '1px solid rgba(34,197,94,0.15)', fontSize: 10, fontWeight: 600, color: '#22C55E' }}>
-        IN ENTRY ZONE — current price ${p.current_price?.toFixed(2) || '?'} is within range
+        IN ENTRY ZONE -- current price ${p.current_price?.toFixed(2) || '?'} is within range
       </div>
     )
   }
   return null
 }
 
-// ── Age display ───────────────────────────────────────────────────────
+// -- Age display --
 function ageStr(createdAt: string | null): string {
   if (!createdAt) return ''
   const ms = Date.now() - new Date(createdAt).getTime()
@@ -834,7 +796,7 @@ function ageStr(createdAt: string | null): string {
   return `${h}h`
 }
 
-// ── Main page ──────────────────────────────────────────────────────────
+// -- Main page --
 export default function PaperProposals() {
   const { data, refetch } = useApi<any>('/api/v2/paper-proposals', 30000)
   const [acting, setActing] = useState<Record<number, string>>({})
@@ -860,13 +822,11 @@ export default function PaperProposals() {
       const r = await fetch(`/api/v2/paper-proposals/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
       if (!d.ok) {
-        // Show block reason including market revalidation details
         const mr = d.market_revalidation
         let msg = d.message || d.error || `${action} failed`
         if (mr && mr.live_price) msg += `\n\nLive: $${mr.live_price} | Drift: ${mr.price_drift_pct ?? '?'}% | R:R: ${mr.live_rr ?? '?'} | Spread: ${mr.live_spread_pct ?? '?'}%`
         alert(msg)
       } else if (action === 'approve' && d.message) {
-        // Show approval confirmation with market revalidation summary
         const mr = d.market_revalidation || d.data?.market_revalidation
         let msg = d.message
         if (mr && mr.live_price) msg += `\n\nLive: $${mr.live_price} | Drift: ${mr.price_drift_pct ?? '?'}% | R:R: ${mr.live_rr ?? '?'}`
@@ -946,10 +906,8 @@ export default function PaperProposals() {
   const allProposals = data?.proposals ?? []
   const pending = allProposals
 
-  // Collect unique strategies for filter dropdown
   const strategies = Array.from(new Set(pending.map((p: any) => p.strategy_id).filter(Boolean))) as string[]
 
-  // Apply filters
   let filtered = pending
   if (strategyFilter !== 'ALL') {
     filtered = filtered.filter((p: any) => p.strategy_id === strategyFilter)
@@ -962,7 +920,6 @@ export default function PaperProposals() {
     filtered = filtered.filter((p: any) => (p.symbol || '').toUpperCase().includes(q))
   }
 
-  // Sort by operator verdict priority, then strategy win rate, then score
   const sorted = [...filtered].sort((a, b) => {
     const sa = a.sort_order ?? 2
     const sb = b.sort_order ?? 2
@@ -975,7 +932,6 @@ export default function PaperProposals() {
 
   const displayed = showAll ? sorted : sorted.slice(0, 5)
 
-  // Count by state for filter labels
   const stateCounts: Record<string, number> = {}
   for (const p of pending) {
     const s = normalizeProposal(p).actionState
@@ -986,31 +942,19 @@ export default function PaperProposals() {
     <div style={{ minHeight: '100vh', overflowY: 'auto', paddingBottom: 40 }}>
       <PageHeader title="Automated Trade Proposals" subtitle={`${pending.length} pending${summary.expired_today ? ` \u00b7 ${summary.expired_today} expired today` : ''}${summary.incubator_ready_count ? ` \u00b7 ${summary.incubator_ready_count} incubator ready` : ''}`} actions={
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowAll(!showAll)} style={{ padding: '4px 10px', fontSize: 10, background: showAll ? 'rgba(59,130,246,0.2)' : 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: showAll ? '#60A5FA' : 'var(--text2)', cursor: 'pointer' }}>
+          <ActionButton variant="secondary" size="sm" onClick={() => setShowAll(!showAll)}>
             {showAll ? `All (${filtered.length})` : 'Top 5'}
-          </button>
-          <button onClick={refetch} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
-          <button onClick={runEnrichAll} disabled={enrichState === 'running'}
-            style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: enrichState === 'running' ? 'wait' : 'pointer',
-              background: enrichState === 'running' ? 'rgba(59,130,246,0.2)' : enrichState === 'done' ? 'rgba(34,197,94,0.2)' : enrichState === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-              border: `1px solid ${enrichState === 'running' ? 'rgba(59,130,246,0.4)' : enrichState === 'done' ? 'rgba(34,197,94,0.4)' : enrichState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`,
-              color: enrichState === 'running' ? '#60A5FA' : enrichState === 'done' ? 'var(--green)' : enrichState === 'error' ? 'var(--red)' : 'var(--green)',
-              minWidth: 90 }}>
+          </ActionButton>
+          <ActionButton variant="secondary" size="sm" onClick={refetch}>Refresh</ActionButton>
+          <ActionButton variant={enrichState === 'done' ? 'primary' : enrichState === 'error' ? 'danger' : 'secondary'} size="sm" loading={enrichState === 'running'} disabled={enrichState === 'running'} onClick={runEnrichAll} style={{ minWidth: 90 }}>
             {enrichState === 'running' ? `Running: ${enrichStep}` : enrichState === 'done' ? 'Done' : enrichState === 'error' ? 'Issues' : 'Enrich All'}
-          </button>
-          <button onClick={runPromote} disabled={promoteState === 'running'}
-            style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: promoteState === 'running' ? 'wait' : 'pointer',
-              background: promoteState === 'running' ? 'rgba(168,85,247,0.2)' : promoteState === 'done' ? 'rgba(34,197,94,0.2)' : promoteState === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(168,85,247,0.15)',
-              border: `1px solid ${promoteState === 'running' ? 'rgba(168,85,247,0.4)' : promoteState === 'done' ? 'rgba(34,197,94,0.4)' : promoteState === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(168,85,247,0.3)'}`,
-              color: promoteState === 'running' ? '#A855F7' : promoteState === 'done' ? 'var(--green)' : promoteState === 'error' ? 'var(--red)' : '#A855F7',
-              minWidth: 140 }}>
+          </ActionButton>
+          <ActionButton variant="secondary" size="sm" loading={promoteState === 'running'} disabled={promoteState === 'running'} onClick={runPromote} style={{ minWidth: 140, color: '#A855F7' }}>
             {promoteState === 'running' ? 'Promoting...' : promoteState === 'done' ? promoteResult : promoteState === 'error' ? promoteResult : 'Promote from Incubator'}
-          </button>
-          <button onClick={() => setShowScreenerConfig(true)}
-            style={{ fontSize: 10, fontWeight: 700, padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
-              background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: '#06B6D4' }}>
+          </ActionButton>
+          <ActionButton variant="secondary" size="sm" onClick={() => setShowScreenerConfig(true)} style={{ color: '#06B6D4', fontWeight: 700 }}>
             Screener Config
-          </button>
+          </ActionButton>
         </div>
       } />
 
@@ -1106,26 +1050,20 @@ export default function PaperProposals() {
 
       {/* Operator verdict summary bar */}
       {pending.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', padding: '6px 0', alignItems: 'center' }}>
-          {[
-            { label: 'Ready', value: summary.ready_count ?? 0, color: '#22C55E', icon: '\u2705' },
-            { label: 'Need Action', value: summary.needs_review_count ?? 0, color: '#F59E0B', icon: '\u26a0\ufe0f' },
-            { label: 'Stale Quote', value: summary.stale_count ?? 0, color: '#F97316', icon: '\ud83d\udd70' },
-            { label: 'Entry Missed', value: summary.entry_missed_count ?? 0, color: '#EF4444', icon: '\u26d4' },
-          ].map(m => (
-            <div key={m.label} style={{ padding: '4px 10px', borderRadius: 6, background: 'var(--bg1)', border: '1px solid var(--border)', textAlign: 'center', minWidth: 70 }}>
-              <div style={{ fontSize: 7, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{m.icon} {m.label}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: m.color, fontFamily: 'monospace' }}>{m.value}</div>
-            </div>
-          ))}
-          {/* Dismiss All Entry Missed button */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 8, marginBottom: 10 }}>
+          <StateCard title="Ready" value={summary.ready_count ?? 0} status="ready" compact />
+          <StateCard title="Need Action" value={summary.needs_review_count ?? 0} status="warning" compact />
+          <StateCard title="Stale Quote" value={summary.stale_count ?? 0} status="stale" compact />
+          <StateCard title="Entry Missed" value={summary.entry_missed_count ?? 0} status="blocked" compact />
           {(summary.entry_missed_count ?? 0) > 0 && (
-            <button onClick={async () => {
-              const missed = pending.filter((p: any) => p.operator_verdict === 'ENTRY_MISSED')
-              for (const p of missed) await act(p.id, 'reject')
-            }} style={{ padding: '5px 10px', fontSize: 9, fontWeight: 600, borderRadius: 5, cursor: 'pointer', color: 'var(--red)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-              Dismiss All Entry Missed
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <ActionButton variant="danger" size="sm" onClick={async () => {
+                const missed = pending.filter((p: any) => p.operator_verdict === 'ENTRY_MISSED')
+                for (const p of missed) await act(p.id, 'reject')
+              }}>
+                Dismiss All Entry Missed
+              </ActionButton>
+            </div>
           )}
         </div>
       )}
@@ -1143,7 +1081,7 @@ export default function PaperProposals() {
         <div style={{ padding: '6px 14px', marginBottom: 10, borderRadius: 6, fontSize: 10,
           background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)', color: '#F59E0B' }}>
           {(summary.multi_strategy_symbols || []).map((ms: any) => (
-            <span key={ms.symbol} style={{ marginRight: 12 }}>{ms.symbol} has {ms.count} proposals ({ms.strategies.join(', ')}) — approve at most 1</span>
+            <span key={ms.symbol} style={{ marginRight: 12 }}>{ms.symbol} has {ms.count} proposals ({ms.strategies.join(', ')}) -- approve at most 1</span>
           ))}
         </div>
       )}
