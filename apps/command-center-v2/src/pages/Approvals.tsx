@@ -8,6 +8,9 @@ import { useApi } from '../hooks/useApi'
 import { fmt$, timeAgo } from '../lib/format'
 import AccountBadge from '../components/AccountBadge'
 import ProposalDetailDrawer from '../components/ProposalDetailDrawer'
+import { StatusBadge } from '../components/StatusBadge'
+import { SeverityBadge } from '../components/SeverityBadge'
+import { ActionButton } from '../components/ActionButton'
 
 interface JohnTask { id: number; source: string; category: string; symbol: string; title: string; description: string; priority: string; status: string; recommendation: string; confidence: number; due_by: string; linked_route: string; followup: string; decided_at: string; created_at: string; provenance: Record<string, unknown> }
 interface TasksData { count: number; tasks: JohnTask[]; urgent: number; pending: number; failed_automation: number }
@@ -28,10 +31,12 @@ interface ApprovalData { count: number; pending: QueueItem[] }
 interface DecisionItem { id: number; action_queue_id: number; decision: string; decision_reason: string; decided_by: string; decided_at: string; notes: string; symbol: string | null; action: string; rationale: string; confidence: number }
 interface HistoryData { count: number; decisions: DecisionItem[] }
 
+const urgencyToStatus: Record<string, string> = { urgent: 'blocked', normal: 'warning', low: 'unknown' }
 const urgencyColor: Record<string, string> = { urgent: 'var(--red)', normal: 'var(--amber)', low: 'var(--text3)' }
 const urgencyBg: Record<string, string> = { urgent: 'var(--red-dim)', normal: 'var(--amber-dim)', low: 'var(--bg3)' }
 const ACTION_ICON: Record<string, string> = { STOP_REVIEW: '\u{1f6d1}', ALLOCATION_REVIEW: '\u2696', REBALANCE: '\u2696', TRIM: '\u2702', ADD: '\u2795', BUY: '\u{1f4b0}' }
 const lbl: React.CSSProperties = { fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.3px' }
+const priorityToSeverity: Record<string, string> = { urgent: 'critical', high: 'high', normal: 'medium', low: 'low' }
 
 export default function Approvals() {
   const navigate = useNavigate()
@@ -105,14 +110,14 @@ export default function Approvals() {
       })()} />
 
       <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
-        Advisory only — execute all trades at your broker. Decision Tasks = items from pipeline runs requiring yes/no. Approvals = agent recommendations requiring your action. "Auto-review failed" = AI couldn't decide automatically, needs your judgment.
+        Advisory only -- execute all trades at your broker. Decision Tasks = items from pipeline runs requiring yes/no. Approvals = agent recommendations requiring your action. "Auto-review failed" = AI couldn't decide automatically, needs your judgment.
       </div>
       {/* Quick nav */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/morning-brief')} style={linkStyle}>Morning Brief</button>
-        <button onClick={() => navigate('/risk')} style={linkStyle}>Risk</button>
-        <button onClick={() => navigate('/recovery')} style={linkStyle}>Recovery</button>
-        <button onClick={() => navigate('/actions')} style={linkStyle}>Actions</button>
+        <ActionButton variant="ghost" size="sm" onClick={() => navigate('/morning-brief')}>Morning Brief</ActionButton>
+        <ActionButton variant="ghost" size="sm" onClick={() => navigate('/risk')}>Risk</ActionButton>
+        <ActionButton variant="ghost" size="sm" onClick={() => navigate('/recovery')}>Recovery</ActionButton>
+        <ActionButton variant="ghost" size="sm" onClick={() => navigate('/actions')}>Actions</ActionButton>
       </div>
 
       {/* Status filter tabs */}
@@ -136,7 +141,7 @@ export default function Approvals() {
         </div>
       )}
 
-      {/* ═══ JOHN DECISION TASKS ═══ */}
+      {/* JOHN DECISION TASKS */}
       {(activeJohnTasks.length > 0 || statusFilter !== 'pending') && (
         <>
           <SectionHeader title="Decision Tasks" count={activeJohnTasks.length} />
@@ -154,12 +159,12 @@ export default function Approvals() {
                   }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg3)' }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '' }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3, textTransform: 'uppercase', background: `color-mix(in srgb, ${priColor} 15%, transparent)`, color: priColor }}>{task.priority}</span>
-                    {isFailed && <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: 'var(--red-dim)', color: 'var(--red)' }}>FAILED AUTO</span>}
+                    <SeverityBadge severity={priorityToSeverity[task.priority] || 'medium'} label={task.priority} />
+                    {isFailed && <SeverityBadge severity="critical" label="FAILED AUTO" />}
                     <span style={{ fontWeight: 800, color: 'var(--text0)', fontSize: 12 }}>{task.symbol}</span>
                     <span style={{ flex: 1, fontSize: 10, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</span>
                     {task.due_by && <span style={{ fontSize: 9, color: priColor, fontWeight: 600 }}>{task.due_by}</span>}
-                    <span style={{ fontSize: 9, color: priColor, fontWeight: 700 }}>Review →</span>
+                    <span style={{ fontSize: 9, color: priColor, fontWeight: 700 }}>Review &rarr;</span>
                   </div>
                 )
               })}
@@ -168,14 +173,14 @@ export default function Approvals() {
         </>
       )}
 
-      {/* ═══ DECIDED TASKS ═══ */}
+      {/* DECIDED TASKS */}
       {taskDecided.size > 0 && (
         <>
           <SectionHeader title="Just Decided" count={taskDecided.size} />
           <Card compact>
             {johnTasks.filter(t => taskDecided.has(t.id)).map(t => (
               <div key={t.id} style={{ display: 'flex', gap: 8, fontSize: 10, color: 'var(--text2)', padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span style={{ fontWeight: 700, color: 'var(--green)' }}>Decided</span>
+                <StatusBadge status="complete" label="Decided" />
                 <span>{t.symbol}</span>
               </div>
             ))}
@@ -183,7 +188,7 @@ export default function Approvals() {
         </>
       )}
 
-      {/* ═══ APPROVAL QUEUE ═══ */}
+      {/* APPROVAL QUEUE */}
       {(activePending.length > 0 || statusFilter !== 'pending') && <SectionHeader title="Approval Queue" count={activePending.length} />}
       {activePending.length === 0 && activeJohnTasks.length === 0 ? (
         <Card><div style={{ color: 'var(--text3)', textAlign: 'center', padding: 40 }}>
@@ -212,11 +217,11 @@ export default function Approvals() {
                   <span style={{ fontSize: 20 }}>{icon}</span>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 3, textTransform: 'uppercase', background: urgencyBg[item.urgency], color: urgencyColor[item.urgency] }}>{item.urgency}</span>
+                      <StatusBadge status={urgencyToStatus[item.urgency] || 'unknown'} label={item.urgency} />
                       <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text0)' }}>{item.action.replace(/_/g, ' ')}</span>
                       {sym && <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>{sym}</span>}
                       <AccountBadge account={(item as any).account} />
-                      {isStale && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: 'var(--red-dim)', color: 'var(--red)' }}>STALE</span>}
+                      {isStale && <StatusBadge status="stale" label="STALE" />}
                     </div>
                     <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
                       Queue #{item.id} | {item.rec_model === 'aegis' ? <span style={{ color: 'var(--accent)', fontWeight: 700 }}>Aegis</span> : `Source: ${item.rec_model || 'rule'}`} | {timeAgo(item.created_at)}
@@ -289,7 +294,7 @@ export default function Approvals() {
                     {ev.article_context && ev.article_context.article_count_7d != null && (
                       <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text2)' }}>
                         {ev.article_context.article_count_7d} articles in 7d ({ev.article_context.analyst_article_count || 0} analyst)
-                        {ev.article_context.categories && ` — ${ev.article_context.categories.join(', ')}`}
+                        {ev.article_context.categories && ` -- ${ev.article_context.categories.join(', ')}`}
                       </div>
                     )}
                   </div>
@@ -306,18 +311,18 @@ export default function Approvals() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                               <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--red)' }}>{p.symbol}</span>
                               {p.name && <span style={{ fontSize: 9, color: 'var(--text2)' }}>{p.name}</span>}
-                              <span style={{ marginLeft: 'auto', fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: 'var(--red)', color: '#fff' }}>TRIGGERED</span>
+                              <span style={{ marginLeft: 'auto' }}><StatusBadge status="blocked" label="TRIGGERED" /></span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, fontSize: 10 }}>
                               <div><div style={lbl}>Current Price</div><div style={{ fontWeight: 700, color: 'var(--text0)' }}>{p.current_price ? fmt$(p.current_price, 2) : 'N/A'}</div></div>
-                              <div><div style={lbl}>Stop Price</div><div style={{ fontWeight: 700, color: 'var(--red)' }}>{p.stop_price ? fmt$(p.stop_price, 2) : '—'}</div></div>
-                              <div><div style={lbl}>Distance</div><div style={{ fontWeight: 700, color: p.distance_pct != null && p.distance_pct < 0 ? 'var(--red)' : 'var(--amber)' }}>{p.distance_pct != null ? `${p.distance_pct.toFixed(1)}%` : '—'}</div></div>
-                              <div><div style={lbl}>Shares Held</div><div style={{ fontWeight: 700 }}>{p.shares ? p.shares.toFixed(1) : '—'}</div></div>
+                              <div><div style={lbl}>Stop Price</div><div style={{ fontWeight: 700, color: 'var(--red)' }}>{p.stop_price ? fmt$(p.stop_price, 2) : '--'}</div></div>
+                              <div><div style={lbl}>Distance</div><div style={{ fontWeight: 700, color: p.distance_pct != null && p.distance_pct < 0 ? 'var(--red)' : 'var(--amber)' }}>{p.distance_pct != null ? `${p.distance_pct.toFixed(1)}%` : '--'}</div></div>
+                              <div><div style={lbl}>Shares Held</div><div style={{ fontWeight: 700 }}>{p.shares ? p.shares.toFixed(1) : '--'}</div></div>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, fontSize: 10, marginTop: 6 }}>
                               <div><div style={lbl}>Total Position</div><div style={{ fontWeight: 700 }}>{p.total_position_value ? fmt$(p.total_position_value) : fmt$(p.market_value)}</div></div>
-                              <div><div style={lbl}>P&L If Stopped Out</div><div style={{ fontWeight: 700, color: p.pnl_if_stopped != null && p.pnl_if_stopped > 0 ? 'var(--green)' : 'var(--red)' }}>{p.pnl_if_stopped != null ? `${p.pnl_if_stopped >= 0 ? '+' : ''}${fmt$(p.pnl_if_stopped)}` : '—'}</div></div>
-                              <div><div style={lbl}>Value At Stop</div><div style={{ fontWeight: 700, color: 'var(--text2)' }}>{p.stop_price && p.shares ? fmt$(p.stop_price * p.shares) : '—'}</div></div>
+                              <div><div style={lbl}>P&L If Stopped Out</div><div style={{ fontWeight: 700, color: p.pnl_if_stopped != null && p.pnl_if_stopped > 0 ? 'var(--green)' : 'var(--red)' }}>{p.pnl_if_stopped != null ? `${p.pnl_if_stopped >= 0 ? '+' : ''}${fmt$(p.pnl_if_stopped)}` : '--'}</div></div>
+                              <div><div style={lbl}>Value At Stop</div><div style={{ fontWeight: 700, color: 'var(--text2)' }}>{p.stop_price && p.shares ? fmt$(p.stop_price * p.shares) : '--'}</div></div>
                             </div>
                             {(p.rsi != null || p.sma200_pct != null || p.beta != null) && (
                               <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: 9, color: 'var(--text2)' }}>
@@ -338,9 +343,9 @@ export default function Approvals() {
                         {(rc.danger || []).map((p, i) => (
                           <div key={i} style={{ display: 'flex', gap: 10, padding: '4px 8px', background: 'var(--amber-dim)', borderRadius: 'var(--radius)', fontSize: 10, marginBottom: 3 }}>
                             <strong style={{ color: 'var(--amber)', width: 40 }}>{p.symbol}</strong>
-                            <span>{p.current_price ? fmt$(p.current_price, 2) : '—'}</span>
-                            <span>stop {p.stop_price ? fmt$(p.stop_price, 2) : '—'}</span>
-                            <span>{p.distance_pct != null ? `${p.distance_pct.toFixed(1)}%` : '—'}</span>
+                            <span>{p.current_price ? fmt$(p.current_price, 2) : '--'}</span>
+                            <span>stop {p.stop_price ? fmt$(p.stop_price, 2) : '--'}</span>
+                            <span>{p.distance_pct != null ? `${p.distance_pct.toFixed(1)}%` : '--'}</span>
                             <span>{p.shares ? `${p.shares.toFixed(1)} sh` : ''}</span>
                             {p.pnl_if_stopped != null && <span style={{ color: p.pnl_if_stopped >= 0 ? 'var(--green)' : 'var(--red)' }}>P&L: {p.pnl_if_stopped >= 0 ? '+' : ''}{fmt$(p.pnl_if_stopped)}</span>}
                           </div>
@@ -351,7 +356,7 @@ export default function Approvals() {
                       <div style={{ marginTop: 6 }}>
                         <div style={{ ...lbl, marginBottom: 4, color: 'var(--text3)' }}>Warning ({rc.warning.length})</div>
                         {rc.warning.map((p: any, i: number) => (
-                          <div key={i} style={{ fontSize: 9, color: 'var(--text2)', padding: '2px 0' }}>{p.symbol} — {p.current_price ? fmt$(p.current_price, 2) : '—'} / stop {p.stop_price ? fmt$(p.stop_price, 2) : '—'}</div>
+                          <div key={i} style={{ fontSize: 9, color: 'var(--text2)', padding: '2px 0' }}>{p.symbol} -- {p.current_price ? fmt$(p.current_price, 2) : '--'} / stop {p.stop_price ? fmt$(p.stop_price, 2) : '--'}</div>
                         ))}
                       </div>
                     )}
@@ -368,10 +373,10 @@ export default function Approvals() {
                       {rc.position.name && <span style={{ fontSize: 9, color: 'var(--text2)' }}>{rc.position.name}</span>}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, fontSize: 10 }}>
-                      <div><div style={lbl}>Current Price</div><div style={{ fontWeight: 700 }}>{rc.position.current_price ? fmt$(rc.position.current_price, 2) : '—'}</div></div>
+                      <div><div style={lbl}>Current Price</div><div style={{ fontWeight: 700 }}>{rc.position.current_price ? fmt$(rc.position.current_price, 2) : '--'}</div></div>
                       <div><div style={lbl}>Market Value</div><div style={{ fontWeight: 700 }}>{fmt$(rc.position.market_value)}</div></div>
                       <div><div style={lbl}>Stop</div><div>{rc.position.stop_price ? fmt$(rc.position.stop_price, 2) : 'None'}</div></div>
-                      <div><div style={lbl}>Distance</div><div>{rc.position.distance_pct != null ? `${rc.position.distance_pct.toFixed(1)}%` : '—'}</div></div>
+                      <div><div style={lbl}>Distance</div><div>{rc.position.distance_pct != null ? `${rc.position.distance_pct.toFixed(1)}%` : '--'}</div></div>
                       <div><div style={lbl}>Max Loss</div><div style={{ color: 'var(--red)' }}>{fmt$(rc.position.max_loss)}</div></div>
                     </div>
                     {(rc.position.rsi != null || rc.position.sma200_pct != null || rc.position.beta != null) && (
@@ -413,15 +418,15 @@ export default function Approvals() {
                 {/* Supporting links */}
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                   <span style={{ fontSize: 9, color: 'var(--text3)', alignSelf: 'center' }}>Review in:</span>
-                  <button onClick={() => navigate(`/risk${sym ? `?symbol=${sym}` : ''}`)} style={linkStyle}>Risk</button>
-                  <button onClick={() => navigate(`/portfolio${sym ? `?symbol=${sym}` : ''}`)} style={linkStyle}>Holdings</button>
-                  {sym && <button onClick={() => navigate(`/research?symbol=${sym}`)} style={linkStyle}>Research</button>}
-                  <button onClick={() => navigate('/alerts')} style={linkStyle}>Alerts</button>
-                  <button onClick={() => navigate('/notifications')} style={linkStyle}>Notifications</button>
-                  <button onClick={() => navigate('/recovery')} style={linkStyle}>Recovery Watch</button>
-                  {item.action === 'ALLOCATION_REVIEW' && <button onClick={() => navigate('/rebalance')} style={linkStyle}>Rebalance</button>}
-                  {sym && <a href={`https://finviz.com/quote.ashx?t=${sym}`} target="_blank" rel="noreferrer" style={{ ...linkStyle, textDecoration: 'none' }}>Finviz</a>}
-                  <button onClick={() => setSelectedProposalId(item.id)} style={{ ...linkStyle, border: '1px solid var(--accent)', color: 'var(--accent)', fontWeight: 700 }}>Full Context</button>
+                  <ActionButton variant="ghost" size="sm" onClick={() => navigate(`/risk${sym ? `?symbol=${sym}` : ''}`)}>Risk</ActionButton>
+                  <ActionButton variant="ghost" size="sm" onClick={() => navigate(`/portfolio${sym ? `?symbol=${sym}` : ''}`)}>Holdings</ActionButton>
+                  {sym && <ActionButton variant="ghost" size="sm" onClick={() => navigate(`/research?symbol=${sym}`)}>Research</ActionButton>}
+                  <ActionButton variant="ghost" size="sm" onClick={() => navigate('/alerts')}>Alerts</ActionButton>
+                  <ActionButton variant="ghost" size="sm" onClick={() => navigate('/notifications')}>Notifications</ActionButton>
+                  <ActionButton variant="ghost" size="sm" onClick={() => navigate('/recovery')}>Recovery Watch</ActionButton>
+                  {item.action === 'ALLOCATION_REVIEW' && <ActionButton variant="ghost" size="sm" onClick={() => navigate('/rebalance')}>Rebalance</ActionButton>}
+                  {sym && <a href={`https://finviz.com/quote.ashx?t=${sym}`} target="_blank" rel="noreferrer" style={{ fontSize: 10, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'transparent', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>Finviz</a>}
+                  <ActionButton variant="secondary" size="sm" onClick={() => setSelectedProposalId(item.id)} style={{ border: '1px solid var(--accent)', color: 'var(--accent)', fontWeight: 700 }}>Full Context</ActionButton>
                 </div>
 
                 {/* Decision controls */}
@@ -432,14 +437,12 @@ export default function Approvals() {
                       placeholder="What did you verify? Why approve or reject?"
                       rows={2} style={{ width: '100%', padding: '6px 8px', fontSize: 10, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text1)', fontFamily: 'var(--mono)', resize: 'vertical', outline: 'none' }} />
                   </div>
-                  <button onClick={() => handleDecision(item.id, 'approved')} disabled={!!deciding[item.id]}
-                    style={{ padding: '6px 14px', fontSize: 10, fontWeight: 700, border: '1px solid var(--green)', borderRadius: 'var(--radius)', background: 'var(--green-dim)', color: 'var(--green)', cursor: 'pointer', fontFamily: 'var(--mono)', opacity: deciding[item.id] ? 0.5 : 1 }}>
+                  <ActionButton variant="primary" size="md" loading={deciding[item.id] === 'approved'} disabled={!!deciding[item.id]} onClick={() => handleDecision(item.id, 'approved')} style={{ background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)' }}>
                     {deciding[item.id] === 'approved' ? 'Saving...' : 'Approve'}
-                  </button>
-                  <button onClick={() => handleDecision(item.id, 'rejected')} disabled={!!deciding[item.id]}
-                    style={{ padding: '6px 14px', fontSize: 10, fontWeight: 700, border: '1px solid var(--red)', borderRadius: 'var(--radius)', background: 'var(--red-dim)', color: 'var(--red)', cursor: 'pointer', fontFamily: 'var(--mono)', opacity: deciding[item.id] ? 0.5 : 1 }}>
+                  </ActionButton>
+                  <ActionButton variant="danger" size="md" loading={deciding[item.id] === 'rejected'} disabled={!!deciding[item.id]} onClick={() => handleDecision(item.id, 'rejected')}>
                     {deciding[item.id] === 'rejected' ? 'Saving...' : 'Reject'}
-                  </button>
+                  </ActionButton>
                 </div>
               </div>
             )
@@ -454,10 +457,10 @@ export default function Approvals() {
           <Card compact>
             {pending.filter(item => decided.has(item.id)).map(item => (
               <div key={item.id} style={{ display: 'flex', gap: 8, fontSize: 10, color: 'var(--text2)', padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span style={{ fontWeight: 700, color: 'var(--green)' }}>Decided</span>
+                <StatusBadge status="complete" label="Decided" />
                 <span>{item.action.replace(/_/g, ' ')}</span>
                 {(item.rec_symbol || item.symbol) && <span style={{ color: 'var(--accent)' }}>{item.rec_symbol || item.symbol}</span>}
-                <span style={{ color: 'var(--text3)' }}>— {(notes[item.id] || '').slice(0, 50)}</span>
+                <span style={{ color: 'var(--text3)' }}>-- {(notes[item.id] || '').slice(0, 50)}</span>
               </div>
             ))}
           </Card>
@@ -472,12 +475,12 @@ export default function Approvals() {
         <Card>
           {history.map(d => (
             <div key={d.id} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, alignItems: 'center' }}>
-              <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 3, textTransform: 'uppercase', background: d.decision === 'approved' ? 'var(--green-dim)' : 'var(--red-dim)', color: d.decision === 'approved' ? 'var(--green)' : 'var(--red)' }}>{d.decision}</span>
-              <span style={{ fontWeight: 600, color: 'var(--text0)' }}>{d.action?.replace(/_/g, ' ') || '—'}</span>
+              <StatusBadge status={d.decision === 'approved' ? 'complete' : 'blocked'} label={d.decision} />
+              <span style={{ fontWeight: 600, color: 'var(--text0)' }}>{d.action?.replace(/_/g, ' ') || '--'}</span>
               {d.symbol && <span style={{ color: 'var(--accent)' }}>{d.symbol}</span>}
-              <span style={{ flex: 1, color: 'var(--text2)' }}>{d.notes || d.decision_reason || '—'}</span>
+              <span style={{ flex: 1, color: 'var(--text2)' }}>{d.notes || d.decision_reason || '--'}</span>
               <span style={{ color: 'var(--text3)' }}>{d.decided_by}</span>
-              <span style={{ color: 'var(--text3)' }}>{d.decided_at ? timeAgo(d.decided_at) : '—'}</span>
+              <span style={{ color: 'var(--text3)' }}>{d.decided_at ? timeAgo(d.decided_at) : '--'}</span>
             </div>
           ))}
         </Card>
@@ -489,5 +492,3 @@ export default function Approvals() {
     </>
   )
 }
-
-const linkStyle: React.CSSProperties = { fontSize: 9, padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg3)', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'var(--mono)' }
