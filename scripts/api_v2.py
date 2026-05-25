@@ -17678,11 +17678,163 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 ORDER BY cnt DESC
             """) or []
 
+            # ══════════════════════════════════════════════════════════
+            # COLLABORATION SCORING — 7 derived fields
+            # ══════════════════════════════════════════════════════════
+
+            scoring = {}
+
+            # 1. collaboration_outcome — per-handoff: completed vs open vs escalated
+            _ho = _db_query("""
+                SELECT
+                  COUNT(*) as total,
+                  COUNT(*) FILTER (WHERE status IN ('completed','done')) as completed,
+                  COUNT(*) FILTER (WHERE status NOT IN ('completed','done')) as open,
+                  COUNT(*) FILTER (WHERE escalated=true) as escalated
+                FROM agent_handoffs
+            """, fetch="one") or {}
+            scoring["collaboration_outcome"] = {
+                "total_handoffs": _ho.get("total", 0),
+                "completed": _ho.get("completed", 0),
+                "open": _ho.get("open", 0),
+                "escalated": _ho.get("escalated", 0),
+                "completion_rate": round(_ho["completed"] / _ho["total"], 3) if _ho.get("total") else None,
+            }
+
+            # 2. handoff_resolution_time — median time from created_at to latest status change
+            _hrt = _db_query("""
+                SELECT
+                  AVG(EXTRACT(EPOCH FROM (COALESCE(
+                    (SELECT MAX(h2.created_at) FROM agent_handoffs h2
+                     WHERE h2.symbol=h.symbol AND h2.from_agent=h.to_agent AND h2.created_at > h.created_at),
+                    h.created_at
+                  ) - h.created_at)) / 3600) as avg_hours,
+                  MIN(EXTRACT(EPOCH FROM (COALESCE(
+                    (SELECT MAX(h2.created_at) FROM agent_handoffs h2
+                     WHERE h2.symbol=h.symbol AND h2.from_agent=h.to_agent AND h2.created_at > h.created_at),
+                    h.created_at
+                  ) - h.created_at)) / 3600) as min_hours,
+                  MAX(EXTRACT(EPOCH FROM (COALESCE(
+                    (SELECT MAX(h2.created_at) FROM agent_handoffs h2
+                     WHERE h2.symbol=h.symbol AND h2.from_agent=h.to_agent AND h2.created_at > h.created_at),
+                    h.created_at
+                  ) - h.created_at)) / 3600) as max_hours
+                FROM agent_handoffs h
+                WHERE h.status IN ('completed','done')
+                AND h.created_at > NOW() - INTERVAL '30 days'
+            """, fetch="one") or {}
+            scoring["handoff_resolution_time"] = {
+                "avg_hours": round(float(_hrt.get("avg_hours") or 0), 1),
+                "min_hours": round(float(_hrt.get("min_hours") or 0), 1),
+                "max_hours": round(float(_hrt.get("max_hours") or 0), 1),
+                "period": "30d",
+            }
+
+            # 3. agent_agreement_score — from debate consensus_score
+            _deb = _db_query("""
+                SELECT
+                  COUNT(*) as total_debates,
+                  AVG(consensus_score) as avg_consensus,
+                  COUNT(*) FILTER (WHERE consensus_score >= 0.7) as high_agreement,
+                  COUNT(*) FILTER (WHERE consensus_score < 0.5) as low_agreement,
+                  COUNT(*) FILTER (WHERE escalated_to_alex=true) as escalated
+                FROM agent_debate_log
+            """, fetch="one") or {}
+            scoring["agent_agreement_score"] = {
+                "total_debates": _deb.get("total_debates", 0),
+                "avg_consensus": round(float(_deb.get("avg_consensus") or 0), 3),
+                "high_agreement": _deb.get("high_agreement", 0),
+                "low_agreement": _deb.get("low_agreement", 0),
+                "escalated_to_alex": _deb.get("escalated", 0),
+            }
+
+            # 4. evidence_completeness — from watchlist_agent_results coverage
+            _ev = _db_query("""
+                SELECT
+                  COUNT(DISTINCT symbol) as symbols_analyzed,
+                  COUNT(*) as total_results,
+                  COUNT(DISTINCT agent) as agents_active,
+                  AVG(confidence) as avg_confidence,
+                  COUNT(*) FILTER (WHERE confidence IS NULL OR confidence < 0.3) as low_confidence,
+                  COUNT(*) FILTER (WHERE confidence >= 0.6) as high_confidence
+                FROM watchlist_agent_results
+                WHERE created_at > NOW() - INTERVAL '7 days'
+            """, fetch="one") or {}
+            scoring["evidence_completeness"] = {
+                "symbols_analyzed_7d": _ev.get("symbols_analyzed", 0),
+                "total_results_7d": _ev.get("total_results", 0),
+                "agents_active": _ev.get("agents_active", 0),
+                "avg_confidence": round(float(_ev.get("avg_confidence") or 0), 3),
+                "low_confidence_count": _ev.get("low_confidence", 0),
+                "high_confidence_count": _ev.get("high_confidence", 0),
+            }
+
+            # 5. stale_remediation_result — from state_freshness_history
+            _sr = _db_query("""
+                SELECT
+                  COUNT(*) as total_checks,
+                  COUNT(*) FILTER (WHERE ok=true) as fresh,
+                  COUNT(*) FILTER (WHERE ok=false) as stale,
+                  MAX(checked_at) as last_check
+                FROM state_freshness_history
+                WHERE checked_at = (SELECT MAX(checked_at) FROM state_freshness_history)
+            """, fetch="one") or {}
+            scoring["stale_remediation_result"] = {
+                "total_products": _sr.get("total_checks", 0),
+                "fresh": _sr.get("fresh", 0),
+                "stale": _sr.get("stale", 0),
+                "freshness_rate": round(_sr["fresh"] / _sr["total_checks"], 3) if _sr.get("total_checks") else None,
+                "last_check": _json_clean(_sr.get("last_check")),
+            }
+
+            # 6. mission_raci_process_key — load RACI config and map to missions
+            import yaml
+            _raci_path = PROJECT_ROOT / "config" / "agent_raci.yaml"
+            _raci_processes = []
+            if _raci_path.exists():
+                try:
+                    _raci_cfg = yaml.safe_load(_raci_path.read_text()) or {}
+                    _raci_processes = _raci_cfg.get("processes", [])
+                except Exception:
+                    pass
+            scoring["mission_raci_process_key"] = {
+                "processes_defined": len(_raci_processes),
+                "processes": [{
+                    "id": p.get("id"),
+                    "name": p.get("name"),
+                    "trigger": p.get("trigger"),
+                    "frequency": p.get("frequency"),
+                    "agents": list((p.get("raci") or {}).keys()),
+                    "roles": p.get("raci", {}),
+                } for p in _raci_processes],
+                "source": "config/agent_raci.yaml",
+            }
+
+            # 7. collaboration_event_timeline — recent events across all collaboration tables
+            _timeline = _db_query("""
+                (SELECT 'handoff' as event_type, from_agent as agent, symbol, intent as detail, status, created_at
+                 FROM agent_handoffs WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 15)
+                UNION ALL
+                (SELECT 'event' as event_type, agents_to_notify::text as agent, symbol, event_type as detail, status, created_at
+                 FROM agent_event_queue WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at DESC LIMIT 10)
+                UNION ALL
+                (SELECT 'debate' as event_type, participants::text as agent, symbol, consensus_recommendation as detail, status, created_at
+                 FROM agent_debate_log ORDER BY created_at DESC LIMIT 5)
+                UNION ALL
+                (SELECT 'brief' as event_type, 'aegis' as agent, symbol, thesis_status as detail,
+                        CASE WHEN needs_steph_review THEN 'needs_review' ELSE 'complete' END as status, observed_at as created_at
+                 FROM aegis_portfolio_briefs WHERE observed_at > NOW() - INTERVAL '48 hours' AND (needs_steph_review=true OR thesis_status IN ('warning','danger','triggered'))
+                 ORDER BY observed_at DESC LIMIT 10)
+                ORDER BY created_at DESC LIMIT 30
+            """) or []
+            scoring["collaboration_event_timeline"] = _jc(_timeline)
+
             return 200, {"ok": True, "data": {
                 "summary": summary,
                 "john_next_actions": john_actions[:7],
                 "mission_groups": missions,
                 "agent_network": _jc(network),
+                "scoring": scoring,
             }}
         except Exception as e:
             import traceback; traceback.print_exc()
