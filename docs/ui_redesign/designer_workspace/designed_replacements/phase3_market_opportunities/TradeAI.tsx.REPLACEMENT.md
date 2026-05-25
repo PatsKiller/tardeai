@@ -1,3 +1,12 @@
+# TradeAI.tsx Replacement
+
+**Target repo path:** `apps/command-center-v2/src/pages/TradeAI.tsx`
+
+**Original SHA256:** `100acd120f2bba7fa9dba07bb675e2c9e66e199a92f922b79d07c470e626e907`
+
+## Full Replacement
+
+```tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
@@ -632,3 +641,37 @@ export default function TradeAI() {
     </>
   )
 }
+```
+
+## Acceptance Checklist
+
+- [ ] Title changed from "Trade AI" to "Market Opportunities"
+- [ ] Subtitle includes "Trade AI signals, regime context, opportunity ranking, and next actions"
+- [ ] StateCard used for top summary metrics (GO, WAIT, NO GO, VIX, Regime, Last Run, Top Ticker, Deltas) with `title=` prop (NOT `label=`)
+- [ ] StatusBadge used for GO/WAIT/NO_GO decisions per ticker in table column via `status=` prop
+- [ ] StatusBadge used for run health banner, catalyst verified/unverified, delta drift indicator
+- [ ] SeverityBadge used for disqualification warning, critic verdict, foreign issuer warning
+- [ ] ActionButton uses children pattern (`<ActionButton>Text</ActionButton>`) -- NO `label=` prop anywhere
+- [ ] ActionButton used for decision filter buttons (ALL/GO/WAIT)
+- [ ] ActionButton used for TOS copy buttons
+- [ ] ActionButton used for drawer drillthrough buttons (Open Research, Open Watchlist)
+- [ ] All existing TypeScript interfaces preserved identically (Ticker, RunHistoryItem, TradeAIData)
+- [ ] `useApi('/api/v2/trade-ai')` call preserved unchanged
+- [ ] All existing fetch() calls preserved (iris/integrity, indicators/batch)
+- [ ] All existing useEffect hooks preserved
+- [ ] All existing state variables preserved
+- [ ] DataGrid columns and rendering logic preserved
+- [ ] DetailDrawer with all DrawerSections preserved
+- [ ] ConfluenceBadge rendering preserved
+- [ ] BarChartJS run history chart preserved
+- [ ] Sector distribution chart preserved
+- [ ] ScalpLiveFeed component preserved
+- [ ] Empty states added for: loading, no tickers, no sector data
+- [ ] No trading execution buttons present
+- [ ] No `<AgentChip agent=` anywhere (correct: `name=`)
+- [ ] No `<ActionButton label=` anywhere (correct: children)
+- [ ] No `<StateCard label=` anywhere (correct: `title=`)
+- [ ] All imports added for StatusBadge, SeverityBadge, ActionButton, StateCard
+- [ ] Position sizing info preserved in drawer
+- [ ] Grade legend preserved
+- [ ] TOS export copy-to-clipboard preserved

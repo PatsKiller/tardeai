@@ -1,3 +1,12 @@
+# Prospects.tsx Replacement
+
+**Target repo path:** `apps/command-center-v2/src/pages/Prospects.tsx`
+
+**Original SHA256:** `b2d6fd13148ad576ddfbc9d5af777fa28f3a3727de868c8ef36bf2b8bbdd8de4`
+
+## Full Replacement
+
+```tsx
 import React, { useState, useEffect, useCallback } from 'react'
 import { StatusBadge } from '../components/StatusBadge'
 import { SeverityBadge } from '../components/SeverityBadge'
@@ -507,3 +516,42 @@ export default function Prospects() {
     </div>
   )
 }
+```
+
+## Acceptance Checklist
+
+- [ ] Title changed from "PROSPECTS" to "Prospect Discovery"
+- [ ] Subtitle changed to "Filtered candidates, missing evidence, and graduation path"
+- [ ] StateCard used for summary metrics (Total Prospects, GO, WAIT, AVOID, Last Scan, Strategy) with `title=` prop (NOT `label=`)
+- [ ] StatusBadge used for run health display in header via `status=` prop
+- [ ] StatusBadge used for decision badges per ticker in table (GO/WAIT/AVOID)
+- [ ] StatusBadge used for HELD badge, incubator lifecycle state badges, catalyst indicator
+- [ ] StatusBadge used for "Added to watchlist" confirmation
+- [ ] SeverityBadge used for confluence tier display in side panel
+- [ ] ActionButton uses children pattern (`<ActionButton>Text</ActionButton>`) -- NO `label=` prop anywhere
+- [ ] ActionButton used for tab bar buttons (scalp/swing/income/position/all)
+- [ ] ActionButton used for Clear filter button
+- [ ] ActionButton used for Add to Watchlist buttons
+- [ ] ActionButton used for close button on side panel
+- [ ] ActionButton used for Clear All Filters in empty state
+- [ ] All existing fetch() patterns preserved -- NOT converted to useApi
+- [ ] fetch('/api/v2/prospects') with params preserved
+- [ ] fetch('/api/v2/incubator') preserved
+- [ ] fetch('/api/v2/prospects/add-to-watchlist') POST preserved
+- [ ] All existing useState hooks preserved identically
+- [ ] All existing useEffect hooks preserved
+- [ ] useCallback for fetchProspects preserved
+- [ ] switchTab function preserved
+- [ ] addToWatchlist function preserved
+- [ ] All existing filter/search logic preserved (minPrice, maxPrice, minScore)
+- [ ] Incubator map side panel section preserved
+- [ ] Trade setup section preserved
+- [ ] Confluence section preserved
+- [ ] Pipeline sources section preserved
+- [ ] Prospect interface preserved identically
+- [ ] PRICE_DEFAULTS, SOURCE_COLORS, TIER_COLORS, DECISION_COLORS preserved
+- [ ] Empty states added for: loading (with endpoint info), no results (with clear filter action), no pipeline sources
+- [ ] No `<AgentChip agent=` anywhere (correct: `name=`)
+- [ ] No `<ActionButton label=` anywhere (correct: children)
+- [ ] No `<StateCard label=` anywhere (correct: `title=`)
+- [ ] All imports added for StatusBadge, SeverityBadge, ActionButton, StateCard
