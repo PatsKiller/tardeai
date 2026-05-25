@@ -1,3 +1,36 @@
+# PaperGovernance.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/PaperGovernance.tsx`
+
+## Changes
+
+- Inline summary tiles replaced with `StateCard` components
+- Inline `pill()` function replaced with `StatusBadge` for governance states
+- Inline `button` for "Run Governance Check" replaced with `ActionButton` (children pattern)
+- LIVE TRADING DISABLED banner preserved exactly (critical safety notice)
+- Inline `kv()` helper preserved for grid displays (used everywhere, not worth replacing with StateCard in grid contexts)
+- Title/subtitle preserved in PageHeader
+- Scanner Catalog Lifecycle section preserved unchanged
+
+## What did NOT change
+
+- All API endpoints preserved:
+  - `/api/v2/paper-performance-governance` (60000ms poll)
+  - `/api/v2/paper-dashboard-summary` (60000ms poll)
+  - `/api/v2/ticker-catalog/summary` (60000ms poll)
+  - `/api/v2/screener-membership/summary` (60000ms poll)
+  - `/api/v2/incubator-lifecycle/summary` (60000ms poll)
+- POST to `/api/v2/paper-performance-governance/run` -- same behavior
+- GATES array preserved exactly (8 gates)
+- All data transforms preserved
+- All governance gate logic preserved
+- Strategy scorecard table preserved
+- No new approval actions added
+- No existing safe actions removed
+
+## Full Replacement
+
+```tsx
 import React, { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
@@ -183,3 +216,4 @@ export default function PaperGovernance() {
     </>
   )
 }
+```

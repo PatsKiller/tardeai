@@ -1,3 +1,27 @@
+# ProposalAlerts.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/ProposalAlerts.tsx`
+
+## Changes
+
+- Inline summary cards replaced with `StateCard` components
+- Inline status pills in table replaced with `StatusBadge`
+- Added import for `StatusBadge` and `StateCard`
+- Removed inline `statusColor` helper (replaced by StatusBadge status mapping)
+- Title updated from "Proposal Alerts" to "Proposal Alert Board"
+- Added subtitle with dynamic counts
+
+## What did NOT change
+
+- Same API endpoint: `/api/v2/paper-proposals` with 30000ms poll
+- Same alert classification logic (ACTIONABLE_READY, BLOCKED_EXECUTION, BLOCKED_NEEDS_REBUILD, NEEDS_REVIEW)
+- Same table columns and layout
+- Same "View" link to `/v2/paper-proposals`
+- All data transforms preserved exactly
+
+## Full Replacement
+
+```tsx
 import React from 'react'
 import PageHeader from '../components/PageHeader'
 import { useApi } from '../hooks/useApi'
@@ -102,3 +126,4 @@ export default function ProposalAlerts() {
     </div>
   )
 }
+```

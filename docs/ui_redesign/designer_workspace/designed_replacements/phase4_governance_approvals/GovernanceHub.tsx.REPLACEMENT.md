@@ -1,3 +1,27 @@
+# GovernanceHub.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/GovernanceHub.tsx`
+
+## Changes
+
+- Title: "Governance" -> "Governance Center"
+- Added subtitle below title via fragment wrapper
+- Tab labels renamed for clarity:
+  - "Paper Validation" -> "Paper Validation"  (unchanged -- already clear)
+  - "Learning Governance" -> "Learning & Experiments"
+  - "Approvals" -> "Approvals & Tasks"
+
+## What did NOT change
+
+- Same 3 lazy-loaded child tabs (PaperGovernance, LearningGovernance, Approvals)
+- Same import paths for all child components
+- Same Loading fallback component
+- Same URL tab parameter parsing (tab=paper, tab=learning, tab=approvals)
+- No new dependencies
+
+## Full Replacement
+
+```tsx
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import TabPage from '../components/TabPage'
@@ -33,3 +57,4 @@ export default function GovernanceHub() {
     </>
   )
 }
+```

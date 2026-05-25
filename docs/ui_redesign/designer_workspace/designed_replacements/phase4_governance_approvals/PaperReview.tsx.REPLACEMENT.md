@@ -1,3 +1,23 @@
+# PaperReview.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/PaperReview.tsx`
+
+## Changes
+
+- Title: "Paper Trade Review" -> "Paper Review & Learning"
+- Added subtitle via fragment wrapper
+- Tab labels unchanged (already clear)
+
+## What did NOT change
+
+- Same 2 lazy-loaded child tabs (PaperOutcomes, PaperTradeIntelligence)
+- Same import paths
+- Same Loading fallback
+- No new dependencies
+
+## Full Replacement
+
+```tsx
 import { lazy, Suspense } from 'react'
 import TabPage from '../components/TabPage'
 
@@ -24,3 +44,4 @@ export default function PaperReview() {
     </>
   )
 }
+```
