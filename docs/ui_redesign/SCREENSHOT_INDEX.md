@@ -1,41 +1,59 @@
 # Screenshot Index
 
 Generated: 2026-05-25
+Viewport: 1920x1080 (desktop)
+Method: Playwright (Python, headless Chromium)
+Total: 47 screenshots captured
 
-## Status: NO SCREENSHOTS CAPTURED
+## Screenshots
 
-Playwright is not installed in the current environment.
-The `playwright` CLI binary was not found, and `npx playwright` is not available.
-
-## Manual Screenshot Checklist
-
-If screenshots are needed, capture these pages at 1920x1080 from `http://127.0.0.1:7777/v2/`:
-
-| Priority | Route | Filename |
-|----------|-------|----------|
-| HIGH | `/v2/` | overview.png |
-| HIGH | `/v2/command` | command.png |
-| HIGH | `/v2/portfolio` | portfolio.png |
-| HIGH | `/v2/paper-proposals` | paper-proposals.png |
-| HIGH | `/v2/paper-status` | paper-status.png |
-| HIGH | `/v2/trade-ai` | trade-ai.png |
-| HIGH | `/v2/risk` | risk.png |
-| HIGH | `/v2/governance` | governance.png |
-| HIGH | `/v2/ops` | ops.png |
-| HIGH | `/v2/self-improvement` | self-improvement.png |
-| MED | `/v2/alerts` | alerts.png |
-| MED | `/v2/inbox` | inbox.png |
-| MED | `/v2/watchlist` | watchlist.png |
-| MED | `/v2/intelligence` | intelligence.png |
-| MED | `/v2/agent-pipeline` | agent-pipeline.png |
-| MED | `/v2/overnight` | overnight.png |
-| MED | `/v2/retirement` | retirement.png |
-| MED | `/v2/journal` | journal.png |
-| LOW | `/v2/prospects` | prospects.png |
-| LOW | `/v2/correlation` | correlation.png |
-| LOW | `/v2/forecast` | forecast.png |
-
-## Alternative: Existing Playwright Crawler
-
-Per project memory, there is a Playwright dashboard crawler that generates per-port tarballs.
-Check `scripts/` for the existing crawler script and `docs/` for previous screenshot archives.
+| Route | Filename | Viewport | Status |
+|-------|----------|----------|--------|
+| /v2/ (overview) | overview_desktop.png | 1920x1080 | OK |
+| /v2/command | command_desktop.png | 1920x1080 | OK |
+| /v2/agent-collaboration | agent-collaboration_desktop.png | 1920x1080 | OK |
+| /v2/self-improvement | self-improvement_desktop.png | 1920x1080 | OK |
+| /v2/ops | ops_desktop.png | 1920x1080 | OK |
+| /v2/pipeline | pipeline_desktop.png | 1920x1080 | OK |
+| /v2/system-health | system-health_desktop.png | 1920x1080 | OK |
+| /v2/agent-pipeline | agent-pipeline_desktop.png | 1920x1080 | OK |
+| /v2/governance | governance_desktop.png | 1920x1080 | OK |
+| /v2/trade-ai | trade-ai_desktop.png | 1920x1080 | OK |
+| /v2/prospects | prospects_desktop.png | 1920x1080 | OK |
+| /v2/alerts | alerts_desktop.png | 1920x1080 | OK |
+| /v2/risk | risk_desktop.png | 1920x1080 | OK |
+| /v2/risk-regime | risk-regime_desktop.png | 1920x1080 | OK |
+| /v2/recovery | recovery_desktop.png | 1920x1080 | OK |
+| /v2/research | research_desktop.png | 1920x1080 | OK |
+| /v2/topic-monitor | topic-monitor_desktop.png | 1920x1080 | OK |
+| /v2/ai-analyst | ai-analyst_desktop.png | 1920x1080 | OK |
+| /v2/technical | technical_desktop.png | 1920x1080 | OK |
+| /v2/watchlist | watchlist_desktop.png | 1920x1080 | OK |
+| /v2/cio | cio_desktop.png | 1920x1080 | OK |
+| /v2/paper-proposals | paper-proposals_desktop.png | 1920x1080 | OK |
+| /v2/paper-review | paper-review_desktop.png | 1920x1080 | OK |
+| /v2/paper-status | paper-status_desktop.png | 1920x1080 | OK |
+| /v2/automated-trade-mode | automated-trade-mode_desktop.png | 1920x1080 | OK |
+| /v2/incubator | incubator_desktop.png | 1920x1080 | OK |
+| /v2/tax | tax_desktop.png | 1920x1080 | OK |
+| /v2/rebalance | rebalance_desktop.png | 1920x1080 | OK |
+| /v2/retirement | retirement_desktop.png | 1920x1080 | OK |
+| /v2/reports | reports_desktop.png | 1920x1080 | OK |
+| /v2/journal | journal_desktop.png | 1920x1080 | OK |
+| /v2/journal?tab=reports | journal-reports_desktop.png | 1920x1080 | OK |
+| /v2/journal?tab=analytics | journal-analytics_desktop.png | 1920x1080 | OK |
+| /v2/strategy-admin | strategy-admin_desktop.png | 1920x1080 | OK |
+| /v2/agent-calibration | agent-calibration_desktop.png | 1920x1080 | OK |
+| /v2/weekly-learning | weekly-learning_desktop.png | 1920x1080 | OK |
+| /v2/backtesting | backtesting_desktop.png | 1920x1080 | OK |
+| /v2/correlation | correlation_desktop.png | 1920x1080 | OK |
+| /v2/forecast | forecast_desktop.png | 1920x1080 | OK |
+| /v2/broker-reconciliation | broker-reconciliation_desktop.png | 1920x1080 | OK |
+| /v2/execution-quality | execution-quality_desktop.png | 1920x1080 | OK |
+| /v2/plan-vs-performance | plan-vs-performance_desktop.png | 1920x1080 | OK |
+| /v2/proposal-alerts | proposal-alerts_desktop.png | 1920x1080 | OK |
+| /v2/portfolio | portfolio_desktop.png | 1920x1080 | OK |
+| /v2/holdings (portfolio) | portfolio_desktop.png | 1920x1080 | OK |
+| /v2/dividends | dividends_desktop.png | 1920x1080 | OK |
+| /v2/returns | returns_desktop.png | 1920x1080 | OK |
+| /v2/attribution | attribution_desktop.png | 1920x1080 | OK |

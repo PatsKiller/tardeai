@@ -203,7 +203,7 @@ export default function App() {
           <Route path="paper-trade-intelligence" element={<SafePage><PaperReview /></SafePage>} />
           <Route path="pipeline-health-master" element={<SafePage><PipelineHub /></SafePage>} />
           <Route path="pipeline-controller" element={<SafePage><PipelineHub /></SafePage>} />
-          <Route path="alerts" element={<SafePage><Inbox /></SafePage>} />
+          {/* REMOVED: duplicate "alerts" route (dead code — first definition on line 187 wins) */}
           <Route path="notifications" element={<SafePage><Inbox /></SafePage>} />
           <Route path="actions" element={<SafePage><Inbox /></SafePage>} />
           <Route path="paper-governance" element={<Navigate to="../governance" replace />} />
