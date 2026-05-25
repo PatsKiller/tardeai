@@ -1,3 +1,33 @@
+# LearningGovernance.tsx Replacement
+
+- **Target**: `apps/command-center-v2/src/pages/LearningGovernance.tsx`
+
+## Changes
+
+- Inline `btn` style replaced with `ActionButton` (children pattern)
+- Inline `dot()` function replaced with `StatusBadge` for hypothesis/experiment/recommendation/proposal statuses
+- Overview tile cards use `StateCard` instead of `Card` with manual layout
+- Sample Size Banner preserved exactly (critical governance notice)
+- Tab button style updated to use `ActionButton` with variant switching
+- Refresh button uses `ActionButton`
+
+## What did NOT change
+
+- All API endpoints preserved:
+  - `/api/v2/learning/status` (with refresh key)
+  - `/api/v2/learning/hypotheses` (with refresh key)
+  - `/api/v2/learning/experiments` (with refresh key)
+  - `/api/v2/learning/recommendations` (with refresh key)
+  - `/api/v2/learning/config-proposals` (with refresh key)
+- All 5 tabs preserved (overview, hypotheses, experiments, recommendations, proposals)
+- All table columns preserved
+- All data transforms preserved
+- Refresh mechanism (setRk) preserved
+- No new actions or approvals added
+
+## Full Replacement
+
+```tsx
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
@@ -186,3 +216,4 @@ export default function LearningGovernance() {
     </div>
   )
 }
+```
