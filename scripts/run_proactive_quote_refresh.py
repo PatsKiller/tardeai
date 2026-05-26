@@ -145,9 +145,11 @@ def main():
                                 _msg = build_telegram_message(_p, _a)
                                 try:
                                     from telegram_alert import send_telegram
-                                    send_telegram(_msg, bypass_router=True)
-                                    mark_sent(_p, _a)
-                                    log.info(f"  ALERT sent: {_p['symbol']} {_a['type']} [{_a['severity']}]")
+                                    _sent = send_telegram(_msg)  # Respect alert router (no bypass)
+                                    if _sent:
+                                        mark_sent(_p, _a)
+                                        log.info(f"  ALERT sent: {_p['symbol']} {_a['type']} [{_a['severity']}]")
+                                    # If router suppressed, don't log as sent
                                 except Exception as _te:
                                     log.warning(f"  Alert send failed: {_te}")
         except Exception as _ae:

@@ -11,21 +11,121 @@ import { useApi } from '../hooks/useApi'
 export default function SystemHealth() {
   const navigate = useNavigate()
   const [rk, setRk] = useState(0)
+  const [healthTab, setHealthTab] = useState<'checks'|'events'>('checks')
   const { data } = useApi<any>(`/api/v2/system-health?_r=${rk}`)
   const { data: screeners } = useApi<any>(`/api/v2/finviz-screeners?_r=${rk}`)
+  const { data: agentHealth } = useApi<any>(`/api/v2/execution-integrity?_r=${rk}`, 15000)
 
   const llm = data?.llm || {}
   const db = data?.db_tables || {}
   const cio = data?.cio_decisions || []
 
+  // Agent health data
+  const ahSummary = agentHealth?.summary || {}
+  const ahChecks = agentHealth?.checks || []
+  const ahEvents = agentHealth?.recent_events || []
+  const critDown = ahChecks.filter((c: any) => c.severity === 'CRITICAL' && c.status !== 'OK' && c.status !== 'RECOVERED')
+  const healthPct = ahSummary.total > 0 ? Math.round(((ahSummary.ok || 0) / ahSummary.total) * 100) : 0
+
+  const sPill = (s: string) => {
+    const color = (s === 'OK' || s === 'RECOVERED') ? 'var(--green)' : (s === 'STALE' || s === 'MISSING' || s === 'OUTPUT_INVALID') ? 'var(--red)' : 'var(--amber)'
+    return { fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
+      background: `color-mix(in srgb, ${color} 15%, transparent)`, color } as React.CSSProperties
+  }
+  const sevPill = (s: string) => {
+    const color = s === 'CRITICAL' ? 'var(--red)' : s === 'WARN' ? 'var(--amber)' : 'var(--accent)'
+    return { fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 600,
+      background: `color-mix(in srgb, ${color} 15%, transparent)`, color } as React.CSSProperties
+  }
+
   return (
     <>
-      <PageHeader title="System Health & Services" subtitle="Data products, services, LLM router, and freshness" actions={
+      <PageHeader title="System Health & Services" subtitle="Execution integrity, data products, services, LLM router" actions={
         <div style={{ display: 'flex', gap: 6 }}>
           <ActionButton onClick={() => navigate('/orchestration')} variant="secondary">Orchestration</ActionButton>
           <ActionButton onClick={() => setRk(k => k + 1)} variant="secondary">Refresh</ActionButton>
         </div>
       } />
+
+      {/* ── Execution Integrity Agent ── */}
+      <Card style={{ marginBottom: 14 }}>
+        <SectionHeader title="Execution Integrity Agent" count={ahSummary.total} />
+        {critDown.length > 0 && (
+          <div style={{ padding: '8px 12px', margin: '0 12px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6, color: 'var(--red)', fontSize: 11, fontWeight: 600 }}>
+            {critDown.length} CRITICAL down: {critDown.map((c: any) => c.component).join(', ')}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, padding: '0 12px 12px' }}>
+          <MetricTile label="Health" value={`${healthPct}%`} deltaColor={healthPct >= 80 ? 'var(--green)' : healthPct >= 50 ? 'var(--amber)' : 'var(--red)'} />
+          <MetricTile label="Total" value={ahSummary.total || 0} />
+          <MetricTile label="OK" value={ahSummary.ok || 0} deltaColor="var(--green)" />
+          <MetricTile label="Stale" value={ahSummary.stale || 0} deltaColor={(ahSummary.stale || 0) > 0 ? 'var(--red)' : 'var(--text3)'} />
+          <MetricTile label="Missing" value={ahSummary.missing || 0} deltaColor={(ahSummary.missing || 0) > 0 ? 'var(--red)' : 'var(--text3)'} />
+          <MetricTile label="Failed" value={ahSummary.failed || 0} deltaColor={(ahSummary.failed || 0) > 0 ? 'var(--red)' : 'var(--text3)'} />
+          <MetricTile label="Recovered" value={ahSummary.recovered || 0} deltaColor="var(--green)" />
+        </div>
+        <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px' }}>
+          {(['checks', 'events'] as const).map(t => (
+            <button key={t} onClick={() => setHealthTab(t)}
+              style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer',
+                background: healthTab === t ? 'rgba(74,144,244,0.15)' : 'transparent', color: healthTab === t ? 'var(--accent)' : 'var(--text3)' }}>
+              {t === 'checks' ? `Components (${ahChecks.length})` : `Events (${ahEvents.length})`}
+            </button>
+          ))}
+        </div>
+        <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+          {healthTab === 'checks' && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                  {['Component', 'Status', 'Severity', 'Schedule', 'Last OK', 'Action', 'Downstream', 'Error'].map(h => (
+                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 8, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ahChecks.length === 0 && <tr><td colSpan={8} style={{ padding: 16, textAlign: 'center', color: 'var(--text3)', fontStyle: 'italic' }}>No health data yet. Agent runs every 5 min.</td></tr>}
+                {ahChecks.map((c: any) => (
+                  <tr key={c.component} style={{ borderBottom: '1px solid var(--border-subtle)', background: c.severity === 'CRITICAL' && c.status !== 'OK' ? 'rgba(239,68,68,0.03)' : undefined }}>
+                    <td style={{ padding: '5px 8px', fontWeight: 700, fontSize: 10 }}>{c.component}</td>
+                    <td style={{ padding: '5px 8px' }}><span style={sPill(c.status)}>{c.status}</span></td>
+                    <td style={{ padding: '5px 8px' }}><span style={sevPill(c.severity)}>{c.severity}</span></td>
+                    <td style={{ padding: '5px 8px', color: 'var(--text3)', fontSize: 8 }}>{c.expected_schedule || '--'}</td>
+                    <td style={{ padding: '5px 8px', color: 'var(--text3)', fontSize: 8 }}>{c.last_success_at ? new Date(c.last_success_at).toLocaleTimeString() : '--'}</td>
+                    <td style={{ padding: '5px 8px', fontSize: 8 }}>{c.last_action || '--'}</td>
+                    <td style={{ padding: '5px 8px', color: 'var(--text2)', fontSize: 8, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.downstream_impact || '--'}</td>
+                    <td style={{ padding: '5px 8px', color: 'var(--red)', fontSize: 8, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.last_error || '--'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {healthTab === 'events' && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                  {['Time', 'Component', 'Event', 'Severity', 'Message', 'Result'].map(h => (
+                    <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 8, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ahEvents.length === 0 && <tr><td colSpan={6} style={{ padding: 16, textAlign: 'center', color: 'var(--text3)', fontStyle: 'italic' }}>No events yet.</td></tr>}
+                {ahEvents.map((e: any, i: number) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '5px 8px', color: 'var(--text3)', fontSize: 8, whiteSpace: 'nowrap' }}>{e.created_at ? new Date(e.created_at).toLocaleTimeString() : '--'}</td>
+                    <td style={{ padding: '5px 8px', fontWeight: 600 }}>{e.component}</td>
+                    <td style={{ padding: '5px 8px' }}>{e.event_type}</td>
+                    <td style={{ padding: '5px 8px' }}><span style={sevPill(e.severity)}>{e.severity}</span></td>
+                    <td style={{ padding: '5px 8px', color: 'var(--text2)', fontSize: 8, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.message || '--'}</td>
+                    <td style={{ padding: '5px 8px' }}>{e.success === true ? 'OK' : e.success === false ? 'FAIL' : '--'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </Card>
 
       {/* LLM Router */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>

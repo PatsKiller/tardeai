@@ -382,7 +382,8 @@ class AlpacaPaperAdapter:
 
         log.info(f"[alpaca] {symbol}: order_type={('market' if use_market else 'limit')} reason={order_type_reason}")
 
-        # ── Gap 4 fix: Market hours gate ──
+        # ── Gap 4 fix: Market hours gate (includes extended hours) ──
+        _extended_hours = False
         try:
             from datetime import datetime as _dt, timezone as _tz
             import zoneinfo
@@ -390,18 +391,31 @@ class AlpacaPaperAdapter:
             _wd = _et.weekday()  # 0=Mon, 6=Sun
             _h, _m = _et.hour, _et.minute
             _market_open = (_wd < 5 and ((_h == 9 and _m >= 30) or (10 <= _h < 16)))
-            if not _market_open:
-                log.warning(f"[alpaca] BLOCKED: {symbol} submission outside market hours ({_et.strftime('%H:%M %Z %A')})")
-                return {'status': 'blocked', 'reason': f'outside_market_hours ({_et.strftime("%H:%M %Z %A")})'}
+            _extended_hours = (_wd < 5 and ((4 <= _h < 9) or (_h == 9 and _m < 30) or (16 <= _h < 20)))
+            if not _market_open and not _extended_hours:
+                log.warning(f"[alpaca] BLOCKED: {symbol} submission outside trading hours ({_et.strftime('%H:%M %Z %A')})")
+                return {'status': 'blocked', 'reason': f'outside_trading_hours ({_et.strftime("%H:%M %Z %A")})'}
         except Exception as _mhe:
             log.warning(f"[alpaca] Market hours check failed ({_mhe}), proceeding cautiously")
 
         # Submit order (bracket if limit, simple + separate stop if market)
+        # Extended hours: Alpaca requires limit orders only, no brackets
         try:
+            if _extended_hours and use_market:
+                log.info(f"[alpaca] {symbol}: forcing limit order for extended hours (market orders not allowed)")
+                use_market = False
             if use_market:
                 order_data = {
                     'symbol': symbol, 'qty': str(shares), 'side': 'buy',
                     'type': 'market', 'time_in_force': 'day',
+                }
+            elif _extended_hours:
+                # Extended hours: simple limit order, no bracket (not supported in extended hours)
+                order_data = {
+                    'symbol': symbol, 'qty': str(shares), 'side': 'buy',
+                    'type': 'limit', 'time_in_force': 'day',
+                    'limit_price': str(entry_price),
+                    'extended_hours': True,
                 }
             else:
                 order_data = {
@@ -484,7 +498,7 @@ class AlpacaPaperAdapter:
                 entry_price=_actual_entry, stop_loss=stop_price, direction='long')
             if _stop_recalced:
                 log.warning(f"[alpaca] {symbol} stop recalculated: ${stop_price}→${effective_stop} ({_stop_reason})")
-            if use_market and fill_status == 'filled':
+            if (use_market or _extended_hours) and fill_status == 'filled':
                 stop_placed = False
                 for _sa in range(3):
                     try:

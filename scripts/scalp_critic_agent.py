@@ -206,16 +206,19 @@ Reply with ONLY JSON:
 
 # ── Public API: critique a list of scored tickers ────────────────────────────
 
-def critique_scored_tickers(scored: list, only_go_wait: bool = True) -> dict:
+def critique_scored_tickers(scored: list, only_go_wait: bool = True, max_tickers: int = 10) -> dict:
     """Run the 3-stage critic on scored tickers. Modifies dicts in-place.
 
     Args:
         scored: list of scored ticker dicts from scoring.score_all()
         only_go_wait: if True, only critique GO and WAIT tickers (saves time)
+        max_tickers: max tickers to review (prevents LLM bottleneck)
 
     Returns summary dict.
     """
     to_critique = scored if not only_go_wait else [t for t in scored if t.get('decision') in ('GO', 'WAIT')]
+    if len(to_critique) > max_tickers:
+        to_critique = sorted(to_critique, key=lambda t: t.get('score', 0), reverse=True)[:max_tickers]
     log.info(f"Scalp Critic: reviewing {len(to_critique)} of {len(scored)} tickers")
 
     summary = {'critiqued': 0, 'blocked': 0, 'downgraded': 0, 'confirmed': 0, 'changes': []}

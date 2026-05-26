@@ -77,8 +77,8 @@ def check_pipeline_execution(conn):
         if now < deadline: continue  # Not yet overdue
 
         window_start = expected - timedelta(minutes=5)
-        cur.execute("""SELECT id, status, rows_processed FROM pipeline_runs
-            WHERE script_name=%s AND started_at BETWEEN %s AND NOW()
+        cur.execute("""SELECT id, status, summary FROM pipeline_runs
+            WHERE pipeline_key=%s AND started_at BETWEEN %s AND NOW()
             ORDER BY started_at DESC LIMIT 1""", [script, window_start])
         run = cur.fetchone()
 
@@ -97,7 +97,7 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
         if not issue.get('critical'): continue
 
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM pipeline_runs WHERE script_name=%s AND run_type='retry' AND started_at>NOW()-INTERVAL '24 hours'", [script])
+        cur.execute("SELECT COUNT(*) FROM pipeline_runs WHERE pipeline_key=%s AND run_label LIKE 'retry%%' AND started_at>NOW()-INTERVAL '24 hours'", [script])
         retries_today = cur.fetchone()[0] or 0
 
         if retries_today < MAX_RETRIES and issue.get('command'):

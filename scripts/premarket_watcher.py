@@ -296,6 +296,14 @@ def run_premarket_scan(symbols, conn, dry_run=False):
 
 
 def send_telegram(message):
+    # Route through central alert router to respect P0-P3 classification
+    try:
+        from telegram_alert import send_telegram as _central_send
+        _central_send(message)
+        return
+    except ImportError:
+        pass
+    # Fallback: direct send only if central router unavailable
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '')
     chat_ids = [c.strip() for c in os.getenv('TELEGRAM_CHAT_ID', '').split(',') if c.strip()]
     if not bot_token or not chat_ids:

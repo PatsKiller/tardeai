@@ -57,6 +57,7 @@ _P2_PATTERNS = [
     (r"content gap", "iris_content_gap"),
     (r"Library Quality", "iris_library_quality"),
     # Raw catalyst/source telemetry
+    (r"PRE.MARKET CATALYST", "premarket_catalyst_dump"),
     (r"catalyst.*source.*\d+ articles", "raw_catalyst_dump"),
     (r"source.*telemetry", "raw_telemetry"),
     # Generic critique

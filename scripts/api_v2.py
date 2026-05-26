@@ -11947,6 +11947,48 @@ def _queue_failed():
     return {"jobs": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "total": len(rows)}
 
 
+def _system_health_api():
+    """System Health Agent — latest checks for all monitored components."""
+    # Get latest check per component
+    checks = _db_query("""
+        SELECT DISTINCT ON (component)
+            component, check_type, status, expected_schedule, last_success_at,
+            last_failure_at, last_run_duration_sec, expected_max_duration_sec,
+            failure_count, retry_count, last_error, last_action, downstream_impact,
+            severity, updated_at
+        FROM system_health_checks
+        ORDER BY component, updated_at DESC
+    """) or []
+    # Summary
+    ok = sum(1 for c in checks if c.get('status') == 'OK')
+    stale = sum(1 for c in checks if c.get('status') == 'STALE')
+    missing = sum(1 for c in checks if c.get('status') == 'MISSING')
+    failed = sum(1 for c in checks if c.get('status') in ('OUTPUT_INVALID', 'LOCK_TIMEOUT', 'STALE_LOCK'))
+    recovered = sum(1 for c in checks if c.get('status') == 'RECOVERED')
+    total = len(checks)
+    # Recent events
+    events = _db_query("""
+        SELECT component, event_type, severity, message, action_taken, success, created_at
+        FROM system_health_events ORDER BY created_at DESC LIMIT 50
+    """) or []
+    return {
+        "ok": True,
+        "summary": {"total": total, "ok": ok, "stale": stale, "missing": missing,
+                     "failed": failed, "recovered": recovered},
+        "checks": [{k: _json_clean(v) for k, v in c.items()} for c in checks],
+        "recent_events": [{k: _json_clean(v) for k, v in e.items()} for e in events],
+    }
+
+
+def _system_health_events_api():
+    """System Health Agent events log."""
+    events = _db_query("""
+        SELECT component, event_type, severity, message, action_taken, success, created_at
+        FROM system_health_events ORDER BY created_at DESC LIMIT 200
+    """) or []
+    return {"ok": True, "events": [{k: _json_clean(v) for k, v in e.items()} for e in events]}
+
+
 def _ops_cron_health():
     rows = _db_query("""
         SELECT ps.script_name as name, COALESCE(ps.display_name, ps.script_name) as display_name,
@@ -12255,6 +12297,8 @@ ROUTES = {
     "/api/v2/queue/failed": lambda: _queue_failed(),
     "/api/v2/ops/cron-health": lambda: _ops_cron_health(),
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
+    "/api/v2/execution-integrity": lambda: _system_health_api(),
+    "/api/v2/execution-integrity/events": lambda: _system_health_events_api(),
     "/api/v2/queue/calibration": lambda: _queue_calibration(),
     "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
 }

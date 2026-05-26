@@ -202,7 +202,9 @@ def save_events(conn, events, outcomes):
                 r_multiple=EXCLUDED.r_multiple, tca_grade=EXCLUDED.tca_grade,
                 updated_at=now()
         """, [oc["paper_trade_id"], oc["symbol"], oc.get("strategy_id"),
-              oc.get("opened_at"), oc.get("closed_at"), oc.get("hold_minutes"),
+              oc.get("opened_at") if oc.get("opened_at") not in (None, 'None') else None,
+              oc.get("closed_at") if oc.get("closed_at") not in (None, 'None') else None,
+              oc.get("hold_minutes"),
               oc.get("entry_price"), oc.get("exit_price"), oc.get("stop_price"),
               oc.get("target_price"), oc.get("pnl"), oc.get("pnl_pct"),
               oc.get("r_multiple"), oc.get("exit_reason"),
