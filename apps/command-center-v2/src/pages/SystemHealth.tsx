@@ -42,6 +42,7 @@ export default function SystemHealth() {
     <>
       <PageHeader title="System Health & Services" subtitle="Execution integrity, data products, services, LLM router" actions={
         <div style={{ display: 'flex', gap: 6 }}>
+          <ActionButton onClick={() => navigate('/atm-control-room')} variant="secondary">ATM Control Room</ActionButton>
           <ActionButton onClick={() => navigate('/orchestration')} variant="secondary">Orchestration</ActionButton>
           <ActionButton onClick={() => setRk(k => k + 1)} variant="secondary">Refresh</ActionButton>
         </div>

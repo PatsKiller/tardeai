@@ -30,6 +30,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/prospects', label: 'Prospects' },
     { to: '/strategy-desk', label: 'Strategy Desk' },
     { to: '/incubator', label: 'Incubator' },
+    { to: '/atm-control-room', label: 'ATM Control Room' },
     { to: '/automated-trade-mode', label: 'ATM Mode' },
   ]},
   { label: 'Portfolio', items: [
