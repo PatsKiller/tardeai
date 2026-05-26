@@ -17517,18 +17517,74 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 })
 
             # ── M3: Aegis Brief Follow-ups (needs Steph) ──
-            steph_count = (_db_query("SELECT COUNT(*) as c FROM aegis_portfolio_briefs WHERE needs_steph_review=true AND observed_at > NOW()-INTERVAL '48 hours'", fetch="one") or {}).get("c", 0)
-            if steph_count:
+            steph_briefs = _db_query("""
+                SELECT DISTINCT ON (symbol) symbol, brief_type, thesis_status, what_changed,
+                       confidence, escalation_reason, observed_at,
+                       EXTRACT(EPOCH FROM (NOW() - observed_at)) / 3600 as age_hours
+                FROM aegis_portfolio_briefs
+                WHERE needs_steph_review = true AND observed_at > NOW() - INTERVAL '48 hours'
+                ORDER BY symbol, observed_at DESC
+            """) or []
+            if steph_briefs:
+                # Get Steph's last analysis per symbol and calibration quality
+                _steph_cal = _db_query("SELECT accuracy, calibration_error, resolved, correct, incorrect, sample_size_status FROM agent_calibration_windows WHERE agent_name='steph'", fetch="one") or {}
+                _steph_latest = _db_query("SELECT symbol, created_at FROM watchlist_agent_results WHERE agent='steph' ORDER BY created_at DESC LIMIT 1", fetch="one") or {}
+                _steph_last_run = _json_clean(_steph_latest.get("created_at"))
+                # Cron schedule context
+                _steph_schedule = "Weekdays: every 15min 6AM-7PM, every 5min 8PM-11PM. Weekends: every 10min."
+                _steph_next_pickup = "Next scheduled run within 10-15 minutes (if cron active)"
+
+                _triggered = [b for b in steph_briefs if b.get("thesis_status") == "triggered"]
+                _weakening = [b for b in steph_briefs if b.get("thesis_status") == "weakening"]
+                _other = [b for b in steph_briefs if b.get("thesis_status") not in ("triggered", "weakening")]
+
+                _brief_threads = []
+                for b in steph_briefs:
+                    # Get Steph's last result for this symbol
+                    _sr = _db_query("SELECT recommendation, confidence, next_action, created_at FROM watchlist_agent_results WHERE agent='steph' AND symbol=%s ORDER BY created_at DESC LIMIT 1", [b["symbol"]], fetch="one")
+                    _brief_threads.append({
+                        "subject": b["symbol"],
+                        "status": "blocked" if b.get("thesis_status") == "triggered" else "waiting",
+                        "thesis": b.get("thesis_status"),
+                        "detail": b.get("what_changed", "")[:120],
+                        "confidence": _json_clean(b.get("confidence")),
+                        "age_hours": round(float(b.get("age_hours") or 0), 1),
+                        "observed_at": _json_clean(b.get("observed_at")),
+                        "escalation_reason": b.get("escalation_reason"),
+                        "steph_last_review": _json_clean(_sr.get("created_at")) if _sr else None,
+                        "steph_recommendation": _sr.get("recommendation") if _sr else None,
+                        "steph_confidence": _json_clean(_sr.get("confidence")) if _sr else None,
+                        "steph_next_action": _sr.get("next_action") if _sr else None,
+                    })
+
+                steph_count = len(steph_briefs)
                 missions.append({
                     "mission_id": "aegis_steph_followup", "mission_type": "morning_brief",
-                    "title": f"Aegis briefs — {steph_count} need Steph review",
-                    "severity": "medium", "status": "waiting",
-                    "thread_count": steph_count, "blocked_count": 0, "ready_count": 0,
+                    "title": f"Aegis briefs — {steph_count} need Steph review ({len(_triggered)} triggered, {len(_weakening)} weakening)",
+                    "severity": "high" if _triggered else "medium",
+                    "status": "blocked" if _triggered else "waiting",
+                    "thread_count": steph_count, "blocked_count": len(_triggered), "ready_count": 0,
                     "agents": ["Aegis", "Steph"],
-                    "primary_owner": "Steph", "primary_blocker": None,
-                    "next_action": {"label": f"Ask Steph to review {steph_count} flagged briefs", "reason": "Aegis synthesis identified items needing technical follow-up"},
-                    "updated_at": _json_clean((_db_query("SELECT MAX(observed_at) as t FROM aegis_portfolio_briefs WHERE needs_steph_review=true AND observed_at > NOW()-INTERVAL '48 hours'", fetch="one") or {}).get("t")),
-                    "threads": [],
+                    "primary_owner": "Steph",
+                    "primary_blocker": f"{len(_triggered)} stops triggered — Steph review overdue" if _triggered else None,
+                    "next_action": {
+                        "label": f"Ask Steph to review {steph_count} flagged briefs ({len(_triggered)} triggered, {len(_weakening)} weakening)",
+                        "reason": f"Aegis identified {len(_triggered)} triggered stops and {len(_weakening)} weakening theses needing technical review",
+                    },
+                    "updated_at": _json_clean(steph_briefs[0].get("observed_at")),
+                    "threads": _brief_threads,
+                    "agent_maturity": {
+                        "agent": "steph",
+                        "accuracy": _json_clean(_steph_cal.get("accuracy")),
+                        "calibration_error": _json_clean(_steph_cal.get("calibration_error")),
+                        "correct": _steph_cal.get("correct", 0),
+                        "resolved": _steph_cal.get("resolved", 0),
+                        "incorrect": _steph_cal.get("incorrect", 0),
+                        "sample_size_status": _steph_cal.get("sample_size_status"),
+                        "last_run": _steph_last_run,
+                        "schedule": _steph_schedule,
+                        "next_expected_pickup": _steph_next_pickup,
+                    },
                 })
 
             # ── M4: Research & Content Intelligence — stale topics ──

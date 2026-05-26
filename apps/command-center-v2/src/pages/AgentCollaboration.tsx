@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, Fragment } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
@@ -159,6 +159,18 @@ export default function AgentCollaboration() {
   // Flow tab: expanded agent pairs for handoff drilldown
   const [expandedFlows, setExpandedFlows] = useState<Set<string>>(new Set())
 
+  // Thread expand/collapse in mission inspector
+  const [expandedThreads, setExpandedThreads] = useState<Set<number>>(new Set())
+
+  const toggleThread = (idx: number) => {
+    setExpandedThreads(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
   // Quality tab: show/hide fresh products
   const [showFreshProducts, setShowFreshProducts] = useState(false)
 
@@ -223,6 +235,11 @@ export default function AgentCollaboration() {
       setSelectedId(missions[0].mission_id)
     }
   }, [missions, selectedId])
+
+  // Reset expanded threads when mission changes
+  useEffect(() => {
+    setExpandedThreads(new Set())
+  }, [selectedId])
 
   // Fetch RACI for selected mission's owner
   useEffect(() => {
@@ -698,6 +715,63 @@ export default function AgentCollaboration() {
                       )}
                     </div>
 
+                    {/* C2. Agent Maturity (when available) */}
+                    {selected.agent_maturity && (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6 }}>
+                          Agent Maturity
+                        </div>
+                        {(() => {
+                          const am = selected.agent_maturity
+                          const accPct = typeof am.accuracy === 'number' ? am.accuracy * 100 : null
+                          return (
+                            <div style={{
+                              padding: '10px 14px', borderRadius: 'var(--radius)',
+                              background: 'var(--bg1)', border: '1px solid var(--border)',
+                              display: 'flex', flexDirection: 'column', gap: 6,
+                            }}>
+                              {/* Header row */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <AgentChip name={am.agent || selected.primary_owner || 'system'} size="md" />
+                                {accPct != null && (
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: accuracyColor(accPct) }}>
+                                    {accPct.toFixed(1)}% accuracy
+                                  </span>
+                                )}
+                                {am.calibration_error != null && (
+                                  <span style={{ fontSize: 10, color: 'var(--text2)' }}>
+                                    Cal err: {(am.calibration_error * 100).toFixed(1)}%
+                                  </span>
+                                )}
+                                {am.sample_size_status && (
+                                  <span style={{
+                                    fontSize: 9, fontWeight: 700, padding: '1px 8px', borderRadius: 3,
+                                    color: am.sample_size_status === 'sufficient' ? 'var(--green)' : 'var(--amber)',
+                                    background: am.sample_size_status === 'sufficient' ? 'rgba(14,203,129,0.1)' : 'rgba(245,158,11,0.1)',
+                                    textTransform: 'uppercase',
+                                  }}>
+                                    {am.sample_size_status}
+                                  </span>
+                                )}
+                              </div>
+                              {/* Stats row */}
+                              <div style={{ display: 'flex', gap: 12, fontSize: 10, flexWrap: 'wrap' }}>
+                                {am.correct != null && <span style={{ color: 'var(--green)' }}>{am.correct} correct</span>}
+                                {am.resolved != null && <span style={{ color: 'var(--text2)' }}>{am.resolved} resolved</span>}
+                                {am.incorrect != null && am.incorrect > 0 && <span style={{ color: 'var(--red)' }}>{am.incorrect} incorrect</span>}
+                              </div>
+                              {/* Schedule row */}
+                              <div style={{ display: 'flex', gap: 12, fontSize: 9, color: 'var(--text3)', flexWrap: 'wrap' }}>
+                                {am.last_run && <span>Last run: {timeAgo(am.last_run)}</span>}
+                                {am.schedule && <span>Schedule: {am.schedule}</span>}
+                                {am.next_expected_pickup && <span>Next pickup: {timeAgo(am.next_expected_pickup)}</span>}
+                              </div>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+
                     {/* D. Agent Contributions */}
                     {(selected.agents || []).length > 0 && (
                       <div style={{ marginBottom: 16 }}>
@@ -714,7 +788,7 @@ export default function AgentCollaboration() {
                       </div>
                     )}
 
-                    {/* E. Blockers / Staleness */}
+                    {/* E. Blockers / Staleness with enriched explanation */}
                     {(selected.primary_blocker || selected.status === 'stale') && (
                       <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {selected.primary_blocker && (
@@ -732,6 +806,40 @@ export default function AgentCollaboration() {
                             {selected.next_action && (
                               <div style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600, marginTop: 4 }}>Action: {selected.next_action.label}</div>
                             )}
+                            {/* Enriched blocker context from threads */}
+                            {(() => {
+                              const threads = selected.threads || []
+                              if (threads.length === 0) return null
+                              const triggered = threads.filter((t: any) => t.thesis === 'triggered' || t.thesis === 'danger')
+                              const weakening = threads.filter((t: any) => t.thesis === 'weakening' || t.thesis === 'warning')
+                              const oldest = threads.reduce((o: any, t: any) => {
+                                if (!t.observed_at) return o
+                                if (!o) return t
+                                return new Date(t.observed_at) < new Date(o.observed_at) ? t : o
+                              }, null as any)
+                              const ownerLastRun = selected.agent_maturity?.last_run
+                              const ownerRanSince = ownerLastRun && oldest?.observed_at
+                                ? new Date(ownerLastRun) > new Date(oldest.observed_at)
+                                : null
+                              if (triggered.length === 0 && weakening.length === 0 && !oldest) return null
+                              return (
+                                <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  {(triggered.length > 0 || weakening.length > 0) && (
+                                    <span>{triggered.length} triggered, {weakening.length} weakening of {threads.length} items</span>
+                                  )}
+                                  {oldest?.observed_at && (
+                                    <span>Oldest brief observed: {timeAgo(oldest.observed_at)}</span>
+                                  )}
+                                  {ownerRanSince != null && (
+                                    <span style={{ color: ownerRanSince ? 'var(--green)' : 'var(--amber)', fontWeight: 600 }}>
+                                      {ownerRanSince
+                                        ? `Owner agent has run since oldest brief`
+                                        : `Owner agent has NOT run since oldest brief`}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })()}
                           </div>
                         )}
                         {selected.status === 'stale' && (
@@ -778,38 +886,99 @@ export default function AgentCollaboration() {
                       </div>
                     )}
 
-                    {/* G. Mission Items */}
+                    {/* G. Mission Items (enhanced with rich thread data) */}
                     {(selected.threads || []).length > 0 && (
                       <div style={{ marginBottom: 16 }}>
                         <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 6 }}>
                           Mission Items ({selected.threads.length})
                         </div>
-                        <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          {(selected.threads as any[]).map((t: any, i: number) => (
-                            <div key={i} style={{
-                              padding: '6px 10px', borderRadius: 4, background: 'var(--bg2)',
-                              borderLeft: `3px solid ${t.status === 'blocked' ? 'var(--red)' : t.status === 'ready' ? 'var(--green)' : 'var(--border)'}`,
-                            }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ fontWeight: 700, fontSize: 11 }}>{t.subject}</span>
-                                <StatusBadge status={t.status} />
-                                {t.thesis && (
-                                  <span style={{
-                                    fontSize: 9, fontWeight: 600,
-                                    color: t.thesis === 'triggered' || t.thesis === 'danger' ? 'var(--red)'
-                                      : t.thesis === 'warning' ? 'var(--amber)'
-                                      : t.thesis === 'intact' ? 'var(--green)' : 'var(--text3)',
-                                  }}>{t.thesis}</span>
-                                )}
-                                {t.confidence != null && (
-                                  <span style={{ fontSize: 9, color: 'var(--text3)' }}>conf: {Number(t.confidence).toFixed(2)}</span>
+                        <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {(selected.threads as any[]).map((t: any, i: number) => {
+                            const isOpen = expandedThreads.has(i)
+                            const hasDetail = t.detail || t.escalation_reason || t.steph_last_review !== undefined
+                            return (
+                              <div key={i} style={{
+                                borderRadius: 4, background: 'var(--bg2)',
+                                borderLeft: `3px solid ${t.status === 'blocked' ? 'var(--red)' : t.status === 'ready' ? 'var(--green)' : t.thesis === 'triggered' ? 'var(--red)' : 'var(--border)'}`,
+                              }}>
+                                {/* Clickable header row */}
+                                <div
+                                  onClick={() => hasDetail && toggleThread(i)}
+                                  style={{
+                                    padding: '6px 10px', cursor: hasDetail ? 'pointer' : 'default',
+                                    display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+                                  }}>
+                                  <span style={{ fontWeight: 700, fontSize: 11 }}>{t.subject}</span>
+                                  <StatusBadge status={t.status} />
+                                  {t.thesis && (
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3,
+                                      color: t.thesis === 'triggered' || t.thesis === 'danger' ? 'var(--red)'
+                                        : t.thesis === 'weakening' || t.thesis === 'warning' ? 'var(--amber)'
+                                        : t.thesis === 'intact' ? 'var(--green)' : 'var(--text3)',
+                                      background: t.thesis === 'triggered' || t.thesis === 'danger' ? 'rgba(246,70,93,0.1)'
+                                        : t.thesis === 'weakening' || t.thesis === 'warning' ? 'rgba(245,158,11,0.1)'
+                                        : t.thesis === 'intact' ? 'rgba(14,203,129,0.1)' : 'var(--bg1)',
+                                    }}>{t.thesis}</span>
+                                  )}
+                                  {t.confidence != null && (
+                                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>conf: {Number(t.confidence).toFixed(2)}</span>
+                                  )}
+                                  {t.age_hours != null && (
+                                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>{fmtHours(t.age_hours)} ago</span>
+                                  )}
+                                  {t.escalation_reason && (
+                                    <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--red)' }}>ESC</span>
+                                  )}
+                                  {hasDetail && (
+                                    <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>{isOpen ? '-' : '+'}</span>
+                                  )}
+                                </div>
+
+                                {/* Expanded detail section */}
+                                {isOpen && (
+                                  <div style={{ padding: '4px 10px 8px 10px', display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--border)' }}>
+                                    {t.detail && (
+                                      <div style={{ fontSize: 10, color: 'var(--text2)' }}>{t.detail}</div>
+                                    )}
+                                    {t.observed_at && (
+                                      <div style={{ fontSize: 9, color: 'var(--text3)' }}>Observed: {timeAgo(t.observed_at)}</div>
+                                    )}
+                                    {t.escalation_reason && (
+                                      <div style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>
+                                        Escalation: {t.escalation_reason}
+                                      </div>
+                                    )}
+                                    {/* Steph review info */}
+                                    {t.steph_last_review != null ? (
+                                      <div style={{
+                                        fontSize: 10, color: 'var(--text2)', padding: '4px 8px',
+                                        background: 'var(--bg1)', borderRadius: 4, borderLeft: '2px solid var(--accent)',
+                                      }}>
+                                        <span style={{ fontWeight: 600 }}>Steph last reviewed:</span>{' '}
+                                        {timeAgo(t.steph_last_review)}
+                                        {t.steph_recommendation && (
+                                          <span> -- rec: <span style={{ fontWeight: 700 }}>{t.steph_recommendation}</span></span>
+                                        )}
+                                        {t.steph_confidence != null && (
+                                          <span> ({Number(t.steph_confidence).toFixed(2)})</span>
+                                        )}
+                                        {t.steph_next_action && (
+                                          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>
+                                            Next action: {t.steph_next_action}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : t.steph_last_review === null ? (
+                                      <div style={{ fontSize: 10, color: 'var(--text3)', fontStyle: 'italic' }}>
+                                        Steph has not reviewed this item
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 )}
                               </div>
-                              {t.detail && (
-                                <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>{t.detail}</div>
-                              )}
-                            </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       </div>
                     )}
@@ -817,12 +986,18 @@ export default function AgentCollaboration() {
                     {/* H. Stats footer */}
                     <div style={{
                       fontSize: 9, color: 'var(--text3)', display: 'flex', gap: 12,
-                      borderTop: '1px solid var(--border)', paddingTop: 8,
+                      borderTop: '1px solid var(--border)', paddingTop: 8, alignItems: 'center',
                     }}>
                       <span>Threads: {selected.thread_count}</span>
                       <span>Blocked: {selected.blocked_count}</span>
                       <span>Ready: {selected.ready_count}</span>
                       <span>Updated: {timeAgo(selected.updated_at)}</span>
+                      <span style={{ marginLeft: 'auto' }}>
+                        <ActionButton variant="secondary" size="sm"
+                          onClick={() => { window.location.href = '/agent-pipeline' }}>
+                          Request Immediate Review
+                        </ActionButton>
+                      </span>
                     </div>
                   </div>
                 </Card>
