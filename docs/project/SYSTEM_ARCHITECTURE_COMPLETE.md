@@ -243,8 +243,9 @@ The operator reviews proposals via Telegram or the Command Center UI:
 `alpaca_paper_adapter.py` submits the approved trade to Alpaca Paper:
 
 ```
-Market Hours Gate (Mon-Fri 9:30-16:00 ET)
-    │ BLOCKED if outside hours
+Trading Hours Gate (Mon-Fri 4:00 AM – 8:00 PM ET)
+    │ BLOCKED if outside hours (weekends, overnight)
+    │ Extended hours: 4:00-9:30 AM (pre-market) + 4:00-8:00 PM (after-hours)
     ▼
 Risk Gate (20 checks)
     │ BLOCKED if any fail-closed gate fires
@@ -253,8 +254,12 @@ Max Positions Check (3 concurrent max)
     │ REJECTED if at capacity
     ▼
 Order Type Decision
-    ├── Market order: price at or below entry
-    └── Bracket order: limit entry + stop + target (atomic)
+    ├── Regular hours (9:30-16:00):
+    │   ├── Market order: price at or below entry
+    │   └── Bracket order: limit entry + stop + target (atomic)
+    └── Extended hours (4:00-9:30, 16:00-20:00):
+        └── Limit order only (Alpaca requirement), extended_hours=true
+            No bracket orders, no market orders in extended hours
     │
     ▼
 Submit to Alpaca API
@@ -267,7 +272,7 @@ Fill Verification Loop (8 retries, ~20 sec)
     └── timeout → cancel if market order, mark pending if limit
     │
     ▼
-Stop Placement (market orders only — brackets are atomic)
+Stop Placement (market orders + extended hours fills — brackets are atomic)
     ├── 3 retry attempts
     └── All fail → CLOSE POSITION IMMEDIATELY (fail-closed)
     │
@@ -295,6 +300,8 @@ Two monitors run continuously during market hours:
 | Catch-up gap (>10 min since last update) | Force full re-evaluation |
 
 Stops only move UP, never down. All adjustments executed on Alpaca via API and logged as `MONITOR_*` curation events.
+
+**Stop replacement protocol (V2.4, 2026-05-26):** `replace_stop()` cancels the existing stop, verifies cancellation via API poll (up to 5 retries), then places new stop. Records `stop_order_id` and `stop_updated_at` on the DB row. Trailing stops above entry price are supported (constraint `chk_long_stop_below_entry` removed).
 
 **open_trade_monitor.py — Every 15 minutes:**
 

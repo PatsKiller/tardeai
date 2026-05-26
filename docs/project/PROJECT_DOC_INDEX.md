@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-05-18
+**Updated:** 2026-05-26
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -72,9 +72,8 @@
 ### Operational Guides
 | Document | Purpose |
 |----------|---------|
-| `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | **Trade supervision methodology** — monitoring frequency, metrics, stop/target rules, after-hours research, overnight pipeline |
-| `docs/project/PHASE2_EARLY_INSTALL_3DAY_OBSERVATION_REVIEW_20260516.md` | **Phase 2 early install 3-day observation review** — current safety, scheduled run counts, dashboards, API checks |
-| `docs/project/PHASE2_EARLY_INSTALL_FREEZE_AND_OBSERVATION_RUNBOOK.md` | **Phase 2 freeze/observation runbook** — freeze rule, daily commands, next operational read |
+| `docs/project/TRADE_SUPERVISION_METHODOLOGY.md` | **Trade supervision methodology** — monitoring, alert routing (AUTO/MANUAL), extended hours, trailing stops V2.4 |
+| `docs/project/ROOT_CAUSE_ATM_DEAD_2026_05_26.md` | **Root cause: ATM dead 4 days** — 5 root causes, System Health Agent design, validation results |
 | `docs/CHEAT_SHEET.md` | Operator quick reference |
 | `docs/RESTORE_GUIDE.md` | Disaster recovery procedures |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50 GPU setup for Ollama |

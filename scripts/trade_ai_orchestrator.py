@@ -338,27 +338,46 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
         _err("scoring", str(exc)); traceback.print_exc(); return 1
 
     # 10a Scalp Critic — agent review of scored results
+    # Gate critic with --no-llm flag (critic uses LLM but was not gated)
+    # Also enforce 120s timeout to prevent blocking the entire pipeline
     critic_summary: dict = {}
-    try:
-        from scalp_critic_agent import critique_scored_tickers, send_telegram_summary
-        critic_summary = critique_scored_tickers(scored, only_go_wait=True)
-        blocked = critic_summary.get('blocked', 0)
-        downgraded = critic_summary.get('downgraded', 0)
-        confirmed = critic_summary.get('confirmed', 0)
-        _ok("scalp_critic",
-            f"Confirmed={confirmed}  Blocked={blocked}  Downgraded={downgraded}  "
-            f"Changes={len(critic_summary.get('changes', []))}")
-        if blocked or downgraded:
+    if not use_llm:
+        _skip("scalp_critic", "--no-llm flag set — skipping LLM critic")
+    else:
+        import threading
+        _critic_result = [None]
+        _critic_error = [None]
+        def _run_critic():
             try:
-                send_telegram_summary(critic_summary)
-            except Exception:
-                pass
+                from scalp_critic_agent import critique_scored_tickers
+                _critic_result[0] = critique_scored_tickers(scored, only_go_wait=True, max_tickers=10)
+            except Exception as e:
+                _critic_error[0] = e
+        _ct = threading.Thread(target=_run_critic, daemon=True)
+        _ct.start()
+        _ct.join(timeout=120)  # Hard 120s cap — never block pipeline longer
+        if _ct.is_alive():
+            _err("scalp_critic", "TIMEOUT after 120s — continuing without critique (LLM bottleneck)")
+        elif _critic_error[0]:
+            _err("scalp_critic", f"{_critic_error[0]} — continuing without critique")
+        elif _critic_result[0]:
+            critic_summary = _critic_result[0]
+            blocked = critic_summary.get('blocked', 0)
+            downgraded = critic_summary.get('downgraded', 0)
+            confirmed = critic_summary.get('confirmed', 0)
+            _ok("scalp_critic",
+                f"Confirmed={confirmed}  Blocked={blocked}  Downgraded={downgraded}  "
+                f"Changes={len(critic_summary.get('changes', []))}")
+            if blocked or downgraded:
+                try:
+                    from scalp_critic_agent import send_telegram_summary
+                    send_telegram_summary(critic_summary)
+                except Exception:
+                    pass
         # Recount after critic overrides
         go_count   = sum(1 for t in scored if t.get("decision") == "GO")
         wait_count = sum(1 for t in scored if t.get("decision") == "WAIT")
         _ok("scoring_post_critic", f"GO={go_count}  WAIT={wait_count}  (after critic review)")
-    except Exception as exc:
-        _err("scalp_critic", f"{exc}  — continuing without critique")
 
     # 10a-ws: Broadcast scored tickers to live WS feed — non-fatal
     try:

@@ -1,6 +1,6 @@
 # Current Project Context — Trade AI v12
 
-**Last updated:** 2026-05-22  
+**Last updated:** 2026-05-26  
 **Author:** Context sync from Drive documentation  
 **Purpose:** Canonical handoff document for future Claude Code sessions
 
@@ -40,16 +40,36 @@ ATM-SAFE-1 containment completed 2026-05-22. All items resolved:
 
 **Maturity score post-containment: 6.2/10.0**
 
-## 3a. Stop Management V2 — COMPLETE
+## 3a. Stop Management V2 — COMPLETE (V2.4 hotfix 2026-05-26)
 
-All 4 phases completed 2026-05-22:
+All 4 phases completed 2026-05-22, V2.4 hotfix applied 2026-05-26:
 
 - **V2.0:** planned_stop + stop_order_id backfilled on all 5 open trades
 - **V2.1:** Broker stop reconciliation engine — 5/5 GTC stops verified
 - **V2.2:** Racing monitors merged into unified_stop_supervisor (*/3)
 - **V2.3:** Strategy-aware trailing tiers (momentum/swing/income/position)
+- **V2.4 (2026-05-26):** Critical trailing stop fix — two bugs found via ASPN incident:
+  - **Bug:** DB constraint `chk_long_stop_below_entry` blocked trailing stops above entry price → **DROPPED**
+  - **Bug:** `replace_stop()` 1s cancel delay insufficient, Alpaca rejected new stop → **Now verifies cancel before placing new stop (up to 5 retries)**
+  - **Bug:** Stop update didn't record `stop_order_id` or `stop_updated_at` → **Now persists both**
+  - Post-mortem: ASPN closed profitably at target ($6.01), but trailing stop to $5.81 failed — if price reversed, original $5.15 stop would have hit instead
 
 **Maturity score post-STOP-V2: 7.0/10.0** (up from 6.2)
+
+## 3a-2. Extended Hours Trading — ENABLED (2026-05-26)
+
+Alpaca paper adapter now supports pre-market (4:00 AM ET) and after-hours (8:00 PM ET):
+
+- **Market hours gate expanded:** 4:00 AM – 8:00 PM ET weekdays (was 9:30–16:00)
+- **Extended hours orders:** Forced limit-only (Alpaca requirement), `extended_hours: true`
+- **No bracket orders** during extended hours (Alpaca limitation) — separate GTC stop placed after fill
+- **Market orders forced to limit** during extended hours
+
+## 3a-3. Alert Fatigue Fix — APPLIED (2026-05-26)
+
+- **Bug:** `run_proactive_quote_refresh.py` called `send_telegram(msg, bypass_router=True)`, sending "ATP REVIEW ALERT" spam every 5 minutes via cron
+- **Fix:** Removed `bypass_router=True` — router now classifies these as P2_DASHBOARD_ONLY (dashboard only, not Telegram)
+- **Rule:** AUTO mode alerts = purchased/sold/trailing stop changed only. MANUAL mode = approval buttons only.
 
 Next: ATM re-enable decision package, STOP-V2 burn-in, A-5 strategy proof
 

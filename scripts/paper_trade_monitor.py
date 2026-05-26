@@ -79,11 +79,26 @@ def _api_delete(path):
 
 
 def replace_stop(symbol, qty, new_stop, old_order_id=None):
-    """Cancel old stop, place new one higher."""
+    """Cancel old stop, verify cancellation, place new one higher."""
     import time
     if old_order_id:
         _api_delete(f'/v2/orders/{old_order_id}')
-        time.sleep(1)
+        # Verify cancellation before placing new stop (Alpaca needs time to release qty)
+        for _wait in range(5):
+            time.sleep(1)
+            try:
+                check = _api_get(f'/v2/orders/{old_order_id}')
+                if check.status_code == 200:
+                    status = check.json().get('status', '')
+                    if status in ('canceled', 'cancelled'):
+                        break
+                    log.info(f"[{symbol}] Waiting for stop cancel (status={status}, attempt {_wait+1})")
+                else:
+                    break  # order not found = cancelled
+            except Exception:
+                break
+        else:
+            log.warning(f"[{symbol}] Old stop cancel may not be confirmed — proceeding anyway")
 
     resp = _api_post('/v2/orders', {
         'symbol': symbol, 'qty': str(qty), 'side': 'sell',
@@ -290,8 +305,10 @@ def monitor(dry_run=False):
             if not dry_run:
                 new_id = replace_stop(sym, qty, new_stop, stop_order_id)
                 if new_id:
-                    cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", [new_stop, trade['id']])
+                    cur.execute("UPDATE paper_trades SET stop_loss=%s, stop_order_id=%s, stop_updated_at=NOW() WHERE id=%s",
+                                [new_stop, new_id, trade['id']])
                     conn.commit()
+                    log.info(f"TRAILING STOP: {sym} R={r_mult:.1f} — stop ${alpaca_stop:.2f} → ${new_stop:.2f}")
 
         # Ensure stop exists if missing
         if not stop_orders and action == "hold" and stop > 0:

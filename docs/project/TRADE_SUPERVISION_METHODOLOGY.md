@@ -2,7 +2,7 @@
 
 How the Trade AI v12 system monitors active positions, generates execution adjustments, conducts after-hours research, and carries insights forward into the next trading session.
 
-**Last verified:** 2026-05-21 (Real-time alerts, stop proximity buttons, 2-min monitoring)  
+**Last verified:** 2026-05-26 (Extended hours, trailing stop V2.4, alert fatigue fix, TCA populated)  
 **Source of truth:** Actual crontab, script source code, and Alpaca API integration  
 **Sections:** 17 (monitoring, alerts, execution, pre-market, intraday, after-hours, regime, MFE/MAE, page, data hygiene, gaps)
 
@@ -151,6 +151,35 @@ When a trade approaches its stop, the Telegram alert includes inline action butt
 | Hold | `stophold:{trade_id}` | Logs operator hold decision, continues monitoring |
 
 Callbacks are processed by `telegram_callback_handler.py` via the long-poll daemon. End-to-end latency from button tap to trade action: **2-6 seconds**.
+
+### Telegram Alert Routing (2026-05-26)
+
+**Operator alert rules (non-negotiable):**
+
+| Mode | Alerts Sent to Telegram | Suppressed |
+|------|------------------------|------------|
+| AUTO | Purchased (fill confirmed), Sold (fill confirmed), Trailing stop changed | All others |
+| MANUAL | Sent to trade decision group with approval/reject buttons | All others |
+
+**Router:** `telegram_alert_router.py` classifies all messages into P0-P3:
+- **P0_INTERRUPT** → Telegram immediately (approval-ready proposals, execution failures, stop decisions)
+- **P1_DIGEST** → Telegram with dedup (GO signals, Aegis briefs)
+- **P2_DASHBOARD_ONLY** → Dashboard page only, never Telegram (ATP REVIEW ALERT, LARGE MOVE, WAIT/AVOID, Iris audits)
+- **P3_LOG_ONLY** → Log file only (sync success, debug, db wrapper status)
+
+**Fix applied 2026-05-26:** `run_proactive_quote_refresh.py` was sending with `bypass_router=True`, causing "ATP REVIEW ALERT" spam every 5 minutes. Now respects the router.
+
+### Extended Hours Trading (2026-05-26)
+
+Trading hours expanded from 9:30-16:00 to 4:00 AM – 8:00 PM ET:
+
+| Session | Hours (ET) | Order Types | Notes |
+|---------|-----------|-------------|-------|
+| Pre-market | 4:00 – 9:30 | Limit only, `extended_hours: true` | No bracket orders, no market orders |
+| Regular | 9:30 – 16:00 | Market, limit, bracket | Full order type support |
+| After-hours | 16:00 – 20:00 | Limit only, `extended_hours: true` | No bracket orders, no market orders |
+
+Extended hours fills receive a separate GTC stop order (same as market order fills).
 
 ### Negative news keyword scan
 
