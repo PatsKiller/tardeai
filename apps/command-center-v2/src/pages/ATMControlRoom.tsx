@@ -21,6 +21,14 @@ const DECISION_OPTIONS = [
   { value: 'strategy_mismatch_investigate', label: 'Strategy Mismatch', color: '#8b5cf6' },
 ]
 
+const MC_DECISIONS = [
+  { value: 'keep_open_after_review', label: 'Keep Open After Review', color: '#4ade80' },
+  { value: 'close_manually_outside_system', label: 'Close Manually Outside System', color: '#ef4444' },
+  { value: 'prepare_paper_close_preview', label: 'Prepare Close Preview', color: '#f59e0b' },
+  { value: 'needs_more_data', label: 'Needs More Data', color: '#6b7280' },
+  { value: 'mark_resolved_no_action', label: 'Mark Resolved', color: '#8b5cf6' },
+]
+
 export default function ATMControlRoom() {
   const { data: lc, refetch } = useApi<any>('/api/v2/atm/lifecycle', 15000)
   const { data: overdueData, refetch: refetchOD } = useApi<any>('/api/v2/atm/overdue-decisions', 15000)
@@ -57,6 +65,31 @@ export default function ATMControlRoom() {
       setSubmitStatus(`Error: ${e.message}`)
     }
   }
+
+  const { data: mcData, refetch: refetchMC } = useApi<any>('/api/v2/atm/manual-close-review', 15000)
+  const [mcForm, setMcForm] = useState<{ tradeId: number | null, symbol: string, strategyId: string, decision: string, reason: string, note: string }>({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })
+  const [mcStatus, setMcStatus] = useState<string | null>(null)
+
+  const submitMcDecision = async () => {
+    if (!mcForm.decision || !mcForm.symbol) return
+    setMcStatus('submitting...')
+    try {
+      const resp = await fetch('/api/v2/atm/manual-close-review', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paper_trade_id: mcForm.tradeId, symbol: mcForm.symbol, strategy_id: mcForm.strategyId, decision: mcForm.decision, decision_reason: mcForm.reason, operator_note: mcForm.note }),
+      })
+      const data = await resp.json()
+      if (data.ok) {
+        setMcStatus(data.data?.safety_message || 'Decision recorded.')
+        setMcForm({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })
+        refetchMC()
+        setTimeout(() => setMcStatus(null), 5000)
+      } else { setMcStatus(`Error: ${data.error}`) }
+    } catch (e: any) { setMcStatus(`Error: ${e.message}`) }
+  }
+
+  const mcItems = mcData?.items || []
+  const mcSummary = mcData?.summary || {}
 
   const odNeedsDecision = overdueData?.needs_decision || []
   const odReviewed = overdueData?.reviewed || []
@@ -206,6 +239,89 @@ export default function ATMControlRoom() {
                   Cancel
                 </button>
                 {submitStatus && <span style={{ fontSize: 10, color: submitStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{submitStatus}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MANUAL CLOSE REVIEW */}
+      {mcItems.length > 0 && (
+        <div style={{ ...card, marginBottom: 16, borderColor: 'rgba(245,158,11,0.25)' }}>
+          <div style={{ ...secTitle, color: '#f59e0b' }}>
+            Manual Close Review — {mcSummary.review_for_manual_close_count || mcItems.length} positions
+            ({mcSummary.unresolved_count || 0} pending, {mcSummary.resolved_count || 0} resolved)
+          </div>
+          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
+                  {['Symbol', 'Strategy', 'Days', 'Entry', 'Stop', 'Shares', 'Account', 'Review Status', 'Action'].map(h => (
+                    <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {mcItems.map((p: any) => {
+                  const rev = p.review_decision
+                  const revOpt = rev ? MC_DECISIONS.find(d => d.value === rev.decision) : null
+                  return (
+                    <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing ? 'rgba(239,68,68,0.04)' : undefined }}>
+                      <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
+                      <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
+                      <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
+                      <td style={{ padding: '6px' }}>${p.entry_price?.toFixed(2) || '—'}</td>
+                      <td style={{ padding: '6px', color: p.stop_missing ? '#ef4444' : '#4ade80' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
+                      <td style={{ padding: '6px' }}>{p.shares || '—'}</td>
+                      <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{p.account}</td>
+                      <td style={{ padding: '6px' }}>
+                        {rev ? <span style={pill(revOpt?.color || '#4ade80')}>{revOpt?.label || rev.decision}</span> : <span style={pill('#f59e0b')}>pending</span>}
+                      </td>
+                      <td style={{ padding: '6px' }}>
+                        <button onClick={() => setMcForm({ tradeId: p.paper_trade_id, symbol: p.symbol, strategyId: p.strategy_id, decision: '', reason: '', note: '' })}
+                          style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
+                          {rev ? 'Update' : 'Review'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {mcForm.tradeId && (
+            <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>
+                Manual Close Review — {mcForm.symbol} (Trade #{mcForm.tradeId})
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {MC_DECISIONS.map(opt => (
+                  <button key={opt.value} onClick={() => setMcForm(f => ({ ...f, decision: opt.value }))}
+                    style={{ padding: '5px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                      background: mcForm.decision === opt.value ? `color-mix(in srgb, ${opt.color} 20%, transparent)` : 'rgba(255,255,255,0.04)',
+                      border: mcForm.decision === opt.value ? `1px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
+                      color: mcForm.decision === opt.value ? opt.color : 'rgba(255,255,255,0.5)' }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <input placeholder="Reason (required)" value={mcForm.reason} onChange={e => setMcForm(f => ({ ...f, reason: e.target.value }))}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 6, boxSizing: 'border-box' }} />
+              <input placeholder="Operator note (optional)" value={mcForm.note} onChange={e => setMcForm(f => ({ ...f, note: e.target.value }))}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 8, boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={submitMcDecision} disabled={!mcForm.decision || !mcForm.reason}
+                  style={{ padding: '6px 16px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                    background: mcForm.decision && mcForm.reason ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(99,102,241,0.4)', color: mcForm.decision && mcForm.reason ? '#a5b4fc' : 'rgba(255,255,255,0.2)' }}>
+                  Record Review Decision
+                </button>
+                <button onClick={() => setMcForm({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })}
+                  style={{ padding: '6px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
+                  Cancel
+                </button>
+                {mcStatus && <span style={{ fontSize: 10, color: mcStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{mcStatus}</span>}
               </div>
             </div>
           )}

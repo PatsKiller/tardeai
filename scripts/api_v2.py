@@ -19200,6 +19200,142 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import traceback; traceback.print_exc()
             return 500, {"ok": False, "error": str(e)}
 
+    # ── ATM Manual Close Review ─────────────────────────────────────────
+    if base_path == "/api/v2/atm/manual-close-review" and method == "GET":
+        try:
+            from strategy_trailing_policy import get_trailing_policy as _gtp_mc
+            import datetime as _dt_mc
+            _now_mc = _dt_mc.datetime.now(_dt_mc.timezone.utc)
+
+            # Find positions with review_for_manual_close decision
+            _mc_decs = _db_query("""
+                SELECT DISTINCT ON (paper_trade_id) paper_trade_id, decision, decision_reason, operator_note, created_at
+                FROM atm_overdue_position_decisions
+                WHERE decision = 'review_for_manual_close'
+                ORDER BY paper_trade_id, created_at DESC
+            """) or []
+            _mc_tids = {d["paper_trade_id"] for d in _mc_decs}
+
+            # Get those trades
+            _mc_trades = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account FROM paper_trades WHERE exit_time IS NULL ORDER BY id") or []
+
+            # Get existing review decisions
+            _mc_reviews = _db_query("SELECT * FROM atm_manual_close_review_decisions ORDER BY created_at DESC") or []
+            _mc_rev_by_trade = {r["paper_trade_id"]: r for r in _mc_reviews if r.get("paper_trade_id")}
+
+            _items = []
+            for _t in _mc_trades:
+                if _t["id"] not in _mc_tids:
+                    continue
+                _pol = _gtp_mc(_t["strategy_id"])
+                _et = _t.get("entry_time")
+                _hold = 0
+                if _et:
+                    if hasattr(_et, "tzinfo") and _et.tzinfo is None:
+                        _et = _et.replace(tzinfo=_dt_mc.timezone.utc)
+                    _hold = (_now_mc - _et).days
+
+                _overdue_dec = next((d for d in _mc_decs if d["paper_trade_id"] == _t["id"]), {})
+                _review_dec = _mc_rev_by_trade.get(_t["id"])
+
+                _items.append({
+                    "paper_trade_id": _t["id"],
+                    "symbol": _t["symbol"],
+                    "strategy_id": _t["strategy_id"],
+                    "strategy_family": _pol.get("family", "unknown"),
+                    "account": _t.get("account"),
+                    "shares": _t.get("shares"),
+                    "entry_price": float(_t["entry_price"]) if _t.get("entry_price") else None,
+                    "entry_time": str(_t.get("entry_time") or ""),
+                    "days_held": _hold,
+                    "db_stop_loss": float(_t["stop_loss"]) if _t.get("stop_loss") else None,
+                    "stop_missing": not _t.get("stop_loss"),
+                    "trailing_tier": _pol.get("tiers", [])[-1][2] if _pol.get("tiers") else None,
+                    "time_stop_type": _pol.get("time_stop", {}).get("type", "unknown"),
+                    "overdue_decision": {k: _json_clean(v) for k, v in _overdue_dec.items()} if _overdue_dec else None,
+                    "review_decision": {k: _json_clean(v) for k, v in _review_dec.items()} if _review_dec else None,
+                    "review_status": "reviewed" if _review_dec else "pending_review",
+                })
+
+            _resolved = sum(1 for i in _items if i["review_status"] == "reviewed")
+            return 200, {"ok": True, "data": {
+                "summary": {
+                    "review_for_manual_close_count": len(_items),
+                    "missing_stop_count": sum(1 for i in _items if i["stop_missing"]),
+                    "unresolved_count": len(_items) - _resolved,
+                    "resolved_count": _resolved,
+                },
+                "items": _items,
+            }}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/manual-close-review" and method == "POST":
+        try:
+            import hashlib as _mc_hash
+            _dangerous = {"execute", "sell", "close_now", "quantity", "price", "broker_order", "order_type", "cancel"}
+            if body and any(k in _dangerous for k in body.keys()):
+                return 400, {"ok": False, "error": "Execution fields not allowed. Review decisions only."}
+
+            _sym = (body or {}).get("symbol", "")
+            _tid = (body or {}).get("paper_trade_id")
+            _lcid = (body or {}).get("lifecycle_id")
+            _decision = (body or {}).get("decision", "")
+            _reason = (body or {}).get("decision_reason", "")
+            _note = (body or {}).get("operator_note", "")
+
+            _allowed = {"keep_open_after_review", "close_manually_outside_system",
+                        "prepare_paper_close_preview", "needs_more_data", "mark_resolved_no_action"}
+            if _decision not in _allowed:
+                return 400, {"ok": False, "error": f"Invalid decision. Allowed: {', '.join(sorted(_allowed))}"}
+            if not _sym:
+                return 400, {"ok": False, "error": "symbol required"}
+
+            import datetime as _dt_mcr
+            _rev_id = f"mcr-{_mc_hash.sha256(f'{_sym}:{_tid}:{_dt_mcr.datetime.now().isoformat()}'.encode()).hexdigest()[:12]}"
+
+            _conn = None
+            try:
+                from db_adapter import _get_conn as _gc_mc
+                _conn = _gc_mc()
+                _cur = _conn.cursor()
+                _cur.execute("""INSERT INTO atm_manual_close_review_decisions
+                    (review_id, operator, lifecycle_id, paper_trade_id, symbol, strategy_id,
+                     decision, decision_reason, operator_note, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    [_rev_id, "john", _lcid, _tid, _sym,
+                     (body or {}).get("strategy_id"),
+                     _decision, _reason, _note, "recorded"])
+                _conn.commit()
+
+                try:
+                    _cur.execute("""INSERT INTO lifecycle_events
+                        (lifecycle_id, stage, event_type, status, symbol, strategy_id,
+                         paper_trade_id, source_script, payload)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        [_lcid or f"mcr-{_tid}", "operator_review", "manual_close_review_recorded",
+                         "recorded", _sym, (body or {}).get("strategy_id"), _tid, "api_v2.py",
+                         __import__("json").dumps({"decision": _decision, "reason": _reason})])
+                    _conn.commit()
+                except Exception:
+                    try: _conn.rollback()
+                    except: pass
+
+                return 200, {"ok": True, "data": {
+                    "review_id": _rev_id,
+                    "decision": _decision,
+                    "symbol": _sym,
+                    "safety_message": "Review decision recorded only. No order was placed.",
+                }}
+            finally:
+                if _conn:
+                    try: _conn.close()
+                    except: pass
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM (Automated Trade Mode) endpoints ─────────────────────────────
     if base_path == "/api/v2/atm/status":
         try:
