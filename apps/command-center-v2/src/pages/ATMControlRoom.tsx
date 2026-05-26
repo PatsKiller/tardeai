@@ -13,10 +13,53 @@ const STAGES = ['Universe', 'Candidates', 'Scoring', 'Signals', 'Proposals', 'Ri
 const tsColor = (s: string) => s === 'overdue' ? '#ef4444' : s === 'review_due' || s === 'approaching' ? '#f59e0b' : s === 'ok' ? '#4ade80' : '#6b7280'
 const gateColor = (s: string) => s === 'pass' ? '#4ade80' : s === 'fail' ? '#ef4444' : s === 'bypassed' ? '#f59e0b' : '#6b7280'
 
+const DECISION_OPTIONS = [
+  { value: 'keep_open', label: 'Keep Open', color: '#4ade80' },
+  { value: 'review_for_manual_close', label: 'Review for Manual Close', color: '#ef4444' },
+  { value: 'review_stop_or_trailing_adjustment', label: 'Review Stop/Trailing', color: '#f59e0b' },
+  { value: 'missing_data_verify_first', label: 'Missing Data — Verify', color: '#6b7280' },
+  { value: 'strategy_mismatch_investigate', label: 'Strategy Mismatch', color: '#8b5cf6' },
+]
+
 export default function ATMControlRoom() {
   const { data: lc, refetch } = useApi<any>('/api/v2/atm/lifecycle', 15000)
+  const { data: overdueData, refetch: refetchOD } = useApi<any>('/api/v2/atm/overdue-decisions', 15000)
   const [selectedTrade, setSelectedTrade] = useState<any>(null)
   const [tab, setTab] = useState<'positions' | 'proposals'>('positions')
+  const [decisionForm, setDecisionForm] = useState<{ tradeId: number | null, symbol: string, decision: string, reason: string, note: string }>({ tradeId: null, symbol: '', decision: '', reason: '', note: '' })
+  const [submitStatus, setSubmitStatus] = useState<string | null>(null)
+
+  const submitDecision = async () => {
+    if (!decisionForm.decision || !decisionForm.symbol) return
+    setSubmitStatus('submitting...')
+    try {
+      const resp = await fetch('/api/v2/atm/overdue-decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paper_trade_id: decisionForm.tradeId,
+          symbol: decisionForm.symbol,
+          decision: decisionForm.decision,
+          decision_reason: decisionForm.reason,
+          operator_note: decisionForm.note,
+        }),
+      })
+      const data = await resp.json()
+      if (data.ok) {
+        setSubmitStatus(data.data?.safety_message || 'Decision recorded.')
+        setDecisionForm({ tradeId: null, symbol: '', decision: '', reason: '', note: '' })
+        refetchOD()
+        setTimeout(() => setSubmitStatus(null), 5000)
+      } else {
+        setSubmitStatus(`Error: ${data.error}`)
+      }
+    } catch (e: any) {
+      setSubmitStatus(`Error: ${e.message}`)
+    }
+  }
+
+  const odPositions = overdueData?.positions || []
+  const odSummary = overdueData?.summary || {}
 
   const s = lc?.summary || {}
   const positions = lc?.positions || []
@@ -53,6 +96,87 @@ export default function ATMControlRoom() {
         {m(s.classifier_gate_disabled ? 'OFF' : 'ON', 'Classifier Gate', s.classifier_gate_disabled ? '#f59e0b' : '#4ade80')}
         {m(s.lifecycle_events_24h, 'Events 24h')}
       </div>
+
+      {/* OVERDUE INTRADAY DECISION QUEUE */}
+      {odPositions.length > 0 && (
+        <div style={{ ...card, marginBottom: 16, borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.03)' }}>
+          <div style={{ ...secTitle, color: '#ef4444' }}>Overdue Intraday Decision Queue — {odSummary.overdue_count || odPositions.length} positions ({odSummary.missing_decisions || 0} need decisions)</div>
+          <div style={{ maxHeight: 350, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid rgba(239,68,68,0.15)' }}>
+                  {['Symbol', 'Strategy', 'Days', 'Risk', 'Entry', 'Stop', 'Overdue By', 'Decision', 'Action'].map(h => (
+                    <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {odPositions.map((p: any) => {
+                  const dec = p.existing_decision
+                  const decOpt = dec ? DECISION_OPTIONS.find(d => d.value === dec.decision) : null
+                  return (
+                    <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing ? 'rgba(239,68,68,0.06)' : undefined }}>
+                      <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
+                      <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
+                      <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
+                      <td style={{ padding: '6px' }}><span style={pill(p.risk === 'HIGH' ? '#ef4444' : '#f59e0b')}>{p.risk}</span></td>
+                      <td style={{ padding: '6px' }}>${p.entry_price?.toFixed(2) || '—'}</td>
+                      <td style={{ padding: '6px', color: p.stop_missing ? '#ef4444' : '#4ade80' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
+                      <td style={{ padding: '6px', color: '#ef4444' }}>+{p.overdue_by}d</td>
+                      <td style={{ padding: '6px' }}>
+                        {dec ? <span style={pill(decOpt?.color || '#4ade80')}>{decOpt?.label || dec.decision}</span> : <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 9 }}>none</span>}
+                      </td>
+                      <td style={{ padding: '6px' }}>
+                        <button onClick={() => setDecisionForm({ tradeId: p.paper_trade_id, symbol: p.symbol, decision: '', reason: '', note: '' })}
+                          style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
+                          {dec ? 'Update' : 'Decide'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Decision form */}
+          {decisionForm.tradeId && (
+            <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>
+                Record Decision — {decisionForm.symbol} (Trade #{decisionForm.tradeId})
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {DECISION_OPTIONS.map(opt => (
+                  <button key={opt.value} onClick={() => setDecisionForm(f => ({ ...f, decision: opt.value }))}
+                    style={{ padding: '5px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                      background: decisionForm.decision === opt.value ? `color-mix(in srgb, ${opt.color} 20%, transparent)` : 'rgba(255,255,255,0.04)',
+                      border: decisionForm.decision === opt.value ? `1px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
+                      color: decisionForm.decision === opt.value ? opt.color : 'rgba(255,255,255,0.5)' }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <input placeholder="Reason (required)" value={decisionForm.reason} onChange={e => setDecisionForm(f => ({ ...f, reason: e.target.value }))}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 6, boxSizing: 'border-box' }} />
+              <input placeholder="Operator note (optional)" value={decisionForm.note} onChange={e => setDecisionForm(f => ({ ...f, note: e.target.value }))}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 8, boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button onClick={submitDecision} disabled={!decisionForm.decision || !decisionForm.reason}
+                  style={{ padding: '6px 16px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                    background: decisionForm.decision && decisionForm.reason ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(99,102,241,0.4)', color: decisionForm.decision && decisionForm.reason ? '#a5b4fc' : 'rgba(255,255,255,0.2)' }}>
+                  Record Review Decision
+                </button>
+                <button onClick={() => setDecisionForm({ tradeId: null, symbol: '', decision: '', reason: '', note: '' })}
+                  style={{ padding: '6px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
+                  Cancel
+                </button>
+                {submitStatus && <span style={{ fontSize: 10, color: submitStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{submitStatus}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 2. Lifecycle Pipeline Stages */}
       <div style={{ ...card, marginBottom: 16 }}>
