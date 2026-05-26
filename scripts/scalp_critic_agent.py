@@ -62,18 +62,29 @@ def check_danger_flags(symbol: str, ticker: dict) -> List[str]:
     except Exception:
         pass
 
-    # RVOL > 5x on float < 5M — warn only for momentum scalps (this IS the setup)
-    # Block only if float is truly micro (<1M) with extreme RVOL (>15x) = halt risk
+    # Momentum scalp float/RVOL/catalyst assessment
+    # Ideal setup: float <20M (prime <10M), RVOL 5x+, catalyst present
+    # Only flag negatives — the setup itself is NOT a danger signal
     try:
         float_m = float(ticker.get('float_m', 0) or 0)
         rvol = float(ticker.get('relative_volume', ticker.get('rvol', 0)) or 0)
-        if 0 < float_m < 1.0 and rvol > 15.0:
-            flags.append(f"MICRO_FLOAT_EXTREME_RVOL:{rvol:.1f}x on {float_m:.1f}M float (halt risk)")
-        elif 0 < float_m < 1.0 and rvol > 5.0:
-            flags.append(f"MICRO_FLOAT_HIGH_RVOL:{rvol:.1f}x on {float_m:.1f}M float (caution — halt risk)")
-        # For float 1-5M with high RVOL: this is normal momentum scalp territory, warn don't block
-        elif 0 < float_m < 5.0 and rvol > 10.0:
-            flags.append(f"HIGH_RVOL_LOW_FLOAT:{rvol:.1f}x on {float_m:.1f}M float (momentum setup — verify catalyst)")
+        catalyst = ticker.get('catalyst') or ticker.get('catalyst_headline') or ''
+        catalyst_verified = ticker.get('catalyst_verified', False)
+
+        # Float assessment
+        if float_m > 20.0:
+            flags.append(f"FLOAT_TOO_LARGE:{float_m:.1f}M (momentum scalp wants <20M, prime <10M)")
+        elif float_m < 0.5 and rvol > 15.0:
+            # Sub-500K float with extreme RVOL = genuine halt risk
+            flags.append(f"MICRO_FLOAT_HALT_RISK:{rvol:.1f}x on {float_m:.1f}M float (halt likely)")
+
+        # RVOL assessment — 5x+ is REQUIRED for momentum scalps
+        if 0 < rvol < 5.0 and float_m < 20.0:
+            flags.append(f"RVOL_INSUFFICIENT:{rvol:.1f}x (momentum scalp needs 5x+ min)")
+
+        # Catalyst assessment — required for conviction
+        if float_m < 20.0 and rvol >= 5.0 and not catalyst and not catalyst_verified:
+            flags.append(f"NO_CATALYST:RVOL {rvol:.1f}x on {float_m:.1f}M float — no catalyst found (verify before entry)")
     except Exception:
         pass
 
