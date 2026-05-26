@@ -1,0 +1,49 @@
+# Config Export: config/screener_schedule.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/screener_schedule.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `072ce5670807bd60a175df6567bc68f8c00c5dcb540a976621106f6aa0a2d25f` |
+| **File Size** | 984 bytes |
+
+## Full Source
+
+```yaml
+# SCREENER-ARCH-5: Screener Schedule Registry
+# Metadata only. No secrets. No credentials.
+
+sessions:
+  premarket:
+    description: "Pre-market gap/catalyst scans"
+    run_times_et: ["07:00", "08:00"]
+    allow_premarket: true
+  market_open:
+    description: "Active intraday/momentum setups"
+    run_times_et: ["10:00"]
+    allow_intraday: true
+  intraday:
+    description: "Momentum continuation, maturity refresh"
+    run_times_et: ["12:00", "14:00"]
+    allow_intraday: true
+  after_close:
+    description: "Swing, position, dividend, ETF, sector rotation"
+    run_times_et: ["16:00", "18:00"]
+    allow_after_hours: true
+  overnight:
+    description: "Fundamentals, news, catalysts refresh"
+    run_times_et: ["17:30"]
+    notes: "orchestrator 1730 run covers this"
+
+stale_thresholds:
+  daily: 24
+  weekly: 192
+  biweekly: 384
+  monthly: 840
+
+alert_policy:
+  stale_screener_p0_threshold: 3
+  stale_screener_p1: true
+  success_level: P3_LOG_ONLY
+  route_through_ops_hygiene: true
+```

@@ -1,0 +1,708 @@
+# Source Export: scripts/social_scalp_scanner.py
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `scripts/social_scalp_scanner.py` |
+| **Git Branch** | `main` |
+| **Git Commit** | `915876f` |
+| **Export Timestamp** | `2026-05-26T19:48:00Z` |
+| **SHA256** | `bf17f5a248b4cd7af42e1de1eab5292f659529520eee6cd4fb9d1114852a53d4` |
+| **File Size** | 26454 bytes |
+
+## Full Source
+
+```py
+#!/usr/bin/env python3
+"""
+social_scalp_scanner.py
+
+Reads overnight social mentions → Finviz lookup → 6-pillar score → Telegram on GO/A+.
+
+Schedule: 6:00 AM every 30 min until 10:00 AM, then hourly until 4:00 PM M-F.
+Triggered by cron — each run is stateless (dedup via scalp_scan_results table).
+"""
+
+import csv, io, json, logging, os, sys, time, uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import psycopg2
+import requests
+from psycopg2.extras import RealDictCursor
+
+# --- Setup ---
+ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from dotenv import load_dotenv
+
+load_dotenv(ROOT / ".env")
+
+from finviz_enrichment import enrich_tickers
+from scoring import score_ticker, _load_weights
+from telegram_alert import send_telegram
+from scalp_ws_client import broadcast_scalp_update
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [SCALP] %(message)s")
+logger = logging.getLogger(__name__)
+
+# --- Config ---
+LOOKBACK_HOURS = 18
+MIN_MENTIONS = 2
+GO_THRESHOLD = 40
+APLUS_THRESHOLD = 48
+DEDUP_MINUTES = 90
+MAX_CANDIDATES = 15
+
+SKIP_IF_PRICE_ABOVE = 50.0
+SKIP_IF_FLOAT_ABOVE = 200  # millions
+
+PORTFOLIO_ROUTE_TAGS = {"retirement_income", "dividend_growth"}
+
+CATALYST_KEYWORDS = [
+    "fda", "approval", "earnings", "beat", "m&a", "merger", "acquisition",
+    "partnership", "contract", "deal", "upgrade", "buyout", "8-k", "patent",
+    "phase", "trial", "breakthrough", "guidance", "raised",
+]
+
+
+def fetch_finviz_base(symbols: list[str]) -> dict[str, dict]:
+    """
+    Fetch base data (price, change%, volume) from Finviz Elite view 111.
+    The enrichment module skips price/change_pct/volume (SKIP_DUPLICATES),
+    so we fetch them directly here.
+    """
+    token = os.getenv("FINVIZ_API_TOKEN", "").strip()
+    cookie = os.getenv("FINVIZ_COOKIE", "").strip()
+    ua = os.getenv("FINVIZ_USER_AGENT", "Mozilla/5.0")
+
+    results: dict[str, dict] = {}
+    batch_size = 20
+
+    for i in range(0, len(symbols), batch_size):
+        batch = symbols[i : i + batch_size]
+        ticker_str = ",".join(batch)
+
+        if token:
+            url = f"https://elite.finviz.com/export?v=111&t={ticker_str}&auth={token}"
+            headers = {"User-Agent": ua}
+        elif cookie:
+            url = f"https://elite.finviz.com/export?v=111&t={ticker_str}"
+            headers = {"User-Agent": ua, "Cookie": cookie, "Referer": "https://elite.finviz.com/"}
+        else:
+            logger.error("No Finviz auth configured")
+            return results
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=20)
+            if resp.status_code == 429:
+                logger.warning("Finviz rate limit — waiting 30s")
+                time.sleep(30)
+                resp = requests.get(url, headers=headers, timeout=20)
+            if not resp.ok:
+                logger.warning("Finviz v=111 HTTP %d", resp.status_code)
+                continue
+
+            reader = csv.DictReader(io.StringIO(resp.text))
+            for row in reader:
+                sym = (row.get("Ticker") or "").upper()
+                if not sym:
+                    continue
+                price_raw = (row.get("Price") or "").strip()
+                change_raw = (row.get("Change") or "").replace("%", "").strip()
+                vol_raw = (row.get("Volume") or "").replace(",", "").strip()
+                try:
+                    price = float(price_raw) if price_raw else None
+                except ValueError:
+                    price = None
+                try:
+                    change = float(change_raw) if change_raw else None
+                except ValueError:
+                    change = None
+                try:
+                    volume = int(vol_raw) if vol_raw else None
+                except ValueError:
+                    volume = None
+                results[sym] = {"price": price, "change_pct": change, "volume": volume}
+        except Exception as e:
+            logger.error("Finviz base fetch error: %s", e)
+
+        time.sleep(0.5)
+
+    return results
+
+
+def get_db():
+    return psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", 5432)),
+        dbname=os.getenv("DB_NAME", "trade_ai"),
+        user=os.getenv("DB_USER", "trade_ai"),
+        password=os.getenv("DB_PASSWORD", ""),
+    )
+
+
+def get_social_candidates(conn) -> list[dict]:
+    """
+    Aggregate ticker mentions from social_posts in last LOOKBACK_HOURS.
+    Returns list of {symbol, mention_count, sources, bull, bear, strategy_tags, sample_content}
+    sorted by mention_count desc.
+    """
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
+
+    cur.execute(
+        """
+        SELECT platform, symbols_mentioned, sentiment, text, post_date, strategy_tags
+        FROM social_posts
+        WHERE post_date > %s
+          AND symbols_mentioned IS NOT NULL
+          AND jsonb_array_length(symbols_mentioned) > 0
+        ORDER BY post_date DESC
+        """,
+        [cutoff],
+    )
+
+    posts = cur.fetchall()
+    if not posts:
+        logger.info("No social posts with ticker mentions in last %dh", LOOKBACK_HOURS)
+        return []
+
+    ticker_data: dict[str, dict] = {}
+    for post in posts:
+        symbols = post["symbols_mentioned"]
+        if isinstance(symbols, str):
+            symbols = json.loads(symbols)
+
+        for sym in symbols:
+            sym = sym.upper().strip()
+            # Skip non-equity symbols (crypto .X, too long, non-alpha)
+            if not sym or len(sym) > 5 or not sym.isalpha():
+                continue
+            if sym not in ticker_data:
+                ticker_data[sym] = {
+                    "symbol": sym,
+                    "mention_count": 0,
+                    "sources": set(),
+                    "bull": 0,
+                    "bear": 0,
+                    "strategy_tags": set(),
+                    "sample_content": (post.get("text") or "")[:200],
+                }
+            ticker_data[sym]["mention_count"] += 1
+            ticker_data[sym]["sources"].add(post.get("platform", "unknown"))
+            stags = post.get("strategy_tags") or []
+            if isinstance(stags, str):
+                stags = json.loads(stags)
+            for t in stags:
+                ticker_data[sym]["strategy_tags"].add(t)
+            sent = (post.get("sentiment") or "").lower()
+            if sent == "bullish":
+                ticker_data[sym]["bull"] += 1
+            elif sent == "bearish":
+                ticker_data[sym]["bear"] += 1
+
+    candidates = [
+        {**v, "sources": list(v["sources"]), "strategy_tags": list(v["strategy_tags"])}
+        for v in ticker_data.values()
+        if v["mention_count"] >= MIN_MENTIONS
+    ]
+    candidates.sort(key=lambda x: x["mention_count"], reverse=True)
+    return candidates[:MAX_CANDIDATES]
+
+
+def already_alerted(conn, symbol: str) -> bool:
+    """Check if we've already fired a GO/A+ alert for this symbol within DEDUP_MINUTES."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id FROM scalp_scan_results
+        WHERE symbol = %s
+          AND score >= %s
+          AND scanned_at > NOW() - make_interval(mins => %s)
+        LIMIT 1
+        """,
+        [symbol, GO_THRESHOLD, DEDUP_MINUTES],
+    )
+    return cur.fetchone() is not None
+
+
+def build_catalyst_enrichment(conn, symbol: str, sample_content: str) -> dict:
+    """
+    Build an enrichment dict compatible with scoring.py's score_ticker().
+    Checks social content keywords + news_articles for catalyst data.
+    """
+    content_lower = sample_content.lower()
+    keyword_hits = sum(1 for k in CATALYST_KEYWORDS if k in content_lower)
+
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute(
+        """
+        SELECT title, summary, published_at
+        FROM news_articles
+        WHERE symbol = %s AND published_at > NOW() - INTERVAL '18 hours'
+        ORDER BY published_at DESC
+        LIMIT 5
+        """,
+        [symbol],
+    )
+    news = cur.fetchall()
+    news_count = len(news)
+
+    # Determine catalyst tier
+    if keyword_hits >= 2 or news_count >= 3:
+        tier = "high_impact"
+    elif keyword_hits >= 1 or news_count >= 1:
+        tier = "medium_impact"
+    else:
+        tier = "none"
+
+    catalysts = []
+    top_catalyst = None
+    for n in news:
+        age_hours = 0
+        if n.get("published_at"):
+            age_hours = (datetime.now(timezone.utc) - n["published_at"]).total_seconds() / 3600
+        cat = {
+            "title": n.get("title", ""),
+            "summary": n.get("summary", ""),
+            "hours_old": round(age_hours, 1),
+            "recency_multiplier": max(0.5, 1.0 - (age_hours / 48)),
+        }
+        catalysts.append(cat)
+        if top_catalyst is None:
+            top_catalyst = cat
+
+    return {
+        "catalyst_tier": tier,
+        "catalyst_count": news_count + keyword_hits,
+        "has_fresh_catalyst": any(c["hours_old"] < 6 for c in catalysts) if catalysts else keyword_hits > 0,
+        "top_catalyst": top_catalyst,
+        "catalysts": catalysts,
+    }
+
+
+def route_to_portfolio_agents(conn, symbol: str, mention_count: int, strategy_tags: list):
+    """Retirement/income/ETF tickers → agent queue instead of scalp pipeline."""
+    cur = conn.cursor()
+    job_id = str(uuid.uuid4())
+    cur.execute(
+        """
+        INSERT INTO watchlist_agent_jobs
+            (id, symbol, requested_agent, request_type, priority, status, submitted_from, payload, created_at)
+        VALUES (%s, %s, 'maria', 'social_discovery', 5, 'queued', 'social_scalp_scanner', %s, NOW())
+        ON CONFLICT DO NOTHING
+        """,
+        [
+            job_id,
+            symbol,
+            json.dumps({
+                "mention_count": mention_count,
+                "strategy_tags": strategy_tags,
+                "source": "social_discovery",
+                "note": f"Social mentions: {mention_count}x — routed to portfolio agents (not scalp)",
+            }),
+        ],
+    )
+    conn.commit()
+    logger.info("Routed %s to portfolio agents (%d mentions)", symbol, mention_count)
+
+
+def ensure_results_table(conn):
+    """Create scalp_scan_results table if it doesn't exist."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scalp_scan_results (
+            id SERIAL PRIMARY KEY,
+            symbol TEXT NOT NULL,
+            scanned_at TIMESTAMPTZ DEFAULT NOW(),
+            mention_count INTEGER,
+            score INTEGER,
+            grade TEXT,
+            decision TEXT,
+            rvol NUMERIC,
+            volume BIGINT,
+            gap_pct NUMERIC,
+            price NUMERIC,
+            float_mm NUMERIC,
+            change_pct NUMERIC,
+            sector TEXT,
+            sources TEXT[],
+            alerted BOOLEAN DEFAULT false
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_scalp_scan_symbol_time
+        ON scalp_scan_results(symbol, scanned_at DESC)
+        """
+    )
+    conn.commit()
+
+
+def save_scan_result(conn, symbol: str, mention_count: int, finviz_data: dict,
+                     score: int, grade: str, decision: str, sources: list):
+    """Store result in scalp_scan_results."""
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO scalp_scan_results
+            (symbol, mention_count, score, grade, decision, rvol, volume, gap_pct,
+             price, float_mm, change_pct, sector, sources, alerted, scanned_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        """,
+        [
+            symbol, mention_count, score, grade, decision,
+            finviz_data.get("rvol"),
+            finviz_data.get("volume_base") or finviz_data.get("volume"),
+            finviz_data.get("gap_pct"),
+            finviz_data.get("price"),
+            finviz_data.get("float_m"),
+            finviz_data.get("change_pct"),
+            finviz_data.get("sector"),
+            sources,
+            score >= GO_THRESHOLD,
+        ],
+    )
+    conn.commit()
+
+
+def _upsert_trade_ai_scans(conn, symbol: str, mention_count: int, finviz_data: dict,
+                           score: int, grade: str, decision: str, sources: list):
+    """Upsert social scan result into trade_ai_scans for pipeline harmonization."""
+    from datetime import datetime
+    cur = conn.cursor()
+    run_date = datetime.now().date()
+    run_id = f"social_{run_date.strftime('%Y%m%d')}_{datetime.now().strftime('%H%M')}"
+    try:
+        cur.execute("""
+            INSERT INTO trade_ai_scans (
+                run_id, run_date, run_label, run_type,
+                symbol, score, grade, decision,
+                price, rvol, float_m, volume,
+                gap_pct, change_pct, sector,
+                social_reddit, social_stocktwits, social_score,
+                social_sentiment,
+                mention_count, social_sources,
+                source, scanned_at
+            ) VALUES (
+                %s, %s, 'Social Scalp', 'social',
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s,
+                %s, %s, %s,
+                %s,
+                %s, %s,
+                'social', NOW()
+            )
+            ON CONFLICT (symbol, run_date)
+            DO UPDATE SET
+                social_reddit = EXCLUDED.social_reddit,
+                social_stocktwits = EXCLUDED.social_stocktwits,
+                social_score = EXCLUDED.social_score,
+                social_sentiment = EXCLUDED.social_sentiment,
+                mention_count = EXCLUDED.mention_count,
+                social_sources = EXCLUDED.social_sources,
+                score = CASE
+                    WHEN EXCLUDED.score > trade_ai_scans.score
+                    THEN EXCLUDED.score ELSE trade_ai_scans.score END,
+                decision = CASE
+                    WHEN EXCLUDED.score > trade_ai_scans.score
+                    THEN EXCLUDED.decision ELSE trade_ai_scans.decision END,
+                source = CASE
+                    WHEN trade_ai_scans.source IS NULL OR trade_ai_scans.source = ''
+                    THEN 'social'
+                    WHEN trade_ai_scans.source LIKE '%%social%%'
+                    THEN trade_ai_scans.source
+                    ELSE trade_ai_scans.source || '+social' END
+        """, [
+            run_id, run_date,
+            symbol, score, grade, decision,
+            finviz_data.get("price"), finviz_data.get("rvol"),
+            finviz_data.get("float_m"), finviz_data.get("volume_base") or finviz_data.get("volume"),
+            finviz_data.get("gap_pct"), finviz_data.get("change_pct"),
+            finviz_data.get("sector"),
+            sum(1 for s in sources if s == 'reddit'),
+            sum(1 for s in sources if s == 'stocktwits'),
+            min(mention_count / 10.0, 1.0),
+            'bullish' if score >= 40 else 'neutral',
+            mention_count, sources,
+        ])
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.warning(f"trade_ai_scans upsert failed for {symbol}: {e}")
+
+
+def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
+                     finviz_data: dict, mention_count: int, sources: list,
+                     bull: int, bear: int):
+    """Send GO or A+ Telegram alert."""
+    grade_emoji = "\U0001f525 A+" if grade == "A+" else "\u2705 GO"
+    bull_bear = ""
+    if bull or bear:
+        bull_bear = f" | \U0001f7e2{bull} \U0001f534{bear}"
+
+    rvol = finviz_data.get("rvol") or 0
+    gap = finviz_data.get("gap_pct") or 0
+    price = finviz_data.get("price") or 0
+    float_m = finviz_data.get("float_m") or 0
+    vol = finviz_data.get("volume_base") or finviz_data.get("volume") or 0
+    sector = finviz_data.get("sector") or "?"
+
+    vol_str = f"{int(vol):,}" if vol else "?"
+
+    msg = (
+        f"{grade_emoji} *{symbol}* — Social Scalp Setup\n"
+        f"Score: {score}/55 | RVOL: {rvol:.1f}x | "
+        f"Gap: {gap:.1f}% | Price: ${price:.2f}\n"
+        f"Float: {float_m:.1f}M | Vol: {vol_str}\n"
+        f"Mentions: {mention_count}x ({', '.join(sources)}){bull_bear}\n"
+        f"Sector: {sector}\n"
+        f"Decision: {decision}"
+    )
+    send_telegram(msg)
+
+
+def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: int):
+    """WAIT tier — watching but not acting. Softer tone, no setup details."""
+    rvol = finviz_data.get("rvol") or 0
+    price = finviz_data.get("price") or 0
+    msg = (
+        f"\U0001f440 WAIT *{symbol}* \u2014 Social Mention\n"
+        f"Score: {score}/55 | RVOL: {rvol:.1f}x | "
+        f"Price: ${price:.2f}\n"
+        f"Mentions: {mention_count}x \u2014 watching, not acting\n"
+        f"Needs: higher RVOL or catalyst to reach GO"
+    )
+    send_telegram(msg)
+
+
+def run_scan():
+    conn = get_db()
+    logger.info("=== Social Scalp Scan starting ===")
+
+    ensure_results_table(conn)
+
+    candidates = get_social_candidates(conn)
+    if not candidates:
+        logger.info("No candidates — exiting")
+        conn.close()
+        return
+
+    logger.info("Candidates: %d tickers from social posts", len(candidates))
+
+    # Collect symbols that pass initial filters for batch Finviz enrichment
+    symbols_to_enrich = []
+    symbol_candidates = {}
+    for candidate in candidates:
+        symbol = candidate["symbol"]
+        strategy_tags = candidate.get("strategy_tags", [])
+
+        # Route retirement/income tickers to portfolio agents
+        if any(t in PORTFOLIO_ROUTE_TAGS for t in strategy_tags):
+            route_to_portfolio_agents(conn, symbol, candidate["mention_count"], strategy_tags)
+            continue
+
+        # Skip if already alerted recently
+        if already_alerted(conn, symbol):
+            logger.info("SKIP %s — already alerted within %d min", symbol, DEDUP_MINUTES)
+            continue
+
+        symbols_to_enrich.append(symbol)
+        symbol_candidates[symbol] = candidate
+
+    if not symbols_to_enrich:
+        logger.info("No symbols to enrich after filters — exiting")
+        conn.close()
+        return
+
+    # Fetch base price/change/volume (not in enrichment module's output)
+    logger.info("Fetching base data for %d symbols", len(symbols_to_enrich))
+    base_data = fetch_finviz_base(symbols_to_enrich)
+
+    # Batch Finviz enrichment — adds rvol, float, gap, RSI, etc.
+    logger.info("Enriching %d symbols via Finviz", len(symbols_to_enrich))
+    enriched = enrich_tickers(symbols_to_enrich, project_root=str(ROOT))
+
+    weights = _load_weights(str(ROOT))
+    go_count = 0
+
+    for symbol in symbols_to_enrich:
+        candidate = symbol_candidates[symbol]
+        mention_count = candidate["mention_count"]
+        strategy_tags = candidate.get("strategy_tags", [])
+
+        # Merge base data (price/change/volume) with enrichment (rvol/float/gap/etc.)
+        finviz_data = {**enriched.get(symbol, {}), **base_data.get(symbol, {})}
+        if not finviz_data.get("price"):
+            logger.info("SKIP %s — no Finviz data", symbol)
+            continue
+
+        price = float(finviz_data.get("price") or 999)
+        float_m = float(finviz_data.get("float_m") or 999)
+
+        # Scalp filters — route large/expensive tickers to portfolio agents
+        if price > SKIP_IF_PRICE_ABOVE:
+            logger.info("SKIP %s — price $%.2f > $%.0f (route to portfolio)", symbol, price, SKIP_IF_PRICE_ABOVE)
+            route_to_portfolio_agents(conn, symbol, mention_count, strategy_tags)
+            continue
+
+        if float_m > SKIP_IF_FLOAT_ABOVE:
+            logger.info("SKIP %s — float %.0fM > %.0fM (route to portfolio)", symbol, float_m, SKIP_IF_FLOAT_ABOVE)
+            route_to_portfolio_agents(conn, symbol, mention_count, strategy_tags)
+            continue
+
+        # Build ticker_row in the format scoring.py expects
+        ticker_row = {
+            "symbol": symbol,
+            "price": finviz_data.get("price", 0),
+            "change_percent": finviz_data.get("change_pct", 0),
+            "gap_percent": finviz_data.get("gap_pct", 0),
+            "relative_volume": finviz_data.get("rvol", 0),
+            "float_m": finviz_data.get("float_m", 0),
+            "float_shares": 0,  # float_m is already in millions
+            "sector": finviz_data.get("sector", ""),
+            "company": finviz_data.get("company", ""),
+            "volume": finviz_data.get("volume_base") or finviz_data.get("volume", 0),
+            "avg_volume": finviz_data.get("avg_vol_m", 0),
+            "sector_momentum_score": 0,  # not available in this pipeline
+        }
+
+        # Build catalyst enrichment from social content + news
+        catalyst_enrichment = build_catalyst_enrichment(
+            conn, symbol, candidate.get("sample_content", "")
+        )
+
+        # RAG catalyst confirmation — check if intelligence library has supporting evidence
+        try:
+            from rag_retrieval import get_rag_context
+            rag_items = get_rag_context(symbol, limit=3, conn=conn)
+            catalyst_evidence = [r for r in rag_items if any(
+                kw in str(r.get("title", "")).lower()
+                for kw in ("catalyst", "fda", "earnings", "upgrade", "contract", "merger")
+            )]
+            if catalyst_evidence:
+                catalyst_enrichment["rag_catalyst_confirmed"] = True
+                catalyst_enrichment["rag_evidence"] = catalyst_evidence[0].get("title", "")[:200]
+        except Exception as e:
+            logger.debug(f"RAG check failed for {symbol}: {e}")
+
+        # Scar factor — penalize symbols with poor past scalp outcomes
+        try:
+            scur = conn.cursor()
+            scur.execute("""
+                SELECT count(*) as total,
+                       count(*) FILTER (WHERE outcome_status IN ('loss_5pct','loss_10pct')) as losses
+                FROM scalp_decision_outcomes
+                WHERE symbol = %s AND scored_at > NOW() - INTERVAL '90 days'
+            """, (symbol,))
+            srow = scur.fetchone()
+            if srow and srow[0] >= 3:
+                loss_rate = srow[1] / srow[0]
+                catalyst_enrichment["scar_factor"] = max(0.5, 1.0 - (loss_rate * 0.5))
+        except Exception as e:
+            logger.debug(f"Scar factor check failed for {symbol}: {e}")
+
+        # Score using the 6-pillar engine
+        score_result = score_ticker(ticker_row, catalyst_enrichment, weights, use_llm=False)
+        score = score_result.get("score", 0)
+        grade = score_result.get("grade", "D")
+        decision = score_result.get("decision", "AVOID")
+
+        # Social-only catalyst cap: max recommendation is WATCH unless confirmed
+        # by a credible source (SEC, news, analyst). Social surge alone is not
+        # sufficient for GO/A+. See shared_risk_rules.yaml catalyst_rules.
+        _catalyst_verified = bool(catalyst_enrichment.get("catalyst_verified"))
+        _has_news = bool(catalyst_enrichment.get("catalyst")) and \
+            any(kw in str(catalyst_enrichment.get("catalyst_source", "")).lower()
+                for kw in ('sec', 'news', 'yahoo', 'finnhub', 'analyst', 'press'))
+        if not _catalyst_verified and not _has_news:
+            if decision == "GO" or grade in ("A+", "A"):
+                logger.info(
+                    "%s — SOCIAL_ONLY_CATALYST cap: %s/%s → WAIT/B (no confirmed catalyst)",
+                    symbol, grade, decision)
+                decision = "WAIT"
+                if grade in ("A+", "A"):
+                    grade = "B"
+
+        logger.info(
+            "%s — score %d (%s/%s) | RVOL %.1fx | mentions %d",
+            symbol, score, grade, decision,
+            float(finviz_data.get("rvol") or 0), mention_count,
+        )
+
+        save_scan_result(
+            conn, symbol, mention_count, finviz_data,
+            score, grade, decision, candidate["sources"],
+        )
+
+        # Harmonize: also upsert into trade_ai_scans
+        _upsert_trade_ai_scans(
+            conn, symbol, mention_count, finviz_data,
+            score, grade, decision, candidate["sources"],
+        )
+
+        # === IER WRITE-BACK (non-fatal) ===
+        try:
+            from intelligence_entity_manager import upsert_entity as _iem_upsert
+            from datetime import datetime as _dt, timezone as _tz
+            _iem_upsert(conn, symbol, 'market', {
+                'social_mentions': mention_count,
+                'social_sources': candidate.get("sources", []),
+                'social_sentiment': 'bullish' if candidate.get("bull", 0) > candidate.get("bear", 0) else 'bearish',
+                'social_updated': _dt.now(_tz.utc),
+                'screener_score': score,
+                'screener_decision': decision,
+            }, source='social_scalp')
+        except Exception:
+            pass
+        # === END WRITE-BACK ===
+
+        # Live WS broadcast — non-fatal
+        try:
+            broadcast_scalp_update({
+                "symbol": symbol,
+                "grade": grade,
+                "score": score,
+                "decision": decision,
+                "change_percent": str(finviz_data.get("change_pct", "")),
+                "rvol": float(finviz_data.get("rvol") or 0),
+                "catalyst_verified": False,
+                "source": "social",
+                "mention_count": mention_count,
+            })
+        except Exception as e:
+            logger.warning("WS broadcast skipped for %s: %s", symbol, e)
+
+        if score >= APLUS_THRESHOLD:
+            # A+ — full alert with trade plan prompt
+            send_scalp_alert(
+                symbol, score, grade, decision, finviz_data,
+                mention_count, candidate["sources"],
+                candidate.get("bull", 0), candidate.get("bear", 0),
+            )
+            go_count += 1
+        elif score >= GO_THRESHOLD:
+            # GO — standard alert
+            send_scalp_alert(
+                symbol, score, grade, decision, finviz_data,
+                mention_count, candidate["sources"],
+                candidate.get("bull", 0), candidate.get("bear", 0),
+            )
+            go_count += 1
+        elif score >= 30:
+            # WAIT — softer notification, no trade action
+            _send_wait_alert(symbol, score, finviz_data, mention_count)
+        # AVOID (<30) — stored only, no alert
+        # Dashboard reads scalp_scan_results directly to show AVOID list
+
+    logger.info("=== Scan complete: %d GO/A+ alerts fired ===", go_count)
+    conn.close()
+
+
+if __name__ == "__main__":
+    run_scan()
+```

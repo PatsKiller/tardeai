@@ -1,0 +1,2046 @@
+# Source Export: scripts/process_watchlist_agent_jobs.py
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `scripts/process_watchlist_agent_jobs.py` |
+| **Git Branch** | `main` |
+| **Git Commit** | `915876f` |
+| **Export Timestamp** | `2026-05-26T19:48:00Z` |
+| **SHA256** | `44fe3e5c1eacb6517da73c51536cc14f73e54cfc6961fe7b96ae140dcdd48a68` |
+| **File Size** | 95124 bytes |
+
+## Full Source
+
+```py
+#!/usr/bin/env python3
+"""process_watchlist_agent_jobs.py — Agent processing with maturity tracking + full narratives.
+
+Polls watchlist_agent_jobs for queued items, routes to the appropriate agent,
+captures full narratives, updates maturity state, and triggers synthesis when ready.
+
+Cron: */15 * * * * python3 scripts/process_watchlist_agent_jobs.py --limit 10
+
+Agents:
+- maria: catalyst/news/research review
+- steph: allocation/account-fit review
+- risk_agent: technical/risk/stop review
+- tax_agent: tax/location review
+- full_chain: orchestrated multi-agent review
+"""
+import json, os, sys, re, hashlib, urllib.request
+from datetime import datetime, timedelta
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_last_rag_sources = []  # Set by _build_prompt(), read by result saver
+_last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
+_batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
+STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+from local_llm_config import get_local_llm_model, get_local_llm_base_url
+
+# Pipeline telemetry
+try:
+    from pipeline_registry import PipelineRun
+except ImportError:
+    class PipelineRun:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def rows(self, n): pass
+OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+OLLAMA_MODEL = get_local_llm_model()
+
+# Agent name normalization (risk_agent/tax_agent → risk/tax for maturity tracking)
+AGENT_TO_MATURITY = {
+    "maria": "maria", "steph": "steph",
+    "risk_agent": "risk", "risk": "risk",
+    "tax_agent": "tax", "tax": "tax",
+    "full_chain": "full_chain",
+}
+
+
+def _get_conn():
+    import psycopg2
+    pw = os.environ.get("DB_PASSWORD", "")
+    if not pw:
+        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+            if line.startswith("DB_PASSWORD="):
+                pw = line.split("=", 1)[1].strip()
+    return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
+
+
+def _check_symbol_data_quality(symbol: str) -> dict:
+    """Check if a symbol has minimum data for meaningful agent analysis."""
+    enrichment = {}
+    try:
+        ec_path = STATE_DIR / "ticker_enrichment_cache.json"
+        if ec_path.exists():
+            enrichment = json.loads(ec_path.read_text()).get(symbol, {})
+            if not isinstance(enrichment, dict):
+                enrichment = {}
+    except Exception:
+        pass
+
+    has_price = bool(enrichment.get("price") or enrichment.get("latest_price"))
+    has_technicals = bool(enrichment.get("rsi") and (enrichment.get("sma20_pct") or enrichment.get("sma50_pct")))
+
+    # Check news count
+    news_count = 0
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM news_articles WHERE symbol=%s AND created_at > NOW() - INTERVAL '14 days'", (symbol,))
+        news_count = cur.fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
+    has_news = news_count > 0
+
+    missing = []
+    if not has_price:
+        missing.append("price_data")
+    if not has_technicals:
+        missing.append("technical_indicators")
+    if not has_news:
+        missing.append("news_articles")
+
+    score = (40 if has_price else 0) + (40 if has_technicals else 0) + (20 if has_news else 0)
+    return {"has_price": has_price, "has_technicals": has_technicals, "has_news": has_news,
+            "quality_score": score, "enrichment_needed": missing}
+
+
+def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
+    """Try to get missing data using free sources only. Returns True if enriched."""
+    enriched = False
+
+    if "price_data" in missing or "technical_indicators" in missing:
+        try:
+            from phase2_ticker_enrichment import _optional_yfinance
+            yf_data = _optional_yfinance(symbol)
+            if yf_data:
+                # Update enrichment cache
+                ec_path = STATE_DIR / "ticker_enrichment_cache.json"
+                cache = json.loads(ec_path.read_text()) if ec_path.exists() else {}
+                if symbol not in cache or not isinstance(cache.get(symbol), dict):
+                    cache[symbol] = {}
+                for k, v in yf_data.items():
+                    if v not in (None, "", "N/A"):
+                        cache[symbol][k] = v
+                ec_path.write_text(json.dumps(cache, indent=2, default=str))
+                enriched = True
+                print(f"  [enrichment] {symbol}: yfinance → {len(yf_data)} fields updated")
+        except Exception as e:
+            print(f"  [enrichment] {symbol}: yfinance failed — {e}")
+
+    if "news_articles" in missing:
+        try:
+            from external_market_data_ingest import ingest_yfinance_quotes
+            ingest_yfinance_quotes(symbols=[symbol])
+            enriched = True
+            print(f"  [enrichment] {symbol}: price quote ingested")
+        except Exception as e:
+            print(f"  [enrichment] {symbol}: quote ingest failed — {e}")
+
+    return enriched
+
+
+def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
+         high_impact: bool = False) -> str:
+    """Call LLM via router with fallback hierarchy.
+
+    Routes through: local Ollama → Grok → Claude → OpenAI based on task type.
+    """
+    try:
+        from llm_router import get_llm_response
+        result = get_llm_response(
+            task_type=task_type,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            high_impact=high_impact,
+        )
+        if result.get("success"):
+            # Track which model was used
+            _llm._last_model = result.get("model_used", OLLAMA_MODEL)
+            _llm._last_provider = result.get("provider", "local")
+            _llm._last_cost = result.get("cost_estimate", 0)
+            return result["response"]
+        else:
+            return f"LLM error: {result.get('error', 'all providers failed')}"
+    except ImportError:
+        # Fallback to direct Ollama if router not available
+        try:
+            payload = json.dumps({"model": OLLAMA_MODEL, "stream": False, "think": False,
+                                  "messages": [{"role": "user", "content": prompt}],
+                                  "options": {"temperature": 0.3, "num_predict": max_tokens}}).encode()
+            req = urllib.request.Request(OLLAMA_URL, data=payload,
+                                         headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                return json.loads(resp.read()).get("message", {}).get("content", "").strip()
+        except Exception as e:
+            return f"LLM error: {e}"
+
+# Track last model used for logging
+_llm._last_model = OLLAMA_MODEL
+_llm._last_provider = "local"
+_llm._last_cost = 0
+
+
+def _get_context(conn, symbol: str) -> dict:
+    """Build rich portfolio context for the agent. Returns dict + formatted string."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
+    pos = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
+    e = enrichment.get(symbol, {}) if isinstance(enrichment.get(symbol), dict) else {}
+
+    # Strategy card from DB
+    cur.execute("SELECT * FROM watchlist_strategy_cards WHERE symbol=%s", (symbol,))
+    sc = cur.fetchone()
+
+    # Recent prices from DB
+    cur.execute("SELECT close_price, price_date FROM ticker_prices WHERE symbol=%s ORDER BY price_date DESC LIMIT 5", (symbol,))
+    prices = cur.fetchall()
+
+    # Risk data
+    rm = json.loads((STATE_DIR / "risk_management.json").read_text()) if (STATE_DIR / "risk_management.json").exists() else {}
+    stop_data = next((p for p in rm.get("positions", []) if p.get("symbol") == symbol), {})
+
+    snapshot = {
+        "symbol": symbol,
+        "position": pos[0] if pos else None,
+        "enrichment": {k: e.get(k) for k in ["rsi", "beta", "sector", "industry", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "pe", "forward_pe", "company"]} if e else {},
+        "strategy_card": dict(sc) if sc else None,
+        "recent_prices": [{"price": float(p["close_price"]), "date": str(p["price_date"])} for p in prices] if prices else [],
+        "stop": stop_data if stop_data else None,
+    }
+
+    ctx = f"Symbol: {symbol}\n"
+    if pos:
+        p = pos[0]
+        ctx += f"Position: ${p.get('market_value', 0):,.0f}, {p.get('shares', 0):.1f} shares, {p.get('portfolio_pct', 0):.1f}% allocation, account: {p.get('account_name', '?')}\n"
+    if e:
+        ctx += f"RSI: {e.get('rsi', '?')}, Beta: {e.get('beta', '?')}, Sector: {e.get('sector', '?')}, Industry: {e.get('industry', '?')}\n"
+        ctx += f"SMA20: {e.get('sma20_pct', '?')}%, SMA50: {e.get('sma50_pct', '?')}%, SMA200: {e.get('sma200_pct', '?')}%\n"
+        ctx += f"PE: {e.get('pe', '?')}, Forward PE: {e.get('forward_pe', '?')}, ATR: {e.get('atr', '?')}\n"
+    if sc:
+        ctx += f"Strategy: {sc.get('strategy_type', '?')}, Support: ${sc.get('support', '?')}, Resistance: ${sc.get('resistance', '?')}\n"
+        ctx += f"Stop: ${sc.get('stop_loss', '?')}, Target: ${sc.get('target_price', '?')}, R:R: {sc.get('risk_reward', '?')}\n"
+        ctx += f"Account fit: {sc.get('account_fit', '?')}\n"
+    if stop_data:
+        ctx += f"Active stop: ${stop_data.get('stop_price', '?')} (status: {stop_data.get('status', '?')})\n"
+    if prices:
+        price_strs = [f"${float(p['close_price']):.2f}" for p in prices[:5]]
+        ctx += f"Recent prices: {', '.join(price_strs)}\n"
+
+    # AV news sentiment (pre-scored — no LLM needed)
+    try:
+        cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur2.execute("""SELECT title, sentiment, sentiment_score, relevance_score, source
+                        FROM news_articles
+                        WHERE symbol=%s AND source LIKE 'av:%%'
+                        AND created_at > NOW() - INTERVAL '14 days'
+                        ORDER BY relevance_score DESC LIMIT 5""", (symbol,))
+        av_news = cur2.fetchall()
+        cur2.close()
+        if av_news:
+            avg_sent = sum(float(n.get("sentiment_score", 0)) for n in av_news) / len(av_news)
+            label = "positive" if avg_sent > 0.15 else "negative" if avg_sent < -0.15 else "neutral"
+            ctx += f"News sentiment (AV, {len(av_news)} articles): {label} (score: {avg_sent:.3f})\n"
+            for n in av_news[:3]:
+                ctx += f"  [{n.get('source','?')}] {n.get('title','')[:60]} (rel:{n.get('relevance_score',0)}%)\n"
+    except Exception:
+        pass
+
+    # AV fundamentals from fundamental_data
+    try:
+        cur3 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur3.execute("""SELECT metric_name, metric_value FROM fundamental_data
+                        WHERE symbol=%s AND source='alpha_vantage'""", (symbol,))
+        av_fund = {r["metric_name"]: r["metric_value"] for r in cur3.fetchall()}
+        cur3.close()
+        if av_fund:
+            parts = []
+            if av_fund.get("AnalystTargetPrice"):
+                parts.append(f"Analyst target: ${float(av_fund['AnalystTargetPrice']):.2f}")
+            if av_fund.get("52WeekHigh"):
+                parts.append(f"52W high: ${float(av_fund['52WeekHigh']):.2f}")
+            if av_fund.get("52WeekLow"):
+                parts.append(f"52W low: ${float(av_fund['52WeekLow']):.2f}")
+            if av_fund.get("DividendYield"):
+                parts.append(f"Div yield: {float(av_fund['DividendYield'])*100:.2f}%")
+            if parts:
+                ctx += f"Alpha Vantage: {', '.join(parts)}\n"
+    except Exception:
+        pass
+
+    # John's past decision preferences (agents learn from his notes)
+    try:
+        cur4 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur4.execute("""SELECT config FROM agent_intelligence_rules
+                        WHERE rule_type='john_preferences' AND rule_key LIKE %s
+                        ORDER BY updated_at DESC LIMIT 3""", (f"{symbol}_%",))
+        pref_rows = cur4.fetchall()
+        cur4.close()
+        if pref_rows:
+            ctx += "JOHN'S PAST DECISIONS (learn his reasoning):\n"
+            for pr in pref_rows:
+                cfg = pr.get("config", {})
+                if isinstance(cfg, str):
+                    cfg = json.loads(cfg)
+                if cfg.get("lesson"):
+                    ctx += f"  {cfg['lesson']}\n"
+                if cfg.get("note"):
+                    ctx += f"    John said: \"{cfg['note'][:100]}\"\n"
+    except Exception:
+        pass
+
+    cur.close()
+    return {"text": ctx, "snapshot": snapshot}
+
+
+# ── Agent prompts (narrative-grade) ──────────────────────────────────
+
+def _get_other_agent_views(symbol: str, current_agent: str) -> str:
+    """Pull what other agents already said about this symbol (for collaboration)."""
+    try:
+        import psycopg2.extras as _pxe
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+        cur.execute("""
+            SELECT DISTINCT ON (agent) agent, recommendation, confidence, summary
+            FROM watchlist_agent_results
+            WHERE symbol = %s AND agent != %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY agent, created_at DESC
+        """, (symbol, current_agent))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        lines = ["OTHER AGENT VIEWS (consider but form your own opinion):"]
+        for r in rows:
+            lines.append(f"  {r['agent']}: {r['recommendation']} (conf:{float(r['confidence'] or 0):.1f}) — {(r['summary'] or '')[:80]}")
+        return "\n".join(lines) + "\n"
+    except Exception:
+        return ""
+
+
+def _get_content_gap_warnings(agent_name: str) -> str:
+    """Check if Iris flagged content gaps relevant to this agent."""
+    try:
+        import psycopg2.extras as _pxe
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+        cur.execute("""
+            SELECT trigger_data FROM agent_event_queue
+            WHERE event_type = 'CONTENT_GAP'
+              AND agents_to_notify @> ARRAY[%s]::text[]
+              AND created_at > NOW() - INTERVAL '7 days'
+              AND status = 'pending'
+            ORDER BY created_at DESC LIMIT 5
+        """, (agent_name,))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        lines = ["=== Content Gap Warnings (from Iris) ==="]
+        for r in rows:
+            td = r["trigger_data"] if isinstance(r["trigger_data"], dict) else json.loads(r["trigger_data"]) if r["trigger_data"] else {}
+            lines.append(f"  {td.get('category','?')}: {td.get('message','thin content')}")
+        lines.append("When content is thin, note lower confidence in your analysis.")
+        lines.append("=== End Gap Warnings ===")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _get_peer_agent_notes(symbol: str, current_agent: str) -> str:
+    """Peer notes — check batch cache first (same-run peers), then DB for 30d history."""
+    global _last_peer_agents
+    _last_peer_agents = []
+
+    # 1. Batch cache — peers from same process run (available immediately)
+    cached = [p for p in _batch_results_cache.get(symbol, []) if p["agent"] != current_agent]
+    if cached:
+        _last_peer_agents = [p["agent"] for p in cached]
+        lines = ["=== Peer Agent Notes ==="]
+        for p in cached:
+            lines.append(f"  {p['agent'].upper()} [this batch]: {p['recommendation']} (conf:{float(p['confidence'] or 0):.0%})")
+            if p.get("summary"):
+                lines.append(f"    {p['summary'][:150]}")
+        lines.append("=== End Peer Notes ===")
+        return "\n".join(lines)
+
+    # 2. DB fallback — cross-run history (30 days)
+    try:
+        import psycopg2.extras as _pxe
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxe.RealDictCursor)
+        cur.execute("""
+            SELECT DISTINCT ON (agent) agent, recommendation, confidence,
+                   LEFT(summary, 200) as summary, created_at
+            FROM watchlist_agent_results
+            WHERE symbol = %s AND agent != %s AND created_at > NOW() - INTERVAL '30 days'
+            ORDER BY agent, created_at DESC
+        """, (symbol, current_agent))
+        rows = cur.fetchall()
+        conn.close()
+        if not rows:
+            return ""
+        _last_peer_agents = [r["agent"] for r in rows]
+        lines = ["=== Peer Agent Notes ==="]
+        for r in rows:
+            dt = r["created_at"].strftime("%Y-%m-%d") if r.get("created_at") else "?"
+            lines.append(f"  {r['agent'].upper()} [{dt}]: {r['recommendation']} (conf:{float(r['confidence'] or 0):.0%})")
+            if r.get("summary"):
+                lines.append(f"    {r['summary'][:150]}")
+        lines.append("=== End Peer Notes ===")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _get_recent_intel(symbol: str) -> str:
+    """Pull recent scored intelligence + past outcome feedback for this symbol."""
+    parts = []
+    try:
+        from intel_query import get_intel_summary, get_outcome_feedback
+        summary = get_intel_summary(symbol=symbol, min_quality=40, max_chars=300, days=7)
+        if summary:
+            parts.append(summary)
+        feedback = get_outcome_feedback(symbol, limit=3)
+        if feedback:
+            parts.append(feedback)
+    except Exception:
+        pass
+    return "\n".join(parts) + "\n" if parts else ""
+
+
+def _get_sentiment_social_context(symbol: str) -> str:
+    """Pull news sentiment, social sentiment, and fused signals for a symbol."""
+    parts = []
+    try:
+        import psycopg2.extras as _pxs
+        conn = _get_conn()
+        cur = conn.cursor(cursor_factory=_pxs.RealDictCursor)
+
+        # News sentiment: recent articles for this symbol
+        cur.execute("""
+            SELECT sentiment, sentiment_score, title, created_at
+            FROM news_articles
+            WHERE symbol = %s AND created_at > NOW() - INTERVAL '7 days'
+            ORDER BY created_at DESC LIMIT 5
+        """, [symbol])
+        news = cur.fetchall()
+        if news:
+            scored = [n for n in news if n.get("sentiment_score") is not None]
+            avg_score = sum(float(n["sentiment_score"]) for n in scored) / len(scored) if scored else None
+            lines = ["=== News Sentiment (7d) ==="]
+            lines.append(f"  Articles: {len(news)}" + (f" | Avg score: {avg_score:.2f}" if avg_score else " | Sentiment: not scored"))
+            for n in news[:3]:
+                sent = n.get("sentiment") or "unscored"
+                score = f" ({float(n['sentiment_score']):.2f})" if n.get("sentiment_score") else ""
+                lines.append(f"  - [{sent}{score}] {(n['title'] or '')[:80]}")
+            lines.append("=== End News Sentiment ===")
+            parts.append("\n".join(lines))
+
+        # Social sentiment: recent posts mentioning this symbol
+        cur.execute("""
+            SELECT sentiment, sentiment_score, text, platform, post_date
+            FROM social_posts
+            WHERE symbols_mentioned::text ILIKE %s
+              AND ingested_at > NOW() - INTERVAL '7 days'
+            ORDER BY ingested_at DESC LIMIT 10
+        """, [f'%{symbol}%'])
+        social = cur.fetchall()
+        if social:
+            bullish = sum(1 for s in social if (s.get("sentiment") or "").lower() == "bullish")
+            bearish = sum(1 for s in social if (s.get("sentiment") or "").lower() == "bearish")
+            neutral = len(social) - bullish - bearish
+            scored_social = [s for s in social if s.get("sentiment_score") is not None]
+            avg_social = sum(float(s["sentiment_score"]) for s in scored_social) / len(scored_social) if scored_social else None
+            lines = ["=== Social Sentiment (7d) ==="]
+            lines.append(f"  Posts: {len(social)} | Bullish: {bullish} | Bearish: {bearish} | Neutral: {neutral}" +
+                        (f" | Avg score: {avg_social:.2f}" if avg_social else ""))
+            for s in social[:3]:
+                plat = s.get("platform", "?")
+                sent = s.get("sentiment") or "?"
+                lines.append(f"  - [{plat}/{sent}] {(s['text'] or '')[:100]}")
+            lines.append("=== End Social Sentiment ===")
+            parts.append("\n".join(lines))
+
+        # Fused signals (if available)
+        cur.execute("""
+            SELECT direction, confidence, fused_score, severity, created_at
+            FROM fused_signals
+            WHERE symbol = %s AND created_at > NOW() - INTERVAL '14 days'
+            ORDER BY created_at DESC LIMIT 1
+        """, [symbol])
+        fused = cur.fetchone()
+        if fused:
+            parts.append(f"=== Fused Signal ===\n  Signal: {fused['direction']} | Confidence: {float(fused['confidence'] or 0):.0%} | Score: {float(fused['fused_score'] or 0):.2f}\n=== End Fused Signal ===")
+
+        conn.close()
+    except Exception as e:
+        print(f"  [sentiment] {symbol}: {e}")
+    return "\n".join(parts) + "\n" if parts else ""
+
+
+def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") -> str:
+    # === SCAN INTELLIGENCE — primary context for scalp candidates ===
+    scan_block = ""
+    scalp_instructions = ""
+    try:
+        from agent_collab import get_scan_intelligence, get_scalp_agent_instructions
+        _sc = _get_conn()
+        scan_block = get_scan_intelligence(symbol, _sc)
+        scalp_instructions = get_scalp_agent_instructions(symbol, _sc)
+        _sc.close()
+    except Exception:
+        pass
+
+    # Inject cross-agent views and intel
+    other_views = _get_other_agent_views(symbol, agent)
+    intel = _get_recent_intel(symbol)
+
+    # Sentiment + social context
+    sentiment_block = _get_sentiment_social_context(symbol)
+
+    # RAG pre-context — prior intelligence from all source types
+    rag_block = ""
+    global _last_rag_sources
+    _last_rag_sources = []
+    try:
+        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        rag_results = get_rag_context(symbol=symbol, agent_name=agent, limit=5)
+        rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
+        _last_rag_sources = [{"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]} for r in rag_results]
+        print(f"  [RAG] {symbol} ({agent}): {len(rag_results)} items" + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else ""))
+    except Exception as e:
+        print(f"  [RAG] {symbol} ({agent}): FAILED — {e}")
+
+    # Research advisories — persistent user research findings relevant to this analysis
+    research_block = ""
+    try:
+        _rc = _get_conn()
+        _rcur = _rc.cursor()
+        _rcur.execute(
+            "SELECT topic, latest_findings, research_count FROM user_research_topics "
+            "WHERE status='active' AND latest_findings IS NOT NULL "
+            "ORDER BY priority DESC, latest_finding_at DESC LIMIT 3"
+        )
+        _rtopics = _rcur.fetchall()
+        _rcur.close()
+        _rc.close()
+        if _rtopics:
+            _rlines = ["=== Active Research Advisories ==="]
+            for _rt in _rtopics:
+                _rlines.append(f"- {_rt[0]} (iter #{_rt[2]}): {(_rt[1] or '')[:200]}")
+            _rlines.append("=== End Research Advisories ===")
+            research_block = "\n".join(_rlines)
+    except Exception:
+        pass
+
+    # Peer agent notes — what other agents concluded recently
+    peer_notes = ""
+    try:
+        peer_notes = _get_peer_agent_notes(symbol, agent)
+    except Exception:
+        pass
+
+    # Content gap warnings from Iris librarian
+    gap_warnings = ""
+    try:
+        gap_warnings = _get_content_gap_warnings(agent)
+    except Exception:
+        pass
+
+    # Confluence + pipeline context injection
+    confluence_block = ""
+    prospects_block = ""
+    calibration_block = ""
+    symbol_history_block = ""
+    try:
+        from agent_collab import get_confluence_context, get_prospects_context, get_calibration_context, get_symbol_history_context, get_strategy_performance_context
+        _conn = _get_conn()
+        confluence_block = get_confluence_context(symbol, _conn, profile='swing')
+        prospects_block = get_prospects_context(symbol, _conn)
+        calibration_block = get_calibration_context(agent, _conn)
+        symbol_history_block = get_symbol_history_context(symbol, _conn)
+        _conn.close()
+    except Exception:
+        pass
+
+    # Session 24B: Strategy playbook context from YAML config loader
+    strategy_playbook_block = ""
+    try:
+        from strategy_config_loader import get_strategy_prompt_context, load_strategy_config
+        # Infer strategy from scan data or proposals
+        _strat_id = None
+        try:
+            _sconn = _get_conn()
+            _scur = _sconn.cursor()
+            # Check proposals first
+            _scur.execute("""
+                SELECT strategy_id FROM paper_trade_proposals
+                WHERE symbol=%s AND status='PENDING'
+                ORDER BY created_at DESC LIMIT 1
+            """, [symbol])
+            _prow = _scur.fetchone()
+            if _prow:
+                _strat_id = _prow[0]
+            else:
+                # Fallback to scan-based inference
+                _scur.execute("""
+                    SELECT rvol, float_m, gap_pct FROM trade_ai_scans
+                    WHERE symbol=%s ORDER BY scanned_at DESC LIMIT 1
+                """, [symbol])
+                _srow = _scur.fetchone()
+                if _srow:
+                    _rvol = float(_srow[0] or 0)
+                    _flt = float(_srow[1] or 999)
+                    _gap = float(_srow[2] or 0)
+                    if _rvol >= 5 and _flt <= 100:
+                        _strat_id = 'momentum_scalp'
+                    elif _gap >= 5:
+                        _strat_id = 'gap_and_go'
+            _sconn.close()
+        except Exception:
+            pass
+
+        if _strat_id:
+            ctx = get_strategy_prompt_context(_strat_id)
+            # Add agent-specific role
+            try:
+                cfg = load_strategy_config(_strat_id)
+                role = (cfg.get('agent_responsibilities') or {}).get(agent)
+                if role:
+                    ctx += f"\nYour role ({agent}): {role if isinstance(role, str) else str(role)[:200]}"
+            except Exception:
+                pass
+            strategy_playbook_block = f"\n{ctx}\n"
+
+            # Inject strategy performance data so agents adjust confidence
+            try:
+                _pconn = _get_conn()
+                _pcur = _pconn.cursor()
+                _pcur.execute("""SELECT governance_state, paper_trades, closed_trades,
+                                       win_rate, avg_r, profit_factor, expectancy_r
+                                FROM paper_performance_governance
+                                WHERE strategy_id=%s ORDER BY created_at DESC LIMIT 1""", [_strat_id])
+                _prow = _pcur.fetchone()
+                _pconn.close()
+                if _prow and _prow[2]:
+                    _wr = float(_prow[3] or 0) * 100
+                    _pf = float(_prow[5] or 0)
+                    _verdict = 'PERFORMING' if _pf >= 1.3 and _wr >= 55 else 'UNDERPERFORMING' if _pf < 0.8 else 'ACCUMULATING'
+                    _conf_adj = 'Raise confidence +0.05-0.10' if _verdict == 'PERFORMING' else 'Lower confidence -0.10-0.15' if _verdict == 'UNDERPERFORMING' else 'Use 50% baseline'
+                    strategy_playbook_block += (
+                        f"\nSTRATEGY PERFORMANCE — {_strat_id}:\n"
+                        f"  State: {_prow[0]} | Trades: {_prow[2]} | WR: {_wr:.0f}% | PF: {_pf:.2f} | Avg R: {float(_prow[4] or 0):.2f}\n"
+                        f"  Verdict: {_verdict} — {_conf_adj}\n"
+                    )
+                elif _strat_id:
+                    strategy_playbook_block += (
+                        f"\nSTRATEGY PERFORMANCE — {_strat_id}:\n"
+                        f"  UNVALIDATED — no closed paper trades yet. Use 50% confidence baseline.\n"
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # Global rules G1-G10 (apply to ALL agents — Bible §5)
+    global_rules = """=== GLOBAL RULES (mandatory — apply to every analysis) ===
+G1 DATA FRESHNESS: Never analyze with stale data (news >7d, prices >24h, SEC >30d, FRED >7d). If stale: log stale_data, skip, no recommendation.
+G2 INCOME PROTECTION: NEVER recommend TRIM/SELL on positions where yield × market_value > $11,000/yr or strategies: dividend_growth_compounder, high_yield_income_bdc, tactical_income. If blocked: escalate to Alex with INCOME_CRITICAL.
+G3 SSDI AWARENESS: For IRA/401k positions include: MAGI impact estimate, IRMAA flag if MAGI >$103K (MFS), bracket flag if >$94,300, Medicaid lookback flag if distribution >$50K. If any flag: set ssdi_review=true.
+G4 CONFIDENCE GATING: If confidence <40%: output LOW_CONFIDENCE_SKIP. If only 1 source: skip. Decisions >14 days old: expire.
+G5 LEARNING LOOP: Read outcome lessons below and adjust confidence ±0.05 per past approval/rejection.
+G6 MACRO CONTEXT: Check FRED data in context. VIX >25: elevated volatility. T10Y2Y <0: recession risk. DFF >5%: bonds competitive. DFF <2%: equity premium.
+G7 ESCALATION: Auto-escalate to Alex when: agent conflict (BUY vs SELL same symbol 48h), any Roth conversion rec, income-critical flag, confidence 40-60% on portfolio position.
+G10 NO DIRECT EXECUTION: No trade executes without human approval.
+=== END GLOBAL RULES ==="""
+
+    base_instruction = f"""Respond in JSON format with these fields:
+- "summary": 1-2 sentence executive summary
+- "full_narrative": detailed 3-5 paragraph analysis (this is the primary output)
+- "recommendation": one of BUY, HOLD, AVOID, ADD, TRIM, SELL, NEUTRAL, RESEARCH_MORE
+- "confidence": decimal 0.0-1.0
+- "reason_codes": array of short reason tags (e.g. ["strong_dividend", "overvalued", "technical_support"])
+- "next_action": what should happen next
+
+{global_rules}
+
+Context:
+{scan_block}
+{context_text}
+{rag_block}
+{research_block}
+{peer_notes}
+{gap_warnings}
+{confluence_block}
+{prospects_block}
+{symbol_history_block}
+{calibration_block}
+{strategy_playbook_block}
+{scalp_instructions}
+{sentiment_block}{other_views}{intel}"""
+    if note:
+        base_instruction += f"Additional note: {note}\n"
+
+    prompts = {
+        "maria": f"""/no_think You are Maria, a senior research analyst covering equities. Your job is to provide a thorough fundamental and catalyst analysis.
+
+Analyze {symbol}. Cover:
+1. Business quality and competitive position
+2. Valuation relative to peers and history
+3. Upcoming catalysts (earnings, product launches, regulation)
+4. News sentiment and analyst consensus
+5. Key risks to the thesis
+
+{base_instruction}""",
+
+        "steph": f"""/no_think You are Steph, the income guardian for John's ~$1.2M multi-account portfolio. Your question: "Does this position support the $55K income target? Does the allocation make sense across all four accounts?"
+
+INCOME ANALYSIS FRAMEWORK:
+- Portfolio income target: $55,000/yr from investments
+- SSDI income: $45,600/yr (stable — do NOT count toward portfolio income target)
+- Income gap: $55,000 - current_annual_portfolio_income
+- FLAG if: gap > $20,000 → recommend income-building action
+- FLAG if: single position > 25% of total portfolio income → concentration risk
+- FLAG if: single position > 15% of total portfolio value → hard cap breach
+
+ACCOUNT RULES (non-negotiable):
+- Roth IRA: growth focus ONLY (SCHG, SCHD) — no covered calls — tax-free growth
+- Rollover IRA: income + growth + Roth conversion candidates
+- Taxable: qualified dividends ONLY — no BDC distributions (ordinary income = SSDI MAGI risk)
+- 401k (until 2027): constrained to 15 Omnicom plan funds only
+
+NEVER AUTO-ROTATE (income protection — Rule G2):
+  dividend_growth_compounder, high_yield_income_bdc, tactical_income,
+  reit_income, bond_income, retirement_planning, disability_retirement_planning
+  If rotation needed: flag INCOME_CRITICAL, escalate to Alex.
+
+Review {symbol}. Cover:
+1. Current allocation vs target — overweight/underweight? Flag if >15%.
+2. Account location — is it in the right account per rules above?
+3. Income contribution — how much does it add to the $55K target?
+4. Rebalance recommendation — add, hold, trim, or rotate?
+5. Proposal format: [action] SYMBOL in ACCOUNT: shares → target. Income impact: $+/-N/yr. SSDI impact. IRMAA risk.
+
+{base_instruction}""",
+
+        "risk_agent": f"""/no_think You are the Risk Analyst for John's portfolio. Your question: "Is the price action supportive of entry/exit? Is the stop set appropriately? Is the position protected?"
+
+RISK RULES:
+- Stop placement: new position = entry - (2 × ATR). Min 5%, max 15% distance.
+- 401k mutual funds: no stops (cannot be placed) → mental stop only.
+- RSI >75 + no catalyst: flag OVERBOUGHT → TRIM candidate.
+- RSI <25 + thesis intact: flag OVERSOLD → ADD candidate.
+- Portfolio heat >5%: do not add new positions. >8%: urgent stop-tightening.
+- Target: ≥80% of portfolio value protected (has defined stop).
+
+Assess {symbol}. Cover:
+1. Technical trend — above/below key moving averages (SMA20/50/200)
+2. RSI and momentum signals (flag extremes per rules above)
+3. Support/resistance levels and current price position
+4. Stop loss recommendation with reasoning (use ATR rule)
+5. Position sizing guidance based on volatility (ATR, beta)
+6. Heat contribution — how much risk does this position add?
+
+{base_instruction}""",
+
+        "tax_agent": f"""/no_think You are the Tax Optimizer for John's portfolio. Your question: "What is the tax-optimal execution path? Are there harvest opportunities? Does this affect SSDI/IRMAA/Medicaid?"
+
+JOHN'S TAX SITUATION:
+- Filing status: MFS (Married Filing Separately) — lived apart from spouse
+- SSDI income: $45,600/yr — counts toward MAGI but NOT SGA (unearned)
+- Current MAGI room: ~$66,883 (verified April 2026)
+- IRMAA threshold (MFS): $103,000 — NEVER breach without explicit IRMAA warning
+- 22% bracket ceiling: $94,300 (MFS)
+- Roth conversions done 2026: $35,000
+- Golden Window: ages 68.5–73 (2036–2040) — convert aggressively then
+- Disability exemption: no 10% early withdrawal penalty
+- LTD disability insurance: pretax employer policy — ordinary income, NOT earned income
+
+TAX HARVEST RULES:
+- Worthless securities: current_value = 0, cost_basis > 0 → contact Fidelity 1-800-343-3548 for disposal form before Dec 31
+- Loss harvest: unrealized_loss > $500, holding_period > 30 days, no wash sale in 30-day window
+- Prioritize: highest loss first, long-term losses before short-term
+- Roth conversion: available room = $94,300 - current_MAGI. Convert FROM Rollover IRA only.
+- IRA distribution > $50,000: Medicaid 5-year lookback warning required
+- Capital gains in taxable: estimate MAGI impact before proposing
+
+Review {symbol}. Cover:
+1. Optimal account location (taxable = qualified divs only, no BDC; Roth = growth; IRA = income + conversion candidates)
+2. Tax-loss harvesting opportunities with wash sale check
+3. MAGI impact of any recommended action
+4. IRMAA risk assessment (will this push MAGI > $103K?)
+5. Roth conversion candidacy (if IRA position)
+
+Output MUST include: tax_impact, magi_impact, irmaa_risk (bool), bracket_impact, deadline if applicable.
+
+{base_instruction}""",
+
+        "full_chain": f"""/no_think You are a portfolio investment committee synthesizing multiple analyst perspectives.
+
+Comprehensive review of {symbol}. Cover:
+1. Fundamental case (bull/bear/base)
+2. Technical setup and risk levels
+3. Allocation and account fit
+4. Key risks and mitigants
+5. Final committee recommendation with confidence
+
+{base_instruction}""",
+    }
+    return prompts.get(agent, prompts["maria"])
+
+
+def _run_maria_two_pass(symbol: str, context_text: str, note: str = "") -> str:
+    """Two-pass Maria analysis for higher confidence.
+
+    Pass 1 (local): News sentiment + catalyst extraction
+    Pass 2 (local, Grok fallback if low conf): Fundamentals given Pass 1 context + RAG + intel
+    Final: Combine both into standard Maria JSON output
+    """
+    # ── Inject RAG, intel, peer notes for Pass 2 ──
+    global _last_rag_sources, _last_peer_agents
+    _last_rag_sources = []
+    _last_peer_agents = []
+    rag_block = ""
+    try:
+        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        rag_results = get_rag_context(symbol=symbol, agent_name="maria", limit=5)
+        rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
+        _last_rag_sources = [{"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]} for r in rag_results]
+        print(f"  [RAG] {symbol} (maria-2pass): {len(rag_results)} items" + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else ""))
+    except Exception as e:
+        print(f"  [RAG] {symbol} (maria-2pass): FAILED — {e}")
+
+    intel = ""
+    try:
+        intel = _get_recent_intel(symbol)
+    except Exception:
+        pass
+
+    peer_notes = ""
+    try:
+        peer_notes = _get_peer_agent_notes(symbol, "maria")
+    except Exception:
+        pass
+
+    # ── Pass 1: News & Sentiment ──
+    pass1_prompt = f"""/no_think You are Maria, a senior research analyst. Your question: "Is there new information that changes the investment thesis for {symbol}?"
+
+CATALYST CRITERIA — mark catalyst_present=true if ANY of:
+- Earnings beat >10% + guidance raised
+- SEC Form 4: insider purchase >$500K (not options exercise)
+- M&A accretive announcement
+- Analyst upgrade with target >15% above current price
+- FDA approval or positive Phase 3 trial
+- Material positive 8-K
+
+BEARISH CATALYST — mark sentiment="negative" if ANY of:
+- Insider selling >$1M within 30 days (Form 4)
+- EPS miss >10% + guidance cut
+- Analyst target downgrade below current price
+- Payout ratio >100% for income positions
+- SEC investigation or material weakness disclosure
+
+Context (last 7 days):
+{context_text[:2000]}
+
+Respond in JSON only:
+{{"sentiment": "positive" or "neutral" or "negative",
+  "catalyst_present": true or false,
+  "catalyst": "string describing the main catalyst, or null if none",
+  "confidence": 0-100,
+  "key_headlines": ["headline 1", "headline 2", "headline 3 max"]}}"""
+
+    pass1_raw = _llm(pass1_prompt, max_tokens=400, task_type="agent_narrative")
+    pass1_model = getattr(_llm, '_last_model', 'unknown')
+
+    # Parse pass 1
+    pass1_data = {"sentiment": "neutral", "catalyst": None, "confidence": 50, "key_headlines": []}
+    if pass1_raw and not pass1_raw.startswith("LLM error"):
+        try:
+            # Extract JSON from response
+            import re
+            json_match = re.search(r'\{[^{}]*\}', pass1_raw, re.DOTALL)
+            if json_match:
+                pass1_data = json.loads(json_match.group())
+        except Exception:
+            pass
+    print(f"  [maria-p1] {symbol}: sentiment={pass1_data.get('sentiment')} catalyst={str(pass1_data.get('catalyst',''))[:40]} conf={pass1_data.get('confidence')} model={pass1_model}")
+
+    # ── Pass 2: Fundamentals given news context ──
+    pass2_prompt = f"""/no_think You are Maria, a senior research analyst. Given this news summary for {symbol}:
+Sentiment: {pass1_data.get('sentiment', 'neutral')}
+Catalyst: {pass1_data.get('catalyst', 'none identified')}
+Catalyst present: {pass1_data.get('catalyst_present', False)}
+News confidence: {pass1_data.get('confidence', 50)}%
+Headlines: {', '.join(pass1_data.get('key_headlines', [])[:3])}
+
+DECISION RULES:
+BUY (ALL must be true): catalyst_present=true, PE below sector avg OR growth justifies premium, analyst target >10% above price, no negative SEC in 30d.
+SELL/TRIM: bearish catalyst confirmed OR RSI>75 with no new catalyst. NEVER SELL income-critical positions unless Rule G2 breach.
+HOLD: mixed signals, confidence <55%, or no new material catalyst in 7 days.
+RESEARCH_MORE (use sparingly): conflicting signals AND confidence <45%.
+
+Fundamentals for {symbol}:
+{context_text[:1500]}
+{rag_block}
+{peer_notes}
+{intel}
+{note or ''}
+
+Respond in JSON only:
+{{"thesis_intact": "yes" or "no" or "maybe",
+  "fundamental_signal": "BUY" or "HOLD" or "SELL" or "TRIM" or "RESEARCH_MORE",
+  "confidence": 0-100,
+  "reasoning": "1-2 sentence reasoning",
+  "income_critical": false,
+  "evidence": ["key fact 1", "key fact 2"]}}"""
+
+    # Route: always local first — never burn cloud budget for Maria Pass 2
+    pass2_raw = _llm(pass2_prompt, max_tokens=400, task_type="agent_narrative", high_impact=False)
+    pass2_model = getattr(_llm, '_last_model', 'unknown')
+
+    pass2_data = {"thesis_intact": "maybe", "fundamental_signal": "HOLD", "confidence": 50, "reasoning": ""}
+    if pass2_raw and not pass2_raw.startswith("LLM error"):
+        try:
+            import re
+            json_match = re.search(r'\{[^{}]*\}', pass2_raw, re.DOTALL)
+            if json_match:
+                pass2_data = json.loads(json_match.group())
+        except Exception:
+            pass
+    print(f"  [maria-p2] {symbol}: signal={pass2_data.get('fundamental_signal')} thesis={pass2_data.get('thesis_intact')} conf={pass2_data.get('confidence')} model={pass2_model}")
+
+    # ── Combine into standard Maria output ──
+    news_conf = pass1_data.get("confidence", 50)
+    fund_conf = pass2_data.get("confidence", 50)
+    combined_conf = round((news_conf * 0.4 + fund_conf * 0.6) / 100, 2)  # weight fundamentals more
+
+    signal = pass2_data.get("fundamental_signal", "HOLD")
+    sentiment = pass1_data.get("sentiment", "neutral")
+    # Adjust recommendation if news and fundamentals disagree
+    if signal == "BUY" and sentiment == "negative":
+        recommendation = "RESEARCH_MORE"
+    elif signal == "SELL" and sentiment == "positive":
+        recommendation = "RESEARCH_MORE"
+    else:
+        rec_map = {"BUY": "BUY", "HOLD": "HOLD", "SELL": "AVOID"}
+        recommendation = rec_map.get(signal, "HOLD")
+
+    catalyst = pass1_data.get("catalyst") or "No catalyst identified"
+    reasoning = pass2_data.get("reasoning", "")
+    headlines = pass1_data.get("key_headlines", [])
+
+    combined = json.dumps({
+        "summary": f"{symbol}: {sentiment} sentiment, {signal} signal. {catalyst}. {reasoning}",
+        "full_narrative": f"## News Analysis (Pass 1)\nSentiment: {sentiment} ({news_conf}% conf)\nCatalyst: {catalyst}\nHeadlines: {'; '.join(headlines)}\n\n## Fundamental Analysis (Pass 2)\nSignal: {signal} ({fund_conf}% conf)\nThesis intact: {pass2_data.get('thesis_intact', '?')}\nReasoning: {reasoning}\n\nModels: P1={pass1_model}, P2={pass2_model}",
+        "recommendation": recommendation,
+        "confidence": combined_conf,
+        "reason_codes": [f"news_{sentiment}", f"fund_{signal.lower()}", f"thesis_{pass2_data.get('thesis_intact', 'unknown')}"],
+        "next_action": f"{'Review catalyst timing' if catalyst and catalyst != 'No catalyst identified' else 'Monitor for new developments'}",
+    })
+    print(f"  [maria-final] {symbol}: {recommendation} conf={combined_conf:.0%} (news={news_conf}% fund={fund_conf}%)")
+    return combined
+
+
+def _parse_result(raw: str) -> dict:
+    """Parse LLM response — try JSON first, fall back to text extraction."""
+    # Try JSON parse
+    try:
+        # Find JSON block
+        for start_char in ['{', '```json\n{', '```\n{']:
+            idx = raw.find(start_char)
+            if idx >= 0:
+                end = raw.rfind('}')
+                if end > idx:
+                    candidate = raw[idx:end + 1]
+                    if candidate.startswith('```'):
+                        candidate = candidate.split('\n', 1)[1] if '\n' in candidate else candidate
+                    parsed = json.loads(candidate)
+                    if isinstance(parsed, dict) and "recommendation" in parsed:
+                        return {
+                            "summary": str(parsed.get("summary", ""))[:500],
+                            "full_narrative": str(parsed.get("full_narrative", parsed.get("summary", "")))[:3000],
+                            "recommendation": str(parsed.get("recommendation", "RESEARCH_MORE")).upper(),
+                            "confidence": min(1.0, max(0.0, float(parsed.get("confidence", 0.5)))),
+                            "reason_codes": parsed.get("reason_codes", []) if isinstance(parsed.get("reason_codes"), list) else [],
+                            "next_action": str(parsed.get("next_action", ""))[:200],
+                        }
+    except (json.JSONDecodeError, ValueError, KeyError):
+        pass
+
+    # Fallback: text extraction
+    summary = raw[:300]
+    full_narrative = raw[:3000]
+    recommendation = "RESEARCH_MORE"
+    confidence = 0.5
+    reason_codes = []
+
+    for line in raw.split("\n"):
+        l = line.lower()
+        if "recommend" in l:
+            for r in ["STRONG_BUY", "BUY", "HOLD", "AVOID", "TRIM", "ADD", "SELL", "NEUTRAL", "RESEARCH_MORE"]:
+                if r.lower() in l:
+                    recommendation = r
+                    break
+        if "confidence" in l:
+            m = re.search(r'(\d+\.?\d*)', l)
+            if m:
+                v = float(m.group(1))
+                confidence = v if v <= 1 else v / 100
+
+    return {
+        "summary": summary,
+        "full_narrative": full_narrative,
+        "recommendation": recommendation,
+        "confidence": confidence,
+        "reason_codes": reason_codes,
+        "next_action": "",
+    }
+
+
+def _update_maturity(conn, symbol: str, agent: str, status: str):
+    """Update the analysis maturity record for a symbol after an agent completes/fails."""
+    mat_col = AGENT_TO_MATURITY.get(agent, agent) + "_status"
+    valid_cols = ["maria_status", "steph_status", "risk_status", "tax_status", "full_chain_status"]
+    if mat_col not in valid_cols:
+        return
+
+    cur = conn.cursor()
+
+    # Update agent-specific status
+    cur.execute(f"""
+        UPDATE watchlist_analysis_maturity
+        SET {mat_col} = %s, updated_at = now()
+        WHERE symbol = %s
+    """, (status, symbol))
+
+    if status == "completed":
+        # Update completed_agents array and last_completed
+        cur.execute("""
+            UPDATE watchlist_analysis_maturity
+            SET completed_agents = array_append(
+                    COALESCE(array_remove(completed_agents, %s), ARRAY[]::text[]),
+                    %s
+                ),
+                last_completed_agent = %s,
+                last_completed_at = now(),
+                updated_at = now()
+            WHERE symbol = %s
+        """, (AGENT_TO_MATURITY.get(agent, agent), AGENT_TO_MATURITY.get(agent, agent), agent, symbol))
+
+    # Recompute stage
+    import psycopg2.extras
+    rcur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    rcur.execute("SELECT * FROM watchlist_analysis_maturity WHERE symbol = %s", (symbol,))
+    mat = rcur.fetchone()
+    if not mat:
+        rcur.close()
+        cur.close()
+        return
+
+    required = mat.get("required_agents") or []
+    completed = mat.get("completed_agents") or []
+    missing = [a for a in required if a not in completed]
+
+    # Determine new stage
+    if mat.get("final_synthesis_status") == "completed":
+        stage = "final_synthesis_complete"
+    elif mat.get("full_chain_status") == "completed":
+        stage = "full_chain_complete"
+    elif required and not missing:
+        stage = "specialist_review_complete"
+    elif completed:
+        stage = "specialist_review_partial"
+    elif mat.get("strategy_card_ready"):
+        stage = "strategy_card_ready"
+    else:
+        stage = "raw_data_only"
+
+    # Check for any failed
+    agent_statuses = [mat.get(f"{a}_status", "not_required") for a in ["maria", "steph", "risk", "tax", "full_chain"]]
+    if "failed" in agent_statuses and not completed:
+        stage = "failed"
+
+    needs_iter = bool(missing) or stage in ("raw_data_only", "strategy_card_ready", "routed", "failed")
+
+    cur.execute("""
+        UPDATE watchlist_analysis_maturity
+        SET analysis_stage = %s,
+            missing_agents = %s,
+            needs_iteration = %s,
+            iteration_reason = %s,
+            updated_at = now()
+        WHERE symbol = %s
+    """, (stage, missing if missing else None,
+          needs_iter,
+          f"Missing: {', '.join(missing)}" if missing else None,
+          symbol))
+
+    rcur.close()
+    cur.close()
+
+
+def _apply_escalation_policy(conn, symbol: str) -> list:
+    """Look up strategy type and set required agents in maturity table. Returns required agents."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Get strategy type from strategy card
+    cur.execute("SELECT strategy_type FROM watchlist_strategy_cards WHERE symbol=%s", (symbol,))
+    sc = cur.fetchone()
+    strategy_type = sc["strategy_type"] if sc else "core_holding"
+
+    # Get policy
+    cur.execute("SELECT required_agents, optional_agents FROM watchlist_escalation_policies WHERE strategy_type=%s", (strategy_type,))
+    policy = cur.fetchone()
+    required = policy["required_agents"] if policy else ["steph", "risk"]
+    optional = policy["optional_agents"] if policy else ["maria"]
+
+    # Ensure maturity row exists
+    cur.execute("""
+        INSERT INTO watchlist_analysis_maturity (symbol, escalation_policy, required_agents, analysis_stage, raw_data_ready, strategy_card_ready)
+        VALUES (%s, %s, %s, 'routed', TRUE, %s)
+        ON CONFLICT (symbol) DO UPDATE SET
+            escalation_policy = EXCLUDED.escalation_policy,
+            required_agents = EXCLUDED.required_agents,
+            analysis_stage = 'routed',
+            updated_at = now()
+    """, (symbol, strategy_type, required, sc is not None))
+
+    # Set required agent statuses
+    for agent in required:
+        col = agent + "_status"
+        if col in ["maria_status", "steph_status", "risk_status", "tax_status", "full_chain_status"]:
+            cur.execute(f"""
+                UPDATE watchlist_analysis_maturity
+                SET {col} = CASE WHEN {col} IN ('not_required', 'required') THEN 'required' ELSE {col} END
+                WHERE symbol = %s
+            """, (symbol,))
+
+    conn.commit()
+    cur.close()
+    return list(required)
+
+
+def _check_synthesis_ready(conn, symbol: str) -> bool:
+    """Check if all required agents completed and synthesis should be triggered."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT required_agents, completed_agents, final_synthesis_status FROM watchlist_analysis_maturity WHERE symbol=%s", (symbol,))
+    mat = cur.fetchone()
+    cur.close()
+    if not mat:
+        return False
+    required = mat.get("required_agents") or []
+    completed = mat.get("completed_agents") or []
+    if mat.get("final_synthesis_status") in ("completed", "processing", "queued"):
+        return False
+    return all(a in completed for a in required)
+
+
+# ── Strategy-aware synthesis weighting ───────────────────────────────
+
+STRATEGY_WEIGHTS = {
+    "income": {
+        "allocation": 0.35, "account_location": 0.25,
+        "fundamentals": 0.20, "technicals": 0.10, "alerts": 0.10,
+        "rules": [
+            "RSI alone is NOT a reason to TRIM an income/dividend ETF",
+            "High RSI on income ETF = wait for pullback to ADD, not SELL",
+            "TRIM only if: allocation exceeds target by >3%, thesis deteriorated, or better replacement exists",
+            "Underweight = HOLD or ADD_ON_PULLBACK",
+            "Overweight = HOLD unless >15% portfolio weight",
+        ],
+    },
+    "defense_thesis": {
+        "allocation": 0.25, "account_location": 0.15,
+        "fundamentals": 0.25, "technicals": 0.15, "alerts": 0.20,
+        "rules": [
+            "Evaluate as basket exposure, not individual picks",
+            "Geopolitical thesis and valuation dominate",
+            "Position sizing based on total defense allocation",
+        ],
+    },
+    "speculative_growth": {
+        "allocation": 0.15, "account_location": 0.10,
+        "fundamentals": 0.20, "technicals": 0.30, "alerts": 0.25,
+        "rules": [
+            "Catalyst + risk control required",
+            "Technicals heavily influence entry/exit timing",
+            "Position size should be limited (max 3-5% portfolio)",
+        ],
+    },
+    "growth_etf": {
+        "allocation": 0.30, "account_location": 0.20,
+        "fundamentals": 0.25, "technicals": 0.15, "alerts": 0.10,
+        "rules": [
+            "Overbought = do not chase, wait for pullback",
+            "TRIM only if allocation too high or thesis weakens",
+            "Use trend + valuation + overlap analysis",
+        ],
+    },
+    "core_holding": {
+        "allocation": 0.35, "account_location": 0.20,
+        "fundamentals": 0.25, "technicals": 0.10, "alerts": 0.10,
+        "rules": [
+            "Allocation and thesis dominate",
+            "Technicals are timing signals only, NOT recommendation drivers",
+            "TRIM only for rebalancing, not technical signals",
+        ],
+    },
+    "swing_trade": {
+        "allocation": 0.10, "account_location": 0.05,
+        "fundamentals": 0.15, "technicals": 0.40, "alerts": 0.30,
+        "rules": [
+            "Technicals dominate entry/exit",
+            "Entry/stop/target required before position",
+            "Time-bound thesis — exit if thesis expires",
+        ],
+    },
+}
+
+
+def _get_portfolio_context(conn, symbol: str) -> dict:
+    """Get portfolio position context for synthesis weighting."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
+    acct_summaries = holdings.get("account_summaries", {})
+    total_portfolio = sum(info.get("total_value", 0) for info in acct_summaries.values())
+
+    sym_holdings = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    total_shares = sum(float(h.get("shares", 0) or 0) for h in sym_holdings)
+    total_mv = sum(float(h.get("market_value", 0) or 0) for h in sym_holdings)
+    weight = round(total_mv / total_portfolio * 100, 2) if total_portfolio > 0 else 0
+
+    accounts = []
+    for h in sym_holdings:
+        aid = h.get("account_id") or h.get("account", "unknown")
+        acct_type = "Roth IRA" if "roth" in aid.lower() else "Rollover IRA" if "rollover" in aid.lower() or "ira" in aid.lower() else "401k" if "401k" in aid.lower() else "Taxable"
+        accounts.append({"id": aid, "type": acct_type, "shares": float(h.get("shares", 0) or 0), "value": float(h.get("market_value", 0) or 0)})
+
+    # Strategy type
+    cur.execute("SELECT strategy_type FROM watchlist_strategy_cards WHERE symbol=%s", (symbol,))
+    sc = cur.fetchone()
+    strategy_type = sc["strategy_type"] if sc else "core_holding"
+
+    # Recent alerts (last 24h)
+    cur.execute("""
+        SELECT alert_type, severity, data_quality_status, created_at
+        FROM alert_events WHERE symbol = %s AND created_at > NOW() - INTERVAL '24 hours'
+        ORDER BY created_at DESC LIMIT 10
+    """, (symbol,))
+    recent_alerts = cur.fetchall()
+
+    # Data quality issues
+    cur.execute("""
+        SELECT COUNT(*) as cnt FROM alert_events
+        WHERE symbol = %s AND data_quality_status NOT IN ('valid', 'unknown')
+        AND created_at > NOW() - INTERVAL '7 days'
+    """, (symbol,))
+    dq_issues = cur.fetchone()["cnt"]
+
+    # Income profile
+    cur2 = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur2.execute("SELECT * FROM income_asset_profiles WHERE symbol=%s", (symbol,))
+    income_profile = cur2.fetchone()
+
+    # Income goals
+    cur2.execute("SELECT * FROM portfolio_income_goals LIMIT 1")
+    income_goals = cur2.fetchone()
+
+    # Layer allocation
+    cur2.execute("""
+        SELECT layer_id, SUM(annual_income) as layer_income
+        FROM income_asset_profiles GROUP BY layer_id
+    """)
+    layer_income = {r["layer_id"]: float(r["layer_income"] or 0) for r in cur2.fetchall()}
+
+    # Total portfolio income
+    cur2.execute("SELECT SUM(annual_income) as total FROM income_asset_profiles")
+    total_income = float((cur2.fetchone() or {}).get("total", 0) or 0)
+
+    cur2.close()
+    cur.close()
+
+    income_ctx = {}
+    if income_profile:
+        ip = income_profile
+        income_ctx = {
+            "layer": ip.get("layer_id"),
+            "annual_income": float(ip.get("annual_income", 0) or 0),
+            "yield_pct": float(ip.get("dividend_yield_pct", 0) or 0),
+            "forward_yield_pct": float(ip.get("forward_yield_pct", 0) or 0),
+            "yield_on_cost_pct": float(ip.get("yield_on_cost_pct", 0) or 0) if ip.get("yield_on_cost_pct") else None,
+            "dividend_growth_5yr": float(ip.get("dividend_growth_5yr_pct", 0) or 0) if ip.get("dividend_growth_5yr_pct") else None,
+            "payout_safety": ip.get("payout_safety", "unknown"),
+            "income_reliability": ip.get("income_reliability", "unknown"),
+            "preferred_account": ip.get("preferred_account"),
+            "income_goal_contribution_pct": float(ip.get("income_goal_contribution_pct", 0) or 0),
+            "portfolio_income_pct": float(ip.get("portfolio_income_pct", 0) or 0),
+        }
+
+    return {
+        "total_shares": total_shares,
+        "total_value": total_mv,
+        "portfolio_weight": weight,
+        "accounts": accounts,
+        "strategy_type": strategy_type,
+        "recent_alerts": [dict(a) for a in recent_alerts],
+        "has_active_alerts": len(recent_alerts) > 0,
+        "has_stop_triggered": any(a["alert_type"] == "stop_triggered" for a in recent_alerts),
+        "data_quality_issues": dq_issues,
+        "position_tiny": weight < 0.5,
+        "position_small": weight < 2.0,
+        "income": income_ctx,
+        "total_portfolio_income": total_income,
+        "income_target": float(income_goals.get("target_income", 55000)) if income_goals else 55000,
+        "income_gap": max(0, float(income_goals.get("target_income", 55000)) - total_income) if income_goals else 0,
+    }
+
+
+def _build_layer_status(conn) -> str:
+    """Build layer allocation status string for synthesis prompt."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT pl.layer_id, pl.layer_name, pl.target_min_pct, pl.target_max_pct,
+               COALESCE(SUM(iap.annual_income), 0) as layer_income,
+               COUNT(iap.symbol) as symbol_count
+        FROM portfolio_layers pl
+        LEFT JOIN income_asset_profiles iap ON iap.layer_id = pl.layer_id
+        GROUP BY pl.layer_id, pl.layer_name, pl.target_min_pct, pl.target_max_pct
+    """)
+    layers = cur.fetchall()
+
+    # Get total portfolio value from holdings
+    holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
+    total_portfolio = sum(info.get("total_value", 0) for info in holdings.get("account_summaries", {}).values())
+
+    # Get actual allocation per layer
+    cur.execute("SELECT layer_id, SUM(iap.annual_income) as income FROM income_asset_profiles iap GROUP BY layer_id")
+    # Need market value by layer — get from holdings
+    layer_values = {}
+    for h in holdings.get("holdings", []):
+        sym = h.get("symbol", "")
+        mv = float(h.get("market_value", 0) or 0)
+        if h.get("is_cash"):
+            continue
+        cur.execute("SELECT layer_id FROM income_asset_profiles WHERE symbol=%s", (sym,))
+        lr = cur.fetchone()
+        lid = lr["layer_id"] if lr else "core_compounders"
+        layer_values[lid] = layer_values.get(lid, 0) + mv
+
+    cur.close()
+
+    lines = []
+    for l in layers:
+        lid = l["layer_id"]
+        actual_pct = round(layer_values.get(lid, 0) / total_portfolio * 100, 1) if total_portfolio > 0 else 0
+        target_min = float(l["target_min_pct"] or 0)
+        target_max = float(l["target_max_pct"] or 100)
+        status = "IN RANGE" if target_min <= actual_pct <= target_max else ("OVERWEIGHT" if actual_pct > target_max else "UNDERWEIGHT")
+        lines.append(f"  {l['layer_name']:25} actual={actual_pct:>5.1f}%  target={target_min:.0f}-{target_max:.0f}%  [{status}]  income=${float(l['layer_income']):,.0f}/yr")
+    return "\n".join(lines)
+
+
+def run_synthesis(conn, symbol: str):
+    """Run strategy-aware final synthesis combining all analyst narratives."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Get all completed narratives
+    cur.execute("""
+        SELECT agent, full_narrative, summary, recommendation, confidence, reason_codes, created_at
+        FROM watchlist_agent_results
+        WHERE symbol = %s AND status = 'completed'
+        ORDER BY created_at DESC
+    """, (symbol,))
+    results = cur.fetchall()
+
+    if not results:
+        cur.close()
+        return
+
+    # Mark synthesis as processing
+    cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='processing', updated_at=now() WHERE symbol=%s", (symbol,))
+    conn.commit()
+
+    # Get portfolio context and strategy weights
+    port_ctx = _get_portfolio_context(conn, symbol)
+    strategy_type = port_ctx["strategy_type"]
+    weights = STRATEGY_WEIGHTS.get(strategy_type, STRATEGY_WEIGHTS["core_holding"])
+    rules = weights.get("rules", [])
+
+    # Build narratives section
+    narratives = ""
+    for r in results:
+        narratives += f"\n--- {r['agent'].upper()} ({r['created_at'].strftime('%Y-%m-%d') if r.get('created_at') else '?'}) ---\n"
+        narratives += f"Recommendation: {r.get('recommendation', '?')}, Confidence: {r.get('confidence', '?')}\n"
+        narratives += f"Narrative: {r.get('full_narrative') or r.get('summary', 'No narrative')}\n"
+        if r.get('reason_codes'):
+            narratives += f"Reason codes: {', '.join(r['reason_codes'])}\n"
+
+    context = _get_context(conn, symbol)
+
+    # Build portfolio position summary
+    position_summary = f"""
+PORTFOLIO POSITION:
+Total shares: {port_ctx['total_shares']:.1f}
+Total value: ${port_ctx['total_value']:,.0f}
+Portfolio weight: {port_ctx['portfolio_weight']:.1f}%
+Accounts: {', '.join(f"{a['type']} ({a['shares']:.0f} sh, ${a['value']:,.0f})" for a in port_ctx['accounts'])}
+"""
+    if port_ctx["position_tiny"]:
+        position_summary += "NOTE: Position is <0.5% of portfolio — actions have minimal impact.\n"
+
+    # Income context
+    income_context = ""
+    inc = port_ctx.get("income", {})
+    if inc:
+        _ai = float(inc.get('annual_income') or 0)
+        _yp = float(inc.get('yield_pct') or 0)
+        _fy = float(inc.get('forward_yield_pct') or 0)
+        _yoc = float(inc.get('yield_on_cost_pct') or 0)
+        _igc = float(inc.get('income_goal_contribution_pct') or 0)
+        _tpi = float(port_ctx.get('total_portfolio_income') or 0)
+        _tig = float(port_ctx.get('income_target') or 55000)
+        _gap = float(port_ctx.get('income_gap') or 0)
+        income_context = f"""
+INCOME PROFILE:
+Layer: {inc.get('layer', 'unknown')}
+Annual income: ${_ai:,.0f} | Yield: {_yp:.1f}% | Forward: {_fy:.1f}% | YoC: {_yoc:.1f}%
+Payout: {inc.get('payout_safety', 'unknown')} | Reliability: {inc.get('income_reliability', 'unknown')}
+Preferred account: {inc.get('preferred_account', 'any')}
+Contributes {_igc:.1f}% of income target (${_tig:,.0f})
+Total portfolio income: ${_tpi:,.0f} — gap: ${_gap:,.0f}
+"""
+
+    # Build alert context
+    alert_context = ""
+    if port_ctx["has_active_alerts"]:
+        alert_context = "\nACTIVE ALERTS (last 24h):\n"
+        for a in port_ctx["recent_alerts"]:
+            alert_context += f"- {a['alert_type']} (severity: {a['severity']})\n"
+        if port_ctx["has_stop_triggered"]:
+            alert_context += "CRITICAL: Stop was triggered — risk assessment should be weighted heavily.\n"
+
+    # Data quality warning
+    dq_note = ""
+    if port_ctx["data_quality_issues"] > 0:
+        dq_note = f"\nDATA QUALITY WARNING: {port_ctx['data_quality_issues']} data quality issue(s) detected in last 7 days. Lower confidence accordingly but still produce a recommendation.\n"
+
+    # Strategy rules
+    rules_text = "\n".join(f"- {r}" for r in rules)
+
+    prompt = f"""/no_think You are the Chief Investment Officer performing final synthesis for the portfolio committee.
+
+STRATEGY TYPE: {strategy_type}
+DECISION WEIGHTS for {strategy_type}:
+- Allocation/position sizing: {weights['allocation']:.0%}
+- Account location: {weights['account_location']:.0%}
+- Fundamentals: {weights['fundamentals']:.0%}
+- Technicals: {weights['technicals']:.0%}
+- Alerts/events: {weights['alerts']:.0%}
+
+STRATEGY-SPECIFIC RULES (you MUST follow these):
+{rules_text}
+
+{context['text']}
+{position_summary}
+{income_context}
+{alert_context}
+{dq_note}
+
+PORTFOLIO MANDATE:
+Goal: Build sustainable retirement income. Target $55K/yr. Current: ${port_ctx.get('total_portfolio_income', 0):,.0f}/yr. Gap: ${port_ctx.get('income_gap', 0):,.0f}. Timeline: 4-8 years.
+
+LAYER ALLOCATION STATUS:
+{_build_layer_status(conn)}
+
+ALLOCATION-FIRST RULE: If a layer is outside its target range, the recommendation MUST prioritize fixing layer allocation. Underweight income_generators = ADD income assets. Overweight core_compounders = consider rebalancing INTO income layer.
+
+INCOME PROTECTION RULE: For income assets, TRIM is BLOCKED unless:
+- Position exceeds max allocation (>15% portfolio weight)
+- Income deterioration detected (payout safety = at_risk/unsafe)
+- Superior income replacement identified with better yield/safety
+
+RSI OVERRIDE: RSI cannot trigger SELL/TRIM for income assets. RSI only informs ADD timing (buy on pullback).
+
+INCOME IMPACT: This position provides {float(inc.get('portfolio_income_pct') or 0):.1f}% of total portfolio income. If >20%, require elevated justification for any reduction.
+
+ANALYST NARRATIVES:
+{narratives}
+
+CRITICAL INSTRUCTIONS:
+1. Your recommendation MUST be consistent with the strategy type and rules above.
+2. For income/dividend ETFs: DO NOT recommend TRIM/SELL based solely on RSI or technical overbought signals.
+3. For tiny positions (<0.5% weight): downgrade action priority — HOLD or IGNORE unless thesis broken.
+4. If recent stop alert exists, weight risk assessment heavily.
+5. Account location matters: IRA positions have different tax implications than taxable.
+6. State explicitly which analyst you agree with and why you disagree with others.
+7. PAST PERFORMANCE GUARDRAIL: Historical returns are evidence/context, NOT predictions. Distinguish between:
+   - Historical evidence (what happened before)
+   - Current facts (price, yield, allocation now)
+   - Forward assumptions (scenario-based, labeled conservative/base/aggressive)
+   - Your recommendation (based on all three, not just history)
+   Do NOT use "it returned X% before" as the sole rationale. Instead reference current fundamentals, payout quality, and strategy fit.
+
+Respond in JSON format:
+- "recommendation": one of BUY, HOLD, SELL, ADD, ADD_ON_PULLBACK, TRIM, REBALANCE_TRIM, AVOID, IGNORE
+- "confidence": 0.0-1.0
+- "action": specific next action with price levels and share counts where possible
+- "account_action": which account to act in and why (e.g. "Add in IRA for tax-deferred income")
+- "income_goal_impact": how this action affects the $55K income target (e.g. "Maintains $4,438/yr income stream")
+- "reason_codes": array of reason tags
+- "conflicts": array of disagreements between analysts (empty if none)
+- "unresolved": array of questions that still need answers
+- "what_changes_view": what new information would change this recommendation
+- "synthesis_narrative": 2-3 paragraph final assessment explaining the weighting
+- "next_review_date": ISO date for when to re-review
+"""
+
+    raw = _llm(prompt, max_tokens=1000, task_type="cio_synthesis", high_impact=True)
+    parsed = _parse_result(raw)
+
+    # Extract synthesis-specific fields
+    try:
+        j = json.loads(raw[raw.find('{'):raw.rfind('}') + 1])
+        conflicts = j.get("conflicts", []) if isinstance(j.get("conflicts"), list) else []
+        unresolved = j.get("unresolved", []) if isinstance(j.get("unresolved"), list) else []
+        action = str(j.get("action", ""))[:200]
+        next_review = j.get("next_review_date")
+        synthesis_narrative = str(j.get("synthesis_narrative", parsed["full_narrative"]))[:3000]
+    except (json.JSONDecodeError, ValueError):
+        conflicts = []
+        unresolved = []
+        action = parsed.get("next_action", "")
+        next_review = None
+        synthesis_narrative = parsed["full_narrative"]
+
+    # ── POST-LLM GATING RULES (hard overrides) ──────────────────────
+    rec = parsed["recommendation"].upper()
+    inc = port_ctx.get("income", {})
+
+    # Rule 1: Income protection — block TRIM/SELL on safe income assets
+    if rec in ("TRIM", "SELL") and inc.get("layer") == "income_generators":
+        payout = inc.get("payout_safety", "unknown")
+        weight_pct = port_ctx.get("portfolio_weight", 0)
+        if payout in ("safe", "moderate") and weight_pct <= 15:
+            # Override: income asset with safe payout, not overweight
+            parsed["recommendation"] = "HOLD"
+            parsed["confidence"] = min(parsed["confidence"], 0.5)
+            action = f"HOLD — income protection rule: {payout} payout, {weight_pct:.1f}% weight (<=15% max). Original LLM said {rec}."
+            conflicts.append(f"GATING OVERRIDE: LLM recommended {rec} but income protection rule blocked it (payout={payout}, weight={weight_pct:.1f}%)")
+            synthesis_narrative = f"[GATED] Original recommendation {rec} overridden by income protection rule. Position has {payout} payout safety and {weight_pct:.1f}% weight (within 15% max). " + synthesis_narrative
+
+    # Rule 2: RSI cannot trigger SELL for income assets
+    if rec in ("TRIM", "SELL") and strategy_type == "income":
+        reason_codes = parsed.get("reason_codes", [])
+        tech_reasons = {"overbought", "rsi_high", "technical_overbought", "overvalued"}
+        if reason_codes and set(r.lower() for r in reason_codes) <= tech_reasons:
+            parsed["recommendation"] = "HOLD"
+            parsed["confidence"] = min(parsed["confidence"], 0.5)
+            action = f"HOLD — RSI override: technical signals alone cannot trigger TRIM on income ETF. Original: {rec}."
+            conflicts.append(f"GATING OVERRIDE: RSI/technical-only {rec} blocked for income strategy")
+
+    # Rule 3: Income impact >20% requires elevated justification
+    income_pct = inc.get("portfolio_income_pct", 0)
+    if rec in ("TRIM", "SELL", "AVOID") and income_pct > 20:
+        if parsed["confidence"] < 0.8:
+            # Not confident enough to reduce major income source
+            parsed["recommendation"] = "HOLD"
+            action = f"HOLD — position provides {income_pct:.0f}% of portfolio income. Requires >80% confidence to reduce. Original: {rec} at {parsed['confidence']:.0%}."
+            conflicts.append(f"GATING OVERRIDE: {income_pct:.0f}% income concentration requires elevated justification (conf was {parsed['confidence']:.0%} < 80%)")
+
+    # Update rec after gating
+    rec = parsed["recommendation"].upper()
+
+    # Store synthesis
+    cur.execute("""
+        INSERT INTO watchlist_final_synthesis
+            (symbol, recommendation, confidence, action, reason_codes, conflicts, unresolved,
+             next_review_date, synthesis_narrative, input_agents, model_used, raw_response)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (symbol) DO UPDATE SET
+            recommendation=EXCLUDED.recommendation, confidence=EXCLUDED.confidence,
+            action=EXCLUDED.action, reason_codes=EXCLUDED.reason_codes,
+            conflicts=EXCLUDED.conflicts, unresolved=EXCLUDED.unresolved,
+            next_review_date=EXCLUDED.next_review_date,
+            synthesis_narrative=EXCLUDED.synthesis_narrative,
+            input_agents=EXCLUDED.input_agents, model_used=EXCLUDED.model_used,
+            raw_response=EXCLUDED.raw_response, updated_at=now()
+    """, (symbol, parsed["recommendation"], parsed["confidence"], action,
+          parsed.get("reason_codes", []), conflicts, unresolved,
+          next_review, synthesis_narrative,
+          [r["agent"] for r in results], OLLAMA_MODEL, raw))
+
+    # Record decision inputs (data lineage — what influenced this synthesis)
+    try:
+        # Agent results that fed into this synthesis
+        for r in results:
+            cur.execute("""INSERT INTO decision_inputs (symbol, source_type, source_table, source_id, title, relevance_score, used_in_synthesis)
+                VALUES (%s, 'agent_result', 'watchlist_agent_results', %s, %s, %s, TRUE)""",
+                (symbol, r.get("id"), f"{r['agent']}: {r.get('recommendation','?')}", float(r.get("confidence", 0))))
+        # Recent news that was in context
+        cur.execute("""SELECT id, title, relevance_score FROM news_articles
+            WHERE symbol=%s AND created_at > NOW() - INTERVAL '7 days' ORDER BY relevance_score DESC LIMIT 5""", (symbol,))
+        for n in cur.fetchall():
+            cur.execute("""INSERT INTO decision_inputs (symbol, source_type, source_table, source_id, title, relevance_score, used_in_synthesis)
+                VALUES (%s, 'news', 'news_articles', %s, %s, %s, TRUE)""",
+                (symbol, n[0], (n[1] or "")[:200], float(n[2] or 0)))
+    except Exception:
+        pass  # Don't let lineage tracking break synthesis
+
+    # Update maturity
+    cur.execute("""
+        UPDATE watchlist_analysis_maturity
+        SET final_synthesis_status = 'completed',
+            analysis_stage = 'final_synthesis_complete',
+            needs_iteration = FALSE,
+            iteration_reason = NULL,
+            updated_at = now()
+        WHERE symbol = %s
+    """, (symbol,))
+
+    # Update research card with synthesis
+    cur.execute("""
+        UPDATE watchlist_research_cards
+        SET latest_summary = %s, latest_recommendation = %s, confidence = %s,
+            research_status = 'synthesis_complete', needs_iteration = FALSE, updated_at = now()
+        WHERE symbol = %s
+    """, (parsed["summary"][:500], parsed["recommendation"], parsed["confidence"], symbol))
+
+    # Event
+    cur.execute("""
+        INSERT INTO watchlist_events (event_type, symbol, agent, status, message)
+        VALUES ('synthesis_complete', %s, 'synthesis', 'completed', %s)
+    """, (symbol, f"Final: {parsed['recommendation']} (conf={parsed['confidence']:.0%}), conflicts={len(conflicts)}, unresolved={len(unresolved)}"))
+
+    conn.commit()
+
+    # ── AUTO-ESCALATION: Detect conflicts and flag for human review ────
+    needs_escalation = False
+    escalation_reasons = []
+
+    # Check 1: LLM detected conflicts between agents
+    if conflicts:
+        needs_escalation = True
+        escalation_reasons.append(f"{len(conflicts)} agent conflict(s)")
+
+    # Check 2: Low confidence after synthesis
+    if parsed["confidence"] < 0.4:
+        needs_escalation = True
+        escalation_reasons.append(f"Low confidence: {parsed['confidence']:.0%}")
+
+    # Check 3: Gating override happened (agents wanted one thing, rules blocked it)
+    gating_overrides = [c for c in conflicts if "GATING OVERRIDE" in c]
+    if gating_overrides:
+        needs_escalation = True
+        escalation_reasons.append(f"{len(gating_overrides)} safety gate override(s)")
+
+    # Check 4: Unresolved questions
+    if unresolved and len(unresolved) >= 2:
+        needs_escalation = True
+        escalation_reasons.append(f"{len(unresolved)} unresolved questions")
+
+    if needs_escalation:
+        try:
+            from agent_collab import log_handoff
+            log_handoff(
+                from_agent="synthesis",
+                to_agent="human_review",
+                symbol=symbol,
+                intent=f"Auto-escalation: {'; '.join(escalation_reasons)}",
+                confidence=parsed["confidence"],
+                response_summary=f"{parsed['recommendation']} — {action[:100]}",
+                escalated=True,
+            )
+            # Telegram notification for high-priority escalations
+            if parsed["confidence"] < 0.3 or len(conflicts) >= 3:
+                try:
+                    from telegram_alert import send_telegram
+                    send_telegram(
+                        f"\U0001F6A8 *Escalation: {symbol}*\n"
+                        f"Synthesis: {parsed['recommendation']} ({parsed['confidence']:.0%} confidence)\n"
+                        f"Reasons: {', '.join(escalation_reasons)}\n"
+                        f"Review at: /v2/watchlist?symbol={symbol}"
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        print(f"  \u26A0 {symbol}: ESCALATED — {', '.join(escalation_reasons)}")
+
+    cur.close()
+    print(f"  \u2605 {symbol}: SYNTHESIS {parsed['recommendation']} conf={parsed['confidence']:.0%}")
+
+
+def process_jobs(limit: int = 10):
+    conn = _get_conn()
+    cur = conn.cursor()
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Get queued jobs
+    cur.execute("SELECT * FROM watchlist_agent_jobs WHERE status = 'queued' ORDER BY priority, created_at LIMIT %s", (limit,))
+    jobs = cur.fetchall()
+
+    if not jobs:
+        print(f"[watchlist-agent] No queued jobs")
+        # Still check for symbols ready for synthesis
+        _check_pending_synthesis(conn)
+        conn.close()
+        return 0
+
+    print(f"[watchlist-agent] Processing {len(jobs)} jobs...")
+    completed = 0
+
+    for job in jobs:
+        job_id = job["id"]
+        symbol = job["symbol"]
+        agent = job["requested_agent"]
+        request_type = job["request_type"]
+        note = job.get("note", "")
+
+        # Apply escalation policy if not already set
+        _apply_escalation_policy(conn, symbol)
+
+        # Mark processing
+        cur.execute("UPDATE watchlist_agent_jobs SET status='processing', started_at=now() WHERE id=%s", (job_id,))
+        _update_maturity(conn, symbol, agent, "processing")
+        cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('processing', %s, %s, 'processing', %s)",
+                    (symbol, agent, f"Started {agent} {request_type}"))
+        conn.commit()
+
+        # ── Risk-first data quality gate ──
+        # If this is maria or steph, check if Risk already flagged a data gap
+        if agent in ("maria", "steph"):
+            risk_cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            risk_cur.execute(
+                """SELECT recommendation, confidence FROM watchlist_agent_results
+                   WHERE symbol=%s AND agent='risk_agent'
+                   AND created_at > NOW() - INTERVAL '2 hours'
+                   ORDER BY created_at DESC LIMIT 1""", (symbol,))
+            risk_recent = risk_cur.fetchone()
+            risk_cur.close()
+
+            if (risk_recent
+                    and (risk_recent.get("recommendation") or "").upper() == "RESEARCH_MORE"
+                    and float(risk_recent.get("confidence") or 0) < 0.40):
+                # Risk had a data gap — check and try to enrich
+                quality = _check_symbol_data_quality(symbol)
+                if quality["quality_score"] < 60:
+                    print(f"  [data-gate] {symbol}: Risk data gap (Q={quality['quality_score']}). Missing: {quality['enrichment_needed']}")
+                    enriched = _attempt_symbol_enrichment(symbol, quality["enrichment_needed"])
+                    if not enriched:
+                        # Cannot enrich — skip this agent, don't waste LLM call
+                        print(f"  [data-gate] {symbol}: Enrichment failed. Skipping {agent} to avoid empty analysis.")
+                        cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))
+                        cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('data_gap_skip', %s, %s, 'skipped', %s)",
+                                    (symbol, agent, f"Skipped: Risk data gap Q={quality['quality_score']}, enrichment failed"))
+                        conn.commit()
+                        continue
+                    else:
+                        print(f"  [data-gate] {symbol}: Enrichment succeeded (Q was {quality['quality_score']}). Proceeding with {agent}.")
+
+        # Build context and prompt
+        context = _get_context(conn, symbol)
+
+        # Maria uses two-pass analysis for higher confidence
+        if agent == "maria":
+            raw = _run_maria_two_pass(symbol, context["text"], note)
+            prompt = f"[two-pass maria for {symbol}]"
+            prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+        else:
+            prompt = _build_prompt(agent, symbol, context["text"], note)
+            prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+            raw = _llm(prompt)
+
+        if not raw or raw.startswith("LLM error"):
+            cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))
+            cur.execute("UPDATE watchlist_items SET status='active', updated_at=now() WHERE symbol=%s AND status='queued'", (symbol,))
+            _update_maturity(conn, symbol, agent, "failed")
+            cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('failed', %s, %s, 'failed', %s)",
+                        (symbol, agent, raw or "Empty LLM response"))
+            conn.commit()
+            print(f"  ✗ {symbol} ({agent}): FAILED — {(raw or 'empty')[:50]}")
+            continue
+
+        # Parse result
+        parsed = _parse_result(raw)
+
+        # Store result with full narrative
+        result_id = f"res-{job_id}"
+        cur.execute("""
+            INSERT INTO watchlist_agent_results
+                (id, job_id, symbol, agent, request_type, status, confidence,
+                 summary, full_narrative, recommendation, reason_codes,
+                 next_action, full_result, model_used, prompt_hash,
+                 input_data_snapshot, raw_response, started_at, completed_at)
+            VALUES (%s, %s, %s, %s, %s, 'completed', %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, now())
+            ON CONFLICT (id) DO UPDATE SET
+                summary=EXCLUDED.summary, full_narrative=EXCLUDED.full_narrative,
+                recommendation=EXCLUDED.recommendation, confidence=EXCLUDED.confidence,
+                reason_codes=EXCLUDED.reason_codes, raw_response=EXCLUDED.raw_response,
+                model_used=EXCLUDED.model_used, completed_at=now()
+        """, (result_id, job_id, symbol, agent, request_type, parsed["confidence"],
+              parsed["summary"][:500], parsed["full_narrative"][:3000],
+              parsed["recommendation"], parsed["reason_codes"],
+              parsed.get("next_action", ""),
+              json.dumps({"raw": raw, "model": OLLAMA_MODEL}),
+              OLLAMA_MODEL, prompt_hash,
+              json.dumps(context["snapshot"], default=str),
+              raw,
+              job.get("started_at")))
+
+        # Store RAG sources + peer notes for audit
+        try:
+            rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
+            peer_agents = getattr(sys.modules[__name__], '_last_peer_agents', [])
+            cur.execute("UPDATE watchlist_agent_results SET rag_sources_used=%s, peer_notes_symbols=%s WHERE id=%s",
+                        (json.dumps(rag_used), peer_agents, result_id))
+            if rag_used:
+                print(f"  [RAG-STORE] {symbol}: {len(rag_used)} sources saved")
+            if peer_agents:
+                print(f"  [PEER-STORE] {symbol}: notes from {peer_agents}")
+        except Exception as e:
+            print(f"  [RAG-STORE] ERROR: {e}")
+
+        # Cache result for peer notes in same batch
+        if symbol not in _batch_results_cache:
+            _batch_results_cache[symbol] = []
+        _batch_results_cache[symbol].append({
+            "agent": agent, "recommendation": parsed["recommendation"],
+            "confidence": parsed["confidence"], "summary": parsed["summary"][:200]
+        })
+
+        # Index new result embedding immediately
+        try:
+            from rag_indexer import index_source
+            index_source("agent_result", hours_back=1, conn=conn)
+        except Exception:
+            pass
+
+        # === IER WRITE-BACK (non-fatal) ===
+        try:
+            from intelligence_entity_manager import upsert_entity as _iem_upsert
+            from datetime import datetime as _dt, timezone as _tz
+            _iem_upsert(conn, symbol, 'market', {
+                'last_agent': agent,
+                'last_agent_verdict': f"{parsed['recommendation']} ({parsed['confidence']}) — {parsed['summary'][:150]}",
+                'last_agent_analysis': _dt.now(_tz.utc),
+                'agent_chain_status': 'complete',
+            }, source='agent_jobs')
+        except Exception:
+            pass
+        # === END WRITE-BACK ===
+
+        # Self-assessment: low confidence + no RAG → suggest research
+        try:
+            rag_used = getattr(sys.modules[__name__], '_last_rag_sources', [])
+            if float(parsed.get("confidence", 1)) < 0.50 and len(rag_used) == 0:
+                cur.execute("""INSERT INTO user_research_topics (topic, priority, source, original_message, created_at)
+                    VALUES (%s, 'high', %s, %s, NOW()) ON CONFLICT (topic) DO UPDATE SET priority='high'""",
+                    (f"Find content covering {symbol} analysis",
+                     f"agent_self_assessment:{agent}",
+                     f"{agent} analyzed {symbol} with {parsed['confidence']:.0%} confidence and 0 RAG sources"))
+                print(f"  [SELF-ASSESS] {symbol} ({agent}): low conf + no RAG → research topic created")
+        except Exception:
+            pass
+
+        # Check if both agents complete for this symbol → send summary
+        try:
+            cur.execute("""SELECT agent, recommendation, confidence FROM watchlist_agent_results
+                          WHERE symbol=%s AND created_at > NOW() - INTERVAL '2 hours'
+                          ORDER BY created_at DESC""", (symbol,))
+            recent = cur.fetchall()
+            agents_done = set(r[0] for r in recent)
+            if len(agents_done) >= 2 and job.get("submitted_from") in ("event_router", "auto_enrichment"):
+                recs = {r[0]: r[1] for r in recent}
+                confs = {r[0]: float(r[2] or 0) for r in recent}
+                conflict = len(set(recs.values())) > 1
+                from telegram_alert import send_telegram
+                msg = f"Agent analysis complete: {symbol}\n"
+                for a, rec in recs.items():
+                    msg += f"  {a}: {rec} ({confs.get(a,0):.0%})\n"
+                if conflict:
+                    msg += "Agent conflict — review needed"
+                    # Auto-trigger debate if not already pending for this symbol
+                    try:
+                        cur.execute("""SELECT id FROM agent_debate_log
+                                      WHERE symbol=%s AND created_at > NOW() - INTERVAL '48 hours'""", (symbol,))
+                        if not cur.fetchone():
+                            from agent_watchlist_engine import run_agent_debate
+                            run_agent_debate(symbol, f"conflict: {recs}", trigger_id=0, trigger_source="conflict_auto")
+                            msg += "\nDebate triggered automatically."
+                    except Exception as e:
+                        print(f"  [debate-trigger] {symbol}: {e}")
+                else:
+                    msg += f"Consensus: {list(recs.values())[0]}"
+                send_telegram(msg)
+        except Exception:
+            pass
+
+        # Update job — recover from poisoned transaction if needed
+        try:
+            cur.execute("SELECT 1")  # test transaction health
+        except Exception:
+            conn.rollback()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            print(f"  [recovery] {symbol}: rolled back poisoned transaction")
+
+        cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
+
+        # Update watchlist item status
+        cur.execute("UPDATE watchlist_items SET status='researched', updated_at=now() WHERE symbol=%s AND status IN ('queued','active')", (symbol,))
+
+        # Upsert research card
+        cur.execute("""
+            INSERT INTO watchlist_research_cards (symbol, card, research_status, latest_summary, latest_recommendation, confidence, needs_iteration, updated_at)
+            VALUES (%s, %s, 'partial', %s, %s, %s, TRUE, now())
+            ON CONFLICT (symbol) DO UPDATE SET
+                card=EXCLUDED.card, latest_summary=EXCLUDED.latest_summary,
+                latest_recommendation=EXCLUDED.latest_recommendation,
+                confidence=EXCLUDED.confidence, updated_at=now()
+        """, (symbol, json.dumps({"agent": agent, "summary": parsed["summary"], "recommendation": parsed["recommendation"]}),
+              parsed["summary"][:500], parsed["recommendation"], parsed["confidence"]))
+
+        # Update maturity
+        _update_maturity(conn, symbol, agent, "completed")
+
+        # Event
+        cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('completed', %s, %s, 'completed', %s)",
+                    (symbol, agent, f"{parsed['recommendation']} conf={parsed['confidence']:.0%} codes={parsed['reason_codes']}"))
+        conn.commit()
+        completed += 1
+        print(f"  ✓ {symbol} ({agent}): {parsed['recommendation']} conf={parsed['confidence']:.0%}")
+
+        # Check if synthesis is now ready
+        if _check_synthesis_ready(conn, symbol):
+            print(f"  → {symbol}: All required reviews complete, running synthesis...")
+            try:
+                run_synthesis(conn, symbol)
+                # Run safety assessment immediately after synthesis
+                try:
+                    from synthesis_safety import assess_synthesis_safety, persist_safety
+                    safety = assess_synthesis_safety(symbol)
+                    persist_safety(symbol, safety)
+                    print(f"  ⛨ {symbol}: Safety={safety['decision_safety']} actionable={safety['actionable_allowed']}")
+                except Exception as se:
+                    print(f"  [safety] {symbol}: assessment failed: {se}")
+            except Exception as e:
+                print(f"  ✗ {symbol}: Synthesis failed: {e}")
+                cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='failed', updated_at=now() WHERE symbol=%s", (symbol,))
+                conn.commit()
+
+    # Also check for any other symbols that became ready for synthesis
+    _check_pending_synthesis(conn)
+
+    conn.close()
+    print(f"[watchlist-agent] Done: {completed}/{len(jobs)} completed")
+    return completed
+
+
+def _check_pending_synthesis(conn):
+    """Check all symbols that have all required reviews done but no synthesis yet."""
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("""
+        SELECT symbol FROM watchlist_analysis_maturity
+        WHERE analysis_stage = 'specialist_review_complete'
+        AND final_synthesis_status = 'pending'
+    """)
+    ready = [r["symbol"] for r in cur.fetchall()]
+    cur.close()
+
+    for sym in ready:
+        print(f"  → {sym}: Pending synthesis detected, running...")
+        try:
+            run_synthesis(conn, sym)
+            from synthesis_safety import assess_synthesis_safety, persist_safety
+            safety = assess_synthesis_safety(sym)
+            persist_safety(sym, safety)
+            print(f"  ⛨ {sym}: Safety={safety['decision_safety']}")
+        except Exception as e:
+            print(f"  ✗ {sym}: Synthesis failed: {e}")
+
+
+def _auto_queue_new_symbols():
+    """Auto-queue agent jobs for watchlist symbols that have no analysis yet.
+
+    Runs every 15 minutes as part of the agent processing cycle.
+    New symbols get Maria + Steph + Risk queued automatically.
+    """
+    conn = _get_conn()
+    import psycopg2.extras
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    # Skip auto-queue if backlog is already large
+    cur.execute("SELECT COUNT(*) as cnt FROM watchlist_agent_jobs WHERE status = 'queued'")
+    backlog = cur.fetchone()["cnt"]
+    if backlog > 50:
+        print(f"[watchlist-agent] Skipping auto-queue — backlog too large ({backlog} queued)")
+        conn.close()
+        return 0
+
+    # Find active watchlist symbols with NO agent jobs at all
+    cur.execute("""
+        SELECT wi.symbol, tsc.strategy_type
+        FROM watchlist_items wi
+        LEFT JOIN ticker_strategy_classifications tsc ON wi.symbol = tsc.symbol AND tsc.active = TRUE
+        WHERE wi.status = 'active'
+          AND wi.symbol NOT IN (SELECT DISTINCT symbol FROM watchlist_agent_jobs)
+        LIMIT 5
+    """)
+    new_symbols = cur.fetchall()
+
+    if not new_symbols:
+        return 0
+
+    import uuid
+    queued = 0
+    agents_to_queue = ["maria", "steph", "risk_agent"]
+
+    for row in new_symbols:
+        symbol = row["symbol"]
+        strategy_type = row.get("strategy_type") or "unknown"
+        for agent in agents_to_queue:
+            job_id = f"auto_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
+            cur.execute("""
+                INSERT INTO watchlist_agent_jobs
+                    (id, symbol, requested_agent, request_type, priority, note, status)
+                VALUES (%s, %s, %s, 'full_analysis', 2, %s, 'queued')
+                ON CONFLICT DO NOTHING
+            """, (job_id, symbol, agent, f"Auto-queued for new watchlist symbol (strategy: {strategy_type})"))
+            queued += 1
+
+    conn.commit()
+    conn.close()
+    if queued > 0:
+        print(f"[watchlist-agent] Auto-queued {queued} jobs for {len(new_symbols)} new symbol(s)")
+    return queued
+
+
+if __name__ == "__main__":
+    with PipelineRun("process_watchlist_agent_jobs") as _run:
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--limit", type=int, default=10)
+        args = parser.parse_args()
+        _auto_queue_new_symbols()  # Check for new symbols first
+        process_jobs(args.limit)
+```
