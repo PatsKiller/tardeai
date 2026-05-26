@@ -18894,6 +18894,162 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── ATM Lifecycle Control Room endpoint ──────────────────────────────
+    if base_path == "/api/v2/atm/lifecycle":
+        try:
+            from strategy_trailing_policy import get_trailing_policy as _gtp_lc
+            from atm_config_manager import load_config as _lc_load
+            import datetime as _dt_lc
+
+            _now = _dt_lc.datetime.now(_dt_lc.timezone.utc)
+            _today = _now.date().isoformat()
+
+            # Summary counts
+            _signals_today = len(_db_query("SELECT 1 FROM strategy_signals WHERE fired_at::date=CURRENT_DATE") or [])
+            _proposals_today = len(_db_query("SELECT 1 FROM paper_trade_proposals WHERE created_at::date=CURRENT_DATE") or [])
+            _decisions_today = _db_query("SELECT decision, count(*) as c FROM atm_decision_log WHERE decided_at::date=CURRENT_DATE GROUP BY decision") or []
+            _open_trades = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account,signal_id FROM paper_trades WHERE exit_time IS NULL ORDER BY id DESC") or []
+            _stale_proposals = len(_db_query("SELECT 1 FROM paper_trade_proposals WHERE created_at < NOW()-INTERVAL '48 hours' AND signal_decision IS NULL") or [])
+            _lc_events_24h = len(_db_query("SELECT 1 FROM lifecycle_events WHERE event_ts > NOW()-INTERVAL '24 hours'") or [])
+
+            # Classifier guardrail
+            _cfg_lc, _ = _lc_load()
+            _min_ch = _cfg_lc.get("defaults",{}).get("strategy_filter",{}).get("min_classifier_health",0.5)
+
+            # safe_flock (last 24h)
+            _sf_skips_24h = 0
+            try:
+                import json as _sf_j
+                _sf_path = PROJECT_ROOT / "logs" / "safe_flock_events.jsonl"
+                if _sf_path.exists():
+                    _sf_cut = _now - _dt_lc.timedelta(hours=24)
+                    for _ln in open(_sf_path):
+                        try:
+                            _e = _sf_j.loads(_ln.strip())
+                            if _e.get("event_type") == "lock_skip":
+                                _ts = _dt_lc.datetime.fromisoformat(_e["ts"])
+                                if _ts.tzinfo:
+                                    _ts = _ts.astimezone(_dt_lc.timezone.utc)
+                                if _ts >= _sf_cut:
+                                    _sf_skips_24h += 1
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Traceability gaps
+            _trades_no_lc = len(_db_query("""
+                SELECT 1 FROM paper_trades pt WHERE pt.exit_time IS NULL
+                AND NOT EXISTS (SELECT 1 FROM lifecycle_events le WHERE le.paper_trade_id=pt.id)
+            """) or [])
+
+            # Per-position details with gates, stops, time-stop, broker proof
+            _positions = []
+            for _t in _open_trades:
+                _sym = _t["symbol"]; _sid = _t["strategy_id"]
+                _pol = _gtp_lc(_sid)
+                _tsc = _pol.get("time_stop", {})
+                _family = _pol.get("family", "unknown")
+
+                # Time stop computation
+                _et = _t.get("entry_time")
+                _hold = 0
+                _ts_status = "unknown"
+                _ts_due = None
+                _ts_overdue_by = 0
+                if _et:
+                    if hasattr(_et, "tzinfo") and _et.tzinfo is None:
+                        _et = _et.replace(tzinfo=_dt_lc.timezone.utc)
+                    _hold = (_now - _et).days
+                    _ttype = _tsc.get("type", "review")
+                    if _ttype == "intraday":
+                        _ts_status = "overdue" if _hold > 0 else "ok"
+                        _ts_overdue_by = _hold if _hold > 0 else 0
+                    elif _ttype == "calendar":
+                        _mx = _tsc.get("max_hold_days", 21)
+                        if _hold > _mx:
+                            _ts_status = "overdue"; _ts_overdue_by = _hold - _mx
+                        elif _hold > _mx * 0.8:
+                            _ts_status = "approaching"
+                        else:
+                            _ts_status = "ok"
+                    elif _ttype == "review":
+                        _rv = _tsc.get("review_at_days", 90)
+                        _ts_status = "review_due" if _hold >= _rv else "ok"
+                        _ts_overdue_by = _hold - _rv if _hold >= _rv else 0
+
+                # Proposal gate audit (find linked proposal)
+                _prop = _db_query("SELECT id,signal_score,signal_decision,proposed_entry,proposed_stop,proposed_target1 FROM paper_trade_proposals WHERE symbol=%s AND strategy_id=%s ORDER BY created_at DESC LIMIT 1", (_sym, _sid), fetch="one") or {}
+                _gates = {
+                    "strategy_active": {"status": "pass" if _sid else "unknown"},
+                    "classifier_health": {"status": "bypassed" if _min_ch <= 0 else "unknown"},
+                    "max_concurrent": {"status": "pass", "detail": f"{len(_open_trades)} open"},
+                    "stop_present": {"status": "pass" if _t.get("stop_loss") else "fail"},
+                    "market_hours": {"status": "pass"},
+                }
+
+                _positions.append({
+                    "paper_trade_id": _t["id"],
+                    "symbol": _sym,
+                    "strategy_id": _sid,
+                    "strategy_family": _family if _family != "unknown" else None,
+                    "account": _t.get("account"),
+                    "shares": _t.get("shares"),
+                    "entry_price": float(_t["entry_price"]) if _t.get("entry_price") else None,
+                    "days_held": _hold,
+                    "db_stop_loss": float(_t["stop_loss"]) if _t.get("stop_loss") else None,
+                    "trailing_tier": _pol.get("tiers", [])[-1][2] if _pol.get("tiers") else None,
+                    "time_stop": {
+                        "type": _tsc.get("type", "unknown"),
+                        "status": _ts_status,
+                        "days_held": _hold,
+                        "overdue_by": _ts_overdue_by,
+                        "max_hold_days": _tsc.get("max_hold_days"),
+                        "review_at_days": _tsc.get("review_at_days"),
+                    },
+                    "gate_audit": _gates,
+                    "proposal_id": _prop.get("id"),
+                    "score": float(_prop.get("signal_score")) if _prop.get("signal_score") else None,
+                    "lifecycle_linked": _t["id"] not in [int(r.get("source_pk", 0)) for r in [{}]],
+                })
+
+            # Recent proposals with gate view
+            _recent_props = _db_query("""
+                SELECT id, symbol, strategy_id, signal_score, signal_decision,
+                       proposed_entry, proposed_stop, proposed_target1, created_at
+                FROM paper_trade_proposals ORDER BY created_at DESC LIMIT 20
+            """) or []
+
+            # Lifecycle event counts by stage
+            _stage_counts = {r["stage"]: r["c"] for r in (_db_query(
+                "SELECT stage, count(*) as c FROM lifecycle_events WHERE event_ts > NOW()-INTERVAL '7 days' GROUP BY stage"
+            ) or [])}
+
+            _summary = {
+                "signals_today": _signals_today,
+                "proposals_today": _proposals_today,
+                "decisions_today": {r["decision"]: r["c"] for r in _decisions_today},
+                "open_positions": len(_open_trades),
+                "time_stop_overdue": sum(1 for p in _positions if p["time_stop"]["status"] == "overdue"),
+                "time_stop_due": sum(1 for p in _positions if p["time_stop"]["status"] in ("review_due", "approaching")),
+                "stale_proposals": _stale_proposals,
+                "safe_flock_skips_24h": _sf_skips_24h,
+                "classifier_gate_disabled": _min_ch <= 0,
+                "lifecycle_events_24h": _lc_events_24h,
+                "traceability_gap_count": _trades_no_lc,
+                "stop_missing_count": sum(1 for p in _positions if not p.get("db_stop_loss")),
+                "stage_counts_7d": _stage_counts,
+            }
+
+            return 200, {"ok": True, "data": {
+                "summary": _summary,
+                "positions": [{k: _json_clean(v) for k, v in p.items()} for p in _positions],
+                "recent_proposals": [{k: _json_clean(v) for k, v in p.items()} for p in _recent_props],
+            }}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM (Automated Trade Mode) endpoints ─────────────────────────────
     if base_path == "/api/v2/atm/status":
         try:

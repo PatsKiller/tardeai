@@ -64,6 +64,7 @@ const PipelineHub = lazy(() => import('./pages/PipelineHub'))
 const WeeklyLearning = lazy(() => import('./pages/WeeklyLearning'))
 const Backtesting = lazy(() => import('./pages/Backtesting'))
 const SelfImprovement = lazy(() => import('./pages/SelfImprovement'))
+const ATMControlRoom = lazy(() => import('./pages/ATMControlRoom'))
 const AutomatedTradeMode = lazy(() => import('./pages/AutomatedTradeMode'))
 const AgentDashboard = lazy(() => import('./pages/AgentDashboard'))
 
@@ -175,6 +176,7 @@ export default function App() {
           <Route path="weekly-learning" element={<SafePage><WeeklyLearning /></SafePage>} />
           <Route path="backtesting" element={<SafePage><Backtesting /></SafePage>} />
           <Route path="self-improvement" element={<SafePage><SelfImprovement /></SafePage>} />
+          <Route path="atm-control-room" element={<SafePage><ATMControlRoom /></SafePage>} />
           <Route path="automated-trade-mode" element={<SafePage><AutomatedTradeMode /></SafePage>} />
 
           {/* ── Inbox (consolidated) ── */}

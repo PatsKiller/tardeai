@@ -74,6 +74,7 @@ export default function AutomatedTradeMode() {
           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>Auto-approve proposals without human /ptapprove. All existing safety gates remain active.</p>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
+          <a href="/atm-control-room" style={{ ...btn(), textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Control Room</a>
           <button onClick={() => refetch()} style={btn()}>Refresh</button>
           <button onClick={() => setShowModal(true)} style={btn()}>Settings</button>
         </div>
