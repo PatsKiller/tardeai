@@ -1,0 +1,158 @@
+# Source Export: config/strategies/earnings_catalyst.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/earnings_catalyst.yaml` |
+| **Git Branch** | `main` |
+| **Git Commit** | `c1286d314deb377df49713e1646f139db7f43643` |
+| **Export Timestamp** | `2026-05-26T15:49:17Z` |
+| **SHA256** | `401cac57a73b7b4edd9d8b2d6361a4773a20824354ea8431393dd8f806a7d2e5` |
+| **File Size** | 3839 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: earnings_catalyst
+display_name: Earnings Catalyst
+version: 1.0.0
+status: DEPRECATED
+purpose: Pre-earnings buildup + post-earnings momentum. Two sub-strategies tracked independently.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+forbidden_accounts: []
+timeframe: swing_1_to_5d
+timeframe_class: SHORT_SWING
+universe: earnings_candidates
+primary_data_sources:
+  - news_articles
+  - finviz_screener
+  - sec_edgar
+sub_strategies:
+  pre_earnings_buildup:
+    description: Enter 3-5 days before earnings on institutional activity.
+    entry_window_days_before:
+      - 3
+      - 5
+    exit_before_announcement: true
+    never_hold_through_earnings_in_taxable: true
+    required_evidence:
+      - options_activity_surge
+      - analyst_revision_up_30d
+  post_earnings_momentum:
+    description: Enter 1-2 days after earnings if beat >10% and price gaps.
+    entry_window_days_after:
+      - 1
+      - 2
+    min_beat_pct: 10
+    gap_hold_30min_required: true
+    hold_ok_in_ira_when_validated: true
+screen_filters:
+  min_price: 5.0
+  max_price: 200.0
+  min_rvol: 1.5
+  max_float_m: 200
+setup_qualification:
+  earnings_date_required: true
+  catalyst_verification: required
+auto_disqualifiers:
+  - id: NO_EARNINGS_DATE
+    condition: earnings_date not available
+  - id: HOLD_THROUGH_IN_TAXABLE
+    condition: pre_earnings and account == taxable and hold_through
+scoring_weights:
+  earnings_quality: 25
+  options_activity: 20
+  technical_setup: 20
+  analyst_sentiment: 15
+  catalyst: 10
+  float: 10
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+minimum_evidence:
+  required:
+    - earnings_date
+    - price_data
+    - trade_plan
+  preferred:
+    - options_volume
+    - analyst_estimates
+    - revenue_data
+agent_responsibilities:
+  maria: Verify earnings/catalyst data. Check beat magnitude and guidance.
+  risk: Verify gap levels, entry timing, stop placement.
+  tax: Verify account rules for hold-through-earnings scenarios.
+live_trade_rules:
+  max_dollar_risk: 200
+  max_hold_days: 5
+outcome_learning_fields:
+  - sub_strategy_type
+  - beat_magnitude
+  - guidance_direction
+  - gap_magnitude
+  - entry_timing
+  - sector_alignment
+deprecated_in_favor_of:
+  - earnings_pre_buildup
+  - earnings_post_momentum
+deprecated_date: '2026-05-13'
+deprecated_reason: Two sub-strategies in one YAML prevented router from cleanly mapping candidates. Split into separate files.
+co_enables:
+  promotes_to: []
+  strengthens: []
+  notes: "Deprecated — use earnings_pre_buildup or earnings_post_momentum."
+vix_rules:
+  max_vix_for_entry: 30
+  elevated_vix_band:
+    - 25
+    - 35
+  elevated_vix_changes:
+    position_size_multiplier: 0.6
+    pause_pre_earnings_only: true
+    post_earnings_still_allowed: true
+  extreme_vix_threshold: 35
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: Pre-earnings buildup is fragile in high VIX; post-earnings momentum can still work.
+technical_indicators_required:
+  gates:
+    - id: PRICE_DATA_FRESH
+      condition: price data <= 15 minutes old
+      metric: price_age_min
+      operator: lte
+      value: 15
+  preferred:
+    - ema_21
+    - rvol
+    - fib_618_distance
+  irrelevant:
+    - bollinger_squeeze
+  note: See earnings_pre_buildup and earnings_post_momentum for sub-strategy specifics.
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: MULTI_DAY
+  ttl_days: 7
+  eval_cadence: daily
+  watchpool: true
+```

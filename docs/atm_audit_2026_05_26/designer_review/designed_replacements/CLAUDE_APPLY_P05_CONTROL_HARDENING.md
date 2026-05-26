@@ -1,3 +1,27 @@
+# Claude Code — Apply P0.5 Control Hardening Package
+
+**Purpose:** Step-by-step instructions for Claude Code to apply the P0.5 hardening changes.  
+**Date:** 2026-05-26  
+**Baseline:** `c1286d314deb377df49713e1646f139db7f43643`  
+**Backup:** `docs/atm_audit_2026_05_26/designer_review/backups/p05_pre_apply_backup_20260526_1500.tgz`  
+
+## Pre-Flight Checks
+
+Before applying ANY change:
+
+1. Verify `git rev-parse HEAD` matches baseline or is a known successor
+2. Verify `ALPACA_MODE=paper` in .env
+3. Verify `LLM_DISABLE_LIVE_EXECUTION=true` in .env
+4. Verify `manual_kill_switch_only: true` in config/atm_config.yaml
+5. Verify backup exists at the path above
+
+## Step 1: Apply safe_flock.sh Replacement
+
+Replace `scripts/safe_flock.sh` with the observable version.
+
+### Complete Replacement Source
+
+```bash
 #!/usr/bin/env bash
 # safe_flock.sh — observable single-run guard for cron jobs.
 #
@@ -106,3 +130,44 @@ log_event "started" "INFO" "safe_flock command started"
 trap cleanup EXIT INT TERM
 
 "$@"
+```
+
+### Verification
+
+```bash
+# Test normal execution
+bash scripts/safe_flock.sh /tmp/test_p05.lock echo "P0.5 test"
+cat logs/safe_flock_events.jsonl | python3 -m json.tool
+
+# Verify 2 events: started + completed
+tail -2 logs/safe_flock_events.jsonl | wc -l  # expect: 2
+
+# Clean up
+rm -f /tmp/test_p05.lock*
+```
+
+## Step 2: gog PATH Fix (ALREADY APPLIED)
+
+Verify `scripts/sync-docs-to-drive.py` contains:
+```python
+GOG_BIN = '/home/johnclaw/.local/bin/gog'
+```
+and the `subprocess.run` call uses `[GOG_BIN]` not `['gog']`.
+
+## Steps 3-5: Future Session
+
+The classifier guardrail, time stop surfacing, and alert routing audit changes
+are API + frontend changes that require a longer apply session. They are fully
+designed in the companion `.md` files and ready for a future apply pass.
+
+## Post-Apply Checklist
+
+- [ ] `git status` shows only expected changes
+- [ ] `ALPACA_MODE` still `paper`
+- [ ] `LLM_DISABLE_LIVE_EXECUTION` still `true`
+- [ ] `manual_kill_switch_only` still `true`
+- [ ] No new cron entries
+- [ ] safe_flock.sh test passes
+- [ ] Existing cron jobs continue to work (next cycle)
+- [ ] No orders placed
+- [ ] Drive sync to `Trade_AI_Docs_v2/atm_audit_2026_05_26/designer_review/`

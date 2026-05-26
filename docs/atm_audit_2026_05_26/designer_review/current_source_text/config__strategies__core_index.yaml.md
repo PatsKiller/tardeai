@@ -1,0 +1,159 @@
+# Source Export: config/strategies/core_index.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/core_index.yaml` |
+| **Git Branch** | `main` |
+| **Git Commit** | `c1286d314deb377df49713e1646f139db7f43643` |
+| **Export Timestamp** | `2026-05-26T15:49:17Z` |
+| **SHA256** | `226327f8739f43c68bed6e3a32bbf690b742e2de76b5e06eca0d8404bb2e010f` |
+| **File Size** | 3802 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: core_index
+display_name: Core Index
+version: 1.0.0
+status: UNVALIDATED
+purpose: Broad market index fund positions (SPY, QQQ, VTI) for core portfolio allocation. DCA and rebalancing driven.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+timeframe: position_long
+timeframe_class: POSITION
+universe:
+  price:
+    min: 1.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+entry_criteria:
+  - id: INDEX_ELIGIBLE
+    description: Symbol is an approved broad market index ETF
+    metric: symbol
+    operator: in
+    value:
+      - SPY
+      - QQQ
+      - VTI
+      - VOO
+      - IVV
+      - VXUS
+      - VEA
+      - VWO
+  - id: REBALANCE_TRIGGER
+    description: Allocation drift exceeds 5% from target or scheduled DCA date
+    metric: allocation_drift_pct
+    operator: gte
+    value: 0.05
+  - id: VALUATION_CHECK
+    description: Market not at extreme overvaluation (CAPE <35 or DCA override)
+    metric: cape_ratio
+    operator: lte
+    value: 35
+auto_disqualifiers:
+  - id: NOT_INDEX_ETF
+    description: Symbol is not in approved index ETF list
+  - id: IRMAA_BREACH
+    description: Purchase would cause MAGI to breach IRMAA threshold in IRA
+exit_rules:
+  stop_method: fundamental
+  target_method: level_based
+risk:
+  risk_per_trade_pct: 0.01
+  max_position_size: 50000
+  max_daily_trades:
+  target_rr: 2.0
+scoring:
+  min_score_go: 35
+  min_score_wait: 20
+lifecycle:
+  proposal_expiry_hours: 720
+  overnight_allowed: true
+  max_hold_days:
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify macro environment and valuation context for allocation timing.
+  risk: Check portfolio allocation drift and rebalancing thresholds.
+  steph: Confirm account placement, tax lot selection, and IRMAA impact.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - sector_rotation
+    - bond_income
+    - cash_or_stable
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Core index strategy for broad market exposure via SPY, QQQ, VTI and similar ETFs. Entry driven by DCA schedule and rebalancing triggers. Long-term hold with fundamental valuation guardrails.
+  key_questions:
+    - Is portfolio allocation drifting from target index weighting?
+    - Does current market valuation support adding or should DCA be paused?
+    - Which account is optimal for this purchase from a tax perspective?
+screen_filters:
+  min_price: 50.0
+  max_price: 1000.0
+  min_market_cap_b: 50.0
+  max_beta: 1.1
+  max_div_yield_pct: 3.0
+  asset_type:
+    - etf
+    - index_fund
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 50
+  elevated_vix_band:
+    - 30
+    - 50
+  elevated_vix_changes:
+    position_size_multiplier: 1.0
+    accelerate_screening: true
+  extreme_vix_threshold: 50
+  extreme_vix_action: accelerate_new_entries
+  exit_holdings_at_vix:
+  notes: "Core index DCA accelerates during VIX spikes — buy the dip mechanism."
+technical_indicators_required:
+  gates: []
+  preferred:
+    - pullback_to_ema_200
+    - volatility_regime
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_5
+    - fib_618
+  note: "Mechanical DCA — technicals largely irrelevant."
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 90
+  eval_cadence: monthly
+  watchpool: true
+```
