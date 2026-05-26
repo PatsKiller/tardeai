@@ -19,9 +19,21 @@ log = logging.getLogger(__name__)
 
 PAPER_BASE_URL = 'https://paper-api.alpaca.markets'
 DATA_BASE_URL = 'https://data.alpaca.markets'
-MAX_POSITIONS = 3
 MAX_POSITION_SIZE = 2000
 MIN_SCORE_ALPACA = 45
+
+def _get_max_positions():
+    """Read max_concurrent from ATM config. Fallback to 6."""
+    try:
+        import yaml
+        cfg_path = Path(__file__).resolve().parent.parent / 'config' / 'atm_config.yaml'
+        if cfg_path.exists():
+            cfg = yaml.safe_load(cfg_path.read_text())
+            return cfg.get('accounts', {}).get('alpaca_paper', {}).get('position_limits', {}).get('max_concurrent',
+                   cfg.get('defaults', {}).get('position_limits', {}).get('max_concurrent', 6))
+    except Exception:
+        pass
+    return 6
 
 class AlpacaPaperAdapter:
     def __init__(self, dry_run=False):
@@ -273,9 +285,10 @@ class AlpacaPaperAdapter:
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM paper_trades WHERE account='ALPACA_PAPER' AND status='open'")
         open_count = cur.fetchone()[0] or 0
-        if open_count >= MAX_POSITIONS:
-            log.warning(f"[alpaca] Max positions ({MAX_POSITIONS}) reached")
-            return {'status': 'rejected', 'reason': 'max_positions'}
+        _max_pos = _get_max_positions()
+        if open_count >= _max_pos:
+            log.warning(f"[alpaca] Max positions ({_max_pos}) reached ({open_count} open)")
+            return {'status': 'rejected', 'reason': f'max_positions ({open_count}/{_max_pos})'}
 
         # Block duplicate symbol — no second position on same symbol
         cur.execute("SELECT id, strategy_id FROM paper_trades WHERE symbol=%s AND status='open' LIMIT 1", [symbol])
