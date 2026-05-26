@@ -12011,7 +12011,7 @@ def _system_health_api():
                     "overdue_positions": []}
     try:
         _open_trades = _db_query("""
-            SELECT id, symbol, strategy_id, entry_time FROM paper_trades WHERE exit_time IS NULL
+            SELECT id, symbol, strategy_id, entry_time FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason = '')
         """) or []
         from strategy_trailing_policy import get_trailing_policy as _gtp
         _now_utc = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
@@ -18908,7 +18908,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _signals_today = len(_db_query("SELECT 1 FROM strategy_signals WHERE fired_at::date=CURRENT_DATE") or [])
             _proposals_today = len(_db_query("SELECT 1 FROM paper_trade_proposals WHERE created_at::date=CURRENT_DATE") or [])
             _decisions_today = _db_query("SELECT decision, count(*) as c FROM atm_decision_log WHERE decided_at::date=CURRENT_DATE GROUP BY decision") or []
-            _open_trades = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account,signal_id FROM paper_trades WHERE exit_time IS NULL ORDER BY id DESC") or []
+            _open_trades = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account,signal_id FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason = '') ORDER BY id DESC") or []
             _stale_proposals = len(_db_query("SELECT 1 FROM paper_trade_proposals WHERE created_at < NOW()-INTERVAL '48 hours' AND signal_decision IS NULL") or [])
             _lc_events_24h = len(_db_query("SELECT 1 FROM lifecycle_events WHERE event_ts > NOW()-INTERVAL '24 hours'") or [])
 
@@ -18939,7 +18939,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             # Traceability gaps
             _trades_no_lc = len(_db_query("""
-                SELECT 1 FROM paper_trades pt WHERE pt.exit_time IS NULL
+                SELECT 1 FROM paper_trades pt WHERE pt.exit_time IS NULL AND (pt.exit_reason IS NULL OR pt.exit_reason = '')
                 AND NOT EXISTS (SELECT 1 FROM lifecycle_events le WHERE le.paper_trade_id=pt.id)
             """) or [])
 
@@ -19058,7 +19058,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _now_od = _dt_od.datetime.now(_dt_od.timezone.utc)
 
             # Open overdue positions
-            _open = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account FROM paper_trades WHERE exit_time IS NULL ORDER BY id DESC") or []
+            _open = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason = '') ORDER BY id DESC") or []
             _decisions = _db_query("SELECT * FROM atm_overdue_position_decisions ORDER BY created_at DESC") or []
             _dec_by_trade = {d["paper_trade_id"]: d for d in _decisions if d.get("paper_trade_id")}
 
@@ -19217,7 +19217,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _mc_tids = {d["paper_trade_id"] for d in _mc_decs}
 
             # Get those trades
-            _mc_trades = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account FROM paper_trades WHERE exit_time IS NULL ORDER BY id") or []
+            _mc_trades = _db_query("SELECT id,symbol,strategy_id,shares,entry_price,entry_time,stop_loss,account FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason = '') ORDER BY id") or []
 
             # Get existing review decisions
             _mc_reviews = _db_query("SELECT * FROM atm_manual_close_review_decisions ORDER BY created_at DESC") or []
