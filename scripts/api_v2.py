@@ -19390,6 +19390,193 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── ATM Close Preview + Action ──────────────────────────────────────
+    if base_path == "/api/v2/atm/close-preview" and method == "GET":
+        try:
+            _cp_tid = int((query or {}).get("paper_trade_id", 0))
+            if not _cp_tid:
+                return 400, {"ok": False, "error": "paper_trade_id required"}
+
+            _cp_trade = _db_query("SELECT * FROM paper_trades WHERE id=%s", (_cp_tid,), fetch="one")
+            if not _cp_trade:
+                return 404, {"ok": False, "error": f"Trade {_cp_tid} not found"}
+
+            from strategy_trailing_policy import get_trailing_policy as _gtp_cp
+            _cp_pol = _gtp_cp(_cp_trade.get("strategy_id", ""))
+            _cp_tsc = _cp_pol.get("time_stop", {})
+
+            import os as _cp_os
+            _cp_alpaca = _cp_os.environ.get("ALPACA_MODE", "paper")
+            _cp_disable = _cp_os.environ.get("LLM_DISABLE_LIVE_EXECUTION", "true")
+            _cp_acct = _cp_trade.get("account", "")
+            _cp_open = not _cp_trade.get("exit_time") and not _cp_trade.get("exit_reason")
+            _cp_qty = float(_cp_trade.get("shares") or 0)
+            _cp_entry = float(_cp_trade["entry_price"]) if _cp_trade.get("entry_price") else None
+            _cp_stop = float(_cp_trade["stop_loss"]) if _cp_trade.get("stop_loss") else None
+
+            # Existing close actions today
+            _cp_existing = _db_query("""SELECT 1 FROM atm_close_actions
+                WHERE paper_trade_id=%s AND action='submit_paper_close_order'
+                AND created_at::date=CURRENT_DATE""", (_cp_tid,))
+
+            _cp_gates = {
+                "alpaca_mode_paper": _cp_alpaca == "paper",
+                "live_execution_disabled": str(_cp_disable).lower() == "true",
+                "account_is_paper": "paper" in _cp_acct.lower() if _cp_acct else False,
+                "position_is_open": _cp_open,
+                "quantity_positive": _cp_qty > 0,
+                "no_close_submitted_today": not _cp_existing,
+            }
+            _cp_can_submit = all(_cp_gates.values())
+            _cp_blocked = [k for k, v in _cp_gates.items() if not v]
+
+            _cp_est_exit = _cp_entry  # conservative: use entry as estimate
+            _cp_est_pnl = 0.0
+            _cp_est_pnl_pct = 0.0
+            if _cp_entry and _cp_qty:
+                _cp_est_pnl = round((_cp_est_exit - _cp_entry) * _cp_qty, 2)
+                _cp_est_pnl_pct = round(((_cp_est_exit / _cp_entry) - 1) * 100, 2) if _cp_entry else 0
+
+            _cp_stop_impl = "Stop order should be cancelled after close" if _cp_stop else "No stop to cancel"
+
+            return 200, {"ok": True, "data": {
+                "paper_trade_id": _cp_tid,
+                "symbol": _cp_trade["symbol"],
+                "strategy_id": _cp_trade.get("strategy_id"),
+                "strategy_family": _cp_pol.get("family", "unknown"),
+                "account": _cp_acct,
+                "side": "sell",
+                "quantity": _cp_qty,
+                "entry_price": _cp_entry,
+                "estimated_exit_price": _cp_est_exit,
+                "estimated_pnl": _cp_est_pnl,
+                "estimated_pnl_pct": _cp_est_pnl_pct,
+                "db_stop": _cp_stop,
+                "stop_implication": _cp_stop_impl,
+                "time_stop_type": _cp_tsc.get("type", "unknown"),
+                "close_reason": "operator_manual_close_review",
+                "safety_gates": _cp_gates,
+                "can_submit_paper_close": _cp_can_submit,
+                "cannot_submit_reasons": _cp_blocked,
+                "confirmation_required": "SUBMIT PAPER CLOSE ONLY",
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/close-action" and method == "POST":
+        try:
+            import hashlib as _ca_hash, datetime as _ca_dt, os as _ca_os
+
+            _ca_dangerous = {"execute", "quantity", "price", "broker_order", "order_type", "limit_price"}
+            if body and any(k in _ca_dangerous for k in body.keys()):
+                return 400, {"ok": False, "error": "Raw execution fields not allowed."}
+
+            _ca_tid = (body or {}).get("paper_trade_id")
+            _ca_sym = (body or {}).get("symbol", "")
+            _ca_action = (body or {}).get("action", "")
+            _ca_confirm = (body or {}).get("confirmation_text", "")
+            _ca_note = (body or {}).get("operator_note", "")
+            _ca_preview = (body or {}).get("close_preview_id")
+
+            _ca_allowed = {"mark_closed_outside_system", "submit_paper_close_order",
+                           "cancel_close_preview", "keep_open_after_preview"}
+            if _ca_action not in _ca_allowed:
+                return 400, {"ok": False, "error": f"Invalid action. Allowed: {', '.join(sorted(_ca_allowed))}"}
+            if not _ca_tid or not _ca_sym:
+                return 400, {"ok": False, "error": "paper_trade_id and symbol required"}
+
+            _ca_id = f"ca-{_ca_hash.sha256(f'{_ca_sym}:{_ca_tid}:{_ca_dt.datetime.now().isoformat()}'.encode()).hexdigest()[:12]}"
+            _ca_status = "recorded"
+            _ca_broker_id = None
+            _ca_error = None
+
+            if _ca_action == "submit_paper_close_order":
+                if _ca_confirm != "SUBMIT PAPER CLOSE ONLY":
+                    return 400, {"ok": False, "error": "Confirmation text must be exactly: SUBMIT PAPER CLOSE ONLY"}
+                if _ca_os.environ.get("ALPACA_MODE", "") != "paper":
+                    return 400, {"ok": False, "error": "ALPACA_MODE is not paper. Cannot submit."}
+                if str(_ca_os.environ.get("LLM_DISABLE_LIVE_EXECUTION", "")).lower() != "true":
+                    return 400, {"ok": False, "error": "LLM_DISABLE_LIVE_EXECUTION is not true."}
+
+                # Get trade details from DB
+                _ca_trade = _db_query("SELECT * FROM paper_trades WHERE id=%s", (_ca_tid,), fetch="one")
+                if not _ca_trade:
+                    return 404, {"ok": False, "error": f"Trade {_ca_tid} not found"}
+                if _ca_trade.get("exit_time") or (_ca_trade.get("exit_reason") and _ca_trade["exit_reason"] != ""):
+                    return 400, {"ok": False, "error": "Position already closed or has exit reason"}
+                if _ca_trade["symbol"] != _ca_sym:
+                    return 400, {"ok": False, "error": "Symbol mismatch"}
+                if "paper" not in (_ca_trade.get("account") or "").lower():
+                    return 400, {"ok": False, "error": "Not a paper account"}
+
+                # Submit paper close via Alpaca adapter
+                try:
+                    from alpaca_paper_adapter import close_position as _close_pos
+                    _ca_qty = int(_ca_trade.get("shares") or 0)
+                    _ca_result = _close_pos(_ca_sym, _ca_qty)
+                    _ca_broker_id = _ca_result.get("order_id") if isinstance(_ca_result, dict) else str(_ca_result)
+                    _ca_status = "submitted"
+                except Exception as _ca_e:
+                    _ca_error = str(_ca_e)[:500]
+                    _ca_status = "submit_failed"
+
+            elif _ca_action == "mark_closed_outside_system":
+                _ca_status = "external_close_marked"
+
+            # Record the action
+            _ca_conn = None
+            try:
+                from db_adapter import _get_conn as _gc_ca
+                _ca_conn = _gc_ca()
+                _cur = _ca_conn.cursor()
+                _cur.execute("""INSERT INTO atm_close_actions
+                    (close_action_id, operator, close_preview_id, lifecycle_id, paper_trade_id,
+                     symbol, action, action_status, safety_confirmation, broker_order_id, error)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    [_ca_id, "john", _ca_preview, (body or {}).get("lifecycle_id"),
+                     _ca_tid, _ca_sym, _ca_action, _ca_status, _ca_confirm,
+                     _ca_broker_id, _ca_error])
+                _ca_conn.commit()
+
+                # Lifecycle event
+                try:
+                    _cur.execute("""INSERT INTO lifecycle_events
+                        (lifecycle_id, stage, event_type, status, symbol, strategy_id,
+                         paper_trade_id, source_script, payload)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        [(body or {}).get("lifecycle_id") or f"ca-{_ca_tid}",
+                         "close_review", _ca_action, _ca_status, _ca_sym,
+                         (body or {}).get("strategy_id"), _ca_tid, "api_v2.py",
+                         __import__("json").dumps({"action": _ca_action, "status": _ca_status})])
+                    _ca_conn.commit()
+                except Exception:
+                    try: _ca_conn.rollback()
+                    except: pass
+            finally:
+                if _ca_conn:
+                    try: _ca_conn.close()
+                    except: pass
+
+            _ca_msg = {
+                "mark_closed_outside_system": "External close marked. No order was placed.",
+                "submit_paper_close_order": f"Paper close order submitted. Broker ID: {_ca_broker_id}" if _ca_status == "submitted" else f"Submit failed: {_ca_error}",
+                "cancel_close_preview": "Close preview cancelled. No order was placed.",
+                "keep_open_after_preview": "Decision recorded: keep open. No order was placed.",
+            }
+
+            return 200, {"ok": True, "data": {
+                "close_action_id": _ca_id,
+                "action": _ca_action,
+                "action_status": _ca_status,
+                "broker_order_id": _ca_broker_id,
+                "error": _ca_error,
+                "safety_message": _ca_msg.get(_ca_action, "Action recorded."),
+                "no_live_trading_confirmation": True,
+            }}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM (Automated Trade Mode) endpoints ─────────────────────────────
     if base_path == "/api/v2/atm/status":
         try:
