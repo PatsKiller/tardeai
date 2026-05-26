@@ -62,12 +62,18 @@ def check_danger_flags(symbol: str, ticker: dict) -> List[str]:
     except Exception:
         pass
 
-    # RVOL > 5x on float < 5M
+    # RVOL > 5x on float < 5M — warn only for momentum scalps (this IS the setup)
+    # Block only if float is truly micro (<1M) with extreme RVOL (>15x) = halt risk
     try:
         float_m = float(ticker.get('float_m', 0) or 0)
         rvol = float(ticker.get('relative_volume', ticker.get('rvol', 0)) or 0)
-        if 0 < float_m < 5.0 and rvol > 5.0:
-            flags.append(f"RVOL_FLOAT_MISMATCH:{rvol:.1f}x on {float_m:.1f}M float (not confirmation — manipulation)")
+        if 0 < float_m < 1.0 and rvol > 15.0:
+            flags.append(f"MICRO_FLOAT_EXTREME_RVOL:{rvol:.1f}x on {float_m:.1f}M float (halt risk)")
+        elif 0 < float_m < 1.0 and rvol > 5.0:
+            flags.append(f"MICRO_FLOAT_HIGH_RVOL:{rvol:.1f}x on {float_m:.1f}M float (caution — halt risk)")
+        # For float 1-5M with high RVOL: this is normal momentum scalp territory, warn don't block
+        elif 0 < float_m < 5.0 and rvol > 10.0:
+            flags.append(f"HIGH_RVOL_LOW_FLOAT:{rvol:.1f}x on {float_m:.1f}M float (momentum setup — verify catalyst)")
     except Exception:
         pass
 
@@ -173,10 +179,16 @@ Reply with ONLY JSON:
             except Exception:
                 pass
 
-    # Fallback: auto-block if danger flags, else confirm
-    if flags:
+    # Fallback: auto-block only on hard danger flags, downgrade on warnings
+    _hard_block_prefixes = ("MICRO_FLOAT_EXTREME_RVOL:", "LOW_PRICE_SPIKE:", "REVERSE_SPLIT:", "MICRO_FLOAT:")
+    _hard_flags = [f for f in flags if any(f.startswith(p) for p in _hard_block_prefixes)]
+    _warn_flags = [f for f in flags if f not in _hard_flags]
+    if _hard_flags:
         return {"verdict": "BLOCK", "final_decision": "NO_GO", "confidence": 0.9,
-                "reasoning": f"Auto-blocked: {flags[0]}"}
+                "reasoning": f"Auto-blocked: {_hard_flags[0]}"}
+    if _warn_flags:
+        return {"verdict": "DOWNGRADE", "final_decision": "WAIT", "confidence": 0.6,
+                "reasoning": f"Caution: {_warn_flags[0]}"}
     return {"verdict": "CONFIRM", "final_decision": decision, "confidence": 0.5,
             "reasoning": "LLM unavailable — original preserved"}
 
