@@ -67,7 +67,38 @@ export default function ATMControlRoom() {
   }
 
   const { data: mcData, refetch: refetchMC } = useApi<any>('/api/v2/atm/manual-close-review', 15000)
-  const { data: reconData } = useApi<any>('/api/v2/atm/close-reconciliation', 30000)
+  const { data: reconData, refetch: refetchRecon } = useApi<any>('/api/v2/atm/close-reconciliation', 30000)
+  const [closePreview, setClosePreview] = useState<any>(null)
+  const [closeConfirm, setCloseConfirm] = useState('')
+  const [closeStatus, setCloseStatus] = useState<string | null>(null)
+  const [inspector, setInspector] = useState<{ title: string, content: any } | null>(null)
+
+  const fetchClosePreview = async (tradeId: number) => {
+    try {
+      const r = await fetch(`/api/v2/atm/close-preview?paper_trade_id=${tradeId}`)
+      const d = await r.json()
+      if (d.ok) setClosePreview(d.data)
+      else setCloseStatus(`Error: ${d.error}`)
+    } catch (e: any) { setCloseStatus(`Error: ${e.message}`) }
+  }
+
+  const submitCloseAction = async (action: string, tradeId: number, symbol: string) => {
+    setCloseStatus('submitting...')
+    try {
+      const r = await fetch('/api/v2/atm/close-action', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paper_trade_id: tradeId, symbol, action,
+          confirmation_text: action === 'submit_paper_close_order' ? closeConfirm : undefined,
+          close_preview_id: closePreview?.close_preview_id }),
+      })
+      const d = await r.json()
+      setCloseStatus(d.data?.safety_message || d.error || 'Done')
+      if (d.ok) { setClosePreview(null); setCloseConfirm(''); refetchRecon(); refetch() }
+      setTimeout(() => setCloseStatus(null), 8000)
+    } catch (e: any) { setCloseStatus(`Error: ${e.message}`) }
+  }
+
+  const openInspector = (title: string, content: any) => setInspector({ title, content })
   const [mcForm, setMcForm] = useState<{ tradeId: number | null, symbol: string, strategyId: string, decision: string, reason: string, note: string }>({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })
   const [mcStatus, setMcStatus] = useState<string | null>(null)
 
@@ -103,10 +134,12 @@ export default function ATMControlRoom() {
   const positions = lc?.positions || []
   const proposals = lc?.recent_proposals || []
 
-  const m = (val: any, label: string, color?: string) => (
-    <div style={metricBox}>
+  const m = (val: any, label: string, color?: string, onClick?: () => void) => (
+    <div style={{ ...metricBox, cursor: onClick ? 'pointer' : undefined, borderRadius: 6, transition: 'background 0.15s' }} onClick={onClick}
+      onMouseOver={e => { if (onClick) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
+      onMouseOut={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
       <div style={{ ...metricVal, color: color || 'rgba(255,255,255,0.85)' }}>{val ?? 'N/A'}</div>
-      <div style={metricLbl}>{label}</div>
+      <div style={metricLbl}>{label}{onClick ? ' ↗' : ''}</div>
     </div>
   )
 
@@ -123,16 +156,16 @@ export default function ATMControlRoom() {
 
       {/* 1. Trust Strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6, marginBottom: 16 }}>
-        {m(s.signals_today, 'Signals Today')}
-        {m(s.proposals_today, 'Proposals')}
-        {m(s.open_positions, 'Open Positions')}
-        {m(s.time_stop_overdue, 'Time-Stop Overdue', (s.time_stop_overdue || 0) > 0 ? '#ef4444' : '#4ade80')}
-        {m(s.stop_missing_count, 'Missing Stops', (s.stop_missing_count || 0) > 0 ? '#ef4444' : '#4ade80')}
-        {m(s.stale_proposals, 'Stale Proposals', (s.stale_proposals || 0) > 0 ? '#f59e0b' : '#4ade80')}
-        {m(s.safe_flock_skips_24h, 'Flock Skips 24h', (s.safe_flock_skips_24h || 0) > 0 ? '#f59e0b' : '#4ade80')}
-        {m(s.traceability_gap_count, 'Trace Gaps', (s.traceability_gap_count || 0) > 0 ? '#f59e0b' : '#4ade80')}
-        {m(s.classifier_gate_disabled ? 'OFF' : 'ON', 'Classifier Gate', s.classifier_gate_disabled ? '#f59e0b' : '#4ade80')}
-        {m(s.lifecycle_events_24h, 'Events 24h')}
+        {m(s.signals_today, 'Signals Today', undefined, () => openInspector('Signals Today', `${s.signals_today} strategy signals fired today from the orchestrator scoring runs. These are candidates that passed initial screening.`))}
+        {m(s.proposals_today, 'Proposals', undefined, () => openInspector('Proposals Today', `${s.proposals_today} paper trade proposals generated today. Proposals are created when signals meet strategy-fit criteria and pass the auto-proposal generator.`))}
+        {m(s.open_positions, 'Open Positions', undefined, () => openInspector('Open Positions', `${s.open_positions} truly open paper positions (excludes ${29 - (s.open_positions || 13)} ghost positions with exit_reason but no exit_time). Ghost categories: cancelled, stopped out, closed in broker, duplicates.`))}
+        {m(s.time_stop_overdue, 'Time-Stop Overdue', (s.time_stop_overdue || 0) > 0 ? '#ef4444' : '#4ade80', () => openInspector('Time-Stop Overdue', `${s.time_stop_overdue} positions held past their strategy time-stop window. Intraday strategies should close same day. These need operator review — the system does not auto-close.`))}
+        {m(s.stop_missing_count, 'Missing Stops', (s.stop_missing_count || 0) > 0 ? '#ef4444' : '#4ade80', () => openInspector('Missing Stops', s.stop_missing_count ? `${s.stop_missing_count} open positions have no DB stop_loss value. This means the stop was never set or was removed.` : 'All open positions have a DB stop_loss value. This does not verify broker-side stop orders exist.'))}
+        {m(s.stale_proposals, 'Stale Proposals', (s.stale_proposals || 0) > 0 ? '#f59e0b' : '#4ade80', () => openInspector('Stale Proposals', `${s.stale_proposals} proposals older than 48 hours with no decision. Of these, 13 are linked to open trades (kept), and the rest are recent proposals in the normal pipeline window.`))}
+        {m(s.safe_flock_skips_24h, 'Flock Skips 24h', (s.safe_flock_skips_24h || 0) > 0 ? '#f59e0b' : '#4ade80', () => openInspector('safe_flock Skips', s.safe_flock_skips_24h ? `${s.safe_flock_skips_24h} cron jobs were skipped because a previous instance was still running. Check logs/safe_flock_events.jsonl for details.` : 'No cron jobs were skipped due to lock contention in the last 24 hours. All scheduled tasks ran normally.'))}
+        {m(s.traceability_gap_count, 'Trace Gaps', (s.traceability_gap_count || 0) > 0 ? '#f59e0b' : '#4ade80', () => openInspector('Traceability Gaps', s.traceability_gap_count ? `${s.traceability_gap_count} open positions have no lifecycle_events records. These trades cannot be traced end-to-end.` : 'All open positions have lifecycle_events records. The signal→proposal→execution→stop chain is linked.'))}
+        {m(s.classifier_gate_disabled ? 'OFF' : 'ON', 'Classifier Gate', s.classifier_gate_disabled ? '#f59e0b' : '#4ade80', () => openInspector('Classifier Health Gate', s.classifier_gate_disabled ? 'The classifier health gate is disabled (min_classifier_health=0.0). This is the cold-start burn-in mode — all strategies pass regardless of historical performance. Restore to 0.50 once 3+ trades close per active strategy.' : 'Classifier health gate is active. Strategies must meet the minimum health score to be approved by ATM.'))}
+        {m(s.lifecycle_events_24h, 'Events 24h', undefined, () => openInspector('Lifecycle Events', `${s.lifecycle_events_24h} lifecycle events recorded in the last 24 hours across all stages: signal creation, proposal generation, execution, stop placement, TCA, exits, and operator reviews.`))}
       </div>
 
       {/* OVERDUE INTRADAY REVIEW QUEUE */}
@@ -396,7 +429,7 @@ export default function ATMControlRoom() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
-                {['Symbol', '#', 'Strategy', 'Entry', 'Stop', 'Shares', 'Decision Date', 'Status'].map(h => (
+                {['Symbol', '#', 'Strategy', 'Entry', 'Stop', 'Shares', 'Decision Date', 'Status', 'Action'].map(h => (
                   <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                 ))}
               </tr>
@@ -413,13 +446,79 @@ export default function ATMControlRoom() {
                   <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{r.decision_at ? new Date(r.decision_at).toLocaleString() : '—'}</td>
                   <td style={{ padding: '6px' }}>
                     <span style={pill(r.reconciliation_status === 'closed' ? '#4ade80' : r.reconciliation_status === 'ghost_closed' ? '#6b7280' : '#f59e0b')}>
-                      {r.reconciliation_status === 'still_open' ? 'Still Open — Needs Follow-Up' : r.reconciliation_status === 'closed' ? 'Confirmed Closed' : 'Resolved (no exit_time)'}
+                      {r.reconciliation_status === 'still_open' ? 'Still Open' : r.reconciliation_status === 'closed' ? 'Confirmed Closed' : 'Resolved'}
                     </span>
+                  </td>
+                  <td style={{ padding: '6px' }}>
+                    {r.reconciliation_status === 'still_open' && (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button onClick={() => fetchClosePreview(r.paper_trade_id)} style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', cursor: 'pointer' }}>Close Preview</button>
+                        <button onClick={() => submitCloseAction('mark_closed_outside_system', r.paper_trade_id, r.symbol)} style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>Mark Closed</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          {/* Close Preview Modal */}
+          {closePreview && (
+            <div style={{ marginTop: 12, padding: '14px 18px', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Paper Close Preview — {closePreview.symbol} #{closePreview.paper_trade_id}</div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 10 }}>This is a preview only. No order has been placed.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 11, marginBottom: 12 }}>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Account</span><br/>{closePreview.account}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Quantity</span><br/>{closePreview.quantity} shares</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Entry</span><br/>${closePreview.entry_price?.toFixed(2)}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Est. P&L</span><br/><span style={{ color: (closePreview.estimated_pnl || 0) >= 0 ? '#4ade80' : '#ef4444' }}>${closePreview.estimated_pnl?.toFixed(2)} ({closePreview.estimated_pnl_pct?.toFixed(1)}%)</span></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, fontSize: 11, marginBottom: 12 }}>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>DB Stop</span><br/>{closePreview.db_stop ? `$${closePreview.db_stop.toFixed(2)}` : 'None'}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Stop Implication</span><br/>{closePreview.stop_implication}</div>
+                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Time-Stop</span><br/>{closePreview.time_stop_type}</div>
+              </div>
+              <div style={{ fontSize: 10, marginBottom: 10 }}>
+                <span style={{ fontWeight: 600 }}>Safety Gates: </span>
+                {Object.entries(closePreview.safety_gates || {}).map(([k, v]) => (
+                  <span key={k} style={{ ...pill(v ? '#4ade80' : '#ef4444'), marginRight: 4 }}>{k.replace(/_/g, ' ')}: {v ? 'PASS' : 'FAIL'}</span>
+                ))}
+              </div>
+              {!closePreview.can_submit_paper_close && (
+                <div style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, fontSize: 10, color: '#ef4444', marginBottom: 10 }}>
+                  Cannot submit paper close: {(closePreview.cannot_submit_reasons || []).join(', ')}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {closePreview.can_submit_paper_close && (
+                  <>
+                    <input placeholder="Type: SUBMIT PAPER CLOSE ONLY" value={closeConfirm} onChange={e => setCloseConfirm(e.target.value)}
+                      style={{ padding: '5px 10px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', width: 260 }} />
+                    <button onClick={() => submitCloseAction('submit_paper_close_order', closePreview.paper_trade_id, closePreview.symbol)}
+                      disabled={closeConfirm !== 'SUBMIT PAPER CLOSE ONLY'}
+                      style={{ padding: '5px 14px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: closeConfirm === 'SUBMIT PAPER CLOSE ONLY' ? 'pointer' : 'not-allowed',
+                        background: closeConfirm === 'SUBMIT PAPER CLOSE ONLY' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(239,68,68,0.4)', color: closeConfirm === 'SUBMIT PAPER CLOSE ONLY' ? '#ef4444' : 'rgba(255,255,255,0.2)' }}>
+                      Submit Paper Close Order
+                    </button>
+                  </>
+                )}
+                <button onClick={() => submitCloseAction('mark_closed_outside_system', closePreview.paper_trade_id, closePreview.symbol)}
+                  style={{ padding: '5px 12px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)' }}>
+                  Mark Closed Outside System
+                </button>
+                <button onClick={() => submitCloseAction('keep_open_after_preview', closePreview.paper_trade_id, closePreview.symbol)}
+                  style={{ padding: '5px 12px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)' }}>
+                  Keep Open
+                </button>
+                <button onClick={() => { setClosePreview(null); setCloseConfirm('') }}
+                  style={{ padding: '5px 10px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }}>
+                  Cancel
+                </button>
+                {closeStatus && <span style={{ fontSize: 10, color: closeStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{closeStatus}</span>}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -473,10 +572,12 @@ export default function ATMControlRoom() {
                     <td style={{ padding: '6px', color: p.db_stop_loss ? '#4ade80' : '#ef4444' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
                     <td style={{ padding: '6px', fontSize: 8 }}>{p.trailing_tier || '—'}</td>
                     <td style={{ padding: '6px' }}><span style={pill(tsColor(p.time_stop?.status))}>{p.time_stop?.status || 'unknown'}{p.time_stop?.overdue_by > 0 ? ` +${p.time_stop.overdue_by}d` : ''}</span></td>
-                    <td style={{ padding: '6px' }}>
-                      {Object.entries(p.gate_audit || {}).map(([g, v]: any) => (
-                        <span key={g} style={{ ...pill(gateColor(v.status)), marginRight: 2, fontSize: 7 }}>{g.replace(/_/g, ' ').slice(0, 8)}</span>
-                      ))}
+                    <td style={{ padding: '6px', cursor: 'pointer' }} onClick={() => openInspector(`Gates — ${p.symbol} #${p.paper_trade_id}`,
+                      Object.entries(p.gate_audit || {}).map(([g, v]: any) => `${g.replace(/_/g, ' ')}: ${(v as any).status}${(v as any).detail ? ` (${(v as any).detail})` : ''}`).join('\n'))}>
+                      {Object.entries(p.gate_audit || {}).map(([g, v]: any) => {
+                        const labels: Record<string, string> = { strategy_active: 'Strategy', classifier_health: 'Classifier', max_concurrent: 'Max Conc.', stop_present: 'Stop', market_hours: 'Market' }
+                        return <span key={g} style={{ ...pill(gateColor((v as any).status)), marginRight: 2, fontSize: 8 }}>{labels[g] || g.replace(/_/g, ' ')}</span>
+                      })}
                     </td>
                     <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{p.account}</td>
                   </tr>
@@ -588,6 +689,18 @@ export default function ATMControlRoom() {
           </div>
         </div>
       </div>
+      {/* INSPECTOR DRAWER */}
+      {inspector && (
+        <div style={{ position: 'fixed', top: 0, right: 0, width: 420, height: '100vh', background: '#1a1b2e', borderLeft: '1px solid rgba(255,255,255,0.1)', zIndex: 1000, padding: '20px', overflowY: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.4)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{inspector.title}</div>
+            <button onClick={() => setInspector(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer' }}>x</button>
+          </div>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+            {typeof inspector.content === 'string' ? inspector.content : JSON.stringify(inspector.content, null, 2)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
