@@ -269,9 +269,9 @@ Applied on top of the export baseline (`c1286d3`).
 |------|-------|--------|
 | `safe_flock.sh.REPLACEMENT.md` | Lock guard observability | APPLIED |
 | `sync_docs_drive_cron_wrapper.sh.REPLACEMENT.md` | gog PATH in cron | APPLIED |
-| `classifier_health_guardrail_patch.md` | API + dashboard guardrail visibility | DESIGNED — future session |
-| `time_stop_enforcement_patch.md` | Review-only time stop surfacing | DESIGNED — future session |
-| `alert_routing_migration_patch.md` | Telegram send audit log | DESIGNED — future session |
+| `classifier_health_guardrail_patch.md` | API + dashboard guardrail visibility | APPLIED (P0.5B) |
+| `time_stop_enforcement_patch.md` | Review-only time stop surfacing | APPLIED (P0.5B) |
+| `alert_routing_migration_patch.md` | Telegram send audit log | APPLIED (P0.5B) |
 | `P05_CONTROL_HARDENING_DESIGN_NOTES.md` | Architecture notes for all 5 items | COMPLETE |
 | `CLAUDE_APPLY_P05_CONTROL_HARDENING.md` | Step-by-step apply instructions | COMPLETE |
 
@@ -299,3 +299,27 @@ Event types: `started`, `completed`, `lock_skip`, `stale_lock_cleared`.
 - **Crons modified:** NONE
 - **Positions opened/closed:** NONE
 - **Stop prices modified:** NONE
+
+---
+
+## P0.5B Applied Changes (2026-05-26)
+
+Full report: `P05B_CONTROL_HARDENING_REPORT.md`
+
+| Change | Files | Status |
+|--------|-------|--------|
+| System Health Agent safe_flock ingestion | `scripts/system_health_agent.py` | APPLIED + TESTED |
+| Classifier guardrail API + dashboard | `scripts/api_v2.py`, `AutomatedTradeMode.tsx` | APPLIED |
+| Time-stop review surfacing | `scripts/api_v2.py`, `SystemHealth.tsx` | APPLIED (review-only) |
+| Direct Telegram sender audit | `scripts/audit_direct_telegram_senders.py` | APPLIED |
+| Dashboard trust panel | `SystemHealth.tsx` | APPLIED |
+| Telegram audit reports | `reports/direct_telegram_sender_audit.json`, `alert_routing_direct_sender_audit.md` | GENERATED |
+
+### Key Findings
+
+- **Classifier gate:** disabled (0.0) for cold-start burn-in — visible in dashboard
+- **Time-stop overdue:** 10 intraday positions held overnight — review-only, no auto-close
+- **Telegram audit:** 81 files with refs, 34 direct API callers, 4 bypass risk
+- **safe_flock:** 18 events in last hour, 0 skips, clean
+- **Frontend:** builds clean (251ms)
+- **Safety:** all controls intact, no orders placed
