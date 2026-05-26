@@ -67,6 +67,7 @@ export default function ATMControlRoom() {
   }
 
   const { data: mcData, refetch: refetchMC } = useApi<any>('/api/v2/atm/manual-close-review', 15000)
+  const { data: reconData } = useApi<any>('/api/v2/atm/close-reconciliation', 30000)
   const [mcForm, setMcForm] = useState<{ tradeId: number | null, symbol: string, strategyId: string, decision: string, reason: string, note: string }>({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })
   const [mcStatus, setMcStatus] = useState<string | null>(null)
 
@@ -379,6 +380,48 @@ export default function ATMControlRoom() {
         </div>
         )
       })()}
+
+      {/* CLOSE RECONCILIATION */}
+      {(reconData?.items || []).length > 0 && (
+        <div style={{ ...card, marginBottom: 16, borderColor: (reconData?.summary?.still_open || 0) > 0 ? 'rgba(245,158,11,0.25)' : 'rgba(74,222,128,0.2)' }}>
+          <div style={{ ...secTitle, color: (reconData?.summary?.still_open || 0) > 0 ? '#f59e0b' : '#4ade80' }}>
+            Close Reconciliation — {reconData?.summary?.total || 0} positions marked for external close
+            {(reconData?.summary?.still_open || 0) > 0
+              ? ` (${reconData.summary.still_open} still open — needs follow-up)`
+              : ' (all confirmed closed)'}
+          </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
+            These positions were reviewed and marked "close manually outside system." This section tracks whether the close actually happened. No orders are placed here.
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
+                {['Symbol', '#', 'Strategy', 'Entry', 'Stop', 'Shares', 'Decision Date', 'Status'].map(h => (
+                  <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(reconData?.items || []).map((r: any) => (
+                <tr key={r.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{r.symbol}</td>
+                  <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>#{r.paper_trade_id}</td>
+                  <td style={{ padding: '6px', fontSize: 9 }}>{r.strategy_id}</td>
+                  <td style={{ padding: '6px' }}>${Number(r.entry_price || 0).toFixed(2)}</td>
+                  <td style={{ padding: '6px' }}>{r.stop_loss ? `$${Number(r.stop_loss).toFixed(2)}` : '—'}</td>
+                  <td style={{ padding: '6px' }}>{r.shares || '—'}</td>
+                  <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{r.decision_at ? new Date(r.decision_at).toLocaleString() : '—'}</td>
+                  <td style={{ padding: '6px' }}>
+                    <span style={pill(r.reconciliation_status === 'closed' ? '#4ade80' : r.reconciliation_status === 'ghost_closed' ? '#6b7280' : '#f59e0b')}>
+                      {r.reconciliation_status === 'still_open' ? 'Still Open — Needs Follow-Up' : r.reconciliation_status === 'closed' ? 'Confirmed Closed' : 'Resolved (no exit_time)'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* 2. Lifecycle Pipeline Stages */}
       <div style={{ ...card, marginBottom: 16 }}>

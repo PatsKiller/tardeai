@@ -19351,6 +19351,45 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import traceback; traceback.print_exc()
             return 500, {"ok": False, "error": str(e)}
 
+    # ── ATM Manual Close Reconciliation ─────────────────────────────────
+    if base_path == "/api/v2/atm/close-reconciliation" and method == "GET":
+        try:
+            _recon_items = _db_query("""
+                SELECT d.review_id, d.paper_trade_id, d.symbol, d.strategy_id, d.decision,
+                       d.decision_reason, d.operator_note, d.created_at as decision_at,
+                       t.entry_price, t.stop_loss, t.shares, t.account, t.entry_time,
+                       t.exit_time, t.exit_reason, t.exit_price, t.pnl
+                FROM atm_manual_close_review_decisions d
+                LEFT JOIN paper_trades t ON t.id = d.paper_trade_id
+                WHERE d.decision = 'close_manually_outside_system'
+                ORDER BY d.created_at DESC
+            """) or []
+
+            _items = []
+            for r in _recon_items:
+                if r.get("exit_time"):
+                    _status = "closed"
+                elif r.get("exit_reason") and r["exit_reason"] != "":
+                    _status = "ghost_closed"
+                else:
+                    _status = "still_open"
+                _items.append({k: _json_clean(v) for k, v in r.items()})
+                _items[-1]["reconciliation_status"] = _status
+
+            _still_open = sum(1 for i in _items if i["reconciliation_status"] == "still_open")
+            _closed = sum(1 for i in _items if i["reconciliation_status"] in ("closed", "ghost_closed"))
+            return 200, {"ok": True, "data": {
+                "summary": {
+                    "total": len(_items),
+                    "still_open": _still_open,
+                    "closed": _closed,
+                    "needs_followup": _still_open,
+                },
+                "items": _items,
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM (Automated Trade Mode) endpoints ─────────────────────────────
     if base_path == "/api/v2/atm/status":
         try:
