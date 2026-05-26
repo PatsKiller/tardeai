@@ -1,0 +1,110 @@
+# Unified Agent Data Source Configuration
+# Defines how each agent uses ALL data sources (news, YouTube, SEC, yfinance, Alpha Vantage, FRED, social)
+# Single source of truth — agents reference this for what to pull and when.
+
+version: "1.0"
+
+data_sources:
+  news:
+    providers: [yahoo_rss, finnhub, google_news_rss]
+    refresh: "3x daily (6:30 AM, 12:30 PM, 6:30 PM)"
+    scoring: content_scoring.score_content()
+    tagging: content_scoring.tag_content()
+    downstream: [catalyst_events, sentiment_observations]
+
+  youtube:
+    providers: [youtube_data_api]
+    channels: 48
+    refresh: "daily 7 PM"
+    processing: "transcript_processor.py: clean → summarize → sub-tag → structured JSON"
+    scoring: content_scoring.score_content()
+    retention: "Q≥75 forever, Q50-74 12mo, Q<50 90d"
+
+  sec:
+    providers: [sec_edgar_form4]
+    refresh: "daily 8 PM"
+    tables: [sec_form4, sec_13f, sec_xbrl]
+
+  market_data:
+    providers: [yfinance, alpha_vantage, fred]
+    yfinance_refresh: "daily 7:15 AM"
+    alpha_vantage_refresh: "weekly Monday 8 AM"
+    fred_refresh: "when API key added"
+
+  social:
+    providers: [stub — needs X/StockTwits API keys]
+    status: not_active
+
+  fmp:
+    providers: [fmp_api]
+    refresh: "daily 7:05 AM"
+    data: [dividend_yield, ex_dates, payout_ratio]
+
+agents:
+  Alex:
+    role: "Retirement + disability + tax advisor"
+    auto_inject: true
+    sources:
+      - news: "retirement_planning + disability_retirement_planning tagged articles"
+      - youtube: "top 3 structured summaries with key_points (Q≥60, retirement sub-tags preferred)"
+      - sec: "Form 4 insider transactions for analyzed symbol"
+      - yfinance: "current quote (price, PE, yield, 52wk range)"
+      - alpha_vantage: "fundamentals (PE, EPS, margins, analyst target, moving averages)"
+      - fred: "macro context (Fed rate, yield curve, inflation, unemployment)"
+      - outcome_feedback: "past CORRECT/WRONG decisions for this symbol"
+      - cross_agent: "Maria/Steph/Risk latest views via agent_collab"
+    triggers:
+      - "Large insider buy >$500K → flag as conversion timing signal"
+      - "FRED rate change >0.25% → update Roth conversion timing advice"
+      - "New earnings date → flag for position review"
+
+  Maria:
+    role: "Research + fundamentals + catalysts"
+    auto_inject: true
+    sources:
+      - news: "all tagged articles for symbol being analyzed"
+      - youtube: "structured summaries with high relevance score"
+      - sec: "Form 4 (insider patterns), 13F (institutional interest), XBRL (fundamentals)"
+      - alpha_vantage: "PE, PEG, EPS, revenue, margins, analyst targets"
+      - yfinance: "earnings dates, market cap, volume"
+    triggers:
+      - "CEO/CFO Form 4 filing → research catalyst"
+      - "Alpha Vantage PE change >20% → valuation review"
+      - "New 13F showing >5% ownership change → institutional signal"
+
+  Steph:
+    role: "Allocation + income + rebalancing"
+    auto_inject: true
+    sources:
+      - news: "dividend_growth + income tagged articles"
+      - youtube: "income_gap_strategy + dividend_growth sub-tagged transcripts"
+      - yfinance: "dividend yield, 52wk range for position sizing"
+      - fmp: "dividend yields, ex-dates, payout ratios"
+      - sec: "13F for institutional crowding, Form 4 for ownership concentration"
+    triggers:
+      - "Dividend cut/increase → immediate rebalance review"
+      - "Yield change >0.5% → allocation signal"
+      - "New ex-dividend date → income calendar update"
+
+  Risk:
+    role: "Technicals + stops + volatility"
+    auto_inject: true
+    sources:
+      - news: "swing_trade + risk-tagged articles"
+      - yfinance: "price, volume, 52wk high/low"
+      - alpha_vantage: "beta, 50DMA, 200DMA"
+      - sec: "Form 4 insider selling as risk signal, cluster sells = elevated risk"
+    triggers:
+      - "RSI >75 or <25 → stop review"
+      - "Price within 3% of stop → proximity alert"
+      - "Large insider sell >$1M → bearish risk flag"
+
+  Aegis:
+    role: "Overnight surveillance + alerts"
+    auto_inject: false
+    sources:
+      - sec: "Overnight Form 4 filings"
+      - news: "breaking/urgent tagged articles"
+    triggers:
+      - "After-hours Form 4 → overnight alert"
+      - "Gap >5% pre-market → escalation"

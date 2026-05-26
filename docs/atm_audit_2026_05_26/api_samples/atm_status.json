@@ -1,0 +1,64 @@
+{
+    "ok": true,
+    "data": {
+        "mode": "active",
+        "paused_until": "",
+        "pause_reason": null,
+        "last_state_change_at": "2026-05-22 19:14:15.890231-04:00",
+        "last_state_change_by": "john-approved",
+        "last_evaluated_at": "2026-05-26 11:15:01.807039-04:00",
+        "config_hash": "ab8369972241",
+        "is_market_hours": true,
+        "next_expected_cycle": "11:30 ET",
+        "accounts": [
+            {
+                "account_label": "alpaca_paper",
+                "broker": "alpaca",
+                "mode": "paper",
+                "enabled": true,
+                "positions_open": 4,
+                "new_today": 0,
+                "new_today_atm": 0
+            },
+            {
+                "account_label": "schwab_rollover_ira",
+                "broker": "schwab",
+                "mode": "live",
+                "enabled": false,
+                "positions_open": 0,
+                "new_today": 0,
+                "new_today_atm": 0
+            },
+            {
+                "account_label": "schwab_roth_ira",
+                "broker": "schwab",
+                "mode": "live",
+                "enabled": false,
+                "positions_open": 0,
+                "new_today": 0,
+                "new_today_atm": 0
+            },
+            {
+                "account_label": "schwab_taxable",
+                "broker": "schwab",
+                "mode": "live",
+                "enabled": false,
+                "positions_open": 0,
+                "new_today": 0,
+                "new_today_atm": 0
+            },
+            {
+                "account_label": "fidelity_401k",
+                "broker": "fidelity",
+                "mode": "live",
+                "enabled": false,
+                "positions_open": 0,
+                "new_today": 0,
+                "new_today_atm": 0
+            }
+        ],
+        "decisions_today": {
+            "deferred": 1
+        }
+    }
+}
