@@ -19099,19 +19099,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "recommended_action": "Missing data — verify stop before action" if _stop_missing
                         else "Review for manual close" if _hold > 5
                         else "Review and decide",
+                    "decision_status": "reviewed" if _existing_dec else "needs_decision",
                     "existing_decision": {k: _json_clean(v) for k, v in _existing_dec.items()} if _existing_dec else None,
                 })
 
-            _recorded = len([p for p in _overdue if p.get("existing_decision")])
+            _needs = [p for p in _overdue if p["decision_status"] == "needs_decision"]
+            _reviewed = [p for p in _overdue if p["decision_status"] == "reviewed"]
             return 200, {"ok": True, "data": {
                 "summary": {
-                    "overdue_count": len(_overdue),
+                    "total_overdue": len(_overdue),
+                    "needs_decision_count": len(_needs),
+                    "reviewed_count": len(_reviewed),
                     "high_risk_count": sum(1 for p in _overdue if p["risk"] == "HIGH"),
                     "stop_missing_count": sum(1 for p in _overdue if p["stop_missing"]),
-                    "recorded_decisions": _recorded,
-                    "missing_decisions": len(_overdue) - _recorded,
                 },
-                "positions": _overdue,
+                "needs_decision": _needs,
+                "reviewed": _reviewed,
+                "all_overdue": _overdue,
             }}
         except Exception as e:
             import traceback; traceback.print_exc()

@@ -58,8 +58,11 @@ export default function ATMControlRoom() {
     }
   }
 
-  const odPositions = overdueData?.positions || []
+  const odNeedsDecision = overdueData?.needs_decision || []
+  const odReviewed = overdueData?.reviewed || []
+  const odAll = overdueData?.all_overdue || []
   const odSummary = overdueData?.summary || {}
+  const [odTab, setOdTab] = useState<'needs' | 'reviewed' | 'all'>('needs')
 
   const s = lc?.summary || {}
   const positions = lc?.positions || []
@@ -97,25 +100,53 @@ export default function ATMControlRoom() {
         {m(s.lifecycle_events_24h, 'Events 24h')}
       </div>
 
-      {/* OVERDUE INTRADAY DECISION QUEUE */}
-      {odPositions.length > 0 && (
-        <div style={{ ...card, marginBottom: 16, borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.03)' }}>
-          <div style={{ ...secTitle, color: '#ef4444' }}>Overdue Intraday Decision Queue — {odSummary.overdue_count || odPositions.length} positions ({odSummary.missing_decisions || 0} need decisions)</div>
+      {/* OVERDUE INTRADAY REVIEW QUEUE */}
+      {odAll.length > 0 && (
+        <div style={{ ...card, marginBottom: 16, borderColor: (odSummary.needs_decision_count || 0) > 0 ? 'rgba(239,68,68,0.3)' : 'rgba(74,222,128,0.2)', background: (odSummary.needs_decision_count || 0) > 0 ? 'rgba(239,68,68,0.03)' : 'rgba(74,222,128,0.02)' }}>
+          <div style={{ ...secTitle, color: (odSummary.needs_decision_count || 0) > 0 ? '#ef4444' : '#4ade80' }}>
+            Overdue Intraday Review Queue — {odSummary.total_overdue || odAll.length} positions
+            {(odSummary.needs_decision_count || 0) > 0
+              ? ` (${odSummary.needs_decision_count} need decisions)`
+              : ` (all ${odSummary.reviewed_count || 0} reviewed)`}
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {([
+              ['needs', `Needs Decision (${odNeedsDecision.length})`],
+              ['reviewed', `Reviewed (${odReviewed.length})`],
+              ['all', `All (${odAll.length})`],
+            ] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setOdTab(key as any)}
+                style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer',
+                  background: odTab === key ? 'rgba(99,102,241,0.15)' : 'transparent',
+                  color: odTab === key ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const odVisible = odTab === 'needs' ? odNeedsDecision : odTab === 'reviewed' ? odReviewed : odAll
+            return (
           <div style={{ maxHeight: 350, overflowY: 'auto' }}>
+            {odVisible.length === 0 && odTab === 'needs' && (
+              <div style={{ padding: '16px 12px', textAlign: 'center', color: '#4ade80', fontSize: 12, fontWeight: 600 }}>
+                All overdue positions have been reviewed.
+              </div>
+            )}
+            {odVisible.length > 0 && (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid rgba(239,68,68,0.15)' }}>
+                <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
                   {['Symbol', 'Strategy', 'Days', 'Risk', 'Entry', 'Stop', 'Overdue By', 'Decision', 'Action'].map(h => (
                     <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {odPositions.map((p: any) => {
+                {odVisible.map((p: any) => {
                   const dec = p.existing_decision
                   const decOpt = dec ? DECISION_OPTIONS.find(d => d.value === dec.decision) : null
                   return (
-                    <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing ? 'rgba(239,68,68,0.06)' : undefined }}>
+                    <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing && !dec ? 'rgba(239,68,68,0.06)' : undefined }}>
                       <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
                       <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
                       <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
@@ -137,7 +168,10 @@ export default function ATMControlRoom() {
                 })}
               </tbody>
             </table>
+            )}
           </div>
+            )
+          })()}
 
           {/* Decision form */}
           {decisionForm.tradeId && (
