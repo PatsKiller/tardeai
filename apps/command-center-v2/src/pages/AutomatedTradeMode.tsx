@@ -119,6 +119,21 @@ export default function AutomatedTradeMode() {
         )}
       </div>
 
+      {/* P0.5B: Classifier guardrail banner */}
+      {(status as any)?.classifier_guardrail?.classifier_gate_disabled && (
+        <div style={{ padding: '10px 16px', borderRadius: 8, marginBottom: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ color: '#f59e0b', fontWeight: 600, fontSize: 12 }}>Classifier Gate Disabled</span>
+            <span style={{ fontSize: 11, color: 'rgba(245,158,11,0.7)' }}>
+              min_classifier_health = {(status as any).classifier_guardrail.classifier_health_min} (production: {(status as any).classifier_guardrail.production_threshold})
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>
+            Cold-start burn-in active. ATM may continue in paper observation but cannot graduate while threshold is 0.0.
+          </div>
+        </div>
+      )}
+
       {/* Per-account strip */}
       {(status?.accounts || []).filter((a: any) => a.enabled).length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 20, overflowX: 'auto' }}>

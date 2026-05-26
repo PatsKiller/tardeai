@@ -127,6 +127,37 @@ export default function SystemHealth() {
         </div>
       </Card>
 
+      {/* P0.5B: Control Plane Trust Panel */}
+      <Card style={{ marginBottom: 14 }}>
+        <SectionHeader title="Control Plane Trust" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, padding: '0 12px 12px' }}>
+          <MetricTile label="safe_flock skips" value={agentHealth?.safe_flock?.lock_skips ?? 'N/A'}
+            deltaColor={(agentHealth?.safe_flock?.lock_skips || 0) > 0 ? 'var(--amber)' : 'var(--green)'}
+            delta={`${agentHealth?.safe_flock?.events_seen ?? 0} events (1h)`} />
+          <MetricTile label="Repeated skips" value={agentHealth?.safe_flock?.repeated_lock_skips ?? 'N/A'}
+            deltaColor={(agentHealth?.safe_flock?.repeated_lock_skips || 0) > 0 ? 'var(--red)' : 'var(--green)'} />
+          <MetricTile label="Stale locks" value={agentHealth?.safe_flock?.stale_locks_cleared ?? 'N/A'}
+            deltaColor={(agentHealth?.safe_flock?.stale_locks_cleared || 0) > 0 ? 'var(--amber)' : 'var(--green)'} />
+          <MetricTile label="Time-stop overdue" value={agentHealth?.time_stop_summary?.overdue_count ?? 'N/A'}
+            deltaColor={(agentHealth?.time_stop_summary?.overdue_count || 0) > 0 ? 'var(--red)' : 'var(--green)'}
+            delta={`${agentHealth?.time_stop_summary?.review_due_count ?? 0} review due`} />
+          <MetricTile label="Telegram bypass" value={agentHealth?.alert_routing?.bypass_router_files ?? 'N/A'}
+            delta={`${agentHealth?.alert_routing?.direct_telegram_senders ?? 0} direct senders`}
+            deltaColor="var(--amber)" />
+        </div>
+        {(agentHealth?.time_stop_summary?.overdue_positions || []).length > 0 && (
+          <div style={{ padding: '6px 12px 12px', fontSize: 10, color: 'var(--text2)' }}>
+            <span style={{ fontWeight: 600, color: 'var(--red)' }}>Overdue: </span>
+            {(agentHealth?.time_stop_summary?.overdue_positions || []).map((p: any, i: number) => (
+              <span key={i} style={{ marginRight: 10 }}>
+                <span style={{ fontWeight: 600 }}>{p.symbol}</span>
+                <span style={{ color: 'var(--text3)', marginLeft: 4 }}>{p.strategy} · {p.hold_days}d ({p.type}{p.max ? ` max ${p.max}d` : ''})</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </Card>
+
       {/* LLM Router */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
         <MetricTile label="Local Ollama" value={llm?.local?.available ? 'Online' : 'Offline'}

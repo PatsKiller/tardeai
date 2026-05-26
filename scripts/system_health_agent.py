@@ -124,6 +124,122 @@ MONITORED_COMPONENTS = [
 
 MAX_RETRIES = 2
 
+# ── safe_flock event log ─────────────────────────────────────────────────────
+SAFE_FLOCK_LOG = PROJECT_ROOT / "logs" / "safe_flock_events.jsonl"
+SAFE_FLOCK_LOOKBACK_MIN = 30  # window for detecting repeated lock skips
+
+# Components that are critical for repeated-lock-skip escalation
+CRITICAL_COMPONENTS = {c["component"] for c in MONITORED_COMPONENTS if c.get("critical")}
+
+
+def _ingest_safe_flock_events(lookback_min=SAFE_FLOCK_LOOKBACK_MIN):
+    """Read recent safe_flock JSONL events. Returns (events, parse_errors)."""
+    events = []
+    parse_errors = 0
+    if not SAFE_FLOCK_LOG.exists():
+        return events, parse_errors
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=lookback_min)
+        with open(SAFE_FLOCK_LOG, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                    # Parse timestamp
+                    ts_str = ev.get("ts", "")
+                    try:
+                        ts = datetime.fromisoformat(ts_str)
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        else:
+                            ts = ts.astimezone(timezone.utc)
+                    except Exception:
+                        ts = None
+                    if ts and ts >= cutoff:
+                        ev["_parsed_ts"] = ts
+                        events.append(ev)
+                except (json.JSONDecodeError, ValueError):
+                    parse_errors += 1
+    except Exception as e:
+        log.warning(f"Failed to read safe_flock log: {e}")
+    return events, parse_errors
+
+
+def _analyze_safe_flock(conn, dry_run=True, verbose=False):
+    """Analyze safe_flock events and write health events for anomalies.
+
+    Returns summary dict for inclusion in the health report.
+    """
+    events, parse_errors = _ingest_safe_flock_events()
+
+    summary = {
+        "events_seen": len(events),
+        "parse_errors": parse_errors,
+        "lock_skips": 0,
+        "repeated_lock_skips": [],
+        "stale_locks_cleared": 0,
+        "command_failures": 0,
+    }
+
+    # Bucket events by component
+    skips_by_component = {}
+    for ev in events:
+        et = ev.get("event_type", "")
+        comp = ev.get("component", "unknown")
+
+        if et == "lock_skip":
+            summary["lock_skips"] += 1
+            skips_by_component.setdefault(comp, []).append(ev)
+
+        elif et == "stale_lock_cleared":
+            summary["stale_locks_cleared"] += 1
+            if conn and not dry_run:
+                _log_event(conn, comp, "SAFE_FLOCK_STALE_CLEARED", "WARN",
+                           ev.get("message", "Stale lock cleared")[:500])
+
+        elif et == "completed":
+            exit_code = ev.get("exit_code")
+            if exit_code is not None and exit_code != 0:
+                summary["command_failures"] += 1
+                if conn and not dry_run:
+                    _log_event(conn, comp, "SAFE_FLOCK_CMD_FAILED", "WARN",
+                               f"Command exited {exit_code}: {ev.get('command', '')[:200]}")
+
+    # Detect repeated lock skips (2+ in window)
+    for comp, skip_list in skips_by_component.items():
+        if len(skip_list) >= 2:
+            severity = "CRITICAL" if comp in CRITICAL_COMPONENTS else "WARN"
+            summary["repeated_lock_skips"].append({
+                "component": comp,
+                "count": len(skip_list),
+                "severity": severity,
+            })
+            if conn and not dry_run:
+                _log_event(conn, comp, "SAFE_FLOCK_REPEATED_SKIP", severity,
+                           f"{len(skip_list)} lock skips in {SAFE_FLOCK_LOOKBACK_MIN}min window")
+
+    # Single lock skips (log as INFO)
+    for comp, skip_list in skips_by_component.items():
+        if len(skip_list) == 1 and conn and not dry_run:
+            _log_event(conn, comp, "SAFE_FLOCK_LOCK_SKIP", "INFO",
+                       skip_list[0].get("message", "Lock skip")[:500])
+
+    # Repeated parse errors
+    if parse_errors >= 5 and conn and not dry_run:
+        _log_event(conn, "safe_flock_parser", "SAFE_FLOCK_PARSE_ERRORS", "WARN",
+                   f"{parse_errors} malformed JSONL lines in safe_flock log")
+
+    if verbose:
+        log.info(f"  safe_flock: {summary['events_seen']} events, "
+                 f"{summary['lock_skips']} skips, "
+                 f"{len(summary['repeated_lock_skips'])} repeated, "
+                 f"{summary['stale_locks_cleared']} stale cleared, "
+                 f"{summary['command_failures']} cmd failures")
+
+    return summary
+
 
 def _get_conn():
     try:
@@ -443,6 +559,10 @@ def run_health_check(dry_run=True, verbose=False):
             log.info(f"  {icon} {comp['display']:30s} status={check['status']:15s} age={check.get('age_min', '?')}min lock={check['lock']}")
 
         report["checks"].append(check)
+
+    # ── safe_flock event analysis ──
+    sf_summary = _analyze_safe_flock(conn, dry_run=dry_run, verbose=verbose)
+    report["safe_flock"] = sf_summary
 
     conn.close()
     return report

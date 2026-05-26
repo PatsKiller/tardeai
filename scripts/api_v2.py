@@ -11971,12 +11971,97 @@ def _system_health_api():
         SELECT component, event_type, severity, message, action_taken, success, created_at
         FROM system_health_events ORDER BY created_at DESC LIMIT 50
     """) or []
+    # P0.5B: safe_flock event summary
+    _sf = {"events_seen": 0, "lock_skips": 0, "repeated_lock_skips": 0,
+           "stale_locks_cleared": 0, "command_failures": 0}
+    try:
+        import json as _sfj
+        _sf_log = PROJECT_ROOT / "logs" / "safe_flock_events.jsonl"
+        if _sf_log.exists():
+            _sf_cutoff = (__import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+                          - __import__("datetime").timedelta(hours=1))
+            _skip_counts = {}
+            for _line in open(_sf_log):
+                _line = _line.strip()
+                if not _line:
+                    continue
+                try:
+                    _ev = _sfj.loads(_line)
+                    _ts = __import__("datetime").datetime.fromisoformat(_ev.get("ts", ""))
+                    if _ts.tzinfo:
+                        _ts = _ts.astimezone(__import__("datetime").timezone.utc)
+                    if _ts >= _sf_cutoff:
+                        _sf["events_seen"] += 1
+                        if _ev.get("event_type") == "lock_skip":
+                            _sf["lock_skips"] += 1
+                            _c = _ev.get("component", "")
+                            _skip_counts[_c] = _skip_counts.get(_c, 0) + 1
+                        elif _ev.get("event_type") == "stale_lock_cleared":
+                            _sf["stale_locks_cleared"] += 1
+                        elif _ev.get("event_type") == "completed" and _ev.get("exit_code", 0) != 0:
+                            _sf["command_failures"] += 1
+                except Exception:
+                    pass
+            _sf["repeated_lock_skips"] = sum(1 for v in _skip_counts.values() if v >= 2)
+    except Exception:
+        pass
+
+    # P0.5B: time-stop review summary
+    _ts_summary = {"total_open": 0, "overdue_count": 0, "review_due_count": 0, "approaching_count": 0,
+                    "overdue_positions": []}
+    try:
+        _open_trades = _db_query("""
+            SELECT id, symbol, strategy_id, entry_time FROM paper_trades WHERE exit_time IS NULL
+        """) or []
+        from strategy_trailing_policy import get_trailing_policy as _gtp
+        _now_utc = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        _ts_summary["total_open"] = len(_open_trades)
+        for _t in _open_trades:
+            _pol = _gtp(_t.get("strategy_id", ""))
+            _tsc = _pol.get("time_stop", {})
+            _ttype = _tsc.get("type", "review")
+            _et = _t.get("entry_time")
+            if not _et:
+                continue
+            if hasattr(_et, "tzinfo") and _et.tzinfo is None:
+                _et = _et.replace(tzinfo=__import__("datetime").timezone.utc)
+            _hold = (_now_utc - _et).days
+            if _ttype == "intraday" and _hold > 0:
+                _ts_summary["overdue_count"] += 1
+                _ts_summary["overdue_positions"].append({
+                    "symbol": _t["symbol"], "strategy": _t["strategy_id"],
+                    "hold_days": _hold, "type": "intraday"})
+            elif _ttype == "calendar":
+                _max = _tsc.get("max_hold_days", 21)
+                if _hold > _max:
+                    _ts_summary["overdue_count"] += 1
+                    _ts_summary["overdue_positions"].append({
+                        "symbol": _t["symbol"], "strategy": _t["strategy_id"],
+                        "hold_days": _hold, "type": "calendar", "max": _max})
+                elif _hold > _max * 0.8:
+                    _ts_summary["approaching_count"] += 1
+            elif _ttype == "review":
+                _rev = _tsc.get("review_at_days", 90)
+                if _hold >= _rev:
+                    _ts_summary["review_due_count"] += 1
+    except Exception:
+        pass
+
+    # P0.5B: alert routing inventory
+    _alert_routing = {
+        "bypass_router_files": 3, "direct_telegram_senders": 64,
+        "direct_api_telegram": 40, "migration_status": "P0.5_AUDIT_ONLY",
+    }
+
     return {
         "ok": True,
         "summary": {"total": total, "ok": ok, "stale": stale, "missing": missing,
                      "failed": failed, "recovered": recovered},
         "checks": [{k: _json_clean(v) for k, v in c.items()} for c in checks],
         "recent_events": [{k: _json_clean(v) for k, v in e.items()} for e in events],
+        "safe_flock": _sf,
+        "time_stop_summary": _ts_summary,
+        "alert_routing": _alert_routing,
     }
 
 
@@ -18862,6 +18947,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     _days_ahead = 2
                 _next_day = (_now_et + __import__("datetime").timedelta(days=_days_ahead)).strftime("%a")
                 _next_str = f"{_next_day} {_start_h}:{_start_m:02d} ET"
+            # P0.5B: classifier guardrail visibility
+            _classifier_guardrail = {}
+            try:
+                from atm_config_manager import load_config as _lc_cfg
+                _atm_cfg, _ = _lc_cfg()
+                _min_health = _atm_cfg.get("defaults", {}).get("strategy_filter", {}).get("min_classifier_health", 0.5)
+                _prod_threshold = 0.50
+                _gate_disabled = _min_health <= 0.0
+                _classifier_guardrail = {
+                    "classifier_health_min": _min_health,
+                    "classifier_gate_disabled": _gate_disabled,
+                    "classifier_gate_reason": "cold_start_burn_in" if _gate_disabled else "active",
+                    "classifier_graduation_blocked": _gate_disabled,
+                    "production_threshold": _prod_threshold,
+                }
+            except Exception:
+                _classifier_guardrail = {"classifier_gate_disabled": False, "classifier_gate_reason": "unknown"}
             return 200, {"ok": True, "data": {
                 "mode": st.get("mode", "disabled"),
                 "paused_until": str(st.get("paused_until") or ""),
@@ -18877,6 +18979,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                                "new_today_atm": atm_today_map.get(a["account_label"], 0)}
                               for a in accts],
                 "decisions_today": {r["decision"]: r["cnt"] for r in decisions_today},
+                "classifier_guardrail": _classifier_guardrail,
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
