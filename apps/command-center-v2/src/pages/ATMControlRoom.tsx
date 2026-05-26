@@ -90,6 +90,7 @@ export default function ATMControlRoom() {
 
   const mcItems = mcData?.items || []
   const mcSummary = mcData?.summary || {}
+  const [mcTabState, setMcTabState] = useState<'mc_pending' | 'mc_reviewed' | 'mc_all'>('mc_pending')
 
   const odNeedsDecision = overdueData?.needs_decision || []
   const odReviewed = overdueData?.reviewed || []
@@ -245,42 +246,86 @@ export default function ATMControlRoom() {
         </div>
       )}
 
-      {/* MANUAL CLOSE REVIEW */}
-      {mcItems.length > 0 && (
-        <div style={{ ...card, marginBottom: 16, borderColor: 'rgba(245,158,11,0.25)' }}>
+      {/* MANUAL CLOSE REVIEW QUEUE */}
+      {mcItems.length > 0 && (() => {
+        const mcPending = mcData?.pending || mcItems.filter((i: any) => i.review_status === 'pending_review')
+        const mcResolved = mcData?.reviewed || mcItems.filter((i: any) => i.review_status === 'reviewed')
+        void 0 // tabs managed by mcTabState
+        return (
+        <div style={{ ...card, marginBottom: 16, borderColor: mcPending.length > 0 ? 'rgba(245,158,11,0.25)' : 'rgba(74,222,128,0.2)' }}>
           <div style={{ ...secTitle, color: '#f59e0b' }}>
-            Manual Close Review — {mcSummary.review_for_manual_close_count || mcItems.length} positions
-            ({mcSummary.unresolved_count || 0} pending, {mcSummary.resolved_count || 0} resolved)
+            Manual Close Review Queue — No Orders Placed
           </div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 10, lineHeight: 1.5 }}>
+            These are open paper positions you already marked for possible manual-close review.
+            Review current risk, stop status, and thesis age, then record the next operator decision.
+            This section does not place orders.
+          </div>
+          <details style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
+            <summary style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.4)' }}>Workflow: How did these get here?</summary>
+            <ol style={{ margin: '6px 0 0 16px', lineHeight: 1.8 }}>
+              <li>Position was flagged as overdue (intraday held past session close)</li>
+              <li>Operator marked it "review for manual close" in the overdue decision queue</li>
+              <li>Now: review current risk, P&L, stop status, and thesis</li>
+              <li>Record the next decision below</li>
+              <li>Item moves to Reviewed tab</li>
+              <li>No order is placed at any step</li>
+            </ol>
+          </details>
+
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {([
+              ['mc_pending', `Pending Review (${mcPending.length})`],
+              ['mc_reviewed', `Reviewed (${mcResolved.length})`],
+              ['mc_all', `All (${mcItems.length})`],
+            ] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setMcTabState(key as any)}
+                style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer',
+                  background: mcTabState === key ? 'rgba(99,102,241,0.15)' : 'transparent',
+                  color: mcTabState === key ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {(() => {
+            const mcVisible = mcTabState === 'mc_reviewed' ? mcResolved : mcTabState === 'mc_all' ? mcItems : mcPending
+            return (
           <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+            {mcVisible.length === 0 && (
+              <div style={{ padding: '16px 12px', textAlign: 'center', color: '#4ade80', fontSize: 12, fontWeight: 600 }}>
+                All manual-close review positions have been reviewed.
+              </div>
+            )}
+            {mcVisible.length > 0 && (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
-                  {['Symbol', 'Strategy', 'Days', 'Entry', 'Stop', 'Shares', 'Account', 'Review Status', 'Action'].map(h => (
+                  {['Symbol', '#', 'Why Here', 'Days', 'Stop', 'Risk Issue', 'Recommended', 'Status', ''].map(h => (
                     <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {mcItems.map((p: any) => {
+                {mcVisible.map((p: any) => {
                   const rev = p.review_decision
                   const revOpt = rev ? MC_DECISIONS.find(d => d.value === rev.decision) : null
                   return (
                     <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing ? 'rgba(239,68,68,0.04)' : undefined }}>
                       <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
-                      <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
+                      <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>#{p.paper_trade_id}</td>
+                      <td style={{ padding: '6px', fontSize: 9, color: 'rgba(255,255,255,0.6)' }}>{p.why_here || `${p.time_stop_type} held ${p.days_held}d`}</td>
                       <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
-                      <td style={{ padding: '6px' }}>${p.entry_price?.toFixed(2) || '—'}</td>
                       <td style={{ padding: '6px', color: p.stop_missing ? '#ef4444' : '#4ade80' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
-                      <td style={{ padding: '6px' }}>{p.shares || '—'}</td>
-                      <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{p.account}</td>
+                      <td style={{ padding: '6px', fontSize: 9, color: p.stop_missing ? '#ef4444' : '#f59e0b' }}>{p.risk_issue || 'Review requested'}</td>
+                      <td style={{ padding: '6px', fontSize: 9, color: 'rgba(255,255,255,0.5)' }}>{p.recommended_review_action || '—'}</td>
                       <td style={{ padding: '6px' }}>
                         {rev ? <span style={pill(revOpt?.color || '#4ade80')}>{revOpt?.label || rev.decision}</span> : <span style={pill('#f59e0b')}>pending</span>}
                       </td>
                       <td style={{ padding: '6px' }}>
                         <button onClick={() => setMcForm({ tradeId: p.paper_trade_id, symbol: p.symbol, strategyId: p.strategy_id, decision: '', reason: '', note: '' })}
                           style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
-                          {rev ? 'Update' : 'Review'}
+                          Review Position
                         </button>
                       </td>
                     </tr>
@@ -288,12 +333,18 @@ export default function ATMControlRoom() {
                 })}
               </tbody>
             </table>
+            )}
           </div>
+            )
+          })()}
 
           {mcForm.tradeId && (
             <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>
-                Manual Close Review — {mcForm.symbol} (Trade #{mcForm.tradeId})
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'rgba(255,255,255,0.7)' }}>
+                Review Position — {mcForm.symbol} (Trade #{mcForm.tradeId})
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 10 }}>
+                Recording this review does not close, sell, cancel, replace, or submit any order.
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                 {MC_DECISIONS.map(opt => (
@@ -315,7 +366,7 @@ export default function ATMControlRoom() {
                   style={{ padding: '6px 16px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
                     background: mcForm.decision && mcForm.reason ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(99,102,241,0.4)', color: mcForm.decision && mcForm.reason ? '#a5b4fc' : 'rgba(255,255,255,0.2)' }}>
-                  Record Review Decision
+                  Record Decision — No Order
                 </button>
                 <button onClick={() => setMcForm({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })}
                   style={{ padding: '6px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
@@ -326,7 +377,8 @@ export default function ATMControlRoom() {
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* 2. Lifecycle Pipeline Stages */}
       <div style={{ ...card, marginBottom: 16 }}>

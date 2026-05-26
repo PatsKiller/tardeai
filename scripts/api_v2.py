@@ -19238,6 +19238,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _overdue_dec = next((d for d in _mc_decs if d["paper_trade_id"] == _t["id"]), {})
                 _review_dec = _mc_rev_by_trade.get(_t["id"])
 
+                _stop_missing = not _t.get("stop_loss")
+                _ttype = _pol.get("time_stop", {}).get("type", "unknown")
+                # Compute why_here and risk_issue
+                _why = f"{_ttype.title()} held {_hold}d"
+                if _stop_missing:
+                    _why += " + missing stop"
+                _risk = "Missing DB stop" if _stop_missing else f"Time-stop overdue +{_hold}d" if _hold > 5 else "Review requested"
+                _rec = "Verify stop before action" if _stop_missing else "Review for manual close" if _hold > 10 else "Review and decide"
+
                 _items.append({
                     "paper_trade_id": _t["id"],
                     "symbol": _t["symbol"],
@@ -19249,22 +19258,28 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "entry_time": str(_t.get("entry_time") or ""),
                     "days_held": _hold,
                     "db_stop_loss": float(_t["stop_loss"]) if _t.get("stop_loss") else None,
-                    "stop_missing": not _t.get("stop_loss"),
+                    "stop_missing": _stop_missing,
                     "trailing_tier": _pol.get("tiers", [])[-1][2] if _pol.get("tiers") else None,
-                    "time_stop_type": _pol.get("time_stop", {}).get("type", "unknown"),
+                    "time_stop_type": _ttype,
+                    "why_here": _why,
+                    "risk_issue": _risk,
+                    "recommended_review_action": _rec,
                     "overdue_decision": {k: _json_clean(v) for k, v in _overdue_dec.items()} if _overdue_dec else None,
                     "review_decision": {k: _json_clean(v) for k, v in _review_dec.items()} if _review_dec else None,
                     "review_status": "reviewed" if _review_dec else "pending_review",
                 })
 
-            _resolved = sum(1 for i in _items if i["review_status"] == "reviewed")
+            _pending = [i for i in _items if i["review_status"] == "pending_review"]
+            _resolved_items = [i for i in _items if i["review_status"] == "reviewed"]
             return 200, {"ok": True, "data": {
                 "summary": {
                     "review_for_manual_close_count": len(_items),
                     "missing_stop_count": sum(1 for i in _items if i["stop_missing"]),
-                    "unresolved_count": len(_items) - _resolved,
-                    "resolved_count": _resolved,
+                    "pending_count": len(_pending),
+                    "resolved_count": len(_resolved_items),
                 },
+                "pending": _pending,
+                "reviewed": _resolved_items,
                 "items": _items,
             }}
         except Exception as e:
