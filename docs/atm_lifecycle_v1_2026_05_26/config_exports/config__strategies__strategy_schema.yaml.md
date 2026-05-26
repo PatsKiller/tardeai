@@ -1,0 +1,88 @@
+# Config Export: config/strategies/strategy_schema.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/strategy_schema.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `3ceab3943e295605161335620ded90334a92d8dc20d3713f6db6917ce54dcb80` |
+| **File Size** | 1214 bytes |
+
+## Full Source
+
+```yaml
+required_fields:
+  - strategy_id
+  - display_name
+  - version
+  - status
+  - purpose
+  - eligible_accounts
+  - timeframe
+  - timeframe_class
+  - universe
+  - entry_criteria
+  - auto_disqualifiers
+  - exit_rules
+  - risk
+  - scoring
+  - lifecycle
+  - execution
+  - agent_responsibilities
+  - co_enables
+  - validation_gate
+  - prompt_context
+
+valid_statuses:
+  - UNVALIDATED
+  - TESTING
+  - VALIDATED
+  - PAUSED
+  - KILLED
+
+valid_timeframe_classes:
+  - INTRADAY
+  - SHORT_SWING
+  - MEDIUM_SWING
+  - POSITION
+  - CASH
+
+valid_operators:
+  - gte
+  - lte
+  - gt
+  - lt
+  - eq
+  - neq
+  - in
+  - exists
+
+valid_actions:
+  - PASS
+  - WAIT
+  - CAUTION
+  - BLOCK
+  - PAPER_ONLY
+
+valid_missing_data_actions:
+  - WARN
+  - BLOCK
+  - IGNORE
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+```

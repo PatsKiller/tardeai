@@ -1,0 +1,104 @@
+# Config Export: config/strategies/recommendation_schema.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/recommendation_schema.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `ad69b4d4d5fc8878611d63367e85b13a238ed3a945bf543517a0ec81bfef6f6e` |
+| **File Size** | 2569 bytes |
+
+## Full Source
+
+```yaml
+version: "1.0"
+
+strategy_card:
+  symbol: string
+  strategy: string
+  setup_type: string
+  grade: string
+  score: float
+  confidence: float
+  data_quality_score: int
+  source_quality_score: float
+  recommendation: string
+  recommendation_reason: string
+  entry_zone: [float, float]
+  stop: float
+  target_1: float
+  target_2: float
+  risk_reward: float
+  shares: int
+  dollar_risk: float
+  tos_order_string: string
+  risk_gate_result: string
+  risk_gate_reason_codes: list
+  required_evidence_present: bool
+  missing_evidence: list
+  disqualifiers: list
+  agent_votes:
+    maria: string
+    risk: string
+    steph: string
+    tax: string
+    alex: string
+  account_fit: string
+  vix_at_signal: float
+  market_regime: string
+  sector_rank: int
+  intel_readiness: int
+  final_action: string
+  explanation: string
+  what_would_change_decision: string
+  signal_id: int
+  generated_at: timestamp
+  generated_by: string
+  parameter_version: string
+
+recommendation_levels:
+  DISCOVERED: "Signal identified but not yet screened"
+  QUALIFIED: "Passes basic screen filters for at least one strategy"
+  CANDIDATE: "Meets setup qualification requirements"
+  WATCH: "Candidate with incomplete evidence — monitor"
+  WAIT: "Evidence present but conditions not yet met (e.g., waiting for breakout)"
+  PAPER_TRADE: "Ready for paper trade logging"
+  LIVE_ELIGIBLE: "Strategy validated + risk gate approved for live"
+  RECOMMEND: "Full evidence, agent consensus, strategy card complete"
+  APPROVAL_REQUIRED: "Needs human approval before execution"
+  EXECUTION_READY: "Approved by John, risk gate passed, order string generated"
+
+grade_definitions:
+  "A+": "Exceptional setup — all evidence present, high conviction"
+  A: "Strong setup — most evidence present, good conviction"
+  B: "Decent setup — minimum evidence met, moderate conviction"
+  C: "Marginal setup — missing some evidence, low conviction"
+  D: "Weak setup — insufficient evidence, do not trade"
+
+final_action_values:
+  - TRADE_PAPER
+  - TRADE_LIVE
+  - WATCH
+  - WAIT
+  - PASS
+  - BLOCKED
+  - NEEDS_EVIDENCE
+  - NEEDS_APPROVAL
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+```

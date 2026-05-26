@@ -1,0 +1,159 @@
+# Config Export: config/strategies/high_yield_income_bdc.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/high_yield_income_bdc.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `c8270bc380cb3acbb7d89122399d312f748cd796b4805168d7ee255bcd09310b` |
+| **File Size** | 4272 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: high_yield_income_bdc
+display_name: High Yield Income (BDC/CLO)
+version: 1.0.0
+status: UNVALIDATED
+purpose: BDC, CLO, and high-yield vehicles for current income generation. Tax-inefficient income best suited for tax-advantaged accounts.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+timeframe: position_long
+timeframe_class: POSITION
+universe:
+  price:
+    min: 5.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+entry_criteria:
+  - id: YIELD_MINIMUM
+    description: Current distribution yield at least 7%
+    metric: distribution_yield
+    operator: gte
+    value: 0.07
+  - id: NAV_DISCOUNT
+    description: Trading at or below NAV (price/NAV <= 1.05)
+    metric: price_to_nav
+    operator: lte
+    value: 1.05
+  - id: DISTRIBUTION_COVERAGE
+    description: Net investment income covers at least 90% of distribution
+    metric: nii_coverage
+    operator: gte
+    value: 0.9
+  - id: CREDIT_QUALITY
+    description: Non-accrual rate below 3% of portfolio at fair value
+    metric: non_accrual_rate
+    operator: lte
+    value: 0.03
+auto_disqualifiers:
+  - id: DISTRIBUTION_CUT
+    description: Distribution cut within the last 6 months
+  - id: NAV_EROSION
+    description: NAV declined more than 10% over trailing 12 months
+  - id: BDC_IN_TAXABLE_UNAPPROVED
+    description: BDC placement in taxable account without explicit approval
+  - id: LEVERAGE_EXCESSIVE
+    description: Debt-to-equity ratio exceeds regulatory limit or 1.5x
+exit_rules:
+  stop_method: fundamental
+  target_method: level_based
+risk:
+  risk_per_trade_pct: 0.003
+  max_position_size: 10000
+  max_daily_trades:
+  target_rr: 1.5
+scoring:
+  min_score_go: 40
+  min_score_wait: 25
+lifecycle:
+  proposal_expiry_hours: 720
+  overnight_allowed: true
+  max_hold_days:
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify credit quality, NAV trend, distribution sustainability, and portfolio composition.
+  risk: Assess rate sensitivity, leverage levels, and correlation with existing income holdings.
+  steph: Confirm tax-advantaged account placement and income impact on SSDI/IRMAA thresholds.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - dividend_growth_compounder
+    - reit_income
+    - bond_income
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: High-yield income strategy targeting BDCs, CLOs, and high-yield vehicles for current income. Emphasizes distribution coverage, NAV stability, and credit quality. Tax-inefficient income strongly prefers IRA placement.
+  key_questions:
+    - Is the distribution covered by net investment income or is it return of capital?
+    - What is the non-accrual trend and credit quality trajectory?
+    - Is this being placed in a tax-advantaged account to avoid ordinary income taxation?
+screen_filters:
+  min_price: 3.0
+  max_price: 50.0
+  min_div_yield_pct: 7.0
+  max_div_yield_pct: 20.0
+  asset_type:
+    - bdc
+    - high_yield
+    - cef
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 35
+  elevated_vix_band:
+    - 25
+    - 35
+  elevated_vix_changes:
+    position_size_multiplier: 0.5
+    require_nav_premium_under_1_0: true
+    require_coverage_95pct: true
+  extreme_vix_threshold: 35
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: "BDC NAVs degrade with credit spreads — pause when spreads widen."
+technical_indicators_required:
+  gates: []
+  preferred:
+    - ema_200_support
+    - rsi_14_below_50
+    - discount_to_nav_widening
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_5
+  note: "NAV and credit metrics drive entry — technicals secondary."
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 60
+  eval_cadence: weekly
+  watchpool: true
+```

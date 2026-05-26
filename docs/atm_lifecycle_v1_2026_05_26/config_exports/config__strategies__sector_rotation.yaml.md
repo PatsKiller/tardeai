@@ -1,0 +1,209 @@
+# Config Export: config/strategies/sector_rotation.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/sector_rotation.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `a699f6ec571405ed45deeda609ee5cec70ff4b31627b1de3742a48786be44fd0` |
+| **File Size** | 5430 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: sector_rotation
+display_name: Sector Rotation
+version: 1.0.0
+status: TESTING
+purpose: Trade leading sector ETF surges and lagging sector weakness. Weekly rebalance.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+forbidden_accounts: []
+timeframe: position_2_to_8w
+timeframe_class: MEDIUM_SWING
+universe: sector_etfs
+primary_data_sources:
+  - price_cache
+  - fred_data
+  - indicator_engine
+etf_universe:
+  - XLF
+  - XLE
+  - XLK
+  - XLV
+  - XLI
+  - XLU
+  - XLP
+  - XLB
+  - XLRE
+  - XLC
+screen_filters:
+  min_relative_strength_vs_spy: 0.02
+  top_n_sectors: 3
+  rebalance_frequency: weekly
+  max_hold_weeks: 8
+setup_qualification:
+  outperform_spy_5d_pct: 2.0
+  must_be_top_3: true
+  exit_when_drops_to_bottom_5: true
+  macro_alignment_check: true
+auto_disqualifiers:
+  - id: NOT_IN_ETF_UNIVERSE
+    condition: symbol not in etf_universe
+  - id: BELOW_SPY_PERFORMANCE
+    condition: 5d performance < SPY + 2%
+  - id: MACRO_REGIME_HOSTILE
+    description: FRED macro signals (yield curve, ISM, claims) hostile to this sector
+scoring_weights:
+  relative_strength: 30
+  momentum: 25
+  breadth: 20
+  macro_alignment: 15
+  volume: 10
+grade_thresholds:
+  aplus: 50
+  a: 42
+  b: 35
+  c: 28
+minimum_evidence:
+  required:
+    - sector_performance_data
+    - spy_comparison
+    - fred_context
+  preferred:
+    - breadth_data
+    - options_flow
+agent_responsibilities:
+  steph: Verify sector allocation fit with portfolio. Check IRA eligibility.
+  risk: Verify relative strength calculation and exit rules.
+  alex: Check macro alignment with FRED context and retirement impact.
+  maria: Verify the rotation is fundamental (macro, earnings cycle, rates) not just price chasing. Check FRED for rate and yield-curve context.
+paper_trade_rules:
+  weekly_rebalance: true
+  log_sector_ranks_at_entry: true
+live_trade_rules:
+  dollar_risk: 500
+  max_hold_weeks: 8
+fidelity_401k_note: Limited to available 401k funds. Map sector to closest available fund.
+outcome_learning_fields:
+  - sector_rank_at_entry
+  - spy_relative_performance
+  - fred_context_at_entry
+  - hold_duration_weeks
+  - rebalance_count
+entry_criteria:
+  - id: SECTOR_RS_VS_SPY
+    description: Sector ETF 5-day return exceeds SPY by at least 2%
+    metric: sector_5d_return_minus_spy_pct
+    operator: gte
+    value: 0.02
+  - id: SECTOR_IN_TOP_3
+    description: Sector ranks in top 3 of 11 SPDRs by 5-day RS
+    metric: sector_rs_rank
+    operator: lte
+    value: 3
+  - id: SECTOR_EMA_50_RISING
+    description: Sector ETF above and rising 50-day EMA (slope positive over 5 days)
+    metric: ema_50_slope_5d
+    operator: gt
+    value: 0
+  - id: BREADTH_CONFIRMING
+    description: At least 60% of sector components above their 50-day SMA
+    metric: pct_components_above_sma_50
+    operator: gte
+    value: 0.6
+exit_rules:
+  stop_method: rank_based
+  exit_when_drops_to_bottom_5: true
+  target_method: trailing
+  rebalance_frequency: weekly
+lifecycle:
+  proposal_expiry_hours: 168
+  overnight_allowed: true
+  max_hold_days: 56
+risk:
+  risk_per_trade_pct: 0.01
+  max_position_size: 25000
+  max_daily_trades:
+  target_rr: 2.0
+  max_sector_concentration_pct: 0.25
+co_enables:
+  promotes_to: []
+  strengthens:
+    - swing_breakout
+    - speculative_growth
+  notes: Sector leadership confirms individual breakouts within that sector.
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Sector rotation strategy across 11 SPDRs. Top-3 RS sectors with EMA-50 rising and breadth confirmation. Weekly rebalance, 2-8 week hold.
+  key_questions:
+    - Is sector leadership confirmed by breadth or driven by 1-2 outliers?
+    - "What is the macro context — risk-on rotation or defensive?"
+    - Does the FRED yield-curve signal support continued sector strength?
+vix_rules:
+  max_vix_for_entry: 40
+  elevated_vix_band:
+    - 30
+    - 40
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+    top_n_sectors_override: 1
+    prefer_defensive_sectors: true
+  extreme_vix_threshold: 40
+  extreme_vix_action: rotate_to_defensives
+  exit_holdings_at_vix:
+  notes: "VIX spikes drive defensive rotation — narrow to top-1 sector and prefer XLP/XLU."
+technical_indicators_required:
+  gates:
+    - id: SECTOR_RS_VS_SPY
+      condition: 5-day RS > SPY + 2%
+      metric: sector_5d_rs_minus_spy
+      operator: gte
+      value: 0.02
+    - id: SECTOR_EMA_50_RISING
+      condition: sector ETF above and rising 50-day EMA
+      metric: ema_50_slope_5d
+      operator: gt
+      value: 0
+    - id: BREADTH_CONFIRMING
+      condition: 60%+ sector components above 50-day SMA
+      metric: pct_components_above_sma_50
+      operator: gte
+      value: 0.6
+  preferred:
+    - advance_decline_line
+    - sector_options_flow
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_5
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: MULTI_DAY
+  ttl_days: 20
+  eval_cadence: daily
+  watchpool: true
+```

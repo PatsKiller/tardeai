@@ -1,0 +1,162 @@
+# Config Export: config/strategies/bond_income.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/bond_income.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `3f848e059cc9a77d3485fa5340eb6c90df66886219edf3bf25fabee6fef4e05a` |
+| **File Size** | 4223 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: bond_income
+display_name: Bond Income
+version: 1.0.0
+status: UNVALIDATED
+purpose: Bond funds and ETFs for fixed income allocation. Portfolio ballast, income generation, and interest rate positioning.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+timeframe: position_long
+timeframe_class: POSITION
+universe:
+  price:
+    min: 1.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+entry_criteria:
+  - id: BOND_VEHICLE
+    description: Approved bond ETF or mutual fund (AGG, BND, TLT, VCIT, VGSH, etc.)
+    metric: asset_class
+    operator: eq
+    value: fixed_income
+  - id: DURATION_FIT
+    description: Duration appropriate for current rate environment and portfolio needs
+    metric: duration_appropriateness
+    operator: eq
+    value: true
+  - id: YIELD_ATTRACTIVE
+    description: SEC yield or distribution yield meets minimum threshold for duration risk
+    metric: sec_yield
+    operator: gte
+    value: 0.03
+  - id: CREDIT_QUALITY
+    description: Average credit quality of investment grade (BBB or above)
+    metric: avg_credit_quality
+    operator: in
+    value:
+      - AAA
+      - AA
+      - A
+      - BBB
+auto_disqualifiers:
+  - id: HIGH_YIELD_ONLY_UNAWARE
+    description: High-yield bond fund without explicit risk acknowledgment
+  - id: DURATION_MISMATCH
+    description: Long duration in rising rate environment without explicit thesis
+  - id: IRMAA_INCOME_BREACH
+    description: Interest income would push MAGI past IRMAA threshold
+exit_rules:
+  stop_method: fundamental
+  target_method: level_based
+risk:
+  risk_per_trade_pct: 0.003
+  max_position_size: 25000
+  max_daily_trades:
+  target_rr: 1.5
+scoring:
+  min_score_go: 35
+  min_score_wait: 20
+lifecycle:
+  proposal_expiry_hours: 720
+  overnight_allowed: true
+  max_hold_days:
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify rate environment context, credit spread trends, and Fed policy outlook.
+  risk: Assess duration risk, credit quality, and portfolio-level fixed income allocation.
+  steph: Confirm account placement for tax efficiency (munis in taxable, corporates in IRA).
+co_enables:
+  promotes_to: []
+  strengthens:
+    - cash_or_stable
+    - core_index
+    - international_dividend
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Bond income strategy for fixed income allocation via bond ETFs and funds. Balances yield, duration, and credit quality for portfolio ballast. Tax-aware placement with munis in taxable and corporates in IRA.
+  key_questions:
+    - Is duration positioning appropriate for the current rate cycle?
+    - What is the credit spread environment signaling about risk appetite?
+    - Should munis be favored in taxable accounts for after-tax yield?
+screen_filters:
+  min_price: 20.0
+  max_price: 200.0
+  min_div_yield_pct: 2.5
+  max_beta: 0.5
+  asset_type:
+    - etf
+    - bond_fund
+    - preferred
+  min_score: 0
+vix_rules:
+  max_vix_for_entry:
+  elevated_vix_band:
+    - 30
+    - 50
+  elevated_vix_changes:
+    position_size_multiplier: 1.0
+    accelerate_screening: true
+    prefer_treasuries: true
+  extreme_vix_threshold:
+  extreme_vix_action: no_restriction
+  exit_holdings_at_vix:
+  notes: "Bonds are always eligible — VIX spikes often coincide with bond rallies."
+technical_indicators_required:
+  gates: []
+  preferred:
+    - duration_appropriateness
+    - yield_curve_position
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_14
+    - ema_9
+    - bollinger_squeeze
+  note: Duration and credit drive entry, not price technicals.
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 60
+  eval_cadence: weekly
+  watchpool: true
+```

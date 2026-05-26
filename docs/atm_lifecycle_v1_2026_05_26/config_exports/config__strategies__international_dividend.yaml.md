@@ -1,0 +1,155 @@
+# Config Export: config/strategies/international_dividend.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/international_dividend.yaml` |
+| **Git Commit** | `915876ff12f0988acccf1553f44dd50b0a75dd54` |
+| **SHA256** | `9b2d87f33eaf36cf6426ebb49c16022a2d35df0794c4e70414841bf6199fd034` |
+| **File Size** | 4229 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: international_dividend
+display_name: International Dividend
+version: 1.0.0
+status: UNVALIDATED
+purpose: International dividend-paying equities and ETFs for geographic diversification and currency exposure. Focus on developed market payers with stable dividends.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+timeframe: position_long
+timeframe_class: POSITION
+universe:
+  price:
+    min: 5.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+entry_criteria:
+  - id: INTERNATIONAL_EXPOSURE
+    description: ETF or ADR with primary revenue from non-US markets
+    metric: intl_revenue_pct
+    operator: gte
+    value: 0.5
+  - id: YIELD_MINIMUM
+    description: Current dividend yield at least 2.5%
+    metric: dividend_yield
+    operator: gte
+    value: 0.025
+  - id: DIVIDEND_STABILITY
+    description: No dividend cut in the last 3 years (or ETF distribution stable)
+    metric: div_cut_3y
+    operator: eq
+    value: false
+  - id: CURRENCY_DIVERSIFICATION
+    description: Adds meaningful currency diversification to portfolio
+    metric: currency_diversification_score
+    operator: gte
+    value: 0.5
+auto_disqualifiers:
+  - id: COUNTRY_RISK_EXTREME
+    description: Domiciled in country with extreme political or capital control risk
+  - id: WITHHOLDING_TAX_PUNITIVE
+    description: Foreign withholding tax >25% without treaty relief
+  - id: LIQUIDITY_INSUFFICIENT
+    description: Average daily volume below $500K for ADRs
+  - id: DIVIDEND_CUT_RECENT
+    description: Dividend cut within last 12 months
+exit_rules:
+  stop_method: fundamental
+  target_method: level_based
+risk:
+  risk_per_trade_pct: 0.003
+  max_position_size: 10000
+  max_daily_trades:
+  target_rr: 2.0
+scoring:
+  min_score_go: 38
+  min_score_wait: 25
+lifecycle:
+  proposal_expiry_hours: 720
+  overnight_allowed: true
+  max_hold_days:
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify dividend sustainability, country risk, and currency trend analysis.
+  risk: Assess foreign withholding tax impact, ADR liquidity, and correlation with domestic holdings.
+  steph: Confirm account placement for foreign tax credit optimization and portfolio diversification fit.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - dividend_growth_compounder
+    - core_index
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: International dividend strategy for geographic and currency diversification via dividend-paying ADRs and international ETFs. Prioritizes developed market stability with foreign tax credit awareness for account placement.
+  key_questions:
+    - Does the foreign withholding tax make this better suited for taxable (FTC) or IRA?
+    - What is the currency risk and does it provide meaningful diversification?
+    - Is the dividend sustainable given the local economic and political environment?
+screen_filters:
+  min_price: 5.0
+  max_price: 300.0
+  min_div_yield_pct: 2.0
+  max_div_yield_pct: 10.0
+  country_filter:
+    - non_us
+    - international
+    - adr
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 40
+  elevated_vix_band:
+    - 30
+    - 40
+  elevated_vix_changes:
+    position_size_multiplier: 0.75
+  extreme_vix_threshold: 40
+  extreme_vix_action: pause_new_entries
+  exit_holdings_at_vix:
+  notes: Currency volatility compounds equity volatility in international names.
+technical_indicators_required:
+  gates: []
+  preferred:
+    - ema_200_support
+    - currency_trend
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi_5
+  note: Fundamental and currency-driven entry.
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 60
+  eval_cadence: weekly
+  watchpool: true
+```
