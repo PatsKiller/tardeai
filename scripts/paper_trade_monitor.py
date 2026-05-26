@@ -279,24 +279,35 @@ def monitor(dry_run=False):
                     action = "tighten_near_target"
                     reason = f"NEAR TARGET ({pct_to_target*100:.0f}% of move) → tight stop ${new_stop:.2f} to lock gains"
 
-        # ── R-MULTIPLE TRAILING STOP ──
-        # Design decision: Manual R-based stops (not Alpaca native trailing_percent).
-        # R-multiple logic requires custom thresholds (1R=breakeven, 1.5R=lock 0.5R, etc.)
-        # that can't be expressed as a single trailing percentage. Trade-off: 5-min gap
-        # between adjustments vs. native trailing. Acceptable because R-logic is superior
-        # to fixed-percent trailing for strategy-aware risk management.
-        elif r_mult >= 3.0:
-            new_stop = round(db_entry + risk * 2.0, 2)
-            reason = f"R={r_mult:.1f} → lock 2.0R profit (stop ${new_stop:.2f})"
-        elif r_mult >= 2.0:
-            new_stop = round(db_entry + risk * 1.0, 2)
-            reason = f"R={r_mult:.1f} → lock 1.0R profit (stop ${new_stop:.2f})"
-        elif r_mult >= 1.5:
-            new_stop = round(db_entry + risk * 0.5, 2)
-            reason = f"R={r_mult:.1f} → lock 0.5R profit (stop ${new_stop:.2f})"
-        elif r_mult >= 1.0:
-            new_stop = round(db_entry, 2)
-            reason = f"R={r_mult:.1f} → breakeven stop (${new_stop:.2f})"
+        # ── STRATEGY-AWARE TRAILING STOP ──
+        # Uses per-strategy family tiers from strategy_trailing_policy.py.
+        # Income/position strategies trail wider (breakeven at 1.5R/2.0R),
+        # momentum/swing trail tighter (breakeven at 1.0R).
+        else:
+            try:
+                from strategy_trailing_policy import get_trailing_policy
+                _policy = get_trailing_policy(trade.get('strategy_id', 'unknown'))
+                _tiers = _policy.get('tiers', [])
+                # Walk tiers in reverse (highest R threshold first)
+                for _r_thresh, _lock_r, _desc in reversed(_tiers):
+                    if r_mult >= _r_thresh:
+                        new_stop = round(db_entry + risk * _lock_r, 2)
+                        reason = f"R={r_mult:.1f} [{_policy.get('family','?')}] ≥{_r_thresh}R → {_desc} (stop ${new_stop:.2f})"
+                        break
+            except ImportError:
+                # Fallback: original hard-coded tiers if policy module unavailable
+                if r_mult >= 3.0:
+                    new_stop = round(db_entry + risk * 2.0, 2)
+                    reason = f"R={r_mult:.1f} → lock 2.0R profit (stop ${new_stop:.2f})"
+                elif r_mult >= 2.0:
+                    new_stop = round(db_entry + risk * 1.0, 2)
+                    reason = f"R={r_mult:.1f} → lock 1.0R profit (stop ${new_stop:.2f})"
+                elif r_mult >= 1.5:
+                    new_stop = round(db_entry + risk * 0.5, 2)
+                    reason = f"R={r_mult:.1f} → lock 0.5R profit (stop ${new_stop:.2f})"
+                elif r_mult >= 1.0:
+                    new_stop = round(db_entry, 2)
+                    reason = f"R={r_mult:.1f} → breakeven stop (${new_stop:.2f})"
 
         # Only move stop UP, never down
         if new_stop > alpaca_stop and action in ("hold", "tighten_near_target"):
