@@ -12,6 +12,7 @@ FOLDER_CACHE = Path('/home/johnclaw/.local/state/drive-folder-cache.json')
 LOG = Path('/home/johnclaw/logs/drive-docs-sync.log')
 
 os.environ['GOG_KEYRING_PASSWORD'] = Path('/home/johnclaw/.openclaw/credentials/gog_keyring_password').read_text().strip()
+GOG_BIN = '/home/johnclaw/.local/bin/gog'
 
 SYNC_ROOTS = [(SRC_ROOT / 'docs', 'docs'), (SRC_ROOT / 'config' / 'strategies', 'config-strategies')]
 EXTRA_FILES = [(SRC_ROOT / '.env.example', None)]
@@ -52,7 +53,7 @@ def save_json(p, data):
     os.replace(tmp, p)
 
 def gog(*args):
-    r = subprocess.run(['gog'] + list(args) + ['--account', ACCOUNT, '--no-input'],
+    r = subprocess.run([GOG_BIN] + list(args) + ['--account', ACCOUNT, '--no-input'],
                        capture_output=True, text=True, timeout=30)
     return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
 

@@ -1,0 +1,157 @@
+# Source Export: config/strategies/tax_loss_harvest.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/tax_loss_harvest.yaml` |
+| **Git Branch** | `main` |
+| **Git Commit** | `c1286d314deb377df49713e1646f139db7f43643` |
+| **Export Timestamp** | `2026-05-26T15:49:17Z` |
+| **SHA256** | `c01633f7b1c2099a2e1711b9178dbe1c8009b84127cfd008340b04f74e482b55` |
+| **File Size** | 4264 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: tax_loss_harvest
+display_name: Tax Loss Harvest
+version: 1.0.0
+status: UNVALIDATED
+purpose: Harvest realized losses in taxable accounts for tax efficiency. Sell losing positions and replace with correlated but non-substantially-identical substitutes.
+eligible_accounts:
+  - taxable
+timeframe: swing_3_to_21d
+timeframe_class: SHORT_SWING
+universe:
+  price:
+    min: 1.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+entry_criteria:
+  - id: UNREALIZED_LOSS
+    description: Position has unrealized loss exceeding $200 or 5% of cost basis
+    metric: unrealized_loss_pct
+    operator: lte
+    value: -0.05
+  - id: HARVEST_BENEFIT
+    description: Estimated tax benefit exceeds transaction costs by at least 3x
+    metric: tax_benefit_ratio
+    operator: gte
+    value: 3.0
+  - id: SUBSTITUTE_AVAILABLE
+    description: Non-substantially-identical substitute available for replacement
+    metric: substitute_available
+    operator: eq
+    value: true
+  - id: NO_WASH_SALE_CONFLICT
+    description: No purchase of substantially identical security in 30-day window
+    metric: wash_sale_clear
+    operator: eq
+    value: true
+auto_disqualifiers:
+  - id: WASH_SALE_WINDOW
+    description: Substantially identical security purchased within 30-day window (before or after)
+  - id: IRA_ACCOUNT
+    description: Cannot harvest losses in tax-advantaged accounts
+  - id: LOSS_TOO_SMALL
+    description: Loss below $200 not worth transaction friction
+  - id: YEAR_END_WASH_RISK
+    description: Too close to year-end to complete 30-day wash sale window
+exit_rules:
+  stop_method: fixed_pct
+  target_method: level_based
+risk:
+  risk_per_trade_pct: 0.005
+  max_position_size: 10000
+  max_daily_trades:
+  target_rr: 1.0
+scoring:
+  min_score_go: 35
+  min_score_wait: 20
+lifecycle:
+  proposal_expiry_hours: 168
+  overnight_allowed: true
+  max_hold_days: 31
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify thesis on original position - is the loss permanent or temporary?
+  risk: Validate wash sale compliance across all accounts and 61-day window.
+  steph: Calculate tax benefit, confirm substitute selection, and track harvest budget YTD.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - core_index
+    - core_growth_compounder
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Tax loss harvesting strategy for taxable accounts. Sells losing positions to realize losses for tax efficiency and replaces with non-substantially-identical substitutes. Strict wash sale compliance across all accounts.
+  key_questions:
+    - Is the loss likely permanent or is this a temporary drawdown worth holding?
+    - Is there a suitable non-substantially-identical substitute to maintain market exposure?
+    - Are there any wash sale conflicts across taxable, IRA, or Roth accounts?
+screen_filters:
+  min_price: 1.0
+  max_price: 5000.0
+  max_pct_from_cost_basis: -5
+  requires_unrealized_loss: true
+  requires_existing_position: true
+  account_types:
+    - taxable
+  min_holding_days: 31
+  min_score: 0
+vix_rules:
+  max_vix_for_entry:
+  elevated_vix_band:
+    - 25
+    - 50
+  elevated_vix_changes:
+    accelerate_screening: true
+  extreme_vix_threshold:
+  extreme_vix_action: accelerate_new_entries
+  exit_holdings_at_vix:
+  notes: "VIX spikes create harvestable losses — accelerate."
+technical_indicators_required:
+  gates: []
+  preferred: []
+  irrelevant:
+    - vwap
+    - opening_range
+    - rsi
+    - ema
+    - fib
+    - bollinger
+    - macd
+  note: "Technicals are entirely irrelevant — this is a tax-driven strategy."
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 365
+  eval_cadence: quarterly
+  watchpool: true
+```

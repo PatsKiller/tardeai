@@ -1,0 +1,172 @@
+# Source Export: config/strategies/recovery_watch.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/recovery_watch.yaml` |
+| **Git Branch** | `main` |
+| **Git Commit** | `c1286d314deb377df49713e1646f139db7f43643` |
+| **Export Timestamp** | `2026-05-26T15:49:17Z` |
+| **SHA256** | `c20d1fcf6394668a8c7397ee3f3e6b56b33b39c64955580c6bdd78770c70d1cd` |
+| **File Size** | 4538 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: recovery_watch
+display_name: Recovery Watch
+version: 1.0.0
+status: UNVALIDATED
+purpose: Beaten-down names showing early recovery signs. Contrarian entries on oversold bounces with fundamental improvement catalysts.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+timeframe: position_2_to_8w
+timeframe_class: MEDIUM_SWING
+universe:
+  price:
+    min: 3.0
+    max: 200.0
+  float_m:
+    max:
+  rvol:
+    min: 1.0
+entry_criteria:
+  - id: DRAWDOWN_MAGNITUDE
+    description: Stock has declined 30%+ from 52-week high
+    metric: drawdown_from_52w_high
+    operator: lte
+    value: -0.3
+  - id: RECOVERY_SIGNAL
+    description: Price reclaiming 10-day or 20-day SMA with volume
+    metric: sma_reclaim
+    operator: eq
+    value: true
+  - id: FUNDAMENTAL_CATALYST
+    description: 'Identifiable catalyst for recovery: earnings beat, insider buying, upgrade, restructuring'
+    metric: recovery_catalyst
+    operator: exists
+    value: true
+  - id: NOT_VALUE_TRAP
+    description: Revenue not declining and no secular headwinds
+    metric: revenue_trend
+    operator: in
+    value:
+      - growing
+      - stable
+auto_disqualifiers:
+  - id: BANKRUPTCY_RISK
+    description: Debt maturities within 12 months exceed cash plus revolver
+  - id: SECULAR_DECLINE
+    description: Industry in permanent secular decline with no pivot
+  - id: FRAUD_OR_RESTATEMENT
+    description: Accounting restatement or fraud investigation active
+  - id: INSIDER_DUMPING
+    description: Heavy insider selling during the decline period
+exit_rules:
+  stop_method: atr_based
+  target_method: rr_based
+risk:
+  risk_per_trade_pct: 0.005
+  max_position_size: 3000
+  max_daily_trades: 2
+  target_rr: 3.0
+scoring:
+  min_score_go: 42
+  min_score_wait: 28
+lifecycle:
+  proposal_expiry_hours: 336
+  overnight_allowed: true
+  max_hold_days: 56
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify recovery catalyst legitimacy and distinguish from dead-cat bounce.
+  risk: Assess downside risk to new lows, bankruptcy probability, and stop placement.
+  steph: Confirm position sizing appropriate for speculative recovery allocation.
+co_enables:
+  promotes_to:
+    - swing_trade
+    - speculative_growth
+  strengthens: []
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Recovery watch strategy for contrarian entries on beaten-down names showing fundamental improvement. Targets 30%+ drawdowns with identifiable recovery catalysts. Holds 2-8 weeks with strict value-trap guardrails.
+  key_questions:
+    - Is this a genuine recovery catalyst or a dead-cat bounce?
+    - What is the bankruptcy or further downside risk from current levels?
+    - Is insider behavior aligned with the recovery thesis?
+screen_filters:
+  min_price: 1.0
+  max_price: 100.0
+  max_pct_from_52w_high: -30
+  recovery_candidate: true
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 45
+  elevated_vix_band:
+    - 30
+    - 50
+  elevated_vix_changes:
+    position_size_multiplier: 1.0
+    accelerate_screening: true
+    expand_universe: true
+  extreme_vix_threshold: 50
+  extreme_vix_action: accelerate_new_entries
+  exit_holdings_at_vix:
+  notes: "VIX spikes are recovery_watch's bread and butter — accelerate, don't pause."
+technical_indicators_required:
+  gates:
+    - id: RSI_OVERSOLD
+      condition: RSI(14) <= 30
+      metric: rsi_14
+      operator: lte
+      value: 30
+    - id: ABOVE_PRIOR_SWING_LOW
+      condition: price > most recent swing low
+      metric: price_vs_swing_low
+      operator: gt
+      value: 0
+    - id: VOLUME_CAPITULATION
+      condition: recent volume spike on down day (capitulation signal)
+      metric: down_day_rvol
+      operator: gte
+      value: 2.0
+  preferred:
+    - williams_pct_r
+    - macd_divergence
+    - atr_14_pct
+    - bollinger_lower_band_touch
+  irrelevant:
+    - vwap
+    - opening_range
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: MULTI_DAY
+  ttl_days: 15
+  eval_cadence: daily
+  watchpool: true
+```

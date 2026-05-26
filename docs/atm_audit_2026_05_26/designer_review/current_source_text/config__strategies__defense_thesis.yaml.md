@@ -1,0 +1,174 @@
+# Source Export: config/strategies/defense_thesis.yaml
+
+| Field | Value |
+|-------|-------|
+| **Original Path** | `config/strategies/defense_thesis.yaml` |
+| **Git Branch** | `main` |
+| **Git Commit** | `c1286d314deb377df49713e1646f139db7f43643` |
+| **Export Timestamp** | `2026-05-26T15:49:17Z` |
+| **SHA256** | `14031f1131cbe51f4d344504a127d1ac3c77707adfb029b3b73e70b891fe97d1` |
+| **File Size** | 4617 bytes |
+
+## Full Source
+
+```yaml
+strategy_id: defense_thesis
+display_name: Defense Thesis
+version: 1.0.0
+status: UNVALIDATED
+purpose: Defense and aerospace conviction positions based on AI + WWIII geopolitical thesis. Long-term strategic allocation to defense contractors and adjacent technologies.
+eligible_accounts:
+  - taxable
+  - rollover_ira
+  - roth_ira
+timeframe: position_long
+timeframe_class: POSITION
+universe:
+  price:
+    min: 20.0
+    max:
+  float_m:
+    max:
+  rvol:
+    min:
+entry_criteria:
+  - id: DEFENSE_SECTOR
+    description: Company is a defense contractor, aerospace firm, or defense-adjacent technology provider
+    metric: sector_subsector
+    operator: in
+    value:
+      - defense_prime
+      - defense_sub
+      - aerospace
+      - defense_tech
+      - cybersecurity_defense
+  - id: GOVERNMENT_REVENUE
+    description: At least 30% of revenue from US government or NATO contracts
+    metric: govt_revenue_pct
+    operator: gte
+    value: 0.3
+  - id: BACKLOG_GROWTH
+    description: Contract backlog growing or stable YoY
+    metric: backlog_trend
+    operator: in
+    value:
+      - growing
+      - stable
+  - id: PULLBACK_ENTRY
+    description: Entry on pullback to support or consolidation, not chasing highs
+    metric: entry_quality
+    operator: eq
+    value: pullback_or_base
+auto_disqualifiers:
+  - id: CONTRACT_LOSS_MAJOR
+    description: Lost a major contract representing >10% of revenue
+  - id: SECURITY_CLEARANCE_ISSUE
+    description: Company facing security clearance revocation or CFIUS concerns
+  - id: BUDGET_CUT_DIRECT
+    description: Direct line item in proposed budget cuts exceeding 15%
+  - id: OVERCONCENTRATION
+    description: Defense thesis allocation would exceed 20% of total portfolio
+exit_rules:
+  stop_method: fundamental
+  target_method: trailing
+risk:
+  risk_per_trade_pct: 0.01
+  max_position_size: 25000
+  max_daily_trades:
+  target_rr: 3.0
+scoring:
+  min_score_go: 45
+  min_score_wait: 30
+lifecycle:
+  proposal_expiry_hours: 720
+  overnight_allowed: true
+  max_hold_days:
+execution:
+  paper_allowed: true
+  live_allowed: false
+agent_responsibilities:
+  maria: Verify contract pipeline, geopolitical catalyst relevance, and competitive position.
+  risk: Assess concentration risk within defense thesis and correlation with existing holdings.
+  steph: Confirm portfolio-level defense allocation limits and account placement optimization.
+co_enables:
+  promotes_to: []
+  strengthens:
+    - core_growth_compounder
+    - covered_call_income
+validation_gate:
+  min_closed_paper_trades: 30
+  min_win_rate: 0.55
+  min_profit_factor: 1.3
+  min_calendar_months: 6
+  human_approval_required: true
+prompt_context:
+  summary: Defense thesis strategy for conviction positions in defense/aerospace companies aligned with AI and geopolitical risk themes. Long-term hold with fundamental exit criteria. Targets prime contractors, defense tech, and cybersecurity defense names.
+  key_questions:
+    - Is the geopolitical catalyst thesis strengthening or weakening?
+    - Does the company have durable contract backlog and margin stability?
+    - What is current defense thesis allocation as percentage of total portfolio?
+screen_filters:
+  min_price: 5.0
+  max_price: 1000.0
+  min_market_cap_b: 0.5
+  sector_include:
+    - Industrials
+    - Technology
+  sector_filter:
+    - defense
+    - aerospace
+    - cybersecurity
+  industry_keywords:
+    - defense
+    - aerospace
+    - government
+    - military
+    - security
+  thesis_driven: true
+  min_score: 0
+vix_rules:
+  max_vix_for_entry: 40
+  elevated_vix_band:
+    - 25
+    - 40
+  elevated_vix_changes:
+    position_size_multiplier: 1.0
+    accelerate_screening: true
+  extreme_vix_threshold: 40
+  extreme_vix_action: no_restriction
+  exit_holdings_at_vix:
+  notes: Defense names often benefit from geopolitical-driven VIX spikes.
+technical_indicators_required:
+  gates: []
+  preferred:
+    - ema_200_support
+    - sector_rs
+    - contract_announcement_proximity
+  irrelevant:
+    - vwap
+    - opening_range
+  note: "Thematic/fundamental entry — technicals inform timing only."
+performance_context:
+  last_updated: '2026-05-26T06:30:01+00:00'
+  closed_paper_trades: 0
+  win_rate:
+  avg_r_realized:
+  profit_factor:
+  max_drawdown_pct:
+  expectancy_per_trade:
+  best_trade_r:
+  worst_trade_r:
+  current_streak:
+  ready_for_review: false
+  review_thresholds:
+    min_trades: 30
+    min_months: 6
+    min_profit_factor: 1.25
+    min_win_rate: 0.5
+  notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+freshness:
+  bucket: LONG_CYCLE
+  ttl_days: 30
+  eval_cadence: weekly
+  watchpool: true
+```
