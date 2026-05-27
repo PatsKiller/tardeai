@@ -24,7 +24,7 @@ defaults:
   kill_switches:
     daily_loss_pct_hard_pause: 0.25
   operating_hours:
-    start_et: "09:35"
+    start_et: "07:00"
     stop_new_entries_et: "15:30"
 
 # Same-day strategies that the 15-min ATM cron is too slow for.
