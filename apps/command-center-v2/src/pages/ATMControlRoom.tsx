@@ -75,7 +75,7 @@ function keyOf(r: R) { return [r.paper_trade_id, r.trade_id, r.id, r.symbol, r.s
 
 
 function normalizeJournalOpen(raw: any): R[] {
-  const rows = arr(raw?.open_positions, raw?.openPositions, raw?.open, raw?.alpaca_paper?.open_positions, raw?.journal?.open_positions, raw?.data?.open_positions, raw?.positions);
+  const rows = arr(raw?.open_trades, raw?.open_positions, raw?.openPositions, raw?.open, raw?.alpaca_paper?.open_positions, raw?.journal?.open_positions, raw?.data?.open_positions, raw?.data?.open_trades, raw?.positions);
   return rows.map((r) => ({
     ...r,
     symbol: sym(r),
