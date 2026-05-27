@@ -127,6 +127,56 @@ MONITORED_COMPONENTS = [
      "downstream": "execution quality page"},
 
     # ── Quote Refresh ──
+    # ── ATM & Proposals ──
+    {"component": "atm_auto_approver", "display": "ATM Auto Approver",
+     "schedule": "*/15 7-15 * * 1-5", "log_file": "atm.log",
+     "max_age_min": 30, "max_runtime_sec": 60, "critical": True,
+     "retry_cmd": ".venv/bin/python scripts/atm_auto_approver.py",
+     "downstream": "automated trade approval"},
+    {"component": "proposal_enrichment", "display": "Proposal Enrichment",
+     "schedule": "*/15 9-16 * * 1-5", "log_file": "proposal_enrichment.log",
+     "max_age_min": 30, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/proposal_enrichment_loop.py --run --limit 5",
+     "downstream": "proposal readiness, agent reviews"},
+    {"component": "agent_event_router", "display": "Agent Event Router",
+     "schedule": "*/30 * * * *", "log_file": "agent_event_router.log",
+     "max_age_min": 60, "max_runtime_sec": 300, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/agent_event_router.py",
+     "downstream": "event-driven agent triggers"},
+    {"component": "paper_execution_sweep", "display": "Paper Execution Sweep",
+     "schedule": "*/15 9-16 * * 1-5", "log_file": "paper_execution.log",
+     "max_age_min": 30, "max_runtime_sec": 120, "critical": True,
+     "retry_cmd": ".venv/bin/python scripts/paper_execution_sweep.py",
+     "downstream": "order submission, fill detection"},
+
+    # ── Intelligence ──
+    {"component": "alex_daily", "display": "Alex Daily Scan",
+     "schedule": "0 5 * * 1-5", "log_file": "alex_daily.log",
+     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/run_alex_daily.py --daily",
+     "downstream": "CIO intelligence, daily alerts"},
+    {"component": "cio_decision_engine", "display": "CIO Decision Engine",
+     "schedule": "0 7 * * 1-5", "log_file": "cio_decisions.log",
+     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/cio_decision_engine.py --run",
+     "downstream": "CIO decisions, portfolio allocation"},
+    {"component": "data_gap_resolver", "display": "Data Gap Resolver",
+     "schedule": "0 10-16 * * 1-5", "log_file": "data_gap_resolver.log",
+     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/data_gap_resolver.py",
+     "downstream": "data completeness, enrichment gaps"},
+    {"component": "overnight_batch", "display": "Overnight Batch",
+     "schedule": "0 20 * * *", "log_file": "overnight_batch.log",
+     "max_age_min": 1500, "max_runtime_sec": 1800, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/overnight_batch.py",
+     "downstream": "metrics, stale refresh, agent performance"},
+    {"component": "auto_enrichment", "display": "Auto Enrichment Runner",
+     "schedule": "*/5 9-15 * * 1-5", "log_file": "auto_enrichment.log",
+     "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/auto_enrichment_runner.py",
+     "downstream": "symbol enrichment, data quality"},
+
+    # ── Quote Refresh ──
     {"component": "proactive_quote_refresh", "display": "Quote Refresh",
      "schedule": "*/5 9-15 * * 1-5", "log_file": "proactive_quote_refresh_cron.log",
      "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
@@ -673,8 +723,127 @@ def run_health_check(dry_run=True, verbose=False):
     except Exception as e:
         log.warning(f"Queue cleanup failed: {e}")
 
+    # ── Portfolio risk checks (5 conditions from Command Center) ──
+    portfolio_alerts = []
+    try:
+        _state_dir = PROJECT_ROOT / "data" / "portfolios" / "state"
+        _rm = {}
+        _rm_path = _state_dir / "risk_management.json"
+        if _rm_path.exists():
+            import json as _json_rm
+            _rm = _json_rm.loads(_rm_path.read_text())
+
+        # 1. Triggered stops
+        _STOP_EXEMPT = {"fidelity_401k", "schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable"}
+        _triggered = [p for p in _rm.get("positions", [])
+                      if p.get("status") == "TRIGGERED"
+                      and (p.get("account", "") or "").lower() not in _STOP_EXEMPT]
+        if _triggered:
+            _syms = ", ".join(p.get("symbol", "?") for p in _triggered[:5])
+            portfolio_alerts.append(f"🚨 {len(_triggered)} stop(s) triggered: {_syms}")
+
+        # 2. Portfolio heat
+        _heat = _rm.get("portfolio_heat_pct", 0)
+        if _heat > 5:
+            portfolio_alerts.append(f"⚠️ Portfolio heat {_heat:.1f}% — above 5% threshold")
+
+        # 3. No-stop positions
+        _no_stop = sum(1 for p in _rm.get("positions", [])
+                       if p.get("status") == "NO STOP"
+                       and (p.get("account", "") or "").lower() not in _STOP_EXEMPT)
+        if _no_stop > 5:
+            portfolio_alerts.append(f"⚠️ {_no_stop} positions without stops")
+
+        # 4. CIO critical decisions
+        _cio = _db_query("""SELECT COUNT(*) as cnt FROM cio_decisions
+            WHERE priority IN ('critical','high')
+            AND status NOT IN ('completed','dismissed')
+            AND created_at > NOW() - INTERVAL '7 days'""", fetch="one") if not dry_run else {}
+        _cio_cnt = (_cio or {}).get("cnt", 0)
+        if _cio_cnt > 0:
+            portfolio_alerts.append(f"⚡ {_cio_cnt} CIO critical/high decisions pending")
+
+        # 5. Paper trade drift (open trades with no recent price sync)
+        _stale_trades = _db_query("""SELECT COUNT(*) as cnt FROM paper_trades
+            WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '4 hours')""",
+            fetch="one") if not dry_run else {}
+        _stale_trade_cnt = (_stale_trades or {}).get("cnt", 0)
+        if _stale_trade_cnt > 0:
+            portfolio_alerts.append(f"📊 {_stale_trade_cnt} paper trade(s) not synced in 4h+")
+
+        if portfolio_alerts:
+            report["portfolio_alerts"] = portfolio_alerts
+            log.info(f"  Portfolio risks: {len(portfolio_alerts)}")
+            for _pa in portfolio_alerts:
+                log.info(f"    {_pa}")
+    except Exception as e:
+        log.warning(f"Portfolio risk check failed: {e}")
+
+    # ── Claude Code escalation queue ──
+    # Write unresolved problems to escalation file for Claude Code to pick up
+    _escalation_items = []
+    # Collect failed retries
+    for check in report.get("checks", []):
+        if check.get("action_taken") in ("retry_failed_escalated", "escalated_no_retry"):
+            _escalation_items.append({
+                "component": check.get("component"),
+                "status": check.get("status"),
+                "age_min": check.get("age_min"),
+                "last_error": check.get("last_error"),
+                "retry_cmd": check.get("retry_cmd"),
+            })
+    # Add stale agents that auto-remediation couldn't fix
+    for sa in report.get("stale_agents", []):
+        _escalation_items.append({"component": "agent_staleness", "detail": sa})
+    # Add portfolio alerts (informational, not fixable by Claude but logged)
+    for pa in portfolio_alerts:
+        _escalation_items.append({"component": "portfolio_risk", "detail": pa})
+
+    if _escalation_items and not dry_run:
+        try:
+            import json as _esc_json
+            _esc_file = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+            _existing = []
+            if _esc_file.exists():
+                try:
+                    _existing = _esc_json.loads(_esc_file.read_text())
+                except Exception:
+                    _existing = []
+            # Append new items with timestamp
+            for item in _escalation_items:
+                item["escalated_at"] = now.isoformat()
+                item["source"] = "system_health_agent"
+            _existing.extend(_escalation_items)
+            # Keep only last 50 items
+            _existing = _existing[-50:]
+            _esc_file.write_text(_esc_json.dumps(_existing, indent=2, default=str))
+            log.info(f"  📋 {len(_escalation_items)} items written to claude_escalation_queue.json")
+        except Exception as e:
+            log.warning(f"Claude escalation queue write failed: {e}")
+
+    report["portfolio_alerts"] = portfolio_alerts
     conn.close()
     return report
+
+
+# Helper for portfolio risk DB queries
+def _db_query(sql, params=None, fetch="all"):
+    try:
+        from db_adapter import _get_conn as _gq_conn
+        _c = _gq_conn()
+        _cur = _c.cursor()
+        _cur.execute(sql, params)
+        if fetch == "one":
+            _cols = [d[0] for d in _cur.description]
+            _row = _cur.fetchone()
+            _c.close()
+            return dict(zip(_cols, _row)) if _row else {}
+        _cols = [d[0] for d in _cur.description]
+        _rows = [dict(zip(_cols, r)) for r in _cur.fetchall()]
+        _c.close()
+        return _rows
+    except Exception:
+        return {} if fetch == "one" else []
 
 
 def main():

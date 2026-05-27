@@ -61,6 +61,7 @@ const AgentDot = ({ status }: { status: string }) => {
 
 export default function Command() {
   const { data: cmd, loading, error, refetch } = useApi<CommandData>('/api/v2/command', 300_000)
+  const { data: interventions } = useApi<any>('/api/v2/claude-interventions', 300_000)
   const nav = useNavigate()
 
   if (loading) return <div style={{ padding: 32, color: 'var(--text3)', fontSize: 13 }}>Loading command briefing...</div>
@@ -309,6 +310,28 @@ export default function Command() {
           </div>
         </Card>
       </div>
+
+      {/* ═══ CLAUDE INTERVENTIONS ═══ */}
+      {interventions && interventions.total > 0 && (
+        <Card>
+          <SectionTitle count={interventions.total}>Claude Interventions</SectionTitle>
+          {(interventions.interventions || []).slice(0, 5).map((iv: any) => (
+            <div key={iv.id} style={{ padding: '6px 8px', marginBottom: 4, borderRadius: 6,
+              background: iv.status === 'fixed' ? 'rgba(14,203,129,.04)' : iv.status === 'investigating' ? 'rgba(74,144,244,.04)' : 'rgba(246,70,93,.04)',
+              border: `1px solid ${iv.status === 'fixed' ? 'rgba(14,203,129,.15)' : iv.status === 'investigating' ? 'rgba(74,144,244,.15)' : 'rgba(246,70,93,.15)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: iv.status === 'fixed' ? '#0ecb81' : iv.status === 'investigating' ? '#4a90f4' : '#f6465d' }}>
+                  {iv.status === 'fixed' ? '✅' : iv.status === 'investigating' ? '🔍' : '❌'} {iv.component}
+                </span>
+                <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>{iv.created_at ? new Date(iv.created_at).toLocaleString() : ''}</span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text2)' }}>{(iv.problem || '').slice(0, 100)}</div>
+              {iv.solution && <div style={{ fontSize: 10, color: '#0ecb81', marginTop: 2 }}>Fix: {iv.solution.slice(0, 100)}</div>}
+              {iv.session_log && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2, fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: 60, overflow: 'hidden' }}>{iv.session_log.slice(0, 200)}</div>}
+            </div>
+          ))}
+        </Card>
+      )}
 
     </div>
   )

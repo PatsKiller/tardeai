@@ -19454,6 +19454,80 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
+
+    # ── v3.5 Stop Change Audit + Trailing Control ──────────────────────
+    if base_path == "/api/v2/atm/stop-change-audit" and method == "GET":
+        try:
+            import datetime as _dt_sca, os as _os_sca
+            _sca_all = _db_query("""SELECT id, lifecycle_id, event_ts, stage, event_type, status, symbol,
+                       strategy_id, paper_trade_id, source_script, payload
+                FROM lifecycle_events WHERE stage='stop_change' ORDER BY event_ts DESC LIMIT 100""") or []
+            _sca_events = []
+            for e in _sca_all:
+                p = e.get("payload") or {}
+                if isinstance(p, str):
+                    try: p = __import__("json").loads(p)
+                    except: p = {}
+                _sca_events.append({"event_id": e.get("id"), "event_time": str(e.get("event_ts") or ""),
+                    "paper_trade_id": e.get("paper_trade_id"), "symbol": e.get("symbol"),
+                    "account": p.get("account"), "old_stop": p.get("old_stop"), "new_stop": p.get("new_stop"),
+                    "change_type": e.get("event_type"), "source_script": e.get("source_script"),
+                    "source_actor": p.get("source_actor"), "reason": p.get("reason"),
+                    "broker_confirmation": p.get("broker_confirmation"), "approved": p.get("approved")})
+            _apps_visible = any(e.get("symbol") == "APPS" and e.get("change_type") == "repair" for e in _sca_events)
+            return 200, {"ok": True, "data": {"total_events": len(_sca_events),
+                "repair_events": [e for e in _sca_events if e.get("change_type") == "repair"],
+                "trailing_update_events": [e for e in _sca_events if e.get("change_type") == "trailing_update"],
+                "latest_events": _sca_events[:20], "apps_repair_visible": _apps_visible,
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "stops_modified": "NONE",
+                           "alpaca_mode": _os_sca.environ.get("ALPACA_MODE", "unknown")}}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/stop-trailing-control" and method == "GET":
+        try:
+            import datetime as _dt_stc, os as _os_stc
+            from strategy_trailing_policy import get_trailing_policy as _gtp_stc
+            _stc_now = _dt_stc.datetime.now(_dt_stc.timezone.utc)
+            _stc_trades = _db_query("""SELECT id AS paper_trade_id, symbol, strategy_id, account,
+                       entry_price, stop_loss, stop_order_id, stop_verified_at, entry_time
+                FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason='') ORDER BY id""") or []
+            _stc_recs = []
+            for t in _stc_trades:
+                _pol = _gtp_stc(t.get("strategy_id") or "")
+                _fam = _pol.get("family", "unknown")
+                _tiers = _pol.get("tiers", [])
+                _tsc = _pol.get("time_stop", {})
+                _entry = float(t["entry_price"]) if t.get("entry_price") else None
+                _stop = float(t["stop_loss"]) if t.get("stop_loss") else None
+                _et = t.get("entry_time")
+                _hold = 0
+                if _et:
+                    if hasattr(_et, "tzinfo") and _et.tzinfo is None: _et = _et.replace(tzinfo=_dt_stc.timezone.utc)
+                    _hold = (_stc_now - _et).days
+                _ttype = _tsc.get("type", "review")
+                _max_hold = _tsc.get("max_hold_days") or _tsc.get("review_at_days")
+                _ts_status = "ok"; _overdue = 0
+                if _ttype == "intraday" and _hold > 0: _ts_status = "overdue"; _overdue = _hold
+                elif _ttype == "calendar" and _max_hold and _hold > _max_hold: _ts_status = "overdue"; _overdue = _hold - _max_hold
+                _last_sc = _db_query("SELECT event_type, event_ts FROM lifecycle_events WHERE paper_trade_id=%s AND stage='stop_change' ORDER BY event_ts DESC LIMIT 1", [t["paper_trade_id"]], fetch="one")
+                _stc_recs.append({"paper_trade_id": t["paper_trade_id"], "symbol": t["symbol"],
+                    "account": t.get("account"), "strategy_id": t.get("strategy_id"), "strategy_family": _fam,
+                    "entry_price": _entry, "db_stop": _stop, "stop_order_id": t.get("stop_order_id"),
+                    "stop_proof_status": "verified" if t.get("stop_verified_at") else ("unverified" if t.get("stop_order_id") else "missing"),
+                    "days_held": _hold, "time_stop_type": _ttype, "max_hold_days": _max_hold,
+                    "time_stop_status": _ts_status, "overdue_by_days": _overdue,
+                    "trailing_tiers": [{"r": tier[0], "lock": tier[1], "desc": tier[2]} for tier in _tiers],
+                    "latest_stop_change": {"type": _last_sc.get("event_type"), "time": str(_last_sc.get("event_ts"))} if _last_sc else None,
+                    "safe_actions": ["Review trailing policy", "Check broker stop proof"],
+                    "blocked_actions": ["Cancel stop", "Replace stop", "Submit stop", "Auto-close"]})
+            return 200, {"ok": True, "data": {"total_open_trades": len(_stc_recs), "records": _stc_recs,
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "stops_modified": "NONE",
+                           "alpaca_mode": _os_stc.environ.get("ALPACA_MODE", "unknown")}}}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── v3.3/v3.4 Stop Proof + Execution Timing ─────────────────────────
     if base_path == "/api/v2/atm/stop-proof" and method == "GET":
         try:
@@ -19496,6 +19570,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "records": _sp_recs,
                 "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "stops_modified": "NONE",
                            "alpaca_mode": _os_sp.environ.get("ALPACA_MODE", "unknown")},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Claude Interventions ──
+    if base_path == "/api/v2/claude-interventions" and method == "GET":
+        try:
+            _interventions = _db_query("""
+                SELECT id, component, problem, diagnosis, solution, files_changed,
+                       status, created_at, resolved_at, session_log
+                FROM claude_interventions
+                ORDER BY created_at DESC LIMIT 30
+            """) or []
+            return 200, {"ok": True, "data": {
+                "total": len(_interventions),
+                "active": sum(1 for i in _interventions if i.get("status") == "investigating"),
+                "interventions": [{k: _json_clean(v) for k, v in r.items()} for r in _interventions],
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
