@@ -1,0 +1,2273 @@
+{
+    "ok": true,
+    "data": {
+        "summary": {
+            "total_missions": 8,
+            "active_missions": 7,
+            "blocked_missions": 3,
+            "ready_for_operator": 3,
+            "stale_missions": 2,
+            "last_aegis_synthesis_at": "2026-05-26T21:15:16.857976-04:00",
+            "system_trust_state": "fresh"
+        },
+        "john_next_actions": [
+            {
+                "mission_id": "risk_stop_review",
+                "label": "Review stop breach: LDOS, NOC, LMT",
+                "reason": "Positions hit stop prices \u2014 decide hold/sell/adjust",
+                "severity": "critical",
+                "url": "/v2/recovery-watch"
+            },
+            {
+                "mission_id": "risk_heat",
+                "label": "Review portfolio heat and concentration",
+                "reason": "Heat 7.2% above 5% threshold",
+                "severity": "high",
+                "url": "/v2/risk"
+            },
+            {
+                "mission_id": "operator_escalations",
+                "label": "Review 10 agent escalations",
+                "reason": "Agents escalated conflicts/questions to operator",
+                "severity": "high",
+                "url": null
+            },
+            {
+                "mission_id": "research_stale",
+                "label": "Send 51 stale topics to Iris for refresh",
+                "reason": "Intelligence sources outdated \u2014 agents working with old data",
+                "severity": "medium",
+                "url": null
+            },
+            {
+                "mission_id": "telemetry_health",
+                "label": "Verify agent crons running on Monday",
+                "reason": "Debate telemetry, Handoff telemetry stale",
+                "severity": "low",
+                "url": null
+            }
+        ],
+        "mission_groups": [
+            {
+                "mission_id": "risk_stop_review",
+                "mission_type": "risk",
+                "title": "Stop Review \u2014 3 triggered positions",
+                "severity": "critical",
+                "status": "blocked",
+                "thread_count": 3,
+                "blocked_count": 3,
+                "ready_count": 0,
+                "agents": [
+                    "Risk",
+                    "Aegis",
+                    "Steph"
+                ],
+                "primary_owner": "operator",
+                "primary_blocker": "3 stops breached",
+                "next_action": {
+                    "label": "Review stop breach: LDOS, NOC, LMT",
+                    "reason": "Positions hit stop prices \u2014 decide hold/sell/adjust",
+                    "url": "/v2/recovery-watch"
+                },
+                "updated_at": "2026-05-27T07:00:02.086986-04:00",
+                "threads": [
+                    {
+                        "subject": "LDOS",
+                        "status": "blocked",
+                        "detail": "LDOS triggered \u2014 $128.06 vs stop $142.76",
+                        "thesis": "triggered",
+                        "confidence": 0.4
+                    },
+                    {
+                        "subject": "NOC",
+                        "status": "blocked",
+                        "detail": "NOC triggered \u2014 $557.08 vs stop $612.04",
+                        "thesis": "triggered",
+                        "confidence": 0.4
+                    },
+                    {
+                        "subject": "LMT",
+                        "status": "blocked",
+                        "detail": "LMT triggered \u2014 $533.71 vs stop $590.00",
+                        "thesis": "triggered",
+                        "confidence": 0.4
+                    }
+                ]
+            },
+            {
+                "mission_id": "risk_heat",
+                "mission_type": "risk",
+                "title": "Portfolio heat above threshold",
+                "severity": "high",
+                "status": "ready",
+                "thread_count": 1,
+                "blocked_count": 0,
+                "ready_count": 1,
+                "agents": [
+                    "Risk",
+                    "Aegis"
+                ],
+                "primary_owner": "operator",
+                "primary_blocker": null,
+                "next_action": {
+                    "label": "Review portfolio heat and concentration",
+                    "reason": "Heat 7.2% above 5% threshold",
+                    "url": "/v2/risk"
+                },
+                "updated_at": "2026-05-21T15:06:36.926997-04:00",
+                "threads": []
+            },
+            {
+                "mission_id": "proposals",
+                "mission_type": "paper_proposal",
+                "title": "Paper Proposal Queue \u2014 0 ready, 2 blocked, 5 running",
+                "severity": "medium",
+                "status": "blocked",
+                "thread_count": 7,
+                "blocked_count": 2,
+                "ready_count": 0,
+                "agents": [
+                    "Maria",
+                    "Steph",
+                    "Risk"
+                ],
+                "primary_owner": "system",
+                "primary_blocker": "2 risk-gated",
+                "next_action": {
+                    "label": "Review 2 risk-blocked proposals",
+                    "reason": "Risk gate preventing execution"
+                },
+                "updated_at": "2026-05-08T10:03:57.653444-04:00",
+                "threads": [
+                    {
+                        "subject": "BLMN",
+                        "status": "blocked",
+                        "detail": "None \u2014 RISK_BLOCKED",
+                        "signal": "expired_stale"
+                    },
+                    {
+                        "subject": "NNE",
+                        "status": "blocked",
+                        "detail": "None \u2014 RISK_BLOCKED",
+                        "signal": "expired_stale"
+                    },
+                    {
+                        "subject": "CMCSA",
+                        "status": "running",
+                        "detail": "Dividend Growth Compounder \u2014 APPROVED_FOR_PAPER_TEST",
+                        "signal": null
+                    },
+                    {
+                        "subject": "AGNC",
+                        "status": "running",
+                        "detail": "Reit Income \u2014 APPROVED_FOR_PAPER_TEST",
+                        "signal": null
+                    },
+                    {
+                        "subject": "NVDA",
+                        "status": "running",
+                        "detail": "Dividend Growth Compounder \u2014 APPROVED_FOR_PAPER_TEST",
+                        "signal": null
+                    },
+                    {
+                        "subject": "NWG",
+                        "status": "running",
+                        "detail": "Dividend Growth Compounder \u2014 APPROVED_FOR_PAPER_TEST",
+                        "signal": null
+                    },
+                    {
+                        "subject": "ASPN",
+                        "status": "running",
+                        "detail": "Swing Trade \u2014 APPROVED_FOR_PAPER_TEST",
+                        "signal": null
+                    }
+                ]
+            },
+            {
+                "mission_id": "aegis_steph_followup",
+                "mission_type": "morning_brief",
+                "title": "Aegis briefs \u2014 9 need Steph review (7 triggered, 0 weakening)",
+                "severity": "high",
+                "status": "blocked",
+                "thread_count": 9,
+                "blocked_count": 7,
+                "ready_count": 0,
+                "agents": [
+                    "Aegis",
+                    "Steph"
+                ],
+                "primary_owner": "Steph",
+                "primary_blocker": "7 stops triggered \u2014 Steph review overdue",
+                "next_action": {
+                    "label": "Ask Steph to review 9 flagged briefs (7 triggered, 0 weakening)",
+                    "reason": "Aegis identified 7 triggered stops and 0 weakening theses needing technical review"
+                },
+                "updated_at": "2026-05-26T21:03:30.018991-04:00",
+                "threads": [
+                    {
+                        "subject": "IRDM",
+                        "status": "waiting",
+                        "thesis": "intact",
+                        "detail": "18",
+                        "confidence": 0.55,
+                        "age_hours": 11.4,
+                        "observed_at": "2026-05-26T21:03:30.018991-04:00",
+                        "escalation_reason": "",
+                        "steph_last_review": "2026-05-26T12:33:55.100733-04:00",
+                        "steph_recommendation": "HOLD",
+                        "steph_confidence": 0.68,
+                        "steph_next_action": "Monitor stop at $36.65; no income-driven action required."
+                    },
+                    {
+                        "subject": "KBR",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "KBR triggered at $33.56",
+                        "confidence": 0.5,
+                        "age_hours": 11.2,
+                        "observed_at": "2026-05-26T21:15:16.770838-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-18T21:21:50.781683-04:00",
+                        "steph_recommendation": "SELL",
+                        "steph_confidence": 0.65,
+                        "steph_next_action": "Exit position at market open and reallocate proceeds to qualified dividend holdings that support the income target"
+                    },
+                    {
+                        "subject": "LDOS",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "LDOS triggered \u2014 $128.06 vs stop $142.76",
+                        "confidence": 0.4,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:14:44.930983-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-20T12:06:38.970997-04:00",
+                        "steph_recommendation": "TRIM",
+                        "steph_confidence": 0.62,
+                        "steph_next_action": "Trim entire 5.2 shares in taxable account; monitor for re-entry only above $142 with fresh technical confirmation."
+                    },
+                    {
+                        "subject": "LHX",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "LHX triggered \u2014 $312.72 vs stop $322.32",
+                        "confidence": 0.4,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:13:12.070477-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-18T21:36:13.174617-04:00",
+                        "steph_recommendation": "SELL",
+                        "steph_confidence": 0.65,
+                        "steph_next_action": "Exit the 2.5 shares in the taxable account at market open; confirm execution and reallocate proceeds to a qualified-dividend holding that better supports the $55K target."
+                    },
+                    {
+                        "subject": "LMT",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "LMT triggered \u2014 $533.71 vs stop $590.00",
+                        "confidence": 0.4,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:13:41.181219-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-18T21:49:13.539465-04:00",
+                        "steph_recommendation": "TRIM",
+                        "steph_confidence": 0.68,
+                        "steph_next_action": "Confirm opening price tomorrow and execute trim if still below $590; reallocate proceeds to qualified-dividend income names in taxable"
+                    },
+                    {
+                        "subject": "NOC",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "NOC triggered \u2014 $557.08 vs stop $612.04",
+                        "confidence": 0.4,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:14:12.941247-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-18T20:15:11.677821-04:00",
+                        "steph_recommendation": "SELL",
+                        "steph_confidence": 0.72,
+                        "steph_next_action": "Sell the 1.2 shares in the taxable account at market open; confirm execution and reallocate proceeds to higher-yielding qualified dividend names that better support the $55K target."
+                    },
+                    {
+                        "subject": "PFLT",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "PFLT triggered \u2014 $8.16 vs stop $8.21",
+                        "confidence": 0.4,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:12:09.920592-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-26T18:32:00.502335-04:00",
+                        "steph_recommendation": "HOLD",
+                        "steph_confidence": 0.68,
+                        "steph_next_action": "Flag for morning review; do not act in after-hours session"
+                    },
+                    {
+                        "subject": "PORTFOLIO",
+                        "status": "waiting",
+                        "thesis": "n/a",
+                        "detail": "Portfolio $1,201,940. Heat 7.4%. 7 stops triggered, 11 unprotected. 1 items flagged for Steph review. Covered calls: 1 c",
+                        "confidence": 0.6,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:11:38.189250-04:00",
+                        "escalation_reason": "1 items need Steph review",
+                        "steph_last_review": null,
+                        "steph_recommendation": null,
+                        "steph_confidence": null,
+                        "steph_next_action": null
+                    },
+                    {
+                        "subject": "RTX",
+                        "status": "blocked",
+                        "thesis": "triggered",
+                        "detail": "RTX triggered \u2014 $178.65 vs stop $180.71",
+                        "confidence": 0.4,
+                        "age_hours": 11.3,
+                        "observed_at": "2026-05-26T21:12:39.944936-04:00",
+                        "escalation_reason": "Stop triggered",
+                        "steph_last_review": "2026-05-26T19:31:58.410149-04:00",
+                        "steph_recommendation": "TRIM",
+                        "steph_confidence": 0.72,
+                        "steph_next_action": "Flag for morning review; do not execute in after-hours session. Escalate if stop reversal occurs at open."
+                    }
+                ],
+                "agent_maturity": {
+                    "agent": "steph",
+                    "accuracy": 0.6983,
+                    "calibration_error": 0.3704,
+                    "correct": 81,
+                    "resolved": 116,
+                    "incorrect": 20,
+                    "sample_size_status": "proposal_allowed",
+                    "last_run": "2026-05-27T07:38:03.879085-04:00",
+                    "schedule": "Weekdays: every 15min 6AM-7PM, every 5min 8PM-11PM. Weekends: every 10min.",
+                    "next_expected_pickup": "Next scheduled run within 10-15 minutes (if cron active)"
+                }
+            },
+            {
+                "mission_id": "research_stale",
+                "mission_type": "research_gap",
+                "title": "Stale research topics \u2014 51 waiting",
+                "severity": "medium",
+                "status": "stale",
+                "thread_count": 51,
+                "blocked_count": 0,
+                "ready_count": 0,
+                "agents": [
+                    "Iris",
+                    "Aegis"
+                ],
+                "primary_owner": "Iris",
+                "primary_blocker": "Content stale",
+                "next_action": {
+                    "label": "Send 51 stale topics to Iris for refresh",
+                    "reason": "Intelligence sources outdated \u2014 agents working with old data"
+                },
+                "updated_at": "2026-05-27T08:29:48.341164-04:00",
+                "threads": [
+                    {
+                        "subject": "ssdi_cash_shield",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ssdi",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "disability_retirement",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "trust_estate",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "top_yield_dividend",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "roth_conversion",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "irmaa",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_datacenter_buildout",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "swing_setups",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "emerging_sentiment",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "dividend_income",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "defense_sector",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "covered_call_income",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_network_layer",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_chip_materials",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "bond_rates",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "tax_loss_harvest",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ssdi_cash_shield",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ssdi",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "disability_retirement",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "trust_estate",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "top_yield_dividend",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "roth_conversion",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "irmaa",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_datacenter_buildout",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "swing_setups",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "emerging_sentiment",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "dividend_income",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "defense_sector",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "covered_call_income",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_network_layer",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_chip_materials",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "bond_rates",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "tax_loss_harvest",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ssdi_cash_shield",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ssdi",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "disability_retirement",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "trust_estate",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "top_yield_dividend",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "roth_conversion",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "irmaa",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_datacenter_buildout",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "swing_setups",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "emerging_sentiment",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "dividend_income",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "defense_sector",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "covered_call_income",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_network_layer",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "ai_chip_materials",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "bond_rates",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    },
+                    {
+                        "subject": "tax_loss_harvest",
+                        "status": "stale",
+                        "detail": "Data staleness alert"
+                    }
+                ]
+            },
+            {
+                "mission_id": "debates",
+                "mission_type": "ticker",
+                "title": "Agent debates \u2014 9 logged, 8 escalated to Alex",
+                "severity": "medium",
+                "status": "completed",
+                "thread_count": 9,
+                "blocked_count": 0,
+                "ready_count": 0,
+                "agents": [
+                    "Steph",
+                    "Risk",
+                    "Maria"
+                ],
+                "primary_owner": "system",
+                "primary_blocker": null,
+                "next_action": {
+                    "label": "Review debate outcomes",
+                    "reason": "Agent disagreements resolved \u2014 verify consensus"
+                },
+                "updated_at": "2026-05-05T06:48:37.656659-04:00",
+                "threads": [
+                    {
+                        "subject": "CMPR",
+                        "status": "escalated",
+                        "detail": "Consensus: SELL (75%)"
+                    },
+                    {
+                        "subject": "CDP",
+                        "status": "escalated",
+                        "detail": "Consensus: TRIM (55%)"
+                    },
+                    {
+                        "subject": "ASB",
+                        "status": "escalated",
+                        "detail": "Consensus: HOLD (70%)"
+                    },
+                    {
+                        "subject": "AIG",
+                        "status": "escalated",
+                        "detail": "Consensus: HOLD (60%)"
+                    },
+                    {
+                        "subject": "ADT",
+                        "status": "escalated",
+                        "detail": "Consensus: SELL (75%)"
+                    },
+                    {
+                        "subject": "ACGL",
+                        "status": "escalated",
+                        "detail": "Consensus: HOLD (75%)"
+                    },
+                    {
+                        "subject": "V",
+                        "status": "pending",
+                        "detail": "Consensus: None (0%)"
+                    },
+                    {
+                        "subject": "LMT",
+                        "status": "escalated",
+                        "detail": "Consensus: SELL (75%)"
+                    },
+                    {
+                        "subject": "LHX",
+                        "status": "escalated",
+                        "detail": "Consensus: SELL (85%)"
+                    }
+                ]
+            },
+            {
+                "mission_id": "telemetry_health",
+                "mission_type": "system_health",
+                "title": "Agent telemetry stale \u2014 2 sources",
+                "severity": "low",
+                "status": "stale",
+                "thread_count": 2,
+                "blocked_count": 0,
+                "ready_count": 0,
+                "agents": [],
+                "primary_owner": "system",
+                "primary_blocker": "Telemetry feeds inactive",
+                "next_action": {
+                    "label": "Verify agent crons running on Monday",
+                    "reason": "Debate telemetry, Handoff telemetry stale"
+                },
+                "updated_at": "2026-05-05T06:48:37.656659-04:00",
+                "threads": [
+                    {
+                        "subject": "Debate telemetry",
+                        "status": "stale",
+                        "detail": "Last activity 530h ago"
+                    },
+                    {
+                        "subject": "Handoff telemetry",
+                        "status": "stale",
+                        "detail": "Last activity 85h ago"
+                    }
+                ]
+            },
+            {
+                "mission_id": "operator_escalations",
+                "mission_type": "alert",
+                "title": "Operator escalations \u2014 10 items",
+                "severity": "high",
+                "status": "ready",
+                "thread_count": 10,
+                "blocked_count": 0,
+                "ready_count": 10,
+                "agents": [
+                    "synthesis"
+                ],
+                "primary_owner": "operator",
+                "primary_blocker": null,
+                "next_action": {
+                    "label": "Review 10 agent escalations",
+                    "reason": "Agents escalated conflicts/questions to operator",
+                    "url": null
+                },
+                "updated_at": "2026-05-23T19:08:01.984308-04:00",
+                "threads": [
+                    {
+                        "subject": "AVXX",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVXL",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 2 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVXC",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVTX",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVUQ",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVTR",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVSU",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s)"
+                    },
+                    {
+                        "subject": "AVSF",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVSD",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions"
+                    },
+                    {
+                        "subject": "AVSE",
+                        "status": "ready",
+                        "detail": "Auto-escalation: 1 agent conflict(s)"
+                    }
+                ]
+            }
+        ],
+        "agent_network": [
+            {
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "cnt": 761,
+                "escalated": 761,
+                "latest": "2026-05-23T19:08:01.984308-04:00"
+            },
+            {
+                "from_agent": "Alex",
+                "to_agent": "risk_agent",
+                "cnt": 99,
+                "escalated": 0,
+                "latest": "2026-05-20T05:00:02.345264-04:00"
+            },
+            {
+                "from_agent": "Alex",
+                "to_agent": "steph",
+                "cnt": 93,
+                "escalated": 0,
+                "latest": "2026-05-20T05:00:02.327441-04:00"
+            },
+            {
+                "from_agent": "Alex",
+                "to_agent": "maria",
+                "cnt": 65,
+                "escalated": 0,
+                "latest": "2026-05-20T05:00:02.312565-04:00"
+            },
+            {
+                "from_agent": "system",
+                "to_agent": "human_review",
+                "cnt": 55,
+                "escalated": 55,
+                "latest": "2026-05-15T05:08:38.671068-04:00"
+            },
+            {
+                "from_agent": "auto_research",
+                "to_agent": "risk_agent",
+                "cnt": 27,
+                "escalated": 0,
+                "latest": "2026-05-08T21:00:03.051409-04:00"
+            },
+            {
+                "from_agent": "auto_research",
+                "to_agent": "steph",
+                "cnt": 27,
+                "escalated": 0,
+                "latest": "2026-05-08T21:00:03.034121-04:00"
+            },
+            {
+                "from_agent": "auto_research",
+                "to_agent": "maria",
+                "cnt": 25,
+                "escalated": 0,
+                "latest": "2026-05-08T21:00:03.015828-04:00"
+            },
+            {
+                "from_agent": "user",
+                "to_agent": "steph",
+                "cnt": 6,
+                "escalated": 0,
+                "latest": "2026-04-26T11:02:12.145152-04:00"
+            },
+            {
+                "from_agent": "user",
+                "to_agent": "orchestrator",
+                "cnt": 2,
+                "escalated": 0,
+                "latest": "2026-04-26T12:30:25.129845-04:00"
+            },
+            {
+                "from_agent": "user",
+                "to_agent": "maria",
+                "cnt": 1,
+                "escalated": 0,
+                "latest": "2026-04-26T09:55:07.416954-04:00"
+            }
+        ],
+        "scoring": {
+            "collaboration_outcome": {
+                "total_handoffs": 1161,
+                "completed": 1152,
+                "open": 9,
+                "escalated": 816,
+                "completion_rate": 0.992
+            },
+            "handoff_resolution_time": {
+                "avg_hours": 0.0,
+                "min_hours": 0.0,
+                "max_hours": 0.0,
+                "period": "30d"
+            },
+            "agent_agreement_score": {
+                "total_debates": 9,
+                "avg_consensus": 0.713,
+                "high_agreement": 6,
+                "low_agreement": 0,
+                "escalated_to_alex": 8
+            },
+            "evidence_completeness": {
+                "symbols_analyzed_7d": 140,
+                "total_results_7d": 307,
+                "agents_active": 5,
+                "avg_confidence": 0.592,
+                "low_confidence_count": 13,
+                "high_confidence_count": 217
+            },
+            "stale_remediation_result": {
+                "total_products": 13,
+                "fresh": 13,
+                "stale": 0,
+                "freshness_rate": 1.0,
+                "last_check": "2026-05-20T07:15:01.767980-04:00"
+            },
+            "mission_raci_process_key": {
+                "processes_defined": 9,
+                "processes": [
+                    {
+                        "id": "daily_batch",
+                        "name": "Daily Watchlist Batch",
+                        "trigger": "6:25 AM cron",
+                        "frequency": "Daily M-F",
+                        "agents": [
+                            "steph",
+                            "maria",
+                            "risk_agent",
+                            "tax_agent"
+                        ],
+                        "roles": {
+                            "steph": "R",
+                            "maria": "R",
+                            "risk_agent": "R",
+                            "tax_agent": "C"
+                        }
+                    },
+                    {
+                        "id": "overnight_surveillance",
+                        "name": "Overnight Surveillance",
+                        "trigger": "8 PM cron",
+                        "frequency": "Nightly M-F",
+                        "agents": [
+                            "aegis",
+                            "steph",
+                            "risk_agent"
+                        ],
+                        "roles": {
+                            "aegis": "R",
+                            "steph": "C",
+                            "risk_agent": "C"
+                        }
+                    },
+                    {
+                        "id": "morning_brief",
+                        "name": "Morning Brief Delivery",
+                        "trigger": "8:05 AM cron",
+                        "frequency": "Daily M-F",
+                        "agents": [
+                            "aegis",
+                            "alex"
+                        ],
+                        "roles": {
+                            "aegis": "R",
+                            "alex": "I"
+                        }
+                    },
+                    {
+                        "id": "alex_daily",
+                        "name": "Alex Daily Portfolio Scan",
+                        "trigger": "5 AM cron",
+                        "frequency": "Daily M-F",
+                        "agents": [
+                            "alex"
+                        ],
+                        "roles": {
+                            "alex": "R/A"
+                        }
+                    },
+                    {
+                        "id": "alex_weekly",
+                        "name": "Alex Weekly Report",
+                        "trigger": "8 AM Sun cron",
+                        "frequency": "Weekly Sun",
+                        "agents": [
+                            "alex",
+                            "steph",
+                            "tax_agent"
+                        ],
+                        "roles": {
+                            "alex": "R/A",
+                            "steph": "I",
+                            "tax_agent": "I"
+                        }
+                    },
+                    {
+                        "id": "iris_hygiene",
+                        "name": "Iris Library Hygiene",
+                        "trigger": "7:55 AM cron",
+                        "frequency": "Daily M-F",
+                        "agents": [
+                            "iris"
+                        ],
+                        "roles": {
+                            "iris": "R/A"
+                        }
+                    },
+                    {
+                        "id": "scalp_scan",
+                        "name": "Pre-Market Scalp Scan",
+                        "trigger": "4 AM cron",
+                        "frequency": "Daily M-F",
+                        "agents": [
+                            "social_scalp",
+                            "scalp_critic"
+                        ],
+                        "roles": {
+                            "social_scalp": "R",
+                            "scalp_critic": "A"
+                        }
+                    },
+                    {
+                        "id": "event_routing",
+                        "name": "Event Detection & Routing",
+                        "trigger": "*/15 cron",
+                        "frequency": "Every 15min M-F",
+                        "agents": [
+                            "risk_agent",
+                            "steph",
+                            "alex"
+                        ],
+                        "roles": {
+                            "risk_agent": "R",
+                            "steph": "C",
+                            "alex": "A"
+                        }
+                    },
+                    {
+                        "id": "stop_surveillance",
+                        "name": "Stop Surveillance",
+                        "trigger": "*/3 cron",
+                        "frequency": "Every 3min market hours",
+                        "agents": [
+                            "risk_agent"
+                        ],
+                        "roles": {
+                            "risk_agent": "R/A"
+                        }
+                    }
+                ],
+                "source": "config/agent_raci.yaml"
+            },
+            "collaboration_event_timeline": [
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "FID-DIVINTL",
+                    "detail": "PORTFOLIO_FRESH_NEEDED",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.107837-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "AB-DISC-Z",
+                    "detail": "PORTFOLIO_FRESH_NEEDED",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.104329-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "FID-CONTRA-F",
+                    "detail": "PORTFOLIO_FRESH_NEEDED",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.093075-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "LDOS",
+                    "detail": "STOP_TRIGGERED",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.086986-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "NOC",
+                    "detail": "STOP_TRIGGERED",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.084112-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "LMT",
+                    "detail": "STOP_TRIGGERED",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.081067-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "LHX",
+                    "detail": "STOP_TRIGGERED",
+                    "status": "processing",
+                    "created_at": "2026-05-27T07:00:02.078009-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "RTX",
+                    "detail": "STOP_TRIGGERED",
+                    "status": "processing",
+                    "created_at": "2026-05-27T07:00:02.075023-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk,Steph}",
+                    "symbol": "PFLT",
+                    "detail": "STOP_TRIGGERED",
+                    "status": "done",
+                    "created_at": "2026-05-27T07:00:02.048028-04:00"
+                },
+                {
+                    "event_type": "event",
+                    "agent": "{Risk}",
+                    "symbol": "IRDM",
+                    "detail": "RSI_EXTREME",
+                    "status": "pending",
+                    "created_at": "2026-05-27T07:00:02.002531-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "CACI",
+                    "detail": "warning",
+                    "status": "complete",
+                    "created_at": "2026-05-26T21:15:16.849872-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "TDG",
+                    "detail": "warning",
+                    "status": "complete",
+                    "created_at": "2026-05-26T21:15:16.787205-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "NEE",
+                    "detail": "warning",
+                    "status": "complete",
+                    "created_at": "2026-05-26T21:15:16.783712-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "BND",
+                    "detail": "warning",
+                    "status": "complete",
+                    "created_at": "2026-05-26T21:15:16.780342-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "KBR",
+                    "detail": "triggered",
+                    "status": "needs_review",
+                    "created_at": "2026-05-26T21:15:16.770838-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "LDOS",
+                    "detail": "triggered",
+                    "status": "needs_review",
+                    "created_at": "2026-05-26T21:14:44.930983-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "NOC",
+                    "detail": "triggered",
+                    "status": "needs_review",
+                    "created_at": "2026-05-26T21:14:12.941247-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "LMT",
+                    "detail": "triggered",
+                    "status": "needs_review",
+                    "created_at": "2026-05-26T21:13:41.181219-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "LHX",
+                    "detail": "triggered",
+                    "status": "needs_review",
+                    "created_at": "2026-05-26T21:13:12.070477-04:00"
+                },
+                {
+                    "event_type": "brief",
+                    "agent": "aegis",
+                    "symbol": "RTX",
+                    "detail": "triggered",
+                    "status": "needs_review",
+                    "created_at": "2026-05-26T21:12:39.944936-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVXX",
+                    "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-23T19:08:01.984308-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVXL",
+                    "detail": "Auto-escalation: 2 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:54:03.578058-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVXC",
+                    "detail": "Auto-escalation: 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:51:47.955900-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVTX",
+                    "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:37:25.823692-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVUQ",
+                    "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:34:23.026892-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVTR",
+                    "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:21:00.452014-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVSU",
+                    "detail": "Auto-escalation: 1 agent conflict(s)",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:09:07.227385-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVSF",
+                    "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T19:06:52.802998-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVSD",
+                    "detail": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                    "status": "completed",
+                    "created_at": "2026-05-20T18:51:58.640214-04:00"
+                },
+                {
+                    "event_type": "handoff",
+                    "agent": "synthesis",
+                    "symbol": "AVSE",
+                    "detail": "Auto-escalation: 1 agent conflict(s)",
+                    "status": "completed",
+                    "created_at": "2026-05-20T18:48:54.267451-04:00"
+                }
+            ]
+        },
+        "handoff_details": [
+            {
+                "id": 1170,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVXX",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-23T19:08:01.984308-04:00",
+                "age_hours": 85.36316274527778
+            },
+            {
+                "id": 1169,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVXL",
+                "intent": "Auto-escalation: 2 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T19:54:03.578058-04:00",
+                "age_hours": 156.5960533702778
+            },
+            {
+                "id": 1168,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVXC",
+                "intent": "Auto-escalation: 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.58,
+                "reason": "",
+                "created_at": "2026-05-20T19:51:47.955900-04:00",
+                "age_hours": 156.63372619194445
+            },
+            {
+                "id": 1167,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVTX",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T19:37:25.823692-04:00",
+                "age_hours": 156.87320736083333
+            },
+            {
+                "id": 1166,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVUQ",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T19:34:23.026892-04:00",
+                "age_hours": 156.92398424972222
+            },
+            {
+                "id": 1165,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVTR",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.71,
+                "reason": "",
+                "created_at": "2026-05-20T19:21:00.452014-04:00",
+                "age_hours": 157.14692171583334
+            },
+            {
+                "id": 1164,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVSU",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T19:09:07.227385-04:00",
+                "age_hours": 157.34503966833333
+            },
+            {
+                "id": 1163,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVSF",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T19:06:52.802998-04:00",
+                "age_hours": 157.38237977583333
+            },
+            {
+                "id": 1162,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVSD",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.58,
+                "reason": "",
+                "created_at": "2026-05-20T18:51:58.640214-04:00",
+                "age_hours": 157.63075832694443
+            },
+            {
+                "id": 1161,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVSE",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T18:48:54.267451-04:00",
+                "age_hours": 157.68197298333334
+            },
+            {
+                "id": 1160,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVSC",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.6,
+                "reason": "",
+                "created_at": "2026-05-20T18:34:16.350029-04:00",
+                "age_hours": 157.92583893388888
+            },
+            {
+                "id": 1159,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVRE",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.62,
+                "reason": "",
+                "created_at": "2026-05-20T18:24:07.543982-04:00",
+                "age_hours": 158.09495172472222
+            },
+            {
+                "id": 1158,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVR",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T18:19:43.066407-04:00",
+                "age_hours": 158.16841771777777
+            },
+            {
+                "id": 1157,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVO",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T18:06:30.493682-04:00",
+                "age_hours": 158.38857680805555
+            },
+            {
+                "id": 1156,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVOS",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T18:03:34.522417-04:00",
+                "age_hours": 158.437457715
+            },
+            {
+                "id": 1155,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVNS",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T17:51:16.136531-04:00",
+                "age_hours": 158.64256490555556
+            },
+            {
+                "id": 1154,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AVGG",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T17:35:09.795403-04:00",
+                "age_hours": 158.91099299666666
+            },
+            {
+                "id": 1153,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AUGZ",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T17:32:23.755508-04:00",
+                "age_hours": 158.95711518972223
+            },
+            {
+                "id": 1152,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "ASMH",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T17:26:32.938691-04:00",
+                "age_hours": 159.05456430555554
+            },
+            {
+                "id": 1151,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AROW",
+                "intent": "Auto-escalation: 2 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T17:23:58.673392-04:00",
+                "age_hours": 159.0974157775
+            },
+            {
+                "id": 1150,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "ARDX",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.42,
+                "reason": "",
+                "created_at": "2026-05-20T17:21:40.513601-04:00",
+                "age_hours": 159.1357934972222
+            },
+            {
+                "id": 1149,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AMAL",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.58,
+                "reason": "",
+                "created_at": "2026-05-20T17:19:21.219167-04:00",
+                "age_hours": 159.17448639555556
+            },
+            {
+                "id": 1148,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AIAI",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.58,
+                "reason": "",
+                "created_at": "2026-05-20T17:17:19.311630-04:00",
+                "age_hours": 159.20834960027778
+            },
+            {
+                "id": 1147,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AMIX",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T17:11:50.131185-04:00",
+                "age_hours": 159.29978861277777
+            },
+            {
+                "id": 1146,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AHCO",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T17:11:36.242481-04:00",
+                "age_hours": 159.3036465861111
+            },
+            {
+                "id": 1145,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AGNG",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T17:09:11.710619-04:00",
+                "age_hours": 159.34379432555556
+            },
+            {
+                "id": 1144,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AFLG",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T17:06:59.041537-04:00",
+                "age_hours": 159.38064684833333
+            },
+            {
+                "id": 1143,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AUGM",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T16:55:01.275215-04:00",
+                "age_hours": 159.58002638222223
+            },
+            {
+                "id": 1142,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AKBA",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.58,
+                "reason": "",
+                "created_at": "2026-05-20T16:52:42.021720-04:00",
+                "age_hours": 159.6187079086111
+            },
+            {
+                "id": 1141,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "SATS",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.7,
+                "reason": "",
+                "created_at": "2026-05-20T16:48:13.932007-04:00",
+                "age_hours": 159.69317727333333
+            },
+            {
+                "id": 1140,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "COM",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T16:47:18.667110-04:00",
+                "age_hours": 159.7085286336111
+            },
+            {
+                "id": 1139,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "CGEN",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T16:35:35.439933-04:00",
+                "age_hours": 159.90386951611111
+            },
+            {
+                "id": 1138,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AUC",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T16:23:19.949714-04:00",
+                "age_hours": 160.10817235472223
+            },
+            {
+                "id": 1137,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "SLXN",
+                "intent": "Auto-escalation: 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T16:20:09.153397-04:00",
+                "age_hours": 160.16117133166668
+            },
+            {
+                "id": 1136,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "REGN",
+                "intent": "Auto-escalation: 2 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.78,
+                "reason": "",
+                "created_at": "2026-05-20T16:17:46.070274-04:00",
+                "age_hours": 160.20091664361112
+            },
+            {
+                "id": 1135,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "DVN",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T15:53:59.020908-04:00",
+                "age_hours": 160.5973192452778
+            },
+            {
+                "id": 1134,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AWRE",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T15:51:38.178806-04:00",
+                "age_hours": 160.63644205138888
+            },
+            {
+                "id": 1133,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "HEPS",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T15:49:28.179540-04:00",
+                "age_hours": 160.6725529586111
+            },
+            {
+                "id": 1132,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "PCTY",
+                "intent": "Auto-escalation: 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T15:47:14.278215-04:00",
+                "age_hours": 160.70974777111113
+            },
+            {
+                "id": 1131,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "ATII",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.58,
+                "reason": "",
+                "created_at": "2026-05-20T15:39:34.893523-04:00",
+                "age_hours": 160.83735463
+            },
+            {
+                "id": 1130,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "ARVR",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.55,
+                "reason": "",
+                "created_at": "2026-05-20T15:37:13.295389-04:00",
+                "age_hours": 160.876687445
+            },
+            {
+                "id": 1129,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "ARP",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T15:34:52.258160-04:00",
+                "age_hours": 160.91586445305555
+            },
+            {
+                "id": 1128,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "NUG",
+                "intent": "Auto-escalation: 2 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T15:32:21.892185-04:00",
+                "age_hours": 160.95763277944445
+            },
+            {
+                "id": 1127,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "ORGN",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T15:21:56.461907-04:00",
+                "age_hours": 161.1313634122222
+            },
+            {
+                "id": 1126,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "CSX",
+                "intent": "Auto-escalation: 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.52,
+                "reason": "",
+                "created_at": "2026-05-20T15:16:28.793280-04:00",
+                "age_hours": 161.22238247527778
+            },
+            {
+                "id": 1125,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "YETI",
+                "intent": "Auto-escalation: 1 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.65,
+                "reason": "",
+                "created_at": "2026-05-20T15:08:05.429581-04:00",
+                "age_hours": 161.362205725
+            },
+            {
+                "id": 1124,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "APDB",
+                "intent": "Auto-escalation: 1 agent conflict(s); 3 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.42,
+                "reason": "",
+                "created_at": "2026-05-20T15:05:00.746950-04:00",
+                "age_hours": 161.41350645583333
+            },
+            {
+                "id": 1123,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AZTA",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T14:36:51.524559-04:00",
+                "age_hours": 161.88273489777777
+            },
+            {
+                "id": 1122,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "BCHT",
+                "intent": "Auto-escalation: 2 agent conflict(s)",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.68,
+                "reason": "",
+                "created_at": "2026-05-20T14:32:27.643518-04:00",
+                "age_hours": 161.95603518694443
+            },
+            {
+                "id": 1121,
+                "from_agent": "synthesis",
+                "to_agent": "human_review",
+                "symbol": "AWP",
+                "intent": "Auto-escalation: 1 agent conflict(s); 2 unresolved questions",
+                "status": "completed",
+                "escalated": true,
+                "confidence": 0.72,
+                "reason": "",
+                "created_at": "2026-05-20T14:02:09.401941-04:00",
+                "age_hours": 162.46110229166666
+            }
+        ],
+        "agent_quality": [
+            {
+                "agent_name": "cio_engine",
+                "accuracy": 0.0,
+                "calibration_error": null,
+                "overconfidence_score": null,
+                "underconfidence_score": null,
+                "resolved": 4,
+                "correct": 0,
+                "incorrect": 0,
+                "sample_size_status": "insight_only",
+                "scored_at": "2026-05-24T23:45:14.341304-04:00"
+            },
+            {
+                "agent_name": "maria",
+                "accuracy": 0.0619,
+                "calibration_error": 0.55,
+                "overconfidence_score": 0.0,
+                "underconfidence_score": 0.55,
+                "resolved": 194,
+                "correct": 12,
+                "incorrect": 0,
+                "sample_size_status": "proposal_allowed",
+                "scored_at": "2026-05-24T23:45:14.341304-04:00"
+            },
+            {
+                "agent_name": "risk_agent",
+                "accuracy": 0.6697,
+                "calibration_error": 0.3493,
+                "overconfidence_score": 0.0776,
+                "underconfidence_score": 0.2716,
+                "resolved": 109,
+                "correct": 73,
+                "incorrect": 12,
+                "sample_size_status": "proposal_allowed",
+                "scored_at": "2026-05-24T23:45:14.341304-04:00"
+            },
+            {
+                "agent_name": "steph",
+                "accuracy": 0.6983,
+                "calibration_error": 0.3704,
+                "overconfidence_score": 0.1444,
+                "underconfidence_score": 0.226,
+                "resolved": 116,
+                "correct": 81,
+                "incorrect": 20,
+                "sample_size_status": "proposal_allowed",
+                "scored_at": "2026-05-24T23:45:14.341304-04:00"
+            }
+        ],
+        "stale_products": [
+            {
+                "state_file": "stops.json",
+                "ok": true,
+                "age_hours": 0.99,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.0,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": "portfolio_risk.py"
+            },
+            {
+                "state_file": "action_signals.json",
+                "ok": true,
+                "age_hours": 0.99,
+                "max_age_hours": 24.0,
+                "hours_overdue": -23.0,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": "portfolio_signals.py"
+            },
+            {
+                "state_file": "technical_snapshot.json",
+                "ok": true,
+                "age_hours": 0.99,
+                "max_age_hours": 24.0,
+                "hours_overdue": -23.0,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": "portfolio_risk.py"
+            },
+            {
+                "state_file": "portfolio_news.json",
+                "ok": true,
+                "age_hours": 0.99,
+                "max_age_hours": 48.0,
+                "hours_overdue": -47.0,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": "portfolio_news.py"
+            },
+            {
+                "state_file": "holdings.json",
+                "ok": true,
+                "age_hours": 0.99,
+                "max_age_hours": 24.0,
+                "hours_overdue": -23.0,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": "portfolio_repricer.py"
+            },
+            {
+                "state_file": "asset_intelligence.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "ai_watchlist.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "ai_watchlist_review.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "analyst_data.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 48.0,
+                "hours_overdue": -47.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "etf_intelligence.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "mutual_fund_intelligence.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "stock_intelligence.json",
+                "ok": true,
+                "age_hours": 0.83,
+                "max_age_hours": 168.0,
+                "hours_overdue": -167.2,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            },
+            {
+                "state_file": "risk_management.json",
+                "ok": true,
+                "age_hours": 0.23,
+                "max_age_hours": 24.0,
+                "hours_overdue": -23.8,
+                "checked_at": "2026-05-20T07:15:01.767980-04:00",
+                "source_script": null
+            }
+        ],
+        "raci_health": [
+            {
+                "process_id": "daily_batch",
+                "process_name": "Daily Watchlist Batch",
+                "trigger": "6:25 AM cron",
+                "frequency": "Daily M-F",
+                "agents": [
+                    "steph",
+                    "maria",
+                    "risk_agent",
+                    "tax_agent"
+                ],
+                "roles": {
+                    "steph": "R",
+                    "maria": "R",
+                    "risk_agent": "R",
+                    "tax_agent": "C"
+                },
+                "last_activity": "2026-05-27T08:00:02.277347-04:00",
+                "age_hours": 0.5,
+                "health": "fresh"
+            },
+            {
+                "process_id": "overnight_surveillance",
+                "process_name": "Overnight Surveillance",
+                "trigger": "8 PM cron",
+                "frequency": "Nightly M-F",
+                "agents": [
+                    "aegis",
+                    "steph",
+                    "risk_agent"
+                ],
+                "roles": {
+                    "aegis": "R",
+                    "steph": "C",
+                    "risk_agent": "C"
+                },
+                "last_activity": "2026-05-27T07:38:03.879085-04:00",
+                "age_hours": 0.9,
+                "health": "fresh"
+            },
+            {
+                "process_id": "morning_brief",
+                "process_name": "Morning Brief Delivery",
+                "trigger": "8:05 AM cron",
+                "frequency": "Daily M-F",
+                "agents": [
+                    "aegis",
+                    "alex"
+                ],
+                "roles": {
+                    "aegis": "R",
+                    "alex": "I"
+                },
+                "last_activity": "2026-05-10T12:10:40.310812-04:00",
+                "age_hours": 404.3,
+                "health": "unknown"
+            },
+            {
+                "process_id": "alex_daily",
+                "process_name": "Alex Daily Portfolio Scan",
+                "trigger": "5 AM cron",
+                "frequency": "Daily M-F",
+                "agents": [
+                    "alex"
+                ],
+                "roles": {
+                    "alex": "R/A"
+                },
+                "last_activity": "2026-05-10T12:07:53.470837-04:00",
+                "age_hours": 404.4,
+                "health": "unknown"
+            },
+            {
+                "process_id": "alex_weekly",
+                "process_name": "Alex Weekly Report",
+                "trigger": "8 AM Sun cron",
+                "frequency": "Weekly Sun",
+                "agents": [
+                    "alex",
+                    "steph",
+                    "tax_agent"
+                ],
+                "roles": {
+                    "alex": "R/A",
+                    "steph": "I",
+                    "tax_agent": "I"
+                },
+                "last_activity": "2026-05-27T07:38:03.879085-04:00",
+                "age_hours": 0.9,
+                "health": "fresh"
+            },
+            {
+                "process_id": "iris_hygiene",
+                "process_name": "Iris Library Hygiene",
+                "trigger": "7:55 AM cron",
+                "frequency": "Daily M-F",
+                "agents": [
+                    "iris"
+                ],
+                "roles": {
+                    "iris": "R/A"
+                },
+                "last_activity": "2026-05-25T08:30:02.829143-04:00",
+                "age_hours": 48.0,
+                "health": "stale"
+            },
+            {
+                "process_id": "scalp_scan",
+                "process_name": "Pre-Market Scalp Scan",
+                "trigger": "4 AM cron",
+                "frequency": "Daily M-F",
+                "agents": [
+                    "social_scalp",
+                    "scalp_critic"
+                ],
+                "roles": {
+                    "social_scalp": "R",
+                    "scalp_critic": "A"
+                },
+                "last_activity": null,
+                "age_hours": null,
+                "health": "unknown"
+            },
+            {
+                "process_id": "event_routing",
+                "process_name": "Event Detection & Routing",
+                "trigger": "*/15 cron",
+                "frequency": "Every 15min M-F",
+                "agents": [
+                    "risk_agent",
+                    "steph",
+                    "alex"
+                ],
+                "roles": {
+                    "risk_agent": "R",
+                    "steph": "C",
+                    "alex": "A"
+                },
+                "last_activity": "2026-05-27T07:38:03.879085-04:00",
+                "age_hours": 0.9,
+                "health": "fresh"
+            },
+            {
+                "process_id": "stop_surveillance",
+                "process_name": "Stop Surveillance",
+                "trigger": "*/3 cron",
+                "frequency": "Every 3min market hours",
+                "agents": [
+                    "risk_agent"
+                ],
+                "roles": {
+                    "risk_agent": "R/A"
+                },
+                "last_activity": "2026-05-27T07:32:14.649109-04:00",
+                "age_hours": 1.0,
+                "health": "fresh"
+            }
+        ]
+    }
+}
