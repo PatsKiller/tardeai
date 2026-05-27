@@ -1,0 +1,378 @@
+{
+    "ok": true,
+    "data": {
+        "summary": {
+            "signals_today": 13,
+            "proposals_today": 3,
+            "decisions_today": {
+                "deferred": 1
+            },
+            "open_positions": 3,
+            "time_stop_overdue": 0,
+            "time_stop_due": 0,
+            "stale_proposals": 27,
+            "safe_flock_skips_24h": 0,
+            "classifier_gate_disabled": true,
+            "lifecycle_events_24h": 38,
+            "traceability_gap_count": 0,
+            "stop_missing_count": 0,
+            "stage_counts_7d": {
+                "tca": 8,
+                "exit": 1,
+                "close_review": 4,
+                "signal": 3,
+                "proposal": 22,
+                "operator_review": 13,
+                "stop_placement": 14,
+                "execution": 14
+            }
+        },
+        "positions": [
+            {
+                "paper_trade_id": 33,
+                "symbol": "CMCSA",
+                "strategy_id": "dividend_growth_compounder",
+                "strategy_family": "income",
+                "account": "ALPACA_PAPER",
+                "shares": 120,
+                "entry_price": 24.97,
+                "days_held": 0,
+                "db_stop_loss": 23.61,
+                "trailing_tier": "lock 2.0R",
+                "time_stop": {
+                    "type": "review",
+                    "status": "unknown",
+                    "days_held": 0,
+                    "overdue_by": 0,
+                    "max_hold_days": null,
+                    "review_at_days": 90
+                },
+                "gate_audit": {
+                    "strategy_active": {
+                        "status": "pass"
+                    },
+                    "classifier_health": {
+                        "status": "bypassed"
+                    },
+                    "max_concurrent": {
+                        "status": "pass",
+                        "detail": "3 open"
+                    },
+                    "stop_present": {
+                        "status": "pass"
+                    },
+                    "market_hours": {
+                        "status": "pass"
+                    }
+                },
+                "proposal_id": 123,
+                "score": 15.0,
+                "lifecycle_linked": true
+            },
+            {
+                "paper_trade_id": 31,
+                "symbol": "AGNC",
+                "strategy_id": "reit_income",
+                "strategy_family": "income",
+                "account": "ALPACA_PAPER",
+                "shares": 293,
+                "entry_price": 10.22,
+                "days_held": 0,
+                "db_stop_loss": 9.71,
+                "trailing_tier": "lock 2.0R",
+                "time_stop": {
+                    "type": "review",
+                    "status": "unknown",
+                    "days_held": 0,
+                    "overdue_by": 0,
+                    "max_hold_days": null,
+                    "review_at_days": 90
+                },
+                "gate_audit": {
+                    "strategy_active": {
+                        "status": "pass"
+                    },
+                    "classifier_health": {
+                        "status": "bypassed"
+                    },
+                    "max_concurrent": {
+                        "status": "pass",
+                        "detail": "3 open"
+                    },
+                    "stop_present": {
+                        "status": "pass"
+                    },
+                    "market_hours": {
+                        "status": "pass"
+                    }
+                },
+                "proposal_id": 120,
+                "score": 19.0,
+                "lifecycle_linked": true
+            },
+            {
+                "paper_trade_id": 28,
+                "symbol": "NWG",
+                "strategy_id": "dividend_growth_compounder",
+                "strategy_family": "income",
+                "account": "TOS_PAPER",
+                "shares": 189,
+                "entry_price": 15.84,
+                "days_held": 4,
+                "db_stop_loss": 15.05,
+                "trailing_tier": "lock 2.0R",
+                "time_stop": {
+                    "type": "review",
+                    "status": "ok",
+                    "days_held": 4,
+                    "overdue_by": 0,
+                    "max_hold_days": null,
+                    "review_at_days": 90
+                },
+                "gate_audit": {
+                    "strategy_active": {
+                        "status": "pass"
+                    },
+                    "classifier_health": {
+                        "status": "bypassed"
+                    },
+                    "max_concurrent": {
+                        "status": "pass",
+                        "detail": "3 open"
+                    },
+                    "stop_present": {
+                        "status": "pass"
+                    },
+                    "market_hours": {
+                        "status": "pass"
+                    }
+                },
+                "proposal_id": 117,
+                "score": 22.0,
+                "lifecycle_linked": true
+            }
+        ],
+        "recent_proposals": [
+            {
+                "id": 129,
+                "symbol": "OPFI",
+                "strategy_id": "swing_trade",
+                "signal_score": 36.0,
+                "signal_decision": null,
+                "proposed_entry": 10.77,
+                "proposed_stop": 10.23,
+                "proposed_target1": 11.85,
+                "created_at": "2026-05-27T10:00:14.619734-04:00"
+            },
+            {
+                "id": 128,
+                "symbol": "GOAI",
+                "strategy_id": "momentum_scalp",
+                "signal_score": 46.0,
+                "signal_decision": "GO",
+                "proposed_entry": 3.8,
+                "proposed_stop": 3.61,
+                "proposed_target1": 4.18,
+                "created_at": "2026-05-27T09:33:07.298785-04:00"
+            },
+            {
+                "id": 127,
+                "symbol": "APPS",
+                "strategy_id": "swing_breakout",
+                "signal_score": 47.0,
+                "signal_decision": "GO",
+                "proposed_entry": 6.49,
+                "proposed_stop": 6.17,
+                "proposed_target1": 7.14,
+                "created_at": "2026-05-27T09:33:06.911945-04:00"
+            },
+            {
+                "id": 126,
+                "symbol": "EVER",
+                "strategy_id": "swing_trade",
+                "signal_score": 43.0,
+                "signal_decision": null,
+                "proposed_entry": 19.97,
+                "proposed_stop": 18.97,
+                "proposed_target1": 21.97,
+                "created_at": "2026-05-26T10:40:54.458282-04:00"
+            },
+            {
+                "id": 125,
+                "symbol": "EVER",
+                "strategy_id": "speculative_growth",
+                "signal_score": 43.0,
+                "signal_decision": null,
+                "proposed_entry": 19.97,
+                "proposed_stop": 18.97,
+                "proposed_target1": 21.97,
+                "created_at": "2026-05-26T10:37:17.378482-04:00"
+            },
+            {
+                "id": 124,
+                "symbol": "EVER",
+                "strategy_id": "gap_and_go",
+                "signal_score": 43.0,
+                "signal_decision": null,
+                "proposed_entry": 19.97,
+                "proposed_stop": 18.97,
+                "proposed_target1": 21.97,
+                "created_at": "2026-05-22T12:10:17.897013-04:00"
+            },
+            {
+                "id": 123,
+                "symbol": "CMCSA",
+                "strategy_id": "dividend_growth_compounder",
+                "signal_score": 15.0,
+                "signal_decision": null,
+                "proposed_entry": 24.85,
+                "proposed_stop": 23.61,
+                "proposed_target1": 27.34,
+                "created_at": "2026-05-22T09:05:54.279235-04:00"
+            },
+            {
+                "id": 122,
+                "symbol": "BCS",
+                "strategy_id": "dividend_growth_compounder",
+                "signal_score": 17.0,
+                "signal_decision": null,
+                "proposed_entry": 22.85,
+                "proposed_stop": 21.71,
+                "proposed_target1": 25.14,
+                "created_at": "2026-05-22T09:05:52.215053-04:00"
+            },
+            {
+                "id": 121,
+                "symbol": "SHMD",
+                "strategy_id": "swing_trade",
+                "signal_score": 18.0,
+                "signal_decision": null,
+                "proposed_entry": 7.75,
+                "proposed_stop": 7.36,
+                "proposed_target1": 8.53,
+                "created_at": "2026-05-22T09:05:50.148293-04:00"
+            },
+            {
+                "id": 120,
+                "symbol": "AGNC",
+                "strategy_id": "reit_income",
+                "signal_score": 19.0,
+                "signal_decision": null,
+                "proposed_entry": 10.22,
+                "proposed_stop": 9.71,
+                "proposed_target1": 11.24,
+                "created_at": "2026-05-22T09:05:48.218668-04:00"
+            },
+            {
+                "id": 119,
+                "symbol": "MUD",
+                "strategy_id": "recovery_watch",
+                "signal_score": 19.0,
+                "signal_decision": null,
+                "proposed_entry": 18.02,
+                "proposed_stop": 17.12,
+                "proposed_target1": 19.82,
+                "created_at": "2026-05-22T09:05:46.070689-04:00"
+            },
+            {
+                "id": 118,
+                "symbol": "NVDA",
+                "strategy_id": "dividend_growth_compounder",
+                "signal_score": 20.0,
+                "signal_decision": null,
+                "proposed_entry": 221.66,
+                "proposed_stop": 210.58,
+                "proposed_target1": 243.83,
+                "created_at": "2026-05-22T09:05:43.443594-04:00"
+            },
+            {
+                "id": 117,
+                "symbol": "NWG",
+                "strategy_id": "dividend_growth_compounder",
+                "signal_score": 22.0,
+                "signal_decision": null,
+                "proposed_entry": 15.84,
+                "proposed_stop": 15.05,
+                "proposed_target1": 17.42,
+                "created_at": "2026-05-22T09:05:39.342238-04:00"
+            },
+            {
+                "id": 116,
+                "symbol": "CHRN",
+                "strategy_id": "swing_trade",
+                "signal_score": 35.0,
+                "signal_decision": null,
+                "proposed_entry": 13.66,
+                "proposed_stop": 12.98,
+                "proposed_target1": 15.03,
+                "created_at": "2026-05-22T09:05:34.737147-04:00"
+            },
+            {
+                "id": 115,
+                "symbol": "ARM",
+                "strategy_id": "core_growth_compounder",
+                "signal_score": 41.0,
+                "signal_decision": null,
+                "proposed_entry": 287.6,
+                "proposed_stop": 273.22,
+                "proposed_target1": 316.36,
+                "created_at": "2026-05-22T09:02:53.695416-04:00"
+            },
+            {
+                "id": 114,
+                "symbol": "AMPG",
+                "strategy_id": "momentum_scalp",
+                "signal_score": null,
+                "signal_decision": null,
+                "proposed_entry": 5.31,
+                "proposed_stop": 5.04,
+                "proposed_target1": 5.84,
+                "created_at": "2026-05-21T17:23:00.249704-04:00"
+            },
+            {
+                "id": 112,
+                "symbol": "AMPG",
+                "strategy_id": "momentum_scalp",
+                "signal_score": 48.0,
+                "signal_decision": "GO",
+                "proposed_entry": 4.43,
+                "proposed_stop": 4.21,
+                "proposed_target1": 4.87,
+                "created_at": "2026-05-21T15:20:53.407561-04:00"
+            },
+            {
+                "id": 111,
+                "symbol": "NEE",
+                "strategy_id": "dividend_growth_compounder",
+                "signal_score": 30.0,
+                "signal_decision": null,
+                "proposed_entry": 89.37,
+                "proposed_stop": 84.9,
+                "proposed_target1": 98.31,
+                "created_at": "2026-05-21T15:05:27.446990-04:00"
+            },
+            {
+                "id": 110,
+                "symbol": "AMPG",
+                "strategy_id": "gap_and_go",
+                "signal_score": 48.0,
+                "signal_decision": null,
+                "proposed_entry": 4.43,
+                "proposed_stop": 4.21,
+                "proposed_target1": 4.87,
+                "created_at": "2026-05-21T15:05:25.391118-04:00"
+            },
+            {
+                "id": 109,
+                "symbol": "ARM",
+                "strategy_id": "fib_retracement_bounce",
+                "signal_score": 41.0,
+                "signal_decision": "GO",
+                "proposed_entry": 287.6,
+                "proposed_stop": 273.22,
+                "proposed_target1": 316.36,
+                "created_at": "2026-05-21T14:09:34.333558-04:00"
+            }
+        ]
+    }
+}
