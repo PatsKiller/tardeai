@@ -141,7 +141,11 @@ def _resolve_proposal_account(strategy_id: str = None) -> str:
             return enabled[0]  # first enabled account from config+DB
     except Exception:
         pass
-    return "alpaca_paper"  # only if config unavailable — paper mode enforced by .env
+    try:
+        from broker_config import get_default_paper_account
+        return get_default_paper_account()
+    except Exception:
+        return os.environ.get("DEFAULT_PAPER_ACCOUNT", "paper")
 
 
 def get_conn():
@@ -518,7 +522,7 @@ def check_risk_gate(conn, symbol: str, strategy_id: str, plan: dict) -> dict:
             symbol=symbol,
             strategy_id=strategy_id,
             trade_plan=plan,
-            account="ALPACA_PAPER",
+            account=_get_target_account(),
             mode="paper",
             action_context="paper_proposal",
         )
