@@ -19500,6 +19500,30 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/atm/stop-change-audit" and method == "GET":
+        try:
+            _sca_events = _db_query("""
+                SELECT lifecycle_id, event_ts, event_type, symbol, strategy_id,
+                       paper_trade_id, stop_order_id, source_script,
+                       payload->>'old_stop' as old_stop,
+                       payload->>'new_stop' as new_stop,
+                       payload->>'change_pct' as change_pct,
+                       payload->>'change_type' as change_type,
+                       payload->>'reason' as reason,
+                       payload->>'broker_order_id' as broker_proof
+                FROM lifecycle_events
+                WHERE stage = 'stop_change'
+                ORDER BY event_ts DESC
+                LIMIT 100
+            """) or []
+            return 200, {"ok": True, "data": {
+                "total_events": len(_sca_events),
+                "events": [{k: _json_clean(v) for k, v in r.items()} for r in _sca_events],
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "stops_modified": "NONE"},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/atm/execution-timing-health" and method == "GET":
         try:
             import datetime as _dt_et, os as _os_et
