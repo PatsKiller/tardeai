@@ -166,11 +166,16 @@ export default function BrokerAccountAdmin() {
                 <StatusBadge status={broker.adapter_status === 'built' ? 'fresh' : broker.adapter_status === 'manual_only' ? 'warning' : 'stale'} label={broker.adapter_status} size="sm" />
               </div>
               <div style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 4 }}>
-                Modes: {broker.modes.join(', ')} | Auto: {broker.auto_capable ? 'Yes' : 'No'}
+                Modes: {broker.modes.join(', ')} | Auto: {broker.auto_capable ? 'Yes' : 'No'} | IRA: {(broker as any).ira_support ? <span style={{ color: '#0ecb81' }}>Yes</span> : <span style={{ color: '#f6465d' }}>No</span>}
               </div>
-              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 2 }}>
                 {broker.features.join(' · ')}
               </div>
+              {(broker as any).account_types && (
+                <div style={{ fontSize: 8, color: 'var(--text3)' }}>
+                  Accounts: {(broker as any).account_types.map((t: string) => t.replace(/_/g, ' ')).join(', ')}
+                </div>
+              )}
               {isExpanded && (
                 <div style={{ marginTop: 8, borderTop: '1px solid var(--border1)', paddingTop: 8 }}>
                   {broker.env_vars.length > 0 && (
