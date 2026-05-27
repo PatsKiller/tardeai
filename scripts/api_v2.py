@@ -19575,6 +19575,149 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Broker Account Admin ──
+    if base_path == "/api/v2/admin/accounts" and method == "GET":
+        try:
+            import yaml as _yaml_admin
+            _accts = _db_query("SELECT * FROM accounts ORDER BY account_label") or []
+            # Overlay ATM config
+            _atm_cfg = {}
+            try:
+                _atm_path = PROJECT_ROOT / "config" / "atm_config.yaml"
+                if _atm_path.exists():
+                    _atm_cfg = _yaml_admin.safe_load(_atm_path.read_text()) or {}
+            except Exception:
+                pass
+            _atm_accounts = _atm_cfg.get("accounts", {})
+            for a in _accts:
+                label = a.get("account_label", "")
+                atm = _atm_accounts.get(label, {})
+                a["atm_enabled"] = atm.get("enabled", False)
+                a["position_limits"] = atm.get("position_limits", {})
+            _known = ["alpaca", "schwab", "fidelity", "interactive_brokers", "tradier", "webull", "tastytrade"]
+            _onboarding = {
+                "alpaca": {"env_vars": ["ALPACA_API_KEY", "ALPACA_SECRET_KEY"], "adapter": "scripts.alpaca_paper_adapter", "api_docs": "https://docs.alpaca.markets", "notes": "Paper + live. REST API. Extended hours supported."},
+                "schwab": {"env_vars": ["SCHWAB_APP_KEY", "SCHWAB_APP_SECRET", "SCHWAB_REFRESH_TOKEN"], "adapter": "not_built", "api_docs": "https://developer.schwab.com", "notes": "OAuth2 flow. Adapter not built yet — manual execution only."},
+                "fidelity": {"env_vars": [], "adapter": "manual", "api_docs": "", "notes": "No public API. Holdings imported via CSV from NetBenefits."},
+                "interactive_brokers": {"env_vars": ["IB_HOST", "IB_PORT", "IB_CLIENT_ID"], "adapter": "not_built", "api_docs": "https://interactivebrokers.github.io/cpwebapi/", "notes": "TWS or IB Gateway required. Client Portal API."},
+                "tradier": {"env_vars": ["TRADIER_TOKEN"], "adapter": "not_built", "api_docs": "https://documentation.tradier.com", "notes": "REST API. Paper sandbox available."},
+                "webull": {"env_vars": ["WEBULL_TOKEN"], "adapter": "not_built", "api_docs": "", "notes": "Unofficial API. Use with caution."},
+                "tastytrade": {"env_vars": ["TASTYTRADE_TOKEN"], "adapter": "not_built", "api_docs": "https://developer.tastytrade.com", "notes": "REST API. Options-focused."},
+            }
+            return 200, {"ok": True, "data": {
+                "accounts": [{k: _json_clean(v) for k, v in a.items()} for a in _accts],
+                "known_brokers": _known,
+                "onboarding": _onboarding,
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/admin/accounts":
+        try:
+            _body = body or {}
+            _required = ["account_label", "broker", "mode"]
+            _missing = [f for f in _required if not (_body.get(f) or "").strip()]
+            if _missing:
+                return 400, {"ok": False, "error": f"Missing: {', '.join(_missing)}"}
+            _label = _body["account_label"].strip().lower().replace(" ", "_")
+            _broker = _body["broker"].strip().lower()
+            _mode = _body["mode"].strip().lower()
+            if _mode not in ("paper", "live"):
+                return 400, {"ok": False, "error": "mode must be 'paper' or 'live'"}
+            _row = _db_query("""
+                INSERT INTO accounts (account_label, broker, mode, auto_execution_capable,
+                    equity_source, routing_adapter, enabled, notes)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            """, [_label, _broker, _mode,
+                  bool(_body.get("auto_execution_capable")),
+                  _body.get("equity_source", "manual"),
+                  _body.get("routing_adapter"),
+                  bool(_body.get("enabled", False)),
+                  _body.get("notes", "")], fetch="one")
+            # Clear broker_config cache
+            try:
+                from broker_config import clear_cache
+                clear_cache()
+            except Exception:
+                pass
+            return 200, {"ok": True, "data": {"id": _row.get("id") if _row else None, "account_label": _label}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "PUT" and base_path == "/api/v2/admin/accounts":
+        try:
+            _body = body or {}
+            _label = (_body.get("account_label") or "").strip()
+            if not _label:
+                return 400, {"ok": False, "error": "account_label required"}
+            _sets = []
+            _vals = []
+            for _field in ["enabled", "auto_execution_capable", "routing_adapter", "equity_source", "notes"]:
+                if _field in _body:
+                    _sets.append(f"{_field} = %s")
+                    _vals.append(_body[_field])
+            if not _sets:
+                return 400, {"ok": False, "error": "No fields to update"}
+            _vals.append(_label)
+            _db_query(f"UPDATE accounts SET {', '.join(_sets)} WHERE account_label = %s", _vals, fetch="one")
+            # Sync to ATM config if enabled changed
+            if "enabled" in _body:
+                try:
+                    import yaml as _yaml_sync
+                    _atm_path = PROJECT_ROOT / "config" / "atm_config.yaml"
+                    _cfg = _yaml_sync.safe_load(_atm_path.read_text()) or {}
+                    if "accounts" not in _cfg:
+                        _cfg["accounts"] = {}
+                    if bool(_body["enabled"]):
+                        if _label not in _cfg["accounts"]:
+                            _cfg["accounts"][_label] = {"enabled": True, "position_limits": {"max_concurrent": 6, "max_new_per_day": 3, "max_pct_per_trade": 0.10}}
+                        else:
+                            _cfg["accounts"][_label]["enabled"] = True
+                    else:
+                        if _label in _cfg["accounts"]:
+                            _cfg["accounts"][_label]["enabled"] = False
+                    _atm_path.write_text(_yaml_sync.dump(_cfg, default_flow_style=False, sort_keys=False))
+                except Exception:
+                    pass
+            try:
+                from broker_config import clear_cache
+                clear_cache()
+            except Exception:
+                pass
+            return 200, {"ok": True, "data": {"account_label": _label, "updated": True}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/admin/brokers" and method == "GET":
+        _brokers = {
+            "alpaca": {"name": "Alpaca", "modes": ["paper", "live"], "auto_capable": True,
+                       "env_vars": ["ALPACA_API_KEY", "ALPACA_SECRET_KEY"],
+                       "adapter_status": "built", "adapter": "scripts.alpaca_paper_adapter",
+                       "features": ["stocks", "extended_hours", "bracket_orders", "streaming"],
+                       "setup_steps": ["1. Create account at alpaca.markets", "2. Generate API keys", "3. Set ALPACA_API_KEY and ALPACA_SECRET_KEY in .env", "4. Add account via Admin"]},
+            "schwab": {"name": "Charles Schwab", "modes": ["live"], "auto_capable": False,
+                       "env_vars": ["SCHWAB_APP_KEY", "SCHWAB_APP_SECRET", "SCHWAB_REFRESH_TOKEN"],
+                       "adapter_status": "not_built", "adapter": None,
+                       "features": ["stocks", "options", "etfs", "mutual_funds"],
+                       "setup_steps": ["1. Apply for Schwab API access at developer.schwab.com", "2. Create app, get OAuth credentials", "3. Complete OAuth flow for refresh token", "4. Build schwab_adapter.py"]},
+            "fidelity": {"name": "Fidelity", "modes": ["live"], "auto_capable": False,
+                         "env_vars": [],
+                         "adapter_status": "manual_only", "adapter": None,
+                         "features": ["401k", "ira", "brokerage"],
+                         "setup_steps": ["1. Export holdings CSV from NetBenefits", "2. Import via portfolio sync", "3. No API — manual execution only"]},
+            "interactive_brokers": {"name": "Interactive Brokers", "modes": ["paper", "live"], "auto_capable": True,
+                                    "env_vars": ["IB_HOST", "IB_PORT", "IB_CLIENT_ID"],
+                                    "adapter_status": "not_built", "adapter": None,
+                                    "features": ["stocks", "options", "futures", "forex", "global_markets"],
+                                    "setup_steps": ["1. Install TWS or IB Gateway", "2. Enable API connections in TWS settings", "3. Set IB_HOST, IB_PORT, IB_CLIENT_ID in .env", "4. Build ib_adapter.py"]},
+            "tradier": {"name": "Tradier", "modes": ["paper", "live"], "auto_capable": True,
+                        "env_vars": ["TRADIER_TOKEN"],
+                        "adapter_status": "not_built", "adapter": None,
+                        "features": ["stocks", "options", "streaming"],
+                        "setup_steps": ["1. Create account at tradier.com", "2. Generate API token", "3. Set TRADIER_TOKEN in .env", "4. Build tradier_adapter.py"]},
+        }
+        return 200, {"ok": True, "data": {"brokers": _brokers}}
+
     # ── Claude Interventions ──
     if base_path == "/api/v2/claude-interventions" and method == "GET":
         try:
