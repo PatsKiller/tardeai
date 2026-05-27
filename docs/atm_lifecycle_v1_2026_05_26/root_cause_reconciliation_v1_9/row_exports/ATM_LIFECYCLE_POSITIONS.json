@@ -1,0 +1,535 @@
+[
+  {
+    "paper_trade_id": 33,
+    "symbol": "CMCSA",
+    "strategy_id": "dividend_growth_compounder",
+    "strategy_family": "income",
+    "account": "ALPACA_PAPER",
+    "shares": 120,
+    "entry_price": 24.97,
+    "days_held": 0,
+    "db_stop_loss": 23.61,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "review",
+      "status": "unknown",
+      "days_held": 0,
+      "overdue_by": 0,
+      "max_hold_days": null,
+      "review_at_days": 90
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 123,
+    "score": 15.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 31,
+    "symbol": "AGNC",
+    "strategy_id": "reit_income",
+    "strategy_family": "income",
+    "account": "ALPACA_PAPER",
+    "shares": 293,
+    "entry_price": 10.22,
+    "days_held": 0,
+    "db_stop_loss": 9.71,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "review",
+      "status": "unknown",
+      "days_held": 0,
+      "overdue_by": 0,
+      "max_hold_days": null,
+      "review_at_days": 90
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 120,
+    "score": 19.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 28,
+    "symbol": "NWG",
+    "strategy_id": "dividend_growth_compounder",
+    "strategy_family": "income",
+    "account": "TOS_PAPER",
+    "shares": 189,
+    "entry_price": 15.84,
+    "days_held": 4,
+    "db_stop_loss": 15.05,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "review",
+      "status": "ok",
+      "days_held": 4,
+      "overdue_by": 0,
+      "max_hold_days": null,
+      "review_at_days": 90
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 117,
+    "score": 22.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 26,
+    "symbol": "ASPN",
+    "strategy_id": "swing_trade",
+    "strategy_family": "swing",
+    "account": "TOS_PAPER",
+    "shares": 553,
+    "entry_price": 5.42,
+    "days_held": 5,
+    "db_stop_loss": 5.15,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "ok",
+      "days_held": 5,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 107,
+    "score": 36.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 18,
+    "symbol": "FLYW",
+    "strategy_id": "swing_breakout",
+    "strategy_family": "swing",
+    "account": "ALPACA_PAPER",
+    "shares": 171,
+    "entry_price": 17.51,
+    "days_held": 0,
+    "db_stop_loss": 16.63,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "unknown",
+      "days_held": 0,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 59,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 17,
+    "symbol": "FLYW",
+    "strategy_id": "swing_breakout",
+    "strategy_family": "swing",
+    "account": "TOS_PAPER",
+    "shares": 171,
+    "entry_price": 17.51,
+    "days_held": 14,
+    "db_stop_loss": 16.63,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "ok",
+      "days_held": 14,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 59,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 15,
+    "symbol": "BLBD",
+    "strategy_id": "earnings_catalyst",
+    "strategy_family": "momentum",
+    "account": "TOS_PAPER",
+    "shares": 37,
+    "entry_price": 80.24,
+    "days_held": 14,
+    "db_stop_loss": 76.23,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "intraday",
+      "status": "overdue",
+      "days_held": 14,
+      "overdue_by": 14,
+      "max_hold_days": null,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 42,
+    "score": 46.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 11,
+    "symbol": "FLYW",
+    "strategy_id": "swing_trade",
+    "strategy_family": "swing",
+    "account": "ALPACA_PAPER",
+    "shares": 171,
+    "entry_price": 17.51,
+    "days_held": 0,
+    "db_stop_loss": 16.63,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "unknown",
+      "days_held": 0,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 60,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 10,
+    "symbol": "FLYW",
+    "strategy_id": "swing_trade",
+    "strategy_family": "swing",
+    "account": "ALPACA_PAPER",
+    "shares": 171,
+    "entry_price": 17.51,
+    "days_held": 15,
+    "db_stop_loss": 16.63,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "ok",
+      "days_held": 15,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 60,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 9,
+    "symbol": "INFU",
+    "strategy_id": "earnings_catalyst",
+    "strategy_family": "momentum",
+    "account": "ALPACA_PAPER",
+    "shares": 357,
+    "entry_price": 8.39,
+    "days_held": 15,
+    "db_stop_loss": 7.97,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "intraday",
+      "status": "overdue",
+      "days_held": 15,
+      "overdue_by": 15,
+      "max_hold_days": null,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 62,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 8,
+    "symbol": "INFU",
+    "strategy_id": "swing_breakout",
+    "strategy_family": "swing",
+    "account": "ALPACA_PAPER",
+    "shares": 357,
+    "entry_price": 8.39,
+    "days_held": 0,
+    "db_stop_loss": 7.97,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "unknown",
+      "days_held": 0,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 61,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 7,
+    "symbol": "INFU",
+    "strategy_id": "swing_breakout",
+    "strategy_family": "swing",
+    "account": "ALPACA_PAPER",
+    "shares": 357,
+    "entry_price": 8.39,
+    "days_held": 15,
+    "db_stop_loss": 7.97,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "ok",
+      "days_held": 15,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 61,
+    "score": 38.0,
+    "lifecycle_linked": true
+  },
+  {
+    "paper_trade_id": 5,
+    "symbol": "XMTR",
+    "strategy_id": "swing_breakout",
+    "strategy_family": "swing",
+    "account": "ALPACA_PAPER",
+    "shares": 26,
+    "entry_price": null,
+    "days_held": 0,
+    "db_stop_loss": 72.49,
+    "trailing_tier": "lock 2.0R",
+    "time_stop": {
+      "type": "calendar",
+      "status": "unknown",
+      "days_held": 0,
+      "overdue_by": 0,
+      "max_hold_days": 21,
+      "review_at_days": null
+    },
+    "gate_audit": {
+      "strategy_active": {
+        "status": "pass"
+      },
+      "classifier_health": {
+        "status": "bypassed"
+      },
+      "max_concurrent": {
+        "status": "pass",
+        "detail": "13 open"
+      },
+      "stop_present": {
+        "status": "pass"
+      },
+      "market_hours": {
+        "status": "pass"
+      }
+    },
+    "proposal_id": 13,
+    "score": 41.0,
+    "lifecycle_linked": true
+  }
+]
