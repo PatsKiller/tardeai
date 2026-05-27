@@ -103,6 +103,26 @@ def main():
     recent_keys = set()
 
     for pr in proposals:
+        # ── Auto-reject proposals with stale entry prices (>5% drift from live) ──
+        _entry = float(pr.get("proposed_entry") or 0)
+        if _entry > 0:
+            try:
+                from market_quote_provider import get_best_quote as _abq
+                _lq = _abq(pr.get("symbol", ""))
+                if _lq and _lq.get("last_price") and _lq["last_price"] > 0:
+                    _drift = abs(float(_lq["last_price"]) - _entry) / _entry * 100
+                    if _drift > 5.0:
+                        try:
+                            from paper_trade_logger import reject_proposal
+                            reject_proposal(pr["id"], f"auto_stale_price_drift_{_drift:.0f}pct")
+                            print(f"  [alert] Auto-rejected #{pr['id']} {pr.get('symbol')}: "
+                                  f"entry=${_entry:.2f} live=${_lq['last_price']:.2f} ({_drift:.1f}% drift)")
+                        except Exception:
+                            pass
+                        continue
+            except Exception:
+                pass
+
         pr["execution_readiness"] = {
             "readiness_state": pr.get("readiness_state"),
             "quote_provider": pr.get("quote_provider"),
