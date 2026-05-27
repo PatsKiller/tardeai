@@ -1,7 +1,7 @@
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level
-**Last updated:** 2026-05-21 (Real-time alerts + trailing stop analysis)
+**Last updated:** 2026-05-27 (Self-healing system + Claude Code escalation + LLM health review)
 
 ---
 
@@ -21,18 +21,25 @@ Trade AI v12 is a fully automated profit-seeking trading intelligence platform t
 |                                                                                    |
 |   +-----------+     +-------------+     +------------+     +------------------+    |
 |   | React SPA | --> | Portfolio    | --> | PostgreSQL | <-- | Cron Scheduler   |    |
-|   | (42 pgs)  |     | Server :7777|     | :5432      |     | (55 jobs)        |    |
-|   +-----------+     | 275+ APIs   |     | 330 tables |     +------------------+    |
+|   | (67 pgs)  |     | Server :7777|     | :5432      |     | (183 jobs)       |    |
+|   +-----------+     | 300+ APIs   |     | 376 tables |     +------------------+    |
 |                     +------+------+     +------------+                              |
 |                            |                                                       |
-|              +-------------+-------------+                                         |
-|              |                           |                                         |
-|   +----------v----------+     +----------v----------+                              |
-|   | Ollama LLM :11434   |     | OpenClaw GW :18789  |     +------------------+    |
-|   | qwen3:14b           |     | 6 Agents            |     | Alert Dispatcher |    |
-|   | Intel Arc B50 GPU   |     | (Maria/Steph/Aegis/ |     | Dedup+Fatigue    |    |
-|   | 5 daily intel sects |     |  Alex/Risk/Tax)     |     | 3 tiers          |    |
-|   +---------------------+     +---------------------+     +------------------+    |
+|              +-------------+-------------+-------------+                           |
+|              |                           |             |                            |
+|   +----------v----------+     +----------v----------+  |  +------------------+    |
+|   | Ollama LLM :11434   |     | OpenClaw GW :18789  |  |  | Health Agent     |    |
+|   | qwen3:14b           |     | 8 Agents            |  |  | 26 monitors      |    |
+|   | Intel Arc B50 GPU   |     | (Maria/Steph/Aegis/ |  |  | 3-tier escalate: |    |
+|   | 5 daily intel sects |     |  Alex/Risk/Tax/     |  |  |  Python→Claude   |    |
+|   | Nightly health review|    |  Iris/MariaResearch) |  |  |  Code→LLM review |    |
+|   +---------------------+     +---------------------+  |  +------------------+    |
+|                                                         |                          |
+|                               +-------------------------v----+                     |
+|                               | Claude Code Escalation       |                     |
+|                               | Auto-diagnose + fix          |                     |
+|                               | Intervention log → dashboard |                     |
+|                               +------------------------------+                     |
 |                               +----------+----------+                              |
 |                                          |                                         |
 +-----------------------------------------------------------------------------------+
