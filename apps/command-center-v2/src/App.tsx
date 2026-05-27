@@ -59,6 +59,7 @@ const AIAnalyst = lazy(() => import('./pages/AIAnalyst'))
 // ── Agents & Pipeline (consolidated) ──
 const AgentPipeline = lazy(() => import('./pages/AgentPipeline'))
 const AgentCalibration = lazy(() => import('./pages/AgentCalibration'))
+const AgentLifecycle = lazy(() => import('./pages/AgentLifecycle'))
 const AgentCollaboration = lazy(() => import('./pages/AgentCollaboration'))
 const PipelineHub = lazy(() => import('./pages/PipelineHub'))
 const WeeklyLearning = lazy(() => import('./pages/WeeklyLearning'))
@@ -170,6 +171,7 @@ export default function App() {
           {/* ── Agents & Pipeline (consolidated) ── */}
           <Route path="agent-pipeline" element={<SafePage><AgentPipeline /></SafePage>} />
           <Route path="agent-calibration" element={<SafePage><AgentCalibration /></SafePage>} />
+          <Route path="agent-lifecycle" element={<SafePage><AgentLifecycle /></SafePage>} />
           <Route path="agent-collaboration" element={<SafePage><AgentCollaboration /></SafePage>} />
           <Route path="agent-dashboard/:agentId" element={<SafePage><AgentDashboard /></SafePage>} />
           <Route path="pipeline" element={<SafePage><PipelineHub /></SafePage>} />

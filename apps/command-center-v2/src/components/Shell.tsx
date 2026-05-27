@@ -77,6 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/retirement', label: 'Retirement' },
   ]},
   { label: 'Learning & Improvement', items: [
+    { to: '/agent-lifecycle', label: 'Agent Lifecycle' },
     { to: '/self-improvement', label: 'Self-Improvement' },
     { to: '/agent-calibration', label: 'Agent Calibration' },
     { to: '/weekly-learning', label: 'Weekly Learning' },
