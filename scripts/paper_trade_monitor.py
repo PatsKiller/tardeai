@@ -320,6 +320,14 @@ def monitor(dry_run=False):
                                 [new_stop, new_id, trade['id']])
                     conn.commit()
                     log.info(f"TRAILING STOP: {sym} R={r_mult:.1f} — stop ${alpaca_stop:.2f} → ${new_stop:.2f}")
+                    try:
+                        from stop_change_audit import log_stop_change
+                        log_stop_change(conn, trade['id'], sym, alpaca_stop, new_stop,
+                                        change_type='trailing_update', source='paper_trade_monitor',
+                                        reason=reason, broker_order_id=new_id,
+                                        strategy_id=trade.get('strategy_id'))
+                    except Exception:
+                        pass
 
         # Ensure stop exists if missing
         if not stop_orders and action == "hold" and stop > 0:

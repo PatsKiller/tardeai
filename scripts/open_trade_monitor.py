@@ -451,6 +451,13 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
             _log_risk_action(conn, tid, symbol, 'trailing_stop_update', stop, new_stop, price,
                              tier_reason)
             cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", [new_stop, tid])
+            try:
+                from stop_change_audit import log_stop_change
+                log_stop_change(conn, tid, symbol, stop, new_stop,
+                                change_type='trailing_update', source='open_trade_monitor',
+                                reason=tier_reason, strategy_id=trade.get('strategy_id'))
+            except Exception:
+                pass
             if not dry_run:
                 _update_stop_on_alpaca(conn, trade, new_stop)
             locked = (new_stop - entry) * shares if new_stop > entry and shares else 0

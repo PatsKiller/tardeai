@@ -426,6 +426,13 @@ def _handle_stop_loosen(symbol, pct, user_id):
         new_stop = round(old_stop * (1 - pct / 100), 2)
         cur.execute("UPDATE paper_trades SET stop_loss=%s WHERE id=%s", (new_stop, tid))
         conn.commit()
+        try:
+            from stop_change_audit import log_stop_change
+            log_stop_change(conn, tid, symbol, old_stop, new_stop,
+                            change_type='manual_operator', source='telegram_callback',
+                            reason=f'operator widen {pct}%')
+        except Exception:
+            pass
         conn.close()
         return {"ok": True, "symbol": symbol, "message": f"stop ${old_stop:.2f} \u2192 ${new_stop:.2f}"}
     except Exception as e:
