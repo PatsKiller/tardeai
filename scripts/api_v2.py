@@ -19500,6 +19500,77 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Agent Lifecycle endpoints ──
+    if base_path == "/api/v2/agent-lifecycle/requirements" and method == "GET":
+        try:
+            _q = query or {}
+            _agent_val = _q.get("agent", [None])
+            _agent_val = _agent_val[0] if isinstance(_agent_val, list) else _agent_val
+            _agent_filter = ""
+            _params = []
+            if _agent_val:
+                _agent_filter = " WHERE agent_name = %s"
+                _params = [_agent_val]
+            _reqs = _db_query(f"SELECT * FROM agent_requirements{_agent_filter} ORDER BY created_at DESC", _params or None) or []
+            return 200, {"ok": True, "data": {"requirements": [{k: _json_clean(v) for k, v in r.items()} for r in _reqs]}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/agent-lifecycle/requirements":
+        try:
+            _body = body or {}
+            _fields = ["agent_name", "use_case", "expected_output", "failure_conditions", "acceptance_criteria"]
+            _missing = [f for f in _fields if not (_body.get(f) or "").strip()]
+            if _missing:
+                return 400, {"ok": False, "error": f"Missing required fields: {', '.join(_missing)}"}
+            _row = _db_query("""
+                INSERT INTO agent_requirements (agent_name, use_case, expected_output, failure_conditions, acceptance_criteria)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """, [_body[f].strip() for f in _fields], fetch="one")
+            return 200, {"ok": True, "data": {"id": _row["id"] if _row else None}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/agent-lifecycle/quality-scores" and method == "GET":
+        try:
+            scores = {}
+            # Accuracy from calibration agents
+            _cal = _db_query("""
+                SELECT DISTINCT ON (agent_name) agent_name,
+                       accuracy_pct as accuracy, calibration_error
+                FROM agent_calibration
+                ORDER BY agent_name, computed_at DESC
+            """) or []
+            for c in _cal:
+                scores[c["agent_name"]] = {"accuracy": float(c.get("accuracy") or 0) / 100.0,
+                                           "consistency": 1.0 - min(abs(float(c.get("calibration_error") or 0)), 1.0)}
+            # Grounding + Explainability from agent results (30d)
+            _gr = _db_query("""
+                SELECT agent,
+                       COALESCE(AVG(CASE WHEN rag_sources_used IS NOT NULL THEN 1.0 ELSE 0.0 END), 0) as grounding,
+                       COALESCE(AVG(CASE WHEN full_narrative IS NOT NULL AND full_narrative != '' THEN 1.0 ELSE 0.0 END), 0) as explainability
+                FROM watchlist_agent_results
+                WHERE created_at > NOW() - INTERVAL '30 days'
+                GROUP BY agent
+            """) or []
+            for g in _gr:
+                agent = g["agent"]
+                if agent not in scores:
+                    scores[agent] = {"accuracy": 0, "consistency": 0}
+                scores[agent]["grounding"] = round(float(g.get("grounding") or 0), 3)
+                scores[agent]["explainability"] = round(float(g.get("explainability") or 0), 3)
+                scores[agent]["safety"] = 1.0  # No violation tracking yet
+            # Fill defaults for agents without data
+            for agent in scores:
+                scores[agent].setdefault("grounding", 0)
+                scores[agent].setdefault("explainability", 0)
+                scores[agent].setdefault("safety", 1.0)
+                scores[agent].setdefault("accuracy", 0)
+                scores[agent].setdefault("consistency", 0)
+            return 200, {"ok": True, "data": {"scores": scores}}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if base_path == "/api/v2/atm/stop-change-audit" and method == "GET":
         try:
             _sca_events = _db_query("""
