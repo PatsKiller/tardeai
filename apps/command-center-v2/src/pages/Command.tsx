@@ -9,7 +9,7 @@ interface Recovery { symbol: string; analyst_verdict: string; analyst_confidence
 interface NewsItem { symbol: string; title: string; source: string; sentiment: string; date: string }
 interface AgentHealth { agent: string; total: number; latest: string; age_days: number; max_days: number; status: string }
 interface TriggeredStop { symbol: string; stop: number; price: number; pnl_pct: number; account: string }
-interface PaperTrade { id: number; symbol: string; entry_price: number; shares: number; stop_loss: number; current_price: number; unrealized_pnl: number; r_multiple: number; lifecycle_state: string }
+interface PaperTrade { id: number; symbol: string; entry_price: number; shares: number; stop_loss: number; target_1: number; dollar_size: number; dollar_risk: number; current_price: number; unrealized_pnl: number; r_multiple: number; lifecycle_state: string; strategy_id: string }
 
 interface CommandData {
   generated_at: string
@@ -150,21 +150,88 @@ export default function Command() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {/* Open Paper Trades */}
         <Card>
-          <SectionTitle count={(cmd.open_paper_trades || []).length}>Paper Trades</SectionTitle>
-          {(cmd.open_paper_trades?.length ?? 0) > 0 ? (cmd.open_paper_trades || []).map(t => (
-            <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border1)' }}>
-              <div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text0)', marginRight: 8 }}>{t.symbol}</span>
-                <span style={{ fontSize: 10, color: 'var(--text3)' }}>{t.shares}sh @ ${t.entry_price?.toFixed(2)}</span>
+          {(() => {
+            const trades = cmd.open_paper_trades || []
+            const totalInvested = trades.reduce((s: number, t: PaperTrade) => s + (t.dollar_size || t.entry_price * t.shares || 0), 0)
+            const totalRisk = trades.reduce((s: number, t: PaperTrade) => s + (t.dollar_risk || 0), 0)
+            const totalPnl = trades.reduce((s: number, t: PaperTrade) => s + (t.unrealized_pnl || 0), 0)
+            return (<>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <SectionTitle count={trades.length}>Paper Trades</SectionTitle>
+                {trades.length > 0 && (
+                  <div style={{ display: 'flex', gap: 12, fontSize: 9, color: 'var(--text3)' }}>
+                    <span>Invested {fmt(totalInvested)}</span>
+                    <span>Risk {fmt(totalRisk)}</span>
+                    <span style={{ color: totalPnl >= 0 ? '#0ecb81' : '#f6465d', fontWeight: 600 }}>P&L {fmt(totalPnl)}</span>
+                  </div>
+                )}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: (t.unrealized_pnl ?? 0) >= 0 ? '#0ecb81' : '#f6465d' }}>
-                  {fmt(t.unrealized_pnl ?? 0)}
-                </div>
-                {t.r_multiple != null && <div style={{ fontSize: 9, color: 'var(--text3)' }}>{t.r_multiple?.toFixed(1)}R</div>}
-              </div>
-            </div>
-          )) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No open trades</div>}
+              {trades.length > 0 ? trades.map((t: PaperTrade) => {
+                const entry = t.entry_price || 0
+                const stop = t.stop_loss || 0
+                const target = t.target_1 || 0
+                const current = t.current_price || 0
+                const shares = t.shares || 0
+                const invested = t.dollar_size || entry * shares
+                const risk = t.dollar_risk || Math.abs(entry - stop) * shares
+                const reward = target > entry ? (target - entry) * shares : 0
+                const rr = entry > stop && target > entry ? ((target - entry) / (entry - stop)) : 0
+                const stopDist = entry > 0 ? ((stop - entry) / entry * 100) : 0
+                const targetDist = entry > 0 ? ((target - entry) / entry * 100) : 0
+                const pnlPct = invested > 0 ? (t.unrealized_pnl || 0) / invested * 100 : 0
+                // Progress bar: where is current price between stop and target?
+                const range = target - stop
+                const progress = range > 0 ? Math.max(0, Math.min(100, (current - stop) / range * 100)) : 50
+                const entryPos = range > 0 ? Math.max(0, Math.min(100, (entry - stop) / range * 100)) : 50
+                return (
+                  <div key={t.id} style={{ padding: '8px 10px', marginBottom: 6, borderRadius: 6,
+                    background: 'rgba(255,255,255,.02)', border: '1px solid var(--border1)' }}>
+                    {/* Row 1: Symbol + Strategy + P&L */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{t.symbol}</span>
+                        <span style={{ fontSize: 9, color: 'var(--text3)' }}>{t.strategy_id?.replace(/_/g, ' ')}</span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: (t.unrealized_pnl ?? 0) >= 0 ? '#0ecb81' : '#f6465d' }}>
+                          {fmt(t.unrealized_pnl ?? 0)}
+                        </span>
+                        <span style={{ fontSize: 10, color: (t.unrealized_pnl ?? 0) >= 0 ? '#0ecb8180' : '#f6465d80', marginLeft: 4 }}>
+                          {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(1)}%
+                        </span>
+                      </div>
+                    </div>
+                    {/* Row 2: Shares + Entry + Target + R */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text2)', marginBottom: 6 }}>
+                      <span>{shares}sh @ ${entry.toFixed(2)} → Target ${target.toFixed(2)}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text1)' }}>{t.r_multiple?.toFixed(2)}R</span>
+                    </div>
+                    {/* Row 3: Financial metrics */}
+                    <div style={{ display: 'flex', gap: 10, fontSize: 9, color: 'var(--text3)', marginBottom: 6, flexWrap: 'wrap' }}>
+                      <span>Invested <span style={{ color: 'var(--text2)' }}>{fmt(invested)}</span></span>
+                      <span>Risk <span style={{ color: '#f6465d' }}>{fmt(risk)}</span></span>
+                      <span>Reward <span style={{ color: '#0ecb81' }}>{fmt(reward)}</span></span>
+                      <span>R:R <span style={{ color: rr >= 2 ? '#0ecb81' : rr >= 1.5 ? '#f0b90b' : '#f6465d', fontWeight: 700 }}>{rr.toFixed(2)}:1</span></span>
+                    </div>
+                    {/* Row 4: Visual price bar */}
+                    <div style={{ position: 'relative', height: 12, background: 'rgba(246,70,93,.1)', borderRadius: 3, overflow: 'hidden' }}>
+                      {/* Green zone: entry to target */}
+                      <div style={{ position: 'absolute', left: `${entryPos}%`, right: `${100 - 100}%`, height: '100%', background: 'rgba(14,203,129,.1)' }} />
+                      {/* Current price marker */}
+                      <div style={{ position: 'absolute', left: `${progress}%`, top: 0, bottom: 0, width: 2, background: (t.unrealized_pnl ?? 0) >= 0 ? '#0ecb81' : '#f6465d', borderRadius: 1 }} />
+                      {/* Entry marker */}
+                      <div style={{ position: 'absolute', left: `${entryPos}%`, top: 0, bottom: 0, width: 1, background: 'var(--text3)', opacity: 0.4 }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>
+                      <span>Stop ${stop.toFixed(2)} ({stopDist.toFixed(1)}%)</span>
+                      <span>Entry ${entry.toFixed(2)}</span>
+                      <span>Target ${target.toFixed(2)} (+{targetDist.toFixed(1)}%)</span>
+                    </div>
+                  </div>
+                )
+              }) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No open trades</div>}
+            </>)
+          })()}
         </Card>
 
         {/* Movers */}

@@ -11444,8 +11444,9 @@ def _morning_command():
 
     # ── Open paper trades ──
     open_paper = _db_query("""
-        SELECT id, symbol, entry_price, shares, stop_loss, current_price, unrealized_pnl,
-               r_multiple, lifecycle_state
+        SELECT id, symbol, entry_price, shares, stop_loss, target_1,
+               dollar_size, dollar_risk, current_price, unrealized_pnl,
+               r_multiple, lifecycle_state, strategy_id
         FROM paper_trades WHERE status = 'open'
         ORDER BY unrealized_pnl DESC NULLS LAST
     """) or []
