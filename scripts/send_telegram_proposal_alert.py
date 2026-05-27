@@ -231,6 +231,14 @@ def main():
                 sent_count += 1 if ok else 0
                 _log_alert(check["key"], pr.get("id"), pr.get("symbol"),
                           packet["alert_type"], packet["urgency"], ok, "sent" if ok else "send_failed")
+                # Update last_alert_at + alert_count for dedup
+                if ok:
+                    try:
+                        _db_query("""UPDATE paper_trade_proposals
+                            SET last_alert_at=NOW(), alert_count=COALESCE(alert_count,0)+1
+                            WHERE id=%s""", [pr.get("id")])
+                    except Exception:
+                        pass
             except Exception as e:
                 result["sent"] = False
                 result["error"] = str(e)[:100]

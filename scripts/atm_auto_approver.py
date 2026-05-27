@@ -105,10 +105,12 @@ def _count_positions(conn, account_label: str) -> int:
 
 
 def _count_new_today(conn, account_label: str) -> int:
+    """Count new trades opened today. Excludes closed/phantom/failed."""
     cur = conn.cursor()
     cur.execute("""
         SELECT COUNT(*) FROM paper_trades
         WHERE target_account=%s AND created_at::date = CURRENT_DATE
+        AND status IN ('open', 'pending')
     """, (account_label,))
     return cur.fetchone()[0] or 0
 

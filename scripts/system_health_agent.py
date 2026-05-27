@@ -723,6 +723,29 @@ def run_health_check(dry_run=True, verbose=False):
     except Exception as e:
         log.warning(f"Queue cleanup failed: {e}")
 
+    # ── Proposal lifecycle cleanup — reject stuck proposals ──
+    try:
+        cur = conn.cursor()
+        # Auto-reject PENDING proposals stuck >2 hours with incomplete enrichment
+        cur.execute("""UPDATE paper_trade_proposals
+            SET status='REJECTED', rejection_reason='auto_enrichment_stuck_2h',
+                rejected_at=NOW(), updated_at=NOW()
+            WHERE status='PENDING' AND created_at < NOW() - INTERVAL '2 hours'
+            AND (approval_allowed IS NULL OR approval_allowed = false)
+            AND packet_state IN ('MISSING_DATA', 'NEW', 'ENRICHING')""")
+        _stuck_proposals = cur.rowcount
+        # Auto-reject PENDING proposals stuck >4 hours regardless
+        cur.execute("""UPDATE paper_trade_proposals
+            SET status='REJECTED', rejection_reason='auto_stale_4h',
+                rejected_at=NOW(), updated_at=NOW()
+            WHERE status='PENDING' AND created_at < NOW() - INTERVAL '4 hours'""")
+        _stale_proposals = cur.rowcount
+        conn.commit()
+        if _stuck_proposals or _stale_proposals:
+            log.info(f"  🧹 Proposal cleanup: {_stuck_proposals} enrichment-stuck, {_stale_proposals} stale >4h")
+    except Exception as e:
+        log.warning(f"Proposal lifecycle cleanup failed: {e}")
+
     # ── Portfolio risk checks (5 conditions from Command Center) ──
     portfolio_alerts = []
     try:
