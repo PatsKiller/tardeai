@@ -19391,6 +19391,100 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
+    # ── v3.3/v3.4 Stop Proof + Execution Timing ─────────────────────────
+    if base_path == "/api/v2/atm/stop-proof" and method == "GET":
+        try:
+            import datetime as _dt_sp, os as _os_sp
+            _sp_trades = _db_query("""
+                SELECT id AS paper_trade_id, symbol, strategy_id, account,
+                       stop_loss, stop_order_id, stop_verified_at
+                FROM paper_trades
+                WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason='')
+                ORDER BY id
+            """) or []
+            _sp_recs = []
+            for t in _sp_trades:
+                _has_oid = bool(t.get("stop_order_id"))
+                _verified = bool(t.get("stop_verified_at"))
+                if not t.get("stop_loss"):
+                    _vs = "no_stop_configured"
+                elif _verified:
+                    _vs = "stop_verified"
+                elif _has_oid:
+                    _vs = "stop_unverified"
+                else:
+                    _vs = "stop_order_id_missing"
+                _sp_recs.append({
+                    "paper_trade_id": t["paper_trade_id"], "symbol": t["symbol"],
+                    "strategy_id": t.get("strategy_id"), "account": t.get("account"),
+                    "db_stop": float(t["stop_loss"]) if t.get("stop_loss") else None,
+                    "stop_order_id": t.get("stop_order_id"),
+                    "stop_verified_at": str(t["stop_verified_at"]) if t.get("stop_verified_at") else None,
+                    "verification_status": _vs,
+                    "safe_actions": ["Review broker stop proof", "Open trade journal"],
+                    "blocked_actions": ["Cancel stop", "Replace stop", "Submit new stop", "Live order"],
+                })
+            return 200, {"ok": True, "data": {
+                "generated_at": _dt_sp.datetime.now(_dt_sp.timezone.utc).isoformat(),
+                "total_open_trades": len(_sp_recs),
+                "verified_count": sum(1 for r in _sp_recs if r["verification_status"] == "stop_verified"),
+                "missing_stop_order_id_count": sum(1 for r in _sp_recs if r["verification_status"] == "stop_order_id_missing"),
+                "no_stop_configured_count": sum(1 for r in _sp_recs if r["verification_status"] == "no_stop_configured"),
+                "records": _sp_recs,
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "stops_modified": "NONE",
+                           "alpaca_mode": _os_sp.environ.get("ALPACA_MODE", "unknown")},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/execution-timing-health" and method == "GET":
+        try:
+            import datetime as _dt_et, os as _os_et
+            _et_trades = _db_query("""
+                SELECT id AS paper_trade_id, symbol, strategy_id, account,
+                       order_submitted_at, order_filled_at, entry_price, stop_loss
+                FROM paper_trades
+                WHERE entry_price IS NOT NULL
+                ORDER BY id DESC LIMIT 50
+            """) or []
+            _et_recs = []
+            for t in _et_trades:
+                _sub = t.get("order_submitted_at")
+                _fill = t.get("order_filled_at")
+                _ttf = None
+                if _sub and _fill:
+                    try:
+                        _ttf = round((_fill - _sub).total_seconds(), 2)
+                    except Exception:
+                        pass
+                _missing = []
+                if not _sub: _missing.append("order_submitted_at")
+                if not _fill: _missing.append("order_filled_at")
+                _et_recs.append({
+                    "paper_trade_id": t["paper_trade_id"], "symbol": t["symbol"],
+                    "strategy_id": t.get("strategy_id"), "account": t.get("account"),
+                    "order_submitted_at": str(_sub) if _sub else None,
+                    "order_filled_at": str(_fill) if _fill else None,
+                    "time_to_fill_seconds": _ttf,
+                    "fill_price": float(t["entry_price"]) if t.get("entry_price") else None,
+                    "missing_fields": _missing,
+                })
+            _has_sub = sum(1 for r in _et_recs if r["order_submitted_at"])
+            _has_fill = sum(1 for r in _et_recs if r["order_filled_at"])
+            return 200, {"ok": True, "data": {
+                "generated_at": _dt_et.datetime.now(_dt_et.timezone.utc).isoformat(),
+                "total_recent_trades": len(_et_recs),
+                "order_submitted_populated": _has_sub,
+                "order_filled_populated": _has_fill,
+                "missing_order_submitted_count": len(_et_recs) - _has_sub,
+                "missing_order_filled_count": len(_et_recs) - _has_fill,
+                "records": _et_recs,
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "stops_modified": "NONE",
+                           "alpaca_mode": _os_et.environ.get("ALPACA_MODE", "unknown")},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── Lifecycle Trace v3.1 ─────────────────────────────────────────────
     if base_path == "/api/v2/lifecycle/trace-summary" and method == "GET":
         try:
