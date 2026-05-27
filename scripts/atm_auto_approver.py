@@ -380,12 +380,21 @@ def run_cycle():
             continue
 
         if is_same_day_skip(sid):
+            # Same-day strategies can't be auto-traded by ATM (15-min cadence too slow)
+            # Reject so they stop re-alerting — operator can manually approve via Telegram
+            if mode == "active":
+                cur.execute("""UPDATE paper_trade_proposals
+                    SET status='REJECTED', rejection_reason='atm_same_day_skip: cadence too slow for this strategy',
+                        rejected_at=NOW(), updated_at=NOW()
+                    WHERE id=%s AND status='PENDING'""", [pid])
+                conn.commit()
             reasons.append({"gate": "same_day_strategy_atm_cadence_too_slow"})
             _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
-                         "deferred", reasons, health, pos_open, pos_total,
+                         "rejected", reasons, health, pos_open, pos_total,
                          new_today, new_total, pnl_acct, total_pnl_pct,
                          b1_flag, config_hash, mode)
-            log.info(f"  {sym}: deferred (same-day strategy skip)")
+            rejected_count += 1
+            log.info(f"  {sym}: rejected (same-day strategy — ATM cadence too slow)")
             continue
 
         # ── 2e: ATM-specific gates (skipped for force_approve) ──
@@ -420,6 +429,14 @@ def run_cycle():
                              decision, reasons, health, pos_open, pos_total,
                              new_today, new_total, pnl_acct, total_pnl_pct,
                              b1_flag, config_hash, mode)
+                # Actually reject the proposal so it stops re-alerting
+                if mode == "active":
+                    _reason_text = ", ".join(r["gate"] for r in reasons)
+                    cur.execute("""UPDATE paper_trade_proposals
+                        SET status='REJECTED', rejection_reason=%s, rejected_at=NOW(), updated_at=NOW()
+                        WHERE id=%s AND status='PENDING'""",
+                        [f"atm_gate: {_reason_text}"[:200], pid])
+                    conn.commit()
                 rejected_count += 1
                 log.info(f"  {sym}: {decision} ({[r['gate'] for r in reasons]})")
                 continue
