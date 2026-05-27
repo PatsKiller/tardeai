@@ -27,6 +27,13 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(__file__))
 from pipeline_registry import PipelineRun
 
+def _get_default_account():
+    try:
+        from broker_config import get_default_paper_account
+        return get_default_paper_account()
+    except Exception:
+        return os.environ.get("DEFAULT_PAPER_ACCOUNT", "paper")
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
@@ -738,7 +745,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             VALUES (%s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s,
-                    'alpaca_paper',
+                    %s,
                     'PENDING', %s, 'ACTIVE',
                     'NEEDS_PRICE_CHECK', %s,
                     %s, 'incubator_universe', 'incubator', %s,
@@ -752,6 +759,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             symbol, strategy_id, strategy_id,
             entry, stop, target,
             shares, rr, round(abs(entry - stop) * shares, 2),
+            _get_default_account(),
             expires_at, timeframe_class,
             screener_name, source_run_label,
             score, signal_grade, c.get('catalyst'), catalyst_verified,
