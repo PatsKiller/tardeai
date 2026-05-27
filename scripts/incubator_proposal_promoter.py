@@ -410,10 +410,11 @@ def is_already_pending(cur, symbol, strategy_id):
 
 
 def get_scan_price(cur, symbol):
-    """Return (price, screener_label) from most recent trade_ai_scans row."""
+    """Return (price, screener_label) from most recent trade_ai_scans row (max 3 days old)."""
     cur.execute("""
         SELECT price, screener_label FROM trade_ai_scans
         WHERE symbol = %s
+        AND scanned_at > NOW() - INTERVAL '3 days'
         ORDER BY scanned_at DESC
         LIMIT 1
     """, [symbol])
