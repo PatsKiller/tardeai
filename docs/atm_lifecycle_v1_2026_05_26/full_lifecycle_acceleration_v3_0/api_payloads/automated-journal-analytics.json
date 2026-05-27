@@ -1,0 +1,219 @@
+{
+    "ok": true,
+    "overall": {
+        "total_trades": 9,
+        "open_trades": 3,
+        "wins": 5,
+        "losses": 4,
+        "gross_profit": 833.3,
+        "gross_loss": 275.71,
+        "total_realized_pnl": 557.59,
+        "total_unrealized_pnl": 136.56,
+        "avg_winner": 166.66,
+        "avg_loser": 68.93,
+        "avg_r": 0.26,
+        "win_rate": 0.556,
+        "profit_factor": 3.02,
+        "expectancy": 62.06
+    },
+    "by_strategy": [
+        {
+            "strategy_id": "dividend_growth_compounder",
+            "trades": 1,
+            "wins": 1,
+            "pnl": 27.36
+        },
+        {
+            "strategy_id": "earnings_catalyst",
+            "trades": 2,
+            "wins": 1,
+            "pnl": 246.77
+        },
+        {
+            "strategy_id": "swing_breakout",
+            "trades": 1,
+            "wins": 1,
+            "pnl": 67.83
+        },
+        {
+            "strategy_id": "momentum_scalp",
+            "trades": 2,
+            "wins": 0,
+            "pnl": -245.52
+        },
+        {
+            "strategy_id": "screener",
+            "trades": 1,
+            "wins": 1,
+            "pnl": 202.8
+        },
+        {
+            "strategy_id": "swing_trade",
+            "trades": 2,
+            "wins": 1,
+            "pnl": 258.35
+        },
+        {
+            "strategy_id": "reit_income",
+            "trades": 0,
+            "wins": 0,
+            "pnl": null
+        }
+    ],
+    "validation_gates": {
+        "cash_or_stable": {
+            "trades_needed": 30,
+            "trades_done": 0,
+            "win_rate_needed": 0.5,
+            "win_rate_current": null,
+            "gate_passed": false
+        },
+        "gap_and_go": {
+            "trades_needed": 30,
+            "trades_done": 0,
+            "win_rate_needed": 0.48,
+            "win_rate_current": null,
+            "gate_passed": false
+        },
+        "income_add": {
+            "trades_needed": 30,
+            "trades_done": 0,
+            "win_rate_needed": 0.4,
+            "win_rate_current": null,
+            "gate_passed": false
+        },
+        "momentum_scalp": {
+            "trades_needed": 30,
+            "trades_done": 2,
+            "win_rate_needed": 0.55,
+            "win_rate_current": 0.0,
+            "gate_passed": false
+        },
+        "earnings_catalyst": {
+            "trades_needed": 30,
+            "trades_done": 2,
+            "win_rate_needed": 0.45,
+            "win_rate_current": 0.5,
+            "gate_passed": false
+        }
+    },
+    "recent_closed": [
+        {
+            "id": 27,
+            "symbol": "ASPN",
+            "strategy_id": "swing_trade",
+            "account": "ALPACA_PAPER",
+            "entry_price": 5.52,
+            "exit_price": 6.015,
+            "pnl": 273.74,
+            "pnl_pct": null,
+            "outcome_verdict": "WIN",
+            "exit_reason": "target_hit",
+            "closed_at": "2026-05-26T09:36:02.568661-04:00"
+        },
+        {
+            "id": 21,
+            "symbol": "INFU",
+            "strategy_id": "earnings_catalyst",
+            "account": "ALPACA_PAPER",
+            "entry_price": 8.61,
+            "exit_price": 9.34,
+            "pnl": 261.57,
+            "pnl_pct": null,
+            "outcome_verdict": "WIN",
+            "exit_reason": "target_hit",
+            "closed_at": "2026-05-19T10:15:01.470387-04:00"
+        },
+        {
+            "id": 24,
+            "symbol": "FLYW",
+            "strategy_id": "dividend_growth_compounder",
+            "account": "ALPACA_PAPER",
+            "entry_price": 16.29,
+            "exit_price": 16.45,
+            "pnl": 27.36,
+            "pnl_pct": null,
+            "outcome_verdict": "WIN",
+            "exit_reason": "stop_hit",
+            "closed_at": "2026-05-14T11:30:01.846906-04:00"
+        },
+        {
+            "id": 22,
+            "symbol": "GCTS",
+            "strategy_id": "momentum_scalp",
+            "account": "ALPACA_PAPER",
+            "entry_price": 1.49,
+            "exit_price": 1.37,
+            "pnl": -225.0,
+            "pnl_pct": null,
+            "outcome_verdict": "LOSS",
+            "exit_reason": "stop_hit",
+            "closed_at": "2026-05-13T15:45:01.280570-04:00"
+        },
+        {
+            "id": 13,
+            "symbol": "INFU",
+            "strategy_id": "swing_breakout",
+            "account": "ALPACA_PAPER",
+            "entry_price": 8.39,
+            "exit_price": 8.58,
+            "pnl": 67.83,
+            "pnl_pct": 2.26,
+            "outcome_verdict": "WIN",
+            "exit_reason": "manual_stale_close",
+            "closed_at": "2026-05-13T13:31:49.540198-04:00"
+        },
+        {
+            "id": 19,
+            "symbol": "FLYW",
+            "strategy_id": "momentum_scalp",
+            "account": "ALPACA_PAPER",
+            "entry_price": 16.75,
+            "exit_price": 16.63,
+            "pnl": -20.52,
+            "pnl_pct": 0.0,
+            "outcome_verdict": "LOSS",
+            "exit_reason": "stop_hit",
+            "closed_at": "2026-05-12T16:00:01.535190-04:00"
+        },
+        {
+            "id": 16,
+            "symbol": "BLBD",
+            "strategy_id": "earnings_catalyst",
+            "account": "ALPACA_PAPER",
+            "entry_price": 68.48,
+            "exit_price": 68.08,
+            "pnl": -14.8,
+            "pnl_pct": null,
+            "outcome_verdict": "LOSS",
+            "exit_reason": "stop_hit_instant",
+            "closed_at": "2026-05-12T15:55:15-04:00"
+        },
+        {
+            "id": 4,
+            "symbol": "EVC",
+            "strategy_id": "screener",
+            "account": "ALPACA_PAPER",
+            "entry_price": 8.12,
+            "exit_price": 8.64,
+            "pnl": 202.8,
+            "pnl_pct": 0.0,
+            "outcome_verdict": "WIN",
+            "exit_reason": "position_closed_in_alpaca",
+            "closed_at": "2026-05-12T09:25:47.962246-04:00"
+        },
+        {
+            "id": 12,
+            "symbol": "FLYW",
+            "strategy_id": "swing_trade",
+            "account": "ALPACA_PAPER",
+            "entry_price": 16.74,
+            "exit_price": 16.65,
+            "pnl": -15.39,
+            "pnl_pct": -0.54,
+            "outcome_verdict": "LOSS",
+            "exit_reason": "position_closed_in_alpaca",
+            "closed_at": "2026-05-12T09:11:15.088870-04:00"
+        }
+    ]
+}
