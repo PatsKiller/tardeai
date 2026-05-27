@@ -294,8 +294,26 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     if existing:
         return {"status": "skipped", "reason": "duplicate", "signal_id": existing[0]}
 
-    # Get entry/stop/target from plan or scan price
+    # ── Live price validation: reject if screener price drifted >3% from live ──
     price = float(scan.get('price') or 0)
+    if price > 0:
+        try:
+            from market_quote_provider import get_best_quote
+            live_q = get_best_quote(symbol)
+            if live_q and live_q.get("last_price"):
+                live_px = float(live_q["last_price"])
+                drift_pct = abs(live_px - price) / price * 100
+                if drift_pct > 3.0:
+                    log.warning(f"  {symbol}: screener price ${price:.2f} drifted {drift_pct:.1f}% "
+                                f"from live ${live_px:.2f} — skipping signal")
+                    return {"status": "skipped",
+                            "reason": f"price_drift_{drift_pct:.1f}pct (screener=${price:.2f} live=${live_px:.2f})"}
+                # Use live price for signal if available
+                price = live_px
+        except Exception as e:
+            log.warning(f"  {symbol}: live price check failed ({e}) — using screener price")
+
+    # Get entry/stop/target from plan or scan price
     entry = price
     stop = None
     target = None
@@ -304,7 +322,10 @@ def insert_strategy_signal(conn, scan: dict, plan: dict, available_cols: set,
     rr = 0
 
     if plan:
-        entry = float(plan.get('entry_high') or plan.get('entry_low') or price)
+        plan_entry = float(plan.get('entry_high') or plan.get('entry_low') or price)
+        # If live price available and plan entry drifted, use live price as entry
+        plan_drift = abs(price - plan_entry) / plan_entry * 100 if plan_entry > 0 else 0
+        entry = price if plan_drift > 1.0 else plan_entry
         stop = float(plan['stop_loss']) if plan.get('stop_loss') else None
         target = float(plan['target_1']) if plan.get('target_1') else None
         shares = int(plan.get('shares') or 0)

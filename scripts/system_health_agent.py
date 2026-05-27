@@ -57,6 +57,7 @@ MONITORED_COMPONENTS = [
     {"component": "news_ingestion", "display": "News Ingestion",
      "schedule": "0 6,12,18 * * *", "log_file": "news_ingestion.log",
      "max_age_min": 480, "max_runtime_sec": 600, "critical": True,
+     "retry_cmd": ".venv/bin/python scripts/news_ingestion.py --priority",
      "downstream": "catalyst detection, news alerts"},
 
     # ── Trade Monitoring ──
