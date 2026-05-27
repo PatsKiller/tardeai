@@ -725,7 +725,9 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             INSERT INTO paper_trade_proposals
                 (symbol, strategy_id, primary_strategy_id,
                  proposed_entry, proposed_stop, proposed_target1,
-                 proposed_shares, status, expires_at, lifecycle_status,
+                 proposed_shares, proposed_rr, proposed_dollar_risk,
+                 target_account,
+                 status, expires_at, lifecycle_status,
                  entry_zone_status, proposal_timeframe_class,
                  screener_name, source_table, discovery_source, source_run_label,
                  signal_score, signal_grade, catalyst, catalyst_verified,
@@ -735,7 +737,9 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                  llm_review_status, agent_review_status)
             VALUES (%s, %s, %s,
                     %s, %s, %s,
-                    %s, 'PENDING', %s, 'ACTIVE',
+                    %s, %s, %s,
+                    'alpaca_paper',
+                    'PENDING', %s, 'ACTIVE',
                     'NEEDS_PRICE_CHECK', %s,
                     %s, 'incubator_universe', 'incubator', %s,
                     %s, %s, %s, %s,
@@ -747,7 +751,8 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
         """, [
             symbol, strategy_id, strategy_id,
             entry, stop, target,
-            shares, expires_at, timeframe_class,
+            shares, rr, round(abs(entry - stop) * shares, 2),
+            expires_at, timeframe_class,
             screener_name, source_run_label,
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,

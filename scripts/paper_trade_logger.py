@@ -1369,7 +1369,8 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
         """, [
-            prop['strategy_id'], prop['symbol'], prop.get('proposed_account', 'ALPACA_PAPER'),
+            prop['strategy_id'], prop['symbol'],
+            prop.get('target_account') or prop.get('proposed_account') or 'alpaca_paper',
             float(entry), now, int(shares), dollar_size,
             float(stop), float(target), dollar_risk, float(entry), float(stop),
             prop.get('signal_score'), prop.get('rvol'), prop.get('float_m'),
@@ -1389,7 +1390,7 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 final_account=%s, final_dollar_risk=%s, updated_at=NOW()
             WHERE id=%s
         """, [paper_trade_id, float(entry), float(stop), float(target), int(shares),
-              prop.get('proposed_account', 'ALPACA_PAPER'), dollar_risk, proposal_id])
+              prop.get('target_account') or prop.get('proposed_account') or 'alpaca_paper', dollar_risk, proposal_id])
         conn.commit()
 
         _write_audit(conn, 'paper_proposal_approved', prop['symbol'], {
