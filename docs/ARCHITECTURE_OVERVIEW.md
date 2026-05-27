@@ -1,7 +1,7 @@
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level
-**Last updated:** 2026-05-27 (Self-healing system + Claude Code escalation + LLM health review)
+**Last updated:** 2026-05-27 (Self-healing system + broker-agnostic refactor + 8 brokers + MFE analysis)
 
 ---
 
