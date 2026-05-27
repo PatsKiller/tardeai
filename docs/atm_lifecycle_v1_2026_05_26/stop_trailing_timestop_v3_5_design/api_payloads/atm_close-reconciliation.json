@@ -1,0 +1,33 @@
+{
+    "ok": true,
+    "data": {
+        "summary": {
+            "total": 1,
+            "still_open": 0,
+            "closed": 1,
+            "needs_followup": 0
+        },
+        "items": [
+            {
+                "review_id": "mcr-f62cf70fa3ab",
+                "paper_trade_id": 9,
+                "symbol": "INFU",
+                "strategy_id": "earnings_catalyst",
+                "decision": "close_manually_outside_system",
+                "decision_reason": "error",
+                "operator_note": "",
+                "decision_at": "2026-05-26T17:52:19.246031-04:00",
+                "entry_price": 8.39,
+                "stop_loss": 7.97,
+                "shares": 357,
+                "account": "ALPACA_PAPER",
+                "entry_time": "2026-05-11T11:11:11.429028-04:00",
+                "exit_time": "2026-05-26T21:17:58.997860-04:00",
+                "exit_reason": "closed_on_different_trade_id",
+                "exit_price": null,
+                "pnl": null,
+                "reconciliation_status": "closed"
+            }
+        ]
+    }
+}
