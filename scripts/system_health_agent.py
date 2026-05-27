@@ -565,6 +565,65 @@ def run_health_check(dry_run=True, verbose=False):
     sf_summary = _analyze_safe_flock(conn, dry_run=dry_run, verbose=verbose)
     report["safe_flock"] = sf_summary
 
+    # ── Agent staleness check ──
+    AGENT_MAX_AGE_DAYS = {
+        "maria": 1, "steph": 1, "risk_agent": 1,
+        "aegis": 3, "alex": 3, "tax_agent": 7,
+        "iris": 7, "maria_research": 7,
+    }
+    try:
+        cur = conn.cursor()
+        # Check watchlist_agent_results for most agents
+        cur.execute("""SELECT agent, MAX(created_at) as latest
+                       FROM watchlist_agent_results GROUP BY agent""")
+        agent_latest = {r[0]: r[1] for r in cur.fetchall()}
+        # Check agent-specific home tables
+        for tbl, col, agent_name in [("aegis_portfolio_briefs", "observed_at", "aegis"),
+                                      ("cio_decisions", "created_at", "alex")]:
+            try:
+                cur.execute(f"SELECT MAX({col}) FROM {tbl}")
+                r = cur.fetchone()
+                if r and r[0] and (agent_name not in agent_latest or r[0] > agent_latest.get(agent_name, now)):
+                    agent_latest[agent_name] = r[0]
+            except Exception:
+                pass
+        stale_agents = []
+        for agent, latest in agent_latest.items():
+            max_days = AGENT_MAX_AGE_DAYS.get(agent, 7)
+            if latest:
+                age_days = (now - latest).total_seconds() / 86400
+                if age_days > max_days:
+                    stale_agents.append(f"{agent}: {age_days:.0f}d stale (max {max_days}d)")
+                    if verbose:
+                        log.warning(f"  ⚠️  Agent {agent} stale: last ran {age_days:.0f}d ago (max {max_days}d)")
+        if stale_agents and not dry_run:
+            try:
+                from telegram_alert import send_telegram
+                send_telegram("⚠️ AGENT STALENESS\n" + "\n".join(stale_agents))
+            except Exception:
+                pass
+        report["stale_agents"] = stale_agents
+    except Exception as e:
+        log.warning(f"Agent staleness check failed: {e}")
+
+    # ── Auto-expire stale queue jobs and proposals ──
+    try:
+        cur = conn.cursor()
+        cur.execute("""UPDATE watchlist_agent_jobs SET status='expired', completed_at=NOW()
+                       WHERE status IN ('queued','pending') AND created_at < NOW() - INTERVAL '7 days'""")
+        expired_jobs = cur.rowcount
+        cur.execute("""UPDATE watchlist_agent_jobs SET status='failed', completed_at=NOW()
+                       WHERE status='processing' AND started_at < NOW() - INTERVAL '6 hours'""")
+        stuck_jobs = cur.rowcount
+        cur.execute("""UPDATE watchlist_proposals SET status='expired'
+                       WHERE status IN ('proposed','pending') AND created_at < NOW() - INTERVAL '14 days'""")
+        expired_proposals = cur.rowcount
+        conn.commit()
+        if expired_jobs or stuck_jobs or expired_proposals:
+            log.info(f"  🧹 Queue cleanup: {expired_jobs} expired jobs, {stuck_jobs} stuck jobs, {expired_proposals} stale proposals")
+    except Exception as e:
+        log.warning(f"Queue cleanup failed: {e}")
+
     conn.close()
     return report
 
