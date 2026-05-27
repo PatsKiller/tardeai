@@ -11389,6 +11389,67 @@ def _morning_command():
         if row:
             llm_cache[section] = {"content": row.get("content", ""), "generated_at": str(row.get("generated_at", ""))}
 
+    # ── Agent health ──
+    agent_health = []
+    try:
+        agents_raw = _db_query("""
+            SELECT agent, COUNT(*) as total, MAX(created_at) as latest
+            FROM watchlist_agent_results GROUP BY agent ORDER BY latest DESC
+        """) or []
+        _agent_max_days = {"maria": 1, "steph": 1, "risk_agent": 1,
+                           "aegis": 3, "alex": 3, "tax_agent": 7, "iris": 7, "maria_research": 7}
+        from datetime import timezone as _tz
+        _now_utc = datetime.now(_tz.utc)
+        # Enrich aegis/alex from home tables
+        _home_latest = {}
+        for _tbl, _col, _aname in [("aegis_portfolio_briefs", "observed_at", "aegis"),
+                                     ("cio_decisions", "created_at", "alex")]:
+            try:
+                _hrow = _db_query(f"SELECT MAX({_col}) as latest FROM {_tbl}", fetch="one")
+                if _hrow and _hrow.get("latest"):
+                    _home_latest[_aname] = _hrow["latest"]
+            except Exception:
+                pass
+        for ar in agents_raw:
+            agent_name = ar.get("agent", "")
+            latest = ar.get("latest")
+            # Use home table if fresher
+            if agent_name in _home_latest:
+                hl = _home_latest[agent_name]
+                if hl and (not latest or hl > latest):
+                    latest = hl
+            max_d = _agent_max_days.get(agent_name, 7)
+            age_d = (_now_utc - latest).total_seconds() / 86400 if latest else 999
+            status = "healthy" if age_d <= max_d else "stale" if age_d <= max_d * 3 else "dead"
+            agent_health.append({
+                "agent": agent_name, "total": ar.get("total", 0),
+                "latest": str(latest) if latest else None,
+                "age_days": round(age_d, 1), "max_days": max_d, "status": status,
+            })
+    except Exception:
+        pass
+
+    # ── Triggered stops detail ──
+    triggered_detail = []
+    if triggered > 0:
+        for p in rm.get("positions", []):
+            if p.get("status") == "TRIGGERED" and p.get("symbol") not in _cmd_ov:
+                triggered_detail.append({
+                    "symbol": p.get("symbol", ""),
+                    "stop": p.get("stop_price", 0),
+                    "price": p.get("current_price", 0),
+                    "pnl_pct": p.get("pnl_pct", 0),
+                    "account": p.get("account", ""),
+                })
+
+    # ── Open paper trades ──
+    open_paper = _db_query("""
+        SELECT id, symbol, entry_price, shares, stop_loss, current_price, unrealized_pnl,
+               r_multiple, lifecycle_state
+        FROM paper_trades WHERE status = 'open'
+        ORDER BY unrealized_pnl DESC NULLS LAST
+    """) or []
+
     return {
         "generated_at": datetime.now().isoformat(),
         "llm_intelligence": llm_cache,
@@ -11421,7 +11482,9 @@ def _morning_command():
         },
         "pipeline": {"ok": pipeline_ok, "note": pipeline_note},
         "freshness": _compute_freshness(freshness),
-        "snapshot_source": "holdings.json portfolio_totals (canonical, all positions)",
+        "agent_health": agent_health,
+        "triggered_detail": triggered_detail,
+        "open_paper_trades": [{k: _json_clean(v) for k, v in r.items()} for r in open_paper],
     }
 
 
