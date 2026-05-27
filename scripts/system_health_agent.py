@@ -597,11 +597,49 @@ def run_health_check(dry_run=True, verbose=False):
                     if verbose:
                         log.warning(f"  ⚠️  Agent {agent} stale: last ran {age_days:.0f}d ago (max {max_days}d)")
         if stale_agents and not dry_run:
+            # Dedup: only alert once per 4 hours per agent set
+            _stale_key = ",".join(sorted(stale_agents))
+            _dedup_ok = True
             try:
-                from telegram_alert import send_telegram
-                send_telegram("⚠️ AGENT STALENESS\n" + "\n".join(stale_agents))
+                cur.execute("""SELECT COUNT(*) FROM system_health_events
+                    WHERE component='agent_staleness' AND event_type='STALENESS_ALERT'
+                    AND created_at > NOW() - INTERVAL '4 hours'""")
+                if (cur.fetchone()[0] or 0) > 0:
+                    _dedup_ok = False
             except Exception:
                 pass
+            if _dedup_ok:
+                try:
+                    from telegram_alert import send_telegram
+                    send_telegram("⚠️ AGENT STALENESS\n" + "\n".join(stale_agents))
+                    _log_event(conn, "agent_staleness", "STALENESS_ALERT", "WARN",
+                               "\n".join(stale_agents), success=True)
+                except Exception:
+                    pass
+            # Auto-remediate: queue jobs for stale agents that process via watchlist_agent_jobs
+            _QUEUE_REMEDIATE = {"tax_agent", "iris", "maria_research"}
+            for agent, latest in agent_latest.items():
+                max_days = AGENT_MAX_AGE_DAYS.get(agent, 7)
+                if latest and (now - latest).total_seconds() / 86400 > max_days and agent in _QUEUE_REMEDIATE:
+                    try:
+                        # Queue a refresh job if none pending
+                        cur.execute("""SELECT COUNT(*) FROM watchlist_agent_jobs
+                            WHERE requested_agent=%s AND status IN ('queued','pending','processing')""", [agent])
+                        if (cur.fetchone()[0] or 0) == 0:
+                            # Find a symbol to analyze (most recent holding)
+                            cur.execute("""SELECT DISTINCT symbol FROM watchlist_agent_results
+                                WHERE agent=%s ORDER BY created_at DESC LIMIT 3""", [agent])
+                            _syms = [r[0] for r in cur.fetchall()]
+                            for _sym in _syms[:2]:
+                                cur.execute("""INSERT INTO watchlist_agent_jobs
+                                    (symbol, requested_agent, request_type, status, priority, submitted_from)
+                                    VALUES (%s, %s, 'full_analysis', 'queued', 1, 'health_agent_remediation')""",
+                                    [_sym, agent])
+                            conn.commit()
+                            if _syms:
+                                log.info(f"  🔧 Auto-queued {len(_syms[:2])} jobs for stale {agent}")
+                    except Exception as _qe:
+                        log.warning(f"  Auto-queue for {agent} failed: {_qe}")
         report["stale_agents"] = stale_agents
     except Exception as e:
         log.warning(f"Agent staleness check failed: {e}")
