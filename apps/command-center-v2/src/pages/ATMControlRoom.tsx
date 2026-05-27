@@ -1,706 +1,101 @@
-import { useState } from 'react'
-import { useApi } from '../hooks/useApi'
+﻿// ATMControlRoom.tsx.REPLACEMENT_V1_7
+// Full replacement page designed by ChatGPT Chief Architect.
+// Purpose: real drill-down workspace, not tooltip drawer.
+// Install target: apps/command-center-v2/src/pages/ATMControlRoom.tsx
 
-const card: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 20px' }
-const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'rgba(255,255,255,0.4)', marginBottom: 12 }
-const pill = (color: string): React.CSSProperties => ({ fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 600, background: `color-mix(in srgb, ${color} 15%, transparent)`, color })
-const metricBox: React.CSSProperties = { textAlign: 'center' as const, padding: '8px 4px' }
-const metricVal: React.CSSProperties = { fontSize: 22, fontWeight: 700, lineHeight: 1.2 }
-const metricLbl: React.CSSProperties = { fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 2 }
 
-const STAGES = ['Universe', 'Candidates', 'Scoring', 'Signals', 'Proposals', 'Risk Gate', 'Approval', 'Execution', 'Stops', 'Trailing', 'TCA', 'Exit', 'Learning']
+import React, { useEffect, useState } from 'react';
 
-const tsColor = (s: string) => s === 'overdue' ? '#ef4444' : s === 'review_due' || s === 'approaching' ? '#f59e0b' : s === 'ok' ? '#4ade80' : '#6b7280'
-const gateColor = (s: string) => s === 'pass' ? '#4ade80' : s === 'fail' ? '#ef4444' : s === 'bypassed' ? '#f59e0b' : '#6b7280'
 
-const DECISION_OPTIONS = [
-  { value: 'keep_open', label: 'Keep Open', color: '#4ade80' },
-  { value: 'review_for_manual_close', label: 'Review for Manual Close', color: '#ef4444' },
-  { value: 'review_stop_or_trailing_adjustment', label: 'Review Stop/Trailing', color: '#f59e0b' },
-  { value: 'missing_data_verify_first', label: 'Missing Data — Verify', color: '#6b7280' },
-  { value: 'strategy_mismatch_investigate', label: 'Strategy Mismatch', color: '#8b5cf6' },
-]
+type AnyRecord = Record<string, any>;
+type TabKey = 'overview' | 'records' | 'lifecycle' | 'risk' | 'actions' | 'raw';
 
-const MC_DECISIONS = [
-  { value: 'keep_open_after_review', label: 'Keep Open After Review', color: '#4ade80' },
-  { value: 'close_manually_outside_system', label: 'Close Manually Outside System', color: '#ef4444' },
-  { value: 'prepare_paper_close_preview', label: 'Prepare Close Preview', color: '#f59e0b' },
-  { value: 'needs_more_data', label: 'Needs More Data', color: '#6b7280' },
-  { value: 'mark_resolved_no_action', label: 'Mark Resolved', color: '#8b5cf6' },
-]
+
+type InspectorState = {
+  open: boolean;
+  title: string;
+  subtitle?: string;
+  status?: 'healthy' | 'warning' | 'danger' | 'neutral';
+  source?: string;
+  description?: string;
+  records?: AnyRecord[];
+  selected?: AnyRecord | null;
+  lifecycle?: AnyRecord[];
+  risks?: AnyRecord[];
+  safeActions?: string[];
+  blockedActions?: string[];
+  raw?: any;
+  activeTab?: TabKey;
+};
+
+
+const API = {
+  lifecycle: '/api/v2/atm/lifecycle',
+  overdue: '/api/v2/atm/overdue-decisions',
+  manualClose: '/api/v2/atm/manual-close-review',
+  reconciliation: '/api/v2/atm/close-reconciliation',
+  preview: '/api/v2/atm/close-preview',
+};
+
+
+const emptyInspector: InspectorState = { open: false, title: '', records: [], lifecycle: [], risks: [], safeActions: [], blockedActions: [], raw: null, activeTab: 'overview' };
+
+
+function cx(...parts: Array<string | false | undefined | null>) { return parts.filter(Boolean).join(' '); }
+function money(v: any) { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(2)}` : 'Unavailable'; }
+function asList(v: any): AnyRecord[] { return Array.isArray(v) ? v : []; }
+function firstArray(...arrs: any[]): AnyRecord[] { for (const a of arrs) if (Array.isArray(a)) return a; return []; }
+function statusOf(v: any): 'healthy' | 'warning' | 'danger' | 'neutral' { const s = String(v ?? '').toLowerCase(); if (s.includes('fail') || s.includes('missing') || s.includes('overdue') || s.includes('stale') || s.includes('disabled')) return 'danger'; if (s.includes('unknown') || s.includes('partial') || s.includes('pending') || s.includes('warn')) return 'warning'; if (s.includes('pass') || s.includes('ok') || s.includes('healthy') || s.includes('reviewed')) return 'healthy'; return 'neutral'; }
+async function getJson(url: string) { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url} failed ${r.status}`); return r.json(); }
+function labelGate(k: string) { return k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace('Max Conc', 'Max Conc.'); }
+function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: string }) { return <span className={cx('atm-badge', `atm-badge-${tone}`)}>{children}</span>; }
+
+
+function DataButton({ label, value, tone, onClick }: { label: string; value: any; tone?: string; onClick: () => void }) { return <button className={cx('atm-metric', tone && `atm-metric-${tone}`)} onClick={onClick}><div className="atm-metric-value">{value ?? '—'}</div><div className="atm-metric-label">{label} ↗</div></button>; }
+
+
+function normalizeGates(gates: any): AnyRecord[] { if (Array.isArray(gates)) return gates.map((g) => ({ name: g.name || g.gate || 'Gate', status: g.status || g.result || 'unknown', reason: g.reason || g.message })); if (gates && typeof gates === 'object') return Object.entries(gates).map(([k, v]: any) => ({ name: labelGate(k), status: typeof v === 'object' ? (v.status || v.result || 'unknown') : (v ? 'pass' : 'fail'), reason: typeof v === 'object' ? (v.reason || v.message) : '' })); if (typeof gates === 'string' && gates.trim()) return ['Strategy','Classifier','Max Conc.','Stop','Premarket'].map((name) => ({ name, status: 'unknown', reason: gates })); return ['Strategy','Classifier','Max Conc.','Stop','Premarket'].map((name) => ({ name, status: 'unknown', reason: 'Gate details unavailable from API.' })); }
+function GateChips({ gates, onGate }: { gates: any; onGate: (gate: AnyRecord) => void }) { return <div className="atm-gates">{normalizeGates(gates).map((g) => <button key={g.name} className={cx('atm-gate', `atm-gate-${statusOf(g.status)}`)} onClick={() => onGate(g)}><span>{g.name}</span><strong>{String(g.status || 'UNKNOWN').toUpperCase()}</strong></button>)}</div>; }
+
+
+function SimpleTable({ rows, columns, onRow }: { rows: AnyRecord[]; columns: Array<{ key: string; label: string; render?: (r: AnyRecord) => React.ReactNode }>; onRow?: (r: AnyRecord) => void }) { return <div className="atm-table-wrap"><table className="atm-table"><thead><tr>{columns.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{rows.length === 0 && <tr><td colSpan={columns.length} className="atm-empty">No records found.</td></tr>}{rows.map((r, i) => <tr key={r.id || r.paper_trade_id || r.proposal_id || r.lifecycle_id || i} onClick={() => onRow?.(r)} className={onRow ? 'clickable' : ''}>{columns.map(c => <td key={c.key}>{c.render ? c.render(r) : String(r[c.key] ?? '—')}</td>)}</tr>)}</tbody></table></div>; }
+
+
+function RecordTable({ records, onSelect }: { records: AnyRecord[]; onSelect?: (r: AnyRecord) => void }) { const keys = Array.from(new Set(records.flatMap(r => Object.keys(r)))).slice(0, 10); return <SimpleTable rows={records} columns={keys.map(k => ({ key: k, label: labelGate(k) }))} onRow={onSelect} />; }
+function RecordCard({ record }: { record: AnyRecord }) { return <div className="atm-record-card">{Object.entries(record).slice(0, 28).map(([k, v]) => <div key={k}><strong>{labelGate(k)}</strong><span>{typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}</span></div>)}</div>; }
+function ActionList({ title, items, tone }: { title: string; items: string[]; tone: string }) { return <div className="atm-card"><h3>{title}</h3>{items.length ? items.map((i) => <div key={i} className={`atm-line ${tone}`}>{i}</div>) : <p>None.</p>}</div>; }
+
+
+function Inspector({ state, setState }: { state: InspectorState; setState: (s: InspectorState) => void }) { if (!state.open) return null; const tab = state.activeTab || 'overview'; const tabs: TabKey[] = ['overview', 'records', 'lifecycle', 'risk', 'actions', 'raw']; return <aside className="atm-inspector"><div className="atm-inspector-head"><div><div className="atm-breadcrumb">ATM Control Room → Drill Down</div><h2>{state.title}</h2><p>{state.subtitle}</p></div><button className="atm-close" onClick={() => setState(emptyInspector)}>×</button></div><div className="atm-inspector-meta"><Badge tone={state.status || 'neutral'}>{state.status || 'neutral'}</Badge><span>{state.source || 'source unavailable'}</span><span>{(state.records || []).length} records</span></div><div className="atm-tabs">{tabs.map(t => <button key={t} className={tab === t ? 'active' : ''} onClick={() => setState({ ...state, activeTab: t })}>{t === 'risk' ? 'Risk / Gates' : t[0].toUpperCase() + t.slice(1)}</button>)}</div><div className="atm-inspector-body">{tab === 'overview' && <><h3>What this means</h3><p>{state.description || 'No description available.'}</p>{state.selected && <RecordCard record={state.selected} />}</>}{tab === 'records' && <RecordTable records={state.records || []} onSelect={(r) => setState({ ...state, selected: r, activeTab: 'overview' })} />}{tab === 'lifecycle' && <RecordTable records={state.lifecycle || []} />}{tab === 'risk' && <><RecordTable records={state.risks || []} />{state.selected && <GateChips gates={state.selected.gates || state.selected.gate_summary} onGate={(g) => setState({ ...state, title: `Gate: ${g.name}`, selected: g, records: [g], risks: [g], raw: g, activeTab: 'overview' })} />}</>}{tab === 'actions' && <div className="atm-action-grid"><ActionList title="Safe actions" items={state.safeActions || []} tone="healthy" /><ActionList title="Blocked actions" items={state.blockedActions || []} tone="danger" /></div>}{tab === 'raw' && <pre className="atm-raw">{JSON.stringify(state.raw ?? { records: state.records, selected: state.selected }, null, 2)}</pre>}</div></aside>; }
+
 
 export default function ATMControlRoom() {
-  const { data: lc, refetch } = useApi<any>('/api/v2/atm/lifecycle', 15000)
-  const { data: overdueData, refetch: refetchOD } = useApi<any>('/api/v2/atm/overdue-decisions', 15000)
-  const [selectedTrade, setSelectedTrade] = useState<any>(null)
-  const [tab, setTab] = useState<'positions' | 'proposals'>('positions')
-  const [decisionForm, setDecisionForm] = useState<{ tradeId: number | null, symbol: string, decision: string, reason: string, note: string }>({ tradeId: null, symbol: '', decision: '', reason: '', note: '' })
-  const [submitStatus, setSubmitStatus] = useState<string | null>(null)
-
-  const submitDecision = async () => {
-    if (!decisionForm.decision || !decisionForm.symbol) return
-    setSubmitStatus('submitting...')
-    try {
-      const resp = await fetch('/api/v2/atm/overdue-decisions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paper_trade_id: decisionForm.tradeId,
-          symbol: decisionForm.symbol,
-          decision: decisionForm.decision,
-          decision_reason: decisionForm.reason,
-          operator_note: decisionForm.note,
-        }),
-      })
-      const data = await resp.json()
-      if (data.ok) {
-        setSubmitStatus(data.data?.safety_message || 'Decision recorded.')
-        setDecisionForm({ tradeId: null, symbol: '', decision: '', reason: '', note: '' })
-        refetchOD()
-        setTimeout(() => setSubmitStatus(null), 5000)
-      } else {
-        setSubmitStatus(`Error: ${data.error}`)
-      }
-    } catch (e: any) {
-      setSubmitStatus(`Error: ${e.message}`)
-    }
-  }
-
-  const { data: mcData, refetch: refetchMC } = useApi<any>('/api/v2/atm/manual-close-review', 15000)
-  const { data: reconData, refetch: refetchRecon } = useApi<any>('/api/v2/atm/close-reconciliation', 30000)
-  const [closePreview, setClosePreview] = useState<any>(null)
-  const [closeConfirm, setCloseConfirm] = useState('')
-  const [closeStatus, setCloseStatus] = useState<string | null>(null)
-  const [inspector, setInspector] = useState<{ title: string, content: any } | null>(null)
-
-  const fetchClosePreview = async (tradeId: number) => {
-    try {
-      const r = await fetch(`/api/v2/atm/close-preview?paper_trade_id=${tradeId}`)
-      const d = await r.json()
-      if (d.ok) setClosePreview(d.data)
-      else setCloseStatus(`Error: ${d.error}`)
-    } catch (e: any) { setCloseStatus(`Error: ${e.message}`) }
-  }
-
-  const submitCloseAction = async (action: string, tradeId: number, symbol: string) => {
-    setCloseStatus('submitting...')
-    try {
-      const r = await fetch('/api/v2/atm/close-action', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paper_trade_id: tradeId, symbol, action,
-          confirmation_text: action === 'submit_paper_close_order' ? closeConfirm : undefined,
-          close_preview_id: closePreview?.close_preview_id }),
-      })
-      const d = await r.json()
-      setCloseStatus(d.data?.safety_message || d.error || 'Done')
-      if (d.ok) { setClosePreview(null); setCloseConfirm(''); refetchRecon(); refetch() }
-      setTimeout(() => setCloseStatus(null), 8000)
-    } catch (e: any) { setCloseStatus(`Error: ${e.message}`) }
-  }
-
-  const openInspector = (title: string, content: any) => setInspector({ title, content })
-  const [mcForm, setMcForm] = useState<{ tradeId: number | null, symbol: string, strategyId: string, decision: string, reason: string, note: string }>({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })
-  const [mcStatus, setMcStatus] = useState<string | null>(null)
-
-  const submitMcDecision = async () => {
-    if (!mcForm.decision || !mcForm.symbol) return
-    setMcStatus('submitting...')
-    try {
-      const resp = await fetch('/api/v2/atm/manual-close-review', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paper_trade_id: mcForm.tradeId, symbol: mcForm.symbol, strategy_id: mcForm.strategyId, decision: mcForm.decision, decision_reason: mcForm.reason, operator_note: mcForm.note }),
-      })
-      const data = await resp.json()
-      if (data.ok) {
-        setMcStatus(data.data?.safety_message || 'Decision recorded.')
-        setMcForm({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })
-        refetchMC()
-        setTimeout(() => setMcStatus(null), 5000)
-      } else { setMcStatus(`Error: ${data.error}`) }
-    } catch (e: any) { setMcStatus(`Error: ${e.message}`) }
-  }
-
-  const mcItems = mcData?.items || []
-  const mcSummary = mcData?.summary || {}
-  const [mcTabState, setMcTabState] = useState<'mc_pending' | 'mc_reviewed' | 'mc_all'>('mc_pending')
-
-  const odNeedsDecision = overdueData?.needs_decision || []
-  const odReviewed = overdueData?.reviewed || []
-  const odAll = overdueData?.all_overdue || []
-  const odSummary = overdueData?.summary || {}
-  const [odTab, setOdTab] = useState<'needs' | 'reviewed' | 'all'>('needs')
-
-  const s = lc?.summary || {}
-  const positions = lc?.positions || []
-  const proposals = lc?.recent_proposals || []
-
-  const m = (val: any, label: string, color?: string, onClick?: () => void) => (
-    <div style={{ ...metricBox, cursor: onClick ? 'pointer' : undefined, borderRadius: 6, transition: 'background 0.15s' }} onClick={onClick}
-      onMouseOver={e => { if (onClick) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
-      onMouseOut={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
-      <div style={{ ...metricVal, color: color || 'rgba(255,255,255,0.85)' }}>{val ?? 'N/A'}</div>
-      <div style={metricLbl}>{label}{onClick ? ' ↗' : ''}</div>
-    </div>
-  )
-
-  return (
-    <div style={{ padding: '20px 24px', maxWidth: 1500, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: 'rgba(255,255,255,0.9)' }}>ATM Control Room</h1>
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>End-to-end lifecycle visibility. Read-only. No order actions.</p>
-        </div>
-        <button onClick={() => refetch()} style={{ padding: '7px 16px', borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: 'pointer', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)' }}>Refresh</button>
-      </div>
-
-      {/* 1. Trust Strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 6, marginBottom: 16 }}>
-        {m(s.signals_today, 'Signals Today', undefined, () => openInspector('Signals Today', `${s.signals_today} strategy signals fired today from the orchestrator scoring runs. These are candidates that passed initial screening.`))}
-        {m(s.proposals_today, 'Proposals', undefined, () => openInspector('Proposals Today', `${s.proposals_today} paper trade proposals generated today. Proposals are created when signals meet strategy-fit criteria and pass the auto-proposal generator.`))}
-        {m(s.open_positions, 'Open Positions', undefined, () => openInspector('Open Positions', `${s.open_positions} truly open paper positions (excludes ${29 - (s.open_positions || 13)} ghost positions with exit_reason but no exit_time). Ghost categories: cancelled, stopped out, closed in broker, duplicates.`))}
-        {m(s.time_stop_overdue, 'Time-Stop Overdue', (s.time_stop_overdue || 0) > 0 ? '#ef4444' : '#4ade80', () => openInspector('Time-Stop Overdue', `${s.time_stop_overdue} positions held past their strategy time-stop window. Intraday strategies should close same day. These need operator review — the system does not auto-close.`))}
-        {m(s.stop_missing_count, 'Missing Stops', (s.stop_missing_count || 0) > 0 ? '#ef4444' : '#4ade80', () => openInspector('Missing Stops', s.stop_missing_count ? `${s.stop_missing_count} open positions have no DB stop_loss value. This means the stop was never set or was removed.` : 'All open positions have a DB stop_loss value. This does not verify broker-side stop orders exist.'))}
-        {m(s.stale_proposals, 'Stale Proposals', (s.stale_proposals || 0) > 0 ? '#f59e0b' : '#4ade80', () => openInspector('Stale Proposals', `${s.stale_proposals} proposals older than 48 hours with no decision. Of these, 13 are linked to open trades (kept), and the rest are recent proposals in the normal pipeline window.`))}
-        {m(s.safe_flock_skips_24h, 'Flock Skips 24h', (s.safe_flock_skips_24h || 0) > 0 ? '#f59e0b' : '#4ade80', () => openInspector('safe_flock Skips', s.safe_flock_skips_24h ? `${s.safe_flock_skips_24h} cron jobs were skipped because a previous instance was still running. Check logs/safe_flock_events.jsonl for details.` : 'No cron jobs were skipped due to lock contention in the last 24 hours. All scheduled tasks ran normally.'))}
-        {m(s.traceability_gap_count, 'Trace Gaps', (s.traceability_gap_count || 0) > 0 ? '#f59e0b' : '#4ade80', () => openInspector('Traceability Gaps', s.traceability_gap_count ? `${s.traceability_gap_count} open positions have no lifecycle_events records. These trades cannot be traced end-to-end.` : 'All open positions have lifecycle_events records. The signal→proposal→execution→stop chain is linked.'))}
-        {m(s.classifier_gate_disabled ? 'OFF' : 'ON', 'Classifier Gate', s.classifier_gate_disabled ? '#f59e0b' : '#4ade80', () => openInspector('Classifier Health Gate', s.classifier_gate_disabled ? 'The classifier health gate is disabled (min_classifier_health=0.0). This is the cold-start burn-in mode — all strategies pass regardless of historical performance. Restore to 0.50 once 3+ trades close per active strategy.' : 'Classifier health gate is active. Strategies must meet the minimum health score to be approved by ATM.'))}
-        {m(s.lifecycle_events_24h, 'Events 24h', undefined, () => openInspector('Lifecycle Events', `${s.lifecycle_events_24h} lifecycle events recorded in the last 24 hours across all stages: signal creation, proposal generation, execution, stop placement, TCA, exits, and operator reviews.`))}
-      </div>
-
-      {/* OVERDUE INTRADAY REVIEW QUEUE */}
-      {odAll.length > 0 && (
-        <div style={{ ...card, marginBottom: 16, borderColor: (odSummary.needs_decision_count || 0) > 0 ? 'rgba(239,68,68,0.3)' : 'rgba(74,222,128,0.2)', background: (odSummary.needs_decision_count || 0) > 0 ? 'rgba(239,68,68,0.03)' : 'rgba(74,222,128,0.02)' }}>
-          <div style={{ ...secTitle, color: (odSummary.needs_decision_count || 0) > 0 ? '#ef4444' : '#4ade80' }}>
-            Overdue Intraday Review Queue — {odSummary.total_overdue || odAll.length} positions
-            {(odSummary.needs_decision_count || 0) > 0
-              ? ` (${odSummary.needs_decision_count} need decisions)`
-              : ` (all ${odSummary.reviewed_count || 0} reviewed)`}
-          </div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {([
-              ['needs', `Needs Decision (${odNeedsDecision.length})`],
-              ['reviewed', `Reviewed (${odReviewed.length})`],
-              ['all', `All (${odAll.length})`],
-            ] as const).map(([key, label]) => (
-              <button key={key} onClick={() => setOdTab(key as any)}
-                style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer',
-                  background: odTab === key ? 'rgba(99,102,241,0.15)' : 'transparent',
-                  color: odTab === key ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {(() => {
-            const odVisible = odTab === 'needs' ? odNeedsDecision : odTab === 'reviewed' ? odReviewed : odAll
-            return (
-          <div style={{ maxHeight: 350, overflowY: 'auto' }}>
-            {odVisible.length === 0 && odTab === 'needs' && (
-              <div style={{ padding: '16px 12px', textAlign: 'center', color: '#4ade80', fontSize: 12, fontWeight: 600 }}>
-                All overdue positions have been reviewed.
-              </div>
-            )}
-            {odVisible.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
-                  {['Symbol', 'Strategy', 'Days', 'Risk', 'Entry', 'Stop', 'Overdue By', 'Decision', 'Action'].map(h => (
-                    <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {odVisible.map((p: any) => {
-                  const dec = p.existing_decision
-                  const decOpt = dec ? DECISION_OPTIONS.find(d => d.value === dec.decision) : null
-                  return (
-                    <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing && !dec ? 'rgba(239,68,68,0.06)' : undefined }}>
-                      <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
-                      <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
-                      <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
-                      <td style={{ padding: '6px' }}><span style={pill(p.risk === 'HIGH' ? '#ef4444' : '#f59e0b')}>{p.risk}</span></td>
-                      <td style={{ padding: '6px' }}>${p.entry_price?.toFixed(2) || '—'}</td>
-                      <td style={{ padding: '6px', color: p.stop_missing ? '#ef4444' : '#4ade80' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
-                      <td style={{ padding: '6px', color: '#ef4444' }}>+{p.overdue_by}d</td>
-                      <td style={{ padding: '6px' }}>
-                        {dec ? <span style={pill(decOpt?.color || '#4ade80')}>{decOpt?.label || dec.decision}</span> : <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 9 }}>none</span>}
-                      </td>
-                      <td style={{ padding: '6px' }}>
-                        <button onClick={() => setDecisionForm({ tradeId: p.paper_trade_id, symbol: p.symbol, decision: '', reason: '', note: '' })}
-                          style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
-                          {dec ? 'Update' : 'Decide'}
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            )}
-          </div>
-            )
-          })()}
-
-          {/* Decision form */}
-          {decisionForm.tradeId && (
-            <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>
-                Record Decision — {decisionForm.symbol} (Trade #{decisionForm.tradeId})
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                {DECISION_OPTIONS.map(opt => (
-                  <button key={opt.value} onClick={() => setDecisionForm(f => ({ ...f, decision: opt.value }))}
-                    style={{ padding: '5px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
-                      background: decisionForm.decision === opt.value ? `color-mix(in srgb, ${opt.color} 20%, transparent)` : 'rgba(255,255,255,0.04)',
-                      border: decisionForm.decision === opt.value ? `1px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
-                      color: decisionForm.decision === opt.value ? opt.color : 'rgba(255,255,255,0.5)' }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <input placeholder="Reason (required)" value={decisionForm.reason} onChange={e => setDecisionForm(f => ({ ...f, reason: e.target.value }))}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 6, boxSizing: 'border-box' }} />
-              <input placeholder="Operator note (optional)" value={decisionForm.note} onChange={e => setDecisionForm(f => ({ ...f, note: e.target.value }))}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 8, boxSizing: 'border-box' }} />
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={submitDecision} disabled={!decisionForm.decision || !decisionForm.reason}
-                  style={{ padding: '6px 16px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
-                    background: decisionForm.decision && decisionForm.reason ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(99,102,241,0.4)', color: decisionForm.decision && decisionForm.reason ? '#a5b4fc' : 'rgba(255,255,255,0.2)' }}>
-                  Record Review Decision
-                </button>
-                <button onClick={() => setDecisionForm({ tradeId: null, symbol: '', decision: '', reason: '', note: '' })}
-                  style={{ padding: '6px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
-                  Cancel
-                </button>
-                {submitStatus && <span style={{ fontSize: 10, color: submitStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{submitStatus}</span>}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* MANUAL CLOSE REVIEW QUEUE */}
-      {mcItems.length > 0 && (() => {
-        const mcPending = mcData?.pending || mcItems.filter((i: any) => i.review_status === 'pending_review')
-        const mcResolved = mcData?.reviewed || mcItems.filter((i: any) => i.review_status === 'reviewed')
-        void 0 // tabs managed by mcTabState
-        return (
-        <div style={{ ...card, marginBottom: 16, borderColor: mcPending.length > 0 ? 'rgba(245,158,11,0.25)' : 'rgba(74,222,128,0.2)' }}>
-          <div style={{ ...secTitle, color: '#f59e0b' }}>
-            Manual Close Review Queue — No Orders Placed
-          </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 10, lineHeight: 1.5 }}>
-            These are open paper positions you already marked for possible manual-close review.
-            Review current risk, stop status, and thesis age, then record the next operator decision.
-            This section does not place orders.
-          </div>
-          <details style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>
-            <summary style={{ cursor: 'pointer', color: 'rgba(255,255,255,0.4)' }}>Workflow: How did these get here?</summary>
-            <ol style={{ margin: '6px 0 0 16px', lineHeight: 1.8 }}>
-              <li>Position was flagged as overdue (intraday held past session close)</li>
-              <li>Operator marked it "review for manual close" in the overdue decision queue</li>
-              <li>Now: review current risk, P&L, stop status, and thesis</li>
-              <li>Record the next decision below</li>
-              <li>Item moves to Reviewed tab</li>
-              <li>No order is placed at any step</li>
-            </ol>
-          </details>
-
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            {([
-              ['mc_pending', `Pending Review (${mcPending.length})`],
-              ['mc_reviewed', `Reviewed (${mcResolved.length})`],
-              ['mc_all', `All (${mcItems.length})`],
-            ] as const).map(([key, label]) => (
-              <button key={key} onClick={() => setMcTabState(key as any)}
-                style={{ padding: '4px 10px', fontSize: 10, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer',
-                  background: mcTabState === key ? 'rgba(99,102,241,0.15)' : 'transparent',
-                  color: mcTabState === key ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {(() => {
-            const mcVisible = mcTabState === 'mc_reviewed' ? mcResolved : mcTabState === 'mc_all' ? mcItems : mcPending
-            return (
-          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            {mcVisible.length === 0 && (
-              <div style={{ padding: '16px 12px', textAlign: 'center', color: '#4ade80', fontSize: 12, fontWeight: 600 }}>
-                All manual-close review positions have been reviewed.
-              </div>
-            )}
-            {mcVisible.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
-                  {['Symbol', '#', 'Why Here', 'Days', 'Stop', 'Risk Issue', 'Recommended', 'Status', ''].map(h => (
-                    <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {mcVisible.map((p: any) => {
-                  const rev = p.review_decision
-                  const revOpt = rev ? MC_DECISIONS.find(d => d.value === rev.decision) : null
-                  return (
-                    <tr key={p.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: p.stop_missing ? 'rgba(239,68,68,0.04)' : undefined }}>
-                      <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
-                      <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>#{p.paper_trade_id}</td>
-                      <td style={{ padding: '6px', fontSize: 9, color: 'rgba(255,255,255,0.6)' }}>{p.why_here || `${p.time_stop_type} held ${p.days_held}d`}</td>
-                      <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
-                      <td style={{ padding: '6px', color: p.stop_missing ? '#ef4444' : '#4ade80' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
-                      <td style={{ padding: '6px', fontSize: 9, color: p.stop_missing ? '#ef4444' : '#f59e0b' }}>{p.risk_issue || 'Review requested'}</td>
-                      <td style={{ padding: '6px', fontSize: 9, color: 'rgba(255,255,255,0.5)' }}>{p.recommended_review_action || '—'}</td>
-                      <td style={{ padding: '6px' }}>
-                        {rev ? <span style={pill(revOpt?.color || '#4ade80')}>{revOpt?.label || rev.decision}</span> : <span style={pill('#f59e0b')}>pending</span>}
-                      </td>
-                      <td style={{ padding: '6px' }}>
-                        <button onClick={() => setMcForm({ tradeId: p.paper_trade_id, symbol: p.symbol, strategyId: p.strategy_id, decision: '', reason: '', note: '' })}
-                          style={{ fontSize: 9, padding: '3px 8px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
-                          Review Position
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            )}
-          </div>
-            )
-          })()}
-
-          {mcForm.tradeId && (
-            <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, color: 'rgba(255,255,255,0.7)' }}>
-                Review Position — {mcForm.symbol} (Trade #{mcForm.tradeId})
-              </div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 10 }}>
-                Recording this review does not close, sell, cancel, replace, or submit any order.
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                {MC_DECISIONS.map(opt => (
-                  <button key={opt.value} onClick={() => setMcForm(f => ({ ...f, decision: opt.value }))}
-                    style={{ padding: '5px 10px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
-                      background: mcForm.decision === opt.value ? `color-mix(in srgb, ${opt.color} 20%, transparent)` : 'rgba(255,255,255,0.04)',
-                      border: mcForm.decision === opt.value ? `1px solid ${opt.color}` : '1px solid rgba(255,255,255,0.1)',
-                      color: mcForm.decision === opt.value ? opt.color : 'rgba(255,255,255,0.5)' }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <input placeholder="Reason (required)" value={mcForm.reason} onChange={e => setMcForm(f => ({ ...f, reason: e.target.value }))}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 6, boxSizing: 'border-box' }} />
-              <input placeholder="Operator note (optional)" value={mcForm.note} onChange={e => setMcForm(f => ({ ...f, note: e.target.value }))}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 11, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', marginBottom: 8, boxSizing: 'border-box' }} />
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button onClick={submitMcDecision} disabled={!mcForm.decision || !mcForm.reason}
-                  style={{ padding: '6px 16px', fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
-                    background: mcForm.decision && mcForm.reason ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(99,102,241,0.4)', color: mcForm.decision && mcForm.reason ? '#a5b4fc' : 'rgba(255,255,255,0.2)' }}>
-                  Record Decision — No Order
-                </button>
-                <button onClick={() => setMcForm({ tradeId: null, symbol: '', strategyId: '', decision: '', reason: '', note: '' })}
-                  style={{ padding: '6px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.4)' }}>
-                  Cancel
-                </button>
-                {mcStatus && <span style={{ fontSize: 10, color: mcStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{mcStatus}</span>}
-              </div>
-            </div>
-          )}
-        </div>
-        )
-      })()}
-
-      {/* CLOSE RECONCILIATION */}
-      {(reconData?.items || []).length > 0 && (
-        <div style={{ ...card, marginBottom: 16, borderColor: (reconData?.summary?.still_open || 0) > 0 ? 'rgba(245,158,11,0.25)' : 'rgba(74,222,128,0.2)' }}>
-          <div style={{ ...secTitle, color: (reconData?.summary?.still_open || 0) > 0 ? '#f59e0b' : '#4ade80' }}>
-            Close Reconciliation — {reconData?.summary?.total || 0} positions marked for external close
-            {(reconData?.summary?.still_open || 0) > 0
-              ? ` (${reconData.summary.still_open} still open — needs follow-up)`
-              : ' (all confirmed closed)'}
-          </div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
-            These positions were reviewed and marked "close manually outside system." This section tracks whether the close actually happened. No orders are placed here.
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)' }}>
-                {['Symbol', '#', 'Strategy', 'Entry', 'Stop', 'Shares', 'Decision Date', 'Status', 'Action'].map(h => (
-                  <th key={h} style={{ padding: '6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(reconData?.items || []).map((r: any) => (
-                <tr key={r.paper_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                  <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{r.symbol}</td>
-                  <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.3)' }}>#{r.paper_trade_id}</td>
-                  <td style={{ padding: '6px', fontSize: 9 }}>{r.strategy_id}</td>
-                  <td style={{ padding: '6px' }}>${Number(r.entry_price || 0).toFixed(2)}</td>
-                  <td style={{ padding: '6px' }}>{r.stop_loss ? `$${Number(r.stop_loss).toFixed(2)}` : '—'}</td>
-                  <td style={{ padding: '6px' }}>{r.shares || '—'}</td>
-                  <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{r.decision_at ? new Date(r.decision_at).toLocaleString() : '—'}</td>
-                  <td style={{ padding: '6px' }}>
-                    <span style={pill(r.reconciliation_status === 'closed' ? '#4ade80' : r.reconciliation_status === 'ghost_closed' ? '#6b7280' : '#f59e0b')}>
-                      {r.reconciliation_status === 'still_open' ? 'Still Open' : r.reconciliation_status === 'closed' ? 'Confirmed Closed' : 'Resolved'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '6px' }}>
-                    {r.reconciliation_status === 'still_open' && (
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button onClick={() => fetchClosePreview(r.paper_trade_id)} style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.08)', color: '#f59e0b', cursor: 'pointer' }}>Close Preview</button>
-                        <button onClick={() => submitCloseAction('mark_closed_outside_system', r.paper_trade_id, r.symbol)} style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}>Mark Closed</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Close Preview Modal */}
-          {closePreview && (
-            <div style={{ marginTop: 12, padding: '14px 18px', background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Paper Close Preview — {closePreview.symbol} #{closePreview.paper_trade_id}</div>
-              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 10 }}>This is a preview only. No order has been placed.</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 11, marginBottom: 12 }}>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Account</span><br/>{closePreview.account}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Quantity</span><br/>{closePreview.quantity} shares</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Entry</span><br/>${closePreview.entry_price?.toFixed(2)}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Est. P&L</span><br/><span style={{ color: (closePreview.estimated_pnl || 0) >= 0 ? '#4ade80' : '#ef4444' }}>${closePreview.estimated_pnl?.toFixed(2)} ({closePreview.estimated_pnl_pct?.toFixed(1)}%)</span></div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, fontSize: 11, marginBottom: 12 }}>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>DB Stop</span><br/>{closePreview.db_stop ? `$${closePreview.db_stop.toFixed(2)}` : 'None'}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Stop Implication</span><br/>{closePreview.stop_implication}</div>
-                <div><span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>Time-Stop</span><br/>{closePreview.time_stop_type}</div>
-              </div>
-              <div style={{ fontSize: 10, marginBottom: 10 }}>
-                <span style={{ fontWeight: 600 }}>Safety Gates: </span>
-                {Object.entries(closePreview.safety_gates || {}).map(([k, v]) => (
-                  <span key={k} style={{ ...pill(v ? '#4ade80' : '#ef4444'), marginRight: 4 }}>{k.replace(/_/g, ' ')}: {v ? 'PASS' : 'FAIL'}</span>
-                ))}
-              </div>
-              {!closePreview.can_submit_paper_close && (
-                <div style={{ padding: '6px 10px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, fontSize: 10, color: '#ef4444', marginBottom: 10 }}>
-                  Cannot submit paper close: {(closePreview.cannot_submit_reasons || []).join(', ')}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                {closePreview.can_submit_paper_close && (
-                  <>
-                    <input placeholder="Type: SUBMIT PAPER CLOSE ONLY" value={closeConfirm} onChange={e => setCloseConfirm(e.target.value)}
-                      style={{ padding: '5px 10px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, color: 'rgba(255,255,255,0.7)', width: 260 }} />
-                    <button onClick={() => submitCloseAction('submit_paper_close_order', closePreview.paper_trade_id, closePreview.symbol)}
-                      disabled={closeConfirm !== 'SUBMIT PAPER CLOSE ONLY'}
-                      style={{ padding: '5px 14px', fontSize: 10, fontWeight: 600, borderRadius: 6, cursor: closeConfirm === 'SUBMIT PAPER CLOSE ONLY' ? 'pointer' : 'not-allowed',
-                        background: closeConfirm === 'SUBMIT PAPER CLOSE ONLY' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(239,68,68,0.4)', color: closeConfirm === 'SUBMIT PAPER CLOSE ONLY' ? '#ef4444' : 'rgba(255,255,255,0.2)' }}>
-                      Submit Paper Close Order
-                    </button>
-                  </>
-                )}
-                <button onClick={() => submitCloseAction('mark_closed_outside_system', closePreview.paper_trade_id, closePreview.symbol)}
-                  style={{ padding: '5px 12px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)' }}>
-                  Mark Closed Outside System
-                </button>
-                <button onClick={() => submitCloseAction('keep_open_after_preview', closePreview.paper_trade_id, closePreview.symbol)}
-                  style={{ padding: '5px 12px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)' }}>
-                  Keep Open
-                </button>
-                <button onClick={() => { setClosePreview(null); setCloseConfirm('') }}
-                  style={{ padding: '5px 10px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.3)' }}>
-                  Cancel
-                </button>
-                {closeStatus && <span style={{ fontSize: 10, color: closeStatus.startsWith('Error') ? '#ef4444' : '#4ade80' }}>{closeStatus}</span>}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 2. Lifecycle Pipeline Stages */}
-      <div style={{ ...card, marginBottom: 16 }}>
-        <div style={secTitle}>Lifecycle Pipeline</div>
-        <div style={{ display: 'flex', gap: 2, overflowX: 'auto' }}>
-          {STAGES.map((stage, i) => {
-            const count = s.stage_counts_7d?.[stage.toLowerCase().replace(/ /g, '_')] || 0
-            return (
-              <div key={stage} style={{ flex: 1, textAlign: 'center', padding: '8px 4px', background: count > 0 ? 'rgba(74,222,128,0.06)' : 'rgba(255,255,255,0.02)', borderRadius: 6, position: 'relative' }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: count > 0 ? '#4ade80' : 'rgba(255,255,255,0.2)' }}>{count}</div>
-                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{stage}</div>
-                {i < STAGES.length - 1 && <div style={{ position: 'absolute', right: -4, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.15)', fontSize: 10 }}>→</div>}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Tab selector */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        {(['positions', 'proposals'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{ padding: '6px 14px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer', background: tab === t ? 'rgba(99,102,241,0.15)' : 'transparent', color: tab === t ? '#a5b4fc' : 'rgba(255,255,255,0.4)' }}>
-            {t === 'positions' ? `Open Positions (${positions.length})` : `Recent Proposals (${proposals.length})`}
-          </button>
-        ))}
-      </div>
-
-      {/* 3. Open Position Management */}
-      {tab === 'positions' && (
-        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
-          <div style={{ maxHeight: 500, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
-                  {['Symbol', 'Strategy', 'Family', 'Days', 'Entry', 'DB Stop', 'Trailing', 'Time-Stop', 'Gates', 'Account'].map(h => (
-                    <th key={h} style={{ padding: '8px 6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {positions.length === 0 && <tr><td colSpan={10} style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>No open positions</td></tr>}
-                {positions.map((p: any) => (
-                  <tr key={p.paper_trade_id} onClick={() => setSelectedTrade(selectedTrade?.paper_trade_id === p.paper_trade_id ? null : p)} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', background: selectedTrade?.paper_trade_id === p.paper_trade_id ? 'rgba(99,102,241,0.08)' : p.time_stop?.status === 'overdue' ? 'rgba(239,68,68,0.04)' : undefined }}>
-                    <td style={{ padding: '6px', fontWeight: 700, fontSize: 11 }}>{p.symbol}</td>
-                    <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
-                    <td style={{ padding: '6px' }}><span style={pill(p.strategy_family === 'momentum' ? '#f59e0b' : p.strategy_family === 'swing' ? '#3b82f6' : p.strategy_family === 'income' ? '#4ade80' : '#6b7280')}>{p.strategy_family || 'unknown'}</span></td>
-                    <td style={{ padding: '6px', fontWeight: 600 }}>{p.days_held}d</td>
-                    <td style={{ padding: '6px' }}>${p.entry_price?.toFixed(2) || '—'}</td>
-                    <td style={{ padding: '6px', color: p.db_stop_loss ? '#4ade80' : '#ef4444' }}>{p.db_stop_loss ? `$${p.db_stop_loss.toFixed(2)}` : 'MISSING'}</td>
-                    <td style={{ padding: '6px', fontSize: 8 }}>{p.trailing_tier || '—'}</td>
-                    <td style={{ padding: '6px' }}><span style={pill(tsColor(p.time_stop?.status))}>{p.time_stop?.status || 'unknown'}{p.time_stop?.overdue_by > 0 ? ` +${p.time_stop.overdue_by}d` : ''}</span></td>
-                    <td style={{ padding: '6px', cursor: 'pointer' }} onClick={() => openInspector(`Gates — ${p.symbol} #${p.paper_trade_id}`,
-                      Object.entries(p.gate_audit || {}).map(([g, v]: any) => `${g.replace(/_/g, ' ')}: ${(v as any).status}${(v as any).detail ? ` (${(v as any).detail})` : ''}`).join('\n'))}>
-                      {Object.entries(p.gate_audit || {}).map(([g, v]: any) => {
-                        const labels: Record<string, string> = { strategy_active: 'Strategy', classifier_health: 'Classifier', max_concurrent: 'Max Conc.', stop_present: 'Stop', market_hours: 'Market' }
-                        return <span key={g} style={{ ...pill(gateColor((v as any).status)), marginRight: 2, fontSize: 8 }}>{labels[g] || g.replace(/_/g, ' ')}</span>
-                      })}
-                    </td>
-                    <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{p.account}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Proposals Queue */}
-      {tab === 'proposals' && (
-        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
-          <div style={{ maxHeight: 500, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: 'monospace' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
-                  {['ID', 'Symbol', 'Strategy', 'Score', 'Decision', 'Entry', 'Stop', 'Target', 'Created'].map(h => (
-                    <th key={h} style={{ padding: '8px 6px', textAlign: 'left', fontSize: 8, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {proposals.length === 0 && <tr><td colSpan={9} style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>No recent proposals</td></tr>}
-                {proposals.map((p: any) => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <td style={{ padding: '6px', color: 'rgba(255,255,255,0.4)' }}>#{p.id}</td>
-                    <td style={{ padding: '6px', fontWeight: 700 }}>{p.symbol}</td>
-                    <td style={{ padding: '6px', fontSize: 9 }}>{p.strategy_id}</td>
-                    <td style={{ padding: '6px', fontWeight: 600 }}>{p.signal_score ?? '—'}</td>
-                    <td style={{ padding: '6px' }}><span style={pill(p.signal_decision === 'approved' ? '#4ade80' : p.signal_decision === 'rejected' ? '#ef4444' : '#6b7280')}>{p.signal_decision || 'pending'}</span></td>
-                    <td style={{ padding: '6px' }}>${Number(p.proposed_entry || 0).toFixed(2)}</td>
-                    <td style={{ padding: '6px' }}>${Number(p.proposed_stop || 0).toFixed(2)}</td>
-                    <td style={{ padding: '6px' }}>${Number(p.proposed_target1 || 0).toFixed(2)}</td>
-                    <td style={{ padding: '6px', fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{p.created_at ? new Date(p.created_at).toLocaleString() : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Lifecycle Inspector (when a position is selected) */}
-      {selectedTrade && (
-        <div style={{ ...card, marginBottom: 16, borderColor: 'rgba(99,102,241,0.3)' }}>
-          <div style={secTitle}>Lifecycle Inspector — {selectedTrade.symbol} ({selectedTrade.strategy_id})</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 11 }}>
-            <div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, marginBottom: 4 }}>Position</div>
-              <div>Account: {selectedTrade.account}</div>
-              <div>Shares: {selectedTrade.shares}</div>
-              <div>Entry: ${selectedTrade.entry_price?.toFixed(2) || '—'}</div>
-              <div>Days held: {selectedTrade.days_held}</div>
-            </div>
-            <div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, marginBottom: 4 }}>Stop Management</div>
-              <div>DB Stop: {selectedTrade.db_stop_loss ? `$${selectedTrade.db_stop_loss.toFixed(2)}` : <span style={{ color: '#ef4444' }}>MISSING</span>}</div>
-              <div>Trailing tier: {selectedTrade.trailing_tier || 'None'}</div>
-              <div>Broker proof: <span style={{ color: '#6b7280' }}>Unavailable</span></div>
-            </div>
-            <div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, marginBottom: 4 }}>Time Stop</div>
-              <div>Type: {selectedTrade.time_stop?.type || 'unknown'}</div>
-              <div>Status: <span style={{ color: tsColor(selectedTrade.time_stop?.status), fontWeight: 600 }}>{selectedTrade.time_stop?.status}</span></div>
-              <div>Max hold: {selectedTrade.time_stop?.max_hold_days || selectedTrade.time_stop?.review_at_days || 'intraday'}</div>
-              {selectedTrade.time_stop?.overdue_by > 0 && <div style={{ color: '#ef4444', fontWeight: 600 }}>Overdue by {selectedTrade.time_stop.overdue_by} days</div>}
-            </div>
-            <div>
-              <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, marginBottom: 4 }}>Gate Audit</div>
-              {Object.entries(selectedTrade.gate_audit || {}).map(([g, v]: any) => (
-                <div key={g} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 4, background: gateColor(v.status), display: 'inline-block' }} />
-                  <span>{g.replace(/_/g, ' ')}: {v.status}</span>
-                  {v.detail && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9 }}>({v.detail})</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 6. Control Gaps Summary */}
-      <div style={{ ...card }}>
-        <div style={secTitle}>Control Gaps & Alerts</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, fontSize: 11 }}>
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 6, color: (s.time_stop_overdue || 0) > 0 ? '#ef4444' : '#4ade80' }}>Time-Stop Overdue: {s.time_stop_overdue || 0}</div>
-            {positions.filter((p: any) => p.time_stop?.status === 'overdue').map((p: any) => (
-              <div key={p.paper_trade_id} style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginBottom: 2 }}>
-                {p.symbol} · {p.strategy_id} · {p.days_held}d ({p.time_stop?.type})
-              </div>
-            ))}
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 6, color: (s.stop_missing_count || 0) > 0 ? '#ef4444' : '#4ade80' }}>Missing Stops: {s.stop_missing_count || 0}</div>
-            {positions.filter((p: any) => !p.db_stop_loss).map((p: any) => (
-              <div key={p.paper_trade_id} style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginBottom: 2 }}>
-                {p.symbol} · {p.strategy_id}
-              </div>
-            ))}
-          </div>
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>System</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>Flock skips 24h: {s.safe_flock_skips_24h ?? 'N/A'}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>Traceability gaps: {s.traceability_gap_count ?? 'N/A'}</div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>Lifecycle events 24h: {s.lifecycle_events_24h ?? 'N/A'}</div>
-            <div style={{ fontSize: 10, color: s.classifier_gate_disabled ? '#f59e0b' : '#4ade80' }}>Classifier gate: {s.classifier_gate_disabled ? 'DISABLED (burn-in)' : 'Active'}</div>
-          </div>
-        </div>
-      </div>
-      {/* INSPECTOR DRAWER */}
-      {inspector && (
-        <div style={{ position: 'fixed', top: 0, right: 0, width: 420, height: '100vh', background: '#1a1b2e', borderLeft: '1px solid rgba(255,255,255,0.1)', zIndex: 1000, padding: '20px', overflowY: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.4)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>{inspector.title}</div>
-            <button onClick={() => setInspector(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer' }}>x</button>
-          </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-            {typeof inspector.content === 'string' ? inspector.content : JSON.stringify(inspector.content, null, 2)}
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  const [data, setData] = useState<AnyRecord>({}); const [overdue, setOverdue] = useState<AnyRecord>({}); const [manualClose, setManualClose] = useState<AnyRecord>({}); const [recon, setRecon] = useState<AnyRecord>({}); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [inspector, setInspector] = useState<InspectorState>(emptyInspector);
+  async function refresh() { setLoading(true); setError(null); try { const [life, od, mc, cr] = await Promise.allSettled([getJson(API.lifecycle), getJson(API.overdue), getJson(API.manualClose), getJson(API.reconciliation)]); if (life.status === 'fulfilled') { const v = life.value; setData(v?.data || v || {}); } else throw life.reason; if (od.status === 'fulfilled') { const v = od.value; setOverdue(v?.data || v || {}); } if (mc.status === 'fulfilled') { const v = mc.value; setManualClose(v?.data || v || {}); } if (cr.status === 'fulfilled') { const v = cr.value; setRecon(v?.data || v || {}); } } catch (e: any) { setError(e.message || String(e)); } finally { setLoading(false); } }
+  useEffect(() => { refresh(); }, []);
+  const summary = data.summary || {}; const openPositions = firstArray(data.open_positions, data.open_position_records, data.positions); const proposals = firstArray(data.proposals, data.proposal_records, data.recent_proposals); const staleProposals = firstArray(data.stale_proposal_records, proposals.filter((p: AnyRecord) => p.stale_reason || p.classification || p.age_hours > 48)); const signals = firstArray(data.signals, data.signals_today_records, data.strategy_signals); const overdueRows = firstArray(overdue.all_overdue, overdue.reviewed, data.time_stop_overdue_records, openPositions.filter((p: AnyRecord) => String(p.time_stop_status || '').includes('overdue'))); const manualRows = firstArray(manualClose.items, manualClose.all, manualClose.reviewed); const reconRows = firstArray(recon.items, recon.close_reconciliation_records, data.close_reconciliation_records); const events = firstArray(data.lifecycle_event_records, data.lifecycle_events, data.events_24h); const safeFlock = firstArray(data.safe_flock_records, data.safe_flock?.events, data.safe_flock_events); const traceGaps = firstArray(data.trace_gap_records, data.traceability_gaps);
+  function openMetric(title: string, records: AnyRecord[], description: string, status?: any, source = API.lifecycle) { setInspector({ open: true, title, subtitle: `${records.length} records`, status: statusOf(status ?? title), source, description, records, lifecycle: eventsFor(records, events), risks: riskRows(records), safeActions: safeActionsFor(title, records), blockedActions: blockedActionsFor(title), raw: { summary, records }, activeTab: records.length ? 'records' : 'overview' }); }
+  function openRow(title: string, row: AnyRecord, records: AnyRecord[] = [row]) { setInspector({ open: true, title, subtitle: row.symbol || row.lifecycle_id || row.proposal_id || row.paper_trade_id, status: statusOf(row.status || row.time_stop_status || row.decision_status), source: row.source_table || 'row data', description: whyRow(row), records, selected: row, lifecycle: eventsFor([row], events), risks: riskRows([row]), safeActions: safeActionsFor(title, [row]), blockedActions: blockedActionsFor(title), raw: row, activeTab: 'overview' }); }
+  async function prepareClosePreview(row: AnyRecord) { const id = row.paper_trade_id || row.id; const raw = await getJson(`${API.preview}?paper_trade_id=${encodeURIComponent(String(id || ''))}`); const p = raw?.data || raw || {}; setInspector({ open: true, title: `${row.symbol || p.symbol} Close Preview`, subtitle: `Paper trade #${id}`, status: p.can_submit_paper_close ? 'warning' : 'danger', source: API.preview, description: 'Paper-only close preview. This preview does not place an order. Submit requires exact confirmation phrase and all safety gates passing.', records: [p], selected: p, lifecycle: eventsFor([row], events), risks: p.safety_gates || [], safeActions: ['Review estimate', 'Mark closed outside system', 'Keep open after preview', ...(p.can_submit_paper_close ? ['Submit paper close order after exact confirmation'] : [])], blockedActions: ['Live order', 'Auto-close', 'Stop cancellation without explicit workflow'], raw: p, activeTab: 'overview' }); }
+  return <div className="atm-page"><style>{css}</style><div className="atm-header"><div><h1>ATM Control Room</h1><p>End-to-end lifecycle visibility and workflow control. Paper mode. Explicit confirmations only.</p></div><button onClick={refresh}>Refresh</button></div>{loading && <div className="atm-banner">Loading ATM lifecycle data…</div>}{error && <div className="atm-banner danger">{error}</div>}
+    <section className="atm-metrics"><DataButton label="Signals Today" value={summary.signals_today ?? signals.length} onClick={() => openMetric('Signals Today', signals, 'Signals created today with symbol, strategy, score, and lifecycle linkage.')} /><DataButton label="Proposals" value={summary.proposals_today ?? proposals.length} onClick={() => openMetric('Proposals', proposals, 'Proposal records, statuses, age, gate state, and decision state.')} /><DataButton label="Open Positions" value={summary.open_positions ?? openPositions.length} onClick={() => openMetric('Open Positions', openPositions, 'Active paper positions after ghost/closed/cancelled records are filtered out.', 'healthy')} /><DataButton label="Time-Stop Overdue" value={summary.time_stop_overdue ?? overdueRows.length} tone={(summary.time_stop_overdue ?? overdueRows.length) ? 'danger' : 'healthy'} onClick={() => openMetric('Time-Stop Overdue', overdueRows, 'Positions past their strategy time-stop window. Review workflow, not auto-execution.', 'danger')} /><DataButton label="Missing Stops" value={summary.positions_missing_stop_proof ?? summary.stop_missing_count ?? 0} tone={(summary.positions_missing_stop_proof ?? summary.stop_missing_count) ? 'danger' : 'healthy'} onClick={() => openMetric('Missing Stops', firstArray(data.missing_stop_records, openPositions.filter((p: AnyRecord) => p.stop_missing)), 'Positions missing DB stop or broker stop proof. If zero, the records tab explains the calculation.')} /><DataButton label="Stale Proposals" value={summary.stale_proposals ?? staleProposals.length} tone={(summary.stale_proposals ?? staleProposals.length) ? 'warning' : 'healthy'} onClick={() => openMetric('Stale Proposals', staleProposals, 'Real stale proposal records. Includes classification, reason kept, linked open trade, and safe action.', 'warning')} /><DataButton label="Flock Skips 24h" value={summary.safe_flock_skips_24h ?? 0} onClick={() => openMetric('Flock Skips 24h', safeFlock, 'safe_flock telemetry events and lock skips in the last 24 hours.')} /><DataButton label="Trace Gaps" value={summary.traceability_gap_count ?? traceGaps.length} onClick={() => openMetric('Traceability Gaps', traceGaps, 'Missing lifecycle links from candidate to signal to proposal to trade to exit/learning.')} /><DataButton label="Classifier Gate" value={summary.classifier_gate_disabled ? 'OFF' : 'ON'} tone={summary.classifier_gate_disabled ? 'danger' : 'healthy'} onClick={() => openMetric('Classifier Gate', [data.classifier_gate_detail || summary], 'Classifier gate and graduation block state. OFF means burn-in, not production-ready.', summary.classifier_gate_disabled ? 'danger' : 'healthy')} /><DataButton label="Events 24h" value={summary.lifecycle_events_24h ?? events.length} onClick={() => openMetric('Lifecycle Events 24h', events, 'Lifecycle events written in the last 24 hours.')} /></section>
+    <Queue title="Overdue Intraday Review Queue" subtitle="Reviewed overdue positions remain available for audit. Active unresolved items should be zero." rows={overdueRows} empty="All overdue positions have been reviewed." onRow={(r) => openRow(`${r.symbol} overdue review`, r, overdueRows)} />
+    <Queue title="Manual Close Review Queue — No Orders Placed" subtitle="Second-stage review decisions. Rows leave Pending after review and remain in Reviewed/All for audit." rows={manualRows} empty="All manual-close review positions have been reviewed." onRow={(r) => openRow(`${r.symbol} manual close review`, r, manualRows)} />
+    <section className="atm-section warning"><h2>Close Reconciliation</h2><p>Positions marked for external close are tracked here until confirmed closed. No orders are placed by reconciliation.</p><SimpleTable rows={reconRows} columns={[{ key: 'symbol', label: 'Symbol' }, { key: 'paper_trade_id', label: '#' }, { key: 'strategy_id', label: 'Strategy' }, { key: 'entry_price', label: 'Entry', render: r => money(r.entry_price) }, { key: 'db_stop', label: 'Stop', render: r => money(r.db_stop || r.stop_loss) }, { key: 'shares', label: 'Shares' }, { key: 'status', label: 'Status', render: r => <Badge tone={statusOf(r.reconciliation_state || r.status)}>{r.reconciliation_state || r.status || 'unknown'}</Badge> }, { key: 'actions', label: 'Actions', render: r => <div className="atm-row-actions"><button onClick={(e) => { e.stopPropagation(); openRow(`${r.symbol} close reconciliation`, r, reconRows); }}>View</button><button onClick={(e) => { e.stopPropagation(); prepareClosePreview(r); }}>Close Preview</button></div> }]} onRow={(r) => openRow(`${r.symbol} close reconciliation`, r, reconRows)} /></section>
+    <section className="atm-section"><h2>Lifecycle Pipeline</h2><div className="atm-pipeline">{['Universe','Candidates','Scoring','Signals','Proposals','Risk Gate','Approval','Execution','Stops','Trailing','TCA','Exit','Learning'].map(stage => <button key={stage} onClick={() => openMetric(stage, events.filter((e: AnyRecord) => String(e.stage || '').toLowerCase().includes(stage.toLowerCase().split(' ')[0])), `${stage} lifecycle records and events.`)}><strong>{events.filter((e: AnyRecord) => String(e.stage || '').toLowerCase().includes(stage.toLowerCase().split(' ')[0])).length}</strong><span>{stage}</span></button>)}</div></section>
+    <section className="atm-section"><h2>Open Positions ({openPositions.length})</h2><SimpleTable rows={openPositions} columns={[{ key: 'symbol', label: 'Symbol' }, { key: 'strategy_id', label: 'Strategy' }, { key: 'strategy_family', label: 'Family' }, { key: 'days_held', label: 'Days' }, { key: 'entry_price', label: 'Entry', render: r => money(r.entry_price) }, { key: 'db_stop', label: 'DB Stop', render: r => money(r.db_stop || r.stop_loss) }, { key: 'trailing_tier', label: 'Trailing' }, { key: 'time_stop_status', label: 'Time-Stop', render: r => <Badge tone={statusOf(r.time_stop_status)}>{r.time_stop_status || 'unknown'}</Badge> }, { key: 'gates', label: 'Gates', render: r => <GateChips gates={r.gates || r.gate_summary} onGate={(g) => openRow(`Gate: ${g.name}`, g)} /> }, { key: 'account', label: 'Account' }]} onRow={(r) => openRow(`${r.symbol} open position`, r, openPositions)} /></section>
+    <section className="atm-section"><h2>Recent Proposals ({proposals.length})</h2><SimpleTable rows={proposals.slice(0, 50)} columns={[{ key:'proposal_id', label:'Proposal' },{ key:'symbol', label:'Symbol' },{ key:'strategy_id', label:'Strategy' },{ key:'status', label:'Status' },{ key:'age_hours', label:'Age Hrs' },{ key:'classification', label:'Classification' },{ key:'reason', label:'Reason' }]} onRow={(r) => openRow(`${r.symbol || r.proposal_id} proposal`, r, proposals)} /></section>
+    <section className="atm-section danger"><h2>Control Gaps & Alerts</h2><div className="atm-gap-grid"><button onClick={() => openMetric('Time-Stop Overdue', overdueRows, 'Overdue positions requiring review.')}>Time-Stop Overdue: {summary.time_stop_overdue ?? overdueRows.length}</button><button onClick={() => openMetric('Missing Stops', firstArray(data.missing_stop_records, []), 'Missing stop proof records.')}>Missing Stops: {summary.stop_missing_count ?? 0}</button><button onClick={() => openMetric('Classifier Gate', [summary], 'Burn-in / classifier gate state.')}>Classifier Gate: {summary.classifier_gate_disabled ? 'DISABLED' : 'ENABLED'}</button></div></section><Inspector state={inspector} setState={setInspector} /></div>;
 }
+
+
+function Queue({ title, subtitle, rows, empty, onRow }: { title: string; subtitle: string; rows: AnyRecord[]; empty: string; onRow: (r: AnyRecord) => void }) { const pending = rows.filter(r => !String(r.decision_status || r.review_status || r.status || '').toLowerCase().includes('reviewed') && !r.existing_decision && !r.manual_close_decision); const reviewed = rows.filter(r => !pending.includes(r)); const [tab, setTab] = useState<'pending'|'reviewed'|'all'>('pending'); const visible = tab === 'pending' ? pending : tab === 'reviewed' ? reviewed : rows; return <section className="atm-section"><h2>{title} — {rows.length} positions</h2><p>{subtitle}</p><div className="atm-tabs inline"><button className={tab==='pending'?'active':''} onClick={() => setTab('pending')}>Pending ({pending.length})</button><button className={tab==='reviewed'?'active':''} onClick={() => setTab('reviewed')}>Reviewed ({reviewed.length})</button><button className={tab==='all'?'active':''} onClick={() => setTab('all')}>All ({rows.length})</button></div>{visible.length === 0 ? <div className="atm-success">{empty}</div> : <SimpleTable rows={visible} columns={[{key:'symbol',label:'Symbol'},{key:'paper_trade_id',label:'#'},{key:'strategy_id',label:'Strategy'},{key:'days_held',label:'Days'},{key:'time_stop_status',label:'Time-Stop'},{key:'existing_decision',label:'Decision'},{key:'action',label:'Action',render:()=> <button>Open Drill Down</button>}]} onRow={onRow} />}</section>; }
+function eventsFor(records: AnyRecord[], events: AnyRecord[]) { const keys = new Set(records.flatMap(r => [r.lifecycle_id, r.paper_trade_id, r.proposal_id, r.symbol].filter(Boolean).map(String))); return events.filter(e => [e.lifecycle_id, e.paper_trade_id, e.proposal_id, e.symbol].some(v => keys.has(String(v)))); }
+function riskRows(records: AnyRecord[]) { return records.flatMap(r => [r.risk_summary, r.stop_summary, r.time_stop_summary, r.gate_summary, r.broker_stop_proof].filter(Boolean).map((x:any) => typeof x === 'object' ? x : { detail: x })); }
+function whyRow(r: AnyRecord) { if (r.symbol && r.paper_trade_id) return `${r.symbol} paper trade #${r.paper_trade_id}. This drill-down shows identity, risk, lifecycle, safe actions, and raw source data.`; return 'Selected ATM lifecycle record.'; }
+function safeActionsFor(title: string, records: AnyRecord[]) { const t = title.toLowerCase(); const out = ['Open related source records', 'Review lifecycle events', 'Inspect raw data']; if (t.includes('close') || records.some(r => r.reconciliation_state)) out.push('Prepare paper close preview', 'Mark closed outside system', 'Keep open after preview'); return out; }
+function blockedActionsFor(title: string) { return ['Live order placement', 'Automatic close', 'Automatic stop cancellation/replacement', 'Changing ATM mode']; }
+
+
+const css = `
+.atm-page{position:relative;padding:28px 32px;color:#e7edf6;background:#070b12;min-height:100vh;font-family:Inter,ui-sans-serif,system-ui}.atm-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #263142;padding-bottom:18px;margin-bottom:20px}.atm-header h1{font-size:28px;margin:0}.atm-header p,.atm-section p{color:#9aa8b8}.atm-header button,.atm-row-actions button,.atm-tabs button,.atm-close{background:#162033;color:#dbeafe;border:1px solid #334155;border-radius:8px;padding:8px 12px;cursor:pointer}.atm-banner{padding:12px;border:1px solid #3b82f6;background:#0b2447;border-radius:10px;margin:10px 0}.atm-banner.danger{border-color:#ef4444;background:#2b1115}.atm-metrics{display:grid;grid-template-columns:repeat(10,minmax(120px,1fr));gap:10px;margin:18px 0}.atm-metric{background:#0c121d;border:1px solid #263142;border-radius:14px;padding:14px;text-align:left;color:#e7edf6;cursor:pointer}.atm-metric:hover,.clickable:hover{border-color:#60a5fa;background:#101a2b}.atm-metric-value{font-size:28px;font-weight:800}.atm-metric-label{font-size:12px;color:#9aa8b8}.atm-metric-danger .atm-metric-value{color:#fb7185}.atm-metric-warning .atm-metric-value{color:#fbbf24}.atm-metric-healthy .atm-metric-value{color:#4ade80}.atm-section{border:1px solid #263142;border-radius:16px;background:#0b1019;margin:18px 0;padding:18px}.atm-section h2{margin:0 0 8px}.atm-section.warning{border-color:#92400e}.atm-section.danger{border-color:#7f1d1d}.atm-tabs{display:flex;gap:8px;border-bottom:1px solid #263142;margin:14px 0}.atm-tabs.inline{border-bottom:0}.atm-tabs button{font-size:12px}.atm-tabs button.active{background:#2563eb;border-color:#60a5fa}.atm-success{padding:30px;text-align:center;color:#4ade80}.atm-table-wrap{overflow:auto}.atm-table{width:100%;border-collapse:collapse;font-size:13px}.atm-table th{text-align:left;color:#94a3b8;border-bottom:1px solid #263142;padding:9px}.atm-table td{border-bottom:1px solid #1f2937;padding:9px;vertical-align:top}.atm-empty{text-align:center;color:#94a3b8}.atm-badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:11px;text-transform:uppercase;border:1px solid #334155}.atm-badge-healthy{color:#4ade80;border-color:#166534}.atm-badge-warning{color:#fbbf24;border-color:#92400e}.atm-badge-danger{color:#fb7185;border-color:#7f1d1d}.atm-badge-neutral{color:#cbd5e1}.atm-gates{display:flex;flex-wrap:wrap;gap:4px}.atm-gate{border:1px solid #334155;background:#111827;color:#cbd5e1;border-radius:8px;padding:4px 6px;font-size:10px}.atm-gate strong{display:block}.atm-gate-healthy{border-color:#166534}.atm-gate-warning{border-color:#92400e}.atm-gate-danger{border-color:#7f1d1d}.atm-pipeline{display:grid;grid-template-columns:repeat(13,minmax(80px,1fr));gap:8px}.atm-pipeline button{background:#0c121d;border:1px solid #263142;color:#dbeafe;border-radius:12px;padding:12px;cursor:pointer}.atm-pipeline strong{display:block;font-size:22px}.atm-pipeline span{font-size:11px;color:#94a3b8}.atm-gap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.atm-gap-grid button{background:#160f13;border:1px solid #7f1d1d;color:#fecaca;border-radius:12px;padding:12px;text-align:left}.atm-inspector{position:fixed;top:0;right:0;height:100vh;width:min(900px,52vw);background:#0b1020;border-left:1px solid #334155;box-shadow:-20px 0 50px rgba(0,0,0,.45);z-index:50;display:flex;flex-direction:column}.atm-inspector-head{display:flex;justify-content:space-between;padding:22px;border-bottom:1px solid #263142}.atm-inspector-head h2{margin:4px 0;font-size:24px}.atm-breadcrumb{font-size:12px;color:#60a5fa}.atm-inspector-meta{display:flex;gap:10px;align-items:center;padding:10px 22px;color:#94a3b8;border-bottom:1px solid #263142}.atm-close{font-size:28px;line-height:1}.atm-inspector-body{padding:18px 22px;overflow:auto}.atm-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.atm-card{border:1px solid #263142;background:#0c121d;border-radius:14px;padding:14px}.atm-line{padding:8px;border-bottom:1px solid #1f2937}.atm-line.healthy{color:#4ade80}.atm-line.danger{color:#fb7185}.atm-record-card{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.atm-record-card div{background:#0c121d;border:1px solid #263142;border-radius:10px;padding:10px}.atm-record-card strong{display:block;color:#94a3b8;font-size:11px}.atm-raw{white-space:pre-wrap;background:#020617;border:1px solid #263142;border-radius:14px;padding:14px;overflow:auto}.atm-row-actions{display:flex;gap:6px}@media(max-width:1200px){.atm-metrics{grid-template-columns:repeat(2,1fr)}.atm-inspector{width:96vw}.atm-pipeline{grid-template-columns:repeat(3,1fr)}}`;
