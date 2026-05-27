@@ -19391,6 +19391,95 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
+    # ── ATM Proposal Hygiene ───────────────────────────────────────────
+    if base_path == "/api/v2/atm/proposal-hygiene" and method == "GET":
+        try:
+            import datetime as _dt_ph, os as _os_ph
+            from collections import Counter as _C_ph, defaultdict as _dd_ph
+
+            _ph_stale_h = 168  # 7 days
+
+            _ph_proposals = _db_query("""
+                SELECT id, symbol, strategy_id, signal_score, signal_decision,
+                       source_signal_id, created_at, updated_at, proposed_entry,
+                       proposed_stop, proposed_target1, proposed_shares, proposed_account
+                FROM paper_trade_proposals
+                ORDER BY COALESCE(updated_at, created_at) DESC NULLS LAST LIMIT 250
+            """) or []
+
+            _ph_open = _db_query("""
+                SELECT id AS paper_trade_id, symbol, strategy_id, account
+                FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason='')
+            """) or []
+
+            _ph_open_keys = set(f"{(r.get('symbol') or '').upper()}|{r.get('strategy_id') or ''}" for r in _ph_open)
+            _ph_now = _dt_ph.datetime.now(_dt_ph.timezone.utc)
+
+            def _ph_age(ca):
+                if not ca: return None
+                if isinstance(ca, str):
+                    try: ca = _dt_ph.datetime.fromisoformat(ca.replace("Z", "+00:00"))
+                    except: return None
+                if isinstance(ca, _dt_ph.datetime):
+                    if ca.tzinfo is None: ca = ca.replace(tzinfo=_dt_ph.timezone.utc)
+                    return round((_ph_now - ca).total_seconds() / 3600, 2)
+                return None
+
+            _ph_dup = _C_ph(f"{(r.get('symbol') or '').upper()}|{r.get('strategy_id') or ''}" for r in _ph_proposals)
+            _ph_records = []
+            for r in _ph_proposals:
+                sym = (r.get("symbol") or "").upper()
+                sid = r.get("strategy_id") or ""
+                key = f"{sym}|{sid}"
+                age = _ph_age(r.get("created_at"))
+                status = r.get("signal_decision") or ""
+                linked = key in _ph_open_keys
+
+                if "expired" in status: cls, reason = "expired", "Already expired"
+                elif "rejected" in status or "declined" in status: cls, reason = "rejected", "Already rejected"
+                elif linked: cls, reason = "linked_to_open_trade", "Linked to open trade"
+                elif _ph_dup.get(key, 0) > 1: cls, reason = "duplicate_candidate", "Duplicate symbol/strategy"
+                elif not r.get("id") or not r.get("created_at"): cls, reason = "missing_metadata", "Missing proposal ID or created_at"
+                elif age is not None and age <= _ph_stale_h: cls, reason = "recent_pipeline_window", "Within normal pipeline window"
+                elif age is not None and age > _ph_stale_h: cls, reason = "stale_needs_review", f"Older than {_ph_stale_h}h threshold"
+                else: cls, reason = "unknown", "Insufficient data to classify"
+
+                _ph_records.append({
+                    "proposal_id": r.get("id"),
+                    "symbol": sym or "Missing symbol",
+                    "strategy_id": sid or "Missing strategy",
+                    "status": status or "Missing status",
+                    "created_at": str(r.get("created_at") or ""),
+                    "age_hours": age,
+                    "score": float(r.get("signal_score")) if r.get("signal_score") else None,
+                    "proposed_entry": float(r["proposed_entry"]) if r.get("proposed_entry") else None,
+                    "proposed_stop": float(r["proposed_stop"]) if r.get("proposed_stop") else None,
+                    "linked_open_trade": linked,
+                    "classification": cls,
+                    "reason": reason,
+                    "stale": cls == "stale_needs_review",
+                })
+
+            _ph_groups = _dd_ph(int)
+            for rec in _ph_records:
+                _ph_groups[rec["classification"]] += 1
+
+            return 200, {"ok": True, "data": {
+                "total_count": len(_ph_records),
+                "recent_count": _ph_groups.get("recent_pipeline_window", 0),
+                "stale_count": _ph_groups.get("stale_needs_review", 0),
+                "needs_review_count": _ph_groups.get("stale_needs_review", 0) + _ph_groups.get("missing_metadata", 0) + _ph_groups.get("duplicate_candidate", 0) + _ph_groups.get("unknown", 0),
+                "linked_open_trade_count": _ph_groups.get("linked_to_open_trade", 0),
+                "duplicate_count": _ph_groups.get("duplicate_candidate", 0),
+                "blocked_count": _ph_groups.get("blocked_by_risk", 0),
+                "expired_count": _ph_groups.get("expired", 0),
+                "records": _ph_records,
+                "safety": {"read_only_endpoint": True, "proposals_modified": "NONE",
+                           "alpaca_mode": _os_ph.environ.get("ALPACA_MODE", "unknown")},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "status": "error", "error": str(e)}
+
     # ── ATM Reconciliation Health ──────────────────────────────────────
     if base_path == "/api/v2/atm/reconciliation-health" and method == "GET":
         try:
