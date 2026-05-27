@@ -10,6 +10,8 @@ import ProposalHygienePanel from '../components/ProposalHygienePanel';
 import LifecycleTracePanel from '../components/LifecycleTracePanel';
 import StopProofPanel from '../components/StopProofPanel';
 import ExecutionTimingPanel from '../components/ExecutionTimingPanel';
+import StopTrailingControlPanel from '../components/StopTrailingControlPanel';
+import StopChangeAuditPanel from '../components/StopChangeAuditPanel';
 import ProposalDedupPanel from '../components/ProposalDedupPanel';
 
 
@@ -165,6 +167,8 @@ export default function ATMControlRoom() {
     <section className="panel"><h2>Close Reconciliation</h2><p>External-close decisions are tracked here. Preview is available only for rows with a valid paper_trade_id.</p><Table rows={closeRows} cols={[{k:'symbol',h:'Symbol'},{k:'paper_trade_id',h:'#'},{k:'strategy_id',h:'Strategy'},{k:'status',h:'Status',r:(x)=><Badge t={tone(x.reconciliation_state || x.status)}>{x.reconciliation_state || x.status || 'unknown'}</Badge>},{k:'action',h:'Actions',r:(x)=><div className="rowActions"><button onClick={(e)=>{e.stopPropagation(); openRow(`${x.symbol} close reconciliation`, x, closeRows);}}>View</button><button onClick={(e)=>{e.stopPropagation(); preview(x);}}>Close Preview</button></div>}]} onRow={(r)=>openRow(`${r.symbol} close reconciliation`, r, closeRows)} /></section>
     <section className="panel"><h2>ATM DB Open Records ({dbRecords.length})</h2><p>Audit-only database lifecycle view. Do not treat every row here as an actionable broker-open position.</p><Table rows={dbRecords} cols={[{k:'symbol',h:'Symbol'},{k:'paper_trade_id',h:'#'},{k:'strategy_id',h:'Strategy'},{k:'strategy_family',h:'Family'},{k:'days_held',h:'Days'},{k:'entry_price',h:'Entry',r:(x)=>money(x.entry_price)},{k:'db_stop',h:'DB Stop',r:(x)=>money(x.db_stop)},{k:'time_stop_status',h:'Time-Stop',r:(x)=><Badge t={tone(x.time_stop_status)}>{x.time_stop_status || 'unknown'}</Badge>},{k:'gates',h:'Gates',r:(x)=><GateChips row={x} onGate={(g)=>openRow(`Gate: ${g.name}`, g)} />},{k:'account',h:'Account'}]} onRow={(r)=>openRow(`${r.symbol} DB open record`, r, dbRecords)} /></section>
     <ProposalHygienePanel fallbackRecords={proposals} onOpenProposal={(proposal: any, all: any) => openRow(`${proposal.symbol || proposal.proposal_id} proposal hygiene`, proposal, all)} />
+    <StopTrailingControlPanel />
+    <StopChangeAuditPanel />
     <StopProofPanel />
     <ExecutionTimingPanel />
     <LifecycleTracePanel />
