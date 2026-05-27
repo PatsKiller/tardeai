@@ -123,6 +123,47 @@ def main():
             except Exception:
                 pass
 
+        # ── Auto-reject proposals that have been BLOCKED for >30 min ──
+        _action_state = pr.get("action_state") or ""
+        _created = pr.get("created_at")
+        if "BLOCKED" in _action_state.upper() and _created:
+            try:
+                from datetime import datetime, timezone
+                _age_min = 30
+                if hasattr(_created, 'timestamp'):
+                    _age_min = (datetime.now(timezone.utc) - _created).total_seconds() / 60
+                elif isinstance(_created, str):
+                    from dateutil.parser import parse as _dp
+                    _age_min = (datetime.now(timezone.utc) - _dp(_created)).total_seconds() / 60
+                if _age_min > 30:
+                    try:
+                        from paper_trade_logger import reject_proposal
+                        reject_proposal(pr["id"], f"auto_blocked_{_age_min:.0f}min")
+                        print(f"  [alert] Auto-rejected blocked #{pr['id']} {pr.get('symbol')} ({_age_min:.0f}min blocked)")
+                    except Exception:
+                        pass
+                    continue
+            except Exception:
+                pass
+
+        # ── Dedup: skip if we already sent this exact proposal in last 30 min ──
+        _alert_key = f"{pr.get('id')}:{pr.get('action_state')}"
+        _last_alert = pr.get("last_alert_at")
+        if _last_alert:
+            try:
+                from datetime import datetime, timezone
+                if hasattr(_last_alert, 'timestamp'):
+                    _since_alert = (datetime.now(timezone.utc) - _last_alert).total_seconds() / 60
+                elif isinstance(_last_alert, str):
+                    from dateutil.parser import parse as _dp2
+                    _since_alert = (datetime.now(timezone.utc) - _dp2(_last_alert)).total_seconds() / 60
+                else:
+                    _since_alert = 999
+                if _since_alert < 30:
+                    continue  # Already alerted within 30 min
+            except Exception:
+                pass
+
         pr["execution_readiness"] = {
             "readiness_state": pr.get("readiness_state"),
             "quote_provider": pr.get("quote_provider"),
