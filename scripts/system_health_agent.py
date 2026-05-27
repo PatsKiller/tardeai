@@ -518,9 +518,39 @@ def run_health_check(dry_run=True, verbose=False):
                      "locked": 0, "retried": 0, "escalated": 0},
     }
 
+    # Determine if we're in market hours (ET)
+    import pytz as _ptz
+    _et = _ptz.timezone("US/Eastern")
+    _now_et = now.astimezone(_et)
+    _current_hour = _now_et.hour
+    _is_weekday = _now_et.weekday() < 5
+
     for comp in MONITORED_COMPONENTS:
         component = comp["component"]
         log_file = comp.get("log_file", "")
+
+        # Skip staleness check for market-hours-only components outside market hours
+        _sched = comp.get("schedule", "")
+        _market_only = False
+        if any(h in _sched for h in ["9-16", "9-15", "9-20", "7-15", "7-17"]):
+            _market_only = True
+            # Extract hour range from schedule
+            import re as _re_sched
+            _hr_match = _re_sched.search(r'(\d+)-(\d+)', _sched.split("*")[1] if len(_sched.split("*")) > 1 else "")
+            if _hr_match:
+                _sched_start = int(_hr_match.group(1))
+                _sched_end = int(_hr_match.group(2))
+                # If current ET hour is outside the schedule window, skip
+                if not (_sched_start <= _current_hour <= _sched_end) or not _is_weekday:
+                    report["checks"].append({
+                        "component": component, "display": comp.get("display"),
+                        "status": "OK", "age_min": None, "lock": "N/A",
+                        "note": "outside_scheduled_hours",
+                    })
+                    report["summary"]["ok"] += 1
+                    if verbose:
+                        log.info(f"  ⏭️  {comp['display']:30s} skipped (outside scheduled hours {_sched_start}-{_sched_end}, now={_current_hour})")
+                    continue
 
         # 1. Check log freshness
         freshness = _check_log_freshness(log_file, comp.get("max_age_min", 60))
