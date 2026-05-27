@@ -19391,6 +19391,81 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
+    # ── ATM Reconciliation Health ──────────────────────────────────────
+    if base_path == "/api/v2/atm/reconciliation-health" and method == "GET":
+        try:
+            import datetime as _dt_rh, os as _os_rh
+            from pathlib import Path as _P_rh
+
+            def _rh_safe_iso(v):
+                if v is None: return None
+                if isinstance(v, _dt_rh.datetime): return v.astimezone(_dt_rh.timezone.utc).replace(microsecond=0).isoformat()
+                return str(v)
+
+            _rh_latest = _db_query("""
+                SELECT run_id, started_at, completed_at, mode, journal_source,
+                       db_open_count, journal_open_count, matched_count, mismatch_count,
+                       duplicate_count, mirror_account_count, missing_identifier_count, status
+                FROM atm_position_reconciliation_runs ORDER BY started_at DESC LIMIT 1
+            """, fetch="one")
+
+            if not _rh_latest:
+                # JSON fallback
+                _rh_path = PROJECT_ROOT / "logs" / "atm_position_reconciliation" / "latest.json"
+                if _rh_path.exists():
+                    import json as _rh_j
+                    _rh_latest = _rh_j.loads(_rh_path.read_text())
+
+            if not _rh_latest:
+                return 200, {"ok": True, "status": "no_data", "status_label": "No reconciliation run data yet.",
+                             "db_open_count": 0, "journal_open_count": 0, "matched_count": 0, "mismatch_count": 0,
+                             "cron_fresh": False, "safety": {"read_only_endpoint": True, "audit_only_mode": True}}
+
+            _rh_completed = _rh_latest.get("completed_at") or _rh_latest.get("started_at")
+            if isinstance(_rh_completed, str):
+                try: _rh_completed = _dt_rh.datetime.fromisoformat(_rh_completed.replace("Z", "+00:00"))
+                except: _rh_completed = None
+            if _rh_completed and _rh_completed.tzinfo is None:
+                _rh_completed = _rh_completed.replace(tzinfo=_dt_rh.timezone.utc)
+
+            _rh_now = _dt_rh.datetime.now(_dt_rh.timezone.utc)
+            _rh_age = round((_rh_now - _rh_completed).total_seconds() / 60, 1) if _rh_completed else None
+            _rh_mm = int(_rh_latest.get("mismatch_count") or 0)
+            _rh_db = int(_rh_latest.get("db_open_count") or 0)
+            _rh_jo = int(_rh_latest.get("journal_open_count") or 0)
+            _rh_ma = int(_rh_latest.get("matched_count") or 0)
+
+            _rh_thresh = 30 if (_rh_now.weekday() < 5 and 13 <= _rh_now.hour <= 22) else 1440
+            _rh_fresh = bool(_rh_age is not None and _rh_age <= _rh_thresh)
+
+            if _rh_mm > 0: _rh_status, _rh_label = "mismatch", f"{_rh_mm} reconciliation mismatch(es)"
+            elif _rh_db == _rh_jo == _rh_ma: _rh_status, _rh_label = "healthy", "DB-open matches journal-open"
+            elif _rh_age and _rh_age > _rh_thresh: _rh_status, _rh_label = "stale", f"Latest run {_rh_age}m old (threshold {_rh_thresh}m)"
+            else: _rh_status, _rh_label = "warning", "Counts not perfectly aligned"
+
+            _rh_items = []
+            _rh_rid = _rh_latest.get("run_id")
+            if _rh_rid:
+                _rh_items = _db_query("""
+                    SELECT paper_trade_id, symbol, strategy_id, account, classification, severity, reason
+                    FROM atm_position_reconciliation_items WHERE run_id=%s ORDER BY severity DESC, symbol
+                """, [_rh_rid]) or []
+
+            return 200, {"ok": True, "status": _rh_status, "status_label": _rh_label,
+                         "last_run_id": _rh_rid, "last_run_at": _rh_safe_iso(_rh_completed),
+                         "age_minutes": _rh_age, "cron_fresh": _rh_fresh,
+                         "mode": _rh_latest.get("mode") or "audit_only",
+                         "journal_source": _rh_latest.get("journal_source"),
+                         "db_open_count": _rh_db, "journal_open_count": _rh_jo,
+                         "matched_count": _rh_ma, "mismatch_count": _rh_mm,
+                         "unresolved_items": [i for i in _rh_items if (i.get("classification") or "") != "matched_open"],
+                         "latest_items": [{k: _json_clean(v) for k, v in i.items()} for i in _rh_items],
+                         "safety": {"read_only_endpoint": True, "audit_only_mode": True,
+                                    "alpaca_mode": _os_rh.environ.get("ALPACA_MODE", "unknown"),
+                                    "llm_disable": _os_rh.environ.get("LLM_DISABLE_LIVE_EXECUTION", "unknown")}}
+        except Exception as e:
+            return 500, {"ok": False, "status": "error", "error": str(e)}
+
     if base_path == "/api/v2/atm/close-preview" and method == "GET":
         try:
             _cp_tid = int((query or {}).get("paper_trade_id", 0))

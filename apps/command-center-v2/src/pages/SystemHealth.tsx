@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ReconciliationHealthPanel from '../components/ReconciliationHealthPanel'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
@@ -158,6 +159,9 @@ export default function SystemHealth() {
           </div>
         )}
       </Card>
+
+      {/* Position Reconciliation Health */}
+      <ReconciliationHealthPanel compact />
 
       {/* LLM Router */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 14 }}>
