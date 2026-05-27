@@ -559,6 +559,19 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             skipped += 1
             continue
 
+        # Live price validation — reject if scan price drifted >3% from live
+        try:
+            from market_quote_provider import get_best_quote as _gpq
+            _live = _gpq(symbol)
+            if _live and _live.get('last_price') and _live['last_price'] > 0:
+                _live_px = float(_live['last_price'])
+                _drift = abs(_live_px - scan_price) / scan_price * 100
+                if _drift > 3.0:
+                    log.warning(f"  {symbol}: scan price ${scan_price:.2f} drifted {_drift:.1f}% from live ${_live_px:.2f} — using live price")
+                    scan_price = _live_px
+        except Exception:
+            pass
+
         # Strategy-aware minimum price — momentum/scalp need higher floor
         _MOMENTUM_STRATEGIES = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst',
                                 'screener', 'speculative_growth', 'earnings_post_momentum'}
