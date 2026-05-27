@@ -19391,6 +19391,47 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
+    # ── Lifecycle Trace v3.1 ─────────────────────────────────────────────
+    if base_path == "/api/v2/lifecycle/trace-summary" and method == "GET":
+        try:
+            _lt_total = len(_db_query("SELECT 1 FROM lifecycle_trace") or [])
+            _lt_with_sig = len(_db_query("SELECT 1 FROM lifecycle_trace WHERE signal_id IS NOT NULL") or [])
+            _lt_with_prop = len(_db_query("SELECT 1 FROM lifecycle_trace WHERE proposal_id IS NOT NULL") or [])
+            _lt_with_trade = len(_db_query("SELECT 1 FROM lifecycle_trace WHERE paper_trade_id IS NOT NULL") or [])
+            _lt_dedup = len(_db_query("SELECT 1 FROM proposal_dedup_audit") or [])
+            _lt_dedup_total = sum(r.get("duplicate_count", 0) for r in (_db_query("SELECT duplicate_count FROM proposal_dedup_audit") or []))
+            _lt_events = _db_query("SELECT stage, count(*) as c FROM lifecycle_trace_events GROUP BY stage ORDER BY c DESC") or []
+            _lt_recent = _db_query("SELECT trace_id, stage, event_type, source_table, source_id, status, event_time FROM lifecycle_trace_events ORDER BY event_time DESC LIMIT 20") or []
+            return 200, {"ok": True, "data": {
+                "total_traces": _lt_total,
+                "signals_linked": _lt_with_sig,
+                "proposals_linked": _lt_with_prop,
+                "trades_linked": _lt_with_trade,
+                "missing_signal_count": _lt_total - _lt_with_sig,
+                "missing_proposal_count": _lt_total - _lt_with_prop,
+                "duplicate_proposal_groups": _lt_dedup,
+                "duplicate_proposal_count": _lt_dedup_total,
+                "events_by_stage": {r["stage"]: r["c"] for r in _lt_events},
+                "latest_events": [{k: _json_clean(v) for k, v in e.items()} for e in _lt_recent],
+                "safety": {"read_only": True},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/proposal-dedup" and method == "GET":
+        try:
+            _pd_groups = _db_query("""SELECT duplicate_key, symbol, strategy_id, canonical_proposal_id,
+                                            duplicate_proposal_ids, duplicate_count, recommended_action
+                                     FROM proposal_dedup_audit ORDER BY duplicate_count DESC""") or []
+            return 200, {"ok": True, "data": {
+                "groups": [{k: _json_clean(v) for k, v in g.items()} for g in _pd_groups],
+                "total_groups": len(_pd_groups),
+                "total_duplicate_proposals": sum(g.get("duplicate_count", 0) for g in _pd_groups),
+                "safety": {"read_only": True, "proposals_modified": "NONE"},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM Proposal Hygiene ───────────────────────────────────────────
     if base_path == "/api/v2/atm/proposal-hygiene" and method == "GET":
         try:
