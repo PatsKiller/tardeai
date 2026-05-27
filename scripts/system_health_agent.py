@@ -70,56 +70,67 @@ MONITORED_COMPONENTS = [
     {"component": "alpaca_reconciler", "display": "Alpaca Reconciler",
      "schedule": "5 16 * * 1-5", "log_file": "alpaca_reconciler.log",
      "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/alpaca_paper_reconciler.py",
      "downstream": "DB-broker sync"},
 
     # ── Data Pipeline ──
     {"component": "finviz_enrichment", "display": "Finviz Enrichment",
      "schedule": "10 7 * * 1-5", "log_file": "finviz_enrichment.log",
      "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/finviz_enrichment.py",
      "downstream": "enriched scanner data"},
     {"component": "price_db_sync", "display": "Price DB Sync",
      "schedule": "20 7 * * 1-5", "log_file": "price_db_sync.log",
      "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/price_db_sync.py",
      "downstream": "price data freshness"},
     {"component": "rag_indexer", "display": "RAG Indexer",
      "schedule": "0 */4 * * *", "log_file": "rag_indexer.log",
      "max_age_min": 300, "max_runtime_sec": 600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/rag_indexer.py",
      "downstream": "agent context, RAG search"},
     {"component": "indicator_engine", "display": "Indicator Engine",
      "schedule": "0 8 * * 1-5", "log_file": "indicator_engine.log",
      "max_age_min": 1500, "max_runtime_sec": 900, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/indicator_engine.py",
      "downstream": "technical indicators"},
 
     # ── Agents ──
     {"component": "aegis_morning_brief", "display": "Aegis Morning Brief",
      "schedule": "5 8 * * 1-5", "log_file": "aegis_brief.log",
      "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/aegis_morning_brief_delivery.py",
      "downstream": "daily brief delivery"},
     {"component": "telegram_command_handler", "display": "Telegram Bot Daemon",
      "schedule": "*/2 * * * *", "log_file": "telegram_commands.log",
      "max_age_min": 5, "max_runtime_sec": 60, "critical": True,
+     "retry_cmd": ".venv/bin/python scripts/telegram_command_handler.py --poll",
      "downstream": "operator commands, approval buttons"},
 
     # ── Cleanup & Governance ──
     {"component": "cleanup_stale_proposals", "display": "Stale Proposal Cleanup",
      "schedule": "0 10,15 * * 1-5", "log_file": "cleanup_stale_proposals.log",
      "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/cleanup_stale_proposals.py --apply",
      "downstream": "proposal hygiene"},
     {"component": "pipeline_watchdog", "display": "Pipeline Watchdog",
      "schedule": "0 */2 * * *", "log_file": "pipeline_watchdog.log",
      "max_age_min": 150, "max_runtime_sec": 300, "critical": True,
+     "retry_cmd": ".venv/bin/python scripts/pipeline_watchdog.py",
      "downstream": "pipeline self-healing"},
 
     # ── TCA ──
     {"component": "tca_analyzer", "display": "TCA Execution Quality",
      "schedule": "30 16 * * 1-5", "log_file": "tca_analyzer.log",
      "max_age_min": 1500, "max_runtime_sec": 60, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/paper_execution_quality_analyzer.py --recent --apply",
      "downstream": "execution quality page"},
 
     # ── Quote Refresh ──
     {"component": "proactive_quote_refresh", "display": "Quote Refresh",
      "schedule": "*/5 9-15 * * 1-5", "log_file": "proactive_quote_refresh_cron.log",
      "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
+     "retry_cmd": "bash scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50",
      "downstream": "proposal price freshness"},
 ]
 
