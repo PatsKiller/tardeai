@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""enterprise_backtester.py — Real price-replay backtesting engine.
+
+Replays actual daily OHLC bars against historical signals and proposals.
+No probability simulation. Deterministic results from real price data.
+
+Modes:
+  --replay-trades     Replay trades we actually took (journal ground truth comparison)
+  --replay-proposals  Replay proposals we generated but didn't trade
+  --strategy X        Filter to one strategy
+  --exclude-scalps    Skip momentum_scalp unless actually traded (default: on)
+  --days N            Max hold period before timeout exit (default: 20)
+  --apply             Write results to DB
+
+No live trading. No broker calls. Read-only on market data.
+"""
+import argparse, json, logging, os, sys, time, uuid, warnings
+from datetime import datetime, timezone, timedelta, date
+from decimal import Decimal
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / ".env")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [backtester] %(message)s")
+log = logging.getLogger(__name__)
+
+STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
+OHLC_CACHE_PATH = STATE_DIR / "price_ohlc_cache.json"
+CLOSE_CACHE_PATH = STATE_DIR / "price_cache.json"
+
+SCALP_STRATEGIES = {"momentum_scalp", "gap_and_go", "social_scalp"}
+
+
+# ── Data Loaders ────────────────────────────────────────────────────────────
+
+def load_ohlc_cache() -> Dict:

@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""strategy_backtester.py — Run deterministic backtests using available historical data.
+
+No active config changes. No broker actions. Dry-run safe.
+
+Usage:
+    .venv/bin/python scripts/strategy_backtester.py --all-strategies --dry-run --json
+    .venv/bin/python scripts/strategy_backtester.py --strategy momentum_scalp --dry-run --json
+    .venv/bin/python scripts/strategy_backtester.py --strategy momentum_scalp --apply --json
+"""
+import argparse, json, os, sys, uuid, time
+from datetime import datetime, timezone, timedelta
+from decimal import Decimal
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+from dotenv import load_dotenv
+load_dotenv(PROJECT_ROOT / ".env")
+
+def _f(v): return float(v) if isinstance(v, Decimal) else v
+def _uid(p="BT_"): return f"{p}{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+SLIPPAGE_BPS = 10  # 0.1% slippage assumption
+SPREAD_BPS = 15    # 0.15% spread assumption
+STOP_PCT = 5.0     # default 5% stop
+TARGET_PCT = 8.0   # default 8% target (1.6:1 R)
+
+def _get_conn():
+    from session13_db import get_conn
+    return get_conn()
+
+
+def get_signals(conn, strategy_id=None):
+    """Get historical GO signals from trade_ai_scans."""
+    cur = conn.cursor()
+    sql = """
+        SELECT symbol, price, scanned_at, score, source, gap_pct, rvol
+        FROM trade_ai_scans
+        WHERE price > 0 AND symbol IS NOT NULL AND decision = 'GO'
