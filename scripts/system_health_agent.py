@@ -126,6 +126,26 @@ MONITORED_COMPONENTS = [
      "retry_cmd": ".venv/bin/python scripts/paper_execution_quality_analyzer.py --recent --apply",
      "downstream": "execution quality page"},
 
+    # ── LLM Backtesting (v3.8) ──
+    {"component": "trade_close_llm_analyzer", "display": "LLM Close-of-Trade Analysis",
+     "schedule": "event-driven", "log_file": "llm_backtesting/close_analyzer.log",
+     "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
+     "downstream": "trade_llm_reviews close_analysis, journal learning quality"},
+    {"component": "delayed_trade_llm_reviewer", "display": "LLM Delayed Post-Close Review",
+     "schedule": "0 10 * * 1-5", "log_file": "llm_backtesting/delayed_reviewer.log",
+     "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
+     "downstream": "trade_llm_reviews delayed_review, weekly learning"},
+    {"component": "monthly_grok_meta_review", "display": "Monthly Grok Meta-Review",
+     "schedule": "0 10 1 * *", "log_file": "llm_backtesting/monthly_meta.log",
+     "max_age_min": 45000, "max_runtime_sec": 900, "critical": False,
+     "downstream": "monthly_llm_meta_reviews, strategy learning"},
+
+    # ── ATM Position Reconciler ──
+    {"component": "atm_position_reconciler", "display": "ATM Position Reconciler",
+     "schedule": "*/15 9-16 * * 1-5", "log_file": "atm_position_reconciliation/cron.log",
+     "max_age_min": 30, "max_runtime_sec": 120, "critical": False,
+     "downstream": "reconciliation health, ghost position detection"},
+
     # ── Quote Refresh ──
     # ── ATM & Proposals ──
     {"component": "atm_auto_approver", "display": "ATM Auto Approver",

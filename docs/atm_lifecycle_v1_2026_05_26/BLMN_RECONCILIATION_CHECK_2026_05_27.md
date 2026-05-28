@@ -1,13 +1,23 @@
 # BLMN Duplicate Open-Trade Reconciliation Check
 
-**Date:** 2026-05-27
+**Date:** 2026-05-27  
+**Last Updated:** 2026-05-28 (audit fix all)
 
-## BLMN Paper Trades
+## BLMN Paper Trades (Current State)
 
-| ID | Symbol | Strategy | Entry | Stop | Stop OID | Shares | Account | Entry Time | Exit |
-|----|--------|----------|-------|------|----------|--------|---------|------------|------|
-| 37 | BLMN | swing_trade | $8.26 | $7.85 | none | 363 | alpaca_paper | 2026-05-27 11:15 | none |
-| 38 | BLMN | swing_trade | $8.28 | $7.85 | none | 363 | ALPACA_PAPER | (null) | none |
+| ID | Symbol | Strategy | Entry | Stop | Stop OID | Shares | Account | Entry Time | Exit Reason |
+|----|--------|----------|-------|------|----------|--------|---------|------------|-------------|
+| 37 | BLMN | swing_trade | $8.26 | $7.85 | none | 363 | alpaca_paper | 2026-05-27 11:15 | **duplicate_submit_race** |
+| 38 | BLMN | swing_trade | $8.28 | $7.85 | none | 363 | ALPACA_PAPER | 2026-05-27 11:15 | (open) |
+
+## Repair Status: COMPLETE
+
+- #37 closed as duplicate_submit_race (exit_time set)
+- #38 entry_time backfilled from journal filled_at
+- #38 has execution + stop_placement lifecycle events
+- #37 has duplicate_reconciliation lifecycle event
+- #38 has metadata_backfill lifecycle event
+- 9 total BLMN lifecycle events
 
 ## Journal Status
 
