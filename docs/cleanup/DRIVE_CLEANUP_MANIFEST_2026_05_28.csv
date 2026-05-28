@@ -1,0 +1,136 @@
+path,filename,size_bytes,modified,classification,reason
+docs/A1A.md,A1A.md,4105,2026-05-12,KEEP_ACTIVE,Active reference documentation
+docs/AGENT_PAGES_DETAIL.md,AGENT_PAGES_DETAIL.md,12667,2026-05-27,KEEP_ACTIVE,Claude Code built - Command Center documentation
+docs/AGENT_ROSTER.md,AGENT_ROSTER.md,6367,2026-05-24,KEEP_ACTIVE,Active agent roster
+docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md,APPENDIX_E_SCRIPT_ROUTING_MATRIX.md,5015,2026-05-11,KEEP_ACTIVE,Script routing reference
+docs/ARCHITECTURE_OVERVIEW.md,ARCHITECTURE_OVERVIEW.md,15399,2026-05-27,KEEP_ACTIVE,Architecture overview - source of truth
+docs/CHEAT_SHEET.md,CHEAT_SHEET.md,21202,2026-05-21,KEEP_ACTIVE,Operations cheat sheet
+docs/CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md,CLAUDE_CODE_EXECUTION_PROMPT_LLM_v4_1_FINAL.md,28413,2026-05-11,KEEP_ACTIVE,LLM execution prompt reference
+docs/COMMAND_CENTER_PAGE_MATRIX.md,COMMAND_CENTER_PAGE_MATRIX.md,9944,2026-05-27,KEEP_ACTIVE,Claude Code built - Command Center page matrix
+docs/COST_MODEL.md,COST_MODEL.md,8450,2026-05-12,KEEP_ACTIVE,Cost model reference
+docs/DASHBOARD_AUDIT_WORKFLOW.md,DASHBOARD_AUDIT_WORKFLOW.md,1847,2026-05-23,KEEP_ACTIVE,Dashboard audit workflow
+docs/DOCS_ROSTER.md,DOCS_ROSTER.md,16279,2026-05-26,KEEP_ACTIVE,Documentation roster
+docs/GPU_OLLAMA_SETUP.md,GPU_OLLAMA_SETUP.md,3458,2026-05-08,KEEP_ACTIVE,GPU/Ollama setup guide
+docs/LLM_DATA_DICTIONARY.md,LLM_DATA_DICTIONARY.md,8709,2026-05-13,KEEP_ACTIVE,LLM data dictionary
+docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md,LLM_FLEET_STRATEGY_v4_1_FINAL.md,57233,2026-05-14,KEEP_ACTIVE,LLM fleet strategy
+docs/MASTER_SYSTEM_DOCUMENTATION.md,MASTER_SYSTEM_DOCUMENTATION.md,111179,2026-05-14,KEEP_ACTIVE,Master system documentation
+docs/MONDAY_BURNIN_CHECKLIST.md,MONDAY_BURNIN_CHECKLIST.md,1936,2026-05-23,KEEP_ACTIVE,Monday burn-in checklist
+docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md,OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md,8492,2026-05-11,KEEP_ACTIVE,Operator runbook
+docs/RESTORE_GUIDE.md,RESTORE_GUIDE.md,10730,2026-05-14,KEEP_ACTIVE,Restore guide
+docs/SESSION_2026_05_27.md,SESSION_2026_05_27.md,12252,2026-05-27,KEEP_ACTIVE,Session log - 38 commits
+docs/openclaw_aegis_morning_brief_2026-05-25.md,openclaw_aegis_morning_brief_2026-05-25.md,3303,2026-05-25,KEEP_ACTIVE,Morning brief
+docs/openclaw_aegis_morning_brief_2026-05-26.md,openclaw_aegis_morning_brief_2026-05-26.md,3323,2026-05-26,KEEP_ACTIVE,Morning brief
+docs/openclaw_aegis_morning_brief_2026-05-27.md,openclaw_aegis_morning_brief_2026-05-27.md,3327,2026-05-27,KEEP_ACTIVE,Morning brief
+docs/openclaw_aegis_morning_brief_2026-05-28.md,openclaw_aegis_morning_brief_2026-05-28.md,3357,2026-05-28,KEEP_ACTIVE,Morning brief
+docs/project/CURRENT_PROJECT_CONTEXT.md,CURRENT_PROJECT_CONTEXT.md,6430,2026-05-26,KEEP_ACTIVE,Project context
+docs/project/PROJECT_DOC_INDEX.md,PROJECT_DOC_INDEX.md,28482,2026-05-26,KEEP_ACTIVE,Document index
+docs/project/ROOT_CAUSE_ATM_DEAD_2026_05_26.md,ROOT_CAUSE_ATM_DEAD_2026_05_26.md,16012,2026-05-26,KEEP_ACTIVE,Root cause analysis
+docs/project/Rollover IRA-Positions-2026-04-30-221817.csv,Rollover IRA-Positions-2026-04-30-221817.csv,2839,2026-04-30,KEEP_EVIDENCE,Portfolio positions export
+docs/project/SKILLS.md,SKILLS.md,7499,2026-05-12,KEEP_ACTIVE,Skills documentation
+docs/project/SYSTEM_ARCHITECTURE_COMPLETE.md,SYSTEM_ARCHITECTURE_COMPLETE.md,29747,2026-05-26,KEEP_ACTIVE,System architecture
+docs/project/SYSTEM_FACTS_LATEST.md,SYSTEM_FACTS_LATEST.md,1625,2026-05-22,KEEP_ACTIVE,System facts
+docs/project/TRADE_AI_V12_VISUAL_REFERENCE.html,TRADE_AI_V12_VISUAL_REFERENCE.html,41699,2026-05-09,KEEP_ACTIVE,Visual reference
+docs/project/TRADE_SUPERVISION_METHODOLOGY.md,TRADE_SUPERVISION_METHODOLOGY.md,28492,2026-05-26,KEEP_ACTIVE,Trade supervision methodology
+docs/project/Trade_AI_v12_Reference_Architecture.docx,Trade_AI_v12_Reference_Architecture.docx,165185,2026-05-22,KEEP_ACTIVE,Canonical reference architecture
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_atm_supply_20260522_1051,Trade_AI_v12_Reference_Architecture.docx.bak_atm_supply_20260522_1051,162118,2026-05-12,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session29,Trade_AI_v12_Reference_Architecture.docx.bak_session29,146972,2026-05-11,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session30,Trade_AI_v12_Reference_Architecture.docx.bak_session30,148481,2026-05-11,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session30b,Trade_AI_v12_Reference_Architecture.docx.bak_session30b,151700,2026-05-12,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session30c,Trade_AI_v12_Reference_Architecture.docx.bak_session30c,155372,2026-05-12,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session30d,Trade_AI_v12_Reference_Architecture.docx.bak_session30d,157474,2026-05-12,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session34,Trade_AI_v12_Reference_Architecture.docx.bak_session34,158375,2026-05-12,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_Reference_Architecture.docx.bak_session37,Trade_AI_v12_Reference_Architecture.docx.bak_session37,141010,2026-05-10,KEEP_ROLLBACK,Reference Architecture backup
+docs/project/Trade_AI_v12_System_Architecture.docx,Trade_AI_v12_System_Architecture.docx,51871,2026-05-12,KEEP_ACTIVE,System architecture document
+docs/project/project_openclaw.md,project_openclaw.md,4816,2026-05-09,KEEP_ACTIVE,OpenClaw project docs
+docs/project/context_sync_2026_05_22/NEXT_PHASE_ATM_SAFE_1_PROMPT.md,NEXT_PHASE_ATM_SAFE_1_PROMPT.md,3129,2026-05-22,ARCHIVE_OLD_PROMPT,Context sync prompt - already applied
+docs/project/context_sync_2026_05_22/context_sync_2026_05_22_timeline.md,context_sync_2026_05_22_timeline.md,5209,2026-05-22,ARCHIVE_OLD_PROMPT,Context sync - already applied
+docs/project/context_sync_2026_05_22/context_sync_doc_inventory.md,context_sync_doc_inventory.md,2825,2026-05-22,ARCHIVE_OLD_PROMPT,Context sync - already applied
+docs/project/context_sync_2026_05_22/context_sync_maturity_reclassification.md,context_sync_maturity_reclassification.md,1688,2026-05-22,ARCHIVE_OLD_PROMPT,Context sync - already applied
+docs/project/context_sync_2026_05_22/context_sync_preflight.md,context_sync_preflight.md,800,2026-05-22,ARCHIVE_OLD_PROMPT,Context sync - already applied
+docs/project/context_sync_2026_05_22/context_sync_validation.md,context_sync_validation.md,1051,2026-05-22,ARCHIVE_OLD_PROMPT,Context sync - already applied
+docs/project/daily_commit_logs/full_day_commit_log_2026_05_22.md,full_day_commit_log_2026_05_22.md,6932,2026-05-22,KEEP_EVIDENCE,Daily commit log
+docs/project/dashboard_data_correctness/dashboard_cleanup_closeout.md,dashboard_cleanup_closeout.md,1524,2026-05-16,KEEP_EVIDENCE,Dashboard fix evidence
+docs/project/dashboard_data_correctness/fix_4_8_wrong_data_pages_audit.md,fix_4_8_wrong_data_pages_audit.md,2419,2026-05-16,KEEP_EVIDENCE,Dashboard fix evidence
+docs/project/next_session/MONDAY_ATM_BURNIN_COMMAND_PACKET_2026_05_26.md,MONDAY_ATM_BURNIN_COMMAND_PACKET_2026_05_26.md,3149,2026-05-22,REVIEW_MANUALLY,Check if still relevant
+docs/project/phase_8d_readonly_prep/phase_8d_strategy_readiness_matrix.md,phase_8d_strategy_readiness_matrix.md,5218,2026-05-22,KEEP_EVIDENCE,Phase readiness evidence
+docs/project/session_summaries/final_full_session_summary_2026_05_22_to_2026_05_24.md,final_full_session_summary_2026_05_22_to_2026_05_24.md,7963,2026-05-22,KEEP_EVIDENCE,Session summary
+docs/project/strategy_proof/a5_rereview_trigger.md,a5_rereview_trigger.md,777,2026-05-22,KEEP_EVIDENCE,Strategy proof evidence
+docs/project/strategy_proof/closed_trade_evidence_tracker.md,closed_trade_evidence_tracker.md,1205,2026-05-22,KEEP_EVIDENCE,Strategy proof evidence
+docs/atm_lifecycle_v1_2026_05_26/ATM_CONTROL_ROOM_V1_7_IMPLEMENTATION_REPORT.md,ATM_CONTROL_ROOM_V1_7_IMPLEMENTATION_REPORT.md,1833,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_CONTROL_ROOM_V1_8_POSITION_RECONCILIATION_REPORT.md,ATM_CONTROL_ROOM_V1_8_POSITION_RECONCILIATION_REPORT.md,1960,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_GHOST_POSITION_DATA_QUALITY_FIX.md,ATM_GHOST_POSITION_DATA_QUALITY_FIX.md,2042,2026-05-26,KEEP_EVIDENCE,Ghost position fix evidence
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_GHOST_POSITION_FIX_REPORT.md,ATM_LIFECYCLE_GHOST_POSITION_FIX_REPORT.md,3814,2026-05-26,KEEP_EVIDENCE,Ghost position fix evidence
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_SYNC_AND_STATE_VERIFICATION_REPORT.md,ATM_LIFECYCLE_SYNC_AND_STATE_VERIFICATION_REPORT.md,3316,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_1_VALIDATION_REPORT.md,ATM_LIFECYCLE_V1_1_VALIDATION_REPORT.md,4426,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_2_DECISION_COMPLETION_REPORT.md,ATM_LIFECYCLE_V1_2_DECISION_COMPLETION_REPORT.md,3459,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_2_OVERDUE_DECISION_WORKFLOW_REPORT.md,ATM_LIFECYCLE_V1_2_OVERDUE_DECISION_WORKFLOW_REPORT.md,2805,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_2_QUEUE_UX_FIX_REPORT.md,ATM_LIFECYCLE_V1_2_QUEUE_UX_FIX_REPORT.md,2176,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_4_MANUAL_CLOSE_REVIEW_REPORT.md,ATM_LIFECYCLE_V1_4_MANUAL_CLOSE_REVIEW_REPORT.md,1370,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_4_MANUAL_CLOSE_UX_CLARITY_REPORT.md,ATM_LIFECYCLE_V1_4_MANUAL_CLOSE_UX_CLARITY_REPORT.md,1866,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_LIFECYCLE_V1_IMPLEMENTATION_REPORT.md,ATM_LIFECYCLE_V1_IMPLEMENTATION_REPORT.md,2984,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_PROPOSAL_VISIBILITY_V2_2_REPORT.md,ATM_PROPOSAL_VISIBILITY_V2_2_REPORT.md,1445,2026-05-27,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_RECONCILIATION_HEALTH_V2_1_REPORT.md,ATM_RECONCILIATION_HEALTH_V2_1_REPORT.md,1165,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/ATM_RECURRING_RECONCILIATION_CRON_V2_0_REPORT.md,ATM_RECURRING_RECONCILIATION_CRON_V2_0_REPORT.md,2040,2026-05-26,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/BLMN_DUPLICATE_REPAIR_2026_05_27.md,BLMN_DUPLICATE_REPAIR_2026_05_27.md,1623,2026-05-27,DO_NOT_DELETE,BLMN repair evidence
+docs/atm_lifecycle_v1_2026_05_26/BLMN_RECONCILIATION_CHECK_2026_05_27.md,BLMN_RECONCILIATION_CHECK_2026_05_27.md,2764,2026-05-27,DO_NOT_DELETE,BLMN reconciliation evidence
+docs/atm_lifecycle_v1_2026_05_26/BROKER_STOP_PROOF_REVIEW.md,BROKER_STOP_PROOF_REVIEW.md,2473,2026-05-26,KEEP_EVIDENCE,Stop proof review evidence
+docs/atm_lifecycle_v1_2026_05_26/CIO_ARCHITECT_RECOMMENDATION.md,CIO_ARCHITECT_RECOMMENDATION.md,5768,2026-05-26,KEEP_ACTIVE,Architecture recommendation
+docs/atm_lifecycle_v1_2026_05_26/FULL_LIFECYCLE_V3_1_V3_2_TRACEABILITY_REPORT.md,FULL_LIFECYCLE_V3_1_V3_2_TRACEABILITY_REPORT.md,1872,2026-05-27,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/JOURNAL_LEARNING_BACKTESTING_V3_6_IMPLEMENTATION_REPORT.md,JOURNAL_LEARNING_BACKTESTING_V3_6_IMPLEMENTATION_REPORT.md,1784,2026-05-27,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/LIFECYCLE_TRACEABILITY_QUALITY_REPORT.md,LIFECYCLE_TRACEABILITY_QUALITY_REPORT.md,2154,2026-05-26,KEEP_ACTIVE,Traceability report
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_IMPLEMENTATION_REPORT.md,LLM_BACKTESTING_V3_8_IMPLEMENTATION_REPORT.md,1200,2026-05-27,DO_NOT_DELETE,v3.8 active work
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_IMPLEMENTATION_REPORT.md,LLM_BACKTESTING_V3_8_STAGE1_IMPLEMENTATION_REPORT.md,1632,2026-05-27,DO_NOT_DELETE,v3.8 active work
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_PROMPT_PARSER_DIAGNOSIS.md,LLM_BACKTESTING_V3_8_STAGE1_PROMPT_PARSER_DIAGNOSIS.md,2894,2026-05-28,DO_NOT_DELETE,v3.8 active diagnosis
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_QUALITY_AUDIT.md,LLM_BACKTESTING_V3_8_STAGE1_QUALITY_AUDIT.md,2244,2026-05-27,DO_NOT_DELETE,v3.8 quality audit
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_V2_IMPLEMENTATION_REPORT.md,LLM_BACKTESTING_V3_8_STAGE1_V2_IMPLEMENTATION_REPORT.md,5045,2026-05-28,DO_NOT_DELETE,v3.8 active work
+docs/atm_lifecycle_v1_2026_05_26/LLM_BACKTESTING_V3_8_STAGE1_V2_QUALITY_AUDIT.md,LLM_BACKTESTING_V3_8_STAGE1_V2_QUALITY_AUDIT.md,3014,2026-05-28,DO_NOT_DELETE,v3.8 quality audit
+docs/atm_lifecycle_v1_2026_05_26/OVERDUE_INTRADAY_POSITION_DECISION_QUEUE.md,OVERDUE_INTRADAY_POSITION_DECISION_QUEUE.md,4354,2026-05-26,KEEP_EVIDENCE,Queue evidence
+docs/atm_lifecycle_v1_2026_05_26/SAFETY_SNAPSHOT.md,SAFETY_SNAPSHOT.md,3531,2026-05-26,KEEP_ACTIVE,Safety snapshot
+docs/atm_lifecycle_v1_2026_05_26/STALE_PROPOSAL_HYGIENE_QUEUE.md,STALE_PROPOSAL_HYGIENE_QUEUE.md,4530,2026-05-26,KEEP_EVIDENCE,Hygiene queue evidence
+docs/atm_lifecycle_v1_2026_05_26/STALE_PROPOSAL_HYGIENE_RESULT.md,STALE_PROPOSAL_HYGIENE_RESULT.md,990,2026-05-26,KEEP_EVIDENCE,Hygiene result evidence
+docs/atm_lifecycle_v1_2026_05_26/STOP_TRAILING_TIMESTOP_V3_5_IMPLEMENTATION_REPORT.md,STOP_TRAILING_TIMESTOP_V3_5_IMPLEMENTATION_REPORT.md,1791,2026-05-27,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/TCA_STOP_PROOF_V3_3_V3_4_IMPLEMENTATION_REPORT.md,TCA_STOP_PROOF_V3_3_V3_4_IMPLEMENTATION_REPORT.md,1665,2026-05-27,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/UNIFIED_TRADE_INSPECTOR_V3_7_IMPLEMENTATION_REPORT.md,UNIFIED_TRADE_INSPECTOR_V3_7_IMPLEMENTATION_REPORT.md,1762,2026-05-27,KEEP_ACTIVE,Implementation report
+docs/atm_lifecycle_v1_2026_05_26/V3_3_V3_4_SYNC_AND_AUDIT_ADDENDUM.md,V3_3_V3_4_SYNC_AND_AUDIT_ADDENDUM.md,3512,2026-05-27,KEEP_ACTIVE,Implementation addendum
+docs/atm_lifecycle_v1_2026_05_26/V3_5_SYNC_AND_VALIDATION_ADDENDUM.md,V3_5_SYNC_AND_VALIDATION_ADDENDUM.md,2550,2026-05-27,KEEP_ACTIVE,Implementation addendum
+docs/atm_lifecycle_v1_2026_05_26/V4_0_RECURRING_BACKTEST_LLM_COVERAGE_IMPLEMENTATION_REPORT.md,V4_0_RECURRING_BACKTEST_LLM_COVERAGE_IMPLEMENTATION_REPORT.md,3855,2026-05-28,DO_NOT_DELETE,v4.0 implementation report
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/ATMControlRoom.tsx.REPLACEMENT.md,ATMControlRoom.tsx.REPLACEMENT.md,679,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design replacement - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/AutomatedTradeMode.tsx.REPLACEMENT.md,AutomatedTradeMode.tsx.REPLACEMENT.md,683,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design replacement - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/CLAUDE_APPLY_ATM_LIFECYCLE_V1_TEMPLATE.md,CLAUDE_APPLY_ATM_LIFECYCLE_V1_TEMPLATE.md,687,2026-05-26,ARCHIVE_OLD_PROMPT,Apply template prompt - used
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/ExecutionQuality.tsx.REPLACEMENT.md,ExecutionQuality.tsx.REPLACEMENT.md,681,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design replacement - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/PaperProposals.tsx.REPLACEMENT.md,PaperProposals.tsx.REPLACEMENT.md,679,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design replacement - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/SystemHealth.tsx.REPLACEMENT.md,SystemHealth.tsx.REPLACEMENT.md,677,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design replacement - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/alert_governance_patch.md,alert_governance_patch.md,671,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design patch - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/api_v2_lifecycle_patch.md,api_v2_lifecycle_patch.md,671,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design patch - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/backtesting_feedback_patch.md,backtesting_feedback_patch.md,675,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design patch - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/lifecycle_event_writer.py.REPLACEMENT.md,lifecycle_event_writer.py.REPLACEMENT.md,686,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design replacement - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/lifecycle_traceability_schema_patch.md,lifecycle_traceability_schema_patch.md,684,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design patch - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/slippage_tca_patch.md,slippage_tca_patch.md,667,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design patch - applied
+docs/atm_lifecycle_v1_2026_05_26/designed_replacements/stop_management_policy_patch.md,stop_management_policy_patch.md,677,2026-05-26,ARCHIVE_SUPERSEDED_DESIGN,Design patch - applied
+docs/atm_lifecycle_v1_2026_05_26/gap_analysis/ATM_LIFECYCLE_GAP_ANALYSIS.md,ATM_LIFECYCLE_GAP_ANALYSIS.md,9480,2026-05-26,KEEP_ACTIVE,Gap analysis - active reference
+docs/atm_lifecycle_v1_2026_05_26/lifecycle_maps/ATM_LIFECYCLE_MAP.md,ATM_LIFECYCLE_MAP.md,13576,2026-05-26,KEEP_ACTIVE,Lifecycle map reference
+docs/atm_lifecycle_v1_2026_05_26/schema_exports/LIFECYCLE_SCHEMA_AUDIT.md,LIFECYCLE_SCHEMA_AUDIT.md,111925,2026-05-26,KEEP_SOURCE_EXPORT,Schema export
+docs/atm_lifecycle_v1_2026_05_26/root_cause_reconciliation_v1_9/ROOT_CAUSE_ANALYSIS.md,ROOT_CAUSE_ANALYSIS.md,6057,2026-05-26,KEEP_ACTIVE,Root cause analysis
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_ACCELERATION_SUMMARY.md,FULL_LIFECYCLE_ACCELERATION_SUMMARY.md,1743,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.0 design - superseded by v3.1+
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_DATA_FLOW.md,FULL_LIFECYCLE_DATA_FLOW.md,2341,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.0 design - superseded by v3.1+
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_GAP_REGISTER.md,FULL_LIFECYCLE_GAP_REGISTER.md,1821,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.0 design - superseded by v3.1+
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_HANDOFF_MANIFEST.md,FULL_LIFECYCLE_HANDOFF_MANIFEST.md,1729,2026-05-27,ARCHIVE_OLD_PROMPT,v3.0 handoff manifest
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_IMPLEMENTATION_BACKLOG.md,FULL_LIFECYCLE_IMPLEMENTATION_BACKLOG.md,1551,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.0 design - superseded
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_ROUTE_MAP.md,FULL_LIFECYCLE_ROUTE_MAP.md,2369,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.0 design - superseded
+docs/atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/FULL_LIFECYCLE_SOURCE_OF_TRUTH_MATRIX.md,FULL_LIFECYCLE_SOURCE_OF_TRUTH_MATRIX.md,1549,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.0 design - superseded
+docs/atm_lifecycle_v1_2026_05_26/stop_trailing_timestop_v3_5_design/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,789,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.5 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/stop_trailing_timestop_v3_5_design/STOP_TRAILING_TIMESTOP_V3_5_IMPLEMENTATION_PLAN.md,STOP_TRAILING_TIMESTOP_V3_5_IMPLEMENTATION_PLAN.md,1290,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.5 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/stop_trailing_timestop_v3_5_design/row_exports/APPS_REPAIR_ROW.txt,APPS_REPAIR_ROW.txt,6703,2026-05-27,DO_NOT_DELETE,APPS repair row data
+docs/atm_lifecycle_v1_2026_05_26/journal_learning_backtesting_v3_6_design/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,929,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.6 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/journal_learning_backtesting_v3_6_design/JOURNAL_LEARNING_BACKTESTING_V3_6_IMPLEMENTATION_PLAN.md,JOURNAL_LEARNING_BACKTESTING_V3_6_IMPLEMENTATION_PLAN.md,1109,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.6 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/unified_trade_inspector_v3_7_design/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,861,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.7 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/unified_trade_inspector_v3_7_design/UNIFIED_TRADE_INSPECTOR_V3_7_IMPLEMENTATION_PLAN.md,UNIFIED_TRADE_INSPECTOR_V3_7_IMPLEMENTATION_PLAN.md,1914,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.7 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/tca_stop_proof_implementation_v3_3_v3_4/TCA_STOP_PROOF_IMPLEMENTATION_PLAN.md,TCA_STOP_PROOF_IMPLEMENTATION_PLAN.md,1331,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.3/v3.4 design - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/execution_stop_proof_v3_3_v3_4_export/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,1000,2026-05-27,ARCHIVE_SUPERSEDED_DESIGN,v3.3/v3.4 export - impl report exists
+docs/atm_lifecycle_v1_2026_05_26/llm_backtesting_workflow_v3_8_design/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,655,2026-05-27,DO_NOT_DELETE,v3.8 active design
+docs/atm_lifecycle_v1_2026_05_26/llm_backtesting_workflow_v3_8_design/LLM_BACKTESTING_WORKFLOW_V3_8_IMPLEMENTATION_PLAN.md,LLM_BACKTESTING_WORKFLOW_V3_8_IMPLEMENTATION_PLAN.md,1240,2026-05-27,DO_NOT_DELETE,v3.8 active design
+docs/atm_lifecycle_v1_2026_05_26/llm_delayed_monthly_v3_9_design/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,371,2026-05-27,DO_NOT_DELETE,v3.9 active design
+docs/atm_lifecycle_v1_2026_05_26/llm_delayed_monthly_v3_9_design/LLM_DELAYED_MONTHLY_V3_9_IMPLEMENTATION_PLAN.md,LLM_DELAYED_MONTHLY_V3_9_IMPLEMENTATION_PLAN.md,1168,2026-05-27,DO_NOT_DELETE,v3.9 active design
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/BACKTEST_LLM_COVERAGE_V4_0_DESIGN.md,BACKTEST_LLM_COVERAGE_V4_0_DESIGN.md,2310,2026-05-27,DO_NOT_DELETE,v4.0 active design
+docs/atm_lifecycle_v1_2026_05_26/backtest_llm_coverage_v4_0_design/HANDOFF_MANIFEST.md,HANDOFF_MANIFEST.md,246,2026-05-27,DO_NOT_DELETE,v4.0 active design
+docs/atm_lifecycle_v1_2026_05_28/backups/backtesting_filters_v4_1_pre_apply_20260528_095513/Backtesting.tsx,Backtesting.tsx,58391,2026-05-28,KEEP_ROLLBACK,v4.1 pre-apply backup
