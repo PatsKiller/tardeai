@@ -1,23 +1,19 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   ReferenceLine, ResponsiveContainer, LineChart, Line,
   AreaChart, Area
 } from 'recharts'
 
-interface BtStatus { datasets_total: number; runs_total: number; trades_total: number; challengers_total: number }
+interface BtStatus { datasets_total: number; runs_total: number; trades_total: number; challengers_total: number; trades_filtered?: number; runs_filtered?: number; filters_active?: boolean }
 interface BtRun { run_id: string; run_type: string; strategy_id: string; status: string; start_date: string; end_date: string }
 interface BtResult { result_id: number; run_id: string; strategy_id: string; run_type: string; simulated_trades: number; wins: number; losses: number; win_rate: number; profit_factor: number; expectancy_r: number; total_pnl: number; avg_pnl: number; avg_r_multiple: number; max_drawdown_pct: number; equity_curve_json: string | null; equity_curve?: Array<{date: string; value: number}> }
-interface BtTrade { simulated_trade_id: string; run_id: string; strategy_id: string; symbol: string; entry_price: number; exit_price: number; pnl: number; r_multiple: number; exit_reason: string }
+interface BtTrade { simulated_trade_id: string; run_id: string; strategy_id: string; symbol: string; trade_date?: string; entry_price: number; exit_price: number; pnl: number; pnl_pct?: number; r_multiple: number; exit_reason: string }
 interface MissedOpp { proposal_id: number; symbol: string; strategy_id: string; proposal_status: string; proposed_date: string; proposed_entry: number; proposed_target: number; proposed_stop: number; simulated_pnl: number | null; simulated_r: number | null; verdict: 'WOULD_WIN' | 'WOULD_LOSE' | null }
 interface MissedData { total_missed: number; would_win: number; would_lose: number; pnl_left_on_table: number; opportunities: MissedOpp[] }
-interface TrailData {
-  trades: any[]
-  strategy_recommendations: any[]
-  summary: { total_analyzed: number; strategies_analyzed: number; avg_improvement: number }
-}
+interface TrailData { trades: any[]; strategy_recommendations: any[]; summary: { total_analyzed: number; strategies_analyzed: number; avg_improvement: number } }
+interface FilterOptions { strategies: string[]; run_ids: string[]; run_types: string[]; brokers: string[]; accounts: string[]; minDate: string; maxDate: string; data_quality_gaps: string[] }
 
-// ── Null-safe formatters ──
 function wrColor(wr: number) { return wr >= 55 ? '#22c55e' : wr >= 35 ? '#f59e0b' : '#ef4444' }
 function fmt$(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toFixed(2) }
 function fmtR(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '') + v.toFixed(2) + 'R' }
@@ -43,6 +39,11 @@ const WrTooltip = ({ active, payload, label }: any) => {
 
 type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing' | 'mfe' | 'optimization'
 
+function buildQS(params: Record<string, string>) {
+  const parts = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+  return parts.length ? '?' + parts.join('&') : ''
+}
+
 export default function Backtesting() {
   const [status, setStatus] = useState<BtStatus | null>(null)
   const [runs, setRuns] = useState<BtRun[]>([])
@@ -57,87 +58,68 @@ export default function Backtesting() {
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null)
   const [selectedResult, setSelectedResult] = useState<BtResult | null>(null)
   const [runFilter, setRunFilter] = useState('all')
+  // Filters
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [brokerFilter, setBrokerFilter] = useState('')
-  const [accountFilter, setAccountFilter] = useState('')
-  const [filterOptions, setFilterOptions] = useState<{ brokers: string[]; accounts: string[]; minDate: string; maxDate: string }>({ brokers: [], accounts: [], minDate: '', maxDate: '' })
+  const [strategyFilter, setStrategyFilter] = useState('')
+  const [runTypeFilter, setRunTypeFilter] = useState('')
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true)
-      const [st, ru, re, tr, mi, trail] = await Promise.allSettled([
-        fetch('/api/v2/backtesting/status').then(r => r.json()),
-        fetch('/api/v2/backtesting/runs').then(r => r.json()),
-        fetch('/api/v2/backtesting/results').then(r => r.json()),
-        fetch('/api/v2/backtesting/trades').then(r => r.json()),
-        fetch('/api/v2/backtesting/missed-opportunities').then(r => r.json()),
-        fetch('/api/v2/backtesting/trailing-stop-analysis').then(r => r.json()).catch(() => ({ ok: false })),
+  const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter)
+  const fetchId = useRef(0)
+
+  const loadData = useCallback(async () => {
+    const id = ++fetchId.current
+    setLoading(true)
+    const qs = buildQS({ start_date: dateFrom, end_date: dateTo, strategy: strategyFilter, run_type: runTypeFilter })
+    const [st, ru, re, tr, mi, trail] = await Promise.allSettled([
+      fetch('/api/v2/backtesting/status' + qs).then(r => r.json()),
+      fetch('/api/v2/backtesting/runs' + qs).then(r => r.json()),
+      fetch('/api/v2/backtesting/results' + buildQS({ strategy: strategyFilter, run_type: runTypeFilter })).then(r => r.json()),
+      fetch('/api/v2/backtesting/trades' + qs).then(r => r.json()),
+      fetch('/api/v2/backtesting/missed-opportunities').then(r => r.json()),
+      fetch('/api/v2/backtesting/trailing-stop-analysis').then(r => r.json()).catch(() => ({ ok: false })),
+    ])
+    if (id !== fetchId.current) return // stale
+    if (st.status === 'fulfilled') setStatus(st.value.data ?? st.value)
+    if (ru.status === 'fulfilled') setRuns(ru.value.data ?? [])
+    if (re.status === 'fulfilled') {
+      const raw: BtResult[] = re.value.data ?? []
+      setResults(raw.map(r => ({
+        ...r,
+        equity_curve: (() => {
+          if (!r.equity_curve_json) return []
+          try { const p = typeof r.equity_curve_json === 'string' ? JSON.parse(r.equity_curve_json) : r.equity_curve_json; return Array.isArray(p) ? p : [] } catch { return [] }
+        })(),
+      })))
+    }
+    if (tr.status === 'fulfilled') setTrades(tr.value.data ?? [])
+    if (mi.status === 'fulfilled' && mi.value.ok) setMissed(mi.value.data)
+    if (trail.status === 'fulfilled' && trail.value?.ok) setTrailData(trail.value.data)
+    // Lazy loads
+    try {
+      const [mfe, opt] = await Promise.allSettled([
+        fetch('/api/v2/backtesting/mfe-analysis').then(r => r.json()),
+        fetch('/api/v2/backtesting/trailing-optimization').then(r => r.json()),
       ])
-      if (st.status === 'fulfilled') setStatus(st.value.data ?? st.value)
-      if (ru.status === 'fulfilled') setRuns(ru.value.data ?? [])
-      if (re.status === 'fulfilled') {
-        const raw: BtResult[] = re.value.data ?? []
-        setResults(raw.map(r => ({
-          ...r,
-          equity_curve: (() => {
-            if (!r.equity_curve_json) return []
-            try {
-              const parsed = typeof r.equity_curve_json === 'string'
-                ? JSON.parse(r.equity_curve_json)
-                : r.equity_curve_json
-              return Array.isArray(parsed) ? parsed : []
-            } catch { return [] }
-          })(),
-        })))
-      }
-      if (tr.status === 'fulfilled') setTrades(tr.value.data ?? [])
-      if (mi.status === 'fulfilled' && mi.value.ok) setMissed(mi.value.data)
-      if (trail.status === 'fulfilled' && trail.value?.ok) setTrailData(trail.value.data)
-      // Filter options from real trade data
-      try {
-        const fResp = await fetch('/api/v2/backtesting/filter-options').then(r => r.json())
-        if (fResp.ok) setFilterOptions(fResp.data)
-      } catch {}
-      // MFE + optimization data
-      try {
-        const [mfe, opt] = await Promise.allSettled([
-          fetch('/api/v2/backtesting/mfe-analysis').then(r => r.json()),
-          fetch('/api/v2/backtesting/trailing-optimization').then(r => r.json()),
-        ])
-        if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
-        if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
-      } catch {}
-      setLoading(false)
-    })()
+      if (id !== fetchId.current) return
+      if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
+      if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
+    } catch {}
+    setLoading(false)
+  }, [dateFrom, dateTo, strategyFilter, runTypeFilter])
+
+  // Load filter options once
+  useEffect(() => {
+    fetch('/api/v2/backtesting/filter-options').then(r => r.json()).then(d => { if (d.ok) setFilterOptions(d.data) }).catch(() => {})
   }, [])
 
-  // Apply global filters to all trade data
-  const globalFilteredTrades = useMemo(() => {
-    return trades.filter(t => {
-      if (dateFrom) {
-        const td = (t as any).entry_date || (t as any).signal_time || ''
-        if (td && td < dateFrom) return false
-      }
-      if (dateTo) {
-        const td = (t as any).entry_date || (t as any).signal_time || ''
-        if (td && td > dateTo) return false
-      }
-      if (brokerFilter) {
-        const tb = (t as any).broker || (t as any).account || ''
-        if (!tb.toLowerCase().includes(brokerFilter.toLowerCase())) return false
-      }
-      if (accountFilter) {
-        const ta = (t as any).account || (t as any).target_account || ''
-        if (ta.toLowerCase() !== accountFilter.toLowerCase()) return false
-      }
-      return true
-    })
-  }, [trades, dateFrom, dateTo, brokerFilter, accountFilter])
+  // Reload data when filters change
+  useEffect(() => { loadData() }, [loadData])
 
   const strategyStats = useMemo(() => {
     const m: Record<string, { n: number; wins: number; pnl: number; rs: number[] }> = {}
-    globalFilteredTrades.forEach(t => {
+    trades.forEach(t => {
       const s = t.strategy_id
       if (!s || s === 'unknown') return
       if (!m[s]) m[s] = { n: 0, wins: 0, pnl: 0, rs: [] }
@@ -161,7 +143,7 @@ export default function Backtesting() {
     }).sort((a, b) => b.win_rate - a.win_rate)
   }, [trades, results])
 
-  const filteredTrades = useMemo(() => selectedStrategy ? globalFilteredTrades.filter(t => t.strategy_id === selectedStrategy) : globalFilteredTrades, [globalFilteredTrades, selectedStrategy])
+  const filteredTrades = useMemo(() => selectedStrategy ? trades.filter(t => t.strategy_id === selectedStrategy) : trades, [trades, selectedStrategy])
 
   const rBuckets = useMemo(() => {
     const src = selectedStrategy ? trades.filter(t => t.strategy_id === selectedStrategy) : trades
@@ -183,13 +165,14 @@ export default function Backtesting() {
 
   const card: React.CSSProperties = { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 20px' }
   const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'rgba(255,255,255,0.4)', marginBottom: 14 }
+  const filterStyle: React.CSSProperties = { padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, color: 'rgba(255,255,255,0.4)' }}>Loading backtest data...</div>
 
   const TABS: { id: TabId; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'strategy', label: `Strategy (${strategyStats.length})` },
-    { id: 'trades', label: `Trades (${selectedStrategy ? `${filteredTrades.length}` : trades.length})` },
+    { id: 'trades', label: `Trades (${selectedStrategy ? filteredTrades.length : trades.length})` },
     { id: 'missed', label: `Missed (${missed?.total_missed ?? 0})` },
     { id: 'results', label: `Results (${results.length})` },
     { id: 'runs', label: `Runs (${runs.length})` },
@@ -209,7 +192,7 @@ export default function Backtesting() {
         <div style={{ display: 'flex', gap: 8 }}>
           {['Replay Trades', 'Replay Proposals'].map(label => (
             <button key={label} style={{ padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)', cursor: 'pointer' }}
-              onClick={() => fetch('/api/v2/backtesting/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: label.toLowerCase().replace(' ', '_'), strategies: 'all' }) }).then(() => window.location.reload()).catch(console.error)}>
+              onClick={() => fetch(`/api/v2/backtesting/run-${label.toLowerCase().replace(' ', '-')}`, { method: 'POST' }).then(() => window.location.reload()).catch(console.error)}>
               {label}
             </button>
           ))}
@@ -220,8 +203,8 @@ export default function Backtesting() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 16 }}>
         {[
           { label: 'Datasets', value: status?.datasets_total ?? 0 },
-          { label: 'Runs', value: status?.runs_total ?? 0 },
-          { label: 'Sim Trades', value: (status?.trades_total ?? 0).toLocaleString() },
+          { label: 'Runs', value: filtersActive ? `${status?.runs_filtered ?? 0} / ${status?.runs_total ?? 0}` : (status?.runs_total ?? 0) },
+          { label: 'Sim Trades', value: filtersActive ? `${trades.length.toLocaleString()} / ${(status?.trades_total ?? 0).toLocaleString()}` : (status?.trades_total ?? 0).toLocaleString() },
           { label: 'Results', value: results.length },
           { label: 'Flagged', value: flagged.length, accent: flagged.length > 0 },
           { label: 'Missed', value: missed?.total_missed ?? 0 },
@@ -241,10 +224,10 @@ export default function Backtesting() {
         </div>
       )}
 
-      {/* Filter chip */}
+      {/* Strategy chip */}
       {selectedStrategy && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 12px', marginBottom: 14, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: 20, fontSize: 12, color: '#a5b4fc' }}>
-          <span>Filtered: <strong>{safeStr(selectedStrategy)}</strong></span>
+          <span>Drill-down: <strong>{safeStr(selectedStrategy)}</strong></span>
           <button onClick={() => setSelectedStrategy(null)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 14, padding: 0 }}>x</button>
         </div>
       )}
@@ -252,28 +235,38 @@ export default function Backtesting() {
       {/* Global Filters */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', fontWeight: 600 }}>Filters</span>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} placeholder="From"
-          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }} />
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} min={filterOptions.minDate} max={filterOptions.maxDate}
+          style={filterStyle} title="Start date" />
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>to</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} placeholder="To"
-          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }} />
-        <select value={brokerFilter} onChange={e => setBrokerFilter(e.target.value)}
-          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }}>
-          <option value="">All Brokers</option>
-          {filterOptions.brokers.map(b => <option key={b} value={b}>{b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} min={filterOptions.minDate} max={filterOptions.maxDate}
+          style={filterStyle} title="End date" />
+        <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={filterStyle}>
+          <option value="">All Strategies</option>
+          {filterOptions.strategies.map(s => <option key={s} value={s}>{safeStr(s)}</option>)}
         </select>
-        <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)}
-          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }}>
-          <option value="">All Accounts</option>
-          {filterOptions.accounts.map(a => <option key={a} value={a}>{a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+        <select value={runTypeFilter} onChange={e => setRunTypeFilter(e.target.value)} style={filterStyle}>
+          <option value="">All Run Types</option>
+          {filterOptions.run_types.map(t => <option key={t} value={t}>{safeStr(t)}</option>)}
         </select>
-        {(dateFrom || dateTo || brokerFilter || accountFilter) && (
-          <button onClick={() => { setDateFrom(''); setDateTo(''); setBrokerFilter(''); setAccountFilter('') }}
+        {filtersActive && (
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setStrategyFilter(''); setRunTypeFilter('') }}
             style={{ padding: '3px 8px', fontSize: 9, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, color: '#fca5a5', cursor: 'pointer' }}>
             Clear
           </button>
         )}
+        {filtersActive && (
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+            Showing {trades.length.toLocaleString()} of {(status?.trades_total ?? 0).toLocaleString()} trades
+          </span>
+        )}
       </div>
+
+      {/* Data quality gaps */}
+      {filterOptions.data_quality_gaps?.length > 0 && filtersActive && (
+        <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.6)', marginBottom: 12, padding: '6px 10px', background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.15)', borderRadius: 4 }}>
+          {filterOptions.data_quality_gaps.map((g, i) => <div key={i}>{g}</div>)}
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 24, overflowX: 'auto' }}>
@@ -374,6 +367,7 @@ export default function Backtesting() {
               </tr>
             ))}</tbody>
           </table>
+          {strategyStats.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>No strategy data matches current filters.</div>}
         </div>
       )}
 
@@ -395,25 +389,31 @@ export default function Backtesting() {
             </ResponsiveContainer>
           </div>
           <div style={card}>
-            <div style={secTitle}>{filteredTrades.length} sim trades</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  {['Symbol', 'Strategy', 'Entry', 'Exit', 'P&L', 'R', 'Exit reason'].map(h => <th key={h} style={{ textAlign: ['Symbol', 'Strategy', 'Exit reason'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{h}</th>)}
-                </tr></thead>
-                <tbody>{filteredTrades.map(t => (
-                  <tr key={t.simulated_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '8px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.entry_price).toFixed(2)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.exit_price).toFixed(2)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: safeNum(t.pnl) >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(t.pnl)}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', color: safeNum(t.r_multiple) >= 0 ? '#86efac' : '#fca5a5' }}>{fmtR(t.r_multiple)}</td>
-                    <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{t.exit_reason || '—'}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
+            <div style={secTitle}>{filteredTrades.length} sim trades{filtersActive ? ` (filtered)` : ''}</div>
+            {filteredTrades.length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>No trades match current filters.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['Symbol', 'Strategy', 'Date', 'Entry', 'Exit', 'P&L', 'R', 'Exit reason'].map(h => <th key={h} style={{ textAlign: ['Symbol', 'Strategy', 'Date', 'Exit reason'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>{filteredTrades.slice(0, 200).map(t => (
+                    <tr key={t.simulated_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{t.trade_date ? String(t.trade_date).slice(0, 10) : '—'}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.entry_price).toFixed(2)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.exit_price).toFixed(2)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: safeNum(t.pnl) >= 0 ? '#4ade80' : '#f87171' }}>{fmt$(t.pnl)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: safeNum(t.r_multiple) >= 0 ? '#86efac' : '#fca5a5' }}>{fmtR(t.r_multiple)}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{t.exit_reason || '—'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                {filteredTrades.length > 200 && <div style={{ padding: 10, textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Showing 200 of {filteredTrades.length} trades</div>}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -492,6 +492,7 @@ export default function Backtesting() {
               </ResponsiveContainer>
             </div>
           )}
+          {results.length === 0 && <div style={{ ...card, textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>No results match current filters.</div>}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12 }}>
             {results.map(r => {
               const winPct = r.simulated_trades > 0 ? Math.round(r.wins / r.simulated_trades * 100) : 0
@@ -534,7 +535,7 @@ export default function Backtesting() {
       {tab === 'runs' && (
         <div style={card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <div style={secTitle}>All {runs.length} backtest runs</div>
+            <div style={secTitle}>All {runs.length} backtest runs{filtersActive ? ' (filtered)' : ''}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {['all', 'replay_trades', 'replay_proposals', 'champion'].map(f => (
                 <button key={f} onClick={() => setRunFilter(f)} style={{
@@ -546,6 +547,7 @@ export default function Backtesting() {
               ))}
             </div>
           </div>
+          {runs.filter(r => runFilter === 'all' || r.run_type === runFilter).length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>No runs match current filters.</div>}
           {runs.filter(r => runFilter === 'all' || r.run_type === runFilter).map(r => (
             <div key={r.run_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', marginBottom: 4, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -567,135 +569,62 @@ export default function Backtesting() {
           {(!trailData || (trailData.trades?.length ?? 0) === 0) ? (
             <div style={{ ...card, textAlign: 'center', padding: '40px 24px' }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>
-                Trailing Stop Analysis Not Yet Run
-              </div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>Trailing Stop Analysis Not Yet Run</div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 20, maxWidth: 500, margin: '0 auto 20px' }}>
-                Simulates what would have happened if fixed stops were replaced with trailing stops (5%, 8%, 10%, 15%) for each closed trade. Fetches historical price data to find the high-water mark and determines the optimal trail percentage per strategy.
+                Simulates what would have happened if fixed stops were replaced with trailing stops for each closed trade.
               </div>
-              <button
-                onClick={() => {
-                  fetch('/api/v2/backtesting/run-trailing-analysis', { method: 'POST' })
-                    .then(() => alert('Trailing analysis started. Refresh in a few minutes.'))
-                    .catch(console.error)
-                }}
-                style={{
-                  padding: '10px 24px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  background: 'rgba(99,102,241,0.2)', color: '#a5b4fc',
-                  border: '1px solid rgba(99,102,241,0.4)', cursor: 'pointer',
-                }}
-              >
+              <button onClick={() => { fetch('/api/v2/backtesting/run-trailing-analysis', { method: 'POST' }).then(() => alert('Trailing analysis started. Refresh in a few minutes.')).catch(console.error) }}
+                style={{ padding: '10px 24px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.4)', cursor: 'pointer' }}>
                 Run Trailing Stop Analysis
               </button>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 12 }}>
-                Or run manually: <code>python3 scripts/trailing_stop_analyzer.py</code>
-              </div>
             </div>
           ) : (
             <>
-              {/* Strategy recommendations table */}
               <div style={card}>
                 <div style={secTitle}>Strategy trailing stop recommendations</div>
-                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 16, marginTop: -8 }}>
-                  Based on {trailData.summary?.total_analyzed ?? 0} closed trades. Shows whether trailing stops would have improved outcomes vs fixed stops.
-                </p>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                      {['Strategy', 'Trades', 'Avg fixed P&L', 'Max potential', '5% trail', '8% trail', 'Optimal %', 'Improvement', 'Recommendation'].map(h => (
-                        <th key={h} style={{
-                          textAlign: h === 'Strategy' || h === 'Recommendation' ? 'left' : 'right',
-                          padding: '8px 10px', fontSize: 10, fontWeight: 600,
-                          color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '.05em',
-                        }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(trailData.strategy_recommendations || []).map((rec: any) => (
-                      <tr key={rec.strategy_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                        <td style={{ padding: '9px 10px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{safeStr(rec.strategy_id)}</td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{rec.trades}</td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_fixed_pnl) >= 0 ? '#4ade80' : '#f87171' }}>
-                          {safeNum(rec.avg_fixed_pnl).toFixed(1)}%
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>
-                          {safeNum(rec.avg_max_potential).toFixed(1)}%
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_5pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>
-                          {rec.avg_5pct != null ? `${safeNum(rec.avg_5pct).toFixed(1)}%` : '—'}
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_8pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>
-                          {rec.avg_8pct != null ? `${safeNum(rec.avg_8pct).toFixed(1)}%` : '—'}
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#818cf8' }}>
-                          {rec.avg_optimal_pct != null ? `${safeNum(rec.avg_optimal_pct).toFixed(0)}%` : '—'}
-                        </td>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 600, fontSize: 13, color: safeNum(rec.avg_improvement) > 0 ? '#4ade80' : '#f87171' }}>
-                          {safeNum(rec.avg_improvement) > 0 ? '+' : ''}{safeNum(rec.avg_improvement).toFixed(1)}%
-                        </td>
-                        <td style={{ padding: '9px 10px' }}>
-                          <span style={{
-                            fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
-                            background: (rec.recommended_trail ?? '') === 'keep_fixed' ? 'rgba(156,163,175,0.15)' : 'rgba(99,102,241,0.2)',
-                            color: (rec.recommended_trail ?? '') === 'keep_fixed' ? '#9ca3af' : '#a5b4fc',
-                          }}>
-                            {safeStr(rec.recommended_trail, '—')}
-                          </span>
-                        </td>
-                      </tr>
+                  <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    {['Strategy', 'Trades', 'Avg fixed P&L', 'Max potential', '5% trail', '8% trail', 'Optimal %', 'Improvement', 'Recommendation'].map(h => (
+                      <th key={h} style={{ textAlign: h === 'Strategy' || h === 'Recommendation' ? 'left' : 'right', padding: '8px 10px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{h}</th>
                     ))}
-                  </tbody>
+                  </tr></thead>
+                  <tbody>{(trailData.strategy_recommendations || []).map((rec: any) => (
+                    <tr key={rec.strategy_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={{ padding: '9px 10px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{safeStr(rec.strategy_id)}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{rec.trades}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_fixed_pnl) >= 0 ? '#4ade80' : '#f87171' }}>{safeNum(rec.avg_fixed_pnl).toFixed(1)}%</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>{safeNum(rec.avg_max_potential).toFixed(1)}%</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_5pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>{rec.avg_5pct != null ? `${safeNum(rec.avg_5pct).toFixed(1)}%` : '—'}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_8pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>{rec.avg_8pct != null ? `${safeNum(rec.avg_8pct).toFixed(1)}%` : '—'}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#818cf8' }}>{rec.avg_optimal_pct != null ? `${safeNum(rec.avg_optimal_pct).toFixed(0)}%` : '—'}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 600, fontSize: 13, color: safeNum(rec.avg_improvement) > 0 ? '#4ade80' : '#f87171' }}>{safeNum(rec.avg_improvement) > 0 ? '+' : ''}{safeNum(rec.avg_improvement).toFixed(1)}%</td>
+                      <td style={{ padding: '9px 10px' }}><span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600, background: (rec.recommended_trail ?? '') === 'keep_fixed' ? 'rgba(156,163,175,0.15)' : 'rgba(99,102,241,0.2)', color: (rec.recommended_trail ?? '') === 'keep_fixed' ? '#9ca3af' : '#a5b4fc' }}>{safeStr(rec.recommended_trail, '—')}</span></td>
+                    </tr>
+                  ))}</tbody>
                 </table>
               </div>
-
-              {/* Per-trade detail */}
               <div style={card}>
                 <div style={secTitle}>Trade-by-trade trailing stop analysis</div>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                        {['Symbol', 'Strategy', 'Fixed stop P&L', 'Max potential', '5% trail', '8% trail', '10% trail', 'Optimal', 'Lesson'].map(h => (
-                          <th key={h} style={{
-                            textAlign: ['Symbol', 'Strategy', 'Lesson'].includes(h) ? 'left' : 'right',
-                            padding: '7px 8px', fontSize: 10, fontWeight: 600,
-                            color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '.05em',
-                          }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(trailData.trades || []).map((t: any) => (
-                        <tr key={t.trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                          <td style={{ padding: '7px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
-                          <td style={{ padding: '7px 8px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
-                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: safeNum(t.fixed_pnl_pct) >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>
-                            {safeNum(t.fixed_pnl_pct).toFixed(1)}%
-                          </td>
-                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>
-                            +{safeNum(t.high_water_pct_gain).toFixed(1)}%
-                          </td>
-                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_5pct_pnl != null ? (safeNum(t.trail_5pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
-                            {t.trail_5pct_pnl != null ? `${safeNum(t.trail_5pct_pnl).toFixed(1)}%` : '—'}
-                          </td>
-                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_8pct_pnl != null ? (safeNum(t.trail_8pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
-                            {t.trail_8pct_pnl != null ? `${safeNum(t.trail_8pct_pnl).toFixed(1)}%` : '—'}
-                          </td>
-                          <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_10pct_pnl != null ? (safeNum(t.trail_10pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>
-                            {t.trail_10pct_pnl != null ? `${safeNum(t.trail_10pct_pnl).toFixed(1)}%` : '—'}
-                          </td>
-                          <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, color: '#818cf8', fontSize: 12 }}>
-                            {t.optimal_trail_pct != null
-                              ? `${safeNum(t.optimal_trail_pct).toFixed(0)}% → ${safeNum(t.optimal_trail_pnl).toFixed(1)}%`
-                              : 'Fixed best'}
-                          </td>
-                          <td style={{ padding: '7px 8px', maxWidth: 200, fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'normal', lineHeight: 1.4 }}>
-                            {t.lesson_text ? (String(t.lesson_text).slice(0, 120) + (String(t.lesson_text).length > 120 ? '...' : '')) : '—'}
-                          </td>
-                        </tr>
+                    <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                      {['Symbol', 'Strategy', 'Fixed P&L', 'Max potential', '5% trail', '8% trail', '10% trail', 'Optimal', 'Lesson'].map(h => (
+                        <th key={h} style={{ textAlign: ['Symbol', 'Strategy', 'Lesson'].includes(h) ? 'left' : 'right', padding: '7px 8px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
                       ))}
-                    </tbody>
+                    </tr></thead>
+                    <tbody>{(trailData.trades || []).map((t: any) => (
+                      <tr key={t.trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '7px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
+                        <td style={{ padding: '7px 8px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: safeNum(t.fixed_pnl_pct) >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{safeNum(t.fixed_pnl_pct).toFixed(1)}%</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>+{safeNum(t.high_water_pct_gain).toFixed(1)}%</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_5pct_pnl != null ? (safeNum(t.trail_5pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>{t.trail_5pct_pnl != null ? `${safeNum(t.trail_5pct_pnl).toFixed(1)}%` : '—'}</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_8pct_pnl != null ? (safeNum(t.trail_8pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>{t.trail_8pct_pnl != null ? `${safeNum(t.trail_8pct_pnl).toFixed(1)}%` : '—'}</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontSize: 12, color: t.trail_10pct_pnl != null ? (safeNum(t.trail_10pct_pnl) > safeNum(t.fixed_pnl_pct) ? '#4ade80' : '#f87171') : 'rgba(255,255,255,0.25)' }}>{t.trail_10pct_pnl != null ? `${safeNum(t.trail_10pct_pnl).toFixed(1)}%` : '—'}</td>
+                        <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600, color: '#818cf8', fontSize: 12 }}>{t.optimal_trail_pct != null ? `${safeNum(t.optimal_trail_pct).toFixed(0)}% → ${safeNum(t.optimal_trail_pnl).toFixed(1)}%` : 'Fixed best'}</td>
+                        <td style={{ padding: '7px 8px', maxWidth: 200, fontSize: 11, color: 'rgba(255,255,255,0.4)', whiteSpace: 'normal', lineHeight: 1.4 }}>{t.lesson_text ? (String(t.lesson_text).slice(0, 120) + (String(t.lesson_text).length > 120 ? '...' : '')) : '—'}</td>
+                      </tr>
+                    ))}</tbody>
                   </table>
                 </div>
               </div>
@@ -704,7 +633,7 @@ export default function Backtesting() {
         </div>
       )}
 
-      {/* ── MFE/MAE Analysis ── */}
+      {/* MFE/MAE Analysis */}
       {tab === 'mfe' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -761,7 +690,7 @@ export default function Backtesting() {
         </div>
       )}
 
-      {/* ── Trailing Optimization ── */}
+      {/* Trailing Optimization */}
       {tab === 'optimization' && (
         <div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>Simulates breakeven thresholds per strategy family to find optimal trailing tier config.</div>
@@ -771,9 +700,7 @@ export default function Backtesting() {
             <div key={i} style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.9)', textTransform: 'capitalize' }}>{r.strategy_family}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: safeNum(r.improvement_pct) > 0 ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
-                  {safeNum(r.improvement_pct) > 0 ? '+' : ''}{safeNum(r.improvement_pct).toFixed(1)}%
-                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: safeNum(r.improvement_pct) > 0 ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>{safeNum(r.improvement_pct) > 0 ? '+' : ''}{safeNum(r.improvement_pct).toFixed(1)}%</span>
               </div>
               <div style={{ display: 'flex', gap: 16, fontSize: 10, marginBottom: 8 }}>
                 <span><span style={{ color: 'rgba(255,255,255,0.4)' }}>Current: </span>{safeNum(r.current_breakeven)}R → {safeNum(r.current_avg_r).toFixed(3)}R avg</span>
@@ -794,7 +721,6 @@ export default function Backtesting() {
           )))}
         </div>
       )}
-
     </div>
   )
 }

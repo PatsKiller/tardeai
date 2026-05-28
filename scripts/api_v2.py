@@ -18759,12 +18759,44 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # ── Session 31: Backtesting + Champion/Challenger ─────────────────────
     if base_path == "/api/v2/backtesting/status":
         try:
+            _q = query or {}
+            _bf_strategy = _q.get("strategy")
+            _bf_start = _q.get("start_date")
+            _bf_end = _q.get("end_date")
+            _bf_run = _q.get("run_id")
+            # Unfiltered totals
             status = {}
             for tbl, lbl in [("backtest_datasets","datasets"), ("strategy_backtest_runs","runs"),
                              ("strategy_backtest_trades","trades"), ("challenger_definitions","challengers"),
                              ("champion_challenger_results","comparisons")]:
                 r = _db_query(f"SELECT COUNT(*) as c FROM {tbl}", fetch="one")
                 status[f"{lbl}_total"] = r["c"] if r else 0
+            # Filtered counts for trades/runs/results
+            _tw, _tp = [], []
+            if _bf_strategy:
+                _tw.append("strategy_id=%s"); _tp.append(_bf_strategy)
+            if _bf_start:
+                _tw.append("COALESCE(entry_time, signal_time) >= %s::date"); _tp.append(_bf_start)
+            if _bf_end:
+                _tw.append("COALESCE(entry_time, signal_time) <= (%s::date + interval '1 day')"); _tp.append(_bf_end)
+            if _bf_run:
+                _tw.append("run_id=%s"); _tp.append(_bf_run)
+            _twhere = " AND ".join(_tw) if _tw else "1=1"
+            _ft = _db_query(f"SELECT COUNT(*) as c FROM strategy_backtest_trades WHERE {_twhere}", _tp, fetch="one")
+            status["trades_filtered"] = _ft["c"] if _ft else 0
+            _rw, _rp = [], []
+            if _bf_strategy:
+                _rw.append("strategy_id=%s"); _rp.append(_bf_strategy)
+            if _bf_start:
+                _rw.append("start_date >= %s::date"); _rp.append(_bf_start)
+            if _bf_end:
+                _rw.append("end_date <= %s::date"); _rp.append(_bf_end)
+            if _bf_run:
+                _rw.append("run_id=%s"); _rp.append(_bf_run)
+            _rwhere = " AND ".join(_rw) if _rw else "1=1"
+            _fr = _db_query(f"SELECT COUNT(*) as c FROM strategy_backtest_runs WHERE {_rwhere}", _rp, fetch="one")
+            status["runs_filtered"] = _fr["c"] if _fr else 0
+            status["filters_active"] = bool(_bf_strategy or _bf_start or _bf_end or _bf_run)
             return 200, {"ok": True, "data": status}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
@@ -18778,21 +18810,59 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/backtesting/runs":
         try:
-            rows = _db_query("SELECT run_id, strategy_id, run_type, status, start_date, end_date, duration_seconds, created_at FROM strategy_backtest_runs ORDER BY created_at DESC LIMIT 20") or []
+            _q = query or {}
+            _w, _p = [], []
+            if _q.get("strategy"):
+                _w.append("strategy_id=%s"); _p.append(_q["strategy"])
+            if _q.get("start_date"):
+                _w.append("start_date >= %s::date"); _p.append(_q["start_date"])
+            if _q.get("end_date"):
+                _w.append("end_date <= %s::date"); _p.append(_q["end_date"])
+            if _q.get("run_id"):
+                _w.append("run_id=%s"); _p.append(_q["run_id"])
+            if _q.get("run_type"):
+                _w.append("run_type=%s"); _p.append(_q["run_type"])
+            _where = " WHERE " + " AND ".join(_w) if _w else ""
+            _lim = min(int(_q.get("limit", 200)), 500)
+            rows = _db_query(f"SELECT run_id, strategy_id, run_type, status, start_date, end_date, duration_seconds, created_at FROM strategy_backtest_runs{_where} ORDER BY created_at DESC LIMIT {_lim}", _p) or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
     if base_path == "/api/v2/backtesting/results":
         try:
-            rows = _db_query("SELECT id as result_id, run_id, strategy_id, run_type, total_trades as simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, total_pnl, avg_pnl, avg_r_multiple, max_drawdown_pct, equity_curve_json, sample_size, created_at FROM strategy_backtest_results WHERE run_id IS NOT NULL ORDER BY created_at DESC LIMIT 30") or []
+            _q = query or {}
+            _w, _p = ["run_id IS NOT NULL"], []
+            if _q.get("strategy"):
+                _w.append("strategy_id=%s"); _p.append(_q["strategy"])
+            if _q.get("run_id"):
+                _w.append("run_id=%s"); _p.append(_q["run_id"])
+            if _q.get("run_type"):
+                _w.append("run_type=%s"); _p.append(_q["run_type"])
+            _where = " WHERE " + " AND ".join(_w)
+            _lim = min(int(_q.get("limit", 100)), 500)
+            rows = _db_query(f"SELECT id as result_id, run_id, strategy_id, run_type, total_trades as simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, total_pnl, avg_pnl, avg_r_multiple, max_drawdown_pct, equity_curve_json, sample_size, created_at FROM strategy_backtest_results{_where} ORDER BY created_at DESC LIMIT {_lim}", _p) or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
     if base_path == "/api/v2/backtesting/trades":
         try:
-            rows = _db_query("SELECT simulated_trade_id, run_id, strategy_id, symbol, entry_price, exit_price, pnl, r_multiple, exit_reason FROM strategy_backtest_trades ORDER BY created_at DESC LIMIT 50") or []
+            _q = query or {}
+            _w, _p = [], []
+            if _q.get("strategy"):
+                _w.append("strategy_id=%s"); _p.append(_q["strategy"])
+            if _q.get("start_date"):
+                _w.append("COALESCE(entry_time, signal_time) >= %s::date"); _p.append(_q["start_date"])
+            if _q.get("end_date"):
+                _w.append("COALESCE(entry_time, signal_time) <= (%s::date + interval '1 day')"); _p.append(_q["end_date"])
+            if _q.get("run_id"):
+                _w.append("run_id=%s"); _p.append(_q["run_id"])
+            if _q.get("symbol"):
+                _w.append("symbol=%s"); _p.append(_q["symbol"])
+            _where = " WHERE " + " AND ".join(_w) if _w else ""
+            _lim = min(int(_q.get("limit", 5000)), 10000)
+            rows = _db_query(f"SELECT simulated_trade_id, run_id, strategy_id, symbol, COALESCE(entry_time, signal_time) as trade_date, entry_price, exit_price, pnl, pnl_pct, r_multiple, exit_reason FROM strategy_backtest_trades{_where} ORDER BY created_at DESC LIMIT {_lim}", _p) or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
@@ -18980,26 +19050,39 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/backtesting/filter-options" and method == "GET":
         try:
-            _brokers = _db_query("SELECT DISTINCT broker FROM paper_trades WHERE broker IS NOT NULL ORDER BY broker") or []
+            # Strategies from actual backtest trades
+            _strategies = _db_query("SELECT DISTINCT strategy_id FROM strategy_backtest_trades WHERE strategy_id IS NOT NULL ORDER BY strategy_id") or []
+            _strategy_list = [s["strategy_id"] for s in _strategies if s.get("strategy_id")]
+            # Date range from backtest trades
+            _bt_dates = _db_query("SELECT MIN(COALESCE(entry_time, signal_time)::date) as min_date, MAX(COALESCE(entry_time, signal_time)::date) as max_date FROM strategy_backtest_trades WHERE COALESCE(entry_time, signal_time) IS NOT NULL", fetch="one") or {}
+            # Run IDs
+            _runs = _db_query("SELECT DISTINCT run_id FROM strategy_backtest_runs ORDER BY run_id DESC LIMIT 50") or []
+            _run_list = [r["run_id"] for r in _runs if r.get("run_id")]
+            # Run types
+            _run_types = _db_query("SELECT DISTINCT run_type FROM strategy_backtest_runs WHERE run_type IS NOT NULL ORDER BY run_type") or []
+            _run_type_list = [r["run_type"] for r in _run_types if r.get("run_type")]
+            # Brokers/accounts from paper_trades (for trail/MFE which join paper_trades)
+            _brokers = _db_query("SELECT DISTINCT broker FROM paper_trades WHERE broker IS NOT NULL AND broker!='' ORDER BY broker") or []
+            _broker_list = [b["broker"] for b in _brokers if b.get("broker")]
             _accounts = _db_query("SELECT DISTINCT COALESCE(target_account, account) as acct FROM paper_trades WHERE COALESCE(target_account, account) IS NOT NULL ORDER BY acct") or []
-            _dates = _db_query("SELECT MIN(entry_time::date) as min_date, MAX(entry_time::date) as max_date FROM paper_trades", fetch="one") or {}
-            # Also add accounts from accounts table for brokers that have no trades yet
-            _all_accts = _db_query("SELECT account_label FROM accounts ORDER BY account_label") or []
-            _acct_set = set(a.get("acct", "") for a in _accounts)
-            for a in _all_accts:
-                _acct_set.add(a.get("account_label", ""))
-            # Add brokers from accounts table too
-            _all_brokers = _db_query("SELECT DISTINCT broker FROM accounts ORDER BY broker") or []
-            _broker_set = set(b.get("broker", "") for b in _brokers)
-            for b in _all_brokers:
-                _broker_set.add(b.get("broker", ""))
-            _broker_set.discard("")
-            _acct_set.discard("")
+            _acct_list = [a["acct"] for a in _accounts if a.get("acct")]
+            # Data quality: check what percentage of backtest trades have dates
+            _total = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades", fetch="one")
+            _with_dates = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades WHERE COALESCE(entry_time, signal_time) IS NOT NULL", fetch="one")
+            _pct = round(100 * (_with_dates["c"] if _with_dates else 0) / max((_total["c"] if _total else 1), 1), 1)
+            _gaps = []
+            if _pct < 100:
+                _gaps.append(f"{100-_pct:.0f}% of backtest trades missing entry_time — excluded from date filters")
+            _gaps.append("strategy_backtest_trades has no broker/account columns — broker/account filters apply to trail/MFE only")
             return 200, {"ok": True, "data": {
-                "brokers": sorted(_broker_set),
-                "accounts": sorted(_acct_set),
-                "minDate": str(_dates.get("min_date", "")),
-                "maxDate": str(_dates.get("max_date", "")),
+                "strategies": _strategy_list,
+                "run_ids": _run_list,
+                "run_types": _run_type_list,
+                "brokers": _broker_list,
+                "accounts": _acct_list,
+                "minDate": str(_bt_dates.get("min_date") or ""),
+                "maxDate": str(_bt_dates.get("max_date") or ""),
+                "data_quality_gaps": _gaps,
             }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
