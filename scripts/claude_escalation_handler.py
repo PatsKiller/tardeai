@@ -113,6 +113,49 @@ def process_queue(dry_run=False):
 
     conn = _get_conn()
 
+    # Try local LLM first for quick diagnosis of fixable items
+    fixable = [i for i in actionable if i.get("fixable")]
+    if fixable:
+        log.info(f"Attempting local LLM diagnosis for {len(fixable)} fixable item(s)")
+        for item in fixable:
+            try:
+                # Read the relevant log tail for context
+                _detail = item.get("detail", "")
+                _log_content = ""
+                for _logname in ["auto_proposal.log", "screener_pm.log", "incubator_promoter.log"]:
+                    _lp = PROJECT_ROOT / "logs" / _logname
+                    if _lp.exists() and _logname.split(".")[0] in _detail.lower().replace("_", ""):
+                        _log_content = _lp.read_text()[-2000:]
+                        break
+                if not _log_content:
+                    # Generic: read the log mentioned in the detail
+                    for _logname in ["auto_proposal.log", "screener_pm.log"]:
+                        _lp = PROJECT_ROOT / "logs" / _logname
+                        if _lp.exists():
+                            _log_content = _lp.read_text()[-2000:]
+                            break
+
+                import requests
+                _llm_resp = requests.post("http://localhost:11434/api/generate", json={
+                    "model": "qwen3:14b",
+                    "prompt": f"/no_think Diagnose this Trade AI error and suggest a fix:\n\nAlert: {_detail}\n\nRecent log:\n{_log_content}\n\nRespond with: DIAGNOSIS: (what broke) FIX: (what to do)",
+                    "stream": False,
+                    "options": {"num_predict": 300, "temperature": 0.2},
+                }, timeout=60)
+                if _llm_resp.ok:
+                    _diagnosis = _llm_resp.json().get("response", "")[:500]
+                    log.info(f"  LLM diagnosis: {_diagnosis[:200]}")
+                    item["llm_diagnosis"] = _diagnosis
+                    # Log to interventions table
+                    if conn:
+                        _log_intervention(conn, item.get("component", "unknown"),
+                                          item.get("detail", "")[:500],
+                                          diagnosis=_diagnosis,
+                                          status="investigating",
+                                          session_log=f"local_llm_diagnosis: {_diagnosis}")
+            except Exception as e:
+                log.warning(f"  Local LLM diagnosis failed: {e}")
+
     # Build the prompt for Claude Code
     problems = []
     for item in actionable:
@@ -121,12 +164,14 @@ def process_queue(dry_run=False):
         status = item.get("status", "")
         error = item.get("last_error", "")
         retry_cmd = item.get("retry_cmd", "")
+        llm_diag = item.get("llm_diagnosis", "")
         problems.append(
             f"- Component: {comp}\n"
             f"  Status: {status}\n"
             f"  Detail: {detail}\n"
             f"  Last error: {error}\n"
             f"  Retry command: {retry_cmd}"
+            + (f"\n  LLM Diagnosis: {llm_diag}" if llm_diag else "")
         )
 
     prompt = (
