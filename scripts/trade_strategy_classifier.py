@@ -32,12 +32,14 @@ def _get_conn():
     return gc()
 
 
-def _call_ollama(prompt, model="qwen3:14b", timeout=180):
+def _call_ollama(prompt, model="gemma3:4b", timeout=180):
     payload = json.dumps({
-        "model": model, "stream": False, "think": False,
-        "format": "json",
-        "options": {"temperature": 0.3, "num_predict": 512},
-        "messages": [{"role": "user", "content": prompt}],
+        "model": model, "stream": False,
+        "options": {"temperature": 0.3, "num_predict": 256, "num_gpu": 0},
+        "messages": [
+            {"role": "system", "content": "You are a trade strategy classifier. Return ONLY valid JSON. One strategy_id only."},
+            {"role": "user", "content": prompt},
+        ],
     }).encode()
     req = urllib.request.Request(OLLAMA_CHAT_URL, data=payload,
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -68,7 +70,7 @@ def main():
     p.add_argument("--dry-run", action="store_true", default=True)
     p.add_argument("--apply", action="store_true")
     p.add_argument("--limit", type=int, default=10)
-    p.add_argument("--model", default="qwen3:14b")
+    p.add_argument("--model", default="gemma3:4b")
     p.add_argument("--json-out", type=str)
     args = p.parse_args()
     if args.apply:
