@@ -19142,7 +19142,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _gaps = []
             if _pct < 100:
                 _gaps.append(f"{100-_pct:.0f}% of backtest trades missing entry_time — excluded from date filters")
-            _gaps.append("Broker/account filter matches backtest trades by symbol overlap with paper_trades for that account")
+            if _pct < 100:
+                pass  # date gap already added above
+            # Broker/account mapped from trade_transactions (Schwab) and paper_trades (Alpaca)
+            _unmapped = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades WHERE broker IS NULL", fetch="one")
+            _unmapped_n = _unmapped["c"] if _unmapped else 0
+            if _unmapped_n > 0:
+                _gaps.append(f"{_unmapped_n} backtest trades have no broker/account mapping (champion simulations)")
             return 200, {"ok": True, "data": {
                 "strategies": _strategy_list,
                 "run_ids": _run_list,
