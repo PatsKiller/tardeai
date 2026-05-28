@@ -23,7 +23,7 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-DEFAULT_LOCAL_LLM_MODEL = "qwen3:14b"
+DEFAULT_LOCAL_LLM_MODEL = "gemma3:4b"
 
 # ── LLM Fleet v4.1 — Process Type Constants ──────────────────────────────
 # Scripts declare intent via process type; model resolution uses .env.

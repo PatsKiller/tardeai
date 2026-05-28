@@ -33,9 +33,10 @@ def _get_conn():
 
 
 def _call_ollama(prompt, model="gemma3:4b", timeout=180):
+    num_gpu = int(os.environ.get("LOCAL_LLM_NUM_GPU", "0"))
     payload = json.dumps({
         "model": model, "stream": False,
-        "options": {"temperature": 0.3, "num_predict": 256, "num_gpu": 0},
+        "options": {"temperature": 0.3, "num_predict": 256, "num_gpu": num_gpu},
         "messages": [
             {"role": "system", "content": "You are a trade strategy classifier. Return ONLY valid JSON. One strategy_id only."},
             {"role": "user", "content": prompt},
@@ -65,6 +66,46 @@ def _parse_json(raw):
     return None
 
 
+def _preflight_llm_health():
+    """Run local LLM health checks. Returns (ok, details)."""
+    checks = []
+
+    # 1. Resolved model must be gemma3:4b
+    model = os.environ.get("LOCAL_LLM_MODEL", "")
+    safe = os.environ.get("LOCAL_LLM_SAFE_MODEL", "")
+    checks.append(("LOCAL_LLM_MODEL=gemma3:4b", model == "gemma3:4b"))
+
+    # 2. qwen3:14b must be in disabled list
+    disabled = os.environ.get("DISABLED_LOCAL_LLM_MODELS", "")
+    checks.append(("qwen3:14b_disabled", "qwen3:14b" in disabled))
+
+    # 3. FORCE_LOCAL_LLM_CPU=true
+    # CPU or GPU mode — just verify the setting is present
+    num_gpu = os.environ.get("LOCAL_LLM_NUM_GPU", "")
+    checks.append(("LOCAL_LLM_NUM_GPU_set", num_gpu != ""))
+
+    # 4. LOCAL_LLM_MAX_CONCURRENT=1
+    max_conc = os.environ.get("LOCAL_LLM_MAX_CONCURRENT", "")
+    checks.append(("LOCAL_LLM_MAX_CONCURRENT=1", max_conc == "1"))
+
+    # 5. Run health check script
+    health_script = Path(__file__).resolve().parent / "check_local_llm_health.py"
+    if health_script.exists():
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(health_script)],
+            capture_output=True, text=True, timeout=120
+        )
+        checks.append(("health_script_pass", result.returncode == 0))
+        if result.returncode != 0:
+            log.error(f"Health check output:\n{result.stdout}\n{result.stderr}")
+    else:
+        checks.append(("health_script_exists", False))
+
+    failed = [name for name, ok in checks if not ok]
+    return len(failed) == 0, checks, failed
+
+
 def main():
     p = argparse.ArgumentParser(description="Trade Strategy Classifier")
     p.add_argument("--dry-run", action="store_true", default=True)
@@ -80,6 +121,17 @@ def main():
     if alpaca != "paper":
         log.error(f"ALPACA_MODE={alpaca}, must be paper. Aborting.")
         sys.exit(1)
+
+    # LLM safety preflight — required before --apply
+    if args.apply:
+        ok, checks, failed = _preflight_llm_health()
+        if not ok:
+            log.error(f"LLM preflight FAILED: {', '.join(failed)}")
+            for name, passed in checks:
+                log.info(f"  {'PASS' if passed else 'FAIL'}: {name}")
+            log.error("Refusing to run --apply with failed health checks")
+            sys.exit(1)
+        log.info("LLM preflight PASSED")
 
     conn = _get_conn()
     if not conn:

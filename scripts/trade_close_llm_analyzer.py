@@ -209,9 +209,10 @@ def _classify_quality(parsed, missing_required, parse_error):
 
 
 # ── Direct Ollama Call ───────────────────────────────────────────────
-def _call_ollama_direct(prompt, model="qwen3:14b", timeout=180):
+def _call_ollama_direct(prompt, model="gemma3:4b", timeout=180):
     """Call Ollama directly with JSON format mode and higher token limit.
     Bypasses local_llm.py to avoid the 300-token cap."""
+    num_gpu = int(os.environ.get("LOCAL_LLM_NUM_GPU", "0"))
     payload = json.dumps({
         "model": model,
         "stream": False,
@@ -219,7 +220,7 @@ def _call_ollama_direct(prompt, model="qwen3:14b", timeout=180):
             {"role": "system", "content": "You are a trade analyst. Return ONLY valid JSON."},
             {"role": "user", "content": prompt},
         ],
-        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT, "num_gpu": 0},
+        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT, "num_gpu": num_gpu},
     }).encode()
 
     req = urllib.request.Request(
@@ -298,6 +299,39 @@ def _write_review_row(conn, snapshot, input_hash, args, parsed_output, raw_outpu
     return row_id
 
 
+def _preflight_llm_health():
+    """Run local LLM health checks. Returns (ok, checks, failed)."""
+    checks = []
+
+    model = os.environ.get("LOCAL_LLM_MODEL", "")
+    checks.append(("LOCAL_LLM_MODEL=gemma3:4b", model == "gemma3:4b"))
+
+    disabled = os.environ.get("DISABLED_LOCAL_LLM_MODELS", "")
+    checks.append(("qwen3:14b_disabled", "qwen3:14b" in disabled))
+
+    num_gpu = os.environ.get("LOCAL_LLM_NUM_GPU", "")
+    checks.append(("LOCAL_LLM_NUM_GPU_set", num_gpu != ""))
+
+    max_conc = os.environ.get("LOCAL_LLM_MAX_CONCURRENT", "")
+    checks.append(("LOCAL_LLM_MAX_CONCURRENT=1", max_conc == "1"))
+
+    health_script = Path(__file__).resolve().parent / "check_local_llm_health.py"
+    if health_script.exists():
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(health_script)],
+            capture_output=True, text=True, timeout=120
+        )
+        checks.append(("health_script_pass", result.returncode == 0))
+        if result.returncode != 0:
+            log.error(f"Health check output:\n{result.stdout}\n{result.stderr}")
+    else:
+        checks.append(("health_script_exists", False))
+
+    failed = [name for name, ok in checks if not ok]
+    return len(failed) == 0, checks, failed
+
+
 def main():
     p = argparse.ArgumentParser(description="LLM Close-of-Trade Analyzer v4.1")
     p.add_argument("--dry-run", action="store_true", default=True)
@@ -311,7 +345,7 @@ def main():
     p.add_argument("--symbol", type=str)
     p.add_argument("--limit", type=int, default=1)
     p.add_argument("--json-out", type=str)
-    p.add_argument("--model-name", default="qwen3:14b")
+    p.add_argument("--model-name", default="gemma3:4b")
     p.add_argument("--prompt-version", default="close_analysis_v1")
     args = p.parse_args()
     if args.apply:
@@ -323,6 +357,17 @@ def main():
     if alpaca != "paper":
         log.error(f"ALPACA_MODE={alpaca}, must be paper. Aborting.")
         sys.exit(1)
+
+    # LLM safety preflight — required before --apply
+    if args.apply:
+        ok, checks, failed = _preflight_llm_health()
+        if not ok:
+            log.error(f"LLM preflight FAILED: {', '.join(failed)}")
+            for name, passed in checks:
+                log.info(f"  {'PASS' if passed else 'FAIL'}: {name}")
+            log.error("Refusing to run --apply with failed health checks")
+            sys.exit(1)
+        log.info("LLM preflight PASSED")
 
     conn = _get_conn()
     if not conn:

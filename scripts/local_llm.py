@@ -5,6 +5,12 @@ Use for non-time-sensitive narrative generation to save API costs.
 All callers go through generate() which acquires a file lock before
 hitting Ollama, preventing concurrent GPU contention.
 
+Safety router (2026-05-28):
+- Blocks disabled models (DISABLED_LOCAL_LLM_MODELS)
+- Forces CPU mode when FORCE_LOCAL_LLM_CPU=true
+- Pre-call cleanup: unloads blocked/stale models
+- JSONL safety audit log
+
 Usage:
     from local_llm import generate
 
@@ -24,20 +30,30 @@ from local_llm_config import get_local_llm_model, get_local_llm_base_url, apply_
 
 apply_ollama_runtime_env()
 
-OLLAMA_URL = get_local_llm_base_url().rstrip("/") + "/api/chat"
+OLLAMA_BASE = get_local_llm_base_url().rstrip("/")
+OLLAMA_URL = OLLAMA_BASE + "/api/chat"
 OLLAMA_MODEL_FAST = get_local_llm_model()
 OLLAMA_MODEL = get_local_llm_model()
 # Fallback models — centralized from .env, live-discovered defaults
 FALLBACK_OPENAI = os.getenv("LLM_FALLBACK_OPENAI", "gpt-4o-mini").strip()
 FALLBACK_ANTHROPIC = os.getenv("LLM_FALLBACK_ANTHROPIC", "claude-sonnet-4-6").strip()
 DEFAULT_TIMEOUT = 300
-LOCK_FILE = Path("/tmp/ollama_llm_gate.lock")
+LOCK_FILE = Path("/tmp/tradeai_local_llm_single_job.lock")
 LOCK_WAIT_TIMEOUT = 600  # max seconds to wait for lock
 
 model_used = None  # tracks which model last responded
 
+# ── Safety: disabled models & CPU enforcement ────────────────────────────
+DISABLED_MODELS = set(
+    m.strip() for m in os.getenv("DISABLED_LOCAL_LLM_MODELS", "").split(",") if m.strip()
+)
+SAFE_MODEL = os.getenv("LOCAL_LLM_SAFE_MODEL", "gemma3:4b").strip()
+FORCE_CPU = os.getenv("FORCE_LOCAL_LLM_CPU", "false").strip().lower() in {"1", "true", "yes", "on"}
+FORCE_NUM_GPU = int(os.getenv("LOCAL_LLM_NUM_GPU", "99"))  # 99 = use default
+
 # ── LLM Fleet v4.1 — JSONL Audit Logging ─────────────────────────────────
 _AUDIT_LOG = Path(__file__).resolve().parent.parent / "logs" / "llm_routing_audit.jsonl"
+_SAFETY_LOG = Path(__file__).resolve().parent.parent / "logs" / "llm_router_safety.jsonl"
 
 
 def _log_audit(caller: str, process_type: str, model: str, provider: str,
@@ -60,6 +76,85 @@ def _log_audit(caller: str, process_type: str, model: str, provider: str,
             f.write(json.dumps(entry) + "\n")
     except Exception:
         pass  # audit must never break callers
+
+
+def _log_safety(caller: str, requested_model: str, resolved_model: str,
+                disabled_blocked: bool, force_cpu: bool, num_gpu: int,
+                duration_ms: int, status: str, error: str = "",
+                loaded_before: list = None, loaded_after: list = None):
+    """Append one safety audit line. Non-blocking, never raises."""
+    try:
+        entry = {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "caller": caller,
+            "requested_model": requested_model,
+            "resolved_model": resolved_model,
+            "disabled_model_blocked": disabled_blocked,
+            "force_cpu": force_cpu,
+            "num_gpu": num_gpu,
+            "duration_ms": duration_ms,
+            "status": status,
+            "error": error,
+            "loaded_models_before": loaded_before or [],
+            "loaded_models_after": loaded_after or [],
+        }
+        _SAFETY_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with open(_SAFETY_LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
+def _resolve_model(requested: str) -> tuple[str, bool]:
+    """Resolve model, blocking disabled models. Returns (model, was_blocked)."""
+    if requested in DISABLED_MODELS:
+        print(f"  [local-llm] BLOCKED disabled model {requested} → substituting {SAFE_MODEL}")
+        return SAFE_MODEL, True
+    return requested, False
+
+
+def _get_loaded_models() -> list[str]:
+    """Query Ollama /api/ps for currently loaded model names."""
+    try:
+        ps_url = OLLAMA_BASE + "/api/ps"
+        req = urllib.request.Request(ps_url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            return [m.get("name", "") for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
+def _unload_model(name: str) -> bool:
+    """Unload a specific model via /api/generate keep_alive=0."""
+    try:
+        gen_url = OLLAMA_BASE + "/api/generate"
+        payload = json.dumps({"model": name, "keep_alive": 0, "prompt": ""}).encode()
+        req = urllib.request.Request(gen_url, data=payload,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        urllib.request.urlopen(req, timeout=10)
+        print(f"  [local-llm] Unloaded {name}")
+        return True
+    except Exception as e:
+        print(f"  [local-llm] Failed to unload {name}: {e}")
+        return False
+
+
+def _pre_call_cleanup(target_model: str):
+    """Unload disabled models and non-target generation models before calling."""
+    loaded = _get_loaded_models()
+    for m in loaded:
+        if m in DISABLED_MODELS:
+            _unload_model(m)
+        elif m != target_model and "embed" not in m.lower():
+            _unload_model(m)
+    # Verify disabled models are gone
+    still_loaded = _get_loaded_models()
+    for m in still_loaded:
+        if m in DISABLED_MODELS:
+            print(f"  [local-llm] FAIL CLOSED: disabled model {m} still loaded after cleanup")
+            return False
+    return True
 
 
 # ── Toll gate: file-based lock so only one caller uses Ollama at a time ──
@@ -112,18 +207,24 @@ _gate = _OllamaGate()
 def warmup_ollama(model: str = None, timeout: int = 480) -> bool:
     """Ping Ollama to ensure model is loaded before batch analysis.
     Default 480s (8 min) to handle cold GPU model load.
-    Acquires the gate lock to prevent contention."""
+    Acquires the gate lock to prevent contention.
+    Respects disabled model list and CPU enforcement."""
     model = model or OLLAMA_MODEL
+    resolved, was_blocked = _resolve_model(model)
     if not _gate.acquire():
         print("  [local-llm] Warmup skipped — could not acquire gate")
         return False
     try:
+        _pre_call_cleanup(resolved)
+        options = {"num_predict": 5}
+        if FORCE_CPU:
+            options["num_gpu"] = 0
         payload = json.dumps({
-            "model": model,
+            "model": resolved,
             "stream": False,
             "messages": [{"role": "user", "content": "ready"}],
             "think": False,
-            "options": {"num_predict": 5}
+            "options": options
         }).encode()
         req = urllib.request.Request(
             OLLAMA_URL, data=payload,
@@ -131,7 +232,8 @@ def warmup_ollama(model: str = None, timeout: int = 480) -> bool:
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
-            print(f"  [local-llm] Ollama warmup OK — model {model} loaded")
+            print(f"  [local-llm] Ollama warmup OK — model {resolved} loaded"
+                  + (f" (blocked {model})" if was_blocked else ""))
             return True
     except Exception as e:
         print(f"  [local-llm] Ollama warmup failed: {e}")
@@ -141,40 +243,42 @@ def warmup_ollama(model: str = None, timeout: int = 480) -> bool:
 
 
 def _ensure_vram_clear(keep_model: str = None):
-    """Unload all models except the one we're about to use. Prevents VRAM overcommit."""
-    try:
-        ps_url = OLLAMA_URL.rsplit("/", 1)[0] + "/ps"
-        gen_url = OLLAMA_URL.rsplit("/", 2)[0] + "/api/generate"
-        req = urllib.request.Request(ps_url, method="GET")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-            for m in data.get("models", []):
-                name = m.get("name", "")
-                if name and name != keep_model:
-                    try:
-                        unload = json.dumps({"model": name, "keep_alive": 0}).encode()
-                        urllib.request.urlopen(
-                            urllib.request.Request(gen_url, data=unload,
-                                                   headers={"Content-Type": "application/json"}, method="POST"),
-                            timeout=10)
-                        print(f"  [local-llm] Unloaded {name} to free VRAM")
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+    """Unload all models except the one we're about to use. Prevents VRAM overcommit.
+    Uses safety-aware _pre_call_cleanup."""
+    _pre_call_cleanup(keep_model or OLLAMA_MODEL)
 
 
 def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
-                retries: int = 1) -> str | None:
-    """Try Ollama with retry logic. Returns text or None on failure/timeout.
+                retries: int = 1, caller: str = "") -> str | None:
+    """Try Ollama with retry logic and safety router.
+    Blocks disabled models, forces CPU when configured.
     Caller must hold the gate lock."""
-    _ensure_vram_clear(keep_model=model)
+    t0 = time.time()
+    loaded_before = _get_loaded_models()
+
+    # Resolve model — block disabled
+    resolved, was_blocked = _resolve_model(model)
+
+    # Pre-call cleanup
+    if not _pre_call_cleanup(resolved):
+        _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
+                     0, int((time.time() - t0) * 1000), "fail_closed_disabled_loaded",
+                     loaded_before=loaded_before, loaded_after=_get_loaded_models())
+        return None
+
+    # Build options with CPU enforcement
+    options = {"temperature": 0.3, "num_predict": 300}
+    if FORCE_CPU:
+        options["num_gpu"] = 0
+    elif FORCE_NUM_GPU != 99:
+        options["num_gpu"] = FORCE_NUM_GPU
+
     payload = json.dumps({
-        "model": model,
+        "model": resolved,
         "stream": False,
         "messages": [{"role": "user", "content": prompt}],
         "think": False,
-        "options": {"temperature": 0.3, "num_predict": 300, "num_gpu": 0}
+        "options": options
     }).encode()
 
     for attempt in range(retries + 1):
@@ -190,17 +294,30 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
                 text = data.get("message", {}).get("content", "").strip()
                 duration = round(data.get("total_duration", 0) / 1e9, 1)
                 tokens = data.get("eval_count", 0)
-                print(f"  [local-llm] Ollama OK — {duration}s, {tokens} tokens")
+                print(f"  [local-llm] Ollama OK — {resolved} {duration}s, {tokens} tokens"
+                      + (f" (blocked {model})" if was_blocked else ""))
+                _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
+                             options.get("num_gpu", -1),
+                             int((time.time() - t0) * 1000), "ok",
+                             loaded_before=loaded_before, loaded_after=_get_loaded_models())
                 return text if text else None
         except urllib.error.URLError as e:
             print(f"  [local-llm] Ollama unavailable: {e}")
-            return None  # no point retrying if server is down
+            _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
+                         options.get("num_gpu", -1),
+                         int((time.time() - t0) * 1000), "unavailable", str(e),
+                         loaded_before=loaded_before, loaded_after=_get_loaded_models())
+            return None
         except TimeoutError:
             print(f"  [local-llm] Ollama timeout after {timeout}s "
                   f"(attempt {attempt+1}/{retries+1})")
             if attempt < retries:
                 time.sleep(5)
                 continue
+            _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
+                         options.get("num_gpu", -1),
+                         int((time.time() - t0) * 1000), "timeout", f"{timeout}s",
+                         loaded_before=loaded_before, loaded_after=_get_loaded_models())
             return None
         except Exception as e:
             print(f"  [local-llm] Ollama error: {e} "
@@ -208,6 +325,10 @@ def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
             if attempt < retries:
                 time.sleep(3)
                 continue
+            _log_safety(caller, model, resolved, was_blocked, FORCE_CPU,
+                         options.get("num_gpu", -1),
+                         int((time.time() - t0) * 1000), "error", str(e),
+                         loaded_before=loaded_before, loaded_after=_get_loaded_models())
             return None
     return None
 
