@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""trade_close_llm_analyzer.py v4.0 — Local LLM close-of-trade analysis.
+"""trade_close_llm_analyzer.py v4.1 — Local LLM close-of-trade analysis.
 
 Supports both paper_trades and strategy_backtest_trades via --source flag.
 
@@ -7,9 +7,15 @@ Default: --dry-run (no model call, no DB write).
 --dry-run --allow-local-llm: calls local model, logs only.
 --apply --confirm-llm-review-write: writes trade_llm_reviews row.
 
+v4.1 changes (close_analysis_v2):
+- Direct Ollama call with num_predict=2048, format=json
+- JSON parser: extracts from fences, validates keys, fills defaults
+- Quality classifier: meaningful_structured_review / partial_review / empty_shell / model_error
+- Structured DB writes: maps parsed JSON to assessment columns
+
 Safety: local model only, no Grok, no broker/trade mutations.
 """
-import argparse, hashlib, json, logging, os, sys
+import argparse, hashlib, json, logging, os, re, sys, time, urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +28,20 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [llm-analyzer] %(message)s")
 log = logging.getLogger("llm_analyzer")
+
+# Ollama direct call config
+OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+OLLAMA_CHAT_URL = OLLAMA_BASE.rstrip("/") + "/api/chat"
+LLM_NUM_PREDICT = 2048
+
+# Required keys for a meaningful review
+REQUIRED_KEYS = {"summary", "thesis_assessment", "execution_assessment", "stop_assessment"}
+OPTIONAL_KEYS = {
+    "tca_assessment": None, "post_close_assessment": None, "backtest_comparison": None,
+    "strengths": [], "weaknesses": [], "lessons": [], "confidence": 0.0,
+    "data_quality_gaps": [], "facts": [], "inferences": [],
+    "safety": {"analysis_only": True, "orders_recommended": False, "broker_actions": False, "strategy_changes": False},
+}
 
 
 def _get_conn():
@@ -52,28 +72,21 @@ def _build_input(conn, paper_trade_id=None, symbol=None):
     tid = trade_data.get("id")
     sym = trade_data.get("symbol")
 
-    # Proposals
     cur = conn.cursor()
     cur.execute("SELECT id, strategy_id, signal_score, signal_decision FROM paper_trade_proposals WHERE symbol=%s ORDER BY created_at DESC LIMIT 3", [sym])
     proposals = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
 
-    # Stop audit
     cur.execute("SELECT event_type, payload, event_ts FROM lifecycle_events WHERE paper_trade_id=%s AND stage='stop_change' ORDER BY event_ts", [tid])
     stop_audit = [dict(zip([d[0] for d in cur.description], r)) for r in cur.fetchall()]
 
-    # TCA
     cur.execute("SELECT * FROM paper_execution_quality WHERE paper_trade_id=%s LIMIT 1", [tid])
     tca_cols = [d[0] for d in cur.description] if cur.description else []
     tca_row = cur.fetchone()
     tca = dict(zip(tca_cols, tca_row)) if tca_row else None
 
     return {
-        "trade": trade_data,
-        "proposals": proposals,
-        "stop_audit": stop_audit,
-        "tca": tca,
-        "symbol": sym,
-        "paper_trade_id": tid,
+        "trade": trade_data, "proposals": proposals, "stop_audit": stop_audit,
+        "tca": tca, "symbol": sym, "paper_trade_id": tid,
     }
 
 
@@ -85,14 +98,12 @@ def _build_backtest_input(conn, backtest_trade_id=None, symbol=None, limit=1):
     elif symbol:
         cur.execute("SELECT * FROM strategy_backtest_trades WHERE symbol=%s ORDER BY id DESC LIMIT %s", [symbol, limit])
     else:
-        # Batch mode: find unreviewed backtest trades
         cur.execute("""
             SELECT sbt.* FROM strategy_backtest_trades sbt
             LEFT JOIN trade_llm_reviews tlr
               ON tlr.backtest_trade_id = sbt.id AND tlr.source_table = 'strategy_backtest_trades'
             WHERE tlr.id IS NULL
-            ORDER BY sbt.id
-            LIMIT %s
+            ORDER BY sbt.id LIMIT %s
         """, [limit])
 
     cols = [d[0] for d in cur.description] if cur.description else []
@@ -106,19 +117,11 @@ def _build_backtest_input(conn, backtest_trade_id=None, symbol=None, limit=1):
         tid = trade_data.get("id")
         sym = trade_data.get("symbol")
         strategy = trade_data.get("strategy_id", "")
-
         snapshots.append({
-            "trade": trade_data,
-            "proposals": [],
-            "stop_audit": [],
-            "tca": None,
-            "symbol": sym,
-            "backtest_trade_id": tid,
-            "paper_trade_id": None,
-            "source_table": "strategy_backtest_trades",
-            "strategy_id": strategy,
+            "trade": trade_data, "proposals": [], "stop_audit": [], "tca": None,
+            "symbol": sym, "backtest_trade_id": tid, "paper_trade_id": None,
+            "source_table": "strategy_backtest_trades", "strategy_id": strategy,
         })
-
     return snapshots
 
 
@@ -126,17 +129,144 @@ def _hash_input(snapshot):
     return hashlib.sha256(json.dumps(snapshot, default=str, sort_keys=True).encode()).hexdigest()[:16]
 
 
-def _write_review_row(conn, snapshot, input_hash, args, model_output=None, model_error=None):
-    """Write a trade_llm_reviews row for --apply mode."""
+# ── JSON Parser ──────────────────────────────────────────────────────
+def _extract_json(raw_text):
+    """Extract JSON object from model response. Handles pure JSON, markdown fences, and surrounding prose."""
+    if not raw_text or not raw_text.strip():
+        return None, "empty_response"
+
+    text = raw_text.strip()
+
+    # Try 1: pure JSON
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            return obj, None
+    except json.JSONDecodeError:
+        pass
+
+    # Try 2: markdown fences ```json ... ``` or ``` ... ```
+    fence_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', text, re.DOTALL)
+    if fence_match:
+        try:
+            obj = json.loads(fence_match.group(1).strip())
+            if isinstance(obj, dict):
+                return obj, None
+        except json.JSONDecodeError:
+            pass
+
+    # Try 3: find first { ... } block
+    brace_start = text.find('{')
+    if brace_start >= 0:
+        depth = 0
+        for i in range(brace_start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(text[brace_start:i+1])
+                        if isinstance(obj, dict):
+                            return obj, None
+                    except json.JSONDecodeError:
+                        break
+
+    return None, "json_parse_failed"
+
+
+def _validate_and_fill(parsed):
+    """Validate required keys, fill optional defaults. Returns (filled_dict, missing_required)."""
+    if not parsed or not isinstance(parsed, dict):
+        return None, list(REQUIRED_KEYS)
+
+    missing = [k for k in REQUIRED_KEYS if not parsed.get(k)]
+
+    # Fill optional keys with defaults
+    for key, default in OPTIONAL_KEYS.items():
+        if key not in parsed or parsed[key] is None:
+            parsed[key] = default if not isinstance(default, (list, dict)) else (default.copy() if isinstance(default, dict) else list(default))
+
+    return parsed, missing
+
+
+def _classify_quality(parsed, missing_required, parse_error):
+    """Classify review quality."""
+    if parse_error:
+        return "model_error" if parse_error == "empty_response" else "empty_shell"
+    if not parsed:
+        return "empty_shell"
+    if len(missing_required) == 0:
+        has_lessons = bool(parsed.get("lessons"))
+        has_two_assessments = sum(1 for k in ["thesis_assessment", "execution_assessment", "stop_assessment", "tca_assessment"]
+                                  if parsed.get(k)) >= 2
+        if has_lessons and has_two_assessments:
+            return "meaningful_structured_review"
+        return "partial_review"
+    if len(missing_required) <= 2:
+        return "partial_review"
+    return "missing_data"
+
+
+# ── Direct Ollama Call ───────────────────────────────────────────────
+def _call_ollama_direct(prompt, model="qwen3:14b", timeout=180):
+    """Call Ollama directly with JSON format mode and higher token limit.
+    Bypasses local_llm.py to avoid the 300-token cap."""
+    payload = json.dumps({
+        "model": model,
+        "stream": False,
+        "messages": [{"role": "user", "content": prompt}],
+        "think": False,
+        "format": "json",
+        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT},
+    }).encode()
+
+    req = urllib.request.Request(
+        OLLAMA_CHAT_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read())
+        text = data.get("message", {}).get("content", "").strip()
+        duration = round(data.get("total_duration", 0) / 1e9, 1)
+        tokens = data.get("eval_count", 0)
+        log.info(f"Ollama direct: {duration}s, {tokens} tokens, {len(text)} chars")
+        return text if text else None
+
+
+# ── DB Writer ────────────────────────────────────────────────────────
+def _write_review_row(conn, snapshot, input_hash, args, parsed_output, raw_output, classification, model_error=None):
+    """Write a trade_llm_reviews row with structured field mapping."""
     cur = conn.cursor()
+
+    summary = (parsed_output or {}).get("summary", f"LLM review for {snapshot['symbol']}")
+    status_map = {
+        "meaningful_structured_review": "complete",
+        "partial_review": "partial",
+        "missing_data": "missing_data",
+        "empty_shell": "error",
+        "model_error": "error",
+    }
+    status = status_map.get(classification, "error")
+
     cur.execute("""
         INSERT INTO trade_llm_reviews
             (paper_trade_id, backtest_trade_id, source_table, symbol, review_stage,
              prompt_version, model_name, model_provider,
-             input_snapshot_hash, output_payload, summary, status, error_message, created_at)
+             input_snapshot_hash, output_payload, summary, status,
+             thesis_assessment, execution_assessment, stop_assessment, tca_assessment,
+             post_close_assessment, backtest_comparison,
+             strengths, weaknesses, lessons, confidence, data_quality_gaps,
+             error_message, created_at)
         VALUES (%s, %s, %s, %s, 'close_analysis',
                 %s, %s, 'local',
-                %s, %s, %s, %s, %s, now())
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, now())
         RETURNING id
     """, [
         snapshot.get("paper_trade_id"),
@@ -146,9 +276,20 @@ def _write_review_row(conn, snapshot, input_hash, args, model_output=None, model
         args.prompt_version,
         args.model_name,
         input_hash,
-        json.dumps(model_output, default=str) if model_output else None,
-        f"LLM review for {snapshot['symbol']}",
-        "dry_run" if args.dry_run else "complete",
+        json.dumps(parsed_output or raw_output, default=str) if (parsed_output or raw_output) else None,
+        summary,
+        status,
+        (parsed_output or {}).get("thesis_assessment"),
+        (parsed_output or {}).get("execution_assessment"),
+        (parsed_output or {}).get("stop_assessment"),
+        (parsed_output or {}).get("tca_assessment"),
+        (parsed_output or {}).get("post_close_assessment"),
+        (parsed_output or {}).get("backtest_comparison"),
+        json.dumps((parsed_output or {}).get("strengths", [])),
+        json.dumps((parsed_output or {}).get("weaknesses", [])),
+        json.dumps((parsed_output or {}).get("lessons", [])),
+        (parsed_output or {}).get("confidence"),
+        json.dumps((parsed_output or {}).get("data_quality_gaps", [])),
         model_error,
     ])
     row_id = cur.fetchone()[0]
@@ -157,7 +298,7 @@ def _write_review_row(conn, snapshot, input_hash, args, model_output=None, model
 
 
 def main():
-    p = argparse.ArgumentParser(description="LLM Close-of-Trade Analyzer v4.0")
+    p = argparse.ArgumentParser(description="LLM Close-of-Trade Analyzer v4.1")
     p.add_argument("--dry-run", action="store_true", default=True)
     p.add_argument("--apply", action="store_true")
     p.add_argument("--allow-local-llm", action="store_true")
@@ -190,10 +331,8 @@ def main():
     # Build snapshots based on source
     if args.source == "backtest":
         snapshots = _build_backtest_input(
-            conn,
-            backtest_trade_id=args.backtest_trade_id,
-            symbol=args.symbol,
-            limit=args.limit,
+            conn, backtest_trade_id=args.backtest_trade_id,
+            symbol=args.symbol, limit=args.limit,
         )
     else:
         snap = _build_input(conn, paper_trade_id=args.paper_trade_id, symbol=args.symbol)
@@ -237,42 +376,65 @@ def main():
             },
         }
 
-        model_output = None
+        raw_output = None
+        parsed_output = None
+        classification = None
         model_error = None
 
         if args.allow_local_llm:
             log.info(f"Calling local LLM for {snapshot['symbol']}...")
             try:
-                from local_llm import generate as query_local_llm
+                # Build prompt
                 prompt_path = PROJECT_ROOT / "scripts" / "prompts" / f"llm_backtesting_{args.prompt_version}.md"
-                prompt_template = prompt_path.read_text() if prompt_path.exists() else "Analyze this trade: {trade_json}"
+                prompt_template = prompt_path.read_text() if prompt_path.exists() else "Analyze this trade and return JSON: {trade_json}"
                 prompt = prompt_template.replace("{trade_json}", json.dumps(snapshot["trade"], default=str))
                 prompt = prompt.replace("{proposal_json}", json.dumps(snapshot.get("proposals", []), default=str))
                 prompt = prompt.replace("{stop_audit_json}", json.dumps(snapshot.get("stop_audit", []), default=str))
                 prompt = prompt.replace("{tca_json}", json.dumps(snapshot.get("tca"), default=str))
                 prompt = prompt.replace("{trace_json}", "{}")
 
-                response = query_local_llm(prompt, timeout=120, fallback=False, caller="trade_close_llm_analyzer", process_type="BACKTEST_REVIEW")
+                # Direct Ollama call with JSON format mode and 2048 tokens
+                raw_output = _call_ollama_direct(prompt, model=args.model_name, timeout=180)
                 result["model_called"] = True
-                result["model_output_preview"] = str(response)[:500] if response else "empty"
-                model_output = response
-                result["status"] = "dry_run_with_model" if args.dry_run else "complete"
-                log.info(f"Model response received ({len(str(response))} chars)")
+
+                if raw_output:
+                    parsed_output, parse_error = _extract_json(raw_output)
+                    if parsed_output:
+                        parsed_output, missing = _validate_and_fill(parsed_output)
+                        classification = _classify_quality(parsed_output, missing, None)
+                        if missing:
+                            log.warning(f"Missing required keys: {missing}")
+                    else:
+                        classification = _classify_quality(None, [], parse_error)
+                        model_error = parse_error
+                        log.warning(f"JSON parse failed: {parse_error}")
+                else:
+                    classification = "model_error"
+                    model_error = "empty_response"
+                    log.warning("Model returned empty response")
+
+                result["model_output_preview"] = str(raw_output)[:500] if raw_output else "empty"
+                result["classification"] = classification
+                result["parsed_fields"] = list((parsed_output or {}).keys())
+                result["status"] = f"dry_run_with_model_{classification}" if args.dry_run else classification
+                log.info(f"Classification: {classification}")
+
             except Exception as e:
                 result["model_called"] = True
                 result["model_error"] = str(e)
                 model_error = str(e)
+                classification = "model_error"
+                result["classification"] = classification
                 result["status"] = "model_error"
                 log.warning(f"Model call failed: {e}")
 
         # Write DB row in --apply mode
         if args.apply and args.confirm_llm_review_write:
             try:
-                row_id = _write_review_row(conn, snapshot, input_hash, args, model_output, model_error)
+                row_id = _write_review_row(conn, snapshot, input_hash, args, parsed_output, raw_output, classification, model_error)
                 result["db_row_written"] = True
                 result["review_row_id"] = row_id
-                result["status"] = "complete" if model_output else "partial_review"
-                log.info(f"Review row #{row_id} written for {snapshot['symbol']}")
+                log.info(f"Review row #{row_id} written for {snapshot['symbol']} ({classification})")
             except Exception as e:
                 result["db_write_error"] = str(e)
                 log.error(f"DB write failed: {e}")
