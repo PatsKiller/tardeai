@@ -12,6 +12,7 @@ import StopProofPanel from '../components/StopProofPanel';
 import ExecutionTimingPanel from '../components/ExecutionTimingPanel';
 import StopTrailingControlPanel from '../components/StopTrailingControlPanel';
 import JournalLearningWorkspace from '../components/JournalLearningWorkspace';
+import UnifiedTradeInspector from '../components/UnifiedTradeInspector';
 import StopChangeAuditPanel from '../components/StopChangeAuditPanel';
 import ProposalDedupPanel from '../components/ProposalDedupPanel';
 
@@ -150,6 +151,7 @@ function InspectorPanel({ s, set }: { s: Inspector; set: (x: Inspector) => void 
 
 export default function ATMControlRoom() {
   const [life, setLife] = useState<R>({}); const [journal, setJournal] = useState<R | null>(null); const [journalSource, setJournalSource] = useState('unavailable'); const [overdue, setOverdue] = useState<R>({}); const [manual, setManual] = useState<R>({}); const [recon, setRecon] = useState<R>({}); const [loading, setLoading] = useState(false); const [err, setErr] = useState<string | null>(null); const [inspector, setInspector] = useState<Inspector>(emptyInspector);
+  const [lifecycleQuery, setLifecycleQuery] = useState<{symbol?: string; paperTradeId?: number} | null>(null);
   function unwrap(v: any) { return v?.data || v || {}; }
   async function refresh() { setLoading(true); setErr(null); try { const [l, j, o, m, c] = await Promise.allSettled([getJson(API.lifecycle), firstOk(API.journalCandidates), getJson(API.overdue), getJson(API.manualClose), getJson(API.reconciliation)]); if (l.status === 'fulfilled') setLife(unwrap(l.value)); else throw l.reason; if (j.status === 'fulfilled') { const jd = j.value.data; setJournal(jd?.data || jd); setJournalSource(j.value.url); } if (o.status === 'fulfilled') setOverdue(unwrap(o.value)); if (m.status === 'fulfilled') setManual(unwrap(m.value)); if (c.status === 'fulfilled') setRecon(unwrap(c.value)); } catch (e: any) { setErr(e.message || String(e)); } finally { setLoading(false); } }
   useEffect(() => { refresh(); }, []);
@@ -175,7 +177,9 @@ export default function ATMControlRoom() {
     <JournalLearningWorkspace compact />
     <LifecycleTracePanel />
     <ProposalDedupPanel />
-    <InspectorPanel s={inspector} set={setInspector} /></div>;
+    <InspectorPanel s={inspector} set={setInspector} />
+    {lifecycleQuery && <UnifiedTradeInspector symbol={lifecycleQuery.symbol} paperTradeId={lifecycleQuery.paperTradeId} onClose={() => setLifecycleQuery(null)} />}
+    </div>;
 }
 function safeActions(title: string) { const out = ['Open records', 'Inspect raw data']; if (title.toLowerCase().includes('actionable')) out.push('Review stop', 'Prepare paper close preview', 'Open journal'); if (title.toLowerCase().includes('gap')) out.push('Review reconciliation reason', 'Fix DB state after confirmation'); return out; }
 function blockedActions(title: string) { return ['Live order placement', 'Automatic close', 'Automatic stop cancellation/replacement', 'Changing ATM mode']; }

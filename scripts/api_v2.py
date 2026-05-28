@@ -19456,6 +19456,54 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
 
+    # ── v3.7 Unified Trade Lifecycle Inspector ────────────────────────
+    if base_path == "/api/v2/lifecycle/trade-inspector" and method == "GET":
+        try:
+            import os as _os_ti, datetime as _dt_ti, sys as _sys_ti
+            _sys_ti.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+            from trade_inspector import resolve_identity, build_trade_inspector
+
+            _ti_q = {
+                "symbol": (query or {}).get("symbol"),
+                "paper_trade_id": (query or {}).get("paper_trade_id"),
+                "trace_id": (query or {}).get("trace_id"),
+                "proposal_id": (query or {}).get("proposal_id"),
+                "strategy_id": (query or {}).get("strategy_id"),
+                "account": (query or {}).get("account"),
+            }
+
+            identity = resolve_identity(
+                _db_query, symbol=_ti_q["symbol"],
+                paper_trade_id=int(_ti_q["paper_trade_id"]) if _ti_q.get("paper_trade_id") else None,
+                trace_id=_ti_q.get("trace_id"),
+                proposal_id=_ti_q.get("proposal_id"),
+                strategy_id=_ti_q.get("strategy_id"),
+                account=_ti_q.get("account"))
+
+            if identity.get("resolution_method") == "none":
+                return 400, {"ok": False, "error": "Provide symbol, paper_trade_id, trace_id, or proposal_id"}
+
+            payload = build_trade_inspector(_db_query, identity)
+
+            return 200, {"ok": True, "data": {
+                "generated_at": _dt_ti.datetime.now(_dt_ti.timezone.utc).isoformat(),
+                "query": _ti_q,
+                "resolved_identity": identity,
+                **payload,
+                "safe_actions": ["Review lifecycle", "Check data quality", "View raw data"],
+                "blocked_actions": ["Place order", "Modify stop", "Cancel order", "Run LLM", "Run backtest"],
+                "safety": {
+                    "read_only_endpoint": True,
+                    "orders_placed": "NONE", "broker_writes": "NONE",
+                    "paper_trades_updated": "NONE", "llm_calls_executed": "NONE",
+                    "alpaca_mode": _os_ti.environ.get("ALPACA_MODE", "unknown"),
+                    "llm_disable": _os_ti.environ.get("LLM_DISABLE_LIVE_EXECUTION", "unknown"),
+                },
+            }}
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            return 500, {"ok": False, "error": str(e)}
+
     # ── v3.6 Journal / Learning / Backtesting ─────────────────────────
     if base_path == "/api/v2/lifecycle/journal-learning-summary" and method == "GET":
         try:
