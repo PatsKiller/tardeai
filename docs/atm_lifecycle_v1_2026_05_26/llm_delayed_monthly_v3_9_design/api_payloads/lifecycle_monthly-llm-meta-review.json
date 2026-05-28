@@ -1,0 +1,10 @@
+{
+    "ok": true,
+    "data": {
+        "monthly_reviews": [],
+        "safety": {
+            "read_only_endpoint": true,
+            "model_calls_executed_by_endpoint": false
+        }
+    }
+}

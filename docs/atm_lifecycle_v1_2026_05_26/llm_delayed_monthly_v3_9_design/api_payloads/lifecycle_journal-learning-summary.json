@@ -1,0 +1,73 @@
+{
+    "ok": true,
+    "data": {
+        "generated_at": "2026-05-28T02:46:24.513377+00:00",
+        "open_trade_count": 4,
+        "closed_trade_count": 30,
+        "clean_closed_count": 12,
+        "ghost_count": 18,
+        "lifecycle_trace_count": 480,
+        "traced_closed_trade_count": 29,
+        "execution_quality_count": 13,
+        "stop_audit_event_count": 1,
+        "missed_proposal_count": 33,
+        "duplicate_groups": 13,
+        "duplicate_contamination_status": "contaminated",
+        "strategy_summary": [
+            {
+                "strategy_id": "swing_breakout",
+                "strategy_family": "swing",
+                "closed_trade_count": 3,
+                "win_rate": 1.0,
+                "total_pnl": 323.41
+            },
+            {
+                "strategy_id": "swing_trade",
+                "strategy_family": "swing",
+                "closed_trade_count": 2,
+                "win_rate": 0.5,
+                "total_pnl": 258.35
+            },
+            {
+                "strategy_id": "earnings_catalyst",
+                "strategy_family": "swing",
+                "closed_trade_count": 2,
+                "win_rate": 0.5,
+                "total_pnl": 246.77
+            },
+            {
+                "strategy_id": "momentum_scalp",
+                "strategy_family": "momentum",
+                "closed_trade_count": 2,
+                "win_rate": 0.0,
+                "total_pnl": -245.52
+            },
+            {
+                "strategy_id": "dividend_growth_compounder",
+                "strategy_family": "income",
+                "closed_trade_count": 2,
+                "win_rate": 0.5,
+                "total_pnl": 22.46
+            },
+            {
+                "strategy_id": "screener",
+                "strategy_family": "other",
+                "closed_trade_count": 1,
+                "win_rate": 1.0,
+                "total_pnl": 202.8
+            }
+        ],
+        "data_quality_gaps": [
+            {
+                "gap": "untraced_trades",
+                "count": 451
+            }
+        ],
+        "safety": {
+            "read_only_endpoint": true,
+            "orders_placed": "NONE",
+            "paper_trades_updated": "NONE",
+            "alpaca_mode": "paper"
+        }
+    }
+}
