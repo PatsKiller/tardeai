@@ -57,6 +57,10 @@ export default function Backtesting() {
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null)
   const [selectedResult, setSelectedResult] = useState<BtResult | null>(null)
   const [runFilter, setRunFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [brokerFilter, setBrokerFilter] = useState('')
+  const [accountFilter, setAccountFilter] = useState('')
 
   useEffect(() => {
     (async () => {
@@ -215,6 +219,42 @@ export default function Backtesting() {
           <button onClick={() => setSelectedStrategy(null)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 14, padding: 0 }}>x</button>
         </div>
       )}
+
+      {/* Global Filters */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', fontWeight: 600 }}>Filters</span>
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} placeholder="From"
+          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }} />
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>to</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} placeholder="To"
+          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }} />
+        <select value={brokerFilter} onChange={e => setBrokerFilter(e.target.value)}
+          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }}>
+          <option value="">All Brokers</option>
+          <option value="alpaca">Alpaca</option>
+          <option value="schwab">Schwab</option>
+          <option value="tastytrade">Tastytrade</option>
+          <option value="interactive_brokers">Interactive Brokers</option>
+          <option value="tradier">Tradier</option>
+          <option value="tradestation">TradeStation</option>
+          <option value="etrade">E*TRADE</option>
+        </select>
+        <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)}
+          style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }}>
+          <option value="">All Accounts</option>
+          <option value="alpaca_paper">Alpaca Paper</option>
+          <option value="schwab_taxable">Schwab Taxable</option>
+          <option value="schwab_roth_ira">Schwab Roth IRA</option>
+          <option value="schwab_rollover_ira">Schwab Rollover IRA</option>
+          <option value="fidelity_401k">Fidelity 401k</option>
+        </select>
+        {(dateFrom || dateTo || brokerFilter || accountFilter) && (
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setBrokerFilter(''); setAccountFilter('') }}
+            style={{ padding: '3px 8px', fontSize: 9, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, color: '#fca5a5', cursor: 'pointer' }}>
+            Clear
+          </button>
+        )}
+      </div>
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 24, overflowX: 'auto' }}>
