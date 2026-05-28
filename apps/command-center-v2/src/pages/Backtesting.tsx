@@ -12,7 +12,8 @@ interface BtTrade { simulated_trade_id: string; run_id: string; strategy_id: str
 interface MissedOpp { proposal_id: number; symbol: string; strategy_id: string; proposal_status: string; proposed_date: string; proposed_entry: number; proposed_target: number; proposed_stop: number; simulated_pnl: number | null; simulated_r: number | null; verdict: 'WOULD_WIN' | 'WOULD_LOSE' | null }
 interface MissedData { total_missed: number; would_win: number; would_lose: number; pnl_left_on_table: number; opportunities: MissedOpp[] }
 interface TrailData { trades: any[]; strategy_recommendations: any[]; summary: { total_analyzed: number; strategies_analyzed: number; avg_improvement: number } }
-interface FilterOptions { strategies: string[]; run_ids: string[]; run_types: string[]; brokers: string[]; accounts: string[]; minDate: string; maxDate: string; data_quality_gaps: string[] }
+interface BrokerAccount { broker: string; account_label: string }
+interface FilterOptions { strategies: string[]; run_ids: string[]; run_types: string[]; brokers: string[]; accounts: string[]; broker_accounts: BrokerAccount[]; minDate: string; maxDate: string; data_quality_gaps: string[] }
 
 function wrColor(wr: number) { return wr >= 55 ? '#22c55e' : wr >= 35 ? '#f59e0b' : '#ef4444' }
 function fmt$(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '-') + '$' + Math.abs(v).toFixed(2) }
@@ -65,7 +66,7 @@ export default function Backtesting() {
   const [runTypeFilter, setRunTypeFilter] = useState('replay_trades')
   const [brokerFilter, setBrokerFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], broker_accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
   const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter || brokerFilter || accountFilter)
   const mountedRef = useRef(false)
@@ -77,10 +78,10 @@ export default function Backtesting() {
     const [st, ru, re, tr, mi, trail, fo] = await Promise.allSettled([
       fetch('/api/v2/backtesting/status' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/runs' + qs).then(r => r.json()),
-      fetch('/api/v2/backtesting/results' + buildQS({ strategy: filters.strategy, run_type: filters.runType })).then(r => r.json()),
+      fetch('/api/v2/backtesting/results' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/trades' + qs).then(r => r.json()),
-      fetch('/api/v2/backtesting/missed-opportunities').then(r => r.json()),
-      fetch('/api/v2/backtesting/trailing-stop-analysis').then(r => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/v2/backtesting/missed-opportunities' + qs).then(r => r.json()),
+      fetch('/api/v2/backtesting/trailing-stop-analysis' + qs).then(r => r.json()).catch(() => ({ ok: false })),
       fetch('/api/v2/backtesting/filter-options').then(r => r.json()),
     ])
     if (st.status === 'fulfilled') setStatus(st.value.data ?? st.value)
@@ -106,6 +107,7 @@ export default function Backtesting() {
         run_types: fd.run_types || [],
         brokers: fd.brokers || [],
         accounts: fd.accounts || [],
+        broker_accounts: fd.broker_accounts || [],
         minDate: fd.minDate || '',
         maxDate: fd.maxDate || '',
         data_quality_gaps: fd.data_quality_gaps || [],
@@ -114,8 +116,8 @@ export default function Backtesting() {
     // Lazy loads
     try {
       const [mfe, opt] = await Promise.allSettled([
-        fetch('/api/v2/backtesting/mfe-analysis').then(r => r.json()),
-        fetch('/api/v2/backtesting/trailing-optimization').then(r => r.json()),
+        fetch('/api/v2/backtesting/mfe-analysis' + qs).then(r => r.json()),
+        fetch('/api/v2/backtesting/trailing-optimization' + qs).then(r => r.json()),
       ])
       if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
       if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
@@ -257,13 +259,16 @@ export default function Backtesting() {
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>to</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} min={filterOptions.minDate} max={filterOptions.maxDate}
           style={filterStyle} title="End date" />
-        <select value={brokerFilter} onChange={e => setBrokerFilter(e.target.value)} style={filterStyle}>
+        <select value={brokerFilter} onChange={e => { setBrokerFilter(e.target.value); setAccountFilter('') }} style={filterStyle}>
           <option value="">All Brokers</option>
           {(filterOptions.brokers || []).map(b => <option key={b} value={b}>{b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
         </select>
         <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)} style={filterStyle}>
           <option value="">All Accounts</option>
-          {(filterOptions.accounts || []).map(a => <option key={a} value={a}>{a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+          {(brokerFilter
+            ? (filterOptions.broker_accounts || []).filter(ba => ba.broker === brokerFilter).map(ba => ba.account_label)
+            : (filterOptions.accounts || [])
+          ).map(a => <option key={a} value={a}>{a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
         </select>
         <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={filterStyle}>
           <option value="">All Strategies</option>
