@@ -24,9 +24,30 @@ Execution, Stops, Reconciliation, Journal, Learning, Backtest, Data Quality, Raw
 - No writes, no orders, no broker actions, no mutations
 - Uses identity resolution: paper_trade_id > trace_id > proposal_id > symbol+strategy
 
+## LLM Review Integration — v3.8 Forward Hook
+
+v3.7 reserves an "LLM Review" tab in the inspector. v3.7 does NOT run LLMs.
+
+The tab displays stored LLM review data if it exists:
+- close_analysis_status: not_generated | complete | error
+- delayed_review_status: not_generated | complete | error
+- monthly_meta_review_status: not_generated | complete | error
+- latest_llm_review_timestamp
+- model_used
+- confidence / data quality caveat
+- key lessons (if generated)
+
+If no LLM analysis exists, shows: "LLM review not yet generated for this trade."
+
+v3.8 will implement the actual LLM analysis pipeline with three stages:
+1. Close-of-trade analysis (local 3.14B LLM, at close)
+2. Delayed post-close review (local LLM, ~1 week after close)
+3. Monthly meta-review (Grok, monthly)
+
 ## What v3.7 Will NOT Do
 - No new schema
 - No new tables
 - No trade actions
 - No broker writes
 - No backtest execution
+- No LLM model calls

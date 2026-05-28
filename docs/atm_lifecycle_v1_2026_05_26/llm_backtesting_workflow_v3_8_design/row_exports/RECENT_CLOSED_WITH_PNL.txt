@@ -1,0 +1,14 @@
+ id | symbol |        strategy_id         | entry_price | exit_price |        exit_reason        |        pnl         
+----+--------+----------------------------+-------------+------------+---------------------------+--------------------
+ 38 | BLMN   | swing_trade                |        8.28 |            |                           |              38.12
+ 34 | APPS   | swing_breakout             |      6.5356 |       7.16 | position_closed_in_alpaca |             159.98
+ 33 | CMCSA  | dividend_growth_compounder |       24.97 |            |                           |               28.2
+ 31 | AGNC   | reit_income                |       10.22 |            |                           |              86.44
+ 29 | NVDA   | dividend_growth_compounder |       218.0 |   213.1001 | operator_stop_out         | -4.899900000000002
+ 28 | NWG    | dividend_growth_compounder |       15.84 |            |                           |               56.7
+ 27 | ASPN   | swing_trade                |        5.52 |      6.015 | target_hit                |             273.74
+ 24 | FLYW   | dividend_growth_compounder |       16.29 |      16.45 | stop_hit                  |              27.36
+ 22 | GCTS   | momentum_scalp             |        1.49 |       1.37 | stop_hit                  |             -225.0
+ 21 | INFU   | earnings_catalyst          |        8.61 |       9.34 | target_hit                |             261.57
+(10 rows)
+

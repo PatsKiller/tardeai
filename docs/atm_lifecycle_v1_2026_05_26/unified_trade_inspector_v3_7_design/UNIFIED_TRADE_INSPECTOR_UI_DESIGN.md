@@ -17,8 +17,17 @@ Full-width slide-out or modal with 12 tabs.
 8. Journal — win/loss, exit reason, lesson
 9. Learning — strategy performance, calibration
 10. Backtest — paper vs simulated comparison
-11. Data Quality — missing traces, TCA, stop audit, backtest links
-12. Raw — JSON dump of all source data
+11. LLM Review — close analysis, delayed review, monthly meta-review status
+12. Data Quality — missing traces, TCA, stop audit, backtest links, LLM review gaps
+13. Raw — JSON dump of all source data
+
+## LLM Review Tab Detail
+Shows for this trade:
+- Stage 1 close-of-trade analysis: status, model, generated_at, key findings
+- Stage 2 delayed post-close review: status, model, generated_at, outcome comparison
+- Stage 3 monthly meta-review: status, model, generated_at, pattern/lesson summary
+- "Not yet generated" if no analysis exists
+- Blocked actions: run model, modify journal, change strategy, place trade
 
 ## Rules
 - Read-only
