@@ -1,0 +1,712 @@
+[
+  {
+    "id": 814,
+    "symbol": "ADBE",
+    "strategy_id": "speculative_growth",
+    "entry_price": "516.0",
+    "exit_price": "557.28",
+    "pnl": "41.28",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 861,
+    "symbol": "AGMH",
+    "strategy_id": "speculative_growth",
+    "entry_price": "7.1",
+    "exit_price": "7.668",
+    "pnl": "0.568",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 856,
+    "symbol": "AMD",
+    "strategy_id": "core_growth_compounder",
+    "entry_price": "160.63",
+    "exit_price": "173.4804",
+    "pnl": "12.8504",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 832,
+    "symbol": "APAM",
+    "strategy_id": "speculative_growth",
+    "entry_price": "46.9574",
+    "exit_price": "44.6095",
+    "pnl": "-2.3479",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 833,
+    "symbol": "APAM",
+    "strategy_id": "speculative_growth",
+    "entry_price": "41.5677",
+    "exit_price": "39.4893",
+    "pnl": "-2.0784",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 820,
+    "symbol": "ARKG",
+    "strategy_id": "speculative_growth",
+    "entry_price": "32.67",
+    "exit_price": "31.0365",
+    "pnl": "-1.6335",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 829,
+    "symbol": "AXTI",
+    "strategy_id": "speculative_growth",
+    "entry_price": "2.8699",
+    "exit_price": "3.0995",
+    "pnl": "0.2296",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 830,
+    "symbol": "AXTI",
+    "strategy_id": "speculative_growth",
+    "entry_price": "8.9",
+    "exit_price": "8.455",
+    "pnl": "-0.445",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 837,
+    "symbol": "BNAI",
+    "strategy_id": "speculative_growth",
+    "entry_price": "4.05",
+    "exit_price": "3.8475",
+    "pnl": "-0.2025",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 872,
+    "symbol": "BRO",
+    "strategy_id": "recovery_watch",
+    "entry_price": "104.16",
+    "exit_price": "98.952",
+    "pnl": "-5.208",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 808,
+    "symbol": "DFSC",
+    "strategy_id": "speculative_growth",
+    "entry_price": "3.0",
+    "exit_price": "2.85",
+    "pnl": "-0.15",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 843,
+    "symbol": "EKSO",
+    "strategy_id": "speculative_growth",
+    "entry_price": "8.29",
+    "exit_price": "8.9532",
+    "pnl": "0.6632",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 809,
+    "symbol": "FATN",
+    "strategy_id": "swing_trade",
+    "entry_price": "3.53",
+    "exit_price": "3.3535",
+    "pnl": "-0.1765",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 818,
+    "symbol": "FUSE",
+    "strategy_id": "speculative_growth",
+    "entry_price": "2.96",
+    "exit_price": "2.812",
+    "pnl": "-0.148",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 852,
+    "symbol": "GSIT",
+    "strategy_id": "speculative_growth",
+    "entry_price": "12.7201",
+    "exit_price": "12.0841",
+    "pnl": "-0.636",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 827,
+    "symbol": "GXAI",
+    "strategy_id": "speculative_growth",
+    "entry_price": "2.0199",
+    "exit_price": "1.9189",
+    "pnl": "-0.101",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 849,
+    "symbol": "IBIO",
+    "strategy_id": "speculative_growth",
+    "entry_price": "2.0187",
+    "exit_price": "1.9178",
+    "pnl": "-0.1009",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 823,
+    "symbol": "IVF",
+    "strategy_id": "speculative_growth",
+    "entry_price": "1.56",
+    "exit_price": "1.6848",
+    "pnl": "0.1248",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 865,
+    "symbol": "LASE",
+    "strategy_id": "swing_breakout",
+    "entry_price": "4.04",
+    "exit_price": "4.3632",
+    "pnl": "0.3232",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 847,
+    "symbol": "MSGM",
+    "strategy_id": "speculative_growth",
+    "entry_price": "5.23",
+    "exit_price": "4.9685",
+    "pnl": "-0.2615",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 850,
+    "symbol": "NERV",
+    "strategy_id": "speculative_growth",
+    "entry_price": "11.02",
+    "exit_price": "10.469",
+    "pnl": "-0.551",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 824,
+    "symbol": "NUWE",
+    "strategy_id": "recovery_watch",
+    "entry_price": "4.37",
+    "exit_price": "4.1515",
+    "pnl": "-0.2185",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 810,
+    "symbol": "PFE",
+    "strategy_id": "dividend_growth_compounder",
+    "entry_price": "25.4862",
+    "exit_price": "24.2119",
+    "pnl": "-1.2743",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 811,
+    "symbol": "PFE",
+    "strategy_id": "dividend_growth_compounder",
+    "entry_price": "26.0178",
+    "exit_price": "24.7169",
+    "pnl": "-1.3009",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 812,
+    "symbol": "PFE",
+    "strategy_id": "dividend_growth_compounder",
+    "entry_price": "25.0258",
+    "exit_price": "23.7745",
+    "pnl": "-1.2513",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 813,
+    "symbol": "PFE",
+    "strategy_id": "dividend_growth_compounder",
+    "entry_price": "26.4581",
+    "exit_price": "27.3781",
+    "pnl": "0.92",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 816,
+    "symbol": "PHIO",
+    "strategy_id": "speculative_growth",
+    "entry_price": "1.3714",
+    "exit_price": "1.3028",
+    "pnl": "-0.0686",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 831,
+    "symbol": "SHPH",
+    "strategy_id": "speculative_growth",
+    "entry_price": "4.29",
+    "exit_price": "4.0755",
+    "pnl": "-0.2145",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 845,
+    "symbol": "SOPA",
+    "strategy_id": "recovery_watch",
+    "entry_price": "2.3256",
+    "exit_price": "2.5116",
+    "pnl": "0.186",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 857,
+    "symbol": "SPRC",
+    "strategy_id": "swing_trade",
+    "entry_price": "6.38",
+    "exit_price": "6.8904",
+    "pnl": "0.5104",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 866,
+    "symbol": "SPRC",
+    "strategy_id": "swing_trade",
+    "entry_price": "4.51",
+    "exit_price": "4.8708",
+    "pnl": "0.3608",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 854,
+    "symbol": "STI",
+    "strategy_id": "speculative_growth",
+    "entry_price": "11.18",
+    "exit_price": "12.0744",
+    "pnl": "0.8944",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 821,
+    "symbol": "TRX",
+    "strategy_id": "speculative_growth",
+    "entry_price": "2.12",
+    "exit_price": "2.014",
+    "pnl": "-0.106",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 22,
+    "symbol": "XMTR",
+    "strategy_id": "bond_income",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 81,
+    "symbol": "XMTR",
+    "strategy_id": "cash_or_stable",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 141,
+    "symbol": "XMTR",
+    "strategy_id": "core_index",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 200,
+    "symbol": "XMTR",
+    "strategy_id": "covered_call_income",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 260,
+    "symbol": "XMTR",
+    "strategy_id": "earnings_post_momentum",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 319,
+    "symbol": "XMTR",
+    "strategy_id": "earnings_pre_buildup",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 378,
+    "symbol": "XMTR",
+    "strategy_id": "fib_retracement_bounce",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 444,
+    "symbol": "XMTR",
+    "strategy_id": "high_yield_income_bdc",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 503,
+    "symbol": "XMTR",
+    "strategy_id": "income_add",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 562,
+    "symbol": "XMTR",
+    "strategy_id": "international_dividend",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 631,
+    "symbol": "XMTR",
+    "strategy_id": "swing_breakout",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 661,
+    "symbol": "XMTR",
+    "strategy_id": "tax_loss_harvest",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 720,
+    "symbol": "XMTR",
+    "strategy_id": "all_signals",
+    "entry_price": "76.39",
+    "exit_price": "76.69",
+    "pnl": "0.31",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 780,
+    "symbol": "XMTR",
+    "strategy_id": "swing_breakout",
+    "entry_price": "76.39",
+    "exit_price": "75.07",
+    "pnl": "-1.31",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 801,
+    "symbol": "XMTR",
+    "strategy_id": "swing_breakout",
+    "entry_price": "79.25",
+    "exit_price": "83.95",
+    "pnl": "4.7",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 870,
+    "symbol": "XMTR",
+    "strategy_id": "sector_rotation",
+    "entry_price": "43.25",
+    "exit_price": "46.71",
+    "pnl": "3.46",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1111,
+    "symbol": "XMTR",
+    "strategy_id": "bond_income",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1189,
+    "symbol": "XMTR",
+    "strategy_id": "cash_or_stable",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1269,
+    "symbol": "XMTR",
+    "strategy_id": "core_index",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1347,
+    "symbol": "XMTR",
+    "strategy_id": "covered_call_income",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1426,
+    "symbol": "XMTR",
+    "strategy_id": "earnings_post_momentum",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1504,
+    "symbol": "XMTR",
+    "strategy_id": "earnings_pre_buildup",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1592,
+    "symbol": "XMTR",
+    "strategy_id": "high_yield_income_bdc",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1670,
+    "symbol": "XMTR",
+    "strategy_id": "income_add",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1748,
+    "symbol": "XMTR",
+    "strategy_id": "international_dividend",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1841,
+    "symbol": "XMTR",
+    "strategy_id": "swing_breakout",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 1875,
+    "symbol": "XMTR",
+    "strategy_id": "tax_loss_harvest",
+    "entry_price": "76.39",
+    "exit_price": "78.62",
+    "pnl": "2.23",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2037,
+    "symbol": "XMTR",
+    "strategy_id": "bond_income",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2116,
+    "symbol": "XMTR",
+    "strategy_id": "cash_or_stable",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2197,
+    "symbol": "XMTR",
+    "strategy_id": "core_index",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2276,
+    "symbol": "XMTR",
+    "strategy_id": "covered_call_income",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2356,
+    "symbol": "XMTR",
+    "strategy_id": "earnings_post_momentum",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2435,
+    "symbol": "XMTR",
+    "strategy_id": "earnings_pre_buildup",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2524,
+    "symbol": "XMTR",
+    "strategy_id": "high_yield_income_bdc",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2603,
+    "symbol": "XMTR",
+    "strategy_id": "income_add",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2682,
+    "symbol": "XMTR",
+    "strategy_id": "international_dividend",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2776,
+    "symbol": "XMTR",
+    "strategy_id": "swing_breakout",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  },
+  {
+    "id": 2810,
+    "symbol": "XMTR",
+    "strategy_id": "tax_loss_harvest",
+    "entry_price": "76.39",
+    "exit_price": "82.5",
+    "pnl": "6.11",
+    "entry_time": null,
+    "exit_time": null
+  }
+]

@@ -1,0 +1,1228 @@
+[
+  {
+    "trade_id": 464,
+    "symbol": "AXTI",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The analyst upgrade to a target >15% above current price and positive Phase 3 trial results support this classification.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth",
+      "watchlist_thesis mentions 'BUY signal. Analyst upgrade with target >15% above current price. The analyst upgrade to a target >15% above current price, positive Phase 3 trial results'",
+      "hold_days=148"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 2,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 469,
+    "symbol": "APAM",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth by enrichment.ticker_classification.strategy, and the watchlist thesis confirms a growth play. The hold period of 147 days aligns with the typical timeframe for this strategy.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth",
+      "hold_days=147"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 2,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 547,
+    "symbol": "ADBE",
+    "broker": "schwab",
+    "account": "schwab_roth_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade data indicates a swing trade with a hold period of 453 days, which aligns with the speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=speculative_growth",
+      "enrichment.watchlist.strategy=ADBE's price action shows a ranging regime with recent declines near support levels, suggesting caution for new entries; the current stop at $221.83 appears appropriate based on ATR rules, but portfol",
+      "hold_days=453"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 546,
+    "symbol": "ADBE",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play, and the hold period aligns with this strategy. The trade resulted in a loss, which is consistent with speculative growth strategies.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth",
+      "watchlist_thesis mentions 'ADBE's price action shows a ranging regime with recent declines near support levels, suggesting caution for new entries'",
+      "hold_days=148"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 472,
+    "symbol": "APAM",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "dividend_growth_compounder",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as dividend_growth_compounder in enrichment, and the watchlist thesis mentions a buying opportunity based on the 50-day moving average and RSI, aligning with the strategy's focus on income and compounding. The hold period of 127 days is consistent with a longer-term investment strategy.",
+    "evidence_used": [
+      "ticker_classification=dividend_growth_compounder",
+      "watchlist_strategy=income",
+      "watchlist_thesis mentions APAM is currently trading below its 50-day moving average, showing a potential buying opportunity.",
+      "hold_days=127"
+    ],
+    "missing_evidence": [
+      "no proposal data",
+      "no dividend evidence"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 468,
+    "symbol": "APAM",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "dividend_growth_compounder",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as dividend_growth_compounder in enrichment, and watchlist thesis confirms income intent. The hold period is consistent with this strategy.",
+    "evidence_used": [
+      "ticker_classification=dividend_growth_compounder",
+      "watchlist_strategy=income",
+      "watchlist_thesis mentions dividend/income/yield",
+      "hold_days=127"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 477,
+    "symbol": "PFE",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "dividend_growth_compounder",
+    "confidence": 0.85,
+    "reasoning": "The enrichment data strongly indicates a dividend growth compounder strategy due to the `ticker_classification` field set to 'dividend_growth_compounder' and the watchlist thesis confirming a positive sentiment and BUY signal with an income focus. The hold period of 244 days is consistent with this strategy.",
+    "evidence_used": [
+      "ticker_classification=dividend_growth_compounder",
+      "watchlist_strategy=income",
+      "watchlist_thesis mentions dividend/income/yield",
+      "hold_days=244"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 4,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 527,
+    "symbol": "BRO",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "recovery_watch",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'recovery_watch' strategy based on the ticker classification and a related thesis. The trade details align with this strategy \u2013 a sell after 11 days following a negative PnL.",
+    "evidence_used": [
+      "ticker_classification=recovery_watch",
+      "watchlist_strategy=core_holding",
+      "watchlist_thesis mentions BRO is currently priced above its 50-day and 200-day moving averages, suggesting a potential bullish trend.",
+      "hold_days=11"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 509,
+    "symbol": "BRO",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "recovery_watch",
+    "confidence": 0.8,
+    "reasoning": "The ticker classification indicates recovery_watch, and the watchlist thesis supports this with a 'BRO is currently priced above its 50-day and 200-day moving averages, suggesting a potential bullish trend.' The trade itself reflects a recovery thesis (bought after a dip).",
+    "evidence_used": [
+      "ticker_classification=recovery_watch",
+      "watchlist_strategy=core_holding",
+      "watchlist_thesis mentions recovery thesis"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 330,
+    "symbol": "GSIT",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade is a 0-day hold with a positive PnL, consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=GSIT: positive sentiment, HOLD signal. Material positive 8-K.",
+      "trade_pnl_pct=4.83",
+      "trade_hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 328,
+    "symbol": "GSIT",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The enrichment data strongly supports this classification.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=speculative_growth",
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=GSIT: positive sentiment, HOLD signal. Material positive 8-K.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 496,
+    "symbol": "XMTR",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "sector_rotation",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'sector_rotation' strategy based on the ticker classification and a screener source. The watchlist thesis confirms a 'core_holding' strategy, but the sector_rotation classification is the stronger signal given the screener source and catalyst information. The hold days are consistent with a sector rotation strategy.",
+    "evidence_used": [
+      "ticker_classification=sector_rotation",
+      "watchlist_strategy=core_holding",
+      "discovery_source=screener",
+      "proposal_catalyst=Xometry (NASDAQ:XMTR) Crushes Q1 Estimates, Raises Guidance, and Secures Strategic Partnership with Siemens"
+    ],
+    "missing_evidence": [
+      "no watchlist thesis details",
+      "no proposal data beyond catalyst"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 498,
+    "symbol": "XMTR",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "sector_rotation",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'sector_rotation' strategy based on 'ticker_classification' with a confidence of 0.7. The watchlist thesis also mentions a 'core_holding' strategy, which aligns with a sector rotation play. The catalyst information suggests an industrial sector focus.",
+    "evidence_used": [
+      "ticker_classification=sector_rotation",
+      "watchlist_strategy=core_holding",
+      "watchlist_thesis mentions HOLD signal",
+      "discovery_source=screener"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 267,
+    "symbol": "EKSO",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The short hold period (0 days) aligns with the speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=EKSO: positive sentiment, HOLD signal. FDA approval or positive Phase 3 trial.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 263,
+    "symbol": "EKSO",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The short hold duration (0 days) aligns with the speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=EKSO: positive sentiment, HOLD signal. FDA approval or positive Phase 3 trial.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 244,
+    "symbol": "ARKG",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The watchlist thesis details a strategy with an active stop loss and elevated portfolio heat, aligning with a speculative growth approach.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth",
+      "watchlist_thesis mentions 'ARKG at $29.63 remains above all key SMAs with neutral RSI 66.75 and an active stop at $27.71 (~6.5% below price) that satisfies the 2\u00d7ATR rule; elevated 7.4% portfolio heat argues against adding'",
+      "hold_days=15"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 425,
+    "symbol": "AGMH",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade was a 0-day hold with a positive PnL, consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=AGMH: neutral sentiment, HOLD signal. No catalyst identified.",
+      "trade_pnl_pct=8.73",
+      "trade_hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 430,
+    "symbol": "AGMH",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth by enrichment.ticker_classification.strategy, and the watchlist thesis confirms a HOLD signal with neutral sentiment. The short hold duration (0 days) aligns with this strategy.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=speculative_growth",
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=AGMH: neutral sentiment, HOLD signal. No catalyst identified.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 435,
+    "symbol": "LASE",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "swing_breakout",
+    "confidence": 0.8,
+    "reasoning": "The trade resulted in a positive PnL and a short hold period (0 days), consistent with a swing breakout strategy. The enrichment indicates a swing_trade strategy classification.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=swing_trade",
+      "trade_pnl=180.00",
+      "trade_hold_days=0"
+    ],
+    "missing_evidence": [
+      "no breakout price data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 364,
+    "symbol": "STI",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 360,
+    "symbol": "STI",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The short hold period (0 days) is consistent with this strategy.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 230,
+    "symbol": "SHPH",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker SHPH is classified as speculative_growth based on enrichment.ticker_classification.strategy. The watchlist thesis confirms a growth play.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 225,
+    "symbol": "SHPH",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker SHPH is classified as speculative_growth based on enrichment.ticker_classification.strategy. The watchlist thesis confirms a growth play.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 310,
+    "symbol": "IBIO",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 386,
+    "symbol": "AMD",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "core_growth_compounder",
+    "confidence": 0.85,
+    "reasoning": "The enrichment data indicates a 'core_growth_compounder' strategy with a confidence of 0.7. The watchlist thesis confirms a HOLD signal for AMD, aligning with the long-term growth profile associated with this strategy. The short hold duration (0 days) is consistent with a compounder strategy.",
+    "evidence_used": [
+      "ticker_classification=core_growth_compounder",
+      "watchlist_strategy=growth_etf",
+      "watchlist_thesis mentions HOLD signal",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 380,
+    "symbol": "AMD",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "core_growth_compounder",
+    "confidence": 0.85,
+    "reasoning": "The ticker AMD is classified as core_growth_compounder in the enrichment data. The watchlist thesis confirms a HOLD signal and neutral sentiment, aligning with a long-term growth strategy. The trade resulted in a positive PnL, consistent with this strategy.",
+    "evidence_used": [
+      "ticker_classification=core_growth_compounder",
+      "watchlist_strategy=growth_etf",
+      "watchlist_thesis mentions HOLD signal",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 441,
+    "symbol": "SPRC",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "swing_trade",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'swing_trade' strategy classification with a confidence of 0.7. The trade itself is a short-term (0 days) move with a positive PnL, which aligns with the swing_trade strategy.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=swing_trade",
+      "trade_hold_days=0",
+      "trade_pnl_pct=14.41"
+    ],
+    "missing_evidence": [
+      "no watchlist thesis"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 2,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 437,
+    "symbol": "SPRC",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "swing_trade",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'swing_trade' strategy with a confidence of 0.7, aligning with the trade's 0-day hold and profit. The trade also shows a positive PnL and a relatively small price movement.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=swing_trade",
+      "trade_id=437",
+      "trade_pnl=65.00",
+      "trade_pnl_pct=14.41"
+    ],
+    "missing_evidence": [
+      "watchlist_thesis",
+      "proposal_strategy"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 299,
+    "symbol": "MSGM",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 297,
+    "symbol": "MSGM",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 467,
+    "symbol": "AXTI",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth by enrichment.ticker_classification.strategy, and the watchlist thesis confirms a BUY signal with analyst upgrades and positive trial results. Hold period of 134 days is consistent with speculative growth strategies.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth",
+      "watchlist_thesis mentions 'BUY signal. Analyst upgrade with target >15% above current price. The analyst upgrade to a target >15% above current price, positive Phase 3 trial results, and insider purchase'",
+      "hold_days=134"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 4,
+    "symbol": "FATN",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "swing_trade",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as swing_trade in enrichment, and the trade details align with a short-term swing trade (0-day hold, small PnL).",
+    "evidence_used": [
+      "ticker_classification=swing_trade",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 295,
+    "symbol": "SGBX",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 293,
+    "symbol": "SGBX",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 165,
+    "symbol": "FUSE",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 163,
+    "symbol": "FUSE",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 220,
+    "symbol": "GXAI",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade is a quick in-and-out (0 days hold) with a positive PnL, consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=GXAI: positive sentiment, HOLD signal. Analyst upgrade with target >15% above current price.",
+      "trade_pnl_pct=2.98"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 218,
+    "symbol": "GXAI",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The short hold duration (0 days) aligns with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.ticker_classification=speculative_growth",
+      "enrichment.watchlist.strategy=core_holding",
+      "enrichment.watchlist.thesis=GXAI: positive sentiment, HOLD signal. Analyst upgrade with target >15% above current price.",
+      "trade_id=218"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 324,
+    "symbol": "NERV",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The enrichment data indicates a 'core_holding' strategy with a positive sentiment and catalyst expectations.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=NERV: positive sentiment, BUY signal. FDA approval or positive Phase 3 trial.",
+      "enrichment.watchlist.strategy=core_holding"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 318,
+    "symbol": "NERV",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The enrichment data indicates a 'core_holding' strategy with a positive sentiment and a catalyst based on FDA approval or Phase 3 trial results, aligning with a speculative growth investment.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=core_holding",
+      "watchlist_thesis mentions 'BUY signal. FDA approval or positive Phase 3 trial'",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 191,
+    "symbol": "TRX",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth based on enrichment.watchlist.strategy and watchlist thesis confirms a positive sentiment and HOLD signal. The short hold duration (0 days) is consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=TRX: positive sentiment, HOLD signal. Material positive 8-K.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 201,
+    "symbol": "TRX",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth based on enrichment.watchlist.strategy and watchlist thesis confirms a positive sentiment and HOLD signal. The short hold duration (0 days) is consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=TRX: positive sentiment, HOLD signal. Material positive 8-K.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 257,
+    "symbol": "BNAI",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade is a 0-day hold with a negative PnL, which aligns with the speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=BNAI \u2014 speculative growth",
+      "trade_hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 255,
+    "symbol": "BNAI",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade is a 0-day hold with a negative PnL, consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.watchlist.strategy=speculative_growth",
+      "enrichment.watchlist.thesis=BNAI \u2014 speculative growth",
+      "trade_hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 154,
+    "symbol": "PHIO",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The trade was a quick 0-day hold with a positive PnL, consistent with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.ticker_classification=speculative_growth",
+      "enrichment.watchlist.strategy=core_holding",
+      "enrichment.watchlist.thesis=PHIO: neutral sentiment, HOLD signal. No catalyst identified.",
+      "pnl_pct=2.82"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 151,
+    "symbol": "PHIO",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The short hold duration (0 days) aligns with a speculative growth strategy.",
+    "evidence_used": [
+      "enrichment.ticker_classification=speculative_growth",
+      "enrichment.watchlist.strategy=core_holding",
+      "enrichment.watchlist.thesis=PHIO: neutral sentiment, HOLD signal. No catalyst identified.",
+      "hold_days=0"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 216,
+    "symbol": "NUWE",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "recovery_watch",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'recovery_watch' strategy based on the ticker classification. The trade was a quick 0-day hold with a loss, consistent with a recovery thesis.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=recovery_watch",
+      "trade_hold_days=0",
+      "trade_pnl=-14.80"
+    ],
+    "missing_evidence": [
+      "watchlist_thesis",
+      "proposal_strategy"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 210,
+    "symbol": "NUWE",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "recovery_watch",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'recovery_watch' strategy based on ticker_classification. The trade was a quick 0-day hold with a negative PnL, consistent with a recovery thesis.",
+    "evidence_used": [
+      "ticker_classification=recovery_watch",
+      "hold_days=0",
+      "pnl=-14.80"
+    ],
+    "missing_evidence": [
+      "watchlist_thesis",
+      "catalyst_data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 2,
+    "symbol": "DFSC",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The enrichment data indicates a mid-cap industrial company in the aerospace & defense sector, which aligns with the speculative growth strategy.",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=defense_thesis",
+      "watchlist_thesis mentions DFSC is a mid-cap industrial company in the aerospace & defense sector with a strong competitive position in its core markets."
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 271,
+    "symbol": "SOPA",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "recovery_watch",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'recovery_watch' strategy based on the ticker classification and watchlist thesis. The trade was a short-term sell at a slight loss, consistent with a recovery thesis.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=recovery_watch",
+      "enrichment.watchlist.strategy=core_holding",
+      "enrichment.watchlist.thesis=SOPA \u2014 core holding",
+      "trade_pnl=-7.80",
+      "trade_hold_days=0"
+    ],
+    "missing_evidence": [
+      "no catalyst data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 269,
+    "symbol": "SOPA",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "recovery_watch",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'recovery_watch' strategy based on the ticker classification and watchlist thesis. The trade was a short-term sell (-7.80 PnL) which aligns with the recovery thesis.",
+    "evidence_used": [
+      "ticker_classification=recovery_watch",
+      "watchlist_strategy=core_holding",
+      "watchlist_thesis=SOPA \u2014 core holding"
+    ],
+    "missing_evidence": [
+      "no catalyst data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 442,
+    "symbol": "SPRC",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "swing_trade",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a swing_trade strategy with a confidence of 0.7. The trade resulted in a positive PnL and a hold period of 13 days, which aligns with the swing_trade strategy's typical hold duration. The ticker classification confirms this.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=swing_trade",
+      "trade_pnl_pct=55.03",
+      "trade_hold_days=13"
+    ],
+    "missing_evidence": [
+      "watchlist_thesis",
+      "proposal_strategy"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 438,
+    "symbol": "SPRC",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "swing_trade",
+    "confidence": 0.8,
+    "reasoning": "The enrichment data indicates a 'swing_trade' classification with a confidence of 0.7, aligning with the trade's 13-day hold period and positive PnL. The trade itself is a swing trade.",
+    "evidence_used": [
+      "enrichment.ticker_classification.strategy=swing_trade",
+      "hold_days=13",
+      "pnl_pct=55.03"
+    ],
+    "missing_evidence": [
+      "watchlist_thesis",
+      "proposal_strategy"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 206,
+    "symbol": "IVF",
+    "broker": "schwab",
+    "account": "schwab_rollover_ira",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 1,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  },
+  {
+    "trade_id": 212,
+    "symbol": "IVF",
+    "broker": "schwab",
+    "account": "schwab_taxable",
+    "strategy_id": "speculative_growth",
+    "confidence": 0.8,
+    "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play",
+    "evidence_used": [
+      "ticker_classification=speculative_growth",
+      "watchlist_strategy=speculative_growth"
+    ],
+    "missing_evidence": [
+      "no proposal data"
+    ],
+    "requires_review": false,
+    "source_table": "trade_transactions",
+    "bt_rows_updated": 0,
+    "validation_notes": null,
+    "llm_original_strategy": null
+  }
+]
