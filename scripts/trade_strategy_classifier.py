@@ -36,9 +36,9 @@ def _call_ollama(prompt, model="gemma3:4b", timeout=180):
     num_gpu = int(os.environ.get("LOCAL_LLM_NUM_GPU", "0"))
     payload = json.dumps({
         "model": model, "stream": False,
-        "options": {"temperature": 0.3, "num_predict": 256, "num_gpu": num_gpu},
+        "options": {"temperature": 0.3, "num_predict": 512, "num_gpu": num_gpu},
         "messages": [
-            {"role": "system", "content": "You are a trade strategy classifier. Return ONLY valid JSON. One strategy_id only."},
+            {"role": "system", "content": "You are a trade strategy classifier. Return ONLY valid JSON with no other text. Every array element must be a plain string."},
             {"role": "user", "content": prompt},
         ],
     }).encode()
@@ -50,20 +50,167 @@ def _call_ollama(prompt, model="gemma3:4b", timeout=180):
         return text if text else None
 
 
+def _fix_malformed_arrays(text):
+    """Fix common LLM JSON errors: colon-separated key:value in arrays like ["key": value]."""
+    # Replace patterns like ["key": value, "key2": value2] with ["key=value", "key2=value2"]
+    def fix_array(match):
+        content = match.group(1)
+        # Check if it looks like key:value pairs rather than strings
+        if re.search(r'"[^"]+"\s*:', content) and not re.search(r'^\s*\{', content.strip()):
+            # Convert "key": value pairs to "key=value" strings
+            pairs = re.findall(r'"([^"]+)"\s*:\s*("[^"]*"|[^,\]]+)', content)
+            if pairs:
+                fixed = ", ".join(f'"{k}={v.strip().strip(chr(34))}"' for k, v in pairs)
+                return f"[{fixed}]"
+        return match.group(0)
+    return re.sub(r'\[([^\[\]]+)\]', fix_array, text)
+
+
 def _parse_json(raw):
     if not raw:
         return None
+    text = raw.strip()
+
+    # Try 1: direct parse
     try:
-        return json.loads(raw)
+        return json.loads(text)
     except json.JSONDecodeError:
         pass
-    m = re.search(r'\{.*\}', raw, re.DOTALL)
-    if m:
+
+    # Try 2: markdown fences
+    fence = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', text, re.DOTALL)
+    if fence:
+        fenced = fence.group(1).strip()
         try:
-            return json.loads(m.group())
+            return json.loads(fenced)
         except json.JSONDecodeError:
-            pass
+            # Try fixing malformed arrays in fenced content
+            try:
+                return json.loads(_fix_malformed_arrays(fenced))
+            except json.JSONDecodeError:
+                pass
+
+    # Try 3: extract { ... } block
+    brace_start = text.find('{')
+    if brace_start >= 0:
+        depth = 0
+        for i in range(brace_start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    block = text[brace_start:i+1]
+                    try:
+                        return json.loads(block)
+                    except json.JSONDecodeError:
+                        # Try fixing malformed arrays
+                        try:
+                            return json.loads(_fix_malformed_arrays(block))
+                        except json.JSONDecodeError:
+                            pass
+                    break
+
+    # Try 4: fix whole text
+    try:
+        return json.loads(_fix_malformed_arrays(text))
+    except json.JSONDecodeError:
+        pass
+
     return None
+
+
+# ── Deterministic post-validation ──────────────────────────────────────
+_DIVIDEND_EVIDENCE_KEYWORDS = {
+    "dividend", "income", "yield", "compounding", "reinvestment",
+    "aristocrat", "dividend king", "payout", "distribution",
+}
+
+
+def _post_validate(parsed):
+    """Apply rule-based validation after LLM classification.
+    Returns (validated_parsed, validation_notes)."""
+    notes = []
+    if not parsed or not isinstance(parsed, dict):
+        return parsed, ["no_parsed_output"]
+
+    strategy = parsed.get("strategy_id", "")
+    confidence = parsed.get("confidence", 0)
+    reasoning = parsed.get("reasoning", "").lower()
+    evidence_used = parsed.get("evidence_used", [])
+    missing_evidence = parsed.get("missing_evidence", [])
+
+    # Ensure required fields exist
+    parsed.setdefault("evidence_used", [])
+    parsed.setdefault("missing_evidence", [])
+    parsed.setdefault("requires_review", confidence < 0.7)
+
+    # Rule 1: dividend_growth_compounder needs dividend-specific evidence
+    if strategy == "dividend_growth_compounder":
+        evidence_str = " ".join(str(e).lower() for e in evidence_used)
+        has_dividend_evidence = any(kw in evidence_str for kw in _DIVIDEND_EVIDENCE_KEYWORDS)
+        if not has_dividend_evidence:
+            notes.append(f"DOWNGRADED: {strategy} -> needs_review (no dividend-specific evidence in evidence_used)")
+            parsed["strategy_id"] = "needs_review"
+            parsed["requires_review"] = True
+            parsed["confidence"] = min(confidence, 0.5)
+            parsed.setdefault("validation_notes", []).append(
+                "Downgraded from dividend_growth_compounder: no dividend/income evidence found"
+            )
+
+    # Rule 2: reasoning claims "dividend stock" without evidence
+    if parsed.get("strategy_id") == "dividend_growth_compounder":
+        unsupported_claims = ["dividend stock", "dividend paying", "dividend-paying"]
+        reasoning_has_claim = any(c in reasoning for c in unsupported_claims)
+        evidence_supports = any(
+            kw in " ".join(str(e).lower() for e in evidence_used)
+            for kw in _DIVIDEND_EVIDENCE_KEYWORDS
+        )
+        if reasoning_has_claim and not evidence_supports:
+            notes.append(f"DOWNGRADED: reasoning claims dividend but evidence_used lacks support")
+            parsed["strategy_id"] = "needs_review"
+            parsed["requires_review"] = True
+            parsed["confidence"] = min(confidence, 0.5)
+            parsed.setdefault("validation_notes", []).append(
+                "Downgraded: reasoning asserts dividend without supporting evidence"
+            )
+
+    # Rule 3: high confidence with thin evidence
+    if parsed.get("confidence", 0) > 0.8 and len(evidence_used) < 2:
+        old_conf = parsed["confidence"]
+        parsed["confidence"] = 0.6
+        notes.append(f"CAPPED confidence {old_conf} -> 0.6 (fewer than 2 evidence items)")
+        parsed.setdefault("validation_notes", []).append(
+            f"Confidence capped from {old_conf} to 0.6: insufficient evidence items"
+        )
+
+    # Rule 4: swing_trade for 30+ day holds is likely wrong
+    # (swing_trade is defined as 2-20 days — longer holds need more evidence)
+    # This check uses trade data passed via the parsed output's evidence
+    hold_evidence = [e for e in evidence_used if "hold_days=" in str(e)]
+    if strategy == "swing_trade" and hold_evidence:
+        try:
+            hold_days = float(str(hold_evidence[0]).split("=")[1])
+            if hold_days > 30:
+                notes.append(f"DOWNGRADED: swing_trade -> needs_review (hold_days={hold_days} exceeds swing range)")
+                parsed["strategy_id"] = "needs_review"
+                parsed["requires_review"] = True
+                parsed["confidence"] = min(confidence, 0.4)
+                parsed.setdefault("validation_notes", []).append(
+                    f"Downgraded from swing_trade: hold_days={hold_days} exceeds 2-20 day swing range"
+                )
+        except (ValueError, IndexError):
+            pass
+
+    # Rule 5: needs_review / unknown confidence bounds
+    if parsed.get("strategy_id") == "needs_review":
+        parsed["confidence"] = min(parsed.get("confidence", 0.5), 0.5)
+        parsed["requires_review"] = True
+    elif parsed.get("strategy_id") == "unknown":
+        parsed["confidence"] = min(parsed.get("confidence", 0.4), 0.4)
+        parsed["requires_review"] = True
+
+    return parsed, notes
 
 
 def _preflight_llm_health():
@@ -172,26 +319,47 @@ def main():
 
         try:
             raw = _call_ollama(prompt, model=args.model)
+            if raw:
+                log.debug(f"  Raw LLM output: {raw[:300]}")
             parsed = _parse_json(raw)
+            if not parsed and raw:
+                log.warning(f"  JSON parse failed, raw preview: {raw[:200]}")
             if parsed and parsed.get("strategy_id"):
+                # Post-validation
+                llm_strategy = parsed["strategy_id"]
+                llm_confidence = parsed.get("confidence", 0)
+                parsed, validation_notes = _post_validate(parsed)
+
                 result = {
                     "trade_id": t["trade_id"], "symbol": t["symbol"],
                     "broker": t["broker"], "account": t["account"],
                     "strategy_id": parsed["strategy_id"],
                     "confidence": parsed.get("confidence", 0),
                     "reasoning": parsed.get("reasoning", ""),
+                    "evidence_used": parsed.get("evidence_used", []),
+                    "missing_evidence": parsed.get("missing_evidence", []),
+                    "requires_review": parsed.get("requires_review", False),
                     "source_table": t["source_table"],
                 }
-                log.info(f"  → {parsed['strategy_id']} (confidence={parsed.get('confidence',0)})")
+                if validation_notes:
+                    result["validation_notes"] = validation_notes
+                    result["llm_original_strategy"] = llm_strategy
+                    result["llm_original_confidence"] = llm_confidence
+
+                log.info(f"  → {parsed['strategy_id']} (confidence={parsed.get('confidence',0)})"
+                         + (f" [validated from {llm_strategy}]" if validation_notes else ""))
 
                 if args.apply:
-                    # Update strategy_backtest_trades for this symbol
-                    cur.execute("""UPDATE strategy_backtest_trades
-                        SET strategy_id=%s WHERE symbol=%s AND (strategy_id IS NULL OR strategy_id='' OR strategy_id='unknown')""",
-                        [parsed["strategy_id"], t["symbol"]])
-                    updated = cur.rowcount
-                    result["bt_rows_updated"] = updated
-                    log.info(f"  Updated {updated} backtest trade rows for {t['symbol']}")
+                    # Do not apply needs_review or unknown to DB
+                    if parsed["strategy_id"] in ("needs_review", "unknown"):
+                        log.info(f"  Skipping DB write for {parsed['strategy_id']}")
+                    else:
+                        cur.execute("""UPDATE strategy_backtest_trades
+                            SET strategy_id=%s WHERE symbol=%s AND (strategy_id IS NULL OR strategy_id='' OR strategy_id='unknown')""",
+                            [parsed["strategy_id"], t["symbol"]])
+                        updated = cur.rowcount
+                        result["bt_rows_updated"] = updated
+                        log.info(f"  Updated {updated} backtest trade rows for {t['symbol']}")
 
                 results.append(result)
             else:
@@ -206,8 +374,20 @@ def main():
 
     conn.close()
 
-    output = {"total": len(trades), "classified": len([r for r in results if r.get("strategy_id")]),
-              "errors": len([r for r in results if r.get("error")]), "results": results}
+    classified = [r for r in results if r.get("strategy_id") and r["strategy_id"] not in ("needs_review", "unknown")]
+    needs_review = [r for r in results if r.get("strategy_id") == "needs_review"]
+    unknowns = [r for r in results if r.get("strategy_id") == "unknown"]
+    errors = [r for r in results if r.get("error")]
+    validated = [r for r in results if r.get("validation_notes")]
+    output = {
+        "total": len(trades),
+        "classified": len(classified),
+        "needs_review": len(needs_review),
+        "unknown": len(unknowns),
+        "errors": len(errors),
+        "post_validated": len(validated),
+        "results": results,
+    }
 
     if args.json_out:
         Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
