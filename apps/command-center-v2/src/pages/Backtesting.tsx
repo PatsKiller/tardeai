@@ -68,21 +68,21 @@ export default function Backtesting() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
   const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter || brokerFilter || accountFilter)
-  const fetchId = useRef(0)
+  const mountedRef = useRef(false)
 
-  const loadData = useCallback(async () => {
-    const id = ++fetchId.current
+  // Load all data including filter options
+  const loadData = useCallback(async (filters: { dateFrom: string; dateTo: string; strategy: string; runType: string; broker: string; account: string }) => {
     setLoading(true)
-    const qs = buildQS({ start_date: dateFrom, end_date: dateTo, strategy: strategyFilter, run_type: runTypeFilter, broker: brokerFilter, account: accountFilter })
-    const [st, ru, re, tr, mi, trail] = await Promise.allSettled([
+    const qs = buildQS({ start_date: filters.dateFrom, end_date: filters.dateTo, strategy: filters.strategy, run_type: filters.runType, broker: filters.broker, account: filters.account })
+    const [st, ru, re, tr, mi, trail, fo] = await Promise.allSettled([
       fetch('/api/v2/backtesting/status' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/runs' + qs).then(r => r.json()),
-      fetch('/api/v2/backtesting/results' + buildQS({ strategy: strategyFilter, run_type: runTypeFilter })).then(r => r.json()),
+      fetch('/api/v2/backtesting/results' + buildQS({ strategy: filters.strategy, run_type: filters.runType })).then(r => r.json()),
       fetch('/api/v2/backtesting/trades' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/missed-opportunities').then(r => r.json()),
       fetch('/api/v2/backtesting/trailing-stop-analysis').then(r => r.json()).catch(() => ({ ok: false })),
+      fetch('/api/v2/backtesting/filter-options').then(r => r.json()),
     ])
-    if (id !== fetchId.current) return // stale
     if (st.status === 'fulfilled') setStatus(st.value.data ?? st.value)
     if (ru.status === 'fulfilled') setRuns(ru.value.data ?? [])
     if (re.status === 'fulfilled') {
@@ -98,28 +98,41 @@ export default function Backtesting() {
     if (tr.status === 'fulfilled') setTrades(tr.value.data ?? [])
     if (mi.status === 'fulfilled' && mi.value.ok) setMissed(mi.value.data)
     if (trail.status === 'fulfilled' && trail.value?.ok) setTrailData(trail.value.data)
+    if (fo.status === 'fulfilled' && fo.value?.ok && fo.value.data) {
+      const fd = fo.value.data
+      setFilterOptions({
+        strategies: fd.strategies || [],
+        run_ids: fd.run_ids || [],
+        run_types: fd.run_types || [],
+        brokers: fd.brokers || [],
+        accounts: fd.accounts || [],
+        minDate: fd.minDate || '',
+        maxDate: fd.maxDate || '',
+        data_quality_gaps: fd.data_quality_gaps || [],
+      })
+    }
     // Lazy loads
     try {
       const [mfe, opt] = await Promise.allSettled([
         fetch('/api/v2/backtesting/mfe-analysis').then(r => r.json()),
         fetch('/api/v2/backtesting/trailing-optimization').then(r => r.json()),
       ])
-      if (id !== fetchId.current) return
       if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
       if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
     } catch {}
     setLoading(false)
-  }, [dateFrom, dateTo, strategyFilter, runTypeFilter, brokerFilter, accountFilter])
-
-  // Load filter options once
-  useEffect(() => {
-    fetch('/api/v2/backtesting/filter-options').then(r => r.json()).then(d => {
-      if (d.ok) setFilterOptions(prev => ({ ...prev, ...d.data }))
-    }).catch(() => {})
   }, [])
 
-  // Reload data when filters change
-  useEffect(() => { loadData() }, [loadData])
+  // Initial load
+  useEffect(() => {
+    loadData({ dateFrom: '', dateTo: '', strategy: '', runType: 'replay_trades', broker: '', account: '' })
+  }, [loadData])
+
+  // Reload on filter change (skip initial mount)
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return }
+    loadData({ dateFrom, dateTo, strategy: strategyFilter, runType: runTypeFilter, broker: brokerFilter, account: accountFilter })
+  }, [dateFrom, dateTo, strategyFilter, runTypeFilter, brokerFilter, accountFilter, loadData])
 
   const strategyStats = useMemo(() => {
     const m: Record<string, { n: number; wins: number; pnl: number; rs: number[] }> = {}
