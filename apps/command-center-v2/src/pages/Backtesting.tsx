@@ -67,22 +67,18 @@ export default function Backtesting() {
   const [accountFilter, setAccountFilter] = useState('')
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
-  // Broker/account don't filter backtest trades (no broker/account in that table)
-  // They only affect trail/MFE tabs which join paper_trades
-  const btFiltersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter)
   const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter || brokerFilter || accountFilter)
   const mountedRef = useRef(false)
 
   // Load all data including filter options
   const loadData = useCallback(async (filters: { dateFrom: string; dateTo: string; strategy: string; runType: string; broker: string; account: string }) => {
     setLoading(true)
-    // Backtest queries: strategy, date, run_type only (no broker/account in backtest tables)
-    const btQs = buildQS({ start_date: filters.dateFrom, end_date: filters.dateTo, strategy: filters.strategy, run_type: filters.runType })
+    const qs = buildQS({ start_date: filters.dateFrom, end_date: filters.dateTo, strategy: filters.strategy, run_type: filters.runType, broker: filters.broker, account: filters.account })
     const [st, ru, re, tr, mi, trail, fo] = await Promise.allSettled([
-      fetch('/api/v2/backtesting/status' + btQs).then(r => r.json()),
-      fetch('/api/v2/backtesting/runs' + btQs).then(r => r.json()),
+      fetch('/api/v2/backtesting/status' + qs).then(r => r.json()),
+      fetch('/api/v2/backtesting/runs' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/results' + buildQS({ strategy: filters.strategy, run_type: filters.runType })).then(r => r.json()),
-      fetch('/api/v2/backtesting/trades' + btQs).then(r => r.json()),
+      fetch('/api/v2/backtesting/trades' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/missed-opportunities').then(r => r.json()),
       fetch('/api/v2/backtesting/trailing-stop-analysis').then(r => r.json()).catch(() => ({ ok: false })),
       fetch('/api/v2/backtesting/filter-options').then(r => r.json()),
@@ -132,12 +128,11 @@ export default function Backtesting() {
     loadData({ dateFrom: '', dateTo: '', strategy: '', runType: 'replay_trades', broker: '', account: '' })
   }, [loadData])
 
-  // Reload on backtest filter change (skip initial mount)
-  // Broker/account don't affect backtest queries — only strategy/date/runType do
+  // Reload when any filter changes (skip initial mount)
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return }
     loadData({ dateFrom, dateTo, strategy: strategyFilter, runType: runTypeFilter, broker: brokerFilter, account: accountFilter })
-  }, [dateFrom, dateTo, strategyFilter, runTypeFilter, loadData]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, strategyFilter, runTypeFilter, brokerFilter, accountFilter, loadData])
 
   const strategyStats = useMemo(() => {
     const m: Record<string, { n: number; wins: number; pnl: number; rs: number[] }> = {}
@@ -284,14 +279,9 @@ export default function Backtesting() {
             Clear
           </button>
         )}
-        {btFiltersActive && (
+        {filtersActive && (
           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
             Showing {trades.length.toLocaleString()} of {(status?.trades_total ?? 0).toLocaleString()} sim trades
-          </span>
-        )}
-        {(brokerFilter || accountFilter) && (
-          <span style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)' }}>
-            Broker/account filters apply to Trail Analysis and MFE tabs only
           </span>
         )}
       </div>

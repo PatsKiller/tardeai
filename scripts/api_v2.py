@@ -18786,9 +18786,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _tw.append("sbt.run_id=%s"); _tp.append(_bf_run)
             if _bf_run_type:
                 _tw.append("r.run_type=%s"); _tp.append(_bf_run_type)
-            # Note: broker/account not in backtest tables — not filtered here
+            # Broker/account: filter via symbol match against paper_trades
+            if _bf_broker:
+                _tw.append("sbt.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE broker=%s OR COALESCE(target_account,account) LIKE %s||'%%')")
+                _tp.append(_bf_broker); _tp.append(_bf_broker)
+            if _bf_account:
+                _tw.append("sbt.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE COALESCE(target_account,account)=%s)")
+                _tp.append(_bf_account)
             _twhere = " AND ".join(_tw) if _tw else "1=1"
-            _need_join = _bf_run_type  # Only join runs table when filtering by run_type
+            _need_join = _bf_run_type
             if _need_join:
                 _ft = _db_query(f"SELECT COUNT(*) as c FROM strategy_backtest_trades sbt LEFT JOIN strategy_backtest_runs r ON r.run_id=sbt.run_id WHERE {_twhere}", _tp, fetch="one")
             else:
@@ -18874,8 +18880,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _w.append("r.run_type=%s"); _p.append(_q["run_type"])
             if _q.get("symbol"):
                 _w.append("sbt.symbol=%s"); _p.append(_q["symbol"])
-            # Note: broker/account not stored in backtest tables — filter not applied here
-            # Broker/account filtering applies to trail/MFE tabs which join paper_trades
+            # Broker/account: filter via symbol match against paper_trades
+            if _q.get("broker"):
+                _w.append("sbt.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE broker=%s OR COALESCE(target_account,account) LIKE %s||'%%')")
+                _p.append(_q["broker"]); _p.append(_q["broker"])
+            if _q.get("account"):
+                _w.append("sbt.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE COALESCE(target_account,account)=%s)")
+                _p.append(_q["account"])
             _where = " WHERE " + " AND ".join(_w) if _w else ""
             _lim = min(int(_q.get("limit", 5000)), 10000)
             rows = _db_query(f"""SELECT sbt.simulated_trade_id, sbt.run_id, sbt.strategy_id, sbt.symbol,
