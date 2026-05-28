@@ -19598,6 +19598,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _jl_strats[sid]["total_pnl"] += pnl
                 if pnl > 0: _jl_strats[sid]["wins"] += 1
 
+            # Include strategy_backtest_trades (all historical trades including V, AXTI, etc.)
+            _jl_bt = _db_query("SELECT symbol, strategy_id, entry_price, exit_price, pnl, r_multiple, exit_reason FROM strategy_backtest_trades") or []
+            _jl_bt_count = len(_jl_bt)
+            _jl_bt_symbols = len(set(r.get("symbol") for r in _jl_bt))
+            for t in _jl_bt:
+                sid = t.get("strategy_id") or "backtest_unknown"
+                _jl_strats[sid]["trades"] += 1
+                pnl = float(t["pnl"]) if t.get("pnl") else 0
+                _jl_strats[sid]["total_pnl"] += pnl
+                if pnl > 0: _jl_strats[sid]["wins"] += 1
+
+            # Rebuild strategy summary with backtest trades included
             _jl_strat_summary = []
             for sid, s in _jl_strats.items():
                 _jl_strat_summary.append({
@@ -19609,11 +19621,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _jl_gaps = []
             if _jl_traces - _jl_traced > 0: _jl_gaps.append({"gap": "untraced_trades", "count": _jl_traces - _jl_traced})
             if _jl_tca < len(_jl_clean): _jl_gaps.append({"gap": "missing_tca", "count": len(_jl_clean) - _jl_tca})
+            if _jl_bt_count > 0: _jl_gaps.append({"gap": "backtest_trades_not_in_paper_trades", "count": _jl_bt_count, "note": f"{_jl_bt_symbols} symbols in backtest history (V, AXTI, etc.) not tracked in paper_trades"})
 
             return 200, {"ok": True, "data": {
                 "generated_at": _dt_jl.datetime.now(_dt_jl.timezone.utc).isoformat(),
                 "open_trade_count": _jl_open[0]["c"], "closed_trade_count": len(_jl_closed_all),
                 "clean_closed_count": len(_jl_clean), "ghost_count": len(_jl_closed_all) - len(_jl_clean),
+                "backtest_trade_count": _jl_bt_count, "backtest_symbol_count": _jl_bt_symbols,
                 "lifecycle_trace_count": _jl_traces, "traced_closed_trade_count": _jl_traced,
                 "execution_quality_count": _jl_tca, "stop_audit_event_count": _jl_stop_audit,
                 "missed_proposal_count": _jl_missed, "duplicate_groups": _jl_dedup,
