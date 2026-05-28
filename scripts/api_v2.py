@@ -16177,10 +16177,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/automated-trade-journal":
         try:
-            _acct = ((query or {}).get("account", ["ALPACA_PAPER"])[0]
-                     if isinstance((query or {}).get("account"), list)
-                     else (query or {}).get("account", "ALPACA_PAPER"))
-            trades = _db_query("""
+            _acct_raw = (query or {}).get("account")
+            if isinstance(_acct_raw, list): _acct_raw = _acct_raw[0] if _acct_raw else None
+            _acct = _acct_raw  # None means all accounts
+            _date_from = (query or {}).get("date_from")
+            _date_to = (query or {}).get("date_to")
+            _where_parts = ["status IN ('open', 'closed')"]
+            _params = []
+            if _acct:
+                _where_parts.append("account = %s")
+                _params.append(_acct)
+            if _date_from:
+                _where_parts.append("created_at >= %s::timestamptz")
+                _params.append(_date_from)
+            if _date_to:
+                _where_parts.append("created_at <= %s::timestamptz")
+                _params.append(_date_to)
+            _where = " AND ".join(_where_parts)
+            trades = _db_query(f"""
                 SELECT id, symbol, strategy_id, account, entry_price, exit_price,
                        current_price, shares, stop_loss, target_1, target_2, dollar_risk, dollar_size,
                        COALESCE(pnl, unrealized_pnl) as pnl, unrealized_pnl, r_multiple, pnl_pct,
@@ -16199,13 +16213,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        post_trade_analyzed, iris_curated, aegis_summarized,
                        entry_time, closed_at, created_at, updated_at
                 FROM paper_trades
-                WHERE account = %s AND status IN ('open', 'closed')
+                WHERE {_where}
                   AND NOT (status = 'open' AND filled_at IS NULL
                            AND broker_status NOT IN ('filled')
                            AND close_reason IS NULL)
                 ORDER BY CASE WHEN status='open' THEN 0 ELSE 1 END, created_at DESC
                 LIMIT 100
-            """, [_acct]) or []
+            """, _params) or []
             # Fetch full lifecycle events per trade
             _trade_ids = [t['id'] for t in trades if t.get('id')]
             events_by_trade = {}
@@ -16343,11 +16357,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/automated-journal-analytics":
         try:
-            _acct = ((query or {}).get("account", ["ALPACA_PAPER"])[0]
-                     if isinstance((query or {}).get("account"), list)
-                     else (query or {}).get("account", "ALPACA_PAPER"))
+            _acct_raw2 = (query or {}).get("account")
+            if isinstance(_acct_raw2, list): _acct_raw2 = _acct_raw2[0] if _acct_raw2 else None
+            _acct = _acct_raw2  # None means all accounts
+            # Build account filter for analytics
+            _ana_where = "status = 'closed' AND closed_at IS NOT NULL"
+            _ana_params = []
+            if _acct:
+                _ana_where += " AND account = %s"
+                _ana_params.append(_acct)
             # Daily P&L for calendar heatmap + equity curve
-            _daily = _db_query("""
+            _daily = _db_query(f"""
                 SELECT closed_at::date as trade_date,
                        COUNT(*) as trades,
                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
@@ -16356,12 +16376,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        ROUND(AVG(pnl)::numeric, 2) as avg_pnl,
                        ROUND(AVG(r_multiple)::numeric, 2) as avg_r
                 FROM paper_trades
-                WHERE account = %s AND status = 'closed' AND closed_at IS NOT NULL
+                WHERE {_ana_where}
                 GROUP BY closed_at::date
                 ORDER BY closed_at::date
-            """, [_acct]) or []
+            """, _ana_params) or []
             # Monthly summary
-            _monthly = _db_query("""
+            _monthly = _db_query(f"""
                 SELECT TO_CHAR(closed_at, 'YYYY-MM') as month,
                        COUNT(*) as trades,
                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
@@ -16372,22 +16392,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        ROUND(MAX(pnl)::numeric, 2) as best_trade,
                        ROUND(MIN(pnl)::numeric, 2) as worst_trade
                 FROM paper_trades
-                WHERE account = %s AND status = 'closed' AND closed_at IS NOT NULL
+                WHERE {_ana_where}
                 GROUP BY TO_CHAR(closed_at, 'YYYY-MM')
                 ORDER BY month
-            """, [_acct]) or []
+            """, _ana_params) or []
             # Weekly summary
-            _weekly = _db_query("""
+            _weekly = _db_query(f"""
                 SELECT TO_CHAR(date_trunc('week', closed_at), 'YYYY-MM-DD') as week_start,
                        COUNT(*) as trades,
                        SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) as wins,
                        ROUND(SUM(pnl)::numeric, 2) as total_pnl,
                        ROUND(AVG(r_multiple)::numeric, 2) as avg_r
                 FROM paper_trades
-                WHERE account = %s AND status = 'closed' AND closed_at IS NOT NULL
+                WHERE {_ana_where}
                 GROUP BY date_trunc('week', closed_at)
                 ORDER BY week_start
-            """, [_acct]) or []
+            """, _ana_params) or []
             # Build equity curve (cumulative P&L)
             _cumulative = 0
             _equity_curve = []
