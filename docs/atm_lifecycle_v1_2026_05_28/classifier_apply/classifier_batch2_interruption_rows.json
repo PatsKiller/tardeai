@@ -1,0 +1,225 @@
+{
+  "total": 30,
+  "classified": 3,
+  "needs_review": 0,
+  "unknown": 0,
+  "errors": 27,
+  "post_validated": 1,
+  "results": [
+    {
+      "trade_id": 464,
+      "symbol": "AXTI",
+      "broker": "schwab",
+      "account": "schwab_rollover_ira",
+      "strategy_id": "speculative_growth",
+      "confidence": 0.8,
+      "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play. The watchlist indicates a BUY signal with analyst upgrades and positive trial results.",
+      "evidence_used": [
+        "ticker_classification=speculative_growth",
+        "watchlist_strategy=speculative_growth",
+        "watchlist_thesis mentions 'BUY signal. Analyst upgrade with target >15% above current price. The analyst upgrade to a target >15% above current price, positive Phase 3 trial results, and insider purchase'",
+        "hold_days=148"
+      ],
+      "missing_evidence": [
+        "no proposal data"
+      ],
+      "requires_review": false,
+      "evidence_source_count": 2,
+      "conflicting_sources": [],
+      "source_table": "trade_transactions",
+      "downgraded_by_post_validation": false,
+      "bt_rows_updated": 0
+    },
+    {
+      "trade_id": 469,
+      "symbol": "APAM",
+      "broker": "schwab",
+      "account": "schwab_rollover_ira",
+      "strategy_id": "speculative_growth",
+      "confidence": 0.5,
+      "reasoning": "Ticker classified as speculative_growth by enrichment.ticker_classification.strategy, and the watchlist thesis confirms a growth play. The hold period of 147 days aligns with the typical timeframe for this strategy.",
+      "evidence_used": [
+        "ticker_classification=speculative_growth",
+        "watchlist_strategy=speculative_growth",
+        "hold_days=147"
+      ],
+      "missing_evidence": [
+        "no proposal data"
+      ],
+      "requires_review": true,
+      "evidence_source_count": 0,
+      "conflicting_sources": [
+        "ticker_classification=dividend_growth_compounder",
+        "watchlist_strategy=income"
+      ],
+      "source_table": "trade_transactions",
+      "downgraded_by_post_validation": true,
+      "validation_notes": [
+        "CONFLICT GATE: speculative_growth has 0 supporting sources, 2 conflicting: ['ticker_classification=dividend_growth_compounder', 'watchlist_strategy=income']"
+      ],
+      "original_strategy_id": "speculative_growth",
+      "llm_original_confidence": 0.8,
+      "bt_rows_updated": 0
+    },
+    {
+      "trade_id": 547,
+      "symbol": "ADBE",
+      "broker": "schwab",
+      "account": "schwab_roth_ira",
+      "strategy_id": "speculative_growth",
+      "confidence": 0.8,
+      "reasoning": "Ticker classified as speculative_growth, watchlist thesis confirms growth play, and the hold_days align with a speculative growth strategy.",
+      "evidence_used": [
+        "enrichment.ticker_classification.strategy=speculative_growth",
+        "enrichment.watchlist.strategy=speculative_growth",
+        "hold_days=148"
+      ],
+      "missing_evidence": [
+        "no proposal data"
+      ],
+      "requires_review": false,
+      "evidence_source_count": 1,
+      "conflicting_sources": [
+        "ticker_classification=swing_trade"
+      ],
+      "source_table": "trade_transactions",
+      "downgraded_by_post_validation": false,
+      "bt_rows_updated": 0
+    },
+    {
+      "trade_id": 546,
+      "symbol": "ADBE",
+      "error": "Remote end closed connection without response"
+    },
+    {
+      "trade_id": 472,
+      "symbol": "APAM",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 468,
+      "symbol": "APAM",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 477,
+      "symbol": "PFE",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 527,
+      "symbol": "BRO",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 509,
+      "symbol": "BRO",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 330,
+      "symbol": "GSIT",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 328,
+      "symbol": "GSIT",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 496,
+      "symbol": "XMTR",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 498,
+      "symbol": "XMTR",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 267,
+      "symbol": "EKSO",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 263,
+      "symbol": "EKSO",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 244,
+      "symbol": "ARKG",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 425,
+      "symbol": "AGMH",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 430,
+      "symbol": "AGMH",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 435,
+      "symbol": "LASE",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 364,
+      "symbol": "STI",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 360,
+      "symbol": "STI",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 230,
+      "symbol": "SHPH",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 225,
+      "symbol": "SHPH",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 310,
+      "symbol": "IBIO",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 386,
+      "symbol": "AMD",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 380,
+      "symbol": "AMD",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 441,
+      "symbol": "SPRC",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 437,
+      "symbol": "SPRC",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 299,
+      "symbol": "MSGM",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    },
+    {
+      "trade_id": 297,
+      "symbol": "MSGM",
+      "error": "<urlopen error [Errno 111] Connection refused>"
+    }
+  ]
+}
