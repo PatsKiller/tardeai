@@ -202,6 +202,23 @@ MONITORED_COMPONENTS = [
      "max_age_min": 15, "max_runtime_sec": 120, "critical": False,
      "retry_cmd": "bash scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50",
      "downstream": "proposal price freshness"},
+
+    # ── Recurring Backtesting (v4.0) ──
+    {"component": "enterprise_backtester", "display": "Enterprise Backtester",
+     "schedule": "0 22 * * 0", "log_file": "enterprise_backtester.log",
+     "max_age_min": 10080, "max_runtime_sec": 3600, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/enterprise_backtester.py --replay-trades --apply",
+     "downstream": "strategy_backtest_trades, backtest comparison"},
+    {"component": "strategy_backtester", "display": "Strategy Backtester (Daily)",
+     "schedule": "0 6 * * 1-5", "log_file": "strategy_backtester.log",
+     "max_age_min": 1500, "max_runtime_sec": 1800, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/strategy_backtester.py --all-strategies --apply",
+     "downstream": "strategy_backtest_trades, active strategy validation"},
+    {"component": "llm_backtest_reviewer", "display": "LLM Backtest Trade Reviewer",
+     "schedule": "0 23 * * 0", "log_file": "llm_backtest_review.log",
+     "max_age_min": 10080, "max_runtime_sec": 7200, "critical": False,
+     "retry_cmd": ".venv/bin/python scripts/trade_close_llm_analyzer.py --source backtest --limit 50 --apply --confirm-llm-review-write --allow-local-llm",
+     "downstream": "trade_llm_reviews, backtest learning"},
 ]
 
 MAX_RETRIES = 2

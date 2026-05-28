@@ -19486,12 +19486,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _lr_monthly = len(_db_query("SELECT 1 FROM monthly_llm_meta_reviews") or [])
             _lr_pending = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status IN ('draft','dry_run')") or [])
             _lr_errors = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status='error'") or [])
-            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, model_name, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
+            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, model_name, source_table, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
+            # v4.0 backtest coverage
+            _lr_paper = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE source_table='paper_trades' OR source_table IS NULL") or [])
+            _lr_backtest = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE source_table='strategy_backtest_trades'") or [])
+            _lr_bt_total = len(_db_query("SELECT 1 FROM strategy_backtest_trades") or [])
+            _lr_bt_unreviewed = _lr_bt_total - _lr_backtest
+            _lr_pt_closed = len(_db_query("SELECT 1 FROM paper_trades WHERE exit_time IS NOT NULL OR (exit_reason IS NOT NULL AND exit_reason!='')") or [])
+            _lr_pt_unreviewed = _lr_pt_closed - _lr_paper
             return 200, {"ok": True, "data": {
                 "generated_at": _dt_lr.datetime.now(_dt_lr.timezone.utc).isoformat(),
                 "total_reviews": _lr_total, "close_analysis_count": _lr_close,
                 "delayed_review_count": _lr_delayed, "monthly_meta_count": _lr_monthly,
                 "pending_count": _lr_pending, "error_count": _lr_errors,
+                "coverage": {
+                    "paper_trades": {"reviewed": _lr_paper, "closed_total": _lr_pt_closed, "unreviewed": max(0, _lr_pt_unreviewed)},
+                    "backtest_trades": {"reviewed": _lr_backtest, "total": _lr_bt_total, "unreviewed": max(0, _lr_bt_unreviewed)},
+                },
                 "latest_reviews": [{k: _json_clean(v) for k, v in r.items()} for r in _lr_latest],
                 "safety": {"read_only_endpoint": True, "model_calls_executed_by_endpoint": False,
                            "alpaca_mode": _os_lr.environ.get("ALPACA_MODE", "unknown")},
@@ -19503,11 +19514,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         try:
             _tlr_sym = (query or {}).get("symbol")
             _tlr_tid = (query or {}).get("paper_trade_id")
-            _tlr_where = "symbol=%s" if _tlr_sym else "paper_trade_id=%s"
-            _tlr_param = _tlr_sym or _tlr_tid
-            if not _tlr_param:
-                return 400, {"ok": False, "error": "symbol or paper_trade_id required"}
-            _tlr_rows = _db_query(f"SELECT * FROM trade_llm_reviews WHERE {_tlr_where} ORDER BY generated_at DESC LIMIT 10", [_tlr_param]) or []
+            _tlr_btid = (query or {}).get("backtest_trade_id")
+            _tlr_source = (query or {}).get("source")
+            if _tlr_btid:
+                _tlr_where, _tlr_param = "backtest_trade_id=%s", _tlr_btid
+            elif _tlr_tid:
+                _tlr_where, _tlr_param = "paper_trade_id=%s", _tlr_tid
+            elif _tlr_sym:
+                _tlr_where, _tlr_param = "symbol=%s", _tlr_sym
+            else:
+                return 400, {"ok": False, "error": "symbol, paper_trade_id, or backtest_trade_id required"}
+            _tlr_sql = f"SELECT * FROM trade_llm_reviews WHERE {_tlr_where}"
+            if _tlr_source:
+                _tlr_sql += f" AND source_table=%s"
+                _tlr_rows = _db_query(_tlr_sql + " ORDER BY generated_at DESC LIMIT 10", [_tlr_param, _tlr_source]) or []
+            else:
+                _tlr_rows = _db_query(_tlr_sql + " ORDER BY generated_at DESC LIMIT 10", [_tlr_param]) or []
             return 200, {"ok": True, "data": {
                 "reviews": [{k: _json_clean(v) for k, v in r.items()} for r in _tlr_rows],
                 "safety": {"read_only_endpoint": True, "model_calls_executed_by_endpoint": False},
