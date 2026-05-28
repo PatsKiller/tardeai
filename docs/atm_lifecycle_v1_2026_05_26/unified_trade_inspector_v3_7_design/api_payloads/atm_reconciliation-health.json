@@ -1,0 +1,79 @@
+{
+    "ok": true,
+    "status": "mismatch",
+    "status_label": "1 reconciliation mismatch(es)",
+    "last_run_id": "atmrecon_0d14aeb4051e4857",
+    "last_run_at": "2026-05-27T20:45:01+00:00",
+    "age_minutes": 285.6,
+    "cron_fresh": true,
+    "mode": "audit_only",
+    "journal_source": "http://127.0.0.1:7777/api/v2/automated-journal",
+    "db_open_count": 5,
+    "journal_open_count": 4,
+    "matched_count": 4,
+    "mismatch_count": 1,
+    "unresolved_items": [
+        {
+            "paper_trade_id": 37,
+            "symbol": "BLMN",
+            "strategy_id": "swing_trade",
+            "account": "ALPACA_PAPER",
+            "classification": "unmatched_db_open",
+            "severity": "high",
+            "reason": "DB-open row is missing from journal/broker-open positions."
+        }
+    ],
+    "latest_items": [
+        {
+            "paper_trade_id": 31,
+            "symbol": "AGNC",
+            "strategy_id": "reit_income",
+            "account": "ALPACA_PAPER",
+            "classification": "matched_open",
+            "severity": "ok",
+            "reason": "DB-open row matches journal/broker-open position."
+        },
+        {
+            "paper_trade_id": 38,
+            "symbol": "BLMN",
+            "strategy_id": "swing_trade",
+            "account": "ALPACA_PAPER",
+            "classification": "matched_open",
+            "severity": "ok",
+            "reason": "DB-open row matches journal/broker-open position."
+        },
+        {
+            "paper_trade_id": 33,
+            "symbol": "CMCSA",
+            "strategy_id": "dividend_growth_compounder",
+            "account": "ALPACA_PAPER",
+            "classification": "matched_open",
+            "severity": "ok",
+            "reason": "DB-open row matches journal/broker-open position."
+        },
+        {
+            "paper_trade_id": 28,
+            "symbol": "NWG",
+            "strategy_id": "dividend_growth_compounder",
+            "account": "TOS_PAPER",
+            "classification": "matched_open",
+            "severity": "ok",
+            "reason": "DB-open row matches journal/broker-open position."
+        },
+        {
+            "paper_trade_id": 37,
+            "symbol": "BLMN",
+            "strategy_id": "swing_trade",
+            "account": "ALPACA_PAPER",
+            "classification": "unmatched_db_open",
+            "severity": "high",
+            "reason": "DB-open row is missing from journal/broker-open positions."
+        }
+    ],
+    "safety": {
+        "read_only_endpoint": true,
+        "audit_only_mode": true,
+        "alpaca_mode": "paper",
+        "llm_disable": "true"
+    }
+}

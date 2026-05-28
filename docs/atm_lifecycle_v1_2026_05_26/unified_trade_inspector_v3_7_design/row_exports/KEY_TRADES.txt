@@ -1,0 +1,10 @@
+ id | symbol |        strategy_id         | entry_price | stop_loss |        exit_reason        |  pnl   |   account    
+----+--------+----------------------------+-------------+-----------+---------------------------+--------+--------------
+ 28 | NWG    | dividend_growth_compounder |       15.84 |     15.05 |                           |   56.7 | TOS_PAPER
+ 31 | AGNC   | reit_income                |       10.22 |      9.71 |                           |  86.44 | ALPACA_PAPER
+ 33 | CMCSA  | dividend_growth_compounder |       24.97 |     23.61 |                           |   28.2 | ALPACA_PAPER
+ 34 | APPS   | swing_breakout             |      6.5356 |      6.93 | position_closed_in_alpaca | 159.98 | alpaca_paper
+ 37 | BLMN   | swing_trade                |        8.26 |      7.85 | duplicate_submit_race     |        | alpaca_paper
+ 38 | BLMN   | swing_trade                |        8.28 |      7.85 |                           |  38.12 | ALPACA_PAPER
+(6 rows)
+
