@@ -94,28 +94,23 @@ def fetch_ohlc_for_symbols(symbols: List[str], start: str, end: str) -> Dict:
 
 
 def get_trades_from_db() -> List[Dict]:
-    """Get closed paper trades + real trades for replay."""
+    """Get all closed trades from unified trades view (all brokers, all accounts)."""
     from db_adapter import _get_conn
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Paper trades (closed)
-    cur.execute("""SELECT id, symbol, strategy_id, entry_price, exit_price, stop_loss,
-        target_1, shares, pnl, pnl_pct, exit_reason, outcome_verdict,
-        entry_time, closed_at, proposal_id, account
-        FROM paper_trades WHERE status='closed' AND entry_price > 0 AND exit_price > 0""")
-    paper = [dict(r) for r in cur.fetchall()]
-
-    # Real closed trades
-    cur.execute("""SELECT id, symbol, strategy_id, buy_price as entry_price, sell_price as exit_price,
-        stop_used as stop_loss, NULL as target_price, shares, pnl, pnl_pct, note as exit_reason,
-        open_date as entry_date, close_date, account
-        FROM trade_closed WHERE buy_price > 0 AND sell_price > 0""")
-    real = [dict(r) for r in cur.fetchall()]
+    # Unified trades view: paper_trades (Alpaca) + paired trade_transactions (Schwab, all brokers)
+    cur.execute("""SELECT trade_id as id, symbol, strategy_id, broker, account,
+        entry_price, exit_price, stop_loss, target_price as target_1,
+        shares, pnl, pnl_pct, exit_reason, entry_date as entry_time,
+        exit_date as closed_at, source_table
+        FROM trades
+        WHERE status='closed' AND entry_price > 0 AND exit_price > 0""")
+    all_trades = [dict(r) for r in cur.fetchall()]
 
     conn.close()
-    return paper, real
+    return all_trades
 
 
 def get_proposals_from_db(exclude_scalps=True) -> List[Dict]:
@@ -366,8 +361,8 @@ def save_results_to_db(results: List[Dict], run_id: str, mode: str):
         cur.execute("""INSERT INTO strategy_backtest_trades
             (simulated_trade_id, run_id, strategy_id, symbol, signal_time,
              entry_price, stop_price, target_price, exit_price, pnl, pnl_pct,
-             r_multiple, exit_reason, execution_assumptions)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             r_multiple, exit_reason, execution_assumptions, broker, account)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT DO NOTHING""",
             [tid, run_id, r.get("strategy_id", "unknown"), r["symbol"],
              r["entry_date"], r["entry_price"], r["stop"], r["target"],
@@ -375,7 +370,8 @@ def save_results_to_db(results: List[Dict], run_id: str, mode: str):
              round(r["pnl"] / (r["entry_price"] - r["stop"]), 2) if r["entry_price"] != r["stop"] else 0,
              r["exit_reason"],
              json.dumps({"mae_pct": r["mae_pct"], "mfe_pct": r["mfe_pct"],
-                         "hold_days": r["hold_days"], "ohlc": r["ohlc_available"]})])
+                         "hold_days": r["hold_days"], "ohlc": r["ohlc_available"]}),
+             r.get("broker", ""), r.get("account", "")])
 
     conn.commit()
     conn.close()
@@ -415,15 +411,16 @@ def main():
     comparisons = []
 
     if args.replay_trades:
-        paper_trades, real_trades = get_trades_from_db()
-        trades = paper_trades + [{"id": t["id"], "symbol": t["symbol"],
-            "strategy_id": t.get("strategy_id", "unknown"),
+        all_trades = get_trades_from_db()
+        trades = [{"id": t["id"], "symbol": t["symbol"],
+            "strategy_id": t.get("strategy_id") or "unknown",
             "entry_price": float(t["entry_price"]), "exit_price": float(t["exit_price"]),
-            "stop_loss": float(t.get("stop_loss") or 0), "target_1": float(t.get("target_price") or 0),
+            "stop_loss": float(t.get("stop_loss") or 0), "target_1": float(t.get("target_1") or 0),
             "shares": float(t.get("shares") or 1), "pnl": float(t.get("pnl") or 0),
             "exit_reason": t.get("exit_reason", "?"),
-            "entry_time": t.get("entry_date"), "closed_at": t.get("close_date"),
-            "account": t.get("account", ""), "source": "real"} for t in real_trades]
+            "entry_time": t.get("entry_time"), "closed_at": t.get("closed_at"),
+            "account": t.get("account", ""), "broker": t.get("broker", ""),
+            "source": t.get("source_table", "trades")} for t in all_trades]
 
         if args.strategy:
             trades = [t for t in trades if t.get("strategy_id") == args.strategy]
@@ -431,11 +428,7 @@ def main():
             trades = [t for t in trades if (t.get("account") or "").lower() == args.account.lower()]
             log.info(f"Account filter '{args.account}': {len(trades)} trades")
         if args.broker:
-            broker_map = {"schwab": ["schwab_rollover_ira", "schwab_roth_ira", "schwab_roth", "schwab_taxable"],
-                          "alpaca": ["alpaca_paper", "ALPACA_PAPER", "TOS_PAPER"],
-                          "fidelity": ["fidelity_401k"]}
-            allowed = {a.lower() for a in broker_map.get(args.broker.lower(), [args.broker.lower()])}
-            trades = [t for t in trades if (t.get("account") or "").lower() in allowed]
+            trades = [t for t in trades if (t.get("broker") or "").lower() == args.broker.lower()]
             log.info(f"Broker filter '{args.broker}': {len(trades)} trades")
         if args.exclude_scalps:
             # Keep scalps only if actually traded
