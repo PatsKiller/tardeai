@@ -18978,6 +18978,32 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    if base_path == "/api/v2/backtesting/filter-options" and method == "GET":
+        try:
+            _brokers = _db_query("SELECT DISTINCT broker FROM paper_trades WHERE broker IS NOT NULL ORDER BY broker") or []
+            _accounts = _db_query("SELECT DISTINCT COALESCE(target_account, account) as acct FROM paper_trades WHERE COALESCE(target_account, account) IS NOT NULL ORDER BY acct") or []
+            _dates = _db_query("SELECT MIN(entry_time::date) as min_date, MAX(entry_time::date) as max_date FROM paper_trades", fetch="one") or {}
+            # Also add accounts from accounts table for brokers that have no trades yet
+            _all_accts = _db_query("SELECT account_label FROM accounts ORDER BY account_label") or []
+            _acct_set = set(a.get("acct", "") for a in _accounts)
+            for a in _all_accts:
+                _acct_set.add(a.get("account_label", ""))
+            # Add brokers from accounts table too
+            _all_brokers = _db_query("SELECT DISTINCT broker FROM accounts ORDER BY broker") or []
+            _broker_set = set(b.get("broker", "") for b in _brokers)
+            for b in _all_brokers:
+                _broker_set.add(b.get("broker", ""))
+            _broker_set.discard("")
+            _acct_set.discard("")
+            return 200, {"ok": True, "data": {
+                "brokers": sorted(_broker_set),
+                "accounts": sorted(_acct_set),
+                "minDate": str(_dates.get("min_date", "")),
+                "maxDate": str(_dates.get("max_date", "")),
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── MFE/MAE Analysis + Trailing Optimization endpoints ──
     if base_path == "/api/v2/backtesting/mfe-analysis" and method == "GET":
         try:

@@ -61,6 +61,7 @@ export default function Backtesting() {
   const [dateTo, setDateTo] = useState('')
   const [brokerFilter, setBrokerFilter] = useState('')
   const [accountFilter, setAccountFilter] = useState('')
+  const [filterOptions, setFilterOptions] = useState<{ brokers: string[]; accounts: string[]; minDate: string; maxDate: string }>({ brokers: [], accounts: [], minDate: '', maxDate: '' })
 
   useEffect(() => {
     (async () => {
@@ -93,6 +94,11 @@ export default function Backtesting() {
       if (tr.status === 'fulfilled') setTrades(tr.value.data ?? [])
       if (mi.status === 'fulfilled' && mi.value.ok) setMissed(mi.value.data)
       if (trail.status === 'fulfilled' && trail.value?.ok) setTrailData(trail.value.data)
+      // Filter options from real trade data
+      try {
+        const fResp = await fetch('/api/v2/backtesting/filter-options').then(r => r.json())
+        if (fResp.ok) setFilterOptions(fResp.data)
+      } catch {}
       // MFE + optimization data
       try {
         const [mfe, opt] = await Promise.allSettled([
@@ -175,7 +181,7 @@ export default function Backtesting() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: 'rgba(255,255,255,0.9)' }}>Backtesting</h1>
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>Simulated evidence — not live trading proof.</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>Analysis of real paper trade executions and historical replay.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {['Replay Trades', 'Replay Proposals'].map(label => (
@@ -231,22 +237,12 @@ export default function Backtesting() {
         <select value={brokerFilter} onChange={e => setBrokerFilter(e.target.value)}
           style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }}>
           <option value="">All Brokers</option>
-          <option value="alpaca">Alpaca</option>
-          <option value="schwab">Schwab</option>
-          <option value="tastytrade">Tastytrade</option>
-          <option value="interactive_brokers">Interactive Brokers</option>
-          <option value="tradier">Tradier</option>
-          <option value="tradestation">TradeStation</option>
-          <option value="etrade">E*TRADE</option>
+          {filterOptions.brokers.map(b => <option key={b} value={b}>{b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
         </select>
         <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)}
           style={{ padding: '3px 8px', fontSize: 10, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 4, color: '#fff', fontFamily: 'monospace' }}>
           <option value="">All Accounts</option>
-          <option value="alpaca_paper">Alpaca Paper</option>
-          <option value="schwab_taxable">Schwab Taxable</option>
-          <option value="schwab_roth_ira">Schwab Roth IRA</option>
-          <option value="schwab_rollover_ira">Schwab Rollover IRA</option>
-          <option value="fidelity_401k">Fidelity 401k</option>
+          {filterOptions.accounts.map(a => <option key={a} value={a}>{a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
         </select>
         {(dateFrom || dateTo || brokerFilter || accountFilter) && (
           <button onClick={() => { setDateFrom(''); setDateTo(''); setBrokerFilter(''); setAccountFilter('') }}
