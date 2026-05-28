@@ -18828,18 +18828,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _q = query or {}
             _w, _p = [], []
             if _q.get("strategy"):
-                _w.append("strategy_id=%s"); _p.append(_q["strategy"])
+                _w.append("r.strategy_id LIKE '%%' || %s || '%%'"); _p.append(_q["strategy"])
             if _q.get("start_date"):
-                _w.append("start_date >= %s::date"); _p.append(_q["start_date"])
+                _w.append("r.start_date >= %s::date"); _p.append(_q["start_date"])
             if _q.get("end_date"):
-                _w.append("end_date <= %s::date"); _p.append(_q["end_date"])
+                _w.append("r.end_date <= %s::date"); _p.append(_q["end_date"])
             if _q.get("run_id"):
-                _w.append("run_id=%s"); _p.append(_q["run_id"])
+                _w.append("r.run_id=%s"); _p.append(_q["run_id"])
             if _q.get("run_type"):
-                _w.append("run_type=%s"); _p.append(_q["run_type"])
+                _w.append("r.run_type=%s"); _p.append(_q["run_type"])
+            if _q.get("broker"):
+                _w.append("r.run_id IN (SELECT DISTINCT run_id FROM strategy_backtest_trades WHERE broker=%s)"); _p.append(_q["broker"])
+            if _q.get("account"):
+                _w.append("r.run_id IN (SELECT DISTINCT run_id FROM strategy_backtest_trades WHERE account=%s)"); _p.append(_q["account"])
             _where = " WHERE " + " AND ".join(_w) if _w else ""
             _lim = min(int(_q.get("limit", 200)), 500)
-            rows = _db_query(f"SELECT run_id, strategy_id, run_type, status, start_date, end_date, duration_seconds, created_at FROM strategy_backtest_runs{_where} ORDER BY created_at DESC LIMIT {_lim}", _p) or []
+            rows = _db_query(f"SELECT r.run_id, r.strategy_id, r.run_type, r.status, r.start_date, r.end_date, r.duration_seconds, r.created_at FROM strategy_backtest_runs r{_where} ORDER BY r.created_at DESC LIMIT {_lim}", _p) or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
@@ -18854,6 +18858,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _w.append("run_id=%s"); _p.append(_q["run_id"])
             if _q.get("run_type"):
                 _w.append("run_type=%s"); _p.append(_q["run_type"])
+            if _q.get("broker"):
+                _w.append("run_id IN (SELECT DISTINCT run_id FROM strategy_backtest_trades WHERE broker=%s)"); _p.append(_q["broker"])
+            if _q.get("account"):
+                _w.append("run_id IN (SELECT DISTINCT run_id FROM strategy_backtest_trades WHERE account=%s)"); _p.append(_q["account"])
             _where = " WHERE " + " AND ".join(_w)
             _lim = min(int(_q.get("limit", 100)), 500)
             rows = _db_query(f"SELECT id as result_id, run_id, strategy_id, run_type, total_trades as simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, total_pnl, avg_pnl, avg_r_multiple, max_drawdown_pct, equity_curve_json, sample_size, created_at FROM strategy_backtest_results{_where} ORDER BY created_at DESC LIMIT {_lim}", _p) or []
