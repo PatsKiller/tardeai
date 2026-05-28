@@ -18786,6 +18786,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _tw.append("sbt.run_id=%s"); _tp.append(_bf_run)
             if _bf_run_type:
                 _tw.append("r.run_type=%s"); _tp.append(_bf_run_type)
+            if _bf_broker:
+                _tw.append("sbt.broker=%s"); _tp.append(_bf_broker)
+            if _bf_account:
+                _tw.append("sbt.account=%s"); _tp.append(_bf_account)
             _twhere = " AND ".join(_tw) if _tw else "1=1"
             _need_join = _bf_run_type
             if _need_join:
@@ -18873,7 +18877,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 _w.append("r.run_type=%s"); _p.append(_q["run_type"])
             if _q.get("symbol"):
                 _w.append("sbt.symbol=%s"); _p.append(_q["symbol"])
-            # Note: backtest trades are cross-broker — no broker/account filter here
+            if _q.get("broker"):
+                _w.append("sbt.broker=%s"); _p.append(_q["broker"])
+            if _q.get("account"):
+                _w.append("sbt.account=%s"); _p.append(_q["account"])
             _where = " WHERE " + " AND ".join(_w) if _w else ""
             _lim = min(int(_q.get("limit", 5000)), 10000)
             rows = _db_query(f"""SELECT sbt.simulated_trade_id, sbt.run_id, sbt.strategy_id, sbt.symbol,
@@ -19111,12 +19118,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # Run types
             _run_types = _db_query("SELECT DISTINCT run_type FROM strategy_backtest_runs WHERE run_type IS NOT NULL ORDER BY run_type") or []
             _run_type_list = [r["run_type"] for r in _run_types if r.get("run_type")]
-            # Brokers/accounts from accounts table (canonical source)
-            _brokers = _db_query("SELECT DISTINCT broker FROM accounts WHERE broker IS NOT NULL ORDER BY broker") or []
-            _broker_list = [b["broker"] for b in _brokers if b.get("broker")]
-            _accounts = _db_query("SELECT account_label, broker FROM accounts ORDER BY broker, account_label") or []
-            _acct_list = [a["account_label"] for a in _accounts if a.get("account_label")]
-            _broker_accounts = [{"broker": a["broker"], "account_label": a["account_label"]} for a in _accounts if a.get("account_label")]
+            # Brokers/accounts from actual backtest trades data + accounts table
+            _bt_brokers = _db_query("SELECT DISTINCT broker FROM strategy_backtest_trades WHERE broker IS NOT NULL ORDER BY broker") or []
+            _acct_brokers = _db_query("SELECT DISTINCT broker FROM accounts WHERE broker IS NOT NULL ORDER BY broker") or []
+            _broker_set = sorted(set(b["broker"] for b in _bt_brokers if b.get("broker")) | set(b["broker"] for b in _acct_brokers if b.get("broker")))
+            _broker_list = _broker_set
+            # Accounts: union of backtest trades + accounts table
+            _bt_accts = _db_query("SELECT DISTINCT account, broker FROM strategy_backtest_trades WHERE account IS NOT NULL ORDER BY broker, account") or []
+            _acct_tbl = _db_query("SELECT account_label, broker FROM accounts ORDER BY broker, account_label") or []
+            _ba_set = {}
+            for a in _bt_accts:
+                if a.get("account"):
+                    _ba_set[a["account"]] = a.get("broker", "")
+            for a in _acct_tbl:
+                if a.get("account_label") and a["account_label"] not in _ba_set:
+                    _ba_set[a["account_label"]] = a.get("broker", "")
+            _acct_list = sorted(_ba_set.keys())
+            _broker_accounts = [{"broker": v, "account_label": k} for k, v in sorted(_ba_set.items(), key=lambda x: (x[1], x[0]))]
             # Data quality: check what percentage of backtest trades have dates
             _total = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades", fetch="one")
             _with_dates = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades WHERE COALESCE(entry_time, signal_time) IS NOT NULL", fetch="one")
