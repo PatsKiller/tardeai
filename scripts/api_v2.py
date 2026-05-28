@@ -18978,6 +18978,54 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── MFE/MAE Analysis + Trailing Optimization endpoints ──
+    if base_path == "/api/v2/backtesting/mfe-analysis" and method == "GET":
+        try:
+            _mfe = _db_query("""
+                SELECT m.*, t.exit_price, t.exit_reason, t.pnl, t.r_multiple as actual_r,
+                       t.entry_price, t.stop_loss, t.target_1, t.shares
+                FROM trade_mfe_analysis m
+                JOIN paper_trades t ON m.trade_id = t.id
+                ORDER BY m.created_at DESC LIMIT 50
+            """) or []
+            _summary = {}
+            if _mfe:
+                _summary = {
+                    "total_trades": len(_mfe),
+                    "avg_capture_ratio": round(sum(float(m.get("capture_ratio") or 0) for m in _mfe) / len(_mfe), 3),
+                    "avg_mfe_r": round(sum(float(m.get("mfe_r") or 0) for m in _mfe) / len(_mfe), 3),
+                    "avg_mae_r": round(sum(float(m.get("mae_r") or 0) for m in _mfe) / len(_mfe), 3),
+                    "total_money_left": round(sum(float(m.get("money_left") or 0) for m in _mfe), 2),
+                    "avg_entry_quality": round(sum(float(m.get("entry_quality_score") or 0) for m in _mfe) / len(_mfe), 1),
+                }
+            return 200, {"ok": True, "data": {
+                "summary": _summary,
+                "trades": [{k: _json_clean(v) for k, v in m.items()} for m in _mfe],
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/trailing-optimization" and method == "GET":
+        try:
+            _opt = _db_query("""
+                SELECT * FROM trailing_optimization_results ORDER BY created_at DESC
+            """) or []
+            return 200, {"ok": True, "data": {
+                "results": [{k: _json_clean(v) for k, v in r.items()} for r in _opt],
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/run-mfe-analysis" and method == "POST":
+        try:
+            import subprocess as _sp
+            _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                       str(PROJECT_ROOT / "scripts/trade_execution_analyzer.py"), "--all"],
+                      cwd=str(PROJECT_ROOT), stdout=_sp.PIPE, stderr=_sp.STDOUT)
+            return 200, {"ok": True, "message": "MFE analysis + trailing optimization started"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM Lifecycle Control Room endpoint ──────────────────────────────
     if base_path == "/api/v2/atm/lifecycle":
         try:
