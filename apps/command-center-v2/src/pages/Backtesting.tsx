@@ -41,7 +41,7 @@ const WrTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing'
+type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing' | 'mfe' | 'optimization'
 
 export default function Backtesting() {
   const [status, setStatus] = useState<BtStatus | null>(null)
@@ -50,6 +50,8 @@ export default function Backtesting() {
   const [trades, setTrades] = useState<BtTrade[]>([])
   const [missed, setMissed] = useState<MissedData | null>(null)
   const [trailData, setTrailData] = useState<TrailData | null>(null)
+  const [mfeData, setMfeData] = useState<any>(null)
+  const [optData, setOptData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<TabId>('overview')
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null)
@@ -87,6 +89,15 @@ export default function Backtesting() {
       if (tr.status === 'fulfilled') setTrades(tr.value.data ?? [])
       if (mi.status === 'fulfilled' && mi.value.ok) setMissed(mi.value.data)
       if (trail.status === 'fulfilled' && trail.value?.ok) setTrailData(trail.value.data)
+      // MFE + optimization data
+      try {
+        const [mfe, opt] = await Promise.allSettled([
+          fetch('/api/v2/backtesting/mfe-analysis').then(r => r.json()),
+          fetch('/api/v2/backtesting/trailing-optimization').then(r => r.json()),
+        ])
+        if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
+        if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
+      } catch {}
       setLoading(false)
     })()
   }, [])
@@ -150,6 +161,8 @@ export default function Backtesting() {
     { id: 'results', label: `Results (${results.length})` },
     { id: 'runs', label: `Runs (${runs.length})` },
     { id: 'trailing', label: `Trail Analysis (${trailData?.summary?.total_analyzed ?? 0})` },
+    { id: 'mfe', label: `MFE/MAE (${mfeData?.trades?.length ?? 0})` },
+    { id: 'optimization', label: `Optimization (${optData?.results?.length ?? 0})` },
   ]
 
   return (
@@ -631,6 +644,98 @@ export default function Backtesting() {
           )}
         </div>
       )}
+
+      {/* ── MFE/MAE Analysis ── */}
+      {tab === 'mfe' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Max Favorable/Adverse Excursion — how much of each trade's potential was captured</div>
+            <button onClick={async () => { await fetch('/api/v2/backtesting/run-mfe-analysis', { method: 'POST' }); alert('MFE analysis started') }}
+              style={{ padding: '4px 12px', fontSize: 10, background: 'rgba(100,170,255,0.1)', border: '1px solid rgba(100,170,255,0.3)', borderRadius: 4, color: 'rgba(100,170,255,0.9)', cursor: 'pointer' }}>
+              Run Analysis
+            </button>
+          </div>
+          {mfeData?.summary && (
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+              {[
+                { label: 'Analyzed', value: mfeData.summary.total_trades },
+                { label: 'Avg Capture', value: `${(safeNum(mfeData.summary.avg_capture_ratio) * 100).toFixed(0)}%`, color: safeNum(mfeData.summary.avg_capture_ratio) >= 0.6 ? '#22c55e' : '#f59e0b' },
+                { label: 'Avg MFE', value: `${safeNum(mfeData.summary.avg_mfe_r).toFixed(2)}R` },
+                { label: 'Avg MAE', value: `${safeNum(mfeData.summary.avg_mae_r).toFixed(2)}R`, color: '#ef4444' },
+                { label: 'Money Left', value: `$${safeNum(mfeData.summary.total_money_left).toFixed(0)}`, color: '#f59e0b' },
+                { label: 'Entry Quality', value: `${safeNum(mfeData.summary.avg_entry_quality).toFixed(0)}/100` },
+              ].map(m => (
+                <div key={m.label} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, flex: 1 }}>
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: 2 }}>{m.label}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: (m as any).color || 'rgba(255,255,255,0.9)' }}>{m.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
+              <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                {['Symbol', 'Strategy', 'Entry', 'Exit', 'MFE', 'MAE', 'Actual R', 'Capture', 'Left $', 'Entry Q', 'Stop Near'].map(h =>
+                  <th key={h} style={{ padding: '5px 8px', textAlign: 'left', color: 'rgba(255,255,255,0.4)', fontSize: 9 }}>{h}</th>
+                )}
+              </tr></thead>
+              <tbody>
+                {(mfeData?.trades || []).map((t: any, i: number) => (
+                  <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <td style={{ padding: '5px 8px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol}</td>
+                    <td style={{ padding: '5px 8px', color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>{safeStr(t.strategy_id)}</td>
+                    <td style={{ padding: '5px 8px', color: 'rgba(255,255,255,0.6)' }}>${safeNum(t.entry_price).toFixed(2)}</td>
+                    <td style={{ padding: '5px 8px', color: 'rgba(255,255,255,0.6)' }}>${safeNum(t.exit_price).toFixed(2)}</td>
+                    <td style={{ padding: '5px 8px', color: '#22c55e', fontWeight: 600 }}>{safeNum(t.mfe_r).toFixed(2)}R</td>
+                    <td style={{ padding: '5px 8px', color: '#ef4444' }}>{safeNum(t.mae_r).toFixed(2)}R</td>
+                    <td style={{ padding: '5px 8px', color: safeNum(t.actual_r) >= 0 ? '#22c55e' : '#ef4444' }}>{fmtR(t.actual_r)}</td>
+                    <td style={{ padding: '5px 8px', color: safeNum(t.capture_ratio) >= 0.6 ? '#22c55e' : '#f59e0b', fontWeight: 600 }}>{(safeNum(t.capture_ratio) * 100).toFixed(0)}%</td>
+                    <td style={{ padding: '5px 8px', color: safeNum(t.money_left) > 0 ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>{fmt$(t.money_left)}</td>
+                    <td style={{ padding: '5px 8px' }}>{safeNum(t.entry_quality_score).toFixed(0)}</td>
+                    <td style={{ padding: '5px 8px', color: t.stop_nearly_hit ? '#ef4444' : 'rgba(255,255,255,0.3)' }}>{t.stop_nearly_hit ? 'YES' : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {(!mfeData?.trades?.length) && <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>No MFE data. Click "Run Analysis" to compute.</div>}
+          </div>
+        </div>
+      )}
+
+      {/* ── Trailing Optimization ── */}
+      {tab === 'optimization' && (
+        <div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginBottom: 12 }}>Simulates breakeven thresholds per strategy family to find optimal trailing tier config.</div>
+          {(optData?.results || []).length === 0 ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>No optimization data. Run MFE analysis first.</div>
+          ) : (optData.results.map((r: any, i: number) => (
+            <div key={i} style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.9)', textTransform: 'capitalize' }}>{r.strategy_family}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: safeNum(r.improvement_pct) > 0 ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                  {safeNum(r.improvement_pct) > 0 ? '+' : ''}{safeNum(r.improvement_pct).toFixed(1)}%
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 10, marginBottom: 8 }}>
+                <span><span style={{ color: 'rgba(255,255,255,0.4)' }}>Current: </span>{safeNum(r.current_breakeven)}R → {safeNum(r.current_avg_r).toFixed(3)}R avg</span>
+                <span><span style={{ color: 'rgba(255,255,255,0.4)' }}>Optimal: </span><span style={{ color: '#22c55e', fontWeight: 600 }}>{safeNum(r.optimized_breakeven)}R → {safeNum(r.optimized_avg_r).toFixed(3)}R avg</span></span>
+                <span style={{ color: 'rgba(255,255,255,0.4)' }}>{r.sample_size} trades · {r.confidence}</span>
+              </div>
+              {r.detail && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {Object.entries(r.detail).map(([th, d]: [string, any]) => (
+                  <span key={th} style={{ padding: '3px 8px', borderRadius: 4, fontSize: 9,
+                    background: th === String(r.optimized_breakeven) ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${th === String(r.optimized_breakeven) ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                    color: th === String(r.optimized_breakeven) ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                    BE={th}R: {safeNum(d.avg_r).toFixed(3)}R win {safeNum(d.win_rate).toFixed(0)}%
+                  </span>
+                ))}
+              </div>}
+            </div>
+          )))}
+        </div>
+      )}
+
     </div>
   )
 }
