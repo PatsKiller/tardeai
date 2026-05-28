@@ -38,7 +38,7 @@ const WrTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing' | 'mfe' | 'optimization'
+type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing' | 'mfe' | 'optimization' | 'llm_reviews'
 
 function buildQS(params: Record<string, string>) {
   const parts = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
@@ -54,6 +54,7 @@ export default function Backtesting() {
   const [trailData, setTrailData] = useState<TrailData | null>(null)
   const [mfeData, setMfeData] = useState<any>(null)
   const [optData, setOptData] = useState<any>(null)
+  const [llmReviewData, setLlmReviewData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<TabId>('overview')
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null)
@@ -115,12 +116,14 @@ export default function Backtesting() {
     }
     // Lazy loads
     try {
-      const [mfe, opt] = await Promise.allSettled([
+      const [mfe, opt, llm] = await Promise.allSettled([
         fetch('/api/v2/backtesting/mfe-analysis' + qs).then(r => r.json()),
         fetch('/api/v2/backtesting/trailing-optimization' + qs).then(r => r.json()),
+        fetch('/api/v2/lifecycle/llm-review-status').then(r => r.json()),
       ])
       if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
       if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
+      if (llm.status === 'fulfilled' && llm.value?.ok) setLlmReviewData(llm.value.data)
     } catch {}
     setLoading(false)
   }, [])
@@ -198,6 +201,7 @@ export default function Backtesting() {
     { id: 'trailing', label: `Trail Analysis (${trailData?.summary?.total_analyzed ?? 0})` },
     { id: 'mfe', label: `MFE/MAE (${mfeData?.trades?.length ?? 0})` },
     { id: 'optimization', label: `Optimization (${optData?.results?.length ?? 0})` },
+    { id: 'llm_reviews', label: `LLM Reviews (${llmReviewData?.total_reviews ?? 0})` },
   ]
 
   return (
@@ -749,6 +753,82 @@ export default function Backtesting() {
               </div>}
             </div>
           )))}
+        </div>
+      )}
+
+      {/* LLM REVIEWS */}
+      {tab === 'llm_reviews' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Coverage summary */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+            {[
+              { label: 'Total Reviews', value: llmReviewData?.total_reviews ?? 0, color: '#e2e8f0' },
+              { label: 'Complete', value: (llmReviewData?.total_reviews ?? 0) - (llmReviewData?.error_count ?? 0) - (llmReviewData?.pending_count ?? 0), color: '#4ade80' },
+              { label: 'Errors', value: llmReviewData?.error_count ?? 0, color: llmReviewData?.error_count > 0 ? '#f87171' : '#4ade80' },
+              { label: 'Pending', value: llmReviewData?.pending_count ?? 0, color: '#fbbf24' },
+            ].map(k => (
+              <div key={k.label} style={{ ...card, textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: k.color }}>{k.value}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>{k.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Coverage by source */}
+          {llmReviewData?.coverage && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {[
+                { label: 'Paper Trades', ...llmReviewData.coverage.paper_trades },
+                { label: 'Backtest Trades', ...llmReviewData.coverage.backtest_trades },
+              ].map(c => (
+                <div key={c.label} style={card}>
+                  <div style={secTitle}>{c.label}</div>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <div><div style={{ fontSize: 20, fontWeight: 700, color: '#4ade80' }}>{(c as any).reviewed ?? 0}</div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Reviewed</div></div>
+                    <div><div style={{ fontSize: 20, fontWeight: 700, color: '#fbbf24' }}>{(c as any).unreviewed ?? 0}</div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Unreviewed</div></div>
+                    <div><div style={{ fontSize: 20, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>{(c as any).total ?? (c as any).closed_total ?? 0}</div><div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>Total</div></div>
+                  </div>
+                  <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', marginTop: 10, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, ((c as any).reviewed ?? 0) / Math.max(((c as any).total ?? (c as any).closed_total ?? 1), 1) * 100)}%`, background: '#22c55e', borderRadius: 2 }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Per-trade review list */}
+          <div style={card}>
+            <div style={secTitle}>Latest LLM Reviews</div>
+            {(llmReviewData?.latest_reviews || []).length === 0 ? (
+              <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>No LLM reviews yet. Reviews run weekly on Sunday at 11 PM.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                  {['Symbol', 'Stage', 'Status', 'Model', 'Source', 'Date'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '8px 10px', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {(llmReviewData?.latest_reviews || []).map((r: any) => {
+                    const statusColor = r.status === 'complete' ? '#4ade80' : r.status === 'error' ? '#f87171' : r.status === 'partial' ? '#fbbf24' : 'rgba(255,255,255,0.4)'
+                    const statusIcon = r.status === 'complete' ? '\u2713' : r.status === 'error' ? '\u2717' : '\u25CB'
+                    return (
+                      <tr key={r.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{r.symbol}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{safeStr(r.review_stage)}</td>
+                        <td style={{ padding: '8px 10px' }}>
+                          <span style={{ fontSize: 12, color: statusColor, fontWeight: 600 }}>{statusIcon} {r.status}</span>
+                        </td>
+                        <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.model_name || '—'}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>{r.source_table === 'strategy_backtest_trades' ? 'backtest' : 'paper'}</td>
+                        <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{r.generated_at ? String(r.generated_at).slice(0, 10) : '—'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
     </div>
