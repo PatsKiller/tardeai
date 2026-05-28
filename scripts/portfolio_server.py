@@ -1082,7 +1082,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2 API dispatch
         if path.startswith("/api/v2/"):
             try:
-                from api_v2 import handle as _v2_handle
+                import importlib, api_v2 as _api_v2_mod
+                importlib.reload(_api_v2_mod)
+                _v2_handle = _api_v2_mod.handle
                 _v2_query = dict(parse_qs(parsed.query)) if parsed.query else {}
                 _v2_query = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in _v2_query.items()}
                 _v2_result = _v2_handle(path, method="GET", query=_v2_query)
@@ -1417,7 +1419,9 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2 API POST dispatch
         if path.startswith("/api/v2/"):
             try:
-                from api_v2 import handle as _v2_handle
+                import importlib, api_v2 as _api_v2_mod
+                importlib.reload(_api_v2_mod)
+                _v2_handle = _api_v2_mod.handle
                 _v2_result = _v2_handle(path, method="POST", body=body)
                 if _v2_result is not None:
                     _v2_status, _v2_body = _v2_result
