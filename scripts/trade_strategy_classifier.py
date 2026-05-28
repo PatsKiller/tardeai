@@ -126,10 +126,88 @@ _DIVIDEND_EVIDENCE_KEYWORDS = {
     "aristocrat", "dividend king", "payout", "distribution",
 }
 
+_LONG_HOLD_STRATEGIES = {
+    "core_growth_compounder", "dividend_growth_compounder", "core_index",
+    "recovery_watch", "bond_income", "reit_income", "income_add",
+    "sector_rotation", "international_dividend", "high_yield_income_bdc",
+    "covered_call_income",
+}
+
+_STRATEGY_HOLD_RANGES = {
+    # strategy_id: (min_days, max_days)
+    "momentum_scalp":             (0, 2),
+    "gap_and_go":                 (0, 1),
+    "swing_breakout":             (1, 30),
+    "swing_trade":                (1, 30),
+    "recovery_watch":             (3, None),
+    "core_growth_compounder":     (20, None),
+    "dividend_growth_compounder": (20, None),
+    "core_index":                 (20, None),
+    "bond_income":                (20, None),
+    "reit_income":                (20, None),
+    "income_add":                 (20, None),
+    "sector_rotation":            (6, None),
+    "international_dividend":     (20, None),
+    "high_yield_income_bdc":      (20, None),
+    "covered_call_income":        (10, None),
+}
+
+
+def _count_enrichment_sources(trade_data, strategy):
+    """Count how many independent enrichment sources support a given strategy.
+    Returns (count, sources_list, conflicting_list)."""
+    if not trade_data:
+        return 0, [], []
+
+    supporting = []
+    conflicting = []
+
+    ticker = trade_data.get("ticker_strategy")
+    watchlist = trade_data.get("watchlist_strategy")
+    proposal = trade_data.get("proposal_strategy")
+
+    # Normalize: some watchlist values are descriptive (e.g., "income", "core_holding")
+    # Map them to strategy families for comparison
+    _FAMILY_MAP = {
+        "income": {"dividend_growth_compounder", "income_add", "bond_income",
+                    "reit_income", "high_yield_income_bdc", "covered_call_income"},
+        "core_holding": {"core_growth_compounder", "core_index", "recovery_watch"},
+        "growth_etf": {"core_growth_compounder", "speculative_growth", "core_index"},
+    }
+
+    def _matches(source_val, target_strategy):
+        if not source_val:
+            return False
+        if source_val == target_strategy:
+            return True
+        # Check family mapping
+        family = _FAMILY_MAP.get(source_val, set())
+        return target_strategy in family
+
+    if ticker:
+        if _matches(ticker, strategy):
+            supporting.append(f"ticker_classification={ticker}")
+        else:
+            conflicting.append(f"ticker_classification={ticker}")
+
+    if watchlist:
+        if _matches(watchlist, strategy):
+            supporting.append(f"watchlist_strategy={watchlist}")
+        else:
+            conflicting.append(f"watchlist_strategy={watchlist}")
+
+    if proposal:
+        if _matches(proposal, strategy):
+            supporting.append(f"proposal_strategy={proposal}")
+        else:
+            conflicting.append(f"proposal_strategy={proposal}")
+
+    return len(supporting), supporting, conflicting
+
 
 def _post_validate(parsed, trade_data=None):
     """Apply rule-based validation after LLM classification.
-    Uses actual trade_data (hold_days, pnl, etc.) for hold-period checks.
+    Uses actual trade_data (hold_days, pnl, enrichment sources) for checks.
     Returns (validated_parsed, validation_notes)."""
     notes = []
     if not parsed or not isinstance(parsed, dict):
@@ -159,6 +237,12 @@ def _post_validate(parsed, trade_data=None):
                 hold_days = float(str(hold_evidence[0]).split("=")[1])
             except (ValueError, IndexError):
                 pass
+
+    # Count enrichment source agreement
+    source_count, supporting, conflicting = _count_enrichment_sources(trade_data, strategy)
+    parsed["evidence_source_count"] = source_count
+    if conflicting:
+        parsed["conflicting_sources"] = conflicting
 
     # ── Rule 1: dividend_growth_compounder needs dividend-specific evidence ──
     if strategy == "dividend_growth_compounder":
@@ -199,27 +283,10 @@ def _post_validate(parsed, trade_data=None):
             f"Confidence capped from {old_conf} to 0.6: insufficient evidence items"
         )
 
-    # ── Rule 4: hold-period vs strategy mismatch ──
-    # Strategies have expected hold ranges. When the actual trade hold_days
-    # falls outside the range, downgrade to needs_review.
-    _STRATEGY_HOLD_RANGES = {
-        # strategy_id: (min_days, max_days, downgrade_to)
-        "momentum_scalp":           (0, 2, None),
-        "gap_and_go":               (0, 1, None),
-        "swing_breakout":           (1, 30, "needs_review"),
-        "swing_trade":              (1, 30, "needs_review"),
-        "recovery_watch":           (3, None, "needs_review"),
-        "core_growth_compounder":   (20, None, "needs_review"),
-        "dividend_growth_compounder": (20, None, "needs_review"),
-        "core_index":               (20, None, "needs_review"),
-        "bond_income":              (20, None, "needs_review"),
-        "reit_income":              (20, None, "needs_review"),
-        "income_add":               (20, None, "needs_review"),
-    }
-
+    # ── Rule 4: hold-period vs strategy mismatch (hard gate + caution gate) ──
     if hold_days is not None and parsed.get("strategy_id") in _STRATEGY_HOLD_RANGES:
         strat = parsed["strategy_id"]
-        min_d, max_d, downgrade = _STRATEGY_HOLD_RANGES[strat]
+        min_d, max_d = _STRATEGY_HOLD_RANGES[strat]
 
         violated = False
         reason = ""
@@ -230,41 +297,96 @@ def _post_validate(parsed, trade_data=None):
             violated = True
             reason = f"hold_days={hold_days} above maximum {max_d} for {strat}"
 
-        if violated and downgrade:
-            notes.append(f"DOWNGRADED: {strat} -> {downgrade} ({reason})")
-            parsed["strategy_id"] = downgrade
-            parsed["requires_review"] = True
-            parsed["confidence"] = min(parsed.get("confidence", 0), 0.5)
-            parsed.setdefault("validation_notes", []).append(
-                f"Downgraded from {strat}: {reason}"
-            )
+        if violated:
+            # Hard gate: 0-day hold on long-hold strategy
+            if hold_days <= 0 and strat in _LONG_HOLD_STRATEGIES:
+                # Exception: allow if 2+ enrichment sources agree
+                if source_count >= 2:
+                    notes.append(f"EXCEPTION: {strat} kept despite hold_days=0 ({source_count} sources agree: {supporting})")
+                    parsed["confidence"] = min(parsed.get("confidence", 0), 0.65)
+                    parsed["requires_review"] = True
+                    parsed.setdefault("validation_notes", []).append(
+                        f"0-day hold on long-term strategy allowed: {source_count} enrichment sources agree"
+                    )
+                else:
+                    notes.append(f"HARD GATE: {strat} -> needs_review ({reason})")
+                    parsed["strategy_id"] = "needs_review"
+                    parsed["requires_review"] = True
+                    parsed["confidence"] = min(parsed.get("confidence", 0), 0.45)
+                    parsed.setdefault("validation_notes", []).append(
+                        f"0-day hold cannot be classified as {strat} without 2+ enrichment sources agreeing"
+                    )
 
-    # ── Rule 5: 0-day hold with high gain -> prefer momentum_scalp ──
-    if hold_days is not None and hold_days <= 1:
-        pnl_pct = None
-        if trade_data and trade_data.get("pnl_pct") is not None:
-            try:
-                pnl_pct = float(trade_data["pnl_pct"])
-            except (ValueError, TypeError):
-                pass
+            # Caution gate: 1-5 day hold on long-hold strategy
+            elif hold_days <= 5 and strat in _LONG_HOLD_STRATEGIES:
+                if source_count >= 2:
+                    notes.append(f"CAUTION: {strat} kept for short hold ({hold_days}d) — {source_count} sources agree")
+                    parsed["confidence"] = min(parsed.get("confidence", 0), 0.7)
+                    parsed["requires_review"] = True
+                    parsed.setdefault("validation_notes", []).append(
+                        f"Short hold ({hold_days}d) on long-term strategy allowed: {source_count} enrichment sources agree"
+                    )
+                else:
+                    notes.append(f"CAUTION GATE: {strat} -> needs_review ({reason}, only {source_count} source(s))")
+                    parsed["strategy_id"] = "needs_review"
+                    parsed["requires_review"] = True
+                    parsed["confidence"] = min(parsed.get("confidence", 0), 0.55)
+                    parsed.setdefault("validation_notes", []).append(
+                        f"1-5 day hold on {strat} requires 2+ enrichment sources; only {source_count} found"
+                    )
+
+            # Standard hold-range violation (6+ day but still outside range)
+            else:
+                notes.append(f"DOWNGRADED: {strat} -> needs_review ({reason})")
+                parsed["strategy_id"] = "needs_review"
+                parsed["requires_review"] = True
+                parsed["confidence"] = min(parsed.get("confidence", 0), 0.5)
+                parsed.setdefault("validation_notes", []).append(
+                    f"Downgraded from {strat}: {reason}"
+                )
+
+    # ── Rule 5: enrichment conflict gate ──
+    if conflicting and source_count == 0:
+        # All enrichment sources disagree with the classification
         strat = parsed.get("strategy_id", "")
-        # If classified as a long-hold strategy but actually a 0-1 day trade,
-        # and not already momentum_scalp or gap_and_go, flag it
-        long_hold_strategies = {
-            "core_growth_compounder", "dividend_growth_compounder", "core_index",
-            "recovery_watch", "bond_income", "reit_income", "income_add",
-            "sector_rotation",
-        }
-        if strat in long_hold_strategies:
-            notes.append(f"DOWNGRADED: {strat} -> needs_review (hold_days={hold_days} is day-trade, not long-hold)")
-            parsed["strategy_id"] = "needs_review"
+        if strat not in ("needs_review", "unknown"):
+            notes.append(f"CONFLICT GATE: {strat} has 0 supporting sources, {len(conflicting)} conflicting: {conflicting}")
             parsed["requires_review"] = True
             parsed["confidence"] = min(parsed.get("confidence", 0), 0.5)
             parsed.setdefault("validation_notes", []).append(
-                f"Downgraded from {strat}: hold_days={hold_days} indicates day-trade, not long-hold strategy"
+                f"No enrichment sources support {strat}; conflicts: {conflicting}"
+            )
+    elif len(conflicting) >= 2 and source_count <= 1:
+        # Majority of sources disagree
+        strat = parsed.get("strategy_id", "")
+        if strat not in ("needs_review", "unknown"):
+            notes.append(f"CONFLICT: {strat} has {len(conflicting)} conflicting vs {source_count} supporting")
+            parsed["requires_review"] = True
+            parsed["confidence"] = min(parsed.get("confidence", 0), 0.55)
+            parsed.setdefault("validation_notes", []).append(
+                f"Enrichment conflict: {len(conflicting)} sources disagree with {strat}"
             )
 
-    # ── Rule 6: needs_review / unknown confidence bounds ──
+    # ── Rule 6: ADBE source-data rule ──
+    # ADBE is a mega-cap ($200B+). watchlist_strategy_cards has it as speculative_growth
+    # which is a known source data issue. Do not allow dividend/income classification
+    # based solely on watchlist for ADBE.
+    if trade_data and trade_data.get("symbol") == "ADBE":
+        strat = parsed.get("strategy_id", "")
+        if strat in ("dividend_growth_compounder", "income_add"):
+            ticker = trade_data.get("ticker_strategy")
+            proposal = trade_data.get("proposal_strategy")
+            # Only watchlist supports it — not enough for ADBE
+            if ticker != strat and proposal != strat:
+                notes.append(f"ADBE RULE: {strat} -> needs_review (ADBE requires ticker or proposal confirmation, not watchlist alone)")
+                parsed["strategy_id"] = "needs_review"
+                parsed["requires_review"] = True
+                parsed["confidence"] = min(parsed.get("confidence", 0), 0.45)
+                parsed.setdefault("validation_notes", []).append(
+                    f"ADBE: {strat} requires confirmation beyond watchlist (known source data issue)"
+                )
+
+    # ── Rule 7: needs_review / unknown confidence bounds ──
     if parsed.get("strategy_id") == "needs_review":
         parsed["confidence"] = min(parsed.get("confidence", 0.5), 0.5)
         parsed["requires_review"] = True
@@ -462,11 +584,14 @@ def main():
                     "evidence_used": parsed.get("evidence_used", []),
                     "missing_evidence": parsed.get("missing_evidence", []),
                     "requires_review": parsed.get("requires_review", False),
+                    "evidence_source_count": parsed.get("evidence_source_count", 0),
+                    "conflicting_sources": parsed.get("conflicting_sources", []),
                     "source_table": t["source_table"],
+                    "downgraded_by_post_validation": bool(validation_notes),
                 }
                 if validation_notes:
                     result["validation_notes"] = validation_notes
-                    result["llm_original_strategy"] = llm_strategy
+                    result["original_strategy_id"] = llm_strategy
                     result["llm_original_confidence"] = llm_confidence
 
                 log.info(f"  → {parsed['strategy_id']} (confidence={parsed.get('confidence',0)})"
