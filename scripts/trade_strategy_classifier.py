@@ -288,16 +288,42 @@ def main():
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Get unclassified closed trades
+    # Get unclassified closed trades with enrichment data
     cur.execute("""
-        SELECT trade_id, symbol, broker, account, entry_price, exit_price, pnl, pnl_pct,
-               entry_date, exit_date,
-               EXTRACT(DAY FROM (exit_date::timestamp - entry_date::timestamp)) as hold_days,
-               source_table
-        FROM trades
-        WHERE (strategy_id IS NULL OR strategy_id = '' OR strategy_id = 'unknown')
-          AND status = 'closed' AND entry_price > 0 AND exit_price > 0
-        ORDER BY ABS(pnl) DESC
+        SELECT t.trade_id, t.symbol, t.broker, t.account,
+               t.entry_price, t.exit_price, t.pnl, t.pnl_pct,
+               t.entry_date, t.exit_date,
+               EXTRACT(DAY FROM (t.exit_date::timestamp - t.entry_date::timestamp)) AS hold_days,
+               t.exit_reason, t.source_table,
+               -- ticker_strategy_classifications
+               tsc.strategy_type   AS ticker_strategy,
+               tsc.asset_type      AS ticker_asset_type,
+               tsc.confidence      AS ticker_confidence,
+               -- watchlist_strategy_cards
+               wsc.strategy_type   AS watchlist_strategy,
+               wsc.thesis          AS watchlist_thesis,
+               wsc.catalyst_summary AS watchlist_catalyst,
+               -- paper_trade_proposals (most recent for this symbol)
+               ptp.strategy_id     AS proposal_strategy,
+               ptp.catalyst        AS proposal_catalyst,
+               ptp.setup_type      AS proposal_setup,
+               ptp.sector          AS proposal_sector,
+               ptp.industry        AS proposal_industry,
+               ptp.discovery_source AS proposal_discovery_source
+        FROM trades t
+        LEFT JOIN ticker_strategy_classifications tsc
+            ON tsc.symbol = t.symbol AND tsc.active = true
+        LEFT JOIN watchlist_strategy_cards wsc
+            ON wsc.symbol = t.symbol
+        LEFT JOIN LATERAL (
+            SELECT strategy_id, catalyst, setup_type, sector, industry, discovery_source
+            FROM paper_trade_proposals
+            WHERE symbol = t.symbol
+            ORDER BY created_at DESC LIMIT 1
+        ) ptp ON true
+        WHERE (t.strategy_id IS NULL OR t.strategy_id = '' OR t.strategy_id = 'unknown')
+          AND t.status = 'closed' AND t.entry_price > 0 AND t.exit_price > 0
+        ORDER BY ABS(t.pnl) DESC
         LIMIT %s
     """, [args.limit])
     trades = [dict(r) for r in cur.fetchall()]
@@ -313,7 +339,42 @@ def main():
     results = []
 
     for t in trades:
-        trade_json = json.dumps(t, default=str)
+        # Build enrichment context
+        enrichment = {}
+        if t.get("ticker_strategy"):
+            enrichment["ticker_classification"] = {
+                "strategy": t["ticker_strategy"],
+                "asset_type": t.get("ticker_asset_type"),
+                "confidence": float(t["ticker_confidence"]) if t.get("ticker_confidence") else None,
+            }
+        if t.get("watchlist_strategy"):
+            enrichment["watchlist"] = {
+                "strategy": t["watchlist_strategy"],
+                "thesis": t.get("watchlist_thesis", "")[:200] if t.get("watchlist_thesis") else None,
+                "catalyst": t.get("watchlist_catalyst", "")[:200] if t.get("watchlist_catalyst") else None,
+            }
+        if t.get("proposal_strategy"):
+            enrichment["proposal"] = {
+                "strategy": t["proposal_strategy"],
+                "catalyst": t.get("proposal_catalyst", "")[:200] if t.get("proposal_catalyst") else None,
+                "setup": t.get("proposal_setup", "")[:200] if t.get("proposal_setup") else None,
+                "sector": t.get("proposal_sector"),
+                "industry": t.get("proposal_industry"),
+                "discovery_source": t.get("proposal_discovery_source"),
+            }
+
+        # Build trade data for prompt (core fields only)
+        trade_core = {k: t[k] for k in (
+            "trade_id", "symbol", "broker", "account", "entry_price", "exit_price",
+            "pnl", "pnl_pct", "entry_date", "exit_date", "hold_days", "exit_reason", "source_table"
+        ) if t.get(k) is not None}
+
+        if enrichment:
+            trade_core["enrichment"] = enrichment
+            parts = [f"{k}={v.get('strategy', '?')}" for k, v in enrichment.items()]
+            log.info(f"  Enrichment: {', '.join(parts)}")
+
+        trade_json = json.dumps(trade_core, default=str)
         prompt = prompt_template.replace("{trade_json}", trade_json)
         log.info(f"Classifying {t['symbol']} ({t['broker']}/{t['account']}) hold={t.get('hold_days','?')}d pnl={t.get('pnl','?')}")
 
