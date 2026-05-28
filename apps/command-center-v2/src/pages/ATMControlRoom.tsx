@@ -12,6 +12,7 @@ import StopProofPanel from '../components/StopProofPanel';
 import ExecutionTimingPanel from '../components/ExecutionTimingPanel';
 import StopTrailingControlPanel from '../components/StopTrailingControlPanel';
 import JournalLearningWorkspace from '../components/JournalLearningWorkspace';
+import LLMBacktestingReviewPanel from '../components/LLMBacktestingReviewPanel';
 import UnifiedTradeInspector from '../components/UnifiedTradeInspector';
 import StopChangeAuditPanel from '../components/StopChangeAuditPanel';
 import ProposalDedupPanel from '../components/ProposalDedupPanel';
@@ -175,6 +176,7 @@ export default function ATMControlRoom() {
     <StopProofPanel />
     <ExecutionTimingPanel />
     <JournalLearningWorkspace compact />
+    <LLMBacktestingReviewPanel compact />
     <LifecycleTracePanel />
     <ProposalDedupPanel />
     <InspectorPanel s={inspector} set={setInspector} />

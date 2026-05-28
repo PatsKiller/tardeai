@@ -19456,6 +19456,55 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
 
+    # ── v3.8 LLM Review Status ────────────────────────────────────────
+    if base_path == "/api/v2/lifecycle/llm-review-status" and method == "GET":
+        try:
+            import datetime as _dt_lr, os as _os_lr
+            _lr_total = len(_db_query("SELECT 1 FROM trade_llm_reviews") or [])
+            _lr_close = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE review_stage='close_analysis'") or [])
+            _lr_delayed = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE review_stage='delayed_review'") or [])
+            _lr_monthly = len(_db_query("SELECT 1 FROM monthly_llm_meta_reviews") or [])
+            _lr_pending = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status IN ('draft','dry_run')") or [])
+            _lr_errors = len(_db_query("SELECT 1 FROM trade_llm_reviews WHERE status='error'") or [])
+            _lr_latest = _db_query("SELECT id, symbol, review_stage, status, model_name, generated_at FROM trade_llm_reviews ORDER BY generated_at DESC LIMIT 10") or []
+            return 200, {"ok": True, "data": {
+                "generated_at": _dt_lr.datetime.now(_dt_lr.timezone.utc).isoformat(),
+                "total_reviews": _lr_total, "close_analysis_count": _lr_close,
+                "delayed_review_count": _lr_delayed, "monthly_meta_count": _lr_monthly,
+                "pending_count": _lr_pending, "error_count": _lr_errors,
+                "latest_reviews": [{k: _json_clean(v) for k, v in r.items()} for r in _lr_latest],
+                "safety": {"read_only_endpoint": True, "model_calls_executed_by_endpoint": False,
+                           "alpaca_mode": _os_lr.environ.get("ALPACA_MODE", "unknown")},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/lifecycle/trade-llm-review" and method == "GET":
+        try:
+            _tlr_sym = (query or {}).get("symbol")
+            _tlr_tid = (query or {}).get("paper_trade_id")
+            _tlr_where = "symbol=%s" if _tlr_sym else "paper_trade_id=%s"
+            _tlr_param = _tlr_sym or _tlr_tid
+            if not _tlr_param:
+                return 400, {"ok": False, "error": "symbol or paper_trade_id required"}
+            _tlr_rows = _db_query(f"SELECT * FROM trade_llm_reviews WHERE {_tlr_where} ORDER BY generated_at DESC LIMIT 10", [_tlr_param]) or []
+            return 200, {"ok": True, "data": {
+                "reviews": [{k: _json_clean(v) for k, v in r.items()} for r in _tlr_rows],
+                "safety": {"read_only_endpoint": True, "model_calls_executed_by_endpoint": False},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/lifecycle/monthly-llm-meta-review" and method == "GET":
+        try:
+            _mm_rows = _db_query("SELECT * FROM monthly_llm_meta_reviews ORDER BY review_month DESC LIMIT 12") or []
+            return 200, {"ok": True, "data": {
+                "monthly_reviews": [{k: _json_clean(v) for k, v in r.items()} for r in _mm_rows],
+                "safety": {"read_only_endpoint": True, "model_calls_executed_by_endpoint": False},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── v3.7 Unified Trade Lifecycle Inspector ────────────────────────
     if base_path == "/api/v2/lifecycle/trade-inspector" and method == "GET":
         try:
