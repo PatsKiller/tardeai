@@ -94,16 +94,39 @@ def _parse_json_response(text):
 
 
 def _check_no_unsafe_jobs():
-    """Check no classifier/apply or trade_close_llm_analyzer/apply jobs are running."""
+    """Check no classifier/apply or trade_close_llm_analyzer/apply jobs are running.
+    Excludes the current process tree (this script may be called as preflight from --apply)."""
     try:
+        my_pid = os.getpid()
+        my_ppid = os.getppid()
+        # Get grandparent PID too (classifier -> python health check)
+        try:
+            my_gpid = int(Path(f"/proc/{my_ppid}/stat").read_text().split()[3])
+        except Exception:
+            my_gpid = -1
+        exclude_pids = {my_pid, my_ppid, my_gpid}
+
         result = subprocess.run(
-            ["ps", "-eo", "args"], capture_output=True, text=True, timeout=5
+            ["ps", "-eo", "pid,args"], capture_output=True, text=True, timeout=5
         )
         for line in result.stdout.splitlines():
-            if ("trade_strategy_classifier" in line and "--apply" in line):
-                return False, f"classifier --apply running: {line.strip()}"
-            if ("trade_close_llm_analyzer" in line and "--apply" in line):
-                return False, f"analyzer --apply running: {line.strip()}"
+            line = line.strip()
+            if not line or line.startswith("PID"):
+                continue
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            args = parts[1]
+            if pid in exclude_pids:
+                continue
+            if ("trade_strategy_classifier" in args and "--apply" in args):
+                return False, f"classifier --apply running (pid {pid}): {args[:120]}"
+            if ("trade_close_llm_analyzer" in args and "--apply" in args):
+                return False, f"analyzer --apply running (pid {pid}): {args[:120]}"
         return True, "no unsafe jobs"
     except Exception as e:
         return False, f"process check error: {e}"
