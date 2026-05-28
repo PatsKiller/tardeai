@@ -522,7 +522,7 @@ def check_risk_gate(conn, symbol: str, strategy_id: str, plan: dict) -> dict:
             symbol=symbol,
             strategy_id=strategy_id,
             trade_plan=plan,
-            account=_get_target_account(),
+            account=_resolve_proposal_account(),
             mode="paper",
             action_context="paper_proposal",
         )
