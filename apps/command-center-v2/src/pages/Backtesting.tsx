@@ -112,9 +112,32 @@ export default function Backtesting() {
     })()
   }, [])
 
+  // Apply global filters to all trade data
+  const globalFilteredTrades = useMemo(() => {
+    return trades.filter(t => {
+      if (dateFrom) {
+        const td = (t as any).entry_date || (t as any).signal_time || ''
+        if (td && td < dateFrom) return false
+      }
+      if (dateTo) {
+        const td = (t as any).entry_date || (t as any).signal_time || ''
+        if (td && td > dateTo) return false
+      }
+      if (brokerFilter) {
+        const tb = (t as any).broker || (t as any).account || ''
+        if (!tb.toLowerCase().includes(brokerFilter.toLowerCase())) return false
+      }
+      if (accountFilter) {
+        const ta = (t as any).account || (t as any).target_account || ''
+        if (ta.toLowerCase() !== accountFilter.toLowerCase()) return false
+      }
+      return true
+    })
+  }, [trades, dateFrom, dateTo, brokerFilter, accountFilter])
+
   const strategyStats = useMemo(() => {
     const m: Record<string, { n: number; wins: number; pnl: number; rs: number[] }> = {}
-    trades.forEach(t => {
+    globalFilteredTrades.forEach(t => {
       const s = t.strategy_id
       if (!s || s === 'unknown') return
       if (!m[s]) m[s] = { n: 0, wins: 0, pnl: 0, rs: [] }
@@ -138,7 +161,7 @@ export default function Backtesting() {
     }).sort((a, b) => b.win_rate - a.win_rate)
   }, [trades, results])
 
-  const filteredTrades = useMemo(() => selectedStrategy ? trades.filter(t => t.strategy_id === selectedStrategy) : trades, [trades, selectedStrategy])
+  const filteredTrades = useMemo(() => selectedStrategy ? globalFilteredTrades.filter(t => t.strategy_id === selectedStrategy) : globalFilteredTrades, [globalFilteredTrades, selectedStrategy])
 
   const rBuckets = useMemo(() => {
     const src = selectedStrategy ? trades.filter(t => t.strategy_id === selectedStrategy) : trades
