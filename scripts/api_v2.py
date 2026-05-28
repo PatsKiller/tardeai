@@ -18944,7 +18944,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     if base_path == "/api/v2/backtesting/missed-opportunities":
         try:
-            rows = _db_query("""SELECT ptp.id as proposal_id, ptp.symbol, ptp.strategy_id,
+            _q = query or {}
+            _mw, _mp = ["ptp.status IN ('EXPIRED','REJECTED','expired')"], []
+            if _q.get("strategy"):
+                _mw.append("ptp.strategy_id=%s"); _mp.append(_q["strategy"])
+            if _q.get("start_date"):
+                _mw.append("ptp.created_at >= %s::date"); _mp.append(_q["start_date"])
+            if _q.get("end_date"):
+                _mw.append("ptp.created_at <= (%s::date + interval '1 day')"); _mp.append(_q["end_date"])
+            if _q.get("broker"):
+                _mw.append("ptp.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE broker=%s OR COALESCE(target_account,account) LIKE %s||'%%')")
+                _mp.append(_q["broker"]); _mp.append(_q["broker"])
+            if _q.get("account"):
+                _mw.append("ptp.symbol IN (SELECT DISTINCT symbol FROM paper_trades WHERE COALESCE(target_account,account)=%s)")
+                _mp.append(_q["account"])
+            _mwhere = " AND ".join(_mw)
+            rows = _db_query(f"""SELECT ptp.id as proposal_id, ptp.symbol, ptp.strategy_id,
                 ptp.status as proposal_status, ptp.expiry_reason,
                 ptp.created_at::date as proposed_date,
                 ptp.proposed_entry, ptp.proposed_target1 as proposed_target,
@@ -18953,10 +18968,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sbt.exit_reason as simulated_exit_reason
                 FROM paper_trade_proposals ptp
                 LEFT JOIN strategy_backtest_trades sbt
-                    ON sbt.symbol = ptp.symbol AND sbt.strategy_id LIKE '%' || ptp.strategy_id || '%'
+                    ON sbt.symbol = ptp.symbol AND sbt.strategy_id LIKE '%%' || ptp.strategy_id || '%%'
                     AND ABS(EXTRACT(EPOCH FROM (sbt.signal_time::timestamptz - ptp.created_at))/3600) < 72
-                WHERE ptp.status IN ('EXPIRED','REJECTED','expired')
-                ORDER BY ABS(COALESCE(sbt.pnl,0)) DESC LIMIT 50""") or []
+                WHERE {_mwhere}
+                ORDER BY ABS(COALESCE(sbt.pnl,0)) DESC LIMIT 50""", _mp) or []
             matched = [r for r in rows if r.get("simulated_pnl") is not None]
             would_win = sum(1 for r in matched if float(r.get("simulated_pnl") or 0) > 0)
             would_lose = sum(1 for r in matched if float(r.get("simulated_pnl") or 0) < 0)
@@ -19013,8 +19028,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if base_path == "/api/v2/backtesting/trailing-stop-analysis":
         try:
             _q = query or {}
-            strategy_filter = _q.get("strategy")
-            q = """
+            _tw, _tp = [], []
+            if _q.get("strategy"):
+                _tw.append("tsa.strategy_id=%s"); _tp.append(_q["strategy"])
+            if _q.get("broker"):
+                _tw.append("(pt.broker=%s OR COALESCE(pt.target_account,pt.account) LIKE %s||'%%')")
+                _tp.append(_q["broker"]); _tp.append(_q["broker"])
+            if _q.get("account"):
+                _tw.append("COALESCE(pt.target_account,pt.account)=%s"); _tp.append(_q["account"])
+            if _q.get("start_date"):
+                _tw.append("pt.entry_time >= %s::date"); _tp.append(_q["start_date"])
+            if _q.get("end_date"):
+                _tw.append("pt.entry_time <= (%s::date + interval '1 day')"); _tp.append(_q["end_date"])
+            _twhere = " WHERE " + " AND ".join(_tw) if _tw else ""
+            q = f"""
                 SELECT tsa.trade_id, tsa.symbol, tsa.strategy_id,
                        tsa.entry_price, tsa.fixed_stop_price, tsa.fixed_pnl_pct,
                        tsa.high_water_mark, tsa.high_water_pct_gain,
@@ -19027,13 +19054,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        pt.pnl as actual_pnl
                 FROM trailing_stop_analysis tsa
                 JOIN paper_trades pt ON pt.id = tsa.trade_id
+                {_twhere} ORDER BY tsa.analyzed_at DESC LIMIT 100
             """
-            p = []
-            if strategy_filter:
-                q += " WHERE tsa.strategy_id = %s"
-                p.append(strategy_filter)
-            q += " ORDER BY tsa.analyzed_at DESC LIMIT 100"
-            trades_data = _db_query(q, p) or []
+            trades_data = _db_query(q, _tp) or []
 
             strategy_recs = _db_query("""
                 SELECT strategy_id,
@@ -19106,6 +19129,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _broker_list = [b["broker"] for b in _brokers if b.get("broker")]
             _accounts = _db_query("SELECT account_label, broker FROM accounts ORDER BY broker, account_label") or []
             _acct_list = [a["account_label"] for a in _accounts if a.get("account_label")]
+            _broker_accounts = [{"broker": a["broker"], "account_label": a["account_label"]} for a in _accounts if a.get("account_label")]
             # Data quality: check what percentage of backtest trades have dates
             _total = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades", fetch="one")
             _with_dates = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades WHERE COALESCE(entry_time, signal_time) IS NOT NULL", fetch="one")
@@ -19113,13 +19137,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _gaps = []
             if _pct < 100:
                 _gaps.append(f"{100-_pct:.0f}% of backtest trades missing entry_time — excluded from date filters")
-            _gaps.append("strategy_backtest_trades has no broker/account columns — broker/account filters apply to trail/MFE only")
+            _gaps.append("Broker/account filter matches backtest trades by symbol overlap with paper_trades for that account")
             return 200, {"ok": True, "data": {
                 "strategies": _strategy_list,
                 "run_ids": _run_list,
                 "run_types": _run_type_list,
                 "brokers": _broker_list,
                 "accounts": _acct_list,
+                "broker_accounts": _broker_accounts,
                 "minDate": str(_bt_dates.get("min_date") or ""),
                 "maxDate": str(_bt_dates.get("max_date") or ""),
                 "data_quality_gaps": _gaps,
@@ -19130,13 +19155,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # ── MFE/MAE Analysis + Trailing Optimization endpoints ──
     if base_path == "/api/v2/backtesting/mfe-analysis" and method == "GET":
         try:
-            _mfe = _db_query("""
+            _q = query or {}
+            _mw, _mp = [], []
+            if _q.get("strategy"):
+                _mw.append("m.strategy_id=%s"); _mp.append(_q["strategy"])
+            if _q.get("broker"):
+                _mw.append("(t.broker=%s OR COALESCE(t.target_account,t.account) LIKE %s||'%%')")
+                _mp.append(_q["broker"]); _mp.append(_q["broker"])
+            if _q.get("account"):
+                _mw.append("COALESCE(t.target_account,t.account)=%s"); _mp.append(_q["account"])
+            if _q.get("start_date"):
+                _mw.append("t.entry_time >= %s::date"); _mp.append(_q["start_date"])
+            if _q.get("end_date"):
+                _mw.append("t.entry_time <= (%s::date + interval '1 day')"); _mp.append(_q["end_date"])
+            _mwhere = " WHERE " + " AND ".join(_mw) if _mw else ""
+            _mfe = _db_query(f"""
                 SELECT m.*, t.exit_price, t.exit_reason, t.pnl, t.r_multiple as actual_r,
                        t.entry_price, t.stop_loss, t.target_1, t.shares
                 FROM trade_mfe_analysis m
                 JOIN paper_trades t ON m.trade_id = t.id
-                ORDER BY m.created_at DESC LIMIT 50
-            """) or []
+                {_mwhere} ORDER BY m.created_at DESC LIMIT 50
+            """, _mp) or []
             _summary = {}
             if _mfe:
                 _summary = {
