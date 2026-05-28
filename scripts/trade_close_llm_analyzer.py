@@ -142,7 +142,7 @@ def main():
     if args.allow_local_llm and not args.apply:
         log.info("Calling local LLM (dry-run, no DB write)...")
         try:
-            from local_llm import query_local_llm
+            from local_llm import generate as query_local_llm
             prompt_path = PROJECT_ROOT / "scripts" / "prompts" / f"llm_backtesting_{args.prompt_version}.md"
             prompt_template = prompt_path.read_text() if prompt_path.exists() else "Analyze this trade: {trade_json}"
             prompt = prompt_template.replace("{trade_json}", json.dumps(snapshot["trade"], default=str))
@@ -151,7 +151,7 @@ def main():
             prompt = prompt.replace("{tca_json}", json.dumps(snapshot["tca"], default=str))
             prompt = prompt.replace("{trace_json}", "{}")
 
-            response = query_local_llm(prompt, model=args.model_name, timeout=120)
+            response = query_local_llm(prompt, timeout=120, fallback=False, caller="trade_close_llm_analyzer", process_type="BACKTEST_REVIEW")
             result["model_called"] = True
             result["model_output_preview"] = str(response)[:500] if response else "empty"
             result["status"] = "dry_run_with_model"
