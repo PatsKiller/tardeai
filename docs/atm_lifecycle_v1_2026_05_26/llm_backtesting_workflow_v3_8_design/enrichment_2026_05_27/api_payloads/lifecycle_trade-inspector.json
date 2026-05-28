@@ -1,0 +1,361 @@
+{
+    "ok": true,
+    "data": {
+        "generated_at": "2026-05-28T02:27:48.134835+00:00",
+        "query": {
+            "symbol": "AGNC",
+            "paper_trade_id": null,
+            "trace_id": null,
+            "proposal_id": null,
+            "strategy_id": null,
+            "account": null
+        },
+        "resolved_identity": {
+            "resolution_method": "symbol_fallback",
+            "symbol": "AGNC",
+            "paper_trade_id": null,
+            "trace_id": null,
+            "proposal_id": null,
+            "strategy_id": null,
+            "account": null,
+            "warnings": [
+                "Symbol-only resolution may return multiple trades"
+            ]
+        },
+        "overview": {
+            "paper_trade_id": 31,
+            "symbol": "AGNC",
+            "strategy_id": "reit_income",
+            "strategy_family": "income",
+            "account": "ALPACA_PAPER",
+            "entry_price": 10.22,
+            "exit_price": null,
+            "pnl": 86.44,
+            "stop_loss": 9.71,
+            "exit_reason": "",
+            "is_ghost": false,
+            "status": "open"
+        },
+        "source": {
+            "signals": []
+        },
+        "proposal": {
+            "proposals": [
+                {
+                    "id": 120,
+                    "symbol": "AGNC",
+                    "strategy_id": "reit_income",
+                    "signal_score": 19.0,
+                    "signal_decision": null,
+                    "created_at": "2026-05-22T09:05:48.218668-04:00"
+                }
+            ]
+        },
+        "risk_approval": {
+            "gate_audit": "gate data from lifecycle API if available"
+        },
+        "execution": {
+            "tca": {
+                "id": 5,
+                "paper_trade_id": 31,
+                "proposal_id": 120,
+                "symbol": "AGNC",
+                "strategy_id": "reit_income",
+                "order_id": "15440cb2-baf0-44a5-8c90-b85f955e6ce9",
+                "client_order_id": null,
+                "intended_entry": 10.22,
+                "submitted_limit_price": null,
+                "fill_price": 10.22,
+                "arrival_price": null,
+                "quote_bid": null,
+                "quote_ask": null,
+                "spread_pct": null,
+                "slippage_pct": 0.0,
+                "slippage_dollars": 0.0,
+                "fill_quality": "EXCELLENT",
+                "liquidity_context": null,
+                "tca_payload": {
+                    "fill_price": 10.22,
+                    "fill_quality": "EXCELLENT",
+                    "slippage_pct": 0.0,
+                    "arrival_price": null,
+                    "intended_entry": 10.22
+                },
+                "created_at": "2026-05-26T09:43:01.936762-04:00",
+                "order_submitted_at": null,
+                "order_filled_at": null,
+                "time_to_fill_seconds": null,
+                "intended_shares": null,
+                "filled_shares": null,
+                "partial_fill": false,
+                "price_improvement_pct": null,
+                "quote_age_seconds": null,
+                "market_session": null,
+                "readiness_state_at_submit": null,
+                "lifecycle_state_at_submit": null,
+                "action_state_at_submit": null,
+                "packet_completion_pct_at_submit": null,
+                "data_quality_grade": null
+            },
+            "trade": {
+                "id": 31,
+                "signal_id": null,
+                "strategy_id": "reit_income",
+                "symbol": "AGNC",
+                "account": "ALPACA_PAPER",
+                "entry_price": 10.22,
+                "entry_time": null,
+                "shares": 293,
+                "dollar_size": 2994.46,
+                "stop_loss": 9.71,
+                "target_1": 11.24,
+                "target_2": null,
+                "dollar_risk": 149.43,
+                "score_at_entry": null,
+                "rvol_at_entry": null,
+                "float_m_at_entry": null,
+                "catalyst_at_entry": null,
+                "catalyst_verified": null,
+                "intel_readiness": null,
+                "vix_at_entry": 17.38,
+                "market_regime": "high_volatility",
+                "trade_plan_id": null,
+                "exit_price": null,
+                "exit_time": null,
+                "exit_reason": null,
+                "pnl": 86.44,
+                "pnl_pct": null,
+                "hold_time_min": null,
+                "planned_entry": 10.22,
+                "entry_slippage": null,
+                "planned_stop": 9.71,
+                "stop_slippage": null,
+                "max_adverse_excursion": -0.1,
+                "max_favorable_excursion": 3.77,
+                "outcome_verdict": null,
+                "status": "open",
+                "logged_by": "alpaca_adapter",
+                "created_at": "2026-05-22T11:30:08.822688-04:00",
+                "closed_at": null,
+                "updated_at": "2026-05-27T15:57:03.746164-04:00",
+                "broker_order_id": "15440cb2-baf0-44a5-8c90-b85f955e6ce9",
+                "broker_status": "filled",
+                "order_type": "market",
+                "source_signal_id": null,
+                "source_strategy_card_id": null,
+                "risk_gate_result": "APPROVED",
+                "risk_gate_reason_codes": null,
+                "opened_via": "alpaca_adapter",
+                "closed_via": null,
+                "current_price": 10.51,
+                "unrealized_pnl": 84.97,
+                "last_synced_at": "2026-05-27T16:00:02.626018-04:00",
+                "notes": "Order type: market_better_price ($10.22 <= $10.22). Fill verified: filled. Shares: 293. Stop: $9.71 (placed after fill).",
+                "proposal_id": 120,
+                "setup_type": null,
+                "signal_grade": null,
+                "automation_source": null,
+                "broker_submitted_at": null,
+                "broker_filled_at": null,
+                "broker_closed_at": null,
+                "source_quality_score": null,
+                "data_quality_score": null,
+                "r_multiple": 0.58,
+                "planned_vs_actual_entry": null,
+                "monitored_at": "2026-05-27T15:57:02.103494-04:00",
+                "last_alert_at": null,
+                "stale_flag": false,
+                "thesis_status": null,
+                "post_trade_analyzed": false,
+                "iris_curated": false,
+                "aegis_summarized": false,
+                "research_packet_id": null,
+                "decision_state": null,
+                "confidence_score": null,
+                "agent_votes": null,
+                "backtest_quality": null,
+                "approval_mode": null,
+                "broker": "alpaca_paper",
+                "client_order_id": null,
+                "bracket_order": false,
+                "take_profit_price": null,
+                "stop_loss_price": null,
+                "submitted_at": "2026-05-22T11:30:08.822688-04:00",
+                "filled_at": "2026-05-22T11:30:08.822688-04:00",
+                "close_requested_at": null,
+                "close_reason": null,
+                "close_order_id": null,
+                "close_result": null,
+                "entered_after_recheck": false,
+                "entry_recheck_id": null,
+                "entry_readiness_score": null,
+                "recommendation_to_entry_seconds": null,
+                "approval_to_entry_seconds": null,
+                "risk_params_at_fill": {
+                    "stop": 9.71,
+                    "target": 11.24,
+                    "drift_pct": 0.0,
+                    "order_type": "market",
+                    "proposed_entry": 10.22,
+                    "filled_avg_price": 10.22,
+                    "order_type_reason": "market_better_price ($10.22 <= $10.22)",
+                    "live_price_at_submit": 10.22
+                },
+                "lifecycle_state": "open",
+                "revalidation_verdict": "valid_original",
+                "revalidation_score": 85,
+                "revalidation_flags": null,
+                "price_at_approval": 10.22,
+                "staleness_at_submit_min": null,
+                "broker_confirmed": true,
+                "target_account": "alpaca_paper",
+                "atm_decision_id": null,
+                "atm_config_hash": null,
+                "atm_during_b1": false,
+                "stop_order_id": "f171e7ec-9224-4358-939e-1661feb5b64e",
+                "stop_updated_at": "2026-05-22T16:54:59.991288-04:00",
+                "order_submitted_at": null,
+                "order_filled_at": null,
+                "stop_verified_at": null
+            }
+        },
+        "stops": {
+            "db_stop": 9.71,
+            "stop_order_id": "f171e7ec-9224-4358-939e-1661feb5b64e",
+            "stop_verified_at": null,
+            "change_audit": []
+        },
+        "reconciliation": {
+            "lifecycle_events_count": 7
+        },
+        "journal": {
+            "exit_reason": "",
+            "pnl": 86.44,
+            "status": "open"
+        },
+        "learning": {
+            "strategy_family": "income"
+        },
+        "backtest": {
+            "status": "no_backtest_comparison_available"
+        },
+        "llm_review": {
+            "status": "not_configured",
+            "close_analysis": null,
+            "delayed_review": null,
+            "monthly_meta": null,
+            "model_calls_executed_by_endpoint": false,
+            "data_quality_gaps": [
+                "LLM backtesting jobs not yet deployed (v3.8 design only)"
+            ]
+        },
+        "data_quality_gaps": [
+            {
+                "gap": "no_stop_audit",
+                "detail": "Stop exists but no stop-change audit events"
+            }
+        ],
+        "lifecycle_events": [
+            {
+                "stage": "stop_placement",
+                "event_type": "initial_stop_set",
+                "status": "active",
+                "source_script": null,
+                "event_ts": "2026-05-26T16:26:14.535969-04:00"
+            },
+            {
+                "stage": "execution",
+                "event_type": "order_filled",
+                "status": "filled",
+                "source_script": "alpaca_paper_adapter.py",
+                "event_ts": "2026-05-26T16:26:14.533015-04:00"
+            },
+            {
+                "stage": "tca",
+                "event_type": "execution_quality_assessed",
+                "status": "EXCELLENT",
+                "source_script": "paper_execution_quality_analyzer.py",
+                "event_ts": "2026-05-26T09:43:01.940414-04:00"
+            },
+            {
+                "stage": "tca",
+                "event_type": "execution_quality_assessed",
+                "status": "EXCELLENT",
+                "source_script": "paper_execution_quality_analyzer.py",
+                "event_ts": "2026-05-26T09:43:01.936762-04:00"
+            },
+            {
+                "stage": "stop_placement",
+                "event_type": "initial_stop_set",
+                "status": "active",
+                "source_script": null,
+                "event_ts": "2026-05-22T11:30:08.541774-04:00"
+            },
+            {
+                "stage": "execution",
+                "event_type": "order_filled",
+                "status": "filled",
+                "source_script": "alpaca_paper_adapter.py",
+                "event_ts": "2026-05-22T11:30:08.541774-04:00"
+            },
+            {
+                "stage": "proposal",
+                "event_type": "proposal_created",
+                "status": "pending",
+                "source_script": "auto_proposal_generator.py",
+                "event_ts": "2026-05-22T09:05:48.218668-04:00"
+            }
+        ],
+        "lifecycle_trace": {
+            "trace_id": "tr-74190690445df79c",
+            "created_at": "2026-05-27T08:49:06.805700-04:00",
+            "updated_at": "2026-05-27T08:49:06.805700-04:00",
+            "symbol": "AGNC",
+            "strategy_id": "reit_income",
+            "strategy_family": "income",
+            "source_stage": "execution",
+            "current_stage": "execution",
+            "source_system": "paper_submitter",
+            "prospect_id": null,
+            "research_id": null,
+            "signal_id": null,
+            "proposal_id": null,
+            "paper_trade_id": 31,
+            "broker_order_id": null,
+            "status": "active",
+            "confidence": null,
+            "score": null,
+            "reason": null,
+            "payload": null
+        },
+        "trace_events": [
+            {
+                "stage": "execution",
+                "event_type": "trade_filled",
+                "status": "filled",
+                "event_time": "2026-05-27T08:49:06.808024-04:00"
+            }
+        ],
+        "safe_actions": [
+            "Review lifecycle",
+            "Check data quality",
+            "View raw data"
+        ],
+        "blocked_actions": [
+            "Place order",
+            "Modify stop",
+            "Cancel order",
+            "Run LLM",
+            "Run backtest"
+        ],
+        "safety": {
+            "read_only_endpoint": true,
+            "orders_placed": "NONE",
+            "broker_writes": "NONE",
+            "paper_trades_updated": "NONE",
+            "llm_calls_executed": "NONE",
+            "alpaca_mode": "paper",
+            "llm_disable": "true"
+        }
+    }
+}

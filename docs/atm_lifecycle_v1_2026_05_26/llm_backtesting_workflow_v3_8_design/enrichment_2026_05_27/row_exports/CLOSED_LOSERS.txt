@@ -1,0 +1,6 @@
+ id | symbol |        strategy_id         |         exit_reason          |        pnl         
+----+--------+----------------------------+------------------------------+--------------------
+ 15 | BLBD   | earnings_catalyst          | closed_on_different_trade_id |            -449.92
+ 29 | NVDA   | dividend_growth_compounder | operator_stop_out            | -4.899900000000002
+(2 rows)
+
