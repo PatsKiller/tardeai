@@ -813,6 +813,97 @@ def run_health_check(dry_run=True, verbose=False):
     except Exception as e:
         log.warning(f"Proposal lifecycle cleanup failed: {e}")
 
+    # ── Pipeline output monitoring (detect running-but-broken components) ──
+    pipeline_alerts = []
+    try:
+        cur = conn.cursor()
+        import pytz as _ptz_pipe
+        _et_pipe = _ptz_pipe.timezone("US/Eastern")
+        _now_et_pipe = now.astimezone(_et_pipe)
+        _h = _now_et_pipe.hour
+        _is_market = 9 <= _h <= 16 and _now_et_pipe.weekday() < 5
+
+        if _is_market and not dry_run:
+            # 1. Log error content scanning — detect Python crashes in key logs
+            _ERROR_PATTERNS = ["Traceback", "NameError", "RISK_GATE_ERROR", "CRITICAL", "FATAL"]
+            _SCAN_LOGS = ["auto_proposal.log", "screener_pm.log", "incubator_promoter.log",
+                          "paper_execution.log", "unified_stop_supervisor.log"]
+            for _logname in _SCAN_LOGS:
+                _logpath = PROJECT_ROOT / "logs" / _logname
+                if _logpath.exists():
+                    try:
+                        _tail = _logpath.read_text()[-3000:]
+                        _err_count = sum(_tail.count(p) for p in _ERROR_PATTERNS)
+                        if _err_count >= 3:
+                            pipeline_alerts.append(f"🔴 {_logname}: {_err_count} errors in recent output")
+                    except Exception:
+                        pass
+
+            # 2. Proposal creation rate — 0 proposals during market hours for >2h
+            cur.execute("""SELECT COUNT(*) FROM paper_trade_proposals
+                WHERE created_at > NOW() - INTERVAL '3 hours' AND created_at::date = CURRENT_DATE""")
+            _recent_proposals = cur.fetchone()[0] or 0
+            if _recent_proposals == 0 and _h >= 10:
+                pipeline_alerts.append(f"⚠️ 0 proposals created in last 3 hours (market open)")
+
+            # 3. Signal generation — 0 signals today after 10 AM
+            cur.execute("SELECT COUNT(*) FROM strategy_signals WHERE fired_at::date = CURRENT_DATE")
+            _today_signals = cur.fetchone()[0] or 0
+            if _today_signals == 0 and _h >= 10:
+                pipeline_alerts.append(f"⚠️ 0 signals generated today (orchestrator may be broken)")
+
+            # 4. Trade execution rate — ATM active but 0 trades after 10 AM
+            cur.execute("SELECT mode FROM atm_state WHERE id=1")
+            _atm_row = cur.fetchone()
+            _atm_mode = _atm_row[0] if _atm_row else "unknown"
+            if _atm_mode == "active":
+                cur.execute("""SELECT COUNT(*) FROM paper_trades
+                    WHERE entry_time::date = CURRENT_DATE AND status != 'cancelled'""")
+                _today_trades = cur.fetchone()[0] or 0
+                if _today_trades == 0 and _h >= 11:
+                    pipeline_alerts.append(f"⚠️ ATM=active but 0 trades today (check proposal pipeline)")
+
+            # 5. Alpaca position sync — DB vs broker divergence
+            cur.execute("SELECT COUNT(*) FROM paper_trades WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < NOW() - INTERVAL '4 hours')")
+            _unsync = cur.fetchone()[0] or 0
+            if _unsync > 0:
+                pipeline_alerts.append(f"📊 {_unsync} open trade(s) not synced with broker in 4h+")
+
+            # 6. Screener data quality
+            cur.execute("""SELECT COUNT(*) FROM trade_ai_scans
+                WHERE scanned_at::date = CURRENT_DATE AND (float_m IS NULL OR float_m = 0)""")
+            _zero_float = cur.fetchone()[0] or 0
+            cur.execute("SELECT COUNT(*) FROM trade_ai_scans WHERE scanned_at::date = CURRENT_DATE")
+            _total_scans = cur.fetchone()[0] or 0
+            if _total_scans > 0 and _zero_float / _total_scans > 0.5:
+                pipeline_alerts.append(f"⚠️ Screener data quality: {_zero_float}/{_total_scans} scans have zero float")
+
+        if pipeline_alerts:
+            report["pipeline_alerts"] = pipeline_alerts
+            log.info(f"  Pipeline issues: {len(pipeline_alerts)}")
+            for _pa in pipeline_alerts:
+                log.info(f"    {_pa}")
+            # Alert (dedup: max 1 per 2 hours)
+            _pipe_dedup_ok = True
+            try:
+                cur.execute("""SELECT COUNT(*) FROM system_health_events
+                    WHERE component='pipeline_output' AND event_type='PIPELINE_ALERT'
+                    AND created_at > NOW() - INTERVAL '2 hours'""")
+                if (cur.fetchone()[0] or 0) > 0:
+                    _pipe_dedup_ok = False
+            except Exception:
+                pass
+            if _pipe_dedup_ok:
+                try:
+                    from telegram_alert import send_telegram
+                    send_telegram("🔴 PIPELINE HEALTH\n" + "\n".join(pipeline_alerts))
+                    _log_event(conn, "pipeline_output", "PIPELINE_ALERT", "WARN",
+                               "\n".join(pipeline_alerts), success=True)
+                except Exception:
+                    pass
+    except Exception as e:
+        log.warning(f"Pipeline output monitoring failed: {e}")
+
     # ── Portfolio risk checks (5 conditions from Command Center) ──
     portfolio_alerts = []
     try:
@@ -885,9 +976,12 @@ def run_health_check(dry_run=True, verbose=False):
     # Add stale agents that auto-remediation couldn't fix
     for sa in report.get("stale_agents", []):
         _escalation_items.append({"component": "agent_staleness", "detail": sa})
-    # Add portfolio alerts (informational, not fixable by Claude but logged)
+    # Add portfolio alerts (informational)
     for pa in portfolio_alerts:
         _escalation_items.append({"component": "portfolio_risk", "detail": pa})
+    # Add pipeline alerts — these ARE fixable by Claude Code (log errors, broken scripts)
+    for pa in pipeline_alerts:
+        _escalation_items.append({"component": "pipeline_output", "detail": pa, "fixable": True})
 
     if _escalation_items and not dry_run:
         try:
