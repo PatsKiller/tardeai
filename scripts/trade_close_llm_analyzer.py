@@ -215,10 +215,11 @@ def _call_ollama_direct(prompt, model="qwen3:14b", timeout=180):
     payload = json.dumps({
         "model": model,
         "stream": False,
-        "messages": [{"role": "user", "content": prompt}],
-        "think": False,
-        "format": "json",
-        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT},
+        "messages": [
+            {"role": "system", "content": "You are a trade analyst. Return ONLY valid JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT, "num_gpu": 0},
     }).encode()
 
     req = urllib.request.Request(

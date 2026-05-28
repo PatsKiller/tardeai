@@ -140,16 +140,41 @@ def warmup_ollama(model: str = None, timeout: int = 480) -> bool:
         _gate.release()
 
 
+def _ensure_vram_clear(keep_model: str = None):
+    """Unload all models except the one we're about to use. Prevents VRAM overcommit."""
+    try:
+        ps_url = OLLAMA_URL.rsplit("/", 1)[0] + "/ps"
+        gen_url = OLLAMA_URL.rsplit("/", 2)[0] + "/api/generate"
+        req = urllib.request.Request(ps_url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+            for m in data.get("models", []):
+                name = m.get("name", "")
+                if name and name != keep_model:
+                    try:
+                        unload = json.dumps({"model": name, "keep_alive": 0}).encode()
+                        urllib.request.urlopen(
+                            urllib.request.Request(gen_url, data=unload,
+                                                   headers={"Content-Type": "application/json"}, method="POST"),
+                            timeout=10)
+                        print(f"  [local-llm] Unloaded {name} to free VRAM")
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
 def _try_ollama(prompt: str, timeout: int, model: str = OLLAMA_MODEL,
                 retries: int = 1) -> str | None:
     """Try Ollama with retry logic. Returns text or None on failure/timeout.
     Caller must hold the gate lock."""
+    _ensure_vram_clear(keep_model=model)
     payload = json.dumps({
         "model": model,
         "stream": False,
         "messages": [{"role": "user", "content": prompt}],
         "think": False,
-        "options": {"temperature": 0.3, "num_predict": 300}
+        "options": {"temperature": 0.3, "num_predict": 300, "num_gpu": 0}
     }).encode()
 
     for attempt in range(retries + 1):
