@@ -19,4 +19,9 @@ Returns aggregated view:
 - safe_actions / blocked_actions
 - safety block (read-only)
 
+- llm_review: { close_analysis, delayed_review, monthly_meta, status, data_quality_gaps, safety }
+  - status: not_configured | pending | complete | missing_data | error
+  - safety.model_calls_executed_by_endpoint: false (endpoint only reads stored results)
+
 Implementation: call existing endpoints/helpers internally, aggregate response.
+The trade-inspector endpoint must NOT call any LLM directly.
