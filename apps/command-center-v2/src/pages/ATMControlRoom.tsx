@@ -11,6 +11,7 @@ import LifecycleTracePanel from '../components/LifecycleTracePanel';
 import StopProofPanel from '../components/StopProofPanel';
 import ExecutionTimingPanel from '../components/ExecutionTimingPanel';
 import StopTrailingControlPanel from '../components/StopTrailingControlPanel';
+import JournalLearningWorkspace from '../components/JournalLearningWorkspace';
 import StopChangeAuditPanel from '../components/StopChangeAuditPanel';
 import ProposalDedupPanel from '../components/ProposalDedupPanel';
 
@@ -171,6 +172,7 @@ export default function ATMControlRoom() {
     <StopChangeAuditPanel />
     <StopProofPanel />
     <ExecutionTimingPanel />
+    <JournalLearningWorkspace compact />
     <LifecycleTracePanel />
     <ProposalDedupPanel />
     <InspectorPanel s={inspector} set={setInspector} /></div>;

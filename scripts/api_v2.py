@@ -19456,6 +19456,88 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # ── ATM Close Preview + Action ──────────────────────────────────────
 
+    # ── v3.6 Journal / Learning / Backtesting ─────────────────────────
+    if base_path == "/api/v2/lifecycle/journal-learning-summary" and method == "GET":
+        try:
+            import datetime as _dt_jl, os as _os_jl
+            _jl_ghost = {'duplicate_submit_race','cancelled_never_submitted_to_broker','bogus_duplicate_no_exit_price','duplicate_of_22','orphan_duplicate_from_partial_fill_race','order_canceled_by_alpaca','phantom_never_filled','tos_paper_counterpart_closed','closed_on_different_trade_id','duplicate_unsubmitted_to_broker'}
+            _jl_open = _db_query("SELECT count(*) as c FROM paper_trades WHERE exit_time IS NULL AND (exit_reason IS NULL OR exit_reason='')") or [{"c":0}]
+            _jl_closed_all = _db_query("SELECT id, symbol, strategy_id, entry_price, exit_price, pnl, exit_reason FROM paper_trades WHERE exit_time IS NOT NULL OR (exit_reason IS NOT NULL AND exit_reason!='')") or []
+            _jl_clean = [r for r in _jl_closed_all if (r.get("exit_reason") or "") not in _jl_ghost]
+            _jl_traces = len(_db_query("SELECT 1 FROM lifecycle_trace") or [])
+            _jl_traced = len(_db_query("SELECT 1 FROM lifecycle_trace WHERE paper_trade_id IS NOT NULL") or [])
+            _jl_tca = len(_db_query("SELECT 1 FROM paper_execution_quality") or [])
+            _jl_stop_audit = len(_db_query("SELECT 1 FROM lifecycle_events WHERE stage='stop_change'") or [])
+            _jl_dedup = len(_db_query("SELECT 1 FROM proposal_dedup_audit") or [])
+            _jl_missed = len(_db_query("SELECT 1 FROM paper_trade_proposals p WHERE p.signal_decision IS NULL AND NOT EXISTS (SELECT 1 FROM paper_trades t WHERE t.symbol=p.symbol AND t.strategy_id=p.strategy_id AND (t.exit_time IS NULL AND (t.exit_reason IS NULL OR t.exit_reason='')))") or [])
+
+            # Strategy summary
+            from collections import defaultdict as _dd_jl
+            _jl_strats = _dd_jl(lambda: {"trades": 0, "wins": 0, "total_pnl": 0.0, "r_sum": 0.0})
+            for t in _jl_clean:
+                sid = t.get("strategy_id") or "unknown"
+                _jl_strats[sid]["trades"] += 1
+                pnl = float(t["pnl"]) if t.get("pnl") else 0
+                _jl_strats[sid]["total_pnl"] += pnl
+                if pnl > 0: _jl_strats[sid]["wins"] += 1
+
+            _jl_strat_summary = []
+            for sid, s in _jl_strats.items():
+                _jl_strat_summary.append({
+                    "strategy_id": sid, "strategy_family": {'momentum_scalp':'momentum','gap_and_go':'momentum','swing_breakout':'swing','swing_trade':'swing','earnings_catalyst':'swing','dividend_growth_compounder':'income','reit_income':'income'}.get(sid, "other"),
+                    "closed_trade_count": s["trades"], "win_rate": round(s["wins"]/s["trades"], 3) if s["trades"] else 0,
+                    "total_pnl": round(s["total_pnl"], 2),
+                })
+
+            _jl_gaps = []
+            if _jl_traces - _jl_traced > 0: _jl_gaps.append({"gap": "untraced_trades", "count": _jl_traces - _jl_traced})
+            if _jl_tca < len(_jl_clean): _jl_gaps.append({"gap": "missing_tca", "count": len(_jl_clean) - _jl_tca})
+
+            return 200, {"ok": True, "data": {
+                "generated_at": _dt_jl.datetime.now(_dt_jl.timezone.utc).isoformat(),
+                "open_trade_count": _jl_open[0]["c"], "closed_trade_count": len(_jl_closed_all),
+                "clean_closed_count": len(_jl_clean), "ghost_count": len(_jl_closed_all) - len(_jl_clean),
+                "lifecycle_trace_count": _jl_traces, "traced_closed_trade_count": _jl_traced,
+                "execution_quality_count": _jl_tca, "stop_audit_event_count": _jl_stop_audit,
+                "missed_proposal_count": _jl_missed, "duplicate_groups": _jl_dedup,
+                "duplicate_contamination_status": "clean" if not any(r.get("exit_reason") == "duplicate_submit_race" and not r.get("exit_time") for r in _jl_closed_all) else "contaminated",
+                "strategy_summary": sorted(_jl_strat_summary, key=lambda x: -x["closed_trade_count"]),
+                "data_quality_gaps": _jl_gaps,
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE", "paper_trades_updated": "NONE",
+                           "alpaca_mode": _os_jl.environ.get("ALPACA_MODE", "unknown")},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/lifecycle/trade-case-study" and method == "GET":
+        try:
+            import datetime as _dt_tcs
+            _tcs_sym = (query or {}).get("symbol")
+            _tcs_tid = (query or {}).get("paper_trade_id")
+            if not _tcs_sym and not _tcs_tid:
+                return 400, {"ok": False, "error": "symbol or paper_trade_id required"}
+            _tcs_where = "symbol=%s" if _tcs_sym else "id=%s"
+            _tcs_param = _tcs_sym or _tcs_tid
+            _tcs_trade = _db_query(f"SELECT * FROM paper_trades WHERE {_tcs_where} ORDER BY id DESC LIMIT 1", [_tcs_param], fetch="one") or {}
+            _tcs_tid_val = _tcs_trade.get("id")
+            _tcs_proposals = _db_query("SELECT id, symbol, strategy_id, signal_score, signal_decision, created_at FROM paper_trade_proposals WHERE symbol=%s ORDER BY created_at DESC LIMIT 5", [_tcs_sym or _tcs_trade.get("symbol")]) or []
+            _tcs_tca = _db_query("SELECT * FROM paper_execution_quality WHERE paper_trade_id=%s ORDER BY id DESC LIMIT 1", [_tcs_tid_val], fetch="one") if _tcs_tid_val else {}
+            _tcs_stop_audit = _db_query("SELECT event_type, payload, event_ts FROM lifecycle_events WHERE paper_trade_id=%s AND stage='stop_change' ORDER BY event_ts DESC LIMIT 5", [_tcs_tid_val]) or [] if _tcs_tid_val else []
+            _tcs_trace = _db_query("SELECT * FROM lifecycle_trace WHERE paper_trade_id=%s OR symbol=%s ORDER BY created_at DESC LIMIT 1", [_tcs_tid_val, _tcs_sym or _tcs_trade.get("symbol")], fetch="one") or {}
+            _tcs_trace_events = _db_query("SELECT stage, event_type, status, event_ts FROM lifecycle_trace_events WHERE trace_id=%s ORDER BY event_time DESC LIMIT 10", [_tcs_trace.get("trace_id")]) or [] if _tcs_trace.get("trace_id") else []
+
+            return 200, {"ok": True, "data": {
+                "trade": {k: _json_clean(v) for k, v in _tcs_trade.items()} if _tcs_trade else None,
+                "proposals": [{k: _json_clean(v) for k, v in p.items()} for p in _tcs_proposals],
+                "execution_quality": {k: _json_clean(v) for k, v in (_tcs_tca or {}).items()} if _tcs_tca else None,
+                "stop_change_audit": [{k: _json_clean(v) for k, v in e.items()} for e in _tcs_stop_audit],
+                "lifecycle_trace": {k: _json_clean(v) for k, v in _tcs_trace.items()} if _tcs_trace else None,
+                "trace_events": [{k: _json_clean(v) for k, v in e.items()} for e in _tcs_trace_events],
+                "safety": {"read_only_endpoint": True, "orders_placed": "NONE"},
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── v3.5 Stop Change Audit + Trailing Control ──────────────────────
     if base_path == "/api/v2/atm/stop-change-audit" and method == "GET":
         try:
