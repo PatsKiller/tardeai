@@ -64,15 +64,17 @@ export default function Backtesting() {
   const [dateTo, setDateTo] = useState('')
   const [strategyFilter, setStrategyFilter] = useState('')
   const [runTypeFilter, setRunTypeFilter] = useState('replay_trades')
+  const [brokerFilter, setBrokerFilter] = useState('')
+  const [accountFilter, setAccountFilter] = useState('')
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], broker_accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
-  const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter)
+  const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter || brokerFilter || accountFilter)
   const mountedRef = useRef(false)
 
   // Load all data including filter options
-  const loadData = useCallback(async (filters: { dateFrom: string; dateTo: string; strategy: string; runType: string }) => {
+  const loadData = useCallback(async (filters: { dateFrom: string; dateTo: string; strategy: string; runType: string; broker: string; account: string }) => {
     setLoading(true)
-    const qs = buildQS({ start_date: filters.dateFrom, end_date: filters.dateTo, strategy: filters.strategy, run_type: filters.runType })
+    const qs = buildQS({ start_date: filters.dateFrom, end_date: filters.dateTo, strategy: filters.strategy, run_type: filters.runType, broker: filters.broker, account: filters.account })
     const [st, ru, re, tr, mi, trail, fo] = await Promise.allSettled([
       fetch('/api/v2/backtesting/status' + qs).then(r => r.json()),
       fetch('/api/v2/backtesting/runs' + qs).then(r => r.json()),
@@ -125,14 +127,14 @@ export default function Backtesting() {
 
   // Initial load
   useEffect(() => {
-    loadData({ dateFrom: '', dateTo: '', strategy: '', runType: 'replay_trades' })
+    loadData({ dateFrom: '', dateTo: '', strategy: '', runType: 'replay_trades', broker: '', account: '' })
   }, [loadData])
 
   // Reload when any filter changes (skip initial mount)
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return }
-    loadData({ dateFrom, dateTo, strategy: strategyFilter, runType: runTypeFilter })
-  }, [dateFrom, dateTo, strategyFilter, runTypeFilter, loadData])
+    loadData({ dateFrom, dateTo, strategy: strategyFilter, runType: runTypeFilter, broker: brokerFilter, account: accountFilter })
+  }, [dateFrom, dateTo, strategyFilter, runTypeFilter, brokerFilter, accountFilter, loadData])
 
   const strategyStats = useMemo(() => {
     const m: Record<string, { n: number; wins: number; pnl: number; rs: number[] }> = {}
@@ -257,6 +259,17 @@ export default function Backtesting() {
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>to</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} min={filterOptions.minDate} max={filterOptions.maxDate}
           style={filterStyle} title="End date" />
+        <select value={brokerFilter} onChange={e => { setBrokerFilter(e.target.value); setAccountFilter('') }} style={filterStyle}>
+          <option value="">All Brokers</option>
+          {(filterOptions.brokers || []).map(b => <option key={b} value={b}>{b.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+        </select>
+        <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)} style={filterStyle}>
+          <option value="">All Accounts</option>
+          {(brokerFilter
+            ? (filterOptions.broker_accounts || []).filter(ba => ba.broker === brokerFilter).map(ba => ba.account_label)
+            : (filterOptions.accounts || [])
+          ).map(a => <option key={a} value={a}>{a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
+        </select>
         <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={filterStyle}>
           <option value="">All Strategies</option>
           {(filterOptions.strategies || []).map(s => <option key={s} value={s}>{safeStr(s)}</option>)}
@@ -266,7 +279,7 @@ export default function Backtesting() {
           {(filterOptions.run_types || []).map(t => <option key={t} value={t}>{safeStr(t)}</option>)}
         </select>
         {filtersActive && (
-          <button onClick={() => { setDateFrom(''); setDateTo(''); setStrategyFilter(''); setRunTypeFilter('') }}
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setStrategyFilter(''); setRunTypeFilter(''); setBrokerFilter(''); setAccountFilter('') }}
             style={{ padding: '3px 8px', fontSize: 9, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 4, color: '#fca5a5', cursor: 'pointer' }}>
             Clear
           </button>
