@@ -25,7 +25,9 @@ All jobs: no trading actions, no broker writes, no stop modifications.
 
 ## System Health Agent Integration
 
-When v3.8 jobs are deployed, add them to MONITORED_COMPONENTS in system_health_agent.py:
+**STATUS: IMPLEMENTED** — All 3 LLM jobs + ATM position reconciler are now in
+system_health_agent.py MONITORED_COMPONENTS (added in audit fix commit).
+When jobs are actually deployed, the health agent will automatically monitor them.
 
 ### Job 1: trade_close_llm_analyzer
 ```python
