@@ -62,7 +62,7 @@ export default function Backtesting() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [strategyFilter, setStrategyFilter] = useState('')
-  const [runTypeFilter, setRunTypeFilter] = useState('')
+  const [runTypeFilter, setRunTypeFilter] = useState('replay_trades')
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
   const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter)
@@ -187,7 +187,7 @@ export default function Backtesting() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: 'rgba(255,255,255,0.9)' }}>Backtesting</h1>
-          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>Analysis of real paper trade executions and historical replay.</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', margin: '4px 0 0' }}>Analysis of real paper trade executions and historical replay. Use Run Type filter to switch between replay trades (real), replay proposals, and champion simulations.</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {['Replay Trades', 'Replay Proposals'].map(label => (
