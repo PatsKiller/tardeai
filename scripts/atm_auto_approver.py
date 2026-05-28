@@ -225,7 +225,8 @@ def run_cycle():
                p.atm_action, p.status, p.proposed_entry, p.proposed_stop,
                p.proposed_target1, p.proposed_shares,
                p.enrichment_status, p.enrichment_last_attempt_at, p.enrichment_failures,
-               p.created_at, p.atm_evaluation_count, p.atm_last_failure_reason
+               p.created_at, p.atm_evaluation_count, p.atm_last_failure_reason,
+               p.proposed_rr, p.risk_gate_result
         FROM paper_trade_proposals p
         WHERE p.status = 'PENDING' AND p.atm_expired_at IS NULL
         ORDER BY p.created_at ASC
@@ -332,13 +333,24 @@ def run_cycle():
             log.info(f"  {sym}: deferred (enrichment failed 3x)")
             continue
         if _enrich_status not in ("COMPLETE",):
-            reasons.append({"gate": "not_yet_enriched", "detail": f"status={_enrich_status}"})
-            _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
-                         "deferred", reasons, health, pos_open, pos_total,
-                         new_today, new_total, pnl_acct, total_pnl_pct,
-                         b1_flag, config_hash, mode)
-            log.info(f"  {sym}: deferred (not yet enriched, status={_enrich_status})")
-            continue
+            # Fast-track for paper trading: skip enrichment gate if proposal is fresh,
+            # R:R >= 2.0, risk gate approved, and account is paper mode
+            _rr = float(p.get("proposed_rr") or 0) if p.get("proposed_rr") else 0
+            _rg = p.get("risk_gate_result") or ""
+            _is_paper = acct_mode == "paper"
+            _is_fresh = proposal_age_hours < 1.0
+            _fast_track = _is_paper and _rr >= 2.0 and _rg in ("APPROVED", "approved") and _is_fresh
+
+            if _fast_track:
+                log.info(f"  {sym}: FAST-TRACK — paper mode, R:R={_rr:.1f}, risk={_rg}, age={proposal_age_hours:.1f}h (skipping enrichment)")
+            else:
+                reasons.append({"gate": "not_yet_enriched", "detail": f"status={_enrich_status}"})
+                _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
+                             "deferred", reasons, health, pos_open, pos_total,
+                             new_today, new_total, pnl_acct, total_pnl_pct,
+                             b1_flag, config_hash, mode)
+                log.info(f"  {sym}: deferred (not yet enriched, status={_enrich_status})")
+                continue
 
         # ── 2a: Per-proposal override ──
         atm_action = p.get("atm_action")
