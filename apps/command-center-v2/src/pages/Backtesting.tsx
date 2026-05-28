@@ -111,7 +111,9 @@ export default function Backtesting() {
 
   // Load filter options once
   useEffect(() => {
-    fetch('/api/v2/backtesting/filter-options').then(r => r.json()).then(d => { if (d.ok) setFilterOptions(d.data) }).catch(() => {})
+    fetch('/api/v2/backtesting/filter-options').then(r => r.json()).then(d => {
+      if (d.ok) setFilterOptions(prev => ({ ...prev, ...d.data }))
+    }).catch(() => {})
   }, [])
 
   // Reload data when filters change
@@ -242,11 +244,11 @@ export default function Backtesting() {
           style={filterStyle} title="End date" />
         <select value={strategyFilter} onChange={e => setStrategyFilter(e.target.value)} style={filterStyle}>
           <option value="">All Strategies</option>
-          {filterOptions.strategies.map(s => <option key={s} value={s}>{safeStr(s)}</option>)}
+          {(filterOptions.strategies || []).map(s => <option key={s} value={s}>{safeStr(s)}</option>)}
         </select>
         <select value={runTypeFilter} onChange={e => setRunTypeFilter(e.target.value)} style={filterStyle}>
           <option value="">All Run Types</option>
-          {filterOptions.run_types.map(t => <option key={t} value={t}>{safeStr(t)}</option>)}
+          {(filterOptions.run_types || []).map(t => <option key={t} value={t}>{safeStr(t)}</option>)}
         </select>
         {filtersActive && (
           <button onClick={() => { setDateFrom(''); setDateTo(''); setStrategyFilter(''); setRunTypeFilter('') }}
