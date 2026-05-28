@@ -127,8 +127,9 @@ _DIVIDEND_EVIDENCE_KEYWORDS = {
 }
 
 
-def _post_validate(parsed):
+def _post_validate(parsed, trade_data=None):
     """Apply rule-based validation after LLM classification.
+    Uses actual trade_data (hold_days, pnl, etc.) for hold-period checks.
     Returns (validated_parsed, validation_notes)."""
     notes = []
     if not parsed or not isinstance(parsed, dict):
@@ -138,19 +139,33 @@ def _post_validate(parsed):
     confidence = parsed.get("confidence", 0)
     reasoning = parsed.get("reasoning", "").lower()
     evidence_used = parsed.get("evidence_used", [])
-    missing_evidence = parsed.get("missing_evidence", [])
 
     # Ensure required fields exist
     parsed.setdefault("evidence_used", [])
     parsed.setdefault("missing_evidence", [])
     parsed.setdefault("requires_review", confidence < 0.7)
 
-    # Rule 1: dividend_growth_compounder needs dividend-specific evidence
+    # Extract hold_days from trade data (authoritative) or LLM evidence (fallback)
+    hold_days = None
+    if trade_data and trade_data.get("hold_days") is not None:
+        try:
+            hold_days = float(trade_data["hold_days"])
+        except (ValueError, TypeError):
+            pass
+    if hold_days is None:
+        hold_evidence = [e for e in evidence_used if "hold_days=" in str(e)]
+        if hold_evidence:
+            try:
+                hold_days = float(str(hold_evidence[0]).split("=")[1])
+            except (ValueError, IndexError):
+                pass
+
+    # ── Rule 1: dividend_growth_compounder needs dividend-specific evidence ──
     if strategy == "dividend_growth_compounder":
         evidence_str = " ".join(str(e).lower() for e in evidence_used)
         has_dividend_evidence = any(kw in evidence_str for kw in _DIVIDEND_EVIDENCE_KEYWORDS)
         if not has_dividend_evidence:
-            notes.append(f"DOWNGRADED: {strategy} -> needs_review (no dividend-specific evidence in evidence_used)")
+            notes.append(f"DOWNGRADED: {strategy} -> needs_review (no dividend-specific evidence)")
             parsed["strategy_id"] = "needs_review"
             parsed["requires_review"] = True
             parsed["confidence"] = min(confidence, 0.5)
@@ -158,7 +173,7 @@ def _post_validate(parsed):
                 "Downgraded from dividend_growth_compounder: no dividend/income evidence found"
             )
 
-    # Rule 2: reasoning claims "dividend stock" without evidence
+    # ── Rule 2: reasoning claims "dividend stock" without evidence ──
     if parsed.get("strategy_id") == "dividend_growth_compounder":
         unsupported_claims = ["dividend stock", "dividend paying", "dividend-paying"]
         reasoning_has_claim = any(c in reasoning for c in unsupported_claims)
@@ -167,7 +182,7 @@ def _post_validate(parsed):
             for kw in _DIVIDEND_EVIDENCE_KEYWORDS
         )
         if reasoning_has_claim and not evidence_supports:
-            notes.append(f"DOWNGRADED: reasoning claims dividend but evidence_used lacks support")
+            notes.append("DOWNGRADED: reasoning claims dividend but evidence_used lacks support")
             parsed["strategy_id"] = "needs_review"
             parsed["requires_review"] = True
             parsed["confidence"] = min(confidence, 0.5)
@@ -175,7 +190,7 @@ def _post_validate(parsed):
                 "Downgraded: reasoning asserts dividend without supporting evidence"
             )
 
-    # Rule 3: high confidence with thin evidence
+    # ── Rule 3: high confidence with thin evidence ──
     if parsed.get("confidence", 0) > 0.8 and len(evidence_used) < 2:
         old_conf = parsed["confidence"]
         parsed["confidence"] = 0.6
@@ -184,25 +199,72 @@ def _post_validate(parsed):
             f"Confidence capped from {old_conf} to 0.6: insufficient evidence items"
         )
 
-    # Rule 4: swing_trade for 30+ day holds is likely wrong
-    # (swing_trade is defined as 2-20 days — longer holds need more evidence)
-    # This check uses trade data passed via the parsed output's evidence
-    hold_evidence = [e for e in evidence_used if "hold_days=" in str(e)]
-    if strategy == "swing_trade" and hold_evidence:
-        try:
-            hold_days = float(str(hold_evidence[0]).split("=")[1])
-            if hold_days > 30:
-                notes.append(f"DOWNGRADED: swing_trade -> needs_review (hold_days={hold_days} exceeds swing range)")
-                parsed["strategy_id"] = "needs_review"
-                parsed["requires_review"] = True
-                parsed["confidence"] = min(confidence, 0.4)
-                parsed.setdefault("validation_notes", []).append(
-                    f"Downgraded from swing_trade: hold_days={hold_days} exceeds 2-20 day swing range"
-                )
-        except (ValueError, IndexError):
-            pass
+    # ── Rule 4: hold-period vs strategy mismatch ──
+    # Strategies have expected hold ranges. When the actual trade hold_days
+    # falls outside the range, downgrade to needs_review.
+    _STRATEGY_HOLD_RANGES = {
+        # strategy_id: (min_days, max_days, downgrade_to)
+        "momentum_scalp":           (0, 2, None),
+        "gap_and_go":               (0, 1, None),
+        "swing_breakout":           (1, 30, "needs_review"),
+        "swing_trade":              (1, 30, "needs_review"),
+        "recovery_watch":           (3, None, "needs_review"),
+        "core_growth_compounder":   (20, None, "needs_review"),
+        "dividend_growth_compounder": (20, None, "needs_review"),
+        "core_index":               (20, None, "needs_review"),
+        "bond_income":              (20, None, "needs_review"),
+        "reit_income":              (20, None, "needs_review"),
+        "income_add":               (20, None, "needs_review"),
+    }
 
-    # Rule 5: needs_review / unknown confidence bounds
+    if hold_days is not None and parsed.get("strategy_id") in _STRATEGY_HOLD_RANGES:
+        strat = parsed["strategy_id"]
+        min_d, max_d, downgrade = _STRATEGY_HOLD_RANGES[strat]
+
+        violated = False
+        reason = ""
+        if hold_days < min_d:
+            violated = True
+            reason = f"hold_days={hold_days} below minimum {min_d} for {strat}"
+        elif max_d is not None and hold_days > max_d:
+            violated = True
+            reason = f"hold_days={hold_days} above maximum {max_d} for {strat}"
+
+        if violated and downgrade:
+            notes.append(f"DOWNGRADED: {strat} -> {downgrade} ({reason})")
+            parsed["strategy_id"] = downgrade
+            parsed["requires_review"] = True
+            parsed["confidence"] = min(parsed.get("confidence", 0), 0.5)
+            parsed.setdefault("validation_notes", []).append(
+                f"Downgraded from {strat}: {reason}"
+            )
+
+    # ── Rule 5: 0-day hold with high gain -> prefer momentum_scalp ──
+    if hold_days is not None and hold_days <= 1:
+        pnl_pct = None
+        if trade_data and trade_data.get("pnl_pct") is not None:
+            try:
+                pnl_pct = float(trade_data["pnl_pct"])
+            except (ValueError, TypeError):
+                pass
+        strat = parsed.get("strategy_id", "")
+        # If classified as a long-hold strategy but actually a 0-1 day trade,
+        # and not already momentum_scalp or gap_and_go, flag it
+        long_hold_strategies = {
+            "core_growth_compounder", "dividend_growth_compounder", "core_index",
+            "recovery_watch", "bond_income", "reit_income", "income_add",
+            "sector_rotation",
+        }
+        if strat in long_hold_strategies:
+            notes.append(f"DOWNGRADED: {strat} -> needs_review (hold_days={hold_days} is day-trade, not long-hold)")
+            parsed["strategy_id"] = "needs_review"
+            parsed["requires_review"] = True
+            parsed["confidence"] = min(parsed.get("confidence", 0), 0.5)
+            parsed.setdefault("validation_notes", []).append(
+                f"Downgraded from {strat}: hold_days={hold_days} indicates day-trade, not long-hold strategy"
+            )
+
+    # ── Rule 6: needs_review / unknown confidence bounds ──
     if parsed.get("strategy_id") == "needs_review":
         parsed["confidence"] = min(parsed.get("confidence", 0.5), 0.5)
         parsed["requires_review"] = True
@@ -389,7 +451,7 @@ def main():
                 # Post-validation
                 llm_strategy = parsed["strategy_id"]
                 llm_confidence = parsed.get("confidence", 0)
-                parsed, validation_notes = _post_validate(parsed)
+                parsed, validation_notes = _post_validate(parsed, trade_data=t)
 
                 result = {
                     "trade_id": t["trade_id"], "symbol": t["symbol"],
