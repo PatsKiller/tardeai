@@ -1,0 +1,210 @@
+{
+    "ok": true,
+    "data": {
+        "total_open_trades": 4,
+        "records": [
+            {
+                "paper_trade_id": 28,
+                "symbol": "NWG",
+                "account": "TOS_PAPER",
+                "strategy_id": "dividend_growth_compounder",
+                "strategy_family": "income",
+                "entry_price": 15.84,
+                "db_stop": 15.05,
+                "stop_order_id": "45b57b20-f947-4817-bf95-c2124c4c4cbe",
+                "stop_proof_status": "unverified",
+                "days_held": 5,
+                "time_stop_type": "review",
+                "max_hold_days": 90,
+                "time_stop_status": "ok",
+                "overdue_by_days": 0,
+                "trailing_tiers": [
+                    {
+                        "r": 1.5,
+                        "lock": 0.0,
+                        "desc": "breakeven"
+                    },
+                    {
+                        "r": 2.5,
+                        "lock": 0.5,
+                        "desc": "lock 0.5R"
+                    },
+                    {
+                        "r": 3.5,
+                        "lock": 1.0,
+                        "desc": "lock 1.0R"
+                    },
+                    {
+                        "r": 5.0,
+                        "lock": 2.0,
+                        "desc": "lock 2.0R"
+                    }
+                ],
+                "latest_stop_change": null,
+                "safe_actions": [
+                    "Review trailing policy",
+                    "Check broker stop proof"
+                ],
+                "blocked_actions": [
+                    "Cancel stop",
+                    "Replace stop",
+                    "Submit stop",
+                    "Auto-close"
+                ]
+            },
+            {
+                "paper_trade_id": 31,
+                "symbol": "AGNC",
+                "account": "ALPACA_PAPER",
+                "strategy_id": "reit_income",
+                "strategy_family": "income",
+                "entry_price": 10.22,
+                "db_stop": 9.71,
+                "stop_order_id": "f171e7ec-9224-4358-939e-1661feb5b64e",
+                "stop_proof_status": "unverified",
+                "days_held": 0,
+                "time_stop_type": "review",
+                "max_hold_days": 90,
+                "time_stop_status": "ok",
+                "overdue_by_days": 0,
+                "trailing_tiers": [
+                    {
+                        "r": 1.5,
+                        "lock": 0.0,
+                        "desc": "breakeven"
+                    },
+                    {
+                        "r": 2.5,
+                        "lock": 0.5,
+                        "desc": "lock 0.5R"
+                    },
+                    {
+                        "r": 3.5,
+                        "lock": 1.0,
+                        "desc": "lock 1.0R"
+                    },
+                    {
+                        "r": 5.0,
+                        "lock": 2.0,
+                        "desc": "lock 2.0R"
+                    }
+                ],
+                "latest_stop_change": null,
+                "safe_actions": [
+                    "Review trailing policy",
+                    "Check broker stop proof"
+                ],
+                "blocked_actions": [
+                    "Cancel stop",
+                    "Replace stop",
+                    "Submit stop",
+                    "Auto-close"
+                ]
+            },
+            {
+                "paper_trade_id": 33,
+                "symbol": "CMCSA",
+                "account": "ALPACA_PAPER",
+                "strategy_id": "dividend_growth_compounder",
+                "strategy_family": "income",
+                "entry_price": 24.97,
+                "db_stop": 23.61,
+                "stop_order_id": "e29b2971-1ff7-4024-8fd1-6c42fd89fe47",
+                "stop_proof_status": "unverified",
+                "days_held": 0,
+                "time_stop_type": "review",
+                "max_hold_days": 90,
+                "time_stop_status": "ok",
+                "overdue_by_days": 0,
+                "trailing_tiers": [
+                    {
+                        "r": 1.5,
+                        "lock": 0.0,
+                        "desc": "breakeven"
+                    },
+                    {
+                        "r": 2.5,
+                        "lock": 0.5,
+                        "desc": "lock 0.5R"
+                    },
+                    {
+                        "r": 3.5,
+                        "lock": 1.0,
+                        "desc": "lock 1.0R"
+                    },
+                    {
+                        "r": 5.0,
+                        "lock": 2.0,
+                        "desc": "lock 2.0R"
+                    }
+                ],
+                "latest_stop_change": null,
+                "safe_actions": [
+                    "Review trailing policy",
+                    "Check broker stop proof"
+                ],
+                "blocked_actions": [
+                    "Cancel stop",
+                    "Replace stop",
+                    "Submit stop",
+                    "Auto-close"
+                ]
+            },
+            {
+                "paper_trade_id": 38,
+                "symbol": "BLMN",
+                "account": "ALPACA_PAPER",
+                "strategy_id": "swing_trade",
+                "strategy_family": "swing",
+                "entry_price": 8.28,
+                "db_stop": 7.85,
+                "stop_order_id": null,
+                "stop_proof_status": "missing",
+                "days_held": 0,
+                "time_stop_type": "calendar",
+                "max_hold_days": 21,
+                "time_stop_status": "ok",
+                "overdue_by_days": 0,
+                "trailing_tiers": [
+                    {
+                        "r": 1.0,
+                        "lock": 0.0,
+                        "desc": "breakeven"
+                    },
+                    {
+                        "r": 1.5,
+                        "lock": 0.5,
+                        "desc": "lock 0.5R"
+                    },
+                    {
+                        "r": 2.0,
+                        "lock": 1.0,
+                        "desc": "lock 1.0R"
+                    },
+                    {
+                        "r": 3.0,
+                        "lock": 2.0,
+                        "desc": "lock 2.0R"
+                    }
+                ],
+                "latest_stop_change": null,
+                "safe_actions": [
+                    "Review trailing policy",
+                    "Check broker stop proof"
+                ],
+                "blocked_actions": [
+                    "Cancel stop",
+                    "Replace stop",
+                    "Submit stop",
+                    "Auto-close"
+                ]
+            }
+        ],
+        "safety": {
+            "read_only_endpoint": true,
+            "orders_placed": "NONE",
+            "stops_modified": "NONE",
+            "alpaca_mode": "paper"
+        }
+    }
+}
