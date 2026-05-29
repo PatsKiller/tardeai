@@ -110,7 +110,7 @@ TAB_BUTTON_TEXT = {
     "trailing": "Trail Analysis",
     "mfe": "MFE/MAE",
     "optimization": "Optimization",
-    "llm_reviews": "LLM Reviews",
+    "llm_reviews": "LLM Review Coverage",
 }
 
 
