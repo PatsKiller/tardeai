@@ -441,24 +441,42 @@ def process_queue(dry_run=False):
             except Exception:
                 _llama_running = False
 
-            # Start llama-server if not running (unload Ollama models first)
+            # Start llama-server if not running (unload ALL Ollama models first)
             if not _llama_running:
                 log.info("  Starting llama-server for gemma4:31b...")
-                # Unload Ollama models to free VRAM
+                # Unload ALL Ollama models to free VRAM
                 try:
-                    _req.post("http://localhost:11434/api/generate",
-                              json={"model": "gemma3:12b", "keep_alive": 0, "prompt": ""}, timeout=10)
-                    _req.post("http://localhost:11434/api/generate",
-                              json={"model": "gemma3:4b", "keep_alive": 0, "prompt": ""}, timeout=10)
-                except Exception:
-                    pass
-                time.sleep(2)
+                    _ps = _req.get("http://localhost:11434/api/ps", timeout=5).json()
+                    for _m in _ps.get("models", []):
+                        _mname = _m.get("name", "")
+                        log.info(f"  Unloading Ollama model: {_mname}")
+                        try:
+                            _req.post("http://localhost:11434/api/chat",
+                                      json={"model": _mname, "keep_alive": 0,
+                                            "messages": [{"role": "user", "content": ""}]},
+                                      timeout=15)
+                        except Exception:
+                            pass
+                    time.sleep(5)
+                    # Verify VRAM is free
+                    _ps2 = _req.get("http://localhost:11434/api/ps", timeout=5).json()
+                    _still = [m["name"] for m in _ps2.get("models", [])]
+                    if _still:
+                        log.warning(f"  Models still loaded after unload: {_still}")
+                    else:
+                        log.info("  All Ollama models unloaded, VRAM free")
+                except Exception as _ue:
+                    log.warning(f"  Ollama unload failed: {_ue}")
+                time.sleep(3)
+
                 _lib_dir = str(LLAMACPP_BIN.parent)
+                _llama_log = PROJECT_ROOT / "logs" / "llama_server_escalation.log"
+                _llama_logf = open(_llama_log, "a")
                 _llama_proc = subprocess.Popen(
                     [str(LLAMACPP_BIN), "--model", str(LLAMACPP_GGUF),
                      "--port", "8081", "--host", "127.0.0.1",
                      "--ctx-size", "2048", "--n-gpu-layers", "25", "--threads", "6"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdout=_llama_logf, stderr=_llama_logf,
                     env={**os.environ, "LD_LIBRARY_PATH": _lib_dir},
                 )
                 # Wait for startup — gemma4:31b takes 60-90s to load on hybrid GPU/CPU
