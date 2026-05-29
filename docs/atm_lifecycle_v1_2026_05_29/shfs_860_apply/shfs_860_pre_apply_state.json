@@ -1,0 +1,25 @@
+{
+  "export_time": "2026-05-29T11:55:00-04:00",
+  "row_before": {
+    "id": 860,
+    "symbol": "SHFS",
+    "strategy_id": ""
+  },
+  "completeness_before": {
+    "total": 3593,
+    "classified": 3592,
+    "unclassified": 1
+  },
+  "row_after": {
+    "id": 860,
+    "symbol": "SHFS",
+    "strategy_id": "speculative_growth"
+  },
+  "completeness_after": {
+    "total": 3593,
+    "classified": 3593,
+    "unclassified": 0
+  },
+  "sql_executed": "UPDATE strategy_backtest_trades SET strategy_id = 'speculative_growth' WHERE id = 860 AND symbol = 'SHFS' AND (strategy_id IS NULL OR strategy_id = '')",
+  "rows_updated": 1
+}
