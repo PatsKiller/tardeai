@@ -220,7 +220,8 @@ def _call_ollama_direct(prompt, model="gemma3:4b", timeout=180):
             {"role": "system", "content": "You are a trade analyst. Return ONLY valid JSON."},
             {"role": "user", "content": prompt},
         ],
-        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT, "num_gpu": num_gpu},
+        "options": {"temperature": 0.3, "num_predict": LLM_NUM_PREDICT, "num_gpu": num_gpu,
+                    "num_ctx": 4096 if "12b" in model or "27b" in model else 8192},
     }).encode()
 
     req = urllib.request.Request(
