@@ -790,26 +790,69 @@ def run_health_check(dry_run=True, verbose=False):
     except Exception as e:
         log.warning(f"Queue cleanup failed: {e}")
 
-    # ── Proposal lifecycle cleanup — reject stuck proposals ──
+    # ── Proposal lifecycle: enrich-before-reject ──
+    # Step 1: Find PENDING proposals that are unenriched for >30 min.
+    #         Trigger enrichment instead of rejecting immediately.
+    # Step 2: Only reject after enrichment has been attempted 3+ times and failed,
+    #         OR after 6 hours regardless.
     try:
         cur = conn.cursor()
-        # Auto-reject PENDING proposals stuck >2 hours with incomplete enrichment
+        import psycopg2.extras
+        rcur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Step 1: Trigger enrichment for stuck proposals (>30 min, <3 attempts)
+        rcur.execute("""SELECT id, symbol, enrichment_attempt_count, enrichment_status, packet_state
+            FROM paper_trade_proposals
+            WHERE status='PENDING'
+              AND created_at < NOW() - INTERVAL '30 minutes'
+              AND packet_state IN ('MISSING_DATA', 'NEW', 'ENRICHING')
+              AND COALESCE(enrichment_attempt_count, 0) < 3
+            ORDER BY created_at ASC LIMIT 10""")
+        _needs_enrichment = [dict(r) for r in rcur.fetchall()]
+
+        if _needs_enrichment:
+            log.info(f"  🔧 Auto-enrichment: {len(_needs_enrichment)} stuck proposals need enrichment")
+            try:
+                import subprocess
+                _enrich_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "scripts" / "auto_enrichment_runner.py"),
+                     "--force-all", "--limit", str(len(_needs_enrichment))],
+                    capture_output=True, text=True, timeout=300,
+                    cwd=str(PROJECT_ROOT)
+                )
+                log.info(f"  🔧 Auto-enrichment triggered (rc={_enrich_result.returncode})")
+                if _enrich_result.returncode != 0:
+                    log.warning(f"  Auto-enrichment stderr: {_enrich_result.stderr[:200]}")
+
+                # Increment attempt counter for proposals we tried
+                for p in _needs_enrichment:
+                    cur.execute("""UPDATE paper_trade_proposals
+                        SET enrichment_attempt_count = COALESCE(enrichment_attempt_count, 0) + 1,
+                            enrichment_last_attempt_at = NOW(), updated_at = NOW()
+                        WHERE id = %s""", [p["id"]])
+                conn.commit()
+            except Exception as _ee:
+                log.warning(f"  Auto-enrichment trigger failed: {_ee}")
+
+        # Step 2: Reject proposals that have been enrichment-attempted 3+ times and still stuck
         cur.execute("""UPDATE paper_trade_proposals
-            SET status='REJECTED', rejection_reason='auto_enrichment_stuck_2h',
+            SET status='REJECTED', rejection_reason='auto_enrichment_failed_3x',
                 rejected_at=NOW(), updated_at=NOW()
             WHERE status='PENDING' AND created_at < NOW() - INTERVAL '2 hours'
             AND (approval_allowed IS NULL OR approval_allowed = false)
-            AND packet_state IN ('MISSING_DATA', 'NEW', 'ENRICHING')""")
+            AND packet_state IN ('MISSING_DATA', 'NEW', 'ENRICHING')
+            AND COALESCE(enrichment_attempt_count, 0) >= 3""")
         _stuck_proposals = cur.rowcount
-        # Auto-reject PENDING proposals stuck >4 hours regardless
+
+        # Step 3: Hard reject after 6 hours regardless (safety net)
         cur.execute("""UPDATE paper_trade_proposals
-            SET status='REJECTED', rejection_reason='auto_stale_4h',
+            SET status='REJECTED', rejection_reason='auto_stale_6h',
                 rejected_at=NOW(), updated_at=NOW()
-            WHERE status='PENDING' AND created_at < NOW() - INTERVAL '4 hours'""")
+            WHERE status='PENDING' AND created_at < NOW() - INTERVAL '6 hours'""")
         _stale_proposals = cur.rowcount
         conn.commit()
         if _stuck_proposals or _stale_proposals:
-            log.info(f"  🧹 Proposal cleanup: {_stuck_proposals} enrichment-stuck, {_stale_proposals} stale >4h")
+            log.info(f"  🧹 Proposal cleanup: {_stuck_proposals} enrichment-failed-3x, {_stale_proposals} stale >6h")
     except Exception as e:
         log.warning(f"Proposal lifecycle cleanup failed: {e}")
 
@@ -982,6 +1025,23 @@ def run_health_check(dry_run=True, verbose=False):
     # Add pipeline alerts — these ARE fixable by Claude Code (log errors, broken scripts)
     for pa in pipeline_alerts:
         _escalation_items.append({"component": "pipeline_output", "detail": pa, "fixable": True})
+    # Add enrichment-failed proposals that exhausted auto-remediation attempts
+    try:
+        _ecur = conn.cursor()
+        _ecur.execute("""SELECT id, symbol, enrichment_attempt_count, created_at
+            FROM paper_trade_proposals
+            WHERE status='PENDING' AND packet_state IN ('NEW', 'MISSING_DATA', 'ENRICHING')
+            AND COALESCE(enrichment_attempt_count, 0) >= 2
+            AND created_at < NOW() - INTERVAL '1 hour'""")
+        for _er in _ecur.fetchall():
+            _escalation_items.append({
+                "component": "proposal_enrichment_stuck",
+                "detail": f"Proposal #{_er[0]} {_er[1]} stuck after {_er[2]} enrichment attempts (created {_er[3]})",
+                "fixable": True,
+                "retry_cmd": f".venv/bin/python scripts/auto_enrichment_runner.py --force-all --limit 5",
+            })
+    except Exception:
+        pass
 
     if _escalation_items and not dry_run:
         try:
