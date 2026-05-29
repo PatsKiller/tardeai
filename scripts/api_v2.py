@@ -19266,7 +19266,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _unmapped = _db_query("SELECT COUNT(*) as c FROM strategy_backtest_trades WHERE broker IS NULL", fetch="one")
             _unmapped_n = _unmapped["c"] if _unmapped else 0
             if _unmapped_n > 0:
-                _gaps.append(f"{_unmapped_n} backtest trades have no broker/account mapping (champion simulations)")
+                _gaps.append(f"{_unmapped_n} champion/hypothetical rows have no broker mapping — expected for simulations, not missing real trades")
             return 200, {"ok": True, "data": {
                 "strategies": _strategy_list,
                 "run_ids": _run_list,
