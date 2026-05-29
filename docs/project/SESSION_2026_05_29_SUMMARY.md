@@ -1,10 +1,10 @@
-# Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Health Agent Self-Healing Fix
+# Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul
 
-**Commits:** 12 (7045209 through 6a3a485)
+**Commits:** 20 (7045209 through e21c6be)
 
 ## Executive Summary
 
-Completed the classifier/backtesting integrity phase, ran llama.cpp Vulkan canaries on gemma3:12b and gemma4:31b, fixed 13 hardcoded qwen3:14b references, and diagnosed+fixed a critical enrichment pipeline gap that was killing pre-market proposals. The health agent now triggers enrichment before rejecting stuck proposals and escalates failures to Claude Code. Full health agent architecture documented.
+Major session covering classifier completion, llama.cpp Vulkan canaries (gemma3:12b + gemma4:31b), 13 hardcoded qwen3:14b cleanups, and a full self-healing pipeline overhaul. Fixed critical enrichment timing gap (4-9 AM), rebuilt health agent with enrich-before-reject logic, hardened escalation handler with allowlisted retry_cmd direct execution, and replaced Claude CLI (API credits exhausted) with tiered local LLM analysis: gemma4:31b (best quality) → gemma3:12b (fast fallback) → optional Claude CLI.
 
 ## Commits
 
@@ -19,6 +19,12 @@ Completed the classifier/backtesting integrity phase, ran llama.cpp Vulkan canar
 | `12325ce` | Fix enrichment timing gap: extend cron 4AM-7:30PM |
 | `ff804a5` | Fix health agent: enrich-before-reject, escalate stuck proposals to Claude Code |
 | `6a3a485` | Document complete system health agent architecture |
+| `907d377` | Validate self-healing health agent: all critical paths PASS |
+| `a1738c3` | Audit proposal/backtest enhancements: lifecycle, SHFS 860, linkage |
+| `069fc8a` | Harden escalation handler: allowlisted retry_cmd direct execution |
+| `115606b` | Fix proposal lifecycle P0: expired case consistency |
+| `cc19f48` | Switch escalation Tier 3 from Claude CLI to local gemma3:12b |
+| `e21c6be` | Add gemma4:31b as Tier 3a deep analysis in escalation handler |
 
 ## Work Completed
 
@@ -119,6 +125,24 @@ Tested gemma-4-31B-it Q3_K_M (14 GB) on llama.cpp Vulkan with 25 GPU layers + CP
 Complete reference doc: `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md`
 
 Covers all 30+ monitored components, 4-level self-healing pipeline (retry → agent auto-queue → enrich-before-reject → Claude Code CLI escalation), cron schedules, escalation queue format, and monitoring commands.
+
+### 9. Escalation Handler Hardening (069fc8a, cc19f48, e21c6be)
+
+Rebuilt the escalation handler with allowlisted retry_cmd execution and tiered local LLM analysis:
+
+| Tier | Engine | Purpose | Cost |
+|------|--------|---------|------|
+| 1 | Direct retry_cmd | Execute allowlisted safe commands | Free |
+| 2 | gemma3:4b (Ollama) | Quick diagnosis | Free |
+| **3a** | **gemma4:31b (llama.cpp)** | **Deep root cause analysis** | **Free** |
+| 3b | gemma3:12b (Ollama) | Fast analysis fallback | Free |
+| 3c | Claude Code CLI | Optional, requires API credits | $$ |
+
+**Root cause of CLI failure:** "Credit balance is too low" — Claude CLI uses Anthropic API credits. Now all tiers default to local models (free). Claude CLI is optional via `ESCALATION_USE_CLAUDE_CLI=true`.
+
+**Allowlist:** `config/claude_escalation_allowlist.yaml` — 17 allowed patterns (enrichment, health checks, pipeline requeue), 19 blocked patterns (orders, broker, DB mutations, sudo). Environment guards enforce ALPACA_MODE=paper.
+
+**gemma4:31b auto-start:** Tier 3a automatically starts llama-server if the GGUF exists, unloads Ollama models to free VRAM, runs analysis, then stops the server.
 
 ## Model Tier Summary (End of Session)
 
