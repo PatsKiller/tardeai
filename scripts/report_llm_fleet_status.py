@@ -7,12 +7,11 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 OLLAMA = "http://localhost:11434"
 
-EXPECTED_RESIDENT = {"qwen3:14b", "gemma3:4b", "nomic-embed-text:latest"}
+EXPECTED_RESIDENT = {"gemma3:4b", "nomic-embed-text:latest"}
 TRANSIENT_ALLOWED = {"qwen3-embedding:8b", "gemma3-overnight:latest", "gemma3-overnight"}
 
 ROLES = {
-    "qwen3:14b": "STANDARD/REALTIME",
-    "gemma3:4b": "MEDIA/PROSE",
+    "gemma3:4b": "STANDARD/REALTIME",
     "nomic-embed-text:latest": "PRODUCTION EMBEDDING",
     "qwen3-embedding:8b": "HYBRID OFFLINE (transient)",
     "gemma3-overnight:latest": "DEEP REASONING (transient)",

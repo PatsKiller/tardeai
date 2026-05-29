@@ -112,9 +112,9 @@ echo "  Unloading gemma3-overnight..." | tee -a "$LOG_FILE"
 curl -s http://localhost:11434/api/generate -d '{"model":"gemma3-overnight","keep_alive":0,"prompt":""}' > /dev/null 2>&1 || true
 sleep 3
 
-# Restore qwen3:14b
-echo "  Loading qwen3:14b..." | tee -a "$LOG_FILE"
-curl -s http://localhost:11434/api/generate -d '{"model":"qwen3:14b","prompt":"test","options":{"num_predict":1}}' > /dev/null 2>&1 || true
+# Restore gemma3:4b
+echo "  Loading gemma3:4b..." | tee -a "$LOG_FILE"
+curl -s http://localhost:11434/api/generate -d '{"model":"gemma3:4b","prompt":"test","options":{"num_predict":1}}' > /dev/null 2>&1 || true
 sleep 2
 
 # Verify nomic is still resident

@@ -73,7 +73,7 @@ def main():
     results = []
     start = time.monotonic()
     model = policy.get("candidate_model", "gemma3:4b")
-    fallback = policy.get("fallback_model", "qwen3:14b")
+    fallback = policy.get("fallback_model", "gemma3:4b")
 
     for i, it in enumerate(items, 1):
         if not is_workflow_allowed(it["wf"], policy):

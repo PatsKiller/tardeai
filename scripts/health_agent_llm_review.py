@@ -93,7 +93,7 @@ def _call_local_llm(prompt):
         resp = requests.post(
             "http://localhost:11434/api/generate",
             json={
-                "model": "qwen3:14b",
+                "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
                 "prompt": prompt,
                 "stream": False,
                 "options": {"num_predict": 1000, "temperature": 0.3},

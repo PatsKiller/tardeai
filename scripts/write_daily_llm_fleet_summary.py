@@ -7,7 +7,7 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 OLLAMA = "http://localhost:11434"
 
-ROLES = {"qwen3:14b": "STANDARD/REALTIME", "gemma3:4b": "MEDIA/PROSE",
+ROLES = {"gemma3:4b": "STANDARD/REALTIME",
          "nomic-embed-text:latest": "EMBEDDING", "qwen3-embedding:8b": "HYBRID (transient)",
          "gemma3-overnight:latest": "DEEP (transient)"}
 

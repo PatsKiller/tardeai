@@ -137,7 +137,7 @@ def process_queue(dry_run=False):
 
                 import requests
                 _llm_resp = requests.post("http://localhost:11434/api/generate", json={
-                    "model": "qwen3:14b",
+                    "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
                     "prompt": f"/no_think Diagnose this Trade AI error and suggest a fix:\n\nAlert: {_detail}\n\nRecent log:\n{_log_content}\n\nRespond with: DIAGNOSIS: (what broke) FIX: (what to do)",
                     "stream": False,
                     "options": {"num_predict": 300, "temperature": 0.2},
