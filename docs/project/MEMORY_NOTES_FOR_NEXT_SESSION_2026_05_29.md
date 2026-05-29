@@ -46,6 +46,22 @@ Durable context for the next Trade AI session.
 - Systemd override: KEEP_ALIVE=5m, MAX_LOADED=1, NUM_PARALLEL=1
 - Health check: `scripts/check_local_llm_health.py` must PASS 7/7 before any LLM action
 
+## Enrichment Pipeline — FIXED (2026-05-29)
+
+- **Root cause:** Proposals created at 4 AM sat unenriched because enrichment crons only ran 9-15. Health agent rejected them at 7 AM (2h stale sweep) with 0 enrichment attempts.
+- **Cron fix (12325ce):** Both `auto_enrichment_runner` and `proposal_enrichment_loop` now run `*/10 4-19 * * 1-5` (every 10 min, 4 AM - 7:50 PM weekdays)
+- **Health agent fix (ff804a5):** Enrich-before-reject — triggers enrichment up to 3 attempts before rejecting. Only rejects after 3 failed attempts OR 6h hard timeout. Stuck proposals escalated to Claude Code queue.
+- **Verify on next pre-market session:** Check that 4 AM proposals get enriched within 30 min, not rejected at 7 AM
+- Crontab backup: `/tmp/crontab_pre_enrichment_fix_20260529.txt`
+
+## Health Agent Self-Healing (4 Levels)
+
+1. **Retry command** — each component has a retry_cmd, run automatically on failure
+2. **Agent auto-queue** — stale agents get refresh jobs queued in watchlist_agent_jobs
+3. **Enrich-before-reject** — stuck proposals get enrichment triggered (up to 3 attempts) before rejection
+4. **Claude Code escalation** — unresolved problems written to `logs/claude_escalation_queue.json`, processed every 15 min by `claude_escalation_handler.py` which invokes `claude -p`
+- Full architecture doc: `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md`
+
 ## Hardcoded Model References
 
 - **FIXED** (commits 40c1ae1, b6e7571): 13 runtime scripts cleaned
