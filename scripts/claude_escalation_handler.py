@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
-"""claude_escalation_handler.py — Process health agent escalations via Claude Code.
+"""claude_escalation_handler.py — Process health agent escalations.
 
-Called by cron every 15 minutes. Reads claude_escalation_queue.json,
-bundles problems, invokes Claude Code CLI to investigate and fix.
-Logs results to claude_interventions table and clears the queue.
+Processes escalation queue with 3-tier approach:
+  1. Safe retry_cmd direct execution (allowlisted, logged, timeboxed)
+  2. Local LLM diagnosis for fixable items
+  3. Claude Code CLI for unresolved problems
 
 Usage:
     .venv/bin/python scripts/claude_escalation_handler.py
     .venv/bin/python scripts/claude_escalation_handler.py --dry-run
 """
+import hashlib
 import json
 import logging
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except ImportError:
+    pass
+
 QUEUE_FILE = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
+RETRY_LOG = PROJECT_ROOT / "logs" / "claude_escalation_retry_cmd.jsonl"
+ALLOWLIST_FILE = PROJECT_ROOT / "config" / "claude_escalation_allowlist.yaml"
 LOG_DIR = PROJECT_ROOT / "logs"
 
 logging.basicConfig(
@@ -31,6 +43,158 @@ logging.basicConfig(
 )
 log = logging.getLogger("claude-escalation")
 
+
+# ── Allowlist ────────────────────────────────────────────────────────────
+
+def _load_allowlist():
+    """Load retry command allowlist from YAML config."""
+    try:
+        import yaml
+        with open(ALLOWLIST_FILE) as f:
+            return yaml.safe_load(f)
+    except ImportError:
+        # Fallback: parse YAML manually for simple structure
+        try:
+            text = ALLOWLIST_FILE.read_text()
+            config = {"allowed_script_patterns": [], "blocked_patterns": [],
+                      "max_runtime_seconds": 120, "environment_guards": {}}
+            section = None
+            for line in text.splitlines():
+                line = line.strip()
+                if line.startswith("allowed_script_patterns"):
+                    section = "allowed"
+                elif line.startswith("blocked_patterns"):
+                    section = "blocked"
+                elif line.startswith("max_runtime_seconds"):
+                    config["max_runtime_seconds"] = int(line.split(":")[1].strip())
+                elif line.startswith("environment_guards"):
+                    section = "env"
+                elif line.startswith("- ") and section:
+                    val = line[2:].strip().strip('"').strip("'")
+                    if section == "allowed":
+                        config["allowed_script_patterns"].append(val)
+                    elif section == "blocked":
+                        config["blocked_patterns"].append(val)
+                elif ":" in line and section == "env" and not line.startswith("#"):
+                    k, v = line.split(":", 1)
+                    config["environment_guards"][k.strip()] = v.strip().strip('"').strip("'")
+            return config
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+
+def _check_allowlist(cmd, allowlist):
+    """Check if a command is allowed, blocked, or needs manual review.
+    Returns (allowed: bool, reason: str)."""
+    if not allowlist:
+        return False, "no_allowlist_config"
+    if not cmd:
+        return False, "empty_command"
+
+    cmd_lower = cmd.lower()
+
+    # Check blocked patterns first (hard deny)
+    for pattern in allowlist.get("blocked_patterns", []):
+        if pattern.lower() in cmd_lower:
+            return False, f"blocked_pattern: {pattern}"
+
+    # Check environment guards
+    for env_key, expected in allowlist.get("environment_guards", {}).items():
+        actual = os.getenv(env_key, "")
+        if actual != expected:
+            return False, f"env_guard_failed: {env_key}={actual}, expected={expected}"
+
+    # Check allowed script patterns
+    for pattern in allowlist.get("allowed_script_patterns", []):
+        if pattern in cmd:
+            return True, f"allowed_pattern: {pattern}"
+
+    return False, "not_in_allowlist"
+
+
+def _log_retry(item, cmd, allowed, reason, status, exit_code=None,
+               stdout="", stderr="", duration=0, verify_exit=None):
+    """Append retry execution log to JSONL."""
+    try:
+        RETRY_LOG.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "component": item.get("component", "unknown"),
+            "fixable": item.get("fixable", False),
+            "retry_cmd": cmd,
+            "retry_cmd_hash": hashlib.sha256(cmd.encode()).hexdigest()[:12] if cmd else "",
+            "allowlist_result": "allowed" if allowed else "blocked",
+            "blocked_reason": reason if not allowed else "",
+            "status": status,
+            "exit_code": exit_code,
+            "stdout_tail": stdout[-500:] if stdout else "",
+            "stderr_tail": stderr[-500:] if stderr else "",
+            "duration_seconds": round(duration, 1),
+            "verify_exit_code": verify_exit,
+            "env_alpaca_mode": os.getenv("ALPACA_MODE", ""),
+            "env_llm_disable": os.getenv("LLM_DISABLE_LIVE_EXECUTION", ""),
+        }
+        with open(RETRY_LOG, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        pass
+
+
+def _execute_retry_cmd(item, allowlist, dry_run=False):
+    """Execute an allowlisted retry command with full logging.
+    Returns (executed: bool, success: bool, output: str)."""
+    cmd = item.get("retry_cmd", "")
+    if not cmd:
+        return False, False, "no_retry_cmd"
+
+    allowed, reason = _check_allowlist(cmd, allowlist)
+
+    if not allowed:
+        log.info(f"  ⛔ retry_cmd blocked: {reason} — {cmd[:80]}")
+        _log_retry(item, cmd, False, reason, "blocked")
+        return False, False, f"blocked: {reason}"
+
+    if dry_run:
+        log.info(f"  🔍 [DRY RUN] Would execute: {cmd[:100]}")
+        _log_retry(item, cmd, True, reason, "dry_run")
+        return False, False, "dry_run"
+
+    # Execute
+    log.info(f"  🔧 Executing retry_cmd: {cmd[:100]}")
+    timeout = allowlist.get("max_runtime_seconds", 120) if allowlist else 120
+    t0 = time.time()
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True,
+            timeout=timeout, cwd=str(PROJECT_ROOT),
+        )
+        duration = time.time() - t0
+        if result.returncode == 0:
+            log.info(f"  ✅ retry_cmd succeeded ({duration:.1f}s)")
+            _log_retry(item, cmd, True, reason, "retry_cmd_succeeded",
+                       result.returncode, result.stdout, result.stderr, duration)
+            return True, True, result.stdout[-500:]
+        else:
+            log.warning(f"  ❌ retry_cmd failed (rc={result.returncode}, {duration:.1f}s)")
+            _log_retry(item, cmd, True, reason, "retry_cmd_failed",
+                       result.returncode, result.stdout, result.stderr, duration)
+            return True, False, f"exit_code={result.returncode}: {result.stderr[-200:]}"
+    except subprocess.TimeoutExpired:
+        duration = time.time() - t0
+        log.warning(f"  ⏱️ retry_cmd timeout ({timeout}s)")
+        _log_retry(item, cmd, True, reason, "retry_cmd_timeout", duration=duration)
+        return True, False, f"timeout after {timeout}s"
+    except Exception as e:
+        duration = time.time() - t0
+        log.error(f"  💥 retry_cmd error: {e}")
+        _log_retry(item, cmd, True, reason, "retry_cmd_error",
+                   stderr=str(e), duration=duration)
+        return True, False, str(e)
+
+
+# ── DB / Notification helpers ────────────────────────────────────────────
 
 def _get_conn():
     try:
@@ -76,8 +240,10 @@ def _notify(message):
         pass
 
 
+# ── Main processing ─────────────────────────────────────────────────────
+
 def process_queue(dry_run=False):
-    """Read escalation queue, invoke Claude Code, log results."""
+    """Process escalation queue: direct retry → LLM diagnosis → Claude Code CLI."""
     if not QUEUE_FILE.exists():
         log.info("No escalation queue file — nothing to process")
         return
@@ -105,40 +271,69 @@ def process_queue(dry_run=False):
 
     if not actionable:
         log.info(f"Queue has {len(unique_items)} items but none are actionable (all portfolio_risk)")
-        # Clear queue
         QUEUE_FILE.write_text("[]")
         return
 
     log.info(f"Processing {len(actionable)} escalation(s)")
-
+    allowlist = _load_allowlist()
     conn = _get_conn()
 
-    # Try local LLM first for quick diagnosis of fixable items
-    fixable = [i for i in actionable if i.get("fixable")]
+    # ── Tier 1: Direct retry_cmd execution for fixable items ──
+    fixable = [i for i in actionable if i.get("fixable") and i.get("retry_cmd")]
+    resolved_by_retry = set()
+
     if fixable:
-        log.info(f"Attempting local LLM diagnosis for {len(fixable)} fixable item(s)")
-        for item in fixable:
+        log.info(f"Tier 1: {len(fixable)} fixable item(s) with retry_cmd")
+        for idx, item in enumerate(fixable):
+            executed, success, output = _execute_retry_cmd(item, allowlist, dry_run)
+            if success:
+                resolved_by_retry.add(id(item))
+                if conn:
+                    _log_intervention(conn, item.get("component", "unknown"),
+                                      item.get("detail", "")[:500],
+                                      solution=f"retry_cmd succeeded: {output[:200]}",
+                                      status="fixed",
+                                      session_log=f"retry_cmd: {item.get('retry_cmd', '')}\noutput: {output[:1000]}")
+            elif executed and not success:
+                # Attach retry output to item for Claude diagnosis
+                item["retry_output"] = output
+
+    # Remove resolved items from actionable
+    remaining = [i for i in actionable if id(i) not in resolved_by_retry]
+    if resolved_by_retry:
+        log.info(f"  Tier 1 resolved {len(resolved_by_retry)}/{len(fixable)} items")
+
+    if not remaining:
+        log.info("All items resolved by direct retry_cmd")
+        QUEUE_FILE.write_text("[]")
+        if resolved_by_retry:
+            _notify(f"✅ Auto-recovery: {len(resolved_by_retry)} escalation(s) resolved by retry_cmd")
+        return
+
+    # ── Tier 2: Local LLM diagnosis for remaining fixable items ──
+    remaining_fixable = [i for i in remaining if i.get("fixable")]
+    if remaining_fixable:
+        log.info(f"Tier 2: LLM diagnosis for {len(remaining_fixable)} remaining fixable item(s)")
+        for item in remaining_fixable:
             try:
-                # Read the relevant log tail for context
                 _detail = item.get("detail", "")
+                _retry_output = item.get("retry_output", "")
                 _log_content = ""
-                for _logname in ["auto_proposal.log", "screener_pm.log", "incubator_promoter.log"]:
+                for _logname in ["auto_enrichment.log", "proposal_enrichment.log",
+                                 "auto_proposal.log", "screener_pm.log"]:
                     _lp = PROJECT_ROOT / "logs" / _logname
-                    if _lp.exists() and _logname.split(".")[0] in _detail.lower().replace("_", ""):
+                    if _lp.exists():
                         _log_content = _lp.read_text()[-2000:]
                         break
-                if not _log_content:
-                    # Generic: read the log mentioned in the detail
-                    for _logname in ["auto_proposal.log", "screener_pm.log"]:
-                        _lp = PROJECT_ROOT / "logs" / _logname
-                        if _lp.exists():
-                            _log_content = _lp.read_text()[-2000:]
-                            break
 
                 import requests
                 _llm_resp = requests.post("http://localhost:11434/api/generate", json={
                     "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
-                    "prompt": f"/no_think Diagnose this Trade AI error and suggest a fix:\n\nAlert: {_detail}\n\nRecent log:\n{_log_content}\n\nRespond with: DIAGNOSIS: (what broke) FIX: (what to do)",
+                    "prompt": (f"/no_think Diagnose this Trade AI error and suggest a fix:\n\n"
+                               f"Alert: {_detail}\n"
+                               + (f"Retry output: {_retry_output}\n" if _retry_output else "")
+                               + f"Recent log:\n{_log_content}\n\n"
+                               f"Respond with: DIAGNOSIS: (what broke) FIX: (what to do)"),
                     "stream": False,
                     "options": {"num_predict": 300, "temperature": 0.2},
                 }, timeout=60)
@@ -146,7 +341,6 @@ def process_queue(dry_run=False):
                     _diagnosis = _llm_resp.json().get("response", "")[:500]
                     log.info(f"  LLM diagnosis: {_diagnosis[:200]}")
                     item["llm_diagnosis"] = _diagnosis
-                    # Log to interventions table
                     if conn:
                         _log_intervention(conn, item.get("component", "unknown"),
                                           item.get("detail", "")[:500],
@@ -156,14 +350,15 @@ def process_queue(dry_run=False):
             except Exception as e:
                 log.warning(f"  Local LLM diagnosis failed: {e}")
 
-    # Build the prompt for Claude Code
+    # ── Tier 3: Claude Code CLI for unresolved items ──
     problems = []
-    for item in actionable:
+    for item in remaining:
         comp = item.get("component", "unknown")
         detail = item.get("detail", "")
         status = item.get("status", "")
         error = item.get("last_error", "")
         retry_cmd = item.get("retry_cmd", "")
+        retry_out = item.get("retry_output", "")
         llm_diag = item.get("llm_diagnosis", "")
         problems.append(
             f"- Component: {comp}\n"
@@ -171,11 +366,12 @@ def process_queue(dry_run=False):
             f"  Detail: {detail}\n"
             f"  Last error: {error}\n"
             f"  Retry command: {retry_cmd}"
+            + (f"\n  Retry output: {retry_out}" if retry_out else "")
             + (f"\n  LLM Diagnosis: {llm_diag}" if llm_diag else "")
         )
 
     prompt = (
-        f"The Trade AI health agent has escalated {len(actionable)} problem(s) that "
+        f"The Trade AI health agent has escalated {len(remaining)} problem(s) that "
         f"automatic retries could not fix. Investigate each, diagnose the root cause, "
         f"and fix if possible. For each problem, report what you found and what you did.\n\n"
         f"Problems:\n" + "\n".join(problems) + "\n\n"
@@ -184,9 +380,9 @@ def process_queue(dry_run=False):
     )
 
     if dry_run:
-        log.info(f"[DRY RUN] Would invoke Claude Code with:\n{prompt[:500]}...")
+        log.info(f"[DRY RUN] Tier 3: Would invoke Claude Code with:\n{prompt[:500]}...")
         if conn:
-            for item in actionable:
+            for item in remaining:
                 _log_intervention(conn, item.get("component", "unknown"),
                                   json.dumps(item, default=str)[:500],
                                   status="deferred",
@@ -194,23 +390,20 @@ def process_queue(dry_run=False):
         QUEUE_FILE.write_text("[]")
         return
 
-    # Log investigating status
+    log.info(f"Tier 3: Invoking Claude Code CLI for {len(remaining)} item(s)...")
     intervention_ids = []
     if conn:
-        for item in actionable:
+        for item in remaining:
             iid = _log_intervention(conn, item.get("component", "unknown"),
                                     json.dumps(item, default=str)[:500],
                                     status="investigating")
             if iid:
                 intervention_ids.append(iid)
 
-    # Notify operator that Claude is investigating
-    _notify(f"🤖 Claude Code investigating {len(actionable)} escalation(s):\n" +
+    _notify(f"🤖 Claude Code investigating {len(remaining)} escalation(s):\n" +
             "\n".join(f"• {i.get('component')}: {i.get('detail', i.get('status', ''))[:60]}"
-                      for i in actionable[:5]))
+                      for i in remaining[:5]))
 
-    # Invoke Claude Code CLI
-    log.info(f"Invoking Claude Code CLI...")
     session_log = ""
     success = False
     try:
@@ -238,7 +431,6 @@ def process_queue(dry_run=False):
         session_log = f"ERROR: {str(e)}"
         log.error(f"Claude Code invocation failed: {e}")
 
-    # Update intervention records
     final_status = "fixed" if success else "failed"
     if conn:
         cur = conn.cursor()
@@ -252,15 +444,14 @@ def process_queue(dry_run=False):
                 pass
         conn.commit()
 
-    # Notify result
+    resolved_count = len(resolved_by_retry)
     _notify(f"{'✅' if success else '❌'} Claude Code escalation {'resolved' if success else 'failed'}\n"
-            f"{len(actionable)} problem(s) investigated\n"
-            f"Status: {final_status}\n"
+            f"Tier 1 (retry_cmd): {resolved_count} resolved\n"
+            f"Tier 3 (Claude): {len(remaining)} investigated → {final_status}\n"
             f"Log: {session_log[:200]}")
 
-    # Clear queue
     QUEUE_FILE.write_text("[]")
-    log.info(f"Queue cleared. {len(actionable)} items processed → {final_status}")
+    log.info(f"Queue cleared. {resolved_count} retried + {len(remaining)} escalated → {final_status}")
 
 
 if __name__ == "__main__":
