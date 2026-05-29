@@ -921,6 +921,29 @@ def run_health_check(dry_run=True, verbose=False):
             if _total_scans > 0 and _zero_float / _total_scans > 0.5:
                 pipeline_alerts.append(f"⚠️ Screener data quality: {_zero_float}/{_total_scans} scans have zero float")
 
+            # 7. Pre-promotion gate blocking — detect if ALL proposals are being blocked
+            try:
+                import pathlib as _pl
+                _olog = _pl.Path(PROJECT_ROOT / "logs" / "screener_pm.log")
+                if _olog.exists():
+                    _tail = _olog.read_text()[-5000:]
+                    _blocked = _tail.count("BLOCKED by pre-promotion gate")
+                    _created = _tail.count("CREATED proposal")
+                    if _blocked > 0 and _created > 0 and _blocked >= _created:
+                        # Check for floating point R:R false blocks
+                        _rr_blocks = _tail.count("rr_below_minimum")
+                        if _rr_blocks > 0:
+                            pipeline_alerts.append(
+                                f"⚠️ Pre-promotion gate blocking {_blocked}/{_created} proposals "
+                                f"({_rr_blocks} R:R blocks — check floating point tolerance)"
+                            )
+                        else:
+                            pipeline_alerts.append(
+                                f"⚠️ Pre-promotion gate blocking {_blocked}/{_created} proposals"
+                            )
+            except Exception:
+                pass
+
         if pipeline_alerts:
             report["pipeline_alerts"] = pipeline_alerts
             log.info(f"  Pipeline issues: {len(pipeline_alerts)}")
