@@ -18813,6 +18813,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _fr = _db_query(f"SELECT COUNT(*) as c FROM strategy_backtest_runs WHERE {_rwhere}", _rp, fetch="one")
             status["runs_filtered"] = _fr["c"] if _fr else 0
             status["filters_active"] = bool(_bf_strategy or _bf_start or _bf_end or _bf_run or _bf_run_type or _bf_broker or _bf_account)
+            # Classification completeness
+            _cls = _db_query("""SELECT COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE strategy_id IS NOT NULL AND strategy_id <> '' AND strategy_id <> 'unknown') AS classified
+                FROM strategy_backtest_trades""", fetch="one") or {}
+            _cls_total = _cls.get("total", 0)
+            _cls_done = _cls.get("classified", 0)
+            status["classification_total"] = _cls_total
+            status["classification_classified"] = _cls_done
+            status["classification_unclassified"] = _cls_total - _cls_done
+            status["classification_pct"] = round(100 * _cls_done / max(_cls_total, 1), 1)
             return 200, {"ok": True, "data": status}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
