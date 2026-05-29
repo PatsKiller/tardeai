@@ -14788,6 +14788,105 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Proposal Lifecycle Inspector ──────────────────────────────────
+    if method == "GET" and base_path.startswith("/api/v2/paper-proposals/lifecycle-inspector"):
+        try:
+            _q = query or {}
+            _pid = _q.get("proposal_id") or base_path.split("/")[-1]
+            if not _pid or _pid == "lifecycle-inspector":
+                return 400, {"ok": False, "error": "proposal_id required"}
+            _pid = int(_pid)
+            # Core proposal
+            prop = _db_query("SELECT * FROM paper_trade_proposals WHERE id = %s", [_pid], fetch="one")
+            if not prop:
+                return 404, {"ok": False, "error": f"Proposal {_pid} not found"}
+            raw_status = (prop.get("status") or "").strip()
+            norm_status = raw_status.upper()
+            enrichment_status = prop.get("enrichment_status") or ""
+            enrichment_failures = prop.get("enrichment_failures") or 0
+            paper_trade_id = prop.get("paper_trade_id")
+            atm_expired = prop.get("atm_expired_at") is not None
+            # Linked trade
+            linked_trade = None
+            if paper_trade_id:
+                linked_trade = _db_query("SELECT id, symbol, strategy_id, status, pnl, entry_time, exit_time, exit_reason FROM paper_trades WHERE id = %s", [paper_trade_id], fetch="one")
+            # Additional trades referencing this proposal
+            extra_trades = _db_query("SELECT id, symbol, strategy_id, status, pnl, entry_time, exit_time FROM paper_trades WHERE proposal_id = %s AND id != COALESCE(%s, -1) ORDER BY id", [_pid, paper_trade_id]) or []
+            # Enrichment satellites
+            tech_snaps = _db_query("SELECT id, created_at FROM proposal_technical_snapshots WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 5", [_pid]) or []
+            agent_reviews = _db_query("SELECT id, agent_type, status, created_at FROM proposal_agent_reviews WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 10", [_pid]) or []
+            research = _db_query("SELECT id, created_at FROM proposal_research_packets WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 3", [_pid]) or []
+            backtest_snaps = _db_query("SELECT id, created_at FROM proposal_backtest_snapshots WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 3", [_pid]) or []
+            lifecycle_events = _db_query("SELECT id, event_type, lifecycle_status, message, created_at FROM proposal_lifecycle_events WHERE proposal_id = %s ORDER BY created_at DESC LIMIT 20", [_pid]) or []
+            # Compute actionability
+            terminal = norm_status in ("EXPIRED", "REJECTED", "RISK_BLOCKED", "CANCELLED", "CONVERTED")
+            has_trade = paper_trade_id is not None or len(extra_trades) > 0
+            needs_enrichment = enrichment_status not in ("COMPLETE",) and not terminal
+            actionable = norm_status == "PENDING" and enrichment_status == "COMPLETE" and not atm_expired
+            if actionable and has_trade:
+                actionable = False
+            # Next action
+            if terminal:
+                next_action = "None — terminal status"
+            elif has_trade:
+                next_action = "Monitor linked trade"
+            elif needs_enrichment:
+                next_action = "Await enrichment completion"
+            elif norm_status == "PENDING" and not actionable:
+                next_action = "Review and approve/reject"
+            elif actionable:
+                next_action = "Ready for approval"
+            else:
+                next_action = "Review"
+            # Age
+            import datetime as _dt_li
+            _now = _dt_li.datetime.now(_dt_li.timezone.utc)
+            created = prop.get("created_at")
+            age_hours = None
+            if created:
+                if isinstance(created, str):
+                    try: created = _dt_li.datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    except: pass
+                if isinstance(created, _dt_li.datetime):
+                    if created.tzinfo is None: created = created.replace(tzinfo=_dt_li.timezone.utc)
+                    age_hours = round((_now - created).total_seconds() / 3600, 1)
+            result = {
+                "proposal_id": _pid,
+                "symbol": prop.get("symbol"),
+                "status_raw": raw_status,
+                "status_normalized": norm_status,
+                "signal_decision": prop.get("signal_decision"),
+                "strategy_id": prop.get("strategy_id"),
+                "source": prop.get("auto_proposal_reason") or prop.get("source_table") or "unknown",
+                "enrichment_status": enrichment_status,
+                "enrichment_failures": enrichment_failures,
+                "age_hours": age_hours,
+                "atm_expired": atm_expired,
+                "atm_expiry_reason": prop.get("atm_expiry_reason"),
+                "linked_paper_trade_id": paper_trade_id,
+                "linked_trade": {k: _json_clean(v) for k, v in linked_trade.items()} if linked_trade else None,
+                "extra_trades": [{k: _json_clean(v) for k, v in t.items()} for t in extra_trades],
+                "enrichment_satellites": {
+                    "technical_snapshots": len(tech_snaps),
+                    "agent_reviews": len(agent_reviews),
+                    "research_packets": len(research),
+                    "backtest_snapshots": len(backtest_snaps),
+                },
+                "lifecycle_events_count": len(lifecycle_events),
+                "lifecycle_events": [{k: _json_clean(v) for k, v in e.items()} for e in lifecycle_events[:10]],
+                "actionable": actionable,
+                "next_action": next_action,
+                "safety": {
+                    "is_terminal": terminal,
+                    "has_linked_trade": has_trade,
+                    "needs_enrichment": needs_enrichment,
+                    "requires_operator_approval": not terminal and not has_trade,
+                },
+            }
+            return 200, {"ok": True, "data": result}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     if method == "GET" and base_path == "/api/v2/execution-quality":
         try:
             rows = _db_query("""
