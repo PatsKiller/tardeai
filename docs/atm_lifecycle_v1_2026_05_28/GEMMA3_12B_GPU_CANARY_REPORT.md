@@ -51,12 +51,33 @@ All 3 responses used markdown fences. The existing JSON parser in trade_strategy
 3. **Slower** — 1.5-2x latency increase on all workloads.
 4. **Promotion path:** Run gemma3:12b on a 10-20 trade dry-run classifier batch. If output quality matches or exceeds gemma3:4b with no failures, consider promoting to production default.
 
+## 10-Trade Classifier Dry-Run Comparison
+
+Ran the enriched classifier on 10 trades with gemma3:12b (num_ctx=4096, GPU).
+
+| Symbol | gemma3:4b | gemma3:12b | Notes |
+|--------|-----------|------------|-------|
+| AXTI | speculative_growth (0.8) | speculative_growth (0.9) | Higher confidence |
+| APAM-469 | speculative_growth (0.5) | **dividend_growth_compounder (0.85)** | **12b correct** — matches enrichment, 4b was inconsistent |
+| ADBE x2 | speculative_growth (0.8) | speculative_growth (0.8) | Same |
+| APAM-468 | dividend_growth_compounder (0.8) | dividend_growth_compounder (0.8) | Same |
+| APAM-472 | dividend_growth_compounder (0.8) | dividend_growth_compounder (0.8) | Same |
+| PFE | dividend_growth_compounder (0.85) | dividend_growth_compounder (0.85) | Same |
+| BRO x2 | recovery_watch (0.8) | recovery_watch (0.8) | Same |
+| GSIT | speculative_growth (0.8) | speculative_growth (0.85) | Higher confidence |
+
+**Result: 10/10 classified, 0 errors. gemma3:12b resolved the APAM-469 inconsistency that gemma3:4b had.**
+
+Latency: 19-33s per trade (vs 8-13s for gemma3:4b). ~2-2.5x slower but within all timeouts.
+
+Note: requires `num_ctx=4096` (or similar bounded value) — the default 131072 context causes HTTP 500 on model swap due to VRAM overcommit.
+
 ## Status Decision
 
 | Option | Verdict |
 |--------|---------|
-| Production default | Not yet |
-| **Review-only model** | **Yes — approved for dry-run testing** |
+| Production default | Not yet — needs operator approval and num_ctx integration |
+| **Review-only model** | **Yes — passes all workload tests, better consistency than 4b** |
 | Disabled | No — it works on GPU |
 
 ## Post-Canary State
