@@ -143,7 +143,7 @@ def main():
     loaded = _ollama_ps()
     unloaded_models = []
     for m in loaded:
-        if "qwen3:14b" in m or "qwen3:latest" in m:
+        if "gemma3:4b" in m or "gemma3:latest" in m:
             _unload_model(m)
             unloaded_models.append(m)
 

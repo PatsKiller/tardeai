@@ -36,7 +36,7 @@ log = logging.getLogger("multi_tier_reviewer")
 
 TIER_CONFIG = {
     "realtime": {
-        "model": "qwen3:14b",
+        "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
         "provider": "ollama",
         "max_tokens": 400,
         "temperature": 0.3,

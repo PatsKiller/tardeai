@@ -18299,20 +18299,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 400, {"ok": False, "error": "agent parameter required"}
 
             # Agent identity
+            _llm_model = os.getenv("LOCAL_LLM_MODEL", "gemma3:4b")
             AGENT_IDENTITIES = {
-                "steph": {"display": "Steph", "emoji": "📊", "role": "Income guardian / allocation strategist", "model": "qwen3:14b"},
-                "maria": {"display": "Maria", "emoji": "🔬", "role": "Research analyst / catalyst verification", "model": "qwen3:14b"},
-                "maria_research": {"display": "Maria Research", "emoji": "🔬", "role": "Deep research / two-pass RAG analysis", "model": "qwen3:14b"},
-                "risk_agent": {"display": "Risk", "emoji": "🛡️", "role": "Risk management / stop coverage / portfolio heat", "model": "qwen3:14b"},
-                "tax_agent": {"display": "Tax", "emoji": "💰", "role": "Tax optimization / Roth conversion / harvest", "model": "qwen3:14b"},
-                "alex": {"display": "Alex", "emoji": "👔", "role": "CIO / escalation arbiter / strategic oversight", "model": "qwen3:14b"},
-                "aegis": {"display": "Aegis", "emoji": "🏛️", "role": "Portfolio surveillance / overnight analysis", "model": "qwen3:14b"},
-                "iris": {"display": "Iris", "emoji": "📚", "role": "Intelligence librarian / RAG coverage / taxonomy", "model": "qwen3:14b"},
-                "social_scalp": {"display": "Social Scalp", "emoji": "📡", "role": "Social mention scanner / GO-WAIT-AVOID", "model": "qwen3:14b"},
-                "scalp_critic": {"display": "Scalp Critic", "emoji": "🎯", "role": "Post-scan critic / catalyst validation", "model": "qwen3:14b"},
+                "steph": {"display": "Steph", "emoji": "📊", "role": "Income guardian / allocation strategist", "model": _llm_model},
+                "maria": {"display": "Maria", "emoji": "🔬", "role": "Research analyst / catalyst verification", "model": _llm_model},
+                "maria_research": {"display": "Maria Research", "emoji": "🔬", "role": "Deep research / two-pass RAG analysis", "model": _llm_model},
+                "risk_agent": {"display": "Risk", "emoji": "🛡️", "role": "Risk management / stop coverage / portfolio heat", "model": _llm_model},
+                "tax_agent": {"display": "Tax", "emoji": "💰", "role": "Tax optimization / Roth conversion / harvest", "model": _llm_model},
+                "alex": {"display": "Alex", "emoji": "👔", "role": "CIO / escalation arbiter / strategic oversight", "model": _llm_model},
+                "aegis": {"display": "Aegis", "emoji": "🏛️", "role": "Portfolio surveillance / overnight analysis", "model": _llm_model},
+                "iris": {"display": "Iris", "emoji": "📚", "role": "Intelligence librarian / RAG coverage / taxonomy", "model": _llm_model},
+                "social_scalp": {"display": "Social Scalp", "emoji": "📡", "role": "Social mention scanner / GO-WAIT-AVOID", "model": _llm_model},
+                "scalp_critic": {"display": "Scalp Critic", "emoji": "🎯", "role": "Post-scan critic / catalyst validation", "model": _llm_model},
             }
             # Match agent_id loosely
-            identity = AGENT_IDENTITIES.get(agent_id, {"display": agent_id, "emoji": "🤖", "role": "Agent", "model": "qwen3:14b"})
+            identity = AGENT_IDENTITIES.get(agent_id, {"display": agent_id, "emoji": "🤖", "role": "Agent", "model": _llm_model})
 
             # DB names this agent might use
             db_names = [agent_id]

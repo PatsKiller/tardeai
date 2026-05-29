@@ -34,11 +34,11 @@ def get_model_for_workflow(workflow, policy=None):
     if policy is None: policy = load_policy()
     if is_workflow_allowed(workflow, policy):
         return policy.get("candidate_model", "gemma3:4b")
-    return policy.get("fallback_model", "qwen3:14b")
+    return policy.get("fallback_model", "gemma3:4b")
 
 def get_fallback_model(policy=None):
     if policy is None: policy = load_policy()
-    return policy.get("fallback_model", "qwen3:14b")
+    return policy.get("fallback_model", "gemma3:4b")
 
 def describe_policy(policy=None):
     if policy is None: policy = load_policy()
