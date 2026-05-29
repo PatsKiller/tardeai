@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-05-28
+**Updated:** 2026-05-29
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -163,6 +163,21 @@
 | `docs/atm_lifecycle_v1_2026_05_29/BACKTESTING_LIFECYCLE_VALIDATION_AFTER_CLASSIFIER_FIX.md` | Backtesting lifecycle validation: 3,592/3,593 classified |
 | `docs/atm_lifecycle_v1_2026_05_29/LLAMACPP_VULKAN_CANARY_REPORT.md` | llama.cpp vs Ollama: gemma3:12b, 2-9x faster |
 | `docs/atm_lifecycle_v1_2026_05_29/GEMMA4_31B_LLAMACPP_CANARY_REPORT.md` | Gemma4 31B: 3/3 PASS, best quality, 15-25x slower |
+
+### Session 2026-05-29 Final — Proposal Lifecycle, Self-Healing, SHFS Apply
+| Document | Purpose |
+|----------|---------|
+| `docs/project/SESSION_2026_05_29_FINAL_SUMMARY.md` | **Final session summary** — 31 commits, classifier 100%, proposal lifecycle P0/P1, self-healing escalation, Gemma4 31B |
+| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29_FINAL.md` | **Memory notes** — durable context: classifier complete, model policy, next observations |
+| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29_FINAL.md` | **Runbook** — preflight, enrichment health, escalation logs, remaining P2 |
+| `docs/atm_lifecycle_v1_2026_05_29/SHFS_860_MANUAL_APPLY_AUDIT.md` | SHFS id=860 manual classification: speculative_growth, operator-approved |
+| `docs/atm_lifecycle_v1_2026_05_29/P0_PROPOSAL_LIFECYCLE_FIX_REPORT.md` | P0 fixes: expired case, hygiene panel status field |
+| `docs/atm_lifecycle_v1_2026_05_29/P1_PHASE_A_BACKTEST_UI_AND_LINKS_REPORT.md` | P1A: run_type column, classification completeness, orphan link audit |
+| `docs/atm_lifecycle_v1_2026_05_29/P1_PHASE_B_PROPOSAL_LIFECYCLE_REPORT.md` | P1B: ATM expiry status fix, lifecycle inspector endpoint |
+| `docs/atm_lifecycle_v1_2026_05_29/PROPOSAL_BACKTEST_ENHANCEMENT_SESSION_REPORT.md` | 9-phase proposal/backtest audit (WARN: 2 P0 bugs found, both fixed) |
+| `docs/atm_lifecycle_v1_2026_05_29/SELF_HEALING_HEALTH_AGENT_FINAL_VALIDATION_REPORT.md` | Self-healing validation: all critical paths PASS |
+| `docs/atm_lifecycle_v1_2026_05_29/SELF_HEALING_RETRY_CMD_DIRECT_EXECUTION_REPORT.md` | retry_cmd hardening: allowlist, 7/7 tests |
+| `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md` | System health agent architecture with Claude Code escalation |
 
 ### Discovery Artifacts
 | Document | Purpose |
