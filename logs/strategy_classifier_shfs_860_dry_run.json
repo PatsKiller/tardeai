@@ -1,0 +1,28 @@
+{
+  "total": 1,
+  "classified": 0,
+  "needs_review": 1,
+  "unknown": 0,
+  "errors": 0,
+  "post_validated": 0,
+  "results": [
+    {
+      "trade_id": 860,
+      "symbol": "SHFS",
+      "broker": "schwab",
+      "account": "schwab_rollover_ira",
+      "strategy_id": "needs_review",
+      "confidence": 0.3,
+      "reasoning": "No enrichment data available to classify the trade. Requires review to determine appropriate strategy.",
+      "evidence_used": [],
+      "missing_evidence": [
+        "enrichment data"
+      ],
+      "requires_review": true,
+      "evidence_source_count": 0,
+      "conflicting_sources": [],
+      "source_table": "strategy_backtest_trades",
+      "downgraded_by_post_validation": false
+    }
+  ]
+}
