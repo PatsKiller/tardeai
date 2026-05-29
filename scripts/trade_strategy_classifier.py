@@ -32,11 +32,13 @@ def _get_conn():
     return gc()
 
 
-def _call_ollama(prompt, model="gemma3:4b", timeout=180):
+def _call_ollama(prompt, model="gemma3:12b", timeout=180):
     num_gpu = int(os.environ.get("LOCAL_LLM_NUM_GPU", "0"))
+    # Bound context window to avoid VRAM overcommit on larger models
+    num_ctx = 4096 if "12b" in model or "27b" in model else 8192
     payload = json.dumps({
         "model": model, "stream": False,
-        "options": {"temperature": 0.3, "num_predict": 512, "num_gpu": num_gpu},
+        "options": {"temperature": 0.3, "num_predict": 512, "num_gpu": num_gpu, "num_ctx": num_ctx},
         "messages": [
             {"role": "system", "content": "You are a trade strategy classifier. Return ONLY valid JSON with no other text. Every array element must be a plain string."},
             {"role": "user", "content": prompt},
@@ -437,20 +439,137 @@ def _preflight_llm_health():
     return len(failed) == 0, checks, failed
 
 
+def _query_strategy_backtest_trades(cur, limit, symbols=None):
+    """Query unclassified rows directly from strategy_backtest_trades with enrichment."""
+    symbol_filter = ""
+    params = [limit]
+    if symbols:
+        symbol_filter = "AND sbt.symbol = ANY(%s)"
+        params = [symbols, limit]
+
+    cur.execute(f"""
+        SELECT sbt.id AS trade_id, sbt.symbol,
+               COALESCE(sbt.broker, 'schwab') AS broker,
+               COALESCE(sbt.account, 'unknown') AS account,
+               sbt.entry_price, sbt.exit_price, sbt.pnl, sbt.pnl_pct,
+               sbt.entry_time::date AS entry_date, sbt.exit_time::date AS exit_date,
+               CASE WHEN sbt.exit_time IS NOT NULL AND sbt.entry_time IS NOT NULL
+                    THEN EXTRACT(DAY FROM (sbt.exit_time - sbt.entry_time))
+                    ELSE NULL END AS hold_days,
+               sbt.exit_reason,
+               'strategy_backtest_trades' AS source_table,
+               sbt.strategy_id AS current_strategy_id,
+               -- enrichment
+               tsc.strategy_type   AS ticker_strategy,
+               tsc.asset_type      AS ticker_asset_type,
+               tsc.confidence      AS ticker_confidence,
+               wsc.strategy_type   AS watchlist_strategy,
+               wsc.thesis          AS watchlist_thesis,
+               wsc.catalyst_summary AS watchlist_catalyst,
+               ptp.strategy_id     AS proposal_strategy,
+               ptp.catalyst        AS proposal_catalyst,
+               ptp.setup_type      AS proposal_setup,
+               ptp.sector          AS proposal_sector,
+               ptp.industry        AS proposal_industry,
+               ptp.discovery_source AS proposal_discovery_source
+        FROM strategy_backtest_trades sbt
+        LEFT JOIN ticker_strategy_classifications tsc
+            ON tsc.symbol = sbt.symbol AND tsc.active = true
+        LEFT JOIN watchlist_strategy_cards wsc
+            ON wsc.symbol = sbt.symbol
+        LEFT JOIN LATERAL (
+            SELECT strategy_id, catalyst, setup_type, sector, industry, discovery_source
+            FROM paper_trade_proposals
+            WHERE symbol = sbt.symbol
+            ORDER BY created_at DESC LIMIT 1
+        ) ptp ON true
+        WHERE (sbt.strategy_id IS NULL OR sbt.strategy_id = '' OR sbt.strategy_id = 'unknown')
+        {symbol_filter}
+        ORDER BY sbt.id
+        LIMIT %s
+    """, params)
+    return [dict(r) for r in cur.fetchall()]
+
+
+def _query_trades_view(cur, limit, symbols=None):
+    """Query unclassified rows from trades view (trade_transactions + paper_trades) with enrichment.
+    WARNING: trade_transactions has no strategy_id column — this source cannot be written to."""
+    symbol_filter = ""
+    params = [limit]
+    if symbols:
+        symbol_filter = "AND t.symbol = ANY(%s)"
+        params = [symbols, limit]
+
+    cur.execute(f"""
+        SELECT t.trade_id, t.symbol, t.broker, t.account,
+               t.entry_price, t.exit_price, t.pnl, t.pnl_pct,
+               t.entry_date, t.exit_date,
+               EXTRACT(DAY FROM (t.exit_date::timestamp - t.entry_date::timestamp)) AS hold_days,
+               t.exit_reason, t.source_table,
+               tsc.strategy_type   AS ticker_strategy,
+               tsc.asset_type      AS ticker_asset_type,
+               tsc.confidence      AS ticker_confidence,
+               wsc.strategy_type   AS watchlist_strategy,
+               wsc.thesis          AS watchlist_thesis,
+               wsc.catalyst_summary AS watchlist_catalyst,
+               ptp.strategy_id     AS proposal_strategy,
+               ptp.catalyst        AS proposal_catalyst,
+               ptp.setup_type      AS proposal_setup,
+               ptp.sector          AS proposal_sector,
+               ptp.industry        AS proposal_industry,
+               ptp.discovery_source AS proposal_discovery_source
+        FROM trades t
+        LEFT JOIN ticker_strategy_classifications tsc
+            ON tsc.symbol = t.symbol AND tsc.active = true
+        LEFT JOIN watchlist_strategy_cards wsc
+            ON wsc.symbol = t.symbol
+        LEFT JOIN LATERAL (
+            SELECT strategy_id, catalyst, setup_type, sector, industry, discovery_source
+            FROM paper_trade_proposals
+            WHERE symbol = t.symbol
+            ORDER BY created_at DESC LIMIT 1
+        ) ptp ON true
+        WHERE (t.strategy_id IS NULL OR t.strategy_id = '' OR t.strategy_id = 'unknown')
+          AND t.status = 'closed' AND t.entry_price > 0 AND t.exit_price > 0
+        {symbol_filter}
+        ORDER BY ABS(t.pnl) DESC
+        LIMIT %s
+    """, params)
+    return [dict(r) for r in cur.fetchall()]
+
+
 def main():
     p = argparse.ArgumentParser(description="Trade Strategy Classifier")
     p.add_argument("--dry-run", action="store_true", default=True)
     p.add_argument("--apply", action="store_true")
+    p.add_argument("--source", choices=["strategy_backtest_trades", "trades_view"],
+                   help="Explicit source table. Required for --apply.")
+    p.add_argument("--symbols", type=str, help="Comma-separated symbol filter (e.g., V,SHFS,FJSCX)")
     p.add_argument("--limit", type=int, default=10)
-    p.add_argument("--model", default="gemma3:4b")
+    p.add_argument("--model", default="gemma3:12b")
     p.add_argument("--json-out", type=str)
     args = p.parse_args()
     if args.apply:
         args.dry_run = False
 
+    symbol_list = [s.strip() for s in args.symbols.split(",")] if args.symbols else None
+
     alpaca = os.environ.get("ALPACA_MODE", "")
     if alpaca != "paper":
         log.error(f"ALPACA_MODE={alpaca}, must be paper. Aborting.")
+        sys.exit(1)
+
+    # Source/writer alignment: --apply requires explicit --source
+    if args.apply and not args.source:
+        log.error("--apply requires explicit --source (strategy_backtest_trades or trades_view).")
+        log.error("  --source strategy_backtest_trades: reads and writes strategy_backtest_trades")
+        log.error("  --source trades_view: read-only; trade_transactions has no strategy_id column")
+        sys.exit(1)
+
+    if args.apply and args.source == "trades_view":
+        log.error("Cannot --apply with --source trades_view.")
+        log.error("trade_transactions has no strategy_id column — there is no approved write target.")
+        log.error("Use --source strategy_backtest_trades to classify backtest rows directly.")
         sys.exit(1)
 
     # LLM safety preflight — required before --apply
@@ -472,45 +591,14 @@ def main():
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Get unclassified closed trades with enrichment data
-    cur.execute("""
-        SELECT t.trade_id, t.symbol, t.broker, t.account,
-               t.entry_price, t.exit_price, t.pnl, t.pnl_pct,
-               t.entry_date, t.exit_date,
-               EXTRACT(DAY FROM (t.exit_date::timestamp - t.entry_date::timestamp)) AS hold_days,
-               t.exit_reason, t.source_table,
-               -- ticker_strategy_classifications
-               tsc.strategy_type   AS ticker_strategy,
-               tsc.asset_type      AS ticker_asset_type,
-               tsc.confidence      AS ticker_confidence,
-               -- watchlist_strategy_cards
-               wsc.strategy_type   AS watchlist_strategy,
-               wsc.thesis          AS watchlist_thesis,
-               wsc.catalyst_summary AS watchlist_catalyst,
-               -- paper_trade_proposals (most recent for this symbol)
-               ptp.strategy_id     AS proposal_strategy,
-               ptp.catalyst        AS proposal_catalyst,
-               ptp.setup_type      AS proposal_setup,
-               ptp.sector          AS proposal_sector,
-               ptp.industry        AS proposal_industry,
-               ptp.discovery_source AS proposal_discovery_source
-        FROM trades t
-        LEFT JOIN ticker_strategy_classifications tsc
-            ON tsc.symbol = t.symbol AND tsc.active = true
-        LEFT JOIN watchlist_strategy_cards wsc
-            ON wsc.symbol = t.symbol
-        LEFT JOIN LATERAL (
-            SELECT strategy_id, catalyst, setup_type, sector, industry, discovery_source
-            FROM paper_trade_proposals
-            WHERE symbol = t.symbol
-            ORDER BY created_at DESC LIMIT 1
-        ) ptp ON true
-        WHERE (t.strategy_id IS NULL OR t.strategy_id = '' OR t.strategy_id = 'unknown')
-          AND t.status = 'closed' AND t.entry_price > 0 AND t.exit_price > 0
-        ORDER BY ABS(t.pnl) DESC
-        LIMIT %s
-    """, [args.limit])
-    trades = [dict(r) for r in cur.fetchall()]
+    # Select source
+    source = args.source or "strategy_backtest_trades"
+    if source == "strategy_backtest_trades":
+        log.info(f"Source: strategy_backtest_trades (direct backtest rows)")
+        trades = _query_strategy_backtest_trades(cur, args.limit, symbol_list)
+    else:
+        log.info(f"Source: trades_view (read-only, no apply allowed)")
+        trades = _query_trades_view(cur, args.limit, symbol_list)
 
     if not trades:
         log.info("No unclassified trades found")
@@ -597,17 +685,19 @@ def main():
                 log.info(f"  → {parsed['strategy_id']} (confidence={parsed.get('confidence',0)})"
                          + (f" [validated from {llm_strategy}]" if validation_notes else ""))
 
-                if args.apply:
+                if args.apply and args.source == "strategy_backtest_trades":
                     # Do not apply needs_review or unknown to DB
                     if parsed["strategy_id"] in ("needs_review", "unknown"):
                         log.info(f"  Skipping DB write for {parsed['strategy_id']}")
                     else:
+                        # Write directly to the row we read, by id
                         cur.execute("""UPDATE strategy_backtest_trades
-                            SET strategy_id=%s WHERE symbol=%s AND (strategy_id IS NULL OR strategy_id='' OR strategy_id='unknown')""",
-                            [parsed["strategy_id"], t["symbol"]])
+                            SET strategy_id=%s WHERE id=%s AND (strategy_id IS NULL OR strategy_id='' OR strategy_id='unknown')""",
+                            [parsed["strategy_id"], t["trade_id"]])
                         updated = cur.rowcount
                         result["bt_rows_updated"] = updated
-                        log.info(f"  Updated {updated} backtest trade rows for {t['symbol']}")
+                        result["bt_row_id"] = t["trade_id"]
+                        log.info(f"  Updated {updated} backtest row id={t['trade_id']} for {t['symbol']}")
 
                 results.append(result)
             else:
