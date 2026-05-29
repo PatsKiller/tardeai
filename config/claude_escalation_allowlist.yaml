@@ -1,0 +1,59 @@
+# claude_escalation_allowlist.yaml — Safe retry commands for auto-execution
+# Commands matching allowed_script_patterns execute directly with logging.
+# Commands matching blocked_patterns are NEVER executed.
+# Everything else requires manual_review.
+
+allowed_script_patterns:
+  # Enrichment retry
+  - "scripts/auto_enrichment_runner.py"
+  - "scripts/proposal_enrichment_loop.py"
+  - "scripts/symbol_enrichment.py"
+  - "scripts/finviz_enrichment.py"
+  # Health checks (read-only)
+  - "scripts/check_local_llm_health.py"
+  - "scripts/system_health_agent.py"
+  - "scripts/pipeline_health_monitor.py"
+  - "scripts/trade_ai_health.py"
+  - "scripts/screener_run_health.py"
+  # Pipeline requeue (no order submission)
+  - "scripts/process_watchlist_agent_jobs.py"
+  - "scripts/build_deep_overnight_llm_queue.py"
+  - "scripts/rag_indexer.py"
+  # Cache rebuilds
+  - "scripts/price_cache.py"
+  - "scripts/portfolio_sync.py"
+  - "scripts/holdings_llm_refresh.py"
+  # News/data refresh
+  - "scripts/news_ingestion.py"
+  - "scripts/finviz_screener_runner.py"
+
+blocked_patterns:
+  # Order/broker mutations
+  - "order"
+  - "submit"
+  - "cancel"
+  - "close_position"
+  - "alpaca_execute"
+  # DB mutations on trading tables
+  - "UPDATE paper_trades"
+  - "DELETE FROM paper_trades"
+  - "UPDATE paper_trade_proposals SET status"
+  - "DELETE FROM paper_trade_proposals"
+  - "INSERT INTO paper_trades"
+  # System-level
+  - "sudo"
+  - "crontab"
+  - "systemctl"
+  - "git reset"
+  - "git revert"
+  - "rm -rf"
+  - "rm -r /"
+  # Env/config mutations
+  - ".env"
+  - "settings.json"
+
+max_runtime_seconds: 120
+
+environment_guards:
+  ALPACA_MODE: "paper"
+  LLM_DISABLE_LIVE_EXECUTION: "true"
