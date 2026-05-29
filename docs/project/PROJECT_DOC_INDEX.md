@@ -153,6 +153,17 @@
 | `docs/atm_lifecycle_v1_2026_05_28/STRATEGY_CLASSIFIER_APPLY_55_AUDIT_REPORT.md` | 55-trade classifier apply audit: 34 rows updated, 7 questionable, rollback SQL |
 | `docs/atm_lifecycle_v1_2026_05_28/STRATEGY_CLASSIFIER_HOLD_PERIOD_GATE_REPORT.md` | Hold-period gate: hard/caution/conflict/ADBE rules |
 
+### Session 2026-05-29 — Classifier Completion & llama.cpp Canary
+| Document | Purpose |
+|----------|---------|
+| `docs/project/SESSION_2026_05_29_SUMMARY.md` | **Session summary** — 8 commits, hardcoded model cleanup, backtesting validation, llama.cpp + Gemma4 31B canaries |
+| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29.md` | **Memory notes** — classifier complete, model tiers, llama.cpp status, safety |
+| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29.md` | **Runbook** — pre-flight, SHFS, trade close analyzer, llama.cpp evaluation |
+| `docs/atm_lifecycle_v1_2026_05_29/CLASSIFIER_SOURCE_WRITER_ALIGNMENT_AUDIT.md` | Source/writer mismatch fix audit |
+| `docs/atm_lifecycle_v1_2026_05_29/BACKTESTING_LIFECYCLE_VALIDATION_AFTER_CLASSIFIER_FIX.md` | Backtesting lifecycle validation: 3,592/3,593 classified |
+| `docs/atm_lifecycle_v1_2026_05_29/LLAMACPP_VULKAN_CANARY_REPORT.md` | llama.cpp vs Ollama: gemma3:12b, 2-9x faster |
+| `docs/atm_lifecycle_v1_2026_05_29/GEMMA4_31B_LLAMACPP_CANARY_REPORT.md` | Gemma4 31B: 3/3 PASS, best quality, 15-25x slower |
+
 ### Discovery Artifacts
 | Document | Purpose |
 |----------|---------|
