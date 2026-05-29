@@ -1,19 +1,31 @@
 # Session 2026-05-28 — Trade AI LLM & Backtesting Summary
 
-**Commits this session:** 13 (a8706f9 through 9b0ef70)
+**Commits this session:** 17 (a8706f9 through ae8efe0)
 
 ## Executive Summary
 
-Major local LLM safety hardening session. Blocked unstable Qwen3:14b, established gemma3:4b as the sole GPU production model, built an enriched strategy classifier with evidence-based post-validation, applied it to 55 trades, upgraded Ollama 0.20.6 → 0.24.0, and ran workload canaries on Gemma4 and Qwen3 candidates. Gemma4 passes CPU but fails GPU/Vulkan — removed. System is stable on gemma3:4b GPU with full safety gates.
+Major local LLM safety hardening session. Blocked unstable Qwen3:14b, built an enriched strategy classifier with evidence-based post-validation, applied it to 55 trades, upgraded Ollama 0.20.6 → 0.24.0, and ran workload canaries on Gemma4, Qwen3, and Gemma3:12b. Gemma4 passes CPU but fails GPU/Vulkan — removed. Gemma3:12b passed all GPU workload canaries with better consistency than 4b, promoted to primary classifier model. Fixed classifier source/writer mismatch. System is stable with gemma3:12b as primary GPU model and gemma3:4b as fast fallback.
+
+## Final Model Policy
+
+| Role | Model | Notes |
+|------|-------|-------|
+| **Primary classifier/review** | gemma3:12b | GPU/Vulkan, 9.75GB VRAM, num_ctx=4096 |
+| Fast fallback | gemma3:4b | Use only if 12b fails health/preflight/timeout/VRAM |
+| Disabled | qwen3:14b | Installed, blocked by router (CPU too slow, GPU overcommit) |
+| Removed | gemma4:e2b, gemma4:e4b | GPU produces garbage on Vulkan |
+| Disabled on GPU | gemma3:27b | CPU only |
+| Max concurrent | 1 | Enforced by systemd + file lock |
 
 ## Runtime & Model Changes
 
 | Before | After |
 |--------|-------|
 | Ollama 0.20.6 | **Ollama 0.24.0** |
-| qwen3:14b loaded with year-2318 expiry | gemma3:4b only, 5m keep_alive |
+| qwen3:14b loaded with year-2318 expiry | gemma3:12b primary, 5m keep_alive |
 | No model safety router | Full safety router with disabled model blocking, pre-call cleanup, JSONL audit |
 | No systemd override | Systemd drop-in: KEEP_ALIVE=5m, MAX_LOADED=1, NUM_PARALLEL=1 |
+| Classifier reads trades_view, writes strategy_backtest_trades | Fixed: `--source strategy_backtest_trades` reads/writes same table |
 
 ## Ollama Upgrade
 
@@ -24,16 +36,17 @@ Major local LLM safety hardening session. Blocked unstable Qwen3:14b, establishe
 
 ## Model Canary Results
 
-| Model | CPU Basic | CPU Workload | GPU Workload | Status |
-|-------|----------|-------------|-------------|--------|
-| gemma3:4b | PASS | PASS | PASS | **Production** |
-| gemma4:e4b | PASS | 3/3 PASS (58-75s) | 0/3 FAIL (garbage) | Removed |
+| Model | CPU Basic | CPU Workload | GPU Workload | 10-Trade Classifier | Status |
+|-------|----------|-------------|-------------|-------------------|--------|
+| **gemma3:12b** | PASS | PASS | 3/3 PASS (4.6-21.8s) | 10/10, better consistency | **Primary** |
+| gemma3:4b | PASS | PASS | PASS | 10/10, 1 inconsistency | Fast fallback |
+| gemma4:e4b | PASS | 3/3 PASS (58-75s) | 0/3 FAIL (garbage) | N/A | Removed |
 | gemma4:e2b | PASS | 3/3 PASS (45s) | 0/3 FAIL (HTTP 500) | Removed |
 | qwen3:14b | PASS | 1/3 (timeout) | N/A | Disabled |
 
 ## Final Production Model Decision
 
-**gemma3:4b on GPU (Vulkan, Arc B50).** No change until Ollama adds Gemma4 Vulkan support.
+**gemma3:12b on GPU (Vulkan, Arc B50)** as primary classifier/review model. gemma3:4b retained as fast fallback. gemma3:12b demonstrated better classification consistency (resolved APAM-469 inconsistency) and passed all workload canaries on GPU. Requires num_ctx=4096 to avoid VRAM overcommit.
 
 ## Classifier Hardening & Enrichment
 
