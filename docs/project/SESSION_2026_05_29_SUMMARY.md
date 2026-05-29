@@ -1,6 +1,6 @@
 # Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul
 
-**Commits:** 26 (7045209 through d0d9330)
+**Commits:** 33 (7045209 through 5e6b7fa)
 
 ## Executive Summary
 
@@ -191,11 +191,20 @@ Investigated why gemma4:31b appeared to fail in production:
 | Benchmark | gemma3:12b | llama.cpp GPU | Speed comparison, A/B testing |
 | Disabled | qwen3:14b, gemma4 e2b/e4b, gemma3:27b GPU | — | Failed canaries |
 
+### 12. R:R Floating Point Gate Fix (5e6b7fa)
+
+**Root cause of zero proposals since 10:29 AM:** The pre-promotion gate's R:R check used `computed_rr < 2.0` but floating point precision caused `1.9999...` to print as `2.00` while still failing the check. Every proposal with R:R at exactly 2.0 was blocked with `rr_below_minimum: 2.00 < 2.0`.
+
+**Fix:** Added `round(4)` + 0.005 tolerance to R:R comparison. Health agent now monitors pre-promotion gate blocking rate and flags R:R false positives.
+
+**Secondary cause:** SKIPPED_RECENTLY_REJECTED blocked resubmission of the same symbols from earlier rejected batches. Combined with R:R blocking new symbols, zero proposals could pass.
+
 ## Next Steps
 
-1. Verify enrichment pipeline runs correctly at next 4 AM pre-market screener
-2. Monitor health agent enrich-before-reject behavior on next stuck proposal
-3. SHFS (id=860) needs enrichment data for classification
-4. Trade close analyzer batch with gemma3:12b (pending operator approval)
-5. Consider systemd service for llama-server if pursuing gemma4:31b overnight reviews
-6. No more classifier batches needed — phase complete
+1. Verify next orchestrator run produces proposals with R:R fix
+2. Verify enrichment pipeline runs correctly at next 4 AM pre-market screener
+3. Monitor health agent enrich-before-reject behavior on next stuck proposal
+4. SHFS (id=860) needs enrichment data for classification
+5. Trade close analyzer batch with gemma3:12b (pending operator approval)
+6. Consider systemd service for llama-server if pursuing gemma4:31b overnight reviews
+7. No more classifier batches needed — phase complete
