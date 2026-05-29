@@ -201,7 +201,7 @@ export default function Backtesting() {
     { id: 'trailing', label: `Trail Analysis (${trailData?.summary?.total_analyzed ?? 0})` },
     { id: 'mfe', label: `MFE/MAE (${mfeData?.trades?.length ?? 0})` },
     { id: 'optimization', label: `Optimization (${optData?.results?.length ?? 0})` },
-    { id: 'llm_reviews', label: `LLM Reviews (${llmReviewData?.total_reviews ?? 0})` },
+    { id: 'llm_reviews', label: `LLM Review Coverage (${llmReviewData?.total_reviews ?? 0})` },
   ]
 
   return (
@@ -222,14 +222,19 @@ export default function Backtesting() {
         </div>
       </div>
 
+      {/* Context banner */}
+      <div style={{ fontSize: 11, color: 'rgba(147,197,253,0.7)', marginBottom: 12, padding: '8px 12px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: 6 }}>
+        Backtesting rows are historical replays and champion simulations — not live broker orders. {runTypeFilter === 'replay_trades' ? 'Showing real trade replays.' : runTypeFilter === 'replay_proposals' ? 'Showing rejected/expired proposal replays.' : runTypeFilter === 'champion' ? 'Showing hypothetical champion simulations.' : runTypeFilter ? `Filtered to ${runTypeFilter}.` : 'Showing all sources (replay + champion).'}
+      </div>
+
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10, marginBottom: 16 }}>
         {[
           { label: 'Datasets', value: status?.datasets_total ?? 0 },
           { label: 'Runs', value: filtersActive ? `${status?.runs_filtered ?? 0} / ${status?.runs_total ?? 0}` : (status?.runs_total ?? 0) },
-          { label: 'Sim Trades', value: filtersActive ? `${trades.length.toLocaleString()} / ${(status?.trades_total ?? 0).toLocaleString()}` : (status?.trades_total ?? 0).toLocaleString() },
+          { label: 'Backtest Rows', value: filtersActive ? `${trades.length.toLocaleString()} / ${(status?.trades_total ?? 0).toLocaleString()}` : (status?.trades_total ?? 0).toLocaleString() },
           { label: 'Results', value: results.length },
-          { label: 'Classified', value: `${(status?.classification_classified ?? 0).toLocaleString()} / ${(status?.classification_total ?? 0).toLocaleString()}`, accent: (status?.classification_unclassified ?? 0) > 0 },
+          { label: 'Strategy Coverage', value: `${(status?.classification_classified ?? 0).toLocaleString()} / ${(status?.classification_total ?? 0).toLocaleString()}`, accent: (status?.classification_unclassified ?? 0) > 0 },
           { label: 'Flagged', value: flagged.length, accent: flagged.length > 0 },
           { label: 'Missed', value: missed?.total_missed ?? 0 },
         ].map(k => (
@@ -291,7 +296,7 @@ export default function Backtesting() {
         )}
         {filtersActive && (
           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
-            Showing {trades.length.toLocaleString()} of {(status?.trades_total ?? 0).toLocaleString()} sim trades
+            Showing {trades.length.toLocaleString()} {runTypeFilter === 'replay_trades' ? 'replay-trade' : runTypeFilter === 'replay_proposals' ? 'replay-proposal' : runTypeFilter === 'champion' ? 'champion-sim' : 'backtest'} rows (of {(status?.trades_total ?? 0).toLocaleString()} total backtest rows)
           </span>
         )}
       </div>
@@ -379,7 +384,11 @@ export default function Backtesting() {
               <tr key={s.strategy} onClick={() => { setSelectedStrategy(p => p === s.strategy ? null : s.strategy); setTab('trades') }}
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', background: selectedStrategy === s.strategy ? 'rgba(99,102,241,0.1)' : 'transparent' }}>
                 <td style={{ padding: '10px 12px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{safeStr(s.strategy)}</td>
-                <td style={{ padding: '10px 12px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{s.trades}</td>
+                <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: 12 }}>
+                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>{s.trades}</span>
+                  {s.trades < 5 && <span style={{ marginLeft: 6, fontSize: 9, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,0.15)', color: '#fca5a5' }}>very small</span>}
+                  {s.trades >= 5 && s.trades < 20 && <span style={{ marginLeft: 6, fontSize: 9, padding: '1px 5px', borderRadius: 3, background: 'rgba(251,191,36,0.15)', color: '#fde68a' }}>small sample</span>}
+                </td>
                 <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
                     <div style={{ width: 60, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
@@ -627,7 +636,11 @@ export default function Backtesting() {
                   <tbody>{(trailData.strategy_recommendations || []).map((rec: any) => (
                     <tr key={rec.strategy_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                       <td style={{ padding: '9px 10px', fontWeight: 500, color: 'rgba(255,255,255,0.85)' }}>{safeStr(rec.strategy_id)}</td>
-                      <td style={{ padding: '9px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>{rec.trades}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12 }}>
+                        <span style={{ color: 'rgba(255,255,255,0.4)' }}>{rec.trades}</span>
+                        {rec.trades < 5 && <span style={{ marginLeft: 4, fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(239,68,68,0.15)', color: '#fca5a5' }}>too few</span>}
+                        {rec.trades >= 5 && rec.trades < 20 && <span style={{ marginLeft: 4, fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(251,191,36,0.15)', color: '#fde68a' }}>small</span>}
+                      </td>
                       <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_fixed_pnl) >= 0 ? '#4ade80' : '#f87171' }}>{safeNum(rec.avg_fixed_pnl).toFixed(1)}%</td>
                       <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: '#fbbf24' }}>{safeNum(rec.avg_max_potential).toFixed(1)}%</td>
                       <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 12, color: safeNum(rec.avg_5pct) > safeNum(rec.avg_fixed_pnl) ? '#4ade80' : 'rgba(255,255,255,0.35)' }}>{rec.avg_5pct != null ? `${safeNum(rec.avg_5pct).toFixed(1)}%` : '—'}</td>
@@ -758,13 +771,17 @@ export default function Backtesting() {
         </div>
       )}
 
-      {/* LLM REVIEWS */}
+      {/* LLM REVIEW COVERAGE */}
       {tab === 'llm_reviews' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Explainer */}
+          <div style={{ fontSize: 11, color: 'rgba(147,197,253,0.7)', padding: '8px 12px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: 6 }}>
+            LLM review rows cover paper trades and backtest rows. Backtest review counts reflect historical analysis coverage, not approved live proposals or broker activity. Errors are review-generation/parser issues, not failed trades.
+          </div>
           {/* Coverage summary */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
             {[
-              { label: 'Total Reviews', value: llmReviewData?.total_reviews ?? 0, color: '#e2e8f0' },
+              { label: 'Total Review Rows', value: llmReviewData?.total_reviews ?? 0, color: '#e2e8f0' },
               { label: 'Complete', value: (llmReviewData?.total_reviews ?? 0) - (llmReviewData?.error_count ?? 0) - (llmReviewData?.pending_count ?? 0), color: '#4ade80' },
               { label: 'Errors', value: llmReviewData?.error_count ?? 0, color: llmReviewData?.error_count > 0 ? '#f87171' : '#4ade80' },
               { label: 'Pending', value: llmReviewData?.pending_count ?? 0, color: '#fbbf24' },
@@ -780,8 +797,8 @@ export default function Backtesting() {
           {llmReviewData?.coverage && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {[
-                { label: 'Paper Trades', ...llmReviewData.coverage.paper_trades },
-                { label: 'Backtest Trades', ...llmReviewData.coverage.backtest_trades },
+                { label: 'Real Paper Trades With LLM Review', ...llmReviewData.coverage.paper_trades },
+                { label: 'Backtest Rows With LLM Review', ...llmReviewData.coverage.backtest_trades },
               ].map(c => (
                 <div key={c.label} style={card}>
                   <div style={secTitle}>{c.label}</div>
