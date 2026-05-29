@@ -1,10 +1,10 @@
-# Session 2026-05-29 — Trade AI Classifier Completion & llama.cpp Canary
+# Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Health Agent Self-Healing Fix
 
-**Commits:** 8 (7045209 through aa9b3f5)
+**Commits:** 12 (7045209 through 6a3a485)
 
 ## Executive Summary
 
-Completed the classifier/backtesting integrity phase, ran llama.cpp Vulkan canaries on both gemma3:12b and gemma4:31b, and fixed 13 hardcoded qwen3:14b references across runtime scripts. Validated the source/writer alignment fix, confirmed 3,592/3,593 backtest trades classified. Benchmarked llama.cpp b9405 against Ollama 0.24.0 — llama.cpp is 2-9x faster on gemma3:12b. Gemma4 31B passes all workload tests with the best output quality of any model tested, but is 15-25x slower (hybrid GPU/CPU). Gemma4 31B recommended for overnight deep review only.
+Completed the classifier/backtesting integrity phase, ran llama.cpp Vulkan canaries on gemma3:12b and gemma4:31b, fixed 13 hardcoded qwen3:14b references, and diagnosed+fixed a critical enrichment pipeline gap that was killing pre-market proposals. The health agent now triggers enrichment before rejecting stuck proposals and escalates failures to Claude Code. Full health agent architecture documented.
 
 ## Commits
 
@@ -15,8 +15,10 @@ Completed the classifier/backtesting integrity phase, ran llama.cpp Vulkan canar
 | `b6e7571` | Replace hardcoded qwen3:14b with env-driven model across 10 runtime scripts |
 | `71bc6bc` | Validate classifier source/writer fix and backtesting lifecycle |
 | `9364ff1` | llama.cpp Vulkan canary: gemma3:12b 2/3 PASS, 2-9x faster than Ollama |
-| `b87ec93` | Session summary |
 | `aa9b3f5` | Gemma4 31B llama.cpp canary: 3/3 PASS, best quality, too slow for production |
+| `12325ce` | Fix enrichment timing gap: extend cron 4AM-7:30PM |
+| `ff804a5` | Fix health agent: enrich-before-reject, escalate stuck proposals to Claude Code |
+| `6a3a485` | Document complete system health agent architecture |
 
 ## Work Completed
 
@@ -96,6 +98,28 @@ Tested gemma-4-31B-it Q3_K_M (14 GB) on llama.cpp Vulkan with 25 GPU layers + CP
 | llama-server | Stopped after canary |
 | Health check | PASS (7/7) |
 
+### 6. Enrichment Pipeline Gap Fix (12325ce)
+
+**Root cause:** Proposals created at 4 AM by the pre-market screener sat unenriched for 3 hours because `auto_enrichment_runner` (*/5 9-15) and `proposal_enrichment_loop` (*/15 9-16) didn't run before 9 AM. The 7 AM health agent stale sweep rejected all 6 proposals after 2 hours with 0 enrichment attempts.
+
+**Fix:** Both enrichment crons extended to `*/10 4-19 * * 1-5` (every 10 min, 4 AM - 7:50 PM weekdays).
+
+### 7. Health Agent Enrich-Before-Reject (ff804a5)
+
+**Problem:** Health agent's proposal cleanup rejected stuck proposals immediately without attempting enrichment. The Claude Code escalation queue never received enrichment-stuck items.
+
+**Fix (4-level self-healing):**
+1. Detect PENDING proposals unenriched >30 min → trigger `auto_enrichment_runner --force-all`
+2. Track `enrichment_attempt_count` per proposal (up to 3 attempts)
+3. Only reject after 3 failed enrichment attempts OR 6h hard timeout (was: 2h with 0 attempts)
+4. Proposals with 2+ failed attempts escalated to Claude Code queue as fixable items
+
+### 8. Health Agent Architecture Doc (6a3a485)
+
+Complete reference doc: `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md`
+
+Covers all 30+ monitored components, 4-level self-healing pipeline (retry → agent auto-queue → enrich-before-reject → Claude Code CLI escalation), cron schedules, escalation queue format, and monitoring commands.
+
 ## Model Tier Summary (End of Session)
 
 | Tier | Model | Engine | Use Case |
@@ -108,8 +132,9 @@ Tested gemma-4-31B-it Q3_K_M (14 GB) on llama.cpp Vulkan with 25 GPU layers + CP
 
 ## Next Steps
 
-1. Consider systemd service for llama-server if pursuing gemma4:31b overnight reviews
-2. SHFS (id=860) needs enrichment data for classification
-3. Trade close analyzer batch with gemma3:12b (pending operator approval)
-4. No more classifier batches needed — phase complete
-5. Gemma4 31B overnight deep review pipeline (optional, operator approval needed)
+1. Verify enrichment pipeline runs correctly at next 4 AM pre-market screener
+2. Monitor health agent enrich-before-reject behavior on next stuck proposal
+3. SHFS (id=860) needs enrichment data for classification
+4. Trade close analyzer batch with gemma3:12b (pending operator approval)
+5. Consider systemd service for llama-server if pursuing gemma4:31b overnight reviews
+6. No more classifier batches needed — phase complete
