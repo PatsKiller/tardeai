@@ -336,7 +336,7 @@ def process_queue(dry_run=False):
                                f"Respond with: DIAGNOSIS: (what broke) FIX: (what to do)"),
                     "stream": False,
                     "options": {"num_predict": 300, "temperature": 0.2},
-                }, timeout=60)
+                }, timeout=90)
                 if _llm_resp.ok:
                     _diagnosis = _llm_resp.json().get("response", "")[:500]
                     log.info(f"  LLM diagnosis: {_diagnosis[:200]}")
@@ -522,12 +522,15 @@ def process_queue(dry_run=False):
                     _llama_proc.kill()
                 log.info("  Stopped llama-server")
 
-    # ── Tier 3b: gemma3:12b via Ollama (fast fallback) ──
+    # ── Tier 3b: Ollama (use whatever model is loaded to avoid swap timeout) ──
     if not success:
-        log.info("  Tier 3b: Attempting gemma3:12b via Ollama...")
         try:
             import requests as _req
-            _model = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
+            # Use whatever model is already loaded to avoid costly model swap
+            _ps_resp = _req.get("http://localhost:11434/api/ps", timeout=5).json()
+            _loaded = [m["name"] for m in _ps_resp.get("models", []) if "embed" not in m["name"].lower()]
+            _model = _loaded[0] if _loaded else os.getenv("ESCALATION_LLM_MODEL", "gemma3:4b")
+            log.info(f"  Tier 3b: Attempting {_model} via Ollama (already loaded)...")
             _resp = _req.post("http://localhost:11434/api/chat", json={
                 "model": _model,
                 "stream": False,
@@ -536,7 +539,7 @@ def process_queue(dry_run=False):
                     {"role": "user", "content": analysis_prompt},
                 ],
                 "options": {"temperature": 0.2, "num_predict": 1024, "num_ctx": 4096},
-            }, timeout=120)
+            }, timeout=180)
             if _resp.ok:
                 _analysis = _resp.json().get("message", {}).get("content", "").strip()
                 if _analysis and len(_analysis) > 50:
