@@ -461,16 +461,22 @@ def process_queue(dry_run=False):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     env={**os.environ, "LD_LIBRARY_PATH": _lib_dir},
                 )
-                # Wait for startup
-                for _wait in range(30):
-                    time.sleep(2)
+                # Wait for startup — gemma4:31b takes 60-90s to load on hybrid GPU/CPU
+                _server_ready = False
+                for _wait in range(60):
+                    time.sleep(3)
                     try:
                         if _req.get(f"{LLAMACPP_URL}/health", timeout=3).ok:
+                            _server_ready = True
+                            log.info(f"  llama-server ready after {(_wait+1)*3}s")
                             break
                     except Exception:
                         pass
+                if not _server_ready:
+                    log.warning("  llama-server did not become ready in 180s")
+                    raise TimeoutError("llama-server startup timeout")
 
-            # Call gemma4:31b
+            # Call gemma4:31b — allow 10 min for deep analysis on hybrid CPU/GPU
             _resp = _req.post(f"{LLAMACPP_URL}/v1/chat/completions", json={
                 "model": "gemma4-31b",
                 "messages": [
@@ -478,7 +484,7 @@ def process_queue(dry_run=False):
                     {"role": "user", "content": analysis_prompt},
                 ],
                 "temperature": 0.2, "max_tokens": 2048,
-            }, timeout=360)
+            }, timeout=600)
             if _resp.ok:
                 _analysis = _resp.json()["choices"][0]["message"]["content"].strip()
                 if _analysis and len(_analysis) > 100:
