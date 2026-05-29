@@ -1,10 +1,10 @@
 # Session 2026-05-29 — Trade AI Classifier Completion & llama.cpp Canary
 
-**Commits:** 5 (7045209 through 9364ff1)
+**Commits:** 8 (7045209 through aa9b3f5)
 
 ## Executive Summary
 
-Completed the classifier/backtesting integrity phase and ran the first llama.cpp Vulkan canary. Fixed 13 hardcoded qwen3:14b references across runtime scripts, validated the source/writer alignment fix, confirmed 3,592/3,593 backtest trades classified, and benchmarked llama.cpp b9405 against Ollama 0.24.0 on gemma3:12b.
+Completed the classifier/backtesting integrity phase, ran llama.cpp Vulkan canaries on both gemma3:12b and gemma4:31b, and fixed 13 hardcoded qwen3:14b references across runtime scripts. Validated the source/writer alignment fix, confirmed 3,592/3,593 backtest trades classified. Benchmarked llama.cpp b9405 against Ollama 0.24.0 — llama.cpp is 2-9x faster on gemma3:12b. Gemma4 31B passes all workload tests with the best output quality of any model tested, but is 15-25x slower (hybrid GPU/CPU). Gemma4 31B recommended for overnight deep review only.
 
 ## Commits
 
@@ -14,7 +14,9 @@ Completed the classifier/backtesting integrity phase and ran the first llama.cpp
 | `40c1ae1` | Fix hardcoded qwen3:14b warmup in GPU lifecycle and overnight scripts |
 | `b6e7571` | Replace hardcoded qwen3:14b with env-driven model across 10 runtime scripts |
 | `71bc6bc` | Validate classifier source/writer fix and backtesting lifecycle |
-| `9364ff1` | llama.cpp Vulkan canary: 2/3 PASS, 2-9x faster than Ollama |
+| `9364ff1` | llama.cpp Vulkan canary: gemma3:12b 2/3 PASS, 2-9x faster than Ollama |
+| `b87ec93` | Session summary |
+| `aa9b3f5` | Gemma4 31B llama.cpp canary: 3/3 PASS, best quality, too slow for production |
 
 ## Work Completed
 
@@ -59,6 +61,20 @@ Built and tested llama.cpp b9405 (pre-built Ubuntu Vulkan x64) against Ollama 0.
 
 **Recommendation:** Keep as benchmark tool. Production switch requires systemd service, VRAM contention handling, and 50+ trade batch validation.
 
+### 5. Gemma4 31B llama.cpp Canary (aa9b3f5)
+
+Tested gemma-4-31B-it Q3_K_M (14 GB) on llama.cpp Vulkan with 25 GPU layers + CPU hybrid (full GPU offload failed — OOM at 14 GB model + KV cache on 16 GB VRAM):
+
+| Test | Gemma4 31B | Gemma3 12B | Ratio |
+|------|-----------|-----------|-------|
+| basic_json | 42.6s | 2.8s | 15x slower |
+| strategy_classifier | **236.9s PASS** | 9.1s | 26x slower |
+| close_trade_analysis | **279.0s PASS** | 19.0s | 15x slower |
+
+**3/3 PASS.** Output quality is the best of any model tested — richer reasoning, higher confidence, more thorough analysis. But at 4 minutes per classifier call, not viable for batch production.
+
+**Verdict:** Offline quality reviewer only (overnight deep analysis, 5-10 trade batches). Production remains gemma3:12b via Ollama.
+
 ## Model Policy (Unchanged)
 
 - Primary: gemma3:12b on GPU/Vulkan
@@ -80,9 +96,20 @@ Built and tested llama.cpp b9405 (pre-built Ubuntu Vulkan x64) against Ollama 0.
 | llama-server | Stopped after canary |
 | Health check | PASS (7/7) |
 
+## Model Tier Summary (End of Session)
+
+| Tier | Model | Engine | Use Case |
+|------|-------|--------|----------|
+| **Production** | gemma3:12b | Ollama GPU | Classifier, analyzer, all batch work |
+| Fast fallback | gemma3:4b | Ollama GPU | If 12b fails |
+| **Offline quality** | gemma4:31b Q3_K_M | llama.cpp hybrid | Overnight deep review (5-10 trades) |
+| Benchmark | gemma3:12b | llama.cpp GPU | Speed comparison, A/B testing |
+| Disabled | qwen3:14b, gemma4 e2b/e4b, gemma3:27b GPU | — | Failed canaries |
+
 ## Next Steps
 
-1. Consider systemd service for llama-server if pursuing as production alternative
+1. Consider systemd service for llama-server if pursuing gemma4:31b overnight reviews
 2. SHFS (id=860) needs enrichment data for classification
 3. Trade close analyzer batch with gemma3:12b (pending operator approval)
 4. No more classifier batches needed — phase complete
+5. Gemma4 31B overnight deep review pipeline (optional, operator approval needed)
