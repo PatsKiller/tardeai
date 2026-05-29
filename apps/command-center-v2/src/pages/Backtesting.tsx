@@ -223,12 +223,13 @@ export default function Backtesting() {
       </div>
 
       {/* KPI Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 10, marginBottom: 16 }}>
         {[
           { label: 'Datasets', value: status?.datasets_total ?? 0 },
           { label: 'Runs', value: filtersActive ? `${status?.runs_filtered ?? 0} / ${status?.runs_total ?? 0}` : (status?.runs_total ?? 0) },
           { label: 'Sim Trades', value: filtersActive ? `${trades.length.toLocaleString()} / ${(status?.trades_total ?? 0).toLocaleString()}` : (status?.trades_total ?? 0).toLocaleString() },
           { label: 'Results', value: results.length },
+          { label: 'Classified', value: `${(status?.classification_classified ?? 0).toLocaleString()} / ${(status?.classification_total ?? 0).toLocaleString()}`, accent: (status?.classification_unclassified ?? 0) > 0 },
           { label: 'Flagged', value: flagged.length, accent: flagged.length > 0 },
           { label: 'Missed', value: missed?.total_missed ?? 0 },
         ].map(k => (
@@ -430,12 +431,13 @@ export default function Backtesting() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    {['Symbol', 'Strategy', 'Date', 'Entry', 'Exit', 'P&L', 'R', 'Exit reason'].map(h => <th key={h} style={{ textAlign: ['Symbol', 'Strategy', 'Date', 'Exit reason'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{h}</th>)}
+                    {['Symbol', 'Strategy', 'Source', 'Date', 'Entry', 'Exit', 'P&L', 'R', 'Exit reason'].map(h => <th key={h} style={{ textAlign: ['Symbol', 'Strategy', 'Source', 'Date', 'Exit reason'].includes(h) ? 'left' : 'right', padding: '8px 10px', fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{h}</th>)}
                   </tr></thead>
                   <tbody>{filteredTrades.slice(0, 200).map(t => (
                     <tr key={t.simulated_trade_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <td style={{ padding: '8px 10px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol ?? '—'}</td>
                       <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{safeStr(t.strategy_id)}</td>
+                      <td style={{ padding: '8px 10px', fontSize: 11 }}><span style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: (t.run_type === 'replay_trades' ? 'rgba(34,197,94,0.15)' : t.run_type === 'replay_proposals' ? 'rgba(251,191,36,0.15)' : 'rgba(139,92,246,0.15)'), color: (t.run_type === 'replay_trades' ? '#4ade80' : t.run_type === 'replay_proposals' ? '#fbbf24' : '#a78bfa') }}>{t.run_type === 'replay_trades' ? 'replay' : t.run_type === 'replay_proposals' ? 'proposal' : t.run_type || 'champion'}</span></td>
                       <td style={{ padding: '8px 10px', fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{t.trade_date ? String(t.trade_date).slice(0, 10) : '—'}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.entry_price).toFixed(2)}</td>
                       <td style={{ padding: '8px 10px', textAlign: 'right', color: 'rgba(255,255,255,0.7)' }}>${safeNum(t.exit_price).toFixed(2)}</td>
