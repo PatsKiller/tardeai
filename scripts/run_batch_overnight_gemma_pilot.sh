@@ -22,7 +22,7 @@ OLLAMA_URL="http://localhost:11434"
 
 # Pilot parameters
 PILOT_MODEL="gemma3-overnight"
-RESTORE_MODEL="qwen3:14b"
+RESTORE_MODEL="gemma3:4b"
 EMBED_MODEL="nomic-embed-text:latest"
 PILOT_TIMEOUT="10m"
 MAX_LIMIT=5
@@ -133,7 +133,7 @@ log "Active hours gate: PASSED (outside market hours)"
 log "GPU state BEFORE swap:"
 gpu_ps | tee -a "$LOG"
 
-# ── Evict qwen3:14b ─────────────────────────────────────────────────────
+# ── Evict restore model to make room for pilot ─────────────────────────
 log "Evicting $RESTORE_MODEL..."
 unload_model "$RESTORE_MODEL"
 
@@ -141,15 +141,16 @@ unload_model "$RESTORE_MODEL"
 STILL_LOADED=$(curl -s "$OLLAMA_URL/api/ps" 2>/dev/null | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
+restore='$RESTORE_MODEL'.split(':')[0]
 for m in d.get('models',[]):
-    if 'qwen3' in m.get('name',''):
+    if restore in m.get('name',''):
         print('yes')
         sys.exit()
 print('no')
 " 2>&1)
 
 if [ "$STILL_LOADED" = "yes" ]; then
-    log "WARNING: qwen3 still resident after eviction attempt, proceeding anyway"
+    log "WARNING: $RESTORE_MODEL still resident after eviction attempt, proceeding anyway"
 fi
 
 # ── Run pilot ────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ if [ "$RESTORE_STATUS" != "ok" ]; then
     RESTORE_STATUS=$(warmup_model "$RESTORE_MODEL")
     if [ "$RESTORE_STATUS" != "ok" ]; then
         log "CRITICAL: Emergency restore FAILED. Manual intervention required."
-        log "Run: .venv/bin/python -c \"import sys;sys.path.insert(0,'scripts');from gpu_lifecycle import warmup;print(warmup('qwen3:14b'))\""
+        log "Run: .venv/bin/python -c \"import sys;sys.path.insert(0,'scripts');from gpu_lifecycle import warmup;print(warmup('gemma3:4b'))\""
         exit 2
     fi
 fi

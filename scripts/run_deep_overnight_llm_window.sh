@@ -36,7 +36,7 @@ OLLAMA_URL="http://localhost:11434"
 
 # Models
 PILOT_MODEL="gemma3-overnight"
-RESTORE_MODEL="qwen3:14b"
+RESTORE_MODEL="gemma3:4b"
 EMBED_MODEL="nomic-embed-text:latest"
 
 # Defaults
@@ -193,32 +193,32 @@ restore_models() {
     unload_model "$PILOT_MODEL"
     sleep 3
 
-    # Restore qwen3:14b
+    # Restore production model
     log "  Restoring $RESTORE_MODEL..."
-    local qwen_status
-    qwen_status=$(warmup_model "$RESTORE_MODEL")
-    if [ "$qwen_status" != "ok" ]; then
-        log "  WARNING: First qwen restore attempt returned: $qwen_status"
+    local restore_status
+    restore_status=$(warmup_model "$RESTORE_MODEL")
+    if [ "$restore_status" != "ok" ]; then
+        log "  WARNING: First restore attempt returned: $restore_status"
         sleep 5
-        qwen_status=$(warmup_model "$RESTORE_MODEL")
-        if [ "$qwen_status" != "ok" ]; then
-            log "  CRITICAL: Second qwen restore attempt failed: $qwen_status"
+        restore_status=$(warmup_model "$RESTORE_MODEL")
+        if [ "$restore_status" != "ok" ]; then
+            log "  CRITICAL: Second restore attempt failed: $restore_status"
             # Emergency: try raw Ollama call
             sleep 5
             curl -s -X POST "$OLLAMA_URL/api/generate" \
                 -H "Content-Type: application/json" \
-                -d '{"model":"qwen3:14b","prompt":"test","stream":false,"options":{"num_predict":1}}' \
+                -d "{\"model\":\"$RESTORE_MODEL\",\"prompt\":\"test\",\"stream\":false,\"options\":{\"num_predict\":1}}" \
                 --max-time 120 > /dev/null 2>&1
             sleep 3
-            qwen_status=$(warmup_model "$RESTORE_MODEL")
-            if [ "$qwen_status" != "ok" ]; then
-                log "  CRITICAL: ALL qwen restore attempts FAILED. Manual intervention required."
-                log "  Run: ollama run qwen3:14b 'test'"
+            restore_status=$(warmup_model "$RESTORE_MODEL")
+            if [ "$restore_status" != "ok" ]; then
+                log "  CRITICAL: ALL restore attempts FAILED. Manual intervention required."
+                log "  Run: ollama run $RESTORE_MODEL 'test'"
                 RESTORE_FAILED=true
             fi
         fi
     fi
-    log "  qwen3:14b restore: $qwen_status"
+    log "  $RESTORE_MODEL restore: $restore_status"
 
     # Restore nomic-embed-text
     log "  Restoring $EMBED_MODEL..."
@@ -340,7 +340,7 @@ if [ "$DRY_RUN" = true ]; then
         log "  Stage A: prefetch with nomic + $QWEN3_EMBED_MODEL (limit=$HYBRID_PREFETCH_LIMIT, k=$HYBRID_FINAL_K)"
         log "  Stage A: unload $QWEN3_EMBED_MODEL"
         log "  Stage B: gemma generation with prefetched context from $HYBRID_CONTEXT_FILE"
-        log "  Restore: unload gemma → restore qwen3:14b + nomic"
+        log "  Restore: unload gemma → restore $RESTORE_MODEL + nomic"
         log "  Hybrid job types: $HYBRID_JOB_TYPES"
     fi
     log "=== DRY RUN COMPLETE — no model changes, no queue processing ==="

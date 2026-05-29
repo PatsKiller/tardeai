@@ -6,8 +6,8 @@ Safe to call when Ollama/GPU is unavailable — fails gracefully with "unknown" 
 
 Usage:
     .venv/bin/python scripts/gpu_lifecycle.py status
-    .venv/bin/python scripts/gpu_lifecycle.py warmup qwen3:14b
-    .venv/bin/python scripts/gpu_lifecycle.py cooldown qwen3:14b
+    .venv/bin/python scripts/gpu_lifecycle.py warmup gemma3:4b
+    .venv/bin/python scripts/gpu_lifecycle.py cooldown gemma3:4b
     .venv/bin/python scripts/gpu_lifecycle.py check_oom
 """
 import argparse
