@@ -301,9 +301,11 @@ def run_cycle():
         if expiry_reason:
             cur.execute("""
                 UPDATE paper_trade_proposals
-                SET atm_expired_at = NOW(), atm_expiry_reason = %s
-                WHERE id = %s
-            """, (expiry_reason, pid))
+                SET atm_expired_at = NOW(), atm_expiry_reason = %s,
+                    status = 'EXPIRED', lifecycle_status = 'EXPIRED',
+                    lifecycle_message = %s
+                WHERE id = %s AND status NOT IN ('APPROVED_FOR_PAPER_TEST', 'BROKER_SUBMITTED')
+            """, (expiry_reason, f"ATM expired: {expiry_reason}", pid))
             conn.commit()
             _log_decision(conn, pid, sym, sid, target,
                           acct.get("broker", "unknown"), acct.get("mode", "unknown"),
