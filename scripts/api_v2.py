@@ -20651,6 +20651,54 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "status": "error", "error": str(e)}
 
+    # ── ATM Execution Readiness ──────────────────────────────────────
+    if base_path == "/api/v2/atm/execution-readiness" and method == "GET":
+        try:
+            import datetime as _dt_er, os as _os_er
+            _atm = _db_query("SELECT mode, paused_until, pause_reason, last_evaluated_at, last_enrichment_at FROM atm_state ORDER BY id DESC LIMIT 1", fetch="one") or {}
+            _pending = _db_query("SELECT COUNT(*) as c FROM paper_trade_proposals WHERE status = 'PENDING'", fetch="one") or {}
+            _approved_not_linked = _db_query("SELECT COUNT(*) as c FROM paper_trade_proposals WHERE status = 'APPROVED_FOR_PAPER_TEST' AND paper_trade_id IS NULL", fetch="one") or {}
+            _latest_proposal = _db_query("SELECT created_at FROM paper_trade_proposals ORDER BY created_at DESC LIMIT 1", fetch="one") or {}
+            _latest_trade = _db_query("SELECT created_at FROM paper_trades ORDER BY created_at DESC LIMIT 1", fetch="one") or {}
+            _recent_decisions = _db_query("""
+                SELECT decision, rejection_reasons, symbol, decided_at
+                FROM atm_decision_log WHERE decided_at > NOW() - INTERVAL '24 hours'
+                ORDER BY decided_at DESC LIMIT 20
+            """) or []
+            # Top block reasons
+            _reasons = {}
+            for d in _recent_decisions:
+                rr = d.get("rejection_reasons") or []
+                if isinstance(rr, str):
+                    try:
+                        import json as _j; rr = _j.loads(rr)
+                    except: rr = []
+                for r in rr:
+                    g = r.get("gate", "unknown") if isinstance(r, dict) else str(r)
+                    _reasons[g] = _reasons.get(g, 0) + 1
+            _top_reasons = sorted(_reasons.items(), key=lambda x: -x[1])[:5]
+            _alpaca = _os_er.environ.get("ALPACA_MODE", "unknown")
+            _llm_dis = _os_er.environ.get("LLM_DISABLE_LIVE_EXECUTION", "unknown")
+            return 200, {"ok": True, "data": {
+                "atm_mode": _atm.get("mode", "unknown"),
+                "paused_until": _json_clean(_atm.get("paused_until")),
+                "pause_reason": _atm.get("pause_reason"),
+                "alpaca_mode": _alpaca,
+                "llm_disable_live_execution": _llm_dis,
+                "pending_proposals": _pending.get("c", 0),
+                "approved_not_submitted": _approved_not_linked.get("c", 0),
+                "latest_proposal": _json_clean(_latest_proposal.get("created_at")),
+                "latest_paper_trade": _json_clean(_latest_trade.get("created_at")),
+                "last_atm_evaluation": _json_clean(_atm.get("last_evaluated_at")),
+                "last_enrichment": _json_clean(_atm.get("last_enrichment_at")),
+                "recent_decisions_24h": len(_recent_decisions),
+                "top_block_reasons": [{"gate": g, "count": c} for g, c in _top_reasons],
+                "can_submit_now": _alpaca == "paper" and _atm.get("mode") == "active" and _pending.get("c", 0) > 0,
+                "status_summary": "No pending proposals" if _pending.get("c", 0) == 0 else f"{_pending.get('c', 0)} pending, ATM {_atm.get('mode', 'unknown')}",
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── ATM Reconciliation Health ──────────────────────────────────────
     if base_path == "/api/v2/atm/reconciliation-health" and method == "GET":
         try:
