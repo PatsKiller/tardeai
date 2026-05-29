@@ -4,12 +4,15 @@ Durable context for the next Trade AI session. Read this before starting any LLM
 
 ## Local LLM Model Policy
 
-- **Production generation model: gemma3:4b on GPU/Vulkan (Arc B50)**
-- Do NOT use qwen3:14b for production generation — it remains installed but disabled (CPU too slow for workloads, GPU VRAM overcommit)
-- Do NOT use Gemma4 on Vulkan — gemma4:e2b and gemma4:e4b were removed after GPU failures (CPU works, GPU produces garbage/500 errors on Ollama 0.24.0)
-- Do NOT test or use Qwen5 — no official/validated Qwen5 local model is available
+- **Primary classifier/review model: gemma3:12b on GPU/Vulkan (Arc B50)** — better consistency than 4b, passed all workload canaries
+- **Fast fallback model: gemma3:4b** — use only if gemma3:12b fails health/preflight, times out, or VRAM/load guard fails
+- Do NOT use qwen3:14b — installed but disabled (CPU too slow, GPU VRAM overcommit)
+- Do NOT use Gemma4 on Vulkan — gemma4:e2b and gemma4:e4b removed after GPU failures
+- Do NOT use gemma3:27b on GPU
+- Do NOT call Grok
+- Max concurrent local generation jobs: 1
+- gemma3:12b requires num_ctx=4096 to avoid VRAM overcommit on model swap
 - Embedding models (nomic-embed-text, qwen3-embedding:8b) are separate and unaffected
-- gemma3-overnight and gemma3:27b are installed but not production generation defaults
 
 ## Ollama Configuration
 
@@ -26,11 +29,12 @@ Durable context for the next Trade AI session. Read this before starting any LLM
 ## Classifier State
 
 - **55-trade apply completed** (batch 1) — 34 strategy_backtest_trades rows updated
-- **Batch 2 should NOT be rerun** — it produces 0 updates because the same trades resurface
-- **Design gap**: classifier reads unclassified trades from the `trades` view (trade_transactions) but writes to `strategy_backtest_trades`. trade_transactions is never updated, so the same 55 trades always appear "unclassified"
-- **Fix needed**: patch classifier to either update trade_transactions or skip already-classified symbols
-- **4 remaining backtest trades**: V classified (dividend_growth_compounder). SHFS and FJSCX x2 are needs_review (insufficient enrichment data)
+- **Source/writer mismatch FIXED** (commit ae8efe0): `--apply` now requires `--source strategy_backtest_trades` which reads/writes the same table. `--source trades_view` is read-only (trade_transactions has no strategy_id column)
+- **Batch 2 should NOT be rerun via old path** — use `--source strategy_backtest_trades` instead
+- **2,567/2,568 backtest trades classified** — only SHFS (id=860) remains unclassified (no enrichment data)
+- V classified as dividend_growth_compounder. FJSCX x2 classified as speculative_growth (0.5, conflict flagged)
 - **Hold-period gate active**: 0-day hard gate, 1-5d caution gate, enrichment conflict detection, ADBE source-data rule
+- **Classifier default model**: gemma3:12b (set in script, not .env)
 - **Rollback SQL**: `docs/atm_lifecycle_v1_2026_05_28/classifier_apply/classifier_apply_55_rollback.sql`
 
 ## Backtesting Source Distinction
@@ -47,4 +51,4 @@ Durable context for the next Trade AI session. Read this before starting any LLM
 - LLM_DISABLE_LIVE_EXECUTION=true — do NOT change
 - No live execution
 - No bulk apply without pre-state export and rollback SQL
-- gemma3:4b only for production local generation
+- gemma3:12b primary for classifier/review; gemma3:4b as fallback only

@@ -23,26 +23,11 @@ grep -E 'ALPACA_MODE|LLM_DISABLE_LIVE' .env
 
 ## Recommended Next Steps
 
-### 1. Fix Classifier Source/Writer Mismatch (Priority)
+### 1. Classifier Source/Writer Mismatch — FIXED (ae8efe0)
 
-The classifier reads from the `trades` view (trade_transactions) for unclassified rows but writes to `strategy_backtest_trades`. This means:
-- The same 55 trades always appear "unclassified" in the trades view
-- Batch 2 was a no-op (0 rows updated)
-- Running another apply wastes LLM calls
+`--apply` now requires `--source strategy_backtest_trades`. The old trades_view path is read-only. 2,567/2,568 rows classified. Only SHFS (id=860) remains — needs enrichment data.
 
-**Options:**
-- A) Add a LEFT JOIN exclusion: skip trades whose symbol already has a classified strategy_backtest_trades row
-- B) Update trade_transactions.strategy_id after successful backtest classification
-- C) Add a `classifier_applied_at` timestamp to track which trades have been processed
-
-### 2. Handle Remaining Unclassified Backtest Trades
-
-3 rows remain (SHFS, FJSCX x2). These need:
-- ticker_strategy_classifications entries, OR
-- manual classification, OR
-- acceptance as needs_review
-
-### 3. Reopen Backtesting Lifecycle Phases
+### 2. Reopen Backtesting Lifecycle Phases
 
 After classifier data is stable:
 - Verify strategy distribution makes sense
@@ -63,5 +48,8 @@ ollama pull gemma4:e2b
 - Run classifier --apply without health check and pre-state export
 - Update Ollama without explicit approval
 - Enable qwen3:14b or gemma4 for production
+- Use gemma3:27b on GPU
+- Call Grok
 - Change ALPACA_MODE or LLM_DISABLE_LIVE_EXECUTION
 - Run bulk operations without rollback SQL prepared
+- Downgrade from gemma3:12b to gemma3:4b without operator approval
