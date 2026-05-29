@@ -7498,7 +7498,7 @@ def _expire_stale_proposals(conn):
         # 1. Intraday > 8 hours old
         cur.execute("""
             UPDATE paper_trade_proposals
-            SET status='expired', lifecycle_status='EXPIRED',
+            SET status='EXPIRED', lifecycle_status='EXPIRED',
                 lifecycle_message='Intraday proposal: expired after market close'
             WHERE status='PENDING'
               AND (strategy_id = ANY(%s) OR proposal_timeframe_class='intraday')
@@ -7507,7 +7507,7 @@ def _expire_stale_proposals(conn):
         # 2. expires_at for non-intraday
         cur.execute("""
             UPDATE paper_trade_proposals
-            SET status='expired', lifecycle_status='EXPIRED',
+            SET status='EXPIRED', lifecycle_status='EXPIRED',
                 lifecycle_message='Proposal expired — past scheduled expiry window'
             WHERE status='PENDING'
               AND expires_at IS NOT NULL AND expires_at < NOW()
@@ -7516,7 +7516,7 @@ def _expire_stale_proposals(conn):
         # 3. ENTRY_MISSED > 15% drift
         cur.execute("""
             UPDATE paper_trade_proposals
-            SET status='expired', lifecycle_status='EXPIRED',
+            SET status='EXPIRED', lifecycle_status='EXPIRED',
                 lifecycle_message='Entry missed — price drifted beyond recovery (>15%%)'
             WHERE status='PENDING'
               AND entry_zone_status='ENTRY_MISSED'
@@ -20461,7 +20461,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _ph_proposals = _db_query("""
                 SELECT id, symbol, strategy_id, signal_score, signal_decision,
                        source_signal_id, created_at, updated_at, proposed_entry,
-                       proposed_stop, proposed_target1, proposed_shares, proposed_account
+                       proposed_stop, proposed_target1, proposed_shares, proposed_account,
+                       status
                 FROM paper_trade_proposals
                 ORDER BY COALESCE(updated_at, created_at) DESC NULLS LAST LIMIT 250
             """) or []
@@ -20491,11 +20492,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 sid = r.get("strategy_id") or ""
                 key = f"{sym}|{sid}"
                 age = _ph_age(r.get("created_at"))
-                status = r.get("signal_decision") or ""
+                raw_status = (r.get("status") or "").strip().upper()
+                signal_dec = r.get("signal_decision") or ""
                 linked = key in _ph_open_keys
 
-                if "expired" in status: cls, reason = "expired", "Already expired"
-                elif "rejected" in status or "declined" in status: cls, reason = "rejected", "Already rejected"
+                if raw_status in ("EXPIRED",): cls, reason = "expired", "Already expired"
+                elif raw_status in ("REJECTED", "RISK_BLOCKED"): cls, reason = "rejected", f"Status: {raw_status}"
                 elif linked: cls, reason = "linked_to_open_trade", "Linked to open trade"
                 elif _ph_dup.get(key, 0) > 1: cls, reason = "duplicate_candidate", "Duplicate symbol/strategy"
                 elif not r.get("id") or not r.get("created_at"): cls, reason = "missing_metadata", "Missing proposal ID or created_at"
@@ -20507,7 +20509,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "proposal_id": r.get("id"),
                     "symbol": sym or "Missing symbol",
                     "strategy_id": sid or "Missing strategy",
-                    "status": status or "Missing status",
+                    "status": raw_status or "Missing status",
+                    "signal_decision": signal_dec,
                     "created_at": str(r.get("created_at") or ""),
                     "age_hours": age,
                     "score": float(r.get("signal_score")) if r.get("signal_score") else None,
