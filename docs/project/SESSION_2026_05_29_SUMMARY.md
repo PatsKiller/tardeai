@@ -144,6 +144,20 @@ Rebuilt the escalation handler with allowlisted retry_cmd execution and tiered l
 
 **gemma4:31b auto-start:** Tier 3a automatically starts llama-server if the GGUF exists, unloads Ollama models to free VRAM, runs analysis, then stops the server.
 
+### 10. Production Validation of Tiered Escalation (11:45 AM)
+
+First live run of the new tiered escalation in production:
+
+| Time | Tier | Result |
+|------|------|--------|
+| 11:30 | Old code: Claude CLI | ❌ "Credit balance too low" |
+| 11:45 | Tier 2: gemma3:4b diagnosis | ✅ Quick diagnosis |
+| 11:45 | Tier 3a: gemma4:31b (llama.cpp) | ⏱️ Timed out on cold start |
+| 11:50 | Tier 3b: gemma3:12b (Ollama) | ✅ 4,742 char analysis → **FIXED** |
+| 11:52 | Queue cleared | `0 retried + 1 escalated → fixed` |
+
+**Result:** Tier fallback chain worked exactly as designed. gemma4:31b cold start too slow for cron timeout → fell through to gemma3:12b which completed successfully. Server auto-cleaned up. No API credits used.
+
 ## Model Tier Summary (End of Session)
 
 | Tier | Model | Engine | Use Case |
