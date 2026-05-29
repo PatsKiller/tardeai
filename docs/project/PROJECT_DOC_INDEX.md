@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-05-26
+**Updated:** 2026-05-28
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -140,6 +140,18 @@
 | `docs/strategy_proof/phase_sp2_strategy_watch_horizon_finviz_audit/00_README.md` | **SP-2** — Watch horizon, screener quality, assignment engine audit |
 | `docs/maturity_hardening/` | Phase 9A/9B maturity reports, control board latest |
 | `docs/governance/` | GOV-1 A1A results, governance status |
+
+### Session 2026-05-28 — LLM Safety & Classifier
+| Document | Purpose |
+|----------|---------|
+| `docs/project/SESSION_2026_05_28_TRADE_AI_LLM_BACKTESTING_SUMMARY.md` | **Session summary** — 13 commits, LLM router safety, classifier enrichment, 55-trade apply, Ollama upgrade, model canaries |
+| `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_28.md` | **Memory notes** — durable context for next session: model policy, classifier state, safety rules |
+| `docs/project/NEXT_SESSION_RUNBOOK_2026_05_28.md` | **Runbook** — pre-flight checks, recommended next steps, do-not list |
+| `docs/atm_lifecycle_v1_2026_05_28/LOCAL_LLM_MODEL_FINAL_DECISION_AFTER_CANARY.md` | Final model decision: gemma3:4b production, Gemma4 removed, Qwen disabled |
+| `docs/atm_lifecycle_v1_2026_05_28/OLLAMA_0_24_UPGRADE_AND_MODEL_CANARY_REPORT.md` | Ollama upgrade report and model canary results |
+| `docs/atm_lifecycle_v1_2026_05_28/CANDIDATE_MODEL_WORKLOAD_CANARY_REPORT.md` | CPU workload canary: gemma4 3/3, qwen 1/3 |
+| `docs/atm_lifecycle_v1_2026_05_28/STRATEGY_CLASSIFIER_APPLY_55_AUDIT_REPORT.md` | 55-trade classifier apply audit: 34 rows updated, 7 questionable, rollback SQL |
+| `docs/atm_lifecycle_v1_2026_05_28/STRATEGY_CLASSIFIER_HOLD_PERIOD_GATE_REPORT.md` | Hold-period gate: hard/caution/conflict/ADBE rules |
 
 ### Discovery Artifacts
 | Document | Purpose |
