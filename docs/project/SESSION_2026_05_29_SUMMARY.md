@@ -1,6 +1,6 @@
 # Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul
 
-**Commits:** 20 (7045209 through e21c6be)
+**Commits:** 26 (7045209 through d0d9330)
 
 ## Executive Summary
 
@@ -157,6 +157,29 @@ First live run of the new tiered escalation in production:
 | 11:52 | Queue cleared | `0 retried + 1 escalated → fixed` |
 
 **Result:** Tier fallback chain worked exactly as designed. gemma4:31b cold start too slow for cron timeout → fell through to gemma3:12b which completed successfully. Server auto-cleaned up. No API credits used.
+
+### 11. Gemma4:31b Tier 3a Hardening (d0d9330)
+
+Investigated why gemma4:31b appeared to fail in production:
+- **llama-server log confirmed gemma4:31b DID complete**: 620 tokens, 458s (7.6 min), 1.59 tok/s
+- **Root cause of apparent failure**: cron fired a second handler instance concurrently, cleared queue before result was captured
+
+**Fixes applied:**
+- Cron flock: `flock -n /tmp/tradeai_escalation_handler.lock` prevents concurrent runs
+- Ollama unload: iterates `/api/ps` and unloads each model via `/api/chat` (was using broken `/api/generate` path)
+- Server logging: stderr/stdout to `logs/llama_server_escalation.log` (was `/dev/null`)
+- Startup wait: 180s (60 polls × 3s) with ready logging
+- API timeout: 600s (10 min) for deep analysis
+
+### Final Escalation Tier Performance
+
+| Tier | Engine | Latency | Validated |
+|------|--------|---------|-----------|
+| 1 | retry_cmd | <2s | ✅ 7/7 allowlist tests |
+| 2 | gemma3:4b | ~15s | ✅ Production |
+| 3a | gemma4:31b | ~458s (7.6 min) | ✅ Server log confirms 620 tokens |
+| 3b | gemma3:12b | ~120s | ✅ Production (4,742 chars) |
+| 3c | Claude CLI | N/A | ⛔ Credit balance exhausted |
 
 ## Model Tier Summary (End of Session)
 
