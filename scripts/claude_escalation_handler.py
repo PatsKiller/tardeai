@@ -350,7 +350,9 @@ def process_queue(dry_run=False):
             except Exception as e:
                 log.warning(f"  Local LLM diagnosis failed: {e}")
 
-    # ── Tier 3: Claude Code CLI for unresolved items ──
+    # ── Tier 3: Local LLM deep analysis for unresolved items ──
+    # Uses gemma3:12b (or configured model) for detailed investigation.
+    # Falls back to Claude Code CLI only if ESCALATION_USE_CLAUDE_CLI=true.
     problems = []
     for item in remaining:
         comp = item.get("component", "unknown")
@@ -370,17 +372,19 @@ def process_queue(dry_run=False):
             + (f"\n  LLM Diagnosis: {llm_diag}" if llm_diag else "")
         )
 
-    prompt = (
-        f"The Trade AI health agent has escalated {len(remaining)} problem(s) that "
-        f"automatic retries could not fix. Investigate each, diagnose the root cause, "
-        f"and fix if possible. For each problem, report what you found and what you did.\n\n"
-        f"Problems:\n" + "\n".join(problems) + "\n\n"
-        f"Working directory: {PROJECT_ROOT}\n"
-        f"After investigating, write a brief summary of findings and actions taken."
+    analysis_prompt = (
+        f"/no_think You are the Trade AI system health analyst. "
+        f"{len(remaining)} problem(s) were not resolved by automatic retries.\n\n"
+        f"For each problem, provide:\n"
+        f"1. ROOT CAUSE: What specifically failed and why\n"
+        f"2. IMPACT: What is affected (proposals, trades, data quality)\n"
+        f"3. FIX: Exact steps or commands to resolve\n"
+        f"4. PREVENTION: How to prevent recurrence\n\n"
+        f"Problems:\n" + "\n".join(problems)
     )
 
     if dry_run:
-        log.info(f"[DRY RUN] Tier 3: Would invoke Claude Code with:\n{prompt[:500]}...")
+        log.info(f"[DRY RUN] Tier 3: Would analyze with local LLM:\n{analysis_prompt[:500]}...")
         if conn:
             for item in remaining:
                 _log_intervention(conn, item.get("component", "unknown"),
@@ -390,7 +394,7 @@ def process_queue(dry_run=False):
         QUEUE_FILE.write_text("[]")
         return
 
-    log.info(f"Tier 3: Invoking Claude Code CLI for {len(remaining)} item(s)...")
+    log.info(f"Tier 3: Local LLM deep analysis for {len(remaining)} item(s)...")
     intervention_ids = []
     if conn:
         for item in remaining:
@@ -400,36 +404,73 @@ def process_queue(dry_run=False):
             if iid:
                 intervention_ids.append(iid)
 
-    _notify(f"🤖 Claude Code investigating {len(remaining)} escalation(s):\n" +
+    _notify(f"🔍 Investigating {len(remaining)} escalation(s) via local LLM:\n" +
             "\n".join(f"• {i.get('component')}: {i.get('detail', i.get('status', ''))[:60]}"
                       for i in remaining[:5]))
 
     session_log = ""
     success = False
+
+    # Read relevant log tails for context
+    _context_logs = ""
+    for _logname in ["auto_enrichment.log", "proposal_enrichment.log",
+                     "auto_proposal.log", "screener_pm.log", "system_health_agent.log"]:
+        _lp = PROJECT_ROOT / "logs" / _logname
+        if _lp.exists():
+            _tail = _lp.read_text()[-1000:]
+            _context_logs += f"\n--- {_logname} (tail) ---\n{_tail}\n"
+    if _context_logs:
+        analysis_prompt += f"\n\nRecent system logs for context:\n{_context_logs[-3000:]}"
+
     try:
-        result = subprocess.run(
-            ["claude", "-p", prompt, "--output-format", "text"],
-            capture_output=True, text=True, timeout=300,
-            cwd=str(PROJECT_ROOT),
-            env={**os.environ, "CLAUDE_NO_INTERACTIVE": "1"},
-        )
-        session_log = result.stdout[-3000:] if result.stdout else ""
-        if result.returncode == 0:
-            success = True
-            log.info(f"Claude Code completed successfully")
-            log.info(f"Output: {session_log[:500]}")
+        _model = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
+        import requests
+        _resp = requests.post("http://localhost:11434/api/chat", json={
+            "model": _model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
+                {"role": "user", "content": analysis_prompt},
+            ],
+            "options": {"temperature": 0.2, "num_predict": 1024, "num_ctx": 4096},
+        }, timeout=120)
+        if _resp.ok:
+            _analysis = _resp.json().get("message", {}).get("content", "").strip()
+            session_log = f"LOCAL_LLM ({_model}):\n{_analysis}"
+            if _analysis and len(_analysis) > 50:
+                success = True
+                log.info(f"Local LLM analysis complete ({len(_analysis)} chars)")
+                log.info(f"Analysis: {_analysis[:500]}")
+            else:
+                log.warning(f"Local LLM returned insufficient analysis ({len(_analysis)} chars)")
         else:
-            session_log = f"EXIT CODE {result.returncode}\nSTDERR: {result.stderr[-1000:]}\nSTDOUT: {result.stdout[-1000:]}"
-            log.warning(f"Claude Code exited with code {result.returncode}")
-    except subprocess.TimeoutExpired:
-        session_log = "TIMEOUT: Claude Code did not complete within 5 minutes"
-        log.warning("Claude Code timed out after 5 minutes")
-    except FileNotFoundError:
-        session_log = "Claude Code CLI not found — install with: npm i -g @anthropic-ai/claude-code"
-        log.error("Claude Code CLI not found")
+            session_log = f"LOCAL_LLM error: HTTP {_resp.status_code}"
+            log.warning(f"Local LLM request failed: {_resp.status_code}")
     except Exception as e:
-        session_log = f"ERROR: {str(e)}"
-        log.error(f"Claude Code invocation failed: {e}")
+        session_log = f"LOCAL_LLM error: {str(e)}"
+        log.warning(f"Local LLM analysis failed: {e}")
+
+    # Optional: fall back to Claude Code CLI if configured and local LLM failed
+    if not success and os.getenv("ESCALATION_USE_CLAUDE_CLI", "").lower() in ("1", "true"):
+        log.info("Falling back to Claude Code CLI...")
+        try:
+            _cli_prompt = "\n".join(problems)
+            result = subprocess.run(
+                ["claude", "-p", _cli_prompt, "--output-format", "text"],
+                capture_output=True, text=True, timeout=300,
+                cwd=str(PROJECT_ROOT),
+                env={**os.environ, "CLAUDE_NO_INTERACTIVE": "1"},
+            )
+            if result.returncode == 0:
+                session_log = result.stdout[-3000:]
+                success = True
+            else:
+                _combined = f"{result.stdout or ''} {result.stderr or ''}"
+                if "credit balance" in _combined.lower():
+                    log.error("Claude CLI credit balance too low")
+                session_log += f"\nCLAUDE_CLI: exit {result.returncode}: {_combined[-500:]}"
+        except Exception as e:
+            session_log += f"\nCLAUDE_CLI error: {e}"
 
     final_status = "fixed" if success else "failed"
     if conn:
@@ -445,10 +486,10 @@ def process_queue(dry_run=False):
         conn.commit()
 
     resolved_count = len(resolved_by_retry)
-    _notify(f"{'✅' if success else '❌'} Claude Code escalation {'resolved' if success else 'failed'}\n"
+    _notify(f"{'✅' if success else '❌'} Escalation analysis {'complete' if success else 'failed'}\n"
             f"Tier 1 (retry_cmd): {resolved_count} resolved\n"
-            f"Tier 3 (Claude): {len(remaining)} investigated → {final_status}\n"
-            f"Log: {session_log[:200]}")
+            f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}\n"
+            f"Analysis: {session_log[:200]}")
 
     QUEUE_FILE.write_text("[]")
     log.info(f"Queue cleared. {resolved_count} retried + {len(remaining)} escalated → {final_status}")
