@@ -54,12 +54,29 @@ Durable context for the next Trade AI session.
 - **Verify on next pre-market session:** Check that 4 AM proposals get enriched within 30 min, not rejected at 7 AM
 - Crontab backup: `/tmp/crontab_pre_enrichment_fix_20260529.txt`
 
+## Escalation Handler — Production-Validated Tiered System
+
+**Validated in production 2026-05-29 11:45 AM.** Fallback chain worked: gemma4 timed out → gemma3:12b completed 4,742 char analysis → queue cleared. No API credits used.
+
+| Tier | Engine | Purpose | Status |
+|------|--------|---------|--------|
+| 1 | Direct retry_cmd | Execute allowlisted safe commands (17 allowed, 19 blocked) | Active |
+| 2 | gemma3:4b (Ollama) | Quick triage diagnosis | Active |
+| **3a** | **gemma4:31b (llama.cpp)** | Deep root cause analysis (auto-starts server) | Active (may timeout on cold start) |
+| **3b** | **gemma3:12b (Ollama)** | Fast analysis fallback | **Active — primary workhorse** |
+| 3c | Claude Code CLI | Optional, requires API credits | Disabled by default (`ESCALATION_USE_CLAUDE_CLI=true` to enable) |
+
+- **Claude CLI is NOT the default** — credit balance was exhausted. All tiers use free local models.
+- **Allowlist config:** `config/claude_escalation_allowlist.yaml` — env guards enforce ALPACA_MODE=paper
+- **Retry log:** `logs/claude_escalation_retry_cmd.jsonl`
+- **Known:** gemma4:31b Tier 3a may timeout on cold start (server load + inference > 360s). Tier 3b catches it.
+
 ## Health Agent Self-Healing (4 Levels)
 
 1. **Retry command** — each component has a retry_cmd, run automatically on failure
 2. **Agent auto-queue** — stale agents get refresh jobs queued in watchlist_agent_jobs
 3. **Enrich-before-reject** — stuck proposals get enrichment triggered (up to 3 attempts) before rejection
-4. **Claude Code escalation** — unresolved problems written to `logs/claude_escalation_queue.json`, processed every 15 min by `claude_escalation_handler.py` which invokes `claude -p`
+4. **Tiered escalation** — unresolved problems go through Tier 1→2→3a→3b→3c chain (see above)
 - Full architecture doc: `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md`
 
 ## Hardcoded Model References
