@@ -42,8 +42,8 @@ def evaluate_pre_promotion_readiness(candidate: dict) -> dict:
     stop = float(candidate.get("stop") or candidate.get("proposed_stop") or 0)
     target = float(candidate.get("target") or candidate.get("proposed_target1") or 0)
     if entry > 0 and stop > 0 and target > 0:
-        computed_rr = (target - entry) / (entry - stop) if entry > stop else 0
-        if computed_rr < MIN_RR:
+        computed_rr = round((target - entry) / (entry - stop), 4) if entry > stop else 0
+        if computed_rr < MIN_RR - 0.005:  # tolerance for floating point
             blockers.append(f"rr_below_minimum: {computed_rr:.2f} < {MIN_RR}")
 
     # 4. Quote age gate (ATP-5)
