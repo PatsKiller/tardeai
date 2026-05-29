@@ -350,9 +350,10 @@ def process_queue(dry_run=False):
             except Exception as e:
                 log.warning(f"  Local LLM diagnosis failed: {e}")
 
-    # ── Tier 3: Local LLM deep analysis for unresolved items ──
-    # Uses gemma3:12b (or configured model) for detailed investigation.
-    # Falls back to Claude Code CLI only if ESCALATION_USE_CLAUDE_CLI=true.
+    # ── Tier 3: Local LLM deep analysis (gemma4:31b → gemma3:12b → Claude CLI) ──
+    # Tier 3a: gemma4:31b via llama.cpp (best quality, slow, hybrid GPU/CPU)
+    # Tier 3b: gemma3:12b via Ollama (good quality, fast GPU)
+    # Tier 3c: Claude Code CLI (optional, requires API credits)
     problems = []
     for item in remaining:
         comp = item.get("component", "unknown")
@@ -373,7 +374,7 @@ def process_queue(dry_run=False):
         )
 
     analysis_prompt = (
-        f"/no_think You are the Trade AI system health analyst. "
+        f"You are the Trade AI system health analyst. "
         f"{len(remaining)} problem(s) were not resolved by automatic retries.\n\n"
         f"For each problem, provide:\n"
         f"1. ROOT CAUSE: What specifically failed and why\n"
@@ -382,6 +383,17 @@ def process_queue(dry_run=False):
         f"4. PREVENTION: How to prevent recurrence\n\n"
         f"Problems:\n" + "\n".join(problems)
     )
+
+    # Read relevant log tails for context
+    _context_logs = ""
+    for _logname in ["auto_enrichment.log", "proposal_enrichment.log",
+                     "auto_proposal.log", "screener_pm.log", "system_health_agent.log"]:
+        _lp = PROJECT_ROOT / "logs" / _logname
+        if _lp.exists():
+            _tail = _lp.read_text()[-1000:]
+            _context_logs += f"\n--- {_logname} (tail) ---\n{_tail}\n"
+    if _context_logs:
+        analysis_prompt += f"\n\nRecent system logs for context:\n{_context_logs[-3000:]}"
 
     if dry_run:
         log.info(f"[DRY RUN] Tier 3: Would analyze with local LLM:\n{analysis_prompt[:500]}...")
@@ -394,7 +406,7 @@ def process_queue(dry_run=False):
         QUEUE_FILE.write_text("[]")
         return
 
-    log.info(f"Tier 3: Local LLM deep analysis for {len(remaining)} item(s)...")
+    log.info(f"Tier 3: Deep LLM analysis for {len(remaining)} item(s)...")
     intervention_ids = []
     if conn:
         for item in remaining:
@@ -410,64 +422,132 @@ def process_queue(dry_run=False):
 
     session_log = ""
     success = False
+    _tier_used = ""
 
-    # Read relevant log tails for context
-    _context_logs = ""
-    for _logname in ["auto_enrichment.log", "proposal_enrichment.log",
-                     "auto_proposal.log", "screener_pm.log", "system_health_agent.log"]:
-        _lp = PROJECT_ROOT / "logs" / _logname
-        if _lp.exists():
-            _tail = _lp.read_text()[-1000:]
-            _context_logs += f"\n--- {_logname} (tail) ---\n{_tail}\n"
-    if _context_logs:
-        analysis_prompt += f"\n\nRecent system logs for context:\n{_context_logs[-3000:]}"
+    # ── Tier 3a: gemma4:31b via llama.cpp (best quality) ──
+    LLAMACPP_URL = os.getenv("LLAMACPP_URL", "http://127.0.0.1:8081")
+    LLAMACPP_GGUF = Path.home() / "llama-cpp-vulkan" / "gemma4-31b-hf.gguf"
+    LLAMACPP_BIN = Path.home() / "llama-cpp-vulkan" / "llama-b9405" / "llama-server"
 
-    try:
-        _model = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
-        import requests
-        _resp = requests.post("http://localhost:11434/api/chat", json={
-            "model": _model,
-            "stream": False,
-            "messages": [
-                {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
-                {"role": "user", "content": analysis_prompt},
-            ],
-            "options": {"temperature": 0.2, "num_predict": 1024, "num_ctx": 4096},
-        }, timeout=120)
-        if _resp.ok:
-            _analysis = _resp.json().get("message", {}).get("content", "").strip()
-            session_log = f"LOCAL_LLM ({_model}):\n{_analysis}"
-            if _analysis and len(_analysis) > 50:
-                success = True
-                log.info(f"Local LLM analysis complete ({len(_analysis)} chars)")
-                log.info(f"Analysis: {_analysis[:500]}")
-            else:
-                log.warning(f"Local LLM returned insufficient analysis ({len(_analysis)} chars)")
-        else:
-            session_log = f"LOCAL_LLM error: HTTP {_resp.status_code}"
-            log.warning(f"Local LLM request failed: {_resp.status_code}")
-    except Exception as e:
-        session_log = f"LOCAL_LLM error: {str(e)}"
-        log.warning(f"Local LLM analysis failed: {e}")
-
-    # Optional: fall back to Claude Code CLI if configured and local LLM failed
-    if not success and os.getenv("ESCALATION_USE_CLAUDE_CLI", "").lower() in ("1", "true"):
-        log.info("Falling back to Claude Code CLI...")
+    if LLAMACPP_GGUF.exists() and LLAMACPP_BIN.exists():
+        log.info("  Tier 3a: Attempting gemma4:31b via llama.cpp...")
+        _llama_proc = None
         try:
-            _cli_prompt = "\n".join(problems)
+            import requests as _req
+            # Check if llama-server is already running
+            try:
+                _req.get(f"{LLAMACPP_URL}/health", timeout=3)
+                _llama_running = True
+            except Exception:
+                _llama_running = False
+
+            # Start llama-server if not running (unload Ollama models first)
+            if not _llama_running:
+                log.info("  Starting llama-server for gemma4:31b...")
+                # Unload Ollama models to free VRAM
+                try:
+                    _req.post("http://localhost:11434/api/generate",
+                              json={"model": "gemma3:12b", "keep_alive": 0, "prompt": ""}, timeout=10)
+                    _req.post("http://localhost:11434/api/generate",
+                              json={"model": "gemma3:4b", "keep_alive": 0, "prompt": ""}, timeout=10)
+                except Exception:
+                    pass
+                time.sleep(2)
+                _lib_dir = str(LLAMACPP_BIN.parent)
+                _llama_proc = subprocess.Popen(
+                    [str(LLAMACPP_BIN), "--model", str(LLAMACPP_GGUF),
+                     "--port", "8081", "--host", "127.0.0.1",
+                     "--ctx-size", "2048", "--n-gpu-layers", "25", "--threads", "6"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    env={**os.environ, "LD_LIBRARY_PATH": _lib_dir},
+                )
+                # Wait for startup
+                for _wait in range(30):
+                    time.sleep(2)
+                    try:
+                        if _req.get(f"{LLAMACPP_URL}/health", timeout=3).ok:
+                            break
+                    except Exception:
+                        pass
+
+            # Call gemma4:31b
+            _resp = _req.post(f"{LLAMACPP_URL}/v1/chat/completions", json={
+                "model": "gemma4-31b",
+                "messages": [
+                    {"role": "system", "content": "You are a Trade AI system health analyst. Provide detailed structured root cause analysis."},
+                    {"role": "user", "content": analysis_prompt},
+                ],
+                "temperature": 0.2, "max_tokens": 2048,
+            }, timeout=360)
+            if _resp.ok:
+                _analysis = _resp.json()["choices"][0]["message"]["content"].strip()
+                if _analysis and len(_analysis) > 100:
+                    session_log = f"GEMMA4_31B (llama.cpp):\n{_analysis}"
+                    success = True
+                    _tier_used = "3a_gemma4_31b"
+                    log.info(f"  ✅ Tier 3a: gemma4:31b analysis complete ({len(_analysis)} chars)")
+        except Exception as e:
+            log.warning(f"  Tier 3a gemma4:31b failed: {e}")
+        finally:
+            # Stop llama-server if we started it
+            if _llama_proc:
+                _llama_proc.terminate()
+                try:
+                    _llama_proc.wait(timeout=10)
+                except Exception:
+                    _llama_proc.kill()
+                log.info("  Stopped llama-server")
+
+    # ── Tier 3b: gemma3:12b via Ollama (fast fallback) ──
+    if not success:
+        log.info("  Tier 3b: Attempting gemma3:12b via Ollama...")
+        try:
+            import requests as _req
+            _model = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
+            _resp = _req.post("http://localhost:11434/api/chat", json={
+                "model": _model,
+                "stream": False,
+                "messages": [
+                    {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
+                    {"role": "user", "content": analysis_prompt},
+                ],
+                "options": {"temperature": 0.2, "num_predict": 1024, "num_ctx": 4096},
+            }, timeout=120)
+            if _resp.ok:
+                _analysis = _resp.json().get("message", {}).get("content", "").strip()
+                if _analysis and len(_analysis) > 50:
+                    session_log = f"GEMMA3_12B (Ollama):\n{_analysis}"
+                    success = True
+                    _tier_used = "3b_gemma3_12b"
+                    log.info(f"  ✅ Tier 3b: gemma3:12b analysis complete ({len(_analysis)} chars)")
+                else:
+                    log.warning(f"  Tier 3b: insufficient analysis ({len(_analysis)} chars)")
+                    session_log = f"GEMMA3_12B: insufficient ({_analysis[:200]})"
+            else:
+                log.warning(f"  Tier 3b: Ollama HTTP {_resp.status_code}")
+                session_log = f"GEMMA3_12B: HTTP {_resp.status_code}"
+        except Exception as e:
+            log.warning(f"  Tier 3b: gemma3:12b failed: {e}")
+            session_log = f"GEMMA3_12B error: {e}"
+
+    # ── Tier 3c: Claude Code CLI (optional, requires API credits) ──
+    if not success and os.getenv("ESCALATION_USE_CLAUDE_CLI", "").lower() in ("1", "true"):
+        log.info("  Tier 3c: Falling back to Claude Code CLI...")
+        try:
             result = subprocess.run(
-                ["claude", "-p", _cli_prompt, "--output-format", "text"],
+                ["claude", "-p", "\n".join(problems), "--output-format", "text"],
                 capture_output=True, text=True, timeout=300,
                 cwd=str(PROJECT_ROOT),
                 env={**os.environ, "CLAUDE_NO_INTERACTIVE": "1"},
             )
             if result.returncode == 0:
-                session_log = result.stdout[-3000:]
+                session_log = f"CLAUDE_CLI:\n{result.stdout[-3000:]}"
                 success = True
+                _tier_used = "3c_claude_cli"
             else:
                 _combined = f"{result.stdout or ''} {result.stderr or ''}"
                 if "credit balance" in _combined.lower():
-                    log.error("Claude CLI credit balance too low")
+                    log.error("  Tier 3c: Claude CLI credit balance too low")
                 session_log += f"\nCLAUDE_CLI: exit {result.returncode}: {_combined[-500:]}"
         except Exception as e:
             session_log += f"\nCLAUDE_CLI error: {e}"
