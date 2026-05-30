@@ -204,6 +204,10 @@
 | `docs/hermes/HERMES_PHASE1A_DB_ROLES_ROLLBACK.sql` | Rollback SQL for Phase 1A roles/grants |
 | `docs/hermes/HERMES_PHASE1B_RUNTIME_STAGING_WRITES_REPORT.md` | **Phase 1B report** — ingestion script created, 5/5 tests pass, smoke row id=2, production unchanged |
 | `docs/hermes/HERMES_PHASE1B_RUNTIME_STAGING_WRITES_ROLLBACK.sql` | Rollback SQL for Phase 1B smoke row |
+| `docs/hermes/HERMES_PHASE1C_PRODUCTION_READ_ACCESS_MAP.md` | **Phase 1C read access map** — 392 tables audited, 32 ALLOW, 8 masked, 14 DENY, 6 review |
+| `docs/hermes/HERMES_PHASE1C_SAFE_VIEW_DRAFTS.sql` | 8 safe view drafts (not applied) |
+| `docs/hermes/HERMES_PHASE1C_READ_GRANT_DRAFTS.sql` | Read grant drafts for hermes_readonly (not applied) |
+| `docs/hermes/HERMES_PHASE1C_SECURITY_FINDINGS.md` | Security findings — 14 denied tables, 10 masked columns, 6 needing review |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts
