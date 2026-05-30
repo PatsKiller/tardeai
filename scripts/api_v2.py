@@ -12829,41 +12829,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST":
         if base_path == "/api/v2/hermes/chat":
             try:
-                import urllib.request as _ur2, json as _jh, datetime as _dth
+                import sys as _sys_hc
+                _sys_hc.path.insert(0, str(PROJECT_ROOT / "scripts"))
+                from hermes_browse_proxy import chat_with_browsing
                 messages = (body or {}).get("messages", [])
                 if not messages:
                     return 400, {"ok": False, "error": "messages required"}
-                # Inject system prompt with date and role context
-                _today = _dth.date.today().isoformat()
-                _sys_prompt = (
-                    f"You are Hermes, Trade AI's research desk and independent challenger. "
-                    f"Today's date is {_today}. "
-                    f"You help the operator analyze tickers, proposals, trades, strategies, risk, and system health. "
-                    f"You are advisory only — you do not place orders, modify trades, or execute anything. "
-                    f"CRITICAL: You do NOT have access to live market data, real-time prices, or external APIs. "
-                    f"If asked for a current price, index level, or live quote, say 'I don't have live market data access. "
-                    f"Check the Trade AI dashboard or your broker for current prices.' "
-                    f"NEVER fabricate prices, quotes, index levels, or cite sources you cannot access. "
-                    f"Be concise and specific. Only state facts you are certain of."
-                )
-                _full_messages = [{"role": "system", "content": _sys_prompt}] + messages
-                # Route directly to Ollama /api/chat (no tool-calling, gemma3:12b compatible)
-                payload = _jh.dumps({
-                    "model": "gemma3:12b",
-                    "messages": _full_messages,
-                    "stream": False,
-                    "options": {"num_ctx": 8192},
-                }).encode()
-                req = _ur2.Request("http://localhost:11434/api/chat",
-                                   data=payload, method="POST",
-                                   headers={"Content-Type": "application/json"})
-                resp = _ur2.urlopen(req, timeout=120)
-                result = _jh.loads(resp.read())
-                # Normalize to OpenAI-compatible shape for frontend
-                content = result.get("message", {}).get("content", "")
+                result = chat_with_browsing(messages)
+                content = result.get("content", "")
                 return 200, {"ok": True, "data": {
                     "choices": [{"message": {"role": "assistant", "content": content}}],
-                    "model": result.get("model", "gemma3:12b"),
+                    "model": "gemma3:12b",
+                    "browsed": result.get("browsed", False),
+                    "search_query": result.get("search_query"),
                 }}
             except Exception as e:
                 return 500, {"ok": False, "error": f"Hermes chat error: {str(e)[:200]}"}
