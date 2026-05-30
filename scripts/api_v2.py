@@ -12830,23 +12830,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/hermes/chat":
             try:
                 import urllib.request as _ur2, json as _jh
-                _hermes_key = ""
-                _henv = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / ".env"
-                if _henv.exists():
-                    for _hl in _henv.read_text().splitlines():
-                        if _hl.startswith("API_SERVER_KEY="):
-                            _hermes_key = _hl.split("=", 1)[1].strip()
                 messages = (body or {}).get("messages", [])
                 if not messages:
                     return 400, {"ok": False, "error": "messages required"}
-                payload = _jh.dumps({"model": "hermes-agent", "messages": messages, "stream": False}).encode()
-                req = _ur2.Request("http://localhost:18790/v1/chat/completions",
+                # Route directly to Ollama /api/chat (no tool-calling, gemma3:12b compatible)
+                payload = _jh.dumps({
+                    "model": "gemma3:12b",
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"num_ctx": 8192},
+                }).encode()
+                req = _ur2.Request("http://localhost:11434/api/chat",
                                    data=payload, method="POST",
-                                   headers={"Authorization": f"Bearer {_hermes_key}",
-                                            "Content-Type": "application/json"})
+                                   headers={"Content-Type": "application/json"})
                 resp = _ur2.urlopen(req, timeout=120)
                 result = _jh.loads(resp.read())
-                return 200, {"ok": True, "data": result}
+                # Normalize to OpenAI-compatible shape for frontend
+                content = result.get("message", {}).get("content", "")
+                return 200, {"ok": True, "data": {
+                    "choices": [{"message": {"role": "assistant", "content": content}}],
+                    "model": result.get("model", "gemma3:12b"),
+                }}
             except Exception as e:
                 return 500, {"ok": False, "error": f"Hermes chat error: {str(e)[:200]}"}
 
