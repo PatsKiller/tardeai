@@ -194,6 +194,9 @@
 | `docs/hermes/HERMES_INSTALL_EXECUTION_PLAN.md` | Install execution plan with 3 pre-install gates, sidecar wrapper, rollback plan |
 | `docs/hermes/HERMES_READ_ONLY_PILOT_PLAN.md` | Read-only pilot plan — 5 agents, file-memory, no cron/gateway/DB, 4 pilot phases |
 | `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` | Preinstall discovery — system state, Ollama health, safety mode, Gate 1 outputs |
+| `docs/hermes/HERMES_PHASE_P0_FINAL_GATE.md` | **Phase P0 final gate — verdict: GO**, all 7 sections pass, no blockers, awaiting operator approval |
+| `docs/hermes/HERMES_ROLLBACK_PLAN.md` | Rollback plan — uninstall, file removal, service removal, verification checklist |
+| `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` | **Ingestion architecture** — staged pipeline: file outbox (P0) → staging table (P1) → reviewed promotion (P2) → dashboard (P3). 8-table compatibility assessment. |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts

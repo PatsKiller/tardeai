@@ -62,8 +62,14 @@
 * Hermes research scope includes trades, proposals, incubator, percolator, news, related news, YouTube transcripts, tickets, retirement, taxes, portfolio rotation, backtesting, journal, system health, dashboard truth audits, data freshness, and operator decisions.
 * Hermes starts read-only and file-memory based.
 * Hermes may eventually write advisory memory and recommendation queues only.
-* No Hermes install until compatibility audit and execution plan are approved.
-* Next action: create Hermes compatibility audit and implementation execution plan.
+* Compatibility audit COMPLETE (2026-05-30): NousResearch/hermes-agent is real Python CLI, MIT license, supports local Ollama, gemma3:12b 131K context exceeds 64K requirement, project-scoped via HERMES_HOME, no Claude Code conflict, clean uninstall.
+* Phase P0 final gate: **GO** — all 7 verification sections pass, no blockers.
+* Data ingestion architecture designed: 4-phase staged pipeline (file outbox → staging table → reviewed promotion → dashboard). Hermes never writes directly to production tables.
+* Staging schema: `hermes_research_intelligence` + `hermes_memory_events` (not yet created).
+* 8 existing tables assessed: 5 safe for eventual promotion, 3 need staging only.
+* Rollback plan documented: `rm -rf hermes_sidecar/` for project-scoped install.
+* Install NOT blocked by ingestion architecture — P0 is file-only.
+* Next action: operator approval to install Hermes sidecar.
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
