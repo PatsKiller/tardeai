@@ -57,9 +57,15 @@ export default function HermesChat() {
       })
       const data = await resp.json()
       if (data.ok && data.data?.choices?.[0]?.message?.content) {
+        const browsed = data.data.browsed
+        const searchQuery = data.data.search_query
+        let content = data.data.choices[0].message.content
+        if (browsed && searchQuery) {
+          content = `🔍 *Browsed: "${searchQuery}"*\n\n${content}`
+        }
         const assistantMsg: Message = {
           role: 'assistant',
-          content: data.data.choices[0].message.content,
+          content,
           timestamp: new Date().toISOString(),
         }
         setMessages(prev => [...prev, assistantMsg])
@@ -134,7 +140,7 @@ export default function HermesChat() {
               ))}
               {loading && (
                 <div style={{ padding: '8px 12px', color: 'var(--text3)', fontSize: 11 }}>
-                  Hermes is thinking...
+                  Hermes is researching... (may browse the web)
                 </div>
               )}
               {error && (
