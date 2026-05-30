@@ -156,12 +156,18 @@
 - **Headless browser enabled**: Playwright + Chromium in sidecar, agent-browser npm. Can scrape public pages, read articles, check charts locally.
 - Trade AI pipelines provide: news, social, YouTube, SEC, FRED data via DB
 
+### Headless Browser + Source Discovery Design
+- Playwright + Chromium installed in sidecar, agent-browser npm package
+- Browser test PASS: Yahoo Finance AAPL fetched headlessly
+- Source discovery architecture designed: `hermes_research_sources` table, per-ticker source portfolios, quality scoring, seed URLs, 5-phase rollout (design only, not implemented)
+
 ## Next Steps
 
-1. Ongoing/bulk Hermes research (requires approval)
-2. Hermes embeddings (requires approval)
-3. Production promotion (requires approval)
-4. Dashboard Hermes Challenger (requires approval)
-5. Define 5 pilot Hermes agent workflows
-6. System-level validation prompt refinement (pipeline/agent tasks)
-7. Audit backup schedule (last automated: April 21)
+1. Create hermes_research_sources table (requires approval)
+2. Ongoing/bulk Hermes research (requires approval)
+3. Hermes embeddings (requires approval)
+4. Production promotion (requires approval)
+5. Dashboard Hermes Challenger (requires approval)
+6. Define 5 pilot Hermes agent workflows
+7. System-level validation prompt refinement (pipeline/agent tasks)
+8. Audit backup schedule (last automated: April 21)
