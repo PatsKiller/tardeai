@@ -62,6 +62,8 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/ops', label: 'Ops Center' },
     { to: '/pipeline', label: 'Pipeline Stages' },
     { to: '/system-health', label: 'System Health' },
+    { to: '/system-access', label: 'System Access' },
+    { to: '/system-applications', label: 'System Applications' },
     { to: '/agent-pipeline', label: 'Agent Pipeline' },
   ]},
   { label: 'Automated Trading', items: [
