@@ -18,6 +18,7 @@ interface AppInfo {
 interface AppsData {
   applications: AppInfo[]
   summary: { total: number; current: number; behind: number; unknown: number; not_installed: number }
+  versions_checked_at?: string
 }
 
 const statusColors: Record<string, string> = {
@@ -120,7 +121,7 @@ export default function SystemApplications() {
 
   return (
     <>
-      <PageHeader title="System Applications" subtitle="Installed software inventory and version drift" actions={
+      <PageHeader title="System Applications" subtitle={`Installed software inventory and version drift${data.versions_checked_at ? ` — last checked ${new Date(data.versions_checked_at).toLocaleDateString()}` : ''}`} actions={
         <button onClick={() => setRk(k => k + 1)} style={{ fontSize: 11, padding: '4px 12px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>Refresh</button>
       } />
 

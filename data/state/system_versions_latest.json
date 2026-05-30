@@ -1,0 +1,56 @@
+{
+  "checked_at": "2026-05-30T20:56:41.176390+00:00",
+  "packages": {
+    "python3": {
+      "latest": "3.13.7",
+      "installed": "3.13.7"
+    },
+    "nodejs": {
+      "latest": "24.16.0",
+      "installed": "22.22.2"
+    },
+    "npm": {
+      "latest": "11.16.0",
+      "installed": "10.9.7"
+    },
+    "postgresql": {
+      "latest": "17.10",
+      "installed": "17.10"
+    },
+    "git": {
+      "latest": "2.51.0",
+      "installed": "2.51.0"
+    },
+    "ollama": {
+      "latest": "0.24.0",
+      "installed": "0.24.0"
+    },
+    "tailscale": {
+      "latest": "1.98.3",
+      "installed": "1.98.3"
+    },
+    "hermes-agent": {
+      "latest": "0.15.2",
+      "installed": "0.15.2"
+    },
+    "claude-code": {
+      "latest": "2.1.158",
+      "installed": "2.1.158"
+    },
+    "react": {
+      "latest": "19.2.6"
+    },
+    "react-router-dom": {
+      "latest": "7.16.0"
+    },
+    "vite": {
+      "latest": "8.0.14"
+    },
+    "typescript": {
+      "latest": "6.0.3"
+    },
+    "chart.js": {
+      "latest": "4.5.1"
+    }
+  }
+}

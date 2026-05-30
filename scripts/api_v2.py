@@ -12312,38 +12312,44 @@ def _system_access_links():
         },
         {
             "name": "Portfolio Server",
-            "url": "http://localhost:7777",
-            "health_url": "http://localhost:7777/api/v2/system-health",
+            "url": f"http://{ts_fqdn}:7777",
+            "localhost_url": "http://localhost:7777",
+            "health_url": f"http://{ts_fqdn}:7777/api/v2/system-health",
             "category": "localhost",
             "health": "healthy",  # self — this endpoint is running on 7777
         },
         {
             "name": "Command Center",
-            "url": "http://localhost:7777/v2/",
+            "url": f"http://{ts_fqdn}:7777/v2/",
+            "localhost_url": "http://localhost:7777/v2/",
             "category": "localhost",
             "health": "healthy",  # self — served by this process
         },
         {
             "name": "OpenClaw Gateway",
-            "url": "http://localhost:18789",
+            "url": f"http://{ts_fqdn}:18789",
+            "localhost_url": "http://localhost:18789",
             "category": "localhost",
             "health": _check("http://localhost:18789"),
         },
         {
             "name": "Ollama",
-            "url": "http://localhost:11434",
-            "health_url": "http://localhost:11434/api/tags",
+            "url": f"http://{ts_fqdn}:11434",
+            "localhost_url": "http://localhost:11434",
+            "health_url": f"http://{ts_fqdn}:11434/api/tags",
             "category": "localhost",
             "health": _check("http://localhost:11434/api/tags"),
         },
         {
-            "name": "Hermes Sidecar",
-            "url": None,
+            "name": "Hermes Gateway",
+            "url": f"http://{ts_fqdn}:18790",
+            "localhost_url": "http://localhost:18790",
+            "health_url": f"http://{ts_fqdn}:18790/health",
             "category": "localhost",
-            "health": "unknown",
-            "note": "No Hermes web dashboard — CLI/sidecar installed only",
+            "health": _check("http://localhost:18790/health"),
             "install_path": "hermes_sidecar/install/.venv/",
             "hermes_home": "hermes_sidecar/.hermes/",
+            "note": "API server, requires Bearer token",
         },
     ]
 
@@ -12408,47 +12414,63 @@ def _system_applications():
     pr = str(PROJECT_ROOT)
     apps = []
 
+    # ── Load weekly version cache (fast) ──
+    _vcache = {}
+    _vcache_ts = None
+    try:
+        import json as _jvc
+        _vcf = Path(pr) / "data" / "state" / "system_versions_latest.json"
+        if _vcf.exists():
+            _vcd = _jvc.loads(_vcf.read_text())
+            _vcache = {k: v.get("latest") for k, v in _vcd.get("packages", {}).items()}
+            _vcache_ts = _vcd.get("checked_at", "")
+    except Exception:
+        pass
+
+    def _latest(key):
+        return _vcache.get(key)
+
     # ── Core ──
+    py_ver = _ver(_run(["python3", "--version"]))
     apps.append({"name": "Python", "category": "core",
-        "installed": _ver(_run(["python3", "--version"])),
-        "latest": None, "path": shutil.which("python3"),
+        "installed": py_ver, "latest": _latest("python3"), "path": shutil.which("python3"),
         "version_cmd": "python3 --version",
         "update_cmd": "Manual OS package review required"})
 
     apps.append({"name": "Python (venv)", "category": "core",
         "installed": _ver(_run([f"{pr}/.venv/bin/python", "--version"])),
-        "latest": None, "path": f"{pr}/.venv/bin/python",
+        "latest": py_ver, "path": f"{pr}/.venv/bin/python",
         "version_cmd": ".venv/bin/python --version",
         "update_cmd": "Manual review required"})
 
     apps.append({"name": "Node.js", "category": "core",
         "installed": _ver(_run(["node", "--version"])),
-        "latest": None, "path": shutil.which("node"),
+        "latest": _latest("nodejs"), "path": shutil.which("node"),
         "version_cmd": "node --version",
         "update_cmd": "Manual OS package review required"})
 
     apps.append({"name": "npm", "category": "core",
         "installed": _ver(_run(["npm", "--version"])),
-        "latest": None, "path": shutil.which("npm"),
+        "latest": _latest("npm"), "path": shutil.which("npm"),
         "version_cmd": "npm --version",
         "update_cmd": "Manual review required"})
 
     pg_ver = _ver(_run(["psql", "--version"]))
     apps.append({"name": "PostgreSQL", "category": "core",
-        "installed": pg_ver, "latest": None,
+        "installed": pg_ver, "latest": _latest("postgresql"),
         "path": shutil.which("psql"),
         "version_cmd": "psql --version",
         "update_cmd": "Manual OS package review required"})
 
     apps.append({"name": "Git", "category": "core",
         "installed": _ver(_run(["git", "--version"])),
-        "latest": None, "path": shutil.which("git"),
+        "latest": _latest("git"), "path": shutil.which("git"),
         "version_cmd": "git --version",
         "update_cmd": "Manual OS package review required"})
 
     ollama_ver = _ver(_run(["ollama", "--version"]))
     apps.append({"name": "Ollama", "category": "core",
-        "installed": ollama_ver, "latest": None,
+        "installed": ollama_ver, "latest": _latest("ollama"),
         "path": shutil.which("ollama"),
         "version_cmd": "ollama --version",
         "update_cmd": "Manual review required"})
@@ -12468,23 +12490,50 @@ def _system_applications():
     except Exception:
         pass
 
+    # llama.cpp
+    llamacpp_ver = _ver(_run(["llama-cli", "--version"])) or _ver(_run(["llama-server", "--version"]))
+    llamacpp_path = shutil.which("llama-cli") or shutil.which("llama-server")
+    apps.append({"name": "llama.cpp", "category": "core",
+        "installed": llamacpp_ver or ("installed" if llamacpp_path else None),
+        "latest": None, "path": llamacpp_path,
+        "version_cmd": "llama-cli --version",
+        "update_cmd": "Manual review required"})
+
+    # Gemma4 31B (llama.cpp, not Ollama)
+    gemma4_path = None
+    for p in ["/usr/share/ollama/.ollama/models", str(Path.home() / ".ollama/models"),
+              str(PROJECT_ROOT / "models")]:
+        if Path(p).exists():
+            gemma4_files = list(Path(p).rglob("*gemma*4*")) if Path(p).exists() else []
+            if gemma4_files:
+                gemma4_path = str(gemma4_files[0].parent)
+                break
+    apps.append({"name": "Gemma4 31B (llama.cpp)", "category": "model",
+        "installed": "31B Q4" if gemma4_path else "available via llama.cpp",
+        "latest": None, "path": gemma4_path or "llama.cpp offline runner",
+        "version_cmd": "llama-cli --version",
+        "update_cmd": "Manual review required",
+        "note": "Tier 3a deep analysis, off-hours only, ~8min per job"})
+
     # ── AI / Agent ──
-    hermes_ver = _ver(_run([f"{pr}/hermes_sidecar/install/.venv/bin/pip", "show", "hermes-agent"],
-                          timeout=10))
-    if hermes_ver:
-        import re
-        m = re.search(r'Version:\s*(\S+)', _run([f"{pr}/hermes_sidecar/install/.venv/bin/pip", "show", "hermes-agent"]) or "")
-        hermes_ver = m.group(1) if m else hermes_ver
+    hermes_ver = None
+    _hpip = _run([f"{pr}/hermes_sidecar/install/.venv/bin/pip", "show", "hermes-agent"], timeout=10)
+    if _hpip:
+        import re as _re2
+        _hm = _re2.search(r'Version:\s*(\S+)', _hpip)
+        hermes_ver = _hm.group(1) if _hm else _ver(_hpip)
+    hermes_latest = _latest("hermes-agent")
     apps.append({"name": "Hermes Agent", "category": "agent",
-        "installed": hermes_ver, "latest": None,
+        "installed": hermes_ver, "latest": hermes_latest,
         "path": f"{pr}/hermes_sidecar/install/.venv/",
         "version_cmd": "hermes_sidecar/install/.venv/bin/hermes version",
         "update_cmd": "hermes_sidecar/install/.venv/bin/pip install --upgrade hermes-agent (requires backup + approval)"})
 
-    claude_ver = _ver(_run(["claude", "--version"]))
+    claude_ver = _ver(_run([str(Path.home() / ".local/bin/claude"), "--version"]))
+    claude_latest = _latest("claude-code")
     apps.append({"name": "Claude Code CLI", "category": "agent",
-        "installed": claude_ver, "latest": None,
-        "path": shutil.which("claude"),
+        "installed": claude_ver, "latest": claude_latest,
+        "path": str(Path.home() / ".local/bin/claude"),
         "version_cmd": "claude --version",
         "update_cmd": "claude install",
         "note": "Auto-update may lack permission. Handle as separate operator maintenance."})
@@ -12499,15 +12548,16 @@ def _system_applications():
 
     # ── Data / Integrations ──
     ts_ver = _ver(_run(["tailscale", "version"]))
+    ts_latest = _latest("tailscale")
     apps.append({"name": "Tailscale", "category": "integration",
-        "installed": ts_ver, "latest": None,
+        "installed": ts_ver, "latest": ts_latest,
         "path": shutil.which("tailscale"),
         "version_cmd": "tailscale version",
         "update_cmd": "Manual review required"})
 
     gog_ver = _ver(_run(["gog", "--version"]))
     apps.append({"name": "GOG (Google CLI)", "category": "integration",
-        "installed": gog_ver or "installed" if shutil.which("gog") else None,
+        "installed": gog_ver or ("installed" if shutil.which("gog") else None),
         "latest": None, "path": shutil.which("gog"),
         "version_cmd": "gog --version",
         "update_cmd": "Manual review required"})
@@ -12518,14 +12568,16 @@ def _system_applications():
         pkg = _j.loads((Path(pr) / "apps/command-center-v2/package.json").read_text())
         deps = pkg.get("dependencies", {})
         dev = pkg.get("devDependencies", {})
-        for name, ver in [("React", deps.get("react")), ("React Router", deps.get("react-router-dom")),
-                          ("Vite", dev.get("vite")), ("TypeScript", dev.get("typescript")),
-                          ("Chart.js", deps.get("chart.js"))]:
+        _npm_pkgs = {"React": "react", "React Router": "react-router-dom",
+                     "Vite": "vite", "TypeScript": "typescript", "Chart.js": "chart.js"}
+        for display, npm_name in _npm_pkgs.items():
+            ver = deps.get(npm_name) or dev.get(npm_name)
             if ver:
-                apps.append({"name": name, "category": "frontend",
-                    "installed": ver.lstrip("^~"), "latest": None,
+                lat = _latest(npm_name)
+                apps.append({"name": display, "category": "frontend",
+                    "installed": ver.lstrip("^~"), "latest": lat,
                     "path": "apps/command-center-v2/package.json",
-                    "version_cmd": "npm ls " + name.lower().replace(" ", "-").replace(".",""),
+                    "version_cmd": f"npm view {npm_name} version",
                     "update_cmd": "npm outdated (requires separate approval)"})
     except Exception:
         pass
@@ -12543,7 +12595,7 @@ def _system_applications():
         "not_installed": sum(1 for a in apps if not a.get("installed")),
     }
 
-    return {"ok": True, "applications": apps, "summary": summary}
+    return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
 ROUTES = {
