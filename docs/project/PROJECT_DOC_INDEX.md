@@ -208,6 +208,8 @@
 | `docs/hermes/HERMES_PHASE1C_SAFE_VIEW_DRAFTS.sql` | 8 safe view drafts (not applied) |
 | `docs/hermes/HERMES_PHASE1C_READ_GRANT_DRAFTS.sql` | Read grant drafts for hermes_readonly (not applied) |
 | `docs/hermes/HERMES_PHASE1C_SECURITY_FINDINGS.md` | Security findings — 14 denied tables, 10 masked columns, 6 needing review |
+| `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | Phase 1D report — 8 views created, 40 grants applied, pipeline fix |
+| `docs/hermes/HERMES_PHASE1D_SAFE_VIEWS_AND_GRANTS_VERIFICATION.md` | **Phase 1D verification — PASS**, all 8 views present, 46 grants SELECT-only, 14 denied tables confirmed, zero Hermes embeddings |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
