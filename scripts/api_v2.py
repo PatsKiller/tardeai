@@ -12829,14 +12829,24 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     if method == "POST":
         if base_path == "/api/v2/hermes/chat":
             try:
-                import urllib.request as _ur2, json as _jh
+                import urllib.request as _ur2, json as _jh, datetime as _dth
                 messages = (body or {}).get("messages", [])
                 if not messages:
                     return 400, {"ok": False, "error": "messages required"}
+                # Inject system prompt with date and role context
+                _today = _dth.date.today().isoformat()
+                _sys_prompt = (
+                    f"You are Hermes, Trade AI's research desk and independent challenger. "
+                    f"Today's date is {_today}. "
+                    f"You help the operator analyze tickers, proposals, trades, strategies, risk, and system health. "
+                    f"You are advisory only — you do not place orders, modify trades, or execute anything. "
+                    f"Be concise and specific. Use data when available."
+                )
+                _full_messages = [{"role": "system", "content": _sys_prompt}] + messages
                 # Route directly to Ollama /api/chat (no tool-calling, gemma3:12b compatible)
                 payload = _jh.dumps({
                     "model": "gemma3:12b",
-                    "messages": messages,
+                    "messages": _full_messages,
                     "stream": False,
                     "options": {"num_ctx": 8192},
                 }).encode()
