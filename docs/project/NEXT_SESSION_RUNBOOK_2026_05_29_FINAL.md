@@ -54,6 +54,24 @@ curl -s "http://127.0.0.1:7777/api/v2/paper-proposals/lifecycle-inspector?propos
 - [ ] Continue journal/automated-trading validation if warnings
 - [ ] Consider 50+ llama.cpp canary dry-runs before routing change
 
+## Hermes v4 Next Step
+
+1. Confirm `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.md` exists.
+2. Read `docs/hermes/Hermes_Project_Memory_Notes_v4.md`.
+3. Do not install Hermes yet.
+4. Run a Hermes compatibility audit first.
+5. Confirm:
+   - install behavior
+   - model provider support
+   - memory storage
+   - local model compatibility
+   - whether Hermes calls external APIs
+   - sandbox path
+   - security/permissions
+   - rollback/uninstall path
+   - whether it conflicts with Claude Code, Ollama, llama.cpp, cron, or Trade AI services
+6. Build execution plan only after audit.
+
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)
 - Do NOT change model routing without approval + canary
