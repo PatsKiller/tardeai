@@ -72,7 +72,7 @@
 * Rollback plan documented: `rm -rf hermes_sidecar/` for project-scoped install.
 * **Phase 0 install COMPLETE** (2026-05-30): hermes-agent 0.15.2 in hermes_sidecar/, HERMES_HOME override works, no ~/.hermes, local Ollama only.
 * **Phase 1 DB staging COMPLETE** (2026-05-30): 6 hermes_* tables created (0 rows), 34 indexes, 18 CHECK constraints, all with source='hermes' enforcement.
-* Roles deferred: hermes_readonly + hermes_staging_writer need postgres superuser (trade_ai user lacks CREATEROLE).
+* Roles BLOCKED: hermes_readonly + hermes_staging_writer need postgres superuser (trade_ai lacks CREATEROLE, sudo requires password). Migration SQL ready at `sql/migrations/20260530_hermes_phase1a_roles_and_grants.sql`. Operator must run: `! sudo -u postgres psql -d trade_ai -f sql/migrations/20260530_hermes_phase1a_roles_and_grants.sql`
 * Backup schedule gap: last automated backup April 21. Pre-migration schema backup taken. Weekly timer needs audit.
 * Next action: operator approval for Hermes runtime DB writes (Phase 1 active use).
 
