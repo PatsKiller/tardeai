@@ -190,6 +190,11 @@
 | `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.pdf` | Formatted PDF copy |
 | `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.docx` | Editable Word copy |
 | `docs/hermes/Hermes_Sidecar_Strategy_v4_Package.zip` | Packaged archive |
+| `docs/hermes/HERMES_COMPATIBILITY_AUDIT.md` | **Compatibility audit** — NousResearch hermes-agent researched, local Ollama compatible, no blockers, project-scoped install viable |
+| `docs/hermes/HERMES_INSTALL_EXECUTION_PLAN.md` | Install execution plan with 3 pre-install gates, sidecar wrapper, rollback plan |
+| `docs/hermes/HERMES_READ_ONLY_PILOT_PLAN.md` | Read-only pilot plan — 5 agents, file-memory, no cron/gateway/DB, 4 pilot phases |
+| `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` | Preinstall discovery — system state, Ollama health, safety mode, Gate 1 outputs |
+| `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts
 | Document | Purpose |
