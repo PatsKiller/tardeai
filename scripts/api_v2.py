@@ -12598,6 +12598,46 @@ def _system_applications():
     return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
+def _hermes_health():
+    """GET /api/v2/hermes/health — Hermes gateway status + memory summary."""
+    import urllib.request as _ur, json as _jh2
+    status = "offline"
+    try:
+        resp = _ur.urlopen("http://localhost:18790/health", timeout=3)
+        d = _jh2.loads(resp.read())
+        status = d.get("status", "unknown")
+    except Exception:
+        pass
+
+    # Read memory files
+    mem_dir = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "memories"
+    memories = []
+    if mem_dir.exists():
+        for f in sorted(mem_dir.iterdir()):
+            if f.suffix == ".md":
+                memories.append({"name": f.name, "size": f.stat().st_size,
+                                 "modified": f.stat().st_mtime})
+
+    # Read session count
+    sess_dir = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "sessions"
+    session_count = len(list(sess_dir.iterdir())) if sess_dir.exists() else 0
+
+    # Hermes staging table counts
+    hcounts = {}
+    for tbl in ["hermes_research_intelligence", "hermes_validation_findings",
+                "hermes_alerts", "hermes_memory_events"]:
+        row = _db_query(f"SELECT COUNT(*) as cnt FROM {tbl}", fetch="one")
+        hcounts[tbl] = row["cnt"] if row else 0
+
+    return {
+        "ok": True,
+        "gateway_status": status,
+        "memories": memories,
+        "session_count": session_count,
+        "staging_counts": hcounts,
+    }
+
+
 ROUTES = {
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
@@ -12775,6 +12815,7 @@ ROUTES = {
     "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
     "/api/v2/system/access-links": lambda: _system_access_links(),
     "/api/v2/system/applications": lambda: _system_applications(),
+    "/api/v2/hermes/health": lambda: _hermes_health(),
 }
 
 
@@ -12785,6 +12826,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/hermes/chat":
+            try:
+                import urllib.request as _ur2, json as _jh
+                _hermes_key = ""
+                _henv = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / ".env"
+                if _henv.exists():
+                    for _hl in _henv.read_text().splitlines():
+                        if _hl.startswith("API_SERVER_KEY="):
+                            _hermes_key = _hl.split("=", 1)[1].strip()
+                messages = (body or {}).get("messages", [])
+                if not messages:
+                    return 400, {"ok": False, "error": "messages required"}
+                payload = _jh.dumps({"model": "hermes-agent", "messages": messages, "stream": False}).encode()
+                req = _ur2.Request("http://localhost:18790/v1/chat/completions",
+                                   data=payload, method="POST",
+                                   headers={"Authorization": f"Bearer {_hermes_key}",
+                                            "Content-Type": "application/json"})
+                resp = _ur2.urlopen(req, timeout=120)
+                result = _jh.loads(resp.read())
+                return 200, {"ok": True, "data": result}
+            except Exception as e:
+                return 500, {"ok": False, "error": f"Hermes chat error: {str(e)[:200]}"}
+
+        if base_path == "/api/v2/hermes/status":
+            try:
+                import urllib.request as _ur3, json as _js
+                req = _ur3.Request("http://localhost:18790/health", method="GET")
+                resp = _ur3.urlopen(req, timeout=5)
+                return 200, {"ok": True, "data": _js.loads(resp.read())}
+            except Exception as e:
+                return 200, {"ok": True, "data": {"status": "offline", "error": str(e)[:100]}}
+
         if base_path == "/api/v2/journal/agent-coaching/run":
             try:
                 import subprocess as _sp

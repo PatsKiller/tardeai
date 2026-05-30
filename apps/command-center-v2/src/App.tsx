@@ -85,6 +85,7 @@ const AlertsDashboard = lazy(() => import('./pages/AlertsDashboard'))
 const SystemHealth = lazy(() => import('./pages/SystemHealth'))
 const SystemAccess = lazy(() => import('./pages/SystemAccess'))
 const SystemApplications = lazy(() => import('./pages/SystemApplications'))
+const HermesChat = lazy(() => import('./pages/HermesChat'))
 const Reports = lazy(() => import('./pages/Reports'))
 
 function Loading() {
@@ -199,6 +200,7 @@ export default function App() {
           <Route path="system-health" element={<SafePage><SystemHealth /></SafePage>} />
           <Route path="system-access" element={<SafePage><SystemAccess /></SafePage>} />
           <Route path="system-applications" element={<SafePage><SystemApplications /></SafePage>} />
+          <Route path="hermes" element={<SafePage><HermesChat /></SafePage>} />
           <Route path="reports" element={<SafePage><Reports /></SafePage>} />
 
           {/* ── Legacy redirects (old routes → consolidated pages) ── */}
