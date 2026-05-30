@@ -75,7 +75,8 @@
 * **Roles COMPLETE** (2026-05-30): hermes_readonly (SELECT on hermes_*) and hermes_staging_writer (SELECT/INSERT/UPDATE on hermes_*, sequences) created via sudo -u postgres. NOLOGIN, no passwords, zero production table grants.
 * Backup schedule gap: last automated backup April 21. Pre-migration schema backup taken. Weekly timer needs audit.
 * **Phase 1B staging writes COMPLETE** (2026-05-30): `scripts/hermes_staging_ingest.py` created (--dry-run default, --apply required). 5/5 tests pass (3 negative). Smoke row id=2 in hermes_memory_events. Production unchanged.
-* Next action: operator approval for real Hermes research ingestion, production read grants, and embeddings.
+* **Phase 1C read access map COMPLETE** (2026-05-30): 392 tables audited, 32 ALLOW, 8 ALLOW_WITH_MASK, 14 DENY, 6 NEEDS_REVIEW. 8 safe view drafts + grant drafts written. No grants applied.
+* Next action: operator approval to apply safe views and read grants for Hermes production reads.
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
