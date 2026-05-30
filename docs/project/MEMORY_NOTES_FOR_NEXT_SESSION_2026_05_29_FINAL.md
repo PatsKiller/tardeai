@@ -70,8 +70,11 @@
 * Hermes reads via API + hermes_readonly DB role. Writes only to hermes_* tables. Promotion to production requires --dry-run then --apply with operator approval.
 * File outbox is emergency fallback only, not primary architecture.
 * Rollback plan documented: `rm -rf hermes_sidecar/` for project-scoped install.
-* Install NOT blocked by ingestion architecture — P0 is file-only.
-* Next action: operator approval to install Hermes sidecar.
+* **Phase 0 install COMPLETE** (2026-05-30): hermes-agent 0.15.2 in hermes_sidecar/, HERMES_HOME override works, no ~/.hermes, local Ollama only.
+* **Phase 1 DB staging COMPLETE** (2026-05-30): 6 hermes_* tables created (0 rows), 34 indexes, 18 CHECK constraints, all with source='hermes' enforcement.
+* Roles deferred: hermes_readonly + hermes_staging_writer need postgres superuser (trade_ai user lacks CREATEROLE).
+* Backup schedule gap: last automated backup April 21. Pre-migration schema backup taken. Weekly timer needs audit.
+* Next action: operator approval for Hermes runtime DB writes (Phase 1 active use).
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -78,6 +78,9 @@ Install will:
 - Database-first architecture: 6 hermes_* tables created in Phase 1 (separate approval)
 - Shared scoring (content_scoring.py), same embedding model (nomic-embed-text 768-dim)
 - Hermes validation challenger writes to hermes_validation_findings + hermes_alerts
+- Phase 1 DB staging COMPLETE: 6 hermes_* tables created, 0 rows, roles deferred (need postgres)
+- Rollback: `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
+- Next: operator approval for Hermes runtime DB writes + postgres access for role creation
 
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)

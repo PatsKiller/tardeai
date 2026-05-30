@@ -198,6 +198,8 @@
 | `docs/hermes/HERMES_ROLLBACK_PLAN.md` | Rollback plan — uninstall, file removal, service removal, verification checklist |
 | `docs/hermes/HERMES_DATABASE_FIRST_INTEGRATION_ARCHITECTURE.md` | **Database-first integration architecture** — 6 hermes_* tables, read-only DB role, shared scoring/embedding, validation challenger, 5-phase rollout. Supersedes file-first design. |
 | `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` | Superseded by database-first architecture — retained for reference |
+| `docs/hermes/HERMES_PHASE1_DB_STAGING_REPORT.md` | **Phase 1 DB staging report** — 6 tables created, 34 indexes, 18 CHECK constraints, 0 rows, roles deferred |
+| `docs/hermes/HERMES_PHASE1_DB_STAGING_ROLLBACK.sql` | Rollback SQL for Phase 1 tables |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts
