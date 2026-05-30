@@ -106,8 +106,14 @@
 - NOT connected to: Google API, social media APIs (direct), broker APIs
 - Trade AI's existing pipelines already provide: news, social, YouTube, SEC, FRED data via DB
 
+### Source Discovery Design (2026-05-30)
+- `hermes_research_sources` table designed: per-ticker source portfolios, quality scoring (0-1), discovery workflow, staleness detection
+- Seed sources identified: Yahoo Finance, Seeking Alpha, Finviz, Macrotrends, SEC EDGAR, FRED, ETF DB, etc.
+- 5-phase implementation: table creation → seed insert → agent integration → source-first research → dashboard
+- Not implemented yet — design only
+
 ### Next Gate
-- Ongoing/bulk Hermes research, embeddings, production promotion, dashboard Hermes Challenger all require separate approval
+- Ongoing/bulk Hermes research, embeddings, production promotion, dashboard Hermes Challenger, source table creation all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

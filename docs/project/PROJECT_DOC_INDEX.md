@@ -215,6 +215,7 @@
 | `docs/hermes/HERMES_PHASE1E_FIRST_RESEARCH_INGESTION_ROLLBACK.sql` | Rollback SQL for Phase 1E row |
 | `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_REPORT.md` | **Phase 1F report** — 3/5 batch research tasks staged (SPRC, SCHD, APPS), 2 rejected, ids 2-4 |
 | `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_ROLLBACK.sql` | Rollback SQL for Phase 1F rows |
+| `docs/hermes/HERMES_SOURCE_DISCOVERY_AND_MEMORY_DESIGN.md` | **Source discovery design** — hermes_research_sources table, per-ticker source portfolios, quality scoring, seed URLs, 5-phase rollout |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
