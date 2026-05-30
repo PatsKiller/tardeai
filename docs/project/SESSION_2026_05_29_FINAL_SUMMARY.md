@@ -128,12 +128,18 @@
 - DB writes: 1 row (SHFS id=860 strategy_id, operator-approved)
 - Cron changes: enrichment window extended to 4AM-7:30PM (committed in other session)
 
-## Hermes v4 Design Package
+## Hermes v4 — Full Pre-Install Audit Complete (2026-05-30)
 
-* Hermes v4 strategic design package saved to docs/hermes/.
-* Hermes is planned as a Trade AI sidecar research desk, second brain, memory layer, and challenger.
-* Execution plan deferred until compatibility audit.
-* No install performed.
+* Hermes v4 strategic design package saved to docs/hermes/ (5 files).
+* NousResearch/hermes-agent researched: real Python CLI, MIT, local Ollama supported.
+* Compatibility audit: gemma3:12b 131K context exceeds 64K requirement, project-scoped via HERMES_HOME, no Claude Code conflict.
+* Phase P0 final gate: **GO** — all 7 verification sections pass, no blockers.
+* Install execution plan, read-only pilot plan, and rollback plan documented.
+* Data ingestion architecture designed: 4-phase staged pipeline (file outbox → staging table → reviewed promotion → dashboard).
+* 8 existing tables assessed for Hermes compatibility: 5 safe, 3 staging-only.
+* Google Drive cleaned: stale duplicate docs/ folder archived (331 files), 88 loose root files organized, root now clean.
+* Sync script pagination bug fixed (--max=20 → --max=1000).
+* No Hermes install performed. Awaiting operator approval.
 * No code changes, DB writes, broker actions, or cron changes.
 
 ## Remaining Work

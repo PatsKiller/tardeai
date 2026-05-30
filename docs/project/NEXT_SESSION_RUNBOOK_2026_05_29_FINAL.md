@@ -54,23 +54,27 @@ curl -s "http://127.0.0.1:7777/api/v2/paper-proposals/lifecycle-inspector?propos
 - [ ] Continue journal/automated-trading validation if warnings
 - [ ] Consider 50+ llama.cpp canary dry-runs before routing change
 
-## Hermes v4 Next Step
+## Hermes v4 — Ready for Install Approval
 
-1. Confirm `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.md` exists.
-2. Read `docs/hermes/Hermes_Project_Memory_Notes_v4.md`.
-3. Do not install Hermes yet.
-4. Run a Hermes compatibility audit first.
-5. Confirm:
-   - install behavior
-   - model provider support
-   - memory storage
-   - local model compatibility
-   - whether Hermes calls external APIs
-   - sandbox path
-   - security/permissions
-   - rollback/uninstall path
-   - whether it conflicts with Claude Code, Ollama, llama.cpp, cron, or Trade AI services
-6. Build execution plan only after audit.
+All pre-install gates passed (2026-05-30):
+
+1. `docs/hermes/HERMES_COMPATIBILITY_AUDIT.md` — COMPLETE, no blockers
+2. `docs/hermes/HERMES_INSTALL_EXECUTION_PLAN.md` — COMPLETE, 3 gates defined
+3. `docs/hermes/HERMES_READ_ONLY_PILOT_PLAN.md` — COMPLETE, 5 agents, 4 phases
+4. `docs/hermes/HERMES_PHASE_P0_FINAL_GATE.md` — **GO**, all 7 sections pass
+5. `docs/hermes/HERMES_ROLLBACK_PLAN.md` — COMPLETE, `rm -rf hermes_sidecar/`
+6. `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` — COMPLETE, 4-phase staged pipeline
+7. `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` — COMPLETE, Gate 1 artifacts saved
+
+**Next action:** operator says `Approve Hermes sidecar install.`
+
+Install will:
+- Create `hermes_sidecar/` with local venv
+- Set `HERMES_HOME=hermes_sidecar/.hermes`
+- Configure Ollama-only (no cloud keys)
+- Run `hermes version` and `hermes doctor`
+- Verify no `~/.hermes` created, no systemd units, no cron
+- P0 file-only pilot (no DB writes)
 
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)
