@@ -52,6 +52,19 @@
 - No fix needed — if more automated trades desired, generate non-intraday proposals
 - R:R floating point gate bug fixed (commit 5e6b7fa) — was blocking all proposals
 
+## Hermes v4 Sidecar Strategy
+
+* Hermes v4 design package has been saved under docs/hermes/.
+* Hermes is not a separate trading worker.
+* Hermes is Trade AI's near-24/7 research desk, second brain, memory layer, and independent challenger.
+* Trade AI remains the source of truth and only execution authority.
+* Hermes target design includes 6 pods and 24 logical agents.
+* Hermes research scope includes trades, proposals, incubator, percolator, news, related news, YouTube transcripts, tickets, retirement, taxes, portfolio rotation, backtesting, journal, system health, dashboard truth audits, data freshness, and operator decisions.
+* Hermes starts read-only and file-memory based.
+* Hermes may eventually write advisory memory and recommendation queues only.
+* No Hermes install until compatibility audit and execution plan are approved.
+* Next action: create Hermes compatibility audit and implementation execution plan.
+
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
 2. `.venv/bin/python scripts/check_local_llm_health.py`

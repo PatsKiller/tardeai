@@ -182,6 +182,15 @@
 | `docs/atm_lifecycle_v1_2026_05_29/AUTOMATED_TRADING_LIVE_PATH_AUDIT_REPORT.md` | ATM audit: working correctly, intraday skip, execution-readiness endpoint |
 | `docs/atm_lifecycle_v1_2026_05_29/page_clarity_fixes/PLAYWRIGHT_JOURNAL_BACKTEST_CRAWL_20260529_1506.md` | 15/15 Playwright screenshots verifying new labels ([Drive archive](https://drive.google.com/file/d/1DY_kup-0QgZyHSfE74ibvLhrJCLYkLqa/view)) |
 
+### Hermes Sidecar Strategy
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.md` | **Hermes v4 strategic design** — Trade AI sidecar, 24/7 research desk, second brain, memory layer, challenger, 6 pods, 24 logical agents, local-first model policy, safety guardrails, no execution authority |
+| `docs/hermes/Hermes_Project_Memory_Notes_v4.md` | Durable project memory notes for Hermes v4 rollout and next-session execution planning |
+| `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.pdf` | Formatted PDF copy |
+| `docs/hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.docx` | Editable Word copy |
+| `docs/hermes/Hermes_Sidecar_Strategy_v4_Package.zip` | Packaged archive |
+
 ### Discovery Artifacts
 | Document | Purpose |
 |----------|---------|

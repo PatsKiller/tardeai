@@ -128,6 +128,14 @@
 - DB writes: 1 row (SHFS id=860 strategy_id, operator-approved)
 - Cron changes: enrichment window extended to 4AM-7:30PM (committed in other session)
 
+## Hermes v4 Design Package
+
+* Hermes v4 strategic design package saved to docs/hermes/.
+* Hermes is planned as a Trade AI sidecar research desk, second brain, memory layer, and challenger.
+* Execution plan deferred until compatibility audit.
+* No install performed.
+* No code changes, DB writes, broker actions, or cron changes.
+
 ## Remaining Work
 1. Add UI "Inspect" button for lifecycle inspector (P2)
 2. Add retry history UI/dashboard (P2)
