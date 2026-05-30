@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-05-29
+**Updated:** 2026-05-30
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -208,6 +208,8 @@
 | `docs/hermes/HERMES_PHASE1C_SAFE_VIEW_DRAFTS.sql` | 8 safe view drafts (not applied) |
 | `docs/hermes/HERMES_PHASE1C_READ_GRANT_DRAFTS.sql` | Read grant drafts for hermes_readonly (not applied) |
 | `docs/hermes/HERMES_PHASE1C_SECURITY_FINDINGS.md` | Security findings — 14 denied tables, 10 masked columns, 6 needing review |
+| `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
+| `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts
