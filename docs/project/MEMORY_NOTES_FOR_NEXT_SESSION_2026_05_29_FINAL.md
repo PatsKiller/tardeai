@@ -92,8 +92,13 @@
 ### Hermes Current Prohibited State
 - No real research ingestion yet, no embeddings, no production promotions, no daemon/cron, no broker/proposal/trade/journal mutation
 
+### Phase 1E Complete
+- **First real Hermes research** (2026-05-30): FLYW thesis challenge via gemma3:12b. Staged as hermes_research_intelligence id=1. Used 3 safe views (7 trades, 3 snapshots, 4 proposals). Quality: good — evidence-backed, no fabrication.
+- Zero production writes, zero embeddings, zero broker access.
+
 ### Next Gate
-- **Phase 1E** — first real Hermes research ingestion into staging only (requires operator approval)
+- **Phase 1F** — additional Hermes research runs + batch ingestion (requires operator approval)
+- Embeddings, production promotion, dashboard Hermes Challenger all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
