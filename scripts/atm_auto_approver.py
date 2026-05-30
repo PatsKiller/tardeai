@@ -396,22 +396,11 @@ def run_cycle():
             continue
 
         if is_same_day_skip(sid):
-            # Same-day strategies can't be auto-traded by ATM (15-min cadence too slow)
-            # Reject so they stop re-alerting — operator can manually approve via Telegram
-            if mode == "active":
-                cur.execute("""UPDATE paper_trade_proposals
-                    SET status='REJECTED', rejection_reason='atm_same_day_skip: cadence too slow for this strategy',
-                        rejected_at=NOW(), updated_at=NOW()
-                    WHERE id=%s AND status='PENDING'""", [pid])
-                conn.commit()
-            reasons.append({"gate": "same_day_strategy_atm_cadence_too_slow"})
-            _log_decision(conn, pid, sym, sid, target, acct_broker, acct_mode,
-                         "rejected", reasons, health, pos_open, pos_total,
-                         new_today, new_total, pnl_acct, total_pnl_pct,
-                         b1_flag, config_hash, mode)
-            rejected_count += 1
-            log.info(f"  {sym}: rejected (same-day strategy — ATM cadence too slow)")
-            continue
+            # Same-day strategies (momentum_scalp, gap_and_go) proceed through normal
+            # ATM gates. The cadence skip was removed because ATM should auto-trade
+            # all approved strategies. If timing is critical, the enrichment pipeline
+            # should trigger ATM evaluation immediately on ENTRY_ZONE_VALID.
+            log.info(f"  {sym}: same-day strategy {sid} — proceeding through normal ATM gates")
 
         # ── 2e: ATM-specific gates (skipped for force_approve) ──
         if atm_action != "force_approve":

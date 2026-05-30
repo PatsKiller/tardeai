@@ -601,6 +601,22 @@ def enrich_one(conn, proposal, dry_run=False, no_llm=False, queue_llm_only=False
         if expired:
             actions.append('AUTO_EXPIRED')
             return {'id': pid, 'symbol': symbol, 'actions': actions, 'expired': True}
+
+        # Immediate ATM trigger when proposal reaches ENTRY_ZONE_VALID
+        if new_lifecycle == 'ENTRY_ZONE_VALID' and not dry_run:
+            try:
+                import subprocess as _sp
+                _sp.Popen(
+                    [sys.executable, str(Path(__file__).resolve().parent / "atm_auto_approver.py")],
+                    stdout=open(str(Path(__file__).resolve().parent.parent / "logs" / "atm_immediate.log"), "a"),
+                    stderr=open(str(Path(__file__).resolve().parent.parent / "logs" / "atm_immediate.log"), "a"),
+                    cwd=str(Path(__file__).resolve().parent.parent),
+                )
+                log.info(f"  ⚡ Triggered immediate ATM evaluation for {symbol} (ENTRY_ZONE_VALID)")
+                actions.append('ATM_TRIGGERED')
+            except Exception as _atm_err:
+                log.warning(f"  ATM immediate trigger failed: {_atm_err}")
+
         # Update local proposal dict for downstream computations
         proposal['current_price'] = price
         proposal['price_drift_pct'] = drift_pct
