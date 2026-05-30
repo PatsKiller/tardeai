@@ -12342,7 +12342,7 @@ def _system_access_links():
         },
         {
             "name": "Hermes Gateway",
-            "url": f"http://{ts_fqdn}:18790",
+            "url": f"http://{ts_fqdn}:18790/health",
             "localhost_url": "http://localhost:18790",
             "health_url": f"http://{ts_fqdn}:18790/health",
             "category": "localhost",
