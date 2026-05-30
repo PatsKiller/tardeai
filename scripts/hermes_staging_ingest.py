@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""
+Hermes Staging Ingestion Script — Trade AI v12
+
+Controlled write path for Hermes research/intelligence into hermes_* staging tables.
+Defaults to --dry-run. Requires --apply for committed writes.
+Writes ONLY to hermes_* tables. Rejects production table targets.
+
+Usage:
+    python scripts/hermes_staging_ingest.py --input <path.json> --table <hermes_table> [--dry-run|--apply]
+    cat payload.json | python scripts/hermes_staging_ingest.py --table hermes_memory_events [--apply]
+"""
+
+import argparse
+import json
+import os
+import sys
+import re
+from datetime import datetime, timezone
+
+# ---------------------------------------------------------------------------
+# Safety constants
+# ---------------------------------------------------------------------------
+
+ALLOWED_TABLES = {
+    "hermes_research_intelligence",
+    "hermes_validation_findings",
+    "hermes_alerts",
+    "hermes_embedding_queue",
+    "hermes_memory_events",
+}
+
+# hermes_promotion_audit is NOT writable via this script
+
+FORBIDDEN_KEYWORDS = [
+    "broker", "place_order", "submit_order", "cancel_order",
+    "alpaca", "paper_trade_proposals", "paper_trades",
+    "trade_journal", "journal_entries", "execute_trade",
+    "approve_proposal", "reject_proposal", "expire_proposal",
+    "mutate_proposal", "mutate_trade", "mutate_journal",
+]
+
+REQUIRED_COLUMNS = {
+    "hermes_research_intelligence": [
+        "hermes_agent_name", "research_type", "topic", "summary",
+        "freshness_date", "model_used",
+    ],
+    "hermes_validation_findings": [
+        "hermes_agent_name", "finding_type", "severity", "description",
+    ],
+    "hermes_alerts": [
+        "hermes_agent_name", "alert_type", "severity", "title", "description",
+    ],
+    "hermes_embedding_queue": [
+        "source_research_id", "title", "content",
+    ],
+    "hermes_memory_events": [
+        "hermes_agent_name", "event_type", "topic", "content",
+    ],
+}
+
+# Columns that may appear in payloads (superset across all tables)
+KNOWN_COLUMNS = {
+    "hermes_agent_name", "research_type", "symbol", "related_trade_id",
+    "related_proposal_id", "topic", "summary", "thesis", "thesis_type",
+    "evidence_json", "confidence_score", "freshness_date", "source_urls_json",
+    "model_used", "prompt_hash", "context_type_used", "status", "quality_score",
+    "tags", "strategy_tags", "agent_tags",
+    "finding_type", "severity", "affected_table", "affected_id",
+    "description", "recommended_action", "auto_fixable",
+    "alert_type", "title", "related_research_id", "related_finding_id",
+    "source_research_id", "content", "source_type_target",
+    "event_type", "metadata_json", "expires_at",
+    "source",  # must be 'hermes'
+}
+
+
+def get_db_connection():
+    """Connect to Trade AI database using .env credentials."""
+    try:
+        import psycopg2
+    except ImportError:
+        # Fall back to subprocess psql
+        return None
+
+    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+    db_pass = None
+    if os.path.exists(env_path):
+        with open(env_path) as f:
+            for line in f:
+                if line.startswith('DB_PASSWORD='):
+                    db_pass = line.strip().split('=', 1)[1]
+    if not db_pass:
+        print("ERROR: DB_PASSWORD not found in .env", file=sys.stderr)
+        sys.exit(1)
+
+    return psycopg2.connect(
+        host='localhost', dbname='trade_ai',
+        user='trade_ai', password=db_pass
+    )
+
+
+def validate_payload(payload, table):
+    """Validate payload against schema rules. Returns (ok, errors)."""
+    errors = []
+
+    # 1. Source must be 'hermes'
+    source = payload.get("source", "hermes")
+    if source != "hermes":
+        errors.append(f"REJECTED: source='{source}' — must be 'hermes'")
+
+    # 2. Required columns
+    for col in REQUIRED_COLUMNS.get(table, []):
+        if col not in payload or payload[col] is None or payload[col] == "":
+            errors.append(f"MISSING required column: {col}")
+
+    # 3. Check for forbidden mutation language in text fields
+    text_fields = " ".join(str(v) for v in payload.values() if isinstance(v, str))
+    for kw in FORBIDDEN_KEYWORDS:
+        if kw.lower() in text_fields.lower():
+            errors.append(f"REJECTED: forbidden keyword '{kw}' found in payload text")
+
+    # 4. Confidence score range
+    cs = payload.get("confidence_score")
+    if cs is not None:
+        try:
+            cs = float(cs)
+            if cs < 0 or cs > 1:
+                errors.append(f"confidence_score {cs} out of range [0, 1]")
+        except (ValueError, TypeError):
+            errors.append(f"confidence_score '{cs}' is not numeric")
+
+    return len(errors) == 0, errors
+
+
+def build_insert(table, payload):
+    """Build parameterized INSERT statement. Forces source='hermes'."""
+    payload["source"] = "hermes"
+    payload.setdefault("status", "staged")
+    payload["created_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Filter to known columns only
+    cols = []
+    vals = []
+    placeholders = []
+    for k, v in payload.items():
+        if k in KNOWN_COLUMNS or k in ("source", "status", "created_at"):
+            cols.append(k)
+            # Convert dicts/lists to JSON strings for JSONB columns
+            if isinstance(v, (dict, list)):
+                vals.append(json.dumps(v))
+            else:
+                vals.append(v)
+            placeholders.append("%s")
+
+    sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id, created_at, status"
+    return sql, vals
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Hermes staging table ingestion")
+    parser.add_argument("--input", "-i", help="Path to JSON payload file (or use stdin)")
+    parser.add_argument("--table", "-t", required=True, help="Target hermes_* table")
+    parser.add_argument("--apply", action="store_true", help="Commit the write (default: dry-run)")
+    parser.add_argument("--dry-run", action="store_true", default=True, help="Validate only (default)")
+    args = parser.parse_args()
+
+    # If --apply is set, disable dry-run
+    dry_run = not args.apply
+
+    # 1. Validate table name
+    if args.table not in ALLOWED_TABLES:
+        print(f"REJECTED: table '{args.table}' not in allowed list: {sorted(ALLOWED_TABLES)}")
+        sys.exit(1)
+
+    # 2. Reject production table names
+    if not args.table.startswith("hermes_"):
+        print(f"REJECTED: table '{args.table}' is not a hermes_* table")
+        sys.exit(1)
+
+    # 3. Read payload
+    if args.input:
+        with open(args.input) as f:
+            payload = json.load(f)
+    else:
+        payload = json.load(sys.stdin)
+
+    print(f"{'[DRY-RUN]' if dry_run else '[APPLY]'} Target: {args.table}")
+    print(f"  Payload keys: {sorted(payload.keys())}")
+
+    # 4. Validate
+    ok, errors = validate_payload(payload, args.table)
+    if not ok:
+        print(f"\n  VALIDATION FAILED ({len(errors)} error(s)):")
+        for e in errors:
+            print(f"    - {e}")
+        sys.exit(1)
+    print("  Validation: PASSED")
+
+    # 5. Build SQL
+    sql, vals = build_insert(args.table, payload)
+    print(f"  SQL: {sql[:120]}...")
+    print(f"  Values: {len(vals)} parameters")
+
+    if dry_run:
+        print("\n  DRY-RUN: No database write performed.")
+        print("  Use --apply to commit.")
+        sys.exit(0)
+
+    # 6. Apply
+    conn = get_db_connection()
+    if conn is None:
+        print("ERROR: psycopg2 not available and no fallback implemented", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        cur = conn.cursor()
+        cur.execute(sql, vals)
+        result = cur.fetchone()
+        conn.commit()
+        row_id, created_at, status = result
+        print(f"\n  COMMITTED: id={row_id}, created_at={created_at}, status={status}")
+        print(f"  Table: {args.table}")
+        print(f"  Source: hermes (enforced)")
+    except Exception as e:
+        conn.rollback()
+        print(f"\n  ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()

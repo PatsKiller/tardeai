@@ -202,6 +202,8 @@
 | `docs/hermes/HERMES_PHASE1_DB_STAGING_ROLLBACK.sql` | Rollback SQL for Phase 1 tables |
 | `docs/hermes/HERMES_PHASE1A_DB_ROLES_REPORT.md` | **Phase 1A roles report** — COMPLETE, hermes_readonly + hermes_staging_writer created, 22 grants on hermes_* only, zero production grants |
 | `docs/hermes/HERMES_PHASE1A_DB_ROLES_ROLLBACK.sql` | Rollback SQL for Phase 1A roles/grants |
+| `docs/hermes/HERMES_PHASE1B_RUNTIME_STAGING_WRITES_REPORT.md` | **Phase 1B report** — ingestion script created, 5/5 tests pass, smoke row id=2, production unchanged |
+| `docs/hermes/HERMES_PHASE1B_RUNTIME_STAGING_WRITES_ROLLBACK.sql` | Rollback SQL for Phase 1B smoke row |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts
