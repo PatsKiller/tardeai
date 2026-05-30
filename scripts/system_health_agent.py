@@ -921,7 +921,24 @@ def run_health_check(dry_run=True, verbose=False):
             if _total_scans > 0 and _zero_float / _total_scans > 0.5:
                 pipeline_alerts.append(f"⚠️ Screener data quality: {_zero_float}/{_total_scans} scans have zero float")
 
-            # 7. Pre-promotion gate blocking — detect if ALL proposals are being blocked
+            # 7. Open trade agent coverage — detect trades with no recent agent analysis
+            try:
+                cur.execute("""SELECT pt.symbol FROM paper_trades pt
+                    WHERE pt.status = 'open'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM watchlist_agent_results war
+                        WHERE war.symbol = pt.symbol
+                        AND war.created_at > NOW() - INTERVAL '3 days'
+                    )""")
+                _uncovered = [r[0] for r in cur.fetchall()]
+                if _uncovered:
+                    pipeline_alerts.append(
+                        f"⚠️ {len(_uncovered)} open trade(s) with no agent analysis in 3 days: {', '.join(_uncovered[:5])}"
+                    )
+            except Exception:
+                pass
+
+            # 8. Pre-promotion gate blocking — detect if ALL proposals are being blocked
             try:
                 import pathlib as _pl
                 _olog = _pl.Path(PROJECT_ROOT / "logs" / "screener_pm.log")
