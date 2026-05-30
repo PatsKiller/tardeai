@@ -79,6 +79,29 @@ Durable context for the next Trade AI session.
 4. **Tiered escalation** — unresolved problems go through Tier 1→2→3a→3b→3c chain (see above)
 - Full architecture doc: `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md`
 
+## Auto-Trading Pipeline — 4 Cascading Fixes (2026-05-29)
+
+Zero trades executed today due to 4 cascading failures. All fixed:
+
+| # | Problem | Root Cause | Fix | Commit |
+|---|---------|-----------|-----|--------|
+| 1 | 4 AM proposals died unenriched | Enrichment crons only ran 9-15 | Extended to `*/10 4-19` | 12325ce |
+| 2 | All new proposals blocked | R:R floating point: `2.00 < 2.0` | Added round(4) + 0.005 tolerance | 5e6b7fa |
+| 3 | momentum_scalp/gap_and_go always rejected | `same_day_skip_strategies` gate | Removed skip, proceed through normal gates | 5caf445 |
+| 4 | FATN ready at 14:20, ATM didn't look until 14:30 | ATM only on 15-min cron | Immediate ATM trigger on ENTRY_ZONE_VALID | 5caf445 |
+
+**Verify tomorrow morning:**
+- 4 AM proposals get enriched within 30 min
+- Proposals with R:R ≈ 2.0 pass pre-promotion gate
+- momentum_scalp proposals proceed through ATM (not auto-skipped)
+- ATM fires immediately when enrichment sets ENTRY_ZONE_VALID
+- If screener finds liquid candidates, trades should execute
+
+**Health agent now monitors:**
+- Pre-promotion gate blocking rate (R:R false positives)
+- Open trades with no agent analysis in 3+ days
+- Enrichment-stuck proposals (enrich-before-reject)
+
 ## Hardcoded Model References
 
 - **FIXED** (commits 40c1ae1, b6e7571): 13 runtime scripts cleaned
