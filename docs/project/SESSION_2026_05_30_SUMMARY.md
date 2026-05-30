@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-31 commits. Hermes sidecar fully installed and integrated through Phase 1E (first real research ingestion). Google Drive cleaned. System Access, System Applications, and Hermes Chat pages added to Command Center.
+34 commits. Hermes sidecar fully installed and integrated through Phase 1F (batch research ingestion). Google Drive cleaned. System Access, System Applications, and Hermes Chat pages added to Command Center. 4 research rows staged in hermes_research_intelligence (FLYW, SPRC, SCHD, APPS).
 
 ## Commits (28 total)
 
@@ -138,19 +138,31 @@
 | Commit | Description |
 |--------|-------------|
 | c614faa | Hermes phase 1E first staged research ingestion |
+| f1d3bf0 | Hermes phase 1F batch staged research ingestion |
 | 9daf9da | Phase 1D session closeout |
-| d2ec349 | Session summary (28 commits) |
+| e36d5be, d2ec349 | Session summaries |
 
-- FLYW thesis challenge via gemma3:12b — 3 safe views, 7 trades, 3 snapshots, 4 proposals
-- Staged as hermes_research_intelligence id=1 (confidence 0.6)
-- Quality: evidence-backed, no fabrication, identified strategy mismatch + stop patterns
-- Zero production writes, zero embeddings, zero broker access
+### Phase 1E — First Research
+- FLYW thesis challenge via gemma3:12b — staged id=1 (confidence 0.6)
+
+### Phase 1F — Batch Research
+- 5 tasks attempted, 3 staged, 2 rejected (system tasks need prompt refinement)
+- SPRC ticker challenge id=2, SCHD news reframe id=3, APPS trade reflection id=4
+- Ingestion script `alpaca` false-positive fixed
+- hermes_research_intelligence total: 4 rows
+
+### Hermes Research Sources
+- Hermes reads ONLY internal Trade AI data via safe DB views
+- No external APIs connected (Google, social, web search)
+- Trade AI's existing pipelines already provide: news, social, YouTube, SEC, FRED data
+- Hermes accesses this via 37 direct table grants + 8 safe views
 
 ## Next Steps
 
-1. Phase 1F — additional Hermes research runs + batch ingestion (requires approval)
+1. Ongoing/bulk Hermes research (requires approval)
 2. Hermes embeddings (requires approval)
 3. Production promotion (requires approval)
 4. Dashboard Hermes Challenger (requires approval)
 5. Define 5 pilot Hermes agent workflows
-6. Audit backup schedule (last automated: April 21)
+6. System-level validation prompt refinement (pipeline/agent tasks)
+7. Audit backup schedule (last automated: April 21)
