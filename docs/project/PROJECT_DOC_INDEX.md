@@ -167,7 +167,7 @@
 ### Session 2026-05-29 Final — Proposal Lifecycle, Self-Healing, SHFS Apply
 | Document | Purpose |
 |----------|---------|
-| `docs/project/SESSION_2026_05_29_FINAL_SUMMARY.md` | **Final session summary** — 31 commits, classifier 100%, proposal lifecycle P0/P1, self-healing escalation, Gemma4 31B |
+| `docs/project/SESSION_2026_05_29_FINAL_SUMMARY.md` | **Final session summary** — 40 commits, classifier 100%, label clarity, ATM audit, execution-readiness endpoint, Playwright 15/15 |
 | `docs/project/MEMORY_NOTES_FOR_NEXT_SESSION_2026_05_29_FINAL.md` | **Memory notes** — durable context: classifier complete, model policy, next observations |
 | `docs/project/NEXT_SESSION_RUNBOOK_2026_05_29_FINAL.md` | **Runbook** — preflight, enrichment health, escalation logs, remaining P2 |
 | `docs/atm_lifecycle_v1_2026_05_29/SHFS_860_MANUAL_APPLY_AUDIT.md` | SHFS id=860 manual classification: speculative_growth, operator-approved |
@@ -178,6 +178,9 @@
 | `docs/atm_lifecycle_v1_2026_05_29/SELF_HEALING_HEALTH_AGENT_FINAL_VALIDATION_REPORT.md` | Self-healing validation: all critical paths PASS |
 | `docs/atm_lifecycle_v1_2026_05_29/SELF_HEALING_RETRY_CMD_DIRECT_EXECUTION_REPORT.md` | retry_cmd hardening: allowlist, 7/7 tests |
 | `docs/project/SYSTEM_HEALTH_AGENT_ARCHITECTURE.md` | System health agent architecture with Claude Code escalation |
+| `docs/atm_lifecycle_v1_2026_05_29/BACKTESTING_LLM_REVIEW_LABEL_CLARITY_REPORT.md` | Label clarity: KPI renames, sample-size badges, context banners |
+| `docs/atm_lifecycle_v1_2026_05_29/AUTOMATED_TRADING_LIVE_PATH_AUDIT_REPORT.md` | ATM audit: working correctly, intraday skip, execution-readiness endpoint |
+| `docs/atm_lifecycle_v1_2026_05_29/page_clarity_fixes/PLAYWRIGHT_JOURNAL_BACKTEST_CRAWL_20260529_1506.md` | 15/15 Playwright screenshots verifying new labels ([Drive archive](https://drive.google.com/file/d/1DY_kup-0QgZyHSfE74ibvLhrJCLYkLqa/view)) |
 
 ### Discovery Artifacts
 | Document | Purpose |

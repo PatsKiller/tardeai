@@ -10,6 +10,13 @@ grep -E 'ALPACA_MODE|LLM_DISABLE_LIVE_EXECUTION' .env
 curl -s http://127.0.0.1:11434/api/ps | jq .
 ```
 
+## 1b. Visual Check — Backtesting Labels
+1. Open screenshot archive: `playwright_journal_backtest_20260529_1506.tgz` ([Drive](https://drive.google.com/file/d/1DY_kup-0QgZyHSfE74ibvLhrJCLYkLqa/view))
+2. Confirm labels are clear: Backtest Rows, Strategy Coverage, LLM Review Coverage, source-aware filter text, small-sample badges
+3. Confirm LLM Review Coverage tab doesn't look like thousands of live approvals
+4. Confirm Trades tab distinguishes replay from champion via Source column
+5. If labels still confusing, create UI polish patch only — no DB/trading changes
+
 ## 2. Check Pre-Market Enrichment Health
 ```bash
 # Check for rejected-before-enrichment (should be 0)
