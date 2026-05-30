@@ -83,7 +83,17 @@
 * **Future: Hermes agent workflows/orchestration dashboard** — define 5 pilot agents as scheduled workflows, show run history/outputs/schedules in Hermes Chat sidebar. Requires separate approval.
 * **Phase 1D safe views and grants APPLIED** (2026-05-30): 8 hermes_v_* views created (account-masked, blob-excluded), 40 SELECT grants to hermes_readonly. Pipeline health view column mismatch fixed. 76K+ rows accessible.
 * **Hermes system prompt fixed** (2026-05-30): Injected date, role identity, and anti-hallucination guardrails. Hermes no longer fabricates prices, index levels, or cites inaccessible sources.
-* Next action: define 5 pilot Hermes agent workflows, connect Hermes to DB views for contextual answers.
+* **Phase 1D VERIFIED** (2026-05-30): Independent verification — 8/8 views, 46 SELECT-only grants, 14 denied tables confirmed, zero Hermes embeddings, zero production writes. All checks PASS.
+* **Session closed** (2026-05-30): 29 commits. Closeout doc at `docs/hermes/HERMES_PHASE1D_SESSION_CLOSEOUT.md`.
+
+### Hermes Current Allowed State
+- Sidecar installed, staging tables exist, safe read views/grants active, controlled staging ingest script ready, gateway live on :18790, Chat page at /v2/hermes
+
+### Hermes Current Prohibited State
+- No real research ingestion yet, no embeddings, no production promotions, no daemon/cron, no broker/proposal/trade/journal mutation
+
+### Next Gate
+- **Phase 1E** — first real Hermes research ingestion into staging only (requires operator approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

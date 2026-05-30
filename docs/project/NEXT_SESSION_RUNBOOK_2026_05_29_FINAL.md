@@ -54,33 +54,34 @@ curl -s "http://127.0.0.1:7777/api/v2/paper-proposals/lifecycle-inspector?propos
 - [ ] Continue journal/automated-trading validation if warnings
 - [ ] Consider 50+ llama.cpp canary dry-runs before routing change
 
-## Hermes v4 — Ready for Install Approval
+## Hermes — Phase 1D Complete, Phase 1E Next
 
-All pre-install gates passed (2026-05-30):
+All phases through 1D completed and verified (2026-05-30, 29 commits):
 
-1. `docs/hermes/HERMES_COMPATIBILITY_AUDIT.md` — COMPLETE, no blockers
-2. `docs/hermes/HERMES_INSTALL_EXECUTION_PLAN.md` — COMPLETE, 3 gates defined
-3. `docs/hermes/HERMES_READ_ONLY_PILOT_PLAN.md` — COMPLETE, 5 agents, 4 phases
-4. `docs/hermes/HERMES_PHASE_P0_FINAL_GATE.md` — **GO**, all 7 sections pass
-5. `docs/hermes/HERMES_ROLLBACK_PLAN.md` — COMPLETE, `rm -rf hermes_sidecar/`
-6. `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` — COMPLETE, 4-phase staged pipeline
-7. `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` — COMPLETE, Gate 1 artifacts saved
+| Phase | Status | Key Artifact |
+|-------|--------|-------------|
+| P0 Install | COMPLETE | hermes-agent 0.15.2, project-scoped |
+| P1 Tables | COMPLETE | 6 hermes_* tables, 34 indexes, 18 constraints |
+| P1A Roles | COMPLETE | hermes_readonly + hermes_staging_writer |
+| P1B Writes | COMPLETE | Ingestion script, smoke row id=2 |
+| P1C Map | COMPLETE | 392 tables audited, 32 allow / 14 deny |
+| P1D Views | VERIFIED | 8 views, 46 SELECT grants, all checks PASS |
 
-**Next action:** operator says `Approve Hermes sidecar install.`
+**Current state:**
+- Hermes sidecar installed, gateway on :18790, Chat at /v2/hermes
+- Staging tables + safe views + controlled ingestion ready
+- Zero real research ingestion, zero embeddings, zero production writes
 
-Install will:
-- Create `hermes_sidecar/` with local venv
-- Set `HERMES_HOME=hermes_sidecar/.hermes`
-- Configure Ollama-only (no cloud keys)
-- Run `hermes version` and `hermes doctor`
-- Verify no `~/.hermes` created, no systemd units, no cron
-- P0 API-read only (no DB writes, no file outbox as primary)
-- Database-first architecture: 6 hermes_* tables created in Phase 1 (separate approval)
-- Shared scoring (content_scoring.py), same embedding model (nomic-embed-text 768-dim)
-- Hermes validation challenger writes to hermes_validation_findings + hermes_alerts
-- Phase 1 DB staging COMPLETE: 6 hermes_* tables created, 0 rows, roles deferred (need postgres)
-- Rollback: `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
-- Next: operator approval for Hermes runtime DB writes + postgres access for role creation
+**Next gate: Phase 1E — first real Hermes research ingestion into staging only**
+
+Must remain:
+- No embeddings
+- No promotion to production tables
+- No dashboard Hermes Challenger
+- No daemon/cron
+- No broker/proposal/paper_trades/journal mutation
+
+Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
 
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)
