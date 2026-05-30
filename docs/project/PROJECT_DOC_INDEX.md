@@ -211,6 +211,8 @@
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | Phase 1D report — 8 views created, 40 grants applied, pipeline fix |
 | `docs/hermes/HERMES_PHASE1D_SAFE_VIEWS_AND_GRANTS_VERIFICATION.md` | **Phase 1D verification — PASS**, all 8 views present, 46 grants SELECT-only, 14 denied tables confirmed, zero Hermes embeddings |
 | `docs/hermes/HERMES_PHASE1D_SESSION_CLOSEOUT.md` | Phase 1D session closeout — verified, closed, next gate: Phase 1E |
+| `docs/hermes/HERMES_PHASE1E_FIRST_RESEARCH_INGESTION_REPORT.md` | **Phase 1E report** — first real Hermes research (FLYW thesis challenge), staged id=1, zero production writes |
+| `docs/hermes/HERMES_PHASE1E_FIRST_RESEARCH_INGESTION_ROLLBACK.sql` | Rollback SQL for Phase 1E row |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
