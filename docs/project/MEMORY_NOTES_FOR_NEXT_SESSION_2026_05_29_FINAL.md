@@ -16,8 +16,14 @@
 
 ## Backtesting UI
 - Source column added (green=replay, yellow=proposal, purple=champion)
-- Classified KPI: 3,593/3,593 in status API
-- KPI row is now 7 cards (was 6)
+- "Strategy Coverage" KPI: 3,593/3,593 in status API
+- KPI row is now 7 cards (was 6): Datasets, Runs, Backtest Rows, Results, Strategy Coverage, Flagged, Missed
+- Labels clarified: "Backtest Rows" not "Sim Trades", source-aware filter text
+- "LLM Review Coverage" tab (was "LLM Reviews") with explainer banner
+- Coverage cards: "Real Paper Trades With LLM Review" / "Backtest Rows With LLM Review"
+- Sample-size badges: "very small" (<5), "small sample" (<20) on Strategy + Trail Analysis
+- Context banner explains backtesting rows are not live broker orders
+- 15/15 Playwright screenshots captured verifying new labels
 
 ## Self-Healing / Escalation
 - retry_cmd direct execution hardened (commit 069fc8a)
@@ -38,9 +44,19 @@
 - LLM_DISABLE_LIVE_EXECUTION=true
 - Ollama remains production runtime
 
+## Automated Trading Audit
+- ATM is **active** and working correctly
+- Most proposals are momentum_scalp (intraday skip list) — correctly rejected
+- Non-intraday proposals (SNOW, ONDS) were approved and created paper trades
+- New endpoint: `GET /api/v2/atm/execution-readiness` (read-only diagnostic)
+- No fix needed — if more automated trades desired, generate non-intraday proposals
+- R:R floating point gate bug fixed (commit 5e6b7fa) — was blocking all proposals
+
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
 2. `.venv/bin/python scripts/check_local_llm_health.py`
 3. Check 4 AM enrichment logs for rejected-before-enrichment=0
 4. Check escalation queue/retry_cmd logs
 5. If Gemma4 31B Tier 3a ran overnight, verify output captured
+6. Check `GET /api/v2/atm/execution-readiness` for pending proposals
+7. Verify R:R gate is no longer blocking proposals (fixed in 5e6b7fa)
