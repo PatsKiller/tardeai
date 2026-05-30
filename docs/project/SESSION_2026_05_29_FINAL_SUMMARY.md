@@ -139,8 +139,19 @@
 * 8 existing tables assessed: 5 safe for promotion, 3 staging-only. Scoring via content_scoring.py, embeddings via nomic-embed-text 768-dim.
 * Google Drive cleaned: stale duplicate docs/ folder archived (331 files), 88 loose root files organized, root now clean.
 * Sync script pagination bug fixed (--max=20 → --max=1000).
-* No Hermes install performed. Awaiting operator approval.
-* No code changes, DB writes, broker actions, or cron changes.
+* Hermes install COMPLETE (P0-P1D): sidecar, DB staging, roles, views, grants all applied.
+* 19 Hermes-related commits on 2026-05-30.
+
+### Hermes Phase 1D — Safe Views and Grants (2026-05-30)
+* 8 hermes_v_* views created: account-masked, blob-excluded, 76K+ rows accessible
+* 40 SELECT grants to hermes_readonly (8 views + 32 direct tables)
+* Pipeline health view column mismatch fixed on apply
+* Gateway restarted and online on :18790
+
+### Hermes System Prompt Fixes (2026-05-30)
+* Injected current date, role identity, and advisory-only guardrails
+* Added anti-hallucination rules: no fabricated prices, no fake sources, no market data claims
+* Tested: date question → correct 2026-05-30; price question → "I don't have live market data access"
 
 ## Remaining Work
 1. Add UI "Inspect" button for lifecycle inspector (P2)
@@ -148,5 +159,6 @@
 3. Observe next 4 AM pre-market enrichment cycle
 4. Observe next natural Gemma4 31B Tier 3a escalation
 5. Generate more non-intraday proposals (swing/earnings/income) for ATM to approve
-6. Consider faster intraday execution path for momentum_scalp/gap_and_go
-7. Consider 50+ dry-run llama.cpp canary before production routing
+6. Connect Hermes to DB views for contextual answers
+7. Define 5 pilot Hermes agent workflows
+8. Consider 50+ dry-run llama.cpp canary before production routing
