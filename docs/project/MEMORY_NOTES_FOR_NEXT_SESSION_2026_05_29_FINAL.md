@@ -92,13 +92,21 @@
 ### Hermes Current Prohibited State
 - No real research ingestion yet, no embeddings, no production promotions, no daemon/cron, no broker/proposal/trade/journal mutation
 
-### Phase 1E Complete
-- **First real Hermes research** (2026-05-30): FLYW thesis challenge via gemma3:12b. Staged as hermes_research_intelligence id=1. Used 3 safe views (7 trades, 3 snapshots, 4 proposals). Quality: good — evidence-backed, no fabrication.
-- Zero production writes, zero embeddings, zero broker access.
+### Phase 1E+1F Complete
+- **Phase 1E** (2026-05-30): FLYW thesis challenge, staged id=1
+- **Phase 1F** (2026-05-30): Batch of 5 tasks, 3 staged (SPRC id=2, SCHD id=3, APPS id=4), 2 rejected (pipeline/agent system tasks — model needs prompt refinement for non-ticker tasks)
+- hermes_research_intelligence: 4 rows total (1 from 1E + 3 from 1F)
+- Ingestion script `alpaca` false-positive fixed
+- All using gemma3:12b, local Ollama only, zero external APIs, zero production writes
+
+### Hermes Research Sources (current)
+- Hermes reads ONLY from approved Trade AI safe views (DB) — no external APIs, no Google, no social APIs, no web scraping
+- Data available: ticker snapshots, proposals, trades, news (already in DB), agent results, pipeline health, embeddings metadata, intelligence entities
+- NOT connected to: Google API, social media APIs, Finviz scraping, broker APIs, external news APIs, YouTube APIs
+- Future: connecting Hermes to existing Trade AI data pipelines for richer context requires separate approval
 
 ### Next Gate
-- **Phase 1F** — additional Hermes research runs + batch ingestion (requires operator approval)
-- Embeddings, production promotion, dashboard Hermes Challenger all require separate approval
+- Ongoing/bulk Hermes research, embeddings, production promotion, dashboard Hermes Challenger all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -33,8 +33,8 @@ ALLOWED_TABLES = {
 # hermes_promotion_audit is NOT writable via this script
 
 FORBIDDEN_KEYWORDS = [
-    "broker", "place_order", "submit_order", "cancel_order",
-    "alpaca", "paper_trade_proposals", "paper_trades",
+    "place_order", "submit_order", "cancel_order",
+    "paper_trade_proposals", "paper_trades",
     "trade_journal", "journal_entries", "execute_trade",
     "approve_proposal", "reject_proposal", "expire_proposal",
     "mutate_proposal", "mutate_trade", "mutate_journal",

@@ -1,0 +1,153 @@
+{
+  "phase": "1F",
+  "task_id": "phase1f_task_05",
+  "generated_at": "2026-05-30T23:08:20.841255+00:00",
+  "source": "trade_ai_safe_views",
+  "symbol": null,
+  "research_type": "pipeline_quality_validation",
+  "safe_views_used": [
+    "hermes_v_agent_results_context"
+  ],
+  "redaction_statement": "Account names masked. No broker IDs, credentials, or personal data.",
+  "no_secrets_statement": "No API keys, tokens, or passwords present.",
+  "no_broker_access_statement": "No broker API calls performed.",
+  "no_production_mutation_statement": "Output goes to hermes_research_intelligence staging only.",
+  "context": [
+    {
+      "symbol": "DNP",
+      "agent": "risk_agent",
+      "confidence": 0.3,
+      "recommendation": "AVOID",
+      "next_action": "Flag for morning review and monitor closely for any changes in market conditions or analyst sentiment.",
+      "reason_codes": [
+        "technical_support",
+        "oversold",
+        "elevated_risk"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DNNG",
+      "agent": "risk_agent",
+      "confidence": 0.45,
+      "recommendation": "HOLD",
+      "next_action": "Morning review to reassess the situation in the context of the open market.",
+      "reason_codes": [
+        "technical_support",
+        "oversold",
+        "elevated_portfolio_heat",
+        "no_stop_loss"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DNA",
+      "agent": "steph",
+      "confidence": 0.45,
+      "recommendation": "TRIM",
+      "next_action": "Trim DNA in Roth IRA: shares \u2192 0 \u2192 target. Income impact: -$1,600/yr. SSDI impact: None. IRMAA risk: None.",
+      "reason_codes": [
+        "overweight",
+        "concentration_risk",
+        "technical_weak",
+        "macro_risk"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DMAX",
+      "agent": "risk_agent",
+      "confidence": 0.45,
+      "recommendation": "HOLD",
+      "next_action": "Flag for morning review. Monitor the market closely for any significant news or changes in volatility. Reassess the position based on the morning's trading activity and updated technical analysis.",
+      "reason_codes": [
+        "technical_support",
+        "elevated_portfolio_heat",
+        "illiquid_market"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DLTR",
+      "agent": "risk_agent",
+      "confidence": 0.4,
+      "recommendation": "AVOID",
+      "next_action": "Flag for morning review \u2013 monitor for potential stop trigger reversal and reassess based on market open.",
+      "reason_codes": [
+        "overbought",
+        "high_portfolio_heat",
+        "agent_avoid",
+        "technical_weakness"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DLNG",
+      "agent": "risk_agent",
+      "confidence": 0.45,
+      "recommendation": "AVOID",
+      "next_action": "Monitor closely for morning review.  Prepare to trim if the price declines significantly or the portfolio heat increases further.  Alert Alex for potential INCOME_CRITICAL escalation if the position c",
+      "reason_codes": [
+        "overvalued",
+        "technical_support",
+        "portfolio_heat",
+        "macro_risk"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DKS",
+      "agent": "risk_agent",
+      "confidence": 0.45,
+      "recommendation": "HOLD",
+      "next_action": "Flag for morning review. Reassess technical picture and monitor market conditions closely.  Prepare to TRIM if the price moves significantly below the $213.59 stop loss.",
+      "reason_codes": [
+        "technical_weakness",
+        "high_volatility",
+        "portfolio_heat",
+        "avoid_recommendation"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DJIA",
+      "agent": "risk_agent",
+      "confidence": 0.35,
+      "recommendation": "AVOID",
+      "next_action": "HOLD",
+      "reason_codes": [
+        "overbought",
+        "technical_support",
+        "portfolio_heat",
+        "peer_recommendation"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DIVP",
+      "agent": "risk_agent",
+      "confidence": 0.35,
+      "recommendation": "HOLD",
+      "next_action": "Tighten stop-loss to $26.06 and monitor closely. Continue to assess portfolio heat and agent sentiment.",
+      "reason_codes": [
+        "technical_support",
+        "portfolio_heat",
+        "conflicting_agent_opinions"
+      ],
+      "created_at": "2026-05-30"
+    },
+    {
+      "symbol": "DNUT",
+      "agent": "steph",
+      "confidence": 0.35,
+      "recommendation": "HOLD",
+      "next_action": "Monitor closely for a change in SMA trends or confirmation of the catalyst. Flag for morning review due to after-hours trading and illiquidity.",
+      "reason_codes": [
+        "weak_catalyst",
+        "negative_sma",
+        "income_potential"
+      ],
+      "created_at": "2026-05-30"
+    }
+  ]
+}

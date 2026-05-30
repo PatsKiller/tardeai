@@ -1,0 +1,38 @@
+{
+  "phase": "1F",
+  "task_id": "phase1f_task_03",
+  "generated_at": "2026-05-30T23:06:20.127235+00:00",
+  "source": "trade_ai_safe_views",
+  "symbol": "APPS",
+  "research_type": "trade_reflection",
+  "safe_views_used": [
+    "hermes_v_trade_reflection_context",
+    "hermes_v_ticker_context"
+  ],
+  "redaction_statement": "Account names masked. No broker IDs, credentials, or personal data.",
+  "no_secrets_statement": "No API keys, tokens, or passwords present.",
+  "no_broker_access_statement": "No broker API calls performed.",
+  "no_production_mutation_statement": "Output goes to hermes_research_intelligence staging only.",
+  "context": {
+    "trade": {
+      "symbol": "APPS",
+      "account_type": "Taxable",
+      "entry_price": 6.5356,
+      "exit_price": 7.16,
+      "pnl": 159.98,
+      "pnl_pct": null,
+      "exit_reason": "position_closed_in_alpaca",
+      "lifecycle_state": "closed",
+      "trade_date": "2026-05-27"
+    },
+    "ticker": {
+      "symbol": "APPS",
+      "snapshot_date": "2026-05-29",
+      "rsi": 84.68,
+      "beta": 2.48,
+      "sma50_pct": 73.14,
+      "intelligence_score": 40.0,
+      "intelligence_grade": "D"
+    }
+  }
+}
