@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-28 commits. Hermes sidecar fully installed and integrated through Phase 1D. Google Drive cleaned. System Access and System Applications pages added to Command Center. Hermes Chat page live with Ollama backend.
+31 commits. Hermes sidecar fully installed and integrated through Phase 1E (first real research ingestion). Google Drive cleaned. System Access, System Applications, and Hermes Chat pages added to Command Center.
 
 ## Commits (28 total)
 
@@ -133,10 +133,24 @@
 | Production table writes | ZERO |
 | Hermes embeddings | ZERO |
 
+## Phase 1E — First Real Research (added late session)
+
+| Commit | Description |
+|--------|-------------|
+| c614faa | Hermes phase 1E first staged research ingestion |
+| 9daf9da | Phase 1D session closeout |
+| d2ec349 | Session summary (28 commits) |
+
+- FLYW thesis challenge via gemma3:12b — 3 safe views, 7 trades, 3 snapshots, 4 proposals
+- Staged as hermes_research_intelligence id=1 (confidence 0.6)
+- Quality: evidence-backed, no fabrication, identified strategy mismatch + stop patterns
+- Zero production writes, zero embeddings, zero broker access
+
 ## Next Steps
 
-1. Define 5 pilot Hermes agent workflows
-2. Connect Hermes to DB views for contextual research answers
-3. Real Hermes research ingestion (requires approval)
-4. Hermes agent orchestration dashboard
-5. Audit backup schedule (last automated: April 21)
+1. Phase 1F — additional Hermes research runs + batch ingestion (requires approval)
+2. Hermes embeddings (requires approval)
+3. Production promotion (requires approval)
+4. Dashboard Hermes Challenger (requires approval)
+5. Define 5 pilot Hermes agent workflows
+6. Audit backup schedule (last automated: April 21)
