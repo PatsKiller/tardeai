@@ -76,6 +76,11 @@
 * Backup schedule gap: last automated backup April 21. Pre-migration schema backup taken. Weekly timer needs audit.
 * **Phase 1B staging writes COMPLETE** (2026-05-30): `scripts/hermes_staging_ingest.py` created (--dry-run default, --apply required). 5/5 tests pass (3 negative). Smoke row id=2 in hermes_memory_events. Production unchanged.
 * **Phase 1C read access map COMPLETE** (2026-05-30): 392 tables audited, 32 ALLOW, 8 ALLOW_WITH_MASK, 14 DENY, 6 NEEDS_REVIEW. 8 safe view drafts + grant drafts written. No grants applied.
+* **Hermes gateway live** (2026-05-30): port 18790, 0.0.0.0, Bearer auth. Chat page at /v2/hermes. Proxy via /api/v2/hermes/chat (key stays server-side).
+* **gemma3:12b tool-use incompatibility**: Ollama gemma3:12b does not support tool-calling mode. Hermes config set to `disable_tools: true`. If future Hermes agents need tool-use, evaluate gemma3:27b or Gemma4 31B.
+* **Ollama binding changed**: OLLAMA_HOST=0.0.0.0:11434 (was 127.0.0.1). Accessible via Tailscale. Config in zz-tradeai-llm-safety.conf.
+* **Weekly version check cron**: Sundays 06:00, writes to data/state/system_versions_latest.json (14 packages tracked).
+* **Future: Hermes agent workflows/orchestration dashboard** — define 5 pilot agents as scheduled workflows, show run history/outputs/schedules in Hermes Chat sidebar. Requires separate approval.
 * Next action: operator approval to apply safe views and read grants for Hermes production reads.
 
 ## What to Check First Next Session
