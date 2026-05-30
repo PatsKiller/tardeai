@@ -43,6 +43,7 @@ function ServiceRow({ s }: { s: Service }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text0)' }}>{s.name}</div>
         {s.url && <div style={{ fontSize: 10, color: 'var(--text3)', wordBreak: 'break-all' }}>{s.url}</div>}
+        {(s as any).localhost_url && <div style={{ fontSize: 10, color: 'var(--text3)', wordBreak: 'break-all', opacity: 0.6 }}>localhost: {(s as any).localhost_url}</div>}
         {s.note && <div style={{ fontSize: 10, color: 'var(--amber)', marginTop: 2 }}>{s.note}</div>}
         {s.install_path && <div style={{ fontSize: 10, color: 'var(--text3)' }}>Path: {s.install_path}</div>}
         {s.hermes_home && <div style={{ fontSize: 10, color: 'var(--text3)' }}>HERMES_HOME: {s.hermes_home}</div>}
