@@ -12275,6 +12275,277 @@ def _strategy_intelligence():
 
 # ── Route dispatch ─────────────────────────────────────────────────────────
 
+def _system_access_links():
+    """GET /api/v2/system/access-links — read-only service link inventory."""
+    import subprocess as _sp
+
+    def _check(url, timeout=3):
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, method='GET')
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            return "healthy" if resp.status < 400 else "warning"
+        except Exception:
+            return "down"
+
+    ts_fqdn = "ms01-openclaw.tail163d14.ts.net"
+    ts_ip = "100.66.120.124"
+
+    services = [
+        {
+            "name": "Command Center (Tailscale HTTPS)",
+            "url": f"https://{ts_fqdn}/",
+            "category": "tailscale",
+            "health": None,
+        },
+        {
+            "name": "Command Center (Tailscale HTTP)",
+            "url": f"http://{ts_fqdn}:7777/v2/",
+            "category": "tailscale",
+            "health": None,
+        },
+        {
+            "name": "ATM Control Room (Tailscale)",
+            "url": f"http://{ts_fqdn}:7777/v2/automated-trade-mode",
+            "category": "tailscale",
+            "health": None,
+        },
+        {
+            "name": "Portfolio Server",
+            "url": "http://localhost:7777",
+            "health_url": "http://localhost:7777/api/v2/system-health",
+            "category": "localhost",
+            "health": "healthy",  # self — this endpoint is running on 7777
+        },
+        {
+            "name": "Command Center",
+            "url": "http://localhost:7777/v2/",
+            "category": "localhost",
+            "health": "healthy",  # self — served by this process
+        },
+        {
+            "name": "OpenClaw Gateway",
+            "url": "http://localhost:18789",
+            "category": "localhost",
+            "health": _check("http://localhost:18789"),
+        },
+        {
+            "name": "Ollama",
+            "url": "http://localhost:11434",
+            "health_url": "http://localhost:11434/api/tags",
+            "category": "localhost",
+            "health": _check("http://localhost:11434/api/tags"),
+        },
+        {
+            "name": "Hermes Sidecar",
+            "url": None,
+            "category": "localhost",
+            "health": "unknown",
+            "note": "No Hermes web dashboard — CLI/sidecar installed only",
+            "install_path": "hermes_sidecar/install/.venv/",
+            "hermes_home": "hermes_sidecar/.hermes/",
+        },
+    ]
+
+    hermes_reports = [
+        "docs/hermes/HERMES_PHASE_P0_INSTALL_REPORT.md",
+        "docs/hermes/HERMES_PHASE1_DB_STAGING_REPORT.md",
+        "docs/hermes/HERMES_PHASE1A_DB_ROLES_REPORT.md",
+        "docs/hermes/HERMES_PHASE1B_RUNTIME_STAGING_WRITES_REPORT.md",
+    ]
+
+    return {
+        "ok": True,
+        "tailscale": {"fqdn": ts_fqdn, "ip": ts_ip, "ssh": f"ssh johnclaw@{ts_fqdn}"},
+        "services": services,
+        "drive": {"folder_id": "1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR", "folder_name": "Trade_AI_Docs_v2"},
+        "hermes_reports": hermes_reports,
+    }
+
+
+def _system_applications():
+    """GET /api/v2/system/applications — read-only installed software inventory."""
+    import subprocess as _sp, shutil
+
+    def _run(cmd, timeout=5):
+        try:
+            r = _sp.run(cmd, capture_output=True, text=True, timeout=timeout)
+            return r.stdout.strip() if r.returncode == 0 else r.stderr.strip()[:200]
+        except FileNotFoundError:
+            return None
+        except _sp.TimeoutExpired:
+            return "timeout"
+        except Exception as e:
+            return f"error: {str(e)[:100]}"
+
+    def _ver(raw):
+        """Extract version string from command output."""
+        if not raw:
+            return None
+        import re
+        m = re.search(r'(\d+\.\d+[\.\d]*)', raw)
+        return m.group(1) if m else raw[:60]
+
+    def _drift(installed, latest):
+        if not installed or not latest or installed == latest:
+            return {"status": "current" if installed and latest and installed == latest else "unknown", "detail": ""}
+        import re
+        iv = re.findall(r'\d+', installed)
+        lv = re.findall(r'\d+', latest)
+        if len(iv) >= 3 and len(lv) >= 3:
+            if iv[0] != lv[0]:
+                return {"status": "major_behind", "detail": f"{installed} → {latest}"}
+            if iv[1] != lv[1]:
+                return {"status": "minor_behind", "detail": f"{installed} → {latest}"}
+            try:
+                d = int(lv[2]) - int(iv[2])
+                if d > 0:
+                    return {"status": "patch_behind", "detail": f"{d} patch versions behind"}
+            except ValueError:
+                pass
+        return {"status": "unknown", "detail": f"{installed} vs {latest}"}
+
+    pr = str(PROJECT_ROOT)
+    apps = []
+
+    # ── Core ──
+    apps.append({"name": "Python", "category": "core",
+        "installed": _ver(_run(["python3", "--version"])),
+        "latest": None, "path": shutil.which("python3"),
+        "version_cmd": "python3 --version",
+        "update_cmd": "Manual OS package review required"})
+
+    apps.append({"name": "Python (venv)", "category": "core",
+        "installed": _ver(_run([f"{pr}/.venv/bin/python", "--version"])),
+        "latest": None, "path": f"{pr}/.venv/bin/python",
+        "version_cmd": ".venv/bin/python --version",
+        "update_cmd": "Manual review required"})
+
+    apps.append({"name": "Node.js", "category": "core",
+        "installed": _ver(_run(["node", "--version"])),
+        "latest": None, "path": shutil.which("node"),
+        "version_cmd": "node --version",
+        "update_cmd": "Manual OS package review required"})
+
+    apps.append({"name": "npm", "category": "core",
+        "installed": _ver(_run(["npm", "--version"])),
+        "latest": None, "path": shutil.which("npm"),
+        "version_cmd": "npm --version",
+        "update_cmd": "Manual review required"})
+
+    pg_ver = _ver(_run(["psql", "--version"]))
+    apps.append({"name": "PostgreSQL", "category": "core",
+        "installed": pg_ver, "latest": None,
+        "path": shutil.which("psql"),
+        "version_cmd": "psql --version",
+        "update_cmd": "Manual OS package review required"})
+
+    apps.append({"name": "Git", "category": "core",
+        "installed": _ver(_run(["git", "--version"])),
+        "latest": None, "path": shutil.which("git"),
+        "version_cmd": "git --version",
+        "update_cmd": "Manual OS package review required"})
+
+    ollama_ver = _ver(_run(["ollama", "--version"]))
+    apps.append({"name": "Ollama", "category": "core",
+        "installed": ollama_ver, "latest": None,
+        "path": shutil.which("ollama"),
+        "version_cmd": "ollama --version",
+        "update_cmd": "Manual review required"})
+
+    # Ollama models
+    try:
+        import urllib.request, json as _j
+        resp = urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3)
+        models = _j.loads(resp.read()).get("models", [])
+        for m in models:
+            size_gb = m.get("size", 0) / 1024 / 1024 / 1024
+            apps.append({"name": f"Ollama: {m['name']}", "category": "model",
+                "installed": f"{size_gb:.1f}GB",
+                "latest": None, "path": None,
+                "version_cmd": "ollama list",
+                "update_cmd": f"ollama pull {m['name']}"})
+    except Exception:
+        pass
+
+    # ── AI / Agent ──
+    hermes_ver = _ver(_run([f"{pr}/hermes_sidecar/install/.venv/bin/pip", "show", "hermes-agent"],
+                          timeout=10))
+    if hermes_ver:
+        import re
+        m = re.search(r'Version:\s*(\S+)', _run([f"{pr}/hermes_sidecar/install/.venv/bin/pip", "show", "hermes-agent"]) or "")
+        hermes_ver = m.group(1) if m else hermes_ver
+    apps.append({"name": "Hermes Agent", "category": "agent",
+        "installed": hermes_ver, "latest": None,
+        "path": f"{pr}/hermes_sidecar/install/.venv/",
+        "version_cmd": "hermes_sidecar/install/.venv/bin/hermes version",
+        "update_cmd": "hermes_sidecar/install/.venv/bin/pip install --upgrade hermes-agent (requires backup + approval)"})
+
+    claude_ver = _ver(_run(["claude", "--version"]))
+    apps.append({"name": "Claude Code CLI", "category": "agent",
+        "installed": claude_ver, "latest": None,
+        "path": shutil.which("claude"),
+        "version_cmd": "claude --version",
+        "update_cmd": "claude install",
+        "note": "Auto-update may lack permission. Handle as separate operator maintenance."})
+
+    # OpenClaw
+    oc_ver = _ver(_run(["openclaw", "--version"]))
+    apps.append({"name": "OpenClaw Gateway", "category": "agent",
+        "installed": oc_ver or "running (version unknown)",
+        "latest": None, "path": shutil.which("openclaw"),
+        "version_cmd": "openclaw --version",
+        "update_cmd": "Manual review required"})
+
+    # ── Data / Integrations ──
+    ts_ver = _ver(_run(["tailscale", "version"]))
+    apps.append({"name": "Tailscale", "category": "integration",
+        "installed": ts_ver, "latest": None,
+        "path": shutil.which("tailscale"),
+        "version_cmd": "tailscale version",
+        "update_cmd": "Manual review required"})
+
+    gog_ver = _ver(_run(["gog", "--version"]))
+    apps.append({"name": "GOG (Google CLI)", "category": "integration",
+        "installed": gog_ver or "installed" if shutil.which("gog") else None,
+        "latest": None, "path": shutil.which("gog"),
+        "version_cmd": "gog --version",
+        "update_cmd": "Manual review required"})
+
+    # ── Frontend ──
+    try:
+        import json as _j
+        pkg = _j.loads((Path(pr) / "apps/command-center-v2/package.json").read_text())
+        deps = pkg.get("dependencies", {})
+        dev = pkg.get("devDependencies", {})
+        for name, ver in [("React", deps.get("react")), ("React Router", deps.get("react-router-dom")),
+                          ("Vite", dev.get("vite")), ("TypeScript", dev.get("typescript")),
+                          ("Chart.js", deps.get("chart.js"))]:
+            if ver:
+                apps.append({"name": name, "category": "frontend",
+                    "installed": ver.lstrip("^~"), "latest": None,
+                    "path": "apps/command-center-v2/package.json",
+                    "version_cmd": "npm ls " + name.lower().replace(" ", "-").replace(".",""),
+                    "update_cmd": "npm outdated (requires separate approval)"})
+    except Exception:
+        pass
+
+    # Compute drift for all
+    for app in apps:
+        d = _drift(app.get("installed"), app.get("latest"))
+        app["drift"] = d
+
+    summary = {
+        "total": len(apps),
+        "current": sum(1 for a in apps if a["drift"]["status"] == "current"),
+        "behind": sum(1 for a in apps if "behind" in a["drift"]["status"]),
+        "unknown": sum(1 for a in apps if a["drift"]["status"] == "unknown"),
+        "not_installed": sum(1 for a in apps if not a.get("installed")),
+    }
+
+    return {"ok": True, "applications": apps, "summary": summary}
+
+
 ROUTES = {
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
@@ -12450,6 +12721,8 @@ ROUTES = {
     "/api/v2/execution-integrity/events": lambda: _system_health_events_api(),
     "/api/v2/queue/calibration": lambda: _queue_calibration(),
     "/api/v2/strategy-intelligence": lambda: _strategy_intelligence(),
+    "/api/v2/system/access-links": lambda: _system_access_links(),
+    "/api/v2/system/applications": lambda: _system_applications(),
 }
 
 
