@@ -200,7 +200,7 @@
 | `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` | Superseded by database-first architecture — retained for reference |
 | `docs/hermes/HERMES_PHASE1_DB_STAGING_REPORT.md` | **Phase 1 DB staging report** — 6 tables created, 34 indexes, 18 CHECK constraints, 0 rows, roles deferred |
 | `docs/hermes/HERMES_PHASE1_DB_STAGING_ROLLBACK.sql` | Rollback SQL for Phase 1 tables |
-| `docs/hermes/HERMES_PHASE1A_DB_ROLES_REPORT.md` | **Phase 1A roles report** — BLOCKED on postgres superuser, migration SQL ready, operator action required |
+| `docs/hermes/HERMES_PHASE1A_DB_ROLES_REPORT.md` | **Phase 1A roles report** — COMPLETE, hermes_readonly + hermes_staging_writer created, 22 grants on hermes_* only, zero production grants |
 | `docs/hermes/HERMES_PHASE1A_DB_ROLES_ROLLBACK.sql` | Rollback SQL for Phase 1A roles/grants |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 

@@ -1,15 +1,15 @@
 # Hermes Phase 1A DB Roles Report — Trade AI v12
 
 **Date:** 2026-05-30
-**Status:** BLOCKED — postgres superuser access required
+**Status:** COMPLETE — roles created, grants applied, verified
 
 ---
 
 ## 1. Summary
 
-Role creation requires PostgreSQL superuser privileges. The `trade_ai` database user has `rolcreaterole=false` and `rolsuper=false`. All other access methods (sudo, peer auth, .pgpass) are unavailable without the operator's password.
+Roles and grants applied successfully. Operator ran migration via `sudo -u postgres psql -d trade_ai` on 2026-05-30.
 
-The migration SQL is written and ready to apply. The operator needs to run one command.
+Two NOLOGIN group roles created with least-privilege grants on hermes_* tables only. Zero production table grants. Zero data inserts.
 
 ---
 
@@ -59,84 +59,33 @@ The migration SQL is written and ready to apply. The operator needs to run one c
 
 ---
 
-## 6. Operator Action Required
+## 6. Verification Results (post-apply)
 
-Run this command (requires sudo password or postgres password):
+### Roles
 
-### Option A: sudo
-
-```bash
-cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
-sudo -u postgres psql -d trade_ai -f sql/migrations/20260530_hermes_phase1a_roles_and_grants.sql
-```
-
-### Option B: postgres password
-
-```bash
-cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
-PGPASSWORD=<postgres_password> psql -h localhost -U postgres -d trade_ai -f sql/migrations/20260530_hermes_phase1a_roles_and_grants.sql
-```
-
-### Option C: interactive from Claude Code prompt
-
-Type this in the Claude Code prompt:
-
-```
-! sudo -u postgres psql -d trade_ai -f sql/migrations/20260530_hermes_phase1a_roles_and_grants.sql
-```
-
----
-
-## 7. What the Migration Creates
-
-### Roles (NOLOGIN group roles, no passwords)
-
-| Role | Login | Superuser | CreateRole |
-|------|-------|-----------|------------|
+| Role | Login | CreateRole | Superuser |
+|------|-------|------------|-----------|
 | hermes_readonly | NO | NO | NO |
 | hermes_staging_writer | NO | NO | NO |
 
-### Grants
+### Grants (22 total, all on hermes_* tables)
 
-**hermes_readonly:**
-- USAGE ON SCHEMA public
-- SELECT on all 6 hermes_* tables
+**hermes_readonly (6 grants):** SELECT on all 6 hermes_* tables.
 
-**hermes_staging_writer:**
-- USAGE ON SCHEMA public
-- SELECT, INSERT, UPDATE on 5 hermes_* tables (not hermes_promotion_audit)
+**hermes_staging_writer (16 grants):**
+- SELECT, INSERT, UPDATE on 5 tables (research_intelligence, validation_findings, alerts, embedding_queue, memory_events)
 - SELECT only on hermes_promotion_audit
 - USAGE, SELECT on 5 hermes_* sequences (for BIGSERIAL INSERT)
-- No DELETE, no TRUNCATE, no production table access
 
----
+### Production Table Grants
 
-## 8. Verification (run after applying)
-
-```sql
--- Check roles exist and are NOLOGIN
-SELECT rolname, rolcanlogin, rolcreaterole, rolsuper
-FROM pg_roles WHERE rolname LIKE 'hermes_%';
-
--- Check grants on hermes_* tables
-SELECT grantee, table_name, privilege_type
-FROM information_schema.table_privileges
-WHERE grantee LIKE 'hermes_%'
-ORDER BY grantee, table_name, privilege_type;
-
--- Confirm no production table grants
-SELECT grantee, table_name, privilege_type
-FROM information_schema.table_privileges
-WHERE grantee LIKE 'hermes_%' AND table_name NOT LIKE 'hermes_%';
-
--- Confirm all hermes_* tables still have 0 rows
-SELECT 'hermes_research_intelligence' AS tbl, COUNT(*) FROM hermes_research_intelligence
-UNION ALL SELECT 'hermes_validation_findings', COUNT(*) FROM hermes_validation_findings
-UNION ALL SELECT 'hermes_alerts', COUNT(*) FROM hermes_alerts
-UNION ALL SELECT 'hermes_embedding_queue', COUNT(*) FROM hermes_embedding_queue
-UNION ALL SELECT 'hermes_memory_events', COUNT(*) FROM hermes_memory_events
-UNION ALL SELECT 'hermes_promotion_audit', COUNT(*) FROM hermes_promotion_audit;
 ```
+(0 rows) — CONFIRMED: zero production table grants
+```
+
+### Row Counts
+
+All 6 hermes_* tables: **0 rows** — CONFIRMED
 
 ---
 
