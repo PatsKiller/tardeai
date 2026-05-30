@@ -196,7 +196,8 @@
 | `docs/hermes/HERMES_PREINSTALL_DISCOVERY.md` | Preinstall discovery — system state, Ollama health, safety mode, Gate 1 outputs |
 | `docs/hermes/HERMES_PHASE_P0_FINAL_GATE.md` | **Phase P0 final gate — verdict: GO**, all 7 sections pass, no blockers, awaiting operator approval |
 | `docs/hermes/HERMES_ROLLBACK_PLAN.md` | Rollback plan — uninstall, file removal, service removal, verification checklist |
-| `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` | **Ingestion architecture** — staged pipeline: file outbox (P0) → staging table (P1) → reviewed promotion (P2) → dashboard (P3). 8-table compatibility assessment. |
+| `docs/hermes/HERMES_DATABASE_FIRST_INTEGRATION_ARCHITECTURE.md` | **Database-first integration architecture** — 6 hermes_* tables, read-only DB role, shared scoring/embedding, validation challenger, 5-phase rollout. Supersedes file-first design. |
+| `docs/hermes/HERMES_DATA_INGESTION_ARCHITECTURE.md` | Superseded by database-first architecture — retained for reference |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
 
 ### Discovery Artifacts

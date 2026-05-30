@@ -74,7 +74,10 @@ Install will:
 - Configure Ollama-only (no cloud keys)
 - Run `hermes version` and `hermes doctor`
 - Verify no `~/.hermes` created, no systemd units, no cron
-- P0 file-only pilot (no DB writes)
+- P0 API-read only (no DB writes, no file outbox as primary)
+- Database-first architecture: 6 hermes_* tables created in Phase 1 (separate approval)
+- Shared scoring (content_scoring.py), same embedding model (nomic-embed-text 768-dim)
+- Hermes validation challenger writes to hermes_validation_findings + hermes_alerts
 
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)
