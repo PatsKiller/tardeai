@@ -153,6 +153,37 @@
 * Added anti-hallucination rules: no fabricated prices, no fake sources, no market data claims
 * Tested: date question → correct 2026-05-30; price question → "I don't have live market data access"
 
+### Hermes Phase 1C Drive Sync Verification (2026-05-30)
+* Both SQL draft files confirmed local, git-tracked, and synced to Drive
+* HERMES_PHASE1C_SAFE_VIEW_DRAFTS.sql — uploaded
+* HERMES_PHASE1C_READ_GRANT_DRAFTS.sql — uploaded
+* Zero SQL executed, zero DB writes, zero grants applied
+
+### 2026-05-30 Commits (21 total)
+| Commit | Description |
+|--------|-------------|
+| 86a7a19 | add hermes data ingestion architecture |
+| e6e0f4d | update project docs with hermes audit |
+| f7ca213 | add hermes database-first integration architecture |
+| b4d444e | hermes phase P0 install complete |
+| e5b3129 | hermes phase 1: create 6 staging tables |
+| 7c8e1cf | hermes phase 1A: role/grant migration ready |
+| f3c6aa7 | hermes phase 1A complete: roles and grants verified |
+| c6a51a1 | hermes phase 1B: staging ingestion script |
+| 997a737 | hermes phase 1C: production read access map |
+| dffb56e | add system access links and system applications pages |
+| 0d69a8d | fix pre-existing Backtesting.tsx type errors |
+| b8ad60c | add latest-version detection, hermes gateway, FQDN links |
+| bd3b0f5 | fix hermes gateway link |
+| f255dbe | add Hermes Chat page with gateway proxy |
+| 67593d4 | fix hermes link on system access page |
+| dfa3dc1 | fix hermes chat: route to Ollama directly |
+| 2290453 | hermes phase 1D: apply safe views and read grants |
+| 4ac8c57 | fix hermes chat: inject system prompt with date |
+| 0545f2e | fix hermes chat: prevent hallucinated prices |
+| d9a8031 | update session docs |
+| 8dc27e1 | verify hermes phase 1C drive sync |
+
 ## Remaining Work
 1. Add UI "Inspect" button for lifecycle inspector (P2)
 2. Add retry history UI/dashboard (P2)
