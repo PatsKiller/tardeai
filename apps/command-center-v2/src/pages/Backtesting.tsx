@@ -5,10 +5,10 @@ import {
   AreaChart, Area
 } from 'recharts'
 
-interface BtStatus { datasets_total: number; runs_total: number; trades_total: number; challengers_total: number; trades_filtered?: number; runs_filtered?: number; filters_active?: boolean }
+interface BtStatus { datasets_total: number; runs_total: number; trades_total: number; challengers_total: number; trades_filtered?: number; runs_filtered?: number; filters_active?: boolean; classification_classified?: number; classification_total?: number; classification_unclassified?: number }
 interface BtRun { run_id: string; run_type: string; strategy_id: string; status: string; start_date: string; end_date: string }
 interface BtResult { result_id: number; run_id: string; strategy_id: string; run_type: string; simulated_trades: number; wins: number; losses: number; win_rate: number; profit_factor: number; expectancy_r: number; total_pnl: number; avg_pnl: number; avg_r_multiple: number; max_drawdown_pct: number; equity_curve_json: string | null; equity_curve?: Array<{date: string; value: number}> }
-interface BtTrade { simulated_trade_id: string; run_id: string; strategy_id: string; symbol: string; trade_date?: string; entry_price: number; exit_price: number; pnl: number; pnl_pct?: number; r_multiple: number; exit_reason: string }
+interface BtTrade { simulated_trade_id: string; run_id: string; strategy_id: string; symbol: string; trade_date?: string; entry_price: number; exit_price: number; pnl: number; pnl_pct?: number; r_multiple: number; exit_reason: string; run_type?: string }
 interface MissedOpp { proposal_id: number; symbol: string; strategy_id: string; proposal_status: string; proposed_date: string; proposed_entry: number; proposed_target: number; proposed_stop: number; simulated_pnl: number | null; simulated_r: number | null; verdict: 'WOULD_WIN' | 'WOULD_LOSE' | null }
 interface MissedData { total_missed: number; would_win: number; would_lose: number; pnl_left_on_table: number; opportunities: MissedOpp[] }
 interface TrailData { trades: any[]; strategy_recommendations: any[]; summary: { total_analyzed: number; strategies_analyzed: number; avg_improvement: number } }
