@@ -1,0 +1,86 @@
+{
+  "phase": "1F",
+  "task_id": "phase1f_task_04",
+  "generated_at": "2026-05-30T23:07:19.461885+00:00",
+  "source": "trade_ai_safe_views",
+  "symbol": null,
+  "research_type": "pipeline_quality_validation",
+  "safe_views_used": [
+    "hermes_v_pipeline_health_context"
+  ],
+  "redaction_statement": "Account names masked. No broker IDs, credentials, or personal data.",
+  "no_secrets_statement": "No API keys, tokens, or passwords present.",
+  "no_broker_access_statement": "No broker API calls performed.",
+  "no_production_mutation_statement": "Output goes to hermes_research_intelligence staging only.",
+  "context": {
+    "summary": [
+      {
+        "pipeline_name": null,
+        "status": "success",
+        "runs": 1419
+      },
+      {
+        "pipeline_name": null,
+        "status": "failed",
+        "runs": 41
+      },
+      {
+        "pipeline_name": null,
+        "status": "skipped",
+        "runs": 6
+      }
+    ],
+    "failures": [
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-30"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      },
+      {
+        "pipeline_name": null,
+        "error_message": null,
+        "completed_at": "2026-05-29"
+      }
+    ]
+  }
+}

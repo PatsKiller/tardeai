@@ -1,0 +1,93 @@
+{
+  "phase": "1F",
+  "task_id": "phase1f_task_01",
+  "generated_at": "2026-05-30T23:03:30.114221+00:00",
+  "source": "trade_ai_safe_views",
+  "symbol": "SPRC",
+  "research_type": "ticker_thesis_challenge",
+  "safe_views_used": [
+    "hermes_v_trade_reflection_context",
+    "hermes_v_ticker_context"
+  ],
+  "redaction_statement": "Account names masked. No broker IDs, credentials, or personal data.",
+  "no_secrets_statement": "No API keys, tokens, or passwords present.",
+  "no_broker_access_statement": "No broker API calls performed.",
+  "no_production_mutation_statement": "Output goes to hermes_research_intelligence staging only.",
+  "context": {
+    "trades": [
+      {
+        "symbol": "SPRC",
+        "entry_price": 6.38,
+        "exit_price": 6.1701,
+        "pnl": -104.95,
+        "pnl_pct": -3.29,
+        "exit_reason": "",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-04-30"
+      },
+      {
+        "symbol": "SPRC",
+        "entry_price": 6.38,
+        "exit_price": 6.1701,
+        "pnl": -104.95,
+        "pnl_pct": -3.29,
+        "exit_reason": "",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-04-30"
+      },
+      {
+        "symbol": "SPRC",
+        "entry_price": 4.51,
+        "exit_price": 5.16,
+        "pnl": 65.0,
+        "pnl_pct": 14.41,
+        "exit_reason": "",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-04-30"
+      },
+      {
+        "symbol": "SPRC",
+        "entry_price": 3.98,
+        "exit_price": 5.16,
+        "pnl": 1.18,
+        "pnl_pct": 29.65,
+        "exit_reason": "",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-04-30"
+      },
+      {
+        "symbol": "SPRC",
+        "entry_price": 4.51,
+        "exit_price": 5.16,
+        "pnl": 65.0,
+        "pnl_pct": 14.41,
+        "exit_reason": "",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-04-30"
+      },
+      {
+        "symbol": "SPRC",
+        "entry_price": 3.98,
+        "exit_price": 5.16,
+        "pnl": 1.18,
+        "pnl_pct": 29.65,
+        "exit_reason": "",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-04-30"
+      }
+    ],
+    "ticker": {
+      "symbol": "SPRC",
+      "snapshot_date": "2026-05-29",
+      "rsi": 77.47,
+      "beta": 2.46,
+      "sma50_pct": 115.02,
+      "sma200_pct": -32.78,
+      "perf_week_pct": 177.04,
+      "perf_month_pct": 36.19,
+      "intelligence_score": null,
+      "intelligence_grade": null
+    },
+    "proposals": null
+  }
+}
