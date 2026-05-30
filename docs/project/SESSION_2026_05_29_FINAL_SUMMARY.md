@@ -1,9 +1,9 @@
 # Session 2026-05-29 Final Summary
 
 ## Executive Summary
-31 commits across two parallel CLI sessions. Completed classifier/backtesting 100%, fixed all P0/P1 proposal lifecycle bugs, hardened self-healing escalation with retry_cmd direct execution, validated Gemma4 31B Tier 3a via llama.cpp, and added backtesting UI clarity + proposal lifecycle inspector.
+40 commits across two parallel CLI sessions. Completed classifier/backtesting 100%, fixed all P0/P1 proposal lifecycle bugs, hardened self-healing escalation with retry_cmd direct execution, validated Gemma4 31B Tier 3a via llama.cpp, added backtesting UI clarity + proposal lifecycle inspector, clarified all backtesting/LLM labels, audited automated trading live path (working correctly), added execution-readiness endpoint, and captured 15/15 Playwright screenshots verifying new labels.
 
-## Commits (31 total)
+## Commits (40 total)
 
 ### Classifier/Backtesting (6 commits)
 | Commit | Description |
@@ -87,6 +87,36 @@
 | Disabled | gemma4 e2b/e4b | — | BLOCKED |
 | Not production | gemma3:27b | Ollama | Available, not used |
 
+### UI Label Clarity + Automated Trading Audit (9 commits)
+| Commit | Description |
+|--------|-------------|
+| 5e6b7fa | fix R:R floating point gate blocking all proposals + health agent check |
+| 491237b | clarify backtesting and llm review labels to prevent confusion |
+| 9c6a78b | audit automated trading live path: working correctly, add readiness endpoint |
+| 34ef5cc | doc: no targeted fix needed — automated trading working correctly |
+| 4e6a827 | add targeted playwright crawl for journal and backtesting pages |
+| e0fa517 | fix crawler tab name to match renamed LLM Review Coverage tab |
+| f9e9eb0 | document playwright journal backtest crawl with new labels |
+| e01d4f2 | update session summary: 33 commits, R:R floating point fix |
+| cf39e8f | update final session summary and memory notes |
+
+## Backtesting UI Label Clarity
+- KPIs renamed: "Sim Trades" → "Backtest Rows", "Classified" → "Strategy Coverage"
+- Source-aware filter text: "Showing X replay-trade rows (of Y total)"
+- "LLM Reviews" tab → "LLM Review Coverage" with explainer banner
+- Coverage cards renamed: "Real Paper Trades With LLM Review" / "Backtest Rows With LLM Review"
+- Sample-size badges on Strategy and Trail Analysis (very small < 5, small < 20)
+- Context banner: "Backtesting rows are historical replays and champion simulations — not live broker orders"
+- Champion gap message clarified: "expected for simulations, not missing real trades"
+
+## Automated Trading Audit
+- **Status**: Working correctly (Category A+B)
+- ATM mode: active, evaluating every 15 minutes
+- Root cause of apparent inactivity: 16/20 recent proposals are `momentum_scalp` (intraday skip list)
+- Non-intraday proposals (SNOW, ONDS) were approved and traded
+- New endpoint: `GET /api/v2/atm/execution-readiness` (read-only diagnostic)
+- No fix needed — system operating as designed
+
 ## Safety
 - ALPACA_MODE=paper
 - LLM_DISABLE_LIVE_EXECUTION=true
@@ -103,5 +133,6 @@
 2. Add retry history UI/dashboard (P2)
 3. Observe next 4 AM pre-market enrichment cycle
 4. Observe next natural Gemma4 31B Tier 3a escalation
-5. Continue journal/automated-trading validation
-6. Consider 50+ dry-run llama.cpp canary before production routing
+5. Generate more non-intraday proposals (swing/earnings/income) for ATM to approve
+6. Consider faster intraday execution path for momentum_scalp/gap_and_go
+7. Consider 50+ dry-run llama.cpp canary before production routing
