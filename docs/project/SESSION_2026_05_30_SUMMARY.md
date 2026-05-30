@@ -152,10 +152,9 @@
 - hermes_research_intelligence total: 4 rows
 
 ### Hermes Research Sources
-- Hermes reads ONLY internal Trade AI data via safe DB views
-- No external APIs connected (Google, social, web search)
-- Trade AI's existing pipelines already provide: news, social, YouTube, SEC, FRED data
-- Hermes accesses this via 37 direct table grants + 8 safe views
+- Hermes reads internal Trade AI data via 37 table grants + 8 safe views
+- **Headless browser enabled**: Playwright + Chromium in sidecar, agent-browser npm. Can scrape public pages, read articles, check charts locally.
+- Trade AI pipelines provide: news, social, YouTube, SEC, FRED data via DB
 
 ## Next Steps
 

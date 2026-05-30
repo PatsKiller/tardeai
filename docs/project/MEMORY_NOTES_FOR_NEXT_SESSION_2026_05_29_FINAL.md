@@ -100,10 +100,11 @@
 - All using gemma3:12b, local Ollama only, zero external APIs, zero production writes
 
 ### Hermes Research Sources (current)
-- Hermes reads ONLY from approved Trade AI safe views (DB) — no external APIs, no Google, no social APIs, no web scraping
-- Data available: ticker snapshots, proposals, trades, news (already in DB), agent results, pipeline health, embeddings metadata, intelligence entities
-- NOT connected to: Google API, social media APIs, Finviz scraping, broker APIs, external news APIs, YouTube APIs
-- Future: connecting Hermes to existing Trade AI data pipelines for richer context requires separate approval
+- Hermes reads from approved Trade AI safe views (DB): ticker snapshots, proposals, trades, news, agent results, pipeline health, embeddings metadata, intelligence entities
+- **Headless browser ENABLED** (2026-05-30): Playwright + Chromium installed in sidecar, agent-browser npm package installed. Hermes can scrape public pages, read articles, check charts — all local, no cloud APIs.
+- Browser test PASS: Yahoo Finance AAPL page fetched successfully.
+- NOT connected to: Google API, social media APIs (direct), broker APIs
+- Trade AI's existing pipelines already provide: news, social, YouTube, SEC, FRED data via DB
 
 ### Next Gate
 - Ongoing/bulk Hermes research, embeddings, production promotion, dashboard Hermes Challenger all require separate approval
