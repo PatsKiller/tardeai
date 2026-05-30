@@ -1,6 +1,6 @@
 # Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul
 
-**Commits:** 33 (7045209 through 5e6b7fa)
+**Commits:** 44 (7045209 through 5caf445)
 
 ## Executive Summary
 
@@ -198,6 +198,22 @@ Investigated why gemma4:31b appeared to fail in production:
 **Fix:** Added `round(4)` + 0.005 tolerance to R:R comparison. Health agent now monitors pre-promotion gate blocking rate and flags R:R false positives.
 
 **Secondary cause:** SKIPPED_RECENTLY_REJECTED blocked resubmission of the same symbols from earlier rejected batches. Combined with R:R blocking new symbols, zero proposals could pass.
+
+### 13. ATM Same-Day Skip Removal + Immediate Trigger (5caf445)
+
+**Why FATN wasn't auto-traded despite ATM=active:**
+1. `momentum_scalp` was in `same_day_skip_strategies` — ATM always rejected these with "cadence too slow"
+2. ATM only ran on 15-min cron — FATN was ENTRY_ZONE_VALID at 14:20 but ATM didn't evaluate until 14:30
+
+**Fixes:**
+- Removed same-day skip gate — momentum_scalp/gap_and_go now proceed through normal ATM gates
+- Enrichment loop triggers `atm_auto_approver.py` immediately via subprocess.Popen when a proposal reaches ENTRY_ZONE_VALID (no more 0-15 min delay)
+
+**FATN outcome:** Would still have been correctly rejected by spread safety gate (35.24% spread too wide) — but the system would have tried immediately instead of killing it 10 minutes late on a cadence technicality.
+
+### 14. Open Trade Agent Coverage Check (health agent)
+
+Health agent now detects open trades with no agent analysis in 3+ days. Found CMCSA and NWG with zero agent results ever. Queued steph/risk_agent jobs for CMCSA, NWG, AGNC.
 
 ## Next Steps
 
