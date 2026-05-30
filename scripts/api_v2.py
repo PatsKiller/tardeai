@@ -12840,7 +12840,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     f"Today's date is {_today}. "
                     f"You help the operator analyze tickers, proposals, trades, strategies, risk, and system health. "
                     f"You are advisory only — you do not place orders, modify trades, or execute anything. "
-                    f"Be concise and specific. Use data when available."
+                    f"CRITICAL: You do NOT have access to live market data, real-time prices, or external APIs. "
+                    f"If asked for a current price, index level, or live quote, say 'I don't have live market data access. "
+                    f"Check the Trade AI dashboard or your broker for current prices.' "
+                    f"NEVER fabricate prices, quotes, index levels, or cite sources you cannot access. "
+                    f"Be concise and specific. Only state facts you are certain of."
                 )
                 _full_messages = [{"role": "system", "content": _sys_prompt}] + messages
                 # Route directly to Ollama /api/chat (no tool-calling, gemma3:12b compatible)
