@@ -54,31 +54,38 @@ curl -s "http://127.0.0.1:7777/api/v2/paper-proposals/lifecycle-inspector?propos
 - [ ] Continue journal/automated-trading validation if warnings
 - [ ] Consider 50+ llama.cpp canary dry-runs before routing change
 
-## Hermes — Phase 1D Complete, Phase 1E Next
+## Hermes — Phase 1F Complete, Phase 1G Next
 
-All phases through 1D completed and verified (2026-05-30, 29 commits):
+All phases through 1F completed (2026-05-30, 37 commits):
 
-| Phase | Status | Key Artifact |
-|-------|--------|-------------|
-| P0 Install | COMPLETE | hermes-agent 0.15.2, project-scoped |
+| Phase | Status | Key Result |
+|-------|--------|------------|
+| P0 Install | COMPLETE | hermes-agent 0.15.2, project-scoped, headless browser |
 | P1 Tables | COMPLETE | 6 hermes_* tables, 34 indexes, 18 constraints |
 | P1A Roles | COMPLETE | hermes_readonly + hermes_staging_writer |
-| P1B Writes | COMPLETE | Ingestion script, smoke row id=2 |
+| P1B Writes | COMPLETE | Ingestion script, smoke row |
 | P1C Map | COMPLETE | 392 tables audited, 32 allow / 14 deny |
 | P1D Views | VERIFIED | 8 views, 46 SELECT grants, all checks PASS |
+| P1E Research | COMPLETE | FLYW thesis challenge, staged id=1 |
+| P1F Batch | COMPLETE | 3/5 tasks staged: SPRC id=2, SCHD id=3, APPS id=4 |
 
 **Current state:**
-- Hermes sidecar installed, gateway on :18790, Chat at /v2/hermes
-- Staging tables + safe views + controlled ingestion ready
-- Zero real research ingestion, zero embeddings, zero production writes
+- Hermes sidecar installed with headless browser (Playwright + Chromium)
+- Gateway on :18790, Chat at /v2/hermes
+- 4 staged research rows in hermes_research_intelligence
+- Source discovery design documented (not implemented)
+- Zero embeddings, zero production writes
 
-**Next gate: Phase 1E — first real Hermes research ingestion into staging only**
+**Next gate: Phase 1G — quality review of staged research**
 
-Must remain:
+Scope:
+- Review Phase 1E+1F rows (ids 1-4) for usefulness, hallucination risk, evidence quality, actionability
+- No new ingestion unless approved
 - No embeddings
-- No promotion to production tables
+- No production promotion
 - No dashboard Hermes Challenger
 - No daemon/cron
+- No broker/proposal/paper_trades/journal mutation
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`

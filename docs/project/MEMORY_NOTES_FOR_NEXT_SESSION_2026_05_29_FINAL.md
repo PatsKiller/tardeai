@@ -87,10 +87,17 @@
 * **Session closed** (2026-05-30): 29 commits. Closeout doc at `docs/hermes/HERMES_PHASE1D_SESSION_CLOSEOUT.md`.
 
 ### Hermes Current Allowed State
-- Sidecar installed, staging tables exist, safe read views/grants active, controlled staging ingest script ready, gateway live on :18790, Chat page at /v2/hermes
+- Sidecar installed with headless browser (Playwright + Chromium)
+- 6 staging tables, 8 safe views, 37 direct table grants, roles/grants active
+- Controlled staging ingestion script, gateway on :18790, Chat at /v2/hermes
+- 4 staged research rows (FLYW id=1, SPRC id=2, SCHD id=3, APPS id=4)
+- Headless browser tested PASS (Yahoo Finance)
 
 ### Hermes Current Prohibited State
-- No real research ingestion yet, no embeddings, no production promotions, no daemon/cron, no broker/proposal/trade/journal mutation
+- No embeddings, no content_embeddings writes, no production promotions
+- No dashboard Hermes Challenger, no daemon/cron
+- No broker/proposal/trade/journal mutation
+- No external API/web research via Hermes agents (browser installed but not agent-integrated)
 
 ### Phase 1E+1F Complete
 - **Phase 1E** (2026-05-30): FLYW thesis challenge, staged id=1
@@ -113,7 +120,8 @@
 - Not implemented yet — design only
 
 ### Next Gate
-- Ongoing/bulk Hermes research, embeddings, production promotion, dashboard Hermes Challenger, source table creation all require separate approval
+- **Phase 1G** — quality review of staged research (ids 1-4) before more ingestion
+- Then: ongoing research, embeddings, production promotion, dashboard Hermes Challenger, source table creation — all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
