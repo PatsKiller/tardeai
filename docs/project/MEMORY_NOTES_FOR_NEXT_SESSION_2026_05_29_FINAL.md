@@ -81,7 +81,9 @@
 * **Ollama binding changed**: OLLAMA_HOST=0.0.0.0:11434 (was 127.0.0.1). Accessible via Tailscale. Config in zz-tradeai-llm-safety.conf.
 * **Weekly version check cron**: Sundays 06:00, writes to data/state/system_versions_latest.json (14 packages tracked).
 * **Future: Hermes agent workflows/orchestration dashboard** — define 5 pilot agents as scheduled workflows, show run history/outputs/schedules in Hermes Chat sidebar. Requires separate approval.
-* Next action: operator approval to apply safe views and read grants for Hermes production reads.
+* **Phase 1D safe views and grants APPLIED** (2026-05-30): 8 hermes_v_* views created (account-masked, blob-excluded), 40 SELECT grants to hermes_readonly. Pipeline health view column mismatch fixed. 76K+ rows accessible.
+* **Hermes system prompt fixed** (2026-05-30): Injected date, role identity, and anti-hallucination guardrails. Hermes no longer fabricates prices, index levels, or cites inaccessible sources.
+* Next action: define 5 pilot Hermes agent workflows, connect Hermes to DB views for contextual answers.
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
