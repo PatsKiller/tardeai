@@ -64,9 +64,11 @@
 * Hermes may eventually write advisory memory and recommendation queues only.
 * Compatibility audit COMPLETE (2026-05-30): NousResearch/hermes-agent is real Python CLI, MIT license, supports local Ollama, gemma3:12b 131K context exceeds 64K requirement, project-scoped via HERMES_HOME, no Claude Code conflict, clean uninstall.
 * Phase P0 final gate: **GO** — all 7 verification sections pass, no blockers.
-* Data ingestion architecture designed: 4-phase staged pipeline (file outbox → staging table → reviewed promotion → dashboard). Hermes never writes directly to production tables.
-* Staging schema: `hermes_research_intelligence` + `hermes_memory_events` (not yet created).
-* 8 existing tables assessed: 5 safe for eventual promotion, 3 need staging only.
+* **Database-first architecture designed** (supersedes file-first): 6 hermes_* tables, hermes_readonly DB role, shared scoring via content_scoring.py, same embedding model (nomic-embed-text 768-dim), validation challenger with hermes_validation_findings, advisory alerts via hermes_alerts.
+* Staging schema: `hermes_research_intelligence`, `hermes_validation_findings`, `hermes_alerts`, `hermes_embedding_queue`, `hermes_memory_events`, `hermes_promotion_audit` (none created yet).
+* 8 existing tables assessed: 5 safe for promotion (news_articles, content_embeddings, intelligence_entities, agent_intelligence_rules, deep_overnight_llm_results), 3 staging-only.
+* Hermes reads via API + hermes_readonly DB role. Writes only to hermes_* tables. Promotion to production requires --dry-run then --apply with operator approval.
+* File outbox is emergency fallback only, not primary architecture.
 * Rollback plan documented: `rm -rf hermes_sidecar/` for project-scoped install.
 * Install NOT blocked by ingestion architecture — P0 is file-only.
 * Next action: operator approval to install Hermes sidecar.

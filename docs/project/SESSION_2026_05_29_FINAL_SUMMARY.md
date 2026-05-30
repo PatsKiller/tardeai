@@ -135,8 +135,8 @@
 * Compatibility audit: gemma3:12b 131K context exceeds 64K requirement, project-scoped via HERMES_HOME, no Claude Code conflict.
 * Phase P0 final gate: **GO** — all 7 verification sections pass, no blockers.
 * Install execution plan, read-only pilot plan, and rollback plan documented.
-* Data ingestion architecture designed: 4-phase staged pipeline (file outbox → staging table → reviewed promotion → dashboard).
-* 8 existing tables assessed for Hermes compatibility: 5 safe, 3 staging-only.
+* **Database-first integration architecture** designed (supersedes file-first): 6 hermes_* tables, hermes_readonly DB role, shared scoring/embedding, validation challenger, 5-phase rollout.
+* 8 existing tables assessed: 5 safe for promotion, 3 staging-only. Scoring via content_scoring.py, embeddings via nomic-embed-text 768-dim.
 * Google Drive cleaned: stale duplicate docs/ folder archived (331 files), 88 loose root files organized, root now clean.
 * Sync script pagination bug fixed (--max=20 → --max=1000).
 * No Hermes install performed. Awaiting operator approval.
