@@ -126,11 +126,11 @@ FROM watchlist_agent_results w;
 -- ============================================================
 CREATE OR REPLACE VIEW hermes_v_pipeline_health_context AS
 SELECT
-    pr.id, pr.pipeline_id, pr.status, pr.started_at, pr.completed_at,
-    pr.duration_seconds, pr.error_message, pr.created_at,
-    pd.name AS pipeline_name, pd.description
+    pr.id, pr.pipeline_key, pr.status, pr.started_at, pr.finished_at AS completed_at,
+    pr.duration_seconds, pr.summary->>'error' AS error_message, pr.created_at,
+    pd.pipeline_key AS pipeline_name, pd.description
 FROM pipeline_runs pr
-LEFT JOIN pipeline_definitions pd ON pd.id = pr.pipeline_id;
+LEFT JOIN pipeline_definitions pd ON pd.pipeline_key = pr.pipeline_key;
 
 -- ============================================================
 -- 7. hermes_v_rag_context_metadata
