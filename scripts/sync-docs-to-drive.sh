@@ -51,7 +51,7 @@ resolve_folder() {
 
     # Search Drive for existing folder
     local found_id
-    found_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$current_parent" --json --no-input 2>/dev/null \
+    found_id=$(gog drive ls --account "$GOG_ACCOUNT" --parent "$current_parent" --max=1000 --json --no-input 2>/dev/null \
       | python3 -c "
 import sys,json
 try:
