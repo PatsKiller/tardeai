@@ -1,6 +1,6 @@
 # Session 2026-05-29 — Classifier Completion, llama.cpp Canary, Full Self-Healing Overhaul
 
-**Commits:** 44 (7045209 through 5caf445)
+**Commits:** 46 (7045209 through 6d765a5)
 
 ## Executive Summary
 
@@ -215,12 +215,25 @@ Investigated why gemma4:31b appeared to fail in production:
 
 Health agent now detects open trades with no agent analysis in 3+ days. Found CMCSA and NWG with zero agent results ever. Queued steph/risk_agent jobs for CMCSA, NWG, AGNC.
 
+## End-of-Day Health Check — ALL GREEN
+
+| Check | Status |
+|-------|--------|
+| LLM health | PASS 7/7 |
+| Ollama 0.24.0 | gemma3:4b loaded, normal keep_alive |
+| ATM | active, not paused |
+| Open trades | 5 (NWG +49, AGNC +54, CMCSA -15, BLMN +65, SNOW +154) |
+| All 4 auto-trading fixes | Live and verified in code |
+| Escalation handler | Tiered, flock-protected |
+| llama-server | Not running (clean) |
+| Pending proposals | 0 (clean slate) |
+| Agent jobs queued | 82 (overnight processing) |
+
 ## Next Steps
 
-1. Verify next orchestrator run produces proposals with R:R fix
-2. Verify enrichment pipeline runs correctly at next 4 AM pre-market screener
-3. Monitor health agent enrich-before-reject behavior on next stuck proposal
-4. SHFS (id=860) needs enrichment data for classification
-5. Trade close analyzer batch with gemma3:12b (pending operator approval)
-6. Consider systemd service for llama-server if pursuing gemma4:31b overnight reviews
-7. No more classifier batches needed — phase complete
+1. **Tomorrow 4 AM:** Verify enrichment runs for pre-market proposals (Fix 1)
+2. **Tomorrow 9 AM+:** Verify R:R ≈ 2.0 proposals pass pre-promotion gate (Fix 2)
+3. **Tomorrow:** Verify momentum_scalp/gap_and_go proceed through ATM gates (Fix 3)
+4. **Tomorrow:** Verify ATM fires immediately on ENTRY_ZONE_VALID (Fix 4)
+5. SHFS (id=860) needs enrichment data for classification
+6. Trade close analyzer batch with gemma3:12b (pending operator approval)
