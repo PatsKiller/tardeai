@@ -226,8 +226,11 @@
 - **4D**: Dashboard shows promoted/RAG/staged badges
 - **4E**: Closeout — 3 audit records, 3 promoted, 8 staged
 
+### Phase 5A-5D Complete (2026-05-31)
+- 4 more promoted (total 7), quality PASS, Hermes Intelligence page live at /v2/hermes-intelligence
+
 ### Next Gate
-- **Phase 5** — expand promotion, add loop types, or dedicated Hermes page (requires approval)
+- **Phase 6** — expand loop types, automate promotion, or connect external sources (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -94,11 +94,12 @@ Research rows: 11 | Embeddings: 7 | Gateway: active
 
 Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
 
-**Phase 4A-4E: ALL COMPLETE — 3 rows promoted to llm_intelligence_cache**
+**Phase 4A-5D: ALL COMPLETE — 7 rows promoted, Hermes Intelligence page live**
 
-Promoted: APPS, INFU, FLYW | Impact audit: PASS | Dashboard: badges live
+Promoted: APPS, INFU, FLYW, SPRC, SCHD, ASPN, SYSTEM | 4 staged remain
+Intelligence page: /v2/hermes-intelligence
 
-**Next gate: Phase 5 — expand promotion, add loop types, or dedicated Hermes page**
+**Next gate: Phase 6 — expand loop types, automate promotion, or external sources**
 
 Daily check:
 ```bash
