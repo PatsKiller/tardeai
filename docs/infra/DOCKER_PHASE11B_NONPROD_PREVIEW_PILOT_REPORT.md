@@ -1,20 +1,41 @@
 # Docker Phase 11B — Non-Production Preview Pilot
 
 **Date:** 2026-05-31
-**Status:** BLOCKED — Docker not installed
+**Status:** COMPLETE — pilot passed, container cleaned up
 
-## Reason
-Docker Engine is not installed on ms01-openclaw. Cannot run any container pilot.
+## Pilot
+- Type: Static docs preview (nginx:alpine)
+- Port: 8888
+- Image: tradeai-docs-preview
+- Container: docs-preview
 
-## Prerequisites to Unblock
-1. Install Docker Engine: `sudo apt install docker.io` or official Docker install
-2. Add user to docker group: `sudo usermod -aG docker johnclaw`
-3. Verify: `docker run hello-world`
-4. Then re-approve Phase 11B
+## Results
+| Step | Result |
+|------|--------|
+| Docker build | SUCCESS |
+| Docker run | SUCCESS (container 749447e2) |
+| curl http://localhost:8888/ | 200 — HTML served correctly |
+| Secrets check | NONE — no passwords, API keys, tokens, or broker credentials |
+| Docker stop + rm | SUCCESS — container removed |
 
-## No Runtime Changes Made
-- Docker not installed
-- No containers created
-- No production services touched
-- No secrets used
-- No DB credentials used
+## Safety
+| Item | Status |
+|------|--------|
+| Secrets used | ZERO |
+| DB credentials | ZERO |
+| .env mounted | NO |
+| Production services touched | ZERO |
+| Broker access | ZERO |
+| Container running after test | NO — stopped and removed |
+
+## Files Created
+- `docker/pilots/static-docs-preview/Dockerfile`
+- `docker/pilots/static-docs-preview/index.html`
+- `docker/pilots/static-docs-preview/README.md`
+
+## Rollback
+```bash
+docker stop docs-preview && docker rm docs-preview
+docker rmi tradeai-docs-preview
+```
+Already executed — container is removed.

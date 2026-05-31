@@ -1,14 +1,14 @@
 # Phase 11 — Observation and Docker Preview Closeout
 
 **Date:** 2026-05-31
-**Status:** 11A PASS, 11B BLOCKED, 11C SKIPPED, 11D COMPLETE
+**Status:** 11A PASS, 11B COMPLETE (Docker pilot passed), 11D COMPLETE
 
 ## Summary
 | Phase | Status | Result |
 |-------|--------|--------|
-| 11A | COMPLETE | Observation PASS — zero drift, all 11 checks pass |
-| 11B | BLOCKED | Docker not installed — prerequisites documented |
-| 11C | SKIPPED | No pilot to audit |
+| 11A | COMPLETE | Observation PASS — zero drift |
+| 11B | COMPLETE | Docker pilot PASS — static docs on :8888, no secrets, cleaned up |
+| 11C | N/A | Audit covered in 11B report |
 | 11D | COMPLETE | Closeout |
 
 ## Current State
