@@ -12650,12 +12650,28 @@ def _hermes_health():
         row = _db_query(f"SELECT COUNT(*) as cnt FROM {tbl}", fetch="one")
         hcounts[tbl] = row["cnt"] if row else 0
 
+    # Kill switch status
+    kill_file = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
+    kill_active = kill_file.exists()
+
+    # Autonomous loop status
+    import subprocess as _sp_h
+    loop_active = False
+    try:
+        r = _sp_h.run(["systemctl", "--user", "is-active", "hermes-autonomous-loop.timer"],
+                       capture_output=True, text=True, timeout=5)
+        loop_active = r.stdout.strip() == "active"
+    except:
+        pass
+
     return {
         "ok": True,
         "gateway_status": status,
         "memories": memories,
         "session_count": session_count,
         "staging_counts": hcounts,
+        "kill_switch_active": kill_active,
+        "autonomous_loop_active": loop_active,
     }
 
 
