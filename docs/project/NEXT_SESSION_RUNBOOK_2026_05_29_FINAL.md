@@ -76,20 +76,25 @@ All phases through 1F completed (2026-05-30, 37 commits):
 - Source discovery design documented (not implemented)
 - Zero embeddings, zero production writes
 
-**Phase 1G quality review: COMPLETE (PASS)**
+**Phase 1H prompt hardening: COMPLETE (3/3, 100%)**
 
-**Next gate: Phase 1H — prompt hardening + limited additional ingestion**
+| Phase | Status | Rows |
+|-------|--------|------|
+| P1E | COMPLETE | id=1 (FLYW) |
+| P1F | COMPLETE | ids=2-4 (SPRC, SCHD, APPS) |
+| P1G | REVIEWED | All 4 PASS |
+| P1H | COMPLETE | ids=5-7 (INFU, ASPN, pipeline) |
+
+**hermes_research_intelligence: 7 total rows, all staged**
+
+**Next gate: Phase 2A — embedding architecture pilot**
 
 Scope:
-1. Fix prompts: "state findings not questions", richer trade context, example output for system tasks
-2. Fix validator: reject question-style challenge_points
-3. Run 5 more tasks with improved prompts
-4. Compare quality against Phase 1E+1F baseline
-- No embeddings until evidence quality improves
+- Test embedding 1-2 Hermes research rows into content_embeddings via hermes_embedding_queue
+- Verify RAG retrieval includes Hermes-sourced context
 - No production promotion
 - No dashboard Hermes Challenger
 - No daemon/cron
-- No broker/proposal/paper_trades/journal mutation
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`

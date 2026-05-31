@@ -125,9 +125,17 @@
 - Quality gate checklist created for future ingestion/embedding/promotion decisions.
 - Prompt improvements needed: "state findings not questions", include strategy/MFE context for trades, add example output for system tasks.
 
+### Phase 1H Complete (2026-05-30)
+- Prompt hardened: `scripts/hermes_research_prompt.py` — facts/inferences separation, assertive findings, missing_data checklist
+- Validator hardened: 7 new checks (evidence depth, limitations, confidence calibration, question rejection, external claims, source_views, credentials)
+- 9/9 validator tests pass
+- 3/3 tasks staged (INFU id=5, ASPN id=6, pipeline id=7) — 100% success (vs 60% in Phase 1F)
+- Pipeline task now passes (was 0% in 1F) — hardened prompt fixed it
+- hermes_research_intelligence total: 7 rows
+
 ### Next Gate
-- **Phase 1H** — prompt hardening + limited additional ingestion with improved prompts
-- Then: embeddings, production promotion, dashboard Hermes Challenger, source table creation — all require separate approval
+- **Phase 2A** — embedding architecture pilot (evidence quality now sufficient)
+- Then: production promotion, dashboard Hermes Challenger, source table creation — all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
