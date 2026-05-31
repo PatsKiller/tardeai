@@ -214,9 +214,15 @@
 - Kill switch: `touch hermes_sidecar/.hermes/DISABLED`
 - Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
 
+### Phase 4A Promotion Architecture Complete (2026-05-31)
+- Promotion target: `llm_intelligence_cache` (safest — advisory cache, namespaced sections)
+- 10/11 rows eligible, 1 rejected (TELO confidence 0.2)
+- Dry-run completed, zero DB writes
+- Rollback strategy documented
+
 ### Next Gate
-- **Phase 4** — production promotion pilot (requires separate approval)
-- Or: expand to additional loop types (portfolio reflection, pipeline quality)
+- **Phase 4B** — first capped promotion (≤3 rows into llm_intelligence_cache, requires approval)
+- Or: expand autonomous loop to portfolio reflection/pipeline quality
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

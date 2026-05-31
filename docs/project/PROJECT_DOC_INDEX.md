@@ -252,6 +252,9 @@
 | `docs/hermes/HERMES_PHASE3J_AUTONOMOUS_OUTPUT_QUALITY_REVIEW.md` | Phase 3J — quality PASS |
 | `docs/hermes/HERMES_PHASE3K_AUTONOMOUS_LOOP_CLOSEOUT.md` | **Phase 3K closeout** — autonomous loop active and validated |
 | `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md` | **Operator runbook** — status, logs, kill switch, caps, review checklist |
+| `docs/hermes/HERMES_PHASE4A_PROMOTION_ARCHITECTURE.md` | **Phase 4A architecture** — promotion to llm_intelligence_cache, 10/11 eligible, rollback strategy |
+| `docs/hermes/HERMES_PHASE4A_PROMOTION_DRY_RUN_REPORT.md` | Phase 4A dry-run — zero DB writes, 10 selected, 1 rejected |
+| `docs/hermes/HERMES_PHASE4A_ROLLBACK_STRATEGY.md` | Rollback strategy for future promotions |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
