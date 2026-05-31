@@ -230,7 +230,7 @@ export default function HermesChat() {
                 <div key={r.id} style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
                     <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{r.symbol || 'SYSTEM'}</span>
-                    <span style={{ color: r.embedded ? 'var(--green)' : 'var(--text3)', fontSize: 8 }}>{r.embedded ? 'RAG' : 'staged'}</span>
+                    <span style={{ color: (r as any).status === 'promoted' ? 'var(--accent)' : r.embedded ? 'var(--green)' : 'var(--text3)', fontSize: 8 }}>{(r as any).status === 'promoted' ? 'promoted' : r.embedded ? 'RAG' : 'staged'}</span>
                   </div>
                   <div style={{ color: 'var(--text3)', fontSize: 9 }}>{r.research_type.replace(/_/g, ' ')}</div>
                   <div style={{ color: 'var(--text2)', fontSize: 9, marginTop: 2 }}>{r.summary?.substring(0, 80)}...</div>
