@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "symbol": "FLYW",
+    "status": "promoted",
+    "reason": "already promoted"
+  },
+  {
+    "id": 2,
+    "symbol": "SPRC",
+    "status": "promoted",
+    "reason": "already promoted"
+  },
+  {
+    "id": 3,
+    "symbol": "SCHD",
+    "status": "promoted",
+    "reason": "already promoted"
+  },
+  {
+    "id": 4,
+    "symbol": "APPS",
+    "status": "promoted",
+    "reason": "already promoted"
+  },
+  {
+    "id": 5,
+    "symbol": "INFU",
+    "status": "promoted",
+    "reason": "already promoted"
+  },
+  {
+    "id": 6,
+    "symbol": "ASPN",
+    "status": "promoted",
+    "reason": "already promoted"
+  },
+  {
+    "id": 7,
+    "symbol": null,
+    "status": "promoted",
+    "reason": "already promoted"
+  }
+]

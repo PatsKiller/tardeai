@@ -128,7 +128,10 @@
 | `docs/infra/DOCKER_PHASE12A_VERSION_CHECK_PILOT_DESIGN.md` | Phase 12A design |
 | `docs/infra/DOCKER_PHASE12B_VERSION_CHECK_PILOT_RUN_REPORT.md` | Phase 12B — version-check PASS |
 | `docs/infra/DOCKER_PHASE12C_VERSION_CHECK_SAFETY_AUDIT.md` | Phase 12C — safety PASS |
-| `docs/project/PHASE12_DOCKER_VERSION_CHECK_CLOSEOUT.md` | **Phase 12 closeout** |
+| `docs/project/PHASE12_DOCKER_VERSION_CHECK_CLOSEOUT.md` | Phase 12 closeout |
+| `docs/hermes/HERMES_PHASE13B_PROMOTION_REVIEW_DRY_RUN_REPORT.md` | Phase 13B — review dry-run, 3 candidates |
+| `docs/hermes/HERMES_PHASE13C_PROMOTION_REVIEW_USEFULNESS_AUDIT.md` | Phase 13C — quality PASS |
+| `docs/project/PHASE13_PROMOTION_REVIEW_LOOP_CLOSEOUT.md` | **Phase 13 closeout** |
 
 ### Generated Output (not authoritative)
 | Path | Content |
