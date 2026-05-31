@@ -12599,6 +12599,22 @@ def _system_applications():
     return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
+def _hermes_pipeline_quality():
+    """GET /api/v2/hermes/pipeline-quality — read-only pipeline quality findings."""
+    findings = _db_query("""
+        SELECT id, hermes_agent_name, finding_type, severity, LEFT(description, 300) AS description,
+               evidence_json, recommended_action, status, created_at
+        FROM hermes_validation_findings WHERE source='hermes'
+        ORDER BY created_at DESC
+    """) or []
+    return {
+        "ok": True,
+        "findings": [{k: _json_clean(v) for k, v in f.items()} for f in findings],
+        "total": len(findings),
+        "advisory_notice": "Pipeline Quality — Hermes Advisory Only — Not Execution",
+    }
+
+
 def _hermes_intelligence():
     """GET /api/v2/hermes/intelligence — full Hermes intelligence view."""
     rows = _db_query("""
@@ -12879,6 +12895,7 @@ ROUTES = {
     "/api/v2/system/applications": lambda: _system_applications(),
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
+    "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
 }
 
