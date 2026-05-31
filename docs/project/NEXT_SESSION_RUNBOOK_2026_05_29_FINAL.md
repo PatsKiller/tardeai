@@ -101,7 +101,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 6A-6D: COMPLETE — governance audit, loop architecture, promotion governance**
 
-**Next gate: Phase 7A — Pipeline Quality Loop manual dry-run**
+**Phase 7A-7E: COMPLETE — Pipeline Quality Loop staged + dashboard**
+
+**Next gate: Phase 8A — Portfolio Reflection Loop dry-run or observation period**
 
 Daily check:
 ```bash
