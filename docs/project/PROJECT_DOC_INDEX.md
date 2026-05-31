@@ -267,7 +267,8 @@
 | `docs/hermes/HERMES_PHASE6B_ADDITIONAL_LOOP_TYPES_ARCHITECTURE.md` | Phase 6B — 4 loop types designed |
 | `docs/hermes/HERMES_PHASE6C_PROMOTION_GOVERNANCE_MODEL.md` | Phase 6C — promotion governance, auto-promotion prohibited |
 | `docs/hermes/HERMES_PROMOTION_OPERATOR_CHECKLIST.md` | Promotion operator checklist |
-| `docs/hermes/HERMES_PHASE6D_GOVERNANCE_AND_EXPANSION_PLANNING_CLOSEOUT.md` | **Phase 6D closeout** — governance + expansion planning complete |
+| `docs/hermes/HERMES_PHASE6D_GOVERNANCE_AND_EXPANSION_PLANNING_CLOSEOUT.md` | Phase 6D closeout |
+| `docs/hermes/HERMES_PHASE6_SESSION_CLOSEOUT.md` | **Phase 6 session closeout** — governance complete, next: Phase 7A pipeline dry-run |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
