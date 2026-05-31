@@ -109,7 +109,13 @@
 | `docs/hermes/HERMES_PHASE8B_PORTFOLIO_REFLECTION_STAGING_REPORT.md` | Phase 8B — 3 reflections staged |
 | `docs/hermes/HERMES_PHASE8C_PORTFOLIO_REFLECTION_DASHBOARD_REPORT.md` | Phase 8C — dashboard verified |
 | `docs/hermes/HERMES_PHASE8D_PORTFOLIO_REFLECTION_USEFULNESS_AUDIT.md` | Phase 8D — quality PASS |
-| `docs/hermes/HERMES_PHASE8E_PORTFOLIO_REFLECTION_LOOP_CLOSEOUT.md` | **Phase 8E closeout** |
+| `docs/hermes/HERMES_PHASE8E_PORTFOLIO_REFLECTION_LOOP_CLOSEOUT.md` | Phase 8E closeout |
+| `docs/hermes/HERMES_PHASE9A_OBSERVATION_AND_STABILITY_AUDIT.md` | Phase 9A — stability PASS |
+| `docs/hermes/HERMES_PHASE9D_OBSERVATION_AND_INFRA_PLANNING_CLOSEOUT.md` | **Phase 9D closeout** |
+| `docs/infra/DOCKER_CONTAINERIZATION_ARCHITECTURE_AUDIT_2026_05_31.md` | Docker architecture — design only |
+| `docs/infra/DOCKER_READINESS_CHECKLIST.md` | Docker readiness checklist |
+| `docs/infra/DOCKER_ROLLBACK_RUNBOOK.md` | Docker rollback runbook |
+| `docs/infra/DOCKER_PHASED_MIGRATION_PLAN.md` | 5-phase Docker migration plan |
 
 ### Generated Output (not authoritative)
 | Path | Content |

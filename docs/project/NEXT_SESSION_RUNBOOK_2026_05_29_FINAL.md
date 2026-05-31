@@ -107,7 +107,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 8A-8E: COMPLETE — Portfolio Reflection staged + quality PASS**
 
-**Next: Phase 9 — observation period or expand loop types**
+**Phase 9A-9D: COMPLETE — stability PASS, Docker architecture designed**
+
+**Next: Phase 10 — session closeout or expand loop types**
 
 **Next gate: Phase 8B — Portfolio Reflection staged-write pilot**
 
