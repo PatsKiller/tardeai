@@ -124,7 +124,11 @@
 | `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md` | Operator summary |
 | `docs/hermes/HERMES_PHASE11A_OBSERVATION_HEALTH_CHECK.md` | Phase 11A — observation PASS |
 | `docs/infra/DOCKER_PHASE11B_NONPROD_PREVIEW_PILOT_REPORT.md` | Phase 11B — Docker pilot PASS (static docs, cleaned up) |
-| `docs/project/PHASE11_OBSERVATION_AND_DOCKER_PREVIEW_CLOSEOUT.md` | **Phase 11 closeout** |
+| `docs/project/PHASE11_OBSERVATION_AND_DOCKER_PREVIEW_CLOSEOUT.md` | Phase 11 closeout |
+| `docs/infra/DOCKER_PHASE12A_VERSION_CHECK_PILOT_DESIGN.md` | Phase 12A design |
+| `docs/infra/DOCKER_PHASE12B_VERSION_CHECK_PILOT_RUN_REPORT.md` | Phase 12B — version-check PASS |
+| `docs/infra/DOCKER_PHASE12C_VERSION_CHECK_SAFETY_AUDIT.md` | Phase 12C — safety PASS |
+| `docs/project/PHASE12_DOCKER_VERSION_CHECK_CLOSEOUT.md` | **Phase 12 closeout** |
 
 ### Generated Output (not authoritative)
 | Path | Content |
