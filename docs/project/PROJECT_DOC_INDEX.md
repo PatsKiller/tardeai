@@ -258,7 +258,11 @@
 | `docs/hermes/HERMES_PHASE4B_FIRST_CAPPED_PROMOTION_REPORT.md` | Phase 4B — 3 rows promoted to llm_intelligence_cache |
 | `docs/hermes/HERMES_PHASE4C_PROMOTION_IMPACT_AUDIT.md` | Phase 4C — impact audit PASS |
 | `docs/hermes/HERMES_PHASE4D_DASHBOARD_PROMOTION_VISIBILITY_REPORT.md` | Phase 4D — dashboard badges |
-| `docs/hermes/HERMES_PHASE4E_PROMOTION_PILOT_CLOSEOUT.md` | **Phase 4E closeout** — promotion pilot complete |
+| `docs/hermes/HERMES_PHASE4E_PROMOTION_PILOT_CLOSEOUT.md` | Phase 4E closeout |
+| `docs/hermes/HERMES_PHASE5A_SECOND_CAPPED_PROMOTION_REPORT.md` | Phase 5A — 4 more rows promoted |
+| `docs/hermes/HERMES_PHASE5B_EXPANDED_PROMOTION_QUALITY_AUDIT.md` | Phase 5B — quality PASS |
+| `docs/hermes/HERMES_PHASE5C_DEDICATED_INTELLIGENCE_PAGE_REPORT.md` | Phase 5C — Hermes Intelligence page |
+| `docs/hermes/HERMES_PHASE5D_EXPANDED_PROMOTION_AND_INTELLIGENCE_PAGE_CLOSEOUT.md` | **Phase 5D closeout** — 7 promoted, intelligence page live |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
