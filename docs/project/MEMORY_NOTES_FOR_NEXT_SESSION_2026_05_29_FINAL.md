@@ -140,9 +140,21 @@
 - RAG retrieval test: Hermes content found with score 0.741 — competitive with Trade AI content
 - Embedding worker: `scripts/hermes_embedding_worker.py` (--dry-run default, --apply required)
 
+### Hermes Current Allowed State (post-2A)
+- Sidecar installed, gateway :18790, headless browser, Chat at /v2/hermes
+- 7 staged research rows, hardened prompt+validator (9/9 tests)
+- 2 pilot embeddings in content_embeddings (ids 26858, 26859, source_type='hermes_research')
+- Pilot embeddings discoverable via RAG (score 0.741)
+
+### Hermes Current Prohibited State
+- No bulk embeddings, no embedding cron/worker automation
+- No dashboard Hermes Challenger, no production promotion
+- No autonomous research cron, no broker/trade/journal mutation
+- No external APIs/Grok/xAI
+
 ### Next Gate
-- Embed remaining 5 research rows (requires approval)
-- Then: dashboard Hermes Challenger, production promotion, source table creation — all require separate approval
+- **Phase 2B** — retrieval quality audit of 2 pilot embeddings
+- Then: bulk embeddings, dashboard, production promotion — all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
