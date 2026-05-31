@@ -85,16 +85,18 @@ All phases through 1H completed and closed (2026-05-30, 42+ commits):
 | 2F | COMPLETE | Source discovery gates defined |
 | 2G | COMPLETE | Closeout verified |
 
-**Next gate: Phase 3 — Hermes autonomous research loop**
+**Phase 3A architecture: COMPLETE (design only, not activated)**
+
+**Next gate: Phase 3B — manual dry-run of ticker challenger loop (no DB writes)**
 
 Scope:
-1. Define 5 pilot agent workflows as scheduled tasks
-2. Connect Hermes to safe views for contextual research
-3. Auto-embed new research via hermes_embedding_queue
-4. Show results in dashboard preview
-5. No production promotion
-6. No broker/trade/journal mutation
-7. Operator review before cron is enabled
+1. Create `scripts/hermes_autonomous_loop.py` with ticker_challenger loop
+2. Run dry-run only — no DB writes
+3. Verify prompt quality, validator, output schema
+4. Verify kill file and lockfile work
+5. No timer/cron/service activation
+6. No embeddings
+7. No production promotion
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`

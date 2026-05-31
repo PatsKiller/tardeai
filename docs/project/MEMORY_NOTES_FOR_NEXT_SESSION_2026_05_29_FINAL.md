@@ -174,9 +174,16 @@
 - **2F**: Source discovery architecture: 3-tier gates defined, zero external APIs configured
 - **2G**: All phases closed, rollback files exist for all embedding phases
 
+### Phase 3A Architecture Complete (2026-05-31)
+- Autonomous loop architecture designed: 4 loop types (ticker challenger, portfolio reflection, pipeline quality, source discovery)
+- Safety controls: kill file, lockfile, row cap (10/day), model cap (15/day), timeout (600s), failure backoff
+- 7-gate rollout: 3A arch → 3B dry-run → 3C manual apply → 3D dashboard → 3E timer draft → 3F activation → 3G review
+- Draft timer/service/config files created (NOT installed)
+- Safety checklist created
+
 ### Next Gate
-- **Phase 3** — Hermes autonomous research loop (requires separate approval)
-- Then: production promotion — requires separate approval
+- **Phase 3B** — manual dry-run of ticker challenger loop (no DB writes)
+- Then: Phase 3C-3G gates, production promotion — all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
