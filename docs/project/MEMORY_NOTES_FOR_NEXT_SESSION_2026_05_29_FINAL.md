@@ -264,6 +264,11 @@
 - **11B**: Docker pilot PASS — Docker 29.5.2 installed, static docs preview built/run/tested/cleaned up
 - **11D**: Closeout
 - Docker Engine: 29.5.2, Compose: v5.1.4
+
+### Phase 12 Docker Version-Check (2026-05-31)
+- **12A-12D**: Version-check pilot PASS — Python 3.13.13, exited cleanly, auto-removed
+- Two Docker pilots complete (static docs + version-check), both safe
+- Next: observation, promotion review loop, or source discovery dry-run
 - Next: observation period or second Docker pilot / promotion review loop
 
 ### Documentation A1A Hygiene Pass (2026-05-31)

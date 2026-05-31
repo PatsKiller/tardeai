@@ -109,9 +109,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 9A-9D: COMPLETE — stability PASS, Docker architecture designed**
 
-**Phase 11: Observation PASS, Docker pilot PASS (29.5.2 installed, preview tested)**
+**Phase 11-12: Observation PASS, 2 Docker pilots PASS (static docs + version-check)**
 
-Next: observation period, second Docker pilot, or promotion review loop dry-run
+Next: observation, promotion review loop dry-run, or source discovery dry-run
 
 Daily check:
 ```bash
