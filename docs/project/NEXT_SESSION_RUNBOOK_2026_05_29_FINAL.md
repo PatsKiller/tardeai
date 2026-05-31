@@ -75,22 +75,26 @@ All phases through 1H completed and closed (2026-05-30, 42+ commits):
 
 **Phase 2A embedding pilot: COMPLETE (2 rows, RAG score 0.741)**
 
-**Phase 2B retrieval audit: PASS_WITH_LIMITS (7/8 correct, closed)**
+**Accelerated Phase 2C-2G: ALL COMPLETE**
 
-**Next gate: Phase 2C — embed remaining 5 rows + limited dashboard preview**
+| Phase | Status | Key |
+|-------|--------|-----|
+| 2C | COMPLETE | 7 total embeddings, dashboard preview live |
+| 2D | COMPLETE | 13/16 retrieval pass, negative 5/5 |
+| 2E | COMPLETE | Dashboard safety PASS |
+| 2F | COMPLETE | Source discovery gates defined |
+| 2G | COMPLETE | Closeout verified |
 
-Pre-Phase 2C checks:
-1. Verify Hermes embeddings count = 2 (ids 26858, 26859)
-2. Verify remaining staged rows to embed: ids 2, 3, 4, 6, 7
-3. Verify rollback strategy before embedding remaining rows
+**Next gate: Phase 3 — Hermes autonomous research loop**
 
-Scope (capped):
-- Embed only remaining 5 staged rows with improved embedding text
-- No bulk embeddings beyond those 5
-- Add read-only dashboard preview, clearly labeled as Hermes advisory
-- No production promotion, no mutation controls
-- No autonomous cron/embedding worker
-- No broker/proposal/paper_trades/journal mutation
+Scope:
+1. Define 5 pilot agent workflows as scheduled tasks
+2. Connect Hermes to safe views for contextual research
+3. Auto-embed new research via hermes_embedding_queue
+4. Show results in dashboard preview
+5. No production promotion
+6. No broker/trade/journal mutation
+7. Operator review before cron is enabled
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
