@@ -222,7 +222,9 @@
 | `docs/hermes/HERMES_RESEARCH_QUALITY_GATE_CHECKLIST.md` | Reusable quality gate checklist for ingestion, embedding, dashboard, and promotion |
 | `docs/hermes/HERMES_PHASE1H_PROMPT_HARDENING_AND_LIMITED_INGESTION_REPORT.md` | **Phase 1H report** — hardened prompts+validator, 9/9 tests, 3/3 tasks staged (INFU, ASPN, pipeline), 100% success rate |
 | `docs/hermes/HERMES_PHASE1H_PROMPT_HARDENING_AND_LIMITED_INGESTION_ROLLBACK.sql` | Rollback SQL for Phase 1H rows |
-| `docs/hermes/HERMES_PHASE1H_SESSION_CLOSEOUT.md` | Phase 1H session closeout — hardening + ingestion complete, next: Phase 2A embedding pilot |
+| `docs/hermes/HERMES_PHASE1H_SESSION_CLOSEOUT.md` | Phase 1H session closeout |
+| `docs/hermes/HERMES_PHASE2A_EMBEDDING_PILOT_REPORT.md` | **Phase 2A report** — 2 embeddings, nomic-embed-text 768-dim, RAG score 0.741, content_embeddings ids 26858-26859 |
+| `docs/hermes/HERMES_PHASE2A_EMBEDDING_PILOT_ROLLBACK.sql` | Rollback SQL for Phase 2A embeddings |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
