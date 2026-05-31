@@ -12599,6 +12599,31 @@ def _system_applications():
     return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
+def _hermes_promotion_review():
+    """GET /api/v2/hermes/promotion-review — read-only promotion review dry-run results."""
+    import json as _jpv
+    dryrun_dir = PROJECT_ROOT / "docs" / "hermes" / "phase13a_promotion_review_dryrun"
+    candidates = []
+    duplicates = []
+    try:
+        cp = dryrun_dir / "candidate_promotion_reviews.json"
+        if cp.exists():
+            candidates = _jpv.loads(cp.read_text())
+        dp = dryrun_dir / "duplicate_or_already_promoted.json"
+        if dp.exists():
+            duplicates = _jpv.loads(dp.read_text())
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "candidates": candidates,
+        "duplicates": duplicates,
+        "total_candidates": len(candidates),
+        "total_duplicates": len(duplicates),
+        "advisory_notice": "Dry-Run Only — Auto-Promotion Prohibited — Operator Review Required",
+    }
+
+
 def _hermes_pipeline_quality():
     """GET /api/v2/hermes/pipeline-quality — read-only pipeline quality findings."""
     findings = _db_query("""
@@ -12896,6 +12921,7 @@ ROUTES = {
     "/api/v2/hermes/health": lambda: _hermes_health(),
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
+    "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
 }
 
