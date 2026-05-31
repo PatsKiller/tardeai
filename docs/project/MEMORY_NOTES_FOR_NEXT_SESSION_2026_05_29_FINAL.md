@@ -268,7 +268,10 @@
 ### Phase 12 Docker Version-Check (2026-05-31)
 - **12A-12D**: Version-check pilot PASS — Python 3.13.13, exited cleanly, auto-removed
 - Two Docker pilots complete (static docs + version-check), both safe
-- Next: observation, promotion review loop, or source discovery dry-run
+### Phase 13 Promotion Review Loop (2026-05-31)
+- **13A-13D**: Dry-run PASS — 11 reviewed, 7 already promoted, 3 candidates (FJSCX, APAM, TRX), 1 needs evidence (TELO)
+- Auto-promotion: PROHIBITED. Quality audit PASS.
+- Next: promote 3 candidates, source discovery dry-run, or observation
 - Next: observation period or second Docker pilot / promotion review loop
 
 ### Documentation A1A Hygiene Pass (2026-05-31)

@@ -111,7 +111,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 11-12: Observation PASS, 2 Docker pilots PASS (static docs + version-check)**
 
-Next: observation, promotion review loop dry-run, or source discovery dry-run
+**Phase 13: Promotion Review dry-run PASS — 3 candidates (FJSCX, APAM, TRX)**
+
+Next: promote 3 candidates, source discovery dry-run, or observation
 
 Daily check:
 ```bash

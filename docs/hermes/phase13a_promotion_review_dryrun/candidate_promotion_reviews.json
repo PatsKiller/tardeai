@@ -1,0 +1,102 @@
+[
+  {
+    "run_id": "phase13a_promotion_review_20260531_1940",
+    "source": "hermes",
+    "phase": "13A",
+    "loop_type": "promotion_review",
+    "hermes_row_id": 8,
+    "symbol_or_topic": "FJSCX",
+    "current_status": "staged",
+    "already_promoted": false,
+    "recommended_disposition": "candidate_for_future_promotion",
+    "confidence_score": 0.6,
+    "evidence_quality_score": 4,
+    "limitations_quality_score": 4,
+    "duplicate_risk": "none",
+    "execution_contamination_risk": "none",
+    "rationale": "Staged, confidence 0.6, not yet promoted",
+    "forbidden_action_check": {
+      "no_auto_promotion": true,
+      "no_db_write": true,
+      "no_broker_access": true,
+      "no_proposal_mutation": true,
+      "no_journal_mutation": true,
+      "no_trade_instruction": true
+    }
+  },
+  {
+    "run_id": "phase13a_promotion_review_20260531_1940",
+    "source": "hermes",
+    "phase": "13A",
+    "loop_type": "promotion_review",
+    "hermes_row_id": 9,
+    "symbol_or_topic": "TELO",
+    "current_status": "staged",
+    "already_promoted": false,
+    "recommended_disposition": "needs_more_evidence",
+    "confidence_score": 0.2,
+    "evidence_quality_score": 3,
+    "limitations_quality_score": 4,
+    "duplicate_risk": "none",
+    "execution_contamination_risk": "none",
+    "rationale": "Low confidence 0.2",
+    "forbidden_action_check": {
+      "no_auto_promotion": true,
+      "no_db_write": true,
+      "no_broker_access": true,
+      "no_proposal_mutation": true,
+      "no_journal_mutation": true,
+      "no_trade_instruction": true
+    }
+  },
+  {
+    "run_id": "phase13a_promotion_review_20260531_1940",
+    "source": "hermes",
+    "phase": "13A",
+    "loop_type": "promotion_review",
+    "hermes_row_id": 10,
+    "symbol_or_topic": "APAM",
+    "current_status": "staged",
+    "already_promoted": false,
+    "recommended_disposition": "candidate_for_future_promotion",
+    "confidence_score": 0.6,
+    "evidence_quality_score": 4,
+    "limitations_quality_score": 4,
+    "duplicate_risk": "none",
+    "execution_contamination_risk": "none",
+    "rationale": "Staged, confidence 0.6, not yet promoted",
+    "forbidden_action_check": {
+      "no_auto_promotion": true,
+      "no_db_write": true,
+      "no_broker_access": true,
+      "no_proposal_mutation": true,
+      "no_journal_mutation": true,
+      "no_trade_instruction": true
+    }
+  },
+  {
+    "run_id": "phase13a_promotion_review_20260531_1940",
+    "source": "hermes",
+    "phase": "13A",
+    "loop_type": "promotion_review",
+    "hermes_row_id": 11,
+    "symbol_or_topic": "TRX",
+    "current_status": "staged",
+    "already_promoted": false,
+    "recommended_disposition": "candidate_for_future_promotion",
+    "confidence_score": 0.6,
+    "evidence_quality_score": 4,
+    "limitations_quality_score": 4,
+    "duplicate_risk": "none",
+    "execution_contamination_risk": "none",
+    "rationale": "Staged, confidence 0.6, not yet promoted",
+    "forbidden_action_check": {
+      "no_auto_promotion": true,
+      "no_db_write": true,
+      "no_broker_access": true,
+      "no_proposal_mutation": true,
+      "no_journal_mutation": true,
+      "no_trade_instruction": true
+    }
+  }
+]
