@@ -1,0 +1,39 @@
+# DRAFT ONLY — NOT INSTALLED — DO NOT ENABLE WITHOUT OPERATOR APPROVAL
+# Example configuration for Hermes autonomous research loop
+
+loops:
+  ticker_challenger:
+    enabled: false
+    schedule: "17:00 ET daily"
+    max_rows: 5
+    model: gemma3:12b
+    views:
+      - hermes_v_ticker_context
+      - hermes_v_trade_reflection_context
+      - hermes_v_proposal_context
+
+  portfolio_reflection:
+    enabled: false
+    schedule: "22:00 ET daily"
+    max_rows: 3
+    model: gemma3:12b
+    views:
+      - hermes_v_trade_reflection_context
+      - hermes_v_portfolio_context
+
+  pipeline_quality:
+    enabled: false
+    schedule: "08:00, 16:00 ET daily"
+    max_rows: 5
+    model: gemma3:4b
+    views:
+      - hermes_v_pipeline_health_context
+
+global:
+  daily_row_cap: 10
+  daily_model_call_cap: 15
+  max_runtime_seconds: 600
+  lockfile: /tmp/hermes_autonomous_loop.lock
+  kill_file: hermes_sidecar/.hermes/DISABLED
+  dry_run_default: true
+  embed_after_ingest: false  # requires separate embedding gate

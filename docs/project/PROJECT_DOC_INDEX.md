@@ -233,7 +233,11 @@
 | `docs/hermes/HERMES_PHASE2D_FULL_EMBEDDING_RETRIEVAL_AUDIT.md` | Phase 2D — 16-query audit, 13/16 pass, negative 5/5 |
 | `docs/hermes/HERMES_PHASE2E_DASHBOARD_PREVIEW_SAFETY_AUDIT.md` | Phase 2E — dashboard safety PASS |
 | `docs/hermes/HERMES_PHASE2F_SOURCE_DISCOVERY_ARCHITECTURE_UPDATE.md` | Phase 2F — 3-tier source gates |
-| `docs/hermes/HERMES_PHASE2G_ACCELERATED_SEQUENCE_CLOSEOUT.md` | **Phase 2G closeout** — all 2C-2G complete, 7 embeddings, dashboard live |
+| `docs/hermes/HERMES_PHASE2G_ACCELERATED_SEQUENCE_CLOSEOUT.md` | Phase 2G closeout |
+| `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_RESEARCH_LOOP_ARCHITECTURE.md` | **Phase 3A architecture** — 4 loop types, scheduling, caps, kill switch, 7-gate rollout |
+| `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_IMPLEMENTATION_PLAN.md` | Phase 3A implementation plan — scripts, config, commands, rollback |
+| `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_SAFETY_CHECKLIST.md` | Phase 3A safety checklist — must pass before any loop activation |
+| `docs/hermes/drafts/` | Draft timer/service/config files (NOT INSTALLED) |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |

@@ -1,0 +1,16 @@
+# DRAFT ONLY — NOT INSTALLED — DO NOT ENABLE WITHOUT OPERATOR APPROVAL
+# Hermes Autonomous Research Loop Timer
+# Requires Phase 3F approval before activation
+
+[Unit]
+Description=Hermes Autonomous Research Loop Timer
+After=network-online.target ollama.service
+
+[Timer]
+# Run daily at 5 PM ET (21:00 UTC) — after market close
+OnCalendar=*-*-* 21:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
