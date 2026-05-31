@@ -109,11 +109,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 9A-9D: COMPLETE — stability PASS, Docker architecture designed**
 
-**SESSION CLOSED (2026-05-31) — 101 commits**
+**Phase 11: Observation PASS, Docker BLOCKED (not installed)**
 
-Next session: observation or Docker preview. See `SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md`
-
-**Next gate: Phase 8B — Portfolio Reflection staged-write pilot**
+Next: install Docker then retry preview, or promotion review loop dry-run
 
 Daily check:
 ```bash
