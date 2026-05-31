@@ -246,7 +246,12 @@
 | `docs/hermes/HERMES_PHASE3E_TIMER_SERVICE_DRAFT_REVIEW.md` | Phase 3E — drafts finalized |
 | `docs/hermes/HERMES_PHASE3F_TIMER_DRY_RUN_ACTIVATION_REPORT.md` | Phase 3F — dry-run timer activated |
 | `docs/hermes/HERMES_PHASE3F_TIMER_DISABLE_ROLLBACK.md` | Timer disable commands |
-| `docs/hermes/HERMES_PHASE3G_MANUAL_TO_TIMER_SEQUENCE_CLOSEOUT.md` | **Phase 3G closeout** — all 3B-3G complete, timer dry-run active |
+| `docs/hermes/HERMES_PHASE3G_MANUAL_TO_TIMER_SEQUENCE_CLOSEOUT.md` | Phase 3G closeout |
+| `docs/hermes/HERMES_PHASE3H_APPLY_MODE_ACTIVATION_REPORT.md` | Phase 3H — apply-mode activated, 2/2 staged |
+| `docs/hermes/HERMES_PHASE3I_FIRST_APPLY_OBSERVATION_AUDIT.md` | Phase 3I — observation clean |
+| `docs/hermes/HERMES_PHASE3J_AUTONOMOUS_OUTPUT_QUALITY_REVIEW.md` | Phase 3J — quality PASS |
+| `docs/hermes/HERMES_PHASE3K_AUTONOMOUS_LOOP_CLOSEOUT.md` | **Phase 3K closeout** — autonomous loop active and validated |
+| `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md` | **Operator runbook** — status, logs, kill switch, caps, review checklist |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |

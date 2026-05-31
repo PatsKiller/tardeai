@@ -87,19 +87,19 @@ All phases through 1H completed and closed (2026-05-30, 42+ commits):
 
 **Phase 3A architecture: COMPLETE, closed at `cec3189`**
 
-**Phase 3B-3G: ALL COMPLETE**
+**Phase 3B-3K: ALL COMPLETE — autonomous loop ACTIVE**
 
-Timer: active (daily 01:00 UTC, DRY-RUN mode — no --apply)
-Research rows: 9 | Embeddings: 7 | Gateway: active
+Timer: active (daily 01:00 UTC, APPLY mode --max-rows 2)
+Research rows: 11 | Embeddings: 7 | Gateway: active
 
-**Next gate: Phase 3H — enable apply-mode autonomous loop**
+Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
 
-Pre-Phase 3H checks:
-1. Verify dry-run timer has fired at least 1 scheduled cycle
-2. Review dry-run output quality in logs
-3. Confirm kill switch works in scheduled context
-4. Confirm row caps enforced
-5. Operator explicitly approves changing `--apply` mode
+**Next gate: Phase 4 — production promotion pilot (not approved)**
+
+Daily check:
+```bash
+journalctl --user -u hermes-autonomous-loop.service -n 10 --no-pager
+```
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`

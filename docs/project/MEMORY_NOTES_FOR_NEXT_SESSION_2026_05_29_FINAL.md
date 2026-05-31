@@ -200,9 +200,23 @@
 - **3F**: Dry-run timer activated (daily 01:00 UTC, no --apply)
 - **3G**: Closeout verified
 
+### Phase 3H-3K Complete (2026-05-31)
+- **3H**: Apply-mode activated, 2/2 staged (APAM id=10, TRX id=11)
+- **3I**: Observation audit clean, 275.8s, caps enforced
+- **3J**: Quality review PASS, at/above Phase 1H baseline
+- **3K**: Closeout + operator runbook created
+- Timer: active daily 01:00 UTC, `--apply --max-rows 2`
+- Total research rows: 11 | Embeddings: 7 | Production: unchanged
+
+### Hermes Autonomous Loop — ACTIVE
+- Timer fires daily at 01:00 UTC (9 PM ET)
+- Writes up to 2 staged rows per run
+- Kill switch: `touch hermes_sidecar/.hermes/DISABLED`
+- Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
+
 ### Next Gate
-- **Phase 3H** — enable apply-mode autonomous loop (requires operator approval after dry-run observation)
-- Then: production promotion — requires separate approval
+- **Phase 4** — production promotion pilot (requires separate approval)
+- Or: expand to additional loop types (portfolio reflection, pipeline quality)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
