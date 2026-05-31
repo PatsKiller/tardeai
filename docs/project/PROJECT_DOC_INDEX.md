@@ -255,6 +255,10 @@
 | `docs/hermes/HERMES_PHASE4A_PROMOTION_ARCHITECTURE.md` | **Phase 4A architecture** — promotion to llm_intelligence_cache, 10/11 eligible, rollback strategy |
 | `docs/hermes/HERMES_PHASE4A_PROMOTION_DRY_RUN_REPORT.md` | Phase 4A dry-run — zero DB writes, 10 selected, 1 rejected |
 | `docs/hermes/HERMES_PHASE4A_ROLLBACK_STRATEGY.md` | Rollback strategy for future promotions |
+| `docs/hermes/HERMES_PHASE4B_FIRST_CAPPED_PROMOTION_REPORT.md` | Phase 4B — 3 rows promoted to llm_intelligence_cache |
+| `docs/hermes/HERMES_PHASE4C_PROMOTION_IMPACT_AUDIT.md` | Phase 4C — impact audit PASS |
+| `docs/hermes/HERMES_PHASE4D_DASHBOARD_PROMOTION_VISIBILITY_REPORT.md` | Phase 4D — dashboard badges |
+| `docs/hermes/HERMES_PHASE4E_PROMOTION_PILOT_CLOSEOUT.md` | **Phase 4E closeout** — promotion pilot complete |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
