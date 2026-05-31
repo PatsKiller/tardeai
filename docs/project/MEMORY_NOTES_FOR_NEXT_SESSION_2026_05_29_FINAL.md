@@ -220,9 +220,14 @@
 - Dry-run completed, zero DB writes
 - Rollback strategy documented
 
+### Phase 4B-4E Promotion Pilot Complete (2026-05-31)
+- **4B**: 3 rows promoted to llm_intelligence_cache (APPS, INFU, FLYW)
+- **4C**: Impact audit PASS — no execution contamination
+- **4D**: Dashboard shows promoted/RAG/staged badges
+- **4E**: Closeout — 3 audit records, 3 promoted, 8 staged
+
 ### Next Gate
-- **Phase 4B** — first capped promotion (≤3 rows into llm_intelligence_cache, requires approval)
-- Or: expand autonomous loop to portfolio reflection/pipeline quality
+- **Phase 5** — expand promotion, add loop types, or dedicated Hermes page (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
