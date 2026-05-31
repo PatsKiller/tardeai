@@ -26,6 +26,7 @@ export default function HermesIntelligence() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [detail, setDetail] = useState<HermesRow | null>(null)
   const { data, loading, error } = useApi<IntelData>(`/api/v2/hermes/intelligence?_r=${rk}`)
+  const { data: pqData } = useApi<{ findings: Array<{ id: number; finding_type: string; severity: string; description: string; recommended_action: string; status: string; created_at: string }>; total: number }>(`/api/v2/hermes/pipeline-quality?_r=${rk}`)
 
   const filtered = useMemo(() => {
     if (!data) return []
@@ -60,6 +61,7 @@ export default function HermesIntelligence() {
           { label: 'Staged', value: data.staged, color: 'var(--text3)' },
           { label: 'Embedded', value: data.embedded, color: 'var(--green)' },
           { label: 'Audit Records', value: data.audit?.length || 0, color: 'var(--text2)' },
+          { label: 'Pipeline Findings', value: pqData?.total || 0, color: 'var(--amber)' },
         ].map((m, i) => (
           <div key={i} style={{ padding: '8px 16px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: m.color }}>{m.value}</div>
@@ -113,6 +115,24 @@ export default function HermesIntelligence() {
           </tbody>
         </table>
       </Card>
+
+      {/* Pipeline Quality Findings */}
+      {pqData && pqData.findings.length > 0 && (
+        <Card title="Pipeline Quality Findings">
+          <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 6 }}>Advisory Only — Not Auto-Promoted</div>
+          {pqData.findings.map(f => (
+            <div key={f.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: f.severity === 'warning' ? 'rgba(246,190,0,.15)' : 'rgba(74,144,244,.1)', color: f.severity === 'warning' ? 'var(--amber)' : 'var(--accent)' }}>{f.severity}</span>
+                <span style={{ color: 'var(--text2)', fontSize: 10 }}>{f.finding_type.replace(/_/g, ' ')}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{new Date(f.created_at).toLocaleDateString()}</span>
+              </div>
+              <div style={{ color: 'var(--text0)', fontSize: 11 }}>{f.description}</div>
+              {f.recommended_action && <div style={{ color: 'var(--text3)', fontSize: 10, marginTop: 2 }}>Action: {f.recommended_action}</div>}
+            </div>
+          ))}
+        </Card>
+      )}
 
       {detail && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setDetail(null)}>
