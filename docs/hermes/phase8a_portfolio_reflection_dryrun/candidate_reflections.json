@@ -1,0 +1,122 @@
+[
+  {
+    "run_id": "phase8a_portfolio_reflection_20260531_1726",
+    "source": "hermes",
+    "phase": "8A",
+    "loop_type": "portfolio_reflection",
+    "reflection_type": "stop_coverage_reflection",
+    "severity": "info",
+    "title": "All 6 open positions have stop-loss defined",
+    "summary": "Stop coverage is complete across 6 open positions.",
+    "evidence_json": {
+      "total_open": 6,
+      "all_have_stops": true
+    },
+    "limitations": [
+      "DB stop may differ from broker stop"
+    ],
+    "confidence_score": 0.8,
+    "recommended_operator_review": "No action \u2014 informational",
+    "forbidden_action_check": {
+      "no_broker_access": true,
+      "no_trade_instruction": true,
+      "no_proposal_mutation": true
+    }
+  },
+  {
+    "run_id": "phase8a_portfolio_reflection_20260531_1726",
+    "source": "hermes",
+    "phase": "8A",
+    "loop_type": "portfolio_reflection",
+    "reflection_type": "stale_portfolio_intelligence_reflection",
+    "severity": "info",
+    "title": "Lowest intelligence scores: GAP, GAP, GAP",
+    "summary": "5 tickers have the lowest intelligence scores. Lowest: GAP at 7.0. These may need enrichment refresh.",
+    "evidence_json": {
+      "low_intel_tickers": [
+        {
+          "symbol": "GAP",
+          "intelligence_score": 7.0,
+          "intelligence_grade": "D",
+          "rsi": 34.81,
+          "beta": 2.07,
+          "sma50_pct": -11.96
+        },
+        {
+          "symbol": "GAP",
+          "intelligence_score": 7.0,
+          "intelligence_grade": "D",
+          "rsi": 46.63,
+          "beta": 2.06,
+          "sma50_pct": -6.07
+        },
+        {
+          "symbol": "GAP",
+          "intelligence_score": 7.0,
+          "intelligence_grade": "D",
+          "rsi": 46.63,
+          "beta": 2.06,
+          "sma50_pct": -6.07
+        },
+        {
+          "symbol": "GAP",
+          "intelligence_score": 7.0,
+          "intelligence_grade": "D",
+          "rsi": 46.63,
+          "beta": 2.06,
+          "sma50_pct": -6.07
+        },
+        {
+          "symbol": "GAP",
+          "intelligence_score": 7.0,
+          "intelligence_grade": "D",
+          "rsi": 50.99,
+          "beta": 2.06,
+          "sma50_pct": -3.44
+        }
+      ]
+    },
+    "limitations": [
+      "Intelligence score reflects data freshness, not fundamental quality",
+      "Score may improve after next enrichment cycle"
+    ],
+    "confidence_score": 0.6,
+    "recommended_operator_review": "Review whether low-intelligence tickers need enrichment or watchlist attention",
+    "forbidden_action_check": {
+      "no_broker_access": true,
+      "no_trade_instruction": true,
+      "no_proposal_mutation": true
+    }
+  },
+  {
+    "run_id": "phase8a_portfolio_reflection_20260531_1726",
+    "source": "hermes",
+    "phase": "8A",
+    "loop_type": "portfolio_reflection",
+    "reflection_type": "portfolio_heat_reflection",
+    "severity": "warning",
+    "title": "5 active recovery-watch positions",
+    "summary": "5 previously stopped-out positions are on active recovery watch. Symbols: LHX, IRDM, DRS, TDG, AVAV.",
+    "evidence_json": {
+      "active_recovery": 5,
+      "symbols": [
+        "LHX",
+        "IRDM",
+        "DRS",
+        "TDG",
+        "AVAV"
+      ]
+    },
+    "limitations": [
+      "Recovery watch is advisory, not automated re-entry",
+      "Re-entry requires separate proposal"
+    ],
+    "confidence_score": 0.7,
+    "recommended_operator_review": "Review recovery-watch positions for re-entry candidacy or removal",
+    "forbidden_action_check": {
+      "no_broker_access": true,
+      "no_trade_instruction": true,
+      "no_proposal_mutation": true
+    }
+  }
+]
