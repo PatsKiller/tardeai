@@ -1,16 +1,24 @@
 # DRAFT ONLY — NOT INSTALLED — DO NOT ENABLE WITHOUT OPERATOR APPROVAL
-# Hermes Autonomous Research Loop Timer
+# Hermes Autonomous Research Loop Timer (Phase 3E draft)
 # Requires Phase 3F approval before activation
 
 [Unit]
 Description=Hermes Autonomous Research Loop Timer
-After=network-online.target ollama.service
 
 [Timer]
-# Run daily at 5 PM ET (21:00 UTC) — after market close
-OnCalendar=*-*-* 21:00:00
+# Once daily at 9 PM ET (01:00 UTC next day) — after market close
+OnCalendar=*-*-* 01:00:00 UTC
 Persistent=true
 RandomizedDelaySec=300
 
 [Install]
 WantedBy=timers.target
+
+# To install (ONLY after Phase 3F approval):
+#   cp this_file ~/.config/systemd/user/hermes-autonomous-loop.timer
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hermes-autonomous-loop.timer
+#
+# To disable:
+#   systemctl --user stop hermes-autonomous-loop.timer
+#   systemctl --user disable hermes-autonomous-loop.timer
