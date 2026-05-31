@@ -192,9 +192,17 @@
 - No auto-embedding, no production promotion
 - No external APIs, no broker/trade/journal mutation
 
+### Phase 3B-3G Complete (2026-05-31)
+- **3B**: Manual dry-run loop 3/3 validated, kill switch PASS, zero DB writes
+- **3C**: Manual apply 2/3 staged (FJSCX id=8, TELO id=9), total 9 research rows
+- **3D**: Dashboard monitoring added (kill switch + auto loop status)
+- **3E**: Timer/service drafts finalized (not installed at that point)
+- **3F**: Dry-run timer activated (daily 01:00 UTC, no --apply)
+- **3G**: Closeout verified
+
 ### Next Gate
-- **Phase 3B** — manual dry-run of ticker challenger loop (no DB writes)
-- Then: Phase 3C-3G gates, production promotion — all require separate approval
+- **Phase 3H** — enable apply-mode autonomous loop (requires operator approval after dry-run observation)
+- Then: production promotion — requires separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

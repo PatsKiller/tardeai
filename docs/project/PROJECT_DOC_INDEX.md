@@ -238,7 +238,15 @@
 | `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_IMPLEMENTATION_PLAN.md` | Phase 3A implementation plan — scripts, config, commands, rollback |
 | `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_SAFETY_CHECKLIST.md` | Phase 3A safety checklist — must pass before any loop activation |
 | `docs/hermes/drafts/` | Draft timer/service/config files (NOT INSTALLED) |
-| `docs/hermes/HERMES_PHASE3A_SESSION_CLOSEOUT.md` | Phase 3A closeout — architecture only, nothing activated, next: Phase 3B |
+| `docs/hermes/HERMES_PHASE3A_SESSION_CLOSEOUT.md` | Phase 3A closeout |
+| `docs/hermes/HERMES_PHASE3B_MANUAL_DRY_RUN_LOOP_REPORT.md` | Phase 3B — dry-run loop 3/3 validated |
+| `docs/hermes/HERMES_PHASE3C_MANUAL_APPLY_STAGING_REPORT.md` | Phase 3C — 2/3 applied (FJSCX, TELO) |
+| `docs/hermes/HERMES_PHASE3C_ROLLBACK.sql` | Rollback for Phase 3C |
+| `docs/hermes/HERMES_PHASE3D_DASHBOARD_MONITORING_REPORT.md` | Phase 3D — kill switch + loop status |
+| `docs/hermes/HERMES_PHASE3E_TIMER_SERVICE_DRAFT_REVIEW.md` | Phase 3E — drafts finalized |
+| `docs/hermes/HERMES_PHASE3F_TIMER_DRY_RUN_ACTIVATION_REPORT.md` | Phase 3F — dry-run timer activated |
+| `docs/hermes/HERMES_PHASE3F_TIMER_DISABLE_ROLLBACK.md` | Timer disable commands |
+| `docs/hermes/HERMES_PHASE3G_MANUAL_TO_TIMER_SEQUENCE_CLOSEOUT.md` | **Phase 3G closeout** — all 3B-3G complete, timer dry-run active |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
