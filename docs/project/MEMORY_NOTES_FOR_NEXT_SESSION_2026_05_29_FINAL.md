@@ -181,6 +181,17 @@
 - Draft timer/service/config files created (NOT installed)
 - Safety checklist created
 
+### Hermes Current Allowed State (post-3A)
+- Sidecar + gateway + browser + Chat + dashboard preview all operational
+- 7 staged research rows, 7 embeddings in RAG, retrieval audited
+- Phase 3 autonomous loop designed but NOT active
+- Draft timer/service/config in docs/hermes/drafts/ (NOT installed)
+
+### Hermes Current Prohibited State
+- No autonomous research active, no timers/cron/services installed
+- No auto-embedding, no production promotion
+- No external APIs, no broker/trade/journal mutation
+
 ### Next Gate
 - **Phase 3B** — manual dry-run of ticker challenger loop (no DB writes)
 - Then: Phase 3C-3G gates, production promotion — all require separate approval
