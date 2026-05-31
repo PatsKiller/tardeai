@@ -29,6 +29,7 @@ export default function HermesChat() {
   const chatRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { data: health } = useApi<HermesHealth>('/api/v2/hermes/health', 30000)
+  const { data: research } = useApi<{ rows: Array<{ id: number; symbol: string; research_type: string; summary: string; confidence_score: number; embedded: boolean; created_at: string }>; total: number; embedded: number; advisory_notice: string }>('/api/v2/hermes/research', 60000)
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight
@@ -211,6 +212,24 @@ export default function HermesChat() {
                   <span style={{ color: cnt > 0 ? 'var(--accent)' : 'var(--text3)' }}>{cnt}</span>
                 </div>
               ))}
+            </div>
+          </Card>
+
+          <Card title={`Research (${research?.total ?? 0})`}>
+            <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 6, padding: '3px 6px', background: 'rgba(246,190,0,.08)', borderRadius: 3 }}>Advisory Only — Not Execution</div>
+            <div style={{ display: 'grid', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+              {research?.rows?.map(r => (
+                <div key={r.id} style={{ padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{r.symbol || 'SYSTEM'}</span>
+                    <span style={{ color: r.embedded ? 'var(--green)' : 'var(--text3)', fontSize: 8 }}>{r.embedded ? 'RAG' : 'staged'}</span>
+                  </div>
+                  <div style={{ color: 'var(--text3)', fontSize: 9 }}>{r.research_type.replace(/_/g, ' ')}</div>
+                  <div style={{ color: 'var(--text2)', fontSize: 9, marginTop: 2 }}>{r.summary?.substring(0, 80)}...</div>
+                  <div style={{ color: 'var(--text3)', fontSize: 8, marginTop: 2 }}>conf: {r.confidence_score} | {new Date(r.created_at).toLocaleDateString()}</div>
+                </div>
+              ))}
+              {!research?.rows?.length && <div style={{ color: 'var(--text3)', fontSize: 10 }}>No staged research yet</div>}
             </div>
           </Card>
 
