@@ -156,8 +156,19 @@
 - 8 queries tested: 7/8 correct. Direct retrieval strong (INFU rank 1, FLYW rank 5). Negative containment perfect. One semantic miss (abstract phrasing). Zero RAG pollution.
 - Recommendation: embed remaining 5 rows + limited dashboard preview
 
+### Hermes Current Allowed State (post-2B)
+- Sidecar + gateway + browser + Chat page all operational
+- 7 staged research rows, 2 embedded (FLYW, INFU), retrievable via RAG
+- Retrieval quality audited: 7/8 pass, negative containment perfect, pollution risk LOW
+
+### Hermes Current Prohibited State
+- No additional embeddings without Phase 2C approval
+- No dashboard Hermes Challenger without approval
+- No production promotion, no autonomous cron
+- No broker/trade/journal mutation, no external APIs
+
 ### Next Gate
-- **Phase 2C** — embed remaining 5 rows + limited dashboard preview
+- **Phase 2C** — embed remaining 5 rows + limited dashboard preview (not approved yet)
 - Then: production promotion — requires separate approval
 
 ## What to Check First Next Session

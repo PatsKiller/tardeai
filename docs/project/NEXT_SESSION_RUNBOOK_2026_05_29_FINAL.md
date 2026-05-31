@@ -75,15 +75,22 @@ All phases through 1H completed and closed (2026-05-30, 42+ commits):
 
 **Phase 2A embedding pilot: COMPLETE (2 rows, RAG score 0.741)**
 
-**Phase 2B retrieval audit: PASS_WITH_LIMITS (7/8 queries correct)**
+**Phase 2B retrieval audit: PASS_WITH_LIMITS (7/8 correct, closed)**
 
 **Next gate: Phase 2C — embed remaining 5 rows + limited dashboard preview**
 
-Scope:
-- Embed hermes_research_intelligence ids 2, 3, 4, 6, 7 (with improved embedding text)
-- Add read-only Hermes research display to Chat sidebar or new panel
-- No production promotion
-- No autonomous cron
+Pre-Phase 2C checks:
+1. Verify Hermes embeddings count = 2 (ids 26858, 26859)
+2. Verify remaining staged rows to embed: ids 2, 3, 4, 6, 7
+3. Verify rollback strategy before embedding remaining rows
+
+Scope (capped):
+- Embed only remaining 5 staged rows with improved embedding text
+- No bulk embeddings beyond those 5
+- Add read-only dashboard preview, clearly labeled as Hermes advisory
+- No production promotion, no mutation controls
+- No autonomous cron/embedding worker
+- No broker/proposal/paper_trades/journal mutation
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
