@@ -75,22 +75,15 @@ All phases through 1H completed and closed (2026-05-30, 42+ commits):
 
 **Phase 2A embedding pilot: COMPLETE (2 rows, RAG score 0.741)**
 
-**Next gate: Phase 2B — retrieval quality audit of pilot embeddings**
+**Phase 2B retrieval audit: PASS_WITH_LIMITS (7/8 queries correct)**
 
-Pre-Phase 2B checks:
-1. Verify content_embeddings ids 26858 and 26859 exist
-2. Verify no additional Hermes embeddings beyond pilot
-3. Verify no RAG reindex/cron/autonomous embedding occurred
-4. Verify Phase 2A rollback SQL exists
+**Next gate: Phase 2C — embed remaining 5 rows + limited dashboard preview**
 
 Scope:
-- Test FLYW and INFU queries — verify Hermes content retrieved appropriately
-- Test unrelated queries — verify no over-matching/pollution
-- Confirm rollback can remove exact embeddings
-- No new embeddings
-- No dashboard display
+- Embed hermes_research_intelligence ids 2, 3, 4, 6, 7 (with improved embedding text)
+- Add read-only Hermes research display to Chat sidebar or new panel
 - No production promotion
-- No cron/daemon expansion
+- No autonomous cron
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`

@@ -152,9 +152,13 @@
 - No autonomous research cron, no broker/trade/journal mutation
 - No external APIs/Grok/xAI
 
+### Phase 2B Retrieval Audit Complete (2026-05-30)
+- 8 queries tested: 7/8 correct. Direct retrieval strong (INFU rank 1, FLYW rank 5). Negative containment perfect. One semantic miss (abstract phrasing). Zero RAG pollution.
+- Recommendation: embed remaining 5 rows + limited dashboard preview
+
 ### Next Gate
-- **Phase 2B** — retrieval quality audit of 2 pilot embeddings
-- Then: bulk embeddings, dashboard, production promotion — all require separate approval
+- **Phase 2C** — embed remaining 5 rows + limited dashboard preview
+- Then: production promotion — requires separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
