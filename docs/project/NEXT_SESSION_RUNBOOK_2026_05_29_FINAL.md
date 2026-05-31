@@ -54,47 +54,42 @@ curl -s "http://127.0.0.1:7777/api/v2/paper-proposals/lifecycle-inspector?propos
 - [ ] Continue journal/automated-trading validation if warnings
 - [ ] Consider 50+ llama.cpp canary dry-runs before routing change
 
-## Hermes — Phase 1F Complete, Phase 1G Next
+## Hermes — Phase 1H Complete, Phase 2A Next
 
-All phases through 1F completed (2026-05-30, 37 commits):
+All phases through 1H completed and closed (2026-05-30, 42+ commits):
 
 | Phase | Status | Key Result |
 |-------|--------|------------|
-| P0 Install | COMPLETE | hermes-agent 0.15.2, project-scoped, headless browser |
+| P0 Install | COMPLETE | hermes-agent 0.15.2, headless browser, gateway :18790 |
 | P1 Tables | COMPLETE | 6 hermes_* tables, 34 indexes, 18 constraints |
 | P1A Roles | COMPLETE | hermes_readonly + hermes_staging_writer |
 | P1B Writes | COMPLETE | Ingestion script, smoke row |
 | P1C Map | COMPLETE | 392 tables audited, 32 allow / 14 deny |
-| P1D Views | VERIFIED | 8 views, 46 SELECT grants, all checks PASS |
-| P1E Research | COMPLETE | FLYW thesis challenge, staged id=1 |
-| P1F Batch | COMPLETE | 3/5 tasks staged: SPRC id=2, SCHD id=3, APPS id=4 |
+| P1D Views | VERIFIED | 8 views, 46 SELECT grants |
+| P1E Research | COMPLETE | FLYW id=1 |
+| P1F Batch | COMPLETE | SPRC id=2, SCHD id=3, APPS id=4 |
+| P1G Review | PASS | All 4 rows pass, improvements identified |
+| P1H Hardening | COMPLETE | INFU id=5, ASPN id=6, pipeline id=7 (100% success) |
 
-**Current state:**
-- Hermes sidecar installed with headless browser (Playwright + Chromium)
-- Gateway on :18790, Chat at /v2/hermes
-- 4 staged research rows in hermes_research_intelligence
-- Source discovery design documented (not implemented)
-- Zero embeddings, zero production writes
-
-**Phase 1H prompt hardening: COMPLETE (3/3, 100%)**
-
-| Phase | Status | Rows |
-|-------|--------|------|
-| P1E | COMPLETE | id=1 (FLYW) |
-| P1F | COMPLETE | ids=2-4 (SPRC, SCHD, APPS) |
-| P1G | REVIEWED | All 4 PASS |
-| P1H | COMPLETE | ids=5-7 (INFU, ASPN, pipeline) |
-
-**hermes_research_intelligence: 7 total rows, all staged**
+**hermes_research_intelligence: 7 rows, all staged. Zero embeddings, zero production writes.**
 
 **Next gate: Phase 2A — embedding architecture pilot**
 
+Pre-Phase 2A checks:
+1. Verify Phase 1H report and rollback exist
+2. Verify hri row count = 7
+3. Verify content_embeddings has zero Hermes rows
+4. Verify embedding model (nomic-embed-text) availability
+5. Verify rollback approach for any embedding write
+
 Scope:
-- Test embedding 1-2 Hermes research rows into content_embeddings via hermes_embedding_queue
-- Verify RAG retrieval includes Hermes-sourced context
+- Design hermes_embedding_queue → content_embeddings flow
+- Use same embedding model/dimensions as Trade AI (nomic-embed-text, 768-dim)
+- Embed 1-2 rows only (capped pilot)
 - No production promotion
 - No dashboard Hermes Challenger
-- No daemon/cron
+- No daemon/cron expansion
+- Operator approval required
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`

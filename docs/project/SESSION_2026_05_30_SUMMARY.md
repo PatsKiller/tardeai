@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-34 commits. Hermes sidecar fully installed and integrated through Phase 1F (batch research ingestion). Google Drive cleaned. System Access, System Applications, and Hermes Chat pages added to Command Center. 4 research rows staged in hermes_research_intelligence (FLYW, SPRC, SCHD, APPS).
+43 commits. Hermes sidecar fully installed and integrated through Phase 1H (prompt hardening + ingestion). Google Drive cleaned. System Access, System Applications, and Hermes Chat pages added. Two-step browse proxy with headless Chromium. 7 research rows staged. Prompt/validator hardened with 9/9 tests. 100% ingestion success rate in Phase 1H (vs 60% in 1F).
 
 ## Commits (28 total)
 
