@@ -261,10 +261,10 @@
 - Operator summary: `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md`
 ### Phase 11 Observation + Docker (2026-05-31)
 - **11A**: Observation PASS — zero drift
-- **11B**: Docker preview BLOCKED — Docker not installed
-- **11C**: SKIPPED
+- **11B**: Docker pilot PASS — Docker 29.5.2 installed, static docs preview built/run/tested/cleaned up
 - **11D**: Closeout
-- Next: install Docker then retry, or continue observation / promotion review loop
+- Docker Engine: 29.5.2, Compose: v5.1.4
+- Next: observation period or second Docker pilot / promotion review loop
 
 ### Documentation A1A Hygiene Pass (2026-05-31)
 - Archived 30 files, trashed 15, moved 2.9G backup zip to ~/backups/
