@@ -238,6 +238,7 @@
 | `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_IMPLEMENTATION_PLAN.md` | Phase 3A implementation plan — scripts, config, commands, rollback |
 | `docs/hermes/HERMES_PHASE3A_AUTONOMOUS_LOOP_SAFETY_CHECKLIST.md` | Phase 3A safety checklist — must pass before any loop activation |
 | `docs/hermes/drafts/` | Draft timer/service/config files (NOT INSTALLED) |
+| `docs/hermes/HERMES_PHASE3A_SESSION_CLOSEOUT.md` | Phase 3A closeout — architecture only, nothing activated, next: Phase 3B |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |

@@ -85,18 +85,23 @@ All phases through 1H completed and closed (2026-05-30, 42+ commits):
 | 2F | COMPLETE | Source discovery gates defined |
 | 2G | COMPLETE | Closeout verified |
 
-**Phase 3A architecture: COMPLETE (design only, not activated)**
+**Phase 3A architecture: COMPLETE, closed at `cec3189`**
 
 **Next gate: Phase 3B — manual dry-run of ticker challenger loop (no DB writes)**
+
+Pre-Phase 3B checks:
+1. Verify draft timer/service/config are still in docs/hermes/drafts/ only
+2. Verify no hermes timers installed (`systemctl --user list-timers | grep hermes`)
+3. Verify Hermes research rows = 7, embeddings = 7
+4. Verify kill switch design (`hermes_sidecar/.hermes/DISABLED`)
 
 Scope:
 1. Create `scripts/hermes_autonomous_loop.py` with ticker_challenger loop
 2. Run dry-run only — no DB writes
 3. Verify prompt quality, validator, output schema
-4. Verify kill file and lockfile work
+4. Verify kill file and lockfile behavior
 5. No timer/cron/service activation
-6. No embeddings
-7. No production promotion
+6. No embeddings, no production promotion
 - No broker/proposal/paper_trades/journal mutation
 
 Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
