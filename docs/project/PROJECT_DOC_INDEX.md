@@ -225,7 +225,8 @@
 | `docs/hermes/HERMES_PHASE1H_SESSION_CLOSEOUT.md` | Phase 1H session closeout |
 | `docs/hermes/HERMES_PHASE2A_EMBEDDING_PILOT_REPORT.md` | **Phase 2A report** — 2 embeddings, nomic-embed-text 768-dim, RAG score 0.741, content_embeddings ids 26858-26859 |
 | `docs/hermes/HERMES_PHASE2A_EMBEDDING_PILOT_ROLLBACK.sql` | Rollback SQL for Phase 2A embeddings |
-| `docs/hermes/HERMES_PHASE2A_SESSION_CLOSEOUT.md` | Phase 2A session closeout — 2 embeddings, RAG verified, next: Phase 2B retrieval audit |
+| `docs/hermes/HERMES_PHASE2A_SESSION_CLOSEOUT.md` | Phase 2A session closeout |
+| `docs/hermes/HERMES_PHASE2B_RETRIEVAL_QUALITY_AUDIT.md` | **Phase 2B audit** — 7/8 tests pass, negative containment perfect, direct retrieval strong, semantic limited |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
