@@ -201,6 +201,14 @@ export default function HermesChat() {
                 <span style={{ color: 'var(--text3)' }}>Staged rows</span>
                 <span style={{ color: 'var(--text1)' }}>{totalStaged}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text3)' }}>Kill switch</span>
+                <span style={{ color: (health as any)?.kill_switch_active ? 'var(--red)' : 'var(--green)', fontSize: 10 }}>{(health as any)?.kill_switch_active ? 'ACTIVE' : 'off'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text3)' }}>Auto loop</span>
+                <span style={{ color: 'var(--text3)', fontSize: 10 }}>{(health as any)?.autonomous_loop_active ? 'running' : 'inactive'}</span>
+              </div>
             </div>
           </Card>
 
