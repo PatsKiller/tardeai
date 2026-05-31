@@ -1,5 +1,3 @@
-> **ARCHIVED 2026-05-31:** Unique content consolidated into MASTER_SYSTEM_DOCUMENTATION.md. This file is no longer authoritative.
-
 # Trade AI v12 -- Architecture Overview
 
 **Audience:** Executive / architect level

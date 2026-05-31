@@ -11,9 +11,10 @@
 | Document | Purpose |
 |----------|---------|
 | `docs/A1A.md` | **Documentation due-diligence protocol** — non-negotiable |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative system reference** — 22 sections (STALE WARNING: references qwen3:14b, needs rewrite) |
-| `docs/ARCHITECTURE_OVERVIEW.md` | Executive architecture summary — 392 tables, ~190 cron jobs, 24 strategies |
-| `docs/project/SYSTEM_ARCHITECTURE_COMPLETE.md` | Complete system architecture detail |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative system reference** — 22+ sections, model routing corrected, Hermes sidecar section added (rewritten 2026-05-31) |
+| `docs/ARCHITECTURE_OVERVIEW.md` | ARCHIVED — consolidated into MASTER (2026-05-31) |
+| `docs/project/SYSTEM_ARCHITECTURE_COMPLETE.md` | ARCHIVED — consolidated into MASTER (2026-05-31) |
+| `docs/project/MASTER_REWRITE_AND_ARCHIVE_REPORT_2026_05_31.md` | Master rewrite report — 50+ corrections, 2 docs archived |
 
 ### Operational Guides
 | Document | Purpose |

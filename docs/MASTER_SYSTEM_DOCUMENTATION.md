@@ -2,13 +2,9 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-05-11 (Session 29 — Phases 1-8 Complete: Classification, Intelligence, Consolidation, LLM, UI/UX, Feedback, Production)
+**Document version:** 2026-05-31 (Master rewrite — model routing, Hermes sidecar, strategy count, architecture consolidation)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
-> **STALE WARNING (2026-05-31):** This document references qwen3:14b throughout — the production
-> model is now gemma3:12b (primary) / gemma3:4b (fallback). qwen3:14b is DISABLED. Strategy count
-> is 24 (was 20). Table count is 392 (was 376). A full MASTER rewrite is planned for a future session.
-> Until then, check `.env` and `docs/project/SKILLS.md` for current live values.
 
 ---
 
@@ -45,16 +41,16 @@ Trade AI v12 is an automated trading intelligence and portfolio management platf
 
 - **Data ingestion** from 15+ external sources (market data, news, SEC filings, transcripts, social, economic indicators)
 - **31-stage pipeline** organized into 7 groups running pre-market through overnight
-- **23 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
-- **LLM-assisted classification** with a 3-provider fallback chain (local GPU-accelerated primary → OpenAI → Anthropic)
+- **24 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
+- **LLM-assisted classification** with a local-first model routing (gemma3:12b primary, gemma3:4b fallback, gemma3:27b overnight batch)
 - **6 AI agents** accessible via Telegram/WhatsApp (Maria, Steph, Alex, Aegis, Risk Agent, Tax Agent)
 - **Iris backend agent** for content hygiene + Scalp Critic for incubator gating
 - **Paper trading execution** via Alpaca with bracket orders, TCA, and reconciliation
-- **43-page React dashboard** (Command Center v2, consolidated from 61) for operator control
+- **70+ page React dashboard** (Command Center v2, consolidated from 61) for operator control
 - **Feedback loop closure** with proposal outcome chains, alert effectiveness scoring, and agent calibration
-- **LLM intelligence enrichment** generating daily narratives across 5 surfaces via qwen3:14b
+- **LLM intelligence enrichment** generating daily narratives across 5 surfaces via gemma3:12b
 
-The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **paper-only mode**. Live trading is locked behind a 6-month validation gate requiring 55% win rate and 1.3 profit factor.
+The platform manages a portfolio (see dashboard for current value) (taxable + IRA, ~50 positions) in **paper-only mode**. Live trading is locked behind a 6-month validation gate requiring 55% win rate and 1.3 profit factor.
 
 ### System Scale
 
@@ -75,7 +71,7 @@ The platform manages a ~$1.19M portfolio (taxable + IRA, ~50 positions) in **pap
 | Social posts ingested | 2,248+ |
 | Incubator symbols | 1,139 active |
 | Telegram alert scripts | 56 (routed through central alert_dispatcher) |
-| LLM intelligence sections | 5 (generated daily via qwen3:14b) |
+| LLM intelligence sections | 5 (generated daily via gemma3:12b) |
 
 ---
 
@@ -92,7 +88,7 @@ Trade AI v12 has 6 distinct service boundaries:
 |  +------------------+    +------------------+    +---------------+ |
 |  | Portfolio Server  |    | Ollama LLM       |    | OpenClaw GW   | |
 |  | :7777 (HTTP+Auth) |<-->| :11434           |<-->| :18789        | |
-|  | 275+ API endpoints|    | qwen3:14b        |    | 6 agents      | |
+|  | 275+ API endpoints|    | gemma3:12b        |    | 6 agents      | |
 |  | React SPA @ /v2/  |    | Intel Arc B50    |    | Telegram/WA   | |
 |  +--------+----------+    +------------------+    +---------------+ |
 |           |                                                        |
@@ -373,21 +369,21 @@ When agents need more data, the system auto-responds:
 
 | Agent | Reads | Writes | Triggers | LLM Model |
 |-------|-------|--------|----------|-----------|
-| **Maria** | RAG, sentiment, social, fused, peers, playbook, scans | watchlist_agent_results (BUY/HOLD/AVOID + narrative) | Re-analysis on gap-fill; debate on SEC insider buy | qwen3:14b (2-pass: sentiment + fundamentals) |
-| **Steph** | Portfolio state, allocation targets, income projections, sentiment | watchlist_agent_results (ADD/TRIM/HOLD + allocation review) | Escalation queue for concentration risk; INCOME_CRITICAL flag | qwen3:14b |
-| **Alex** | Roth conversion models, IRMAA thresholds, tax brackets, retirement RAG | Research reports, Roth ladder plans, monthly reviews | Auto-queued on SEC insider buy consensus; weekly/monthly research | qwen3:14b + Claude (complex) |
-| **Aegis** | All agent results, portfolio positions, overnight events | Morning briefs, synthesis reports, cross-agent coordination | Morning brief delivery; post-trade synthesis writeback | qwen3:14b |
-| **Iris** | Content freshness, RAG coverage, duplicate detection, entity staleness | Hygiene proposals, CONTENT_GAP events, taxonomy proposals | CONTENT_GAP → auto-search; hygiene escalations to John | qwen3:14b (classification) |
-| **Scalp Critic** | Incubator candidates, catalyst data, technicals, news/social | llm_screen_grade (A-F), verdict (PROMOTE/HOLD/DROP) | Gates incubator → proposal promotion | qwen3:14b |
+| **Maria** | RAG, sentiment, social, fused, peers, playbook, scans | watchlist_agent_results (BUY/HOLD/AVOID + narrative) | Re-analysis on gap-fill; debate on SEC insider buy | gemma3:12b (2-pass: sentiment + fundamentals) |
+| **Steph** | Portfolio state, allocation targets, income projections, sentiment | watchlist_agent_results (ADD/TRIM/HOLD + allocation review) | Escalation queue for concentration risk; INCOME_CRITICAL flag | gemma3:12b |
+| **Alex** | Roth conversion models, IRMAA thresholds, tax brackets, retirement RAG | Research reports, Roth ladder plans, monthly reviews | Auto-queued on SEC insider buy consensus; weekly/monthly research | gemma3:12b + Claude (complex) |
+| **Aegis** | All agent results, portfolio positions, overnight events | Morning briefs, synthesis reports, cross-agent coordination | Morning brief delivery; post-trade synthesis writeback | gemma3:12b |
+| **Iris** | Content freshness, RAG coverage, duplicate detection, entity staleness | Hygiene proposals, CONTENT_GAP events, taxonomy proposals | CONTENT_GAP → auto-search; hygiene escalations to John | gemma3:12b (classification) |
+| **Scalp Critic** | Incubator candidates, catalyst data, technicals, news/social | llm_screen_grade (A-F), verdict (PROMOTE/HOLD/DROP) | Gates incubator → proposal promotion | gemma3:12b |
 
 ### Agent LLM Flow
 
 ```
 Symbol enters pipeline
     ↓
-qwen3:14b Pass 1 (sentiment + catalyst analysis)
+gemma3:12b Pass 1 (sentiment + catalyst analysis)
     ↓
-qwen3:14b Pass 2 (fundamental + technical synthesis)
+gemma3:12b Pass 2 (fundamental + technical synthesis)
     ↓
 Combined result → JSON (recommendation, confidence, narrative)
     ↓
@@ -465,16 +461,16 @@ Agent outcome scorer and learning governance update calibration
 
 | When | What Happens | LLM Used |
 |------|-------------|----------|
-| **7:00 AM daily** | topic_curator rates pending content (approved/low_quality/blocked) | qwen3:14b (~15s per article) |
-| **7:00 AM daily** | topic_curator extracts tickers + topics → content_entity_links | qwen3:14b |
-| **7:00 AM daily** | topic_curator improves queries: reviews last week's articles, generates 4 targeted news + 4 video queries per topic, tailored to John's situation | qwen3:14b |
+| **7:00 AM daily** | topic_curator rates pending content (approved/low_quality/blocked) | gemma3:12b (~15s per article) |
+| **7:00 AM daily** | topic_curator extracts tickers + topics → content_entity_links | gemma3:12b |
+| **7:00 AM daily** | topic_curator improves queries: reviews last week's articles, generates 4 targeted news + 4 video queries per topic, tailored to John's situation | gemma3:12b |
 | **7:00 AM daily** | Auto-ingests with improved queries (step 3b → topic_ingestion --use-llm-queries) | N/A (search APIs) |
-| **8:10 AM + 6 PM** | Incubator LLM screener grades candidates — strategy-aware: 4 prompt groups (income, growth, reversion, momentum default). Income/reversion not penalized for low RVOL | qwen3:14b |
-| **On CONTENT_GAP** | Agent event router auto-triggers: topic search → news search → sentiment score → RAG re-index → re-queue analysis | qwen3:14b (agent re-analysis) |
-| **On RESEARCH_MORE** | Multiple agents say "need more data" → synthetic CONTENT_GAP → full search loop | qwen3:14b |
+| **8:10 AM + 6 PM** | Incubator LLM screener grades candidates — strategy-aware: 4 prompt groups (income, growth, reversion, momentum default). Income/reversion not penalized for low RVOL | gemma3:12b |
+| **On CONTENT_GAP** | Agent event router auto-triggers: topic search → news search → sentiment score → RAG re-index → re-queue analysis | gemma3:12b (agent re-analysis) |
+| **On RESEARCH_MORE** | Multiple agents say "need more data" → synthetic CONTENT_GAP → full search loop | gemma3:12b |
 | **5:30 AM daily** | Outcome scorer grades past recommendations (CORRECT/PARTIAL/WRONG) → calibration update | N/A (rule-based) |
 | **Sunday 6 AM** | Iris hygiene: demote stale content, detect superseded regulatory data | N/A (rule-based) |
-| **Sunday 7 PM** | Weekly incubator rebuild with LLM multi-strategy classification | qwen3:14b |
+| **Sunday 7 PM** | Weekly incubator rebuild with LLM multi-strategy classification | gemma3:12b |
 
 ### Query Improvement Example (How the System Learns)
 
@@ -864,7 +860,7 @@ Phase 1: Deterministic Filters
     +-- match --> Assign matched strategies
     |
     +-- no match --> Phase 2: LLM Classification
-                     (qwen3:14b thesis-driven)
+                     (gemma3:12b thesis-driven)
                          |
                          v
                      Assign thesis-driven strategies
@@ -889,7 +885,7 @@ Write to incubator_universe
 
 Each YAML strategy defines: entry criteria, risk parameters (position size, stop placement), scoring weights, exit rules, account eligibility, and co-enablement rules.
 
-**14 of 20 strategies require LLM classification** (IV rank, dividend growth years, unrealized losses not available in the deterministic enrichment cache).
+**14 of 24 strategies require LLM classification** (IV rank, dividend growth years, unrealized losses not available in the deterministic enrichment cache).
 
 ---
 
@@ -899,7 +895,7 @@ The incubator is the holding area between raw screener hits and actionable propo
 
 ### Stage Flow
 
-1. **`weekly_incubator_builder`** (Sunday 7 PM) -- Pulls qualified tickers from `trade_ai_scans` (score >= 30, RVOL >= 3, catalyst verified). Classifies each against all 20 strategies.
+1. **`weekly_incubator_builder`** (Sunday 7 PM) -- Pulls qualified tickers from `trade_ai_scans` (score >= 30, RVOL >= 3, catalyst verified). Classifies each against all 24 strategies.
 
 2. **`daily_incubator_refresh`** (daily) -- Updates scores, RVOL, and catalyst freshness.
 
@@ -1340,7 +1336,7 @@ When any paper trade closes, `on_paper_trade_closed()` in `agent_curation_hooks.
 | Pattern confirmation | `check_pattern_confirmation()` | Pattern strength adjustments |
 | RAG indexing | `_index_trade_outcome_to_rag()` | Outcome embedded in `content_embeddings` |
 | LLM analysis | `paper_trade_analyzer.py` | What worked/failed/lessons in `paper_trade_analysis` |
-| **Realtime review** | `multi_tier_trade_reviewer.py` (qwen3:14b) | 4-agent structured review in `paper_trade_multi_reviews` |
+| **Realtime review** | `multi_tier_trade_reviewer.py` (gemma3:12b) | 4-agent structured review in `paper_trade_multi_reviews` |
 
 ### Learning Loop (Closed — Self-Improving)
 
@@ -1435,7 +1431,7 @@ All LLM config is sourced from `.env` -- zero hardcoded values. Configuration hu
 
 | Parameter | Value |
 |-----------|-------|
-| Model | `qwen3:14b` |
+| Model | `gemma3:12b` |
 | Runtime | Ollama (localhost:11434) |
 | GPU | Intel Arc B50 (Vulkan backend) |
 | Layer offload | 41/41 layers on GPU |
@@ -1445,7 +1441,7 @@ All LLM config is sourced from `.env` -- zero hardcoded values. Configuration hu
 ### Routing & Fallback Chain
 
 ```
-local (qwen3:14b via Ollama) ──→ OpenAI (gpt-4o-mini) ──→ Anthropic (claude-sonnet-4-6)
+local (gemma3:12b via Ollama) ──→ OpenAI (gpt-4o-mini) ──→ Anthropic (claude-sonnet-4-6)
          PRIMARY                      FALLBACK 1                  FALLBACK 2
     Intel Arc B50 GPU               On Ollama failure            On OpenAI failure
     ~15s/chunk, free                ~$0.01/call                  ~$0.03/call
@@ -1486,7 +1482,7 @@ Closed trades receive escalating LLM review across 4 tiers. Each higher tier see
 
 | Tier | Model | Trigger | Purpose |
 |------|-------|---------|---------|
-| Realtime | qwen3:14b (Ollama) | Every trade close via `on_paper_trade_closed()` | Fast initial analysis (~30s) |
+| Realtime | gemma3:12b (Ollama) | Every trade close via `on_paper_trade_closed()` | Fast initial analysis (~30s) |
 | Overnight | gemma3:27b (Ollama) | Nightly 8 PM via `overnight_batch.py` | Deeper analysis with larger model |
 | Weekly | OpenAI gpt-4o | Sunday 10 AM via cron | Cross-trade pattern detection, strategy grades |
 | Monthly | Anthropic Claude | 1st of month via cron | Strategic review of weekly summaries + flagged trades |
@@ -1506,21 +1502,21 @@ All agent commentaries are written to `agent_curation_events` (visible in journa
 
 | Use Case | Script | Frequency | Model |
 |----------|--------|-----------|-------|
-| Intelligence enrichment (5 surfaces) | `llm_intelligence_enrichment.py` | 7:20 AM daily | qwen3:14b |
-| Strategy classification (23 strategies) | `multi_strategy_classifier.py` | Sunday night batch | qwen3:14b |
-| Proposal review (4-chunk pipeline) | `proposal_llm_reviewer.py` | Per proposal | qwen3:14b |
-| Incubator pre-screening (A-F grades) | `incubator_llm_screener.py` | 8:10 AM + 6 PM | qwen3:14b |
-| Holdings health refresh | `holdings_llm_refresh.py` | 3x daily market hours | qwen3:14b |
-| Topic curation (rate, extract, improve) | `topic_curator.py` | 7:00 AM daily | qwen3:14b |
-| Agent responses | Via OpenClaw gateway | On user interaction | qwen3:14b + cloud fallback |
+| Intelligence enrichment (5 surfaces) | `llm_intelligence_enrichment.py` | 7:20 AM daily | gemma3:12b |
+| Strategy classification (23 strategies) | `multi_strategy_classifier.py` | Sunday night batch | gemma3:12b |
+| Proposal review (4-chunk pipeline) | `proposal_llm_reviewer.py` | Per proposal | gemma3:12b |
+| Incubator pre-screening (A-F grades) | `incubator_llm_screener.py` | 8:10 AM + 6 PM | gemma3:12b |
+| Holdings health refresh | `holdings_llm_refresh.py` | 3x daily market hours | gemma3:12b |
+| Topic curation (rate, extract, improve) | `topic_curator.py` | 7:00 AM daily | gemma3:12b |
+| Agent responses | Via OpenClaw gateway | On user interaction | gemma3:12b + cloud fallback |
 | Rebalance advisor | `portfolio_yaml_advisor.py` | Monthly or on-demand | Claude Opus (cloud) |
-| **Trade review — realtime** | `multi_tier_trade_reviewer.py` | Every trade close | qwen3:14b |
+| **Trade review — realtime** | `multi_tier_trade_reviewer.py` | Every trade close | gemma3:12b |
 | **Trade review — overnight** | `multi_tier_trade_reviewer.py` | Nightly 8 PM | gemma3:27b |
 | **Trade review — weekly** | `multi_tier_trade_reviewer.py` | Sunday 10 AM | OpenAI gpt-4o |
 | **Trade review — monthly** | `multi_tier_trade_reviewer.py` | 1st of month | Anthropic Claude |
-| **Post-trade analysis** | `paper_trade_analyzer.py` | Every trade close | qwen3:14b |
-| **Proposal intelligence** | `proposal_intelligence_analyzer.py` | Per proposal (with RAG context) | qwen3:14b |
-| **Proposal agent review** | `proposal_agent_review.py` | Per proposal (with RAG context) | qwen3:14b |
+| **Post-trade analysis** | `paper_trade_analyzer.py` | Every trade close | gemma3:12b |
+| **Proposal intelligence** | `proposal_intelligence_analyzer.py` | Per proposal (with RAG context) | gemma3:12b |
+| **Proposal agent review** | `proposal_agent_review.py` | Per proposal (with RAG context) | gemma3:12b |
 
 ### LLM Context Engine
 
@@ -1840,6 +1836,37 @@ Full disaster recovery documented in `docs/RESTORE_GUIDE.md`:
 
 ---
 
+
+---
+
+## 18b. Hermes Sidecar — Advisory Challenger and Memory Layer
+
+Hermes is Trade AI's near-24/7 research desk, second brain, memory layer, and independent challenger. It is NOT a separate trading worker.
+
+**Key facts:**
+
+- Hermes is installed as a project-scoped sidecar at `hermes_sidecar/`
+- Trade AI remains the system of record and only execution authority
+- Hermes writes only to `hermes_*` staging tables — never to production execution tables
+- Hermes has no broker access, no proposal/trade/journal mutation authority
+- Auto-promotion is prohibited — all promotions require manual operator approval
+
+**Current state:**
+
+- Hermes agent: v0.15.2 (NousResearch/hermes-agent)
+- Gateway: active on port 18790 (systemd, auto-restart)
+- Headless browser: Playwright + Chromium (local web research)
+- Autonomous timer: daily 01:00 UTC, ticker_challenger loop, --max-rows 2
+- Model: gemma3:12b via local Ollama (no external APIs)
+- Kill switch: `touch hermes_sidecar/.hermes/DISABLED`
+- Dashboard: Hermes Chat (`/v2/hermes`) + Hermes Intelligence (`/v2/hermes-intelligence`)
+
+**Staging tables (6):** hermes_research_intelligence, hermes_validation_findings, hermes_alerts, hermes_embedding_queue, hermes_memory_events, hermes_promotion_audit
+
+**Promoted advisory cache:** 7 rows in `llm_intelligence_cache` (hermes_* namespaced sections). Advisory only — not execution signals.
+
+**Full documentation:** `docs/hermes/` (design, architecture, phase reports, rollback files, operator runbook)
+
 ## 19. Safety Rules (Non-Negotiable)
 
 These rules are non-negotiable. No automation, agent, or operator override may violate them.
@@ -1867,7 +1894,7 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 |------|---------|
 | `.env` | All secrets, API keys, feature flags |
 | `.env.example` | Template with all variables documented |
-| `config/strategies/*.yaml` | 20 strategy definitions (loaded dynamically) |
+| `config/strategies/*.yaml` | 24 strategy definitions (loaded dynamically) |
 | `assets/screeners.yaml` | Finviz screener URLs + run windows |
 | `assets/portfolio_accounts.yaml` | Account definitions |
 | `assets/weights.yaml` | Asset allocation weights |
@@ -1882,7 +1909,7 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | `scripts/cio_decision_engine.py` | CIO decisions with 24h dedup gate |
 | `scripts/alert_dispatcher.py` | Central alert routing (dedup, tiers, fatigue, rate limit) |
 | `scripts/alert_missing_conditions.py` | Daily missing condition checks (proposals, API, email, rebalance) |
-| `scripts/llm_intelligence_enrichment.py` | Daily LLM narrative generation (5 sections via qwen3:14b) |
+| `scripts/llm_intelligence_enrichment.py` | Daily LLM narrative generation (5 sections via gemma3:12b) |
 | `scripts/feedback_loop_processor.py` | Outcome chains, alert scoring, strategy snapshots, agent tracking |
 | `scripts/backup_verify.py` | Monthly backup integrity verification |
 | `scripts/trade_ai_orchestrator.py` | Screener + scoring (873 lines) |
@@ -1908,7 +1935,7 @@ These rules are non-negotiable. No automation, agent, or operator override may v
 | LLM classification speed | ~4.5 min/symbol on Intel Arc B50 (GPU) | Scheduled overnight; toll gate queuing |
 | Finviz cookie expiry | Periodic manual browser authentication | Dual auth (cookie + API token); alert on 0-result scans |
 | yfinance rate limits | ~2-3s throttle per symbol | Batch processing with delays |
-| LLM-only strategies | 14/20 strategies need LLM (data not in enrichment cache) | Scheduled overnight batch |
+| LLM-only strategies | 14/24 strategies need LLM (data not in enrichment cache) | Scheduled overnight batch |
 | Proposal enrichment latency | ~30s-1min per proposal | Chunked async state machine |
 | Single-server deployment | No HA, single point of failure | 7-day rolling pg_dump; documented restore guide |
 | API authentication | Token-based auth via `API_AUTH_TOKEN` in .env | Set token to enable; frontend exempt; all /api/ paths checked |
@@ -1998,7 +2025,7 @@ Gate status is available at `/api/v2/live-trading-gate`.
 |-----------|--------|-------|
 | API response (p95) | < 500ms | All GET endpoints |
 | Morning pipeline | 07:00 - 08:00 ET | Full cascade: data refresh → enrichment → alerts → brief |
-| LLM enrichment | < 120s total | 5 sections via qwen3:14b |
+| LLM enrichment | < 120s total | 5 sections via gemma3:12b |
 | Screener full run | 10:00 AM + 4:00 PM | Weekdays only |
 | Overnight batch | 8:00 - 10:00 PM | Metrics, stale refresh, agent perf |
 | Weekly DOCX | Sunday 9:00 PM | After all weekly jobs |
@@ -2027,7 +2054,7 @@ Gate status is available at `/api/v2/live-trading-gate`.
 | **2. Alert Quality** | Central alert dispatcher with dedup + fatigue + tiers, missing condition alerts, morning brief upgrade | `alert_dispatcher.py`, `alert_missing_conditions.py` |
 | **3. Page Consolidation** | 61 → 42 primary routes via TabPage component. 8 merges, 3 eliminations. Legacy routes redirect. | `TabPage.tsx`, 8 hub pages, updated `App.tsx` + `Shell.tsx` |
 | **4. Intelligence Delivery** | Morning Command page, market intelligence API, per-page news/social/sector context, CIO news context | `Command.tsx`, `/api/v2/command`, `/api/v2/market-intelligence` |
-| **5. LLM Integration** | 5 daily intelligence sections via qwen3:14b. Portfolio risk, rebalance, recovery, morning synthesis, prospect narratives. | `llm_intelligence_enrichment.py`, `llm_intelligence_cache` table |
+| **5. LLM Integration** | 5 daily intelligence sections via gemma3:12b. Portfolio risk, rebalance, recovery, morning synthesis, prospect narratives. | `llm_intelligence_enrichment.py`, `llm_intelligence_cache` table |
 | **6. UI/UX** | Global alert banner (4 active alerts), freshness badges (green/yellow/red), Today's Actions panel on Overview | `GlobalAlertBanner.tsx`, `FreshnessBadge.tsx` |
 | **7. Feedback Loops** | Proposal outcome chains (38 linked), alert effectiveness scoring (31 scored), strategy snapshots (4), agent sample tracking | `feedback_loop_processor.py`, `20260511_feedback_loop_closure.sql` |
 | **8. Production Readiness** | API auth (token-based), backup verification (10/10 passing), live trading gate (4 gates, all FAIL = paper only) | `backup_verify.py`, `/api/v2/live-trading-gate` |
