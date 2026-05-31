@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "manifest": {
+    "apple/DESCRIPTION.md": [
+      1780148259873780358,
+      137
+    ],
+    "autonomous-ai-agents/DESCRIPTION.md": [
+      1780148259874150775,
+      211
+    ],
+    "creative/DESCRIPTION.md": [
+      1780148259874875058,
+      116
+    ],
+    "data-science/DESCRIPTION.md": [
+      1780148259896202482,
+      137
+    ],
+    "diagramming/DESCRIPTION.md": [
+      1780148259896625704,
+      159
+    ],
+    "domain/DESCRIPTION.md": [
+      1780148259896876403,
+      1142
+    ],
+    "email/DESCRIPTION.md": [
+      1780148259896924115,
+      101
+    ],
+    "gaming/DESCRIPTION.md": [
+      1780148259897175856,
+      129
+    ],
+    "gifs/DESCRIPTION.md": [
+      1780148259897392801,
+      109
+    ],
+    "github/DESCRIPTION.md": [
+      1780148259897445884,
+      167
+    ],
+    "inference-sh/DESCRIPTION.md": [
+      1780148259899376803,
+      706
+    ],
+    "mcp/DESCRIPTION.md": [
+      1780148259899431453,
+      216
+    ],
+    "media/DESCRIPTION.md": [
+      1780148259899608843,
+      139
+    ],
+    "mlops/DESCRIPTION.md": [
+      1780148259900131789,
+      162
+    ],
+    "mlops/evaluation/DESCRIPTION.md": [
+      1780148259900183051,
+      126
+    ],
+    "mlops/inference/DESCRIPTION.md": [
+      1780148259901137289,
+      161
+    ],
+    "mlops/models/DESCRIPTION.md": [
+      1780148259902408674,
+      253
+    ],
+    "mlops/research/DESCRIPTION.md": [
+      1780148259903027615,
+      113
+    ],
+    "mlops/training/DESCRIPTION.md": [
+      1780148259903453807,
+      150
+    ],
+    "mlops/vector-databases/DESCRIPTION.md": [
+      1780148259903502739,
+      125
+    ],
+    "note-taking/DESCRIPTION.md": [
+      1780148259903552625,
+      146
+    ],
+    "productivity/DESCRIPTION.md": [
+      1780148259903664050,
+      114
+    ],
+    "productivity/ocr-and-documents/DESCRIPTION.md": [
+      1780148259905364972,
+      147
+    ],
+    "research/DESCRIPTION.md": [
+      1780148259910107305,
+      179
+    ],
+    "smart-home/DESCRIPTION.md": [
+      1780148259917975163,
+      123
+    ],
+    "social-media/DESCRIPTION.md": [
+      1780148259918089589,
+      151
+    ]
+  },
+  "skills": [],
+  "category_descriptions": {
+    "autonomous-ai-agents": "Skills for spawning and orchestrating autonomous AI coding agents and multi-agent workflows — running independent agent processes, delegating tasks, and coordinating parallel workstreams.",
+    "creative": "Creative content generation — ASCII art, hand-drawn style diagrams, and visual design tools.",
+    "data-science": "Skills for data science workflows — interactive exploration, Jupyter notebooks, data analysis, and visualization.",
+    "diagramming": "Diagram creation skills for generating visual diagrams, flowcharts, architecture diagrams, and illustrations using tools like Excalidraw.",
+    "domain": "Passive domain reconnaissance using Python stdlib. Use this skill for subdomain discovery, SSL certificate inspection, WHOIS lookups, DNS records, domain availability checks, and bulk multi-domain analysis. No API keys required. Triggers on requests like \"find subdomains\", \"check ssl cert\", \"whois lookup\", \"is this domain available\", \"bulk check these domains\".",
+    "email": "Skills for sending, receiving, searching, and managing email from the terminal.",
+    "gaming": "Skills for setting up, configuring, and managing game servers, modpacks, and gaming-related infrastructure.",
+    "gifs": "Skills for searching, downloading, and working with GIFs and short-form animated media.",
+    "github": "GitHub workflow skills for managing repositories, pull requests, code reviews, issues, and CI/CD pipelines using the gh CLI and git via terminal.",
+    "mcp": "Skills for working with MCP (Model Context Protocol) servers, tools, and integrations. Documents the built-in native MCP client — configure servers in config.yaml for automatic tool discovery.",
+    "media": "Skills for working with media content — YouTube transcripts, GIF search, music generation, and audio visualization.",
+    "mlops": "Knowledge and Tools for Machine Learning Operations - tools and frameworks for training, fine-tuning, deploying, and optimizing ML/AI models",
+    "mlops/evaluation": "Model evaluation benchmarks, experiment tracking, data curation, tokenizers, and interpretability tools.",
+    "mlops/inference": "Model serving, quantization (GGUF/GPTQ), structured output, inference optimization, and model surgery tools for deploying and running LLMs.",
+    "mlops/models": "Specific model architectures and tools — image segmentation (Segment Anything / SAM) and audio generation (AudioCraft / MusicGen). Additional model skills (CLIP, Stable Diffusion, Whisper, LLaVA) are available as optional skills.",
+    "mlops/research": "ML research frameworks for building and optimizing AI systems with declarative programming.",
+    "mlops/training": "Fine-tuning, RLHF/DPO/GRPO training, distributed training frameworks, and optimization tools for training LLMs and other models.",
+    "mlops/vector-databases": "Vector similarity search and embedding databases for RAG, semantic search, and AI application backends.",
+    "note-taking": "Note taking skills, to save information, assist with research, and collab on multi-session planning and information sharing.",
+    "productivity": "Skills for document creation, presentations, spreadsheets, and other productivity workflows.",
+    "productivity/ocr-and-documents": "Skills for extracting text from PDFs, scanned documents, images, and other file formats using OCR and document parsing tools.",
+    "research": "Skills for academic research, paper discovery, literature review, domain reconnaissance, market data, content monitoring, and scientific knowledge retrieval.",
+    "smart-home": "Skills for controlling smart home devices — lights, switches, sensors, and home automation systems.",
+    "social-media": "Skills for interacting with social platforms and social-media workflows — posting, reading, monitoring, and account operations."
+  }
+}
