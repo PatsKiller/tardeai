@@ -99,7 +99,9 @@ Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
 Promoted: APPS, INFU, FLYW, SPRC, SCHD, ASPN, SYSTEM | 4 staged remain
 Intelligence page: /v2/hermes-intelligence
 
-**Next gate: Phase 6 — expand loop types, automate promotion, or external sources**
+**Phase 6A-6D: COMPLETE — governance audit, loop architecture, promotion governance**
+
+**Next gate: Phase 7A — Pipeline Quality Loop manual dry-run**
 
 Daily check:
 ```bash

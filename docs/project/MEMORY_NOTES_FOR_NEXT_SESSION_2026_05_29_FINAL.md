@@ -229,8 +229,14 @@
 ### Phase 5A-5D Complete (2026-05-31)
 - 4 more promoted (total 7), quality PASS, Hermes Intelligence page live at /v2/hermes-intelligence
 
+### Phase 6A-6D Governance Complete (2026-05-31)
+- **6A**: Drift audit PASS — zero drift, 17/17 checks
+- **6B**: 4 additional loop types designed (pipeline, portfolio, promotion review, source discovery)
+- **6C**: Promotion governance model — auto-promotion PROHIBITED, operator checklist created
+- **6D**: Closeout
+
 ### Next Gate
-- **Phase 6** — expand loop types, automate promotion, or connect external sources (requires approval)
+- **Phase 7A** — Pipeline Quality Loop manual dry-run (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
