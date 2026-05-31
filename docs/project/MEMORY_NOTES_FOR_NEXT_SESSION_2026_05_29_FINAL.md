@@ -244,14 +244,15 @@
 
 ### Phase 7F-7G Model Safety Complete (2026-05-31)
 - Ollama audit PASS: gemma3:12b local, keep_alive=5m, MAX_LOADED=1, no conflicts
+### MASTER Documentation Rewrite (2026-05-31)
+- MASTER rewritten: 50+ corrections (39 model refs, 6 strategy counts, portfolio pointer, Hermes section)
+- ARCHITECTURE_OVERVIEW + SYSTEM_ARCHITECTURE_COMPLETE archived → consolidated into MASTER
 - Next: Phase 8A Portfolio Reflection Loop dry-run
 
 ### Documentation A1A Hygiene Pass (2026-05-31)
 - Archived 30 files, trashed 15, moved 2.9G backup zip to ~/backups/
 - Fixed SKILLS.md: qwen3:14b → gemma3:12b, LLM routing, model policy
-- Fixed ARCHITECTURE_OVERVIEW: 376→392 tables, ~190 crons, 24 strategies
-- Fixed CHEAT_SHEET: 24 strategies
-- Added MASTER stale warning (full rewrite deferred)
+- MASTER stale warning removed (rewrite completed)
 - Index thinned: 398→138 lines
 - Sync exclusions: morning_brief, _trash, .tgz, CLAUDE_CODE_
 - Brief generator writes to docs/ root (aegis_morning_brief_delivery.py:403) — fix deferred
