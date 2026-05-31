@@ -12599,6 +12599,31 @@ def _system_applications():
     return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
+def _hermes_intelligence():
+    """GET /api/v2/hermes/intelligence — full Hermes intelligence view."""
+    rows = _db_query("""
+        SELECT r.id, r.hermes_agent_name, r.research_type, r.symbol, r.topic,
+               LEFT(r.summary, 500) AS summary, LEFT(r.thesis, 300) AS thesis,
+               r.confidence_score, r.status, r.freshness_date, r.model_used, r.created_at,
+               CASE WHEN ce.id IS NOT NULL THEN true ELSE false END AS embedded
+        FROM hermes_research_intelligence r
+        LEFT JOIN content_embeddings ce ON ce.source_type = 'hermes_research' AND ce.source_id = r.id
+        ORDER BY r.created_at DESC
+    """) or []
+    audit = _db_query("""
+        SELECT source_id, target_table, promoted_at FROM hermes_promotion_audit ORDER BY promoted_at DESC
+    """) or []
+    promoted = sum(1 for r in rows if r.get("status") == "promoted")
+    staged = sum(1 for r in rows if r.get("status") == "staged")
+    embedded = sum(1 for r in rows if r.get("embedded"))
+    return {
+        "ok": True,
+        "rows": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "total": len(rows), "promoted": promoted, "staged": staged, "embedded": embedded,
+        "audit": [{k: _json_clean(v) for k, v in a.items()} for a in audit],
+    }
+
+
 def _hermes_research_preview():
     """GET /api/v2/hermes/research — read-only preview of staged Hermes research."""
     rows = _db_query("""
@@ -12853,6 +12878,7 @@ ROUTES = {
     "/api/v2/system/access-links": lambda: _system_access_links(),
     "/api/v2/system/applications": lambda: _system_applications(),
     "/api/v2/hermes/health": lambda: _hermes_health(),
+    "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
 }
 
