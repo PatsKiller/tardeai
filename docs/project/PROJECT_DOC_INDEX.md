@@ -217,7 +217,9 @@
 | `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_ROLLBACK.sql` | Rollback SQL for Phase 1F rows |
 | `docs/hermes/HERMES_PHASE1F_BATCH_RESEARCH_INGESTION_ROLLBACK_SQL.md` | Drive-readable rollback SQL wrapper |
 | `docs/hermes/HERMES_SOURCE_DISCOVERY_AND_MEMORY_DESIGN.md` | **Source discovery design** — hermes_research_sources table, per-ticker source portfolios, quality scoring, seed URLs, 5-phase rollout |
-| `docs/hermes/HERMES_PHASE1F_SESSION_CLOSEOUT.md` | Phase 1F session closeout — 3/5 tasks staged, browser enabled, source design documented, next: Phase 1G quality review |
+| `docs/hermes/HERMES_PHASE1F_SESSION_CLOSEOUT.md` | Phase 1F session closeout — 3/5 tasks staged, browser enabled, source design documented |
+| `docs/hermes/HERMES_PHASE1G_STAGED_RESEARCH_QUALITY_REVIEW.md` | **Phase 1G quality review** — 4/4 rows PASS, schema+safety perfect, evidence+actionability need prompt hardening |
+| `docs/hermes/HERMES_RESEARCH_QUALITY_GATE_CHECKLIST.md` | Reusable quality gate checklist for ingestion, embedding, dashboard, and promotion |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
