@@ -94,7 +94,9 @@ Research rows: 11 | Embeddings: 7 | Gateway: active
 
 Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
 
-**Next gate: Phase 4 — production promotion pilot (not approved)**
+**Phase 4A promotion architecture: COMPLETE (dry-run, zero DB writes)**
+
+**Next gate: Phase 4B — first capped promotion (≤3 rows into llm_intelligence_cache)**
 
 Daily check:
 ```bash
