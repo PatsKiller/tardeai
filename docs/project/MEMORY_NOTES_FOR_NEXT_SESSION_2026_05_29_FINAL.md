@@ -167,8 +167,15 @@
 - No production promotion, no autonomous cron
 - No broker/trade/journal mutation, no external APIs
 
+### Accelerated Phase 2C-2G Complete (2026-05-31)
+- **2C**: 5 remaining rows embedded (total 7), dashboard research preview added (advisory-only)
+- **2D**: 16-query retrieval audit: 13/16 pass, negative containment 5/5 perfect, RAG pollution LOW
+- **2E**: Dashboard safety audit PASS: no mutation controls, advisory labels clear
+- **2F**: Source discovery architecture: 3-tier gates defined, zero external APIs configured
+- **2G**: All phases closed, rollback files exist for all embedding phases
+
 ### Next Gate
-- **Phase 2C** — embed remaining 5 rows + limited dashboard preview (not approved yet)
+- **Phase 3** — Hermes autonomous research loop (requires separate approval)
 - Then: production promotion — requires separate approval
 
 ## What to Check First Next Session

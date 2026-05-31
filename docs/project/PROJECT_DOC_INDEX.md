@@ -227,7 +227,13 @@
 | `docs/hermes/HERMES_PHASE2A_EMBEDDING_PILOT_ROLLBACK.sql` | Rollback SQL for Phase 2A embeddings |
 | `docs/hermes/HERMES_PHASE2A_SESSION_CLOSEOUT.md` | Phase 2A session closeout |
 | `docs/hermes/HERMES_PHASE2B_RETRIEVAL_QUALITY_AUDIT.md` | **Phase 2B audit** — 7/8 tests pass, negative containment perfect, direct retrieval strong, semantic limited |
-| `docs/hermes/HERMES_PHASE2B_SESSION_CLOSEOUT.md` | Phase 2B closeout — retrieval audit PASS_WITH_LIMITS, next: Phase 2C |
+| `docs/hermes/HERMES_PHASE2B_SESSION_CLOSEOUT.md` | Phase 2B closeout |
+| `docs/hermes/HERMES_PHASE2C_EMBED_REMAINING_AND_DASHBOARD_PREVIEW_REPORT.md` | Phase 2C — 5 embeddings + dashboard preview |
+| `docs/hermes/HERMES_PHASE2C_ROLLBACK.sql` | Rollback for Phase 2C embeddings |
+| `docs/hermes/HERMES_PHASE2D_FULL_EMBEDDING_RETRIEVAL_AUDIT.md` | Phase 2D — 16-query audit, 13/16 pass, negative 5/5 |
+| `docs/hermes/HERMES_PHASE2E_DASHBOARD_PREVIEW_SAFETY_AUDIT.md` | Phase 2E — dashboard safety PASS |
+| `docs/hermes/HERMES_PHASE2F_SOURCE_DISCOVERY_ARCHITECTURE_UPDATE.md` | Phase 2F — 3-tier source gates |
+| `docs/hermes/HERMES_PHASE2G_ACCELERATED_SEQUENCE_CLOSEOUT.md` | **Phase 2G closeout** — all 2C-2G complete, 7 embeddings, dashboard live |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
