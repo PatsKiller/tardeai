@@ -105,7 +105,11 @@
 | `docs/hermes/HERMES_PHASE7E_PIPELINE_QUALITY_LOOP_CLOSEOUT.md` | Phase 7E closeout |
 | `docs/hermes/HERMES_PHASE7F_OLLAMA_MODEL_SAFETY_RECONCILIATION.md` | Phase 7F — model audit PASS |
 | `docs/hermes/HERMES_PHASE7G_MODEL_RECONCILIATION_CLOSEOUT.md` | Phase 7G closeout |
-| `docs/hermes/HERMES_PHASE8A_PORTFOLIO_REFLECTION_DRY_RUN_REPORT.md` | **Phase 8A** — portfolio reflection dry-run PASS |
+| `docs/hermes/HERMES_PHASE8A_PORTFOLIO_REFLECTION_DRY_RUN_REPORT.md` | Phase 8A dry-run PASS |
+| `docs/hermes/HERMES_PHASE8B_PORTFOLIO_REFLECTION_STAGING_REPORT.md` | Phase 8B — 3 reflections staged |
+| `docs/hermes/HERMES_PHASE8C_PORTFOLIO_REFLECTION_DASHBOARD_REPORT.md` | Phase 8C — dashboard verified |
+| `docs/hermes/HERMES_PHASE8D_PORTFOLIO_REFLECTION_USEFULNESS_AUDIT.md` | Phase 8D — quality PASS |
+| `docs/hermes/HERMES_PHASE8E_PORTFOLIO_REFLECTION_LOOP_CLOSEOUT.md` | **Phase 8E closeout** |
 
 ### Generated Output (not authoritative)
 | Path | Content |

@@ -247,9 +247,10 @@
 ### MASTER Documentation Rewrite (2026-05-31)
 - MASTER rewritten: 50+ corrections (39 model refs, 6 strategy counts, portfolio pointer, Hermes section)
 - ARCHITECTURE_OVERVIEW + SYSTEM_ARCHITECTURE_COMPLETE archived → consolidated into MASTER
-### Phase 8A Portfolio Reflection Dry-Run (2026-05-31)
-- 3 reflections generated (stop coverage, stale intel, recovery watch), 0 rejected, zero DB writes
-- Next: Phase 8B staged-write pilot or observation period
+### Phase 8A-8E Portfolio Reflection Loop Complete (2026-05-31)
+- 3 reflections staged (stop coverage, stale intel, recovery watch), quality PASS
+- Total validation findings: 6 (3 pipeline + 3 portfolio)
+- Next: Phase 9 observation period or expand loop types
 
 ### Documentation A1A Hygiene Pass (2026-05-31)
 - Archived 30 files, trashed 15, moved 2.9G backup zip to ~/backups/
