@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-05-31T21:26:46.655019+00:00",
+  "open_trades": 6,
+  "recent_closed": 5,
+  "stopped_active": 5,
+  "hermes_state": {
+    "research": 11,
+    "promoted": 7,
+    "staged": 4,
+    "embeddings": 7,
+    "validation_findings": 3
+  }
+}

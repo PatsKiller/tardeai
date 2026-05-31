@@ -105,7 +105,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 7F-7G: Model safety PASS — no changes needed**
 
-**Next gate: Phase 8A — Portfolio Reflection Loop dry-run**
+**Phase 8A: Portfolio Reflection dry-run PASS (3 reflections, zero DB writes)**
+
+**Next gate: Phase 8B — Portfolio Reflection staged-write pilot**
 
 Daily check:
 ```bash
