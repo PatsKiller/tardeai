@@ -262,7 +262,12 @@
 | `docs/hermes/HERMES_PHASE5A_SECOND_CAPPED_PROMOTION_REPORT.md` | Phase 5A — 4 more rows promoted |
 | `docs/hermes/HERMES_PHASE5B_EXPANDED_PROMOTION_QUALITY_AUDIT.md` | Phase 5B — quality PASS |
 | `docs/hermes/HERMES_PHASE5C_DEDICATED_INTELLIGENCE_PAGE_REPORT.md` | Phase 5C — Hermes Intelligence page |
-| `docs/hermes/HERMES_PHASE5D_EXPANDED_PROMOTION_AND_INTELLIGENCE_PAGE_CLOSEOUT.md` | **Phase 5D closeout** — 7 promoted, intelligence page live |
+| `docs/hermes/HERMES_PHASE5D_EXPANDED_PROMOTION_AND_INTELLIGENCE_PAGE_CLOSEOUT.md` | Phase 5D closeout |
+| `docs/hermes/HERMES_PHASE6A_GOVERNANCE_AND_DRIFT_AUDIT.md` | Phase 6A — governance PASS, zero drift |
+| `docs/hermes/HERMES_PHASE6B_ADDITIONAL_LOOP_TYPES_ARCHITECTURE.md` | Phase 6B — 4 loop types designed |
+| `docs/hermes/HERMES_PHASE6C_PROMOTION_GOVERNANCE_MODEL.md` | Phase 6C — promotion governance, auto-promotion prohibited |
+| `docs/hermes/HERMES_PROMOTION_OPERATOR_CHECKLIST.md` | Promotion operator checklist |
+| `docs/hermes/HERMES_PHASE6D_GOVERNANCE_AND_EXPANSION_PLANNING_CLOSEOUT.md` | **Phase 6D closeout** — governance + expansion planning complete |
 | `docs/hermes/HERMES_PHASE1C_DRIVE_SYNC_VERIFICATION.md` | Drive sync verification — both SQL drafts confirmed synced |
 | `docs/hermes/HERMES_PHASE1D_VIEWS_AND_GRANTS_REPORT.md` | **Phase 1D report** — 8 views created, 40 SELECT grants applied, 76K+ rows accessible |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts (12 files) |
