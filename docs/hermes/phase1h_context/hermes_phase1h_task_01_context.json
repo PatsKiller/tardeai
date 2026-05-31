@@ -1,0 +1,129 @@
+{
+  "phase": "1H",
+  "task_id": "phase1h_task_01",
+  "generated_at": "2026-05-31T00:36:10.752752+00:00",
+  "source": "trade_ai_safe_views",
+  "symbol": "INFU",
+  "research_type": "ticker_thesis_challenge",
+  "safe_views_used": [
+    "hermes_v_trade_reflection_context",
+    "hermes_v_ticker_context",
+    "hermes_v_proposal_context"
+  ],
+  "redaction_statement": "Account names masked. No credentials.",
+  "no_secrets_statement": "No API keys or passwords.",
+  "no_broker_access_statement": "No broker calls.",
+  "no_production_mutation_statement": "Staging only.",
+  "context": {
+    "trades": [
+      {
+        "symbol": "INFU",
+        "entry_price": 8.61,
+        "exit_price": 9.34,
+        "pnl": 261.57,
+        "pnl_pct": null,
+        "exit_reason": "target_hit",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-05-13"
+      },
+      {
+        "symbol": "INFU",
+        "entry_price": 8.39,
+        "exit_price": 8.58,
+        "pnl": 67.83,
+        "pnl_pct": 2.26,
+        "exit_reason": "manual_stale_close",
+        "lifecycle_state": "closed",
+        "trade_date": "2026-05-12"
+      },
+      {
+        "symbol": "INFU",
+        "entry_price": 8.39,
+        "exit_price": null,
+        "pnl": null,
+        "pnl_pct": null,
+        "exit_reason": "closed_on_different_trade_id",
+        "lifecycle_state": "cancelled",
+        "trade_date": "2026-05-11"
+      },
+      {
+        "symbol": "INFU",
+        "entry_price": 8.39,
+        "exit_price": null,
+        "pnl": null,
+        "pnl_pct": null,
+        "exit_reason": "duplicate_unsubmitted_to_broker",
+        "lifecycle_state": "cancelled",
+        "trade_date": "2026-05-11"
+      },
+      {
+        "symbol": "INFU",
+        "entry_price": 8.39,
+        "exit_price": null,
+        "pnl": null,
+        "pnl_pct": null,
+        "exit_reason": "duplicate_unsubmitted_to_broker",
+        "lifecycle_state": "cancelled",
+        "trade_date": "2026-05-11"
+      }
+    ],
+    "ticker": {
+      "symbol": "INFU",
+      "snapshot_date": "2026-05-29",
+      "rsi": 37.48,
+      "beta": 1.48,
+      "sma50_pct": -8.01,
+      "sma200_pct": -2.93,
+      "perf_week_pct": -11.45,
+      "perf_month_pct": -5.28,
+      "intelligence_score": 34.0,
+      "intelligence_grade": "D"
+    },
+    "proposals": [
+      {
+        "symbol": "INFU",
+        "strategy_id": "speculative_growth",
+        "signal_grade": "B",
+        "status": "REJECTED",
+        "proposed_entry": 8.39,
+        "proposed_stop": 7.97,
+        "proposed_target1": 9.23,
+        "proposed_rr": null,
+        "created_at": "2026-05-15"
+      },
+      {
+        "symbol": "INFU",
+        "strategy_id": "gap_and_go",
+        "signal_grade": "B",
+        "status": "REJECTED",
+        "proposed_entry": 8.39,
+        "proposed_stop": 7.97,
+        "proposed_target1": 9.23,
+        "proposed_rr": null,
+        "created_at": "2026-05-15"
+      },
+      {
+        "symbol": "INFU",
+        "strategy_id": "swing_breakout",
+        "signal_grade": "B",
+        "status": "REJECTED",
+        "proposed_entry": 8.39,
+        "proposed_stop": 7.97,
+        "proposed_target1": 9.23,
+        "proposed_rr": null,
+        "created_at": "2026-05-10"
+      },
+      {
+        "symbol": "INFU",
+        "strategy_id": "earnings_catalyst",
+        "signal_grade": "B",
+        "status": "REJECTED",
+        "proposed_entry": 8.39,
+        "proposed_stop": 7.97,
+        "proposed_target1": 9.23,
+        "proposed_rr": null,
+        "created_at": "2026-05-10"
+      }
+    ]
+  }
+}

@@ -38,6 +38,13 @@ FORBIDDEN_KEYWORDS = [
     "trade_journal", "journal_entries", "execute_trade",
     "approve_proposal", "reject_proposal", "expire_proposal",
     "mutate_proposal", "mutate_trade", "mutate_journal",
+    "buy now", "sell now", "rebalance automatically",
+    "change stop", "modify trade", "update journal",
+]
+
+FORBIDDEN_EXTERNAL_CLAIMS = [
+    "according to latest web", "i searched", "live market",
+    "real-time quote", "current price is $",
 ]
 
 REQUIRED_COLUMNS = {
@@ -129,6 +136,53 @@ def validate_payload(payload, table):
                 errors.append(f"confidence_score {cs} out of range [0, 1]")
         except (ValueError, TypeError):
             errors.append(f"confidence_score '{cs}' is not numeric")
+
+    # 5. External unsupported claims
+    for claim in FORBIDDEN_EXTERNAL_CLAIMS:
+        if claim.lower() in text_fields.lower():
+            errors.append(f"REJECTED: unsupported external claim '{claim}' found")
+
+    # 6. Evidence depth (for research_intelligence)
+    if table == "hermes_research_intelligence":
+        ej = payload.get("evidence_json")
+        if isinstance(ej, dict):
+            substantive = [k for k in ej.keys() if k not in ("limitations", "source_views", "challenge_points")]
+            if len(substantive) < 2:
+                errors.append(f"evidence_json has only {len(substantive)} substantive keys (need >= 2)")
+
+        # Limitations required
+        lims = ej.get("limitations") if isinstance(ej, dict) else payload.get("limitations")
+        if not lims or (isinstance(lims, list) and len(lims) == 0):
+            errors.append("limitations array is empty or missing")
+
+        # High confidence without enough evidence
+        if cs is not None and float(cs) > 0.85:
+            if isinstance(ej, dict) and len([k for k in ej.keys() if k not in ("limitations", "source_views", "challenge_points")]) < 3:
+                errors.append(f"confidence_score {cs} > 0.85 but fewer than 3 evidence references")
+
+        # Challenge points should be findings, not questions
+        cps = ej.get("challenge_points") if isinstance(ej, dict) else payload.get("challenge_points")
+        if isinstance(cps, list):
+            question_starters = ["analyze ", "evaluate ", "assess ", "determine ", "consider "]
+            for cp in cps:
+                if isinstance(cp, str):
+                    lower = cp.lower().strip().lstrip("*-•")
+                    if any(lower.startswith(q) for q in question_starters):
+                        errors.append(f"challenge_point is a question, not a finding: '{cp[:60]}...'")
+                        break  # one is enough to flag
+
+        # Source views validation
+        sv = ej.get("source_views") if isinstance(ej, dict) else payload.get("source_views")
+        if not sv or (isinstance(sv, list) and len(sv) == 0):
+            errors.append("source_views is empty or missing")
+
+    # 7. Secrets/credentials check
+    for secret_kw in ["api_key", "password", "token", "cookie", "chat_id", "account_number", "ssn"]:
+        if secret_kw in text_fields.lower():
+            # Only flag if it looks like an actual value, not a discussion
+            import re
+            if re.search(rf'{secret_kw}\s*[=:]\s*\S+', text_fields.lower()):
+                errors.append(f"REJECTED: possible credential leak: '{secret_kw}'")
 
     return len(errors) == 0, errors
 
