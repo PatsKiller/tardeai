@@ -94,6 +94,15 @@
 | `docs/hermes/HERMES_ROLLBACK_PLAN.md` | Rollback — `rm -rf hermes_sidecar/` |
 | `docs/hermes/discovery/` | Gate 1 discovery artifacts |
 
+### Hermes Phase 7 — Pipeline Quality Loop
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE7A_PIPELINE_QUALITY_DRY_RUN_REPORT.md` | Phase 7A dry-run — 3 findings |
+| `docs/hermes/HERMES_PHASE7B_PIPELINE_QUALITY_STAGING_REPORT.md` | Phase 7B — 3 validation findings staged |
+| `docs/hermes/HERMES_PHASE7C_PIPELINE_QUALITY_DASHBOARD_REPORT.md` | Phase 7C — dashboard section |
+| `docs/hermes/HERMES_PHASE7D_PIPELINE_QUALITY_USEFULNESS_AUDIT.md` | Phase 7D — quality PASS |
+| `docs/hermes/HERMES_PHASE7E_PIPELINE_QUALITY_LOOP_CLOSEOUT.md` | **Phase 7E closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
