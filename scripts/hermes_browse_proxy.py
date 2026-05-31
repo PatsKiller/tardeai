@@ -64,8 +64,8 @@ If the question involves current events, live data, recent news, or anything aft
         return {"needs_browse": True, "search_query": user_message, "reason": "classification failed"}
 
 
-def _browse_search(query, max_results=3):
-    """Use Playwright to search DuckDuckGo and extract results."""
+def _browse_search(query, max_results=5):
+    """Use Playwright to search DuckDuckGo and extract results + page content."""
     if not CHROME_PATH:
         return None, "Chromium not found"
 
@@ -102,26 +102,28 @@ def _browse_search(query, max_results=3):
                 if title:
                     results.append({"title": title, "snippet": snippet, "url": url})
 
-            # If we got results, fetch the first one for deeper context
-            page_content = ""
-            if results and results[0].get("url"):
+            # Fetch up to 2 result pages for deeper context
+            page_contents = []
+            for r in results[:2]:
+                url = r.get("url", "")
+                if not url:
+                    continue
                 try:
-                    first_url = results[0]["url"]
-                    if not first_url.startswith("http"):
-                        first_url = "https://" + first_url
-                    page.goto(first_url, timeout=10000)
-                    # Get visible text (first 3000 chars)
-                    page_content = page.evaluate("""
+                    if not url.startswith("http"):
+                        url = "https://" + url
+                    page.goto(url, timeout=10000)
+                    content = page.evaluate("""
                         () => {
                             const body = document.body;
                             if (!body) return '';
-                            // Remove scripts, styles, nav, footer
-                            ['script','style','nav','footer','header','aside'].forEach(tag => {
+                            ['script','style','nav','footer','header','aside','iframe'].forEach(tag => {
                                 body.querySelectorAll(tag).forEach(el => el.remove());
                             });
-                            return body.innerText.substring(0, 3000);
+                            return body.innerText.substring(0, 2000);
                         }
                     """)
+                    if content and len(content.strip()) > 100:
+                        page_contents.append({"url": url, "content": content.strip()[:2000]})
                 except Exception:
                     pass
 
@@ -129,7 +131,7 @@ def _browse_search(query, max_results=3):
 
             return {
                 "search_results": results,
-                "page_content": page_content[:3000] if page_content else "",
+                "page_contents": page_contents,
                 "query": query,
             }, None
 
@@ -175,9 +177,10 @@ def chat_with_browsing(messages, system_prompt=""):
                     parts.append(f"   URL: {r['url']}")
                 parts.append("")
 
-            if result.get("page_content"):
-                parts.append("PAGE CONTENT (from top result):")
-                parts.append(result["page_content"][:2000])
+            for pc in result.get("page_contents", []):
+                parts.append(f"PAGE CONTENT from {pc['url']}:")
+                parts.append(pc["content"][:2000])
+                parts.append("")
 
             browse_context = "\n".join(parts)
         else:
