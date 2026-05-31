@@ -7,14 +7,20 @@
 
 ### Conversational Agents (OpenClaw Gateway :18789)
 
-| Agent | Role | LLM | Key Capabilities |
-|-------|------|-----|------------------|
-| **Maria** | Risk assessment & primary analyst | gemma3:12b | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
-| **Steph** | Technical analysis & wealth advisory | gemma3:12b | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
-| **Alex** | Income & retirement strategy | gemma3:12b + Claude (complex) | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
-| **Aegis** | Synthesis & surveillance | gemma3:12b | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
-| **Risk Agent** | Portfolio risk monitoring | gemma3:12b | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
-| **Tax Agent** | Tax optimization | gemma3:12b | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
+| Agent | Role | LLM Config | Key Capabilities |
+|-------|------|------------|------------------|
+| **Maria** | Risk assessment & primary analyst | qwen3:14b (config) | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
+| **Steph** | Technical analysis & wealth advisory | qwen3:14b (config) | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
+| **Alex** | Income & retirement strategy | qwen3:14b (config) + Claude (complex) | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
+| **Aegis** | Synthesis & surveillance | qwen3:14b (config) | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
+| **Risk Agent** | Portfolio risk monitoring | qwen3:14b (config) | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
+| **Tax Agent** | Tax optimization | qwen3:14b (config) | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
+
+> **NOTE (2026-05-31):** OpenClaw agent configs (`~/.openclaw/agents/*/models.json`) still reference
+> `qwen3:14b`, but this model is DISABLED in `.env` and uninstalled from Ollama. These chat agents
+> would fail if invoked. The backend pipeline (classifier, enrichment, intelligence) uses
+> gemma3:12b (primary) / gemma3:4b (fallback) via `.env` `LOCAL_LLM_MODEL`. Hermes uses gemma3:12b.
+> To restore OpenClaw agents, either reinstall qwen3:14b or update their models.json to gemma3:12b.
 
 ### Backend Automation Agents
 

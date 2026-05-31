@@ -3,6 +3,11 @@
 **Audience:** Executive / architect level
 **Last updated:** 2026-05-27 (Self-healing system + broker-agnostic refactor + 8 brokers + MFE analysis)
 
+> **STALE WARNING (2026-05-31):** This document references qwen3:14b as the primary model.
+> OpenClaw agent configs still point to qwen3:14b, but it is DISABLED in .env and uninstalled
+> from Ollama. Backend pipeline uses gemma3:12b (primary) / gemma3:4b (fallback). Hermes uses
+> gemma3:12b. Strategy count is 24 (was 23). Full rewrite planned for a future session.
+
 ---
 
 ## What Is Trade AI v12?
