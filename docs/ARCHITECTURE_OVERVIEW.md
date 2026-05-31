@@ -21,8 +21,8 @@ Trade AI v12 is a fully automated profit-seeking trading intelligence platform t
 |                                                                                    |
 |   +-----------+     +-------------+     +------------+     +------------------+    |
 |   | React SPA | --> | Portfolio    | --> | PostgreSQL | <-- | Cron Scheduler   |    |
-|   | (67 pgs)  |     | Server :7777|     | :5432      |     | (183 jobs)       |    |
-|   +-----------+     | 300+ APIs   |     | 376 tables |     +------------------+    |
+|   | (67 pgs)  |     | Server :7777|     | :5432      |     | (~190 jobs)      |    |
+|   +-----------+     | 300+ APIs   |     | 392 tables |     +------------------+    |
 |                     +------+------+     +------------+                              |
 |                            |                                                       |
 |              +-------------+-------------+-------------+                           |
@@ -80,7 +80,7 @@ Trade AI v12 is a fully automated profit-seeking trading intelligence platform t
 | 1 | **Data Collection** | Finviz screener runs, news ingestion (7 APIs), SEC filings, FRED data | Raw candidates in `trade_ai_scans`, news in `news_articles` |
 | 2 | **Enrichment** | 60+ field Finviz enrichment, 17 indicator computations, catalyst classification from 7 sources | Enriched symbols, catalyst scores, indicator cache |
 | 3 | **Scoring** | 55-point scoring engine produces GO/WAIT/NO-GO decisions | Scored and classified candidates |
-| 4 | **Intelligence** | Multi-strategy classification (20 strategies), LLM analysis, agent routing | Strategy assignments, CIO decisions, agent jobs |
+| 4 | **Intelligence** | Multi-strategy classification (24 strategies), LLM analysis, agent routing | Strategy assignments, CIO decisions, agent jobs |
 | 5 | **Proposals** | Incubator promotion gates, proposal generation, enrichment packets, LLM 4-chunk review | Paper trade proposals with full research packets |
 | 6 | **Execution** | Risk gate validation, bracket order creation, Alpaca paper submission, fill reconciliation, TCA | Paper trades with execution quality metrics |
 | 7 | **Overnight** | Portfolio reconciliation, agent scoring, strategy review, embedding refresh, weekly builds | Performance grades, cleaned state, updated indices |

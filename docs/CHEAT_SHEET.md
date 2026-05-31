@@ -233,7 +233,7 @@ tail -50 logs/proposal_enrichment.log
 |------|---------|
 | `.env` | All secrets, API keys, LLM config, feature flags. Values with `( ) ;` must be single-quoted |
 | `.env.example` | Template with documented variables |
-| `config/strategies/*.yaml` | 20 strategy definitions (dynamically loaded) |
+| `config/strategies/*.yaml` | 24 strategy definitions (dynamically loaded) |
 | `assets/screeners.yaml` | Finviz screener URLs + run windows |
 | `data/portfolios/state/holdings.json` | Portfolio state (~50 positions) |
 | `data/state/ticker_enrichment_cache.json` | Enriched symbol data (1,139 symbols) |

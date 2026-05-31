@@ -1,5 +1,5 @@
 # Trade AI v12 — Skills & Agent Capabilities Reference
-**Last updated:** 2026-05-12 (Session 30)
+**Last updated:** 2026-05-31 (A1A hygiene pass)
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Agent | Role | LLM | Key Capabilities |
 |-------|------|-----|------------------|
-| **Maria** | Risk assessment & primary analyst | qwen3:14b | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
-| **Steph** | Technical analysis & wealth advisory | qwen3:14b | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
-| **Alex** | Income & retirement strategy | qwen3:14b + Claude (complex) | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
-| **Aegis** | Synthesis & surveillance | qwen3:14b | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
-| **Risk Agent** | Portfolio risk monitoring | qwen3:14b | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
-| **Tax Agent** | Tax optimization | qwen3:14b | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
+| **Maria** | Risk assessment & primary analyst | gemma3:12b | Position sizing, portfolio impact, exposure analysis, correlation checks, 2-pass analysis (sentiment + fundamentals) |
+| **Steph** | Technical analysis & wealth advisory | gemma3:12b | Entry/exit timing, chart patterns, indicator confluence, income strategy, allocation review |
+| **Alex** | Income & retirement strategy | gemma3:12b + Claude (complex) | Roth conversion planning, SSDI/IRMAA impact, dividend analysis, covered call evaluation, monthly research |
+| **Aegis** | Synthesis & surveillance | gemma3:12b | Morning briefs, overnight synthesis, cross-agent coordination, event intelligence |
+| **Risk Agent** | Portfolio risk monitoring | gemma3:12b | Stop coverage, heat monitoring, concentration alerts, risk gate evaluation |
+| **Tax Agent** | Tax optimization | gemma3:12b | Tax-loss harvesting, lot selection, bracket analysis, IRMAA threshold monitoring |
 
 ### Backend Automation Agents
 
@@ -135,15 +135,17 @@ Request arrives
     ↓
 local_llm.py acquires toll gate lock (/tmp/ollama_llm_gate.lock)
     ↓
-Try qwen3:14b via Ollama (:11434, Intel Arc B50 GPU)
+Try gemma3:12b via Ollama (:11434, Intel Arc B50 GPU)
     ↓ (fail/timeout)
-Try OpenAI gpt-4o-mini
-    ↓ (fail)
-Try Anthropic claude-sonnet-4-6
+Fallback: gemma3:4b
     ↓ (fail)
 Return empty (caller handles gracefully)
 ```
 
+**Model policy (2026-05-31):** gemma3:12b primary, gemma3:4b fallback.
+qwen3:14b, gemma4 e2b/e4b DISABLED. gemma3:27b available but not production.
+Gemma4 31B via llama.cpp for offline deep analysis only.
+Cloud LLM calls (OpenAI/Anthropic) removed from production routing.
 All model references via `local_llm_config.py` and `.env` — zero hardcoded model names.
 
 ---
