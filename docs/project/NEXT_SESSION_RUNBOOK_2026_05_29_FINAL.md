@@ -105,7 +105,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 7F-7G: Model safety PASS — no changes needed**
 
-**Phase 8A: Portfolio Reflection dry-run PASS (3 reflections, zero DB writes)**
+**Phase 8A-8E: COMPLETE — Portfolio Reflection staged + quality PASS**
+
+**Next: Phase 9 — observation period or expand loop types**
 
 **Next gate: Phase 8B — Portfolio Reflection staged-write pilot**
 
