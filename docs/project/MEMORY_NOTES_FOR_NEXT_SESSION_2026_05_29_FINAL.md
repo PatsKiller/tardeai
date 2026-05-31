@@ -133,9 +133,16 @@
 - Pipeline task now passes (was 0% in 1F) — hardened prompt fixed it
 - hermes_research_intelligence total: 7 rows
 
+### Phase 2A Embedding Pilot Complete (2026-05-30)
+- 2 research rows embedded (FLYW id=1, INFU id=5) via nomic-embed-text 768-dim
+- content_embeddings ids: 26858, 26859 (source_type='hermes_research')
+- hermes_embedding_queue: 2 items, both completed
+- RAG retrieval test: Hermes content found with score 0.741 — competitive with Trade AI content
+- Embedding worker: `scripts/hermes_embedding_worker.py` (--dry-run default, --apply required)
+
 ### Next Gate
-- **Phase 2A** — embedding architecture pilot (evidence quality now sufficient)
-- Then: production promotion, dashboard Hermes Challenger, source table creation — all require separate approval
+- Embed remaining 5 research rows (requires approval)
+- Then: dashboard Hermes Challenger, production promotion, source table creation — all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
