@@ -101,7 +101,9 @@
 | `docs/hermes/HERMES_PHASE7B_PIPELINE_QUALITY_STAGING_REPORT.md` | Phase 7B — 3 validation findings staged |
 | `docs/hermes/HERMES_PHASE7C_PIPELINE_QUALITY_DASHBOARD_REPORT.md` | Phase 7C — dashboard section |
 | `docs/hermes/HERMES_PHASE7D_PIPELINE_QUALITY_USEFULNESS_AUDIT.md` | Phase 7D — quality PASS |
-| `docs/hermes/HERMES_PHASE7E_PIPELINE_QUALITY_LOOP_CLOSEOUT.md` | **Phase 7E closeout** |
+| `docs/hermes/HERMES_PHASE7E_PIPELINE_QUALITY_LOOP_CLOSEOUT.md` | Phase 7E closeout |
+| `docs/hermes/HERMES_PHASE7F_OLLAMA_MODEL_SAFETY_RECONCILIATION.md` | Phase 7F — model audit PASS |
+| `docs/hermes/HERMES_PHASE7G_MODEL_RECONCILIATION_CLOSEOUT.md` | **Phase 7G closeout** — next: Phase 8A |
 
 ### Generated Output (not authoritative)
 | Path | Content |

@@ -103,7 +103,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 7A-7E: COMPLETE — Pipeline Quality Loop staged + dashboard**
 
-**Next gate: Phase 8A — Portfolio Reflection Loop dry-run or observation period**
+**Phase 7F-7G: Model safety PASS — no changes needed**
+
+**Next gate: Phase 8A — Portfolio Reflection Loop dry-run**
 
 Daily check:
 ```bash
