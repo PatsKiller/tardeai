@@ -5,6 +5,11 @@
 **Document version:** 2026-05-11 (Session 29 — Phases 1-8 Complete: Classification, Intelligence, Consolidation, LLM, UI/UX, Feedback, Production)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
+> **STALE WARNING (2026-05-31):** This document references qwen3:14b throughout — the production
+> model is now gemma3:12b (primary) / gemma3:4b (fallback). qwen3:14b is DISABLED. Strategy count
+> is 24 (was 20). Table count is 392 (was 376). A full MASTER rewrite is planned for a future session.
+> Until then, check `.env` and `docs/project/SKILLS.md` for current live values.
+
 ---
 
 ## Table of Contents

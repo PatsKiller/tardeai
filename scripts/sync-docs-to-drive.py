@@ -18,9 +18,10 @@ SYNC_ROOTS = [(SRC_ROOT / 'docs', 'docs'), (SRC_ROOT / 'config' / 'strategies', 
 EXTRA_FILES = [(SRC_ROOT / '.env.example', None)]
 
 EXCLUDE = [r'/state/', r'/\.git/', r'__pycache__', r'\.pyc$', r'\.log$', r'\.sql$',
-           r'\.tar\.gz$', r'\.zip$', r'\.env[^.]', r'^\.env$', r'/\.env$',
+           r'\.tar\.gz$', r'\.tgz$', r'\.zip$', r'\.env[^.]', r'^\.env$', r'/\.env$',
            r'\.key$', r'\.pem$', r'\.token$', r'credentials', r'secret', r'password',
-           r'holdings.*\.json$', r'portfolio.*\.json$']
+           r'holdings.*\.json$', r'portfolio.*\.json$',
+           r'morning_brief', r'/_trash/', r'CLAUDE_CODE_']
 SENSITIVE = [rb'sk-[a-zA-Z0-9]{20,}', rb'AKIA[A-Z0-9]{16}', rb'ghp_[a-zA-Z0-9]{36}',
              rb'[0-9]{8,10}:[a-zA-Z0-9_-]{30,}']
 
