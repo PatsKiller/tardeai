@@ -119,9 +119,15 @@
 - 5-phase implementation: table creation → seed insert → agent integration → source-first research → dashboard
 - Not implemented yet — design only
 
+### Phase 1G Quality Review Complete (2026-05-30)
+- All 4 rows PASS. Schema compliance 5/5, safety 5/5. Evidence quality 3.5/5, actionability 3.25/5.
+- Key findings: challenge_points are questions not findings (rows 2,4), trade reflections need richer context, system tasks fail validation.
+- Quality gate checklist created for future ingestion/embedding/promotion decisions.
+- Prompt improvements needed: "state findings not questions", include strategy/MFE context for trades, add example output for system tasks.
+
 ### Next Gate
-- **Phase 1G** — quality review of staged research (ids 1-4) before more ingestion
-- Then: ongoing research, embeddings, production promotion, dashboard Hermes Challenger, source table creation — all require separate approval
+- **Phase 1H** — prompt hardening + limited additional ingestion with improved prompts
+- Then: embeddings, production promotion, dashboard Hermes Challenger, source table creation — all require separate approval
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

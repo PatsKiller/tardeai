@@ -76,12 +76,16 @@ All phases through 1F completed (2026-05-30, 37 commits):
 - Source discovery design documented (not implemented)
 - Zero embeddings, zero production writes
 
-**Next gate: Phase 1G — quality review of staged research**
+**Phase 1G quality review: COMPLETE (PASS)**
+
+**Next gate: Phase 1H — prompt hardening + limited additional ingestion**
 
 Scope:
-- Review Phase 1E+1F rows (ids 1-4) for usefulness, hallucination risk, evidence quality, actionability
-- No new ingestion unless approved
-- No embeddings
+1. Fix prompts: "state findings not questions", richer trade context, example output for system tasks
+2. Fix validator: reject question-style challenge_points
+3. Run 5 more tasks with improved prompts
+4. Compare quality against Phase 1E+1F baseline
+- No embeddings until evidence quality improves
 - No production promotion
 - No dashboard Hermes Challenger
 - No daemon/cron
