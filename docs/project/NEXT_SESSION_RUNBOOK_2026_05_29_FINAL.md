@@ -113,6 +113,8 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 13: Promotion Review dry-run PASS — 3 candidates (FJSCX, APAM, TRX)**
 
+**Phase 14: Promotion Review dashboard PASS — read-only preview live**
+
 Next: promote 3 candidates, source discovery dry-run, or observation
 
 Daily check:

@@ -131,7 +131,10 @@
 | `docs/project/PHASE12_DOCKER_VERSION_CHECK_CLOSEOUT.md` | Phase 12 closeout |
 | `docs/hermes/HERMES_PHASE13B_PROMOTION_REVIEW_DRY_RUN_REPORT.md` | Phase 13B — review dry-run, 3 candidates |
 | `docs/hermes/HERMES_PHASE13C_PROMOTION_REVIEW_USEFULNESS_AUDIT.md` | Phase 13C — quality PASS |
-| `docs/project/PHASE13_PROMOTION_REVIEW_LOOP_CLOSEOUT.md` | **Phase 13 closeout** |
+| `docs/project/PHASE13_PROMOTION_REVIEW_LOOP_CLOSEOUT.md` | Phase 13 closeout |
+| `docs/hermes/HERMES_PHASE14B_PROMOTION_REVIEW_DASHBOARD_IMPLEMENTATION_REPORT.md` | Phase 14B — dashboard preview |
+| `docs/hermes/HERMES_PHASE14C_PROMOTION_REVIEW_DASHBOARD_SAFETY_AUDIT.md` | Phase 14C — safety PASS |
+| `docs/project/PHASE14_PROMOTION_REVIEW_DASHBOARD_CLOSEOUT.md` | **Phase 14 closeout** |
 
 ### Generated Output (not authoritative)
 | Path | Content |

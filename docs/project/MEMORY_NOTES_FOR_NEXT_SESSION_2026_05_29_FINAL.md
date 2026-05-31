@@ -271,8 +271,9 @@
 ### Phase 13 Promotion Review Loop (2026-05-31)
 - **13A-13D**: Dry-run PASS — 11 reviewed, 7 already promoted, 3 candidates (FJSCX, APAM, TRX), 1 needs evidence (TELO)
 - Auto-promotion: PROHIBITED. Quality audit PASS.
+### Phase 14 Promotion Review Dashboard (2026-05-31)
+- Read-only promotion review section added to Hermes Intelligence page, safety PASS
 - Next: promote 3 candidates, source discovery dry-run, or observation
-- Next: observation period or second Docker pilot / promotion review loop
 
 ### Documentation A1A Hygiene Pass (2026-05-31)
 - Archived 30 files, trashed 15, moved 2.9G backup zip to ~/backups/

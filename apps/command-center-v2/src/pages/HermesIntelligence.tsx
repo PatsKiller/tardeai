@@ -26,6 +26,7 @@ export default function HermesIntelligence() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [detail, setDetail] = useState<HermesRow | null>(null)
   const { data, loading, error } = useApi<IntelData>(`/api/v2/hermes/intelligence?_r=${rk}`)
+  const { data: prData } = useApi<{ candidates: Array<{ hermes_row_id: number; symbol_or_topic: string; recommended_disposition: string; confidence_score: number; rationale: string }>; duplicates: Array<{ id: number; symbol: string; reason: string }>; total_candidates: number; total_duplicates: number; advisory_notice: string }>(`/api/v2/hermes/promotion-review?_r=${rk}`)
   const { data: pqData } = useApi<{ findings: Array<{ id: number; finding_type: string; severity: string; description: string; recommended_action: string; status: string; created_at: string }>; total: number }>(`/api/v2/hermes/pipeline-quality?_r=${rk}`)
 
   const filtered = useMemo(() => {
@@ -131,6 +132,24 @@ export default function HermesIntelligence() {
               {f.recommended_action && <div style={{ color: 'var(--text3)', fontSize: 10, marginTop: 2 }}>Action: {f.recommended_action}</div>}
             </div>
           ))}
+        </Card>
+      )}
+
+      {/* Promotion Review */}
+      {prData && prData.total_candidates > 0 && (
+        <Card title={`Promotion Review (${prData.total_candidates} candidates)`}>
+          <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 6, padding: '3px 6px', background: 'rgba(246,190,0,.08)', borderRadius: 3 }}>Dry-Run Only — Auto-Promotion Prohibited — Operator Review Required</div>
+          {prData.candidates.map((c, i) => (
+            <div key={i} style={{ padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
+                <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{c.symbol_or_topic}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: c.recommended_disposition === 'candidate_for_future_promotion' ? 'rgba(74,144,244,.1)' : 'rgba(246,190,0,.1)', color: c.recommended_disposition === 'candidate_for_future_promotion' ? 'var(--accent)' : 'var(--amber)' }}>{c.recommended_disposition.replace(/_/g, ' ')}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9 }}>conf: {c.confidence_score}</span>
+              </div>
+              <div style={{ color: 'var(--text2)', fontSize: 10 }}>{c.rationale}</div>
+            </div>
+          ))}
+          {prData.total_duplicates > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{prData.total_duplicates} already promoted (skipped)</div>}
         </Card>
       )}
 
