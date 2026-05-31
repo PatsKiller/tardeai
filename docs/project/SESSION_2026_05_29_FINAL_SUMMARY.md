@@ -184,12 +184,24 @@
 | d9a8031 | update session docs |
 | 8dc27e1 | verify hermes phase 1C drive sync |
 
+### Documentation A1A Hygiene Pass (2026-05-31)
+* Archived 30 files (4 tgz, 2 sessions, 2 prompts, 4 one-off dirs)
+* Trashed 15 files (13 old briefs + 2 empties)
+* Moved 2.9G backup zip to ~/backups/
+* Fixed SKILLS.md: qwen3:14b → gemma3:12b, LLM routing, model policy
+* Fixed ARCHITECTURE_OVERVIEW: 376→392 tables, 183→~190 crons, 20→24 strategies
+* Fixed CHEAT_SHEET: 20→24 strategies
+* Added MASTER stale warning (full rewrite deferred)
+* Index thinned: 398→138 lines
+* Sync exclusions: morning_brief, _trash, .tgz, CLAUDE_CODE_
+* Finding: aegis_morning_brief_delivery.py:403 writes to docs/ root (fix deferred)
+
 ## Remaining Work
-1. Add UI "Inspect" button for lifecycle inspector (P2)
-2. Add retry history UI/dashboard (P2)
-3. Observe next 4 AM pre-market enrichment cycle
-4. Observe next natural Gemma4 31B Tier 3a escalation
-5. Generate more non-intraday proposals (swing/earnings/income) for ATM to approve
+1. MASTER architecture rewrite (qwen3:14b throughout → gemma3:12b)
+2. Architecture trio consolidation (MASTER + OVERVIEW + COMPLETE → single doc)
+3. Morning brief generator output path fix (code change)
+4. Add UI "Inspect" button for lifecycle inspector (P2)
+5. Add retry history UI/dashboard (P2)
 6. Connect Hermes to DB views for contextual answers
 7. Define 5 pilot Hermes agent workflows
 8. Consider 50+ dry-run llama.cpp canary before production routing
