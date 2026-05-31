@@ -65,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/system-access', label: 'System Access' },
     { to: '/system-applications', label: 'System Applications' },
     { to: '/hermes', label: 'Hermes Chat' },
+    { to: '/hermes-intelligence', label: 'Hermes Intelligence' },
     { to: '/agent-pipeline', label: 'Agent Pipeline' },
   ]},
   { label: 'Automated Trading', items: [
