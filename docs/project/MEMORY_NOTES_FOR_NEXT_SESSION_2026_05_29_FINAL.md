@@ -235,6 +235,22 @@
 - **6C**: Promotion governance model — auto-promotion PROHIBITED, operator checklist created
 - **6D**: Closeout
 
+### Documentation A1A Hygiene Pass (2026-05-31)
+- Archived 30 files, trashed 15, moved 2.9G backup zip to ~/backups/
+- Fixed SKILLS.md: qwen3:14b → gemma3:12b, LLM routing, model policy
+- Fixed ARCHITECTURE_OVERVIEW: 376→392 tables, ~190 crons, 24 strategies
+- Fixed CHEAT_SHEET: 24 strategies
+- Added MASTER stale warning (full rewrite deferred)
+- Index thinned: 398→138 lines
+- Sync exclusions: morning_brief, _trash, .tgz, CLAUDE_CODE_
+- Brief generator writes to docs/ root (aegis_morning_brief_delivery.py:403) — fix deferred
+- Pre-hygiene snapshot: commit 47b057c, tar ~/doc_hygiene_backup_2026-05-31.tgz
+
+### Deferred Documentation Work
+- MASTER rewrite (qwen3:14b refs throughout)
+- Architecture trio consolidation (MASTER + OVERVIEW + COMPLETE)
+- Morning brief generator output path fix
+
 ### Next Gate
 - **Phase 7A** — Pipeline Quality Loop manual dry-run (requires approval)
 
