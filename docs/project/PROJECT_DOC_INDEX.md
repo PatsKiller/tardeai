@@ -117,6 +117,12 @@
 | `docs/infra/DOCKER_ROLLBACK_RUNBOOK.md` | Docker rollback runbook |
 | `docs/infra/DOCKER_PHASED_MIGRATION_PLAN.md` | 5-phase Docker migration plan |
 
+### Session Closeout
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_FULL_SESSION_CLOSEOUT_2026_05_31.md` | **Full Hermes session closeout** — 101 commits, P0-P9, MASTER rewrite, Docker planning |
+| `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md` | **Operator summary** — final state, do-not-do list, next session start |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
