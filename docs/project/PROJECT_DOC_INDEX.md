@@ -424,6 +424,13 @@
 | `docs/project/PHASE77D_SELF_LEARNING_MATURITY_ASSESSMENT.md` | Self-learning maturity assessment |
 | `docs/project/PHASE77E_NEXT_AUTOMATION_ROADMAP.md` | Phases 78–86 roadmap |
 
+### Level 6 Stable Expansion (Phases 78–82)
+| `docs/project/PHASE78_LEVEL6_CLEAN_OBSERVATION_CLOSEOUT.md` | **Phase 78** — LEVEL6_CERTIFIED_STABLE |
+| `docs/project/PHASE79_EXPANDED_SOURCE_DISCOVERY_STAGED_WRITES_CLOSEOUT.md` | **Phase 79** — 5 rows staged (ids 38–42) |
+| `docs/project/PHASE80_ADVISORY_CACHE_QUALITY_SCORING_CLOSEOUT.md` | **Phase 80** — 3 KEEP, 6 REFRESH, 1 RETIRE |
+| `docs/project/PHASE81_HIGH_LLM_QUEUE_STABILIZATION_CLOSEOUT.md` | **Phase 81** — queue STABLE |
+| `docs/project/PHASE82_SECOND_HERMES_EMBEDDING_BATCH_CLOSEOUT.md` | **Phase 82** — 3 embedded, total 12 |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
