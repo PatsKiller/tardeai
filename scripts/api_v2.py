@@ -12665,13 +12665,18 @@ def _hermes_research_backlog():
 
 
 def _hermes_sl_drilldown():
-    """GET /api/v2/hermes/self-learning/drilldown — filtered item list."""
-    import urllib.parse as _up
-    qs = _up.parse_qs(os.environ.get("QUERY_STRING", ""))
-    status_f = qs.get("status", [None])[0]
-    rtype_f = qs.get("type", [None])[0]
-    agent_f = qs.get("agent", [None])[0]
-    symbol_f = qs.get("symbol", [None])[0]
+    """GET /api/v2/hermes/self-learning/drilldown — filtered item list with workflow context."""
+    qs = _current_query or {}
+    status_f = qs.get("status")
+    rtype_f = qs.get("type")
+    category_f = qs.get("category")
+    agent_f = qs.get("agent")
+    symbol_f = qs.get("symbol")
+    section_f = qs.get("section")  # legacy compat
+
+    # Map section param to type for backwards compat
+    if section_f and not rtype_f:
+        rtype_f = section_f
 
     where = ["1=1"]
     params = []
@@ -12686,33 +12691,143 @@ def _hermes_sl_drilldown():
 
     rows = _db_query(f"""
         SELECT r.id, r.symbol, r.research_type, r.hermes_agent_name, r.confidence_score,
-               r.status, LEFT(r.topic,100) as topic, LEFT(r.summary,200) as summary,
-               r.source_urls_json::text, r.created_at,
+               r.status, LEFT(r.topic,200) as topic, LEFT(r.summary,300) as summary,
+               r.source_urls_json::text, r.created_at, r.updated_at,
                CASE WHEN ce.id IS NOT NULL THEN true ELSE false END AS embedded,
-               CASE WHEN pa.source_id IS NOT NULL THEN true ELSE false END AS promoted_audit,
-               CASE
-                 WHEN r.research_type = 'ops_backlog' AND r.topic ILIKE '%finviz%' THEN 'OPS_FEED'
-                 WHEN r.research_type = 'ops_backlog' AND r.topic ILIKE '%maria%' THEN 'OPS_AGENT'
-                 WHEN r.research_type = 'ops_backlog' AND r.topic ILIKE '%gemma%' THEN 'OPS_LLM'
-                 WHEN r.research_type = 'ops_backlog' THEN 'OPS'
-                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%backtest%' THEN 'STRATEGY'
-                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%scalp%' THEN 'STRATEGY'
-                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%income%' THEN 'PORTFOLIO'
-                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%journal%' THEN 'OPS'
-                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%catalyst%' THEN 'OPS'
-                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%telegram%' THEN 'OPS'
-                 WHEN r.research_type LIKE 'source_discovery%' THEN 'RESEARCH'
-                 WHEN r.research_type = 'pipeline_quality_validation' THEN 'OPS'
-                 WHEN r.symbol IS NOT NULL THEN r.symbol
-                 ELSE 'SYSTEM'
-               END AS display_category
+               CASE WHEN pa.source_id IS NOT NULL THEN true ELSE false END AS promoted_audit
         FROM hermes_research_intelligence r
         LEFT JOIN content_embeddings ce ON ce.source_type='hermes_research' AND ce.source_id=r.id
         LEFT JOIN hermes_promotion_audit pa ON pa.source_id=r.id
         WHERE {' AND '.join(where)}
-        ORDER BY r.created_at DESC LIMIT 50
+        ORDER BY r.created_at DESC LIMIT 100
     """, params=tuple(params) if params else None) or []
-    return {"ok": True, "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "total": len(rows)}
+
+    # Enrich each row with workflow context
+    def _classify(r):
+        rt = r.get("research_type", "")
+        topic = (r.get("topic") or "").lower()
+        sym = r.get("symbol") or ""
+        conf = r.get("confidence_score") or 0
+        status = r.get("status", "")
+
+        # Display category
+        if rt == "ops_backlog":
+            if "finviz" in topic or "cookie" in topic or "feed" in topic:
+                cat, domain = "OPS_FEED", "Feed Health"
+            elif "maria" in topic or "agent" in topic or "stale" in topic:
+                cat, domain = "OPS_AGENT", "Agent Health"
+            elif "gemma" in topic or "ollama" in topic or "llm" in topic or "queue" in topic:
+                cat, domain = "OPS_LLM", "LLM Queue Health"
+            elif "pipeline" in topic or "cron" in topic:
+                cat, domain = "OPS_PIPELINE", "Pipeline Health"
+            else:
+                cat, domain = "OPS", "System Operations"
+        elif rt == "research_backlog":
+            if "backtest" in topic or "strategy" in topic or "scalp" in topic:
+                cat, domain = "STRATEGY", "Strategy Learning"
+            elif "income" in topic or "dividend" in topic or "portfolio" in topic:
+                cat, domain = "PORTFOLIO", "Portfolio Research"
+            else:
+                cat, domain = "RESEARCH", "Research Backlog"
+        elif "source_discovery" in rt:
+            cat, domain = "SOURCE_DISCOVERY", "Source Discovery"
+        elif rt == "pipeline_quality_validation":
+            cat, domain = "OPS_PIPELINE", "Pipeline Quality"
+        elif rt == "ticker_challenger" and sym:
+            cat, domain = sym, "Ticker Analysis"
+        elif sym:
+            cat, domain = sym, "Symbol Research"
+        else:
+            cat, domain = "SYSTEM", "System"
+
+        # Workflow stage
+        if status == "promoted":
+            stage, stage_order = "Promoted to Production", 5
+        elif r.get("embedded"):
+            stage, stage_order = "Embedded in RAG", 4
+        elif status == "staged" and conf >= 0.5:
+            stage, stage_order = "Ready for Review", 3
+        elif status == "staged":
+            stage, stage_order = "Staged — Needs Quality Check", 2
+        elif status == "rejected":
+            stage, stage_order = "Rejected", 0
+        else:
+            stage, stage_order = "New / Unprocessed", 1
+
+        # Owner agent
+        owner = r.get("hermes_agent_name") or ("ticker_challenger" if rt == "ticker_challenger" else "hermes_research")
+
+        # Priority
+        if cat.startswith("OPS") and conf < 0.4:
+            priority = "HIGH"
+        elif cat == "STRATEGY" or (sym and conf >= 0.5):
+            priority = "MEDIUM"
+        else:
+            priority = "LOW"
+
+        # Next action
+        if status == "promoted":
+            next_action = "Monitor — already in production cache"
+        elif status == "rejected":
+            next_action = "No action — rejected"
+        elif cat == "OPS_FEED":
+            next_action = "Verify feed health, rotate credentials if failing"
+        elif cat == "OPS_AGENT":
+            next_action = "Check agent output freshness, restart if stale"
+        elif cat == "OPS_LLM":
+            next_action = "Review LLM queue failures, check model health"
+        elif cat == "OPS_PIPELINE":
+            next_action = "Review pipeline run status, check for failures"
+        elif cat == "STRATEGY":
+            next_action = "Review strategy findings, validate against backtest data"
+        elif cat == "SOURCE_DISCOVERY":
+            next_action = "Classify source relevance, archive if not portfolio-linked"
+        elif cat == "PORTFOLIO":
+            next_action = "Review portfolio-level insight for rebalance/allocation"
+        elif sym and conf >= 0.5:
+            next_action = f"Review {sym} thesis, consider for incubator or watchlist"
+        elif sym:
+            next_action = f"Quality-check {sym} research, improve if low confidence"
+        else:
+            next_action = "Review and classify"
+
+        # Why it matters
+        if cat.startswith("OPS"):
+            why = "Operational issue that may affect pipeline reliability or data freshness"
+        elif cat == "STRATEGY":
+            why = "Strategy-level insight that could improve trading rules or parameters"
+        elif cat == "SOURCE_DISCOVERY":
+            why = "New research source that may improve intelligence quality"
+        elif sym:
+            why = f"Hermes research on {sym} — may surface actionable trade thesis"
+        else:
+            why = "System-level finding requiring operator awareness"
+
+        # Blocker
+        blocker = None
+        if conf < 0.3:
+            blocker = "Very low confidence — needs evidence improvement"
+        elif status == "staged" and not r.get("embedded"):
+            blocker = "Not yet embedded — awaiting embedding worker"
+
+        r["display_category"] = cat
+        r["domain"] = domain
+        r["workflow_stage"] = stage
+        r["workflow_stage_order"] = stage_order
+        r["owner_agent"] = owner
+        r["operator_priority"] = priority
+        r["why_it_matters"] = why
+        r["recommended_next_action"] = next_action
+        r["blocker_reason"] = blocker
+        return r
+
+    enriched = [_classify({k: _json_clean(v) for k, v in r.items()}) for r in rows]
+
+    # Post-query category filter (display_category is computed, not in DB)
+    if category_f:
+        enriched = [r for r in enriched if r.get("display_category") == category_f or r.get("display_category", "").startswith(category_f + "_")]
+
+    return {"ok": True, "items": enriched, "total": len(enriched)}
 
 
 def _hermes_sl_timeline():
@@ -13259,8 +13374,12 @@ ROUTES = {
 }
 
 
+_current_query = {}  # Thread-local would be better; single-threaded server is fine
+
 def handle(path: str, method: str = "GET", body: dict = None, query: dict = None):
     """Dispatch a v2 API path. Returns (status, dict) or None if not a v2 route."""
+    global _current_query
+    _current_query = query or {}
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
