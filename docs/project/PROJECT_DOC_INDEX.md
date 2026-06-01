@@ -135,6 +135,7 @@
 | `docs/hermes/HERMES_PHASE14B_PROMOTION_REVIEW_DASHBOARD_IMPLEMENTATION_REPORT.md` | Phase 14B — dashboard preview |
 | `docs/hermes/HERMES_PHASE14C_PROMOTION_REVIEW_DASHBOARD_SAFETY_AUDIT.md` | Phase 14C — safety PASS |
 | `docs/project/PHASE14_PROMOTION_REVIEW_DASHBOARD_CLOSEOUT.md` | **Phase 14 closeout** |
+| `docs/hermes/HERMES_PHASE15_PROMOTION_EXECUTION_REPORT.md` | **Phase 15** — 3 candidates promoted (FJSCX, APAM, TRX) |
 
 ### Generated Output (not authoritative)
 | Path | Content |
