@@ -1,0 +1,80 @@
+[
+  {
+    "id": 1,
+    "symbol": "FLYW",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 2,
+    "symbol": "SPRC",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 3,
+    "symbol": "SCHD",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 4,
+    "symbol": "APPS",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 5,
+    "symbol": "INFU",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 6,
+    "symbol": "ASPN",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 7,
+    "symbol": "SYSTEM",
+    "reason": "already_embedded",
+    "score": 0
+  },
+  {
+    "id": 9,
+    "symbol": "TELO",
+    "reason": "confidence_0.2_below_0.3",
+    "score": 0
+  },
+  {
+    "id": 19,
+    "symbol": "SYSTEM",
+    "reason": "research_backlog_task_not_finding",
+    "score": 0
+  },
+  {
+    "id": 20,
+    "symbol": "TELO",
+    "reason": "research_backlog_task_not_finding",
+    "score": 0
+  },
+  {
+    "id": 21,
+    "symbol": "APAM",
+    "reason": "research_backlog_task_not_finding",
+    "score": 0
+  },
+  {
+    "id": 22,
+    "symbol": "FJSCX",
+    "reason": "research_backlog_task_not_finding",
+    "score": 0
+  },
+  {
+    "id": 23,
+    "symbol": "SYSTEM",
+    "reason": "research_backlog_task_not_finding",
+    "score": 0
+  }
+]
