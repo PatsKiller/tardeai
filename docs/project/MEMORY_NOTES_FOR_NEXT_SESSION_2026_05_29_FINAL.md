@@ -594,8 +594,14 @@
 - Phase 73: telegram_alert_dedupe.py + alert_false_fixed_gate.py implemented. Dedupe works (~80%). False-fixed gate verifies Finviz CSV success.
 - Phase 74: GET /api/v2/system/feed-health live. Finviz HEALTHY, 0 streak, 3 ops backlog, news fresh.
 
+### Phases 75–77 Certification + Preflight + Maturity (2026-06-01)
+- Phase 75: LEVEL6_CERTIFIED conditional on 14:00 3rd clean run (2/3 confirmed)
+- Phase 76: finviz_feed_preflight.py created — HEALTHY, exit codes for cron integration
+- Phase 77: Self-learning maturity **8.1/10**. Research-only fallback policy hardened. Roadmap Phases 78–86 defined.
+- 7 gaps identified: morning briefs, cookie fragility, GPU contention, old overnight, Gemma 4, dedupe scope, cache cap
+
 ### Next Gate
-- 3rd clean run → LEVEL6_CERTIFIED, then self-learning maturity report or feed preflight automation
+- 3rd clean run auto-certifies LEVEL6 → Phase 78 7-day observation → Phase 79+ expansion
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
