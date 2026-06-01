@@ -12664,6 +12664,61 @@ def _hermes_research_backlog():
     }
 
 
+def _hermes_sl_drilldown():
+    """GET /api/v2/hermes/self-learning/drilldown — filtered item list."""
+    import urllib.parse as _up
+    qs = _up.parse_qs(os.environ.get("QUERY_STRING", ""))
+    status_f = qs.get("status", [None])[0]
+    rtype_f = qs.get("type", [None])[0]
+    agent_f = qs.get("agent", [None])[0]
+    symbol_f = qs.get("symbol", [None])[0]
+
+    where = ["1=1"]
+    params = []
+    if status_f:
+        where.append("r.status=%s"); params.append(status_f)
+    if rtype_f:
+        where.append("r.research_type=%s"); params.append(rtype_f)
+    if agent_f:
+        where.append("r.hermes_agent_name=%s"); params.append(agent_f)
+    if symbol_f:
+        where.append("r.symbol=%s"); params.append(symbol_f)
+
+    rows = _db_query(f"""
+        SELECT r.id, r.symbol, r.research_type, r.hermes_agent_name, r.confidence_score,
+               r.status, LEFT(r.topic,100) as topic, LEFT(r.summary,200) as summary,
+               r.source_urls_json::text, r.created_at,
+               CASE WHEN ce.id IS NOT NULL THEN true ELSE false END AS embedded,
+               CASE WHEN pa.source_id IS NOT NULL THEN true ELSE false END AS promoted_audit
+        FROM hermes_research_intelligence r
+        LEFT JOIN content_embeddings ce ON ce.source_type='hermes_research' AND ce.source_id=r.id
+        LEFT JOIN hermes_promotion_audit pa ON pa.source_id=r.id
+        WHERE {' AND '.join(where)}
+        ORDER BY r.created_at DESC LIMIT 50
+    """, params=tuple(params) if params else None) or []
+    return {"ok": True, "items": [{k: _json_clean(v) for k, v in r.items()} for r in rows], "total": len(rows)}
+
+
+def _hermes_sl_timeline():
+    """GET /api/v2/hermes/self-learning/timeline — recent events across all systems."""
+    events = []
+    # Recent staged rows
+    for r in (_db_query("SELECT id, symbol, research_type, created_at FROM hermes_research_intelligence ORDER BY created_at DESC LIMIT 10") or []):
+        events.append({"type": "staged", "id": r["id"], "symbol": r.get("symbol"), "detail": r.get("research_type"), "at": _json_clean(r["created_at"])})
+    # Recent promotions
+    for r in (_db_query("SELECT source_id, promoted_at FROM hermes_promotion_audit ORDER BY promoted_at DESC LIMIT 5") or []):
+        events.append({"type": "promoted", "id": r["source_id"], "at": _json_clean(r["promoted_at"])})
+    # Recent embeddings
+    for r in (_db_query("SELECT source_id, created_at FROM content_embeddings WHERE source_type='hermes_research' ORDER BY created_at DESC LIMIT 5") or []):
+        events.append({"type": "embedded", "id": r["source_id"], "at": _json_clean(r["created_at"])})
+    # Recent advisory events
+    for r in (_db_query("SELECT id, event_type, source_id, created_at FROM hermes_advisory_events ORDER BY created_at DESC LIMIT 5") or []):
+        events.append({"type": "event", "id": r["id"], "detail": r.get("event_type"), "at": _json_clean(r["created_at"])})
+    # Sort by time desc
+    events.sort(key=lambda e: e.get("at", ""), reverse=True)
+    return {"ok": True, "events": events[:20]}
+
+
 def _hermes_self_learning_overview():
     """GET /api/v2/hermes/self-learning-overview — visual cockpit data."""
     import json as _jso
@@ -13183,6 +13238,8 @@ ROUTES = {
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
     "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
+    "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
+    "/api/v2/hermes/self-learning/timeline": lambda: _hermes_sl_timeline(),
 }
 
 
