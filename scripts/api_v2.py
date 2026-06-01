@@ -12689,7 +12689,23 @@ def _hermes_sl_drilldown():
                r.status, LEFT(r.topic,100) as topic, LEFT(r.summary,200) as summary,
                r.source_urls_json::text, r.created_at,
                CASE WHEN ce.id IS NOT NULL THEN true ELSE false END AS embedded,
-               CASE WHEN pa.source_id IS NOT NULL THEN true ELSE false END AS promoted_audit
+               CASE WHEN pa.source_id IS NOT NULL THEN true ELSE false END AS promoted_audit,
+               CASE
+                 WHEN r.research_type = 'ops_backlog' AND r.topic ILIKE '%finviz%' THEN 'OPS_FEED'
+                 WHEN r.research_type = 'ops_backlog' AND r.topic ILIKE '%maria%' THEN 'OPS_AGENT'
+                 WHEN r.research_type = 'ops_backlog' AND r.topic ILIKE '%gemma%' THEN 'OPS_LLM'
+                 WHEN r.research_type = 'ops_backlog' THEN 'OPS'
+                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%backtest%' THEN 'STRATEGY'
+                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%scalp%' THEN 'STRATEGY'
+                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%income%' THEN 'PORTFOLIO'
+                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%journal%' THEN 'OPS'
+                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%catalyst%' THEN 'OPS'
+                 WHEN r.research_type = 'research_backlog' AND r.topic ILIKE '%telegram%' THEN 'OPS'
+                 WHEN r.research_type LIKE 'source_discovery%' THEN 'RESEARCH'
+                 WHEN r.research_type = 'pipeline_quality_validation' THEN 'OPS'
+                 WHEN r.symbol IS NOT NULL THEN r.symbol
+                 ELSE 'SYSTEM'
+               END AS display_category
         FROM hermes_research_intelligence r
         LEFT JOIN content_embeddings ce ON ce.source_type='hermes_research' AND ce.source_id=r.id
         LEFT JOIN hermes_promotion_audit pa ON pa.source_id=r.id

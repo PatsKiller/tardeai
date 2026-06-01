@@ -21,6 +21,7 @@ interface DrillItem {
   id: number; symbol: string | null; research_type: string; hermes_agent_name: string
   confidence_score: number; status: string; topic: string; summary: string
   source_urls_json: string; created_at: string; embedded: boolean; promoted_audit: boolean
+  display_category?: string
 }
 interface TLEvent { type: string; id: number; symbol?: string; detail?: string; at: string }
 
@@ -250,7 +251,7 @@ export default function SelfLearningOverview() {
               {drillData.items.slice(0, 20).map(r => (
                 <Clickable key={r.id} onClick={() => goItem(r.id)} active={selectedId === r.id} style={{ padding: '10px 12px', background: selectedId === r.id ? 'var(--bg2)' : 'var(--bg1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text0)', fontSize: 12 }}>{r.symbol || 'SYS'}</span>
+                    <span style={{ fontWeight: 700, color: 'var(--text0)', fontSize: 12 }}>{r.display_category || r.symbol || 'SYS'}</span>
                     <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 4, background: r.status === 'promoted' ? 'rgba(74,144,244,.1)' : 'rgba(246,190,0,.08)', color: r.status === 'promoted' ? '#4a90f4' : '#f6be00' }}>{r.status}{r.embedded ? ' + RAG' : ''}</span>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4, lineHeight: 1.3, height: 26, overflow: 'hidden' }}>{r.topic}</div>
@@ -268,7 +269,7 @@ export default function SelfLearningOverview() {
       {selected && (
         <div style={{ width: 300, flexShrink: 0, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, position: 'sticky', top: 12, maxHeight: '88vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)' }}>{selected.symbol || 'SYSTEM'}</span>
+            <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)' }}>{selected.display_category || selected.symbol || 'SYSTEM'}</span>
             <button onClick={closeItem} style={{ fontSize: 11, width: 24, height: 24, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg2)', color: 'var(--text3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
           <div style={{ fontSize: 9, color: '#f6be00', marginBottom: 10, padding: '3px 8px', background: 'rgba(246,190,0,.06)', borderRadius: 6 }}>Advisory Only — Read-Only</div>
