@@ -372,6 +372,22 @@
 ### Autonomous Librarian/Backlog Loop (Phase 49)
 | `docs/project/PHASE49_AUTONOMOUS_LIBRARIAN_BACKLOG_LOOP_CLOSEOUT.md` | **Phase 49 closeout** — daily 07:45 UTC, Level 5 |
 
+### Level 5 Governance (Phase 50)
+| `docs/project/PHASE50_LEVEL5_GOVERNANCE_OBSERVATION_CLOSEOUT.md` | **Phase 50 closeout** — READY_FOR_PHASE51 |
+
+### Advisory Cache Worker (Phase 51)
+| `docs/project/PHASE51_HERMES_ADVISORY_CACHE_WORKER_CLOSEOUT.md` | **Phase 51 closeout** — hourly worker, Level 6 infra |
+
+### Embedding/Promotion Review (Phase 52)
+| `docs/project/PHASE52_EMBEDDING_PROMOTION_REVIEW_AUTOMATION_CLOSEOUT.md` | **Phase 52 closeout** — daily reviewer |
+
+### High-LLM Priority Scheduler (Phase 53)
+| `docs/llm/PHASE53A_HIGH_MODEL_USAGE_AUDIT.md` | Audit — 7+ scripts, monopoly risk |
+| `docs/llm/PHASE53B_HIGH_LLM_PRIORITY_METHODOLOGY.md` | Priority formula + 5-pool quota |
+| `docs/llm/PHASE53C_HIGH_LLM_QUEUE_SCHEMA_DESIGN.md` | Queue schema (not created) |
+| `docs/llm/PHASE53E_HIGH_LLM_INTEGRATION_PLAN.md` | Phases 54–60 plan |
+| `docs/project/PHASE53_HIGH_LLM_PRIORITY_SCHEDULER_CLOSEOUT.md` | **Phase 53 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

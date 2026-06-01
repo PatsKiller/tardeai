@@ -173,12 +173,21 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 49: Autonomous Librarian Loop COMPLETE — daily 07:45 UTC, max 5 rows/day, Level 5**
 
+**Phase 50: Level 5 Governance COMPLETE — READY_FOR_PHASE51, all checks PASS**
+
+**Phase 51: Advisory Cache Worker COMPLETE — hourly 08:00-22:00 UTC, Level 6 infra active**
+
+**Phase 52: Review Automation COMPLETE — daily 08:15 UTC, embed/promote recommendations only**
+
+**Phase 53: High-LLM Scheduler COMPLETE — priority formula, quota, dry-run, Phases 54–60 planned**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
 Hermes rows: 34 (10 promoted, 24 staged, 13 backlog) | Embeddings: 9 | Cache: 10
-Hermes timers: 5 (loop 01:00, obs 06:30, backlog 06:45, discovery 07:15, librarian 07:45)
-Maturity: **Level 5 — Autonomous Staged Research with Daily Operator Review**
+Hermes timers: 7 (loop, obs, backlog, discovery, librarian, cache worker, review)
+Maturity: **Level 6 — Production Advisory Infrastructure Active**
+LLM scheduler: designed (priority + quota), Phases 54–60 for implementation
 
-Next: 7-day observation, Phase 50 governance review, advisory cache worker, or 2nd embedding batch
+Next: Phase 54 LLM queue table, observation period, or 2nd embedding batch
 
 Daily check:
 ```bash

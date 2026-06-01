@@ -527,8 +527,38 @@
 - **Hermes Maturity Level: 5 — Autonomous Staged Research with Daily Operator Review**
 - 5 active Hermes timers: loop(01:00), observation(06:30), backlog(06:45), discovery(07:15), librarian(07:45)
 
+### Phase 50 Level 5 Governance (2026-06-01)
+- Compressed 1-day observation: all checks PASS, quality 4.1/5
+- Zero forbidden writes, caps respected, burden LOW-MODERATE
+- Recommendation: READY_FOR_PHASE51
+
+### Phase 51 Advisory Cache Worker (2026-06-01)
+- Timer: hermes-advisory-cache-worker.timer, hourly 08:00-22:00 UTC
+- First run: all 5 events correctly skipped (section cap or low conf)
+- Cache sections refreshed: 0 (correct behavior)
+- Level 6 infrastructure active
+
+### Phase 52 Review Automation (2026-06-01)
+- Timer: hermes-embedding-promotion-review.timer, daily 08:15 UTC
+- Dry-run: 7 embedding recs, 5 promotion recs, 0 actual writes
+- Recommendations only, no auto-embed/promote
+
+### Phase 53 High-LLM Priority Scheduler (2026-06-01)
+- Priority formula: urgency(3x) + portfolio_impact(2.5x) + evidence_gap(2x) + operator_value(1.5x) + aging(1x) - penalties
+- 5-pool quota: journal/backtest 20%, portfolio/risk 20%, hermes 20%, flex 20%, legacy 20%
+- Scheduler dry-run: 7/7 jobs scheduled, 5900s/21600s window used
+- Queue schema designed (not created — Phase 54)
+- Integration plan: Phases 54–60
+- LLM jobs run: ZERO | Model routing changes: ZERO
+
+### Current System State
+- **Hermes Maturity: Level 6 — Production Advisory Infrastructure Active**
+- 7 active Hermes timers: loop(01:00), obs(06:30), backlog(06:45), discovery(07:15), librarian(07:45), cache(hourly), review(08:15)
+- 34 rows, 9 embeddings, 10 cache sections, 7+ advisory events
+- Trading automation: PROHIBITED (Level 7)
+
 ### Next Gate
-- 7-day observation, Phase 50 governance review, advisory cache worker, or 2nd embedding batch (requires approval)
+- Phase 54 LLM queue table, observation period, or 2nd embedding batch (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
