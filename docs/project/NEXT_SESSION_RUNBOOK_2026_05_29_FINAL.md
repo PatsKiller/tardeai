@@ -153,12 +153,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 35: Backlog Health Automation COMPLETE — daily 06:45 UTC timer active, 10 items, 2 high**
 
+**Phase 36: Cron Consolidation Audit COMPLETE — 187 jobs audited, migration Phases 41–46 planned**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
-Automation: 20 timers (3 Hermes: loop+observation+backlog), 187 cron, 1 Docker. Level 3.
-Daily reports: observations/ + backlog_health/
+Automation: 20 timers (3 Hermes), 187 cron (11+ duplicates, 28 at 7AM peak). Level 3.
 
-Next: Phase 36 cron optimization, Phase 37 research bridge, source discovery, or observation
+Next: Phase 37 research bridge, Phase 41 systemd migration, source discovery, or observation
 
 Daily check:
 ```bash

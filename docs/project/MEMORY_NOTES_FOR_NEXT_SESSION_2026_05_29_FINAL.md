@@ -465,8 +465,16 @@
 - Active Hermes timers: 3 (loop 01:00, observation 06:30, backlog 06:45)
 - Total systemd timers: 20
 
+### Phase 36 Cron Consolidation Audit (2026-06-01)
+- 187 cron jobs audited: 5 groups, peak 28 at 7 AM, 57 use flock, 14 use market_day_gate
+- 11+ scripts scheduled multiple times (quote refresh 11×, screener 13×, agent 9×)
+- 5 consolidation categories: keep cron (~140), systemd (~15), pipeline (~30→3), event (~5), retire (~10)
+- Low-latency vs batch classified: PG NOTIFY for catalyst, systemd for durable, cron for legacy
+- Migration plan: Phases 41–46 (systemd→consolidate→pipeline→event→retire→dashboard)
+- Runtime changes: ZERO | Cron changes: ZERO | DB writes: ZERO
+
 ### Next Gate
-- Phase 36 cron optimization, Phase 37 research bridge, source discovery, or observation (requires approval)
+- Phase 37 research bridge, Phase 41 systemd migration, source discovery, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
