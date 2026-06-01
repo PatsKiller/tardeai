@@ -277,6 +277,16 @@
 | `docs/hermes/HERMES_PHASE32D_BACKLOG_DASHBOARD_REFRESH_VERIFICATION.md` | Phase 32D — dashboard 10 items verified |
 | `docs/project/PHASE32_EXPANDED_BACKLOG_STAGING_CLOSEOUT.md` | **Phase 32 closeout** |
 
+### Hermes Automation Model (Phase 33)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE33A_AUTOMATION_INVENTORY.md` | Phase 33A — 18 timers, 187 cron, 1 Docker |
+| `docs/hermes/HERMES_PHASE33B_SCHEDULER_POLICY.md` | Phase 33B — systemd for Hermes, Docker for infra |
+| `docs/hermes/HERMES_PHASE33C_SELF_LEARNING_BOUNDARY_MODEL.md` | Phase 33C — Level 3, 7 maturity levels |
+| `docs/hermes/HERMES_PHASE33D_AUTOMATION_GAP_AND_CONVERSION_PLAN.md` | Phase 33D — 7 candidate automations |
+| `docs/hermes/HERMES_PHASE33E_AUTOMATION_ROLLOUT_GATES.md` | Phase 33E — Phases 34–40 rollout |
+| `docs/project/PHASE33_HERMES_AUTOMATION_MODEL_CLOSEOUT.md` | **Phase 33 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

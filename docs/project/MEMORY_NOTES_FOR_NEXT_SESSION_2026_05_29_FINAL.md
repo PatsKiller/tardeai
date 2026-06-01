@@ -427,8 +427,17 @@
 - Safety audit: PASS
 - DB writes: 5 staging rows | Embeddings: ZERO | Promotions: ZERO
 
+### Phase 33 Automation Model Audit (2026-06-01)
+- 18 systemd timers, 187 cron jobs (none Hermes), 1 Docker container (SearXNG), 7 manual Hermes scripts
+- Current maturity: Level 3 (Capped Staged Writes) of 7 levels
+- Self-learning loop: observe→analyze→backlog→discover→curate→stage→embed→promote
+- Scheduler policy: systemd for Hermes, Docker for infra, cron for legacy
+- 7 candidate automations mapped to Phases 34–40 (observation→backlog→Librarian→discovery→staging→review→governance)
+- Trading/proposal automation: PROHIBITED (Level 7, requires separate governance)
+- DB writes: ZERO | Runtime changes: ZERO | New timers: ZERO
+
 ### Next Gate
-- Embedding pilot (max 2, ids 12+13), source discovery for backlog, or observation (requires approval)
+- Phase 34 observation automation, embedding pilot (max 2), or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
