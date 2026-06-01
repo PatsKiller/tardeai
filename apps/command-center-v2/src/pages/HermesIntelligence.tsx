@@ -28,6 +28,7 @@ export default function HermesIntelligence() {
   const { data, loading, error } = useApi<IntelData>(`/api/v2/hermes/intelligence?_r=${rk}`)
   const { data: prData } = useApi<{ candidates: Array<{ hermes_row_id: number; symbol_or_topic: string; recommended_disposition: string; confidence_score: number; rationale: string }>; duplicates: Array<{ id: number; symbol: string; reason: string }>; total_candidates: number; total_duplicates: number; advisory_notice: string }>(`/api/v2/hermes/promotion-review?_r=${rk}`)
   const { data: pqData } = useApi<{ findings: Array<{ id: number; finding_type: string; severity: string; description: string; recommended_action: string; status: string; created_at: string }>; total: number }>(`/api/v2/hermes/pipeline-quality?_r=${rk}`)
+  const { data: blData } = useApi<{ items: Array<{ id: number; symbol: string | null; topic: string; summary: string; confidence_score: number; status: string; priority: string; owner_agent: string; backlog_type: string; created_at: string }>; total: number; advisory_notice: string }>(`/api/v2/hermes/research-backlog?_r=${rk}`)
 
   const filtered = useMemo(() => {
     if (!data) return []
@@ -150,6 +151,26 @@ export default function HermesIntelligence() {
             </div>
           ))}
           {prData.total_duplicates > 0 && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>{prData.total_duplicates} already promoted (skipped)</div>}
+        </Card>
+      )}
+
+      {/* Research Backlog */}
+      {blData && blData.total > 0 && (
+        <Card title={`Research Backlog (${blData.total} items)`}>
+          <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 6, padding: '3px 6px', background: 'rgba(246,190,0,.08)', borderRadius: 3 }}>Advisory Only — Research Needed — Not Execution — No Autonomous Research</div>
+          {blData.items.map(b => (
+            <div key={b.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2, flexWrap: 'wrap' }}>
+                <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{b.symbol || 'SYSTEM'}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: b.priority === 'medium' ? 'rgba(246,190,0,.15)' : b.priority === 'high' ? 'rgba(234,57,67,.15)' : 'rgba(74,144,244,.1)', color: b.priority === 'medium' ? 'var(--amber)' : b.priority === 'high' ? 'var(--red)' : 'var(--accent)' }}>{b.priority}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: 'rgba(74,144,244,.08)', color: 'var(--text3)' }}>{b.backlog_type.replace(/_/g, ' ')}</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{b.owner_agent.replace(/_/g, ' ')}</span>
+              </div>
+              <div style={{ color: 'var(--text1)', fontSize: 11, marginBottom: 2 }}>{b.topic}</div>
+              <div style={{ color: 'var(--text2)', fontSize: 10 }}>{b.summary?.substring(0, 150)}</div>
+              <div style={{ color: 'var(--text3)', fontSize: 9, marginTop: 2 }}>conf: {b.confidence_score} | {new Date(b.created_at).toLocaleDateString()}</div>
+            </div>
+          ))}
         </Card>
       )}
 

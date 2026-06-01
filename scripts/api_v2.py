@@ -12625,6 +12625,45 @@ def _system_applications():
     return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
+def _hermes_research_backlog():
+    """GET /api/v2/hermes/research-backlog — read-only research backlog items."""
+    rows = _db_query("""
+        SELECT id, symbol, topic, LEFT(summary, 400) AS summary, confidence_score,
+               status, evidence_json, created_at
+        FROM hermes_research_intelligence
+        WHERE research_type = 'research_backlog'
+        ORDER BY created_at DESC
+    """) or []
+    items = []
+    for r in rows:
+        ej = r.get("evidence_json") or []
+        if isinstance(ej, str):
+            import json as _jrb
+            try:
+                ej = _jrb.loads(ej)
+            except Exception:
+                ej = []
+        meta = ej[0] if ej else {}
+        items.append({
+            "id": r["id"],
+            "symbol": r.get("symbol"),
+            "topic": r.get("topic", ""),
+            "summary": r.get("summary", ""),
+            "confidence_score": r.get("confidence_score"),
+            "status": r.get("status"),
+            "priority": meta.get("priority", "unknown"),
+            "owner_agent": meta.get("owner_agent", "unknown"),
+            "backlog_type": meta.get("backlog_type", "unknown"),
+            "created_at": _json_clean(r.get("created_at")),
+        })
+    return {
+        "ok": True,
+        "items": items,
+        "total": len(items),
+        "advisory_notice": "Research Backlog — Advisory Only — Not Execution — No Autonomous Research",
+    }
+
+
 def _hermes_promotion_review():
     """GET /api/v2/hermes/promotion-review — read-only promotion review dry-run results."""
     import json as _jpv
@@ -12948,6 +12987,7 @@ ROUTES = {
     "/api/v2/hermes/intelligence": lambda: _hermes_intelligence(),
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
+    "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
 }
 
