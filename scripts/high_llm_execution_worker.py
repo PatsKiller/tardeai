@@ -27,19 +27,50 @@ def get_db():
     db_pass = [l.split("=",1)[1] for l in (PR/".env").read_text().splitlines() if l.startswith("DB_PASSWORD=")][0]
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=db_pass)
 
+LOCK_FILE = "/tmp/high_llm_execution.lock"
+NUM_CTX = 4096
+
+def warm_model(model=MODEL):
+    """Warm model with tiny prompt to force load into VRAM."""
+    try:
+        payload = json.dumps({"model": model, "prompt": "hello", "stream": False, "options": {"num_ctx": 512}}).encode()
+        req = urllib.request.Request("http://localhost:11434/api/generate", data=payload,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=120)
+        return True
+    except Exception as e:
+        print(f"  WARN: model warm failed: {e}")
+        return False
+
 def call_ollama(prompt, model=MODEL, timeout=180):
-    payload = json.dumps({"model": model, "prompt": prompt, "stream": False, "options": {"num_ctx": 8192}}).encode()
+    payload = json.dumps({"model": model, "prompt": prompt, "stream": False, "options": {"num_ctx": NUM_CTX}}).encode()
     req = urllib.request.Request("http://localhost:11434/api/generate", data=payload,
                                  headers={"Content-Type": "application/json"})
     resp = urllib.request.urlopen(req, timeout=timeout)
     return json.loads(resp.read()).get("response", "")
 
 def main():
+    import fcntl
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--max-jobs", type=int, default=MAX_JOBS)
     args = parser.parse_args()
     dry = not args.apply
+
+    # Acquire execution lock
+    if not dry:
+        lock_fd = open(LOCK_FILE, "w")
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("Another high-LLM execution is running. Exiting.")
+            return
+
+        # Warm model
+        print(f"Warming {MODEL}...")
+        if not warm_model():
+            print("Model warm failed. Exiting.")
+            return
 
     # Kill switch
     ks = PR / "data" / "state" / "HIGH_LLM_SCHEDULER_DISABLED"
