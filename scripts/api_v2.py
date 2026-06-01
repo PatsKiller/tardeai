@@ -12664,6 +12664,45 @@ def _hermes_research_backlog():
     }
 
 
+def _system_feed_health():
+    """GET /api/v2/system/feed-health — read-only feed health status."""
+    # Finviz screener health
+    last_healthy = _db_query("""
+        SELECT id, run_label, symbols_scanned, go_count, created_at
+        FROM screener_run_health WHERE status='RUN_HEALTHY'
+        ORDER BY id DESC LIMIT 1
+    """, fetch="one") or {}
+    last_failed = _db_query("""
+        SELECT id, created_at FROM screener_run_health WHERE status='RUN_FAILED'
+        ORDER BY id DESC LIMIT 1
+    """, fetch="one") or {}
+    # Streak
+    streak = _db_query("""
+        SELECT COUNT(*) as c FROM screener_run_health
+        WHERE id >= COALESCE((SELECT MAX(id) FROM screener_run_health WHERE status='RUN_HEALTHY'), 0)
+        AND status='RUN_FAILED'
+    """, fetch="one") or {}
+    # News/catalyst freshness
+    news_latest = _db_query("SELECT MAX(created_at) as t FROM news_articles", fetch="one") or {}
+    catalyst_latest = _db_query("SELECT MAX(created_at) as t FROM catalyst_events", fetch="one") or {}
+    # Ops backlog
+    ops_count = _db_query("SELECT COUNT(*) as c FROM hermes_research_intelligence WHERE research_type='ops_backlog' AND status='staged'", fetch="one") or {}
+
+    healthy = bool(last_healthy and last_healthy.get("symbols_scanned", 0) > 0)
+    return {
+        "ok": True,
+        "finviz": {
+            "status": "HEALTHY" if healthy else "DEGRADED",
+            "last_healthy": {k: _json_clean(v) for k, v in last_healthy.items()} if last_healthy else None,
+            "last_failed": {k: _json_clean(v) for k, v in last_failed.items()} if last_failed else None,
+            "failure_streak": streak.get("c", 0),
+        },
+        "news": {"latest": _json_clean(news_latest.get("t"))},
+        "catalyst": {"latest": _json_clean(catalyst_latest.get("t"))},
+        "ops_backlog_open": ops_count.get("c", 0),
+    }
+
+
 def _high_llm_queue():
     """GET /api/v2/llm/high-queue — read-only high-LLM queue status."""
     rows = _db_query("""
@@ -13084,6 +13123,7 @@ ROUTES = {
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
+    "/api/v2/system/feed-health": lambda: _system_feed_health(),
 }
 
 
