@@ -20,8 +20,10 @@ interface OverviewData {
 interface DrillItem {
   id: number; symbol: string | null; research_type: string; hermes_agent_name: string
   confidence_score: number; status: string; topic: string; summary: string
-  source_urls_json: string; created_at: string; embedded: boolean; promoted_audit: boolean
-  display_category?: string
+  source_urls_json: string; created_at: string; updated_at?: string; embedded: boolean; promoted_audit: boolean
+  display_category?: string; domain?: string; workflow_stage?: string; workflow_stage_order?: number
+  owner_agent?: string; operator_priority?: string; why_it_matters?: string
+  recommended_next_action?: string; blocker_reason?: string | null
 }
 interface TLEvent { type: string; id: number; symbol?: string; detail?: string; at: string }
 
@@ -137,7 +139,7 @@ export default function SelfLearningOverview() {
             {[
               { label: '⚡ Needs Attention', value: needsAttention, color: '#f6be00', f: 'status=staged' },
               { label: '🆕 New Today', value: newToday, color: '#4a90f4', f: '' },
-              { label: '🚫 Blocked / Stale', value: blocked, color: '#ea3943', f: 'type=ops_backlog' },
+              { label: '🚫 Blocked / Stale', value: blocked, color: '#ea3943', f: 'category=OPS' },
               { label: '✓ Auto-Promoted', value: 3, color: '#0ecb81', f: 'status=promoted' },
             ].map((c, i) => (
               <Clickable key={i} onClick={() => c.f && goDrill(c.f)} active={false} style={{ padding: '12px 14px', background: `${c.color}08` }}>
@@ -247,19 +249,29 @@ export default function SelfLearningOverview() {
         {/* ══════ DRILLDOWN VIEW ══════ */}
         {view === 'drilldown' && drillData && (
           <Card title={`Results: ${filterKey.split('=')[1] || 'all'} (${drillData.items.length} items)`}>
-            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-              {drillData.items.slice(0, 20).map(r => (
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+              {drillData.items.slice(0, 30).map(r => {
+                const priColor = r.operator_priority === 'HIGH' ? '#ea3943' : r.operator_priority === 'MEDIUM' ? '#f6be00' : '#888'
+                const catColor = (r.display_category || '').startsWith('OPS') ? '#f6be00' : r.display_category === 'STRATEGY' ? '#a78bfa' : r.display_category === 'RESEARCH' || r.display_category === 'SOURCE_DISCOVERY' ? '#4a90f4' : r.display_category === 'PORTFOLIO' ? '#0ecb81' : '#94a3b8'
+                return (
                 <Clickable key={r.id} onClick={() => goItem(r.id)} active={selectedId === r.id} style={{ padding: '10px 12px', background: selectedId === r.id ? 'var(--bg2)' : 'var(--bg1)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontWeight: 700, color: 'var(--text0)', fontSize: 12 }}>{r.display_category || r.symbol || 'SYS'}</span>
+                  {/* Top badges */}
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 8, padding: '1px 6px', borderRadius: 4, fontWeight: 700, background: `${catColor}15`, color: catColor }}>{r.display_category || 'SYS'}</span>
                     <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 4, background: r.status === 'promoted' ? 'rgba(74,144,244,.1)' : 'rgba(246,190,0,.08)', color: r.status === 'promoted' ? '#4a90f4' : '#f6be00' }}>{r.status}{r.embedded ? ' + RAG' : ''}</span>
+                    <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 4, background: `${priColor}12`, color: priColor }}>{r.operator_priority || 'LOW'}</span>
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4, lineHeight: 1.3, height: 26, overflow: 'hidden' }}>{r.topic}</div>
-                  <div style={{ display: 'flex', gap: 4, fontSize: 9, color: 'var(--text3)' }}>
-                    <span>{r.research_type?.replace(/_/g, ' ')}</span><span>·</span><span>conf {r.confidence_score}</span>
+                  {/* Title */}
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)', marginBottom: 3, lineHeight: 1.3, height: 28, overflow: 'hidden' }}>{r.topic}</div>
+                  {/* Why + Next action */}
+                  {r.why_it_matters && <div style={{ fontSize: 9, color: 'var(--text2)', marginBottom: 2, lineHeight: 1.3, height: 12, overflow: 'hidden' }}>{r.why_it_matters}</div>}
+                  {r.recommended_next_action && <div style={{ fontSize: 9, color: '#4a90f4', marginBottom: 4, lineHeight: 1.3, height: 12, overflow: 'hidden' }}>Next: {r.recommended_next_action}</div>}
+                  {/* Footer */}
+                  <div style={{ display: 'flex', gap: 4, fontSize: 8, color: 'var(--text3)', flexWrap: 'wrap' }}>
+                    <span>{r.workflow_stage}</span><span>·</span><span>{r.owner_agent?.replace(/_/g, ' ')}</span><span>·</span><span>conf {r.confidence_score}</span>
                   </div>
                 </Clickable>
-              ))}
+              )})}
             </div>
           </Card>
         )}
@@ -267,31 +279,70 @@ export default function SelfLearningOverview() {
 
       {/* ══════ PERSISTENT DETAIL DRAWER ══════ */}
       {selected && (
-        <div style={{ width: 300, flexShrink: 0, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, position: 'sticky', top: 12, maxHeight: '88vh', overflowY: 'auto' }}>
+        <div style={{ width: 320, flexShrink: 0, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, position: 'sticky', top: 12, maxHeight: '88vh', overflowY: 'auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text0)' }}>{selected.display_category || selected.symbol || 'SYSTEM'}</span>
             <button onClick={closeItem} style={{ fontSize: 11, width: 24, height: 24, border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg2)', color: 'var(--text3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
           </div>
-          <div style={{ fontSize: 9, color: '#f6be00', marginBottom: 10, padding: '3px 8px', background: 'rgba(246,190,0,.06)', borderRadius: 6 }}>Advisory Only — Read-Only</div>
-          <div style={{ fontSize: 11, color: 'var(--text1)', marginBottom: 8, lineHeight: 1.5 }}>{selected.topic}</div>
-          <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.5 }}>{selected.summary}</div>
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
+          <div style={{ fontSize: 9, color: '#f6be00', marginBottom: 10, padding: '3px 8px', background: 'rgba(246,190,0,.06)', borderRadius: 6 }}>Advisory Only — Read-Only · No execution controls</div>
+
+          {/* 1. What is this? */}
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)', marginBottom: 4 }}>{selected.topic}</div>
+          <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 10, lineHeight: 1.5 }}>{selected.summary}</div>
+
+          {/* 2. Workflow position */}
+          <div style={{ padding: '8px 10px', background: 'var(--bg2)', borderRadius: 8, marginBottom: 10, fontSize: 10 }}>
+            <div style={{ fontWeight: 700, color: 'var(--text1)', marginBottom: 4 }}>Workflow Position</div>
+            <div style={{ color: 'var(--text2)', lineHeight: 1.6 }}>
+              <div><strong>Stage:</strong> {selected.workflow_stage || 'Unknown'}</div>
+              <div><strong>Domain:</strong> {selected.domain || selected.research_type?.replace(/_/g, ' ')}</div>
+              <div><strong>Owner:</strong> {selected.owner_agent?.replace(/_/g, ' ') || 'hermes'}</div>
+              <div><strong>Priority:</strong> <span style={{ color: selected.operator_priority === 'HIGH' ? '#ea3943' : selected.operator_priority === 'MEDIUM' ? '#f6be00' : '#888' }}>{selected.operator_priority || 'LOW'}</span></div>
+            </div>
+          </div>
+
+          {/* 3. Why it matters */}
+          {selected.why_it_matters && (
+            <div style={{ padding: '6px 10px', background: 'rgba(74,144,244,.05)', borderRadius: 6, marginBottom: 8, fontSize: 10, color: 'var(--text2)', lineHeight: 1.4 }}>
+              <strong style={{ color: 'var(--text1)' }}>Why it matters:</strong> {selected.why_it_matters}
+            </div>
+          )}
+
+          {/* 4. Next action */}
+          {selected.recommended_next_action && (
+            <div style={{ padding: '6px 10px', background: 'rgba(14,203,129,.05)', borderRadius: 6, marginBottom: 8, fontSize: 10, color: '#0ecb81', lineHeight: 1.4 }}>
+              <strong>Next action:</strong> {selected.recommended_next_action}
+            </div>
+          )}
+
+          {/* 5. Blocker */}
+          {selected.blocker_reason && (
+            <div style={{ padding: '6px 10px', background: 'rgba(234,57,67,.05)', borderRadius: 6, marginBottom: 8, fontSize: 10, color: '#ea3943', lineHeight: 1.4 }}>
+              <strong>Blocker:</strong> {selected.blocker_reason}
+            </div>
+          )}
+
+          {/* Status badges */}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
             <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, background: selected.status === 'promoted' ? 'rgba(74,144,244,.12)' : 'rgba(246,190,0,.08)', color: selected.status === 'promoted' ? '#4a90f4' : '#f6be00' }}>{selected.status}</span>
             {selected.embedded && <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, background: 'rgba(14,203,129,.1)', color: '#0ecb81' }}>Embedded</span>}
             {selected.promoted_audit && <span style={{ fontSize: 8, padding: '2px 6px', borderRadius: 4, background: 'rgba(74,144,244,.08)', color: '#4a90f4' }}>Audit ✓</span>}
           </div>
-          <div style={{ marginBottom: 12 }}>
+
+          {/* 6. Quality scores */}
+          <div style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text2)', marginBottom: 6 }}>Quality</div>
             <ScoreBar label="Confidence" value={selected.confidence_score} />
             <ScoreBar label="Evidence" value={selected.source_urls_json && selected.source_urls_json !== '[]' ? 0.9 : 0.4} />
-            <ScoreBar label="Freshness" value={0.9} />
-            <ScoreBar label="Source" value={selected.source_urls_json && selected.source_urls_json !== '[]' ? 0.9 : 0.6} />
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.7 }}>
+
+          {/* 7. Metadata */}
+          <div style={{ fontSize: 9, color: 'var(--text3)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
             <div><strong>ID:</strong> {selected.id}</div>
             <div><strong>Type:</strong> {selected.research_type?.replace(/_/g, ' ')}</div>
-            <div><strong>Agent:</strong> {selected.hermes_agent_name?.replace(/_/g, ' ')}</div>
+            <div><strong>Agent:</strong> {selected.owner_agent?.replace(/_/g, ' ') || selected.hermes_agent_name?.replace(/_/g, ' ')}</div>
             <div><strong>Created:</strong> {selected.created_at ? new Date(selected.created_at).toLocaleString() : '?'}</div>
+            {selected.updated_at && <div><strong>Updated:</strong> {new Date(selected.updated_at).toLocaleString()}</div>}
           </div>
         </div>
       )}
