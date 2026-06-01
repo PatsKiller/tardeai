@@ -117,15 +117,21 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 15: Capped Promotion COMPLETE — FJSCX, APAM, TRX promoted (10 total, 1 staged)**
 
-Next: source discovery dry-run, or observation
+**Phase 16: SearXNG Shared Layer COMPLETE — internal-only on 127.0.0.1:18888**
+
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+
+Next: observation, manual query wrapper dry-run, or source discovery dry-run
 
 Daily check:
 ```bash
 journalctl --user -u hermes-autonomous-loop.service -n 10 --no-pager
+sg docker -c "docker compose -f infra/searxng/docker-compose.yml ps"
 ```
 - No broker/proposal/paper_trades/journal mutation
 
-Rollback: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
+Rollback Hermes: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
+Rollback SearXNG: `cd infra/searxng && sg docker -c "docker compose down -v"`
 
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)
