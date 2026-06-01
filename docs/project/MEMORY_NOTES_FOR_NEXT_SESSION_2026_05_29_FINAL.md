@@ -705,8 +705,23 @@
 - Self-learning maturity: 8.3/10 | Dashboard UX: **8.8/10**
 - Broker/proposal/trade/journal/holdings: **ZERO across 108 phases**
 
+### Phase 109 Dashboard Runtime Defect Fix (2026-06-01)
+- URL state via useSearchParams: ?view=overview|drilldown&filter=status=staged&item=12
+- Breadcrumb: Overview › Drilldown: staged › Item #12
+- Browser back works via URL history
+- Hover lift+shadow on all Clickable components
+- Card title hints ("click to drill")
+- Recharts Bar onClick for aging + agent charts
+- Timeline row click → drill + select
+- Separate overview/drilldown view modes
+- UX: operator to verify in browser (hard refresh required)
+
+### Final Session State (109 Phases)
+- **109 phases** completed
+- Broker/proposal/trade/journal/holdings: **ZERO across 109 phases**
+
 ### Next Gate
-- 7-day observation, then broader expansion or Phase 109+ visual polish
+- Phase 110 operator acceptance test in browser, then broader expansion
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -470,6 +470,9 @@
 ### Dashboard Operator Workflow Redesign (Phases 107–108)
 | `docs/project/PHASE107_SELF_LEARNING_RUNTIME_INTERACTIVITY_FIX_CLOSEOUT.md` | **Phase 107+108** — attention-first, Kanban, card grid, drawer, UX 8.8 |
 
+### Dashboard Runtime Defect Fix (Phase 109)
+| `docs/project/PHASE109_DASHBOARD_RUNTIME_DEFECT_FIX_CLOSEOUT.md` | **Phase 109** — URL state, breadcrumbs, click affordance |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
