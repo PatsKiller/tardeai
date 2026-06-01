@@ -1,0 +1,83 @@
+{
+  "date": "2026-06-01",
+  "timestamp": "2026-06-01T14:53:56.202853+00:00",
+  "nightly_window_sec": 21600,
+  "scheduled": [
+    {
+      "job_type": "strategy_backtest_analysis",
+      "source": "tradeai",
+      "priority": 7.9,
+      "runtime_est": 600,
+      "pool": "journal_backtest"
+    },
+    {
+      "job_type": "journal_thesis_review",
+      "source": "tradeai",
+      "priority": 7.15,
+      "runtime_est": 500,
+      "pool": "journal_backtest"
+    },
+    {
+      "job_type": "income_rotation_research",
+      "source": "hermes",
+      "priority": 5.85,
+      "runtime_est": 400,
+      "pool": "portfolio_risk"
+    },
+    {
+      "job_type": "ticker_thesis_challenge",
+      "source": "hermes",
+      "priority": 5.35,
+      "runtime_est": 300,
+      "pool": "hermes_research"
+    },
+    {
+      "job_type": "portfolio_reflection",
+      "source": "hermes",
+      "priority": 4.9,
+      "runtime_est": 300,
+      "pool": "portfolio_risk"
+    },
+    {
+      "job_type": "deep_overnight_batch",
+      "source": "tradeai",
+      "priority": 4.2,
+      "runtime_est": 3600,
+      "pool": "legacy_overnight"
+    },
+    {
+      "job_type": "catalyst_quality_review",
+      "source": "hermes",
+      "priority": 4.05,
+      "runtime_est": 200,
+      "pool": "hermes_research"
+    }
+  ],
+  "skipped": [],
+  "total_scheduled": 7,
+  "total_runtime_est": 5900,
+  "pool_usage": {
+    "journal_backtest": {
+      "used": 1100,
+      "budget": 4320
+    },
+    "portfolio_risk": {
+      "used": 700,
+      "budget": 4320
+    },
+    "hermes_research": {
+      "used": 500,
+      "budget": 4320
+    },
+    "flex": {
+      "used": 0,
+      "budget": 4320
+    },
+    "legacy_overnight": {
+      "used": 3600,
+      "budget": 4320
+    }
+  },
+  "model_swaps_est": 1,
+  "llm_jobs_run": 0
+}
