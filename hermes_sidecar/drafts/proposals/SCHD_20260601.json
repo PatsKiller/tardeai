@@ -1,0 +1,82 @@
+{
+  "hermes_draft_version": "1.0",
+  "generated_by": "hermes_news_research",
+  "generated_at": "2026-06-01T11:30:00-04:00",
+  "execution_statement": "THIS IS A DRAFT. NO EXECUTION. NO BROKER ACCESS. ADVISORY ONLY.",
+
+  "symbol": "SCHD",
+  "company": "Schwab U.S. Dividend Equity ETF",
+  "sector": "ETF — Dividend Equity",
+
+  "thesis": {
+    "summary": "SCHD promoted news reframe (82 articles) + source discovery upgrade signal. RSI 58 neutral, SMA20/50 positive. Intelligence score 63 (C grade). Portfolio-income fit for IRA dividend strategy.",
+    "timeframe": "30+ days (income/position)",
+    "direction": "long",
+    "strategy_fit": "dividend_growth_compounder"
+  },
+
+  "evidence": {
+    "catalyst": "Hermes source discovery: 'SCHD: The Buying Opportunity Is Finally Flashing (Upgrade)' — promoted id=12. News reframe id=3 analyzed 82 articles.",
+    "catalyst_verified": false,
+    "catalyst_source": "hermes_research_intelligence id=3 (news reframe), id=12 (source discovery)",
+    "technical": "RSI 58.54 (neutral). SMA20 +0.78%, SMA50 +3.02%. Beta 0.69 — low volatility. Uptrend intact but not overbought.",
+    "fundamental": "Intelligence score 63/100, grade C. Fused score 0.232. Dividend ETF — fundamental analysis less relevant than yield/distribution.",
+    "sentiment": "82 recent news articles analyzed by Hermes. Upgrade signal from promoted source discovery.",
+    "sources": [
+      {"type": "db_view", "view": "hermes_v_ticker_context", "symbol": "SCHD"},
+      {"type": "hermes_research", "id": 3, "topic": "SCHD news reframe"},
+      {"type": "hermes_research", "id": 12, "topic": "SCHD source discovery upgrade"},
+      {"type": "trade_history", "trades": 0, "wins": 0, "total_pnl": 0}
+    ]
+  },
+
+  "risk": {
+    "entry_price": null,
+    "stop_price": null,
+    "target_price": null,
+    "risk_reward_ratio": null,
+    "max_loss_pct": null,
+    "invalidation": "Dividend cut or significant distribution change. Or breakdown below SMA200."
+  },
+
+  "portfolio_fit": {
+    "account_type": "IRA",
+    "position_size_rationale": "Low beta (0.69) dividend ETF — suitable for 2-3% portfolio allocation as income position",
+    "existing_exposure": "Check existing SCHD or similar dividend ETF positions",
+    "conflicts": "May overlap with existing dividend holdings — verify",
+    "tax_consideration": "IRA preferred for dividend income — avoids taxable distribution"
+  },
+
+  "why_not_trade": [
+    "No prior trade history with SCHD — zero historical basis for position sizing",
+    "No live quote for precise entry timing",
+    "Source discovery article may be stale by now — verify date and relevance",
+    "Fused score 0.232 is low — limited multi-source consensus",
+    "ETF income position requires allocation review, not just technical entry"
+  ],
+
+  "required_human_review": {
+    "statement": "This draft requires operator review before any action. It is NOT a proposal and cannot be submitted.",
+    "review_checklist": [
+      "Verify current SCHD yield vs alternatives (VYM, DVY, HDV)",
+      "Check existing dividend exposure across all accounts",
+      "Confirm IRA has available cash for allocation",
+      "Review source discovery article freshness — is the upgrade still valid?",
+      "Size as income position (yield focus) not swing trade"
+    ]
+  },
+
+  "quality_scores": {
+    "thesis_clarity": 7,
+    "catalyst_evidence": 6,
+    "risk_definition": 4,
+    "position_size_rationale": 6,
+    "stop_exit_logic": 4,
+    "source_traceability": 8,
+    "conflict_check": 5,
+    "portfolio_fit": 8,
+    "tax_account_fit": 8,
+    "confidence_calibration": 6,
+    "composite": 6.1
+  }
+}

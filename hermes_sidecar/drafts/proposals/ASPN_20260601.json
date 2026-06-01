@@ -1,0 +1,81 @@
+{
+  "hermes_draft_version": "1.0",
+  "generated_by": "hermes_ticker_challenger",
+  "generated_at": "2026-06-01T11:30:00-04:00",
+  "execution_statement": "THIS IS A DRAFT. NO EXECUTION. NO BROKER ACCESS. ADVISORY ONLY.",
+
+  "symbol": "ASPN",
+  "company": "Aspen Aerogels Inc",
+  "sector": "Industrials",
+
+  "thesis": {
+    "summary": "ASPN prior trade hit target (+$273). Thesis challenge shows mixed results but the target_hit exit validates the setup pattern. Re-entry on pullback to support could repeat.",
+    "timeframe": "5-10 days (swing)",
+    "direction": "long",
+    "strategy_fit": "swing_trade"
+  },
+
+  "evidence": {
+    "catalyst": "Prior successful trade (target_hit +$273.74). Hermes thesis challenge id=6 promoted to advisory cache.",
+    "catalyst_verified": false,
+    "catalyst_source": "hermes_research_intelligence id=6, hermes_promotion_audit",
+    "technical": "RSI 73.39 (approaching overbought), SMA20 +34.9%, SMA50 +44.1%. Strong uptrend but extended.",
+    "fundamental": "Intelligence score 34/100, grade D — weak fundamental profile. Beta 2.85 — highly volatile.",
+    "sentiment": "No fused signal available. Limited news coverage.",
+    "sources": [
+      {"type": "db_view", "view": "hermes_v_ticker_context", "symbol": "ASPN"},
+      {"type": "hermes_research", "id": 6, "topic": "ASPN trade reflection"},
+      {"type": "trade_history", "trades": 2, "wins": 1, "total_pnl": 273.74}
+    ]
+  },
+
+  "risk": {
+    "entry_price": null,
+    "stop_price": null,
+    "target_price": null,
+    "risk_reward_ratio": null,
+    "max_loss_pct": null,
+    "invalidation": "Close below prior swing low. Or breakdown below SMA20 on volume."
+  },
+
+  "portfolio_fit": {
+    "account_type": "Taxable",
+    "position_size_rationale": "High beta (2.85) warrants small position — 0.5% portfolio risk max",
+    "existing_exposure": "No current ASPN position",
+    "conflicts": "None identified",
+    "tax_consideration": "Short-term capital gains in taxable account"
+  },
+
+  "why_not_trade": [
+    "No live quote — entry/stop/target prices not set (Hermes has no real-time Finviz data)",
+    "RSI 73 is approaching overbought — poor entry timing for new position",
+    "Intelligence grade D — weak fundamental backing",
+    "Only 2 prior trades — insufficient sample for pattern confidence",
+    "Beta 2.85 — extreme volatility, position sizing must be conservative"
+  ],
+
+  "required_human_review": {
+    "statement": "This draft requires operator review before any action. It is NOT a proposal and cannot be submitted.",
+    "review_checklist": [
+      "Get current ASPN price and determine if pullback entry exists",
+      "Verify RSI has cooled below 70 before considering entry",
+      "Set explicit stop below recent swing low",
+      "Size for 0.5% portfolio risk given high beta",
+      "Check earnings calendar — avoid entry ahead of earnings"
+    ]
+  },
+
+  "quality_scores": {
+    "thesis_clarity": 6,
+    "catalyst_evidence": 5,
+    "risk_definition": 3,
+    "position_size_rationale": 5,
+    "stop_exit_logic": 3,
+    "source_traceability": 7,
+    "conflict_check": 8,
+    "portfolio_fit": 6,
+    "tax_account_fit": 6,
+    "confidence_calibration": 5,
+    "composite": 5.3
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "hermes_draft_version": "1.0",
+  "generated_by": "hermes_source_discovery",
+  "generated_at": "2026-06-01T11:30:00-04:00",
+  "execution_statement": "THIS IS A DRAFT. NO EXECUTION. NO BROKER ACCESS. ADVISORY ONLY.",
+
+  "symbol": "TRX",
+  "company": "TRX Gold Corporation",
+  "sector": "Basic Materials — Gold Mining",
+
+  "thesis": {
+    "summary": "TRX has 6 trades (2 wins, +$46 total). Multiple Hermes promoted items: thesis challenge, source discovery (earnings + catalyst list), auto-promotion. Gold mining micro-cap with growing catalyst list, down 60% from highs — potential recovery_watch candidate.",
+    "timeframe": "10-20 days (recovery_watch / speculative_growth)",
+    "direction": "long",
+    "strategy_fit": "recovery_watch"
+  },
+
+  "evidence": {
+    "catalyst": "Hermes source discovery: 'Down 60% From Highs, Catalyst List Growing' (id=16, promoted). Q2 2026 earnings call highlights (id=13, promoted). Thesis challenge (id=11, promoted).",
+    "catalyst_verified": false,
+    "catalyst_source": "hermes_research_intelligence ids 11, 13, 16 — all promoted to advisory cache",
+    "technical": "RSI 45.03 (neutral). SMA20 -4.94%, SMA50 -15.77%. Beta 0.25 — very low correlation to market. Price below moving averages — still in downtrend.",
+    "fundamental": "No intelligence score or grade available. Gold mining micro-cap — fundamental data limited.",
+    "sentiment": "3 promoted Hermes research items. Positive analyst thesis ('catalyst list growing'). But 4/6 trades were losses.",
+    "sources": [
+      {"type": "db_view", "view": "hermes_v_ticker_context", "symbol": "TRX"},
+      {"type": "hermes_research", "id": 11, "topic": "TRX thesis challenge — 6 trades"},
+      {"type": "hermes_research", "id": 13, "topic": "TRX Q2 earnings call"},
+      {"type": "hermes_research", "id": 16, "topic": "TRX catalyst list growing"},
+      {"type": "trade_history", "trades": 6, "wins": 2, "total_pnl": 46.18}
+    ]
+  },
+
+  "risk": {
+    "entry_price": null,
+    "stop_price": null,
+    "target_price": null,
+    "risk_reward_ratio": null,
+    "max_loss_pct": null,
+    "invalidation": "New 52-week low. Gold price breakdown below $2,000. Or earnings miss / guidance cut."
+  },
+
+  "portfolio_fit": {
+    "account_type": "IRA",
+    "position_size_rationale": "Micro-cap gold miner — speculative. 0.25% portfolio risk max. Defense/AI thesis portfolio may not need gold exposure.",
+    "existing_exposure": "Check existing materials/gold exposure",
+    "conflicts": "Portfolio is defense-thesis focused — TRX is materials, not defense",
+    "tax_consideration": "IRA preferred for speculative micro-cap"
+  },
+
+  "why_not_trade": [
+    "4 of 6 prior trades were losses — 33% win rate is below minimum threshold",
+    "No intelligence score or grade — minimal fundamental data",
+    "Price below SMA20 and SMA50 — still in active downtrend",
+    "No live quote — 'down 60%' may have changed significantly",
+    "Gold mining micro-cap does not fit the core defense/AI thesis",
+    "Recovery_watch strategy requires validated support level — none confirmed"
+  ],
+
+  "required_human_review": {
+    "statement": "This draft requires operator review before any action. It is NOT a proposal and cannot be submitted.",
+    "review_checklist": [
+      "Verify gold price trend — TRX correlates with gold",
+      "Check if 'catalyst list growing' article is still current",
+      "Review 4/6 losing trades — what went wrong each time?",
+      "Determine if TRX fits portfolio strategy or is a distraction",
+      "If proceeding: wait for RSI < 30 and volume spike for entry"
+    ]
+  },
+
+  "quality_scores": {
+    "thesis_clarity": 6,
+    "catalyst_evidence": 7,
+    "risk_definition": 3,
+    "position_size_rationale": 5,
+    "stop_exit_logic": 3,
+    "source_traceability": 9,
+    "conflict_check": 4,
+    "portfolio_fit": 3,
+    "tax_account_fit": 7,
+    "confidence_calibration": 5,
+    "composite": 5.0
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "hermes_draft_version": "1.0",
+  "generated_by": "hermes_ticker_challenger",
+  "generated_at": "2026-06-01T11:30:00-04:00",
+  "execution_statement": "THIS IS A DRAFT. NO EXECUTION. NO BROKER ACCESS. ADVISORY ONLY.",
+
+  "symbol": "INFU",
+  "company": "InfuSystem Holdings Inc",
+  "sector": "Healthcare",
+
+  "thesis": {
+    "summary": "INFU has 2 wins from 2 trades (+$329 total). Thesis challenge id=5 promoted. Healthcare equipment small-cap with proven swing_breakout pattern. RSI 37 indicates oversold — potential re-entry zone.",
+    "timeframe": "5-10 days (swing_breakout)",
+    "direction": "long",
+    "strategy_fit": "swing_breakout"
+  },
+
+  "evidence": {
+    "catalyst": "Prior 2/2 winning trades. Hermes thesis challenge promoted (id=5, confidence 0.7 — highest Hermes confidence).",
+    "catalyst_verified": false,
+    "catalyst_source": "hermes_research_intelligence id=5, hermes_promotion_audit",
+    "technical": "RSI 37.48 (oversold zone). SMA20 -11.85%, SMA50 -8.01%. Pullback from highs. Beta 1.48 — moderate volatility.",
+    "fundamental": "Intelligence score 34/100, grade D. Limited fundamental coverage.",
+    "sentiment": "No fused signal. Limited news.",
+    "sources": [
+      {"type": "db_view", "view": "hermes_v_ticker_context", "symbol": "INFU"},
+      {"type": "hermes_research", "id": 5, "topic": "INFU thesis challenge"},
+      {"type": "trade_history", "trades": 2, "wins": 2, "total_pnl": 329.40}
+    ]
+  },
+
+  "risk": {
+    "entry_price": null,
+    "stop_price": null,
+    "target_price": null,
+    "risk_reward_ratio": null,
+    "max_loss_pct": null,
+    "invalidation": "Close below 52-week low. Or failure to hold current support level on volume."
+  },
+
+  "portfolio_fit": {
+    "account_type": "IRA",
+    "position_size_rationale": "Moderate beta (1.48), small-cap healthcare — 1% portfolio risk appropriate",
+    "existing_exposure": "No current INFU position",
+    "conflicts": "None identified",
+    "tax_consideration": "IRA preferred for swing trades to avoid short-term cap gains"
+  },
+
+  "why_not_trade": [
+    "No live quote — cannot confirm current price is actually at oversold support",
+    "Intelligence grade D — fundamental coverage insufficient for high-conviction entry",
+    "Only 2 prior trades — statistically insufficient sample despite 100% win rate",
+    "SMA20/50 both negative — may be in downtrend, not just pullback",
+    "No catalyst beyond historical trade success — need fresh catalyst for new entry"
+  ],
+
+  "required_human_review": {
+    "statement": "This draft requires operator review before any action. It is NOT a proposal and cannot be submitted.",
+    "review_checklist": [
+      "Get current INFU price — confirm RSI still oversold",
+      "Check if SMA20/50 decline is accelerating or stabilizing",
+      "Look for fresh catalyst (earnings, contract, FDA if relevant)",
+      "Verify support level from prior swing lows",
+      "Size for 1% portfolio risk"
+    ]
+  },
+
+  "quality_scores": {
+    "thesis_clarity": 7,
+    "catalyst_evidence": 5,
+    "risk_definition": 3,
+    "position_size_rationale": 6,
+    "stop_exit_logic": 3,
+    "source_traceability": 8,
+    "conflict_check": 9,
+    "portfolio_fit": 7,
+    "tax_account_fit": 7,
+    "confidence_calibration": 6,
+    "composite": 5.9
+  }
+}
