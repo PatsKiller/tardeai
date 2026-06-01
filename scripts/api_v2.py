@@ -12664,6 +12664,68 @@ def _hermes_research_backlog():
     }
 
 
+def _system_scheduled_jobs():
+    """GET /api/v2/system/scheduled-jobs — read-only scheduler health."""
+    import subprocess as _sp
+    def _run(cmd, timeout=10):
+        try:
+            r = _sp.run(cmd, capture_output=True, text=True, timeout=timeout, shell=isinstance(cmd, str))
+            return r.stdout.strip() if r.returncode == 0 else ""
+        except Exception:
+            return ""
+
+    # Systemd user timers — scan unit files directly
+    timers = []
+    import glob as _gl
+    timer_dir = Path.home() / ".config" / "systemd" / "user"
+    if timer_dir.exists():
+        for tf in sorted(timer_dir.glob("*.timer")):
+            name = tf.stem
+            status = _run(f"systemctl --user is-active {tf.name}").strip() or "unknown"
+            timers.append({"name": name, "status": status, "type": "systemd_user"})
+
+    hermes_timers = [t for t in timers if "hermes" in t["name"]]
+    tradeai_timers = [t for t in timers if "tradeai" in t["name"]]
+
+    # Cron count
+    cron_out = _run("crontab -l 2>/dev/null | grep -v '^#' | grep -v '^$' | grep -v '^SHELL\\|^PROJ\\|^PY' | wc -l")
+    cron_count = int(cron_out) if cron_out.isdigit() else 0
+    migrated = _run("crontab -l 2>/dev/null | grep -c 'PHASE41-MIGRATED'")
+    migrated_count = int(migrated) if migrated.isdigit() else 0
+
+    # Observation/backlog latest
+    obs_ts = None
+    bl_ts = None
+    try:
+        import json as _jsj
+        obs_f = Path(str(PROJECT_ROOT)) / "docs" / "hermes" / "observations" / "latest_observation_summary.json"
+        if obs_f.exists():
+            obs_ts = _jsj.loads(obs_f.read_text()).get("timestamp")
+        bl_f = Path(str(PROJECT_ROOT)) / "docs" / "hermes" / "backlog_health" / "latest_backlog_health_summary.json"
+        if bl_f.exists():
+            bl_ts = _jsj.loads(bl_f.read_text()).get("timestamp")
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "timers": {
+            "total": len(timers),
+            "hermes": [{"name": t["name"], "status": t["status"]} for t in hermes_timers],
+            "tradeai": [{"name": t["name"], "status": t["status"]} for t in tradeai_timers],
+            "other_count": len(timers) - len(hermes_timers) - len(tradeai_timers),
+        },
+        "cron": {
+            "active": cron_count,
+            "migrated": migrated_count,
+        },
+        "health": {
+            "last_observation": obs_ts,
+            "last_backlog_health": bl_ts,
+        },
+    }
+
+
 def _hermes_promotion_review():
     """GET /api/v2/hermes/promotion-review — read-only promotion review dry-run results."""
     import json as _jpv
@@ -12989,6 +13051,7 @@ ROUTES = {
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
+    "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
 }
 
 
