@@ -12830,6 +12830,47 @@ def _hermes_sl_drilldown():
     return {"ok": True, "items": enriched, "total": len(enriched)}
 
 
+def _hermes_proposal_sandbox():
+    """GET /api/v2/hermes/proposal-sandbox — read-only file-based proposal draft packets."""
+    import json as _jps
+    drafts_dir = PROJECT_ROOT / "hermes_sidecar" / "drafts" / "proposals"
+    packets = []
+    if drafts_dir.exists():
+        for f in sorted(drafts_dir.glob("*.json")):
+            try:
+                d = _jps.loads(f.read_text())
+                packets.append({
+                    "filename": f.name,
+                    "symbol": d.get("symbol"),
+                    "company": d.get("company"),
+                    "sector": d.get("sector"),
+                    "thesis_summary": d.get("thesis", {}).get("summary"),
+                    "strategy_fit": d.get("thesis", {}).get("strategy_fit"),
+                    "timeframe": d.get("thesis", {}).get("timeframe"),
+                    "direction": d.get("thesis", {}).get("direction"),
+                    "composite_score": d.get("quality_scores", {}).get("composite"),
+                    "quality_scores": d.get("quality_scores"),
+                    "catalyst": d.get("evidence", {}).get("catalyst"),
+                    "technical": d.get("evidence", {}).get("technical"),
+                    "why_not_trade": d.get("why_not_trade", []),
+                    "review_checklist": d.get("required_human_review", {}).get("review_checklist", []),
+                    "risk": d.get("risk"),
+                    "portfolio_fit": d.get("portfolio_fit"),
+                    "generated_by": d.get("generated_by"),
+                    "generated_at": d.get("generated_at"),
+                    "execution_statement": d.get("execution_statement"),
+                })
+            except Exception:
+                pass
+    return {
+        "packets": packets,
+        "total": len(packets),
+        "sandbox_type": "FILE_ONLY",
+        "level7": "PROHIBITED",
+        "advisory_notice": "These are file-only sandbox drafts. NOT proposals. NOT trades. Read-only visibility.",
+    }
+
+
 def _hermes_sl_timeline():
     """GET /api/v2/hermes/self-learning/timeline — recent events across all systems."""
     events = []
@@ -13370,6 +13411,7 @@ ROUTES = {
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
     "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
     "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
+    "/api/v2/hermes/proposal-sandbox": lambda: _hermes_proposal_sandbox(),
     "/api/v2/hermes/self-learning/timeline": lambda: _hermes_sl_timeline(),
 }
 
