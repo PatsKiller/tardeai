@@ -277,6 +277,16 @@
 | `docs/hermes/HERMES_PHASE32D_BACKLOG_DASHBOARD_REFRESH_VERIFICATION.md` | Phase 32D — dashboard 10 items verified |
 | `docs/project/PHASE32_EXPANDED_BACKLOG_STAGING_CLOSEOUT.md` | **Phase 32 closeout** |
 
+### Hermes Embedding Pilot (Phase 31)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE31A_EMBEDDING_PILOT_PREFLIGHT.md` | Phase 31A — preflight |
+| `docs/hermes/HERMES_PHASE31B_EMBEDDING_PILOT_EXECUTION_REPORT.md` | Phase 31B — 2 embeddings created |
+| `docs/hermes/HERMES_PHASE31C_EMBEDDING_RETRIEVAL_AUDIT.md` | Phase 31C — retrieval PASS |
+| `docs/hermes/HERMES_PHASE31D_EMBEDDING_VISIBILITY_VERIFICATION.md` | Phase 31D — dashboard verified |
+| `docs/hermes/HERMES_PHASE31_EMBEDDING_PILOT_ROLLBACK.sql` | Rollback SQL |
+| `docs/project/PHASE31_HERMES_EMBEDDING_PILOT_CLOSEOUT.md` | **Phase 31 closeout** |
+
 ### Hermes Automation Model (Phase 33)
 | Document | Purpose |
 |----------|---------|

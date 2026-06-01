@@ -436,8 +436,19 @@
 - Trading/proposal automation: PROHIBITED (Level 7, requires separate governance)
 - DB writes: ZERO | Runtime changes: ZERO | New timers: ZERO
 
+### Phase 31 Embedding Pilot (2026-06-01)
+- 2 embeddings created: SCHD id=12 (ce 27540, score 0.852) and TRX id=13 (ce 27541, score 0.736)
+- Model: nomic-embed-text 768-dim
+- Total Hermes embeddings: 9 (7 existing + 2 new)
+- Retrieval: both rank 1 for targeted queries
+- Negative queries below noise floor, no execution contamination
+- RAG pollution risk: LOW
+- Dashboard: embedded=true visible for both
+- Rollback: docs/hermes/HERMES_PHASE31_EMBEDDING_PILOT_ROLLBACK.sql
+- Promotions: ZERO | Broker/trade/journal: ZERO
+
 ### Next Gate
-- Phase 34 observation automation, embedding pilot (max 2), or observation (requires approval)
+- Phase 34 observation automation, source discovery for backlog, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -145,13 +145,15 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 32: Expanded Backlog Staging COMPLETE — 5 rows staged (ids 24–28), 10 total backlog**
 
+**Phase 31: Embedding Pilot COMPLETE — SCHD (0.852) + TRX (0.736), retrieval PASS, RAG LOW**
+
 **Phase 33: Automation Model Audit COMPLETE — Level 3 maturity, 7 levels defined, Phases 34–40 mapped**
 
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
-Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 7 | Cache: 10
+Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
 Automation: 18 timers, 187 cron (none Hermes), 1 Docker. Level 3 maturity.
 
-Next: Phase 34 observation automation, embedding pilot, or observation
+Next: Phase 34 observation automation, source discovery for backlog, or observation
 
 Daily check:
 ```bash
