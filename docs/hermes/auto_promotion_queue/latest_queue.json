@@ -1,0 +1,44 @@
+[
+  {
+    "candidate_id": 16,
+    "symbol": "TRX",
+    "type": "source_discovery",
+    "eligibility_score": 0.9,
+    "cache_target": "hermes_source_discovery_TRX",
+    "veto_deadline": "2026-06-02T17:23:03.640822+00:00",
+    "status": "awaiting_veto_window",
+    "operator_decision": "pending",
+    "advisory_only": true,
+    "not_execution": true,
+    "rollback_ready": true,
+    "blockers": []
+  },
+  {
+    "candidate_id": 12,
+    "symbol": "SCHD",
+    "type": "source_discovery",
+    "eligibility_score": 0.9,
+    "cache_target": "hermes_source_discovery_SCHD",
+    "veto_deadline": "2026-06-02T17:23:03.640822+00:00",
+    "status": "awaiting_veto_window",
+    "operator_decision": "pending",
+    "advisory_only": true,
+    "not_execution": true,
+    "rollback_ready": true,
+    "blockers": []
+  },
+  {
+    "candidate_id": 13,
+    "symbol": "TRX",
+    "type": "source_discovery",
+    "eligibility_score": 0.9,
+    "cache_target": "hermes_source_discovery_TRX",
+    "veto_deadline": "2026-06-02T17:23:03.640822+00:00",
+    "status": "awaiting_veto_window",
+    "operator_decision": "pending",
+    "advisory_only": true,
+    "not_execution": true,
+    "rollback_ready": true,
+    "blockers": []
+  }
+]
