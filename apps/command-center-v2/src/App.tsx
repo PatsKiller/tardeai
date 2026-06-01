@@ -89,6 +89,7 @@ const HermesChat = lazy(() => import('./pages/HermesChat'))
 const HermesIntelligence = lazy(() => import('./pages/HermesIntelligence'))
 const SelfLearningOverview = lazy(() => import('./pages/SelfLearningOverview'))
 const ProposalSandbox = lazy(() => import('./pages/ProposalSandbox'))
+const SiemDashboard = lazy(() => import('./pages/SiemDashboard'))
 const Reports = lazy(() => import('./pages/Reports'))
 
 function Loading() {
@@ -203,6 +204,7 @@ export default function App() {
           <Route path="system-health" element={<SafePage><SystemHealth /></SafePage>} />
           <Route path="system-access" element={<SafePage><SystemAccess /></SafePage>} />
           <Route path="system-applications" element={<SafePage><SystemApplications /></SafePage>} />
+          <Route path="alert-siem" element={<SafePage><SiemDashboard /></SafePage>} />
           <Route path="hermes" element={<SafePage><HermesChat /></SafePage>} />
           <Route path="hermes-intelligence" element={<SafePage><HermesIntelligence /></SafePage>} />
           <Route path="self-learning-overview" element={<SafePage><SelfLearningOverview /></SafePage>} />
