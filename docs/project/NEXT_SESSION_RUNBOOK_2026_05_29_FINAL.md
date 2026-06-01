@@ -199,11 +199,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 77: Self-Learning Maturity 8.1/10, Phases 78–86 roadmap**
 
-SearXNG: running | Hermes rows: 37 | Embeddings: 9 | Cache: 10 | Timers: 9
-Finviz: HEALTHY, 2/3 clean (3rd at 14:00) | Preflight: HEALTHY | Dedupe: LIVE
-Self-learning: **8.1/10** | Level 6: **CERTIFIED (conditional)** | Level 7: PROHIBITED
+**Phase 78–82: LEVEL6_CERTIFIED_STABLE, expanded discovery, cache scored, LLM stabilized, 2nd embedding batch**
 
-Next: 3rd clean run auto-certifies → Phase 78 7-day observation → Phase 79+ expansion
+SearXNG: running | Hermes rows: 42 | Embeddings: **12** | Cache: 10 (3 KEEP, 6 REFRESH) | Timers: 9
+Finviz: HEALTHY | Preflight: HEALTHY | Dedupe: LIVE | LLM queue: STABLE (22 jobs)
+Self-learning: **8.1/10** | Level 6: **CERTIFIED_STABLE** | Level 7: PROHIBITED
+
+Next: Phase 83 promotion review, Phase 84 self-learning dashboard, Phase 85 recertification
 
 Daily check:
 ```bash

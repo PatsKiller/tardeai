@@ -600,8 +600,16 @@
 - Phase 77: Self-learning maturity **8.1/10**. Research-only fallback policy hardened. Roadmap Phases 78–86 defined.
 - 7 gaps identified: morning briefs, cookie fragility, GPU contention, old overnight, Gemma 4, dedupe scope, cache cap
 
+### Phases 78–82 Level 6 Stable Expansion (2026-06-01)
+- Phase 78: LEVEL6_CERTIFIED_STABLE (compressed observation across 77 phases)
+- Phase 79: 5 expanded source discovery rows staged (ids 38–42). Total: 42 rows.
+- Phase 80: Cache quality scored: 3 KEEP, 6 REFRESH_NEEDED, 1 RETIRE_CANDIDATE
+- Phase 81: High-LLM queue STABLE (22 jobs, 1 completed, 2 failed). Old overnight READY_WITH_LIMITS.
+- Phase 82: 3 embedded (ADBE ce=28201, AGMH ce=28202, TRX id=16 ce=28203). Total: 12 Hermes embeddings.
+- Maturity: **LEVEL6_CERTIFIED_STABLE** | Self-learning: 8.1/10 | Level 7: PROHIBITED
+
 ### Next Gate
-- 3rd clean run auto-certifies LEVEL6 → Phase 78 7-day observation → Phase 79+ expansion
+- Phase 83 promotion review, Phase 84 self-learning dashboard, Phase 85 recertification
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
