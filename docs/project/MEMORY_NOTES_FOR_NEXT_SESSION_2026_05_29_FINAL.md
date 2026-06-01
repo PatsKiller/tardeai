@@ -289,8 +289,24 @@
 - Architecture trio consolidation (MASTER + OVERVIEW + COMPLETE)
 - Morning brief generator output path fix
 
+### Phase 15 Capped Promotion (2026-05-31)
+- 3 candidates promoted: FJSCX (id=8), APAM (id=10), TRX (id=11)
+- Total promoted: 10, staged: 1 (TELO), cache sections: 10, audit records: 10
+- Rollback: `sql/migrations/20260531_hermes_phase15_promote_3_candidates_rollback.sql`
+
+### Phase 16 SearXNG Shared Layer (2026-05-31)
+- SearXNG deployed as internal-only shared search infrastructure
+- Docker: searxng/searxng:latest, container name: searxng
+- Binding: 127.0.0.1:18888 → container 8080
+- Public exposure: NONE
+- Hermes integration: NONE
+- Config: `infra/searxng/` (compose, settings, .env gitignored)
+- Safety audit: PASS
+- System Applications: Docker Engine + SearXNG visible (read-only)
+- Rollback: `cd infra/searxng && sg docker -c "docker compose down -v"`
+
 ### Next Gate
-- **Phase 7A** — Pipeline Quality Loop manual dry-run (requires approval)
+- Observation period, SearXNG manual query wrapper dry-run, or source discovery dry-run (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

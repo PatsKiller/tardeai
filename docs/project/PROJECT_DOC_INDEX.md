@@ -137,6 +137,16 @@
 | `docs/project/PHASE14_PROMOTION_REVIEW_DASHBOARD_CLOSEOUT.md` | **Phase 14 closeout** |
 | `docs/hermes/HERMES_PHASE15_PROMOTION_EXECUTION_REPORT.md` | **Phase 15** — 3 candidates promoted (FJSCX, APAM, TRX) |
 
+### SearXNG Shared Search Layer (Phase 16)
+| Document | Purpose |
+|----------|---------|
+| `docs/infra/SEARXNG_SHARED_LAYER_ARCHITECTURE.md` | Architecture — internal-only, port plan, future gates |
+| `docs/infra/SEARXNG_PHASE16_INSTALL_REPORT.md` | Phase 16B — Docker Compose standup, 127.0.0.1:18888 |
+| `docs/infra/SEARXNG_PHASE16_SAFETY_AUDIT.md` | Phase 16C — safety PASS |
+| `docs/infra/SEARXNG_PHASE16_COMMAND_CENTER_VISIBILITY_REPORT.md` | Phase 16D — read-only System Applications visibility |
+| `docs/infra/SEARXNG_OPERATOR_RUNBOOK.md` | Operator runbook — status, logs, restart, rollback, privacy |
+| `docs/project/PHASE16_SEARXNG_SHARED_LAYER_CLOSEOUT.md` | **Phase 16 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
