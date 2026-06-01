@@ -208,6 +208,16 @@
 | `docs/hermes/HERMES_PHASE22D_RESEARCH_BACKLOG_DASHBOARD_DESIGN.md` | Phase 22D — dashboard design (docs only) |
 | `docs/project/PHASE22_RESEARCH_BACKLOG_STAGED_WRITE_CLOSEOUT.md` | **Phase 22 closeout** |
 
+### Income-Rotation Research Discovery (Phase 23)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE23A_INCOME_ROTATION_RESEARCH_PLAN.md` | Phase 23A — 9 sleeves, evidence requirements |
+| `docs/hermes/HERMES_PHASE23B_INCOME_ROTATION_DISCOVERY_REPORT.md` | Phase 23B — 8 queries, 55 candidates |
+| `docs/hermes/HERMES_PHASE23C_INCOME_ROTATION_CANDIDATE_SCORING.md` | Phase 23C — 7 sleeves scored |
+| `docs/hermes/HERMES_PHASE23D_INCOME_ROTATION_ACTIONABILITY_AUDIT.md` | Phase 23D — actionability 0.15→0.78 |
+| `docs/hermes/phase23_income_rotation_discovery/` | Discovery output files |
+| `docs/project/PHASE23_INCOME_ROTATION_RESEARCH_CLOSEOUT.md` | **Phase 23 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
