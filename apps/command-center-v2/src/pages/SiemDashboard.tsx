@@ -40,7 +40,7 @@ function timeAgo(iso: string) {
 export default function SiemDashboard() {
   const { data } = useApi<SiemData>('/api/v2/system/siem', 60_000)
   const [filter, setFilter] = useState<string>('')
-  const [showSuppressed, setShowSuppressed] = useState(false)
+  const [showSuppressed, setShowSuppressed] = useState(true)
 
   if (!data) return <div style={{ padding: 24, color: 'var(--text2)' }}>Loading SIEM data...</div>
 
@@ -52,7 +52,7 @@ export default function SiemDashboard() {
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
-      <PageHeader title="Alert SIEM" subtitle={`${data.total_events} events · ${data.period_days}-day window · ${data.noise_reduction_pct}% noise reduction`} />
+      <PageHeader title="Alert SIEM" subtitle={`${data.total_events} raw events · ${data.period_days}-day retention · ${data.noise_reduction_pct}% noise reduction`} />
 
       {/* KPI Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 16 }}>
@@ -100,7 +100,7 @@ export default function SiemDashboard() {
           </div>
 
           {/* Event list */}
-          <Card title={`Events (${filtered.length}${!showSuppressed ? ' active' : ''})`}>
+          <Card title={`Events (${filtered.length} groups${showSuppressed ? '' : ' — active only'})`}>
             <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {filtered.map(e => (
                 <div key={e.id} style={{
