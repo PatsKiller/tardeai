@@ -1,0 +1,290 @@
+# Trade AI v12 — Scheduled Jobs Reference
+
+**Updated:** 2026-05-31 (verified from live crontab + systemd)
+**Server:** ms01-openclaw
+**Active cron jobs:** 187
+**Systemd services:** 2 persistent + 2 timers + 2 Hermes user units
+
+All times are Eastern (America/New_York) unless noted.
+Crontab env: `PROJ=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`, `PY=$PROJ/.venv/bin/python`
+
+---
+
+## Systemd Services (always running)
+
+| Service | Type | Port | What It Does | Restart |
+|---------|------|------|-------------|---------|
+| `tradeai-portfolio-server` | persistent | :7777 | Central API hub — serves 259+ REST endpoints and React SPA (89 pages). All client traffic routes here. | always, 5s delay |
+| `ollama` | persistent | :11434 | Local LLM inference. GPU-accelerated (Intel Arc B50, Vulkan). KEEP_ALIVE=5m, MAX_LOADED=1, NUM_PARALLEL=1. Binds 0.0.0.0. | managed by systemd |
+
+## Systemd Timers (system-level)
+
+| Timer | Schedule | Service | What It Does |
+|-------|----------|---------|-------------|
+| `tradeai-continuous` | Mon-Fri 04:00 | `tradeai-continuous.service` | Launches the continuous scanner via `linux_launchers/run_continuous.sh`. Single-shot (no restart). Kicks off the daily pipeline. |
+| `tradeai-reprice` | Mon-Fri every 15 min, 09:00-15:45 | `tradeai-reprice.service` | Portfolio repricing via `linux_launchers/run_reprice_only.sh`. Oneshot. Keeps holdings prices current during market hours. |
+
+## Hermes User Timers/Services
+
+| Unit | Type | Schedule | What It Does |
+|------|------|----------|-------------|
+| `hermes-gateway` | persistent (user) | always | Hermes gateway on :18790. Bearer auth. Proxied via `/api/v2/hermes/chat`. Auto-restart. |
+| `hermes-autonomous-loop` | timer (user) | Daily 01:00 UTC (9 PM ET) | Ticker challenger loop. Runs `hermes_autonomous_loop.py --loop ticker_challenger --apply --max-rows 2`. Writes to hermes_research_intelligence staging table. 600s timeout. RandomizedDelay 300s. |
+
+---
+
+## Cron Jobs by Time of Day
+
+### Pre-Market (12:00 AM – 6:00 AM)
+
+| Time | Days | Script | What It Does | Fires Off | Lock |
+|------|------|--------|-------------|-----------|------|
+| 0:00 (overnight) | daily | `run_deep_overnight_llm_window.sh` | Deep overnight LLM batch — 100+ jobs nightly (reviews, classifications, calibration). Uses gemma3:12b. | watchlist_agent_results writes, llm_intelligence_cache | `/tmp/tradeai_deep_llm_window.lock` |
+| 0:30 | Tu-Sa | `run_scheduled_atp2_research_cycle.sh --cycle overnight` | Overnight research cycle — proposal revalidation, research enrichment | proposal_technical_snapshots, proposal_research_packets | — |
+| 2:30 | daily | `populate_performance_context.py --apply` | Populates performance context (trade outcomes, strategy metrics) for agent prompts | performance_context table | — |
+| 3:00 | daily | `strategy_config_loader.py --sync-db` | Syncs YAML strategy configs to strategy_registry DB table | strategy_registry | — |
+| 3:00 | 1st/mo | Transcript purge | Deletes expired YouTube transcripts (purge_after < today) | youtube_transcripts DELETE | — |
+| 4:00 | M-F | `run_scheduled_atp2_research_cycle.sh --cycle premarket_4am` | Pre-market research — technical snapshots, catalyst checks, overnight news | proposal enrichment tables | — |
+| 4:00-19:50 | M-F | `auto_enrichment_runner.py` (*/10) | Continuous proposal enrichment — rate-limited, 3 workers max, failure tracking | proposal enrichment satellites | — |
+| 4:00-19:50 | M-F | `proposal_enrichment_loop.py` (*/10) | Enrichment stage runner — 8 stages (source, strategy, catalyst, technical, risk, execution, agents, llm) | proposal enrichment satellites | — |
+| 5:00 | M-F | `run_alex_daily.py --daily` | Alex agent daily run — retirement, tax, income analysis + Telegram summary | agent results, Telegram | — |
+
+### Early Morning (6:00 AM – 8:00 AM)
+
+| Time | Days | Script | What It Does | Fires Off | Lock |
+|------|------|--------|-------------|-----------|------|
+| 6:00 | M-F | `strategy_backtester.py --all-strategies --apply` | Run champion simulations for all 24 strategies | strategy_backtest_trades, strategy_backtest_results | `/tmp/strategy_backtester.lock` |
+| 6:00 | M-F | `quote_refresh (pending, limit 50)` | Refresh stale quotes for pending proposals | market_quotes | `/tmp/tradeai_quote_refresh.lock` |
+| 6:00 | M-F | `telegram_smart_alerts.py --check-all` | Smart alert checks — stop proximity, gap alerts, catalyst alerts | Telegram notifications | — |
+| 6:00 | M-F | `market_regime_collector.py --apply` | Collect VIX, breadth, sector rotation data | market_regime_snapshots | — |
+| 6:00 | M-F | `news_ingestion.py --priority` | Priority news ingestion from 7 sources | news_articles | — |
+| 6:00 | daily | `social_ingest.py` | Social media ingestion | social_posts, social_sentiment_history | — |
+| 6:00 | daily | `fred_data_ingest.py --ingest` | FRED economic data pull | fred_economic_series | — |
+| 6:00 | Sun | `check_system_versions.sh` | Weekly version check (14 packages) | data/state/system_versions_latest.json | — |
+| 6:15 | M-F | `agent_router_cron.sh full` | Full agent routing — process all queued agent jobs | watchlist_agent_results | — |
+| 6:25 | M-F | `agent_intelligence_cron.sh daily` | Daily agent intelligence refresh | agent_intelligence_rules | — |
+| 6:30 | M-F | `quote_refresh (incubator, limit 100)` | Refresh incubator quotes | market_quotes | `/tmp/tradeai_quote_refresh.lock` |
+| 6:35 | M-F | `classify_candidates.py` | Classify screener candidates against 24 strategies | ticker_strategy_classifications | — |
+| 6:35 | M-F | `market_regime_classifier.py --apply` | Classify current market regime (Risk On/Off/Neutral) | market_regime_classifications | — |
+| 6:35 | M-F | `overnight_batch.py --tax-sweep` | Tax-loss harvesting sweep | tax_loss_candidates | — |
+| 6:40 | M-F | `intel_auto_discovery.py` | Intelligence auto-discovery — find new research targets | Telegram | — |
+| 6:45 | M-F | `sync_watchlist_items_to_db.py` | Sync watchlist items from YAML to DB | watchlist_items | — |
+| 6:50 | M-F | `materialize_watchlist_strategy_cards.py` | Materialize strategy cards for watchlist UI | watchlist_strategy_cards | — |
+| 6:55 | M-F | `materialize_income_engine.py` | Materialize income/dividend projections | income_projections | — |
+| 7:00 | M-F | `finviz_screener_runner.py --run` | First Finviz screener run | trade_ai_scans | `/tmp/finviz_screener.lock` |
+| 7:00 | M-F | `cio_decision_engine.py --run` | CIO decision engine — portfolio-level strategy decisions | cio_decisions | — |
+| 7:00 | M-F | `quote_refresh (pending)` | Refresh pending quotes | market_quotes | lock |
+| 7:00 | M-F | `agent_watchlist_engine.py --status` | Agent watchlist status check | agent_watchlist_status | — |
+| 7:00-9:00 | M-F | `premarket_watcher.py` (*/15) | Pre-market gap/volume scanner | premarket_alerts | — |
+| 7:05 | M-F | `sync_dividend_data.py` | Sync dividend data | dividend_history | — |
+| 7:10 | M-F | `finviz_enrichment.py` | Finviz 60-field enrichment | ticker_snapshot_daily | — |
+| 7:15 | M-F | `external_market_data_ingest.py --quotes` | External market data quotes | market_quotes | — |
+| 7:15 | M-F | `write_state_freshness_history.py` | Record data freshness timestamps | state_freshness_history | — |
+| 7:15 | M-F | `portfolio_orchestrator.py` | Portfolio pipeline — repricing, attribution, risk calc | portfolio_snapshots, risk_metrics | `/tmp/portfolio_orch.lock` |
+| 7:15 | M-F | `alex_hygiene.py` | Alex agent hygiene — verify research topic freshness | research_topics audit | — |
+| 7:20 | M-F | `price_db_sync.py` | Sync Finviz prices to price DB | price_history | — |
+| 7:20 | M-F | `llm_intelligence_enrichment.py` | LLM intelligence — 5 daily sections (sector thesis, catalyst, technical, fundamentals, risk) | llm_intelligence_cache | `/tmp/llm_enrichment.lock` |
+| 7:25 | M-F | `system_health_alerts.py` | System health alert check | alert_events | — |
+| 7:30 | M-F | `symbol_enrichment.py --limit 50` | Symbol-level enrichment (fundamentals, metadata) | symbol_metadata | — |
+| 7:30 | M-F | `alert_missing_conditions.py` | Check for missing stop/alert conditions | alert_events | `/tmp/alert_missing.lock` |
+| 7:30 | M-F | `recovery_watch_daily.py` | Recovery watch — check stopped-out positions for re-entry signals | stopped_out_watch | — |
+| 7:30 | M-F | `iris_taxonomy_agent.py --freshness` | Iris content freshness check | content_freshness_audit | — |
+| 7:30 | Sun | `agent_router_cron.sh deep` | Deep agent routing (Sunday full refresh) | watchlist_agent_results | — |
+| 7:40 | M-F | `portfolio_level_qa.py` | Portfolio QA checks | portfolio_qa_results | — |
+| 7:40 | M-F | `run_scheduled_system_facts.sh` | System facts snapshot (tables, crons, endpoints, models) | system_facts | `/tmp/tradeai_system_facts.lock` |
+| 7:45 | M-F | `run_scheduled_a1a_check.sh` | A1A documentation compliance check | governance_a1a_results | `/tmp/tradeai_a1a_check.lock` |
+| 7:50 | M-F | `record_decision_outcome.py` | Record agent decision outcomes | decision_outcome_log | — |
+| 7:50 | M-F | `report_governance_status.py` | Generate governance status report (JSON + MD) | docs/governance/ | — |
+| 7:55 | M-F | `run_scheduled_maturity_control_board.sh` | Maturity control board run | maturity scores | `/tmp/tradeai_maturity_control_board.lock` |
+| 7:55 | M-F | `classifier_health_check.py` | Classifier health check | classifier_health_log | — |
+
+### Market Open (8:00 AM – 9:30 AM)
+
+| Time | Days | Script | What It Does | Fires Off | Lock |
+|------|------|--------|-------------|-----------|------|
+| 8:00 | M-F | `finviz_screener_runner.py --run` | Second screener run | trade_ai_scans | lock |
+| 8:00 | M-F | `iterate_research_topics.py` | Research topic iteration (LLM-powered) | research_topics, Telegram | — |
+| 8:00 | M-F | `send_morning_brief.py` | Trade AI morning brief → Telegram | Telegram | market_day_gate |
+| 8:00 | M-F | `send_alert_digest.py morning` | Morning alert digest → Telegram | Telegram | market_day_gate |
+| 8:00 | M-F | `indicator_engine.py` | 17 indicator computations | indicator_confluence_cache | — |
+| 8:00 | M-F | `operator_readiness_summary.py` | Operator readiness report | docs/maturity_hardening/ | — |
+| 8:00 | M-F | `aegis_surveillance.py` | Aegis surveillance sweep | agent results | — |
+| 8:00,20:00 | M-F | `paper_performance_governance.py --apply` | Paper trade performance governance checks | paper_performance_governance | — |
+| 8:05 | M-F | `aegis_morning_brief_delivery.py` | Aegis morning brief → Telegram + docs/ | Telegram, docs/openclaw_aegis_morning_brief_*.md | — |
+| 8:15 | M-F | `stale_proposal_sweeper.sh --dry-run` | Stale proposal sweep (dry-run first) | — | `/tmp/tradeai_stale_proposal_sweeper.lock` |
+| 8:15 | M-F | `daily_incubator_refresh.py --apply` | Daily incubator refresh | incubator_universe | — |
+| 8:25 | M-F | `stale_proposal_sweeper.sh --apply` | Stale proposal sweep (apply) | paper_trade_proposals status updates | lock |
+| 8:30 | M-F | `agent_recommendation_normalizer.py --apply` | Normalize agent recommendations | agent_recommendations | — |
+| 8:30,16:30 | daily | `alert_dispatcher_unified.py` | Unified alert dispatch | alert_events, Telegram | — |
+| 9:00 | M-F | `trade_ai_orchestrator.py --run-label 0900` | 9 AM orchestrator run | trade_ai_scans, scored candidates | `/tmp/screener_pm.lock` |
+| 9:00 | M-F | `run_scheduled_atp2_research_cycle.sh --cycle premarket_9am` | Pre-market 9 AM research cycle | proposal enrichment | — |
+| 9:00 | M-F | `aegis_transcript_discovery.py` | Aegis YouTube transcript discovery | transcript queue | — |
+| 9:00 | Wed/Sat | `topic_ingestion.py --all` | Topic ingestion (bi-weekly) | topic articles | — |
+| 9:20 | M-F | `quote_refresh (incubator)` | Refresh incubator quotes | market_quotes | lock |
+
+### Market Hours (9:30 AM – 4:00 PM)
+
+| Time | Days | Script | What It Does | Fires Off | Lock |
+|------|------|--------|-------------|-----------|------|
+| */2 | M-F 9-16 | `send_telegram_proposal_alert.py --mode pending` | Real-time proposal alerts to Telegram | Telegram | market_day_gate |
+| */2 | 24/7 | `telegram_command_handler.py --poll` | Telegram command handler (status, run, add, etc.) | various | — |
+| */2 | 24/7 | `run_telegram_poller_daemon.sh` | Telegram callback long-poll daemon | approve/reject/stop actions | — |
+| */3 | M-F 9-16 | `unified_stop_supervisor.py --apply` | Stop monitor — trailing stops, time stops, news stops | paper_trades exit | `/tmp/unified_stop_supervisor.lock` |
+| */5 | M-F 9-16 | `paper_execution_sweep.py` | Execution sweep — catch unfilled/partial orders | paper_trades | `/tmp/paper_sweep.lock` |
+| */5 | M-F 9-16 | `quote_refresh (pending)` | Refresh pending proposal quotes | market_quotes | lock |
+| */5 | M-F 9-20 | `system_health_agent.py --apply` | System health agent — 18 components, auto-retry, escalation | system_health_checks, system_health_events | — |
+| */5 | 24/7 | `telegram_poller_watchdog.sh` | Watchdog for Telegram poller daemon | restart if dead | — |
+| */5 | 24/7 | `cleanup_stale_locks.sh` | Clean up stale lock files | /tmp/tradeai_*.lock | — |
+| */10 | M-F 10-16 | `data_gap_resolver.py` | Resolve data gaps (missing enrichment, quotes, etc.) | data_gap_resolutions | — |
+| */10 | M-F 10-16 | `alpaca_paper_adapter.py --sync-only` | Alpaca paper account sync (positions, orders) | paper_trades sync | `/tmp/alpaca_recon.lock` |
+| */15 | M-F 7-15 | `atm_auto_approver.py` | ATM auto-approval — evaluate pending proposals against risk/enrichment/strategy gates | paper_trade_proposals, atm_decision_log | `/tmp/tradeai_atm.lock` |
+| */15 | M-F 7-20 | `claude_escalation_handler.py` | Claude Code escalation handler — Tier 2 analysis, retry_cmd | escalation log, remediation actions | `/tmp/tradeai_escalation_handler.lock` |
+| */15 | M-F 9-16 | `atm_position_reconciler.py --audit-only` | ATM position reconciliation audit | atm_position_reconciliation | `/tmp/atm_position_reconciler.lock` |
+| */15 | wknd | `system_health_agent.py --apply` | Weekend health monitoring (reduced frequency) | system_health_checks | — |
+| */30 | M-F 9-16 | `auto_proposal_generator.py --today --apply` | Auto-generate proposals from strategy signals | paper_trade_proposals, Telegram | — |
+| */30 | M-F 9-16 | `proposal_lifecycle.py` | Proposal lifecycle management (entry zone, drift, expiry) | proposal_lifecycle_events | — |
+| */30 | M-F 9-15 | `proposal_revalidation.py --apply` | Re-validate approved proposals against current market | proposal revalidation | `/tmp/tradeai_atp2_reval.lock` |
+| */30 | 24/7 | `agent_event_router.py` | Agent event router — CONTENT_GAP, RESEARCH_MORE triggers | agent job queue | — |
+| 0 hourly | M-F 7-17 | `incubator_proposal_promoter.py --run` | Incubator → proposal promotion gates | paper_trade_proposals | `/tmp/incubator_promoter.lock` |
+| 0 hourly | M-F 9-16 | `risk_gate.py --test` | Risk gate validation (position limits, sector exposure, daily loss) | risk_gate_results | — |
+| 10:00 | M-F | `finviz_screener_runner.py --run` | Third screener run | trade_ai_scans | lock |
+| 10:00 | M-F | `trade_ai_orchestrator.py --run-label 1000` | 10 AM orchestrator run | scored candidates | lock |
+| 10:00 | M-F | `cleanup_stale_proposals.py --apply` | Clean up stale/blocked proposals | paper_trade_proposals | — |
+| 10:00 | M-F | `incubator_rolloff_engine.py --apply` | Roll off stale incubator candidates | incubator_universe | — |
+| 10:00-15:00 | M-F | `agent_router_cron.sh light` | Light agent routing (hourly during market) | watchlist_agent_results | — |
+| 11:00 | M-F | `agent_outcome_linker.py --apply` | Link agent recommendations to trade outcomes | agent_outcome_links | — |
+| 11:00,15:00 | M-F | `aegis_social_sentiment.py` | Social sentiment analysis | social_sentiment_history | — |
+| 11:30,14:30 | M-F | `agent_intelligence_cron.sh intraday` | Intraday agent intelligence refresh | agent_intelligence_rules | — |
+| 12:00 | M-F | `finviz_screener_runner.py --run` | Fourth screener run | trade_ai_scans | lock |
+| 12:00 | M-F | `trade_ai_orchestrator.py --run-label 1200` | Noon orchestrator run | scored candidates | lock |
+| 12:00 | M-F | `quote_refresh (incubator)` | Refresh incubator quotes | market_quotes | lock |
+| 12:30 | M-F | `news_ingestion.py --priority` | Mid-day news ingestion | news_articles | — |
+| 12:40 | M-F | `intel_auto_discovery.py` | Mid-day intelligence discovery | Telegram | — |
+| 13:00 | M-F | `finviz_enrichment.py` | Afternoon enrichment refresh | ticker_snapshot_daily | — |
+| 14:00 | M-F | `finviz_screener_runner.py --run` | Fifth screener run | trade_ai_scans | lock |
+| 14:00 | M-F | `trade_ai_orchestrator.py --run-label 1400` | 2 PM orchestrator run | scored candidates | lock |
+| 15:00 | M-F | `cleanup_stale_proposals.py --apply` | Afternoon stale proposal cleanup | paper_trade_proposals | — |
+
+### Market Close & After-Hours (4:00 PM – 8:00 PM)
+
+| Time | Days | Script | What It Does | Fires Off | Lock |
+|------|------|--------|-------------|-----------|------|
+| 16:00 | M-F | `finviz_screener_runner.py --run` | Final screener run | trade_ai_scans | lock |
+| 16:00 | M-F | `trade_ai_orchestrator.py --run-label 1600` | 4 PM orchestrator run | scored candidates | lock |
+| 16:00 | M-F | `send_alert_digest.py evening` | Evening alert digest → Telegram | Telegram | market_day_gate |
+| 16:00 | Fri | `run_deep_overnight_llm_window.sh --force-window --max-jobs 200` | Friday extended deep LLM batch (200+ jobs) | llm results | lock |
+| 16:05 | M-F | `market_regime_collector.py + classifier.py` | EOD regime collection + classification | market_regime | — |
+| 16:05 | M-F | `run_scheduled_atp2_research_cycle.sh --cycle eod` | EOD research cycle | proposal enrichment | — |
+| 16:05 | M-F | `alpaca_paper_reconciler.py` | EOD Alpaca reconciliation | paper_trades sync | — |
+| 16:05 | M-F | `eod_open_trade_alert.py` | EOD open trade alert → Telegram | Telegram | market_day_gate |
+| 16:10 | M-F | `stale_proposal_sweeper.sh --report-only` | EOD stale proposal report | — | lock |
+| 16:30 | M-F | `paper_execution_quality_analyzer.py --recent --apply` | TCA — execution quality analysis for recent closes | paper_execution_quality | — |
+| 16:30 | M-F | `closed_trade_digest_cron.sh` | Closed trade digest → Telegram | Telegram | — |
+| 16:45 | M-F | `atm_position_reconciler.py --audit-only (EOD)` | EOD position reconciliation snapshot | atm_position_reconciliation | lock |
+| 17:00 | M-F | `paper_execution_quality.py --all-open --apply` | TCA — execution quality for all open positions | paper_execution_quality | — |
+| 17:30 | M-F | `trade_ai_orchestrator.py --run-label 1730` | 5:30 PM orchestrator run (after-hours) | scored candidates | lock |
+| 17:30 | M-F | `run_afterhours_candidate_preparation.sh` | After-hours candidate preparation | afterhours_candidates | — |
+| 18:00 | M-F | `finviz_screener_runner.py --run` | Evening screener run | trade_ai_scans | lock |
+| 18:00 | M-F | `data_gap_resolver.py --pre-overnight` | Pre-overnight data gap resolution | data_gap_resolutions | — |
+| 18:00 | daily | `social_ingest.py` | Evening social ingestion | social_posts | — |
+| 18:00 | daily | `news_ingestion.py --priority` | Evening news ingestion | news_articles | — |
+| 18:00 | daily | `nyc-dof-auction/rescan_tickets.py` | NYC DOF auction ticket rescan (separate project) | dof_auction DB | — |
+| 19:00 | M-F | `youtube_transcript_ingest.py --all-channels` | YouTube transcript ingestion | youtube_transcripts | — |
+| 19:00 | daily | `aegis_nightly_ingestion.py` | Aegis nightly data ingestion | intelligence_entities | — |
+
+### Evening/Overnight (8:00 PM – 12:00 AM)
+
+| Time | Days | Script | What It Does | Fires Off | Lock |
+|------|------|--------|-------------|-----------|------|
+| 20:00 | M-F | `overnight_batch.py --telegram` | Overnight batch — portfolio reconciliation, agent scoring | overnight results, Telegram | market_day_gate |
+| 20:00 | M-F | `sec_data_ingest.py --all` | SEC filings ingestion (Form 4, etc.) | sec_form4 | — |
+| 20:00 | M-F | `run_scheduled_atp2_research_cycle.sh --cycle evening` | Evening research cycle | proposal enrichment | — |
+| 20:00 | daily | `aegis_overnight.py` | Aegis overnight synthesis | agent results | — |
+| 20:30 | M-F | `feedback_loop_processor.py` | Feedback loop — agent recommendation accuracy tracking | feedback_loop_results | `/tmp/feedback_loop.lock` |
+| 20:30 | M-F | `health_agent_llm_review.py` | Health agent LLM review — deep analysis of system health | health_review_results | — |
+| 21:00 | M-F | `auto_research.py --check` | Auto-research check + Telegram notification | research_topics, Telegram | — |
+| 21:00 | daily | `aegis_synthesis.py` | Aegis synthesis — cross-source intelligence fusion | synthesis_results | — |
+| 21:30 | M-F | `gemma3_calibration_scorer.py` | Gemma3 calibration scoring — LLM accuracy tracking | confidence_calibration_history | — |
+| 23:00 | daily | `run_deep_overnight_llm_window.sh --enable-hybrid-rag` | Daily deep overnight LLM window (100+ jobs) | llm results, agent results | lock |
+
+### Sunday-Only Jobs
+
+| Time | Script | What It Does |
+|------|--------|-------------|
+| 8:00 | `agent_intelligence_cron.sh deep` | Deep agent intelligence refresh |
+| 8:00 | `run_alex_daily.py --weekly` | Alex weekly research report |
+| 8:00 | `data_gap_resolver.py --weekly-audit` | Weekly data gap audit |
+| 9:30 | `watchlist_hygiene.py` | Watchlist hygiene — remove stale, verify active |
+| 10:00 | `multi_tier_trade_reviewer.py --tier weekly` | Weekly trade review (LLM multi-tier) |
+| 10:00 | `iris_taxonomy_agent.py` | Iris taxonomy refresh |
+| 10:30 | `strategy_weekly_review.py` | Strategy weekly performance review |
+| 10:30 | `rebalance_verifier.py` | Rebalance verification |
+| 11:00 | `multi_tier_trade_reviewer.py --tier monthly` (1st) | Monthly trade review |
+| 11:00 | `agent_outcome_scorer.py --apply` | Agent outcome scoring |
+| 12:00 | `agent_calibration_engine.py --apply` | Agent calibration |
+| 18:00 | `run_scheduled_system_facts.sh` | Weekly system facts |
+| 18:05 | `run_scheduled_a1a_check.sh` | Weekly A1A compliance |
+| 18:10 | `report_governance_status.py` | Weekly governance report |
+| 18:15 | `run_scheduled_maturity_control_board.sh` | Weekly maturity board |
+| 18:20 | `operator_readiness_summary.py` | Weekly operator readiness |
+| 19:00 | `weekly_incubator_builder.py --apply` | Weekly incubator rebuild (LLM classification) |
+| 21:00 | `generate_weekly_docx.py` | Weekly DOCX report |
+| 22:00 | `enterprise_backtester.py --replay-trades --apply` | Weekly enterprise backtest replay |
+| 23:00 | `trade_close_llm_analyzer.py --source backtest` | Weekly LLM backtest review |
+
+### Monthly Jobs (1st of month)
+
+| Time | Script | What It Does |
+|------|--------|-------------|
+| 3:00 | Transcript purge | Delete expired YouTube transcripts |
+| 6:00 M-F | `backup_verify.py` | Monthly backup verification |
+| 8:00 Mon | `external_market_data_ingest.py --fundamentals` | Monday fundamentals update |
+| 9:00 | `run_alex_daily.py --monthly` | Alex monthly research |
+| 10:00 | `youtube_channel_discovery.py --discover` | Monthly YouTube channel discovery |
+
+---
+
+## Lock File Summary
+
+| Lock File | Protects | Concurrent? |
+|-----------|----------|-------------|
+| `/tmp/tradeai_atm.lock` | ATM auto-approver | No — flock exclusive |
+| `/tmp/tradeai_escalation_handler.lock` | Claude escalation handler | No |
+| `/tmp/tradeai_quote_refresh.lock` | Quote refresh (all modes) | No |
+| `/tmp/tradeai_deep_llm_window.lock` | Deep overnight LLM batch | No — also blocks watchlist_agent_jobs |
+| `/tmp/tradeai_watchlist_agent_jobs.lock` | Watchlist agent job processing | No |
+| `/tmp/tradeai_stale_proposal_sweeper.lock` | Stale proposal sweeper | No |
+| `/tmp/tradeai_system_facts.lock` | System facts generation | No |
+| `/tmp/tradeai_a1a_check.lock` | A1A compliance check | No |
+| `/tmp/tradeai_maturity_control_board.lock` | Maturity control board | No |
+| `/tmp/paper_sweep.lock` | Paper execution sweep | No |
+| `/tmp/unified_stop_supervisor.lock` | Stop supervisor | No |
+| `/tmp/portfolio_orch.lock` | Portfolio orchestrator | No |
+| `/tmp/screener_pm.lock` | Trade AI orchestrator | No |
+| `/tmp/incubator_promoter.lock` | Incubator promoter | No |
+| `/tmp/alpaca_recon.lock` | Alpaca reconciliation | No |
+| `/tmp/finviz_screener.lock` | Finviz screener | No |
+| `/tmp/llm_enrichment.lock` | LLM intelligence enrichment | No |
+| `/tmp/feedback_loop.lock` | Feedback loop processor | No |
+| `/tmp/atm_position_reconciler.lock` | ATM position reconciliation | No |
+| `/tmp/strategy_backtester.lock` | Strategy backtester | No |
+
+---
+
+## Safety Gates
+
+Several cron jobs are wrapped in `market_day_gate.sh` which skips execution on market holidays:
+- Morning/evening alerts, proposal alerts, EOD alerts
+- ATM auto-approver, stop supervisor, execution sweep
+- Overnight batch, health alerts
+
+## Log Files
+
+All logs write to `$PROJ/logs/`. Key logs to check:
+- `logs/atm.log` — ATM auto-approver decisions
+- `logs/system_health_agent.log` — health monitoring
+- `logs/claude_escalation.log` — escalation handler
+- `logs/auto_proposal.log` — proposal generation
+- `logs/paper_execution.log` — execution sweep
+- `logs/unified_stop_supervisor.log` — stop management
+- `logs/deep_overnight_llm_window.log` — overnight LLM batch
