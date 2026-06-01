@@ -185,14 +185,17 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 61–66: Contention fix, Gemma 4 canary (NOT_AVAILABLE), retry (1/3), timer, parallel comparison, Level 6 STABLE**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
-Hermes rows: 34 (10 promoted, 24 staged, 13 backlog) | Embeddings: 9 | Cache: 10
-Hermes timers: 8 + LLM worker = 9 total | High-LLM queue: 22 jobs, 1 result
-Maturity: **Level 6 STABLE — Production Advisory + Global LLM Queue**
-Model: gemma3:12b default. Gemma 4: NOT_AVAILABLE locally.
-Self-learning quality: 4.3/5 | Level 7 (trading): PROHIBITED
+**Phase 67–71: Incident remediation, alert dedupe, maturity cert, ops backlog, feed resilience**
 
-Next: 7-day observation, shadow overnight comparison, expand cache cap, or maturity cert
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
+Hermes rows: 37 (10 promoted, 27 staged, 13 backlog + 3 ops_backlog) | Embeddings: 9 | Cache: 10
+Maturity: **LEVEL6_CERTIFIED_WITH_LIMITS** (Finviz degraded, cookie update pending)
+Finviz: 19/20 FAILED today | Alert dedupe: designed (~80% reduction) | Feed resilience: designed
+Model: gemma3:12b default | Gemma 4: NOT_AVAILABLE | Level 7: PROHIBITED
+
+**OPERATOR ACTION REQUIRED:** Update FINVIZ_COOKIE via approved secret path
+
+Next: cookie update → 3 clean screener runs → full LEVEL6_CERTIFIED
 
 Daily check:
 ```bash

@@ -405,6 +405,13 @@
 | `docs/project/PHASE65_OVERNIGHT_PARALLEL_COMPARISON_CLOSEOUT.md` | **Phase 65** — READY_WITH_LIMITS |
 | `docs/project/PHASE66_LEVEL6_STABILIZATION_CLOSEOUT.md` | **Phase 66** — Level 6 STABLE |
 
+### Incident Remediation + Certification + Feed Resilience (Phases 67–71)
+| `docs/project/PHASE67_FINVIZ_STALENESS_INCIDENT_CLOSEOUT.md` | **Phase 67** — Finviz expired, true-fix gate |
+| `docs/project/PHASE68_ALERT_DEDUPE_BACKLOG_INTEGRATION_CLOSEOUT.md` | **Phase 68** — 10-type taxonomy, ~80% dedupe |
+| `docs/project/PHASE69_LEVEL6_MATURITY_CERTIFICATION_CLOSEOUT.md` | **Phase 69** — CERTIFIED_WITH_LIMITS |
+| `docs/project/PHASE70_ALERT_TO_HERMES_BACKLOG_APPLY_CLOSEOUT.md` | **Phase 70** — 3 ops_backlog rows |
+| `docs/project/PHASE71_FEED_RESILIENCE_AUTOMATION_CLOSEOUT.md` | **Phase 71** — feed health design |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
