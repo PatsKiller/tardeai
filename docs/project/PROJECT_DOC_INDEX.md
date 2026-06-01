@@ -257,6 +257,16 @@
 | `sql/migrations/20260601_hermes_phase29_safe_views_rollback.sql` | Rollback SQL |
 | `docs/project/PHASE29_HERMES_SAFE_VIEW_COVERAGE_CLOSEOUT.md` | **Phase 29 closeout** |
 
+### Expanded Librarian Dry-Run (Phase 30)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE30A_EXPANDED_LIBRARIAN_DRY_RUN_DESIGN.md` | Phase 30A — 14 checks |
+| `docs/hermes/HERMES_PHASE30B_EXPANDED_LIBRARIAN_DRY_RUN_REPORT.md` | Phase 30B — 21 findings |
+| `docs/hermes/HERMES_PHASE30C_EXPANDED_LIBRARIAN_SAFETY_AUDIT.md` | Phase 30C — PASS (4.25/5) |
+| `docs/hermes/HERMES_PHASE30D_EXPANDED_BACKLOG_STAGED_WRITE_MAPPING.md` | Phase 30D — staging mapping |
+| `docs/hermes/phase30_expanded_librarian_dryrun/` | Dry-run output files |
+| `docs/project/PHASE30_EXPANDED_LIBRARIAN_DRY_RUN_CLOSEOUT.md` | **Phase 30 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

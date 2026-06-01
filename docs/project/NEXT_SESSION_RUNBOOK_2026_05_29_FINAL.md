@@ -141,11 +141,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 29: Safe View Coverage COMPLETE — 4 views created, coverage 4/10 → 9/10**
 
+**Phase 30: Expanded Librarian Dry-Run COMPLETE — 21 findings, 11 backlog candidates, PASS (4.25/5)**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
-Views: 12 total (76K+ rows) | Coverage: 9/10 (morning briefs only gap)
+Key findings: journal empty, momentum_scalp 30% WR, all_signals 33.9% WR, generic catalysts
 
-Next: expanded Librarian dry-run, embedding pilot, or observation
+Next: stage expanded backlog (max 10), embedding pilot (max 2), or observation
 
 Daily check:
 ```bash
