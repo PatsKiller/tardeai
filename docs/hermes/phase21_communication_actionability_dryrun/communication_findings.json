@@ -1,0 +1,25 @@
+[
+  {
+    "id": "COMM-1",
+    "source": "telegram_weekly_portfolio_review",
+    "finding_type": "vague_rebalance_recommendation",
+    "severity": "high",
+    "actionability_score": 0.15,
+    "excerpt": "Shift at least 5-7% of the portfolio into higher-yielding income assets \u2014 specifically dividend-paying stocks and potentially a short-term bond ladder.",
+    "missing_fields": [
+      "specific_ticker_candidates",
+      "funding_source",
+      "account_location",
+      "income_impact_estimate",
+      "risk_tax_tradeoff",
+      "evidence_sources",
+      "research_backlog_item",
+      "operator_decision_checklist",
+      "expected_diversification_impact"
+    ],
+    "reason": "Recommends 5-7% shift (~$60K-$84K) but lacks concrete candidates, funding source, account location, income impact estimate, evidence, and research backlog item. 9 of 9 actionability fields missing.",
+    "gate_result": "FAIL",
+    "reclassified_to": "research_needed",
+    "backlog_required": true
+  }
+]
