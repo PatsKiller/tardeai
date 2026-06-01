@@ -1,0 +1,29 @@
+{
+  "date": "2026-06-01",
+  "timestamp": "2026-06-01T14:37:59.597682+00:00",
+  "mode": "apply",
+  "findings": 3,
+  "max_rows": 3,
+  "details": [
+    {
+      "type": "backtest_weak_strategy",
+      "strategy": "core_growth_compounder,swing_trade,swing_breakout,",
+      "detail": "WR=27.59% PF=0.3153 n=29",
+      "priority": "high"
+    },
+    {
+      "type": "backtest_weak_strategy",
+      "strategy": "swing_breakout",
+      "detail": "WR=28.57% PF=2.6398 n=7",
+      "priority": "high"
+    },
+    {
+      "type": "backtest_weak_strategy",
+      "strategy": "screener,dividend_growth_compounder,earnings_catal",
+      "detail": "WR=39.13% PF=3.6721 n=46",
+      "priority": "medium"
+    }
+  ],
+  "db_writes": 3,
+  "runtime_sec": 0.0
+}
