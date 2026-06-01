@@ -143,11 +143,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 30: Expanded Librarian Dry-Run COMPLETE — 21 findings, 11 backlog candidates, PASS (4.25/5)**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
-Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
-Key findings: journal empty, momentum_scalp 30% WR, all_signals 33.9% WR, generic catalysts
+**Phase 32: Expanded Backlog Staging COMPLETE — 5 rows staged (ids 24–28), 10 total backlog**
 
-Next: stage expanded backlog (max 10), embedding pilot (max 2), or observation
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 7 | Cache: 10
+Dashboard: 10 backlog items from 4 surfaces (income, journal, backtest, catalyst)
+
+Next: embedding pilot (max 2), source discovery for backlog, or observation
 
 Daily check:
 ```bash
