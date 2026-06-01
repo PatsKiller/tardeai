@@ -327,6 +327,16 @@
 | `docs/operations/PHASE36E_SCHEDULED_JOB_MIGRATION_PLAN.md` | Phase 36E — Phases 41–46 plan |
 | `docs/project/PHASE36_SCHEDULED_JOB_CONSOLIDATION_AUDIT_CLOSEOUT.md` | **Phase 36 closeout** |
 
+### Low-Latency Hermes Bridge (Phase 37)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE37A_CURRENT_CONTEXT_PATH_MAP.md` | Phase 37A — context paths mapped |
+| `docs/hermes/HERMES_PHASE37B_LOW_LATENCY_BRIDGE_OPTIONS.md` | Phase 37B — 6 options compared |
+| `docs/hermes/HERMES_PHASE37C_RECOMMENDED_LOW_LATENCY_ARCHITECTURE.md` | Phase 37C — queue table + LISTEN/NOTIFY |
+| `docs/hermes/HERMES_PHASE37D_LOW_LATENCY_SAFETY_AND_SLA.md` | Phase 37D — <60s SLA |
+| `docs/hermes/HERMES_PHASE37E_LOW_LATENCY_IMPLEMENTATION_GATES.md` | Phase 37E — Phases 44–46 |
+| `docs/project/PHASE37_LOW_LATENCY_HERMES_BRIDGE_DESIGN_CLOSEOUT.md` | **Phase 37 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
