@@ -388,6 +388,15 @@
 | `docs/llm/PHASE53E_HIGH_LLM_INTEGRATION_PLAN.md` | Phases 54–60 plan |
 | `docs/project/PHASE53_HIGH_LLM_PRIORITY_SCHEDULER_CLOSEOUT.md` | **Phase 53 closeout** |
 
+### High-LLM Queue Implementation (Phases 54–60)
+| `docs/project/PHASE54_HIGH_LLM_QUEUE_TABLE_CLOSEOUT.md` | **Phase 54** — queue tables, 7 seed jobs |
+| `docs/project/PHASE55_HERMES_HIGH_LLM_ROUTING_CLOSEOUT.md` | **Phase 55** — 5 Hermes jobs routed |
+| `docs/project/PHASE56_JOURNAL_BACKTEST_HIGH_LLM_ROUTING_CLOSEOUT.md` | **Phase 56** — 5 journal/backtest jobs |
+| `docs/project/PHASE57_DEEP_OVERNIGHT_HIGH_LLM_ROUTING_CLOSEOUT.md` | **Phase 57** — 5 overnight jobs, 19/22 scheduled |
+| `docs/project/PHASE58_OLD_OVERNIGHT_MONOPOLY_RETIREMENT_CLOSEOUT.md` | **Phase 58** — design only, not applied |
+| `docs/project/PHASE59_HIGH_LLM_QUEUE_DASHBOARD_CLOSEOUT.md` | **Phase 59** — GET /api/v2/llm/high-queue |
+| `docs/project/PHASE60_GOVERNED_HIGH_LLM_EXECUTION_CLOSEOUT.md` | **Phase 60** — PASS_WITH_LIMITS, infra verified |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

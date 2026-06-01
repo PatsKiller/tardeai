@@ -181,13 +181,16 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 53: High-LLM Scheduler COMPLETE — priority formula, quota, dry-run, Phases 54–60 planned**
 
+**Phase 54–60: High-LLM Queue COMPLETE — tables, routing (Hermes+journal+overnight), dashboard, pilot**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
 Hermes rows: 34 (10 promoted, 24 staged, 13 backlog) | Embeddings: 9 | Cache: 10
-Hermes timers: 7 (loop, obs, backlog, discovery, librarian, cache worker, review)
-Maturity: **Level 6 — Production Advisory Infrastructure Active**
-LLM scheduler: designed (priority + quota), Phases 54–60 for implementation
+Hermes timers: 7 | High-LLM queue: 22 jobs, 19/22 schedulable, dashboard live
+Maturity: **Level 6 — Production Advisory + Global LLM Queue Infrastructure**
+Model: gemma3:12b default. Gemma 4: canary-only (Phase 61).
+Execution pilot: PASS_WITH_LIMITS (infra verified, Ollama 500 errors under contention)
 
-Next: Phase 54 LLM queue table, observation period, or 2nd embedding batch
+Next: Phase 61 Gemma 4 canary, observation period, or retry execution pilot mid-day
 
 Daily check:
 ```bash
