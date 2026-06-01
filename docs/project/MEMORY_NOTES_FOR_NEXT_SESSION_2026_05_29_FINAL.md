@@ -355,8 +355,17 @@
 - Usefulness audit: PASS (4.6/5)
 - DB writes: ZERO | Embeddings: ZERO | Promotions: ZERO
 
+### Phase 22 Research Backlog Staged-Write (2026-06-01)
+- 5 research_backlog rows staged (ids 19–23) in hermes_research_intelligence
+- Items: income-rotation ($40,519 gap), TELO thesis strengthen/reject, APAM earnings enrichment, FJSCX holdings enrichment, Telegram actionability template
+- All advisory_only, not_execution, operator_review_required
+- Total Hermes rows: 23 (10 promoted, 13 staged incl 5 backlog)
+- Rollback: `docs/hermes/HERMES_PHASE22B_RESEARCH_BACKLOG_STAGED_WRITE_ROLLBACK.sql`
+- Safety audit: PASS
+- DB writes: 5 rows (staging only) | Embeddings: ZERO | Promotions: ZERO
+
 ### Next Gate
-- Research backlog pilot, embedding curator dry-run, CC backlog dashboard, or observation (requires approval)
+- Income-rotation discovery, embedding curator dry-run, CC backlog dashboard, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

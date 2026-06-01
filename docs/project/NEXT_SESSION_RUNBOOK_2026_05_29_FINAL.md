@@ -129,12 +129,12 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 21: Librarian Dry-Run COMPLETE — 18 rows reviewed, PASS (4.6/5)**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
-Hermes rows: 18 total (10 promoted, 8 staged) | Embeddings: 7 | Cache sections: 10
-Librarian: 7 embedding candidates, 5 promotion candidates, 1 rejection (TELO), 3 backlog
-Telegram: vague_rebalance_recommendation classified HIGH, FAIL gate, backlog created
+**Phase 22: Research Backlog Staged-Write COMPLETE — 5 items staged (ids 19–23), safety PASS**
 
-Next: research backlog pilot, embedding curator dry-run, or observation
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
+
+Next: income-rotation discovery, embedding curator dry-run, CC backlog dashboard, or observation
 
 Daily check:
 ```bash
