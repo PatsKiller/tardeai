@@ -336,8 +336,18 @@
 - Rollback: `docs/infra/SEARXNG_PHASE19B_STAGED_INGESTION_ROLLBACK.sql`
 - Safety audit: PASS
 
+### Phase 20 Agent Model + Actionability Standard (2026-05-31)
+- 7 Hermes agents defined: Coordinator, Source Discovery (operational), Librarian, Research Backlog Manager, Promotion Review (operational), Embedding Curator, Autonomous Research Manager (DISABLED)
+- Source-of-truth hierarchy locked: Trade AI DB → Hermes staging → Hermes promoted → SearXNG (discovery only)
+- Advisory actionability standard: 16 required fields, 11 failure classes
+- Core rule: no "immediately shift" without named candidates and evidence
+- Telegram retention audit: payloads NOT stored in DB, metadata 30 days, future hermes_advisory_message_reviews table designed (not created)
+- Telegram weekly income post classified: vague_rebalance_recommendation, HIGH severity, 0.15 actionability, FAIL — research backlog item created (in doc, not DB)
+- Research backlog sample: "Research income-rotation candidates for $40,519 income gap" with 6 research questions, 9 candidate buckets
+- DB writes: ZERO | Embeddings: ZERO | Promotions: ZERO | Runtime changes: ZERO
+
 ### Next Gate
-- Observation period, agent operating model (Phase 20), or embedding pilot (requires approval)
+- Observation period, research backlog manager implementation, embedding pilot, or income-rotation discovery (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

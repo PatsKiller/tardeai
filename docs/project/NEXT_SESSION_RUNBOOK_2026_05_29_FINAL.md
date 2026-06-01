@@ -125,11 +125,15 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 19: Staged Source Ingestion COMPLETE — 5 rows staged (ids 12–16), safety PASS**
 
+**Phase 20: Agent Model + Actionability Standard COMPLETE — 7 agents, 16 fields, gate defined**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Manual wrapper: `python3 scripts/searxng_manual_query.py "query"` → `data/searxng_queries/`
 Hermes rows: 16 total (10 promoted, 6 staged) | Embeddings: 7 | Cache sections: 10
+Agent model: 7 agents defined, 2 operational, 4 designed, 1 disabled
+Actionability standard: 16 required fields, 11 failure classes, Telegram post classified
 
-Next: observation, agent operating model, or embedding pilot
+Next: observation, research backlog manager, embedding pilot, or income-rotation discovery
 
 Daily check:
 ```bash
