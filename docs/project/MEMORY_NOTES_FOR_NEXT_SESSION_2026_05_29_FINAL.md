@@ -630,8 +630,25 @@
 - Self-learning maturity: 8.1/10 | Level 6: RECERTIFIED | Level 7: PROHIBITED
 - SearXNG: LIVE (localhost) | Finviz: HEALTHY | Alert dedupe: LIVE
 
+### Phases 91–93 Dashboard Drill-Through (2026-06-01)
+- Phase 91: Gap audit + drill-through architecture (10 mappings, 9 components)
+- Phase 92: Drilldown API + timeline API (filter by status/type/agent/symbol)
+- Phase 93: Full visual upgrade — clickable metric cards, promotion lanes, agent touch, queue aging, timeline rail, detail drawer modal, back button
+- Dashboard rebuilt and route verified
+- Zero action buttons, zero write controls
+
+### Session Summary (93 Phases)
+- **93 phases completed** in this session
+- Hermes rows: 42 | Promoted: 13 | Embeddings: 12 | Cache: 13
+- 9 Hermes/LLM timers active
+- Self-learning dashboard: LIVE with drill-through
+- Auto-promotion: first pilot complete (TRX id=16)
+- Feed health: HEALTHY | Alert dedupe: LIVE | LLM queue: STABLE
+- Level 6: RECERTIFIED | Level 7: PROHIBITED
+- Self-learning maturity: 8.1/10
+
 ### Next Gate
-- 7-day observation, expand auto-promotion caps, or broader Level 6 expansion
+- Phase 94 auto-promotion monitoring, Phase 95 expand shadow, Phase 96 UX review
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

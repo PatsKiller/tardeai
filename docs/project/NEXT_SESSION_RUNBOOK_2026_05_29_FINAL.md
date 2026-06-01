@@ -205,13 +205,15 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 88–90: Auto-promotion policy, shadow (3 eligible), veto queue, first auto-promotion (TRX id=16)**
 
+**Phase 91–93: Dashboard drill-through — clickable cards, lanes, agents, timeline, detail drawer**
+
 SearXNG: running | Hermes rows: 42 | Embeddings: 12 | Cache: **13** | Promoted: **13** | Timers: 9
-Dashboard: /v2/self-learning-overview LIVE | Auto-promotion: FIRST PILOT COMPLETE
+Dashboard: /v2/self-learning-overview LIVE with drill-through + detail drawer + timeline
 Self-learning: **8.1/10** | Level 6: **RECERTIFIED** | Level 7: **PROHIBITED**
 
-**Milestone: First Hermes auto-promotion — TRX source_discovery, policy-validated**
+**93 phases completed this session.**
 
-Next: 7-day observation, then expand auto-promotion caps or broader Level 6 expansion
+Next: Phase 94 auto-promotion monitoring, Phase 95 expand shadow, Phase 96 UX review
 
 Daily check:
 ```bash
