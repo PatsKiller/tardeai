@@ -410,8 +410,16 @@
 - Source table writes: ZERO | Runtime changes: ZERO
 - Rollback: sql/migrations/20260601_hermes_phase29_safe_views_rollback.sql
 
+### Phase 30 Expanded Librarian Dry-Run (2026-06-01)
+- 4 new views analyzed: journal (0 rows), backtest (25), screener (25), catalyst (25)
+- 21 total findings: 1 journal (empty), 13 backtest, 5 screener, 2 catalyst
+- Key: journal learning NOT active, momentum_scalp 30% WR (n=20), all_signals 33.9% (n=59), generic catalysts
+- 11 backlog candidates identified, top 5 mapped for future staging
+- Safety audit: PASS (4.25/5)
+- DB writes: ZERO | Source writes: ZERO | Embeddings: ZERO
+
 ### Next Gate
-- Expanded Librarian dry-run, embedding pilot (max 2), or observation (requires approval)
+- Stage expanded backlog (max 10), embedding pilot (max 2), or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
