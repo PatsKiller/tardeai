@@ -1,0 +1,9 @@
+[
+  {
+    "check": "REJ-1",
+    "severity": "medium",
+    "row_id": 9,
+    "symbol": "TELO",
+    "detail": "Low confidence (0.2), staged \u2014 candidate for rejection/archive"
+  }
+]
