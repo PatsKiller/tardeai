@@ -193,15 +193,17 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 74: Feed Health Dashboard — GET /api/v2/system/feed-health**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
-Hermes rows: 37 (10 promoted, 27 staged) | Embeddings: 9 | Cache: 10
-Finviz: HEALTHY (recovered), 2/3 clean runs → auto-upgrade after 3rd
-Alert dedupe: LIVE (~80% reduction) | Feed health API: LIVE
-Model: gemma3:12b | Gemma 4: NOT_AVAILABLE | Level 7: PROHIBITED
+**Phase 75: LEVEL6_CERTIFIED (conditional on 14:00 3rd clean run)**
 
-**Cookie rotation recommended** (exposed in conversation)
+**Phase 76: Feed Preflight COMPLETE — finviz_feed_preflight.py, HEALTHY**
 
-Next: 3rd clean run → LEVEL6_CERTIFIED, then self-learning maturity report
+**Phase 77: Self-Learning Maturity 8.1/10, Phases 78–86 roadmap**
+
+SearXNG: running | Hermes rows: 37 | Embeddings: 9 | Cache: 10 | Timers: 9
+Finviz: HEALTHY, 2/3 clean (3rd at 14:00) | Preflight: HEALTHY | Dedupe: LIVE
+Self-learning: **8.1/10** | Level 6: **CERTIFIED (conditional)** | Level 7: PROHIBITED
+
+Next: 3rd clean run auto-certifies → Phase 78 7-day observation → Phase 79+ expansion
 
 Daily check:
 ```bash

@@ -417,6 +417,13 @@
 | `docs/project/PHASE73_ALERT_DEDUPE_APPLY_CLOSEOUT.md` | **Phase 73** — dedupe + false-fixed gate |
 | `docs/project/PHASE74_FEED_HEALTH_DASHBOARD_CLOSEOUT.md` | **Phase 74** — GET /api/v2/system/feed-health |
 
+### Certification + Preflight + Self-Learning Maturity (Phases 75–77)
+| `docs/project/PHASE75_LEVEL6_CERTIFICATION_UPGRADE_CLOSEOUT.md` | **Phase 75** — LEVEL6_CERTIFIED (conditional) |
+| `docs/project/PHASE76_FINVIZ_PREFLIGHT_AUTOMATION_CLOSEOUT.md` | **Phase 76** — preflight script |
+| `docs/project/PHASE77_FEED_FALLBACK_SELF_LEARNING_MATURITY_CLOSEOUT.md` | **Phase 77** — maturity 8.1/10 |
+| `docs/project/PHASE77D_SELF_LEARNING_MATURITY_ASSESSMENT.md` | Self-learning maturity assessment |
+| `docs/project/PHASE77E_NEXT_AUTOMATION_ROADMAP.md` | Phases 78–86 roadmap |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
