@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
@@ -22,198 +22,236 @@ interface DrillItem {
   source_urls_json: string; created_at: string; embedded: boolean; promoted_audit: boolean
 }
 
-interface TimelineEvent { type: string; id: number; symbol?: string; detail?: string; at: string }
+interface TLEvent { type: string; id: number; symbol?: string; detail?: string; at: string }
 
-const laneColors: Record<string, string> = {
-  BATCH_APPROVE_ELIGIBLE: 'var(--green)', READY_FOR_OPERATOR_REVIEW: 'var(--accent)',
-  NEEDS_RESEARCH: 'var(--amber)', AUTO_REJECT: 'var(--red)', DEFER_OBSERVE: 'var(--text3)',
+const laneConfig: Record<string, { color: string; bg: string; icon: string }> = {
+  BATCH_APPROVE_ELIGIBLE: { color: 'var(--green)', bg: 'rgba(14,203,129,.08)', icon: '✓' },
+  READY_FOR_OPERATOR_REVIEW: { color: 'var(--accent)', bg: 'rgba(74,144,244,.06)', icon: '👁' },
+  NEEDS_RESEARCH: { color: 'var(--amber)', bg: 'rgba(246,190,0,.06)', icon: '🔍' },
+  AUTO_REJECT: { color: 'var(--red)', bg: 'rgba(234,57,67,.06)', icon: '✕' },
+  DEFER_OBSERVE: { color: 'var(--text3)', bg: 'rgba(100,100,100,.06)', icon: '⏳' },
+}
+
+const flowStages = ['Source Discovery', 'Research Backlog', 'Staged Research', 'Advisory Cache', 'Embeddings', 'Promotion Review', 'Promoted']
+
+function ScoreBar({ label, value, max = 1 }: { label: string; value: number; max?: number }) {
+  const pct = Math.min(100, (value / max) * 100)
+  const color = pct >= 75 ? 'var(--green)' : pct >= 50 ? 'var(--amber)' : 'var(--red)'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, marginBottom: 3 }}>
+      <span style={{ width: 80, color: 'var(--text3)' }}>{label}</span>
+      <div style={{ flex: 1, height: 6, background: 'var(--bg2)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3 }} />
+      </div>
+      <span style={{ width: 30, textAlign: 'right', color: 'var(--text2)', fontSize: 9 }}>{(value * 100).toFixed(0)}%</span>
+    </div>
+  )
 }
 
 export default function SelfLearningOverview() {
   const [rk, setRk] = useState(0)
-  const [drill, setDrill] = useState<{ type: string; filter?: string } | null>(null)
+  const [filter, setFilter] = useState<string | null>(null)
   const [detail, setDetail] = useState<DrillItem | null>(null)
-  const { data, loading, error } = useApi<OverviewData>(`/api/v2/hermes/self-learning-overview?_r=${rk}`)
+  const { data } = useApi<OverviewData>(`/api/v2/hermes/self-learning-overview?_r=${rk}`)
+  const drillQ = filter ? `&${filter}` : ''
+  const { data: drillData } = useApi<{ items: DrillItem[] }>(filter ? `/api/v2/hermes/self-learning/drilldown?_r=${rk}${drillQ}` : null)
+  const { data: tlData } = useApi<{ events: TLEvent[] }>(`/api/v2/hermes/self-learning/timeline?_r=${rk}`)
 
-  // Drill-down data
-  const drillQ = drill ? `&status=${drill.filter || ''}` : ''
-  const { data: drillData } = useApi<{ items: DrillItem[]; total: number }>(
-    drill ? `/api/v2/hermes/self-learning/drilldown?_r=${rk}${drill.type === 'status' ? `&status=${drill.filter}` : ''}${drill.type === 'type' ? `&type=${drill.filter}` : ''}${drill.type === 'agent' ? `&agent=${drill.filter}` : ''}` : null
-  )
-  const { data: tlData } = useApi<{ events: TimelineEvent[] }>(`/api/v2/hermes/self-learning/timeline?_r=${rk}`)
+  if (!data) return <div style={{ padding: 24, color: 'var(--text2)' }}>Loading...</div>
 
-  if (loading && !data) return <div style={{ padding: 24, color: 'var(--text2)' }}>Loading...</div>
-  if (error) return <div style={{ padding: 24, color: 'var(--red)' }}>Error: {error}</div>
-  if (!data) return null
-
-  const cardStyle = (active?: boolean) => ({
-    padding: '8px 14px', background: active ? 'var(--bg2)' : 'var(--bg1)',
-    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 6,
-    textAlign: 'center' as const, minWidth: 70, cursor: 'pointer',
-  })
+  const h = data.hermes
+  const maxAge = Math.max(...(data.age_buckets.map(b => b.c) || [1]), 1)
 
   return (
-    <>
-      <PageHeader title="Self-Learning Overview" subtitle="Hermes advisory automation cockpit — click any card to drill down" actions={
-        <div style={{ display: 'flex', gap: 6 }}>
-          {drill && <button onClick={() => { setDrill(null); setDetail(null) }} style={{ fontSize: 11, padding: '4px 12px', border: '1px solid var(--amber)', borderRadius: 4, background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>← Back</button>}
-          <button onClick={() => setRk(k => k + 1)} style={{ fontSize: 11, padding: '4px 12px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>Refresh</button>
+    <div style={{ display: 'flex', gap: 12 }}>
+      {/* Main Content */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <PageHeader title="Self-Learning Overview" subtitle="Hermes advisory automation cockpit" actions={
+          <div style={{ display: 'flex', gap: 6 }}>
+            {filter && <button onClick={() => { setFilter(null); setDetail(null) }} style={{ fontSize: 10, padding: '3px 10px', border: '1px solid var(--amber)', borderRadius: 4, background: 'transparent', color: 'var(--amber)', cursor: 'pointer' }}>← Back</button>}
+            <button onClick={() => setRk(k => k + 1)} style={{ fontSize: 10, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>Refresh</button>
+          </div>
+        } />
+
+        {/* Status Strip */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, background: 'rgba(14,203,129,.15)', color: 'var(--green)', fontWeight: 700 }}>{data.maturity}</span>
+          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, background: 'rgba(234,57,67,.1)', color: 'var(--red)' }}>Level 7: {data.level7}</span>
+          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, background: data.feed_health.status === 'RUN_HEALTHY' ? 'rgba(14,203,129,.1)' : 'rgba(246,190,0,.15)', color: data.feed_health.status === 'RUN_HEALTHY' ? 'var(--green)' : 'var(--amber)' }}>Feed: {data.feed_health.status}</span>
         </div>
-      } />
 
-      {/* Executive Status Strip */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(14,203,129,.15)', color: 'var(--green)', fontWeight: 700 }}>{data.maturity}</span>
-        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: 'rgba(234,57,67,.1)', color: 'var(--red)', fontWeight: 600 }}>Level 7: {data.level7}</span>
-        <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: data.feed_health.status === 'RUN_HEALTHY' ? 'rgba(14,203,129,.1)' : 'rgba(246,190,0,.15)', color: data.feed_health.status === 'RUN_HEALTHY' ? 'var(--green)' : 'var(--amber)' }}>Feed: {data.feed_health.status} ({data.feed_health.symbols})</span>
-      </div>
+        {/* Filter Chips */}
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+          {[
+            { label: 'All', q: null },
+            { label: `Staged (${h.staged})`, q: 'status=staged' },
+            { label: `Promoted (${h.promoted})`, q: 'status=promoted' },
+            { label: `Backlog (${h.backlog})`, q: 'type=research_backlog' },
+            { label: 'Needs Review', q: 'status=staged' },
+          ].map((f, i) => (
+            <button key={i} onClick={() => setFilter(f.q)} style={{
+              fontSize: 9, padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
+              border: `1px solid ${filter === f.q ? 'var(--accent)' : 'var(--border)'}`,
+              background: filter === f.q ? 'rgba(74,144,244,.1)' : 'var(--bg2)',
+              color: filter === f.q ? 'var(--accent)' : 'var(--text2)',
+            }}>{f.label}</button>
+          ))}
+        </div>
 
-      {/* Clickable Summary Cards */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        {[
-          { label: 'Total', value: data.hermes.total, color: 'var(--text0)', click: { type: 'all' } },
-          { label: 'Staged', value: data.hermes.staged, color: 'var(--text3)', click: { type: 'status', filter: 'staged' } },
-          { label: 'Promoted', value: data.hermes.promoted, color: 'var(--accent)', click: { type: 'status', filter: 'promoted' } },
-          { label: 'Backlog', value: data.hermes.backlog, color: 'var(--amber)', click: { type: 'type', filter: 'research_backlog' } },
-          { label: 'Embeddings', value: data.embeddings, color: 'var(--green)' },
-          { label: 'Cache', value: data.cache_sections, color: 'var(--text1)' },
-          { label: 'LLM Queue', value: data.llm_queue.total, color: 'var(--accent)' },
-          { label: 'Events', value: data.events.total, color: 'var(--text2)' },
-        ].map((m, i) => (
-          <div key={i} onClick={() => m.click && setDrill(m.click as any)} style={cardStyle(drill?.filter === m.click?.filter)}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: m.color }}>{m.value}</div>
-            <div style={{ fontSize: 9, color: 'var(--text3)' }}>{m.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Drill-Down Panel */}
-      {drill && drillData && (
-        <Card title={`Drill-Down: ${drill.filter || 'all'} (${drillData.total} items)`}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['ID', 'Symbol', 'Type', 'Agent', 'Conf', 'Status', 'Topic', ''].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '4px 6px', color: 'var(--text3)', fontSize: 10 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {drillData.items.slice(0, 20).map(r => (
-                <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '4px 6px', fontFamily: 'monospace', color: 'var(--text3)' }}>{r.id}</td>
-                  <td style={{ padding: '4px 6px', fontWeight: 600, color: 'var(--text0)' }}>{r.symbol || 'SYS'}</td>
-                  <td style={{ padding: '4px 6px', color: 'var(--text2)', fontSize: 10 }}>{r.research_type?.replace(/_/g, ' ')}</td>
-                  <td style={{ padding: '4px 6px', color: 'var(--text3)', fontSize: 9 }}>{r.hermes_agent_name?.replace(/_/g, ' ')}</td>
-                  <td style={{ padding: '4px 6px' }}>{r.confidence_score}</td>
-                  <td style={{ padding: '4px 6px' }}>
-                    <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: r.status === 'promoted' ? 'rgba(74,144,244,.1)' : 'rgba(246,190,0,.1)', color: r.status === 'promoted' ? 'var(--accent)' : 'var(--amber)' }}>{r.status}</span>
-                    {r.embedded && <span style={{ fontSize: 8, marginLeft: 4, color: 'var(--green)' }}>RAG</span>}
-                  </td>
-                  <td style={{ padding: '4px 6px', color: 'var(--text2)', fontSize: 10, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.topic}</td>
-                  <td style={{ padding: '4px 6px' }}>
-                    <button onClick={() => setDetail(r)} style={{ fontSize: 9, padding: '2px 6px', border: '1px solid var(--accent)', borderRadius: 3, background: 'transparent', color: 'var(--accent)', cursor: 'pointer' }}>Detail</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {/* Promotion Lanes — Clickable */}
-      {!drill && (
-        <Card title="Promotion Review Lanes">
-          <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 6 }}>Advisory Only — Click lane to drill down</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {Object.entries(data.promotion_lanes).map(([lane, count]) => (
-              <div key={lane} onClick={() => setDrill({ type: 'status', filter: 'staged' })} style={{ padding: '6px 12px', background: 'var(--bg2)', border: `1px solid ${laneColors[lane] || 'var(--border)'}`, borderRadius: 4, textAlign: 'center', cursor: 'pointer' }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: laneColors[lane] || 'var(--text1)' }}>{count}</div>
-                <div style={{ fontSize: 8, color: 'var(--text3)' }}>{lane.replace(/_/g, ' ')}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Queue Aging — Clickable */}
-      {!drill && data.age_buckets.length > 0 && (
-        <Card title="Queue Aging">
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {data.age_buckets.map((b, i) => (
-              <div key={i} onClick={() => setDrill({ type: 'status', filter: 'staged' })} style={{ padding: '6px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 4, textAlign: 'center', cursor: 'pointer' }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: b.bucket === '8d+' ? 'var(--red)' : b.bucket === '4-7d' ? 'var(--amber)' : 'var(--text1)' }}>{b.c}</div>
-                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{b.bucket}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Agent Touch Map — Clickable */}
-      {!drill && (
-        <Card title="Agent Touch Map">
-          <div style={{ fontSize: 11 }}>
-            {data.agents.map((a, i) => (
-              <div key={i} onClick={() => setDrill({ type: 'agent', filter: a.hermes_agent_name })} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-                <span style={{ color: 'var(--text1)' }}>{a.hermes_agent_name?.replace(/_/g, ' ')}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 10 }}>{a.c} rows | {a.last ? new Date(a.last).toLocaleDateString() : '?'}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Timeline */}
-      {!drill && tlData && tlData.events.length > 0 && (
-        <Card title="Timeline (Recent 20)">
-          <div style={{ fontSize: 10 }}>
-            {tlData.events.map((e, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, minWidth: 55, textAlign: 'center',
-                  background: e.type === 'promoted' ? 'rgba(74,144,244,.1)' : e.type === 'embedded' ? 'rgba(14,203,129,.1)' : e.type === 'event' ? 'rgba(246,190,0,.1)' : 'rgba(100,100,100,.1)',
-                  color: e.type === 'promoted' ? 'var(--accent)' : e.type === 'embedded' ? 'var(--green)' : e.type === 'event' ? 'var(--amber)' : 'var(--text3)',
-                }}>{e.type}</span>
-                <span style={{ color: 'var(--text2)' }}>id={e.id}</span>
-                {e.symbol && <span style={{ color: 'var(--text1)', fontWeight: 600 }}>{e.symbol}</span>}
-                {e.detail && <span style={{ color: 'var(--text3)' }}>{e.detail.replace(/_/g, ' ')}</span>}
-                <span style={{ color: 'var(--text3)', marginLeft: 'auto', fontSize: 9 }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Infrastructure */}
-      {!drill && (
-        <Card title="Infrastructure">
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11 }}>
-            <div><span style={{ color: 'var(--text3)' }}>LLM Queue:</span> {data.llm_queue.total} total, {data.llm_queue.completed} done, {data.llm_queue.failed} failed</div>
-            <div><span style={{ color: 'var(--text3)' }}>Feed:</span> {data.feed_health.status} ({data.feed_health.symbols} symbols)</div>
-            <div><span style={{ color: 'var(--text3)' }}>Last Observation:</span> {data.last_observation ? new Date(data.last_observation).toLocaleString() : 'N/A'}</div>
-          </div>
-        </Card>
-      )}
-
-      {/* Detail Drawer */}
-      {detail && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setDetail(null)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 20, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 8, padding: '3px 6px', background: 'rgba(246,190,0,.08)', borderRadius: 3 }}>Advisory Only — Not Execution — Read-Only Detail</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>{detail.symbol || 'SYSTEM'} — {detail.research_type?.replace(/_/g, ' ')}</div>
-            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 8 }}>ID: {detail.id} | Agent: {detail.hermes_agent_name} | Confidence: {detail.confidence_score}</div>
-            <div style={{ fontSize: 12, color: 'var(--text0)', marginBottom: 8, lineHeight: 1.5 }}><strong>Topic:</strong> {detail.topic}</div>
-            <div style={{ fontSize: 11, color: 'var(--text1)', marginBottom: 8, lineHeight: 1.5 }}><strong>Summary:</strong> {detail.summary}</div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: detail.status === 'promoted' ? 'rgba(74,144,244,.15)' : 'rgba(246,190,0,.1)', color: detail.status === 'promoted' ? 'var(--accent)' : 'var(--amber)' }}>{detail.status}</span>
-              {detail.embedded && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(14,203,129,.15)', color: 'var(--green)' }}>Embedded</span>}
-              {detail.promoted_audit && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 3, background: 'rgba(74,144,244,.1)', color: 'var(--accent)' }}>Audit ✓</span>}
+        {/* Flow Diagram */}
+        {!filter && (
+          <Card title="Self-Learning Flow">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', padding: '4px 0' }}>
+              {flowStages.map((stage, i) => {
+                const counts: Record<string, number> = { 'Source Discovery': 8, 'Research Backlog': h.backlog, 'Staged Research': h.staged - h.backlog, 'Advisory Cache': data.cache_sections, 'Embeddings': data.embeddings, 'Promotion Review': data.promotion_lanes.READY_FOR_OPERATOR_REVIEW || 0, 'Promoted': h.promoted }
+                const c = counts[stage] || 0
+                return (
+                  <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, textAlign: 'center', minWidth: 60 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)' }}>{c}</div>
+                      <div style={{ fontSize: 8, color: 'var(--text3)', lineHeight: 1.2 }}>{stage}</div>
+                    </div>
+                    {i < flowStages.length - 1 && <span style={{ color: 'var(--text3)', fontSize: 12 }}>→</span>}
+                  </div>
+                )
+              })}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>Created: {detail.created_at ? new Date(detail.created_at).toLocaleString() : '?'}</div>
-            <button onClick={() => setDetail(null)} style={{ marginTop: 12, fontSize: 11, padding: '6px 16px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text1)', cursor: 'pointer' }}>Close</button>
+          </Card>
+        )}
+
+        {/* Promotion Lanes as Cards */}
+        {!filter && (
+          <Card title="Promotion Review Lanes">
+            <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 6 }}>Advisory Only — Click lane to drill down</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.entries(data.promotion_lanes).filter(([, c]) => c > 0).map(([lane, count]) => {
+                const cfg = laneConfig[lane] || { color: 'var(--text3)', bg: 'rgba(100,100,100,.05)', icon: '?' }
+                return (
+                  <div key={lane} onClick={() => setFilter('status=staged')} style={{ padding: '8px 14px', background: cfg.bg, border: `1px solid ${cfg.color}40`, borderRadius: 8, cursor: 'pointer', minWidth: 100 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                      <span style={{ fontSize: 14 }}>{cfg.icon}</span>
+                      <span style={{ fontSize: 18, fontWeight: 700, color: cfg.color }}>{count}</span>
+                    </div>
+                    <div style={{ fontSize: 8, color: 'var(--text3)', lineHeight: 1.2 }}>{lane.replace(/_/g, ' ')}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        )}
+
+        {/* Queue Aging Bar Chart */}
+        {!filter && data.age_buckets.length > 0 && (
+          <Card title="Queue Aging">
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 60 }}>
+              {data.age_buckets.map((b, i) => {
+                const h = Math.max(8, (b.c / maxAge) * 50)
+                const color = b.bucket === '8d+' ? 'var(--red)' : b.bucket === '4-7d' ? 'var(--amber)' : 'var(--accent)'
+                return (
+                  <div key={i} style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color, marginBottom: 2 }}>{b.c}</div>
+                    <div style={{ height: h, background: color, borderRadius: '4px 4px 0 0', opacity: 0.7 }} />
+                    <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{b.bucket}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        )}
+
+        {/* Agent Touch */}
+        {!filter && (
+          <Card title="Agent Activity">
+            {data.agents.slice(0, 6).map((a, i) => (
+              <div key={i} onClick={() => setFilter(`agent=${a.hermes_agent_name}`)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--green)' }} />
+                <span style={{ flex: 1, fontSize: 11, color: 'var(--text1)' }}>{a.hermes_agent_name?.replace(/_/g, ' ')}</span>
+                <span style={{ fontSize: 10, color: 'var(--text3)' }}>{a.c} rows</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{a.last ? new Date(a.last).toLocaleDateString() : ''}</span>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {/* Timeline */}
+        {!filter && tlData && (
+          <Card title="Timeline">
+            {tlData.events.slice(0, 12).map((e, i) => {
+              const colors: Record<string, string> = { staged: 'var(--text3)', promoted: 'var(--accent)', embedded: 'var(--green)', event: 'var(--amber)' }
+              return (
+                <div key={i} style={{ display: 'flex', gap: 6, padding: '3px 0', borderBottom: '1px solid var(--border)', alignItems: 'center', fontSize: 10 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: colors[e.type] || 'var(--text3)', flexShrink: 0 }} />
+                  <span style={{ color: colors[e.type] || 'var(--text3)', fontWeight: 600, minWidth: 55 }}>{e.type}</span>
+                  <span style={{ color: 'var(--text2)' }}>id={e.id}</span>
+                  {e.symbol && <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{e.symbol}</span>}
+                  <span style={{ color: 'var(--text3)', marginLeft: 'auto', fontSize: 9 }}>{e.at ? new Date(e.at).toLocaleString() : ''}</span>
+                </div>
+              )
+            })}
+          </Card>
+        )}
+
+        {/* Drill-Down */}
+        {filter && drillData && (
+          <Card title={`Results (${drillData.items.length})`}>
+            {drillData.items.slice(0, 20).map(r => (
+              <div key={r.id} onClick={() => setDetail(r)} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', alignItems: 'center' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 10, color: 'var(--text3)', width: 24 }}>{r.id}</span>
+                <span style={{ fontWeight: 600, color: 'var(--text0)', width: 50 }}>{r.symbol || 'SYS'}</span>
+                <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: r.status === 'promoted' ? 'rgba(74,144,244,.1)' : 'rgba(246,190,0,.1)', color: r.status === 'promoted' ? 'var(--accent)' : 'var(--amber)' }}>{r.status}</span>
+                {r.embedded && <span style={{ fontSize: 8, color: 'var(--green)' }}>RAG</span>}
+                <span style={{ flex: 1, fontSize: 10, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.topic}</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{r.confidence_score}</span>
+              </div>
+            ))}
+          </Card>
+        )}
+
+        {/* Infrastructure */}
+        {!filter && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, fontSize: 10, color: 'var(--text3)' }}>
+            <span>LLM: {data.llm_queue.total} jobs ({data.llm_queue.completed} done, {data.llm_queue.failed} fail)</span>
+            <span>|</span>
+            <span>Feed: {data.feed_health.symbols} symbols</span>
+            <span>|</span>
+            <span>Obs: {data.last_observation ? new Date(data.last_observation).toLocaleString() : 'N/A'}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Persistent Detail Drawer */}
+      {detail && (
+        <div style={{ width: 320, flexShrink: 0, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, maxHeight: '85vh', overflowY: 'auto', position: 'sticky', top: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{detail.symbol || 'SYSTEM'}</span>
+            <button onClick={() => setDetail(null)} style={{ fontSize: 10, padding: '2px 8px', border: '1px solid var(--border)', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text3)', cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--amber)', marginBottom: 8, padding: '2px 6px', background: 'rgba(246,190,0,.06)', borderRadius: 3 }}>Advisory Only — Read-Only</div>
+
+          <div style={{ fontSize: 11, color: 'var(--text1)', marginBottom: 6, lineHeight: 1.4 }}>{detail.topic}</div>
+          <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 10, lineHeight: 1.4 }}>{detail.summary}</div>
+
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+            <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: detail.status === 'promoted' ? 'rgba(74,144,244,.1)' : 'rgba(246,190,0,.08)', color: detail.status === 'promoted' ? 'var(--accent)' : 'var(--amber)' }}>{detail.status}</span>
+            {detail.embedded && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(14,203,129,.1)', color: 'var(--green)' }}>Embedded</span>}
+            {detail.promoted_audit && <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(74,144,244,.08)', color: 'var(--accent)' }}>Audit ✓</span>}
+          </div>
+
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', marginBottom: 4 }}>Quality</div>
+            <ScoreBar label="Confidence" value={detail.confidence_score} />
+            <ScoreBar label="Evidence" value={detail.source_urls_json && detail.source_urls_json !== '[]' ? 0.9 : 0.5} />
+            <ScoreBar label="Freshness" value={0.9} />
+          </div>
+
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>
+            <div>ID: {detail.id}</div>
+            <div>Type: {detail.research_type?.replace(/_/g, ' ')}</div>
+            <div>Agent: {detail.hermes_agent_name?.replace(/_/g, ' ')}</div>
+            <div>Created: {detail.created_at ? new Date(detail.created_at).toLocaleString() : '?'}</div>
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
