@@ -99,6 +99,7 @@ export default function SystemApplications() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [detail, setDetail] = useState<AppInfo | null>(null)
   const { data, loading, error } = useApi<AppsData>(`/api/v2/system/applications?_r=${rk}`)
+  const { data: sjData } = useApi<{ timers: { total: number; hermes: Array<{ name: string; status: string }>; tradeai: Array<{ name: string; status: string }>; other_count: number }; cron: { active: number; migrated: number }; health: { last_observation: string | null; last_backlog_health: string | null } }>(`/api/v2/system/scheduled-jobs?_r=${rk}`)
 
   const filtered = useMemo(() => {
     if (!data) return []
@@ -194,6 +195,51 @@ export default function SystemApplications() {
       </Card>
 
       {detail && <DetailModal app={detail} onClose={() => setDetail(null)} />}
+
+      {/* Scheduled Jobs Health */}
+      {sjData && (
+        <Card title="Scheduled Jobs">
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            {[
+              { label: 'Systemd Timers', value: sjData.timers.total, color: 'var(--accent)' },
+              { label: 'Active Cron', value: sjData.cron.active, color: 'var(--text0)' },
+              { label: 'Migrated', value: sjData.cron.migrated, color: 'var(--green)' },
+            ].map((m, i) => (
+              <div key={i} style={{ padding: '6px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 4, textAlign: 'center' }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: m.color }}>{m.value}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{m.label}</div>
+              </div>
+            ))}
+          </div>
+          {sjData.timers.hermes.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4, fontWeight: 600 }}>Hermes Timers</div>
+              {sjData.timers.hermes.map((t, i) => (
+                <div key={i} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0' }}>
+                  <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: t.status === 'active' ? 'rgba(14,203,129,.15)' : 'rgba(234,57,67,.15)', color: t.status === 'active' ? 'var(--green)' : 'var(--red)' }}>{t.status}</span>
+                  <span style={{ color: 'var(--text1)' }}>{t.name.replace(/-/g, ' ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {sjData.timers.tradeai.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4, fontWeight: 600 }}>Trade AI Timers</div>
+              {sjData.timers.tradeai.map((t, i) => (
+                <div key={i} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center', padding: '2px 0' }}>
+                  <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 3, background: t.status === 'active' ? 'rgba(14,203,129,.15)' : 'rgba(234,57,67,.15)', color: t.status === 'active' ? 'var(--green)' : 'var(--red)' }}>{t.status}</span>
+                  <span style={{ color: 'var(--text1)' }}>{t.name.replace(/-/g, ' ')}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {sjData.health.last_observation && (
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+              Last observation: {new Date(sjData.health.last_observation).toLocaleString()} | Last backlog health: {sjData.health.last_backlog_health ? new Date(sjData.health.last_backlog_health).toLocaleString() : 'N/A'}
+            </div>
+          )}
+        </Card>
+      )}
     </>
   )
 }
