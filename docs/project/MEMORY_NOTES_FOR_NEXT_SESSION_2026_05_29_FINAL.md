@@ -570,8 +570,19 @@
 - High-model jobs completed: 0 (500 errors, infra works correctly)
 - .env changes: ZERO | Model routing: ZERO | Broker/trade/journal: ZERO
 
+### Phases 61–66 Stabilization (2026-06-01)
+- Phase 61: Ollama contention root cause = cold swap + num_ctx=8192. Fix: flock, warm, num_ctx=4096
+- Phase 62: Gemma 4 NOT_AVAILABLE locally (not installed, not pulled)
+- Phase 63: Retry 1/3 completed (17.3s), 2/3 timeout. GPU pressure. Infrastructure verified.
+- Phase 64: high-llm-execution-worker.timer enabled, daily 14:00 ET, max 3 jobs
+- Phase 65: Parallel comparison simulated. READY_WITH_LIMITS. 3-night shadow deferred.
+- Phase 66: Level 6 STABLE. Self-learning 4.3/5. 8 Hermes timers + 1 LLM timer.
+- Gemma 4: NOT_AVAILABLE, not a factor. gemma3:12b remains default.
+- Gemma 4 is managed by llama.cpp (not Ollama) — separate from this queue infrastructure.
+- Level 7 trading automation: PROHIBITED.
+
 ### Next Gate
-- Phase 61 Gemma 4 canary, observation period, retry execution mid-day, or old monopoly apply (requires approval)
+- 7-day observation, shadow overnight, expand cache cap, 2nd embedding batch, or maturity cert (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
