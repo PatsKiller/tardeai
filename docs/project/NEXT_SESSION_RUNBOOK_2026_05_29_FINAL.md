@@ -123,11 +123,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 18: Source Discovery Dry-Run COMPLETE — 5 queries, 10 candidates, quality 4.5/5**
 
+**Phase 19: Staged Source Ingestion COMPLETE — 5 rows staged (ids 12–16), safety PASS**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Manual wrapper: `python3 scripts/searxng_manual_query.py "query"` → `data/searxng_queries/`
-Discovery outputs: `docs/infra/searxng_phase18_source_discovery_dryrun/`
+Hermes rows: 16 total (10 promoted, 6 staged) | Embeddings: 7 | Cache sections: 10
 
-Next: observation, capped staged ingestion (Phase 19), or CC query visibility
+Next: observation, agent operating model, or embedding pilot
 
 Daily check:
 ```bash
