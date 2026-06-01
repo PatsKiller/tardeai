@@ -1,0 +1,82 @@
+[
+  {
+    "section": "hermes_news_research_reframe_SCHD",
+    "score": 3.3,
+    "classification": "REFRESH_NEEDED",
+    "content_len": 229,
+    "has_source": false,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_pipeline_quality_validation_SYSTEM",
+    "score": 2.9,
+    "classification": "RETIRE_CANDIDATE",
+    "content_len": 196,
+    "has_source": false,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_ticker_thesis_challenge_APAM",
+    "score": 4.0,
+    "classification": "KEEP",
+    "content_len": 673,
+    "has_source": true,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_ticker_thesis_challenge_FJSCX",
+    "score": 4.0,
+    "classification": "KEEP",
+    "content_len": 572,
+    "has_source": true,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_ticker_thesis_challenge_FLYW",
+    "score": 3.4,
+    "classification": "REFRESH_NEEDED",
+    "content_len": 331,
+    "has_source": false,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_ticker_thesis_challenge_INFU",
+    "score": 3.4,
+    "classification": "REFRESH_NEEDED",
+    "content_len": 292,
+    "has_source": false,
+    "confidence": 0.7
+  },
+  {
+    "section": "hermes_ticker_thesis_challenge_SPRC",
+    "score": 3.4,
+    "classification": "REFRESH_NEEDED",
+    "content_len": 243,
+    "has_source": false,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_ticker_thesis_challenge_TRX",
+    "score": 4.0,
+    "classification": "KEEP",
+    "content_len": 588,
+    "has_source": true,
+    "confidence": 0.6
+  },
+  {
+    "section": "hermes_trade_reflection_APPS",
+    "score": 3.4,
+    "classification": "REFRESH_NEEDED",
+    "content_len": 276,
+    "has_source": false,
+    "confidence": 0.7
+  },
+  {
+    "section": "hermes_trade_reflection_ASPN",
+    "score": 3.2,
+    "classification": "REFRESH_NEEDED",
+    "content_len": 182,
+    "has_source": false,
+    "confidence": 0.6
+  }
+]
