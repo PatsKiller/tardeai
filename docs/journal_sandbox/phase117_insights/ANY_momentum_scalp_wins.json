@@ -1,0 +1,37 @@
+{
+  "hermes_insight_version": "1.0",
+  "type": "journal_insight",
+  "generated_at": "2026-06-01T12:00:00-04:00",
+  "mutation_statement": "THIS IS A READ-ONLY INSIGHT. NO JOURNAL MUTATION. NO TRADE MODIFICATION.",
+
+  "trade_reference": {
+    "symbol": "ANY",
+    "strategy": "momentum_scalp",
+    "entry_price": 3.23,
+    "exit_price": 3.74,
+    "pnl": 315.69,
+    "exit_reason": "target_hit",
+    "date": "2026-06-01"
+  },
+
+  "pattern_observed": "ANY momentum_scalp produced two wins today (June 1): +$315.69 and +$309.50 from $3.23 entry. This is notable because momentum_scalp is on the ATM same_day_skip list — meaning these trades were likely manually approved via Telegram, not auto-approved. The strategy works when operator-approved but ATM cadence (15 min) is too slow for it.",
+
+  "evidence": [
+    "Two target_hit wins on the same day, same entry price",
+    "momentum_scalp is in config/atm_config.yaml same_day_skip_strategies",
+    "ATM auto-approver rejects momentum_scalp with 'cadence_too_slow'",
+    "These trades must have been manually approved"
+  ],
+
+  "confidence": 0.6,
+
+  "suggested_lesson": "momentum_scalp CAN be profitable when operator manually approves. The ATM skip is a cadence limitation, not a quality judgment. If a faster execution path were built (sub-minute), momentum_scalp auto-approval would be viable. Consider tracking manual-approval win rate separately from auto-approval.",
+
+  "what_not_to_change": [
+    "Do not remove momentum_scalp from same_day_skip — ATM cadence IS too slow",
+    "Do not auto-approve intraday strategies without building faster execution",
+    "Do not assume 2 wins = strategy validated — need larger sample"
+  ],
+
+  "human_review_required": true
+}

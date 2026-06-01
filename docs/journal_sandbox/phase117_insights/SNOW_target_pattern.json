@@ -1,0 +1,36 @@
+{
+  "hermes_insight_version": "1.0",
+  "type": "journal_insight",
+  "generated_at": "2026-06-01T12:00:00-04:00",
+  "mutation_statement": "THIS IS A READ-ONLY INSIGHT. NO JOURNAL MUTATION. NO TRADE MODIFICATION.",
+
+  "trade_reference": {
+    "symbol": "SNOW",
+    "strategy": "fib_retracement_bounce",
+    "entry_price": 236.50,
+    "exit_price": 268.97,
+    "pnl": 259.74,
+    "exit_reason": "target_hit",
+    "date": "2026-05-28"
+  },
+
+  "pattern_observed": "SNOW fib_retracement_bounce produced two wins from the same entry ($236.50): +$259.74 and +$225.90. The strategy correctly identified a Fibonacci support level and rode to target. This is the highest-dollar paper trade win.",
+
+  "evidence": [
+    "Two separate paper_trades with same entry price and strategy",
+    "Both hit target (not stopped out) — validates the fib level identification",
+    "Combined P&L +$485.64 from a single setup"
+  ],
+
+  "confidence": 0.7,
+
+  "suggested_lesson": "fib_retracement_bounce on high-priced stocks ($200+) can produce outsized dollar gains. The strategy works when fib levels are correctly identified. Consider increasing position size for high-confidence fib setups on liquid large-caps.",
+
+  "what_not_to_change": [
+    "Do not modify the fib_retracement_bounce strategy parameters based on a single setup",
+    "Do not assume all fib bounces will be this clean — 2 trades is not a sample",
+    "Do not change stop/target rules based on one winner"
+  ],
+
+  "human_review_required": true
+}
