@@ -589,8 +589,13 @@
 - Phase 71: Feed resilience designed (health preflight, cookie age, failure dedupe, fallback policy, dashboard)
 - **OPERATOR ACTION:** Update FINVIZ_COOKIE, then validate 3 clean screener runs for full certification
 
+### Phases 72–74 Recovery + Dedupe + Dashboard (2026-06-01)
+- Phase 72: Cookie updated, 2/3 clean runs (11:09 + 12:14). Cookie rotation recommended.
+- Phase 73: telegram_alert_dedupe.py + alert_false_fixed_gate.py implemented. Dedupe works (~80%). False-fixed gate verifies Finviz CSV success.
+- Phase 74: GET /api/v2/system/feed-health live. Finviz HEALTHY, 0 streak, 3 ops backlog, news fresh.
+
 ### Next Gate
-- Cookie update → validate → full LEVEL6_CERTIFIED, then shadow overnight or broader LLM execution
+- 3rd clean run → LEVEL6_CERTIFIED, then self-learning maturity report or feed preflight automation
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
