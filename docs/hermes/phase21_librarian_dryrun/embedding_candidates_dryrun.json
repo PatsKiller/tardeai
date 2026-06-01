@@ -1,0 +1,51 @@
+[
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 12,
+    "symbol": "SCHD",
+    "detail": "Staged, conf=0.5, has evidence, not in cache \u2014 embedding candidate"
+  },
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 13,
+    "symbol": "TRX",
+    "detail": "Staged, conf=0.5, has evidence, not in cache \u2014 embedding candidate"
+  },
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 14,
+    "symbol": "APAM",
+    "detail": "Staged, conf=0.48, has evidence, not in cache \u2014 embedding candidate"
+  },
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 15,
+    "symbol": "FJSCX",
+    "detail": "Staged, conf=0.48, has evidence, not in cache \u2014 embedding candidate"
+  },
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 16,
+    "symbol": "TRX",
+    "detail": "Staged, conf=0.5, has evidence, not in cache \u2014 embedding candidate"
+  },
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 17,
+    "symbol": "ADBE",
+    "detail": "Staged, conf=0.6, has evidence, not in cache \u2014 embedding candidate"
+  },
+  {
+    "check": "EMB-1",
+    "severity": "info",
+    "row_id": 18,
+    "symbol": "AGMH",
+    "detail": "Staged, conf=0.6, has evidence, not in cache \u2014 embedding candidate"
+  }
+]
