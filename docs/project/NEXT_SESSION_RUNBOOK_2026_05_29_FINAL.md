@@ -94,9 +94,9 @@ Research rows: 11 | Embeddings: 7 | Gateway: active
 
 Operator runbook: `docs/hermes/HERMES_AUTONOMOUS_LOOP_OPERATOR_RUNBOOK.md`
 
-**Phase 4A-5D: ALL COMPLETE — 7 rows promoted, Hermes Intelligence page live**
+**Phase 4A-5D: ALL COMPLETE — 10 rows promoted, Hermes Intelligence page live**
 
-Promoted: APPS, INFU, FLYW, SPRC, SCHD, ASPN, SYSTEM | 4 staged remain
+Promoted: APPS, INFU, FLYW, SPRC, SCHD, ASPN, SYSTEM, FJSCX, APAM, TRX | 1 staged (TELO)
 Intelligence page: /v2/hermes-intelligence
 
 **Phase 6A-6D: COMPLETE — governance audit, loop architecture, promotion governance**
@@ -115,7 +115,9 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 14: Promotion Review dashboard PASS — read-only preview live**
 
-Next: promote 3 candidates, source discovery dry-run, or observation
+**Phase 15: Capped Promotion COMPLETE — FJSCX, APAM, TRX promoted (10 total, 1 staged)**
+
+Next: source discovery dry-run, or observation
 
 Daily check:
 ```bash
