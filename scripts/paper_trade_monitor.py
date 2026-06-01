@@ -139,6 +139,7 @@ def _fix_integrity_issues(conn, alpaca_symbols):
                 UPDATE paper_trades SET lifecycle_state='closed', status='closed',
                     close_reason='phantom_no_alpaca_position', closed_at=NOW(),
                     closed_via='integrity_check',
+                    exit_reason='phantom_no_alpaca_position',
                     outcome_verdict = CASE WHEN pnl > 0 THEN 'WIN' WHEN pnl < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
                 WHERE id = %s
             """, [tid])
