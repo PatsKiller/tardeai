@@ -68,6 +68,23 @@ _P2_PATTERNS = [
     (r"membership.*present.*dropped", "membership_status"),
 ]
 
+_P2_SYSTEM_PATTERNS = [
+    # Health agent noise — suppress repeated retries/staleness
+    (r"RETRY_EXHAUSTED|retry.*exhausted|max retries", "retry_exhausted_noise"),
+    (r"SAFE_FLOCK.*PARSE|malformed.*JSONL|safe_flock", "safe_flock_noise"),
+    (r"ESCALATION_DEDUPED|escalation.*dedup", "escalation_deduped"),
+    (r"maria.?research.*stale", "maria_research_stale"),
+    (r"OUTPUT_INVALID.*atm_auto_approver", "atm_output_invalid"),
+    (r"LLM.*analysis.*complete|LLM.*reviewed|analysis complete", "llm_analysis_complete"),
+    (r"(?:fixed|resolved|recovered).*(?:already|again|still)", "false_fixed_claim"),
+    (r"LOCKTIMEOUT|lock.?timeout", "lock_timeout"),
+    # After-hours stop alerts → morning review only
+    (r"after.hours.*stop|stop.*after.hours|overnight.*stop", "afterhours_stop"),
+    # Routine catalyst / research complete
+    (r"catalyst.*research.*complete|research.*catalyst.*done", "catalyst_research_complete"),
+    (r"no.catalyst.found|no clear catalyst", "no_catalyst_noise"),
+]
+
 _P3_PATTERNS = [
     (r"sync done.*uploaded.*unchanged.*failed", "drive_sync_success"),
     (r"cron.*success\b", "cron_success"),
@@ -102,6 +119,11 @@ def classify_alert(message: str) -> str:
     for pattern, _ in _P3_PATTERNS:
         if re.search(pattern, message, re.IGNORECASE):
             return "P3_LOG_ONLY"
+
+    # Check P2 system noise (health agent, retries, staleness, LLM complete)
+    for pattern, _ in _P2_SYSTEM_PATTERNS:
+        if re.search(pattern, message, re.IGNORECASE):
+            return "P2_DASHBOARD_ONLY"
 
     # Check P2 (dashboard only)
     rules = _policy()
