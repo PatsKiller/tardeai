@@ -1,0 +1,29 @@
+{
+  "hermes_discrepancy_version": "1.0",
+  "type": "holdings_discrepancy",
+  "generated_at": "2026-06-01T12:15:00-04:00",
+  "mutation_statement": "THIS IS A READ-ONLY OBSERVATION. NO HOLDINGS MUTATION. NO BROKER ACCESS.",
+
+  "discrepancy_type": "paper_trade_position_count",
+  "description": "6 open paper trades in DB but Alpaca reconciler last synced 4 positions. SNOW has status='open' plus a 'pending' entry — possible duplicate or partial fill state.",
+
+  "evidence": [
+    "paper_trades WHERE status='open' returns 6 rows",
+    "alpaca_paper_adapter --sync-only reported 4 positions synced",
+    "SNOW has two paper_trades rows: id=39 (pending) and id=40 (open)",
+    "NWG is TOS_PAPER account — not Alpaca, reconciler doesn't see it"
+  ],
+
+  "likely_source": "SNOW id=39 status='pending' may be a stale entry that was never filled or a duplicate. NWG (TOS_PAPER) is expected to not appear in Alpaca reconciliation.",
+
+  "risk_impact": "LOW — SNOW is likely a display artifact (2 rows for 1 position). NWG TOS_PAPER discrepancy is expected (different broker). No financial impact if positions are correct at the broker.",
+
+  "recommended_human_review": [
+    "Check Alpaca dashboard for actual SNOW position count and fill status",
+    "Verify SNOW id=39 (pending) should be closed/cancelled if id=40 (open) is the real position",
+    "Confirm NWG is intentionally on TOS_PAPER (not Alpaca) and tracking is correct",
+    "Run alpaca_paper_reconciler.py --audit-only to get latest position match"
+  ],
+
+  "no_mutation_statement": "Do NOT modify paper_trades, holdings.json, or broker state based on this observation."
+}
