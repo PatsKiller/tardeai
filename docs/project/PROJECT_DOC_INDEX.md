@@ -267,6 +267,16 @@
 | `docs/hermes/phase30_expanded_librarian_dryrun/` | Dry-run output files |
 | `docs/project/PHASE30_EXPANDED_LIBRARIAN_DRY_RUN_CLOSEOUT.md` | **Phase 30 closeout** |
 
+### Expanded Backlog Staging (Phase 32)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE32A_EXPANDED_BACKLOG_REVALIDATION.md` | Phase 32A — 5 candidates validated |
+| `docs/hermes/HERMES_PHASE32B_EXPANDED_BACKLOG_STAGING_REPORT.md` | Phase 32B — 5 rows staged (ids 24–28) |
+| `docs/hermes/HERMES_PHASE32B_EXPANDED_BACKLOG_STAGING_ROLLBACK.sql` | Phase 32B rollback SQL |
+| `docs/hermes/HERMES_PHASE32C_EXPANDED_BACKLOG_SAFETY_AUDIT.md` | Phase 32C — safety PASS |
+| `docs/hermes/HERMES_PHASE32D_BACKLOG_DASHBOARD_REFRESH_VERIFICATION.md` | Phase 32D — dashboard 10 items verified |
+| `docs/project/PHASE32_EXPANDED_BACKLOG_STAGING_CLOSEOUT.md` | **Phase 32 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

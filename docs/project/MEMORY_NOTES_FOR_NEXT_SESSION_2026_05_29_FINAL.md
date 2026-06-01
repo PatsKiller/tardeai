@@ -418,8 +418,17 @@
 - Safety audit: PASS (4.25/5)
 - DB writes: ZERO | Source writes: ZERO | Embeddings: ZERO
 
+### Phase 32 Expanded Backlog Staging (2026-06-01)
+- 5 rows staged (ids 24–28) from journal, backtest, catalyst surfaces
+- Items: journal empty, momentum_scalp 30% WR, all_signals 33.9% WR/pf=0.6, insufficient samples, generic catalysts
+- Total backlog: 10 (5 from Phase 22 + 5 from Phase 32)
+- Dashboard shows all 10 items, read-only
+- Rollback: `docs/hermes/HERMES_PHASE32B_EXPANDED_BACKLOG_STAGING_ROLLBACK.sql`
+- Safety audit: PASS
+- DB writes: 5 staging rows | Embeddings: ZERO | Promotions: ZERO
+
 ### Next Gate
-- Stage expanded backlog (max 10), embedding pilot (max 2), or observation (requires approval)
+- Embedding pilot (max 2, ids 12+13), source discovery for backlog, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
