@@ -658,8 +658,25 @@
 - 9 timers | Dashboard drill-through LIVE | Auto-promotion: 1 pilot (STABLE)
 - Level 6: RECERTIFIED | Level 7: PROHIBITED | Self-learning: 8.1/10
 
+### Phases 97–100 Visual Upgrade + Auto-Promotion + Milestone (2026-06-01)
+- Phase 97: Dashboard visual upgrade — persistent drawer, lane cards, quality bars, filters, flow diagram, aging bars, timeline. UX 6.5→8.0/10.
+- Phase 98: Flow/timeline/aging charts implemented with native CSS.
+- Phase 99: SCHD id=12 auto-promoted. Total: 14 promoted, 14 cache sections, 2 auto-promotions.
+- Phase 100: **LEVEL6_PRODUCTION_GRADE_WITH_LIMITS**. Self-learning maturity 8.3/10.
+
+### Final Session State (100 Phases)
+- **100 phases** completed (Phases 15–100 + 84R)
+- Hermes: 42 rows, 14 promoted, 28 staged, 12 embeddings, 14 cache sections
+- 9 timers | 22 LLM queue jobs | 12 advisory events | 14 promotion audits | 12 safe views
+- Dashboard: visual cockpit LIVE at /v2/self-learning-overview
+- Auto-promotion: 2 completed (TRX Phase 90, SCHD Phase 99) — policy-gated
+- Feed: HEALTHY | Alert dedupe: LIVE | Preflight: LIVE
+- Level 6: **PRODUCTION_GRADE_WITH_LIMITS** | Level 7: **PROHIBITED**
+- Self-learning maturity: **8.3/10**
+- Broker/proposal/trade/journal/holdings mutations: **ZERO across 100 phases**
+
 ### Next Gate
-- Phase 97 P0 dashboard upgrade, Phase 99 second auto-promotion, Phase 100 milestone audit
+- Phase 101 7-day observation, Phase 102 overnight retirement, Phase 103 broader auto-promotion
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

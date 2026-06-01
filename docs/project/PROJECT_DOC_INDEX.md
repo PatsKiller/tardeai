@@ -453,6 +453,12 @@
 | `docs/project/PHASE95_EXPANDED_AUTO_PROMOTION_SHADOW_VETO_CLOSEOUT.md` | **Phase 95** — 2 eligible, 0 applied |
 | `docs/project/PHASE96_DASHBOARD_OPERATOR_UX_REVIEW_CLOSEOUT.md` | **Phase 96** — UX 6.5/10, P0/P1 backlog |
 
+### Visual Upgrade + Auto-Promotion + Milestone (Phases 97–100)
+| `docs/project/PHASE97_SELF_LEARNING_P0_VISUAL_UPGRADE_CLOSEOUT.md` | **Phase 97** — UX 6.5→8.0 |
+| `docs/project/PHASE98_SELF_LEARNING_FLOW_TIMELINE_CHARTS_CLOSEOUT.md` | **Phase 98** — flow, aging, timeline |
+| `docs/project/PHASE99_SECOND_AUTO_PROMOTION_OR_HOLD_CLOSEOUT.md` | **Phase 99** — SCHD auto-promoted |
+| `docs/project/PHASE100_SYSTEM_MILESTONE_AUDIT_CLOSEOUT.md` | **Phase 100** — LEVEL6_PRODUCTION_GRADE_WITH_LIMITS |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
