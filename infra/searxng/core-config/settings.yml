@@ -1,0 +1,66 @@
+# SearXNG Settings — Internal Only
+# Bound to 127.0.0.1:18888 via Docker Compose
+# No public exposure, no paid APIs
+
+use_default_settings: true
+
+general:
+  instance_name: "Trade AI Search (Internal)"
+  debug: false
+
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: ""
+  limiter: false
+  image_proxy: false
+  port: 8080
+  bind_address: "0.0.0.0"
+
+ui:
+  static_use_hash: true
+  default_theme: simple
+  results_on_new_tab: true
+  infinite_scroll: false
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 15.0
+
+engines:
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+
+  - name: yahoo finance
+    engine: yahoo_finance
+    shortcut: yf
+    disabled: false
+    categories: news
