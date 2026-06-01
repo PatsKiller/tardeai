@@ -412,6 +412,11 @@
 | `docs/project/PHASE70_ALERT_TO_HERMES_BACKLOG_APPLY_CLOSEOUT.md` | **Phase 70** — 3 ops_backlog rows |
 | `docs/project/PHASE71_FEED_RESILIENCE_AUTOMATION_CLOSEOUT.md` | **Phase 71** — feed health design |
 
+### Recovery, Dedupe, Feed Dashboard (Phases 72–74)
+| `docs/project/PHASE72_FINVIZ_RECOVERY_CERTIFICATION_CLOSEOUT.md` | **Phase 72** — 2/3 clean, pending upgrade |
+| `docs/project/PHASE73_ALERT_DEDUPE_APPLY_CLOSEOUT.md` | **Phase 73** — dedupe + false-fixed gate |
+| `docs/project/PHASE74_FEED_HEALTH_DASHBOARD_CLOSEOUT.md` | **Phase 74** — GET /api/v2/system/feed-health |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

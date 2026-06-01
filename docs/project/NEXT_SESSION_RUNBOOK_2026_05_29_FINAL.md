@@ -187,15 +187,21 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 67–71: Incident remediation, alert dedupe, maturity cert, ops backlog, feed resilience**
 
+**Phase 72: Finviz Recovery — 2/3 clean runs (cookie updated, recovery confirmed)**
+
+**Phase 73: Alert Dedupe Applied — dedupe wrapper + false-fixed gate live**
+
+**Phase 74: Feed Health Dashboard — GET /api/v2/system/feed-health**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
-Hermes rows: 37 (10 promoted, 27 staged, 13 backlog + 3 ops_backlog) | Embeddings: 9 | Cache: 10
-Maturity: **LEVEL6_CERTIFIED_WITH_LIMITS** (Finviz degraded, cookie update pending)
-Finviz: 19/20 FAILED today | Alert dedupe: designed (~80% reduction) | Feed resilience: designed
-Model: gemma3:12b default | Gemma 4: NOT_AVAILABLE | Level 7: PROHIBITED
+Hermes rows: 37 (10 promoted, 27 staged) | Embeddings: 9 | Cache: 10
+Finviz: HEALTHY (recovered), 2/3 clean runs → auto-upgrade after 3rd
+Alert dedupe: LIVE (~80% reduction) | Feed health API: LIVE
+Model: gemma3:12b | Gemma 4: NOT_AVAILABLE | Level 7: PROHIBITED
 
-**OPERATOR ACTION REQUIRED:** Update FINVIZ_COOKIE via approved secret path
+**Cookie rotation recommended** (exposed in conversation)
 
-Next: cookie update → 3 clean screener runs → full LEVEL6_CERTIFIED
+Next: 3rd clean run → LEVEL6_CERTIFIED, then self-learning maturity report
 
 Daily check:
 ```bash
