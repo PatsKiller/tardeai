@@ -390,8 +390,18 @@
 - Embeddings created: ZERO | DB writes: ZERO | Promotions: ZERO
 - Safety audit: PASS
 
+### Phase 28 Trade AI Coverage Audit (2026-06-01)
+- 10 data surfaces inventoried: 4 COVERED, 3 PARTIAL, 6 NOT COVERED
+- NOT COVERED: journal learning, backtesting results, momentum scout, catalyst events, morning briefs, catalyst enrichment
+- 4 new safe views needed: hermes_v_journal_learning_context, hermes_v_backtest_results_context, hermes_v_screener_context, hermes_v_catalyst_quality_context
+- Catalyst pipeline mapped: 0-100 scoring, 5 grades, 15 types, weak detection active
+- 16 Librarian checks designed (6 journal, 6 backtest, 4 scout)
+- 13 Research Backlog item types defined with triggers, owners, priorities
+- Integration flow: safe views → Librarian dry-run → backlog candidates → operator approval → staging
+- DB writes: ZERO | Runtime changes: ZERO
+
 ### Next Gate
-- Embedding pilot (max 2, ids 12+13), stage income candidates, or observation (requires approval)
+- Safe view creation, Librarian dry-run with new views, embedding pilot, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

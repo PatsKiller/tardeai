@@ -137,11 +137,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 25: Embedding Curator Dry-Run COMPLETE — 2 pilot recs (SCHD id=12, TRX id=13), safety PASS**
 
+**Phase 28: Trade AI Coverage Audit COMPLETE — 4/10 surfaces covered, 4 views needed, 13 backlog types**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
-Embedding pilot: SCHD (4.55) and TRX (4.36) recommended, requires Phase 26 approval
+Coverage: journal/backtest/scout/catalyst NOT VISIBLE — need 4 safe views
 
-Next: embedding pilot (max 2), stage income candidates, or observation
+Next: safe view creation, Librarian dry-run with new views, embedding pilot, or observation
 
 Daily check:
 ```bash

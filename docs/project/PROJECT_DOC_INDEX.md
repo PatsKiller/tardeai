@@ -235,6 +235,16 @@
 | `docs/hermes/phase25_embedding_curator_dryrun/` | Curator output files |
 | `docs/project/PHASE25_EMBEDDING_CURATOR_DRY_RUN_CLOSEOUT.md` | **Phase 25 closeout** |
 
+### Hermes Trade AI Coverage Audit (Phase 28)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE28A_TRADEAI_DATA_SURFACE_INVENTORY.md` | Phase 28A — 10 surfaces mapped |
+| `docs/hermes/HERMES_PHASE28B_HERMES_COVERAGE_GAP_AUDIT.md` | Phase 28B — 6 NOT COVERED, 4 views needed |
+| `docs/hermes/HERMES_PHASE28C_MOMENTUM_SCOUT_AND_CATALYST_AUDIT.md` | Phase 28C — catalyst pipeline mapped |
+| `docs/hermes/HERMES_PHASE28D_JOURNAL_BACKTESTING_LIBRARIAN_DESIGN.md` | Phase 28D — 16 Librarian checks |
+| `docs/hermes/HERMES_PHASE28E_TRADEAI_TO_HERMES_BACKLOG_INTEGRATION_PLAN.md` | Phase 28E — 13 backlog item types |
+| `docs/project/PHASE28_HERMES_TRADEAI_COVERAGE_AUDIT_CLOSEOUT.md` | **Phase 28 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
