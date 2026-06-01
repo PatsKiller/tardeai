@@ -1,0 +1,98 @@
+{
+  "date": "2026-06-01",
+  "timestamp": "2026-06-01T14:51:32.434401+00:00",
+  "embedding_recommendations": [
+    {
+      "id": 17,
+      "symbol": "ADBE",
+      "type": "ticker_thesis_challenge",
+      "confidence": 0.6,
+      "has_url": false,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 18,
+      "symbol": "AGMH",
+      "type": "ticker_thesis_challenge",
+      "confidence": 0.6,
+      "has_url": false,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 16,
+      "symbol": "TRX",
+      "type": "source_discovery",
+      "confidence": 0.5,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 14,
+      "symbol": "APAM",
+      "type": "source_discovery",
+      "confidence": 0.48,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    },
+    {
+      "id": 15,
+      "symbol": "FJSCX",
+      "type": "source_discovery",
+      "confidence": 0.48,
+      "has_url": true,
+      "reason": "staged, has evidence, not embedded"
+    }
+  ],
+  "promotion_recommendations": [
+    {
+      "id": 17,
+      "symbol": "ADBE",
+      "type": "ticker_thesis_challenge",
+      "confidence": 0.6,
+      "has_url": false,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 18,
+      "symbol": "AGMH",
+      "type": "ticker_thesis_challenge",
+      "confidence": 0.6,
+      "has_url": false,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 13,
+      "symbol": "TRX",
+      "type": "source_discovery",
+      "confidence": 0.5,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 12,
+      "symbol": "SCHD",
+      "type": "source_discovery",
+      "confidence": 0.5,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    },
+    {
+      "id": 16,
+      "symbol": "TRX",
+      "type": "source_discovery",
+      "confidence": 0.5,
+      "has_url": true,
+      "reason": "staged, high conf, has evidence"
+    }
+  ],
+  "rejected": [
+    {
+      "id": 9,
+      "symbol": "TELO",
+      "reason": "confidence 0.2 too low"
+    }
+  ],
+  "total_staged_non_backlog": 11,
+  "embeddings_created": 0,
+  "promotions_created": 0
+}
