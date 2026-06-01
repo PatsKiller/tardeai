@@ -1,0 +1,42 @@
+[
+  {
+    "check": "MS-1",
+    "severity": "medium",
+    "run_label": "1730",
+    "run_date": "2026-05-29",
+    "detail": "Run underfilled: go=5, wait=4, no_go=9",
+    "backlog_type": "momentum_scout_weak_catalyst"
+  },
+  {
+    "check": "MS-1",
+    "severity": "medium",
+    "run_label": "0700",
+    "run_date": "2026-05-29",
+    "detail": "Run underfilled: go=3, wait=6, no_go=8",
+    "backlog_type": "momentum_scout_weak_catalyst"
+  },
+  {
+    "check": "MS-1",
+    "severity": "medium",
+    "run_label": "0400",
+    "run_date": "2026-05-29",
+    "detail": "Run underfilled: go=1, wait=4, no_go=4",
+    "backlog_type": "momentum_scout_weak_catalyst"
+  },
+  {
+    "check": "MS-3",
+    "severity": "low",
+    "run_label": "0400",
+    "run_date": "2026-05-29",
+    "detail": "Zero GO candidates (total=5)",
+    "backlog_type": "momentum_scout_missing_news"
+  },
+  {
+    "check": "MS-3",
+    "severity": "low",
+    "run_label": "1600",
+    "run_date": "2026-05-28",
+    "detail": "Zero GO candidates (total=385)",
+    "backlog_type": "momentum_scout_missing_news"
+  }
+]
