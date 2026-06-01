@@ -2,6 +2,7 @@ import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 
 interface OverviewData {
   maturity: string; level7: string
@@ -140,22 +141,21 @@ export default function SelfLearningOverview() {
           </Card>
         )}
 
-        {/* Queue Aging Bar Chart */}
+        {/* Queue Aging — Recharts */}
         {!filter && data.age_buckets.length > 0 && (
           <Card title="Queue Aging">
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 60 }}>
-              {data.age_buckets.map((b, i) => {
-                const h = Math.max(8, (b.c / maxAge) * 50)
-                const color = b.bucket === '8d+' ? 'var(--red)' : b.bucket === '4-7d' ? 'var(--amber)' : 'var(--accent)'
-                return (
-                  <div key={i} style={{ textAlign: 'center', flex: 1 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color, marginBottom: 2 }}>{b.c}</div>
-                    <div style={{ height: h, background: color, borderRadius: '4px 4px 0 0', opacity: 0.7 }} />
-                    <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{b.bucket}</div>
-                  </div>
-                )
-              })}
-            </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart data={data.age_buckets} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: '#888' }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip contentStyle={{ fontSize: 11, background: '#1a1a2e', border: '1px solid #333', borderRadius: 4 }} />
+                <Bar dataKey="c" radius={[4, 4, 0, 0]}>
+                  {data.age_buckets.map((b, i) => (
+                    <Cell key={i} fill={b.bucket === '8d+' ? '#ea3943' : b.bucket === '4-7d' ? '#f6be00' : '#4a90f4'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
         )}
 
@@ -170,6 +170,20 @@ export default function SelfLearningOverview() {
                 <span style={{ fontSize: 9, color: 'var(--text3)' }}>{a.last ? new Date(a.last).toLocaleDateString() : ''}</span>
               </div>
             ))}
+          </Card>
+        )}
+
+        {/* Agent Distribution — Recharts */}
+        {!filter && data.agents.length > 0 && (
+          <Card title="Agent Distribution">
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={data.agents.slice(0, 6).map(a => ({ name: a.hermes_agent_name?.replace(/_/g, ' ').substring(0, 15), rows: a.c }))} layout="vertical" margin={{ top: 0, right: 10, left: 80, bottom: 0 }}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#888' }} axisLine={false} tickLine={false} width={80} />
+                <Tooltip contentStyle={{ fontSize: 10, background: '#1a1a2e', border: '1px solid #333' }} />
+                <Bar dataKey="rows" fill="#4a90f4" radius={[0, 4, 4, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
           </Card>
         )}
 

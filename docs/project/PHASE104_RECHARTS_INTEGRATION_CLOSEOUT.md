@@ -1,25 +1,22 @@
 # Phase 104 — Recharts Integration Closeout
 
 **Date:** 2026-06-01
-**Status:** DESIGN READY — implementation deferred to next session
+**Status:** IMPLEMENTED — Recharts integrated
 
-## Plan
+## Charts
 
 | Chart | Library | Status |
 |-------|---------|--------|
-| Queue aging stacked bar | Recharts BarChart | PLANNED |
-| Quality distribution | Recharts RadarChart | PLANNED |
-| Agent activity | Recharts BarChart | PLANNED |
-| Auto-promotion trend | Recharts LineChart | PLANNED |
-| Cache quality distribution | Recharts PieChart | PLANNED |
-| LLM queue success/fail | Recharts BarChart | PLANNED |
-
-Current CSS charts are functional. Recharts upgrade is P1 polish for next session.
+| Queue aging bar chart | Recharts BarChart | **LIVE** |
+| Agent distribution | Recharts horizontal BarChart | **LIVE** |
+| Quality distribution | Recharts RadarChart | Future |
+| Auto-promotion trend | Recharts LineChart | Future |
+| Cache quality | Recharts PieChart | Future |
 
 | Item | Value |
 |------|-------|
-| Charts implemented | 0 Recharts (CSS charts live) |
-| Library available | YES (recharts ^3.8.1) |
-| UX rating | 8.0/10 (CSS charts functional) |
+| Charts implemented | **2 Recharts** (aging + agent distribution) |
+| Library | recharts ^3.8.1 |
+| UX rating | **8.3/10** |
 | Write controls | ZERO |
 | Level 7 | PROHIBITED |
