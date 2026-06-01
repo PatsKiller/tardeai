@@ -581,8 +581,16 @@
 - Gemma 4 is managed by llama.cpp (not Ollama) — separate from this queue infrastructure.
 - Level 7 trading automation: PROHIBITED.
 
+### Phases 67–71 Incident + Certification + Feed Resilience (2026-06-01)
+- Phase 67: Finviz 19/20 FAILED (expired cookie). True-fix gate designed. Cookie update pending.
+- Phase 68: Alert taxonomy (10 types), dedupe (~80% reduction), false-fixed gate, alert-to-backlog mapping
+- Phase 69: LEVEL6_CERTIFIED_WITH_LIMITS (Finviz degraded, stale-fix not applied, dedupe not applied)
+- Phase 70: 3 ops_backlog rows staged (Finviz cookie, false-fixed, GPU contention). Total: 37 rows.
+- Phase 71: Feed resilience designed (health preflight, cookie age, failure dedupe, fallback policy, dashboard)
+- **OPERATOR ACTION:** Update FINVIZ_COOKIE, then validate 3 clean screener runs for full certification
+
 ### Next Gate
-- 7-day observation, shadow overnight, expand cache cap, 2nd embedding batch, or maturity cert (requires approval)
+- Cookie update → validate → full LEVEL6_CERTIFIED, then shadow overnight or broader LLM execution
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
