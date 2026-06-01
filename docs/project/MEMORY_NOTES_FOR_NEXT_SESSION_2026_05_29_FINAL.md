@@ -374,8 +374,16 @@
 - Still missing: portfolio-specific yield projection, trim candidates, Roth room, tax lots
 - DB writes: ZERO | Trade recommendations: ZERO
 
+### Phase 24 Research Backlog Dashboard (2026-06-01)
+- GET /api/v2/hermes/research-backlog endpoint (read-only)
+- Research Backlog card on Hermes Intelligence page
+- 5 backlog items displayed with priority badges, owner agents, backlog types
+- Zero write endpoints, zero action buttons
+- Safety audit: PASS
+- DB writes: ZERO
+
 ### Next Gate
-- Stage income candidates, CC backlog dashboard, embedding curator, or observation (requires approval)
+- Embedding curator dry-run, stage income candidates, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

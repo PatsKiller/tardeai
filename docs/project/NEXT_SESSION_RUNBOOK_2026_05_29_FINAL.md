@@ -133,11 +133,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 23: Income-Rotation Research COMPLETE — 8 queries, 55 candidates, 7 sleeves scored, actionability 0.78**
 
+**Phase 24: Research Backlog Dashboard COMPLETE — read-only card + GET API, safety PASS**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
-Income research: Treasury/Div Growth top-ranked (4.6), Covered Call (4.2), 12+ tickers
+Dashboard: Research Backlog card live on Hermes Intelligence page (5 items, read-only)
 
-Next: stage income candidates, CC backlog dashboard, embedding curator, or observation
+Next: embedding curator dry-run, stage income candidates, or observation
 
 Daily check:
 ```bash
