@@ -1,0 +1,82 @@
+{
+  "hermes_draft_version": "1.0",
+  "generated_by": "hermes_trade_reflection",
+  "generated_at": "2026-06-01T11:30:00-04:00",
+  "execution_statement": "THIS IS A DRAFT. NO EXECUTION. NO BROKER ACCESS. ADVISORY ONLY.",
+
+  "symbol": "APPS",
+  "company": "Digital Turbine Inc",
+  "sector": "Technology — Software Application",
+
+  "thesis": {
+    "summary": "APPS had a winning trade (+$159.98, position_closed_in_alpaca). Trade reflection id=4 promoted with 0.7 confidence (highest). RSI 84 is severely overbought — this is a WAIT/WATCH draft, not an entry recommendation.",
+    "timeframe": "Wait for pullback — 10-15 days monitoring",
+    "direction": "long (after pullback)",
+    "strategy_fit": "swing_breakout"
+  },
+
+  "evidence": {
+    "catalyst": "Prior winning trade (+$159.98). Hermes trade reflection promoted (id=4, confidence 0.7 — tied for highest Hermes confidence).",
+    "catalyst_verified": false,
+    "catalyst_source": "hermes_research_intelligence id=4, hermes_promotion_audit",
+    "technical": "RSI 84.68 — SEVERELY OVERBOUGHT. SMA20 +49.38%, SMA50 +73.14%. Massive run-up. Beta 2.48 — very high volatility. Entry now would be chasing.",
+    "fundamental": "Intelligence score 40/100, grade D. Price ~$6.68. Micro-cap tech.",
+    "sentiment": "No fused signal available.",
+    "sources": [
+      {"type": "db_view", "view": "hermes_v_ticker_context", "symbol": "APPS"},
+      {"type": "hermes_research", "id": 4, "topic": "APPS trade reflection — +$159.98 win"},
+      {"type": "trade_history", "trades": 1, "wins": 1, "total_pnl": 159.98}
+    ]
+  },
+
+  "risk": {
+    "entry_price": null,
+    "stop_price": null,
+    "target_price": null,
+    "risk_reward_ratio": null,
+    "max_loss_pct": null,
+    "invalidation": "RSI above 80 with no pullback = do NOT enter. Wait for RSI < 60 and retest of SMA20."
+  },
+
+  "portfolio_fit": {
+    "account_type": "Taxable",
+    "position_size_rationale": "High beta (2.48), micro-cap — 0.5% portfolio risk max if entry occurs after pullback",
+    "existing_exposure": "No current APPS position",
+    "conflicts": "None identified",
+    "tax_consideration": "Short-term capital gains risk in taxable account"
+  },
+
+  "why_not_trade": [
+    "RSI 84.68 — severely overbought, entering now is chasing a parabolic move",
+    "SMA20 +49% and SMA50 +73% — massive extension above means, reversion risk is extreme",
+    "Only 1 prior trade — insufficient sample for pattern confidence",
+    "Intelligence grade D — weak fundamental profile",
+    "No fresh catalyst beyond prior trade success",
+    "THIS DRAFT RECOMMENDS WAITING, NOT ENTERING"
+  ],
+
+  "required_human_review": {
+    "statement": "This draft requires operator review before any action. It is NOT a proposal and cannot be submitted.",
+    "review_checklist": [
+      "DO NOT enter while RSI > 70",
+      "Add APPS to watchlist for pullback monitoring",
+      "Wait for RSI < 60 and price retest of SMA20",
+      "If pullback occurs: set stop below prior swing low",
+      "Re-evaluate fundamental thesis — why did it run 73% above SMA50?"
+    ]
+  },
+
+  "quality_scores": {
+    "thesis_clarity": 8,
+    "catalyst_evidence": 5,
+    "risk_definition": 7,
+    "position_size_rationale": 6,
+    "stop_exit_logic": 7,
+    "source_traceability": 8,
+    "conflict_check": 9,
+    "portfolio_fit": 5,
+    "tax_account_fit": 6,
+    "confidence_calibration": 8,
+    "composite": 6.7
+  }
+}
