@@ -431,6 +431,13 @@
 | `docs/project/PHASE81_HIGH_LLM_QUEUE_STABILIZATION_CLOSEOUT.md` | **Phase 81** — queue STABLE |
 | `docs/project/PHASE82_SECOND_HERMES_EMBEDDING_BATCH_CLOSEOUT.md` | **Phase 82** — 3 embedded, total 12 |
 
+### Promotion Review + Dashboard + Recertification + Governance (Phases 83–87)
+| `docs/project/PHASE83_PROMOTION_REVIEW_RECOMMENDATION_CLOSEOUT.md` | **Phase 83** — 5 lanes, 16 candidates |
+| `docs/project/PHASE84_SELF_LEARNING_OVERVIEW_DASHBOARD_CLOSEOUT.md` | **Phase 84** — /v2/self-learning-overview |
+| `docs/project/PHASE85_LEVEL6_RECERTIFICATION_CLOSEOUT.md` | **Phase 85** — LEVEL6_RECERTIFIED |
+| `docs/project/PHASE86_LEVEL7_GOVERNANCE_BOUNDARY_CLOSEOUT.md` | **Phase 86** — Level 7 PROHIBITED |
+| `docs/project/PHASE87_CAPPED_ADVISORY_PROMOTION_PILOT_CLOSEOUT.md` | **Phase 87** — 2 promoted (ADBE, AGMH) |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
