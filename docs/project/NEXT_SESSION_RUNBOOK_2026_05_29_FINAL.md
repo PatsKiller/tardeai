@@ -135,11 +135,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 24: Research Backlog Dashboard COMPLETE — read-only card + GET API, safety PASS**
 
+**Phase 25: Embedding Curator Dry-Run COMPLETE — 2 pilot recs (SCHD id=12, TRX id=13), safety PASS**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
-Dashboard: Research Backlog card live on Hermes Intelligence page (5 items, read-only)
+Embedding pilot: SCHD (4.55) and TRX (4.36) recommended, requires Phase 26 approval
 
-Next: embedding curator dry-run, stage income candidates, or observation
+Next: embedding pilot (max 2), stage income candidates, or observation
 
 Daily check:
 ```bash
