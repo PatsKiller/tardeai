@@ -187,6 +187,17 @@
 | `docs/hermes/HERMES_TELEGRAM_REVIEW_ACTIONABILITY_DRY_RUN.md` | Dry-run: vague_rebalance_recommendation HIGH |
 | `docs/project/PHASE20_HERMES_AGENT_MODEL_AND_ACTIONABILITY_CLOSEOUT.md` | **Phase 20 closeout** |
 
+### Hermes Librarian Dry-Run (Phase 21)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE21A_LIBRARIAN_DRY_RUN_DESIGN.md` | Phase 21A — 17 check types |
+| `docs/hermes/HERMES_PHASE21B_LIBRARIAN_STAGED_SOURCE_DRY_RUN_REPORT.md` | Phase 21B — 18 rows, 6 findings |
+| `docs/hermes/HERMES_PHASE21C_COMMUNICATION_ACTIONABILITY_DRY_RUN_REPORT.md` | Phase 21C — Telegram FAIL |
+| `docs/hermes/HERMES_PHASE21D_LIBRARIAN_USEFULNESS_AND_SAFETY_AUDIT.md` | Phase 21D — PASS (4.6/5) |
+| `docs/hermes/phase21_librarian_dryrun/` | Librarian dry-run output files |
+| `docs/hermes/phase21_communication_actionability_dryrun/` | Communication actionability output |
+| `docs/project/PHASE21_HERMES_LIBRARIAN_DRY_RUN_CLOSEOUT.md` | **Phase 21 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

@@ -127,13 +127,14 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 20: Agent Model + Actionability Standard COMPLETE — 7 agents, 16 fields, gate defined**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
-Manual wrapper: `python3 scripts/searxng_manual_query.py "query"` → `data/searxng_queries/`
-Hermes rows: 16 total (10 promoted, 6 staged) | Embeddings: 7 | Cache sections: 10
-Agent model: 7 agents defined, 2 operational, 4 designed, 1 disabled
-Actionability standard: 16 required fields, 11 failure classes, Telegram post classified
+**Phase 21: Librarian Dry-Run COMPLETE — 18 rows reviewed, PASS (4.6/5)**
 
-Next: observation, research backlog manager, embedding pilot, or income-rotation discovery
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+Hermes rows: 18 total (10 promoted, 8 staged) | Embeddings: 7 | Cache sections: 10
+Librarian: 7 embedding candidates, 5 promotion candidates, 1 rejection (TELO), 3 backlog
+Telegram: vague_rebalance_recommendation classified HIGH, FAIL gate, backlog created
+
+Next: research backlog pilot, embedding curator dry-run, or observation
 
 Daily check:
 ```bash

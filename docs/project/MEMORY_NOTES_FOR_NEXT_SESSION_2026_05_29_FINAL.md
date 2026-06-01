@@ -346,8 +346,17 @@
 - Research backlog sample: "Research income-rotation candidates for $40,519 income gap" with 6 research questions, 9 candidate buckets
 - DB writes: ZERO | Embeddings: ZERO | Promotions: ZERO | Runtime changes: ZERO
 
+### Phase 21 Librarian Dry-Run (2026-06-01)
+- Librarian script: `scripts/hermes_librarian_dry_run.py` (read-only, file output)
+- 18 rows reviewed (includes 2 new from autonomous loop: ADBE id=17, AGMH id=18)
+- Findings: 1 rejection (TELO conf 0.2), 7 embedding candidates (ids 12–18), 5 promotion candidates, 3 backlog items
+- Communication dry-run: Telegram income-shift FAIL (0.15 actionability, 9/9 fields missing)
+- Research backlog item created (file only): "Research income-rotation candidates for $40,519 gap"
+- Usefulness audit: PASS (4.6/5)
+- DB writes: ZERO | Embeddings: ZERO | Promotions: ZERO
+
 ### Next Gate
-- Observation period, research backlog manager implementation, embedding pilot, or income-rotation discovery (requires approval)
+- Research backlog pilot, embedding curator dry-run, CC backlog dashboard, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
