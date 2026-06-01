@@ -245,6 +245,18 @@
 | `docs/hermes/HERMES_PHASE28E_TRADEAI_TO_HERMES_BACKLOG_INTEGRATION_PLAN.md` | Phase 28E — 13 backlog item types |
 | `docs/project/PHASE28_HERMES_TRADEAI_COVERAGE_AUDIT_CLOSEOUT.md` | **Phase 28 closeout** |
 
+### Hermes Safe View Coverage (Phase 29)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE29A_SAFE_VIEW_SQL_DESIGN.md` | Phase 29A — 4 views designed |
+| `docs/hermes/HERMES_PHASE29B_SAFE_VIEW_APPLY_REPORT.md` | Phase 29B — 4 views + grants applied |
+| `docs/hermes/HERMES_PHASE29C_SAFE_VIEW_SECURITY_AUDIT.md` | Phase 29C — security PASS |
+| `docs/hermes/HERMES_PHASE29D_COVERAGE_RECHECK.md` | Phase 29D — coverage 4/10 → 9/10 |
+| `docs/hermes/HERMES_PHASE29E_MORNING_BRIEF_STORAGE_DESIGN.md` | Phase 29E — morning brief storage design |
+| `sql/migrations/20260601_hermes_phase29_safe_views.sql` | Migration SQL |
+| `sql/migrations/20260601_hermes_phase29_safe_views_rollback.sql` | Rollback SQL |
+| `docs/project/PHASE29_HERMES_SAFE_VIEW_COVERAGE_CLOSEOUT.md` | **Phase 29 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

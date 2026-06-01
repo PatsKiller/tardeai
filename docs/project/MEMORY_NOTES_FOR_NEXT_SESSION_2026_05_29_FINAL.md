@@ -400,8 +400,18 @@
 - Integration flow: safe views → Librarian dry-run → backlog candidates → operator approval → staging
 - DB writes: ZERO | Runtime changes: ZERO
 
+### Phase 29 Safe View Coverage (2026-06-01)
+- 4 new safe views created: hermes_v_journal_learning_context (0 rows), hermes_v_backtest_results_context (40), hermes_v_screener_context (211), hermes_v_catalyst_quality_context (345)
+- SELECT-only grants to hermes_readonly
+- Total Hermes views: 12 (76K+ rows accessible)
+- Coverage improved: 4/10 → 9/10 surfaces
+- Only morning briefs remain NOT COVERED (file-only, design complete in Phase 29E)
+- Security audit: PASS — zero non-SELECT grants, denied tables unchanged
+- Source table writes: ZERO | Runtime changes: ZERO
+- Rollback: sql/migrations/20260601_hermes_phase29_safe_views_rollback.sql
+
 ### Next Gate
-- Safe view creation, Librarian dry-run with new views, embedding pilot, or observation (requires approval)
+- Expanded Librarian dry-run, embedding pilot (max 2), or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
