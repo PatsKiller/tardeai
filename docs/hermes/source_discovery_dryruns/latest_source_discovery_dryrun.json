@@ -1,0 +1,20 @@
+{
+  "date": "2026-06-01",
+  "backlog_item_id": 25,
+  "backlog_topic": "momentum_scalp strategy 30% win rate across 20 trades",
+  "queries": [
+    {
+      "query": "momentum_scalp strategy 30% win rate across 20 trades research analysis 2026",
+      "results": 10
+    },
+    {
+      "query": "momentum_scalp strategy 30% win rate across 20 trades improvement strategy guide",
+      "results": 10
+    }
+  ],
+  "total_results": 20,
+  "db_writes": 0,
+  "backlog_mutations": 0,
+  "embeddings": 0,
+  "promotions": 0
+}
