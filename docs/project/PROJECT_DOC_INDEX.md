@@ -307,6 +307,16 @@
 | `docs/hermes/HERMES_PHASE34E_OBSERVATION_DASHBOARD_VISIBILITY_DESIGN.md` | Phase 34E — dashboard design |
 | `docs/project/PHASE34_OBSERVATION_AUTOMATION_CLOSEOUT.md` | **Phase 34 closeout** |
 
+### Backlog Health Automation (Phase 35)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE35A_BACKLOG_HEALTH_CHECK_DESIGN.md` | Phase 35A — 13 checks design |
+| `docs/hermes/HERMES_PHASE35B_BACKLOG_HEALTH_SCRIPT_REPORT.md` | Phase 35B — manual run report |
+| `docs/hermes/HERMES_PHASE35C_BACKLOG_HEALTH_TIMER_ENABLE_REPORT.md` | Phase 35C — timer enabled |
+| `docs/hermes/HERMES_PHASE35D_BACKLOG_HEALTH_SAFETY_AUDIT.md` | Phase 35D — safety PASS |
+| `docs/hermes/HERMES_PHASE35E_BACKLOG_HEALTH_DASHBOARD_VISIBILITY_DESIGN.md` | Phase 35E — dashboard design |
+| `docs/project/PHASE35_BACKLOG_HEALTH_AUTOMATION_CLOSEOUT.md` | **Phase 35 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
