@@ -675,8 +675,25 @@
 - Self-learning maturity: **8.3/10**
 - Broker/proposal/trade/journal/holdings mutations: **ZERO across 100 phases**
 
+### Phases 101–106 Production Hardening (2026-06-01)
+- Phase 101: Production observation PASS (14 timers, 12/12 checks)
+- Phase 102: Old overnight RETIRED (4 cron lines, active cron 172)
+- Phase 103: 3rd auto-promotion (TRX id=13 earnings). Total: 15 promoted, 3 auto-promoted.
+- Phase 104: **Recharts LIVE** — aging BarChart + agent horizontal BarChart. UX 8.3/10.
+- Phase 105: Promotion action controls DESIGNED (approve/reject/defer/veto). Not implemented.
+- Phase 106: Level 7 PROHIBITED discussion only. 12 required controls before sandbox.
+
+### Final Session State (106 Phases)
+- **106 phases** completed
+- Hermes: 42 rows, 15 promoted, 27 staged, 12 embeddings, 15 cache sections
+- 14 timers | 172 cron | Dashboard: Recharts + drill-through LIVE
+- 3 auto-promotions | Old overnight: RETIRED | LLM queue: STABLE
+- Level 6: **PRODUCTION_GRADE** | Level 7: **PROHIBITED**
+- Self-learning maturity: **8.3/10** | Dashboard UX: **8.3/10**
+- Broker/proposal/trade/journal/holdings: **ZERO across 106 phases**
+
 ### Next Gate
-- Phase 101 7-day observation, Phase 102 overnight retirement, Phase 103 broader auto-promotion
+- 7-day real observation of Phase 102 overnight retirement + Phase 103 auto-promotion expansion
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

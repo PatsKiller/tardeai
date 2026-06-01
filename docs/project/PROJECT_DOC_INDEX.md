@@ -459,6 +459,14 @@
 | `docs/project/PHASE99_SECOND_AUTO_PROMOTION_OR_HOLD_CLOSEOUT.md` | **Phase 99** — SCHD auto-promoted |
 | `docs/project/PHASE100_SYSTEM_MILESTONE_AUDIT_CLOSEOUT.md` | **Phase 100** — LEVEL6_PRODUCTION_GRADE_WITH_LIMITS |
 
+### Production Hardening (Phases 101–106)
+| `docs/project/PHASE101_PRODUCTION_OBSERVATION_CLOSEOUT.md` | **Phase 101** — observation PASS |
+| `docs/project/PHASE102_OLD_OVERNIGHT_RETIREMENT_CLOSEOUT.md` | **Phase 102** — 4 old cron retired |
+| `docs/project/PHASE103_BROADER_AUTO_PROMOTION_MAX3_CLOSEOUT.md` | **Phase 103** — 3rd auto-promotion |
+| `docs/project/PHASE104_RECHARTS_INTEGRATION_CLOSEOUT.md` | **Phase 104** — Recharts live |
+| `docs/project/PHASE105_PROMOTION_ACTION_CONTROLS_DESIGN_CLOSEOUT.md` | **Phase 105** — action controls design |
+| `docs/project/PHASE106_LEVEL7_SANDBOX_DISCUSSION_CLOSEOUT.md` | **Phase 106** — Level 7 PROHIBITED |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
