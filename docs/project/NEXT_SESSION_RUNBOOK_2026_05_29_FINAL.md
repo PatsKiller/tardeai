@@ -183,14 +183,16 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 54–60: High-LLM Queue COMPLETE — tables, routing (Hermes+journal+overnight), dashboard, pilot**
 
+**Phase 61–66: Contention fix, Gemma 4 canary (NOT_AVAILABLE), retry (1/3), timer, parallel comparison, Level 6 STABLE**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
 Hermes rows: 34 (10 promoted, 24 staged, 13 backlog) | Embeddings: 9 | Cache: 10
-Hermes timers: 7 | High-LLM queue: 22 jobs, 19/22 schedulable, dashboard live
-Maturity: **Level 6 — Production Advisory + Global LLM Queue Infrastructure**
-Model: gemma3:12b default. Gemma 4: canary-only (Phase 61).
-Execution pilot: PASS_WITH_LIMITS (infra verified, Ollama 500 errors under contention)
+Hermes timers: 8 + LLM worker = 9 total | High-LLM queue: 22 jobs, 1 result
+Maturity: **Level 6 STABLE — Production Advisory + Global LLM Queue**
+Model: gemma3:12b default. Gemma 4: NOT_AVAILABLE locally.
+Self-learning quality: 4.3/5 | Level 7 (trading): PROHIBITED
 
-Next: Phase 61 Gemma 4 canary, observation period, or retry execution pilot mid-day
+Next: 7-day observation, shadow overnight comparison, expand cache cap, or maturity cert
 
 Daily check:
 ```bash

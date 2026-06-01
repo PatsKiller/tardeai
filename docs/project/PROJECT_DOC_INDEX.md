@@ -397,6 +397,14 @@
 | `docs/project/PHASE59_HIGH_LLM_QUEUE_DASHBOARD_CLOSEOUT.md` | **Phase 59** — GET /api/v2/llm/high-queue |
 | `docs/project/PHASE60_GOVERNED_HIGH_LLM_EXECUTION_CLOSEOUT.md` | **Phase 60** — PASS_WITH_LIMITS, infra verified |
 
+### Ollama Remediation + Gemma 4 + Retry + Timer + Stabilization (Phases 61–66)
+| `docs/project/PHASE61_OLLAMA_CONTENTION_REMEDIATION_CLOSEOUT.md` | **Phase 61** — lock guard, warm, num_ctx=4096 |
+| `docs/project/PHASE62_GEMMA4_CANARY_CLOSEOUT.md` | **Phase 62** — NOT_AVAILABLE |
+| `docs/project/PHASE63_HIGH_LLM_EXECUTION_RETRY_CLOSEOUT.md` | **Phase 63** — 1/3 completed, 2/3 timeout |
+| `docs/project/PHASE64_HIGH_LLM_WORKER_TIMER_CLOSEOUT.md` | **Phase 64** — daily 14:00 ET timer |
+| `docs/project/PHASE65_OVERNIGHT_PARALLEL_COMPARISON_CLOSEOUT.md` | **Phase 65** — READY_WITH_LIMITS |
+| `docs/project/PHASE66_LEVEL6_STABILIZATION_CLOSEOUT.md` | **Phase 66** — Level 6 STABLE |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
