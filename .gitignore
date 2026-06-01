@@ -100,3 +100,6 @@ docs/project/docx_patch_*.py
 *.tst
 docs/session33_patches.tar.gz
 backups/doc_exports/*.zip
+
+# ── SearXNG / Docker infrastructure ──────────────────────────────────────
+infra/searxng/.env
