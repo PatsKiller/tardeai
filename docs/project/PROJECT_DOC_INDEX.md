@@ -438,6 +438,11 @@
 | `docs/project/PHASE86_LEVEL7_GOVERNANCE_BOUNDARY_CLOSEOUT.md` | **Phase 86** — Level 7 PROHIBITED |
 | `docs/project/PHASE87_CAPPED_ADVISORY_PROMOTION_PILOT_CLOSEOUT.md` | **Phase 87** — 2 promoted (ADBE, AGMH) |
 
+### Auto-Promotion Policy + Pilot (Phases 88–90)
+| `docs/project/PHASE88_AUTO_PROMOTION_POLICY_SHADOW_CLOSEOUT.md` | **Phase 88** — policy + shadow (3 eligible) |
+| `docs/project/PHASE89_AUTO_PROMOTION_DRYRUN_VETO_CLOSEOUT.md` | **Phase 89** — veto queue (3 candidates) |
+| `docs/project/PHASE90_TINY_AUTO_PROMOTION_PILOT_CLOSEOUT.md` | **Phase 90** — first auto-promotion (TRX id=16) |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
