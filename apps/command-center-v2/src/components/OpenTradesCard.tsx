@@ -38,10 +38,16 @@ export default function OpenTradesCard() {
         const pos = range > 0 ? Math.max(0, Math.min(100, ((t.current_price - t.stop_loss) / range) * 100)) : 50
         const entryPos = range > 0 ? Math.max(0, Math.min(100, ((t.entry_price - t.stop_loss) / range) * 100)) : 50
 
+        // Date purchased + time in trade
+        const openDate = t.opened_at ? new Date(t.opened_at) : null
+        const holdDays = openDate ? Math.max(0, Math.floor((Date.now() - openDate.getTime()) / 86400000)) : null
+        const holdHours = openDate ? Math.max(0, Math.floor((Date.now() - openDate.getTime()) / 3600000)) : null
+        const holdStr = holdDays != null ? (holdDays > 0 ? `${holdDays}d ${holdHours! % 24}h` : `${holdHours}h`) : '—'
+
         return (
           <div key={t.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 20px', marginBottom: 16, borderLeft: `3px solid ${isUp ? '#22c55e' : '#ef4444'}` }}>
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
               <div>
                 <span style={{ fontSize: 20, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>{t.symbol}</span>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginLeft: 8 }}>
@@ -54,6 +60,21 @@ export default function OpenTradesCard() {
                   {pf(t.pnl_pct)} · {t.r_multiple != null ? `${t.r_multiple >= 0 ? '+' : ''}${t.r_multiple.toFixed(2)}R` : ''}
                 </div>
               </div>
+            </div>
+
+            {/* Date purchased + hold time */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14, fontSize: 11 }}>
+              <span style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Opened: <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+                  {openDate ? openDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                </span>
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.35)' }}>·</span>
+              <span style={{ color: 'rgba(255,255,255,0.45)' }}>
+                Held: <span style={{ color: holdDays != null && holdDays > 5 ? '#f59e0b' : 'rgba(255,255,255,0.7)', fontWeight: 500 }}>
+                  {holdStr}
+                </span>
+              </span>
             </div>
 
             {/* Price ladder */}
