@@ -219,10 +219,12 @@ Self-learning: **8.1/10** | Level 6: **RECERTIFIED** | Level 7: **PROHIBITED**
 
 **Phase 107+108: Dashboard redesigned as operator workflow cockpit — UX 8.8/10**
 
-**108 phases completed. Self-learning maturity: 8.3/10. Dashboard UX: 8.8/10.**
+**Phase 109: Dashboard URL state, breadcrumbs, click affordance — operator to verify in browser**
+
+**109 phases completed. Self-learning maturity: 8.3/10.**
 
 Hermes: 42 rows | 15 promoted | 12 embeddings | 15 cache | 14 timers | 3 auto-promotions
-Dashboard: Attention-first + Kanban lanes + Recharts + card grid + persistent drawer
+Dashboard: URL state (?view=&filter=&item=) + breadcrumbs + hover effects + Recharts click
 Old overnight: RETIRED | Level 6: **PRODUCTION_GRADE** | Level 7: **PROHIBITED**
 
 Daily check:
