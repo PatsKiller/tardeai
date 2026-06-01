@@ -12664,6 +12664,37 @@ def _hermes_research_backlog():
     }
 
 
+def _high_llm_queue():
+    """GET /api/v2/llm/high-queue — read-only high-LLM queue status."""
+    rows = _db_query("""
+        SELECT id, job_type, source_system, preferred_model, priority_score,
+               expected_runtime_sec, quota_pool, status, created_at
+        FROM high_llm_job_queue ORDER BY priority_score DESC NULLS LAST LIMIT 30
+    """) or []
+    by_pool = {}
+    by_status = {}
+    for r in rows:
+        p = r.get("quota_pool", "unknown")
+        s = r.get("status", "unknown")
+        by_pool[p] = by_pool.get(p, 0) + 1
+        by_status[s] = by_status.get(s, 0) + 1
+    # Results count
+    results_count = _db_query("SELECT COUNT(*) as c FROM high_llm_job_results", fetch="one")
+    rc = results_count.get("c", 0) if results_count else 0
+    # Kill switch
+    ks = Path(str(PROJECT_ROOT)) / "data" / "state" / "HIGH_LLM_SCHEDULER_DISABLED"
+    return {
+        "ok": True,
+        "jobs": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "total": len(rows),
+        "by_pool": by_pool,
+        "by_status": by_status,
+        "results_count": rc,
+        "kill_switch": ks.exists(),
+        "default_model": "gemma3:12b",
+    }
+
+
 def _system_scheduled_jobs():
     """GET /api/v2/system/scheduled-jobs — read-only scheduler health."""
     import subprocess as _sp
@@ -13052,6 +13083,7 @@ ROUTES = {
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
+    "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
 }
 
 
