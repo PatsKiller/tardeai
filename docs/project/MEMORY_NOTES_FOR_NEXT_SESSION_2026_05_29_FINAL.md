@@ -315,8 +315,18 @@
 - DB writes: ZERO | Hermes: NO | Autonomous: NO | Embeddings: ZERO
 - CC query visibility: designed (docs only), not implemented
 
+### Phase 18 Source Discovery Dry-Run (2026-05-31)
+- 5 queries: SCHD, APAM, TRX, FJSCX, macro breadth/rotation
+- 75 results, 25 candidates retained, 10 future ingestion candidates
+- Top sources: Seeking Alpha, Yahoo Finance, Motley Fool, SEC.gov, Zacks
+- Mean quality: 4.5/5 — PASS
+- New source types found: SA analyst opinions, earnings transcripts, company IR
+- Future ingestion mapping designed (hermes_research_intelligence staging)
+- DB writes: ZERO | Hermes: ZERO | Embeddings: ZERO | Autonomous: NO
+- Phase 19 staged ingestion justified per quality audit
+
 ### Next Gate
-- Observation period, source discovery dry-run, or CC query visibility (requires approval)
+- Observation period, capped staged ingestion (Phase 19), or CC query visibility (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -121,10 +121,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 17: SearXNG Manual Query Wrapper COMPLETE — file-only, safety PASS**
 
+**Phase 18: Source Discovery Dry-Run COMPLETE — 5 queries, 10 candidates, quality 4.5/5**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Manual wrapper: `python3 scripts/searxng_manual_query.py "query"` → `data/searxng_queries/`
+Discovery outputs: `docs/infra/searxng_phase18_source_discovery_dryrun/`
 
-Next: observation, source discovery dry-run, or CC query visibility
+Next: observation, capped staged ingestion (Phase 19), or CC query visibility
 
 Daily check:
 ```bash

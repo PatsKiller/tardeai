@@ -156,6 +156,16 @@
 | `docs/infra/SEARXNG_PHASE17D_COMMAND_CENTER_QUERY_VISIBILITY_DESIGN.md` | Phase 17D — CC visibility design (docs only) |
 | `docs/project/PHASE17_SEARXNG_MANUAL_WRAPPER_CLOSEOUT.md` | **Phase 17 closeout** |
 
+### SearXNG Source Discovery Dry-Run (Phase 18)
+| Document | Purpose |
+|----------|---------|
+| `docs/infra/SEARXNG_PHASE18A_SOURCE_DISCOVERY_DRY_RUN_ARCHITECTURE.md` | Phase 18A — discovery architecture |
+| `docs/infra/SEARXNG_PHASE18B_SOURCE_DISCOVERY_DRY_RUN_REPORT.md` | Phase 18B — 5 queries, 10 candidates |
+| `docs/infra/SEARXNG_PHASE18C_SOURCE_DISCOVERY_QUALITY_AUDIT.md` | Phase 18C — quality PASS (4.5/5) |
+| `docs/infra/SEARXNG_PHASE18D_FUTURE_INGESTION_MAPPING_DESIGN.md` | Phase 18D — ingestion mapping design |
+| `docs/infra/searxng_phase18_source_discovery_dryrun/` | Dry-run output files |
+| `docs/project/PHASE18_SEARXNG_SOURCE_DISCOVERY_DRY_RUN_CLOSEOUT.md` | **Phase 18 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
