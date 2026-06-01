@@ -139,11 +139,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 28: Trade AI Coverage Audit COMPLETE — 4/10 surfaces covered, 4 views needed, 13 backlog types**
 
+**Phase 29: Safe View Coverage COMPLETE — 4 views created, coverage 4/10 → 9/10**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
-Coverage: journal/backtest/scout/catalyst NOT VISIBLE — need 4 safe views
+Views: 12 total (76K+ rows) | Coverage: 9/10 (morning briefs only gap)
 
-Next: safe view creation, Librarian dry-run with new views, embedding pilot, or observation
+Next: expanded Librarian dry-run, embedding pilot, or observation
 
 Daily check:
 ```bash
