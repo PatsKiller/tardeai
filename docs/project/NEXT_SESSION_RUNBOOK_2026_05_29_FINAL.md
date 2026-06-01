@@ -151,12 +151,14 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 34: Observation Automation COMPLETE — daily 06:30 UTC timer active, 12/12 checks PASS**
 
+**Phase 35: Backlog Health Automation COMPLETE — daily 06:45 UTC timer active, 10 items, 2 high**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
-Automation: 19 timers (incl observation), 187 cron, 1 Docker. Level 3 maturity.
-Observation: daily reports at docs/hermes/observations/
+Automation: 20 timers (3 Hermes: loop+observation+backlog), 187 cron, 1 Docker. Level 3.
+Daily reports: observations/ + backlog_health/
 
-Next: Phase 35 backlog health check, source discovery for backlog, or observation period
+Next: Phase 36 cron optimization, Phase 37 research bridge, source discovery, or observation
 
 Daily check:
 ```bash

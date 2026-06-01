@@ -456,8 +456,17 @@
 - Rollback: `systemctl --user stop/disable hermes-observation-check.timer`
 - Total systemd timers: 19 (18 existing + 1 new observation)
 
+### Phase 35 Backlog Health Automation (2026-06-01)
+- Script: `scripts/hermes_backlog_health_check.py` — 13 read-only checks
+- Timer: hermes-backlog-health-check.timer, daily 06:45 UTC (02:45 ET)
+- Manual run: 10 items, 2 high priority, 0 stale, 1 duplicate risk
+- Reports: docs/hermes/backlog_health/<date>_backlog_health_report.md
+- Safety audit: PASS — zero DB writes, zero status changes
+- Active Hermes timers: 3 (loop 01:00, observation 06:30, backlog 06:45)
+- Total systemd timers: 20
+
 ### Next Gate
-- Phase 35 backlog health check, source discovery for backlog, or observation period (requires approval)
+- Phase 36 cron optimization, Phase 37 research bridge, source discovery, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
