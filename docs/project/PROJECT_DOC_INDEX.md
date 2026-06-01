@@ -317,6 +317,16 @@
 | `docs/hermes/HERMES_PHASE35E_BACKLOG_HEALTH_DASHBOARD_VISIBILITY_DESIGN.md` | Phase 35E — dashboard design |
 | `docs/project/PHASE35_BACKLOG_HEALTH_AUTOMATION_CLOSEOUT.md` | **Phase 35 closeout** |
 
+### Scheduled Job Consolidation (Phase 36)
+| Document | Purpose |
+|----------|---------|
+| `docs/operations/PHASE36A_CRON_RISK_AND_GROUPING_AUDIT.md` | Phase 36A — 187 jobs grouped |
+| `docs/operations/PHASE36B_SCHEDULE_DUPLICATE_OVERLAP_AUDIT.md` | Phase 36B — 11+ duplicates |
+| `docs/operations/PHASE36C_SCHEDULED_JOB_CONSOLIDATION_DESIGN.md` | Phase 36C — 5 categories |
+| `docs/operations/PHASE36D_LOW_LATENCY_SCHEDULER_RECOMMENDATION.md` | Phase 36D — latency classification |
+| `docs/operations/PHASE36E_SCHEDULED_JOB_MIGRATION_PLAN.md` | Phase 36E — Phases 41–46 plan |
+| `docs/project/PHASE36_SCHEDULED_JOB_CONSOLIDATION_AUDIT_CLOSEOUT.md` | **Phase 36 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
