@@ -608,8 +608,16 @@
 - Phase 82: 3 embedded (ADBE ce=28201, AGMH ce=28202, TRX id=16 ce=28203). Total: 12 Hermes embeddings.
 - Maturity: **LEVEL6_CERTIFIED_STABLE** | Self-learning: 8.1/10 | Level 7: PROHIBITED
 
+### Phases 83–87 Review + Dashboard + Certification + Governance + Promotion (2026-06-01)
+- Phase 83: 16 candidates in 5 lanes (5 batch-eligible, 4 ready, 6 needs-research, 1 reject)
+- Phase 84: /v2/self-learning-overview dashboard LIVE (executive strip, lanes, aging, agents, infra)
+- Phase 85: LEVEL6_RECERTIFIED with visual dashboard and promotion lanes
+- Phase 86: Level 7 PROHIBITED. 11 required controls before discussion.
+- Phase 87: ADBE id=17 + AGMH id=18 promoted to advisory cache. 12 total cache sections, 12 promoted.
+- Self-learning: 8.1/10 | Embeddings: 12 | Hermes rows: 42 | Level 7: PROHIBITED
+
 ### Next Gate
-- Phase 83 promotion review, Phase 84 self-learning dashboard, Phase 85 recertification
+- 7-day observation of full Phase 87 stack, then Phase 88+ for broader expansion
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

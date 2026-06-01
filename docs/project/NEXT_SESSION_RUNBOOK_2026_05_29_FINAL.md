@@ -201,11 +201,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 78–82: LEVEL6_CERTIFIED_STABLE, expanded discovery, cache scored, LLM stabilized, 2nd embedding batch**
 
-SearXNG: running | Hermes rows: 42 | Embeddings: **12** | Cache: 10 (3 KEEP, 6 REFRESH) | Timers: 9
-Finviz: HEALTHY | Preflight: HEALTHY | Dedupe: LIVE | LLM queue: STABLE (22 jobs)
-Self-learning: **8.1/10** | Level 6: **CERTIFIED_STABLE** | Level 7: PROHIBITED
+**Phase 83–87: Promotion review, self-learning dashboard, recertified, Level 7 boundary, 2 promoted**
 
-Next: Phase 83 promotion review, Phase 84 self-learning dashboard, Phase 85 recertification
+SearXNG: running | Hermes rows: 42 | Embeddings: **12** | Cache: **12** | Promoted: **12** | Timers: 9
+Dashboard: /v2/self-learning-overview LIVE | Promotion lanes: 5 | Level 6: **RECERTIFIED**
+Self-learning: **8.1/10** | Level 7: **PROHIBITED** | Broker: ZERO
+
+Next: 7-day observation of full stack, then Phase 88+ for broader expansion
 
 Daily check:
 ```bash
