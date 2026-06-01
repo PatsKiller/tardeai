@@ -1,0 +1,91 @@
+[
+  {
+    "check": "JRN-ALL",
+    "backlog_type": "journal_lesson_missing",
+    "title": "Trade journal learning system is empty \u2014 no thesis reviews generated",
+    "priority": "medium",
+    "owner": "hermes_librarian_agent",
+    "detail": "hermes_v_journal_learning_context has 0 rows. The trade_thesis_reviews table is empty, meaning no post-trade learning is being captured."
+  },
+  {
+    "check": "BT-5",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 0% (sample=1)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 0% (sample=1)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-5",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 0% (sample=1)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 0% (sample=1)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-5",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 0% (sample=2)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 0% (sample=2)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-5",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 0% (sample=1)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 0% (sample=1)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-1",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 27.59% < 40% (sample=29, pf=0.3153)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 27.59% < 40% (sample=29, pf=0.3153)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-1",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 28.57% < 40% (sample=7, pf=2.6398)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 28.57% < 40% (sample=7, pf=2.6398)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-1",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 30.0% < 40% (sample=20, pf=1.3843)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 30.0% < 40% (sample=20, pf=1.3843)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-1",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 33.9% < 40% (sample=59, pf=0.6099)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 33.9% < 40% (sample=59, pf=0.6099)",
+    "source_view": "backtest"
+  },
+  {
+    "check": "BT-1",
+    "backlog_type": "backtest_contradiction",
+    "title": "Win rate 39.13% < 40% (sample=46, pf=3.6721)",
+    "priority": "high",
+    "owner": "hermes_librarian_agent",
+    "detail": "Win rate 39.13% < 40% (sample=46, pf=3.6721)",
+    "source_view": "backtest"
+  }
+]

@@ -1,0 +1,28 @@
+[
+  {
+    "check": "CAT-2",
+    "severity": "medium",
+    "detail": "25 catalysts with type='other' (generic, unclassified)",
+    "backlog_type": "weak_trade_catalyst",
+    "sample_symbols": [
+      "LHX",
+      "RKLB",
+      "RTX",
+      "CSWC",
+      "XLI"
+    ]
+  },
+  {
+    "check": "CAT-1",
+    "severity": "medium",
+    "detail": "25 catalysts with confidence < 0.4",
+    "backlog_type": "weak_trade_catalyst",
+    "sample_symbols": [
+      "LHX",
+      "RKLB",
+      "RTX",
+      "CSWC",
+      "XLI"
+    ]
+  }
+]
