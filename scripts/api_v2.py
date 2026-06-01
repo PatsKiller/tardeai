@@ -12949,6 +12949,126 @@ def _hermes_self_learning_overview():
     }
 
 
+def _system_siem_dashboard():
+    """GET /api/v2/system/siem — SIEM-lite alert dashboard with live normalization."""
+    import json as _jsiem
+    from datetime import datetime as _dtsiem, timezone as _tzsiem, timedelta as _tdsiem
+
+    cutoff = _dtsiem.now(_tzsiem.utc) - _tdsiem(days=7)
+
+    # Source 1: alert_events
+    ae_rows = _db_query("""
+        SELECT id, alert_type, symbol, severity, source_script,
+               LEFT(raw_text, 200) as raw_text, created_at
+        FROM alert_events WHERE created_at > %s
+        ORDER BY created_at DESC LIMIT 200
+    """, [cutoff]) or []
+
+    # Source 2: system_health_events
+    she_rows = _db_query("""
+        SELECT id, event_type, component, severity, LEFT(message, 200) as message, created_at
+        FROM system_health_events WHERE created_at > %s
+        ORDER BY created_at DESC LIMIT 200
+    """, [cutoff]) or []
+
+    # Source 3: notification_log (telegram)
+    nl_rows = _db_query("""
+        SELECT id, channel, notification_type, LEFT(subject, 100) as subject,
+               LEFT(body_summary, 200) as body, created_at
+        FROM notification_log WHERE created_at > %s AND channel LIKE '%%telegram%%'
+        ORDER BY created_at DESC LIMIT 100
+    """, [cutoff]) or []
+
+    # Classify events
+    def _classify(text):
+        t = (text or "").lower()
+        if "stop" in t and ("trigger" in t or "hit" in t): return "STOP_TRIGGERED", "P1"
+        if "cookie" in t or ("finviz" in t and "expired" in t): return "FEED_HEALTH", "P1"
+        if "stale" in t and ("agent" in t or "maria" in t): return "AGENT_STALENESS", "P2"
+        if "llm" in t and ("escalat" in t or "tier" in t): return "LLM_ESCALATION", "P2"
+        if "output_invalid" in t or "locktimeout" in t: return "PIPELINE_FAILURE", "P1"
+        if "data quality" in t or "zero" in t: return "DATA_QUALITY", "P2"
+        if "exit reason" in t and ("blank" in t or "''" in t): return "CLOSED_TRADE_REVIEW", "P2"
+        return "SYSTEM_HEALTH", "P3"
+
+    events = []
+    for r in ae_rows:
+        etype, esev = _classify(r.get("raw_text", "") + " " + (r.get("alert_type") or ""))
+        events.append({
+            "id": f"ae-{r['id']}", "timestamp": _json_clean(r["created_at"]),
+            "source": "alert_events", "event_type": etype, "severity": esev,
+            "symbol": r.get("symbol"), "component": r.get("source_script"),
+            "message": r.get("raw_text", "")[:150],
+            "dedupe_key": f"{etype}:{r.get('symbol','sys')}:{r.get('source_script','?')}",
+        })
+    for r in she_rows:
+        etype, esev = _classify((r.get("message") or "") + " " + (r.get("event_type") or ""))
+        events.append({
+            "id": f"she-{r['id']}", "timestamp": _json_clean(r["created_at"]),
+            "source": "system_health_events", "event_type": etype, "severity": esev,
+            "symbol": None, "component": r.get("component"),
+            "message": r.get("message", "")[:150],
+            "dedupe_key": f"{etype}:sys:{r.get('component','?')}",
+        })
+    for r in nl_rows:
+        text = (r.get("subject") or "") + " " + (r.get("body") or "")
+        etype, esev = _classify(text)
+        events.append({
+            "id": f"nl-{r['id']}", "timestamp": _json_clean(r["created_at"]),
+            "source": "notification_log", "event_type": etype, "severity": esev,
+            "symbol": None, "component": "telegram",
+            "message": text[:150],
+            "dedupe_key": f"{etype}:sys:telegram",
+        })
+
+    events.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
+
+    # Dedupe analysis
+    dedupe = {}
+    for e in events:
+        dk = e["dedupe_key"]
+        if dk not in dedupe:
+            dedupe[dk] = {"count": 0, "severity": e["severity"], "event_type": e["event_type"],
+                          "component": e.get("component"), "first": e["timestamp"], "last": e["timestamp"]}
+        dedupe[dk]["count"] += 1
+        dedupe[dk]["last"] = e["timestamp"]
+
+    for e in events:
+        g = dedupe[e["dedupe_key"]]
+        e["repeat_count"] = g["count"]
+        e["suppressed"] = g["count"] > 3
+
+    # Severity summary
+    sev = {"P0": 0, "P1": 0, "P2": 0, "P3": 0}
+    for e in events:
+        if not e["suppressed"]:
+            sev[e["severity"]] = sev.get(e["severity"], 0) + 1
+
+    # Type summary
+    type_counts = {}
+    for e in events:
+        t = e["event_type"]
+        type_counts[t] = type_counts.get(t, 0) + 1
+
+    suppressed_count = sum(1 for e in events if e["suppressed"])
+    immediate_count = sum(1 for e in events if not e["suppressed"] and e["severity"] in ("P0", "P1"))
+
+    return {
+        "total_events": len(events),
+        "suppressed": suppressed_count,
+        "noise_reduction_pct": round(100 * suppressed_count / max(len(events), 1), 1),
+        "immediate_alerts": immediate_count,
+        "severity": sev,
+        "type_counts": sorted([{"type": k, "count": v} for k, v in type_counts.items()], key=lambda x: -x["count"]),
+        "top_dedupe_groups": sorted(
+            [{"key": k, **v} for k, v in dedupe.items()],
+            key=lambda x: -x["count"]
+        )[:15],
+        "recent_events": events[:50],
+        "period_days": 7,
+    }
+
+
 def _system_feed_health():
     """GET /api/v2/system/feed-health — read-only feed health status."""
     # Finviz screener health
@@ -13409,6 +13529,7 @@ ROUTES = {
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
+    "/api/v2/system/siem": lambda: _system_siem_dashboard(),
     "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
     "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
     "/api/v2/hermes/proposal-sandbox": lambda: _hermes_proposal_sandbox(),
