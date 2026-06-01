@@ -443,6 +443,11 @@
 | `docs/project/PHASE89_AUTO_PROMOTION_DRYRUN_VETO_CLOSEOUT.md` | **Phase 89** — veto queue (3 candidates) |
 | `docs/project/PHASE90_TINY_AUTO_PROMOTION_PILOT_CLOSEOUT.md` | **Phase 90** — first auto-promotion (TRX id=16) |
 
+### Dashboard Drill-Through (Phases 91–93)
+| `docs/project/PHASE91_SELF_LEARNING_DRILLTHROUGH_ARCHITECTURE_CLOSEOUT.md` | **Phase 91** — 10 drill-throughs designed |
+| `docs/project/PHASE92_SELF_LEARNING_DRILLTHROUGH_API_CLOSEOUT.md` | **Phase 92** — drilldown + timeline APIs |
+| `docs/project/PHASE93_SELF_LEARNING_VISUAL_DRILLTHROUGH_UI_CLOSEOUT.md` | **Phase 93** — clickable cards, drawer, timeline |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
