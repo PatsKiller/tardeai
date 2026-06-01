@@ -1,0 +1,36 @@
+{
+  "hermes_insight_version": "1.0",
+  "type": "journal_insight",
+  "generated_at": "2026-06-01T12:00:00-04:00",
+  "mutation_statement": "THIS IS A READ-ONLY INSIGHT. NO JOURNAL MUTATION. NO TRADE MODIFICATION.",
+
+  "trade_reference": {
+    "symbol": "ONDS",
+    "strategy": "swing_breakout",
+    "entry_price": 12.82,
+    "exit_price": 12.46,
+    "pnl": -55.08,
+    "exit_reason": "stop_hit",
+    "date": "2026-05-28"
+  },
+
+  "pattern_observed": "ONDS swing_breakout entered at $12.82, stopped at $12.46 (-2.8%). The stop was tight relative to the entry — only $0.36 (2.8%) from entry. For a swing_breakout strategy, this may indicate the breakout level was not confirmed or the stop was set too close to the breakout point.",
+
+  "evidence": [
+    "Stop distance was 2.8% — below the typical 5% swing stop threshold",
+    "Exit reason was stop_hit, not a discretionary close",
+    "A duplicate_submit_race also occurred for ONDS (separate paper_trades row)"
+  ],
+
+  "confidence": 0.5,
+
+  "suggested_lesson": "Review whether swing_breakout stops are being set at the right distance. A 2.8% stop on a swing trade may be too tight — consider whether the breakout confirmation level should dictate stop placement rather than a fixed percentage.",
+
+  "what_not_to_change": [
+    "Do not widen all swing_breakout stops based on one trade",
+    "Do not change the stop algorithm without backtesting the impact",
+    "The duplicate_submit_race is a separate execution issue — not a strategy issue"
+  ],
+
+  "human_review_required": true
+}
