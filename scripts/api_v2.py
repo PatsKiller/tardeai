@@ -12664,6 +12664,64 @@ def _hermes_research_backlog():
     }
 
 
+def _hermes_self_learning_overview():
+    """GET /api/v2/hermes/self-learning-overview — visual cockpit data."""
+    import json as _jso
+    # Hermes row counts
+    rows = _db_query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='staged') as staged, COUNT(*) FILTER (WHERE status='promoted') as promoted, COUNT(*) FILTER (WHERE research_type='research_backlog') as backlog, COUNT(*) FILTER (WHERE research_type='ops_backlog') as ops_backlog FROM hermes_research_intelligence", fetch="one") or {}
+    # Embeddings
+    emb = _db_query("SELECT COUNT(*) as c FROM content_embeddings WHERE source_type='hermes_research'", fetch="one") or {}
+    # Cache
+    cache = _db_query("SELECT COUNT(*) as c FROM llm_intelligence_cache WHERE section LIKE 'hermes_%'", fetch="one") or {}
+    # Events
+    events = _db_query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE event_status='pending') as pending, COUNT(*) FILTER (WHERE event_status='completed') as completed, COUNT(*) FILTER (WHERE event_status='skipped') as skipped FROM hermes_advisory_events", fetch="one") or {}
+    # LLM queue
+    llm = _db_query("SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status='completed') as completed, COUNT(*) FILTER (WHERE status='failed') as failed FROM high_llm_job_queue", fetch="one") or {}
+    # Age buckets
+    age = _db_query("""
+        SELECT CASE WHEN age <= 1 THEN '0-1d' WHEN age <= 3 THEN '2-3d' WHEN age <= 7 THEN '4-7d' ELSE '8d+' END as bucket, COUNT(*) as c
+        FROM (SELECT EXTRACT(DAY FROM NOW()-created_at) as age FROM hermes_research_intelligence WHERE status='staged') sub
+        GROUP BY bucket ORDER BY bucket
+    """) or []
+    # Agent touch
+    agents = _db_query("SELECT hermes_agent_name, COUNT(*) as c, MAX(created_at) as last FROM hermes_research_intelligence GROUP BY hermes_agent_name ORDER BY c DESC") or []
+    # Promotion review
+    pr_path = Path(str(PROJECT_ROOT)) / "docs" / "hermes" / "promotion_reviews" / "latest_promotion_review.json"
+    pr = {}
+    if pr_path.exists():
+        try:
+            pr = _jso.loads(pr_path.read_text())
+        except Exception:
+            pass
+    lanes = pr.get("lanes", {})
+    # Feed health
+    feed = _db_query("SELECT status, symbols_scanned FROM screener_run_health ORDER BY id DESC LIMIT 1", fetch="one") or {}
+    # Observation
+    obs_path = Path(str(PROJECT_ROOT)) / "docs" / "hermes" / "observations" / "latest_observation_summary.json"
+    obs_ts = None
+    if obs_path.exists():
+        try:
+            obs_ts = _jso.loads(obs_path.read_text()).get("timestamp")
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "maturity": "LEVEL6_CERTIFIED_STABLE",
+        "level7": "PROHIBITED",
+        "hermes": {k: _json_clean(v) for k, v in rows.items()},
+        "embeddings": emb.get("c", 0),
+        "cache_sections": cache.get("c", 0),
+        "events": {k: _json_clean(v) for k, v in events.items()},
+        "llm_queue": {k: _json_clean(v) for k, v in llm.items()},
+        "age_buckets": [{k: _json_clean(v) for k, v in a.items()} for a in age],
+        "agents": [{k: _json_clean(v) for k, v in a.items()} for a in agents[:10]],
+        "promotion_lanes": {k: len(v) for k, v in lanes.items()},
+        "feed_health": {"status": feed.get("status", "UNKNOWN"), "symbols": feed.get("symbols_scanned", 0)},
+        "last_observation": obs_ts,
+    }
+
+
 def _system_feed_health():
     """GET /api/v2/system/feed-health — read-only feed health status."""
     # Finviz screener health
@@ -13124,6 +13182,7 @@ ROUTES = {
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
+    "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
 }
 
 

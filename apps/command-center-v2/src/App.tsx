@@ -87,6 +87,7 @@ const SystemAccess = lazy(() => import('./pages/SystemAccess'))
 const SystemApplications = lazy(() => import('./pages/SystemApplications'))
 const HermesChat = lazy(() => import('./pages/HermesChat'))
 const HermesIntelligence = lazy(() => import('./pages/HermesIntelligence'))
+const SelfLearningOverview = lazy(() => import('./pages/SelfLearningOverview'))
 const Reports = lazy(() => import('./pages/Reports'))
 
 function Loading() {
@@ -203,6 +204,7 @@ export default function App() {
           <Route path="system-applications" element={<SafePage><SystemApplications /></SafePage>} />
           <Route path="hermes" element={<SafePage><HermesChat /></SafePage>} />
           <Route path="hermes-intelligence" element={<SafePage><HermesIntelligence /></SafePage>} />
+          <Route path="self-learning-overview" element={<SafePage><SelfLearningOverview /></SafePage>} />
           <Route path="reports" element={<SafePage><Reports /></SafePage>} />
 
           {/* ── Legacy redirects (old routes → consolidated pages) ── */}
