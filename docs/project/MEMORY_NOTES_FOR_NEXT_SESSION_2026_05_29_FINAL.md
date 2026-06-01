@@ -447,8 +447,17 @@
 - Rollback: docs/hermes/HERMES_PHASE31_EMBEDDING_PILOT_ROLLBACK.sql
 - Promotions: ZERO | Broker/trade/journal: ZERO
 
+### Phase 34 Observation Automation (2026-06-01)
+- Observation script: `scripts/hermes_observation_check.py` — 12 read-only checks
+- Timer: hermes-observation-check.timer, daily 06:30 UTC (02:30 ET)
+- Manual run: 12/12 PASS (gateway, loop, SearXNG, backlog, embeddings, views, dashboard, cron)
+- Reports: docs/hermes/observations/<date>_observation_report.md
+- Safety audit: PASS — zero DB writes, zero alerts, zero service changes
+- Rollback: `systemctl --user stop/disable hermes-observation-check.timer`
+- Total systemd timers: 19 (18 existing + 1 new observation)
+
 ### Next Gate
-- Phase 34 observation automation, source discovery for backlog, or observation (requires approval)
+- Phase 35 backlog health check, source discovery for backlog, or observation period (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

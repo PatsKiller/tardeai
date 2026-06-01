@@ -297,6 +297,16 @@
 | `docs/hermes/HERMES_PHASE33E_AUTOMATION_ROLLOUT_GATES.md` | Phase 33E — Phases 34–40 rollout |
 | `docs/project/PHASE33_HERMES_AUTOMATION_MODEL_CLOSEOUT.md` | **Phase 33 closeout** |
 
+### Observation Automation (Phase 34)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE34A_OBSERVATION_AUTOMATION_DESIGN.md` | Phase 34A — 12 checks design |
+| `docs/hermes/HERMES_PHASE34B_OBSERVATION_SCRIPT_REPORT.md` | Phase 34B — 12/12 PASS |
+| `docs/hermes/HERMES_PHASE34C_OBSERVATION_TIMER_ENABLE_REPORT.md` | Phase 34C — timer enabled |
+| `docs/hermes/HERMES_PHASE34D_OBSERVATION_AUTOMATION_SAFETY_AUDIT.md` | Phase 34D — safety PASS |
+| `docs/hermes/HERMES_PHASE34E_OBSERVATION_DASHBOARD_VISIBILITY_DESIGN.md` | Phase 34E — dashboard design |
+| `docs/project/PHASE34_OBSERVATION_AUTOMATION_CLOSEOUT.md` | **Phase 34 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

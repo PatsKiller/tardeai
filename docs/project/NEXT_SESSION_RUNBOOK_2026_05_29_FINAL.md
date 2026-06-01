@@ -149,11 +149,14 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 33: Automation Model Audit COMPLETE — Level 3 maturity, 7 levels defined, Phases 34–40 mapped**
 
+**Phase 34: Observation Automation COMPLETE — daily 06:30 UTC timer active, 12/12 checks PASS**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
-Automation: 18 timers, 187 cron (none Hermes), 1 Docker. Level 3 maturity.
+Automation: 19 timers (incl observation), 187 cron, 1 Docker. Level 3 maturity.
+Observation: daily reports at docs/hermes/observations/
 
-Next: Phase 34 observation automation, source discovery for backlog, or observation
+Next: Phase 35 backlog health check, source discovery for backlog, or observation period
 
 Daily check:
 ```bash
