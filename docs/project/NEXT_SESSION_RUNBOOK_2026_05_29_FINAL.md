@@ -119,9 +119,12 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 16: SearXNG Shared Layer COMPLETE — internal-only on 127.0.0.1:18888**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+**Phase 17: SearXNG Manual Query Wrapper COMPLETE — file-only, safety PASS**
 
-Next: observation, manual query wrapper dry-run, or source discovery dry-run
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+Manual wrapper: `python3 scripts/searxng_manual_query.py "query"` → `data/searxng_queries/`
+
+Next: observation, source discovery dry-run, or CC query visibility
 
 Daily check:
 ```bash

@@ -147,6 +147,15 @@
 | `docs/infra/SEARXNG_OPERATOR_RUNBOOK.md` | Operator runbook — status, logs, restart, rollback, privacy |
 | `docs/project/PHASE16_SEARXNG_SHARED_LAYER_CLOSEOUT.md` | **Phase 16 closeout** |
 
+### SearXNG Manual Query Wrapper (Phase 17)
+| Document | Purpose |
+|----------|---------|
+| `docs/infra/SEARXNG_PHASE17A_MANUAL_WRAPPER_ARCHITECTURE.md` | Phase 17A — wrapper design |
+| `docs/infra/SEARXNG_PHASE17B_MANUAL_WRAPPER_IMPLEMENTATION_REPORT.md` | Phase 17B — implementation + test |
+| `docs/infra/SEARXNG_PHASE17C_MANUAL_WRAPPER_SAFETY_AUDIT.md` | Phase 17C — safety PASS |
+| `docs/infra/SEARXNG_PHASE17D_COMMAND_CENTER_QUERY_VISIBILITY_DESIGN.md` | Phase 17D — CC visibility design (docs only) |
+| `docs/project/PHASE17_SEARXNG_MANUAL_WRAPPER_CLOSEOUT.md` | **Phase 17 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

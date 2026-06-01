@@ -305,8 +305,18 @@
 - System Applications: Docker Engine + SearXNG visible (read-only)
 - Rollback: `cd infra/searxng && sg docker -c "docker compose down -v"`
 
+### Phase 17 SearXNG Manual Wrapper (2026-05-31)
+- Manual query wrapper: `scripts/searxng_manual_query.py`
+- Localhost SearXNG only (127.0.0.1:18888)
+- File-only output: `data/searxng_queries/<timestamp>/` (gitignored)
+- Test query: "Trade AI portfolio management architecture" — 15 results, 3 engines
+- Sanitization: secrets, IPs, truncation active
+- Safety audit: PASS
+- DB writes: ZERO | Hermes: NO | Autonomous: NO | Embeddings: ZERO
+- CC query visibility: designed (docs only), not implemented
+
 ### Next Gate
-- Observation period, SearXNG manual query wrapper dry-run, or source discovery dry-run (requires approval)
+- Observation period, source discovery dry-run, or CC query visibility (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
