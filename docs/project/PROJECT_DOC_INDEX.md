@@ -198,6 +198,16 @@
 | `docs/hermes/phase21_communication_actionability_dryrun/` | Communication actionability output |
 | `docs/project/PHASE21_HERMES_LIBRARIAN_DRY_RUN_CLOSEOUT.md` | **Phase 21 closeout** |
 
+### Research Backlog Staged-Write Pilot (Phase 22)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE22A_RESEARCH_BACKLOG_TARGET_REVALIDATION.md` | Phase 22A — target validated |
+| `docs/hermes/HERMES_PHASE22B_RESEARCH_BACKLOG_STAGED_WRITE_REPORT.md` | Phase 22B — 5 rows staged (ids 19–23) |
+| `docs/hermes/HERMES_PHASE22B_RESEARCH_BACKLOG_STAGED_WRITE_ROLLBACK.sql` | Phase 22B rollback SQL |
+| `docs/hermes/HERMES_PHASE22C_RESEARCH_BACKLOG_SAFETY_AUDIT.md` | Phase 22C — safety PASS |
+| `docs/hermes/HERMES_PHASE22D_RESEARCH_BACKLOG_DASHBOARD_DESIGN.md` | Phase 22D — dashboard design (docs only) |
+| `docs/project/PHASE22_RESEARCH_BACKLOG_STAGED_WRITE_CLOSEOUT.md` | **Phase 22 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
