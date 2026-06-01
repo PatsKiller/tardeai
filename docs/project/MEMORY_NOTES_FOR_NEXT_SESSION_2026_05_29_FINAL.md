@@ -647,8 +647,19 @@
 - Level 6: RECERTIFIED | Level 7: PROHIBITED
 - Self-learning maturity: 8.1/10
 
+### Phases 94–96 Monitoring + Shadow + UX (2026-06-01)
+- Phase 94: First auto-promotion STABLE_KEEP. RAG clean (0.687), no pollution, rollback verified.
+- Phase 95: Expanded shadow: 2/26 eligible, 0 applied. Low false-positive risk. Policy correct.
+- Phase 96: Dashboard UX 6.5/10. P0: drawer, lane cards, quality bars, filters. recharts + chart.js available.
+
+### Session Summary (96 Phases)
+- **96 phases** completed in this session (Phases 15–96 + 84R)
+- Hermes: 42 rows, 13 promoted, 12 embeddings, 13 cache sections
+- 9 timers | Dashboard drill-through LIVE | Auto-promotion: 1 pilot (STABLE)
+- Level 6: RECERTIFIED | Level 7: PROHIBITED | Self-learning: 8.1/10
+
 ### Next Gate
-- Phase 94 auto-promotion monitoring, Phase 95 expand shadow, Phase 96 UX review
+- Phase 97 P0 dashboard upgrade, Phase 99 second auto-promotion, Phase 100 milestone audit
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

@@ -448,6 +448,11 @@
 | `docs/project/PHASE92_SELF_LEARNING_DRILLTHROUGH_API_CLOSEOUT.md` | **Phase 92** — drilldown + timeline APIs |
 | `docs/project/PHASE93_SELF_LEARNING_VISUAL_DRILLTHROUGH_UI_CLOSEOUT.md` | **Phase 93** — clickable cards, drawer, timeline |
 
+### Auto-Promotion Monitoring + Shadow + UX Review (Phases 94–96)
+| `docs/project/PHASE94_FIRST_AUTO_PROMOTION_MONITORING_CLOSEOUT.md` | **Phase 94** — STABLE_KEEP |
+| `docs/project/PHASE95_EXPANDED_AUTO_PROMOTION_SHADOW_VETO_CLOSEOUT.md` | **Phase 95** — 2 eligible, 0 applied |
+| `docs/project/PHASE96_DASHBOARD_OPERATOR_UX_REVIEW_CLOSEOUT.md` | **Phase 96** — UX 6.5/10, P0/P1 backlog |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
