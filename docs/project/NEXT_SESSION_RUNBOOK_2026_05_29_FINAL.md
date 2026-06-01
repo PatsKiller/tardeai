@@ -221,11 +221,13 @@ Self-learning: **8.1/10** | Level 6: **RECERTIFIED** | Level 7: **PROHIBITED**
 
 **Phase 109: Dashboard URL state, breadcrumbs, click affordance — operator to verify in browser**
 
-**109 phases completed. Self-learning maturity: 8.3/10.**
+**Phase 111: Authority boundary scorecard + SYS→actionable categories**
+
+**111 phases completed. Self-learning maturity: 8.3/10.**
 
 Hermes: 42 rows | 15 promoted | 12 embeddings | 15 cache | 14 timers | 3 auto-promotions
-Dashboard: URL state (?view=&filter=&item=) + breadcrumbs + hover effects + Recharts click
-Old overnight: RETIRED | Level 6: **PRODUCTION_GRADE** | Level 7: **PROHIBITED**
+Dashboard: SYS replaced with OPS_FEED/OPS_AGENT/STRATEGY/PORTFOLIO/RESEARCH categories
+Authority: 6A (advisory) → progressive ladder defined → Level 7 PROHIBITED
 
 Daily check:
 ```bash

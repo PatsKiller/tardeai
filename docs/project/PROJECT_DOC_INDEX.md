@@ -473,6 +473,11 @@
 ### Dashboard Runtime Defect Fix (Phase 109)
 | `docs/project/PHASE109_DASHBOARD_RUNTIME_DEFECT_FIX_CLOSEOUT.md` | **Phase 109** — URL state, breadcrumbs, click affordance |
 
+### Authority + SYS Actionability (Phase 111)
+| `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Authority scorecard |
+| `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | 6A→6E→7 ladder |
+| `docs/project/PHASE111_AUTHORITY_BOUNDARY_SYS_ACTIONABILITY_CLOSEOUT.md` | **Phase 111 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
