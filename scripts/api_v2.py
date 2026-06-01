@@ -12954,7 +12954,7 @@ def _system_siem_dashboard():
     import json as _jsiem
     from datetime import datetime as _dtsiem, timezone as _tzsiem, timedelta as _tdsiem
 
-    cutoff = _dtsiem.now(_tzsiem.utc) - _tdsiem(days=7)
+    cutoff = _dtsiem.now(_tzsiem.utc) - _tdsiem(days=14)
 
     # Source 1: alert_events
     ae_rows = _db_query("""
@@ -13053,8 +13053,23 @@ def _system_siem_dashboard():
     suppressed_count = sum(1 for e in events if e["suppressed"])
     immediate_count = sum(1 for e in events if not e["suppressed"] and e["severity"] in ("P0", "P1"))
 
+    # Collapse events by dedupe_key — show latest per group with count
+    collapsed = {}
+    for e in events:
+        dk = e["dedupe_key"]
+        if dk not in collapsed:
+            collapsed[dk] = e.copy()
+        else:
+            # Keep the most recent one
+            if (e.get("timestamp") or "") > (collapsed[dk].get("timestamp") or ""):
+                old_count = collapsed[dk]["repeat_count"]
+                collapsed[dk] = e.copy()
+                collapsed[dk]["repeat_count"] = old_count
+    collapsed_list = sorted(collapsed.values(), key=lambda e: e.get("timestamp") or "", reverse=True)
+
     return {
         "total_events": len(events),
+        "unique_groups": len(collapsed),
         "suppressed": suppressed_count,
         "noise_reduction_pct": round(100 * suppressed_count / max(len(events), 1), 1),
         "immediate_alerts": immediate_count,
@@ -13064,8 +13079,8 @@ def _system_siem_dashboard():
             [{"key": k, **v} for k, v in dedupe.items()],
             key=lambda x: -x["count"]
         )[:15],
-        "recent_events": events[:50],
-        "period_days": 7,
+        "recent_events": collapsed_list[:50],
+        "period_days": 14,
     }
 
 
