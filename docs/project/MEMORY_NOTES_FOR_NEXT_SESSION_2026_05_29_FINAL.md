@@ -382,8 +382,16 @@
 - Safety audit: PASS
 - DB writes: ZERO
 
+### Phase 25 Embedding Curator Dry-Run (2026-06-01)
+- 23 rows reviewed, 10 scored, 13 rejected (7 embedded, 5 backlog, 1 low-conf)
+- Top 2 pilot recommendations: SCHD id=12 (score 4.55), TRX id=13 (score 4.36)
+- Both source_discovery with external URLs (Seeking Alpha, Yahoo Finance)
+- RAG pollution risk: LOW for both
+- Embeddings created: ZERO | DB writes: ZERO | Promotions: ZERO
+- Safety audit: PASS
+
 ### Next Gate
-- Embedding curator dry-run, stage income candidates, or observation (requires approval)
+- Embedding pilot (max 2, ids 12+13), stage income candidates, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

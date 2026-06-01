@@ -226,6 +226,15 @@
 | `docs/hermes/HERMES_PHASE24C_RESEARCH_BACKLOG_DASHBOARD_SAFETY_AUDIT.md` | Phase 24C — safety PASS |
 | `docs/project/PHASE24_RESEARCH_BACKLOG_DASHBOARD_CLOSEOUT.md` | **Phase 24 closeout** |
 
+### Embedding Curator Dry-Run (Phase 25)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE25A_EMBEDDING_CURATOR_DRY_RUN_DESIGN.md` | Phase 25A — 11 dimensions, rejection criteria |
+| `docs/hermes/HERMES_PHASE25B_EMBEDDING_CURATOR_DRY_RUN_REPORT.md` | Phase 25B — 10 scored, 2 pilot recs |
+| `docs/hermes/HERMES_PHASE25C_EMBEDDING_CURATOR_SAFETY_AUDIT.md` | Phase 25C — safety PASS |
+| `docs/hermes/phase25_embedding_curator_dryrun/` | Curator output files |
+| `docs/project/PHASE25_EMBEDDING_CURATOR_DRY_RUN_CLOSEOUT.md` | **Phase 25 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
