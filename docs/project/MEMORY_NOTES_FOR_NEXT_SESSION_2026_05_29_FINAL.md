@@ -364,8 +364,18 @@
 - Safety audit: PASS
 - DB writes: 5 rows (staging only) | Embeddings: ZERO | Promotions: ZERO
 
+### Phase 23 Income-Rotation Research (2026-06-01)
+- 8 SearXNG queries covering dividend growth, covered call, Treasury, preferred, REIT, BDC, CEF, tax placement
+- 120 results, 55 candidates retained, 7 sleeves scored across 10 dimensions
+- Top sleeves: Treasury/Bond (4.6), Dividend Growth (4.6), Covered Call (4.2)
+- 12+ specific tickers: SCHD, VYM, JEPI, JEPQ, DIVO, SHV, BIL, PFF, VNQ, O, ARCC, MAIN
+- Actionability improved: 0.15 (Telegram FAIL) → 0.78 (PASS_WITH_LIMITS)
+- Tax placement strategy identified as prerequisite before any rotation
+- Still missing: portfolio-specific yield projection, trim candidates, Roth room, tax lots
+- DB writes: ZERO | Trade recommendations: ZERO
+
 ### Next Gate
-- Income-rotation discovery, embedding curator dry-run, CC backlog dashboard, or observation (requires approval)
+- Stage income candidates, CC backlog dashboard, embedding curator, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

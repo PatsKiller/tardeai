@@ -131,10 +131,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 22: Research Backlog Staged-Write COMPLETE — 5 items staged (ids 19–23), safety PASS**
 
+**Phase 23: Income-Rotation Research COMPLETE — 8 queries, 55 candidates, 7 sleeves scored, actionability 0.78**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 23 total (10 promoted, 13 staged incl 5 backlog) | Embeddings: 7 | Cache: 10
+Income research: Treasury/Div Growth top-ranked (4.6), Covered Call (4.2), 12+ tickers
 
-Next: income-rotation discovery, embedding curator dry-run, CC backlog dashboard, or observation
+Next: stage income candidates, CC backlog dashboard, embedding curator, or observation
 
 Daily check:
 ```bash
