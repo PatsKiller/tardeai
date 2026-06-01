@@ -1,0 +1,59 @@
+{
+  "date": "2026-06-01",
+  "timestamp": "2026-06-01T03:44:13.211658+00:00",
+  "total_checks": 12,
+  "passed": 12,
+  "warnings": [],
+  "checks": {
+    "hermes_gateway": {
+      "status": "active",
+      "ok": true
+    },
+    "hermes_loop_timer": {
+      "status": "active",
+      "ok": true
+    },
+    "hermes_loop_last_log": {
+      "log": "May 31 21:05:53 ms01-openclaw python[3240394]:     COMMITTED: id=18\nMay 31 21:05:53 ms01-openclaw python[3240394]: Done in 250.9s: 2 validated, 0 failed/rejected\nMay 31 21:05:53 ms01-openclaw systemd[2973]: Finished hermes-autonomous-loop.service - Hermes Autonomous Ticker Challenger Loop (Apply Mod",
+      "ok": true
+    },
+    "searxng_container": {
+      "status": "Up 4 hours",
+      "ok": true
+    },
+    "searxng_endpoint": {
+      "http_status": 200,
+      "ok": true
+    },
+    "research_backlog_count": {
+      "count": 10,
+      "ok": true
+    },
+    "hermes_rows": {
+      "total": 28,
+      "staged": 18,
+      "promoted": 10,
+      "ok": true
+    },
+    "hermes_embeddings": {
+      "count": 9,
+      "ok": true
+    },
+    "kill_switch": {
+      "active": false,
+      "ok": true
+    },
+    "safe_views": {
+      "accessible": true,
+      "ok": true
+    },
+    "dashboard_health": {
+      "http_status": 200,
+      "ok": true
+    },
+    "cron_count": {
+      "count": 187,
+      "ok": true
+    }
+  }
+}
