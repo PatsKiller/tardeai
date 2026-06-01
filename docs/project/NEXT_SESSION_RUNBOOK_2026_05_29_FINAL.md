@@ -157,11 +157,17 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 37: Low-Latency Bridge Design COMPLETE — queue table + LISTEN/NOTIFY, <60s SLA**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
-Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
-Bridge: designed (queue table + LISTEN/NOTIFY), implementation Phases 44–46
+**Phase 41: Systemd Migration Wave 1 COMPLETE — 5 timers, 11 cron lines disabled (187→176)**
 
-Next: Phase 44A event queue design, Phase 41 systemd migration, source discovery, or observation
+**Phase 42: Market Scan Consolidation COMPLETE — 13 duplicates, pipeline designed (not implemented)**
+
+**Phase 46: Job Health Dashboard COMPLETE — GET API + UI card, zero action buttons**
+
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
+Hermes rows: 28 (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
+Timers: 25 systemd (8 Hermes/TradeAI), 176 cron. Scheduled Jobs card on dashboard.
+
+Next: Phase 44A event queue, screener pipeline implementation, observation period
 
 Daily check:
 ```bash
