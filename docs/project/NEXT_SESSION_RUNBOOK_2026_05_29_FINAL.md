@@ -163,11 +163,22 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 46: Job Health Dashboard COMPLETE — GET API + UI card, zero action buttons**
 
-SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
-Hermes rows: 28 (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
-Timers: 25 systemd (8 Hermes/TradeAI), 176 cron. Scheduled Jobs card on dashboard.
+**Phase 44: Event Queue Pilot COMPLETE — hermes_advisory_events table, 60ms latency**
 
-Next: Phase 44A event queue, screener pipeline implementation, observation period
+**Phase 38: Backlog Source Discovery COMPLETE — 6 queries, 40 candidates**
+
+**Phase 47: Scheduled Source Discovery Dry-Run COMPLETE — daily 07:15 UTC timer**
+
+**Phase 48: Source Discovery Staged Write COMPLETE — 3 rows staged (ids 29–31)**
+
+**Phase 49: Autonomous Librarian Loop COMPLETE — daily 07:45 UTC, max 5 rows/day, Level 5**
+
+SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO
+Hermes rows: 34 (10 promoted, 24 staged, 13 backlog) | Embeddings: 9 | Cache: 10
+Hermes timers: 5 (loop 01:00, obs 06:30, backlog 06:45, discovery 07:15, librarian 07:45)
+Maturity: **Level 5 — Autonomous Staged Research with Daily Operator Review**
+
+Next: 7-day observation, Phase 50 governance review, advisory cache worker, or 2nd embedding batch
 
 Daily check:
 ```bash

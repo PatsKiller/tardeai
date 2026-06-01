@@ -499,8 +499,36 @@
 - Timer list with status badges, cron count, migrated count, health timestamps
 - Zero action buttons, zero write endpoints
 
+### Phase 44 Event Queue Pilot (2026-06-01)
+- hermes_advisory_events table created
+- Manual enqueue + worker dry-run: 60ms latency
+- No advisory cache writes yet
+
+### Phase 38 Backlog Source Discovery (2026-06-01)
+- 3 backlog items selected (ids 25, 26, 19)
+- 6 SearXNG queries, 40 candidates retained
+- Strategy win-rate and momentum-scalp research sources
+
+### Phase 47 Scheduled Source Discovery Dry-Run (2026-06-01)
+- Timer: hermes-source-discovery-dryrun.timer, daily 07:15 UTC
+- Max 1 backlog item, max 2 queries, file output only
+
+### Phase 48 Source Discovery Staged Write (2026-06-01)
+- 3 source_discovery_followup rows staged (ids 29–31)
+- 3 advisory events enqueued
+- Rollback: HERMES_PHASE48_SOURCE_DISCOVERY_STAGED_WRITE_ROLLBACK.sql
+
+### Phase 49 Autonomous Librarian/Backlog Loop (2026-06-01)
+- Script: scripts/hermes_autonomous_librarian_backlog_loop.py
+- Timer: hermes-librarian-backlog-loop.timer, daily 07:45 UTC
+- Max 5 rows/day, 600s timeout, kill switch verified
+- Pilot: 5 findings (2 high backtest, 1 medium backtest, 1 catalyst gap, 1 screener)
+- Applied 3 rows, 3 events — total: 34 rows, 13 backlog
+- **Hermes Maturity Level: 5 — Autonomous Staged Research with Daily Operator Review**
+- 5 active Hermes timers: loop(01:00), observation(06:30), backlog(06:45), discovery(07:15), librarian(07:45)
+
 ### Next Gate
-- Phase 44A event queue design, screener pipeline implementation, or observation (requires approval)
+- 7-day observation, Phase 50 governance review, advisory cache worker, or 2nd embedding batch (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

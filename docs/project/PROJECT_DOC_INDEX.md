@@ -357,6 +357,21 @@
 | `docs/operations/PHASE46D_SCHEDULED_JOB_HEALTH_SAFETY_AUDIT.md` | Safety PASS |
 | `docs/project/PHASE46_SCHEDULED_JOB_HEALTH_DASHBOARD_CLOSEOUT.md` | **Phase 46 closeout** |
 
+### Event Queue Pilot (Phase 44)
+| `docs/project/PHASE44_HERMES_EVENT_QUEUE_PILOT_CLOSEOUT.md` | **Phase 44 closeout** — queue table + 60ms latency |
+
+### Backlog Source Discovery (Phase 38)
+| `docs/project/PHASE38_BACKLOG_SOURCE_DISCOVERY_CLOSEOUT.md` | **Phase 38 closeout** — 6 queries, 40 candidates |
+
+### Scheduled Source Discovery Dry-Run (Phase 47)
+| `docs/project/PHASE47_SCHEDULED_SOURCE_DISCOVERY_DRYRUN_CLOSEOUT.md` | **Phase 47 closeout** — daily 07:15 UTC timer |
+
+### Scheduled Source Discovery Staged Write (Phase 48)
+| `docs/project/PHASE48_SCHEDULED_SOURCE_DISCOVERY_STAGED_WRITE_CLOSEOUT.md` | **Phase 48 closeout** — 3 rows staged |
+
+### Autonomous Librarian/Backlog Loop (Phase 49)
+| `docs/project/PHASE49_AUTONOMOUS_LIBRARIAN_BACKLOG_LOOP_CLOSEOUT.md` | **Phase 49 closeout** — daily 07:45 UTC, Level 5 |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
