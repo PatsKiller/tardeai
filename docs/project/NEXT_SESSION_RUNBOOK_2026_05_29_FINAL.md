@@ -203,11 +203,15 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 83–87: Promotion review, self-learning dashboard, recertified, Level 7 boundary, 2 promoted**
 
-SearXNG: running | Hermes rows: 42 | Embeddings: **12** | Cache: **12** | Promoted: **12** | Timers: 9
-Dashboard: /v2/self-learning-overview LIVE | Promotion lanes: 5 | Level 6: **RECERTIFIED**
-Self-learning: **8.1/10** | Level 7: **PROHIBITED** | Broker: ZERO
+**Phase 88–90: Auto-promotion policy, shadow (3 eligible), veto queue, first auto-promotion (TRX id=16)**
 
-Next: 7-day observation of full stack, then Phase 88+ for broader expansion
+SearXNG: running | Hermes rows: 42 | Embeddings: 12 | Cache: **13** | Promoted: **13** | Timers: 9
+Dashboard: /v2/self-learning-overview LIVE | Auto-promotion: FIRST PILOT COMPLETE
+Self-learning: **8.1/10** | Level 6: **RECERTIFIED** | Level 7: **PROHIBITED**
+
+**Milestone: First Hermes auto-promotion — TRX source_discovery, policy-validated**
+
+Next: 7-day observation, then expand auto-promotion caps or broader Level 6 expansion
 
 Daily check:
 ```bash

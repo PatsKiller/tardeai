@@ -616,8 +616,22 @@
 - Phase 87: ADBE id=17 + AGMH id=18 promoted to advisory cache. 12 total cache sections, 12 promoted.
 - Self-learning: 8.1/10 | Embeddings: 12 | Hermes rows: 42 | Level 7: PROHIBITED
 
+### Phases 88–90 Auto-Promotion Policy + Pilot (2026-06-01)
+- Phase 88: Policy designed (thresholds: ev>=0.85, src>=0.80, act>=0.75). Shadow: 3/26 would auto-promote.
+- Phase 89: Dry-run veto queue: 3 candidates, 24h window, zero cache writes.
+- Phase 90: **FIRST AUTO-PROMOTION** — TRX id=16 (source_discovery, SA catalyst). 13 cache sections, 13 promoted.
+- Auto-promotion policy: advisory cache only, hermes_* namespace, max 2/day, operator veto override.
+- Level 7: PROHIBITED. Broker/trade/journal: ZERO.
+
+### Current System Summary (Post-Phase 90)
+- **90 phases completed** in this session
+- Hermes rows: 42 | Promoted: 13 | Staged: 29 | Embeddings: 12 | Cache: 13
+- 9 active timers | Self-learning dashboard LIVE | Auto-promotion: FIRST PILOT DONE
+- Self-learning maturity: 8.1/10 | Level 6: RECERTIFIED | Level 7: PROHIBITED
+- SearXNG: LIVE (localhost) | Finviz: HEALTHY | Alert dedupe: LIVE
+
 ### Next Gate
-- 7-day observation of full Phase 87 stack, then Phase 88+ for broader expansion
+- 7-day observation, expand auto-promotion caps, or broader Level 6 expansion
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
