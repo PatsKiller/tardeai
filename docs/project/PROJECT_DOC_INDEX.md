@@ -467,6 +467,9 @@
 | `docs/project/PHASE105_PROMOTION_ACTION_CONTROLS_DESIGN_CLOSEOUT.md` | **Phase 105** — action controls design |
 | `docs/project/PHASE106_LEVEL7_SANDBOX_DISCUSSION_CLOSEOUT.md` | **Phase 106** — Level 7 PROHIBITED |
 
+### Dashboard Operator Workflow Redesign (Phases 107–108)
+| `docs/project/PHASE107_SELF_LEARNING_RUNTIME_INTERACTIVITY_FIX_CLOSEOUT.md` | **Phase 107+108** — attention-first, Kanban, card grid, drawer, UX 8.8 |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
