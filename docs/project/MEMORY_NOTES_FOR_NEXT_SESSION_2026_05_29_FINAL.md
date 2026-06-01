@@ -481,8 +481,26 @@
 - Implementation: Phases 44A–46 (schema→table→dry-run→worker→dashboard→fallback→cron reduction)
 - Runtime changes: ZERO | DB writes: ZERO | Cron changes: ZERO
 
+### Phase 41 Systemd Migration Wave 1 (2026-06-01)
+- 5 governance/maturity jobs migrated: system_facts, governance_status, maturity_board, operator_readiness, iris_taxonomy
+- 5 systemd timers created and enabled
+- 11 cron lines disabled (tagged PHASE41-MIGRATED)
+- Active cron: 187→176
+- Rollback: crontab backup + disable timers
+
+### Phase 42 Market Scan Consolidation (2026-06-01)
+- 13 duplicate screener cron lines identified (7 finviz + 6 orchestrator)
+- Pipeline design: trade-ai-screener-pipeline (13→1 timer+controller)
+- Design only, no implementation
+
+### Phase 46 Scheduled Job Health Dashboard (2026-06-01)
+- GET /api/v2/system/scheduled-jobs endpoint (read-only)
+- Scheduled Jobs card on System Applications page
+- Timer list with status badges, cron count, migrated count, health timestamps
+- Zero action buttons, zero write endpoints
+
 ### Next Gate
-- Phase 44A event queue design, Phase 41 systemd migration, source discovery, or observation (requires approval)
+- Phase 44A event queue design, screener pipeline implementation, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

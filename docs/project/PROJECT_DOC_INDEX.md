@@ -337,6 +337,26 @@
 | `docs/hermes/HERMES_PHASE37E_LOW_LATENCY_IMPLEMENTATION_GATES.md` | Phase 37E — Phases 44–46 |
 | `docs/project/PHASE37_LOW_LATENCY_HERMES_BRIDGE_DESIGN_CLOSEOUT.md` | **Phase 37 closeout** |
 
+### Systemd Migration Wave 1 (Phase 41)
+| Document | Purpose |
+|----------|---------|
+| `docs/operations/PHASE41A_SYSTEMD_MIGRATION_CANDIDATE_SELECTION.md` | 5 candidates selected |
+| `docs/project/PHASE41_SYSTEMD_MIGRATION_WAVE1_CLOSEOUT.md` | **Phase 41 closeout** — 11 cron→5 timers |
+
+### Market Scan Consolidation Design (Phase 42)
+| Document | Purpose |
+|----------|---------|
+| `docs/operations/PHASE42A_MARKET_SCAN_DUPLICATE_SELECTION.md` | 13 duplicates identified |
+| `docs/operations/PHASE42B_MARKET_SCAN_PIPELINE_DESIGN.md` | Pipeline design (13→1) |
+| `docs/project/PHASE42_MARKET_SCAN_CONSOLIDATION_DESIGN_CLOSEOUT.md` | **Phase 42 closeout** — design only |
+
+### Scheduled Job Health Dashboard (Phase 46)
+| Document | Purpose |
+|----------|---------|
+| `docs/operations/PHASE46A_SCHEDULED_JOB_HEALTH_DASHBOARD_DESIGN.md` | Dashboard design |
+| `docs/operations/PHASE46D_SCHEDULED_JOB_HEALTH_SAFETY_AUDIT.md` | Safety PASS |
+| `docs/project/PHASE46_SCHEDULED_JOB_HEALTH_DASHBOARD_CLOSEOUT.md` | **Phase 46 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
