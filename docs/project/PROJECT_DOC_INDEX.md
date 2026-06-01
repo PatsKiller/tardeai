@@ -166,6 +166,16 @@
 | `docs/infra/searxng_phase18_source_discovery_dryrun/` | Dry-run output files |
 | `docs/project/PHASE18_SEARXNG_SOURCE_DISCOVERY_DRY_RUN_CLOSEOUT.md` | **Phase 18 closeout** |
 
+### SearXNG Staged Source Ingestion (Phase 19)
+| Document | Purpose |
+|----------|---------|
+| `docs/infra/SEARXNG_PHASE19A_STAGED_INGESTION_REVALIDATION.md` | Phase 19A — 5 candidates validated |
+| `docs/infra/SEARXNG_PHASE19B_STAGED_INGESTION_REPORT.md` | Phase 19B — 5 rows staged (ids 12–16) |
+| `docs/infra/SEARXNG_PHASE19B_STAGED_INGESTION_ROLLBACK.sql` | Phase 19B rollback SQL |
+| `docs/infra/SEARXNG_PHASE19C_STAGED_INGESTION_SAFETY_AUDIT.md` | Phase 19C — safety PASS |
+| `docs/infra/SEARXNG_PHASE19D_STAGED_SOURCE_VISIBILITY_DESIGN.md` | Phase 19D — visibility design (docs only) |
+| `docs/project/PHASE19_SEARXNG_STAGED_SOURCE_INGESTION_CLOSEOUT.md` | **Phase 19 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|

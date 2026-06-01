@@ -325,8 +325,19 @@
 - DB writes: ZERO | Hermes: ZERO | Embeddings: ZERO | Autonomous: NO
 - Phase 19 staged ingestion justified per quality audit
 
+### Phase 19 Staged Source Ingestion (2026-05-31)
+- First SearXNG-sourced data staged in hermes_research_intelligence
+- 5 rows (ids 12–16): SCHD, TRX (×2), APAM, FJSCX
+- Sources: seekingalpha.com (×2), finance.yahoo.com, fool.com, zacks.com
+- research_type='source_discovery', hermes_agent_name='source_discovery_agent'
+- model_used='searxng_manual' (no LLM, manual search)
+- All staged, none promoted, none embedded
+- Total Hermes rows: 16 (10 promoted, 6 staged)
+- Rollback: `docs/infra/SEARXNG_PHASE19B_STAGED_INGESTION_ROLLBACK.sql`
+- Safety audit: PASS
+
 ### Next Gate
-- Observation period, capped staged ingestion (Phase 19), or CC query visibility (requires approval)
+- Observation period, agent operating model (Phase 20), or embedding pilot (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
