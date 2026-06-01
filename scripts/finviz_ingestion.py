@@ -35,7 +35,16 @@ def ensure_dir(path: Path) -> Path:
 
 
 def optional_env(name: str, default: str = "") -> str:
-    return os.getenv(name, default).strip()
+    val = os.getenv(name, "").strip()
+    if val:
+        return val
+    # Fallback: read from .env file (cron may not source .env)
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if line.startswith(f"{name}="):
+                return line.split("=", 1)[1].strip().strip("'\"")
+    return default
 
 
 def parse_num(value: Any) -> float:
