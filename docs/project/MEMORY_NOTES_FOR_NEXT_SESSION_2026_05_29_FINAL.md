@@ -716,12 +716,18 @@
 - Separate overview/drilldown view modes
 - UX: operator to verify in browser (hard refresh required)
 
-### Final Session State (109 Phases)
-- **109 phases** completed
-- Broker/proposal/trade/journal/holdings: **ZERO across 109 phases**
+### Phase 111 Authority + SYS Fix (2026-06-01)
+- Authority scorecard: TradeAI = control maturity, Hermes = intelligence quality
+- Progressive ladder: 6A→6B→6C→6D→6E→7 (current: 6A advisory)
+- 22 SYS items reclassified → OPS_FEED/OPS_AGENT/OPS_LLM/STRATEGY/PORTFOLIO/RESEARCH
+- API returns display_category, dashboard shows actionable labels
+
+### Final Session State (111 Phases)
+- **111 phases** completed
+- Broker/proposal/trade/journal/holdings: **ZERO across 111 phases**
 
 ### Next Gate
-- Phase 110 operator acceptance test in browser, then broader expansion
+- Phase 112 proposal-draft sandbox design, or operator acceptance test
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`
