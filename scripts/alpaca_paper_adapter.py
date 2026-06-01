@@ -222,9 +222,11 @@ class AlpacaPaperAdapter:
                         exit_price = COALESCE(%s, current_price),
                         pnl = %s, outcome_verdict = %s,
                         closed_at = COALESCE(%s, NOW()), closed_via = 'alpaca_sync',
-                        exit_reason = 'position_closed_in_alpaca', updated_at = NOW()
+                        exit_reason = 'position_closed_in_alpaca', updated_at = NOW(),
+                        hold_time_min = COALESCE(hold_time_min,
+                            EXTRACT(EPOCH FROM (COALESCE(%s, NOW()) - COALESCE(entry_time, created_at))) / 60)
                     WHERE id = %s
-                """, [_exit_price, _exit_pnl, _verdict, _exit_time, trade_id])
+                """, [_exit_price, _exit_pnl, _verdict, _exit_time, _exit_time, trade_id])
                 # Agent curation hooks (non-blocking)
                 try:
                     from agent_curation_hooks import on_paper_trade_closed

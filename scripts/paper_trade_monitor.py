@@ -132,17 +132,28 @@ def _fix_integrity_issues(conn, alpaca_symbols):
         fixed += 1
 
     # Fix 2: DB says open but Alpaca doesn't have it → close as phantom
-    cur.execute("SELECT id, symbol FROM paper_trades WHERE lifecycle_state='open'")
-    for tid, sym in cur.fetchall():
+    cur.execute("SELECT id, symbol, entry_time FROM paper_trades WHERE lifecycle_state='open'")
+    for row in cur.fetchall():
+        tid, sym = row[0], row[1]
+        _entry_t = row[2] if len(row) > 2 else None
         if sym not in alpaca_symbols:
+            _hold_min = None
+            if _entry_t:
+                try:
+                    _now = datetime.now(timezone.utc)
+                    _et = _entry_t.replace(tzinfo=timezone.utc) if _entry_t.tzinfo is None else _entry_t
+                    _hold_min = round((_now - _et).total_seconds() / 60, 1)
+                except Exception:
+                    pass
             cur.execute("""
                 UPDATE paper_trades SET lifecycle_state='closed', status='closed',
                     close_reason='phantom_no_alpaca_position', closed_at=NOW(),
                     closed_via='integrity_check',
                     exit_reason='phantom_no_alpaca_position',
+                    hold_time_min = COALESCE(hold_time_min, %s),
                     outcome_verdict = CASE WHEN pnl > 0 THEN 'WIN' WHEN pnl < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
                 WHERE id = %s
-            """, [tid])
+            """, [_hold_min, tid])
             log.warning(f"[integrity] Closed phantom: {sym} id={tid} — not on Alpaca")
             fixed += 1
 
