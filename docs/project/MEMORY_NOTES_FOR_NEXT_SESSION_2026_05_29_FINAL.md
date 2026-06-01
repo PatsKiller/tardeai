@@ -473,8 +473,16 @@
 - Migration plan: Phases 41–46 (systemd→consolidate→pipeline→event→retire→dashboard)
 - Runtime changes: ZERO | Cron changes: ZERO | DB writes: ZERO
 
+### Phase 37 Low-Latency Bridge Design (2026-06-01)
+- Current state: dashboard immediate, pipelines disconnected from Hermes, RAG/cache manual
+- Recommended: hermes_advisory_events queue table + optional PG LISTEN/NOTIFY trigger
+- Target latency: <60 sec (staged research → advisory context)
+- Safety: forbidden writes to proposals/trades/journal/holdings/broker
+- Implementation: Phases 44A–46 (schema→table→dry-run→worker→dashboard→fallback→cron reduction)
+- Runtime changes: ZERO | DB writes: ZERO | Cron changes: ZERO
+
 ### Next Gate
-- Phase 37 research bridge, Phase 41 systemd migration, source discovery, or observation (requires approval)
+- Phase 44A event queue design, Phase 41 systemd migration, source discovery, or observation (requires approval)
 
 ## What to Check First Next Session
 1. `git status` and `git log --oneline -5`

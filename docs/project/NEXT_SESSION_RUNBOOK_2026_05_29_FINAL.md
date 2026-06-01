@@ -155,11 +155,13 @@ Intelligence page: /v2/hermes-intelligence
 
 **Phase 36: Cron Consolidation Audit COMPLETE — 187 jobs audited, migration Phases 41–46 planned**
 
+**Phase 37: Low-Latency Bridge Design COMPLETE — queue table + LISTEN/NOTIFY, <60s SLA**
+
 SearXNG: running | URL: http://127.0.0.1:18888/ | Public: NO | Hermes: NOT CONNECTED
 Hermes rows: 28 total (10 promoted, 18 staged, 10 backlog) | Embeddings: 9 | Cache: 10
-Automation: 20 timers (3 Hermes), 187 cron (11+ duplicates, 28 at 7AM peak). Level 3.
+Bridge: designed (queue table + LISTEN/NOTIFY), implementation Phases 44–46
 
-Next: Phase 37 research bridge, Phase 41 systemd migration, source discovery, or observation
+Next: Phase 44A event queue design, Phase 41 systemd migration, source discovery, or observation
 
 Daily check:
 ```bash
