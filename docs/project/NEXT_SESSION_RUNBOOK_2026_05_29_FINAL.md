@@ -211,9 +211,11 @@ SearXNG: running | Hermes rows: 42 | Embeddings: 12 | Cache: **13** | Promoted: 
 Dashboard: /v2/self-learning-overview LIVE with drill-through + detail drawer + timeline
 Self-learning: **8.1/10** | Level 6: **RECERTIFIED** | Level 7: **PROHIBITED**
 
-**93 phases completed this session.**
+**Phase 94–96: Auto-promotion STABLE_KEEP, shadow 2/26 eligible, UX 6.5/10 with P0/P1 backlog**
 
-Next: Phase 94 auto-promotion monitoring, Phase 95 expand shadow, Phase 96 UX review
+**96 phases completed this session.**
+
+Next: Phase 97 P0 dashboard upgrade, Phase 99 second auto-promotion, Phase 100 milestone audit
 
 Daily check:
 ```bash
