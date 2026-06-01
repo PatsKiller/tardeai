@@ -12563,6 +12563,32 @@ def _system_applications():
         "version_cmd": "gog --version",
         "update_cmd": "Manual review required"})
 
+    # ── Infrastructure (Docker containers) ──
+    docker_ver = _ver(_run(["docker", "version", "--format", "{{.Server.Version}}"]))
+    apps.append({"name": "Docker Engine", "category": "infrastructure",
+        "installed": docker_ver, "latest": None,
+        "path": shutil.which("docker"),
+        "version_cmd": "docker version --format '{{.Server.Version}}'",
+        "update_cmd": "Manual review required"})
+
+    # SearXNG (internal-only search layer)
+    searxng_status = None
+    searxng_ver = None
+    try:
+        import urllib.request as _ur
+        _sr = _ur.urlopen("http://127.0.0.1:18888/", timeout=3)
+        searxng_status = "running"
+        searxng_ver = "internal"
+    except Exception:
+        searxng_status = "stopped"
+    apps.append({"name": "SearXNG", "category": "infrastructure",
+        "installed": searxng_ver or searxng_status,
+        "latest": None,
+        "path": "infra/searxng/docker-compose.yml",
+        "version_cmd": "curl -s http://127.0.0.1:18888/",
+        "update_cmd": "sg docker -c 'docker compose -f infra/searxng/docker-compose.yml pull && docker compose -f infra/searxng/docker-compose.yml up -d'",
+        "note": "Internal-only shared search layer. 127.0.0.1:18888. Not integrated with Hermes or production."})
+
     # ── Frontend ──
     try:
         import json as _j
