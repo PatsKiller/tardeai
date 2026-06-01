@@ -176,6 +176,17 @@
 | `docs/infra/SEARXNG_PHASE19D_STAGED_SOURCE_VISIBILITY_DESIGN.md` | Phase 19D — visibility design (docs only) |
 | `docs/project/PHASE19_SEARXNG_STAGED_SOURCE_INGESTION_CLOSEOUT.md` | **Phase 19 closeout** |
 
+### Hermes Agent Model and Actionability (Phase 20)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_AGENT_OPERATING_MODEL.md` | Agent operating model — 7 agents, source-of-truth hierarchy |
+| `docs/hermes/HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md` | Agent contracts — mission, reads, writes, forbidden, caps |
+| `docs/hermes/HERMES_ADVISORY_ACTIONABILITY_STANDARD.md` | Advisory actionability — 16 fields, 11 failure classes |
+| `docs/hermes/HERMES_TELEGRAM_AND_COMMUNICATION_RETENTION_AUDIT.md` | Retention audit — payloads not stored |
+| `docs/hermes/HERMES_TELEGRAM_REVIEW_ACTIONABILITY_GATE.md` | Actionability gate for weekly reviews |
+| `docs/hermes/HERMES_TELEGRAM_REVIEW_ACTIONABILITY_DRY_RUN.md` | Dry-run: vague_rebalance_recommendation HIGH |
+| `docs/project/PHASE20_HERMES_AGENT_MODEL_AND_ACTIONABILITY_CLOSEOUT.md` | **Phase 20 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
