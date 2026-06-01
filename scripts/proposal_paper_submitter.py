@@ -280,11 +280,25 @@ def check_gates(conn, proposal_id: int) -> dict:
     warnings.append("PAPER_ONLY: Live trading disabled pending six-month paper validation")
 
     # Execution plan
+    _entry = float(p["proposed_entry"]) if p.get("proposed_entry") else None
+    _stop = float(p["proposed_stop"]) if p.get("proposed_stop") else None
+    _target = float(p["proposed_target1"]) if p.get("proposed_target1") else None
+
+    # Stop quality guards
+    if _entry and _stop:
+        if _stop >= _entry:
+            blockers.append(f"STOP_AT_OR_ABOVE_ENTRY: stop ${_stop:.2f} >= entry ${_entry:.2f}")
+        elif _stop > _entry * 0.995:
+            warnings.append(f"STOP_VERY_TIGHT: stop ${_stop:.2f} is within 0.5% of entry ${_entry:.2f}")
+    if _entry and _target and _stop:
+        if _stop > _target:
+            blockers.append(f"STOP_ABOVE_TARGET: stop ${_stop:.2f} > target ${_target:.2f} — likely swapped")
+
     execution_plan = {
         "order_type": "limit_bracket",
-        "limit_price": float(p["proposed_entry"]) if p.get("proposed_entry") else None,
-        "stop_price": float(p["proposed_stop"]) if p.get("proposed_stop") else None,
-        "take_profit_price": float(p["proposed_target1"]) if p.get("proposed_target1") else None,
+        "limit_price": _entry,
+        "stop_price": _stop,
+        "take_profit_price": _target,
         "time_in_force": "day",
         "shares": int(p["proposed_shares"]) if p.get("proposed_shares") else None,
         "client_order_id": client_order_id,
