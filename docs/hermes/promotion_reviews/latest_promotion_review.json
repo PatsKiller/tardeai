@@ -1,0 +1,209 @@
+{
+  "date": "2026-06-01",
+  "lanes": {
+    "AUTO_REJECT": [
+      {
+        "id": 9,
+        "symbol": "TELO",
+        "type": "ticker_thesis_challenge",
+        "confidence": 0.2,
+        "score": 3.4,
+        "embedded": false,
+        "has_url": false,
+        "topic": "TELO autonomous thesis challenge \u2014 6 trades",
+        "lane": "AUTO_REJECT",
+        "reason": "low confidence or missing evidence"
+      }
+    ],
+    "NEEDS_RESEARCH": [
+      {
+        "id": 31,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.44,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "Scalping Strategies: Mastering Quick Profits in the Market",
+        "lane": "NEEDS_RESEARCH",
+        "reason": "borderline confidence, needs enrichment"
+      },
+      {
+        "id": 39,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.41,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "90% Win Rate? EURUSD Momentum Scalping Strategy Tutorial (20",
+        "lane": "NEEDS_RESEARCH",
+        "reason": "borderline confidence, needs enrichment"
+      },
+      {
+        "id": 40,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.41,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "Profit Factor Benchmarks by Trading Style (2026 Guide)",
+        "lane": "NEEDS_RESEARCH",
+        "reason": "borderline confidence, needs enrichment"
+      },
+      {
+        "id": 38,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.41,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "4 Scalping Strategies With Exact Entry and Exit Rules (2026)",
+        "lane": "NEEDS_RESEARCH",
+        "reason": "borderline confidence, needs enrichment"
+      },
+      {
+        "id": 41,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.41,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "Trading Strategy Backtest: A Complete Guide to Success",
+        "lane": "NEEDS_RESEARCH",
+        "reason": "borderline confidence, needs enrichment"
+      },
+      {
+        "id": 42,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.39,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "This Incredibly EASY Scalping Strategy Works Everyday (Prove",
+        "lane": "NEEDS_RESEARCH",
+        "reason": "borderline confidence, needs enrichment"
+      }
+    ],
+    "READY_FOR_OPERATOR_REVIEW": [
+      {
+        "id": 14,
+        "symbol": "APAM",
+        "type": "source_discovery",
+        "confidence": 0.48,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "APAM Q1 2026 Earnings Transcript",
+        "lane": "READY_FOR_OPERATOR_REVIEW",
+        "reason": "good conf and evidence, needs operator check"
+      },
+      {
+        "id": 15,
+        "symbol": "FJSCX",
+        "type": "source_discovery",
+        "confidence": 0.48,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "FJSCX - Fidelity Japan Small Companies Fund - Holdings",
+        "lane": "READY_FOR_OPERATOR_REVIEW",
+        "reason": "good conf and evidence, needs operator check"
+      },
+      {
+        "id": 29,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.47,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "Backtesting in Trading: Definition, Benefits, and Limitation",
+        "lane": "READY_FOR_OPERATOR_REVIEW",
+        "reason": "good conf and evidence, needs operator check"
+      },
+      {
+        "id": 30,
+        "symbol": "SYSTEM",
+        "type": "source_discovery_followup",
+        "confidence": 0.46,
+        "score": 3.7,
+        "embedded": false,
+        "has_url": true,
+        "topic": "1-Minute Scalping Strategy: Rules, Entries, Exits - Warrior ",
+        "lane": "READY_FOR_OPERATOR_REVIEW",
+        "reason": "good conf and evidence, needs operator check"
+      }
+    ],
+    "BATCH_APPROVE_ELIGIBLE": [
+      {
+        "id": 17,
+        "symbol": "ADBE",
+        "type": "ticker_thesis_challenge",
+        "confidence": 0.6,
+        "score": 4.0,
+        "embedded": true,
+        "has_url": false,
+        "topic": "ADBE autonomous thesis challenge \u2014 4 trades",
+        "lane": "BATCH_APPROVE_ELIGIBLE",
+        "reason": "high conf, evidence, embedded, low risk"
+      },
+      {
+        "id": 18,
+        "symbol": "AGMH",
+        "type": "ticker_thesis_challenge",
+        "confidence": 0.6,
+        "score": 4.0,
+        "embedded": true,
+        "has_url": false,
+        "topic": "AGMH autonomous thesis challenge \u2014 4 trades",
+        "lane": "BATCH_APPROVE_ELIGIBLE",
+        "reason": "high conf, evidence, embedded, low risk"
+      },
+      {
+        "id": 13,
+        "symbol": "TRX",
+        "type": "source_discovery",
+        "confidence": 0.5,
+        "score": 4.3,
+        "embedded": true,
+        "has_url": true,
+        "topic": "TRX Gold Corp (TRX) Q2 2026 Earnings Call Highlights",
+        "lane": "BATCH_APPROVE_ELIGIBLE",
+        "reason": "high conf, evidence, embedded, low risk"
+      },
+      {
+        "id": 12,
+        "symbol": "SCHD",
+        "type": "source_discovery",
+        "confidence": 0.5,
+        "score": 4.3,
+        "embedded": true,
+        "has_url": true,
+        "topic": "SCHD: The Buying Opportunity Is Finally Flashing (Upgrade)",
+        "lane": "BATCH_APPROVE_ELIGIBLE",
+        "reason": "high conf, evidence, embedded, low risk"
+      },
+      {
+        "id": 16,
+        "symbol": "TRX",
+        "type": "source_discovery",
+        "confidence": 0.5,
+        "score": 4.3,
+        "embedded": true,
+        "has_url": true,
+        "topic": "TRX Gold: Down 60% From Highs, And The Catalyst List Is Grow",
+        "lane": "BATCH_APPROVE_ELIGIBLE",
+        "reason": "high conf, evidence, embedded, low risk"
+      }
+    ],
+    "DEFER_OBSERVE": []
+  },
+  "total": 16,
+  "promotions": 0,
+  "cache_writes": 0
+}
