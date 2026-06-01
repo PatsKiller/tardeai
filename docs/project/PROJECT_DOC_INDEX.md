@@ -218,6 +218,14 @@
 | `docs/hermes/phase23_income_rotation_discovery/` | Discovery output files |
 | `docs/project/PHASE23_INCOME_ROTATION_RESEARCH_CLOSEOUT.md` | **Phase 23 closeout** |
 
+### Research Backlog Dashboard (Phase 24)
+| Document | Purpose |
+|----------|---------|
+| `docs/hermes/HERMES_PHASE24A_RESEARCH_BACKLOG_DASHBOARD_IMPLEMENTATION_PLAN.md` | Phase 24A — plan |
+| `docs/hermes/HERMES_PHASE24B_RESEARCH_BACKLOG_DASHBOARD_IMPLEMENTATION_REPORT.md` | Phase 24B — GET endpoint + UI |
+| `docs/hermes/HERMES_PHASE24C_RESEARCH_BACKLOG_DASHBOARD_SAFETY_AUDIT.md` | Phase 24C — safety PASS |
+| `docs/project/PHASE24_RESEARCH_BACKLOG_DASHBOARD_CLOSEOUT.md` | **Phase 24 closeout** |
+
 ### Generated Output (not authoritative)
 | Path | Content |
 |------|---------|
