@@ -110,6 +110,40 @@ def _fetch_alpaca_data_api(symbol, start, end, timeframe="1Day"):
     return []
 
 
+def fetch_intraday_bars(symbol, start_iso, end_iso, timeframe="5Min"):
+    """Phase 196 — intraday OHLC bars over a precise [start,end] window (RFC3339, UTC) via the
+    Alpaca data API. Used for same-day/sub-day holds where daily bars can't capture intraday
+    excursion. Paginates. Read-only market data."""
+    key = os.environ.get("ALPACA_API_KEY") or os.environ.get("APCA_API_KEY_ID", "")
+    secret = os.environ.get("ALPACA_SECRET_KEY") or os.environ.get("APCA_API_SECRET_KEY", "")
+    if not key or not secret:
+        return []
+    out, page = [], None
+    try:
+        import requests
+        for _ in range(6):
+            params = {"start": start_iso, "end": end_iso, "timeframe": timeframe,
+                      "limit": 1000, "adjustment": "raw"}
+            if page:
+                params["page_token"] = page
+            resp = requests.get(f"https://data.alpaca.markets/v2/stocks/{symbol}/bars",
+                                params=params,
+                                headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
+                                timeout=15)
+            if not resp.ok:
+                break
+            j = resp.json()
+            out += [{"timestamp": b["t"], "open": b["o"], "high": b["h"],
+                     "low": b["l"], "close": b["c"], "volume": b.get("v", 0)}
+                    for b in j.get("bars", [])]
+            page = j.get("next_page_token")
+            if not page:
+                break
+    except Exception as e:
+        log.debug(f"alpaca intraday failed for {symbol}: {e}")
+    return out
+
+
 # ── 1. MFE/MAE Analysis ─────────────────────────────────────────────────
 
 def run_mfe_analysis(conn, symbol_filter=None):
@@ -157,10 +191,33 @@ def run_mfe_analysis(conn, symbol_filter=None):
         if not entry_date or not exit_date:
             continue
 
-        bars = fetch_bars(t["symbol"], entry_date, exit_date)
+        # Phase 196: same-day (or sub-day) holds need INTRADAY bars over the actual hold window —
+        # daily bars over a zero-width range return nothing and can't capture intraday excursion.
+        et, xt = t["entry_time"], t["exit_time"]
+        bars, bar_granularity = [], "daily"
+        if entry_date == exit_date and et and xt:
+            try:
+                s_iso = et.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                e_iso = xt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                bars = fetch_intraday_bars(t["symbol"], s_iso, e_iso, "5Min")
+                # keep only bars inside the held window
+                bars = [b for b in bars if s_iso <= str(b["timestamp"])[:19] + "Z" <= e_iso] or bars
+                if bars:
+                    bar_granularity = "intraday_5min"
+            except Exception as _e:
+                log.debug(f"  {t['symbol']}: intraday fetch error {_e}")
         if not bars:
-            log.warning(f"  {t['symbol']}: no bar data, skipping")
+            # multi-day (or intraday unavailable): daily bars; yfinance end is exclusive → +1 day
+            try:
+                end_plus = (datetime.strptime(exit_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            except Exception:
+                end_plus = exit_date
+            bars = fetch_bars(t["symbol"], entry_date, end_plus)
+            bar_granularity = "daily"
+        if not bars:
+            log.warning(f"  {t['symbol']}: no bar data (intraday+daily), skipping")
             continue
+        log.info(f"  {t['symbol']}: {len(bars)} bars ({bar_granularity})")
 
         # Compute MFE/MAE
         mfe_price = entry
@@ -393,7 +450,23 @@ def run_entry_quality_correlation(conn):
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
+def _load_env():
+    """Phase 196: load .env so ALPACA_API_KEY is present for intraday/daily bar fetches when the
+    analyzer is run directly (pipeline/cron don't export .env). Without this, intraday silently
+    returns empty and same-day trades fall back to (inflated) daily bars."""
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if not os.path.exists(p):
+        return
+    for line in open(p):
+        line = line.strip()
+        if line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k, v.strip().strip('"').strip("'"))
+
+
 def main():
+    _load_env()
     ap = argparse.ArgumentParser(description="Trade Execution Analyzer — MFE/MAE + trailing optimization + entry quality")
     ap.add_argument("--mfe", action="store_true", help="Run MFE/MAE analysis")
     ap.add_argument("--optimize", action="store_true", help="Run trailing stop optimization")
