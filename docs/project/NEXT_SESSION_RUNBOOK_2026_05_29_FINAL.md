@@ -239,6 +239,33 @@ sg docker -c "docker compose -f infra/searxng/docker-compose.yml ps"
 Rollback Hermes: `rm -rf hermes_sidecar/` + `psql -f sql/migrations/20260530_hermes_phase1_staging_tables_rollback.sql`
 Rollback SearXNG: `cd infra/searxng && sg docker -c "docker compose down -v"`
 
+## Session 2026-06-01 Additions (Phases 112–169)
+
+### New Dashboard Pages
+- `/v2/alert-siem` — SIEM normalized alert dashboard
+- `/v2/proposal-sandbox` — file-only proposal drafts
+- `/v2/dual-opinion` — TradeAI vs Hermes side-by-side
+- `/v2/queue-control-tower` — 30 timers, 172 crons, categorized
+
+### Key Infrastructure
+- Inline dual-opinion panels on 12 pages with evidence drawer + choice capture
+- Shadow scorer timer Mon-Fri 10/14/18 ET
+- Momentum catalyst timer Mon-Fri 8AM-3PM every 15min
+- Telegram gate: 12 noise patterns suppressed
+- Journal hold_time capture fixed on all close paths
+- Strategy YAML: timestamp-only changes (validated PASS)
+- 24 learning queue candidates, 3 high-LLM reviews completed
+- Evidence remediation: 10/10 improved via SearXNG
+
+### Tuesday Morning Checklist
+1. Verify catalyst timer fired at 8 AM: `systemctl --user status hermes-momentum-catalyst-morning.timer`
+2. Check catalyst JSONL: `ls data/hermes/momentum_catalysts/`
+3. Check shadow scorer: `ls data/learning/shadow_scores/`
+4. Verify SIEM dashboard: `http://localhost:7777/v2/alert-siem`
+5. Verify Queue Control Tower: `http://localhost:7777/v2/queue-control-tower`
+6. Check operator choices: `curl http://localhost:7777/api/v2/hermes/advisory-choices`
+7. Verify Telegram noise reduction (should be fewer alerts)
+
 ## 6. Do NOT
 - Do NOT run classifier apply (3,593/3,593 complete)
 - Do NOT change model routing without approval + canary

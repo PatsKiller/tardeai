@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-05-31
+**Updated:** 2026-06-01
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -477,6 +477,23 @@
 | `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Authority scorecard |
 | `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | 6A→6E→7 ladder |
 | `docs/project/PHASE111_AUTHORITY_BOUNDARY_SYS_ACTIONABILITY_CLOSEOUT.md` | **Phase 111 closeout** |
+
+### Session 2026-06-01 Continued (Phases 112–169)
+| Document/Route | Purpose |
+|----------------|---------|
+| `/v2/alert-siem` | SIEM normalized alert dashboard — 14-day retention, 84.8% noise reduction |
+| `/v2/proposal-sandbox` | File-only proposal draft sandbox — 5 packets scored |
+| `/v2/dual-opinion` | TradeAI vs Hermes dual-opinion advisory — 10 candidates |
+| `/v2/queue-control-tower` | Queue/timer/scheduler control tower — 30 timers, 172 crons |
+| `docs/advisory/` | Dual-opinion data model, evidence, choice capture, outcome tracking |
+| `docs/learning/` | Learning queue (24 candidates), shadow scorer, effectiveness, lineage |
+| `docs/journal_quality/` | Exit forensics, journal completeness, stop quality guards |
+| `docs/ops/alerts/` | SIEM schema, Telegram gate, dedupe policy, stop alert intelligence |
+| `docs/momentum_catalysts/` | Catalyst research bridge, quality scoring, timer design |
+| `docs/proposal_sandbox/` | Proposal draft scoring, sandbox readiness |
+| `docs/journal_sandbox/` | Journal insight samples |
+| `docs/holdings_sandbox/` | Holdings discrepancy samples |
+| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | 187 crons + 4 systemd documented |
 
 ### Generated Output (not authoritative)
 | Path | Content |
