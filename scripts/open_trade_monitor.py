@@ -294,7 +294,8 @@ def _auto_close_position(conn, trade_id, symbol, price, reason, cur):
             except Exception:
                 pass
         cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
-            exit_reason=%s, closed_at=NOW(), closed_via=%s,
+            exit_reason=%s, closed_at=NOW(), exit_time=COALESCE(exit_time, NOW()), closed_via=%s,
+            entry_time=COALESCE(entry_time, filled_at, created_at),
             outcome_verdict=%s, lifecycle_state='closed',
             pnl = COALESCE(%s, pnl),
             pnl_pct = COALESCE(%s, pnl_pct),
@@ -643,7 +644,9 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                     _news_verdict = 'LOSS' if _news_pnl is not None and _news_pnl < 0 else ('WIN' if _news_pnl and _news_pnl > 0 else 'LOSS')
                     cur.execute("""UPDATE paper_trades SET status='closed', lifecycle_state='closed',
                         exit_price=%s,
-                        exit_reason=%s, closed_at=NOW(), closed_via='auto_close_critical_news',
+                        exit_reason=%s, closed_at=NOW(), exit_time=COALESCE(exit_time, NOW()),
+                        entry_time=COALESCE(entry_time, filled_at, created_at),
+                        closed_via='auto_close_critical_news',
                         outcome_verdict=%s, notes=COALESCE(notes,'')||%s,
                         pnl = COALESCE(%s, pnl),
                         pnl_pct = COALESCE(%s, pnl_pct),

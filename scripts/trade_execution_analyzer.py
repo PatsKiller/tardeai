@@ -119,7 +119,11 @@ def run_mfe_analysis(conn, symbol_filter=None):
     params = [symbol_filter] if symbol_filter else []
     cur.execute(f"""
         SELECT t.id, t.symbol, t.strategy_id, t.entry_price, t.exit_price,
-               t.stop_loss, t.target_1, t.shares, t.entry_time, t.exit_time,
+               t.stop_loss, t.target_1, t.shares,
+               -- Phase 195: derive dates robustly from best-available timestamps so trades whose
+               -- close path didn't persist entry_time/exit_time are still analyzable.
+               COALESCE(t.entry_time, t.filled_at, t.broker_filled_at, t.submitted_at, t.created_at) AS entry_time,
+               COALESCE(t.exit_time, t.broker_closed_at, t.closed_at) AS exit_time,
                t.pnl, t.r_multiple, t.exit_reason,
                t.planned_entry, t.score_at_entry, t.rvol_at_entry,
                t.catalyst_verified, t.intel_readiness, t.vix_at_entry

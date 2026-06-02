@@ -172,6 +172,8 @@ def _fix_integrity_issues(conn, alpaca_symbols):
             cur.execute("""
                 UPDATE paper_trades SET lifecycle_state='closed', status='closed',
                     close_reason='phantom_no_alpaca_position', closed_at=NOW(),
+                    exit_time=COALESCE(exit_time, NOW()),
+                    entry_time=COALESCE(entry_time, filled_at, created_at),
                     closed_via='integrity_check',
                     exit_reason='phantom_no_alpaca_position',
                     exit_price = COALESCE(exit_price, %s),
@@ -298,6 +300,8 @@ def monitor(dry_run=False):
                     cur.execute("""UPDATE paper_trades SET status='closed', lifecycle_state='closed',
                         exit_price=%s,
                         exit_reason=%s, close_date=NOW(), closed_at=NOW(),
+                        exit_time=COALESCE(exit_time, NOW()),
+                        entry_time=COALESCE(entry_time, filled_at, created_at),
                         pnl=%s, pnl_pct=%s, r_multiple=%s, hold_time_min=%s,
                         outcome_verdict=%s WHERE id=%s""",
                         [current, f"target_hit: {reason}", round(pnl, 2),
@@ -454,7 +458,9 @@ def monitor(dry_run=False):
                     r_multiple = COALESCE(r_multiple, %s),
                     hold_time_min = COALESCE(hold_time_min, %s),
                     outcome_verdict = CASE WHEN %s > 0 THEN 'WIN' WHEN %s < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END,
-                    closed_at = NOW(), closed_via = 'monitor_phantom_check',
+                    closed_at = NOW(), exit_time = COALESCE(exit_time, NOW()),
+                    entry_time = COALESCE(entry_time, filled_at, created_at),
+                    closed_via = 'monitor_phantom_check',
                     notes = COALESCE(notes, '') || ' | Auto-closed by monitor: no matching Alpaca position found.',
                     updated_at = NOW()
                 WHERE id = %s
