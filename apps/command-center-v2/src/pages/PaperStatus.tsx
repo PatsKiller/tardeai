@@ -21,6 +21,7 @@ export default function PaperStatus() {
   const { data: monData } = useApi<any>('/api/v2/open-trade-monitor', 30000)
   const { data: llmData } = useApi<any>('/api/v2/local-llm-status', 60000)
   const { data: curationData } = useApi<any>('/api/v2/agent-curation-events', 60000)
+  const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120000)
 
   if (loading) return <div style={{ padding: 24, color: 'var(--text3)' }}>Loading...</div>
 
@@ -54,6 +55,52 @@ export default function PaperStatus() {
       <PageHeader title="Paper Trading Status" subtitle="Alpaca paper account health and today's activity" actions={
         <button onClick={refetch} style={{ padding: '4px 10px', fontSize: 10, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text2)', cursor: 'pointer' }}>Refresh</button>
       } />
+
+      {/* Statistical Readiness */}
+      {readiness && (
+        <div style={{ marginBottom: 14, padding: '12px 16px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Statistical Readiness</span>
+              <span style={{ marginLeft: 8, fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
+                background: readiness.level?.startsWith('P0') ? 'rgba(239,68,68,.1)' : readiness.level?.startsWith('P1') ? 'rgba(245,158,11,.1)' : 'rgba(34,197,94,.1)',
+                color: readiness.level?.startsWith('P0') ? '#ef4444' : readiness.level?.startsWith('P1') ? '#f59e0b' : '#22c55e',
+              }}>{readiness.level?.replace(/_/g, ' ')}</span>
+            </div>
+            <div style={{ fontSize: 9, color: '#ef4444', fontWeight: 700 }}>LIVE TRADING PROHIBITED</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 8 }}>
+            {[
+              { label: 'Usable Trades', value: readiness.closed_usable, color: 'var(--text0)' },
+              { label: 'To 2,000', value: readiness.distance_to_2000, color: '#f59e0b' },
+              { label: 'To 4,000', value: readiness.distance_to_4000, color: '#ef4444' },
+              { label: 'Win Rate', value: readiness.win_rate != null ? `${readiness.win_rate}%` : '—', color: 'var(--text0)' },
+              { label: 'Profit Factor', value: readiness.profit_factor ?? '—', color: 'var(--text0)' },
+              { label: 'Net PnL', value: readiness.net_pnl != null ? `$${readiness.net_pnl.toFixed(0)}` : '—', color: readiness.net_pnl > 0 ? '#22c55e' : '#ef4444' },
+            ].map(k => (
+              <div key={k.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: k.color, fontFamily: 'monospace' }}>{k.value}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.label}</div>
+              </div>
+            ))}
+          </div>
+          {/* Progress bars */}
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 2 }}>Progress to 2,000 ({readiness.pct_to_2000}%)</div>
+              <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, readiness.pct_to_2000 || 0)}%`, height: '100%', background: '#f59e0b', borderRadius: 3, minWidth: 2 }} />
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 2 }}>Progress to 4,000 ({readiness.pct_to_4000}%)</div>
+              <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(100, readiness.pct_to_4000 || 0)}%`, height: '100%', background: '#ef4444', borderRadius: 3, minWidth: 2 }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Open trades intelligence */}
       <OpenTradesCard />
