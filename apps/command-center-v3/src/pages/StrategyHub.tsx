@@ -15,6 +15,7 @@ export default function StrategyHub({ onDrill }: Props) {
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: btResults } = useApi<any>('/api/v2/backtesting/results', 120_000)
   const { data: btStatus } = useApi<any>('/api/v2/backtesting/status', 120_000)
+  const { data: incubator } = useApi<any>('/api/v2/incubator', 120_000)
 
   const strategies = intel?.strategies ?? []
   const configMap = configs?.strategies ?? {}
@@ -230,10 +231,25 @@ export default function StrategyHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Incubator' && (
+      {tab === 'Incubator' && incubator && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Incubator</div>
-          <div style={{ color: 'var(--text3)', fontSize: 11 }}>Incubator lifecycle managed via /api/v2/incubator — awaiting deeper tab integration</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Incubator ({incubator.total ?? 0} symbols)</div>
+            <span style={{ fontSize: 10, color: '#22c55e' }}>{incubator.promoted ?? 0} promoted · {incubator.active ?? 0} active</span>
+          </div>
+          <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+            {(incubator.universe ?? []).slice(0, 30).map((item: any, i: number) => (
+              <div key={i}
+                onClick={() => onDrill({ title: item.symbol, subtitle: `${item.strategy_id} · ${item.status}`, endpoint: '/api/v2/incubator', rows: [item] })}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{item.symbol}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{item.strategy_id}</span>
+                <span style={{ color: item.status === 'PROMOTED' ? '#22c55e' : item.lifecycle_state === 'graduated' ? '#06b6d4' : 'var(--text2)', fontSize: 10 }}>{item.status}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{item.latest_score ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/incubator (showing first 30 of {incubator.total})</div>
         </div>
       )}
 
