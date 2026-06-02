@@ -13005,6 +13005,101 @@ def _hermes_dual_opinion_inline():
     return {"opinions": all_opinions, "total": len(all_opinions)}
 
 
+def _queue_control_tower():
+    """GET /api/v2/system/queue-control-tower — unified queue/timer/LLM view."""
+    import subprocess as _sp_qct, glob as _glob_qct
+    from datetime import datetime as _dtqct, timezone as _tzqct
+
+    # Read timer unit files directly (works from server context)
+    timers = []
+    timer_dirs = [
+        str(Path.home() / ".config/systemd/user"),
+        "/etc/systemd/system",
+    ]
+    for td in timer_dirs:
+        for tf in _glob_qct.glob(f"{td}/*.timer"):
+            name = Path(tf).name
+            service = name.replace(".timer", ".service")
+            schedule = ""
+            try:
+                for line in Path(tf).read_text().splitlines():
+                    if line.strip().startswith("OnCalendar="):
+                        schedule = line.split("=", 1)[1].strip()
+                        break
+            except Exception:
+                pass
+            timers.append({
+                "timer": name,
+                "activates": service,
+                "schedule": schedule,
+                "source": "user" if ".config" in td else "system",
+            })
+
+    # Categorize
+    categories = {
+        "24x7_services": [], "tonight_overnight": [], "market_morning": [],
+        "hermes_research": [], "hermes_advisory": [], "governance": [],
+        "portfolio": [], "other": [],
+    }
+    for t in timers:
+        name = t["timer"]
+        if "hermes-autonomous" in name or "hermes-advisory" in name:
+            categories["hermes_advisory"].append(t)
+        elif "hermes-momentum" in name or "hermes-shadow" in name or "hermes-source" in name:
+            categories["hermes_research"].append(t)
+        elif "hermes-" in name:
+            categories["hermes_advisory"].append(t)
+        elif "overnight" in name or "deep-llm" in name or "db-retention" in name:
+            categories["tonight_overnight"].append(t)
+        elif "morning" in name or "catalyst" in name or "continuous" in name:
+            categories["market_morning"].append(t)
+        elif "governance" in name or "maturity" in name or "readiness" in name or "a1a" in name:
+            categories["governance"].append(t)
+        elif "portfolio" in name or "recovery" in name or "aegis" in name:
+            categories["portfolio"].append(t)
+        else:
+            categories["other"].append(t)
+
+    # System services
+    services = []
+    try:
+        r = _sp_qct.run(["systemctl", "list-units", "--type=service", "--state=running", "--no-pager", "--plain"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.strip().splitlines():
+            if any(k in line for k in ["trade", "ollama", "portfolio"]):
+                services.append(line.strip().split()[0])
+    except Exception:
+        pass
+
+    # Ollama status
+    ollama_models = []
+    try:
+        import urllib.request as _ur_qct, json as _j_qct
+        resp = _ur_qct.urlopen("http://127.0.0.1:11434/api/ps", timeout=3)
+        data = _j_qct.loads(resp.read())
+        ollama_models = [m["name"] for m in data.get("models", [])]
+    except Exception:
+        pass
+
+    # Cron count
+    cron_count = 0
+    try:
+        r = _sp_qct.run(["crontab", "-l"], capture_output=True, text=True, timeout=3)
+        cron_count = sum(1 for l in r.stdout.splitlines() if l.strip() and not l.startswith("#") and not "=" in l.split()[0] if len(l.split()) > 0)
+    except Exception:
+        pass
+
+    return {
+        "timestamp": _dtqct.now(_tzqct.utc).isoformat(),
+        "timers_total": len(timers),
+        "cron_count": cron_count,
+        "categories": {k: len(v) for k, v in categories.items()},
+        "category_details": {k: [{"timer": t["timer"], "activates": t["activates"]} for t in v] for k, v in categories.items()},
+        "system_services": services,
+        "ollama_loaded": ollama_models,
+        "all_timers": [{"timer": t["timer"], "activates": t["activates"]} for t in timers],
+    }
+
+
 def _hermes_advisory_choices():
     """GET /api/v2/hermes/advisory-choices — advisory choice audit dashboard."""
     import json as _jac
@@ -13606,6 +13701,7 @@ ROUTES = {
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
     "/api/v2/ops/cron-health": lambda: _ops_cron_health(),
+    "/api/v2/system/queue-control-tower": lambda: _queue_control_tower(),
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
     "/api/v2/execution-integrity": lambda: _system_health_api(),
     "/api/v2/execution-integrity/events": lambda: _system_health_events_api(),
