@@ -1022,7 +1022,7 @@ def handle_clear_pending(body: dict) -> tuple:
 API_AUTH_TOKEN = os.environ.get("API_AUTH_TOKEN", "").strip()
 API_AUTH_ENABLED = bool(API_AUTH_TOKEN)
 # Paths exempt from auth (frontend, static files, health check)
-AUTH_EXEMPT_PREFIXES = ("/v2/", "/data/", "/reports/", "/assets/", "/api/health")
+AUTH_EXEMPT_PREFIXES = ("/v2/", "/v3/", "/data/", "/reports/", "/assets/", "/api/health")
 
 
 class PortfolioHandler(http.server.BaseHTTPRequestHandler):
@@ -1127,6 +1127,38 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
                 _body = _v2_file.read_bytes()
+                self.send_header("Content-Length", str(len(_body)))
+                self.end_headers()
+                self.wfile.write(_body)
+            else:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"Not found")
+            return
+
+        # Command Center v3 — serve built app at /v3/
+        if path == "/v3" or path.startswith("/v3/"):
+            _v3_dist = PROJECT_ROOT / "apps" / "command-center-v3" / "dist"
+            _v3_sub = path[3:] or "/index.html"
+            if _v3_sub == "":
+                _v3_sub = "/index.html"
+            _v3_file = _v3_dist / _v3_sub.lstrip("/")
+            if not _v3_file.exists() and not any(_v3_sub.endswith(ext) for ext in (".js", ".css", ".svg", ".png", ".ico", ".woff", ".woff2")):
+                _v3_file = _v3_dist / "index.html"
+            if _v3_file.exists():
+                _ct = "text/html"
+                if _v3_sub.endswith(".js"): _ct = "application/javascript"
+                elif _v3_sub.endswith(".css"): _ct = "text/css"
+                elif _v3_sub.endswith(".svg"): _ct = "image/svg+xml"
+                elif _v3_sub.endswith(".png"): _ct = "image/png"
+                elif _v3_sub.endswith(".ico"): _ct = "image/x-icon"
+                self.send_response(200)
+                self.send_header("Content-Type", _ct)
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                _body = _v3_file.read_bytes()
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
                 self.wfile.write(_body)
