@@ -22,7 +22,13 @@ interface QueueData {
   categories: Record<string, number>
   sections: {
     '24x7_services': Service[]
-    llm_queue: Array<{ job_id: string; model: string; schedule: string; why: string; next_run?: string; last_result?: string }>
+    llm_scheduled: Array<{ job_id: string; model: string; schedule: string; why: string; next_run?: string; last_result?: string }>
+    real_llm_queue: {
+      source: string; source_status: string; total: number
+      stats: { pending: number; running: number; completed: number; failed: number; blocked: number }
+      next_job: { queue_id: number; job_type: string; status: string; priority_score: number; model: string } | null
+      items: Array<{ queue_id: number; job_type: string; source: string; status: string; priority_score: number; model: string; urgency: number; pool: string; runtime_sec: number; created_at: string }>
+    }
     telegram_capable: Array<{ job_id: string; why: string }>
     due_next: DueJob[]
     needs_attention: AttentionItem[]
@@ -161,16 +167,48 @@ export default function QueueControlTower() {
             ))}
           </Card>
 
-          {/* LLM Queue */}
+          {/* Real LLM Queue */}
           <div style={{ marginTop: 12 }}>
-            <Card title={`🧠 LLM Jobs (${data.sections.llm_queue.length})`}>
-              {data.sections.llm_queue.map(j => (
-                <div key={j.job_id} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: '#a855f7', fontFamily: 'monospace' }}>{j.job_id}</span>
-                    <span style={{ fontSize: 8, color: 'var(--text3)' }}>{j.model}</span>
+            <Card title={`🧠 LLM Queue (${data.sections.real_llm_queue.total} jobs — ${data.sections.real_llm_queue.source_status})`}>
+              {/* Queue stats */}
+              <div style={{ display: 'flex', gap: 8, padding: '4px 8px', marginBottom: 6, fontSize: 10 }}>
+                <span style={{ color: '#f59e0b' }}>Pending: {data.sections.real_llm_queue.stats.pending}</span>
+                <span style={{ color: '#22c55e' }}>Done: {data.sections.real_llm_queue.stats.completed}</span>
+                <span style={{ color: '#ef4444' }}>Failed: {data.sections.real_llm_queue.stats.failed}</span>
+              </div>
+              {/* Next job */}
+              {data.sections.real_llm_queue.next_job && (
+                <div style={{ padding: '6px 8px', background: 'rgba(168,85,247,.08)', borderRadius: 6, marginBottom: 6, fontSize: 10 }}>
+                  <div style={{ fontWeight: 700, color: '#a855f7' }}>Next: {data.sections.real_llm_queue.next_job.job_type}</div>
+                  <div style={{ color: 'var(--text3)' }}>Priority: {data.sections.real_llm_queue.next_job.priority_score} · {data.sections.real_llm_queue.next_job.model}</div>
+                </div>
+              )}
+              {/* Queue items */}
+              {data.sections.real_llm_queue.items.slice(0, 10).map(q => {
+                const stColor = q.status === 'completed' ? '#22c55e' : q.status === 'failed' ? '#ef4444' : q.status === 'running' ? '#3b82f6' : '#f59e0b'
+                return (
+                  <div key={q.queue_id} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', fontSize: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{q.job_type.length > 25 ? q.job_type.slice(0, 25) + '…' : q.job_type}</span>
+                      <span style={{ marginLeft: 6, fontSize: 8, color: 'var(--text3)' }}>{q.source}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#a855f7' }}>{q.priority_score?.toFixed(1)}</span>
+                      <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: `${stColor}15`, color: stColor }}>{q.status}</span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{j.why}</div>
+                )
+              })}
+            </Card>
+          </div>
+
+          {/* Scheduled LLM Jobs */}
+          <div style={{ marginTop: 12 }}>
+            <Card title={`⏰ LLM Scheduled Jobs (${data.sections.llm_scheduled.length})`}>
+              {data.sections.llm_scheduled.map(j => (
+                <div key={j.job_id} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{j.job_id}</span>
+                  <span style={{ marginLeft: 6, fontSize: 8, color: 'var(--text3)' }}>{j.model}</span>
                 </div>
               ))}
             </Card>
