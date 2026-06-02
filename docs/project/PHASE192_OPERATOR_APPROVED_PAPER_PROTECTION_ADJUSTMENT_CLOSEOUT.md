@@ -27,9 +27,13 @@
 - **API visible:** ✅ YES (200) · **UI visible v2:** ✅ YES · **UI visible v3:** ⏳ route-ready (panel pending)
 - **Approval endpoint live:** ✅ YES (guarded, dry-run default)
 - **Dry-run complete:** ✅ YES (ANY profit-lock, all guards passed)
-- **Actual paper order modified:** **NO** — held for operator `confirm=true`
-- **If not modified, held for operator approval:** ✅ YES
-- **Audit log written:** ✅ YES (`ppa-20-2026-06-02`, DRY_RUN_PREVIEW)
+- **Actual paper order modified:** **YES — operator-authorized 2026-06-02.** ANY (trade 48) stop
+  **3.07 → 3.56** (paper), broker order id `8bfdde82` → `9cb5cb32`, status APPLIED. Now locks
+  ~$204 profit (was $0); giveback $501 → ~$201. Reversible via operator-approved replace.
+- **If not modified, held for operator approval:** n/a — operator confirmed (`confirm=true`)
+- **Audit log written:** ✅ YES (`ppa-20-2026-06-02`: DRY_RUN_PREVIEW then **APPLIED** before 3.07 → after 3.56)
+- **Post-execution advisory:** ANY refreshed to `stop_locks_profit=true`; remains URGENT (20%+ winner —
+  even after a 50% lock the remaining giveback > 50% of gain, so it advises locking more / take-profit)
 - **Learning linkage ready:** ✅ YES (191H + 192J capture)
 - **No unauthorized stop changes:** ✅ YES (ANY stop still 3.07)
 - **No live endpoint touched:** ✅ YES · **Live trading:** ZERO · **GO/WAIT mutation:** ZERO ·
