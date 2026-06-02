@@ -8,6 +8,7 @@ const TABS = ['News', 'Research', 'Sources'] as const
 export default function IntelligenceHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('News')
   const { data: intel } = useApi<any>('/api/v2/market-intelligence', 120_000)
+  const { data: researchData } = useApi<any>('/api/v2/research-topics', 120_000)
 
   const totalArticles = intel?.total_articles ?? 0
   const topSymbols = intel?.top_mentioned_symbols ?? []
@@ -68,11 +69,35 @@ export default function IntelligenceHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Research' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Research Topics</div>
-        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Research topics endpoint (/api/v2/research-topics) available — deep integration deferred. Use Intelligence News tab for current market data.</div>
-        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Brave web search depleted per audit — SearXNG internal search available at :18888</div>
-      </div>}
+      {tab === 'Research' && researchData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Research Topics</div>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12, fontSize: 10 }}>
+            <span style={{ color: '#60a5fa' }}>User topics: {researchData.user_topic_count ?? 0}</span>
+            <span style={{ color: 'var(--text2)' }}>Monitor: {researchData.monitor_topic_count ?? 0}</span>
+            <span style={{ color: researchData.gap_count > 0 ? '#f59e0b' : 'var(--text3)' }}>Gaps: {researchData.gap_count ?? 0}</span>
+          </div>
+          {(researchData.user_topics ?? []).map((t: any, i: number) => (
+            <div key={i} onClick={() => onDrill({ title: t.topic ?? `Topic ${i}`, subtitle: `${t.source ?? ''} · ${t.status ?? ''}`, endpoint: '/api/v2/research-topics', rows: [t] })}
+              style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+              <div style={{ fontWeight: 600, color: 'var(--text0)' }}>{t.topic}</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{t.source} · {t.status} · researched {t.research_count ?? 0}x</div>
+            </div>
+          ))}
+          {researchData.research_gaps?.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Research Gaps ({researchData.gap_count})</div>
+              {(researchData.research_gaps ?? []).slice(0, 8).map((g: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: g.topic ?? `Gap ${i}`, subtitle: g.source ?? '', endpoint: '/api/v2/research-topics', rows: [g] })}
+                  style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, color: 'var(--text2)' }}>
+                  {g.topic ?? g.symbol ?? JSON.stringify(g).slice(0, 80)}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/research-topics · Brave depleted — SearXNG at :18888</div>
+        </div>
+      )}
       {tab === 'Sources' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Intelligence sources — Brave depleted per audit</div>}
     </div>
   )
