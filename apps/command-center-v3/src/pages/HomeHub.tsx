@@ -85,16 +85,35 @@ export default function HomeHub({ onDrill }: Props) {
 
       {tab === 'Snapshot' && (
         <>
-          {/* Metric tiles */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
-            {tiles.map(t => (
-              <div key={t.label} onClick={() => onDrill(t.drill)}
-                style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}>
-                <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>{t.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: t.color, fontFamily: 'monospace', marginTop: 2 }}>{t.value}</div>
-                {t.sub && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>{t.sub}</div>}
-              </div>
-            ))}
+          {/* Command Center header — matches v2 layout */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px 20px', marginBottom: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>Command Center</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+              {[
+                { label: 'Portfolio', value: pv != null ? fmt$(pv, 0) : '—', color: 'var(--text0)' },
+                { label: 'Today', value: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)}` : '—', color: (todayChg ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
+                { label: 'VIX', value: vix ?? '—', color: 'var(--text0)' },
+                { label: 'Regime', value: regimeLabel ? regimeLabel.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '—', color: regimeLabel === 'risk_off' ? '#ef4444' : regimeLabel === 'risk_on' ? '#22c55e' : '#f59e0b' },
+              ].map(t => (
+                <div key={t.label}>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>{t.label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: t.color, fontFamily: 'monospace' }}>{t.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
+              {[
+                { label: 'Last Run', value: tradeAi ? `${tradeAi.run_label ?? '—'} ${tradeAi.run_date ?? ''}` : '—', color: 'var(--text2)' },
+                { label: 'Setup State', value: `${goCount} GO · ${waitCount} WAIT · ${avoidCount} NO GO`, color: goCount > 0 ? '#22c55e' : 'var(--text2)' },
+                { label: 'Journal P&L', value: journalPnl != null ? fmt$(journalPnl, 0) : '—', color: (journalPnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
+                { label: `Win Rate (${journal?.trade_count ?? 0} trades)`, value: journal?.win_rate != null ? `${journal.win_rate}%` : '—', color: (journal?.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b' },
+              ].map(t => (
+                <div key={t.label}>
+                  <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 2 }}>{t.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: t.color, fontFamily: 'monospace' }}>{t.value}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, marginBottom: 16 }}>
