@@ -13810,8 +13810,55 @@ def _atm_protection_coverage():
     }
 
 
+def _atm_profit_protection_advisory():
+    """Phase 191F — inline ATM profit-protection advisory (read-only, advisory-only).
+
+    Latest advisory per open paper trade from atm_profit_protection_advisories:
+    TradeAI action + reason, Hermes second opinion, and the supporting audit. Buttons
+    in the UI are advisory-only until a separate operator-approved execution phase (192)."""
+    rows = _db_query("""
+        SELECT DISTINCT ON (paper_trade_id)
+            paper_trade_id, symbol, created_at, data_state, tradeai_action, tradeai_reason,
+            supporting_actions, hermes_opinion, hermes_reason, operator_action_required, audit_json
+        FROM atm_profit_protection_advisories
+        ORDER BY paper_trade_id, created_at DESC""") or []
+    advisories = []
+    for r in rows:
+        a = r.get("audit_json") or {}
+        if isinstance(a, str):
+            try:
+                a = json.loads(a)
+            except Exception:
+                a = {}
+        advisories.append({
+            "trade_id": r.get("paper_trade_id"), "symbol": r.get("symbol"),
+            "as_of": str(r.get("created_at")), "data_state": r.get("data_state"),
+            "tradeai": {
+                "action": r.get("tradeai_action"), "reason": r.get("tradeai_reason"),
+                "supporting": r.get("supporting_actions"),
+                "unrealized_pnl": a.get("unrealized_pnl"), "unrealized_pct": a.get("unrealized_pct"),
+                "current_broker_stop": a.get("current_broker_stop"),
+                "stop_locks_profit": a.get("stop_locks_profit"),
+                "profit_locked_usd": a.get("profit_locked_usd"),
+                "giveback_to_stop_usd": a.get("giveback_to_stop_usd"),
+                "take_profit_exists": a.get("take_profit_exists"),
+                "trailing_threshold_met": a.get("trailing_threshold_met"),
+            },
+            "hermes": {"opinion": r.get("hermes_opinion"), "reason": r.get("hermes_reason")},
+            "operator_action_required": r.get("operator_action_required"),
+            "decision_support": [
+                "Keep current stop", "Move to breakeven review", "Lock profit review",
+                "Convert to trailing review", "Add take-profit review", "Needs more data",
+            ],
+        })
+    return {"advisories": advisories,
+            "action_required_count": sum(1 for x in advisories if x["operator_action_required"]),
+            "note": "Advisory only — no stops moved, no orders placed. Execution gated to Phase 192."}
+
+
 ROUTES = {
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
+    "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/portfolio/performance": portfolio_performance,
