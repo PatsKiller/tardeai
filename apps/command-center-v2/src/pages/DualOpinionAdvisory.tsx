@@ -26,8 +26,11 @@ const agreeColor: Record<string, string> = {
 export default function DualOpinionAdvisory() {
   const { data } = useApi<DualData>('/api/v2/hermes/dual-opinion', 60_000)
   const [selected, setSelected] = useState<Opinion | null>(null)
+  const [filter, setFilter] = useState<string>('')
 
   if (!data) return <div style={{ padding: 24, color: 'var(--text2)' }}>Loading...</div>
+
+  const filtered = filter ? data.opinions.filter(o => o.hermes_agreement_status === filter) : data.opinions
 
   return (
     <div style={{ display: 'flex', gap: 16, padding: '20px 24px', maxWidth: 1400, margin: '0 auto' }}>
@@ -38,24 +41,28 @@ export default function DualOpinionAdvisory() {
           Hermes audits and enhances TradeAI's output without overwriting it. The operator chooses which opinion to trust. No live scoring changes.
         </div>
 
-        {/* KPI */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
+        {/* KPI — clickable filters */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 16 }}>
           {[
-            { label: 'Agrees', value: data.agrees, color: '#22c55e' },
-            { label: 'Caution', value: data.agrees_with_caution, color: '#f59e0b' },
-            { label: 'Needs Evidence', value: data.needs_more_evidence, color: '#3b82f6' },
-            { label: 'Disagrees', value: data.disagrees, color: '#ef4444' },
+            { label: 'All', value: data.total, color: 'var(--text0)', key: '' },
+            { label: 'Agrees', value: data.agrees, color: '#22c55e', key: 'AGREE' },
+            { label: 'Caution', value: data.agrees_with_caution, color: '#f59e0b', key: 'AGREE_WITH_CAUTION' },
+            { label: 'Needs Evidence', value: data.needs_more_evidence, color: '#3b82f6', key: 'NEEDS_MORE_EVIDENCE' },
+            { label: 'Disagrees', value: data.disagrees, color: '#ef4444', key: 'DISAGREE' },
           ].map(k => (
-            <div key={k.label} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', textAlign: 'center' }}>
+            <div key={k.label} onClick={() => setFilter(filter === k.key ? '' : k.key)} style={{
+              background: 'var(--bg1)', borderRadius: 10, padding: '12px 16px', textAlign: 'center', cursor: 'pointer',
+              border: `1px solid ${filter === k.key ? k.color : 'var(--border)'}`, transition: 'border-color .15s',
+            }}>
               <div style={{ fontSize: 28, fontWeight: 800, color: k.color }}>{k.value}</div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{k.label}</div>
+              <div style={{ fontSize: 10, color: filter === k.key ? k.color : 'var(--text3)', marginTop: 2, fontWeight: filter === k.key ? 700 : 400 }}>{k.label}</div>
             </div>
           ))}
         </div>
 
         {/* Opinion cards */}
         <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-          {data.opinions.map(o => (
+          {filtered.map(o => (
             <div key={o.object_id} onClick={() => setSelected(o)} style={{
               padding: '14px 16px', background: selected?.object_id === o.object_id ? 'var(--bg2)' : 'var(--bg1)',
               border: `1px solid ${selected?.object_id === o.object_id ? 'var(--accent)' : 'var(--border)'}`,
