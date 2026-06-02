@@ -13006,20 +13006,42 @@ def _hermes_dual_opinion_inline():
 
 
 def _queue_control_tower():
-    """GET /api/v2/system/queue-control-tower — unified queue/timer/LLM view."""
+    """GET /api/v2/system/queue-control-tower — actionable queue/timer/LLM view."""
     import subprocess as _sp_qct, glob as _glob_qct
     from datetime import datetime as _dtqct, timezone as _tzqct
 
-    # Read timer unit files directly (works from server context)
+    # ── Metadata for known jobs ──
+    JOB_META = {
+        "hermes-autonomous-loop": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence", "telegram": False, "why": "Autonomous ticker challenger — stages research rows"},
+        "hermes-advisory-cache-worker": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "llm_intelligence_cache", "telegram": False, "why": "Promotes advisory cache from staged research"},
+        "hermes-observation-check": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "observation report", "telegram": False, "why": "Checks Hermes research quality/drift"},
+        "hermes-backlog-health-check": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "backlog health report", "telegram": False, "why": "Monitors research backlog staleness"},
+        "hermes-embedding-promotion-review": {"cat": "hermes_advisory", "llm": False, "model": None, "writes": "promotion audit", "telegram": False, "why": "Reviews embeddings for promotion eligibility"},
+        "hermes-librarian-backlog-loop": {"cat": "hermes_advisory", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence", "telegram": False, "why": "Librarian researches backlog items"},
+        "hermes-source-discovery-dryrun": {"cat": "hermes_research", "llm": True, "model": "gemma3:12b", "writes": "hermes_research_intelligence (dry-run)", "telegram": False, "why": "Discovers new research sources"},
+        "hermes-momentum-catalyst-morning": {"cat": "market_morning", "llm": False, "model": None, "writes": "momentum catalyst JSONL", "telegram": False, "why": "SearXNG catalyst research for momentum candidates"},
+        "hermes-shadow-scorer": {"cat": "hermes_research", "llm": False, "model": None, "writes": "shadow scores JSONL", "telegram": False, "why": "Shadow scoring — learning vs live comparison"},
+        "high-llm-execution-worker": {"cat": "llm_queue", "llm": True, "model": "gemma3:12b/Gemma4 31B", "writes": "escalation results", "telegram": False, "why": "Executes high-priority LLM review jobs"},
+        "tradeai-continuous": {"cat": "market_morning", "llm": False, "model": None, "writes": "trade_ai_scans", "telegram": False, "why": "Daily pipeline launcher — screener + enrichment + scoring"},
+        "tradeai-reprice": {"cat": "market_hours", "llm": False, "model": None, "writes": "portfolio prices", "telegram": False, "why": "Market-hours portfolio repricing every 15 min"},
+        "aegis-surveillance": {"cat": "portfolio", "llm": False, "model": None, "writes": "agent results", "telegram": True, "why": "Morning surveillance sweep"},
+        "aegis-overnight": {"cat": "overnight", "llm": True, "model": "gemma3:12b", "writes": "agent results", "telegram": False, "why": "Overnight intelligence synthesis"},
+        "portfolio-daily": {"cat": "portfolio", "llm": False, "model": None, "writes": "portfolio snapshots", "telegram": False, "why": "Daily portfolio pipeline"},
+        "portfolio-backup": {"cat": "overnight", "llm": False, "model": None, "writes": "backup files", "telegram": False, "why": "Nightly portfolio backup"},
+        "recovery-watch": {"cat": "portfolio", "llm": False, "model": None, "writes": "stopped_out_watch", "telegram": False, "why": "Check stopped-out positions for re-entry"},
+        "db-retention": {"cat": "overnight", "llm": False, "model": None, "writes": "DB cleanup", "telegram": False, "why": "Weekly data retention / cleanup"},
+        "trade-ai-news-monitor": {"cat": "market_hours", "llm": False, "model": None, "writes": "news_articles", "telegram": True, "why": "News monitoring and alert routing"},
+    }
+
+    # ── Read timer unit files ──
+    seen = set()
     timers = []
-    timer_dirs = [
-        str(Path.home() / ".config/systemd/user"),
-        "/etc/systemd/system",
-    ]
-    for td in timer_dirs:
+    for td in [str(Path.home() / ".config/systemd/user"), "/etc/systemd/system"]:
         for tf in _glob_qct.glob(f"{td}/*.timer"):
-            name = Path(tf).name
-            service = name.replace(".timer", ".service")
+            name = Path(tf).stem  # without .timer
+            if name in seen:
+                continue
+            seen.add(name)
             schedule = ""
             try:
                 for line in Path(tf).read_text().splitlines():
@@ -13028,75 +13050,75 @@ def _queue_control_tower():
                         break
             except Exception:
                 pass
+            meta = JOB_META.get(name, {})
             timers.append({
-                "timer": name,
-                "activates": service,
-                "schedule": schedule,
+                "job_id": name,
+                "display_name": name.replace("-", " ").replace("_", " ").title(),
+                "category": meta.get("cat", "other"),
+                "schedule": schedule or "see unit file",
                 "source": "user" if ".config" in td else "system",
+                "uses_llm": meta.get("llm", False),
+                "model": meta.get("model"),
+                "writes_to": meta.get("writes"),
+                "sends_telegram": meta.get("telegram", False),
+                "why_it_matters": meta.get("why", ""),
             })
 
-    # Categorize
-    categories = {
-        "24x7_services": [], "tonight_overnight": [], "market_morning": [],
-        "hermes_research": [], "hermes_advisory": [], "governance": [],
-        "portfolio": [], "other": [],
-    }
-    for t in timers:
-        name = t["timer"]
-        if "hermes-autonomous" in name or "hermes-advisory" in name:
-            categories["hermes_advisory"].append(t)
-        elif "hermes-momentum" in name or "hermes-shadow" in name or "hermes-source" in name:
-            categories["hermes_research"].append(t)
-        elif "hermes-" in name:
-            categories["hermes_advisory"].append(t)
-        elif "overnight" in name or "deep-llm" in name or "db-retention" in name:
-            categories["tonight_overnight"].append(t)
-        elif "morning" in name or "catalyst" in name or "continuous" in name:
-            categories["market_morning"].append(t)
-        elif "governance" in name or "maturity" in name or "readiness" in name or "a1a" in name:
-            categories["governance"].append(t)
-        elif "portfolio" in name or "recovery" in name or "aegis" in name:
-            categories["portfolio"].append(t)
-        else:
-            categories["other"].append(t)
-
-    # System services
+    # ── System services (24/7) ──
     services = []
     try:
         r = _sp_qct.run(["systemctl", "list-units", "--type=service", "--state=running", "--no-pager", "--plain"], capture_output=True, text=True, timeout=5)
         for line in r.stdout.strip().splitlines():
-            if any(k in line for k in ["trade", "ollama", "portfolio"]):
-                services.append(line.strip().split()[0])
+            if any(k in line for k in ["trade", "ollama", "portfolio", "hermes"]):
+                svc = line.strip().split()[0]
+                services.append({"name": svc, "status": "running", "category": "24x7_services"})
     except Exception:
         pass
 
-    # Ollama status
+    # ── Ollama ──
     ollama_models = []
     try:
         import urllib.request as _ur_qct, json as _j_qct
         resp = _ur_qct.urlopen("http://127.0.0.1:11434/api/ps", timeout=3)
-        data = _j_qct.loads(resp.read())
-        ollama_models = [m["name"] for m in data.get("models", [])]
+        ollama_models = [m["name"] for m in _j_qct.loads(resp.read()).get("models", [])]
     except Exception:
         pass
 
-    # Cron count
+    # ── Cron count ──
     cron_count = 0
     try:
         r = _sp_qct.run(["crontab", "-l"], capture_output=True, text=True, timeout=3)
-        cron_count = sum(1 for l in r.stdout.splitlines() if l.strip() and not l.startswith("#") and not "=" in l.split()[0] if len(l.split()) > 0)
+        cron_count = sum(1 for l in r.stdout.splitlines() if l.strip() and not l.startswith("#") and "=" not in l.split()[0])
     except Exception:
         pass
+
+    # ── Categorize ──
+    categories = {}
+    for t in timers:
+        c = t["category"]
+        categories.setdefault(c, []).append(t)
+    for s in services:
+        categories.setdefault("24x7_services", []).append(s)
+
+    # ── LLM jobs ──
+    llm_jobs = [t for t in timers if t.get("uses_llm")]
+    telegram_jobs = [t for t in timers if t.get("sends_telegram")]
 
     return {
         "timestamp": _dtqct.now(_tzqct.utc).isoformat(),
         "timers_total": len(timers),
         "cron_count": cron_count,
-        "categories": {k: len(v) for k, v in categories.items()},
-        "category_details": {k: [{"timer": t["timer"], "activates": t["activates"]} for t in v] for k, v in categories.items()},
-        "system_services": services,
+        "services_running": len(services),
         "ollama_loaded": ollama_models,
-        "all_timers": [{"timer": t["timer"], "activates": t["activates"]} for t in timers],
+        "llm_jobs": len(llm_jobs),
+        "telegram_capable_jobs": len(telegram_jobs),
+        "categories": {k: len(v) for k, v in categories.items()},
+        "sections": {
+            "24x7_services": [{"name": s["name"], "status": s["status"]} for s in services],
+            "llm_queue": [{"job_id": j["job_id"], "model": j["model"], "schedule": j["schedule"], "why": j["why_it_matters"]} for j in llm_jobs],
+            "telegram_capable": [{"job_id": j["job_id"], "why": j["why_it_matters"]} for j in telegram_jobs],
+        },
+        "all_jobs": timers,
     }
 
 
