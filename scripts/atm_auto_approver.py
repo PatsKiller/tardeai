@@ -131,11 +131,32 @@ def _daily_pnl_pct(conn, account_label: str) -> float:
 
 
 def _in_operating_hours(hours_config: dict) -> bool:
-    """Check if current time is within ATM operating hours (ET)."""
+    """Check if current time is within ATM operating hours (ET).
+
+    Uses start_et for earliest evaluation (default: Alpaca premarket 04:00).
+    Uses extended_hours_exit_et for latest exit evaluation (default: 19:30).
+    New entries blocked after stop_new_entries_et (default: 15:30).
+    """
     import pytz
     et = pytz.timezone("US/Eastern")
     now_et = datetime.now(et)
-    start = hours_config.get("start_et", "09:35")
+    # Start of ATM window (entries + exits)
+    start = hours_config.get("start_et", "04:00")
+    # End of ATM window (exits allowed until extended_hours_exit_et)
+    exit_end = hours_config.get("extended_hours_exit_et", hours_config.get("stop_new_entries_et", "15:30"))
+    h, m = map(int, start.split(":"))
+    start_dt = now_et.replace(hour=h, minute=m, second=0, microsecond=0)
+    h2, m2 = map(int, exit_end.split(":"))
+    stop_dt = now_et.replace(hour=h2, minute=m2, second=0, microsecond=0)
+    return start_dt <= now_et <= stop_dt
+
+
+def _in_new_entry_window(hours_config: dict) -> bool:
+    """Check if current time allows NEW entries (stricter than operating hours)."""
+    import pytz
+    et = pytz.timezone("US/Eastern")
+    now_et = datetime.now(et)
+    start = hours_config.get("start_et", "04:00")
     stop = hours_config.get("stop_new_entries_et", "15:30")
     h, m = map(int, start.split(":"))
     start_dt = now_et.replace(hour=h, minute=m, second=0, microsecond=0)

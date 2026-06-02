@@ -24,8 +24,18 @@ defaults:
   kill_switches:
     daily_loss_pct_hard_pause: 2.5   # Stage 1: was 0.25 (2.5% = $2,500 daily loss cap)
   operating_hours:
-    start_et: "07:00"
-    stop_new_entries_et: "15:30"
+    start_et: "04:00"                # Alpaca premarket start
+    stop_new_entries_et: "15:30"     # Last new entry before market close
+    extended_hours_exit_et: "19:30"  # Allow exits until 30min before AH close
+  extended_hours:
+    enabled: true
+    premarket_start_et: "04:00"
+    afterhours_end_et: "20:00"
+    allow_extended_entries: true
+    allow_extended_exits: true
+    limit_orders_only: true          # Alpaca requirement for extended hours
+    reduced_size_multiplier: 0.5     # Half position size in extended hours
+    max_spread_pct: 1.0              # Stricter spread gate for thin liquidity
 
 # Same-day strategies: gap_and_go still skipped (requires sub-minute execution).
 # momentum_scalp REMOVED from skip list — ATM now allowed to process these.

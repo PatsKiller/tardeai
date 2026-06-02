@@ -108,7 +108,29 @@ def get_expiry_datetime(strategy_id: str, created_at: datetime = None) -> dateti
     if created_at is None:
         created_at = datetime.now(timezone.utc)
     hours = get_expiry_hours(strategy_id)
-    return created_at + timedelta(hours=hours)
+    raw_expiry = created_at + timedelta(hours=hours)
+
+    # Ensure proposals don't expire before the next Alpaca trading window.
+    # If raw expiry falls before next market open, extend to next day's market close.
+    try:
+        import zoneinfo
+        et = zoneinfo.ZoneInfo("America/New_York")
+        expiry_et = raw_expiry.astimezone(et)
+        # Alpaca extended-hours start at 4:00 AM ET, market closes at 4:00 PM ET
+        # If expiry lands before 5:00 AM on a weekday, push to same-day 16:00 ET
+        # (5 AM gives the 4 AM auto-approver at least 1 hour margin)
+        if expiry_et.weekday() < 5 and expiry_et.hour < 5:
+            expiry_et = expiry_et.replace(hour=16, minute=0, second=0, microsecond=0)
+            return expiry_et.astimezone(timezone.utc)
+        # If expiry lands on weekend, push to Monday 16:00 ET
+        if expiry_et.weekday() >= 5:
+            days_to_mon = 7 - expiry_et.weekday()
+            expiry_et = (expiry_et + timedelta(days=days_to_mon)).replace(
+                hour=16, minute=0, second=0, microsecond=0)
+            return expiry_et.astimezone(timezone.utc)
+    except Exception:
+        pass
+    return raw_expiry
 
 
 def get_max_expiry_datetime(strategy_id: str, created_at: datetime = None) -> datetime:
