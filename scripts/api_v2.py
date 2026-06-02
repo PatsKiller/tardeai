@@ -13135,9 +13135,48 @@ def _queue_control_tower():
     for s in services:
         categories.setdefault("24x7_services", []).append(s)
 
-    # ── LLM jobs ──
+    # ── LLM jobs (scheduled) ──
     llm_jobs = [t for t in timers if t.get("uses_llm")]
     telegram_jobs = [t for t in timers if t.get("sends_telegram")]
+
+    # ── Real LLM queue from high_llm_job_queue ──
+    real_queue = []
+    queue_stats = {"pending": 0, "running": 0, "completed": 0, "failed": 0, "blocked": 0}
+    try:
+        _qrows = _db_query("""
+            SELECT id, job_type, source_system, status, priority_score, preferred_model,
+                   urgency, portfolio_impact, operator_value, evidence_gap_score,
+                   quota_pool, expected_runtime_sec, created_at
+            FROM high_llm_job_queue
+            ORDER BY priority_score DESC NULLS LAST LIMIT 30
+        """) or []
+        for r in _qrows:
+            st = r.get("status", "unknown")
+            if st in ("queued_for_review", "dry_run_candidate", "pending"):
+                queue_stats["pending"] += 1
+            elif st == "running":
+                queue_stats["running"] += 1
+            elif st == "completed":
+                queue_stats["completed"] += 1
+            elif st == "failed":
+                queue_stats["failed"] += 1
+            else:
+                queue_stats["blocked"] += 1
+            real_queue.append({
+                "queue_id": r["id"],
+                "job_type": r.get("job_type"),
+                "source": r.get("source_system"),
+                "status": st,
+                "priority_score": r.get("priority_score"),
+                "model": r.get("preferred_model"),
+                "urgency": r.get("urgency"),
+                "pool": r.get("quota_pool"),
+                "runtime_sec": r.get("expected_runtime_sec"),
+                "created_at": _json_clean(r.get("created_at")),
+            })
+    except Exception:
+        pass
+    next_queued = next((q for q in real_queue if q["status"] in ("queued_for_review", "dry_run_candidate", "pending")), None)
 
     # ── Due next (sorted by next_run_in_min) ──
     due_next = sorted([t for t in timers if t.get("next_run_in_min") is not None], key=lambda t: t["next_run_in_min"])[:10]
@@ -13158,10 +13197,18 @@ def _queue_control_tower():
         "categories": {k: len(v) for k, v in categories.items()},
         "sections": {
             "24x7_services": [{"name": s["name"], "status": s["status"]} for s in services],
-            "llm_queue": [{"job_id": j["job_id"], "model": j["model"], "schedule": j["schedule"], "why": j["why_it_matters"], "next_run": j.get("next_run"), "last_result": j.get("last_result")} for j in llm_jobs],
+            "llm_scheduled": [{"job_id": j["job_id"], "model": j["model"], "schedule": j["schedule"], "why": j["why_it_matters"], "next_run": j.get("next_run"), "last_result": j.get("last_result")} for j in llm_jobs],
             "telegram_capable": [{"job_id": j["job_id"], "why": j["why_it_matters"]} for j in telegram_jobs],
             "due_next": [{"job_id": t["job_id"], "next_run": t["next_run"], "next_in_min": t["next_run_in_min"], "category": t["category"], "uses_llm": t["uses_llm"], "status_icon": t["status_icon"]} for t in due_next],
             "needs_attention": [{"job_id": t["job_id"], "reason": "last run failed", "last_result": t["last_result"]} for t in failed] + [{"job_id": t["job_id"], "reason": "service failed", "service_state": t["service_state"]} for t in stale],
+            "real_llm_queue": {
+                "source": "high_llm_job_queue",
+                "source_status": "CONNECTED" if real_queue else "EMPTY",
+                "total": len(real_queue),
+                "stats": queue_stats,
+                "next_job": next_queued,
+                "items": real_queue,
+            },
         },
         "all_jobs": timers,
     }
