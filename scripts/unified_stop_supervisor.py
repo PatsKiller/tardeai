@@ -127,6 +127,24 @@ def run_cycle(dry_run=True, reconcile_only=False, verbose=False):
     if critical > 0:
         log.warning(f"CRITICAL: {critical} reconciliation findings — positions may be unprotected")
 
+    # Phase 190D: route paper-position protection defects to SIEM (alert_events) and,
+    # when PROTECTION_ALERTS_TELEGRAM=true, to Telegram. Best-effort — must never break
+    # the supervisor. Reads paper_trades directly (not brokerage JSON); dedups internally.
+    try:
+        import protection_alerts
+        _send_tg = os.environ.get("PROTECTION_ALERTS_TELEGRAM", "").lower() == "true"
+        _pa = protection_alerts.run(send=_send_tg)
+        report["protection_alerts"] = {
+            "defects_found": _pa.get("defects_found"),
+            "siem_emitted": len(_pa.get("siem_emitted", [])),
+            "telegram_sent": bool(_pa.get("telegram_sent")),
+        }
+        if _pa.get("siem_emitted"):
+            log.warning(f"PROTECTION: emitted {len(_pa['siem_emitted'])} SIEM defect events")
+    except Exception as _pe:
+        log.error(f"protection_alerts hook failed (non-fatal): {_pe}")
+        report["protection_alerts"] = {"error": str(_pe)}
+
     if reconcile_only:
         report["monitors_skipped"] = "reconcile_only mode"
         report["duration"] = round(time.time() - t0, 1)
