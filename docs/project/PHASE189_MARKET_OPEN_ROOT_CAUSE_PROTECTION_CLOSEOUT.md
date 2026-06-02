@@ -26,12 +26,26 @@ health agents inspect brokerage JSON instead of `paper_trades`.
 - `docs/atm/PHASE189G_DURABLE_PROTECTION_REMEDIATION_PLAN.md`
 - `scripts/atm_market_open_watch.py` (read-only watch)
 
+## POST-OPEN UPDATE (09:32 ET — watch fired)
+
+The 09:30 watch fired and live data is in. Authoritative post-open results (see refreshed 189F/189E):
+- **Watch fired:** ✅ YES (09:30:02 ET).
+- **ELMT final 09:30 status:** **REJECTED** — auto-rejected 09:00 ET premarket (`auto_blocked_230min`,
+  aged out). Fresh quote now but ~31% open spread. **Submitted: NO.** No new ELMT proposal post-open.
+- **ANY:** fresh quote YES; live **+$569.48 (+5.75R)**; broker stop **YES** (@3.07); DB stop tracked **NO**.
+- **SNOW:** fresh quote YES; prior +18% mark was **STALE** → live ≈ **+13.3% (+$251.50)**; broker stop
+  **YES** (@254.38, locks gain); DB stop tracked **NO**.
+- **TMHC:** broker stop verified **YES** (@68.02); DB stop tracked **NO**; note not broker-confirmed.
+- **Naked broker stop count:** 0 · **Untracked broker stop count:** 3 · **Take-profit missing:** 6.
+- **Telegram sent:** NO (corrected payload prepared in 189E; awaiting operator OK).
+- **No new trades** premarket/at open.
+
 ## Required closeout fields
-- **Phase 189 complete:** ✅ YES (investigation + schedule + docs)
+- **Phase 189 complete:** ✅ YES (investigation + schedule + watch-fired + docs)
 - **Watch scheduled:** ✅ YES — cron `atm-market-open-watch-0930`, 09:30 ET today
-- **Watch fired:** **NOT YET** (premarket dry-run succeeded at 09:07 ET; live fire 09:30 ET)
-- **ELMT status:** **HELD_STALE** (proposal #161 now REJECTED/BLOCKED; quote age ~1027 min). Dedup
-  works (same row re-evaluated, not duplicated). No `PENDING_TRADING_WINDOW` state exists — gap.
+- **Watch fired:** ✅ **YES (09:30:02 ET)**
+- **ELMT status:** **REJECTED** (auto_blocked_230min, aged out premarket; ~31% open spread). Not
+  submitted. Dedup works (same row re-evaluated). No `PENDING_TRADING_WINDOW` state exists — gap.
 - **Extended-hours blockage root cause:** `market_session.should_delay_execution` returns
   `delayed` for the `premarket` session inside `paper_execution_revalidator.revalidate`
   (`market_session.py:135-137`, enforced `proposal_paper_submitter.py:558`), short-circuiting
@@ -54,7 +68,10 @@ health agents inspect brokerage JSON instead of `paper_trades`.
 - **Naked positions count (no broker stop):** **0**
 - **Unverified broker stops count (stop exists, DB `stop_order_id` missing):** **3** (ANY, SNOW, TMHC)
 - **Take-profit missing count:** **6**
-- **Telegram sent:** **NO** (payload prepared in 188E; not auto-sent — awaiting operator OK)
+- **Health-agent failure confirmed:** ✅ YES — detection ran, CRITICAL log-swallowed, no SIEM/Telegram
+- **Hermes safe-view gap confirmed:** ✅ YES — no view exposes broker-protection fields; no rule
+- **Phase 190 required:** ✅ YES
+- **Telegram sent:** **NO** (corrected payload in 189E; not auto-sent — awaiting operator OK)
 - **Durable remediation plan ready:** ✅ YES (189G)
 - **Paper account verified:** ✅ YES (`PA3E93QWASV1`, ACTIVE, `ALPACA_MODE=paper`)
 - **Alpaca broker verified:** ✅ YES (paper endpoint, read-only)
