@@ -17,6 +17,7 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
   const { data: metricsHist } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
+  const { data: briefData } = useApi<any>('/api/v2/morning-brief', 300_000)
 
   const pv = overview?.portfolio_value
   const todayChg = overview?.today_change
@@ -170,8 +171,44 @@ export default function HomeHub({ onDrill }: Props) {
         </>
       )}
 
-      {tab === 'Morning Command' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Morning Command tab — awaiting spec build</div>}
-      {tab === 'Brief' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Brief tab — awaiting spec build</div>}
+      {tab === 'Morning Command' && briefData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Morning Brief</div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>Generated: {briefData.generated_at ?? '—'}</div>
+          {briefData.action_items && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b', marginBottom: 6 }}>Action Items</div>
+              {(Array.isArray(briefData.action_items) ? briefData.action_items : []).map((a: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: `Action ${i+1}`, subtitle: '', endpoint: '/api/v2/morning-brief', rows: [typeof a === 'object' ? a : {item: a}] })}
+                  style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
+                  {typeof a === 'string' ? a : (a.title ?? a.action ?? JSON.stringify(a)).slice(0, 100)}
+                </div>
+              ))}
+            </div>
+          )}
+          {briefData.strategy_health && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', marginBottom: 6 }}>Strategy Health</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)' }}>{typeof briefData.strategy_health === 'string' ? briefData.strategy_health : JSON.stringify(briefData.strategy_health).slice(0, 200)}</div>
+            </div>
+          )}
+          <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/morning-brief</div>
+        </div>
+      )}
+      {tab === 'Morning Command' && !briefData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading morning brief...</div>}
+
+      {tab === 'Brief' && briefData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Overnight Activity</div>
+          {briefData.overnight_activity ? (
+            <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.6 }}>
+              {typeof briefData.overnight_activity === 'string' ? briefData.overnight_activity : JSON.stringify(briefData.overnight_activity, null, 2).slice(0, 500)}
+            </div>
+          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>No overnight activity data</div>}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/morning-brief → overnight_activity</div>
+        </div>
+      )}
+      {tab === 'Brief' && !briefData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading brief...</div>}
     </div>
   )
 }

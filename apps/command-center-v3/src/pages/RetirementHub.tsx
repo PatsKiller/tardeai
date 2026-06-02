@@ -91,7 +91,20 @@ export default function RetirementHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Timeline' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Retirement timeline — awaiting data integration</div>}
+      {tab === 'Timeline' && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Retirement Timeline</div>
+          {timeline.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No timeline data from /api/v2/retirement</div> :
+          timeline.map((t: any, i: number) => (
+            <div key={i} onClick={() => onDrill({ title: t.label ?? t.event ?? `Event ${i}`, subtitle: t.year ?? t.date ?? '', endpoint: '/api/v2/retirement', rows: [t] })}
+              style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+              <span style={{ color: 'var(--text0)' }}>{t.label ?? t.event ?? t.description ?? JSON.stringify(t).slice(0, 60)}</span>
+              <span style={{ color: 'var(--text2)', fontFamily: 'monospace' }}>{t.year ?? t.date ?? t.age ?? ''}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/retirement → timeline</div>
+        </div>
+      )}
     </div>
   )
 }

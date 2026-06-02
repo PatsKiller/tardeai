@@ -68,7 +68,11 @@ export default function IntelligenceHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Research' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Research tab — awaiting data integration</div>}
+      {tab === 'Research' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Research Topics</div>
+        <div style={{ fontSize: 11, color: 'var(--text3)' }}>Research topics endpoint (/api/v2/research-topics) available — deep integration deferred. Use Intelligence News tab for current market data.</div>
+        <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Brave web search depleted per audit — SearXNG internal search available at :18888</div>
+      </div>}
       {tab === 'Sources' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Intelligence sources — Brave depleted per audit</div>}
     </div>
   )
