@@ -19,4 +19,5 @@ run profit_protection_advisory.py                     # TradeAI advisories (191)
 run hermes_profit_protection_check.py                 # Hermes second opinion (191E)
 run generate_paper_protection_adjustment_proposals.py # adjustment proposals (192D)
 run reconcile_protection_advisory_outcomes.py         # close-loop outcomes (193/194)
+run tune_advisory_thresholds.py                       # threshold tuning backtest (198)
 echo "[$(ts)] === protection pipeline done ===" >> "$LOG"

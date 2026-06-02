@@ -13810,6 +13810,21 @@ def _atm_protection_coverage():
     }
 
 
+def _atm_advisory_threshold_tuning():
+    """Phase 198 — latest advisory threshold tuning run (read-only). Recommendation only;
+    thresholds are advisory-model params (191D), NOT GO/WAIT, and are not auto-applied."""
+    r = _db_query("""SELECT run_at, cases, giveback_cases, current_thresholds, current_performance,
+                            recommended_thresholds, recommended_performance, full_sweep
+                     FROM advisory_threshold_tuning ORDER BY run_at DESC LIMIT 1""", fetch="one")
+    if not r:
+        return {"available": False, "note": "No tuning run yet — run tune_advisory_thresholds.py"}
+    out = {k: _json_clean(v) for k, v in r.items()}
+    out["available"] = True
+    out["note"] = ("Recommendation only — operator applies manually. Small/synthetic sample "
+                   "(no live-advised trades closed yet); revisit as advised trades accumulate.")
+    return out
+
+
 def _atm_profit_protection_advisory():
     """Phase 191F — inline ATM profit-protection advisory (read-only, advisory-only).
 
@@ -13927,6 +13942,7 @@ ROUTES = {
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
     "/api/v2/atm/protection-adjustment-proposals": lambda: _atm_adjustment_proposals_list(),
     "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
+    "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/portfolio/performance": portfolio_performance,
