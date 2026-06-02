@@ -2,6 +2,7 @@ import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 interface Packet {
   filename: string; symbol: string; company: string; sector: string
@@ -153,6 +154,9 @@ export default function ProposalSandbox() {
               {selected.review_checklist?.map((c, i) => <li key={i}>{c}</li>)}
             </ul>
           </Section>
+
+          {/* Hermes Second Opinion */}
+          <InlineDualOpinionPanel symbol={selected.symbol} strategy={selected.strategy_fit} compact={false} />
 
           {/* Metadata */}
           <div style={{ fontSize: 8, color: 'var(--text3)', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 8 }}>
