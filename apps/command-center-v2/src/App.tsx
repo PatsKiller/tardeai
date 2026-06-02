@@ -90,6 +90,7 @@ const HermesIntelligence = lazy(() => import('./pages/HermesIntelligence'))
 const SelfLearningOverview = lazy(() => import('./pages/SelfLearningOverview'))
 const ProposalSandbox = lazy(() => import('./pages/ProposalSandbox'))
 const SiemDashboard = lazy(() => import('./pages/SiemDashboard'))
+const DualOpinionAdvisory = lazy(() => import('./pages/DualOpinionAdvisory'))
 const Reports = lazy(() => import('./pages/Reports'))
 
 function Loading() {
@@ -209,6 +210,7 @@ export default function App() {
           <Route path="hermes-intelligence" element={<SafePage><HermesIntelligence /></SafePage>} />
           <Route path="self-learning-overview" element={<SafePage><SelfLearningOverview /></SafePage>} />
           <Route path="proposal-sandbox" element={<SafePage><ProposalSandbox /></SafePage>} />
+          <Route path="dual-opinion" element={<SafePage><DualOpinionAdvisory /></SafePage>} />
           <Route path="reports" element={<SafePage><Reports /></SafePage>} />
 
           {/* ── Legacy redirects (old routes → consolidated pages) ── */}

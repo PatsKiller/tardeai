@@ -12949,6 +12949,23 @@ def _hermes_self_learning_overview():
     }
 
 
+def _hermes_dual_opinion():
+    """GET /api/v2/hermes/dual-opinion — side-by-side TradeAI vs Hermes opinions."""
+    import json as _jdo
+    opinions_dir = PROJECT_ROOT / "data" / "advisory" / "dual_opinion"
+    if not opinions_dir.exists():
+        return {"total": 0, "opinions": [], "advisory_notice": "No dual opinions generated yet."}
+    # Find latest file
+    files = sorted(opinions_dir.glob("*.json"), reverse=True)
+    if not files:
+        return {"total": 0, "opinions": [], "advisory_notice": "No dual opinions generated yet."}
+    try:
+        data = _jdo.loads(files[0].read_text())
+        return data
+    except Exception:
+        return {"total": 0, "opinions": [], "advisory_notice": "Error reading dual opinion data."}
+
+
 def _system_siem_dashboard():
     """GET /api/v2/system/siem — SIEM-lite alert dashboard with live normalization."""
     import json as _jsiem
@@ -13548,6 +13565,7 @@ ROUTES = {
     "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
     "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
     "/api/v2/hermes/proposal-sandbox": lambda: _hermes_proposal_sandbox(),
+    "/api/v2/hermes/dual-opinion": lambda: _hermes_dual_opinion(),
     "/api/v2/hermes/self-learning/timeline": lambda: _hermes_sl_timeline(),
 }
 
