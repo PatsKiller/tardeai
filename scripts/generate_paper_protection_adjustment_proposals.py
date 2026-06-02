@@ -125,7 +125,12 @@ def run(persist=True):
     import psycopg2.extras
     conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     if persist:
-        wc = conn.cursor(); ensure_table(wc); conn.commit()
+        wc = conn.cursor(); ensure_table(wc)
+        # Idempotent for cron: supersede prior open candidates before regenerating, so only the
+        # latest candidate set per trade is PROPOSED (no duplicate bloat). The approve engine also
+        # guards on live broker-stop state, so a stale proposal would be safely blocked anyway.
+        wc.execute("update paper_protection_adjustment_proposals set status='SUPERSEDED' where status='PROPOSED'")
+        conn.commit()
     cur.execute("""SELECT DISTINCT ON (paper_trade_id) paper_trade_id, symbol, tradeai_action,
                           tradeai_reason, hermes_opinion, hermes_reason, audit_json
                    FROM atm_profit_protection_advisories ORDER BY paper_trade_id, created_at DESC""")
