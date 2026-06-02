@@ -1,17 +1,17 @@
 import { NavLink } from 'react-router-dom'
 
 const HUBS = [
-  { to: '/v3', label: 'Home', exact: true },
-  { to: '/v3/portfolio', label: 'Portfolio' },
-  { to: '/v3/risk', label: 'Risk' },
-  { to: '/v3/trading', label: 'Trading' },
-  { to: '/v3/strategy', label: 'Strategy' },
-  { to: '/v3/agents', label: 'Agents' },
-  { to: '/v3/intelligence', label: 'Intelligence' },
-  { to: '/v3/hermes', label: 'Hermes' },
-  { to: '/v3/retirement', label: 'Retirement' },
-  { to: '/v3/journal', label: 'Journal' },
-  { to: '/v3/system', label: 'System' },
+  { to: '/', label: 'Home', exact: true },
+  { to: '/portfolio', label: 'Portfolio' },
+  { to: '/risk', label: 'Risk' },
+  { to: '/trading', label: 'Trading' },
+  { to: '/strategy', label: 'Strategy' },
+  { to: '/agents', label: 'Agents' },
+  { to: '/intelligence', label: 'Intelligence' },
+  { to: '/hermes', label: 'Hermes' },
+  { to: '/retirement', label: 'Retirement' },
+  { to: '/journal', label: 'Journal' },
+  { to: '/system', label: 'System' },
 ]
 
 export default function NavRail() {
