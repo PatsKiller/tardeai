@@ -13141,12 +13141,15 @@ def _queue_control_tower():
 
     # ── Real LLM queue from high_llm_job_queue ──
     real_queue = []
-    queue_stats = {"pending": 0, "running": 0, "completed": 0, "failed": 0, "blocked": 0}
+    queue_stats = {"pending": 0, "approved": 0, "running": 0, "completed": 0, "failed": 0, "rejected": 0, "blocked": 0}
     try:
         _qrows = _db_query("""
-            SELECT id, job_type, source_system, status, priority_score, preferred_model,
+            SELECT id, job_type, source_system, process_type, status,
+                   priority_score, preferred_model, fallback_model,
                    urgency, portfolio_impact, operator_value, evidence_gap_score,
-                   quota_pool, expected_runtime_sec, created_at
+                   quota_pool, expected_runtime_sec, advisory_only, not_execution,
+                   error_message, retry_count,
+                   created_at, scheduled_for, started_at, finished_at
             FROM high_llm_job_queue
             ORDER BY priority_score DESC NULLS LAST LIMIT 30
         """) or []
@@ -13154,25 +13157,41 @@ def _queue_control_tower():
             st = r.get("status", "unknown")
             if st in ("queued_for_review", "dry_run_candidate", "pending"):
                 queue_stats["pending"] += 1
+            elif st == "approved":
+                queue_stats["approved"] += 1
             elif st == "running":
                 queue_stats["running"] += 1
             elif st == "completed":
                 queue_stats["completed"] += 1
             elif st == "failed":
                 queue_stats["failed"] += 1
+            elif st == "rejected":
+                queue_stats["rejected"] += 1
             else:
                 queue_stats["blocked"] += 1
             real_queue.append({
                 "queue_id": r["id"],
                 "job_type": r.get("job_type"),
                 "source": r.get("source_system"),
+                "process_type": r.get("process_type"),
                 "status": st,
                 "priority_score": r.get("priority_score"),
                 "model": r.get("preferred_model"),
+                "fallback_model": r.get("fallback_model"),
                 "urgency": r.get("urgency"),
+                "portfolio_impact": r.get("portfolio_impact"),
+                "operator_value": r.get("operator_value"),
+                "evidence_gap": r.get("evidence_gap_score"),
                 "pool": r.get("quota_pool"),
                 "runtime_sec": r.get("expected_runtime_sec"),
+                "advisory_only": r.get("advisory_only"),
+                "not_execution": r.get("not_execution"),
+                "error_message": r.get("error_message"),
+                "retry_count": r.get("retry_count", 0),
                 "created_at": _json_clean(r.get("created_at")),
+                "scheduled_for": _json_clean(r.get("scheduled_for")),
+                "started_at": _json_clean(r.get("started_at")),
+                "finished_at": _json_clean(r.get("finished_at")),
             })
     except Exception:
         pass
@@ -13233,6 +13252,103 @@ def _hermes_advisory_choices():
         "total": len(all_choices),
         "counts": counts,
         "recent": all_choices[:20],
+    }
+
+
+def _cron_compression_view():
+    """GET /api/v2/system/cron-compression — grouped cron analysis with duplicate/overlap detection."""
+    import re as _recron, subprocess as _spcron
+    from collections import defaultdict as _ddcron
+    try:
+        _r = _spcron.run(["crontab", "-l"], capture_output=True, text=True, timeout=5)
+        lines = [l.strip() for l in _r.stdout.strip().splitlines() if l.strip() and not l.strip().startswith('#')]
+    except Exception:
+        return {"error": "crontab not accessible"}
+
+    entries = []
+    env_vars = {}
+    for line in lines:
+        # Variable assignments
+        if '=' in line and not any(c in line.split('=')[0] for c in ' */'):
+            parts = line.split('=', 1)
+            if all(c.isalpha() or c == '_' for c in parts[0]):
+                env_vars[parts[0]] = parts[1]
+                continue
+
+        m = _recron.match(r'^([\S]+\s+[\S]+\s+[\S]+\s+[\S]+\s+[\S]+)\s+(.+)$', line)
+        if not m:
+            continue
+        schedule, command = m.group(1), m.group(2)
+
+        script_match = _recron.search(r'(?:python|python3|\$PY)\s+(?:scripts/)?(\S+\.py)', command)
+        if script_match:
+            script = script_match.group(1)
+        else:
+            script_match = _recron.search(r'(?:bash\s+)?(?:scripts/)?(\S+\.sh)', command)
+            script = script_match.group(1) if script_match else command.split()[-1].split('/')[-1]
+
+        log_match = _recron.search(r'>>\s*(?:\S*/)?(\S+\.log)', command)
+        log = log_match.group(1) if log_match else None
+        has_flock = 'flock' in command
+        lock_match = _recron.search(r'/tmp/(\S+\.lock)', command)
+        lock = lock_match.group(1) if lock_match else None
+
+        dow = schedule.split()[4]
+        hours = schedule.split()[1]
+        is_weekday = dow in ('1-5',)
+        is_weekend = dow in ('0,6', '6', '0')
+        is_market = is_weekday and any(h in hours for h in ['9', '10', '11', '12', '13', '14', '15', '16'])
+
+        entries.append({
+            "schedule": schedule, "script": script, "log": log,
+            "has_flock": has_flock, "lock_file": lock,
+            "is_weekday": is_weekday, "is_weekend": is_weekend, "is_market_hours": is_market,
+            "raw": command[:120],
+        })
+
+    groups = _ddcron(list)
+    for e in entries:
+        groups[e["script"]].append(e)
+
+    duplicates = []
+    for script, group in groups.items():
+        if len(group) > 1:
+            schedules = [g["schedule"] for g in group]
+            duplicates.append({
+                "script": script, "count": len(group), "schedules": schedules,
+                "shared_lock": group[0]["lock_file"] if all(g["lock_file"] == group[0]["lock_file"] for g in group) else None,
+            })
+
+    lock_groups = _ddcron(list)
+    for e in entries:
+        if e["lock_file"]:
+            lock_groups[e["lock_file"]].append(e["script"])
+    overlaps = []
+    for lock, scripts in lock_groups.items():
+        unique = list(set(scripts))
+        if len(unique) > 1:
+            overlaps.append({"lock": lock, "scripts": unique})
+
+    market_count = sum(1 for e in entries if e["is_market_hours"])
+    overnight_count = sum(1 for e in entries if not e["is_market_hours"] and e["is_weekday"])
+    weekend_count = sum(1 for e in entries if e["is_weekend"])
+    always_count = len(entries) - market_count - overnight_count - weekend_count
+    script_counts = sorted([(s, len(g)) for s, g in groups.items()], key=lambda x: -x[1])
+
+    return {
+        "total_crons": len(entries),
+        "unique_scripts": len(groups),
+        "env_vars": len(env_vars),
+        "with_flock": sum(1 for e in entries if e["has_flock"]),
+        "categories": {"market_hours": market_count, "overnight_weekday": overnight_count, "weekend": weekend_count, "always": always_count},
+        "duplicates": sorted(duplicates, key=lambda d: -d["count"]),
+        "lock_overlaps": overlaps,
+        "top_scripts": [{"script": s, "entries": c} for s, c in script_counts[:15]],
+        "groups": {
+            script: [{"schedule": g["schedule"], "has_flock": g["has_flock"], "lock_file": g["lock_file"], "log": g["log"]}
+                     for g in group]
+            for script, group in sorted(groups.items(), key=lambda x: -len(x[1]))[:30]
+        },
     }
 
 
@@ -13816,6 +13932,7 @@ ROUTES = {
     "/api/v2/queue/failed": lambda: _queue_failed(),
     "/api/v2/ops/cron-health": lambda: _ops_cron_health(),
     "/api/v2/system/queue-control-tower": lambda: _queue_control_tower(),
+    "/api/v2/system/cron-compression": lambda: _cron_compression_view(),
     "/api/v2/ops/llm-audit": lambda: _ops_llm_audit(),
     "/api/v2/execution-integrity": lambda: _system_health_api(),
     "/api/v2/execution-integrity/events": lambda: _system_health_events_api(),
@@ -14795,6 +14912,73 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if result:
                 return 200, {"ok": True, "data": {"retried": True}}
             return 404, {"ok": False, "error": "Job not found or not in failed state"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── LLM Queue Requeue (high_llm_job_queue) ──
+    if method == "POST" and base_path == "/api/v2/llm-queue/requeue":
+        try:
+            queue_id = (body or {}).get("queue_id")
+            if not queue_id:
+                return 400, {"ok": False, "error": "queue_id required"}
+            # Safety: only requeue failed jobs, cap retries at 3
+            row = _db_query("SELECT id, status, retry_count, advisory_only, not_execution FROM high_llm_job_queue WHERE id = %s", (queue_id,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Job not found"}
+            if row["status"] != "failed":
+                return 400, {"ok": False, "error": f"Only failed jobs can be requeued (current: {row['status']})"}
+            if (row.get("retry_count") or 0) >= 3:
+                return 400, {"ok": False, "error": "Max retries (3) reached — manual investigation required"}
+            result = _db_write(
+                "UPDATE high_llm_job_queue SET status = 'queued_for_review', error_message = NULL, retry_count = COALESCE(retry_count, 0) + 1, started_at = NULL, finished_at = NULL WHERE id = %s RETURNING id",
+                (queue_id,)
+            )
+            if result:
+                return 200, {"ok": True, "data": {"requeued": True, "queue_id": queue_id, "new_retry_count": (row.get("retry_count") or 0) + 1}}
+            return 500, {"ok": False, "error": "Requeue update failed"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── LLM Queue Approve (operator gate) ──
+    if method == "POST" and base_path == "/api/v2/llm-queue/approve":
+        try:
+            queue_id = (body or {}).get("queue_id")
+            if not queue_id:
+                return 400, {"ok": False, "error": "queue_id required"}
+            row = _db_query("SELECT id, status FROM high_llm_job_queue WHERE id = %s", (queue_id,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Job not found"}
+            if row["status"] not in ("queued_for_review", "dry_run_candidate"):
+                return 400, {"ok": False, "error": f"Only pending jobs can be approved (current: {row['status']})"}
+            result = _db_write(
+                "UPDATE high_llm_job_queue SET status = 'approved' WHERE id = %s RETURNING id",
+                (queue_id,)
+            )
+            if result:
+                return 200, {"ok": True, "data": {"approved": True, "queue_id": queue_id}}
+            return 500, {"ok": False, "error": "Approve update failed"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── LLM Queue Reject ──
+    if method == "POST" and base_path == "/api/v2/llm-queue/reject":
+        try:
+            queue_id = (body or {}).get("queue_id")
+            if not queue_id:
+                return 400, {"ok": False, "error": "queue_id required"}
+            row = _db_query("SELECT id, status FROM high_llm_job_queue WHERE id = %s", (queue_id,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": "Job not found"}
+            if row["status"] not in ("queued_for_review", "dry_run_candidate", "approved"):
+                return 400, {"ok": False, "error": f"Only pending/approved jobs can be rejected (current: {row['status']})"}
+            reason = (body or {}).get("reason", "operator rejected")
+            result = _db_write(
+                "UPDATE high_llm_job_queue SET status = 'rejected', error_message = %s WHERE id = %s RETURNING id",
+                (reason[:200], queue_id)
+            )
+            if result:
+                return 200, {"ok": True, "data": {"rejected": True, "queue_id": queue_id}}
+            return 500, {"ok": False, "error": "Reject update failed"}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
