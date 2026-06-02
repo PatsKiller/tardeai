@@ -6,6 +6,7 @@ import Card from '../components/Card'
 import DetailDrawer, { DrawerSection, DrawerStat } from '../components/DetailDrawer'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, deltaColor } from '../lib/format'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 interface Holding {
   symbol: string; name: string; account: string; market_value: number; portfolio_pct: number; price: number
@@ -88,6 +89,7 @@ export default function Technical() {
       <DetailDrawer open={!!selected} onClose={() => setSelected(null)} title={selected?.symbol || ''} subtitle="Technical / PI detail">
         {selected && (
           <>
+            <InlineDualOpinionPanel symbol={selected.symbol} compact={true} />
             <DrawerSection title="Position Intelligence">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                 <DrawerStat label="PI Score" value={String(selected.pi_score ?? '—')} color={piTone(selected.pi_score ?? 0)} />

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 const mono: React.CSSProperties = { fontFamily: 'monospace' }
 const thStyle: React.CSSProperties = { fontSize: 8, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.3px', padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }

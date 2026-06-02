@@ -9,6 +9,7 @@ import DataGrid from '../components/DataGrid'
 import { DoughnutChart, BarChartJS } from '../components/charts'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, deltaColor } from '../lib/format'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 interface Position { symbol: string; market_value: number; stop_price: number | null; current_price: number; distance_pct: number | null; max_loss: number; status: string; triggered: boolean; stop_conf_status?: string; stop_confirmed?: boolean; stop_price_confirmed?: number | null; stop_confirmed_at?: string | null; reminder_count?: number; day_change_pct?: number; has_stop?: boolean; rsi?: number; distance_to_stop_pct?: number }
 interface EscItem { symbol: string; max_loss?: number; distance_pct?: number; market_value?: number; account?: string }
@@ -289,6 +290,7 @@ export default function Risk() {
         title={selectedPos?.symbol || ''} subtitle={`Risk Detail | ${selectedPos?.status || ''}`}>
         {selectedPos && (
           <>
+            <InlineDualOpinionPanel symbol={selectedPos.symbol} compact={true} />
             <DrawerSection title="Position">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                 <DrawerStat label="Current Price" value={fmt$(selectedPos.current_price, 2)} />
