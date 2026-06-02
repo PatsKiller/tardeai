@@ -12966,6 +12966,20 @@ def _hermes_dual_opinion():
         return {"total": 0, "opinions": [], "advisory_notice": "Error reading dual opinion data."}
 
 
+def _hermes_dual_opinion_inline():
+    """GET /api/v2/hermes/dual-opinion/inline — filter dual opinions by symbol/strategy."""
+    qs = _current_query or {}
+    symbol_f = qs.get("symbol")
+    strategy_f = qs.get("strategy")
+    data = _hermes_dual_opinion()
+    opinions = data.get("opinions", [])
+    if symbol_f:
+        opinions = [o for o in opinions if o.get("symbol") == symbol_f]
+    if strategy_f:
+        opinions = [o for o in opinions if o.get("strategy") == strategy_f]
+    return {"opinions": opinions, "total": len(opinions)}
+
+
 def _system_siem_dashboard():
     """GET /api/v2/system/siem — SIEM-lite alert dashboard with live normalization."""
     import json as _jsiem
@@ -13566,6 +13580,7 @@ ROUTES = {
     "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
     "/api/v2/hermes/proposal-sandbox": lambda: _hermes_proposal_sandbox(),
     "/api/v2/hermes/dual-opinion": lambda: _hermes_dual_opinion(),
+    "/api/v2/hermes/dual-opinion/inline": lambda: _hermes_dual_opinion_inline(),
     "/api/v2/hermes/self-learning/timeline": lambda: _hermes_sl_timeline(),
 }
 

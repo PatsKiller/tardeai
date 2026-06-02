@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import { useApi } from '../hooks/useApi'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 interface OverviewData {
@@ -335,6 +336,9 @@ export default function SelfLearningOverview() {
             <ScoreBar label="Confidence" value={selected.confidence_score} />
             <ScoreBar label="Evidence" value={selected.source_urls_json && selected.source_urls_json !== '[]' ? 0.9 : 0.4} />
           </div>
+
+          {/* Hermes Dual Opinion */}
+          {selected.symbol && <InlineDualOpinionPanel symbol={selected.symbol} compact={true} />}
 
           {/* 7. Metadata */}
           <div style={{ fontSize: 9, color: 'var(--text3)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
