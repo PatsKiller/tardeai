@@ -13856,6 +13856,31 @@ def _atm_profit_protection_advisory():
             "note": "Advisory only — no stops moved, no orders placed. Execution gated to Phase 192."}
 
 
+def _atm_advisory_outcomes():
+    """Phase 193 — profit-protection advisory close-loop outcomes (read-only, learning).
+    Frontend-neutral (v2 + v3). Summarizes operator accept/ignore + baseline give-back."""
+    rows = _db_query("""SELECT * FROM protection_advisory_outcomes ORDER BY reconciled_at DESC, trade_id""") or []
+    outcomes = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+    closed = [o for o in outcomes if o.get("record_kind") == "final_closed"]
+    baseline = [o for o in closed if not o.get("advisory_existed")]
+    baseline_gaveback = [o for o in baseline if o.get("gave_back_profit")]
+    summary = {
+        "total": len(outcomes),
+        "closed": len(closed),
+        "interim_open": len([o for o in outcomes if o.get("record_kind") == "interim_open"]),
+        "operator_accepted": len([o for o in outcomes if o.get("operator_decision") == "accepted"]),
+        "operator_ignored": len([o for o in outcomes if o.get("operator_decision") == "ignored"]),
+        "baseline_no_advisory": len(baseline),
+        "baseline_gave_back_profit": len(baseline_gaveback),
+        "baseline_gaveback_rate_pct": round(100 * len(baseline_gaveback) / len(baseline), 1) if baseline else None,
+        "advisory_accuracy_confirmed": len([o for o in closed if o.get("advisory_accuracy") == "confirmed"]),
+        "advisory_accuracy_contradicted": len([o for o in closed if o.get("advisory_accuracy") == "contradicted"]),
+        "mfe_units_flagged": len([o for o in outcomes if o.get("mfe_raw") is not None and not o.get("mfe_units_validated")]),
+    }
+    return {"summary": summary, "outcomes": outcomes,
+            "note": "Learning telemetry. MFE units flagged for pipeline validation. No execution."}
+
+
 def _atm_adjustment_proposals_list():
     """Phase 192E — paper protection adjustment proposals (read-only). Frontend-neutral
     (Command Center v2 + v3). Latest PROPOSED candidates grouped by trade."""
@@ -13895,6 +13920,7 @@ ROUTES = {
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
     "/api/v2/atm/protection-adjustment-proposals": lambda: _atm_adjustment_proposals_list(),
+    "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/portfolio/performance": portfolio_performance,
