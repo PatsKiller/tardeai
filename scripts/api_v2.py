@@ -13761,7 +13761,57 @@ def _hermes_health():
     }
 
 
+def _atm_protection_coverage():
+    """Phase 190F — ATM protection-coverage panel (read-only).
+
+    Sources broker-verified protection metadata from
+    hermes_v_open_position_protection_context (paper_trades, not brokerage JSON)."""
+    rows = _db_query("SELECT * FROM hermes_v_open_position_protection_context ORDER BY paper_trade_id") or []
+    LARGE_GAIN = 250.0
+    defects = []
+    protected_at_broker = db_tracked = untracked = no_stop = tp_missing = large_gain_no_pp = trailing_active = 0
+    last_verif = None
+    for r in rows:
+        prot = r.get("protection_status")
+        upnl = float(r.get("unrealized_pnl") or 0)
+        tp = r.get("take_profit_price")
+        if r.get("broker_stop_order_id"):
+            protected_at_broker += 1; db_tracked += 1
+        elif prot == "PROTECTED_UNRECORDED" or r.get("stop_loss") is not None:
+            protected_at_broker += 1; untracked += 1
+        else:
+            no_stop += 1
+        if tp is None:
+            tp_missing += 1
+        if upnl >= LARGE_GAIN and tp is None:
+            large_gain_no_pp += 1
+            defects.append({"symbol": r.get("symbol"), "defect": "large_gain_no_take_profit", "pnl": upnl})
+        if r.get("trailing_active"):
+            trailing_active += 1
+        if prot == "NAKED":
+            defects.append({"symbol": r.get("symbol"), "defect": "no_broker_stop"})
+        elif untracked and not r.get("broker_stop_order_id"):
+            defects.append({"symbol": r.get("symbol"), "defect": "broker_stop_db_untracked"})
+        v = r.get("last_broker_protection_check_at") or r.get("stop_verified_at")
+        if v and (last_verif is None or str(v) > str(last_verif)):
+            last_verif = v
+    return {
+        "total_open_positions": len(rows),
+        "protected_at_broker": protected_at_broker,
+        "db_tracked_stops": db_tracked,
+        "untracked_broker_stops": untracked,
+        "no_broker_stop": no_stop,
+        "take_profit_missing": tp_missing,
+        "large_gain_no_profit_protection": large_gain_no_pp,
+        "trailing_active": trailing_active,
+        "last_protection_verification": str(last_verif) if last_verif else None,
+        "defects_by_symbol": defects,
+        "operator_action_required": bool(no_stop or untracked or large_gain_no_pp),
+    }
+
+
 ROUTES = {
+    "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/portfolio/performance": portfolio_performance,
