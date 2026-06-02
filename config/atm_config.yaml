@@ -9,11 +9,11 @@ version: 1
 
 defaults:
   position_limits:
-    max_concurrent: 6
-    max_new_per_day: 3
-    max_pct_per_trade: 0.10
-    max_pct_per_strategy: 25
-    max_pct_per_sector: 35
+    max_concurrent: 10           # Stage 1: was 6
+    max_new_per_day: 25          # Stage 1: was 3
+    max_pct_per_trade: 0.05      # Stage 1: was 0.10 (5% = $5K max per trade)
+    max_pct_per_strategy: 20     # Stage 1: was 25
+    max_pct_per_sector: 30       # Stage 1: was 35
   strategy_filter:
     # TEMPORARY: lowered from 0.50 to 0.0 during DRY_RUN cold-start
     # (0 closed trades per strategy → health=0.0 → gate blocks everything)
@@ -22,14 +22,14 @@ defaults:
     whitelist: []
     blacklist: []
   kill_switches:
-    daily_loss_pct_hard_pause: 0.25
+    daily_loss_pct_hard_pause: 2.5   # Stage 1: was 0.25 (2.5% = $2,500 daily loss cap)
   operating_hours:
     start_et: "07:00"
     stop_new_entries_et: "15:30"
 
-# Same-day strategies that the 15-min ATM cron is too slow for.
+# Same-day strategies: gap_and_go still skipped (requires sub-minute execution).
+# momentum_scalp REMOVED from skip list — ATM now allowed to process these.
 same_day_skip_strategies:
-  - momentum_scalp
   - gap_and_go
 
 # Per-account overrides. account_label must exist in accounts table.
@@ -37,20 +37,20 @@ accounts:
   alpaca_paper:
     enabled: true
     position_limits:
-      max_concurrent: 6
-      max_new_per_day: 3
-      max_pct_per_trade: 0.10
+      max_concurrent: 10         # Stage 1: was 6
+      max_new_per_day: 25        # Stage 1: was 3
+      max_pct_per_trade: 0.05    # Stage 1: was 0.10
 
 global:
   daily_loss_pct_hard_pause_aggregate: 10.0
   manual_kill_switch_only: true
   config_backup_dir: "config/.atm_config_backups"
 
-# B-1 observation window protection.
+# B-1 observation window protection (ended 2026-05-25 — all strategies now active).
 b1_tracking:
-  enabled: true
+  enabled: false
   observation_end: "2026-05-25"
-  exclude_bucket2_during_observation: true
+  exclude_bucket2_during_observation: false
   bucket2_strategies:
     - swing_breakout
     - swing_trade
