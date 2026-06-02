@@ -523,7 +523,8 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
 
         cur = conn.cursor()
         cur.execute("""
-            SELECT id, symbol, strategy_id, entry_price, stop_loss, current_price, status
+            SELECT id, symbol, strategy_id, entry_price, stop_loss, current_price, status,
+                   shares, dollar_risk, entry_time, created_at
             FROM paper_trades WHERE id = %s
         """, (trade_id,))
         row = cur.fetchone()
@@ -540,16 +541,39 @@ def _execute_stop_out(trade_id: int, user_id: str, user_name: str) -> dict:
         symbol = trade["symbol"]
         exit_price = float(trade["current_price"] or trade["stop_loss"] or 0)
         entry_price = float(trade["entry_price"] or 0)
-        pnl = exit_price - entry_price if entry_price else 0
+        shares = int(trade.get("shares") or 0)
+        stop_loss = float(trade["stop_loss"]) if trade.get("stop_loss") else None
+        dollar_risk = float(trade["dollar_risk"]) if trade.get("dollar_risk") else None
+        pnl = round((exit_price - entry_price) * shares, 2) if entry_price and shares else 0
+        pnl_pct = round((exit_price - entry_price) / entry_price * 100, 2) if entry_price > 0 else 0
+        r_mult = None
+        if dollar_risk and dollar_risk > 0:
+            r_mult = round(pnl / dollar_risk, 3)
+        elif stop_loss and entry_price and abs(entry_price - stop_loss) > 0:
+            r_mult = round((exit_price - entry_price) / abs(entry_price - stop_loss), 3)
+        hold_min = None
+        entry_time = trade.get("entry_time") or trade.get("created_at")
+        if entry_time:
+            try:
+                from datetime import datetime as _dt2, timezone as _tz2
+                _now2 = _dt2.now(_tz2.utc)
+                _et2 = entry_time.replace(tzinfo=_tz2.utc) if entry_time.tzinfo is None else entry_time
+                hold_min = round((_now2 - _et2).total_seconds() / 60, 1)
+            except Exception:
+                pass
+        verdict = 'WIN' if pnl > 0 else ('LOSS' if pnl < 0 else 'BREAKEVEN')
 
         # Close the trade
         cur.execute("""
             UPDATE paper_trades
-            SET status = 'closed', exit_price = %s, exit_reason = 'operator_stop_out',
+            SET status = 'closed', lifecycle_state = 'closed',
+                exit_price = %s, exit_reason = 'operator_stop_out',
                 exit_time = NOW(), closed_at = NOW(),
-                pnl = %s, decision_state = 'OPERATOR_STOP_OUT'
+                pnl = %s, pnl_pct = %s, r_multiple = COALESCE(%s, r_multiple),
+                hold_time_min = COALESCE(%s, hold_time_min),
+                outcome_verdict = %s, decision_state = 'OPERATOR_STOP_OUT'
             WHERE id = %s
-        """, (exit_price, pnl, trade_id))
+        """, (exit_price, pnl, pnl_pct, r_mult, hold_min, verdict, trade_id))
 
         # Log the risk action
         cur.execute("""
