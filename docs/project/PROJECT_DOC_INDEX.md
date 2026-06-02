@@ -569,6 +569,7 @@ Archived this pass (2026-05-31):
 
 | Date | Change |
 |------|--------|
+| 2026-06-02 | Phase 191: **ATM profit-protection intelligence** (advisory-only). `profit_protection_advisory.py` (TradeAI scoring: stop quality / lock / giveback), `hermes_profit_protection_check.py` (second opinion, +5 finding types), endpoint `/api/v2/atm/profit-protection-advisory`, table `atm_profit_protection_advisories`. ANY=URGENT_PROTECTION_REVIEW, SNOW=TAKE_PROFIT_ADVISORY. Docs PHASE191A-J; migration `2026_06_02_phase191_profit_protection.sql`. Next: Phase 192 operator-approved stop/TP adjustment. |
 | 2026-06-02 | Phase 188–190: market-open ELMT/SNOW review + protection root-cause + **durable guardrails**. Corrected "naked" → broker stops exist but DB-untracked; built `verify_paper_trade_broker_stops.py` (untracked 3→0), `protection_alerts.py` (SIEM/Telegram), Hermes `hermes_v_open_position_protection_context` view + 6 rules, ATM protection endpoint, adapter stop-confirmation fix, PENDING_TRADING_WINDOW design. Docs: PHASE188A-E, PHASE189A-H, PHASE190A-I; migration `2026_06_02_phase190_protection.sql` |
 | 2026-05-31 | A1A hygiene pass: archive 30 files, trash 15, fix SKILLS.md model refs, add MASTER stale warning, update counts (392 tables, ~190 crons, 24 strategies), thin index from 398→~120 lines |
 | 2026-05-30 | Hermes P0-P1D docs, Phase 1C SQL drafts synced to Drive |

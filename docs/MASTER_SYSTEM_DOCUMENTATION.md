@@ -1146,8 +1146,17 @@ unprotected in the DB (and no monitor alerted).
 
 **Lifecycle note:** premarket/pre-open proposals currently loop through delayed-revalidation
 instead of being parked. A `PENDING_TRADING_WINDOW` lifecycle is **designed** (advisory analyzer
-`pending_trading_window.py`); wiring into the approver is deferred to Phase 191 to avoid GO/WAIT
+`pending_trading_window.py`); wiring into the approver is deferred to a later phase to avoid GO/WAIT
 changes.
+
+**Profit-protection advisory (Phase 191, advisory-only):** beyond *does a stop exist*, the system
+now evaluates *is the stop still appropriate given unrealized profit*. `profit_protection_advisory.py`
+(TradeAI scoring) computes stop quality — profit locked, giveback if stopped, R vs the broker stop
+when `planned_stop` is absent — and emits a per-trade action (`NO_ACTION` … `URGENT_PROTECTION_REVIEW`)
+persisted to `atm_profit_protection_advisories`. `hermes_profit_protection_check.py` adds a Hermes
+second opinion (loose-stop / giveback / no-take-profit / metadata-missing finding types). Surfaced via
+`GET /api/v2/atm/profit-protection-advisory` for the inline ATM panel. **No stops moved / no orders
+placed** — operator-approved execution is deferred to Phase 192.
 
 ### Proposal Lifecycle State Machine
 
