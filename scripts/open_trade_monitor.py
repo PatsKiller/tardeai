@@ -28,6 +28,17 @@ from session13_db import get_conn
 log = logging.getLogger("open_trade_monitor")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
 
+
+def _alpaca_base_url():
+    """Get Alpaca base URL from ALPACA_MODE. Defaults to paper."""
+    mode = os.getenv('ALPACA_MODE', 'paper').lower()
+    if mode == 'paper':
+        return 'https://paper-api.alpaca.markets'
+    raise RuntimeError(f"BLOCKED: ALPACA_MODE={mode} — only paper mode allowed in open_trade_monitor")
+
+
+ALPACA_BASE = _alpaca_base_url()
+
 # Time stop: max hold days per strategy (None = no time stop)
 # Intraday strategies use market close (3:45 PM ET), not day count
 INTRADAY_STRATEGIES = {'momentum_scalp', 'gap_and_go'}
@@ -245,27 +256,52 @@ def _auto_close_position(conn, trade_id, symbol, price, reason, cur):
         _key = os.getenv('ALPACA_API_KEY', '')
         _sec = os.getenv('ALPACA_SECRET_KEY', '')
         _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
-        requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
+        requests.delete(f'{ALPACA_BASE}/v2/positions/{symbol}',
                         headers=_headers, timeout=10)
         # Determine verdict from actual P&L, not exit reason
         from trade_outcome_helpers import classify_verdict
         _entry = None
+        _shares = 0
+        _stop = None
+        _dollar_risk = None
+        _entry_time = None
         try:
-            cur.execute("SELECT entry_price FROM paper_trades WHERE id=%s", [trade_id])
+            cur.execute("SELECT entry_price, shares, stop_loss, dollar_risk, entry_time, created_at FROM paper_trades WHERE id=%s", [trade_id])
             _r = cur.fetchone()
-            _entry = float(_r[0]) if _r else None
+            if _r:
+                _entry = float(_r[0]) if _r[0] else None
+                _shares = int(_r[1]) if _r[1] else 0
+                _stop = float(_r[2]) if _r[2] else None
+                _dollar_risk = float(_r[3]) if _r[3] else None
+                _entry_time = _r[4] or _r[5]
         except Exception:
             pass
-        if _entry:
-            _pnl_estimate = (price - _entry) * 1  # per-share; classify_verdict only checks sign
-            _verdict = classify_verdict(_pnl_estimate)
-        else:
-            _verdict = 'UNKNOWN'
+        _pnl = round((price - _entry) * _shares, 2) if _entry and _shares else None
+        _pnl_pct = round((price - _entry) / _entry * 100, 2) if _entry and _entry > 0 else None
+        _verdict = classify_verdict(_pnl) if _pnl is not None else 'UNKNOWN'
+        _r_mult = None
+        if _pnl is not None and _dollar_risk and _dollar_risk > 0:
+            _r_mult = round(_pnl / _dollar_risk, 3)
+        elif _entry and _stop and abs(_entry - _stop) > 0:
+            _r_mult = round((price - _entry) / abs(_entry - _stop), 3)
+        _hold_min = None
+        if _entry_time:
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                _now = _dt.now(_tz.utc)
+                _et = _entry_time.replace(tzinfo=_tz.utc) if _entry_time.tzinfo is None else _entry_time
+                _hold_min = round((_now - _et).total_seconds() / 60, 1)
+            except Exception:
+                pass
         cur.execute("""UPDATE paper_trades SET status='closed', exit_price=%s,
             exit_reason=%s, closed_at=NOW(), closed_via=%s,
-            outcome_verdict=%s, lifecycle_state='closed'
+            outcome_verdict=%s, lifecycle_state='closed',
+            pnl = COALESCE(%s, pnl),
+            pnl_pct = COALESCE(%s, pnl_pct),
+            r_multiple = COALESCE(%s, r_multiple),
+            hold_time_min = COALESCE(%s, hold_time_min)
             WHERE id=%s""",
-            [price, reason, f'auto_{reason}', _verdict, trade_id])
+            [price, reason, f'auto_{reason}', _verdict, _pnl, _pnl_pct, _r_mult, _hold_min, trade_id])
         log.info(f"[{symbol}] Position auto-closed: reason={reason} at ${price:.2f}")
         # Trigger post-trade analysis pipeline
         try:
@@ -287,19 +323,19 @@ def _update_stop_on_alpaca(conn, trade, new_stop):
         _sec = os.getenv('ALPACA_SECRET_KEY', '')
         _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
         # Get open orders for this symbol
-        resp = requests.get(f'https://paper-api.alpaca.markets/v2/orders?status=open&symbols={symbol}',
+        resp = requests.get(f'{ALPACA_BASE}/v2/orders?status=open&symbols={symbol}',
                             headers=_headers, timeout=10)
         orders = resp.json() if resp.ok else []
         # Cancel existing stop orders
         for o in orders:
             if o.get('type') == 'stop' and o.get('side') == 'sell':
-                requests.delete(f'https://paper-api.alpaca.markets/v2/orders/{o["id"]}',
+                requests.delete(f'{ALPACA_BASE}/v2/orders/{o["id"]}',
                                 headers=_headers, timeout=10)
                 log.info(f"[{symbol}] Cancelled old stop order {o['id']}")
         # Place new stop
         shares = int(trade.get('shares', 0))
         if shares > 0:
-            new_order = requests.post('https://paper-api.alpaca.markets/v2/orders',
+            new_order = requests.post(f'{ALPACA_BASE}/v2/orders',
                 headers=_headers, timeout=10,
                 json={'symbol': symbol, 'qty': str(shares), 'side': 'sell',
                       'type': 'stop', 'stop_price': str(new_stop),
@@ -588,15 +624,35 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
                     _key = os.getenv('ALPACA_API_KEY', '')
                     _sec = os.getenv('ALPACA_SECRET_KEY', '')
                     _headers = {'APCA-API-KEY-ID': _key, 'APCA-API-SECRET-KEY': _sec}
-                    requests.delete(f'https://paper-api.alpaca.markets/v2/positions/{symbol}',
+                    requests.delete(f'{ALPACA_BASE}/v2/positions/{symbol}',
                                     headers=_headers, timeout=10)
+                    # Compute PnL and hold time for critical news close
+                    _news_pnl = round((price - entry) * shares, 2) if entry and shares else None
+                    _news_pnl_pct = round((price - entry) / entry * 100, 2) if entry and entry > 0 else None
+                    _news_r = None
+                    if _news_pnl is not None and dollar_risk and dollar_risk > 0:
+                        _news_r = round(_news_pnl / dollar_risk, 3)
+                    elif entry and stop and abs(entry - stop) > 0:
+                        _news_r = round((price - entry) / abs(entry - stop), 3)
+                    _news_hold = None
+                    if entry_time:
+                        try:
+                            from datetime import datetime as _ndt, timezone as _ntz
+                            _news_hold = round((_ndt.now(_ntz.utc) - (entry_time.replace(tzinfo=_ntz.utc) if entry_time.tzinfo is None else entry_time)).total_seconds() / 60, 1)
+                        except Exception: pass
+                    _news_verdict = 'LOSS' if _news_pnl is not None and _news_pnl < 0 else ('WIN' if _news_pnl and _news_pnl > 0 else 'LOSS')
                     cur.execute("""UPDATE paper_trades SET status='closed', lifecycle_state='closed',
                         exit_price=%s,
                         exit_reason=%s, closed_at=NOW(), closed_via='auto_close_critical_news',
-                        outcome_verdict='LOSS', notes=COALESCE(notes,'')||%s
+                        outcome_verdict=%s, notes=COALESCE(notes,'')||%s,
+                        pnl = COALESCE(%s, pnl),
+                        pnl_pct = COALESCE(%s, pnl_pct),
+                        r_multiple = COALESCE(%s, r_multiple),
+                        hold_time_min = COALESCE(%s, hold_time_min)
                         WHERE id=%s""",
                         [price, f'critical_news: {critical_hits[0][:100]}',
-                         f' | Auto-closed on critical news: {critical_hits[0][:100]}', tid])
+                         _news_verdict, f' | Auto-closed on critical news: {critical_hits[0][:100]}',
+                         _news_pnl, _news_pnl_pct, _news_r, _news_hold, tid])
                     log.info(f"[{symbol}] Position auto-closed on critical news")
                     try:
                         from agent_curation_hooks import on_paper_trade_closed

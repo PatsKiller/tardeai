@@ -54,7 +54,15 @@ def _alpaca_headers():
         'APCA-API-SECRET-KEY': os.getenv('ALPACA_SECRET_KEY'),
     }
 
-ALPACA_BASE = 'https://paper-api.alpaca.markets'
+def _alpaca_base():
+    """Get Alpaca base URL from ALPACA_MODE. Defaults to paper."""
+    mode = os.getenv('ALPACA_MODE', 'paper').lower()
+    if mode == 'paper':
+        return 'https://paper-api.alpaca.markets'
+    # Safety: block live unless explicitly configured
+    raise RuntimeError(f"BLOCKED: ALPACA_MODE={mode} — only paper mode allowed in paper_trade_monitor")
+
+ALPACA_BASE = _alpaca_base()
 
 
 def _get_conn():
@@ -132,10 +140,15 @@ def _fix_integrity_issues(conn, alpaca_symbols):
         fixed += 1
 
     # Fix 2: DB says open but Alpaca doesn't have it → close as phantom
-    cur.execute("SELECT id, symbol, entry_time FROM paper_trades WHERE lifecycle_state='open'")
+    cur.execute("SELECT id, symbol, entry_time, entry_price, shares, stop_loss, current_price, dollar_risk FROM paper_trades WHERE lifecycle_state='open'")
     for row in cur.fetchall():
         tid, sym = row[0], row[1]
         _entry_t = row[2] if len(row) > 2 else None
+        _entry_price = float(row[3]) if row[3] else None
+        _shares = int(row[4]) if row[4] else 0
+        _stop = float(row[5]) if row[5] else None
+        _current = float(row[6]) if row[6] else None
+        _dollar_risk = float(row[7]) if row[7] else None
         if sym not in alpaca_symbols:
             _hold_min = None
             if _entry_t:
@@ -145,16 +158,31 @@ def _fix_integrity_issues(conn, alpaca_symbols):
                     _hold_min = round((_now - _et).total_seconds() / 60, 1)
                 except Exception:
                     pass
+            # Use current_price as exit_price for phantom (best available estimate)
+            _exit_price = _current if _current else _entry_price
+            _pnl = round((_exit_price - _entry_price) * _shares, 2) if _exit_price and _entry_price and _shares else None
+            _pnl_pct = round((_exit_price - _entry_price) / _entry_price * 100, 2) if _exit_price and _entry_price and _entry_price > 0 else None
+            _r_mult = None
+            if _pnl is not None and _dollar_risk and _dollar_risk > 0:
+                _r_mult = round(_pnl / _dollar_risk, 3)
+            elif _pnl is not None and _entry_price and _stop and _shares:
+                _risk_per_share = abs(_entry_price - _stop)
+                if _risk_per_share > 0:
+                    _r_mult = round((_exit_price - _entry_price) / _risk_per_share, 3)
             cur.execute("""
                 UPDATE paper_trades SET lifecycle_state='closed', status='closed',
                     close_reason='phantom_no_alpaca_position', closed_at=NOW(),
                     closed_via='integrity_check',
                     exit_reason='phantom_no_alpaca_position',
+                    exit_price = COALESCE(exit_price, %s),
+                    pnl = COALESCE(pnl, %s),
+                    pnl_pct = COALESCE(pnl_pct, %s),
+                    r_multiple = COALESCE(r_multiple, %s),
                     hold_time_min = COALESCE(hold_time_min, %s),
-                    outcome_verdict = CASE WHEN pnl > 0 THEN 'WIN' WHEN pnl < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
+                    outcome_verdict = CASE WHEN COALESCE(pnl, %s) > 0 THEN 'WIN' WHEN COALESCE(pnl, %s) < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
                 WHERE id = %s
-            """, [_hold_min, tid])
-            log.warning(f"[integrity] Closed phantom: {sym} id={tid} — not on Alpaca")
+            """, [_exit_price, _pnl, _pnl_pct, _r_mult, _hold_min, _pnl, _pnl, tid])
+            log.warning(f"[integrity] Closed phantom: {sym} id={tid} — not on Alpaca (pnl={_pnl}, hold={_hold_min}m)")
             fixed += 1
 
     # Fix 3: closed_at set but lifecycle_state still open
@@ -391,25 +419,51 @@ def monitor(dry_run=False):
 
     # ── PHANTOM DETECTION: DB says open but Alpaca has no position ──
     alpaca_symbols = {pos['symbol'] for pos in positions}
-    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id FROM paper_trades WHERE status = 'open'")
+    cur.execute("SELECT id, symbol, entry_price, shares, strategy_id, stop_loss, current_price, dollar_risk, entry_time, created_at FROM paper_trades WHERE status = 'open'")
     db_open = cur.fetchall()
     for dbt in db_open:
         if dbt['symbol'] not in alpaca_symbols:
             log.warning(f"[{dbt['symbol']}] PHANTOM: open in DB but NOT on Alpaca — auto-closing")
+            _ep = float(dbt['entry_price']) if dbt['entry_price'] else 0
+            _sh = int(dbt['shares']) if dbt['shares'] else 0
+            _cp = float(dbt['current_price']) if dbt['current_price'] else _ep
+            _stop = float(dbt['stop_loss']) if dbt['stop_loss'] else None
+            _dr = float(dbt['dollar_risk']) if dbt['dollar_risk'] else None
+            _exit_p = _cp if _cp else _ep
+            _pnl = round((_exit_p - _ep) * _sh, 2) if _ep and _sh else 0
+            _pnl_pct = round((_exit_p - _ep) / _ep * 100, 2) if _ep > 0 else 0
+            _r_mult = None
+            if _dr and _dr > 0:
+                _r_mult = round(_pnl / _dr, 3)
+            elif _stop and _ep and abs(_ep - _stop) > 0:
+                _r_mult = round((_exit_p - _ep) / abs(_ep - _stop), 3)
+            _et = dbt.get('entry_time') or dbt.get('created_at')
+            _hold_min = None
+            if _et:
+                try:
+                    _now = datetime.now(timezone.utc)
+                    _ett = _et.replace(tzinfo=timezone.utc) if _et.tzinfo is None else _et
+                    _hold_min = round((_now - _ett).total_seconds() / 60, 1)
+                except Exception:
+                    pass
             cur.execute("""
                 UPDATE paper_trades
-                SET status = 'closed', exit_reason = 'phantom_no_alpaca_position',
-                    exit_price = entry_price, pnl = 0, pnl_pct = 0,
+                SET status = 'closed', lifecycle_state = 'closed',
+                    exit_reason = 'phantom_no_alpaca_position',
+                    exit_price = %s, pnl = %s, pnl_pct = %s,
+                    r_multiple = COALESCE(r_multiple, %s),
+                    hold_time_min = COALESCE(hold_time_min, %s),
+                    outcome_verdict = CASE WHEN %s > 0 THEN 'WIN' WHEN %s < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END,
                     closed_at = NOW(), closed_via = 'monitor_phantom_check',
                     notes = COALESCE(notes, '') || ' | Auto-closed by monitor: no matching Alpaca position found.',
                     updated_at = NOW()
                 WHERE id = %s
-            """, [dbt['id']])
+            """, [_exit_p, _pnl, _pnl_pct, _r_mult, _hold_min, _pnl, _pnl, dbt['id']])
             conn.commit()
             results.append({
                 "symbol": dbt['symbol'], "action": "phantom_closed",
                 "reason": f"DB open but no Alpaca position — auto-closed",
-                "pnl": 0, "pnl_pct": 0, "r_multiple": 0,
+                "pnl": _pnl, "pnl_pct": _pnl_pct, "r_multiple": _r_mult or 0,
             })
 
     # Alert on actions taken

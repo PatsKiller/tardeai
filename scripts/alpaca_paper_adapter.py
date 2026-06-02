@@ -207,12 +207,20 @@ class AlpacaPaperAdapter:
                     log.warning(f"[alpaca] Could not fetch close orders for {symbol}: {_oe}")
 
                 # Get entry for PnL calc
-                cur.execute("SELECT entry_price, shares FROM paper_trades WHERE id=%s", [trade_id])
+                cur.execute("SELECT entry_price, shares, stop_loss, dollar_risk FROM paper_trades WHERE id=%s", [trade_id])
                 _tr = cur.fetchone()
                 _entry = float(_tr[0]) if _tr and _tr[0] else 0
                 _shares = int(_tr[1]) if _tr and _tr[1] else 0
+                _stop = float(_tr[2]) if _tr and len(_tr) > 2 and _tr[2] else None
+                _dr = float(_tr[3]) if _tr and len(_tr) > 3 and _tr[3] else None
                 if _exit_price and _entry:
                     _exit_pnl = round((_exit_price - _entry) * _shares, 2)
+                _pnl_pct = round((_exit_price - _entry) / _entry * 100, 2) if _exit_price and _entry and _entry > 0 else None
+                _r_mult = None
+                if _exit_pnl is not None and _dr and _dr > 0:
+                    _r_mult = round(_exit_pnl / _dr, 3)
+                elif _exit_price and _entry and _stop and abs(_entry - _stop) > 0:
+                    _r_mult = round((_exit_price - _entry) / abs(_entry - _stop), 3)
                 from trade_outcome_helpers import classify_verdict
                 _verdict = classify_verdict(_exit_pnl)
 
@@ -220,13 +228,15 @@ class AlpacaPaperAdapter:
                     UPDATE paper_trades
                     SET status = 'closed', lifecycle_state = 'closed',
                         exit_price = COALESCE(%s, current_price),
-                        pnl = %s, outcome_verdict = %s,
+                        pnl = %s, pnl_pct = COALESCE(%s, pnl_pct),
+                        r_multiple = COALESCE(%s, r_multiple),
+                        outcome_verdict = %s,
                         closed_at = COALESCE(%s, NOW()), closed_via = 'alpaca_sync',
                         exit_reason = 'position_closed_in_alpaca', updated_at = NOW(),
                         hold_time_min = COALESCE(hold_time_min,
                             EXTRACT(EPOCH FROM (COALESCE(%s, NOW()) - COALESCE(entry_time, created_at))) / 60)
                     WHERE id = %s
-                """, [_exit_price, _exit_pnl, _verdict, _exit_time, _exit_time, trade_id])
+                """, [_exit_price, _exit_pnl, _pnl_pct, _r_mult, _verdict, _exit_time, _exit_time, trade_id])
                 # Agent curation hooks (non-blocking)
                 try:
                     from agent_curation_hooks import on_paper_trade_closed
