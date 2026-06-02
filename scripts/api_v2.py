@@ -11672,7 +11672,7 @@ def _live_trading_gate():
                COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) as gp,
                COALESCE(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0) as gl,
                MIN(created_at) as first_trade,
-               MAX(close_date) as last_close
+               MAX(closed_at) as last_close
         FROM paper_trades
     """, fetch="one") or {}
 
