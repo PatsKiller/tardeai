@@ -228,9 +228,15 @@ def run_mfe_analysis(conn, symbol_filter=None):
               entry_quality, round(slippage_score, 1), round(timing_score, 1),
               round(setup_score, 1), round(context_score, 1)])
 
-        # Update paper_trades MFE/MAE columns
+        # Update paper_trades MFE/MAE columns.
+        # Phase 194 FIX: these columns are PERCENT excursion from entry (consistent with
+        # paper_trade_monitor.py). Previously this wrote mfe_r (R-multiple) into the same column,
+        # corrupting units. The R-multiple lives in trade_mfe_analysis.mfe_r; the dollar
+        # profit-left-on-table in trade_mfe_analysis.money_left.
+        mfe_pct = round((mfe_price - entry) / entry * 100, 3) if entry > 0 else None
+        mae_pct = round((mae_price - entry) / entry * 100, 3) if entry > 0 else None
         cur.execute("""UPDATE paper_trades SET max_favorable_excursion=%s, max_adverse_excursion=%s WHERE id=%s""",
-                    [round(mfe_r, 3), round(mae_r, 3), t["id"]])
+                    [mfe_pct, mae_pct, t["id"]])
         conn.commit()
 
         log.info(f"  {t['symbol']}: MFE {mfe_r:.2f}R MAE {mae_r:.2f}R capture {capture_ratio:.0%} "

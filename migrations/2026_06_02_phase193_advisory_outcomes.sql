@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS protection_advisory_outcomes (
     take_profit_would_have_helped boolean,
     trailing_would_have_helped boolean,
     advisory_accuracy text,           -- 'confirmed' | 'contradicted' | 'baseline_no_advisory' | 'in_flight'
-    mfe_units_validated boolean,      -- false => MFE units inconsistent, flagged for pipeline review
+    mfe_units_validated boolean,      -- true => from bar-based trade_mfe_analysis (authoritative)
     notes text
 );
+
+-- Phase 194: authoritative dollar profit-left-on-table from bar-based analysis
+ALTER TABLE protection_advisory_outcomes ADD COLUMN IF NOT EXISTS profit_left_on_table_usd numeric;
+ALTER TABLE protection_advisory_outcomes ADD COLUMN IF NOT EXISTS mfe_source text;  -- 'bar_analysis' | 'none'
