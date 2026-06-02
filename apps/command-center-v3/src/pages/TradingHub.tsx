@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
+import ProtectionPanel from '../components/ProtectionPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Open Trades', 'Proposals', 'Execution', 'Scalp'] as const
@@ -56,26 +57,29 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Open Trades' && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Open Positions ({trades.length})</div>
-          {trades.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No open paper trades</div> :
-          trades.map((t: any) => (
-            <div key={t.id} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.strategy_id} · R=${t.r_multiple?.toFixed(2)}`, endpoint: '/api/v2/open-trades', rows: [t] })}
-              style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-              <div>
-                <div style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</div>
-                <div style={{ fontSize: 8, color: 'var(--text3)' }}>{t.strategy_id}</div>
+        <>
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Open Positions ({trades.length})</div>
+            {trades.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No open paper trades</div> :
+            trades.map((t: any) => (
+              <div key={t.id} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.strategy_id} · R=${t.r_multiple?.toFixed(2)}`, endpoint: '/api/v2/open-trades', rows: [t] })}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>{t.strategy_id}</div>
+                </div>
+                <span style={{ color: 'var(--text2)' }}>{t.shares} @ {fmt$(t.entry_price, 2)}</span>
+                <span style={{ color: (t.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(t.pnl, 2)}</span>
+                <span style={{ color: 'var(--text2)' }}>R: {t.r_multiple?.toFixed(2) ?? '—'}</span>
+                <span style={{ fontSize: 9, color: t.risk_flags?.length ? '#f59e0b' : 'var(--text3)' }}>
+                  {t.trail_recommendation?.replace(/_/g, ' ') ?? '—'}
+                </span>
               </div>
-              <span style={{ color: 'var(--text2)' }}>{t.shares} @ {fmt$(t.entry_price, 2)}</span>
-              <span style={{ color: (t.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(t.pnl, 2)}</span>
-              <span style={{ color: 'var(--text2)' }}>R: {t.r_multiple?.toFixed(2) ?? '—'}</span>
-              <span style={{ fontSize: 9, color: t.risk_flags?.length ? '#f59e0b' : 'var(--text3)' }}>
-                {t.trail_recommendation?.replace(/_/g, ' ') ?? '—'}
-              </span>
-            </div>
-          ))}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/open-trades. Read-only — no trade controls.</div>
-        </div>
+            ))}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/open-trades. Read-only — no trade controls.</div>
+          </div>
+          <ProtectionPanel onDrill={onDrill} />
+        </>
       )}
 
       {tab === 'Proposals' && (
