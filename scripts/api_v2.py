@@ -13005,6 +13005,28 @@ def _hermes_dual_opinion_inline():
     return {"opinions": all_opinions, "total": len(all_opinions)}
 
 
+def _hermes_advisory_choices():
+    """GET /api/v2/hermes/advisory-choices — advisory choice audit dashboard."""
+    import json as _jac
+    choices_dir = PROJECT_ROOT / "data" / "advisory" / "operator_choices"
+    all_choices = []
+    if choices_dir.exists():
+        for f in sorted(choices_dir.glob("*.jsonl"), reverse=True)[:7]:
+            for line in f.read_text().splitlines():
+                if line.strip():
+                    try: all_choices.append(_jac.loads(line))
+                    except: pass
+    counts = {}
+    for c in all_choices:
+        ch = c.get("operator_choice", "unknown")
+        counts[ch] = counts.get(ch, 0) + 1
+    return {
+        "total": len(all_choices),
+        "counts": counts,
+        "recent": all_choices[:20],
+    }
+
+
 def _system_siem_dashboard():
     """GET /api/v2/system/siem — SIEM-lite alert dashboard with live normalization."""
     import json as _jsiem
@@ -13606,6 +13628,7 @@ ROUTES = {
     "/api/v2/hermes/proposal-sandbox": lambda: _hermes_proposal_sandbox(),
     "/api/v2/hermes/dual-opinion": lambda: _hermes_dual_opinion(),
     "/api/v2/hermes/dual-opinion/inline": lambda: _hermes_dual_opinion_inline(),
+    "/api/v2/hermes/advisory-choices": lambda: _hermes_advisory_choices(),
     "/api/v2/hermes/self-learning/timeline": lambda: _hermes_sl_timeline(),
 }
 
@@ -13621,6 +13644,31 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
     # POST routes
     if method == "POST":
+        if base_path == "/api/v2/hermes/advisory-choice":
+            try:
+                import json as _jac2
+                b = body or {}
+                choice = {
+                    "opinion_id": b.get("opinion_id"),
+                    "object_type": b.get("object_type"),
+                    "object_id": b.get("object_id"),
+                    "symbol": b.get("symbol"),
+                    "strategy": b.get("strategy"),
+                    "operator_choice": b.get("operator_choice"),
+                    "choice_reason": b.get("choice_reason", ""),
+                    "chosen_at": datetime.now(timezone.utc).isoformat(),
+                    "advisory_only": True,
+                    "no_execution": True,
+                }
+                choices_dir = PROJECT_ROOT / "data" / "advisory" / "operator_choices"
+                choices_dir.mkdir(parents=True, exist_ok=True)
+                today = datetime.now().strftime("%Y-%m-%d")
+                with open(choices_dir / f"{today}_choices.jsonl", "a") as f:
+                    f.write(_jac2.dumps(choice, default=str) + "\n")
+                return 200, {"ok": True, "data": {"saved": True, "choice": choice}}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
         if base_path == "/api/v2/hermes/chat":
             try:
                 import sys as _sys_hc

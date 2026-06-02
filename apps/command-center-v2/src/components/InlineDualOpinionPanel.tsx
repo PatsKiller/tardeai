@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 
 interface DualOpinion {
@@ -27,6 +28,14 @@ export default function InlineDualOpinionPanel({ symbol, strategy, compact = fal
 
   const opinion = data.opinions[0]
   const color = agreeColor[opinion.hermes_agreement_status] || '#888'
+  const [showEvidence, setShowEvidence] = useState(false)
+
+  // Evidence quality label
+  const evidenceQuality = opinion.hermes_audit.risk_flags.length > 2 ? 'WEAK'
+    : opinion.hermes_audit.missing_context.length > 1 ? 'MISSING'
+    : opinion.hermes_audit.risk_flags.length > 0 ? 'ACCEPTABLE'
+    : opinion.hermes_confidence >= 0.6 ? 'STRONG' : 'ACCEPTABLE'
+  const eqColor = evidenceQuality === 'STRONG' ? '#22c55e' : evidenceQuality === 'ACCEPTABLE' ? '#f59e0b' : '#ef4444'
 
   if (compact) {
     return (
@@ -67,22 +76,68 @@ export default function InlineDualOpinionPanel({ symbol, strategy, compact = fal
         </div>
       </div>
 
-      {/* Risk flags + Evidence */}
-      {(opinion.hermes_audit.risk_flags.length > 0 || opinion.hermes_enhancement.lesson_types.length > 0) && (
-        <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {opinion.hermes_audit.risk_flags.map((f, i) => (
-            <span key={i} style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(239,68,68,.1)', color: '#fca5a5' }}>⚠ {f.length > 40 ? f.slice(0, 40) + '...' : f}</span>
-          ))}
+      {/* Evidence summary bar */}
+      <div style={{ padding: '4px 12px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, fontWeight: 700, background: `${eqColor}15`, color: eqColor }}>Evidence: {evidenceQuality}</span>
           {opinion.hermes_enhancement.lesson_types.map(t => (
             <span key={t} style={{ fontSize: 8, padding: '1px 5px', borderRadius: 3, background: 'rgba(59,130,246,.1)', color: '#60a5fa' }}>{t.replace(/_/g, ' ')}</span>
           ))}
         </div>
+        <button onClick={() => setShowEvidence(!showEvidence)} style={{ fontSize: 8, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', background: showEvidence ? 'var(--bg2)' : 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>
+          {showEvidence ? 'Hide' : 'Show'} Evidence
+        </button>
+      </div>
+
+      {/* Expandable evidence drawer */}
+      {showEvidence && (
+        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', background: 'var(--bg0)', fontSize: 10 }}>
+          {opinion.hermes_audit.risk_flags.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#ef4444', marginBottom: 2 }}>Risk Flags</div>
+              {opinion.hermes_audit.risk_flags.map((f, i) => (
+                <div key={i} style={{ color: '#fca5a5', lineHeight: 1.4, paddingLeft: 8 }}>⚠ {f}</div>
+              ))}
+            </div>
+          )}
+          {opinion.hermes_audit.missing_context.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#f59e0b', marginBottom: 2 }}>Missing Context</div>
+              {opinion.hermes_audit.missing_context.map((m, i) => (
+                <div key={i} style={{ color: '#fde68a', lineHeight: 1.4, paddingLeft: 8 }}>○ {m}</div>
+              ))}
+            </div>
+          )}
+          <div style={{ marginBottom: 4 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text2)', marginBottom: 2 }}>Evidence Summary</div>
+            <div style={{ color: 'var(--text3)', lineHeight: 1.4 }}>
+              Confidence: {(opinion.hermes_confidence * 100).toFixed(0)}% · Learning links: {opinion.hermes_audit.learning_links} · Lessons: {opinion.hermes_enhancement.lesson_types.join(', ') || 'none'}
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* Operator choice controls */}
+      <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {['Keep TradeAI', 'Use Hermes', 'Keep Both', 'Reject', 'Escalate'].map(ch => {
+          const choiceKey = ch === 'Keep TradeAI' ? 'KEEP_TRADEAI_ORIGINAL' : ch === 'Use Hermes' ? 'USE_HERMES_ENHANCEMENT' : ch === 'Keep Both' ? 'KEEP_BOTH' : ch === 'Reject' ? 'REJECT_BOTH' : 'ESCALATE_HIGH_LLM'
+          return (
+            <button key={ch} onClick={() => {
+              fetch('/api/v2/hermes/advisory-choice', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ opinion_id: `${opinion.symbol}_${opinion.strategy}`, object_type: 'advisory', object_id: opinion.symbol, symbol: opinion.symbol, strategy: opinion.strategy, operator_choice: choiceKey }),
+              }).then(() => alert(`Choice saved: ${ch}`)).catch(console.error)
+            }} style={{ fontSize: 8, padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text3)', cursor: 'pointer' }}>
+              {ch}
+            </button>
+          )
+        })}
+      </div>
 
       {/* Footer */}
       <div style={{ padding: '4px 12px 6px', borderTop: '1px solid var(--border)', fontSize: 8, color: 'var(--text3)', display: 'flex', justifyContent: 'space-between' }}>
         <span>Confidence: {(opinion.hermes_confidence * 100).toFixed(0)}% · Links: {opinion.hermes_audit.learning_links}</span>
-        <span>Advisory only — no overwrite</span>
+        <span>Advisory only — no overwrite — no execution</span>
       </div>
     </div>
   )
