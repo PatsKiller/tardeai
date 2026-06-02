@@ -82,13 +82,19 @@ def main():
     cur = conn.cursor()
 
     # Select top priority jobs
+    # --apply mode: only pick 'approved' jobs (operator gate)
+    # dry-run mode: show all pending (queued_for_review, dry_run_candidate, approved)
+    if dry:
+        pick_statuses = ('queued_for_review', 'dry_run_candidate', 'approved')
+    else:
+        pick_statuses = ('approved',)
     cur.execute("""
         SELECT id, job_type, source_system, priority_score, expected_runtime_sec, quota_pool
         FROM high_llm_job_queue
-        WHERE status IN ('queued_for_review','dry_run_candidate')
+        WHERE status = ANY(%s)
         ORDER BY priority_score DESC NULLS LAST
         LIMIT %s
-    """, (args.max_jobs,))
+    """, (list(pick_statuses), args.max_jobs))
     jobs = cur.fetchall()
 
     results = []
