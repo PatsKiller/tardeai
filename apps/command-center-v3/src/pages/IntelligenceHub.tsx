@@ -8,12 +8,10 @@ const TABS = ['News', 'Research', 'Sources'] as const
 export default function IntelligenceHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('News')
   const { data: intel } = useApi<any>('/api/v2/market-intelligence', 120_000)
-  const { data: news } = useApi<any>('/api/v2/news', 120_000)
 
   const totalArticles = intel?.total_articles ?? 0
   const topSymbols = intel?.top_mentioned_symbols ?? []
   const newsSentiment = intel?.news_sentiment ?? {}
-  const articles = Array.isArray(news) ? news : (news?.articles ?? [])
 
   return (
     <div>
@@ -38,22 +36,28 @@ export default function IntelligenceHub({ onDrill }: Props) {
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Market Intelligence</div>
           {intel?.news_by_source && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-              {Object.entries(intel.news_by_source).map(([src, cnt]: [string, any]) => (
-                <span key={src} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text2)' }}>{src}: {cnt}</span>
-              ))}
+              {(Array.isArray(intel.news_by_source) ? intel.news_by_source : Object.entries(intel.news_by_source)).map((item: any, i: number) => {
+                const src = typeof item === 'string' ? item : (Array.isArray(item) ? item[0] : item.source ?? item.name ?? `source-${i}`)
+                const cnt = typeof item === 'object' && !Array.isArray(item) ? (item.count ?? item.articles ?? '') : (Array.isArray(item) ? item[1] : '')
+                return <span key={i} style={{ fontSize: 9, padding: '2px 8px', borderRadius: 4, background: 'var(--bg2)', color: 'var(--text2)' }}>{String(src)}{cnt ? `: ${cnt}` : ''}</span>
+              })}
             </div>
           )}
           {topSymbols.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>Top mentioned symbols</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {topSymbols.slice(0, 15).map((s: any) => (
-                  <span key={typeof s === 'string' ? s : s.symbol}
-                    onClick={() => onDrill({ title: typeof s === 'string' ? s : s.symbol, subtitle: 'Top mentioned', endpoint: '/api/v2/market-intelligence', rows: [typeof s === 'object' ? s : { symbol: s }] })}
-                    style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(96,165,250,.1)', color: '#60a5fa', cursor: 'pointer', fontFamily: 'monospace' }}>
-                    {typeof s === 'string' ? s : s.symbol}
-                  </span>
-                ))}
+                {topSymbols.slice(0, 15).map((s: any, i: number) => {
+                  const sym = typeof s === 'string' ? s : (s.symbol ?? `item-${i}`)
+                  const mentions = typeof s === 'object' ? s.mentions : null
+                  return (
+                    <span key={i}
+                      onClick={() => onDrill({ title: sym, subtitle: mentions ? `${mentions} mentions` : 'Top mentioned', endpoint: '/api/v2/market-intelligence', rows: [typeof s === 'object' ? s : { symbol: s }] })}
+                      style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(96,165,250,.1)', color: '#60a5fa', cursor: 'pointer', fontFamily: 'monospace' }}>
+                      {sym}{mentions ? ` (${mentions})` : ''}
+                    </span>
+                  )
+                })}
               </div>
             </div>
           )}
