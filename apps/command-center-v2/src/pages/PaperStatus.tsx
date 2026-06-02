@@ -1,5 +1,6 @@
 import React from 'react'
 import OpenTradesCard from '../components/OpenTradesCard'
+import ProtectionAdjustmentPanel from '../components/ProtectionAdjustmentPanel'
 import PageHeader from '../components/PageHeader'
 import Card from '../components/Card'
 import SectionHeader from '../components/SectionHeader'
@@ -104,6 +105,9 @@ export default function PaperStatus() {
 
       {/* Open trades intelligence */}
       <OpenTradesCard />
+
+      {/* Phase 192 — profit-protection advisory + adjustment proposals (advisory only) */}
+      <ProtectionAdjustmentPanel />
 
       {/* Alpaca API Card */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
