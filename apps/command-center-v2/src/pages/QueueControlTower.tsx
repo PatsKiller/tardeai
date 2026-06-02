@@ -7,19 +7,25 @@ interface Job {
   job_id: string; display_name: string; category: string; schedule: string
   source: string; uses_llm: boolean; model: string | null
   writes_to: string | null; sends_telegram: boolean; why_it_matters: string
+  next_run?: string; next_run_in_min?: number | null; last_trigger?: string
+  last_result?: string; service_state?: string; status_icon?: string
 }
 
 interface Service { name: string; status: string }
+interface DueJob { job_id: string; next_run: string; next_in_min: number; category: string; uses_llm: boolean; status_icon: string }
+interface AttentionItem { job_id: string; reason: string }
 
 interface QueueData {
   timestamp: string; timers_total: number; cron_count: number
   services_running: number; ollama_loaded: string[]
-  llm_jobs: number; telegram_capable_jobs: number
+  llm_jobs: number; telegram_capable_jobs: number; failed_jobs: number
   categories: Record<string, number>
   sections: {
     '24x7_services': Service[]
-    llm_queue: Array<{ job_id: string; model: string; schedule: string; why: string }>
+    llm_queue: Array<{ job_id: string; model: string; schedule: string; why: string; next_run?: string; last_result?: string }>
     telegram_capable: Array<{ job_id: string; why: string }>
+    due_next: DueJob[]
+    needs_attention: AttentionItem[]
   }
   all_jobs: Job[]
 }
@@ -66,6 +72,34 @@ export default function QueueControlTower() {
         ))}
       </div>
 
+      {/* Needs Attention */}
+      {data.sections.needs_attention.length > 0 && (
+        <div style={{ padding: '10px 14px', marginBottom: 12, background: 'rgba(239,68,68,.06)', border: '1px solid rgba(239,68,68,.2)', borderRadius: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>⚠ Needs Attention ({data.sections.needs_attention.length})</div>
+          {data.sections.needs_attention.map((a, i) => (
+            <div key={i} style={{ fontSize: 10, color: '#fca5a5', padding: '2px 0' }}>{a.job_id}: {a.reason}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Due Next */}
+      {data.sections.due_next.length > 0 && (
+        <div style={{ padding: '10px 14px', marginBottom: 12, background: 'rgba(59,130,246,.04)', border: '1px solid rgba(59,130,246,.15)', borderRadius: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', marginBottom: 6 }}>⏰ Due Next</div>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+            {data.sections.due_next.slice(0, 6).map(d => (
+              <div key={d.job_id} style={{ minWidth: 140, padding: '6px 10px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 10 }}>
+                <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace', marginBottom: 2 }}>{d.status_icon} {d.job_id.length > 18 ? d.job_id.slice(0, 18) + '…' : d.job_id}</div>
+                <div style={{ color: d.next_in_min < 60 ? '#f59e0b' : 'var(--text3)' }}>
+                  {d.next_in_min < 60 ? `${d.next_in_min}m` : `${Math.floor(d.next_in_min / 60)}h ${d.next_in_min % 60}m`}
+                </div>
+                {d.uses_llm && <span style={{ fontSize: 8, color: '#a855f7' }}>🧠 LLM</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 16 }}>
         {/* Left: Jobs */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -101,9 +135,12 @@ export default function QueueControlTower() {
                       {j.why_it_matters && <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2, lineHeight: 1.3 }}>{j.why_it_matters}</div>}
                       {j.writes_to && <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 2 }}>Writes: {j.writes_to}</div>}
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'monospace' }}>{j.schedule}</div>
-                      <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{j.source}</div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 100 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text0)' }}>{j.status_icon || '⚪'} {j.last_result || '?'}</div>
+                      {j.next_run && <div style={{ fontSize: 9, color: j.next_run_in_min != null && j.next_run_in_min < 60 ? '#f59e0b' : 'var(--text3)' }}>
+                        Next: {j.next_run_in_min != null ? (j.next_run_in_min < 60 ? `${j.next_run_in_min}m` : `${Math.floor(j.next_run_in_min / 60)}h`) : '?'}
+                      </div>}
+                      <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 1 }}>{j.schedule?.slice(0, 25)}</div>
                     </div>
                   </div>
                 )

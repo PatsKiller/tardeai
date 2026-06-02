@@ -13033,6 +13033,19 @@ def _queue_control_tower():
         "trade-ai-news-monitor": {"cat": "market_hours", "llm": False, "model": None, "writes": "news_articles", "telegram": True, "why": "News monitoring and alert routing"},
     }
 
+    # ── Get runtime status via helper ──
+    runtime_status = {}
+    try:
+        _qenv = dict(os.environ)
+        _qenv["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path=/run/user/{os.getuid()}/bus"
+        _rs = _sp_qct.run([str(PROJECT_ROOT / ".venv/bin/python"), str(PROJECT_ROOT / "scripts/queue_runtime_status.py"), "--json"],
+                          capture_output=True, text=True, timeout=10, cwd=str(PROJECT_ROOT), env=_qenv)
+        if _rs.returncode == 0:
+            import json as _jrt
+            runtime_status = _jrt.loads(_rs.stdout)
+    except Exception:
+        pass
+
     # ── Read timer unit files ──
     seen = set()
     timers = []
@@ -13051,6 +13064,22 @@ def _queue_control_tower():
             except Exception:
                 pass
             meta = JOB_META.get(name, {})
+            rt = runtime_status.get(name, {})
+            next_run = rt.get("next_run", "")
+            last_trigger = rt.get("last_trigger", "")
+            svc_result = rt.get("service_result", "unknown")
+            svc_state = rt.get("service_state", "unknown")
+
+            # Compute minutes until next run
+            next_in_min = None
+            if next_run:
+                try:
+                    from dateutil import parser as _dp
+                    _nr = _dp.parse(next_run)
+                    next_in_min = max(0, int((_nr - _dtqct.now(_nr.tzinfo or _tzqct.utc)).total_seconds() / 60))
+                except Exception:
+                    pass
+
             timers.append({
                 "job_id": name,
                 "display_name": name.replace("-", " ").replace("_", " ").title(),
@@ -13062,6 +13091,12 @@ def _queue_control_tower():
                 "writes_to": meta.get("writes"),
                 "sends_telegram": meta.get("telegram", False),
                 "why_it_matters": meta.get("why", ""),
+                "next_run": next_run,
+                "next_run_in_min": next_in_min,
+                "last_trigger": last_trigger,
+                "last_result": svc_result,
+                "service_state": svc_state,
+                "status_icon": "🟢" if svc_result == "success" else "🔴" if svc_result == "failed" else "⚪",
             })
 
     # ── System services (24/7) ──
@@ -13104,6 +13139,13 @@ def _queue_control_tower():
     llm_jobs = [t for t in timers if t.get("uses_llm")]
     telegram_jobs = [t for t in timers if t.get("sends_telegram")]
 
+    # ── Due next (sorted by next_run_in_min) ──
+    due_next = sorted([t for t in timers if t.get("next_run_in_min") is not None], key=lambda t: t["next_run_in_min"])[:10]
+
+    # ── Needs attention ──
+    failed = [t for t in timers if t.get("last_result") == "failed"]
+    stale = [t for t in timers if t.get("service_state") == "failed"]
+
     return {
         "timestamp": _dtqct.now(_tzqct.utc).isoformat(),
         "timers_total": len(timers),
@@ -13112,11 +13154,14 @@ def _queue_control_tower():
         "ollama_loaded": ollama_models,
         "llm_jobs": len(llm_jobs),
         "telegram_capable_jobs": len(telegram_jobs),
+        "failed_jobs": len(failed),
         "categories": {k: len(v) for k, v in categories.items()},
         "sections": {
             "24x7_services": [{"name": s["name"], "status": s["status"]} for s in services],
-            "llm_queue": [{"job_id": j["job_id"], "model": j["model"], "schedule": j["schedule"], "why": j["why_it_matters"]} for j in llm_jobs],
+            "llm_queue": [{"job_id": j["job_id"], "model": j["model"], "schedule": j["schedule"], "why": j["why_it_matters"], "next_run": j.get("next_run"), "last_result": j.get("last_result")} for j in llm_jobs],
             "telegram_capable": [{"job_id": j["job_id"], "why": j["why_it_matters"]} for j in telegram_jobs],
+            "due_next": [{"job_id": t["job_id"], "next_run": t["next_run"], "next_in_min": t["next_run_in_min"], "category": t["category"], "uses_llm": t["uses_llm"], "status_icon": t["status_icon"]} for t in due_next],
+            "needs_attention": [{"job_id": t["job_id"], "reason": "last run failed", "last_result": t["last_result"]} for t in failed] + [{"job_id": t["job_id"], "reason": "service failed", "service_state": t["service_state"]} for t in stale],
         },
         "all_jobs": timers,
     }
