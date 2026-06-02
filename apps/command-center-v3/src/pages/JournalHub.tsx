@@ -8,100 +8,171 @@ import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection'] as const
 
+// Account color map
+const ACCT_COLOR: Record<string, string> = {
+  schwab_rollover_ira: '#60a5fa',   // blue
+  schwab_taxable: '#a855f7',        // purple
+  schwab_roth_ira: '#06b6d4',       // cyan
+  schwab_roth: '#06b6d4',           // cyan (alias)
+  alpaca_paper: '#22c55e',          // green
+  ALPACA_PAPER: '#22c55e',          // green (alias)
+  TOS_PAPER: '#22c55e',             // green (legacy alias)
+}
+const acctColor = (a: string) => ACCT_COLOR[a] ?? ACCT_COLOR[a?.toLowerCase()] ?? 'var(--text2)'
+const normalizeAcct = (a: string) => {
+  const lower = (a ?? '').toLowerCase()
+  if (lower.includes('alpaca') || lower.includes('tos')) return 'alpaca_paper'
+  return lower
+}
+const ACCT_LABEL: Record<string, string> = {
+  schwab_rollover_ira: 'Schwab Rollover IRA',
+  schwab_taxable: 'Schwab Taxable',
+  schwab_roth_ira: 'Schwab Roth IRA',
+  schwab_roth: 'Schwab Roth IRA',
+  alpaca_paper: 'Alpaca Paper',
+}
+
+interface UnifiedTrade {
+  id: string | number; symbol: string; account: string; normalizedAccount: string
+  entryPrice: number | null; exitPrice: number | null; shares: number
+  pnl: number; pnlPct: number | null; holdDays: number | null; holdMin: number | null
+  exitReason: string | null; strategyId: string | null; status: string
+  entryDate: string | null; exitDate: string | null; source: 'paper' | 'schwab'
+}
+
+const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
 export default function JournalHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
+  const [acctFilter, setAcctFilter] = useState<string>('')
   const { data: journal } = useApi<any>('/api/v2/automated-trade-journal', 60_000)
+  const { data: schwabJournal } = useApi<any>('/api/v2/journal', 120_000)
   const { data: analytics } = useApi<any>('/api/v2/automated-journal-analytics', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: lessonsData } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
 
-  const trades = journal?.trades ?? []
-  const openTrades = trades.filter((t: any) => t.status === 'open')
-  const closedTrades = trades.filter((t: any) => t.status === 'closed')
-  const summary = journal?.summary ?? {}
   const warnings = journal?.integrity_warnings ?? []
   const jc = readiness?.journal_completeness ?? {}
   const overall = analytics?.overall ?? {}
-  const byStrategy = analytics?.by_strategy ?? summary?.by_strategy ?? []
 
-  // ── Derived: equity curve (cumulative PnL from closed trades sorted by close date) ──
+  // ── Unify trades from both sources ──
+  const allTrades: UnifiedTrade[] = useMemo(() => {
+    const result: UnifiedTrade[] = []
+    // Paper trades
+    for (const t of (journal?.trades ?? [])) {
+      result.push({
+        id: t.id, symbol: t.symbol, account: t.account ?? 'alpaca_paper',
+        normalizedAccount: normalizeAcct(t.account ?? 'alpaca_paper'),
+        entryPrice: t.entry_price, exitPrice: t.exit_price, shares: t.shares ?? 0,
+        pnl: t.pnl ?? 0, pnlPct: t.pnl_pct, holdDays: null,
+        holdMin: t.hold_time_min, exitReason: t.exit_reason, strategyId: t.strategy_id,
+        status: t.status ?? 'closed', entryDate: t.entry_time?.slice(0, 10) ?? t.created_at?.slice(0, 10),
+        exitDate: t.closed_at?.slice(0, 10), source: 'paper',
+      })
+    }
+    // Schwab trades
+    for (const t of (schwabJournal?.trades ?? [])) {
+      result.push({
+        id: `sw-${t.trade_key ?? t.symbol}`, symbol: t.symbol, account: t.account,
+        normalizedAccount: normalizeAcct(t.account),
+        entryPrice: t.buy_price, exitPrice: t.sell_price, shares: t.shares ?? 0,
+        pnl: t.pnl ?? 0, pnlPct: t.pnl_pct, holdDays: t.hold_days,
+        holdMin: null, exitReason: null, strategyId: null,
+        status: 'closed', entryDate: t.open_date, exitDate: t.close_date, source: 'schwab',
+      })
+    }
+    return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
+  }, [journal, schwabJournal])
+
+  // ── Filter by account ──
+  const filtered = acctFilter ? allTrades.filter(t => t.normalizedAccount === acctFilter) : allTrades
+  const closedFiltered = filtered.filter(t => t.status === 'closed')
+  const openFiltered = filtered.filter(t => t.status === 'open')
+
+  // ── Account chips ──
+  const accountCounts = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const t of allTrades) { m[t.normalizedAccount] = (m[t.normalizedAccount] ?? 0) + 1 }
+    return Object.entries(m).sort((a, b) => b[1] - a[1])
+  }, [allTrades])
+
+  // ── KPIs from filtered closed ──
+  const kpis = useMemo(() => {
+    const closed = closedFiltered
+    const wins = closed.filter(t => t.pnl > 0).length
+    const losses = closed.filter(t => t.pnl < 0).length
+    const grossProfit = closed.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0)
+    const grossLoss = Math.abs(closed.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0))
+    return {
+      open: openFiltered.length, closed: closed.length, wins, losses,
+      wr: closed.length > 0 ? Math.round(wins / closed.length * 100 * 10) / 10 : 0,
+      pf: grossLoss > 0 ? Math.round(grossProfit / grossLoss * 100) / 100 : 0,
+      totalPnl: Math.round(closed.reduce((s, t) => s + t.pnl, 0) * 100) / 100,
+    }
+  }, [closedFiltered, openFiltered])
+
+  // ── Equity curve ──
   const equityCurve = useMemo(() => {
-    const sorted = [...closedTrades]
-      .filter((t: any) => t.closed_at && t.pnl != null)
-      .sort((a: any, b: any) => (a.closed_at ?? '').localeCompare(b.closed_at ?? ''))
+    const sorted = [...closedFiltered].filter(t => t.exitDate).sort((a, b) => (a.exitDate ?? '').localeCompare(b.exitDate ?? ''))
     let cum = 0
-    return sorted.map((t: any) => {
-      cum += (t.pnl ?? 0)
-      return { date: (t.closed_at ?? '').slice(5, 10), symbol: t.symbol, pnl: t.pnl, cumulative: Math.round(cum * 100) / 100 }
-    })
-  }, [closedTrades])
+    return sorted.map(t => { cum += t.pnl; return { date: (t.exitDate ?? '').slice(5), symbol: t.symbol, pnl: t.pnl, cumulative: Math.round(cum * 100) / 100, account: t.normalizedAccount } })
+  }, [closedFiltered])
 
-  // ── Derived: daily P&L (aggregate by close date) ──
+  // ── Daily P&L ──
   const dailyPnl = useMemo(() => {
     const byDate: Record<string, { pnl: number; trades: number; wins: number; losses: number }> = {}
-    for (const t of closedTrades) {
-      if (!t.closed_at) continue
-      const d = (t.closed_at ?? '').slice(0, 10)
-      if (!byDate[d]) byDate[d] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
-      byDate[d].pnl += (t.pnl ?? 0)
-      byDate[d].trades += 1
-      if ((t.pnl ?? 0) > 0) byDate[d].wins += 1
-      else if ((t.pnl ?? 0) < 0) byDate[d].losses += 1
+    for (const t of closedFiltered) {
+      if (!t.exitDate) continue
+      if (!byDate[t.exitDate]) byDate[t.exitDate] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
+      byDate[t.exitDate].pnl += t.pnl
+      byDate[t.exitDate].trades += 1
+      if (t.pnl > 0) byDate[t.exitDate].wins += 1
+      else if (t.pnl < 0) byDate[t.exitDate].losses += 1
     }
-    return Object.entries(byDate)
-      .sort(([a], [b]) => a.localeCompare(b))
+    return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b))
       .map(([date, v]) => ({ date: date.slice(5), fullDate: date, ...v, pnl: Math.round(v.pnl * 100) / 100 }))
-  }, [closedTrades])
+  }, [closedFiltered])
 
-  // ── Derived: calendar grid (sparse — only real trading days) ──
-  const calendarData = useMemo(() => {
+  // ── Calendar ──
+  const calendarMonths = useMemo(() => {
     const byDate: Record<string, { pnl: number; trades: number; wins: number; losses: number }> = {}
-    for (const t of closedTrades) {
-      if (!t.closed_at) continue
-      const d = (t.closed_at ?? '').slice(0, 10)
-      if (!byDate[d]) byDate[d] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
-      byDate[d].pnl += (t.pnl ?? 0)
-      byDate[d].trades += 1
-      if ((t.pnl ?? 0) > 0) byDate[d].wins += 1
-      else if ((t.pnl ?? 0) < 0) byDate[d].losses += 1
+    for (const t of closedFiltered) {
+      if (!t.exitDate) continue
+      if (!byDate[t.exitDate]) byDate[t.exitDate] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
+      byDate[t.exitDate].pnl += t.pnl
+      byDate[t.exitDate].trades += 1
+      if (t.pnl > 0) byDate[t.exitDate].wins += 1
+      else if (t.pnl < 0) byDate[t.exitDate].losses += 1
     }
-    // Group by month
     const months: Record<string, Record<number, typeof byDate[string]>> = {}
     for (const [date, data] of Object.entries(byDate)) {
-      const [y, m, dStr] = date.split('-')
-      const monthKey = `${y}-${m}`
-      if (!months[monthKey]) months[monthKey] = {}
-      months[monthKey][parseInt(dStr)] = data
+      const mk = date.slice(0, 7)
+      if (!months[mk]) months[mk] = {}
+      months[mk][parseInt(date.slice(8))] = data
     }
-    return months
-  }, [closedTrades])
+    return { months, maxPnl: Math.max(1, ...Object.values(byDate).map(d => Math.abs(d.pnl))) }
+  }, [closedFiltered])
 
-  // ── Derived: monthly summary ──
-  const monthlySummary = useMemo(() => {
-    const byMonth: Record<string, { pnl: number; trades: number; wins: number; losses: number }> = {}
-    for (const t of closedTrades) {
-      if (!t.closed_at) continue
-      const m = (t.closed_at ?? '').slice(0, 7)
-      if (!byMonth[m]) byMonth[m] = { pnl: 0, trades: 0, wins: 0, losses: 0 }
-      byMonth[m].pnl += (t.pnl ?? 0)
-      byMonth[m].trades += 1
-      if ((t.pnl ?? 0) > 0) byMonth[m].wins += 1
-      else if ((t.pnl ?? 0) < 0) byMonth[m].losses += 1
+  // ── Strategy breakdown ──
+  const stratBreakdown = useMemo(() => {
+    const m: Record<string, { trades: number; wins: number; pnl: number }> = {}
+    for (const t of closedFiltered) {
+      const s = t.strategyId ?? '(no strategy)'
+      if (!m[s]) m[s] = { trades: 0, wins: 0, pnl: 0 }
+      m[s].trades += 1
+      if (t.pnl > 0) m[s].wins += 1
+      m[s].pnl += t.pnl
     }
-    return Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b)).map(([month, v]) => ({
-      month, ...v, pnl: Math.round(v.pnl * 100) / 100,
-      wr: v.trades > 0 ? Math.round(v.wins / v.trades * 100) : 0,
-    }))
-  }, [closedTrades])
-
-  const maxAbsDailyPnl = Math.max(1, ...dailyPnl.map(d => Math.abs(d.pnl)))
+    return Object.entries(m).sort((a, b) => b[1].trades - a[1].trades)
+      .map(([strat, v]) => ({ strategy: strat, ...v, wr: Math.round(v.wins / v.trades * 100), pnl: Math.round(v.pnl * 100) / 100 }))
+  }, [closedFiltered])
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>Journal</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{trades.length} trades · {openTrades.length} open · {closedTrades.length} closed</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>{allTrades.length} trades · {accountCounts.length} accounts</div>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {TABS.map(t => (
@@ -114,7 +185,24 @@ export default function JournalHub({ onDrill }: Props) {
         </div>
       </div>
 
-      {/* Integrity warnings */}
+      {/* Account filter chips */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+        <button onClick={() => setAcctFilter('')} style={{
+          fontSize: 10, padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+          background: !acctFilter ? 'rgba(96,165,250,.2)' : 'var(--bg2)', color: !acctFilter ? '#60a5fa' : 'var(--text3)',
+        }}>All ({allTrades.length})</button>
+        {accountCounts.map(([acct, cnt]) => (
+          <button key={acct} onClick={() => setAcctFilter(acctFilter === acct ? '' : acct)} style={{
+            fontSize: 10, padding: '3px 10px', borderRadius: 6, border: 'none', cursor: 'pointer',
+            background: acctFilter === acct ? `${acctColor(acct)}20` : 'var(--bg2)',
+            color: acctFilter === acct ? acctColor(acct) : 'var(--text3)',
+          }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: acctColor(acct), marginRight: 4 }} />
+            {ACCT_LABEL[acct] ?? acct} ({cnt})
+          </button>
+        ))}
+      </div>
+
       {warnings.length > 0 && (
         <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(245,158,11,.06)', border: '1px solid rgba(245,158,11,.15)', borderRadius: 8 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', marginBottom: 4 }}>Integrity Warnings ({warnings.length})</div>
@@ -126,16 +214,16 @@ export default function JournalHub({ onDrill }: Props) {
 
       {tab === 'Trades' && (
         <>
-          {/* ── KPI Tiles ── */}
+          {/* KPI Tiles */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 14 }}>
             {[
-              { label: 'Open', value: summary.open_count ?? openTrades.length, color: '#60a5fa' },
-              { label: 'Closed', value: summary.closed_count ?? closedTrades.length, color: 'var(--text0)' },
-              { label: 'Wins', value: summary.wins ?? 0, color: '#22c55e' },
-              { label: 'Losses', value: summary.losses ?? 0, color: '#ef4444' },
-              { label: 'Win Rate', value: summary.win_rate != null ? `${summary.win_rate}%` : '—', color: (summary.win_rate ?? 0) >= 55 ? '#22c55e' : '#f59e0b' },
-              { label: 'Profit Factor', value: overall.profit_factor?.toFixed(2) ?? '—', color: 'var(--text0)' },
-              { label: 'Avg R', value: summary.avg_r?.toFixed(2) ?? overall.avg_r?.toFixed(2) ?? '—', color: 'var(--text0)' },
+              { label: 'Open', value: kpis.open, color: '#60a5fa' },
+              { label: 'Closed', value: kpis.closed, color: 'var(--text0)' },
+              { label: 'Wins', value: kpis.wins, color: '#22c55e' },
+              { label: 'Losses', value: kpis.losses, color: '#ef4444' },
+              { label: 'Win Rate', value: `${kpis.wr}%`, color: kpis.wr >= 55 ? '#22c55e' : '#f59e0b' },
+              { label: 'Profit Factor', value: kpis.pf.toFixed(2), color: 'var(--text0)' },
+              { label: 'Total P&L', value: fmt$(kpis.totalPnl, 0), color: kpis.totalPnl >= 0 ? '#22c55e' : '#ef4444' },
             ].map(k => (
               <div key={k.label} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: k.color, fontFamily: 'monospace' }}>{k.value}</div>
@@ -144,99 +232,102 @@ export default function JournalHub({ onDrill }: Props) {
             ))}
           </div>
 
-          {/* ── Equity Curve + Daily P&L ── */}
+          {/* Equity Curve + Daily P&L */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            {/* Equity curve */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Equity Curve</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>cumulative realized P&L</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>cumulative P&L · {equityCurve.length} trades</span>
               </div>
               {equityCurve.length < 2 ? (
-                <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>Insufficient closed trades for curve ({equityCurve.length})</div>
+                <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>Insufficient data ({equityCurve.length} trades)</div>
               ) : (
                 <ResponsiveContainer width="100%" height={160}>
                   <AreaChart data={equityCurve}>
-                    <defs><linearGradient id="jEqGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient></defs>
+                    <defs><linearGradient id="jEq" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/><stop offset="95%" stopColor="#22c55e" stopOpacity={0}/></linearGradient></defs>
                     <XAxis dataKey="date" tick={{ fontSize: 8, fill: 'var(--text3)' }} />
                     <YAxis tick={{ fontSize: 8, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${v}`} />
-                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }}
-                      formatter={(v: number, name: string) => [fmt$(v, 2), name === 'cumulative' ? 'Cumulative' : 'Trade']} />
-                    <Area type="monotone" dataKey="cumulative" stroke="#22c55e" fill="url(#jEqGrad)" strokeWidth={2} />
+                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} />
+                    <Area type="monotone" dataKey="cumulative" stroke="#22c55e" fill="url(#jEq)" strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>Derived from {closedTrades.length} closed trades</div>
             </div>
-
-            {/* Daily P&L bars */}
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Daily P&L</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{dailyPnl.length} trading days</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{dailyPnl.length} days</span>
               </div>
               {dailyPnl.length === 0 ? (
-                <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>No closed trades with dates</div>
+                <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20, textAlign: 'center' }}>No data</div>
               ) : (
                 <ResponsiveContainer width="100%" height={160}>
                   <BarChart data={dailyPnl}>
                     <XAxis dataKey="date" tick={{ fontSize: 8, fill: 'var(--text3)' }} />
                     <YAxis tick={{ fontSize: 8, fill: 'var(--text3)' }} tickFormatter={(v: number) => `$${v}`} />
-                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }}
-                      formatter={(v: number) => [fmt$(v, 2), 'P&L']} />
+                    <Tooltip contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }} />
                     <Bar dataKey="pnl" radius={[3, 3, 0, 0]}
-                      fill="#22c55e"
                       shape={(props: any) => {
                         const { x, y, width, height, payload } = props
-                        const fill = payload.pnl >= 0 ? '#22c55e' : '#ef4444'
-                        return <rect x={x} y={y} width={width} height={Math.abs(height)} rx={3} fill={fill} />
-                      }}
-                    />
+                        return <rect x={x} y={y} width={width} height={Math.abs(height)} rx={3} fill={payload.pnl >= 0 ? '#22c55e' : '#ef4444'} />
+                      }} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
           </div>
 
-          {/* ── P&L Calendar Heatmap ── */}
+          {/* Calendar P&L — proper week grid with DOW headers */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Calendar P&L</span>
-              <span style={{ fontSize: 9, color: 'var(--text3)' }}>Sparse: {Object.keys(calendarData).length === 0 ? 'no data' : `${dailyPnl.length} trading days across ${Object.keys(calendarData).length} months`}</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{dailyPnl.length} trading days</span>
             </div>
-            {Object.keys(calendarData).length === 0 ? (
-              <div style={{ color: 'var(--text3)', fontSize: 11, padding: 10, textAlign: 'center' }}>No closed trades with dates for calendar</div>
+            {Object.keys(calendarMonths.months).length === 0 ? (
+              <div style={{ color: 'var(--text3)', fontSize: 11, padding: 10, textAlign: 'center' }}>No closed trades with dates</div>
             ) : (
-              Object.entries(calendarData).sort(([a], [b]) => a.localeCompare(b)).map(([monthKey, days]) => {
-                const [y, m] = monthKey.split('-')
-                const daysInMonth = new Date(parseInt(y), parseInt(m), 0).getDate()
-                const monthName = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+              Object.entries(calendarMonths.months).sort(([a], [b]) => a.localeCompare(b)).map(([monthKey, days]) => {
+                const [yr, mo] = monthKey.split('-').map(Number)
+                const daysInMonth = new Date(yr, mo, 0).getDate()
+                const startDow = new Date(yr, mo - 1, 1).getDay()
+                const monthLabel = new Date(yr, mo - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                const cells = []
+                for (let i = 0; i < startDow; i++) cells.push(<div key={`e${i}`} style={{ width: 28, height: 28 }} />)
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const d = days[day]
+                  const isWeekend = new Date(yr, mo - 1, day).getDay() % 6 === 0
+                  let bg = 'var(--bg0)'
+                  let color = 'var(--text3)'
+                  if (d) {
+                    const intensity = Math.min(1, Math.abs(d.pnl) / calendarMonths.maxPnl)
+                    const alpha = 0.2 + intensity * 0.6
+                    bg = d.pnl > 0 ? `rgba(34,197,94,${alpha})` : d.pnl < 0 ? `rgba(239,68,68,${alpha})` : 'rgba(148,163,184,0.3)'
+                    color = 'var(--text0)'
+                  }
+                  cells.push(
+                    <div key={day}
+                      onClick={d ? () => onDrill({
+                        title: `${monthKey}-${String(day).padStart(2, '0')}`,
+                        subtitle: `${fmt$(d.pnl, 2)} · ${d.trades} trades · ${d.wins}W ${d.losses}L`,
+                        endpoint: 'derived from trades',
+                        rows: closedFiltered.filter(t => t.exitDate === `${monthKey}-${String(day).padStart(2, '0')}`),
+                      }) : undefined}
+                      title={d ? `${monthKey}-${String(day).padStart(2, '0')}: ${fmt$(d.pnl, 2)} (${d.trades} trades, ${d.wins}W ${d.losses}L)` : `Day ${day}`}
+                      style={{
+                        width: 28, height: 28, borderRadius: 4, display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: 9, color, background: bg,
+                        opacity: isWeekend && !d ? 0.3 : 1, cursor: d ? 'pointer' : 'default',
+                        border: d ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                      }}>{day}</div>
+                  )
+                }
                 return (
-                  <div key={monthKey} style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', marginBottom: 4 }}>{monthName}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(31, 1fr)', gap: 2 }}>
-                      {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-                        const d = days[day]
-                        if (!d) return <div key={day} style={{ height: 20, borderRadius: 2, background: 'var(--bg2)', opacity: 0.3 }} title={`Day ${day}: no trades`} />
-                        const intensity = Math.min(1, Math.abs(d.pnl) / maxAbsDailyPnl)
-                        const alpha = 0.3 + intensity * 0.7
-                        const bg = d.pnl > 0 ? `rgba(34,197,94,${alpha})` : d.pnl < 0 ? `rgba(239,68,68,${alpha})` : 'rgba(148,163,184,0.3)'
-                        return (
-                          <div key={day}
-                            onClick={() => onDrill({
-                              title: `${monthKey}-${String(day).padStart(2, '0')}`,
-                              subtitle: `${fmt$(d.pnl, 2)} · ${d.trades} trades · ${d.wins}W ${d.losses}L`,
-                              endpoint: '/api/v2/automated-trade-journal',
-                              rows: closedTrades.filter((t: any) => t.closed_at?.startsWith(`${monthKey}-${String(day).padStart(2, '0')}`)),
-                            })}
-                            style={{ height: 20, borderRadius: 2, background: bg, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            title={`${monthKey}-${String(day).padStart(2, '0')}: ${fmt$(d.pnl, 2)} (${d.trades} trades, ${d.wins}W ${d.losses}L)`}
-                          >
-                            <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.8)' }}>{day}</span>
-                          </div>
-                        )
-                      })}
+                  <div key={monthKey} style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', fontWeight: 600, marginBottom: 4 }}>{monthLabel}</div>
+                    <div style={{ display: 'flex', gap: 2, marginBottom: 2 }}>
+                      {DOW.map((d, i) => <div key={i} style={{ width: 28, textAlign: 'center', fontSize: 8, color: 'var(--text3)' }}>{d}</div>)}
                     </div>
+                    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', maxWidth: 28 * 7 + 12 }}>{cells}</div>
                   </div>
                 )
               })
@@ -244,81 +335,59 @@ export default function JournalHub({ onDrill }: Props) {
             <div style={{ display: 'flex', gap: 12, fontSize: 9, marginTop: 6, color: 'var(--text3)' }}>
               <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#22c55e', marginRight: 3 }}/>profit</span>
               <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#ef4444', marginRight: 3 }}/>loss</span>
-              <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--bg2)', opacity: 0.3, marginRight: 3 }}/>no trades</span>
+              <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--bg0)', marginRight: 3 }}/>no trades</span>
             </div>
           </div>
 
-          {/* ── Monthly Summary ── */}
-          {monthlySummary.length > 0 && (
-            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Monthly Summary</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 1fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
-                <span>Month</span><span>Trades</span><span>Wins</span><span>Losses</span><span>Win Rate</span><span>P&L</span>
-              </div>
-              {monthlySummary.map(m => (
-                <div key={m.month} onClick={() => onDrill({ title: m.month, subtitle: `${m.trades} trades, ${fmt$(m.pnl, 2)}`, endpoint: '/api/v2/automated-trade-journal', rows: closedTrades.filter((t: any) => t.closed_at?.startsWith(m.month)) })}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 1fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-                  <span style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{m.month}</span>
-                  <span style={{ color: 'var(--text2)' }}>{m.trades}</span>
-                  <span style={{ color: '#22c55e' }}>{m.wins}</span>
-                  <span style={{ color: '#ef4444' }}>{m.losses}</span>
-                  <span style={{ color: m.wr >= 55 ? '#22c55e' : m.wr >= 45 ? '#f59e0b' : '#ef4444' }}>{m.wr}%</span>
-                  <span style={{ color: m.pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(m.pnl, 2)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Strategy Breakdown ── */}
-          {byStrategy.length > 0 && (
+          {/* Strategy Breakdown */}
+          {stratBreakdown.length > 0 && (
             <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Strategy Breakdown</div>
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
                 <span>Strategy</span><span>Trades</span><span>Wins</span><span>Win Rate</span><span>P&L</span>
               </div>
-              {byStrategy.filter((s: any) => (s.trades ?? s.count ?? 0) > 0).sort((a: any, b: any) => (b.trades ?? b.count ?? 0) - (a.trades ?? a.count ?? 0)).map((s: any) => {
-                const trades_count = s.trades ?? s.count ?? 0
-                const wr = s.win_rate ?? (trades_count > 0 ? Math.round((s.wins ?? 0) / trades_count * 100) : 0)
-                return (
-                  <div key={s.strategy_id ?? s.strategy} onClick={() => onDrill({ title: s.strategy_id ?? s.strategy, subtitle: `${trades_count} trades`, endpoint: '/api/v2/automated-journal-analytics', rows: [s] })}
-                    style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-                    <span style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{s.strategy_id ?? s.strategy}</span>
-                    <span style={{ color: 'var(--text2)' }}>{trades_count}</span>
-                    <span style={{ color: '#22c55e' }}>{s.wins ?? 0}</span>
-                    <span style={{ color: wr >= 55 ? '#22c55e' : wr >= 45 ? '#f59e0b' : '#ef4444' }}>{wr}%</span>
-                    <span style={{ color: (s.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(s.pnl ?? 0, 2)}</span>
-                  </div>
-                )
-              })}
+              {stratBreakdown.map(s => (
+                <div key={s.strategy} onClick={() => onDrill({ title: s.strategy, subtitle: `${s.trades} trades`, endpoint: 'derived', rows: closedFiltered.filter(t => (t.strategyId ?? '(no strategy)') === s.strategy) })}
+                  style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                  <span style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{s.strategy}</span>
+                  <span style={{ color: 'var(--text2)' }}>{s.trades}</span>
+                  <span style={{ color: '#22c55e' }}>{s.wins}</span>
+                  <span style={{ color: s.wr >= 55 ? '#22c55e' : s.wr >= 45 ? '#f59e0b' : '#ef4444' }}>{s.wr}%</span>
+                  <span style={{ color: s.pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(s.pnl, 2)}</span>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* ── Trade List ── */}
+          {/* Trade Log */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Trade Log ({trades.length})</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr 0.8fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span>Symbol</span><span>Entry</span><span>P&L</span><span>Exit Reason</span><span>Hold</span>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Trade Log ({filtered.length})</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.3fr 1fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr 0.6fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
+              <span></span><span>Symbol</span><span>Account</span><span>Entry Date</span><span>Exit Date</span><span>P&L</span><span>Strategy</span><span>Hold</span>
             </div>
-            {trades.map((t: any) => (
-              <div key={t.id} onClick={() => onDrill({ title: `${t.symbol} #${t.id}`, subtitle: `${t.strategy_id} · ${t.status}`, endpoint: '/api/v2/automated-trade-journal', rows: [t] })}
-                style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr 0.8fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+            {filtered.map((t, i) => (
+              <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol} #${t.id}`, subtitle: `${t.account} · ${t.strategyId ?? t.source}`, endpoint: t.source === 'schwab' ? '/api/v2/journal' : '/api/v2/automated-trade-journal', rows: [t] })}
+                style={{ display: 'grid', gridTemplateColumns: '0.3fr 1fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr 0.6fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: acctColor(t.normalizedAccount), marginTop: 3 }} title={ACCT_LABEL[t.normalizedAccount] ?? t.account} />
                 <div>
                   <div style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>{t.strategy_id}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>{t.shares} @ {t.entryPrice != null ? fmt$(t.entryPrice, 2) : '—'}</div>
                 </div>
-                <span style={{ color: 'var(--text2)' }}>{t.shares} @ {fmt$(t.entry_price, 2)}</span>
-                <span style={{ color: t.status === 'open' ? '#60a5fa' : (t.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+                <span style={{ color: acctColor(t.normalizedAccount), fontSize: 9 }}>{ACCT_LABEL[t.normalizedAccount] ?? t.account}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.entryDate ?? '—'}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.exitDate ?? (t.status === 'open' ? 'OPEN' : '—')}</span>
+                <span style={{ color: t.status === 'open' ? '#60a5fa' : t.pnl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
                   {t.status === 'open' ? 'OPEN' : fmt$(t.pnl, 2)}
                 </span>
-                <span style={{ color: 'var(--text2)', fontSize: 10 }}>{t.exit_reason ?? '—'}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{t.hold_time_min ? (t.hold_time_min < 60 ? `${Math.round(t.hold_time_min)}m` : `${Math.round(t.hold_time_min / 60)}h`) : '—'}</span>
+                <span style={{ color: 'var(--text2)', fontSize: 9 }}>{t.strategyId ?? '—'}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9 }}>
+                  {t.holdMin != null ? (t.holdMin < 60 ? `${Math.round(t.holdMin)}m` : `${Math.round(t.holdMin / 60)}h`) : t.holdDays != null ? `${t.holdDays}d` : '—'}
+                </span>
               </div>
             ))}
           </div>
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>
-            Source: /api/v2/automated-trade-journal (all {closedTrades.length} closed) + /automated-journal-analytics (KPIs).
-            Win rate shown is journal's {summary.win_rate ?? '—'}% on {summary.real_trade_count ?? closedTrades.length} real trades.
-            Gate figure is 45.8% on all 24 including phantoms — see gate for canonical number.
+            Sources: /api/v2/automated-trade-journal (paper) + /api/v2/journal (Schwab). Read-only.
           </div>
         </>
       )}
@@ -326,7 +395,7 @@ export default function JournalHub({ onDrill }: Props) {
       {tab === 'Analytics' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Journal Field Completeness</div>
-          {Object.keys(jc).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No completeness data — run paper_trade_statistics.py</div> :
+          {Object.keys(jc).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No completeness data</div> :
           Object.entries(jc).sort(([, a]: [string, any], [, b]: [string, any]) => b - a).map(([field, pct]: [string, any]) => (
             <div key={field} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
               <span style={{ width: 120, fontSize: 10, color: 'var(--text2)' }}>{field}</span>
@@ -336,7 +405,7 @@ export default function JournalHub({ onDrill }: Props) {
               <span style={{ fontSize: 10, color: pct >= 95 ? '#22c55e' : pct >= 80 ? '#f59e0b' : '#ef4444', width: 40, textAlign: 'right' }}>{pct}%</span>
             </div>
           ))}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/paper-trade-readiness → journal_completeness</div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/paper-trade-readiness</div>
         </div>
       )}
 
@@ -349,7 +418,6 @@ export default function JournalHub({ onDrill }: Props) {
               style={{ padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)' }}>{l.lesson_category ?? l.lesson_type ?? '—'}</div>
               <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>{(l.lesson_text ?? l.summary ?? JSON.stringify(l)).slice(0, 120)}</div>
-              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{l.strategy_id ?? ''} · {l.symbol ?? ''}</div>
             </div>
           ))}
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/journal/closed-trades/lessons</div>
