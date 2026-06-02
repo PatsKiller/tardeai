@@ -1096,10 +1096,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 json_response(self, 500, {"ok": False, "error": str(_v2e)})
                 return
 
-        # Root redirect → /v2/
+        # Root redirect → /v3/ (v3 is canonical as of 2026-06-02)
         if path == "/" or path == "":
             self.send_response(302)
-            self.send_header("Location", "/v2/")
+            self.send_header("Location", "/v3/")
             self.end_headers()
             return
 
@@ -1127,6 +1127,10 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
                 _body = _v2_file.read_bytes()
+                # Inject frozen banner into v2 HTML pages
+                if _ct == "text/html":
+                    _banner = b'<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e293b;border-bottom:2px solid #f59e0b;padding:6px 16px;font-family:sans-serif;font-size:12px;color:#f59e0b;text-align:center">v2 is frozen &mdash; <a href="/v3/" style="color:#60a5fa;text-decoration:underline">v3 is now canonical</a></div>'
+                    _body = _body.replace(b'<body>', b'<body>' + _banner, 1)
                 self.send_header("Content-Length", str(len(_body)))
                 self.end_headers()
                 self.wfile.write(_body)
