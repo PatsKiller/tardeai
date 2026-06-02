@@ -63,6 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/pipeline', label: 'Pipeline Stages' },
     { to: '/system-health', label: 'System Health' },
     { to: '/alert-siem', label: 'Alert SIEM' },
+    { to: '/queue-control-tower', label: 'Queue Control Tower' },
     { to: '/system-access', label: 'System Access' },
     { to: '/system-applications', label: 'System Applications' },
     { to: '/hermes', label: 'Hermes Chat' },
