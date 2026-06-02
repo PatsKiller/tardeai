@@ -4,6 +4,8 @@ import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
 import HubPlaceholder from './components/HubPlaceholder'
+import StrategyHub from './pages/StrategyHub'
+import RiskHub from './pages/RiskHub'
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
@@ -17,9 +19,9 @@ function Shell() {
           <Routes>
             <Route index element={<HubPlaceholder name="Home" />} />
             <Route path="portfolio" element={<HubPlaceholder name="Portfolio" />} />
-            <Route path="risk" element={<HubPlaceholder name="Risk" />} />
+            <Route path="risk" element={<RiskHub onDrill={setDrill} />} />
             <Route path="trading" element={<HubPlaceholder name="Trading" />} />
-            <Route path="strategy" element={<HubPlaceholder name="Strategy" />} />
+            <Route path="strategy" element={<StrategyHub onDrill={setDrill} />} />
             <Route path="agents" element={<HubPlaceholder name="Agents" />} />
             <Route path="intelligence" element={<HubPlaceholder name="Intelligence" />} />
             <Route path="hermes" element={<HubPlaceholder name="Hermes" />} />
