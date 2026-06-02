@@ -5,6 +5,15 @@
 
 ---
 
+## Dashboard
+
+| Version | URL | Status |
+|---------|-----|--------|
+| **v3 (canonical)** | `http://192.168.50.16:7777/v3/` | **Source of truth** — 11 hubs, 37/39 tabs live, all numbers from verified endpoints. Every displayed value traces to a real API field; placeholders are honest, never fabricated. |
+| v2 (frozen) | `http://192.168.50.16:7777/v2/` | Legacy — frozen with banner. 63 pages, still accessible as fallback. Not maintained. |
+
+---
+
 ## Active — Authoritative Documents
 
 ### Protocol & Architecture
