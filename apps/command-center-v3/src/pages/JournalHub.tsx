@@ -52,7 +52,9 @@ export default function JournalHub({ onDrill }: Props) {
   const { data: journal } = useApi<any>('/api/v2/automated-trade-journal', 60_000)
   const { data: schwabJournal } = useApi<any>('/api/v2/journal', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
-  const { data: lessonsData } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
+  const { data: rawLessonsResp } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
+  // Handle double-wrapped { ok, data: { ok, lessons, count } }
+  const lessonsData = rawLessonsResp?.data ?? rawLessonsResp
 
   const warnings = journal?.integrity_warnings ?? []
   const jc = readiness?.journal_completeness ?? {}
@@ -310,7 +312,8 @@ export default function JournalHub({ onDrill }: Props) {
             {Object.keys(calendarData.months).length === 0 ? (
               <div style={{ color: 'var(--text3)', fontSize: 11, padding: 10, textAlign: 'center' }}>No closed trades in selected range</div>
             ) : (
-              Object.entries(calendarData.months).sort(([a], [b]) => a.localeCompare(b)).map(([mk, days]) => {
+              <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 8 }}>
+              {Object.entries(calendarData.months).sort(([a], [b]) => a.localeCompare(b)).map(([mk, days]) => {
                 const [yr, mo] = mk.split('-').map(Number)
                 const dim = new Date(yr, mo, 0).getDate()
                 const sdow = new Date(yr, mo - 1, 1).getDay()
@@ -340,7 +343,8 @@ export default function JournalHub({ onDrill }: Props) {
                     <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', maxWidth: 26 * 7 + 12 }}>{cells}</div>
                   </div>
                 )
-              })
+              })}
+              </div>
             )}
             <div style={{ display: 'flex', gap: 10, fontSize: 8, marginTop: 4, color: 'var(--text3)' }}>
               <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#22c55e', marginRight: 3 }}/>profit</span>
@@ -397,7 +401,7 @@ export default function JournalHub({ onDrill }: Props) {
             </div>
             {filtered.map((t, i) => (
               <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [t] })}
-                style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.9fr 0.5fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
+                style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.9fr 0.5fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${acctColor(t.na)}`, cursor: 'pointer', fontSize: 10, background: `${acctColor(t.na)}06` }}>
                 <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(t.na), marginTop: 4 }} />
                 <div>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
@@ -496,20 +500,49 @@ export default function JournalHub({ onDrill }: Props) {
       )}
 
       {/* ════════ LESSONS TAB ════════ */}
-      {tab === 'Lessons' && lessonsData && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Trade Lessons ({lessonsData.count ?? 0})</div>
-          {(lessonsData.lessons ?? []).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No lessons recorded yet</div> :
-          (lessonsData.lessons ?? []).slice(0, 15).map((l: any, i: number) => (
-            <div key={i} onClick={() => onDrill({ title: l.lesson_category ?? `Lesson ${i}`, subtitle: l.strategy_id ?? '', endpoint: '/api/v2/journal/closed-trades/lessons', rows: [l] })}
-              style={{ padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)' }}>{l.lesson_category ?? l.lesson_type ?? '—'}</div>
-              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>{(l.lesson_text ?? l.summary ?? JSON.stringify(l)).slice(0, 120)}</div>
+      {tab === 'Lessons' && (() => {
+        // Handle double-wrapped response: { ok, data: { lessons: [...] } }
+        const rawLessons = lessonsData?.lessons ?? lessonsData?.data?.lessons ?? []
+        const lessonCount = lessonsData?.count ?? lessonsData?.data?.count ?? rawLessons.length
+        const catColor: Record<string, string> = {
+          exit_discipline: '#22c55e', stop_quality: '#f59e0b', entry_timing: '#ef4444',
+          data_quality: '#60a5fa', broker_sync: '#a855f7', manual_intervention: '#06b6d4', unknown: 'var(--text3)',
+        }
+        const confIcon: Record<string, string> = { positive: '+', negative: '-', neutral: '~' }
+        return (
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Trade Lessons ({lessonCount})</div>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>Source: /api/v2/journal/closed-trades/lessons</span>
             </div>
-          ))}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/journal/closed-trades/lessons</div>
-        </div>
-      )}
+            {rawLessons.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No lessons recorded yet</div> :
+            rawLessons.map((l: any, i: number) => {
+              const cat = l.lesson_category ?? 'unknown'
+              const cc = catColor[cat] ?? 'var(--text3)'
+              const lesson = l.improved_lesson ?? l.lesson_text ?? l.summary ?? ''
+              const rule = l.rule_feedback ?? ''
+              const conf = l.confidence_delta ?? 'neutral'
+              return (
+                <div key={i} onClick={() => onDrill({ title: `${l.symbol} — ${cat}`, subtitle: `${l.strategy ?? ''} · confidence: ${conf}`, endpoint: '/api/v2/journal/closed-trades/lessons', rows: [l] })}
+                  style={{ padding: '10px 12px', marginBottom: 6, background: 'var(--bg2)', borderRadius: 8, borderLeft: `3px solid ${cc}`, cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace', fontSize: 12 }}>{l.symbol}</span>
+                      <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 3, background: `${cc}20`, color: cc, fontWeight: 600 }}>{cat.replace(/_/g, ' ')}</span>
+                      <span style={{ fontSize: 9, color: 'var(--text3)' }}>{l.strategy}</span>
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: conf === 'positive' ? '#22c55e' : conf === 'negative' ? '#ef4444' : 'var(--text3)' }}>
+                      {confIcon[conf] ?? '~'} {conf}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.4, marginBottom: rule ? 4 : 0 }}>{lesson}</div>
+                  {rule && <div style={{ fontSize: 10, color: '#f59e0b', fontStyle: 'italic', lineHeight: 1.3 }}>Rule: {rule}</div>}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {/* ════════ PROTECTION TAB ════════ */}
       {tab === 'Protection' && <ProtectionOutcomesPanel onDrill={onDrill} />}
