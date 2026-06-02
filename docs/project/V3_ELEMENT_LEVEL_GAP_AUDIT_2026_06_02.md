@@ -2,7 +2,7 @@
 
 **Purpose:** Honest element-by-element comparison of v2 data elements vs v3 tabs. "Tab renders" does NOT count as "complete" — only "shows the real data element v2 showed" counts.
 
-**Last updated:** 2026-06-02 ~14:30 ET (Journal gaps filled, commit d312a06)
+**Last updated:** 2026-06-02 ~16:00 ET (Journal fully rebuilt: all accounts, calendar, colors, lessons parsed)
 
 ---
 
@@ -10,12 +10,20 @@
 
 | Hub | Tab | v2 Element | v3 Status | Commit |
 |-----|-----|-----------|-----------|--------|
-| Journal | Trades | P&L Calendar Heatmap | **FILLED** — sparse 9 days across 2 months, intensity by PnL, click→drill | d312a06 |
-| Journal | Trades | Equity Curve | **FILLED** — cumulative realized P&L, Recharts AreaChart, 24 closed trades | d312a06 |
-| Journal | Trades | Daily P&L Bar Chart | **FILLED** — 9 trading days, green/red bars, Recharts BarChart | d312a06 |
-| Journal | Trades | Monthly Summary Table | **FILLED** — May (18 trades, 39% WR, $753) + June (6 trades, 67% WR, $1,100) | d312a06 |
-| Journal | Trades | Strategy Breakdown Table | **FILLED** — 7 strategies sorted by trade count, WR color-coded | d312a06 |
-| Journal | Trades | Metric tiles (KPIs) | **FILLED** — 7 tiles: Open/Closed/Wins/Losses/WR 61.1%/PF 6.16/Avg R 0.82 | d312a06 |
+| Journal | Trades | P&L Calendar Heatmap | **FILLED** — horizontal scrollable, proper week grid (S-M-T-W-T-F-S), 6 months visible, 27 trading days | a103ab8+9d4ddb3 |
+| Journal | Trades | Equity Curve | **FILLED** — cumulative P&L, Recharts AreaChart, 65 closed trades (all accounts) | a103ab8 |
+| Journal | Trades | Daily P&L Bar Chart | **FILLED** — 27 trading days, green/red bars | a103ab8 |
+| Journal | Trades | Monthly Summary Table | **FILLED** — Dec 2025 through Jun 2026 with WR/PnL per month | a103ab8 |
+| Journal | Trades | Strategy Breakdown Table | **FILLED** — 9 strategies sorted by trade count, WR color-coded | a103ab8 |
+| Journal | Trades | Metric tiles (KPIs) | **FILLED** — 8 tiles: Open/Closed/Wins/Losses/WR/PF/Expectancy/Total P&L | a103ab8 |
+| Journal | Trades | Account filter chips | **FILLED** — All(107), Schwab Rollover(46, blue), Alpaca Paper(31, green), Schwab Taxable(26, purple), Schwab Roth(4, cyan) | a103ab8 |
+| Journal | Trades | Time range filter | **FILLED** — 6M/3M/1M/YTD/1Y/ALL, persists across all tabs | d80d0cb |
+| Journal | Trades | Account-colored trade rows | **FILLED** — left border + tinted background per account | 9d4ddb3 |
+| Journal | Trades | All-account data (Schwab + Paper) | **FILLED** — 107 trades from 4 accounts unified | a103ab8 |
+| Journal | Analytics | P&L by Account donut | **FILLED** — donut + breakdown table with WR/PnL per account | d80d0cb |
+| Journal | Analytics | Data Quality bars | **FILLED** — paper trade field completeness | d80d0cb |
+| Journal | Analytics | Actionable Insights | **FILLED** — gate progress, weak strategies, PF status | d80d0cb |
+| Journal | Lessons | Parsed lesson cards | **FILLED** — 24 lessons with category badges, confidence delta, rule feedback (was raw JSON) | 9d4ddb3 |
 
 ## STILL MISSING / EMPTY (remaining worklist)
 
@@ -118,7 +126,7 @@
 
 "39/39 tabs live" meant "39 tabs render something from a real endpoint." It did NOT mean "39 tabs have feature parity with v2."
 
-**Journal hub: 6 of 8 gaps FILLED (d312a06).** Calendar, equity curve, daily P&L, monthly summary, strategy breakdown, and KPI tiles now render real data. Two deferred: trade intelligence panel (per-trade async) and InlineDualOpinionPanel (v2 component port).
+**Journal hub: FULLY REBUILT (commits a103ab8 through 9d4ddb3).** All accounts unified (107 trades from 4 accounts), account filter chips with colors (blue/green/purple/cyan), time range filters (6M default), horizontal calendar with week grid, equity curve, daily P&L, monthly summary, strategy breakdown, 8 KPI tiles, Analytics tab with account donut + actionable insights, Lessons tab with parsed lesson cards (was raw JSON). Two deferred: trade intelligence panel (per-trade async), InlineDualOpinionPanel (v2 component port).
 
 **Remaining largest gaps by hub:**
 - **Strategy Backtest** — has a results table but is missing v2's 10 sub-tabs (filter chips, R-distribution, trailing analysis, MFE/MAE, per-strategy curves)
