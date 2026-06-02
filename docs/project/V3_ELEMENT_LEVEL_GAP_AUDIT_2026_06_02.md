@@ -2,20 +2,27 @@
 
 **Purpose:** Honest element-by-element comparison of v2 data elements vs v3 tabs. "Tab renders" does NOT count as "complete" — only "shows the real data element v2 showed" counts.
 
+**Last updated:** 2026-06-02 ~14:30 ET (Journal gaps filled, commit d312a06)
+
 ---
 
-## MISSING / EMPTY (the real worklist)
+## FILLED (Journal hub — d312a06)
+
+| Hub | Tab | v2 Element | v3 Status | Commit |
+|-----|-----|-----------|-----------|--------|
+| Journal | Trades | P&L Calendar Heatmap | **FILLED** — sparse 9 days across 2 months, intensity by PnL, click→drill | d312a06 |
+| Journal | Trades | Equity Curve | **FILLED** — cumulative realized P&L, Recharts AreaChart, 24 closed trades | d312a06 |
+| Journal | Trades | Daily P&L Bar Chart | **FILLED** — 9 trading days, green/red bars, Recharts BarChart | d312a06 |
+| Journal | Trades | Monthly Summary Table | **FILLED** — May (18 trades, 39% WR, $753) + June (6 trades, 67% WR, $1,100) | d312a06 |
+| Journal | Trades | Strategy Breakdown Table | **FILLED** — 7 strategies sorted by trade count, WR color-coded | d312a06 |
+| Journal | Trades | Metric tiles (KPIs) | **FILLED** — 7 tiles: Open/Closed/Wins/Losses/WR 61.1%/PF 6.16/Avg R 0.82 | d312a06 |
+
+## STILL MISSING / EMPTY (remaining worklist)
 
 | Hub | Tab | v2 Element | v3 Status | Endpoint | Has Data? |
 |-----|-----|-----------|-----------|----------|-----------|
-| **Journal** | Trades | **P&L Calendar Heatmap** (monthly grid, green/red by daily P&L) | **MISSING** | `/api/v2/automated-journal-analytics` | Yes (daily PnL computed from trades) |
-| **Journal** | Trades | **Equity Curve** (cumulative P&L line chart) | **MISSING** | `/api/v2/automated-journal-analytics` → equity_curve | Yes |
-| **Journal** | Trades | **Daily P&L Bar Chart** (per-day green/red bars) | **MISSING** | `/api/v2/automated-journal-analytics` → daily | Yes |
-| **Journal** | Trades | **Monthly Summary Table** (month × wins/losses/PnL) | **MISSING** | `/api/v2/automated-journal-analytics` | Yes |
-| **Journal** | Trades | **Strategy Breakdown Table** (per-strategy WR/PF/trades) | **MISSING** | `/api/v2/automated-journal-analytics` → by_strategy | Yes |
 | **Journal** | Trades | **Trade detail drawer** with InlineDualOpinionPanel | **PARTIAL** — basic drill exists, no dual-opinion inline | `/api/v2/hermes/dual-opinion/inline` | Yes |
-| **Journal** | Trades | **Trade intelligence panel** (per-trade news/agent consensus) | **MISSING** | `/api/v2/trade/{id}/intelligence` | Yes |
-| **Journal** | Trades | **Metric tiles** (Open/Closed/Wins/Losses/Win Rate/PF/Avg R) | **MISSING** — no summary KPIs | `/api/v2/automated-journal` → summary | Yes |
+| **Journal** | Trades | **Trade intelligence panel** (per-trade news/agent consensus) | **DEFERRED** — requires per-trade async fetch on drill | `/api/v2/trade/{id}/intelligence` | Yes |
 | **Strategy** | Backtest | **10 sub-tabs** (overview, strategy, trades, missed, results, runs, trailing, mfe, optimization, llm_reviews) | **PARTIAL** — 1 results table only, no sub-tabs | Multiple `/api/v2/backtesting/*` | Yes (all 200 OK) |
 | **Strategy** | Backtest | **Filter chips** (strategy, run_type, date range, broker, account) | **MISSING** | `/api/v2/backtesting/filter-options` | Yes (25 strategies, 50 run_ids) |
 | **Strategy** | Backtest | **R-multiple distribution histogram** | **MISSING** | `/api/v2/backtesting/trades` → r_multiple | Yes (5000 trades) |
@@ -111,8 +118,9 @@
 
 "39/39 tabs live" meant "39 tabs render something from a real endpoint." It did NOT mean "39 tabs have feature parity with v2."
 
-**Largest gaps by hub:**
-- **Journal** — has a basic trade list but is MISSING the calendar heatmap, equity curve, daily P&L bars, monthly summary, strategy breakdown, and summary KPIs that v2's AutomatedTradeJournal renders
+**Journal hub: 6 of 8 gaps FILLED (d312a06).** Calendar, equity curve, daily P&L, monthly summary, strategy breakdown, and KPI tiles now render real data. Two deferred: trade intelligence panel (per-trade async) and InlineDualOpinionPanel (v2 component port).
+
+**Remaining largest gaps by hub:**
 - **Strategy Backtest** — has a results table but is missing v2's 10 sub-tabs (filter chips, R-distribution, trailing analysis, MFE/MAE, per-strategy curves)
 - **Portfolio Dividends** — has KPIs but is missing v2's payer doughnut, monthly bar chart, and sortable DataGrid
 - **Hermes Overview** — has staging counts but is missing the self-learning Kanban, component health grid, and operator review queue
