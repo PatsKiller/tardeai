@@ -13856,9 +13856,45 @@ def _atm_profit_protection_advisory():
             "note": "Advisory only — no stops moved, no orders placed. Execution gated to Phase 192."}
 
 
+def _atm_adjustment_proposals_list():
+    """Phase 192E — paper protection adjustment proposals (read-only). Frontend-neutral
+    (Command Center v2 + v3). Latest PROPOSED candidates grouped by trade."""
+    rows = _db_query("""
+        SELECT id, trade_id, symbol, action, current_stop, proposed_stop,
+               current_take_profit, proposed_take_profit, current_risk, proposed_risk,
+               profit_locked_before, profit_locked_after, giveback_before, giveback_after,
+               downside_protection_improvement, upside_limitation, tradeai_reason, hermes_reason,
+               evidence_refs, quote_price, alpaca_supported, expected_api, status, created_at
+        FROM paper_protection_adjustment_proposals
+        WHERE status = 'PROPOSED' AND created_at > now() - interval '1 day'
+        ORDER BY symbol, id""") or []
+    by_trade = {}
+    for r in rows:
+        key = r["trade_id"]
+        by_trade.setdefault(key, {"trade_id": key, "symbol": r["symbol"], "candidates": []})
+        by_trade[key]["candidates"].append({k: _json_clean(v) for k, v in r.items()})
+    return {"trades": list(by_trade.values()), "proposal_count": len(rows),
+            "paper_only": True, "requires_operator_approval": True,
+            "no_live_execution": True,
+            "note": "Advisory proposals. Execution only via guarded approve endpoint on explicit operator action."}
+
+
+def _atm_adjustment_proposal_detail(pid):
+    r = _db_query("""SELECT * FROM paper_protection_adjustment_proposals WHERE id = %s""",
+                  (pid,), fetch="one")
+    if not r:
+        return None
+    out = {k: _json_clean(v) for k, v in r.items()}
+    out["paper_only"] = True
+    out["operator_confirmation_required"] = True
+    out["blocked_reasons"] = []
+    return out
+
+
 ROUTES = {
     "/api/v2/atm/protection-coverage": lambda: _atm_protection_coverage(),
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
+    "/api/v2/atm/protection-adjustment-proposals": lambda: _atm_adjustment_proposals_list(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
     "/api/v2/portfolio/performance": portfolio_performance,
@@ -14921,6 +14957,38 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if key_encoded:
             try:
                 return 200, {"ok": True, "data": _journal_review_get(key_encoded)}
+            except Exception as e:
+                return 500, {"ok": False, "error": str(e)}
+
+    # Phase 192I — guarded operator approval (POST). Paper-only; calls the guarded engine.
+    if method == "POST" and base_path.startswith("/api/v2/atm/protection-adjustment-proposals/") \
+            and base_path.endswith("/approve"):
+        try:
+            pid = base_path[len("/api/v2/atm/protection-adjustment-proposals/"):-len("/approve")].strip("/")
+            pid = int(pid)
+            b = body or {}
+            operator = b.get("operator"); reason = b.get("reason")
+            confirm = bool(b.get("confirm", False))
+            if not operator or not reason:
+                return 400, {"ok": False, "error": "operator and reason required"}
+            from datetime import datetime as _dt192, timezone as _tz192
+            d = _dt192.now(_tz192.utc).strftime("%Y-%m-%d")
+            import apply_paper_protection_adjustment as _ppa
+            res = _ppa.apply(pid, operator, reason, confirm=confirm, action_date=d)
+            ok = res.get("status") in ("DRY_RUN_PREVIEW", "APPLIED")
+            return (200 if ok else 409), {"ok": ok, "data": res}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # Phase 192E — proposal detail (GET)
+    if base_path.startswith("/api/v2/atm/protection-adjustment-proposals/"):
+        pid = base_path[len("/api/v2/atm/protection-adjustment-proposals/"):].strip("/")
+        if pid and pid.isdigit():
+            try:
+                d = _atm_adjustment_proposal_detail(int(pid))
+                if d is None:
+                    return 404, {"ok": False, "error": "proposal not found"}
+                return 200, {"ok": True, "data": d}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
 
