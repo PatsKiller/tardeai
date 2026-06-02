@@ -13647,6 +13647,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if base_path == "/api/v2/hermes/advisory-choice":
             try:
                 import json as _jac2
+                from datetime import datetime as _dtac, timezone as _tzac
                 b = body or {}
                 choice = {
                     "opinion_id": b.get("opinion_id"),
@@ -13656,13 +13657,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "strategy": b.get("strategy"),
                     "operator_choice": b.get("operator_choice"),
                     "choice_reason": b.get("choice_reason", ""),
-                    "chosen_at": datetime.now(timezone.utc).isoformat(),
+                    "chosen_at": _dtac.now(_tzac.utc).isoformat(),
                     "advisory_only": True,
                     "no_execution": True,
                 }
                 choices_dir = PROJECT_ROOT / "data" / "advisory" / "operator_choices"
                 choices_dir.mkdir(parents=True, exist_ok=True)
-                today = datetime.now().strftime("%Y-%m-%d")
+                today = _dtac.now().strftime("%Y-%m-%d")
                 with open(choices_dir / f"{today}_choices.jsonl", "a") as f:
                     f.write(_jac2.dumps(choice, default=str) + "\n")
                 return 200, {"ok": True, "data": {"saved": True, "choice": choice}}
