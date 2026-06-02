@@ -4,6 +4,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import OpenTradesCard from '../components/OpenTradesCard'
 import PageHeader from '../components/PageHeader'
 import SectionHeader from '../components/SectionHeader'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 import MetricTile from '../components/MetricTile'
 import { fmt$, fmtPct } from '../lib/format'
 
@@ -197,6 +198,10 @@ function TradeExpansion({ trade }: { trade: any }) {
           ]} />
         </>
       )}
+
+      {/* Hermes Second Opinion */}
+      <div style={sLbl}>HERMES OPINION</div>
+      <InlineDualOpinionPanel symbol={t.symbol} strategy={t.strategy_id} compact={false} />
 
       {/* Journal Review */}
       {t.journal_reviews?.length > 0 && (
