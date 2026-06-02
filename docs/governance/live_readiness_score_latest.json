@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-06-02T03:30:34.566864+00:00",
+  "score": 42,
+  "level": "EARLY",
+  "blockers": [
+    "Sample size 24 < 2,000 minimum",
+    "Backtest coverage 0.0% < 90% minimum",
+    "Hermes audit coverage 0.0% < 95% minimum",
+    "Level 7 not separately approved",
+    "Operator has not given explicit live trading approval"
+  ],
+  "dimensions": {
+    "sample_size": 0,
+    "journal_quality": 0,
+    "strategy_performance": 20,
+    "risk_control": 15,
+    "backtest_alignment": 0,
+    "hermes_audit": 0,
+    "shadow_learning": 0,
+    "operational_reliability": 3,
+    "alert_quality": 2,
+    "paper_live_separation": 2
+  },
+  "live_trading_prohibited": true,
+  "level_7_prohibited": true
+}
