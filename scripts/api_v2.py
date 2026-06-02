@@ -18903,6 +18903,63 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
+    # ── Paper Trade Readiness endpoint ──────────────────────────────────────
+    if base_path == "/api/v2/paper-trade-readiness":
+        try:
+            stats_path = PROJECT_ROOT / "data" / "paper_trading" / "paper_trade_statistics_latest.json"
+            if stats_path.exists():
+                stats = json.loads(stats_path.read_text())
+                # Compact summary for dashboard
+                r = stats.get("readiness", {})
+                p = stats.get("performance", {})
+                s = stats.get("size", {})
+                c = stats.get("counts", {})
+                fc = stats.get("field_completeness", {})
+                lk = stats.get("linkage", {})
+                strategies = stats.get("by_strategy", [])
+                top_strats = sorted([st for st in strategies if st.get("closed", 0) > 0], key=lambda x: -x.get("closed", 0))[:8]
+                return 200, {"ok": True, "data": {
+                    "level": r.get("level"),
+                    "closed_usable": r.get("closed_usable"),
+                    "target_2000": 2000,
+                    "target_4000": 4000,
+                    "pct_to_2000": r.get("pct_to_2000"),
+                    "pct_to_4000": r.get("pct_to_4000"),
+                    "distance_to_2000": r.get("distance_to_2000"),
+                    "distance_to_4000": r.get("distance_to_4000"),
+                    "avg_notional": s.get("avg_notional"),
+                    "avg_risk": s.get("avg_risk"),
+                    "win_rate": p.get("win_rate"),
+                    "profit_factor": p.get("profit_factor"),
+                    "expectancy": p.get("expectancy"),
+                    "net_pnl": p.get("net_pnl"),
+                    "max_drawdown": p.get("max_drawdown"),
+                    "total_trades": c.get("total_trades"),
+                    "open_trades": c.get("open_trades"),
+                    "journal_completeness": {k: v.get("pct") for k, v in fc.items()},
+                    "linkage": lk,
+                    "top_strategies": top_strats,
+                    "live_trading_prohibited": True,
+                    "level_7_prohibited": True,
+                    "timestamp": stats.get("timestamp"),
+                }}
+            # If no stats file, run live
+            import sys as _sysptr
+            _sysptr.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from paper_trade_statistics import compute_statistics
+            stats = compute_statistics()
+            r = stats.get("readiness", {})
+            return 200, {"ok": True, "data": {
+                "level": r.get("level"),
+                "closed_usable": r.get("closed_usable"),
+                "pct_to_2000": r.get("pct_to_2000"),
+                "pct_to_4000": r.get("pct_to_4000"),
+                "live_trading_prohibited": True,
+                "level_7_prohibited": True,
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
     # ── System Facts endpoint ─────────────────────────────────────────────
     if base_path == "/api/v2/system-facts":
         try:
