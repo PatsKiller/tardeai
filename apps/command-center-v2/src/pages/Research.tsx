@@ -8,6 +8,7 @@ import { useFetch } from '../hooks/useFetch'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtPct, fmtCompact, deltaColor, timeAgo } from '../lib/format'
 import type { Enrichment } from '../lib/types'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 interface Article { title: string; source: string; llm_score: number; published_at: string; llm_category: string; url?: string }
 interface ResearchResp {

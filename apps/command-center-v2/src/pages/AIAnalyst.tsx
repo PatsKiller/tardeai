@@ -8,6 +8,7 @@ import { timeAgo } from '../lib/format'
 import PositionCard from '../components/ai-analyst/PositionCard'
 import StrategyCard from '../components/ai-analyst/StrategyCard'
 import { DoughnutChart, BarChartJS } from '../components/charts'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 /*
   AI Analyst — Interactive Intelligence Dashboard (Grok visual + working data)
@@ -162,6 +163,9 @@ export default function AIAnalyst() {
       <div style={{ padding: '6px 12px', marginBottom: 10, background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 8, fontSize: 10, color: 'var(--amber)' }}>
         Advisory only — all trades must be executed manually at your broker (Fidelity/Schwab). This app does not place or cancel orders.
       </div>
+
+      {/* Hermes Second Opinion — portfolio level */}
+      <InlineDualOpinionPanel compact={true} />
 
       {/* Narrative source banner — always shown */}
       {data?.has_data && (

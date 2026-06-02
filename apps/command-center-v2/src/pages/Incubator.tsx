@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 const STATE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   ROLLED_ON:             { bg: '#422006', text: '#F59E0B', border: '#92400E' },

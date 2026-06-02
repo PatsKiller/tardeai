@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 const REC_COLOR: Record<string, string> = {
   BUY: '#0ecb81', ADD: '#0ecb81', HOLD: '#4a90f4', NEUTRAL: '#8891a0',
@@ -47,6 +48,9 @@ export default function WatchlistSymbolPage() {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+
+      {/* Hermes Second Opinion */}
+      <InlineDualOpinionPanel symbol={symbol} compact={false} />
 
       {/* HEADER */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>

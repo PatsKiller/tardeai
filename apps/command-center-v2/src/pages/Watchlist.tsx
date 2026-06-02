@@ -8,6 +8,7 @@ import WatchlistSymbolPanel from '../components/WatchlistSymbolPanel'
 import { ConfluenceBadge } from '../components/ConfluenceBadge'
 import { useApi } from '../hooks/useApi'
 import { useToast } from '../components/ToastProvider'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 
 /*
   Watchlist Agent Workbench — Phase 12/13: Symbol Master + Account Holdings
