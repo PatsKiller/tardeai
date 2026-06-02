@@ -523,16 +523,19 @@ class AlpacaPaperAdapter:
                 entry_price=_actual_entry, stop_loss=stop_price, direction='long')
             if _stop_recalced:
                 log.warning(f"[alpaca] {symbol} stop recalculated: ${stop_price}→${effective_stop} ({_stop_reason})")
+            # Phase 190C: track broker confirmation of the protective stop.
+            stop_placed = False
+            stop_broker_id = None  # set ONLY from a confirmed broker API response
             if (use_market or _extended_hours) and fill_status == 'filled':
-                stop_placed = False
                 for _sa in range(3):
                     try:
                         stop_order = {
                             'symbol': symbol, 'qty': str(filled_qty or shares), 'side': 'sell',
                             'type': 'stop', 'stop_price': str(effective_stop), 'time_in_force': 'gtc',
                         }
-                        self._api_post('/v2/orders', stop_order)
-                        log.info(f"[alpaca] {symbol} STOP set @ ${effective_stop}")
+                        _stop_resp = self._api_post('/v2/orders', stop_order)
+                        stop_broker_id = (_stop_resp or {}).get('id')
+                        log.info(f"[alpaca] {symbol} STOP set @ ${effective_stop} (broker order {stop_broker_id})")
                         stop_placed = True
                         break
                     except Exception as _se:
@@ -593,9 +596,28 @@ class AlpacaPaperAdapter:
                 elapsed = revalidation_snapshot.get("elapsed_since_approval_seconds")
                 _staleness_min = int(elapsed / 60) if elapsed else None
 
+            # Phase 190C: derive the stop note + tracking metadata from BROKER CONFIRMATION,
+            # never from the use_market boolean. A note must not claim "placed" without proof.
+            if use_market or _extended_hours:
+                if stop_broker_id:
+                    _stop_desc = f"broker-confirmed (order {stop_broker_id})"
+                    _stop_status, _stop_src = "STOP_CONFIRMED", "alpaca_post_confirmed"
+                elif stop_placed:
+                    _stop_desc = "STOP_SUBMITTED_UNCONFIRMED (no broker id returned)"
+                    _stop_status, _stop_src = "STOP_SUBMITTED_UNCONFIRMED", None
+                else:
+                    _stop_desc = "STOP_PLACEMENT_FAILED"
+                    _stop_status, _stop_src = "STOP_PLACEMENT_FAILED", None
+            else:
+                # atomic bracket: stop is a child leg, confirmed via the accepted parent order
+                _stop_desc = f"atomic bracket (parent {order_id})"
+                _stop_status, _stop_src = "STOP_BRACKET_CHILD", "alpaca_bracket"
+            _prot_status = "PROTECTED_TRACKED" if stop_broker_id else (
+                "PROTECTED_UNRECORDED" if _stop_status in ("STOP_SUBMITTED_UNCONFIRMED", "STOP_BRACKET_CHILD") else "NAKED")
+            _prot_defect = None if stop_broker_id else _stop_status
             cur.execute("""
                 INSERT INTO paper_trades (proposal_id, strategy_id, symbol, account, shares, dollar_size,
-                    stop_loss, target_1, planned_entry, entry_price, dollar_risk,
+                    stop_loss, planned_stop, target_1, planned_entry, entry_price, dollar_risk,
                     broker_order_id, broker_status, order_type,
                     market_regime, vix_at_entry,
                     status, opened_via, logged_by, risk_gate_result,
@@ -603,9 +625,11 @@ class AlpacaPaperAdapter:
                     filled_at, submitted_at,
                     revalidation_verdict, revalidation_score, revalidation_flags,
                     price_at_approval, staleness_at_submit_min,
+                    stop_order_id, stop_verified_at, stop_verified_source, broker_stop_status,
+                    current_stop, protection_status, protection_defect_reason,
                     notes)
                 VALUES (%s, %s, %s, 'ALPACA_PAPER', %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s,
                     %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED',
@@ -613,9 +637,11 @@ class AlpacaPaperAdapter:
                     NOW(), NOW(),
                     %s, %s, %s,
                     %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
                     %s)
             """, [proposal_id, strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
-                  effective_stop, target_price, entry_price, actual_entry,
+                  effective_stop, effective_stop, target_price, entry_price, actual_entry,
                   round(abs(actual_entry - effective_stop) * actual_shares, 2),
                   order_id, fill_status,
                   'market' if use_market else 'bracket',
@@ -623,8 +649,10 @@ class AlpacaPaperAdapter:
                   _risk_snap, _db_status,
                   _reval_verdict, _reval_score, _reval_flags,
                   _price_at_approval, _staleness_min,
+                  stop_broker_id, (datetime.now(timezone.utc) if stop_broker_id else None), _stop_src, _stop_status,
+                  effective_stop, _prot_status, _prot_defect,
                   f"Order type: {order_type_reason}. Fill verified: {fill_status}. "
-                  f"Shares: {actual_shares}. Stop: ${stop_price} ({'atomic bracket' if not use_market else 'placed after fill'})."])
+                  f"Shares: {actual_shares}. Stop: ${effective_stop} {_stop_desc}."])
             conn.commit()
 
             log.info(f"[alpaca] Order complete: {symbol} {actual_shares}sh @ ${actual_entry:.2f} "
