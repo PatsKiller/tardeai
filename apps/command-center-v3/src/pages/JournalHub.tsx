@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
+import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Analytics', 'Lessons'] as const
+const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection'] as const
 
 export default function JournalHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
@@ -101,6 +102,8 @@ export default function JournalHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/journal/closed-trades/lessons</div>
         </div>
       )}
+
+      {tab === 'Protection' && <ProtectionOutcomesPanel onDrill={onDrill} />}
     </div>
   )
 }
