@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import InlineDualOpinionPanel from '../components/InlineDualOpinionPanel'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   ReferenceLine, ResponsiveContainer, LineChart, Line,
@@ -253,12 +254,15 @@ export default function Backtesting() {
         </div>
       )}
 
-      {/* Strategy chip */}
+      {/* Strategy chip + Hermes opinion */}
       {selectedStrategy && (
+        <>
+        <InlineDualOpinionPanel strategy={selectedStrategy} compact={true} />
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 12px', marginBottom: 14, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.35)', borderRadius: 20, fontSize: 12, color: '#a5b4fc' }}>
           <span>Drill-down: <strong>{safeStr(selectedStrategy)}</strong></span>
           <button onClick={() => setSelectedStrategy(null)} style={{ background: 'none', border: 'none', color: '#a5b4fc', cursor: 'pointer', fontSize: 14, padding: 0 }}>x</button>
         </div>
+        </>
       )}
 
       {/* Global Filters */}

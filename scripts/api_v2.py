@@ -12967,17 +12967,42 @@ def _hermes_dual_opinion():
 
 
 def _hermes_dual_opinion_inline():
-    """GET /api/v2/hermes/dual-opinion/inline — filter dual opinions by symbol/strategy."""
+    """GET /api/v2/hermes/dual-opinion/inline — filter dual opinions by symbol/strategy/type."""
+    import json as _jdoi
     qs = _current_query or {}
     symbol_f = qs.get("symbol")
     strategy_f = qs.get("strategy")
-    data = _hermes_dual_opinion()
-    opinions = data.get("opinions", [])
+    obj_type_f = qs.get("object_type")
+    obj_id_f = qs.get("object_id")
+
+    # Gather from all opinion sources
+    all_opinions = []
+    opinion_dirs = [
+        PROJECT_ROOT / "data" / "advisory" / "dual_opinion",
+        PROJECT_ROOT / "data" / "advisory" / "journal_dual_opinions",
+        PROJECT_ROOT / "data" / "advisory" / "backtest_dual_opinions",
+    ]
+    for d in opinion_dirs:
+        if not d.exists():
+            continue
+        for f in sorted(d.glob("*.json"), reverse=True)[:1]:
+            try:
+                data = _jdoi.loads(f.read_text())
+                all_opinions.extend(data.get("opinions", []))
+            except Exception:
+                pass
+
+    # Filter
     if symbol_f:
-        opinions = [o for o in opinions if o.get("symbol") == symbol_f]
+        all_opinions = [o for o in all_opinions if o.get("symbol") == symbol_f]
     if strategy_f:
-        opinions = [o for o in opinions if o.get("strategy") == strategy_f]
-    return {"opinions": opinions, "total": len(opinions)}
+        all_opinions = [o for o in all_opinions if o.get("strategy") == strategy_f]
+    if obj_type_f:
+        all_opinions = [o for o in all_opinions if o.get("object_type") == obj_type_f]
+    if obj_id_f:
+        all_opinions = [o for o in all_opinions if str(o.get("object_id")) == str(obj_id_f)]
+
+    return {"opinions": all_opinions, "total": len(all_opinions)}
 
 
 def _system_siem_dashboard():
