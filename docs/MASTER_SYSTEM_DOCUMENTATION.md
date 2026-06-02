@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-05-31 (Master rewrite — model routing, Hermes sidecar, strategy count, architecture consolidation)
+**Document version:** 2026-06-02 (Phase 190 — stop protection verification & tracking added to §10/§18b; prior: 2026-05-31 master rewrite)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 
@@ -1123,6 +1123,32 @@ Even if the revalidator passes, `alpaca_paper_adapter.py` → `submit_entry()` e
 
 The adapter accepts a `validated_price` parameter from the revalidator to eliminate the TOCTOU (time-of-check-to-time-of-use) gap. If the adapter's own price fetch fails, it uses the revalidator's validated price. The adapter also accepts a `revalidation_snapshot` parameter containing the full recheck result, which is persisted to `paper_trades` for journal audit trail (Gap 7).
 
+### Stop Protection Verification & Tracking (Phase 190)
+
+Protective stops are now **provable** from the DB, not just placed at the broker. Root cause of
+the prior gap: `alpaca_sync` onboarded positions with no stop metadata, and the adapter's post-fill
+stop path discarded the broker order id — so positions could be hedged at the broker yet appear
+unprotected in the DB (and no monitor alerted).
+
+**Protection metadata columns on `paper_trades`** (migration `migrations/2026_06_02_phase190_protection.sql`):
+`stop_order_id`, `stop_verified_at`, `stop_verified_source`, `broker_stop_status`, `current_stop`,
+`protection_status` (`PROTECTED_TRACKED` / `PROTECTED_UNRECORDED` / `NAKED`),
+`protection_defect_reason`, `take_profit_order_id`, `profit_protection_status`, `trailing_active`,
+`trailing_policy_version`, `last_broker_protection_check_at`.
+
+| Component | File | Role |
+|-----------|------|------|
+| Broker stop verifier | `verify_paper_trade_broker_stops.py` | Reads Alpaca **paper** order book (GET-only), matches stop orders to open trades, persists `stop_order_id` + verification metadata. Never places/modifies/cancels orders. |
+| Stop-confirmation fix | `alpaca_paper_adapter.py` → `submit_entry()` | Captures the `_api_post` stop response; records `stop_order_id` + note from **broker confirmation**, never from the `use_market` boolean. Unconfirmed → `STOP_SUBMITTED_UNCONFIRMED`; failed → existing close-unhedged path. |
+| Protection defect detector | `protection_alerts.py` | Reads `paper_trades` (not brokerage JSON); detects naked / untracked / large-gain-no-TP / unverified-note; emits SIEM (`alert_events`, deduped 6h) + Telegram gate (`PROTECTION_ALERTS_TELEGRAM`). Invoked best-effort by `unified_stop_supervisor.py`. |
+| Hermes protection surface | view `hermes_v_open_position_protection_context` + `hermes_open_position_protection_check.py` | Advisory findings (`open_position_no_broker_stop`, `broker_stop_exists_db_untracked`, `large_gain_no_take_profit`, `stop_note_unverified`, `protection_metadata_mismatch`, `stale_quote_blocking_protection_review`). |
+| Dashboard endpoint | `api_v2.py` → `GET /api/v2/atm/protection-coverage` | Read-only protection coverage counts + defects-by-symbol for the ATM panel. |
+
+**Lifecycle note:** premarket/pre-open proposals currently loop through delayed-revalidation
+instead of being parked. A `PENDING_TRADING_WINDOW` lifecycle is **designed** (advisory analyzer
+`pending_trading_window.py`); wiring into the approver is deferred to Phase 191 to avoid GO/WAIT
+changes.
+
 ### Proposal Lifecycle State Machine
 
 **Implemented in:** `proposal_paper_submitter.py` → `submit_paper()`
@@ -1864,6 +1890,8 @@ Hermes is Trade AI's near-24/7 research desk, second brain, memory layer, and in
 **Staging tables (6):** hermes_research_intelligence, hermes_validation_findings, hermes_alerts, hermes_embedding_queue, hermes_memory_events, hermes_promotion_audit
 
 **Promoted advisory cache:** 7 rows in `llm_intelligence_cache` (hermes_* namespaced sections). Advisory only — not execution signals.
+
+**Open-position protection surface (Phase 190):** safe view `hermes_v_open_position_protection_context` exposes broker-stop/take-profit/protection state for open paper trades; `hermes_open_position_protection_check.py` writes advisory `hermes_validation_findings` (6 protection finding types) → `hermes_alerts`. Advisory only — no trade mutation. See §10 *Stop Protection Verification & Tracking*.
 
 **Full documentation:** `docs/hermes/` (design, architecture, phase reports, rollback files, operator runbook)
 
