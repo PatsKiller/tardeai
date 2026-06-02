@@ -14,6 +14,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
+  const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
 
   const sectors = overview?.sectors ?? []
   const holdingsList = holdings?.holdings ?? []
@@ -112,7 +113,24 @@ export default function PortfolioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Returns' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Returns tab — awaiting period-return data integration</div>}
+      {tab === 'Returns' && perfData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Portfolio Performance</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)', marginBottom: 12 }}>{fmt$(perfData.current_value ?? 0, 0)}</div>
+          {perfData.periods && Object.entries(perfData.periods).map(([period, data]: [string, any]) => (
+            <div key={period} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+              <span style={{ color: 'var(--text2)' }}>{period}</span>
+              <span style={{ color: (data?.change_pct ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>
+                {data?.change_pct != null ? `${data.change_pct >= 0 ? '+' : ''}${data.change_pct.toFixed(2)}%` : '—'}
+              </span>
+              <span style={{ color: 'var(--text2)' }}>{data?.change != null ? fmt$(data.change, 0) : '—'}</span>
+            </div>
+          ))}
+          {perfData.warning && <div style={{ fontSize: 9, color: '#f59e0b', marginTop: 8 }}>{perfData.warning}</div>}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/portfolio/performance</div>
+        </div>
+      )}
+      {tab === 'Returns' && !perfData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading performance data...</div>}
       {tab === 'Tax' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Tax Lots ({taxLots?.count ?? 0})</div>

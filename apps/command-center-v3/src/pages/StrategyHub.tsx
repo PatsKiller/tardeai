@@ -14,6 +14,7 @@ export default function StrategyHub({ onDrill }: Props) {
   const { data: desk } = useApi<any>('/api/v2/strategy-desk', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: btResults } = useApi<any>('/api/v2/backtesting/results', 120_000)
+  const { data: btStatus } = useApi<any>('/api/v2/backtesting/status', 120_000)
 
   const strategies = intel?.strategies ?? []
   const configMap = configs?.strategies ?? {}
@@ -229,8 +230,49 @@ export default function StrategyHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Incubator' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Incubator tab — awaiting spec build</div>}
-      {tab === 'Backtest' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Backtest tab — awaiting spec build</div>}
+      {tab === 'Incubator' && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Incubator</div>
+          <div style={{ color: 'var(--text3)', fontSize: 11 }}>Incubator lifecycle managed via /api/v2/incubator — awaiting deeper tab integration</div>
+        </div>
+      )}
+
+      {tab === 'Backtest' && btData.length > 0 && (
+        <div>
+          {/* Backtest status */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+            {(() => { const s = btStatus; return ['runs_total','trades_total','datasets_total','classification_pct'].map(k => (
+              <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>{s?.[k] ?? '—'}{k === 'classification_pct' ? '%' : ''}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</div>
+              </div>
+            )) })()}
+          </div>
+          {/* Results table */}
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Backtest Results ({btData.length})</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
+              <span>Strategy</span><span>Type</span><span>Trades</span><span>Win Rate</span><span>PF</span><span>Avg R</span><span>Total PnL</span>
+            </div>
+            {btData.sort((a: any, b: any) => (b.simulated_trades ?? 0) - (a.simulated_trades ?? 0)).map((r: any, i: number) => (
+              <div key={i} onClick={() => onDrill({ title: r.strategy_id, subtitle: `${r.run_type} · ${r.simulated_trades} trades`, endpoint: '/api/v2/backtesting/results', rows: [r] })}
+                style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                <span style={{ color: 'var(--text0)', fontFamily: 'monospace', fontSize: 10 }}>{r.strategy_id?.slice(0, 25)}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{r.run_type}</span>
+                <span style={{ color: 'var(--text2)' }}>{r.simulated_trades}</span>
+                <span style={{ color: (r.win_rate ?? 0) >= 55 ? '#22c55e' : (r.win_rate ?? 0) >= 45 ? '#f59e0b' : '#ef4444' }}>{r.win_rate?.toFixed(1)}%</span>
+                <span style={{ color: 'var(--text2)' }}>{r.profit_factor?.toFixed(2) ?? '—'}</span>
+                <span style={{ color: 'var(--text2)' }}>{r.avg_pnl?.toFixed(2) ?? '—'}</span>
+                <span style={{ color: (r.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>${r.total_pnl?.toFixed(0) ?? '—'}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/backtesting/results (28 results, run_types: champion, replay_proposals, replay_trades)</div>
+          </div>
+        </div>
+      )}
+      {tab === 'Backtest' && btData.length === 0 && (
+        <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>No backtest results available</div>
+      )}
     </div>
   )
 }

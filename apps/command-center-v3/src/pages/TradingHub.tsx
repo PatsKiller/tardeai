@@ -12,8 +12,11 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
+  const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000)
+  const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000)
 
   const trades = openTrades?.trades ?? []
+  const execList: any[] = Array.isArray(execQual) ? execQual : []
   const propList = proposals?.proposals ?? []
   const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED')
   const alpaca = paperStatus?.alpaca ?? {}
@@ -98,8 +101,36 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Execution' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Execution quality tab — awaiting data integration</div>}
-      {tab === 'Scalp' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Scalp live tab — awaiting data integration</div>}
+      {tab === 'Execution' && execQual && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Execution Quality ({execList.length} records)</div>
+          {execList.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data</div> :
+          execList.slice(0, 15).map((e: any) => (
+            <div key={e.id} onClick={() => onDrill({ title: `${e.symbol} TCA`, subtitle: `fill_quality: ${e.fill_quality ?? '—'}`, endpoint: '/api/v2/execution-quality', rows: [e] })}
+              style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+              <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{e.symbol}</span>
+              <span style={{ color: 'var(--text2)' }}>slip: {e.slippage_pct != null ? `${e.slippage_pct.toFixed(2)}%` : '—'}</span>
+              <span style={{ color: 'var(--text2)' }}>fill: {e.fill_quality ?? '—'}</span>
+              <span style={{ fontSize: 9, color: 'var(--text3)' }}>{e.market_session ?? '—'}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality</div>
+        </div>
+      )}
+
+      {tab === 'Scalp' && scalpData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Scalp Live ({scalpData.count ?? 0} signals)</div>
+          {(scalpData.signals ?? []).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No live scalp signals</div> :
+          (scalpData.signals ?? []).slice(0, 10).map((s: any, i: number) => (
+            <div key={i} onClick={() => onDrill({ title: s.symbol ?? `Signal ${i}`, subtitle: 'Scalp', endpoint: '/api/v2/scalp/live', rows: [s] })}
+              style={{ padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
+              {s.symbol ?? JSON.stringify(s).slice(0, 80)}
+            </div>
+          ))}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live</div>
+        </div>
+      )}
     </div>
   )
 }

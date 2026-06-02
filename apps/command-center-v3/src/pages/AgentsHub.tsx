@@ -9,6 +9,8 @@ export default function AgentsHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Roster')
   const { data: summary } = useApi<any>('/api/v2/agents/summary', 120_000)
 
+  const { data: perfData } = useApi<any>('/api/v2/agent-performance', 120_000)
+  const { data: calData } = useApi<any>('/api/v2/agent-calibration/status', 120_000)
   const agents = summary?.agents ?? []
   const handoffs = summary?.handoffs ?? []
 
@@ -49,8 +51,34 @@ export default function AgentsHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Performance' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Agent performance — awaiting data integration</div>}
-      {tab === 'Calibration' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Agent calibration — awaiting data integration</div>}
+      {tab === 'Performance' && perfData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Agent Performance History</div>
+          {(perfData.history ?? []).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No performance history recorded</div> :
+          (perfData.history ?? []).slice(0, 15).map((h: any, i: number) => (
+            <div key={i} onClick={() => onDrill({ title: h.agent_name ?? `Entry ${i}`, subtitle: 'Performance', endpoint: '/api/v2/agent-performance', rows: [h] })}
+              style={{ padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, color: 'var(--text2)' }}>
+              {h.agent_name ?? ''}: {h.metric ?? ''} = {h.value ?? JSON.stringify(h).slice(0, 80)}
+            </div>
+          ))}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/agent-performance</div>
+        </div>
+      )}
+
+      {tab === 'Calibration' && calData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Agent Calibration</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+            {['recommendations_total', 'calibration_events_total', 'disagreements_total'].map(k => (
+              <div key={k} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text0)' }}>{calData[k] ?? 0}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/agent-calibration/status</div>
+        </div>
+      )}
     </div>
   )
 }

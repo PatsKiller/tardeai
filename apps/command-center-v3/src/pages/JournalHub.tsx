@@ -10,6 +10,7 @@ export default function JournalHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Trades')
   const { data: journal } = useApi<any>('/api/v2/automated-trade-journal', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
+  const { data: lessonsData } = useApi<any>('/api/v2/journal/closed-trades/lessons', 120_000)
 
   const trades = journal?.trades ?? []
   const openTrades = trades.filter((t: any) => t.status === 'open')
@@ -85,7 +86,21 @@ export default function JournalHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Lessons' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Trade lessons — awaiting data integration</div>}
+      {tab === 'Lessons' && lessonsData && (
+        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Trade Lessons ({lessonsData.count ?? 0})</div>
+          {(lessonsData.lessons ?? []).length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No lessons recorded yet</div> :
+          (lessonsData.lessons ?? []).slice(0, 15).map((l: any, i: number) => (
+            <div key={i} onClick={() => onDrill({ title: l.lesson_category ?? `Lesson ${i}`, subtitle: l.strategy_id ?? '', endpoint: '/api/v2/journal/closed-trades/lessons', rows: [l] })}
+              style={{ padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text0)' }}>{l.lesson_category ?? l.lesson_type ?? '—'}</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>{(l.lesson_text ?? l.summary ?? JSON.stringify(l)).slice(0, 120)}</div>
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 2 }}>{l.strategy_id ?? ''} · {l.symbol ?? ''}</div>
+            </div>
+          ))}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/journal/closed-trades/lessons</div>
+        </div>
+      )}
     </div>
   )
 }
