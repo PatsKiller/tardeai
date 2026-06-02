@@ -1,6 +1,6 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-06-01
+**Updated:** 2026-06-02
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
 ---
@@ -494,6 +494,42 @@
 | `docs/journal_sandbox/` | Journal insight samples |
 | `docs/holdings_sandbox/` | Holdings discrepancy samples |
 | `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | 187 crons + 4 systemd documented |
+
+### Phases 176-178: Queue Control Tower Upgrades
+| Document/Route | Purpose |
+|----------------|---------|
+| Queue failure drilldown | LLM queue expandable drawer, error messages, safe requeue (max 3) |
+| Operator approval gate | approve/reject endpoints, worker only picks 'approved' in --apply |
+| Cron compression | 172 crons / 115 scripts, 24 consolidation candidates, bar chart |
+
+### Phases 179-182: Paper Trading Statistical Readiness
+| Document | Purpose |
+|----------|---------|
+| `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | 44 trades, 24 closed, field completeness audit |
+| `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Statistics: WR 45.8%, PF 6.35, P0 readiness |
+| `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | P0-P5 readiness levels with data quality gates |
+| `docs/paper_trading/PHASE179E_PAPER_TRADING_READINESS_DASHBOARD_REPORT.md` | Dashboard widget at /paper-status |
+| `scripts/paper_trade_statistics.py` | Statistics script — 30+ metrics |
+| `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | ATM config: 6 max concurrent, 3 max/day, $100K paper |
+| `docs/atm/PHASE180B_ATM_PAPER_SCALE_UP_RISK_POLICY.md` | 4-stage ramp policy, decreasing position sizes |
+| `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | 25→50→100→200 trades/day, stage gates |
+| `docs/atm/PHASE180D_ATM_PAPER_ONLY_GUARDRAILS_REPORT.md` | Guardrails verified: ALPACA_MODE=paper, live blocked |
+| `docs/learning/PHASE181A_PAPER_TRADE_CLOSED_LOOP_FIELD_MAP.md` | 10-stage field map, broken link analysis |
+| `docs/learning/PHASE181C_CURRENT_PAPER_TRADE_LOOP_VALIDATION_REPORT.md` | 0/24 fully closed, 24 partial, 0 broken |
+| `docs/learning/PHASE181D_HERMES_PAPER_TRADE_AUDIT_INTEGRATION.md` | Hermes trade audit design spec |
+| `docs/learning/PHASE181E_PAPER_TRADE_BACKTEST_COMPARISON_INTEGRATION.md` | Backtest comparison design spec |
+| `scripts/validate_paper_trade_learning_loop.py` | Closed-loop validator |
+| `docs/governance/PHASE182A_LIVE_READINESS_EVIDENCE_STANDARD.md` | Evidence: 2,000+ trades, 95%+ journal, 90%+ backtest |
+| `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | 10-dimension scoring, 100 points |
+| `scripts/generate_live_readiness_report.py` | Report generator — score 42/100 (EARLY) |
+| `docs/governance/LIVE_AUTOMATION_READINESS_REPORT_latest.md` | Latest readiness report |
+
+### Close Path Fixes
+| Fix | Impact |
+|-----|--------|
+| All 6 close paths now compute hold_time_min, pnl, pnl_pct, r_multiple | hold_time 8%→100%, pnl 75%→100%, exit_price 75%→100% |
+| Hardcoded paper-api URLs replaced with ALPACA_MODE env var | Safety: blocks non-paper mode |
+| 23 existing trades backfilled | 0 broken loop trades (was 4) |
 
 ### Generated Output (not authoritative)
 | Path | Content |
