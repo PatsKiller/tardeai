@@ -13863,7 +13863,10 @@ def _atm_advisory_outcomes():
     outcomes = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
     closed = [o for o in outcomes if o.get("record_kind") == "final_closed"]
     baseline = [o for o in closed if not o.get("advisory_existed")]
-    baseline_gaveback = [o for o in baseline if o.get("gave_back_profit")]
+    # give-back is only scored on trades with authoritative bar-based MFE (others are unknown)
+    measurable = [o for o in baseline if o.get("mfe_source") == "bar_analysis"]
+    measurable_gaveback = [o for o in measurable if o.get("gave_back_profit")]
+    total_left = sum(float(o.get("profit_left_on_table_usd") or 0) for o in measurable)
     summary = {
         "total": len(outcomes),
         "closed": len(closed),
@@ -13871,14 +13874,17 @@ def _atm_advisory_outcomes():
         "operator_accepted": len([o for o in outcomes if o.get("operator_decision") == "accepted"]),
         "operator_ignored": len([o for o in outcomes if o.get("operator_decision") == "ignored"]),
         "baseline_no_advisory": len(baseline),
-        "baseline_gave_back_profit": len(baseline_gaveback),
-        "baseline_gaveback_rate_pct": round(100 * len(baseline_gaveback) / len(baseline), 1) if baseline else None,
+        "baseline_measurable_with_bar_mfe": len(measurable),
+        "baseline_unmeasurable_no_mfe": len(baseline) - len(measurable),
+        "baseline_gave_back_profit": len(measurable_gaveback),
+        "baseline_gaveback_rate_pct_of_measurable": round(100 * len(measurable_gaveback) / len(measurable), 1) if measurable else None,
+        "baseline_profit_left_on_table_usd": round(total_left, 2),
         "advisory_accuracy_confirmed": len([o for o in closed if o.get("advisory_accuracy") == "confirmed"]),
         "advisory_accuracy_contradicted": len([o for o in closed if o.get("advisory_accuracy") == "contradicted"]),
-        "mfe_units_flagged": len([o for o in outcomes if o.get("mfe_raw") is not None and not o.get("mfe_units_validated")]),
     }
     return {"summary": summary, "outcomes": outcomes,
-            "note": "Learning telemetry. MFE units flagged for pipeline validation. No execution."}
+            "note": "Learning telemetry. Give-back scored ONLY on trades with bar-based MFE; "
+                    "others are honest unknowns. No execution."}
 
 
 def _atm_adjustment_proposals_list():

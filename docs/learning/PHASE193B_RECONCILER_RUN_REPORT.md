@@ -1,5 +1,13 @@
 # PHASE 193B — Reconciler Run Report
 
+> **⚠️ CORRECTION (Phase 194):** the "41.7% (10/24) gave back profit" figure below was computed on
+> the `max_favorable_excursion` column, which Phase 194 found was **unit-corrupted** (R-multiple
+> written into a %-column by `trade_execution_analyzer.py`). That figure is **RETRACTED**. The
+> honest, bar-validated result: of the **3** closed trades with authoritative bar-based MFE, **3/3
+> gave back profit, leaving $414.68 on the table**; the other 21 lack entry/exit timestamps and are
+> **unmeasurable**. See `docs/learning/PHASE194A_MFE_UNITS_FIX.md`.
+
+
 **Run:** 2026-06-02 ~12:20 ET · `scripts/reconcile_protection_advisory_outcomes.py` · paper only
 
 ---

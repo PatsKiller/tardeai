@@ -69,11 +69,17 @@ def run(persist=True):
         wc.execute(open(os.path.join(ROOT, "migrations/2026_06_02_phase193_advisory_outcomes.sql")).read())
         conn.commit()
 
-    cur.execute("""select id,symbol,status,entry_price,exit_price,current_price,shares,
-                          pnl,pnl_pct,unrealized_pnl,r_multiple,
-                          max_favorable_excursion mfe,max_adverse_excursion mae,
-                          stop_order_id,current_stop,take_profit_price,closed_at
-                   from paper_trades order by id""")
+    # Phase 194: MFE/give-back sourced from bar-based trade_mfe_analysis (authoritative:
+    # money_left in $, mfe_price for %). paper_trades.max_favorable_excursion is %, but is only
+    # reliable where a bar analysis exists; elsewhere it is NULL (honestly unknown).
+    cur.execute("""select pt.id,pt.symbol,pt.status,pt.entry_price,pt.exit_price,pt.current_price,
+                          pt.shares,pt.pnl,pt.pnl_pct,pt.unrealized_pnl,pt.r_multiple,
+                          pt.max_favorable_excursion mfe,pt.max_adverse_excursion mae,
+                          pt.stop_order_id,pt.current_stop,pt.take_profit_price,pt.closed_at,
+                          m.money_left, m.mfe_price
+                   from paper_trades pt
+                   left join trade_mfe_analysis m on m.trade_id = pt.id
+                   order by pt.id""")
     trades = cur.fetchall()
 
     # advisory per trade (latest)
@@ -89,7 +95,8 @@ def run(persist=True):
     applied = {r["trade_id"]: r for r in cur.fetchall()}
 
     out, counts = [], {"final_closed": 0, "interim_open": 0, "baseline_no_advisory": 0,
-                       "accepted": 0, "ignored": 0, "gave_back": 0, "mfe_flagged": 0}
+                       "accepted": 0, "ignored": 0, "gave_back": 0,
+                       "with_bar_mfe": 0, "mfe_unknown": 0}
     wc = conn.cursor()
     for t in trades:
         tid = t["id"]; a = adv.get(tid); ap = applied.get(tid)
@@ -106,11 +113,24 @@ def run(persist=True):
         else:
             operator_decision = "none"
 
-        # outcome math (MFE treated as % under a DOCUMENTED assumption; flagged unvalidated)
+        # Phase 194: give-back from AUTHORITATIVE bar analysis (money_left $). Only trades with a
+        # bar analysis get a give-back verdict; others are honestly 'unknown' (no fabrication).
         pnl_pct = f(t["pnl_pct"]); mfe = f(t["mfe"])
-        gave_back = bool(mfe is not None and pnl_pct is not None and mfe > pnl_pct)
-        plot_pct = round(max(0.0, mfe - pnl_pct), 2) if (mfe is not None and pnl_pct is not None) else None
-        mfe_validated = False  # source units inconsistent — see module docstring
+        money_left = f(t["money_left"]); mfe_price = f(t["mfe_price"])
+        has_bar = money_left is not None
+        mfe_validated = has_bar
+        mfe_source = "bar_analysis" if has_bar else "none"
+        if has_bar:
+            gave_back = bool(money_left > 0.0)
+            plot_usd = round(money_left, 2)
+            plot_pct = round((mfe_price - f(t["entry_price"])) / f(t["entry_price"]) * 100
+                             - (pnl_pct or 0), 2) if (mfe_price and t["entry_price"]) else None
+            if plot_pct is not None:
+                plot_pct = max(0.0, plot_pct)
+        else:
+            gave_back = None       # unknown — no reliable MFE
+            plot_usd = None
+            plot_pct = None
 
         # accuracy
         if not advisory_existed:
@@ -122,7 +142,12 @@ def run(persist=True):
             urged = (a.get("tradeai_action") in
                      ("URGENT_PROTECTION_REVIEW", "LOCK_PROFIT_ADVISORY", "TAKE_PROFIT_ADVISORY",
                       "MOVE_TO_BREAKEVEN_ADVISORY"))
-            accuracy = "confirmed" if (urged and gave_back) else ("contradicted" if urged else "baseline_no_advisory")
+            if gave_back is None:
+                accuracy = "unknown_no_mfe"   # closed but no reliable MFE to score against
+            elif urged:
+                accuracy = "confirmed" if gave_back else "contradicted"
+            else:
+                accuracy = "baseline_no_advisory"
 
         stop_before = f(ap["current_stop"]) if ap else (f(au["broker_order_before"]["stop_price"]) if au else None)
         stop_after = f(ap["proposed_stop"]) if ap else (f(au["broker_order_after"]["stop_price"]) if au else None)
@@ -151,11 +176,14 @@ def run(persist=True):
             "giveback_avoided": giveback_avoided,
             "gave_back_profit": gave_back,
             "profit_left_on_table_pct": plot_pct,
-            "take_profit_would_have_helped": (gave_back and t["take_profit_price"] is None) if closed else None,
-            "trailing_would_have_helped": gave_back if closed else None,
+            "profit_left_on_table_usd": plot_usd,
+            "mfe_source": mfe_source,
+            "take_profit_would_have_helped": (bool(gave_back) and t["take_profit_price"] is None) if (closed and gave_back is not None) else None,
+            "trailing_would_have_helped": gave_back if (closed and gave_back is not None) else None,
             "advisory_accuracy": accuracy,
             "mfe_units_validated": mfe_validated,
-            "notes": "MFE units inconsistent in source — flagged for pipeline validation." if mfe is not None else None,
+            "notes": ("MFE from bar analysis (authoritative)." if has_bar
+                      else "No bar-based MFE — give-back not scored (honest unknown)."),
         }
         # only persist rows that are interesting: closed trades, or trades with advisory/adjustment
         if not (closed or advisory_existed or adjustment_applied):
@@ -173,8 +201,10 @@ def run(persist=True):
             counts["ignored"] += 1
         if gave_back:
             counts["gave_back"] += 1
-        if mfe is not None and not mfe_validated:
-            counts["mfe_flagged"] += 1
+        if has_bar:
+            counts["with_bar_mfe"] += 1
+        elif closed:
+            counts["mfe_unknown"] += 1
 
         if persist:
             cols = list(rec.keys())
