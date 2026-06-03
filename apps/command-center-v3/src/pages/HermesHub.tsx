@@ -308,6 +308,41 @@ export default function HermesHub({ onDrill }: Props) {
             ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading...</div>}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/hermes/advisory-choices</div>
           </div>
+
+          {/* Discovery engines — research producers beyond the 7 core contract agents */}
+          {(() => {
+            const DISCOVERY: Record<string, string> = {
+              hermes_youtube_discovery: 'YouTube — SearXNG video search → transcripts',
+              catalyst_momentum_engine: 'Catalyst momentum — SearXNG news on movers',
+              source_discovery_agent: 'Source discovery — new research sources',
+              ticker_research_agent: 'Ticker thesis challenger',
+              news_research_agent: 'News research',
+            }
+            const engines = (footprint?.by_agent ?? []).filter((a: any) => DISCOVERY[a.agent])
+            if (engines.length === 0) return null
+            return (
+              <div style={{ gridColumn: '1 / -1', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Discovery Engines</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>Active research producers (SearXNG / YouTube → staged → curation → RAG), beyond the 7 core contract agents.</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 2fr 0.6fr 0.8fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                  <span>Engine</span><span>What it does · working on</span><span>Rows</span><span>Last run</span>
+                </div>
+                {engines.map((e: any) => {
+                  const cls = (e.classifications ?? []).map((c: any) => `${c.type.replace(/_/g, ' ')} ${c.n}`).join(' · ')
+                  return (
+                    <div key={e.agent} onClick={() => onDrill({ title: e.agent, subtitle: DISCOVERY[e.agent], endpoint: '/api/v2/hermes/agent-footprint', rows: [{ ...e, classifications: cls }] })}
+                      style={{ display: 'grid', gridTemplateColumns: '1.4fr 2fr 0.6fr 0.8fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--text0)', fontWeight: 600 }}>{e.agent.replace('hermes_', '').replace('_agent', '').replace('_engine', '')}</span>
+                      <span style={{ color: 'var(--text3)', fontSize: 9 }}>{DISCOVERY[e.agent]}{cls && <span style={{ color: 'var(--text2)' }}> · {cls}</span>}</span>
+                      <span style={{ color: '#60a5fa', fontWeight: 700 }}>{e.rows}</span>
+                      <span style={{ color: 'var(--text3)', fontSize: 9 }}>{e.last_active ?? '—'}</span>
+                    </div>
+                  )
+                })}
+                <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/hermes/agent-footprint (hermes_agent_name → research_type). YouTube discovery + catalyst momentum surfaced here.</div>
+              </div>
+            )
+          })()}
         </div>
       )}
 
