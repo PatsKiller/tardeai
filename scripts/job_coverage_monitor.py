@@ -58,6 +58,8 @@ REGISTRY = [
      "signal": ("db", "SELECT MAX(ingested_at) FROM youtube_transcripts")},
     {"name": "iris_proposal_curator", "schedule_match": "iris_proposal_curator.py", "cadence_h": 30,
      "signal": ("log", "iris_proposal_curator.log")},
+    {"name": "hermes_youtube_discovery", "schedule_match": "hermes_youtube_discovery.py", "cadence_h": 30,
+     "signal": ("log", "hermes_youtube_discovery.log")},
 ]
 
 

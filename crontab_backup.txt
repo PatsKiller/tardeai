@@ -396,3 +396,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 30 8,20 * * * cd $PROJ && $PY scripts/job_coverage_monitor.py >> logs/job_coverage_monitor.log 2>&1
 # Iris proposal curator — close the discovery loop (auto-apply hi-conf reclassify, expire stale discovery)
 20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1
+# Hermes YouTube discovery — SearXNG youtube search + transcript ingest for related targets
+0 14 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_yt_discovery.lock $PY scripts/hermes_youtube_discovery.py --apply --limit 8 --videos 2 >> logs/hermes_youtube_discovery.log 2>&1
+# YouTube cookie health → Telegram refresh alert (after the 19:00 ingest)
+45 19 * * * cd $PROJ && $PY scripts/youtube_cookie_health_check.py >> logs/youtube_cookie_health.log 2>&1
