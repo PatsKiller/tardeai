@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """alpaca_paper_reconciler.py — Audit paper_trades against Alpaca positions.
 
+SOURCE OF TRUTH: the broker (Alpaca) is authoritative. When the DB and broker
+disagree, the broker wins — every --fix overwrites DB metadata FROM the broker
+(entry price, share count, fill confirmation), never the reverse. We never push
+DB state onto the broker. A position exists iff the broker holds it; a position
+is flat iff the broker is flat (phantoms are closed by paper_trade_monitor's
+integrity_check, orphan broker positions are materialized by the adapter sync).
+
 Detects mismatches between DB and broker:
 - Positions in Alpaca but not in paper_trades (orphan broker positions)
 - Open paper_trades with no Alpaca position (phantom DB positions)
@@ -165,21 +172,25 @@ def reconcile(apply_fixes=False):
                     conn.commit()
                     fixes.append(f"#{t['id']} {sym}: set filled_at -> broker_confirmed=true")
 
-    # 4. Closed in DB but Alpaca still holds
-    if alpaca_by_sym:
-        syms = tuple(alpaca_by_sym.keys())
+    # 4. Broker holds but DB has ONLY closed records (no open record) → broker is source of
+    #    truth, so a position SHOULD be open. A closed record on a symbol that ALSO has a current
+    #    open record is just history (e.g. a prior round-trip on a symbol we re-entered) — NOT a
+    #    mismatch, so we only flag symbols the broker holds with no matching open DB trade. The
+    #    materialization of the missing open record is the adapter sync's job (unknown_sync).
+    held_without_open = [s for s in alpaca_by_sym if s not in db_by_sym]
+    if held_without_open:
+        syms = tuple(held_without_open)
         cur.execute("""
             SELECT id, symbol, pnl, exit_reason
             FROM paper_trades
             WHERE lifecycle_state = 'closed' AND symbol IN %s
         """, [syms])
         for tid, sym, pnl, reason in cur.fetchall():
-            if sym in alpaca_by_sym:
-                issues.append({
-                    "type": "CLOSED_BUT_HELD", "severity": "HIGH", "symbol": sym,
-                    "trade_id": tid,
-                    "detail": f"#{tid} closed (pnl=${pnl}) but Alpaca holds {alpaca_by_sym[sym]['qty']}sh",
-                })
+            issues.append({
+                "type": "CLOSED_BUT_HELD", "severity": "HIGH", "symbol": sym,
+                "trade_id": tid,
+                "detail": f"#{tid} closed (pnl=${pnl}) but Alpaca holds {alpaca_by_sym[sym]['qty']}sh and no open DB record exists",
+            })
 
     conn.close()
     return {
