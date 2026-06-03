@@ -1,5 +1,0 @@
-0fe2e45 fix: Brave Search daily budget cap — 30/day, weekend skip, 60min news cache
-4998d32 docs: Brave Search API usage audit + DOCS_ROSTER refresh
-22f9904 docs: refresh DOCS_ROSTER (1042 files, 44 sections)
-3205a7c fix: P0 portfolio consistency + expanded alerts + data-product-health endpoint
-bb0a8cf verify: source backup + code fix verification + remaining flaws assessment

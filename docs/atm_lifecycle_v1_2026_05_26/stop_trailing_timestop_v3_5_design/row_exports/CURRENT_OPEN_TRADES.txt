@@ -1,7 +1,0 @@
- id | symbol |        strategy_id         | entry_price | stop_loss |            stop_order_id             | stop_verified_at | shares |   account    |          entry_time          
-----+--------+----------------------------+-------------+-----------+--------------------------------------+------------------+--------+--------------+------------------------------
- 28 | NWG    | dividend_growth_compounder |       15.84 |     15.05 | 45b57b20-f947-4817-bf95-c2124c4c4cbe |                  |    189 | TOS_PAPER    | 2026-05-22 11:30:02.39294-04
- 31 | AGNC   | reit_income                |       10.22 |      9.71 | f171e7ec-9224-4358-939e-1661feb5b64e |                  |    293 | ALPACA_PAPER | 
- 33 | CMCSA  | dividend_growth_compounder |       24.97 |     23.61 | e29b2971-1ff7-4024-8fd1-6c42fd89fe47 |                  |    120 | ALPACA_PAPER | 
-(3 rows)
-

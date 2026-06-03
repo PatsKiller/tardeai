@@ -1,9 +1,0 @@
-[
-  {
-    "source": "telegram_weekly_portfolio_review",
-    "original_text": "Shift at least 5-7% of the portfolio into higher-yielding income assets \u2014 specifically dividend-paying stocks and potentially a short-term bond ladder.",
-    "failure_class": "vague_rebalance_recommendation",
-    "severity": "high",
-    "fix": "Must name candidate tickers/funds/sectors, funding source, account location, and create research backlog item"
-  }
-]

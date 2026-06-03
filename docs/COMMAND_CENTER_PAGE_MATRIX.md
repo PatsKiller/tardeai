@@ -125,6 +125,31 @@ Generated: 2026-05-27 | Total pages: 67 | Nav groups: 11
 | `/v2/portfolio-monitor` | PortfolioCommand | Legacy portfolio route |
 | `/v2/paper-trade-intelligence` | PaperReview | Legacy paper trade route |
 
+## v3 Strategy → Backtest (canonical, 2026-06-02)
+
+Route `/v3/strategy` → **Backtest** tab. Full read-only port of v2 `/v2/backtesting` (`BacktestPanel.tsx`) plus a Backtest Intelligence layer. Defaults to `run_type=replay_trades` (real data; champion rows are seeded sims). All write/POST controls removed (read-only).
+
+| Element | What it shows | Data source |
+|---|---|---|
+| Cadence strip | Last run + runs/day sparkline; backtest schedule | `/api/v2/backtesting/runs` |
+| KPI tiles | Datasets, runs, backtest rows, results, strategy coverage, flagged, missed | `/api/v2/backtesting/status` |
+| Overview | Win-rate-by-strategy (click→filter), R-multiple distribution, missed impact | `/api/v2/backtesting/trades`, `/missed-opportunities` |
+| **Edge Decay** | Backtest win-rate vs live paper win-rate per strategy (overfit detection) | `/api/v2/backtesting/trades` + `/api/v2/paper-trade-readiness` |
+| **Entry Quality** | Entry/exit A–D grades, RSI-vs-outcome, coaching, best entries ("how was our entry") | `/api/v2/journal/backtest-summary`, `/api/v2/journal/backtest-analytics` |
+| **AI Trade Eval** | Structured LLM trade evaluation (gemma3:12b): 6 scores + verdict per trade, verdict distribution, drill into full reasoning. Research/journaling only — not advice. Judges on RSI/MACD/ADX/Bollinger/Fibonacci/structure/candlestick (VWAP/intraday excluded). Also shows the **setup-quality prior** (what entries have worked, by RSI band) that feeds the ATM advisory. | `/api/v2/backtesting/trade-evaluations`, `/api/v2/atm/setup-advisory` |
+
+**Feedback loop (advisory-only, never gates):** the setup-quality prior attaches a caution/favorable badge ("⚠ setup ~N") wherever an entry/candidate's RSI falls in a historically weak/strong band:
+- **Trading → Proposals** — per-proposal advisory. Source: `/api/v2/atm/setup-advisory`.
+- **Strategy → Incubator** — per-candidate advisory badge. Source: `/api/v2/setup-advisory/candidates?entity=incubator`.
+- **Watchlist** (new v3 page, nav `/v3/watchlist`) — active items + advisory strip + per-item badge. Source: `/api/v2/watchlist/items` + `/api/v2/setup-advisory/candidates?entity=watchlist`.
+
+Never blocks execution, promotion, or scoring.
+| **Capture** | Cumulative money-left-on-table over time, by-trade-type, worst exits | `/api/v2/backtesting/mfe-analysis`, `/api/v2/journal/backtest-analytics` |
+| **Potential Over Time** | Run-over-run hypothetical performance (append-only history) | `/api/v2/backtesting/result-history` |
+| Strategy / Trades / Missed / Results / Runs | Ported v2 tables + charts | `/api/v2/backtesting/{results,trades,runs,missed-opportunities}` |
+| Trail Analysis / MFE-MAE / Optimization / LLM Review Coverage | Ported v2 analysis tabs | `/api/v2/backtesting/{trailing-stop-analysis,mfe-analysis,trailing-optimization}`, `/api/v2/lifecycle/llm-review-status` |
+| Drill drawer | Sparkline + entry/exit grade badges + per-trade backtest lookup (Journal↔Backtest link) | `/api/v2/journal/backtest/{key}` |
+
 ## Agent Pages Cross-Reference
 
 | Page | Route | What it shows | Data sources |

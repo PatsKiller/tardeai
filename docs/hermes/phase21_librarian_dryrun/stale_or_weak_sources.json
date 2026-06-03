@@ -1,9 +1,0 @@
-[
-  {
-    "check": "QUAL-1",
-    "severity": "high",
-    "row_id": 9,
-    "symbol": "TELO",
-    "detail": "Confidence 0.2 below threshold 0.3"
-  }
-]

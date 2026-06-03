@@ -1,8 +1,0 @@
-[
-  {
-    "check": "JRN-ALL",
-    "severity": "info",
-    "detail": "Journal learning view is empty (0 rows). No thesis reviews exist yet. Trade journal learning is NOT ACTIVE.",
-    "backlog_type": "journal_lesson_missing"
-  }
-]
