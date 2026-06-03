@@ -61,7 +61,7 @@
 
 | Phase | Work | Risk | Behavior change |
 |---|---|---|---|
-| **1 — Foundation** | `taxonomy_categories` table + `config/taxonomy.yaml` (seed from current vocabularies) + `taxonomy_classifier.classify()` helper | Low | none (additive) |
+| **1 — Foundation ✅ BUILT (2026-06-03)** | `taxonomy_categories` table (33 cats, 3 axes) + `config/taxonomy.yaml` + `scripts/taxonomy.py` (`classify()`/`get_categories()`/`seed()`). LLM (gemma3) classify with keyword-heuristic fallback for when the shared GPU is saturated. | Low | none (additive) |
 | **2 — Tag the corpus** | `category` col on `content_embeddings` + backfill ~28k (LLM batch); tag `hermes_research_intelligence.strategy_tags` on write + backfill 252 | Medium | data enriched, reads unchanged |
 | **3 — Close the loop** | Iris proposes new categories; curator applies; Hermes classifies against live set; per-category coverage in v3 | Medium | taxonomy self-grows |
 | **4 — Consumption** | Category-aware RAG retrieval + cross-system coverage dashboard | Medium | retrieval quality + new views |
@@ -70,11 +70,11 @@ Phase 1 is a safe, standalone foundation. Phases 2–4 are independently shippab
 
 ---
 
-## 5. Key decisions (needed before Phase 1)
+## 5. Key decisions — DECIDED (2026-06-03)
 
-1. **Axes:** content categories only, or also a secondary **sector** axis (ai_chips/datacenter/defense) and/or **lifecycle** (tax/retirement/income)? Recommend: content as primary, sector as a secondary tag.
-2. **Backfill:** classify the existing ~28k embeddings (LLM cost/time, one batch) or only tag **going forward**? Recommend: tag forward + backfill the most-retrieved/newest subset.
-3. **New-category authority:** Iris auto-adds (gated by curator confidence) vs operator approval per new category? Recommend: curator auto for high-confidence merges/renames, operator approval for brand-new top-level categories.
+1. **Axes: ALL THREE** — `content` (primary), `sector`, `lifecycle`. The classifier returns one slug per axis where applicable.
+2. **Backfill: tag-forward + partial** — classify all new content on write; backfill the newest/most-retrieved subset (not the full 28k).
+3. **Authority: fully autonomous** — `iris_proposal_curator` decides all category add/merge/rename on confidence thresholds; no per-category operator gate.
 
 ---
 
