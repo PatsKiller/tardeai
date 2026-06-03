@@ -423,12 +423,21 @@ export default function SystemHub({ onDrill }: Props) {
                 <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Live-Trading Gate</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: g.status === 'LIVE' ? '#22c55e' : '#ef4444' }}>{g.status ?? 'PAPER_ONLY'}{g.all_gates_passed === false ? ' · BLOCKED' : ''}</span>
               </div>
-              {gates.map((gt: any, i: number) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
-                  <span style={{ color: 'var(--text2)' }}>{gt.label ?? gt.gate}</span>
-                  <span style={{ color: gt.passed ? '#22c55e' : '#ef4444' }}>{gt.current} / {gt.required} {gt.passed ? '✓' : '✗'}</span>
-                </div>
-              ))}
+              {gates.map((gt: any, i: number) => {
+                const thresholdMet = typeof gt.current === 'number' && typeof gt.required === 'number' && gt.current >= gt.required
+                // gate held only by the 30-trade sample minimum, not by the metric itself
+                const pendingSample = !gt.passed && thresholdMet
+                const clr = gt.passed ? '#22c55e' : pendingSample ? '#f59e0b' : '#ef4444'
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                    <span style={{ color: 'var(--text2)' }}>{gt.label ?? gt.gate}</span>
+                    <span style={{ color: clr, textAlign: 'right' }} title={gt.detail ?? ''}>
+                      {gt.current} / {gt.required} {gt.passed ? '✓' : pendingSample ? '◐ met · awaiting 30-trade sample' : '✗'}
+                    </span>
+                  </div>
+                )
+              })}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Each performance gate requires metric ≥ threshold AND ≥30 closed trades — so a met threshold reads "◐ awaiting sample" until the trade count clears. Source: /api/v2/live-trading-gate</div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
