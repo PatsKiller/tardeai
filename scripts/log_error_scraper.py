@@ -60,16 +60,18 @@ def main():
                     if sig in seen:
                         break
                     seen.add(sig)
-                    # dedup vs recent alert_events
+                    # dedup vs recent alert_events (match on source + error class in raw_text)
                     cur.execute("""SELECT 1 FROM alert_events
-                                   WHERE source_script=%s AND alert_type=%s
+                                   WHERE source_script=%s AND raw_text LIKE %s
                                    AND created_at > NOW() - INTERVAL '25 minutes' LIMIT 1""",
-                                (fname, atype))
+                                (fname, atype + ":%"))
                     if cur.fetchone():
                         break
+                    # alert_type is CHECK-constrained → use 'system_health'; the error class goes
+                    # in raw_text so the SIEM endpoint's _classify still types it (DB_CONNECTION, etc.)
                     cur.execute("""INSERT INTO alert_events (alert_type, severity, source_script, raw_text, created_at)
-                                   VALUES (%s,%s,%s,%s,NOW())""",
-                                (atype, sev, fname, line[:300]))
+                                   VALUES ('system_health',%s,%s,%s,NOW())""",
+                                (sev, fname, f"{atype}: {line[:280]}"))
                     conn.commit(); inserted += 1
                     break
     conn.close()
