@@ -158,17 +158,11 @@ def _fix_integrity_issues(conn, alpaca_symbols):
                     _hold_min = round((_now - _et).total_seconds() / 60, 1)
                 except Exception:
                     pass
-            # Use current_price as exit_price for phantom (best available estimate)
-            _exit_price = _current if _current else _entry_price
-            _pnl = round((_exit_price - _entry_price) * _shares, 2) if _exit_price and _entry_price and _shares else None
-            _pnl_pct = round((_exit_price - _entry_price) / _entry_price * 100, 2) if _exit_price and _entry_price and _entry_price > 0 else None
-            _r_mult = None
-            if _pnl is not None and _dollar_risk and _dollar_risk > 0:
-                _r_mult = round(_pnl / _dollar_risk, 3)
-            elif _pnl is not None and _entry_price and _stop and _shares:
-                _risk_per_share = abs(_entry_price - _stop)
-                if _risk_per_share > 0:
-                    _r_mult = round((_exit_price - _entry_price) / _risk_per_share, 3)
+            # PHANTOM: not on Alpaca and never a real broker round-trip. It must carry NO P&L —
+            # computing (current-entry)*shares records a FAKE win/loss that pollutes the journal
+            # (e.g. MRVL +$126, SNOW +$131 booked as bogus 'wins'). Void it: zero P&L, verdict PHANTOM,
+            # excluded from real performance. (Real recovered positions like ANY stay open / on Alpaca
+            # and never reach this branch.)
             cur.execute("""
                 UPDATE paper_trades SET lifecycle_state='closed', status='closed',
                     close_reason='phantom_no_alpaca_position', closed_at=NOW(),
@@ -176,15 +170,13 @@ def _fix_integrity_issues(conn, alpaca_symbols):
                     entry_time=COALESCE(entry_time, filled_at, created_at),
                     closed_via='integrity_check',
                     exit_reason='phantom_no_alpaca_position',
-                    exit_price = COALESCE(exit_price, %s),
-                    pnl = COALESCE(pnl, %s),
-                    pnl_pct = COALESCE(pnl_pct, %s),
-                    r_multiple = COALESCE(r_multiple, %s),
+                    exit_price = entry_price,
+                    pnl = 0, pnl_pct = 0, r_multiple = 0, unrealized_pnl = 0,
                     hold_time_min = COALESCE(hold_time_min, %s),
-                    outcome_verdict = CASE WHEN COALESCE(pnl, %s) > 0 THEN 'WIN' WHEN COALESCE(pnl, %s) < 0 THEN 'LOSS' ELSE 'BREAKEVEN' END
+                    outcome_verdict = 'PHANTOM'
                 WHERE id = %s
-            """, [_exit_price, _pnl, _pnl_pct, _r_mult, _hold_min, _pnl, _pnl, tid])
-            log.warning(f"[integrity] Closed phantom: {sym} id={tid} — not on Alpaca (pnl={_pnl}, hold={_hold_min}m)")
+            """, [_hold_min, tid])
+            log.warning(f"[integrity] Closed phantom: {sym} id={tid} — not on Alpaca, P&L voided (was never a real position)")
             fixed += 1
 
     # Fix 3: closed_at set but lifecycle_state still open
