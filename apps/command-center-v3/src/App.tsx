@@ -14,6 +14,7 @@ import IntelligenceHub from './pages/IntelligenceHub'
 import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import JournalHub from './pages/JournalHub'
+import WatchlistHub from './pages/WatchlistHub'
 import SystemHub from './pages/SystemHub'
 
 function Shell() {
@@ -36,6 +37,7 @@ function Shell() {
             <Route path="hermes" element={<HermesHub onDrill={setDrill} />} />
             <Route path="retirement" element={<RetirementHub onDrill={setDrill} />} />
             <Route path="journal" element={<JournalHub onDrill={setDrill} />} />
+            <Route path="watchlist" element={<WatchlistHub onDrill={setDrill} />} />
             <Route path="system" element={<SystemHub onDrill={setDrill} />} />
           </Routes>
         </main>

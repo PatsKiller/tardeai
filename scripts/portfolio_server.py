@@ -44,6 +44,27 @@ from urllib.parse import urlparse, parse_qs
 PORT = 7777
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+# ── api_v2 hot-reload guard ──────────────────────────────────────────────────
+# Reload api_v2 ONLY when its source file actually changes — not on every request.
+# Reloading the large api_v2 module on every /api/v2/ request, on a threaded server
+# under the dashboard's concurrent polling, previously deadlocked the whole server
+# (process alive but serving nothing). mtime-gated + lock-guarded: at most one thread
+# reloads, and only when the file changed. Preserves hot-reload-on-edit for dev.
+_api_v2_lock = threading.Lock()
+_api_v2_mtime = [0.0]
+def _get_api_v2():
+    import importlib, api_v2 as _mod
+    try:
+        _m = os.path.getmtime(_mod.__file__)
+    except Exception:
+        _m = 0.0
+    if _m != _api_v2_mtime[0]:
+        with _api_v2_lock:
+            if _m != _api_v2_mtime[0]:   # double-checked under lock
+                importlib.reload(_mod)
+                _api_v2_mtime[0] = _m
+    return _mod
+
 # Phase P1: Load .env into os.environ so db_adapter sees DB_* keys when run as systemd service
 _env_file = PROJECT_ROOT / ".env"
 if _env_file.exists():
@@ -1082,8 +1103,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2 API dispatch
         if path.startswith("/api/v2/"):
             try:
-                import importlib, api_v2 as _api_v2_mod
-                importlib.reload(_api_v2_mod)
+                _api_v2_mod = _get_api_v2()
                 _v2_handle = _api_v2_mod.handle
                 _v2_query = dict(parse_qs(parsed.query)) if parsed.query else {}
                 _v2_query = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in _v2_query.items()}
@@ -1455,8 +1475,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         # v2 API POST dispatch
         if path.startswith("/api/v2/"):
             try:
-                import importlib, api_v2 as _api_v2_mod
-                importlib.reload(_api_v2_mod)
+                _api_v2_mod = _get_api_v2()
                 _v2_handle = _api_v2_mod.handle
                 _v2_result = _v2_handle(path, method="POST", body=body)
                 if _v2_result is not None:

@@ -5,16 +5,31 @@ import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Open Trades', 'Proposals', 'Execution', 'Scalp'] as const
+const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Scalp'] as const
+
+// GO / WAIT / NO-GO decision color
+const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
 
 export default function TradingHub({ onDrill }: Props) {
-  const [tab, setTab] = useState<typeof TABS[number]>('Open Trades')
+  const [tab, setTab] = useState<typeof TABS[number]>('Trade AI')
+  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000)
   const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000)
+  const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000)
+
+  const advMap: Record<string, any> = {}
+  const advBySym: Record<string, any> = {}
+  for (const a of (setupAdvisory?.advisories ?? [])) {
+    advMap[String(a.proposal_id)] = a
+    // Map advisory to symbol for open-position enrichment; prefer non-expired / higher-confidence
+    const prev = advBySym[a.symbol]
+    if (!prev || (prev.status === 'EXPIRED' && a.status !== 'EXPIRED')) advBySym[a.symbol] = a
+  }
+  const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 
   const trades = openTrades?.trades ?? []
   const execList: any[] = Array.isArray(execQual) ? execQual : []
@@ -56,13 +71,69 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
 
+      {tab === 'Trade AI' && (() => {
+        const tickers: any[] = (tradeAi?.tickers ?? []).slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))
+        const kpis = [
+          { label: 'GO', value: tradeAi?.go_count ?? 0, color: '#22c55e' },
+          { label: 'WAIT', value: tradeAi?.wait_count ?? 0, color: '#f59e0b' },
+          { label: 'NO-GO', value: tradeAi?.avoid_count ?? 0, color: '#ef4444' },
+          { label: 'Scanned', value: tradeAi?.ticker_count ?? tickers.length, color: 'var(--text0)' },
+          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa' },
+          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7' },
+        ]
+        return (
+          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Market Opportunities Scanner</div>
+              <div style={{ fontSize: 9, color: 'var(--text3)' }}>
+                {tradeAi?.latest_run_label || tradeAi?.run_label || 'no run'}
+                {tradeAi?.latest_run_timestamp && ` · ${new Date(tradeAi.latest_run_timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
+                {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: tradeAi.run_health_status === 'healthy' ? '#22c55e' : '#f59e0b' }}>· {tradeAi.run_health_status}</span>}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, margin: '10px 0 14px' }}>
+              {kpis.map(k => (
+                <div key={k.label} style={{ background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: k.color }}>{k.value}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.5fr 1fr 0.6fr 0.6fr 0.7fr 0.6fr 1.4fr 0.8fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+              <span>Decision</span><span>Symbol</span><span>Score</span><span>RVOL</span><span>Price</span><span>Chg%</span><span>Catalyst</span><span>Critic</span>
+            </div>
+            {tickers.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 12 }}>No scan tickers in the latest run.</div> :
+            tickers.slice(0, 60).map((t: any, i: number) => (
+              <div key={`${t.symbol}-${i}`} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.decision ?? ''} · score ${t.score ?? '—'} · ${t.sector ?? ''}`, endpoint: '/api/v2/trade-ai', rows: [t] })}
+                style={{ display: 'grid', gridTemplateColumns: '0.5fr 1fr 0.6fr 0.6fr 0.7fr 0.6fr 1.4fr 0.8fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${decisionColor(t.decision)}` }}>
+                <span style={{ fontWeight: 700, fontSize: 9, color: decisionColor(t.decision) }}>{t.decision || 'NO-GO'}</span>
+                <div>
+                  <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
+                  {t.grade && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>{t.grade}</span>}
+                  {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
+                </div>
+                <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{t.score ?? '—'}</span>
+                <span style={{ color: (t.rvol ?? 0) >= 5 ? '#22c55e' : 'var(--text2)' }}>{t.rvol ? Number(t.rvol).toFixed(1) : '—'}</span>
+                <span style={{ color: 'var(--text2)' }}>{t.price ? `$${Number(t.price).toFixed(2)}` : '—'}</span>
+                <span style={{ color: parseFloat(t.change_pct) >= 0 ? '#22c55e' : '#ef4444' }}>{t.change_pct !== '' && t.change_pct != null ? `${t.change_pct}%` : '—'}</span>
+                <span style={{ color: 'var(--text3)', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.catalyst}>{t.catalyst || '—'}</span>
+                <span style={{ fontSize: 9, color: t.critic_verdict === 'GO' ? '#22c55e' : t.critic_verdict === 'AVOID' ? '#ef4444' : 'var(--text3)' }}>{t.critic_verdict ?? '—'}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/NO-GO). Read-only. Click a row for full scan detail. Showing top {Math.min(60, tickers.length)} of {tickers.length} by score.</div>
+          </div>
+        )
+      })()}
+
       {tab === 'Open Trades' && (
         <>
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Open Positions ({trades.length})</div>
             {trades.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No open paper trades</div> :
-            trades.map((t: any) => (
-              <div key={t.id} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.strategy_id} · R=${t.r_multiple?.toFixed(2)}`, endpoint: '/api/v2/open-trades', rows: [t] })}
+            trades.map((t: any) => {
+              const adv = advBySym[t.symbol]
+              return (
+              <div key={t.id} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.strategy_id} · R=${t.r_multiple?.toFixed(2)}`, endpoint: '/api/v2/open-trades', rows: [adv ? { ...t, setup_advisory: adv.note, setup_advisory_flag: adv.advisory_flag, setup_prior_score: adv.prior_score, entry_rsi_band: adv.band } : t] })}
                 style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
                 <div>
                   <div style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</div>
@@ -71,12 +142,16 @@ export default function TradingHub({ onDrill }: Props) {
                 <span style={{ color: 'var(--text2)' }}>{t.shares} @ {fmt$(t.entry_price, 2)}</span>
                 <span style={{ color: (t.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(t.pnl, 2)}</span>
                 <span style={{ color: 'var(--text2)' }}>R: {t.r_multiple?.toFixed(2) ?? '—'}</span>
-                <span style={{ fontSize: 9, color: t.risk_flags?.length ? '#f59e0b' : 'var(--text3)' }}>
-                  {t.trail_recommendation?.replace(/_/g, ' ') ?? '—'}
-                </span>
+                {adv
+                  ? <span title={adv.note} style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, alignSelf: 'center', justifySelf: 'start', background: 'var(--bg2)', color: advColor(adv.advisory_flag), border: `1px solid ${advColor(adv.advisory_flag)}33` }}>
+                      {adv.advisory_flag === 'caution' ? '⚠ ' : adv.advisory_flag === 'favorable' ? '✓ ' : ''}entry setup ~{adv.prior_score != null ? Number(adv.prior_score).toFixed(0) : '—'}
+                    </span>
+                  : <span style={{ fontSize: 9, color: t.risk_flags?.length ? '#f59e0b' : 'var(--text3)' }}>
+                      {t.trail_recommendation?.replace(/_/g, ' ') ?? '—'}
+                    </span>}
               </div>
-            ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/open-trades. Read-only — no trade controls.</div>
+            )})}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/open-trades + /api/v2/atm/setup-advisory (entry-setup quality prior, matched by symbol — advisory-only, never gates). Open trades have no exit grade yet; entry-setup rating reflects the RSI-band prior at proposal time.</div>
           </div>
           <ProtectionPanel onDrill={onDrill} />
         </>
@@ -85,12 +160,17 @@ export default function TradingHub({ onDrill }: Props) {
       {tab === 'Proposals' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Proposals ({propList.length})</div>
-          {propList.slice(0, 20).map((p: any) => (
-            <div key={p.id} onClick={() => onDrill({ title: `${p.symbol} #${p.id}`, subtitle: `${p.strategy_id} · ${p.status}`, endpoint: '/api/v2/paper-proposals', rows: [p] })}
+          {propList.slice(0, 20).map((p: any) => {
+            const adv = advMap[String(p.id)]
+            return (
+            <div key={p.id} onClick={() => onDrill({ title: `${p.symbol} #${p.id}`, subtitle: `${p.strategy_id} · ${p.status}`, endpoint: '/api/v2/paper-proposals', rows: [adv ? { ...p, setup_advisory: adv.note, setup_advisory_flag: adv.advisory_flag, setup_prior_score: adv.prior_score } : p] })}
               style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
               <div>
                 <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace', marginRight: 8 }}>{p.symbol}</span>
                 <span style={{ color: 'var(--text3)' }}>{p.strategy_id}</span>
+                {adv && <span title={adv.note} style={{ marginLeft: 8, fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg2)', color: advColor(adv.advisory_flag), border: `1px solid ${advColor(adv.advisory_flag)}33` }}>
+                  {adv.advisory_flag === 'caution' ? '⚠ ' : ''}setup ~{adv.prior_score != null ? Number(adv.prior_score).toFixed(0) : '—'}
+                </span>}
               </div>
               <div style={{ display: 'flex', gap: 12 }}>
                 <span style={{ color: 'var(--text2)' }}>{fmt$(p.proposed_entry, 2)} → {fmt$(p.proposed_target1, 2)}</span>
@@ -100,8 +180,8 @@ export default function TradingHub({ onDrill }: Props) {
                 }}>{p.status}</span>
               </div>
             </div>
-          ))}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/paper-proposals. Read-only — no approval controls.</div>
+          )})}
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/paper-proposals + /api/v2/atm/setup-advisory (setup-quality prior). Advisory-only — read-only, never gates execution.</div>
         </div>
       )}
 

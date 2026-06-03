@@ -109,6 +109,19 @@ The setup-quality prior now also advises **candidate symbols** (not just proposa
 - **Optimization tab blank** — `trailing-optimization` returns `current_config`/`optimized_config` as **objects** (`{breakeven: 1.5}`); rendering them as raw React children crashed the tab. Fixed with `cfgLabel()`/`cfgBE()` helpers (render "BE 1.5R") and corrected the detail-chip highlight to compare against the optimized breakeven value.
 - **Overnight eval daemon died after 7 trades** — a single gemma3:12b call hit `TimeoutError` (CPU under load > 420s) and the unhandled exception killed the loop. Wrapped the per-trade call in try/except (logs + retries next run), and stopped writing `model_error` rows. Relaunched the resilient batch (skips the completed 7, processes the remaining ~33). Also added a one-shot **morning check** (`scripts/morning_eval_check.sh`, cron `0 7 3 6 *`, Telegram-verified) that reports batch + prior status.
 
+## 5f. Agents hub rebind + workflow graph (core fleet)
+
+v3 Agents hub was mis-wired (showed "Agent 0…9", raw JSON, bare numbers). **Fixed the bindings** (real field is `agent` not `name`; Calibration from `/agent-calibration/windows`; Performance table not JSON) + added **roles + real runtime model gemma3:12b** (stale qwen3:14b label suppressed). Added a **React Flow Workflow tab**: ★ Alex/CIO orchestrator hub, live edges from `/agent-pipeline` (`from_agent→to_agent`+escalated, "Alex"→"alex" normalized), non-roster pipeline nodes (synthesis/auto_research/human_review) shown grey with **descriptive drawers** (human_review = operator escalation sink, surfaces escalated symbols+reasons), configured chain maria→steph→risk→tax dashed/labeled. Calibration tab = the agent-trust gate (PROPOSAL-ALLOWED vs SHADOW-ONLY). See `project_v3_agents_hub` memory.
+
+## 5g. Hermes workflow + VALIDATED run-state (challenger fleet)
+
+Separate React Flow graph in the **Hermes hub** (challenger wall: NO control edge to core; only a one-way "reads Trade AI safe views" arrow). Built a footprint endpoint **`/api/v2/hermes/agent-footprint`** that validates each agent's real DB rows. Key finding: the contract doc's "design only" labels are **approval state, not execution** — 3 agents (Librarian, Backlog Mgr, Embedding Curator) have **real autonomous-loop/dry-run footprint but are NOT governance-approved** (rendered amber "running — NOT approved"). Graph shows **two axes** (approval vs validated footprint) with real counts; drawer separates them. `hermes_research_backlog` table confirmed not created (endpoint surfaces backlog-tagged `hermes_research_intelligence` rows). Contracts doc updated with the validated table. Governance flag raised: autonomous writers running ahead of approval.
+
+## 5h. Global modal/UX overhaul (DetailDrawer + Hermes backlog)
+
+- **DetailDrawer (every v3 modal)**: humanizes keys (snake_case → Title Case + acronym map: RSI/MACD/P&L/RACI…), **parses JSON-string blobs into readable nested fields** (e.g. dual-opinion `tradeai_original` → Score/Decision/Summary instead of raw `{"score":31…}`), formats ISO timestamps, color-codes statuses/verdicts (agree/operational green, disagree/disabled red, staged/caution amber), renders `— Section —` keys as headers.
+- **Hermes Research Backlog**: raw findings (`backtest_weak_strategy: WR=…`) → clean cards with plain-English **title + meaning + suggested resolution + where to resolve**, severity dots (critical/warning/info), dedup, severity-sorted. Honest note that Hermes is advisory-only (flags, doesn't auto-run).
+
 ## 6. Files touched
 
 | File | Change |

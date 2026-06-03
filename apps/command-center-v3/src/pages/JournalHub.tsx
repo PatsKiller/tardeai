@@ -33,6 +33,19 @@ interface UT {
   pnl: number; pnlPct: number | null; holdDays: number | null; holdMin: number | null
   exitReason: string | null; strat: string | null; status: string
   entryDate: string | null; exitDate: string | null; source: 'paper' | 'schwab'
+  eg: string | null; xg: string | null
+}
+
+// Entry/exit letter-grade → color
+function gradeColor(g: string | null | undefined): string {
+  switch (g) {
+    case 'A': return '#22c55e'
+    case 'B': return '#86efac'
+    case 'C': return '#f59e0b'
+    case 'D': return '#ef4444'
+    case 'F': return '#dc2626'
+    default: return 'var(--text3)'
+  }
 }
 
 function getTimeRangeCutoff(range: string): string {
@@ -71,6 +84,7 @@ export default function JournalHub({ onDrill }: Props) {
         holdMin: t.hold_time_min, exitReason: t.exit_reason, strat: t.strategy_id,
         status: t.status ?? 'closed', entryDate: t.entry_time?.slice(0, 10) ?? t.created_at?.slice(0, 10),
         exitDate: t.closed_at?.slice(0, 10), source: 'paper',
+        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null,
       })
     }
     for (const t of (schwabJournal?.trades ?? [])) {
@@ -81,6 +95,7 @@ export default function JournalHub({ onDrill }: Props) {
         pnl: t.pnl ?? 0, pnlPct: t.pnl_pct, holdDays: t.hold_days,
         holdMin: null, exitReason: null, strat: null,
         status: 'closed', entryDate: t.open_date, exitDate: t.close_date, source: 'schwab',
+        eg: t.entry_grade ?? null, xg: t.exit_grade ?? null,
       })
     }
     return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
@@ -396,12 +411,12 @@ export default function JournalHub({ onDrill }: Props) {
           {/* Trade Log */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 400, overflowY: 'auto' }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Trade Log ({filtered.length})</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.9fr 0.5fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span></span><span>Symbol</span><span>Account</span><span>Entry</span><span>Exit</span><span>P&L</span><span>Strategy</span><span>Hold</span>
+            <div style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.6fr 0.9fr 0.5fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)' }}>
+              <span></span><span>Symbol</span><span>Account</span><span>Entry</span><span>Exit</span><span>P&L</span><span>Grade</span><span>Strategy</span><span>Hold</span>
             </div>
             {filtered.map((t, i) => (
-              <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [t] })}
-                style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.9fr 0.5fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${acctColor(t.na)}`, cursor: 'pointer', fontSize: 10, background: `${acctColor(t.na)}06` }}>
+              <div key={`${t.id}-${i}`} onClick={() => onDrill({ title: `${t.symbol}`, subtitle: `${ACCT_LABEL[t.na]??t.account} · ${t.strat??t.source}`, endpoint: t.source==='schwab'?'/api/v2/journal':'/api/v2/automated-trade-journal', rows: [{ ...t, entry_grade: t.eg, exit_grade: t.xg }] })}
+                style={{ display: 'grid', gridTemplateColumns: '0.2fr 0.8fr 1.1fr 0.7fr 0.7fr 0.7fr 0.6fr 0.9fr 0.5fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${acctColor(t.na)}`, cursor: 'pointer', fontSize: 10, background: `${acctColor(t.na)}06` }}>
                 <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(t.na), marginTop: 4 }} />
                 <div>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
@@ -411,13 +426,20 @@ export default function JournalHub({ onDrill }: Props) {
                 <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.entryDate ?? '—'}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9, fontFamily: 'monospace' }}>{t.exitDate ?? (t.status==='open'?'—':'—')}</span>
                 <span style={{ color: t.status==='open'?'#60a5fa':t.pnl>=0?'#22c55e':'#ef4444', fontWeight: 600 }}>{t.status==='open'?'OPEN':fmt$(t.pnl,2)}</span>
+                <span style={{ fontSize: 9, fontFamily: 'monospace', display: 'flex', gap: 2, alignItems: 'center' }}>
+                  {(t.eg || t.xg)
+                    ? <><span title="Entry grade" style={{ color: gradeColor(t.eg), fontWeight: 700 }}>{t.eg ?? '·'}</span>
+                        <span style={{ color: 'var(--text3)' }}>/</span>
+                        <span title="Exit grade" style={{ color: gradeColor(t.xg), fontWeight: 700 }}>{t.xg ?? '·'}</span></>
+                    : <span style={{ color: 'var(--text3)' }}>—</span>}
+                </span>
                 <span style={{ color: 'var(--text2)', fontSize: 9 }}>{t.strat ?? '—'}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 8 }}>{t.holdMin!=null?(t.holdMin<60?`${Math.round(t.holdMin)}m`:`${Math.round(t.holdMin/60)}h`):t.holdDays!=null?`${t.holdDays}d`:'—'}</span>
               </div>
             ))}
           </div>
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>
-            Sources: /api/v2/automated-trade-journal (paper) + /api/v2/journal (Schwab). /journal returns trades from 2024-11 onward; older Schwab history exists in DB (153 closed) but is not returned by this endpoint.
+            Sources: /api/v2/automated-trade-journal (paper) + /api/v2/journal (Schwab). Grade = entry/exit grade from backtest replay grading (trade_backtest_results), where available. /journal returns trades from 2024-11 onward; older Schwab history exists in DB (153 closed) but is not returned by this endpoint.
           </div>
         </>
       )}

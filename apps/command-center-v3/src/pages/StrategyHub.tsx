@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
+import BacktestPanel from '../components/BacktestPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -14,8 +15,11 @@ export default function StrategyHub({ onDrill }: Props) {
   const { data: desk } = useApi<any>('/api/v2/strategy-desk', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: btResults } = useApi<any>('/api/v2/backtesting/results', 120_000)
-  const { data: btStatus } = useApi<any>('/api/v2/backtesting/status', 120_000)
   const { data: incubator } = useApi<any>('/api/v2/incubator', 120_000)
+  const { data: incAdv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=incubator', 120_000)
+  const incAdvMap: Record<string, any> = {}
+  for (const a of (incAdv?.advisories ?? [])) incAdvMap[a.symbol] = a
+  const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 
   const strategies = intel?.strategies ?? []
   const configMap = configs?.strategies ?? {}
@@ -238,57 +242,27 @@ export default function StrategyHub({ onDrill }: Props) {
             <span style={{ fontSize: 10, color: '#22c55e' }}>{incubator.promoted ?? 0} promoted · {incubator.active ?? 0} active</span>
           </div>
           <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-            {(incubator.universe ?? []).slice(0, 30).map((item: any, i: number) => (
+            {(incubator.universe ?? []).slice(0, 30).map((item: any, i: number) => {
+              const adv = incAdvMap[item.symbol]
+              return (
               <div key={i}
-                onClick={() => onDrill({ title: item.symbol, subtitle: `${item.strategy_id} · ${item.status}`, endpoint: '/api/v2/incubator', rows: [item] })}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr 1fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                onClick={() => onDrill({ title: item.symbol, subtitle: `${item.strategy_id} · ${item.status}`, endpoint: '/api/v2/incubator', rows: [adv ? { ...item, setup_advisory: adv.note, setup_advisory_flag: adv.advisory_flag, setup_prior_score: adv.prior_score } : item] })}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr 1fr 0.7fr 1fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, alignItems: 'center' }}>
                 <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{item.symbol}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9 }}>{item.strategy_id}</span>
                 <span style={{ color: item.status === 'PROMOTED' ? '#22c55e' : item.lifecycle_state === 'graduated' ? '#06b6d4' : 'var(--text2)', fontSize: 10 }}>{item.status}</span>
                 <span style={{ color: 'var(--text3)', fontSize: 9 }}>{item.latest_score ?? '—'}</span>
+                {adv ? <span title={adv.note} style={{ justifySelf: 'end', fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg2)', color: advColor(adv.advisory_flag), border: `1px solid ${advColor(adv.advisory_flag)}33` }}>
+                  {adv.advisory_flag === 'caution' ? '⚠ ' : ''}setup ~{adv.prior_score != null ? Number(adv.prior_score).toFixed(0) : '—'}
+                </span> : <span />}
               </div>
-            ))}
+            )})}
           </div>
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/incubator (showing first 30 of {incubator.total})</div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/incubator + /api/v2/setup-advisory/candidates (setup-quality prior, advisory-only). Showing first 30 of {incubator.total}.</div>
         </div>
       )}
 
-      {tab === 'Backtest' && btData.length > 0 && (
-        <div>
-          {/* Backtest status */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            {(() => { const s = btStatus; return ['runs_total','trades_total','datasets_total','classification_pct'].map(k => (
-              <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>{s?.[k] ?? '—'}{k === 'classification_pct' ? '%' : ''}</div>
-                <div style={{ fontSize: 9, color: 'var(--text3)' }}>{k.replace(/_/g, ' ')}</div>
-              </div>
-            )) })()}
-          </div>
-          {/* Results table */}
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Backtest Results ({btData.length})</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span>Strategy</span><span>Type</span><span>Trades</span><span>Win Rate</span><span>PF</span><span>Avg R</span><span>Total PnL</span>
-            </div>
-            {btData.sort((a: any, b: any) => (b.simulated_trades ?? 0) - (a.simulated_trades ?? 0)).map((r: any, i: number) => (
-              <div key={i} onClick={() => onDrill({ title: r.strategy_id, subtitle: `${r.run_type} · ${r.simulated_trades} trades`, endpoint: '/api/v2/backtesting/results', rows: [r] })}
-                style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 1fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-                <span style={{ color: 'var(--text0)', fontFamily: 'monospace', fontSize: 10 }}>{r.strategy_id?.slice(0, 25)}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 9 }}>{r.run_type}</span>
-                <span style={{ color: 'var(--text2)' }}>{r.simulated_trades}</span>
-                <span style={{ color: (r.win_rate ?? 0) >= 55 ? '#22c55e' : (r.win_rate ?? 0) >= 45 ? '#f59e0b' : '#ef4444' }}>{r.win_rate?.toFixed(1)}%</span>
-                <span style={{ color: 'var(--text2)' }}>{r.profit_factor?.toFixed(2) ?? '—'}</span>
-                <span style={{ color: 'var(--text2)' }}>{r.avg_pnl?.toFixed(2) ?? '—'}</span>
-                <span style={{ color: (r.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>${r.total_pnl?.toFixed(0) ?? '—'}</span>
-              </div>
-            ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/backtesting/results (28 results, run_types: champion, replay_proposals, replay_trades)</div>
-          </div>
-        </div>
-      )}
-      {tab === 'Backtest' && btData.length === 0 && (
-        <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>No backtest results available</div>
-      )}
+      {tab === 'Backtest' && <BacktestPanel onDrill={onDrill} />}
     </div>
   )
 }

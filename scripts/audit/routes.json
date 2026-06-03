@@ -1,8 +1,13 @@
 [
   {
     "href": "/v2/command",
-    "label": "Morning Command",
+    "label": "Command Center",
     "name": "command"
+  },
+  {
+    "href": "/v2/agent-collaboration",
+    "label": "Agent Collaboration",
+    "name": "agent_collaboration"
   },
   {
     "href": "/v2/inbox",
@@ -14,6 +19,36 @@
     "label": "Daily Brief",
     "name": "morning_brief",
     "skip_in_crawler": true
+  },
+  {
+    "href": "/v2/trade-ai",
+    "label": "Trade AI",
+    "name": "trade_ai"
+  },
+  {
+    "href": "/v2/prospects",
+    "label": "Prospects",
+    "name": "prospects"
+  },
+  {
+    "href": "/v2/strategy-desk",
+    "label": "Strategy Desk",
+    "name": "strategy_desk"
+  },
+  {
+    "href": "/v2/incubator",
+    "label": "Incubator",
+    "name": "incubator"
+  },
+  {
+    "href": "/v2/atm-control-room",
+    "label": "ATM Control Room",
+    "name": "atm_control_room"
+  },
+  {
+    "href": "/v2/automated-trade-mode",
+    "label": "ATM Mode",
+    "name": "automated_trade_mode"
   },
   {
     "href": "/v2/portfolio",
@@ -101,14 +136,59 @@
     "name": "overnight"
   },
   {
-    "href": "/v2/system-health",
-    "label": "System Health",
-    "name": "system_health"
+    "href": "/v2/ops",
+    "label": "Ops Center",
+    "name": "ops"
   },
   {
     "href": "/v2/pipeline",
     "label": "Pipeline Stages",
     "name": "pipeline"
+  },
+  {
+    "href": "/v2/system-health",
+    "label": "System Health",
+    "name": "system_health"
+  },
+  {
+    "href": "/v2/alert-siem",
+    "label": "Alert SIEM",
+    "name": "alert_siem"
+  },
+  {
+    "href": "/v2/queue-control-tower",
+    "label": "Queue Control Tower",
+    "name": "queue_control_tower"
+  },
+  {
+    "href": "/v2/system-access",
+    "label": "System Access",
+    "name": "system_access"
+  },
+  {
+    "href": "/v2/system-applications",
+    "label": "System Applications",
+    "name": "system_applications"
+  },
+  {
+    "href": "/v2/hermes",
+    "label": "Hermes Chat",
+    "name": "hermes"
+  },
+  {
+    "href": "/v2/hermes-intelligence",
+    "label": "Hermes Intelligence",
+    "name": "hermes_intelligence"
+  },
+  {
+    "href": "/v2/self-learning-overview",
+    "label": "Self-Learning Overview",
+    "name": "self_learning_overview"
+  },
+  {
+    "href": "/v2/dual-opinion",
+    "label": "Dual Opinion Advisory",
+    "name": "dual_opinion"
   },
   {
     "href": "/v2/agent-pipeline",
@@ -122,23 +202,23 @@
   },
   {
     "href": "/v2/paper-review",
-    "label": "Paper Review",
+    "label": "Trade Review",
     "name": "paper_review"
   },
   {
     "href": "/v2/paper-status",
-    "label": "Paper Status",
+    "label": "Trade Status",
     "name": "paper_status"
   },
   {
-    "href": "/v2/automated-trade-mode",
-    "label": "ATM Mode",
-    "name": "automated_trade_mode"
+    "href": "/v2/execution-quality",
+    "label": "Execution Quality",
+    "name": "execution_quality"
   },
   {
-    "href": "/v2/incubator",
-    "label": "Incubator",
-    "name": "incubator"
+    "href": "/v2/proposal-alerts",
+    "label": "Proposal Alerts",
+    "name": "proposal_alerts"
   },
   {
     "href": "/v2/tax",
@@ -156,34 +236,14 @@
     "name": "retirement"
   },
   {
-    "href": "/v2/reports",
-    "label": "Reports Hub",
-    "name": "reports"
+    "href": "/v2/agent-lifecycle",
+    "label": "Agent Lifecycle",
+    "name": "agent_lifecycle"
   },
   {
-    "href": "/v2/journal",
-    "label": "Trade Journal",
-    "name": "journal"
-  },
-  {
-    "href": "/v2/journal-reports",
-    "label": "Journal Reports",
-    "name": "journal_reports"
-  },
-  {
-    "href": "/v2/governance",
-    "label": "Governance",
-    "name": "governance"
-  },
-  {
-    "href": "/v2/strategy-admin",
-    "label": "Strategy Admin",
-    "name": "strategy_admin"
-  },
-  {
-    "href": "/v2/strategy-analytics",
-    "label": "Analytics",
-    "name": "strategy_analytics"
+    "href": "/v2/self-improvement",
+    "label": "Self-Improvement",
+    "name": "self_improvement"
   },
   {
     "href": "/v2/agent-calibration",
@@ -196,34 +256,19 @@
     "name": "weekly_learning"
   },
   {
-    "href": "/v2/ops",
-    "label": "Operations",
-    "name": "ops"
+    "href": "/v2/governance",
+    "label": "Governance Hub",
+    "name": "governance"
   },
   {
-    "href": "/v2/self-improvement",
-    "label": "Self-Improvement",
-    "name": "self_improvement"
+    "href": "/v2/strategy-admin",
+    "label": "Strategy Admin",
+    "name": "strategy_admin"
   },
   {
-    "href": "/v2/backtesting",
-    "label": "Backtesting",
-    "name": "backtesting"
-  },
-  {
-    "href": "/v2/trade-ai",
-    "label": "Trade AI Live",
-    "name": "trade_ai"
-  },
-  {
-    "href": "/v2/prospects",
-    "label": "Prospects",
-    "name": "prospects"
-  },
-  {
-    "href": "/v2/strategy-desk",
-    "label": "Strategy Desk",
-    "name": "strategy_desk"
+    "href": "/v2/strategy-analytics",
+    "label": "Strategy Analytics",
+    "name": "strategy_analytics"
   },
   {
     "href": "/v2/correlation",
@@ -241,19 +286,29 @@
     "name": "broker_reconciliation"
   },
   {
-    "href": "/v2/execution-quality",
-    "label": "Execution Quality",
-    "name": "execution_quality"
-  },
-  {
     "href": "/v2/plan-vs-performance",
     "label": "Plan vs Perf",
     "name": "plan_vs_performance"
   },
   {
-    "href": "/v2/proposal-alerts",
-    "label": "Proposal Alerts",
-    "name": "proposal_alerts"
+    "href": "/v2/reports",
+    "label": "Reports Hub",
+    "name": "reports"
+  },
+  {
+    "href": "/v2/journal",
+    "label": "Trade Journal",
+    "name": "journal"
+  },
+  {
+    "href": "/v2/journal-reports",
+    "label": "Journal Reports",
+    "name": "journal_reports"
+  },
+  {
+    "href": "/v2/backtesting",
+    "label": "Backtesting",
+    "name": "backtesting"
   },
   {
     "href": "/v2/agent-dashboard/steph",

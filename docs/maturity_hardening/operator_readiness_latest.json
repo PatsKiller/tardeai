@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-06-03T12:00:00.109660+00:00",
+  "overall_maturity": "?",
+  "a5_complete": true,
+  "a5_end_date": "2026-05-22",
+  "governance_status": "healthy",
+  "allowed_actions": [],
+  "blocked_actions": [],
+  "waiting_actions": [],
+  "operator_required": [],
+  "top_blockers": [],
+  "live_trading": "BLOCKED",
+  "strategy_decisions": "review_ready",
+  "recommended_next": "Continue observation"
+}

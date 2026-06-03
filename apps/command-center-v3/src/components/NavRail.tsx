@@ -11,6 +11,7 @@ const HUBS = [
   { to: '/hermes', label: 'Hermes' },
   { to: '/retirement', label: 'Retirement' },
   { to: '/journal', label: 'Journal' },
+  { to: '/watchlist', label: 'Watchlist' },
   { to: '/system', label: 'System' },
 ]
 

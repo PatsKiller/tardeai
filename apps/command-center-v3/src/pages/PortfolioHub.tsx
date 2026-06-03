@@ -8,8 +8,11 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Holdings', 'Returns', 'Dividends', 'Tax'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
+const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
+
 export default function PortfolioHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Holdings')
+  const [acctFilter, setAcctFilter] = useState<string | null>(null)
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: holdings } = useApi<any>('/api/v2/portfolio/holdings', 60_000)
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
@@ -17,8 +20,19 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
 
   const sectors = overview?.sectors ?? []
-  const holdingsList = holdings?.holdings ?? []
+  const allHoldings = holdings?.holdings ?? []
   const payers = divs?.payers ?? []
+
+  // ── Account filter: chips derived from holdings, with per-account counts + value ──
+  const acctMap: Record<string, { n: number; value: number }> = {}
+  for (const h of allHoldings) {
+    const a = h.account ?? 'unknown'
+    acctMap[a] ??= { n: 0, value: 0 }
+    acctMap[a].n++; acctMap[a].value += (h.market_value ?? 0)
+  }
+  const accounts = Object.entries(acctMap).sort((a, b) => b[1].value - a[1].value)
+  const acctColor = (a: string) => ACCT_COLORS[Math.max(0, accounts.findIndex(([k]) => k === a)) % ACCT_COLORS.length]
+  const holdingsList = acctFilter ? allHoldings.filter((h: any) => (h.account ?? 'unknown') === acctFilter) : allHoldings
 
   return (
     <div>
@@ -37,6 +51,28 @@ export default function PortfolioHub({ onDrill }: Props) {
           ))}
         </div>
       </div>
+
+      {tab === 'Holdings' && accounts.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
+          <button onClick={() => setAcctFilter(null)} style={{
+            padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
+            border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`,
+            background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)',
+            color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400,
+          }}>All ({allHoldings.length})</button>
+          {accounts.map(([a, info]) => (
+            <button key={a} onClick={() => setAcctFilter(a === acctFilter ? null : a)} style={{
+              padding: '3px 10px', fontSize: 10, borderRadius: 12, cursor: 'pointer',
+              border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`,
+              background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)',
+              color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400,
+            }}>
+              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: acctColor(a), marginRight: 5 }} />
+              {a} ({info.n})
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'Holdings' && (
         <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>

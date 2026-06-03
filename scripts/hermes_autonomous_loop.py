@@ -23,6 +23,8 @@ KILL_FILE = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "DISABLED"
 MAX_RUNTIME = 600  # seconds
 DAILY_ROW_CAP = 10
 DAILY_MODEL_CAP = 15
+# Model is configurable for cadence: gemma3:4b (~3x faster) keeps continuous ticks under the 15-min cron interval.
+LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:4b")
 
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
@@ -141,7 +143,7 @@ def run_ticker_challenger(args):
         # Call Ollama
         try:
             payload = json.dumps({
-                "model": "gemma3:12b",
+                "model": LOOP_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "stream": False,
                 "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
@@ -161,7 +163,7 @@ def run_ticker_challenger(args):
         # Normalize
         output.setdefault("confidence_score", 0.5)
         output.setdefault("freshness_date", date.today().isoformat())
-        output.setdefault("model_used", "gemma3:12b")
+        output.setdefault("model_used", LOOP_MODEL)
         ej = output.get("evidence_json", {})
         if not isinstance(ej, dict):
             ej = {}
