@@ -124,6 +124,14 @@ def _heuristic(text, valid):
     return out
 
 
+def classify_fast(text):
+    """Heuristic-only classification (no LLM). For bulk backfill where calling the saturated
+    shared GPU per-row is infeasible. Returns {axis: slug_or_None}."""
+    cats = get_categories()
+    valid = {axis: {c["slug"] for c in cats.get(axis, [])} for axis in AXES}
+    return _heuristic(text, valid)
+
+
 def classify(text, symbol=None):
     """Classify text into one slug per axis using the local LLM, constrained to the live set.
     Falls back to a keyword heuristic when the (shared GPU) LLM is unavailable. Returns

@@ -400,3 +400,5 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 14 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_yt_discovery.lock $PY scripts/hermes_youtube_discovery.py --apply --limit 8 --videos 2 >> logs/hermes_youtube_discovery.log 2>&1
 # YouTube cookie health → Telegram refresh alert (after the 19:00 ingest)
 45 19 * * * cd $PROJ && $PY scripts/youtube_cookie_health_check.py >> logs/youtube_cookie_health.log 2>&1
+# Taxonomy tag-forward (heuristic, fast) — keeps content_embeddings + hermes research categorized
+20 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/taxonomy_tagger.lock $PY scripts/taxonomy_tagger.py --all --limit 500 >> logs/taxonomy_tagger.log 2>&1

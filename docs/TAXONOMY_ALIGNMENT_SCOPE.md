@@ -62,7 +62,7 @@
 | Phase | Work | Risk | Behavior change |
 |---|---|---|---|
 | **1 — Foundation ✅ BUILT (2026-06-03)** | `taxonomy_categories` table (33 cats, 3 axes) + `config/taxonomy.yaml` + `scripts/taxonomy.py` (`classify()`/`get_categories()`/`seed()`). LLM (gemma3) classify with keyword-heuristic fallback for when the shared GPU is saturated. | Low | none (additive) |
-| **2 — Tag the corpus** | `category` col on `content_embeddings` + backfill ~28k (LLM batch); tag `hermes_research_intelligence.strategy_tags` on write + backfill 252 | Medium | data enriched, reads unchanged |
+| **2 — Tag the corpus ✅ BUILT (2026-06-03)** | Added `category_content/sector/lifecycle` to `content_embeddings` + `hermes_research_intelligence` via `scripts/taxonomy_tagger.py`. Heuristic-first (no LLM dep) for bulk; partial backfill done. Coverage is thin on heuristic alone (~5%) — most rows need the LLM (`--use-llm`, opportunistic as GPU frees) for full categorization. Tag-forward via hourly cron. | Medium | data enriched, reads unchanged |
 | **3 — Close the loop** | Iris proposes new categories; curator applies; Hermes classifies against live set; per-category coverage in v3 | Medium | taxonomy self-grows |
 | **4 — Consumption** | Category-aware RAG retrieval + cross-system coverage dashboard | Medium | retrieval quality + new views |
 
