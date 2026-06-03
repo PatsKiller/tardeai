@@ -153,7 +153,12 @@ class AlpacaPaperAdapter:
                     continue
 
             if cur.rowcount == 0:
-                # Position exists in Alpaca but not in paper_trades — create broker-confirmed record
+                # Position exists in Alpaca but not in paper_trades — create a broker-confirmed
+                # record. (Creating here is correct: a position Alpaca holds but the system doesn't
+                # track is real — e.g. ANY, a position the system closed but the broker still held,
+                # recovered as a live +$1.5k trade. Genuine phantoms — a position that's already gone
+                # from Alpaca — are detected and P&L-voided by detect_closed_positions, NOT skipped
+                # here, so we never drop a real recovered position.)
                 cur.execute("""
                     INSERT INTO paper_trades (strategy_id, symbol, account, entry_price, entry_time,
                         shares, dollar_size, current_price, unrealized_pnl, status,
