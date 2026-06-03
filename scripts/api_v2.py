@@ -13762,6 +13762,47 @@ def _cron_compression_view():
     }
 
 
+def _inbox():
+    """GET /api/v2/inbox — operator inbox: escalations + CIO human-review + pending proposals."""
+    esc = _db_query("""SELECT symbol, from_agent, to_agent, reason, action_type, created_at
+                       FROM agent_handoffs WHERE escalated=TRUE AND created_at > NOW() - INTERVAL '14 days'
+                       ORDER BY created_at DESC LIMIT 60""") or []
+    cio = _db_query("""SELECT symbol, action, action_class, rationale, priority, created_at
+                       FROM cio_decisions WHERE human_review_required=TRUE AND created_at > NOW() - INTERVAL '14 days'
+                       ORDER BY created_at DESC LIMIT 40""") or []
+    props = _db_query("""SELECT symbol, strategy_id, status, created_at FROM paper_trade_proposals
+                         WHERE status IN ('PENDING','APPROVED') ORDER BY created_at DESC LIMIT 30""") or []
+    items = []
+    for e in esc:
+        items.append({"type": "escalation", "symbol": e.get("symbol"), "detail": e.get("reason") or e.get("action_type"),
+                      "source": f"{e.get('from_agent')}→{e.get('to_agent')}", "at": _json_clean(e.get("created_at"))})
+    for c in cio:
+        items.append({"type": "cio_review", "symbol": c.get("symbol"), "detail": (c.get("action") or "") + " · " + (c.get("rationale") or "")[:80],
+                      "source": f"CIO · {c.get('priority') or ''}", "at": _json_clean(c.get("created_at"))})
+    for p in props:
+        items.append({"type": "proposal", "symbol": p.get("symbol"), "detail": p.get("status"),
+                      "source": p.get("strategy_id"), "at": _json_clean(p.get("created_at"))})
+    items.sort(key=lambda x: x.get("at") or "", reverse=True)
+    return {"count": len(items), "escalations": len(esc), "cio_review": len(cio), "proposals": len(props), "items": items}
+
+
+def _weekly_learning():
+    """GET /api/v2/weekly-learning — weekly trade-review learning + agent performance trend."""
+    reviews = _db_query("""SELECT paper_trade_id, tier, model_used, LEFT(review_text, 600) as review, created_at
+                           FROM paper_trade_multi_reviews ORDER BY created_at DESC LIMIT 20""") or []
+    by_tier = {r["tier"]: 0 for r in reviews}
+    for r in reviews:
+        by_tier[r["tier"]] = by_tier.get(r["tier"], 0) + 1
+    perf = _db_query("""SELECT agent, accuracy_pct, total_recommendations, avg_confidence, period_start, period_end
+                        FROM agent_performance ORDER BY period_end DESC LIMIT 12""") or []
+    return {
+        "review_count": len(reviews),
+        "by_tier": [{"tier": k, "count": v} for k, v in by_tier.items()],
+        "reviews": [{k: _json_clean(v) for k, v in r.items()} for r in reviews],
+        "agent_performance": [{k: _json_clean(v) for k, v in p.items()} for p in perf],
+    }
+
+
 def _system_siem_dashboard():
     """GET /api/v2/system/siem — SIEM-lite alert dashboard with live normalization."""
     import json as _jsiem
@@ -14612,6 +14653,8 @@ ROUTES = {
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
     "/api/v2/system/siem": lambda: _system_siem_dashboard(),
+    "/api/v2/inbox": lambda: _inbox(),
+    "/api/v2/weekly-learning": lambda: _weekly_learning(),
     "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
     "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
     "/api/v2/hermes/proposal-sandbox": lambda: _hermes_proposal_sandbox(),
