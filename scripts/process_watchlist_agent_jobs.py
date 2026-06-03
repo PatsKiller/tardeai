@@ -1678,6 +1678,18 @@ def process_jobs(limit: int = 10):
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    # Reap orphaned jobs: a process killed (12m cron timeout / crash) between marking a job
+    # 'processing' and 'completed'/'failed' leaves it stuck forever. Requeue any 'processing'
+    # job older than 20 min (> the 12m timeout, so genuinely in-flight jobs are never touched).
+    cur.execute("""UPDATE watchlist_agent_jobs
+                   SET status='queued', started_at=NULL
+                   WHERE status='processing' AND started_at < now() - interval '20 minutes'
+                   RETURNING id""")
+    reaped = cur.fetchall()
+    conn.commit()
+    if reaped:
+        print(f"[watchlist-agent] Reaped {len(reaped)} orphaned 'processing' jobs → requeued")
+
     # Get queued jobs
     cur.execute("SELECT * FROM watchlist_agent_jobs WHERE status = 'queued' ORDER BY priority, created_at LIMIT %s", (limit,))
     jobs = cur.fetchall()
