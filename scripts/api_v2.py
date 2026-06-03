@@ -14032,8 +14032,14 @@ def _system_scheduled_jobs():
     import subprocess as _sp
     def _run(cmd, timeout=10):
         try:
-            r = _sp.run(cmd, capture_output=True, text=True, timeout=timeout, shell=isinstance(cmd, str))
-            return r.stdout.strip() if r.returncode == 0 else ""
+            import os as _os
+            # portfolio_server runs as a SYSTEM service; `systemctl --user` needs the user bus
+            # env or it returns nothing → every timer shows 'unknown'. Inject XDG_RUNTIME_DIR.
+            env = dict(_os.environ)
+            env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{_os.getuid()}")
+            r = _sp.run(cmd, capture_output=True, text=True, timeout=timeout, shell=isinstance(cmd, str), env=env)
+            # is-active reports active/inactive/failed on stdout even with non-zero exit.
+            return (r.stdout.strip() or r.stderr.strip())
         except Exception:
             return ""
 

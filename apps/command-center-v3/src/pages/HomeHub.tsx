@@ -8,6 +8,20 @@ interface Props { onDrill: (ctx: DrillContext) => void }
 
 const TABS = ['Snapshot', 'Morning Command', 'Brief'] as const
 
+// Compact home section card
+function SCard({ title, count, accent, children }: { title: string; count?: any; accent?: string; children: any }) {
+  return (
+    <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, borderTop: accent ? `2px solid ${accent}` : undefined }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{title}</span>
+        {count != null && <span style={{ fontSize: 11, fontWeight: 700, color: accent ?? 'var(--text3)' }}>{count}</span>}
+      </div>
+      {children}
+    </div>
+  )
+}
+const Line = ({ children, color }: any) => <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 10, color: color ?? 'var(--text2)' }}>{children}</div>
+
 export default function HomeHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Snapshot')
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
@@ -18,6 +32,9 @@ export default function HomeHub({ onDrill }: Props) {
   const { data: metricsHist } = useApi<any>('/api/v2/system/metrics-history', 300_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: briefData } = useApi<any>('/api/v2/morning-brief', 300_000)
+  const { data: command } = useApi<any>('/api/v2/command', 60_000)
+  const { data: hermesHealth } = useApi<any>('/api/v2/hermes/health', 120_000)
+  const cmd = command?.data ?? command ?? {}
 
   const pv = overview?.portfolio_value
   const todayChg = overview?.today_change
@@ -187,6 +204,100 @@ export default function HomeHub({ onDrill }: Props) {
             )}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/risk + /api/v2/paper-proposals</div>
           </div>
+
+          {/* ===== Command Center sections (v2 parity, v3 themed) ===== */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(330px,1fr))', gap: 14, marginTop: 16 }}>
+            {(cmd.triggered_detail?.length > 0) && (
+              <SCard title="Stops Triggered — action required" count={cmd.triggered_detail.length} accent="#ef4444">
+                {cmd.triggered_detail.slice(0, 6).map((s: any, i: number) => (
+                  <div key={i} onClick={() => onDrill({ title: s.symbol, subtitle: 'stop triggered', endpoint: '/api/v2/command', rows: [s] })} style={{ cursor: 'pointer' }}>
+                    <Line color="#ef4444"><span style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{s.symbol}</span><span>Stop {fmt$(s.stop_price ?? s.stop, 2)} · {s.account ?? ''}</span></Line>
+                  </div>
+                ))}
+              </SCard>
+            )}
+            {(cmd.open_paper_trades?.length > 0) && (
+              <SCard title="Paper Trades" count={cmd.open_paper_trades.length} accent="#60a5fa">
+                {cmd.open_paper_trades.slice(0, 6).map((t: any, i: number) => {
+                  const pl = t.pnl ?? t.unrealized_pnl ?? 0
+                  return (
+                    <div key={i} onClick={() => onDrill({ title: t.symbol, subtitle: t.strategy_id ?? '', endpoint: '/api/v2/open-trades', rows: [t] })} style={{ cursor: 'pointer' }}>
+                      <Line><span><span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--text0)' }}>{t.symbol}</span> <span style={{ fontSize: 8, color: 'var(--text3)' }}>{t.strategy_id}</span></span><span style={{ color: pl >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(pl, 0)} · {t.r_multiple != null ? `${Number(t.r_multiple).toFixed(2)}R` : '—'}</span></Line>
+                    </div>
+                  )
+                })}
+              </SCard>
+            )}
+            {((cmd.top_gainers?.length > 0) || (cmd.top_losers?.length > 0)) && (
+              <SCard title="Weekly Movers">
+                {(cmd.top_gainers ?? []).slice(0, 3).map((g: any, i: number) => (
+                  <Line key={'g' + i} color="#22c55e"><span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span><span>+{Number(g.change_pct ?? g.pct ?? 0).toFixed(1)}%</span></Line>
+                ))}
+                {(cmd.top_losers ?? []).slice(0, 3).map((l: any, i: number) => (
+                  <Line key={'l' + i} color="#ef4444"><span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span><span>{Number(l.change_pct ?? l.pct ?? 0).toFixed(1)}%</span></Line>
+                ))}
+              </SCard>
+            )}
+            {(cmd.cio_pending?.length > 0) && (
+              <SCard title="CIO Decisions" count={cmd.cio_pending.length} accent="#a855f7">
+                {cmd.cio_pending.slice(0, 6).map((c: any, i: number) => (
+                  <div key={i} onClick={() => onDrill({ title: c.symbol, subtitle: c.decision ?? c.action ?? '', endpoint: '/api/v2/cio-decisions', rows: [c] })} style={{ cursor: 'pointer' }}>
+                    <Line><span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--text0)' }}>{c.symbol}</span><span style={{ fontSize: 8, color: '#f59e0b' }}>{(c.decision ?? c.action ?? 'review').toUpperCase()}</span></Line>
+                  </div>
+                ))}
+              </SCard>
+            )}
+            {(cmd.recovery_watch?.length > 0) && (
+              <SCard title="Recovery Watch" count={cmd.recovery_watch.length} accent="#06b6d4">
+                {cmd.recovery_watch.slice(0, 6).map((r: any, i: number) => (
+                  <Line key={i}><span style={{ fontFamily: 'var(--mono)' }}>{r.symbol}</span><span style={{ color: 'var(--text3)' }}>{r.verdict ?? r.analyst_verdict ?? ''} {r.confidence != null ? `${Math.round((r.confidence <= 1 ? r.confidence * 100 : r.confidence))}%` : ''}</span></Line>
+                ))}
+              </SCard>
+            )}
+            {(cmd.top_news?.length > 0) && (
+              <SCard title="Portfolio News" count={cmd.top_news.length}>
+                {cmd.top_news.slice(0, 5).map((n: any, i: number) => (
+                  <div key={i} style={{ padding: '3px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: 9, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span style={{ fontFamily: 'var(--mono)', color: '#60a5fa' }}>{n.symbol}</span> {n.title ?? n.headline}</div>
+                  </div>
+                ))}
+              </SCard>
+            )}
+            {(cmd.agent_health?.length > 0) && (
+              <SCard title="Agent Health" count={cmd.agent_health.length} accent="#22c55e">
+                {cmd.agent_health.slice(0, 8).map((a: any, i: number) => (
+                  <Line key={i}><span style={{ fontFamily: 'var(--mono)' }}>{a.agent}</span><span style={{ color: 'var(--text3)' }}>{a.last_run_human ?? a.last_run ?? ''} · {a.runs ?? a.actions_taken ?? a.total ?? 0} runs</span></Line>
+                ))}
+              </SCard>
+            )}
+            {/* Hermes info */}
+            {hermesHealth && (() => {
+              const h = hermesHealth?.data ?? hermesHealth ?? {}
+              const sc = h.staging_counts ?? {}
+              return (
+                <SCard title="Hermes" accent="#e879f9" count={h.kill_switch_active ? 'KILL' : 'live'}>
+                  <Line><span>Research staged</span><span style={{ color: 'var(--text0)' }}>{sc.hermes_research_intelligence ?? 0}</span></Line>
+                  <Line><span>Validation findings</span><span style={{ color: 'var(--text0)' }}>{sc.hermes_validation_findings ?? 0}</span></Line>
+                  <Line><span>Autonomous loop</span><span style={{ color: h.autonomous_loop_active ? '#22c55e' : 'var(--text3)' }}>{h.autonomous_loop_active ? 'ON' : 'idle'}</span></Line>
+                  <Line><span>Gateway</span><span style={{ color: h.gateway_status === 'ok' ? '#22c55e' : '#ef4444' }}>{h.gateway_status ?? '—'}</span></Line>
+                </SCard>
+              )
+            })()}
+          </div>
+
+          {/* AI Intelligence Briefing (full width) */}
+          {cmd.llm_intelligence && (
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>AI Intelligence Briefing</div>
+              {[['Portfolio Risk', cmd.llm_intelligence.portfolio_risk], ['Morning Synthesis', cmd.llm_intelligence.morning_synthesis]].filter(([, v]) => v).map(([k, v]: any) => (
+                <div key={k} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 9, color: '#60a5fa', textTransform: 'uppercase', marginBottom: 3 }}>{k}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.5 }}>{typeof v === 'string' ? v : (v.summary ?? v.text ?? JSON.stringify(v).slice(0, 400))}</div>
+                </div>
+              ))}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/command → llm_intelligence (gemma3:12b daily)</div>
+            </div>
+          )}
         </>
       )}
 
