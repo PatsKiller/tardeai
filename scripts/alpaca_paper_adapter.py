@@ -102,6 +102,21 @@ class AlpacaPaperAdapter:
             log.warning(f"[alpaca] Failed to get account: {e}")
             return {'status': 'error', 'error': str(e)}
 
+    def get_status(self):
+        """Return adapter health status — same contract as Schwab/Tastytrade adapters."""
+        return {
+            "broker": "alpaca",
+            "enabled": self.enabled,
+            "authenticated": bool(self.api_key and self.secret_key),
+            "configured": bool(self.api_key and self.secret_key),
+            "dry_run": self.dry_run,
+            "mode": "paper",
+            "base_url": self.base_url,
+            "features": ["stocks", "etfs"],
+            "ira_support": False,
+            "account_types": ["paper"],
+        }
+
     def sync_positions(self, conn):
         """Sync Alpaca paper positions with paper_trades table."""
         positions = self.get_positions()
