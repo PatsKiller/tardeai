@@ -1686,9 +1686,16 @@ def process_jobs(limit: int = 10):
                    WHERE status='processing' AND started_at < now() - interval '20 minutes'
                    RETURNING id""")
     reaped = cur.fetchall()
+    # Normalize 'pending' → 'queued': aegis_overnight creates health_requeue / stale_refresh
+    # jobs as 'pending', but the claim query below only selects 'queued', so they never ran.
+    # They have no started_at (not in-flight), so adopting them is always safe.
+    cur.execute("UPDATE watchlist_agent_jobs SET status='queued' WHERE status='pending' RETURNING id")
+    adopted = cur.fetchall()
     conn.commit()
     if reaped:
         print(f"[watchlist-agent] Reaped {len(reaped)} orphaned 'processing' jobs → requeued")
+    if adopted:
+        print(f"[watchlist-agent] Adopted {len(adopted)} 'pending' jobs → queued")
 
     # Get queued jobs
     cur.execute("SELECT * FROM watchlist_agent_jobs WHERE status = 'queued' ORDER BY priority, created_at LIMIT %s", (limit,))
