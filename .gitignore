@@ -104,3 +104,6 @@ backups/doc_exports/*.zip
 # ── SearXNG / Docker infrastructure ──────────────────────────────────────
 infra/searxng/.env
 data/searxng_queries/
+
+# YouTube auth cookies (secret — never commit)
+config/youtube_cookies.txt
