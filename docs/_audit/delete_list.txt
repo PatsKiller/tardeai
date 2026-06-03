@@ -79,7 +79,6 @@ _archive/archive/2026-04-27_pre_bible/handoff_2026-04-19/openclaw_cc_redesign_de
 atm_lifecycle_v1_2026_05_26/screenshots/automated_trade_mode_after_hygiene_sync.png	344999	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/screenshots/automated_trade_mode_v1_1.png	344889	SNAPSHOT-DUMP
 _generated/ui_audit_screenshots/audit_7777_20260523_1921/7777/prospects.png	340363	ALREADY-ARCHIVED
-hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.pdf	338054	HEAVY-BINARY
 _generated/ui_audit_screenshots/audit_7777_20260523_1921/7777/agent_dashboard_maria_research.png	337620	ALREADY-ARCHIVED
 atm_lifecycle_v1_2026_05_26/screenshots/manual_close_review_v1_4.png	336765	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/screenshots/atm_overdue_decision_queue_v1_2.png	336739	SNAPSHOT-DUMP
@@ -171,7 +170,6 @@ ui_redesign/screenshots/research_desktop.png	170348	SNAPSHOT-DUMP
 ui_redesign/screenshots/reports_desktop.png	169049	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/full_lifecycle_acceleration_v3_0/screenshots/agent_collaboration.png	168970	SNAPSHOT-DUMP
 ui_redesign/screenshots/prospects_desktop.png	168775	SNAPSHOT-DUMP
-project/Trade_AI_v12_Reference_Architecture.docx	168686	HEAVY-BINARY
 _generated/ui_audit_screenshots/audit_7777_20260523_1921/7777/returns.png	168469	ALREADY-ARCHIVED
 project/Trade_AI_v12_Reference_Architecture.docx.bak_candidates_20260602	168435	SNAPSHOT-DUMP
 project/Trade_AI_v12_Reference_Architecture.docx.bak_setup_prior_20260602	167929	SNAPSHOT-DUMP
@@ -277,11 +275,9 @@ atm_lifecycle_v1_2026_05_28/backups/backtesting_filters_v4_1_pre_apply_20260528_
 ui_redesign/designer_workspace/designed_replacements/AgentCollaboration.tsx.REPLACEMENT.md	56501	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/backups/ATMControlRoom.tsx.pre_v1_7_20260526_201715	53139	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/source_exports/scripts_agent_watchlist_engine.md	53012	SNAPSHOT-DUMP
-project/Trade_AI_v12_System_Architecture.docx	51871	HEAVY-BINARY
 atm_lifecycle_v1_2026_05_26/api_samples/atm_lifecycle_live_after_v1.json	50724	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/api_samples/atm_lifecycle.json	50724	SNAPSHOT-DUMP
 atm_lifecycle_v1_2026_05_26/api_samples/agent_collaboration.json	49313	SNAPSHOT-DUMP
-hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.docx	47605	HEAVY-BINARY
 _archive/archive/2026-04-27_pre_bible/morning_brief_redesign_kit.zip	46980	ALREADY-ARCHIVED
 ui_audits/post_8b348c3/endpoints/topics.json	46851	SNAPSHOT-DUMP
 atm_audit_2026_05_26/designer_review/current_source_text/CRONTAB_EXPORT.md	45967	SNAPSHOT-DUMP

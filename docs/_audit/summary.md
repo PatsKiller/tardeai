@@ -15,10 +15,10 @@
 
 | Disposition | Files | Size |
 |---|---|---|
-| DELETE | 1567 | 1431.8 MB |
+| DELETE | 1563 | 1431.2 MB |
 | ARCHIVE-KEEP | 1232 | 10.5 MB |
-| ARCHIVE | 806 | 5.8 MB |
-| RETAIN | 139 | 0.9 MB |
+| ARCHIVE | 809 | 6.3 MB |
+| RETAIN | 140 | 1.1 MB |
 
 Exact-duplicate md groups: 47 (51 redundant copies)
 
