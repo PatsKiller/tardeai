@@ -1,6 +1,6 @@
-# Hermes Observation Report — 2026-06-01
+# Hermes Observation Report — 2026-06-02
 
-**Generated:** 2026-06-01 06:31 UTC
+**Generated:** 2026-06-02 06:30 UTC
 **Checks:** 12/12 passed
 
 ---
@@ -12,26 +12,26 @@
 - status: active
 
 ## Hermes Loop Last Log — PASS
-- log: May 31 21:05:53 ms01-openclaw python[3240394]:     COMMITTED: id=18
-May 31 21:05:53 ms01-openclaw python[3240394]: Done in 250.9s: 2 validated, 0 failed/rejected
-May 31 21:05:53 ms01-openclaw systemd[2973]: Finished hermes-autonomous-loop.service - Hermes Autonomous Ticker Challenger Loop (Apply Mod
+- log: Jun 01 21:09:25 ms01-openclaw python[4089298]:     COMMITTED: id=49
+Jun 01 21:09:25 ms01-openclaw python[4089298]: Done in 282.6s: 2 validated, 0 failed/rejected
+Jun 01 21:09:25 ms01-openclaw systemd[2973]: Finished hermes-autonomous-loop.service - Hermes Autonomous Ticker Challenger Loop (Apply Mod
 
 ## Searxng Container — PASS
-- status: Up 6 hours
+- status: Up 30 hours
 
 ## Searxng Endpoint — PASS
 - http_status: 200
 
 ## Research Backlog Count — PASS
-- count: 10
+- count: 13
 
 ## Hermes Rows — PASS
-- total: 28
-- staged: 18
-- promoted: 10
+- total: 47
+- staged: 32
+- promoted: 15
 
 ## Hermes Embeddings — PASS
-- count: 9
+- count: 12
 
 ## Kill Switch — PASS
 - active: False
@@ -43,7 +43,7 @@ May 31 21:05:53 ms01-openclaw systemd[2973]: Finished hermes-autonomous-loop.ser
 - http_status: 200
 
 ## Cron Count — PASS
-- count: 187
+- count: 172
 
 ---
 **Read-only observation. No DB writes. No alerts. No service changes.**

@@ -1,6 +1,0 @@
- id | symbol |  strategy_id   |        exit_reason        |  pnl   
-----+--------+----------------+---------------------------+--------
- 34 | APPS   | swing_breakout | position_closed_in_alpaca | 159.98
- 13 | INFU   | swing_breakout | manual_stale_close        |  67.83
-(2 rows)
-

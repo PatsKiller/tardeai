@@ -1,7 +1,0 @@
-Routes: 63
-OK: 61
-Skipped: 2
-Console errors: 0
-Network failures: 0
-Timeout: 0
-Error: 0

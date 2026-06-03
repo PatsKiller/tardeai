@@ -1,3 +1,0 @@
-holdings_total=1201120.25
-holdings_count=47
-PASSED

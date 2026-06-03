@@ -1,4 +1,0 @@
-  ollama.service                                        loaded active     running       Ollama Service
-  tradeai-portfolio-server.service                      loaded active     running       TradeAI Portfolio Server
-  tradeai-continuous.timer                              loaded active     waiting       Start TradeAI Continuous Scanner at 04:00 on weekdays
-  tradeai-reprice.timer                                 loaded active     waiting       Run TradeAI repricing every 15 minutes during market hours

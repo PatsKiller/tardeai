@@ -1,8 +1,0 @@
-[
-  {
-    "event_id": 1,
-    "action": "Would refresh advisory context for hermes_research_intelligence id=12 (type=research_staged)",
-    "latency_ms": 60,
-    "dry_run": true
-  }
-]
