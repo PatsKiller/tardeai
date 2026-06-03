@@ -1,5 +1,8 @@
 # LLM Fleet Strategy v4.1 — Final Execution Revision
 
+> **⚠️ Model policy (validated 2026-06-02):** gemma3:12b = primary chat, gemma3:4b = fallback, gemma3:27b = overnight; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** Any reference below to qwen3:14b as an active chat/generation model is superseded — see `MASTER_SYSTEM_DOCUMENTATION.md` §12.
+
+
 **Server:** ms01-openclaw, Ubuntu Linux
 **GPU:** Intel Arc Pro B50, **16 GB GDDR6 dedicated VRAM** (224 GB/s, PCIe 5.0 x8), Vulkan backend
 **Power:** 70W TBP (typical 50-55W operating)

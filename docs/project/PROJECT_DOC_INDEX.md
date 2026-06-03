@@ -20,9 +20,10 @@
 | Document | Purpose |
 |----------|---------|
 | `docs/A1A.md` | **Documentation due-diligence protocol** — non-negotiable |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative system reference** — 22+ sections, model routing corrected, Hermes sidecar section added (rewritten 2026-05-31) |
-| `docs/ARCHITECTURE_OVERVIEW.md` | ARCHIVED — consolidated into MASTER (2026-05-31) |
-| `docs/project/SYSTEM_ARCHITECTURE_COMPLETE.md` | ARCHIVED — consolidated into MASTER (2026-05-31) |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | **Authoritative TECHNICAL reference (architects)** — 22 §, counts validated vs live DB/cron/config 2026-06-02 (426 tables+23 views, 184 crons, 26 strategies) |
+| `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | **High-level overview (app owners)** — non-technical capabilities/workflows/reference architecture (NEW 2026-06-02) |
+| `docs/_archive/2026-06-02_doc_consolidation/ARCHITECTURE_OVERVIEW.md` | ARCHIVED + moved 2026-06-02 — superseded by MASTER + Executive overview |
+| `docs/_archive/2026-06-02_doc_consolidation/SYSTEM_ARCHITECTURE_COMPLETE.md` | ARCHIVED + moved 2026-06-02 — consolidated into MASTER |
 | `docs/project/MASTER_REWRITE_AND_ARCHIVE_REPORT_2026_05_31.md` | Master rewrite report — 50+ corrections, 2 docs archived |
 
 ### Operational Guides
@@ -75,6 +76,12 @@
 | Document | Purpose |
 |----------|---------|
 | `docs/frontend/` | PP-UX-1 (decision packet) + PP-UX-2 (trust audit) |
+| `docs/COMMAND_CENTER_PAGE_MATRIX.md` | Page matrix — includes v3 Strategy → Backtest tab + Backtest Intelligence layer (2026-06-02) |
+
+### Session 2026-06-02 — V3 Backtest Intelligence
+| Document | Purpose |
+|----------|---------|
+| `docs/project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md` | **Session summary** — full v2 backtest port to v3, entry-quality grading (engine was unscheduled → now cron), edge decay, capture, append-only `backtest_result_history`, new `/api/v2/backtesting/result-history` endpoint, **AI Trade Eval** (engine MACD/Fib/ADX/BB/structure + structured gemma3:12b evaluator → `/api/v2/backtesting/trade-evaluations`) |
 
 ### Session 2026-05-29/30 — Classifier, Proposals, Hermes
 | Document | Purpose |
@@ -578,6 +585,7 @@ Archived this pass (2026-05-31):
 
 | Date | Change |
 |------|--------|
+| 2026-06-02 | **Docs consolidation audit (Stage 1)**: counts validated vs live (426 tbl+23 views, 184 crons, 26 strategies) & corrected in MASTER; new `EXECUTIVE_ARCHITECTURE_OVERVIEW.md` (app-owner high-level); qwen3:14b-chat drift bannered in 9 docs (qwen3-embedding:8b still active); stale `ARCHITECTURE_OVERVIEW.md` + `SYSTEM_ARCHITECTURE_COMPLETE.md` moved to _archive. Audit outputs in `docs/_audit/` (inventory/summary/drift/delete/archive). Stage 2 (deletes, ~1.43GB) awaits operator go/no-go. |
 | 2026-06-02 | Phase 198: **advisory threshold tuning framework**. `tune_advisory_thresholds.py` replays the live `score()` (globals monkeypatched) over bar-validated closed-trade MFE peaks; sweeps thresholds. 24 cases/20 give-back: current **55% capture**, recommended LOCK 8→10 cuts false positives (flag 62.5→58.3%). **NOT applied** (small/synthetic sample, advisory params). Endpoint `/api/v2/atm/advisory-threshold-tuning` + pipeline step. Docs PHASE198A + closeout. Next: re-tune as real advised trades close. |
 | 2026-06-02 | Phase 197: **profit-protection outcomes in v3 Journal hub**. New `ProtectionOutcomesPanel` + **Protection tab** in `JournalHub` (v3 built RC=0, live `/v3/journal`). Shows 83% gave back, \$2,646 left on table, per-trade give-back, ANY operator-adjusted. Consumes `/api/v2/atm/protection-advisory-outcomes`. Pure additive v3 frontend (clean-tree edit, no collision with v3 session). Doc PHASE197 closeout. Next: Phase 198 threshold tuning as advised trades close. |
 | 2026-06-02 | Phase 196: **intraday MFE for same-day scalps**. `fetch_intraday_bars` (Alpaca 5min over hold window) + same-day detection + analyzer `.env` load (was silently failing Alpaca calls). **Full coverage: 24/24 measurable** (was 13). Final honest learning signal: **20/24 (83%) gave back profit, \$2,646 left on table** — all bar-validated. Docs PHASE196A + closeout. Next: Phase 197 surface outcomes in v3 Journal/Learning hub + threshold tuning. |

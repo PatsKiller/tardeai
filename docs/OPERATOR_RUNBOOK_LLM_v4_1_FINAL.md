@@ -1,5 +1,8 @@
 # Operator Runbook — LLM Fleet v4.1 Final Execution Pack
 
+> **⚠️ Model policy (validated 2026-06-02):** gemma3:12b = primary chat, gemma3:4b = fallback, gemma3:27b = overnight; **qwen3-embedding:8b = embeddings (active)**; **qwen3:14b (chat) is DISABLED + uninstalled.** Any reference below to qwen3:14b as an active chat/generation model is superseded — see `MASTER_SYSTEM_DOCUMENTATION.md` §12.
+
+
 **Server:** `ms01-openclaw`  
 **SSH:** `johnclaw@192.168.50.16`  
 **Project root:** `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`  

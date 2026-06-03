@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-06-02 (Phase 190 — stop protection verification & tracking added to §10/§18b; prior: 2026-05-31 master rewrite)
+**Document version:** 2026-06-02 (Doc consolidation audit — counts validated against live DB/crontab/config: 426 tables+23 views, 184 crons, 26 strategies; v3 dashboard canonical; qwen3:14b chat retired; Phases 188–198 protection/learning loop. Prior: 2026-05-31 master rewrite)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 
@@ -41,12 +41,12 @@ Trade AI v12 is an automated trading intelligence and portfolio management platf
 
 - **Data ingestion** from 15+ external sources (market data, news, SEC filings, transcripts, social, economic indicators)
 - **31-stage pipeline** organized into 7 groups running pre-market through overnight
-- **24 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
-- **LLM-assisted classification** with a local-first model routing (gemma3:12b primary, gemma3:4b fallback, gemma3:27b overnight batch)
+- **26 dynamically loaded strategies** (YAML-driven, multi-assignment capable)
+- **LLM-assisted classification** with a local-first model routing (gemma3:12b primary chat, gemma3:4b fallback, gemma3:27b overnight batch; qwen3-embedding:8b for embeddings). **qwen3:14b (chat) is disabled + uninstalled.**
 - **6 AI agents** accessible via Telegram/WhatsApp (Maria, Steph, Alex, Aegis, Risk Agent, Tax Agent)
 - **Iris backend agent** for content hygiene + Scalp Critic for incubator gating
 - **Paper trading execution** via Alpaca with bracket orders, TCA, and reconciliation
-- **70+ page React dashboard** (Command Center v2, consolidated from 61) for operator control
+- **React dashboard — Command Center v3 (canonical):** 11 consolidated hubs, ~37/39 tabs live, every value traced to a verified API field. Command Center v2 (63 pages) is **frozen** (legacy fallback, not maintained).
 - **Feedback loop closure** with proposal outcome chains, alert effectiveness scoring, and agent calibration
 - **LLM intelligence enrichment** generating daily narratives across 5 surfaces via gemma3:12b
 
@@ -57,12 +57,13 @@ The platform manages a portfolio (see dashboard for current value) (taxable + IR
 | Metric | Value |
 |--------|-------|
 | Python scripts | 401 |
-| Cron jobs | 85 (flock-protected, weekday/weekend/monthly schedules) |
+| Cron jobs | 184 (flock-protected, weekday/weekend/monthly schedules) — *validated 2026-06-02* |
 | API endpoints | 280+ (api_v2.py + portfolio_server.py) |
-| Database tables | 344 |
+| Database tables | 426 tables + 23 views (public schema) — *validated 2026-06-02* |
 | SQL migrations | 37 |
+| Strategies | 26 (config/strategies/*.yaml) — *validated 2026-06-02* |
 | Strategies | 26 (YAML-driven, multi-assignment) |
-| Frontend pages | 76 primary routes (consolidated from 61 via TabPage + new) |
+| Frontend | Command Center **v3** — 11 hubs / ~37–39 tabs (canonical); v2 63 pages (frozen) |
 | Nav items | 44 across 8 groups |
 | Agents | 6 conversational (Maria, Steph, Alex, Aegis, Risk, Tax) + 2 backend (Iris, Scalp Critic) |
 | External data sources | 15+ |
@@ -94,8 +95,8 @@ Trade AI v12 has 6 distinct service boundaries:
 |           |                                                        |
 |  +--------v---------+    +------------------+    +---------------+ |
 |  | PostgreSQL 15     |    | Cron Scheduler   |    | Alert Dispatch| |
-|  | :5432             |    | 53 jobs          |    | Dedup+Fatigue | |
-|  | 330 tables        |    | flock-protected  |    | 3 tiers       | |
+|  | :5432             |    | 184 jobs         |    | Dedup+Fatigue | |
+|  | 426 tbl + 23 view |    | flock-protected  |    | 3 tiers       | |
 |  +-------------------+    +------------------+    +---------------+ |
 +-------------------------------------------------------------------+
                     |                    |
@@ -182,6 +183,9 @@ Trade AI v12 has 6 distinct service boundaries:
 | **Market Data** | `market_quotes`, `indicator_confluence_cache`, `fundamental_data` | Prices, technicals, fundamentals |
 | **Enrichment** | `ticker_enrichment_cache`, `catalyst_cache` | 60+ Finviz fields, catalyst data |
 | **Strategy** | `strategy_signals`, `strategy_configs` | Signal history, dynamic config |
+| **Backtest & Entry Grading** | `strategy_backtest_runs`, `strategy_backtest_trades`, `strategy_backtest_results` (overwritten latest snapshot), `backtest_result_history` (APPEND-ONLY, one permanent row per run), `trade_backtest_results` (entry/exit A–D grades + RSI/SMA/ATR/**MACD/Bollinger/ADX/Fibonacci/candlestick/structure** context, left-on-table 5/10/20d) | Backtest replays + closed-trade entry/exit grading. `trade_backtest_results` populated by `trade_backtest_engine.py` (weekday 6:30 PM); `backtest_result_history` appended by `backtest_history_snapshot.py`. Surfaced in v3 Strategy → Backtest. |
+| **AI Trade Eval** | `trade_llm_reviews` (`review_stage='structured_backtest_eval'`, `eval_overall_score`, `eval_verdict`, `output_payload`) | Structured LLM trade evaluation (gemma3:12b) — scores + verdict per closed trade. Populated by `trade_close_llm_analyzer.py --structured` (weekday 9 PM). Research/journaling only, not advice. |
+| **Setup-Quality Prior (advisory)** | `setup_quality_prior` (per RSI band), `proposal_setup_advisory` (per proposal), `candidate_setup_advisory` (per incubator/watchlist symbol) | Feedback loop: distills entry grades + evals into a prior, attaches an **advisory-only** flag to proposals AND candidate symbols (never gates/blocks/changes scoring). Built by `setup_quality_prior.py` (nightly 10 PM); candidate RSI from `ticker_snapshot_daily`. Served at `/api/v2/atm/setup-advisory` + `/api/v2/setup-advisory/candidates`; surfaced as caution badges in v3 Trading hub, Strategy→Incubator, and the new v3 Watchlist page. |
 | **Execution Quality** | `paper_execution_quality`, `broker_reconciliation_items`, `trade_thesis_outcomes` | TCA metrics, recon, outcome tracking |
 | **Agent** | `cio_decisions`, `decision_outcomes`, `agent_handoffs` | Decision audit trail (CIO deduped per 24h) |
 | **Recovery** | `stopped_out_watch`, `stopped_out_relist_events`, `stopped_out_watch_history` | Exit classification (true stop-out vs relist vs market reconnection), patience scoring |
@@ -1796,8 +1800,14 @@ John replies in Telegram → telegram_command_handler executes retry
 | Time | Job |
 |------|-----|
 | 6:10 PM | Proposal promoter (evening) |
+| 6:30 PM (Mon–Fri) | Entry/exit grade engine — `trade_backtest_engine.py` (grades newly closed trades into `trade_backtest_results`) |
 | 8:00 PM | Overnight batch + SEC Form 4 |
 | 8:30 PM | Feedback loop processor (outcome chains, alert scoring) |
+| 9:00 PM (Mon–Fri) | AI Trade Eval — `trade_close_llm_analyzer.py --structured` (gemma3:12b, --limit 12, structured scores+verdict). Research/journaling only. |
+| 10:00 PM (daily) | Setup-quality prior + proposal advisory — `setup_quality_prior.py` (advisory-only, never gates). |
+| 10:10 PM (Sun) | Backtest result-history archiver (append-only) — `backtest_history_snapshot.py`, after the Sun 10 PM enterprise replay |
+
+> Backtest cadence summary: daily active backtest weekdays 6 AM (`strategy_backtester.py`); full enterprise replay Sunday 10 PM (`enterprise_backtester.py --replay-trades`); entry/exit grading weekdays 6:30 PM; result-history archiver weekdays 6:10 AM + Sunday 10:10 PM (`backtest_history_snapshot.py`, append-only, never overwrites). Services run under systemd (`tradeai-portfolio-server.service`); all scheduled batch jobs run under cron + `safe_flock.sh`.
 | 9:00 PM | Auto-research |
 | **11:00 PM–3:00 AM** | **Deep overnight LLM window** (gemma3-overnight, 100-job cap, 15 job types: strategy classification, risk synthesis, RAG curation, journal/trade reviews, recovery watch, covered call scoring, strategy opportunity scan, rebalance analysis, + rotating strategy scans: income (Mon), growth (Wed), reversion (Sat). Event-driven requeue + calibration loop. Strategy-aware incubator grading (4 prompt groups)) |
 | **Fri 4:00 PM** | **Friday extended window** (400-job weekly backlog clear, 11h window) |
