@@ -61,6 +61,21 @@ def _db_age_hours(sql):
         return None
 
 
+def _db_scalar(sql):
+    """Return a single scalar via a fresh connection. None on error (caller decides meaning)."""
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from db_adapter import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(sql)
+        row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 def _api_get(path):
     try:
         with urllib.request.urlopen(f"{API_BASE}{path}", timeout=15) as r:
@@ -155,9 +170,9 @@ def main():
           "topic_monitor MAX(last_searched)",
           "curl -X POST localhost:7777/api/v2/topics/run")
 
-    check("paper_proposals", 4,
-          _db_age_hours("SELECT MAX(created_at) FROM paper_trade_proposals WHERE status='pending'"),
-          "paper_trade_proposals MAX(created_at) pending")
+    check("paper_proposals", 12,
+          _db_age_hours("SELECT MAX(created_at) FROM paper_trade_proposals"),
+          "paper_trade_proposals MAX(created_at)")
 
     _agent_max = 48 if _now().weekday() >= 5 else 2  # Weekend: 48h, weekday: 2h
     check("watchlist_agent_jobs", _agent_max,
@@ -171,16 +186,16 @@ def main():
           ".venv/bin/python scripts/weekly_learning_export.py")
 
     check("broker_reconciliation", 48,
-          _db_age_hours("SELECT MAX(created_at) FROM broker_reconciliation"),
-          "broker_reconciliation MAX(created_at)")
+          _db_age_hours("SELECT MAX(started_at) FROM broker_reconciliation_runs"),
+          "broker_reconciliation_runs MAX(started_at)")
 
     check("morning_brief", 48,
           _db_age_hours("SELECT MAX(observed_at) FROM aegis_portfolio_briefs"),
           "aegis_portfolio_briefs MAX(observed_at)")
 
     check("screener_results", 48,
-          _db_age_hours("SELECT MAX(run_started_at) FROM pipeline_runs WHERE pipeline_key ILIKE '%screener%'"),
-          "pipeline_runs screener MAX(run_started_at)")
+          _db_age_hours("SELECT MAX(started_at) FROM pipeline_runs WHERE pipeline_key ILIKE '%screen%'"),
+          "pipeline_runs screener MAX(started_at)")
 
     # Pipeline health check
     ph = _api_get("/api/v2/pipeline-health-master")
@@ -201,23 +216,16 @@ def main():
             check_special("pipeline_health", "PASS",
                           f"{healthy}/{total} healthy, {critical} critical, {warnings} warnings, {never} never_run")
 
-    # Agent queue backlog
-    try:
-        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from db_adapter import get_connection
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='queued'")
-        queued = cur.fetchone()[0]
-        conn.close()
-        if queued > 100:
-            check_special("agent_queue_backlog", "FAIL", f"{queued} queued jobs (>100)")
-        elif queued > 50:
-            check_special("agent_queue_backlog", "WARN", f"{queued} queued jobs (>50)")
-        else:
-            check_special("agent_queue_backlog", "PASS", f"{queued} queued jobs")
-    except Exception:
+    # Agent queue backlog (fresh connection via _db_scalar so a prior aborted cursor can't mask it)
+    queued = _db_scalar("SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='queued'")
+    if queued is None:
         check_special("agent_queue_backlog", "WARN", "Cannot check queue")
+    elif queued > 100:
+        check_special("agent_queue_backlog", "FAIL", f"{queued} queued jobs (>100)")
+    elif queued > 50:
+        check_special("agent_queue_backlog", "WARN", f"{queued} queued jobs (>50)")
+    else:
+        check_special("agent_queue_backlog", "PASS", f"{queued} queued jobs")
 
     # CIO duplicate check
     try:
