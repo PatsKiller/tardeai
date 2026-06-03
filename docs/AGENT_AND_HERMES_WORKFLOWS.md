@@ -68,7 +68,7 @@ Hermes is Trade AI's near-24/7 research desk, memory layer, and independent chal
 | **Auto-Promote** | Staged → promoted (bounded, reversible) | via Coordinator (cap 10/tick) | `hermes_research_intelligence.status='promoted'` + audit | operational |
 | **Source Curation** | Track source yield (promoted/total), update registry | Weekly Sun 11:30 PM cron | `research_sources` | operational |
 | **Backlog Manager** | Structured research backlog (no dedicated table — surfaces backlog-tagged intel) | via Coordinator | backlog-tagged `hermes_research_intelligence` | designed |
-| **Catalyst Momentum Engine** | Catalyst-driven momentum/scalp research on 3 cadence bands | Manual / on-demand | advisory intel + gated paper proposals (11 gates) | designed |
+| **Catalyst Momentum Engine** | Catalyst-driven momentum/scalp research on 3 cadence bands via SearXNG | Cron, 3 bands (premarket */30 4–9 ET, swing :30 9–15 ET wkdys, overnight 18/22 daily) — `--apply` advisory only | `hermes_research_intelligence` (`momentum_catalyst`, staged); gated paper proposals only with `--generate-proposals` | operational (2026-06-03) |
 | **RSS Ingest** | Parse `config/hermes_rss_feeds.txt`, stage items | Manual | `hermes_research_intelligence` (`source='rss'`) | dormant (no feeds configured) |
 | **Backlog Health Check** | Read-only backlog health report | Manual | `docs/hermes/backlog_health/` | designed |
 | **Embedding Promotion Reviewer** | Dry-run embed/promote recommendations | Manual | `docs/hermes/embedding_promotion_reviews/` | designed |
@@ -115,4 +115,5 @@ The Catalyst Momentum Engine has two feeds: (1) advisory research → staging �
 
 ## Change history
 
+- **2026-06-03b** — Catalyst Momentum Engine promoted designed→operational. Fixed 3 schema bugs in its `hermes_research_intelligence` INSERT (missing `freshness_date`, `model_used`; `source` must be `'hermes'` not `'searxng'`) that had silently prevented it from ever producing a row. First successful run staged 6 catalyst findings (market_swing). Scheduled all 3 bands (cron, flock-guarded, `--apply` advisory only).
 - **2026-06-03** — Initial canonical workflow reference. Captured live coordinator-driven Hermes fleet (directive B), honest run-states, and the agent allocation chain. Supersedes the stale "autonomous timer: daily 01:00 / auto-promotion prohibited" description previously in MASTER §18b.
