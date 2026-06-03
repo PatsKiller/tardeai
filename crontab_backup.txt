@@ -404,3 +404,6 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 20 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/taxonomy_tagger.lock $PY scripts/taxonomy_tagger.py --all --limit 500 >> logs/taxonomy_tagger.log 2>&1
 # SIEM retention purge — keep 14 days of alert/event noise
 10 3 * * * cd $PROJ && $PY scripts/siem_retention_purge.py >> logs/siem_retention_purge.log 2>&1
+# SIEM: scrape file-only errors into alert_events + notify on critical incidents
+*/20 * * * * cd $PROJ && $PY scripts/log_error_scraper.py >> logs/log_error_scraper.log 2>&1
+*/15 * * * * cd $PROJ && $PY scripts/siem_critical_notify.py >> logs/siem_critical_notify.log 2>&1
