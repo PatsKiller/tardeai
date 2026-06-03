@@ -295,3 +295,14 @@ v3 Home Snapshot tab enriched to v2 Command Center parity from `/api/v2/command`
 ## Scheduled-jobs timer status fix (2026-06-03h)
 
 `/api/v2/system/scheduled-jobs` returned "unknown" for all hermes/tradeai timers — the portfolio_server is a SYSTEM service and `systemctl --user` couldn't reach the user bus. Fixed by injecting `XDG_RUNTIME_DIR=/run/user/<uid>` + returning is-active output on non-zero exit. Now resolves active/inactive/failed.
+
+## v3 parity batch — 6 v2 pages added (2026-06-03i)
+
+| v2 page | v3 home | Endpoint |
+|---|---|---|
+| Broker Recon | Trading → Broker Recon | /api/v2/broker-reconciliation |
+| Plan vs Perf | Strategy → Plan vs Perf | /api/v2/plan-vs-performance |
+| Forecast | Portfolio → Forecast | /api/v2/forecast |
+| System Access | System → Access | /api/v2/system/access-links |
+| Inbox | Agents → Inbox | /api/v2/inbox (NEW: escalations + CIO review + proposals) |
+| Weekly Learning | Agents → Weekly Learning | /api/v2/weekly-learning (NEW: multi-tier reviews + agent perf) |

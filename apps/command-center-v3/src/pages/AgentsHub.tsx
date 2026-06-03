@@ -5,7 +5,7 @@ import 'reactflow/dist/style.css'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Roster', 'Calibration', 'Workflow', 'Performance'] as const
+const TABS = ['Roster', 'Calibration', 'Workflow', 'Performance', 'Inbox', 'Weekly Learning'] as const
 
 const G = '#22c55e', R = '#ef4444', A = '#f59e0b', B = '#60a5fa'
 // Ground truth: AGENT_ROSTER.md (validated 2026-06-02). Roles are static identity, not in the API.
@@ -106,6 +106,8 @@ export default function AgentsHub({ onDrill }: Props) {
   const { data: calAgents } = useApi<any>('/api/v2/agent-calibration/agents', 120_000)
   const { data: calWindows } = useApi<any>('/api/v2/agent-calibration/windows', 120_000)
   const { data: pipeline } = useApi<any>('/api/v2/agent-pipeline?limit=50', 120_000)
+  const { data: inbox } = useApi<any>('/api/v2/inbox', 60_000)
+  const { data: weekly } = useApi<any>('/api/v2/weekly-learning', 300_000)
 
   const agents: any[] = summary?.agents ?? []
   const handoffs: any[] = summary?.handoffs ?? []
@@ -413,6 +415,66 @@ export default function AgentsHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/agent-performance (fields: agent, accuracy_pct, avg_confidence, rule_violations, human_overrides)</div>
         </div>
       )}
+
+      {/* ===== INBOX (escalations + CIO review + proposals) ===== */}
+      {tab === 'Inbox' && (() => {
+        const ib = inbox?.data ?? inbox ?? {}
+        const items = ib.items ?? []
+        const tc = (t: string) => t === 'escalation' ? '#f59e0b' : t === 'cio_review' ? '#a855f7' : '#60a5fa'
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+              {[['Escalations', ib.escalations, '#f59e0b'], ['CIO review', ib.cio_review, '#a855f7'], ['Proposals', ib.proposals, '#60a5fa']].map(([k, v, c]: any) => (
+                <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: c }}>{v ?? 0}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 460, overflowY: 'auto' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Needs operator review ({items.length})</div>
+              {items.map((it: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: it.symbol ?? it.type, subtitle: it.source ?? '', endpoint: '/api/v2/inbox', rows: [it] })}
+                  style={{ display: 'grid', gridTemplateColumns: '70px 0.7fr 1.6fr auto', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${tc(it.type)}` }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: tc(it.type), textTransform: 'uppercase' }}>{it.type.replace('_', ' ')}</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 600, color: 'var(--text0)' }}>{it.symbol ?? '—'}</span>
+                  <span style={{ color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.detail}</span>
+                  <span style={{ fontSize: 8, color: 'var(--text3)' }}>{timeAgo(it.at)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/inbox — escalated handoffs + CIO human-review + pending proposals. Read-only; resolve in v2 Inbox / Agent Collaboration.</div>
+          </div>
+        )
+      })()}
+
+      {/* ===== WEEKLY LEARNING ===== */}
+      {tab === 'Weekly Learning' && (() => {
+        const w = weekly?.data ?? weekly ?? {}
+        const reviews = w.reviews ?? []
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text2)' }}>
+              <span>{w.review_count ?? 0} reviews</span>
+              {(w.by_tier ?? []).map((t: any) => <span key={t.tier} style={{ color: 'var(--text3)' }}>{t.tier}: {t.count}</span>)}
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 480, overflowY: 'auto' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Weekly trade reviews</div>
+              {reviews.map((r: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: `Trade #${r.paper_trade_id} · ${r.tier}`, subtitle: r.model_used ?? '', endpoint: '/api/v2/weekly-learning', rows: [r] })}
+                  style={{ padding: '7px 8px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#60a5fa' }}>{r.tier} · trade #{r.paper_trade_id}</span>
+                    <span style={{ fontSize: 8, color: 'var(--text3)' }}>{r.model_used} · {timeAgo(r.created_at)}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.4, maxHeight: 48, overflow: 'hidden' }}>{(r.review ?? '').slice(0, 240)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/weekly-learning — multi-tier trade reviews + agent performance trend.</div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
