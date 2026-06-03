@@ -271,3 +271,13 @@ The 12 Fidelity 401(k) commingled pools / institutional mutual funds (no public 
 ### v3 Portfolio holdings rows — at-a-glance signals (2026-06-03e)
 
 Holdings table rows now carry decision signals without opening the drawer: **Symbol · Value · P/L% · RSI zone chip · Signal pill · %Port** (replaced Shares & Day-Change, which moved to the drawer). P/L% = `gain_loss/cost_basis` where basis exists (33/45 — all Schwab); **fidelity_401k funds (0/10) and cash show "—"** (no per-lot basis; purchase *date* does not exist in any source). RSI chip color-zoned (oversold=green/buy, overbought=amber/caution, neutral=gray), `*` = via public-ETF proxy. Signal pill colored (ADD green / TRIM-SELL red / WATCH-MONITOR amber / HOLD gray). Header shows technicals as-of timestamp. Drawer still holds the full fib ladder + ratings.
+
+## v3 System → Pipeline Health (2026-06-03f)
+
+New **Pipeline** tab (default) in System hub — one at-a-glance view of every pipeline stage's live numbers, closing the visibility gap that let stale jobs hide for weeks. Source: `/api/v2/system/pipeline-health` (new aggregation endpoint). Cards:
+- **Ingestion** — news today/7d + freshness, active topics, transcripts total + freshness (caught a 14d stoppage), SEC Form 4 7d.
+- **Curation** — iris pending/applied/expired, hermes promoted/staged, catalyst hits today.
+- **LLM** — agent results today/7d, holdings w/ LLM health + freshness, daily intel sections + freshness.
+- **RAG** — embeddings total, +7d, model, latest-embed freshness.
+- **Agent jobs** — queued/processing/pending (self-healing reaper), completed/failed today.
+Freshness colored green/amber/red vs each stage's SLA. Read-only.

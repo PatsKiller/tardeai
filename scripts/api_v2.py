@@ -81,6 +81,67 @@ def _db_query(sql, params=None, fetch="all"):
         return None
 
 
+def _system_pipeline_health():
+    """GET /api/v2/system/pipeline-health — one aggregated view of every pipeline stage's
+    live numbers: ingestion → curation → LLM → RAG → jobs → hermes. Read-only.
+    Each value is a plain count/timestamp so the v3 Pipeline tab can render at-a-glance."""
+    def s1(sql):
+        r = _db_query(sql, fetch="one")
+        if not r:
+            return None
+        return list(r.values())[0] if isinstance(r, dict) else r[0]
+    def ts(sql):
+        v = s1(sql)
+        return _json_clean(v) if v is not None else None
+
+    # Hermes research by status (curation routing ratios)
+    hr = {r["status"]: r["cnt"] for r in (_db_query("SELECT status, COUNT(*) cnt FROM hermes_research_intelligence GROUP BY status") or [])}
+    # Iris proposal funnel
+    ir = {r["status"]: r["cnt"] for r in (_db_query("SELECT status, COUNT(*) cnt FROM iris_taxonomy_proposals GROUP BY status") or [])}
+    # Agent job queue
+    jq = {r["status"]: r["cnt"] for r in (_db_query("SELECT status, COUNT(*) cnt FROM watchlist_agent_jobs WHERE status IN ('queued','processing','pending') GROUP BY status") or [])}
+
+    return {
+        "as_of": datetime.now().astimezone().isoformat(),
+        "ingestion": {
+            "news_today": s1("SELECT COUNT(*) FROM news_articles WHERE created_at::date=CURRENT_DATE"),
+            "news_7d": s1("SELECT COUNT(*) FROM news_articles WHERE created_at>NOW()-INTERVAL '7 days'"),
+            "news_latest": ts("SELECT MAX(created_at) FROM news_articles"),
+            "topics_active": s1("SELECT COUNT(*) FROM topic_monitor WHERE enabled=true"),
+            "transcripts_total": s1("SELECT COUNT(*) FROM youtube_transcripts"),
+            "transcripts_latest": ts("SELECT MAX(ingested_at) FROM youtube_transcripts"),
+            "sec_form4_7d": s1("SELECT COUNT(*) FROM sec_form4 WHERE created_at>NOW()-INTERVAL '7 days'"),
+            "sec_latest": ts("SELECT MAX(created_at) FROM sec_form4"),
+        },
+        "curation": {
+            "iris_pending": ir.get("pending", 0), "iris_approved": ir.get("approved", 0),
+            "iris_expired": ir.get("expired", 0),
+            "hermes_promoted": hr.get("promoted", 0), "hermes_staged": hr.get("staged", 0),
+            "hermes_research_backlog": hr.get("research_backlog", 0),
+            "momentum_catalyst_today": s1("SELECT COUNT(*) FROM hermes_research_intelligence WHERE research_type='momentum_catalyst' AND created_at::date=CURRENT_DATE"),
+        },
+        "llm": {
+            "agent_results_today": s1("SELECT COUNT(*) FROM watchlist_agent_results WHERE created_at::date=CURRENT_DATE"),
+            "agent_results_7d": s1("SELECT COUNT(*) FROM watchlist_agent_results WHERE created_at>NOW()-INTERVAL '7 days'"),
+            "holdings_llm_count": s1("SELECT COUNT(*) FROM watchlist_items WHERE source='portfolio' AND holdings_llm_health IS NOT NULL"),
+            "holdings_llm_latest": ts("SELECT MAX(holdings_llm_at) FROM watchlist_items WHERE source='portfolio'"),
+            "daily_sections": s1("SELECT COUNT(*) FROM llm_intelligence_cache"),
+            "daily_sections_latest": ts("SELECT MAX(generated_at) FROM llm_intelligence_cache"),
+        },
+        "rag": {
+            "corpus_total": s1("SELECT COUNT(*) FROM content_embeddings"),
+            "corpus_7d": s1("SELECT COUNT(*) FROM content_embeddings WHERE created_at>NOW()-INTERVAL '7 days'"),
+            "model": s1("SELECT embedding_model FROM content_embeddings WHERE embedding_model IS NOT NULL ORDER BY created_at DESC LIMIT 1"),
+            "latest": ts("SELECT MAX(created_at) FROM content_embeddings"),
+        },
+        "jobs": {
+            "queued": jq.get("queued", 0), "processing": jq.get("processing", 0), "pending": jq.get("pending", 0),
+            "completed_today": s1("SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='completed' AND completed_at::date=CURRENT_DATE"),
+            "failed_today": s1("SELECT COUNT(*) FROM watchlist_agent_jobs WHERE status='failed' AND completed_at::date=CURRENT_DATE"),
+        },
+    }
+
+
 # ── Endpoint handlers ─────────────────────────────────────────────────────
 
 def _pi_score(d: dict) -> int:
@@ -14452,6 +14513,7 @@ ROUTES = {
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
+    "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
     "/api/v2/system/siem": lambda: _system_siem_dashboard(),
     "/api/v2/hermes/self-learning-overview": lambda: _hermes_self_learning_overview(),
     "/api/v2/hermes/self-learning/drilldown": lambda: _hermes_sl_drilldown(),
