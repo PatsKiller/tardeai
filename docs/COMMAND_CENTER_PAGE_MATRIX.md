@@ -287,3 +287,11 @@ Freshness colored green/amber/red vs each stage's SLA. Read-only.
 Two v2 pages that had no v3 home are now System-hub tabs:
 - **Apps** (`/api/v2/system/applications`) — software inventory + version drift. KPI strip (total/current/behind/unknown/not-installed), table with installed→latest + status, click for update command. Was v2 System Applications.
 - **Jobs** (`/api/v2/system/scheduled-jobs`) — systemd timers + cron, grouped Hermes / Trade AI / Other with status dots. Was v2 Scheduled Jobs. ("unknown" status = systemctl not resolvable for that unit — a backend gap.)
+
+## v3 Home — rich Command Center + Hermes (2026-06-03h)
+
+v3 Home Snapshot tab enriched to v2 Command Center parity from `/api/v2/command` (one endpoint, all sections): Stops Triggered (action), Paper Trades (P&L/R), Weekly Movers, CIO Decisions, Recovery Watch, Portfolio News, Agent Health, AI Intelligence Briefing (portfolio risk + morning synthesis) — plus a **Hermes** card (`/api/v2/hermes/health`: staged research, validation findings, autonomous loop, gateway). v3-themed cards, click-to-drill.
+
+## Scheduled-jobs timer status fix (2026-06-03h)
+
+`/api/v2/system/scheduled-jobs` returned "unknown" for all hermes/tradeai timers — the portfolio_server is a SYSTEM service and `systemctl --user` couldn't reach the user bus. Fixed by injecting `XDG_RUNTIME_DIR=/run/user/<uid>` + returning is-active output on non-zero exit. Now resolves active/inactive/failed.
