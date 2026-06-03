@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import BacktestPanel from '../components/BacktestPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Analytics', 'Desk', 'Incubator', 'Backtest'] as const
+const TABS = ['Analytics', 'Desk', 'Incubator', 'Plan vs Perf', 'Backtest'] as const
 
 export default function StrategyHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Analytics')
@@ -15,6 +16,7 @@ export default function StrategyHub({ onDrill }: Props) {
   const { data: desk } = useApi<any>('/api/v2/strategy-desk', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
   const { data: btResults } = useApi<any>('/api/v2/backtesting/results', 120_000)
+  const { data: pvp } = useApi<any>('/api/v2/plan-vs-performance', 120_000)
   const { data: incubator } = useApi<any>('/api/v2/incubator', 120_000)
   const { data: incAdv } = useApi<any>('/api/v2/setup-advisory/candidates?entity=incubator', 120_000)
   const incAdvMap: Record<string, any> = {}
@@ -261,6 +263,50 @@ export default function StrategyHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/incubator + /api/v2/setup-advisory/candidates (setup-quality prior, advisory-only). Showing first 30 of {incubator.total}.</div>
         </div>
       )}
+
+      {tab === 'Plan vs Perf' && (() => {
+        const p = pvp?.data ?? pvp ?? {}
+        const sm = p.summary ?? {}
+        const snaps = p.strategy_snapshots ?? []
+        const rg = p.regime_now ?? {}
+        const adh = sm.plan_adherence_rate
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+              {[
+                { k: 'Plan adherence', v: adh != null ? `${(adh <= 1 ? adh * 100 : adh).toFixed(0)}%` : '—', c: '#60a5fa' },
+                { k: 'Win rate', v: sm.win_rate != null ? `${(sm.win_rate <= 1 ? sm.win_rate * 100 : sm.win_rate).toFixed(0)}%` : '—', c: '#22c55e' },
+                { k: 'Total P&L', v: fmt$(sm.total_pnl ?? 0, 0), c: (sm.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' },
+                { k: 'Closed', v: sm.closed_trades ?? '—', c: 'var(--text0)' },
+                { k: 'Regime', v: rg.regime_label ?? '—', c: '#a855f7' },
+              ].map(s => (
+                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 420, overflowY: 'auto' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Strategy performance snapshots ({snaps.length})</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.6fr 0.7fr 0.6fr 0.8fr 1fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                <span>Strategy</span><span>Trades</span><span>Win%</span><span>Avg R</span><span>P&L</span><span>Assessment</span>
+              </div>
+              {snaps.map((s: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: s.strategy_id, subtitle: s.assessment ?? '', endpoint: '/api/v2/plan-vs-performance', rows: [s] })}
+                  style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.6fr 0.7fr 0.6fr 0.8fr 1fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text1)', fontWeight: 600 }}>{(s.strategy_id ?? '').replace(/_/g, ' ')}</span>
+                  <span style={{ color: 'var(--text3)' }}>{s.trades_closed ?? 0}</span>
+                  <span style={{ color: (s.win_rate ?? 0) >= 50 ? '#22c55e' : '#f59e0b' }}>{s.win_rate != null ? `${Math.round(s.win_rate <= 1 ? s.win_rate * 100 : s.win_rate)}` : '—'}</span>
+                  <span style={{ color: (s.avg_r ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{s.avg_r != null ? Number(s.avg_r).toFixed(2) : '—'}</span>
+                  <span style={{ color: (s.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(s.total_pnl ?? 0, 0)}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.assessment ?? ''}</span>
+                </div>
+              ))}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/plan-vs-performance — planned vs actual execution, strategy snapshots, regime fit.</div>
+            </div>
+          </div>
+        )
+      })()}
 
       {tab === 'Backtest' && <BacktestPanel onDrill={onDrill} />}
     </div>
