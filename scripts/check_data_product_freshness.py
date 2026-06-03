@@ -167,7 +167,7 @@ def main():
     check("youtube_transcripts", 240,
           _db_age_hours("SELECT MAX(ingested_at) FROM youtube_transcripts"),
           "youtube_transcripts MAX(ingested_at)",
-          ".venv/bin/python scripts/aegis_transcript_discovery.py")
+          "Refresh config/youtube_cookies.txt with AUTHENTICATED cookies, then: .venv/bin/python scripts/youtube_transcript_ingest.py --all-channels")
     check("sec_form4", 240,
           _db_age_hours("SELECT MAX(created_at) FROM sec_form4"),
           "sec_form4 MAX(created_at)")
