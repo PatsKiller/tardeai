@@ -394,3 +394,5 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/drive_sync.lock bash scripts/sync-docs-to-drive.sh >> /home/johnclaw/logs/drive-sync.log 2>&1
 # Job coverage / heartbeat monitor (catches unscheduled + non-producing jobs)
 30 8,20 * * * cd $PROJ && $PY scripts/job_coverage_monitor.py >> logs/job_coverage_monitor.log 2>&1
+# Iris proposal curator — close the discovery loop (auto-apply hi-conf reclassify, expire stale discovery)
+20 7 * * * cd $PROJ && $PY scripts/iris_proposal_curator.py --apply >> logs/iris_proposal_curator.log 2>&1
