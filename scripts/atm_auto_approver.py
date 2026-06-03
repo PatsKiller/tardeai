@@ -76,6 +76,12 @@ def _log_decision(conn, proposal_id, symbol, strategy_id, target_account,
                   new_today_account, new_today_total, daily_pnl_pct_account,
                   daily_pnl_pct_aggregate, b1_excluded, config_hash, atm_mode,
                   trade_id=None) -> int:
+    # Self-heal: the shared db_adapter connection can be dropped during long approval / LLM
+    # calls (DB idle timeout). A cached reference then reads 'connection already closed'.
+    # db_adapter.get_connection() transparently reconnects the global if it's closed.
+    if conn is None or getattr(conn, "closed", 0):
+        from db_adapter import get_connection
+        conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
         INSERT INTO atm_decision_log
@@ -480,6 +486,11 @@ def run_cycle():
         try:
             from paper_trade_logger import approve_proposal
             result = approve_proposal(pid)
+            # approve_proposal can run long (LLM / broker) and the shared DB connection may be
+            # dropped by the server mid-cycle. Re-acquire a live conn+cursor before logging the
+            # decision / committing, so we never write on a stale 'connection already closed'.
+            conn = get_connection()
+            cur = conn.cursor()
 
             if not result.get("success"):
                 fail_reason = result.get("message", "unknown")[:200]
