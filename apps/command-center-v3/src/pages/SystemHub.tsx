@@ -3,7 +3,7 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Queue', 'SIEM', 'Crons', 'LLM'] as const
+const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Crons', 'LLM'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -26,6 +26,8 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: crons } = useApi<any>('/api/v2/system/cron-compression', 120_000)
   const { data: llm } = useApi<any>('/api/v2/local-llm-status', 60_000)
   const { data: pipe } = useApi<any>('/api/v2/system/pipeline-health', 60_000)
+  const { data: apps } = useApi<any>('/api/v2/system/applications', 300_000)
+  const { data: jobs } = useApi<any>('/api/v2/system/scheduled-jobs', 120_000)
 
   const timers = qct?.timers_total ?? 0
   const cronCount = qct?.cron_count ?? 0
@@ -258,6 +260,98 @@ export default function SystemHub({ onDrill }: Props) {
               </div>
             </div>
             <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/siem — unions alert_events + system_health_events + telegram, deduped + correlated, P0–P3, 14-day retention. {siem?.total_events ?? 0} raw → {siem?.unique_groups ?? 0} incidents.</div>
+          </div>
+        )
+      })()}
+
+      {tab === 'Jobs' && (() => {
+        const j = jobs?.data ?? jobs ?? {}
+        const timers = j.timers ?? {}
+        const groups: [string, any[]][] = [['Hermes', timers.hermes ?? []], ['Trade AI', timers.tradeai ?? []], ['Other', timers.other ?? []]].filter(([, v]) => (v as any[]).length) as any
+        const cron = j.cron ?? {}
+        const sc = (s: string) => s === 'active' || s === 'running' || s === 'ok' ? '#22c55e' : s === 'failed' || s === 'dead' ? '#ef4444' : 'var(--text3)'
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+              {[
+                { k: 'Systemd timers', v: timers.total ?? 0, c: 'var(--text0)' },
+                { k: 'Active cron', v: cron.active ?? cron.total ?? '—', c: '#22c55e' },
+                { k: 'Migrated', v: cron.migrated ?? j.migrated ?? '—', c: '#60a5fa' },
+                { k: 'Failed', v: timers.failed ?? 0, c: (timers.failed ?? 0) > 0 ? '#ef4444' : 'var(--text3)' },
+              ].map(s => (
+                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: 12 }}>
+              {groups.map(([name, list]) => (
+                <div key={name} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>{name} timers ({list.length})</div>
+                  {list.map((t: any, i: number) => (
+                    <div key={i} onClick={() => onDrill({ title: t.name, subtitle: t.status, endpoint: '/api/v2/system/scheduled-jobs', rows: [t] })}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10 }}>
+                      <span style={{ color: 'var(--text2)', fontFamily: 'var(--mono)' }}>{(t.name || '').replace(/^(hermes-|tradeai-)/, '')}</span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: sc(t.status), fontSize: 9, fontWeight: 600 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc(t.status) }} />{t.status}
+                        {t.next && <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {t.next}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/scheduled-jobs (systemd timers + cron). "unknown" = systemctl status not resolvable for that unit.</div>
+          </div>
+        )
+      })()}
+
+      {tab === 'Apps' && (() => {
+        const a = apps?.data ?? apps ?? {}
+        const list = a.applications ?? []
+        const sum = a.summary ?? {}
+        const dColor = (s: string) => s === 'current' ? '#22c55e' : (s || '').includes('behind') ? '#f59e0b' : s === 'not_installed' ? '#ef4444' : 'var(--text3)'
+        const dLabel = (s: string) => (s || 'unknown').replace(/_/g, ' ')
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+              {[
+                { k: 'Total', v: sum.total ?? list.length, c: 'var(--text0)' },
+                { k: 'Current', v: sum.current ?? 0, c: '#22c55e' },
+                { k: 'Behind', v: sum.behind ?? 0, c: (sum.behind ?? 0) > 0 ? '#f59e0b' : 'var(--text3)' },
+                { k: 'Unknown', v: sum.unknown ?? 0, c: 'var(--text3)' },
+                { k: 'Not installed', v: sum.not_installed ?? 0, c: (sum.not_installed ?? 0) > 0 ? '#ef4444' : 'var(--text3)' },
+              ].map(s => (
+                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 460, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Installed software ({list.length})</div>
+                {a.versions_checked_at && <div style={{ fontSize: 8, color: 'var(--text3)' }}>checked {new Date(a.versions_checked_at).toLocaleDateString()}</div>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.9fr 0.8fr 0.8fr 0.9fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                <span>Application</span><span>Category</span><span>Installed</span><span>Latest</span><span>Status</span>
+              </div>
+              {list.map((app: any, i: number) => {
+                const st = app.drift?.status ?? 'unknown'
+                return (
+                  <div key={i} onClick={() => onDrill({ title: app.name, subtitle: app.category, endpoint: '/api/v2/system/applications', rows: [{ ...app, status: st, detail: app.drift?.detail, update: app.update_cmd }] })}
+                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.9fr 0.8fr 0.8fr 0.9fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text1)', fontWeight: 600 }}>{app.name}</span>
+                    <span style={{ color: 'var(--text3)', fontSize: 9 }}>{app.category}</span>
+                    <span style={{ color: 'var(--text2)', fontFamily: 'var(--mono)', fontSize: 9 }}>{app.installed || '—'}</span>
+                    <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)', fontSize: 9 }}>{app.latest || '—'}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: dColor(st) }}>{dLabel(st)}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/applications — software inventory + version drift. Click a row for the update command.</div>
           </div>
         )
       })()}
