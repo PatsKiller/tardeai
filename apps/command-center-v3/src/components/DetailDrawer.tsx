@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode, type CSSProperties } from 'react'
 import { ResponsiveContainer, LineChart, Line, ReferenceLine } from 'recharts'
 
 export interface DrillContext {
@@ -140,6 +140,9 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
   const series = extractSeries(ctx.rows)
   const grade = ctx.rows[0]?.entry_grade ?? bt?.entry_grade
   const exitGrade = ctx.rows[0]?.exit_grade ?? bt?.exit_grade
+  // Holding rows carry data_available — render a technical-analysis panel for them.
+  const h0 = ctx.rows[0]
+  const isHolding = h0 != null && h0.data_available !== undefined
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }} onClick={onClose}>
       <div style={{
@@ -195,6 +198,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
               </div>
             </div>
           )}
+          {isHolding && <HoldingAnalysis h={h0} />}
           {btState === 'loading' && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 10 }}>Looking up backtest entry grade…</div>}
           {ctx.rows.length === 0 && <div style={{ color: 'var(--text3)', fontSize: 11 }}>No data rows</div>}
           {ctx.rows.map((row, i) => (
@@ -235,6 +239,80 @@ function Stat({ k, v }: { k: string; v: string }) {
     <div style={{ textAlign: 'center' }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text0)' }}>{v}</div>
       <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
+    </div>
+  )
+}
+
+// Technical-analysis panel for a portfolio holding: RSI zone, fib retracement ladder, ratings.
+function HoldingAnalysis({ h }: { h: Record<string, any> }) {
+  const refreshed = h.enrichment_as_of ? new Date(h.enrichment_as_of) : null
+  const refreshTxt = refreshed && !isNaN(refreshed.getTime())
+    ? refreshed.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—'
+  const card: CSSProperties = { marginBottom: 12, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }
+  const head = (t: string) => <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}><span>{t}</span><span style={{ textTransform: 'none' }}>data as of {refreshTxt}</span></div>
+
+  if (!h.data_available) {
+    return (
+      <div style={card}>
+        {head('Technical Analysis')}
+        <div style={{ fontSize: 11, color: 'var(--text3)', lineHeight: 1.5 }}>{h.analysis_note || 'No market data available for this symbol.'}</div>
+      </div>
+    )
+  }
+
+  const rsi = h.rsi
+  const zone = h.rsi_status as string | undefined
+  const zoneColor = zone === 'oversold' ? '#22c55e' : zone === 'overbought' ? '#ef4444' : 'var(--text2)'
+  const fib = h.fib
+  const ratings: [string, any][] = [
+    ['Signal', h.signal], ['Analyst', h.analyst_rating],
+    ['Recom (1=buy)', h.recom_score], ['PI score', h.pi_score],
+  ].filter(([, v]) => v != null && v !== '') as [string, any][]
+
+  return (
+    <div style={card}>
+      {head('Technical Analysis')}
+      {/* RSI + zone */}
+      {rsi != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: fib ? 10 : 4 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: zoneColor }}>{Number(rsi).toFixed(0)}</div>
+          <div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase' }}>RSI (14)</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: zoneColor, textTransform: 'capitalize' }}>
+              {zone === 'oversold' ? 'Oversold — potential buy zone' : zone === 'overbought' ? 'Overbought — caution' : (zone || 'neutral')}
+            </div>
+          </div>
+          {/* RSI track */}
+          <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'linear-gradient(90deg,#22c55e33 0 30%,var(--bg1) 30% 70%,#ef444433 70% 100%)', position: 'relative' }}>
+            <div style={{ position: 'absolute', left: `${Math.min(100, Math.max(0, Number(rsi)))}%`, top: -2, width: 2, height: 10, background: zoneColor }} />
+          </div>
+        </div>
+      )}
+      {/* Fib retracement ladder */}
+      {fib && fib.levels && (
+        <div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
+            Fibonacci retracement · {fib.retracement_from_high_pct}% off 52w high · nearest <span style={{ color: 'var(--text1)', fontWeight: 700 }}>{fib.nearest_level}</span>
+          </div>
+          {Object.entries(fib.levels).map(([label, price]: any) => {
+            const isNear = label === fib.nearest_level
+            return (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 6px', borderRadius: 4, fontSize: 10, background: isNear ? 'rgba(96,165,250,.12)' : 'transparent', color: isNear ? '#60a5fa' : 'var(--text2)', fontWeight: isNear ? 700 : 400 }}>
+                <span>{label}</span><span style={{ fontFamily: 'monospace' }}>${Number(price).toFixed(2)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {/* Ratings */}
+      {ratings.length > 0 && (
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+          {ratings.map(([k, v]) => (
+            <div key={k}><span style={{ fontSize: 9, color: 'var(--text3)' }}>{k}: </span><span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text1)' }}>{typeof v === 'number' ? Number(v).toFixed(typeof v === 'number' && v % 1 ? 2 : 0) : String(v)}</span></div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
