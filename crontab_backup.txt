@@ -305,7 +305,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 
 # ── Intelligence Pipeline Gaps Fixed (2026-05-24) ──
 # Topic ingestion (weekly Wednesday + Saturday for broad coverage)
-0 9 * * 3,6 cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --all >> logs/topic_ingestion.log 2>&1
+0 9 * * 3,6 cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries >> logs/topic_ingestion.log 2>&1
 # Aegis synthesis (daily 9 PM, after overnight data collection)
 0 21 * * * cd $PROJ && $PY scripts/aegis_synthesis.py >> logs/aegis_synthesis.log 2>&1
 # Aegis nightly ingestion (daily 7 PM)
@@ -385,6 +385,6 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 30 23 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_source_curation.lock $PY scripts/hermes_source_curation.py >> logs/hermes_source_curation.log 2>&1
 */2 * * * * bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/portfolio_server_watchdog.sh
 # ── Hermes Catalyst Momentum Engine — SearXNG catalyst news for scalps (--apply = advisory only, no auto-proposals) ──
-*/30 4-9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply >> logs/catalyst_momentum_engine.log 2>&1
-30 9-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply >> logs/catalyst_momentum_engine.log 2>&1
+*/30 4-9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1
+30 9-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1
 0 18,22 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_overnight.lock $PY scripts/catalyst_momentum_engine.py --band overnight --apply >> logs/catalyst_momentum_engine.log 2>&1
