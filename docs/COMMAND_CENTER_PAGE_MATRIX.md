@@ -243,3 +243,12 @@ Gateway health reads the JSON `gateway.pid`; SearXNG/Ollama via HTTP ping.
 | **Portfolio → Holdings account filter** | Account filter chips (per-account count + value); filters holdings table. | `/api/v2/portfolio/holdings` (field: account) |
 | **Agents → Human Review drawer** | Escalation queue now shows navigation links (Open Inbox `/v2/inbox`, Agent Collaboration `/v2/agent-collaboration`) + a plain-language explanation of the operator action. Drawer is review-only; links navigate, never mutate. | `/api/v2/agent-pipeline` (handoffs) |
 | **Agents → Roster "Last run"** | Staleness coloring (≤1.5d green, ≤3d amber, older red) so a genuinely stopped agent is obvious. iris last-run corrected (`iris_run_log.ran_at`). Worker-agent "no handoffs" copy clarified (handoffs are written by the synthesis/escalation pipeline, not individual workers). | `/api/v2/agents/summary` |
+
+## v3 Portfolio — holding technical analysis (2026-06-03c)
+
+Holding drill-drawer (`/api/v2/portfolio/holdings`) now shows a **Technical Analysis** panel:
+- **Data-as-of timestamp** — newest mtime of `ticker_enrichment_cache.json` / `technical_snapshot.json` (response field `enrichment_as_of`).
+- **RSI zone** — oversold (≤30, potential buy) / overbought (≥70, caution) / neutral, with an RSI track. Field `rsi_status`.
+- **Fibonacci retracement ladder** — 52w high/low reconstructed from `week52_high_pct`/`week52_low_pct` + price; levels 0/23.6/38.2/50/61.8/78.6/100%, current retracement %, nearest level highlighted. Field `fib`.
+- **Ratings** — signal, analyst_rating, recom_score, pi_score.
+- **Non-tradeable assets** (e.g. `FID-CONTRA-F` Fidelity 401k pool, cash) carry `data_available:false` + an `analysis_note` explaining there is no public ticker / market data — instead of a wall of "—". 31/45 holdings enrich; the rest are commingled funds/cash with no public ticker.

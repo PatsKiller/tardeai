@@ -237,11 +237,49 @@ def overview():
     }
 
 
+def _fib_analysis(price, high_pct, low_pct):
+    """Reconstruct 52-week range from %-from-high / %-above-low and return fib
+    retracement levels + the price's current position. Returns None if not computable
+    (e.g. NAV-priced funds with no technical data)."""
+    try:
+        price = float(price); high_pct = float(high_pct); low_pct = float(low_pct)
+        high = price / (1 + high_pct / 100.0)   # high_pct = (price-high)/high*100
+        low = price / (1 + low_pct / 100.0)     # low_pct  = (price-low)/low*100
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    rng = high - low
+    if rng <= 0 or high <= 0:
+        return None
+    ratios = [("0% (52w high)", 0.0), ("23.6%", 0.236), ("38.2%", 0.382),
+              ("50%", 0.5), ("61.8%", 0.618), ("78.6%", 0.786), ("100% (52w low)", 1.0)]
+    levels = {label: round(high - rng * r, 2) for label, r in ratios}
+    retr = (high - price) / rng * 100.0   # 0 at high, 100 at low
+    # nearest fib ratio
+    nearest = min(ratios, key=lambda lr: abs(lr[1] * 100 - retr))
+    return {
+        "week52_high": round(high, 2), "week52_low": round(low, 2),
+        "retracement_from_high_pct": round(retr, 1),
+        "nearest_level": nearest[0],
+        "levels": levels,
+    }
+
+
 def portfolio_holdings():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     holdings = h.get("holdings", [])
+    # Enrichment freshness: newest mtime of the market-data caches (ISO).
+    _enrich_as_of = None
+    try:
+        import os as _os
+        _mtimes = [ _os.path.getmtime(STATE_DIR / f)
+                    for f in ("ticker_enrichment_cache.json", "technical_snapshot.json")
+                    if (STATE_DIR / f).exists() ]
+        if _mtimes:
+            _enrich_as_of = datetime.fromtimestamp(max(_mtimes)).astimezone().isoformat()
+    except Exception:
+        pass
 
     # Load cost basis from DB for gain/loss calculation
     basis_map = {}
@@ -347,6 +385,27 @@ def portfolio_holdings():
             "llm_summary": _json_clean((llm_health_map.get(sym) or {}).get('holdings_llm_summary')),
             "llm_at": _json_clean((llm_health_map.get(sym) or {}).get('holdings_llm_at')),
         })
+        # ── Technical analysis enrichment: RSI zone, fib levels, data availability ──
+        _row = rows[-1]
+        _rsi_status = e_cache.get("rsi_status") or t_snap.get("rsi_status")
+        if not _rsi_status and merged_rsi is not None:
+            _rsi_status = "oversold" if merged_rsi <= 30 else "overbought" if merged_rsi >= 70 else "neutral"
+        _row["rsi_status"] = _rsi_status
+        _w52h = _pick(e_cache, t_snap, key="week52_high_pct")
+        if _w52h is None:
+            _w52h = t_snap.get("week52_high")
+        _w52l = e_cache.get("week52_low_pct")
+        if _w52l is None:
+            _w52l = t_snap.get("week52_low")
+        _row["fib"] = _fib_analysis(p.get("price"), _w52h, _w52l)
+        # data_available = we have real market enrichment (False for NAV funds / cash)
+        _row["data_available"] = bool(merged_rsi is not None or e_cache.get("pe") is not None or _row.get("fib"))
+        if not _row["data_available"]:
+            _row["analysis_note"] = (
+                "Cash position." if p.get("is_cash") else
+                "No market data — commingled fund / 401(k) pool or NAV-priced asset with no public ticker. "
+                "Technical (RSI, fib, SMA) and fundamental data are not available for this symbol.")
+        _row["enrichment_as_of"] = _enrich_as_of
     rows.sort(key=lambda r: -r["market_value"])
 
     # Equity curve from snapshot_index
@@ -357,7 +416,8 @@ def portfolio_holdings():
         if total > 0:
             equity_curve.append({"date": s["date"], "value": round(total, 0)})
 
-    return {"count": len(rows), "holdings": rows, "as_of": h.get("as_of", ""), "equity_curve": equity_curve}
+    return {"count": len(rows), "holdings": rows, "as_of": h.get("as_of", ""),
+            "enrichment_as_of": _enrich_as_of, "equity_curve": equity_curve}
 
 
 def portfolio_performance():
