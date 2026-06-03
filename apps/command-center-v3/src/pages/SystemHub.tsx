@@ -197,28 +197,70 @@ export default function SystemHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'SIEM' && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>SIEM Alert Dashboard</div>
-          {siem ? (
-            <>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 12, fontSize: 10, color: 'var(--text2)' }}>
-                <span>Total: {siem.total_events ?? siemEvents.length}</span>
-                <span>Noise reduction: {siem.noise_reduction_pct ?? '—'}%</span>
-                <span>Retention: {siem.retention_days ?? 14}d</span>
-              </div>
-              {siemEvents.slice(0, 10).map((e: any, i: number) => (
-                <div key={i} onClick={() => onDrill({ title: e.alert_type ?? e.event_type ?? 'Alert', subtitle: e.symbol ?? '', endpoint: '/api/v2/system/siem', rows: [e] })}
-                  style={{ padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, color: 'var(--text2)' }}>
-                  <span style={{ color: e.severity === 'CRITICAL' ? '#ef4444' : e.severity === 'WARN' ? '#f59e0b' : 'var(--text3)', marginRight: 6 }}>{e.severity ?? '—'}</span>
-                  {e.alert_type ?? e.event_type ?? '—'}: {e.symbol ?? ''} {(e.raw_text ?? e.message ?? '').slice(0, 80)}
+      {tab === 'SIEM' && (() => {
+        const sevColor = (s: string) => s === 'P0' ? '#dc2626' : s === 'P1' ? '#ef4444' : s === 'P2' ? '#f59e0b' : 'var(--text3)'
+        const sv = siem?.severity ?? {}
+        const critical = (sv.P0 ?? 0) + (sv.P1 ?? 0)
+        const events = siem?.recent_events ?? []
+        const correlated = siem?.correlated ?? []
+        const ago = (iso: string) => { if (!iso) return ''; const h = (Date.now() - Date.parse(iso)) / 3.6e6; return isNaN(h) ? '' : h < 1 ? `${Math.round(h * 60)}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d` }
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* KPI strip */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+              {[
+                { k: 'Critical (P0/P1)', v: critical, c: critical > 0 ? '#ef4444' : '#22c55e' },
+                { k: 'Warnings (P2)', v: sv.P2 ?? 0, c: (sv.P2 ?? 0) > 0 ? '#f59e0b' : 'var(--text2)' },
+                { k: 'Unique incidents', v: siem?.unique_groups ?? 0, c: 'var(--text0)' },
+                { k: 'Noise reduced', v: `${siem?.noise_reduction_pct ?? 0}%`, c: '#60a5fa' },
+                { k: 'Retention', v: `${siem?.retention_days ?? 14}d`, c: 'var(--text2)' },
+              ].map(s => (
+                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
                 </div>
               ))}
-            </>
-          ) : <div style={{ color: 'var(--text3)', fontSize: 11 }}>Loading SIEM data...</div>}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/system/siem</div>
-        </div>
-      )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14 }}>
+              {/* Critical-first event list */}
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Alerts — critical first ({events.length})</div>
+                {events.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No alerts in the retention window.</div> :
+                events.map((e: any, i: number) => (
+                  <div key={i} onClick={() => onDrill({ title: `${e.event_type} · ${e.component ?? ''}`, subtitle: `${e.severity} · ×${e.repeat_count}`, endpoint: '/api/v2/system/siem', rows: [e] })}
+                    style={{ display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 8, alignItems: 'center', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', borderLeft: `3px solid ${sevColor(e.severity)}` }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: sevColor(e.severity) }}>{e.severity}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text1)' }}>{e.event_type} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {e.component ?? '?'}</span></div>
+                      <div style={{ fontSize: 9, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(e.message ?? '').slice(0, 70)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      {e.repeat_count > 1 && <span style={{ fontSize: 9, fontWeight: 700, color: sevColor(e.severity), background: `${sevColor(e.severity)}1a`, padding: '1px 5px', borderRadius: 3 }}>×{e.repeat_count}</span>}
+                      <div style={{ fontSize: 8, color: 'var(--text3)' }}>{ago(e.last_seen ?? e.timestamp)} ago</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Correlated incidents */}
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Correlated incidents</div>
+                <div style={{ fontSize: 8, color: 'var(--text3)', marginBottom: 8 }}>Related errors clustered by component — what's actually failing.</div>
+                {correlated.map((c: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 6px', borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${sevColor(c.severity)}` }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text1)', fontFamily: 'var(--mono)' }}>{c.component ?? '?'}</div>
+                      <div style={{ fontSize: 8, color: 'var(--text3)' }}>{c.event_type} · {c.groups} group{c.groups > 1 ? 's' : ''}</div>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: sevColor(c.severity) }}>{c.events}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/siem — unions alert_events + system_health_events + telegram, deduped + correlated, P0–P3, 14-day retention. {siem?.total_events ?? 0} raw → {siem?.unique_groups ?? 0} incidents.</div>
+          </div>
+        )
+      })()}
 
       {tab === 'Crons' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
