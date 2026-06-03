@@ -80,6 +80,20 @@ export default function SystemHub({ onDrill }: Props) {
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(255px,1fr))', gap: 12 }}>
               <Card title="Ingestion" sub="news · topics · transcripts · SEC">
+                {(() => {
+                  const yc = ing.youtube_cookies ?? {}
+                  const sc = yc.status === 'green' ? '#22c55e' : yc.status === 'amber' ? '#f59e0b' : '#ef4444'
+                  return (
+                    <div title={`${yc.detail ?? ''}${yc.refreshed ? ' · refreshed ' + new Date(yc.refreshed).toLocaleString() : ''}`}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', marginBottom: 4, borderRadius: 5, background: `${sc}14`, border: `1px solid ${sc}40` }}>
+                      <span style={{ fontSize: 10, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: '50%', background: sc, boxShadow: `0 0 5px ${sc}` }} />
+                        YouTube cookies
+                      </span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: sc }}>{(yc.status ?? 'unknown').toUpperCase()} · {yc.auth_cookies ?? 0} auth</span>
+                    </div>
+                  )
+                })()}
                 <Row k="News today / 7d" v={`${nf(ing.news_today)} / ${nf(ing.news_7d)}`} />
                 <Fresh k="News latest" iso={ing.news_latest} max={6} />
                 <Row k="Active topics" v={nf(ing.topics_active)} />

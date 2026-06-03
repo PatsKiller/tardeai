@@ -94,6 +94,36 @@ def _system_pipeline_health():
         v = s1(sql)
         return _json_clean(v) if v is not None else None
 
+    # YouTube cookie health → stoplight. red=logged-out (refresh needed), amber=authed but
+    # ingestion stale, green=authed + flowing. The blocker that froze transcripts for 14 days.
+    yt = {"status": "red", "auth_cookies": 0, "refreshed": None, "detail": "no cookie file"}
+    try:
+        import os as _os
+        cpath = PROJECT_ROOT / "config" / "youtube_cookies.txt"
+        if cpath.exists():
+            names = set()
+            for ln in cpath.read_text().splitlines():
+                if ln.startswith("#") or "\t" not in ln:
+                    continue
+                parts = ln.split("\t")
+                if len(parts) >= 6:
+                    names.add(parts[5])
+            auth = names & {"SID", "SAPISID", "__Secure-1PSID", "LOGIN_INFO"}
+            yt["auth_cookies"] = len(auth)
+            yt["refreshed"] = _json_clean(datetime.fromtimestamp(_os.path.getmtime(cpath)).astimezone())
+            tlatest = s1("SELECT MAX(ingested_at) FROM youtube_transcripts")
+            age_h = None
+            if tlatest:
+                age_h = (datetime.now(tlatest.tzinfo) - tlatest).total_seconds() / 3600 if hasattr(tlatest, "tzinfo") and tlatest.tzinfo else None
+            if not auth:
+                yt["status"], yt["detail"] = "red", "logged-out cookies — refresh config/youtube_cookies.txt"
+            elif age_h is not None and age_h > 72:
+                yt["status"], yt["detail"] = "amber", f"authenticated, but ingestion {round(age_h)}h stale"
+            else:
+                yt["status"], yt["detail"] = "green", "authenticated + ingestion flowing"
+    except Exception:
+        pass
+
     # Hermes research by status (curation routing ratios)
     hr = {r["status"]: r["cnt"] for r in (_db_query("SELECT status, COUNT(*) cnt FROM hermes_research_intelligence GROUP BY status") or [])}
     # Iris proposal funnel
@@ -112,6 +142,7 @@ def _system_pipeline_health():
             "transcripts_latest": ts("SELECT MAX(ingested_at) FROM youtube_transcripts"),
             "sec_form4_7d": s1("SELECT COUNT(*) FROM sec_form4 WHERE created_at>NOW()-INTERVAL '7 days'"),
             "sec_latest": ts("SELECT MAX(created_at) FROM sec_form4"),
+            "youtube_cookies": yt,
         },
         "curation": {
             "iris_pending": ir.get("pending", 0), "iris_approved": ir.get("approved", 0),
