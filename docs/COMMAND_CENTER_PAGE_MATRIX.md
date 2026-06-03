@@ -306,3 +306,8 @@ v3 Home Snapshot tab enriched to v2 Command Center parity from `/api/v2/command`
 | System Access | System → Access | /api/v2/system/access-links |
 | Inbox | Agents → Inbox | /api/v2/inbox (NEW: escalations + CIO review + proposals) |
 | Weekly Learning | Agents → Weekly Learning | /api/v2/weekly-learning (NEW: multi-tier reviews + agent perf) |
+
+## v3 win-rate unify + read-only Admin audit (2026-06-03j)
+
+- **Win-rate unified:** MetricStrip + Home tile now both show the journal win rate (overview.journal: 55.3% / 121 trades) instead of the strip using paper-readiness (45.8% / 24). Paper-readiness win rate remains in the Trading/readiness context. They no longer disagree.
+- **System → Admin (READ-ONLY audit):** displays live-trading gate (4 gates), risk settings (heat vs 5% threshold, max-per-trade/strategy/sector, daily-loss kills), ATM global config, and per-account ATM-enabled state. ZERO write controls — no toggles/inputs/save. Prominent banner: setting CHANGES go through a separate guarded flow (Telegram for ATM enable/risk), never the dashboard. Level 7 prohibited preserved.

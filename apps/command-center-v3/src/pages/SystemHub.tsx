@@ -3,7 +3,7 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Crons', 'LLM'] as const
+const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Crons', 'LLM'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -29,6 +29,10 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: apps } = useApi<any>('/api/v2/system/applications', 300_000)
   const { data: jobs } = useApi<any>('/api/v2/system/scheduled-jobs', 120_000)
   const { data: access } = useApi<any>('/api/v2/system/access-links', 300_000)
+  const { data: atmCfg } = useApi<any>('/api/v2/atm/config', 120_000)
+  const { data: acctCfg } = useApi<any>('/api/v2/admin/accounts', 120_000)
+  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
+  const { data: riskCfg } = useApi<any>('/api/v2/risk', 60_000)
 
   const timers = qct?.timers_total ?? 0
   const cronCount = qct?.cron_count ?? 0
@@ -392,6 +396,99 @@ export default function SystemHub({ onDrill }: Props) {
               </div>
             </div>
             <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/access-links</div>
+          </div>
+        )
+      })()}
+
+      {tab === 'Admin' && (() => {
+        const cfg = (atmCfg?.data ?? atmCfg ?? {}).config ?? {}
+        const defs = cfg.defaults ?? {}
+        const pl = defs.position_limits ?? {}
+        const ks = defs.kill_switches ?? {}
+        const accounts = (acctCfg?.data ?? acctCfg ?? {}).accounts ?? []
+        const g = gate?.data ?? gate ?? {}
+        const gates = g.gates ?? []
+        const heat = (riskCfg?.data ?? riskCfg ?? {}).portfolio_heat_pct
+        const HEAT_THRESHOLD = 5
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* READ-ONLY banner */}
+            <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '8px 12px', fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
+              <b>READ-ONLY AUDIT.</b> Every setting's current value, for due diligence — no controls, no toggles, no save. Changing any setting (ATM enable, risk-per-trade, account config) happens in a separate <b>guarded flow</b> (Telegram approval for ATM enable/risk; admin path for the rest), never from this dashboard. Level 7 prohibited.
+            </div>
+
+            {/* Live-trading gate — master safety */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Live-Trading Gate</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: g.status === 'LIVE' ? '#22c55e' : '#ef4444' }}>{g.status ?? 'PAPER_ONLY'}{g.all_gates_passed === false ? ' · BLOCKED' : ''}</span>
+              </div>
+              {gates.map((gt: any, i: number) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                  <span style={{ color: 'var(--text2)' }}>{gt.label ?? gt.gate}</span>
+                  <span style={{ color: gt.passed ? '#22c55e' : '#ef4444' }}>{gt.current} / {gt.required} {gt.passed ? '✓' : '✗'}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {/* Risk settings */}
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Risk Settings</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                  <span style={{ color: 'var(--text3)' }}>Portfolio heat (live)</span>
+                  <span style={{ color: (heat ?? 0) > HEAT_THRESHOLD ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{heat != null ? `${heat}%` : '—'} / {HEAT_THRESHOLD}% {(heat ?? 0) > HEAT_THRESHOLD ? '⚠ OVER' : 'ok'}</span>
+                </div>
+                {[['Max risk per trade', pl.max_pct_per_trade != null ? `${(pl.max_pct_per_trade * 100).toFixed(0)}%` : '—'],
+                  ['Max % per strategy', pl.max_pct_per_strategy != null ? `${pl.max_pct_per_strategy}%` : '—'],
+                  ['Max % per sector', pl.max_pct_per_sector != null ? `${pl.max_pct_per_sector}%` : '—'],
+                  ['Max concurrent', pl.max_concurrent ?? '—'],
+                  ['Max new / day', pl.max_new_per_day ?? '—'],
+                  ['Daily loss kill (acct)', ks.daily_loss_pct_hard_pause != null ? `${ks.daily_loss_pct_hard_pause}%` : '—']].map(([k, v]: any) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                      <span style={{ color: 'var(--text3)' }}>{k}</span><span style={{ color: 'var(--text1)', fontFamily: 'var(--mono)' }}>{v}</span>
+                    </div>
+                  ))}
+                <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/atm/config + /api/v2/risk</div>
+              </div>
+
+              {/* ATM config global */}
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>ATM Config (global)</div>
+                {[['Live trading enabled', String((cfg.global ?? {}).manual_kill_switch_only != null ? 'manual kill only' : '—')],
+                  ['Config version', cfg.version ?? '—'],
+                  ['Aggregate daily-loss kill', (cfg.global ?? {}).daily_loss_pct_hard_pause_aggregate != null ? `${cfg.global.daily_loss_pct_hard_pause_aggregate}%` : '—'],
+                  ['Same-day skip strategies', (cfg.same_day_skip_strategies ?? []).length],
+                  ['B1 tracking', (cfg.b1_tracking ?? {}).enabled ? 'on' : 'off']].map(([k, v]: any) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                      <span style={{ color: 'var(--text3)' }}>{k}</span><span style={{ color: 'var(--text1)', fontFamily: 'var(--mono)' }}>{v}</span>
+                    </div>
+                  ))}
+                <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Config hash {(atmCfg?.data ?? atmCfg ?? {}).hash ?? '—'}</div>
+              </div>
+            </div>
+
+            {/* Accounts + per-account ATM */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Accounts &amp; ATM state ({accounts.length})</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.9fr 0.7fr 0.9fr 0.9fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                <span>Account</span><span>Broker</span><span>Mode</span><span>Auto-exec</span><span>ATM enabled</span>
+              </div>
+              {accounts.map((a: any, i: number) => {
+                const atmEnabled = (cfg.accounts ?? {})[a.account_label]?.enabled
+                return (
+                  <div key={i} onClick={() => onDrill({ title: a.account_label, subtitle: `${a.broker} · ${a.mode}`, endpoint: '/api/v2/admin/accounts', rows: [{ ...a, atm_enabled: atmEnabled }] })}
+                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.9fr 0.7fr 0.9fr 0.9fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)', fontWeight: 600 }}>{a.account_label}</span>
+                    <span style={{ color: 'var(--text3)' }}>{a.broker}</span>
+                    <span style={{ color: a.mode === 'live' ? '#ef4444' : '#60a5fa', fontWeight: 600 }}>{a.mode}</span>
+                    <span style={{ color: a.auto_execution_capable ? '#f59e0b' : 'var(--text3)' }}>{a.auto_execution_capable ? 'capable' : 'no'}</span>
+                    <span style={{ color: atmEnabled ? '#f59e0b' : 'var(--text3)', fontWeight: 600 }}>{atmEnabled == null ? '—' : atmEnabled ? 'ENABLED' : 'disabled'}</span>
+                  </div>
+                )
+              })}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Display only. To change ATM enablement or risk, use the guarded Telegram-approval path — not this page. Source: /api/v2/admin/accounts + /api/v2/atm/config</div>
+            </div>
           </div>
         )
       })()}

@@ -14,7 +14,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
 
   const portfolioVal = overview?.portfolio_value
-  const winRate = readiness?.win_rate
+  // Headline win rate = the overall journal win rate (matches the Home card). The paper-readiness
+  // win rate (gate-specific, ~24 paper trades) is a different metric and stays in the readiness/Trading context.
+  const winRate = overview?.journal?.win_rate ?? readiness?.win_rate
+  const winTrades = overview?.journal?.trade_count
   const regimeLabel = regime?.regime_label ?? '—'
   const regimeConf = regime?.confidence
   const goCount = tradeAi?.go_count ?? 0
@@ -31,10 +34,10 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: overview ? [{ portfolio_value: overview.portfolio_value, total_cash: overview.total_cash, position_count: overview.position_count, today_change: overview.today_change, today_pct: overview.today_pct, as_of: overview.as_of }] : [] },
     },
     {
-      label: 'WIN RATE', value: winRate != null ? `${winRate}%` : '—',
+      label: 'WIN RATE', value: winRate != null ? `${winRate}%${winTrades ? ` · ${winTrades}` : ''}` : '—',
       color: winRate != null && winRate >= 50 ? '#22c55e' : winRate != null ? '#f59e0b' : 'var(--text3)',
-      drill: { title: 'Win Rate', subtitle: 'From /api/v2/paper-trade-readiness', endpoint: '/api/v2/paper-trade-readiness',
-        rows: readiness ? [{ win_rate: readiness.win_rate, profit_factor: readiness.profit_factor, expectancy: readiness.expectancy, closed_usable: readiness.closed_usable, level: readiness.level }] : [] },
+      drill: { title: 'Win Rate', subtitle: 'Journal (all closed) · paper-readiness shown separately', endpoint: '/api/v2/overview',
+        rows: [{ journal_win_rate: overview?.journal?.win_rate, journal_trades: overview?.journal?.trade_count, journal_pnl: overview?.journal?.total_pnl, paper_readiness_win_rate: readiness?.win_rate, paper_usable_trades: readiness?.closed_usable, paper_level: readiness?.level }] },
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',
