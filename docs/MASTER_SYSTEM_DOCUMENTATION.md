@@ -286,8 +286,8 @@ The pipeline runs **31 stages organized into 7 groups**. Each group has a design
 | Instant Submission | `api_v2.py` → `proposal_paper_submitter.py` | On approval click | Immediate Alpaca order (market or limit based on price proximity) |
 | Smart Order Type | `alpaca_paper_adapter.py` | During submission | Market if price ≤ entry or within 2%; limit+bracket if >2% above |
 | Execution Sweep | `paper_execution_sweep.py` | Every 5 min (cron safety net) | Catches approved proposals not yet submitted |
-| Position Monitor | `paper_trade_monitor.py` | Every 5 min (cron) | R-multiple trailing stops, target detection, automatic closes |
-| Broker Reconciliation | `alpaca_paper_reconciler.py` | On fill events | `broker_reconciliation_items` |
+| Position Monitor | `paper_trade_monitor.py` | Every 2 min (cron, market hours) | R-multiple trailing stops, target detection, automatic closes, phantom integrity-check (closes DB-open positions not held at broker with **voided** P&L — `pnl=0, verdict=PHANTOM`) |
+| Broker Reconciliation | `alpaca_paper_reconciler.py` | On fill events + scheduled 09:35 & 16:05 with `--fix` | Broker is **source of truth**: `--fix` overwrites DB entry/shares/fill-confirmation FROM the broker, never the reverse. `broker_reconciliation_items` |
 | Execution Quality | `execution_quality_analyzer.py` | On trade close | TCA metrics |
 
 ### Group 7 -- Overnight (8 PM - 6 AM)
@@ -1042,6 +1042,11 @@ Post-fill, the monitor takes over position management (trailing stops, auto-clos
 **Sync position promotion:** `sync_positions` detects Alpaca-filled trades stuck at `status='pending'` and promotes them to `'open'` with correct fill price. Also recalculates stop if above fill.
 
 **Broker as source of truth:** No `paper_trades` row is created until the broker confirms the fill. Unfilled limit orders return `{status:'pending'}` without creating a DB record. The `sync_positions` method detects fills on subsequent cycles and creates broker-confirmed records. The `broker_confirmed` column (`GENERATED ALWAYS AS (filled_at IS NOT NULL)`) gates all journal queries — phantom records never appear in profitability reporting.
+
+The broker is authoritative across the whole reconciliation surface — a position exists **iff** the broker holds it, and is flat **iff** the broker is flat:
+- **DB-open but broker-flat (phantom):** `paper_trade_monitor.py` integrity-check closes it with `close_reason='phantom_no_alpaca_position'` and **voids the P&L** (`pnl=0, pnl_pct=0, r_multiple=0, outcome_verdict='PHANTOM'`). A phantom was never a real round-trip, so it must never book a computed win/loss — doing so previously polluted the paper Closed-Trade Review (e.g. MRVL +$126, SNOW +$131 as bogus wins). Voided phantoms drop out of journal stats via the existing `pnl != 0` filter.
+- **Broker-held but DB drift:** `alpaca_paper_reconciler.py --fix` overwrites DB `entry_price`, `shares`, and fill confirmation FROM the broker (never the reverse). Runs 09:35 & 16:05 on a schedule (not detect-only).
+- **Broker-held but no open DB record (orphan):** the adapter sync materializes a broker-confirmed record (`unknown_sync`). The reconciler's `CLOSED_BUT_HELD` check only fires when the broker holds a symbol with **no** matching open DB trade — a closed record on a symbol that *also* has a current open record is just history, not a mismatch.
 
 **Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
 If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal
