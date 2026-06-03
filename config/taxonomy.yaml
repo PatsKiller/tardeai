@@ -1,0 +1,55 @@
+# Canonical Taxonomy — single source of truth for content categorization across
+# TradeAI (Iris) and Hermes. Three axes; the classifier returns at most one slug per
+# axis. Iris owns this file (proposals/curator may add categories autonomously).
+# See docs/TAXONOMY_ALIGNMENT_SCOPE.md.
+#
+# axis: content (what the material is about) | sector (market sector) | lifecycle (investor stage)
+
+version: 1
+owner: iris
+
+axes:
+  content:
+    description: What the material is fundamentally about.
+    categories:
+      - {slug: investment_general,    label: "Investing — general"}
+      - {slug: dividend_income,       label: "Dividend & income investing"}
+      - {slug: retirement_planning,   label: "Retirement planning"}
+      - {slug: disability_retirement, label: "Disability / SSDI retirement"}
+      - {slug: macro_economics,       label: "Macro & economics"}
+      - {slug: tax_strategy,          label: "Tax strategy"}
+      - {slug: etf_indexing,          label: "ETFs & indexing"}
+      - {slug: financial_education,   label: "Financial education"}
+      - {slug: options_income,        label: "Options & covered-call income"}
+      - {slug: technical_analysis,    label: "Technical analysis / trading setups"}
+      - {slug: catalyst_news,         label: "Catalyst / breaking news"}
+
+  sector:
+    description: Market sector the material concerns (GICS-ish + AI subsectors Maria tracks).
+    categories:
+      - {slug: ai_chips,        label: "AI / semiconductors"}
+      - {slug: ai_datacenter,   label: "AI datacenter / infrastructure"}
+      - {slug: ai_network,      label: "AI networking layer"}
+      - {slug: defense,         label: "Defense & aerospace"}
+      - {slug: technology,      label: "Technology (general)"}
+      - {slug: financials,      label: "Financials"}
+      - {slug: healthcare,      label: "Healthcare"}
+      - {slug: energy,          label: "Energy"}
+      - {slug: industrials,     label: "Industrials"}
+      - {slug: materials,       label: "Materials"}
+      - {slug: consumer,        label: "Consumer"}
+      - {slug: utilities,       label: "Utilities"}
+      - {slug: real_estate,     label: "Real estate / REITs"}
+      - {slug: communication,   label: "Communication services"}
+      - {slug: sector_broad,    label: "Broad market / multi-sector"}
+
+  lifecycle:
+    description: Investor lifecycle / planning stage (tuned to John's situation — SSDI, Roth window).
+    categories:
+      - {slug: accumulation,            label: "Accumulation / growth"}
+      - {slug: income_generation,       label: "Income generation"}
+      - {slug: tax_optimization,        label: "Tax optimization"}
+      - {slug: roth_conversion,         label: "Roth conversion window"}
+      - {slug: retirement_distribution, label: "Retirement distribution"}
+      - {slug: ssdi_preservation,       label: "SSDI / benefit preservation"}
+      - {slug: estate_trust,            label: "Estate & trust"}
