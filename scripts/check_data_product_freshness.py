@@ -160,6 +160,18 @@ def main():
           "watchlist_items MAX(holdings_llm_at)",
           ".venv/bin/python scripts/holdings_llm_refresh.py --run --limit 50")
 
+    # RAG corpus + upstream content feeds (added 2026-06-03 — were unmonitored blind spots)
+    check("rag_corpus", 72,
+          _db_age_hours("SELECT MAX(created_at) FROM content_embeddings"),
+          "content_embeddings MAX(created_at)")
+    check("youtube_transcripts", 240,
+          _db_age_hours("SELECT MAX(ingested_at) FROM youtube_transcripts"),
+          "youtube_transcripts MAX(ingested_at)",
+          ".venv/bin/python scripts/aegis_transcript_discovery.py")
+    check("sec_form4", 240,
+          _db_age_hours("SELECT MAX(created_at) FROM sec_form4"),
+          "sec_form4 MAX(created_at)")
+
     check("agent_calibration", 168,
           _db_age_hours("SELECT MAX(computed_at) FROM agent_calibration"),
           "agent_calibration MAX(computed_at)",
@@ -180,14 +192,18 @@ def main():
           f"watchlist_agent_jobs MAX completed (weekend={_now().weekday() >= 5})",
           ".venv/bin/python scripts/process_watchlist_agent_jobs.py --limit 5")
 
-    check("weekly_learning", 168,
-          _db_age_hours("SELECT MAX(generated_at) FROM weekly_learning_digests"),
-          "weekly_learning_digests MAX(generated_at)",
-          ".venv/bin/python scripts/weekly_learning_export.py")
+    # Weekly learning runs via multi_tier_trade_reviewer --tier weekly → paper_trade_multi_reviews
+    # (the weekly_learning_digests table is legacy/unused).
+    check("weekly_learning", 192,
+          _db_age_hours("SELECT MAX(created_at) FROM paper_trade_multi_reviews"),
+          "paper_trade_multi_reviews MAX(created_at)",
+          ".venv/bin/python scripts/multi_tier_trade_reviewer.py --tier weekly")
 
+    # Live reconciliation is atm_position_reconciler (*/15) → atm_position_reconciliation_runs;
+    # the broker_reconciliation_runs table is legacy (dead since 05-12).
     check("broker_reconciliation", 48,
-          _db_age_hours("SELECT MAX(started_at) FROM broker_reconciliation_runs"),
-          "broker_reconciliation_runs MAX(started_at)")
+          _db_age_hours("SELECT MAX(started_at) FROM atm_position_reconciliation_runs"),
+          "atm_position_reconciliation_runs MAX(started_at)")
 
     check("morning_brief", 48,
           _db_age_hours("SELECT MAX(observed_at) FROM aegis_portfolio_briefs"),
