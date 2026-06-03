@@ -13792,16 +13792,20 @@ def _system_siem_dashboard():
         ORDER BY created_at DESC LIMIT 100
     """, [cutoff]) or []
 
-    # Classify events
+    # Classify events → (type, severity P0..P3). Order matters (first match wins).
     def _classify(text):
         t = (text or "").lower()
         if "stop" in t and ("trigger" in t or "hit" in t): return "STOP_TRIGGERED", "P1"
+        if "connection already closed" in t or "interfaceerror" in t or "operationalerror" in t: return "DB_CONNECTION", "P1"
+        if "output_invalid" in t or "locktimeout" in t or "retry_exhausted" in t or "python_exception" in t: return "PIPELINE_FAILURE", "P1"
         if "cookie" in t or ("finviz" in t and "expired" in t): return "FEED_HEALTH", "P1"
-        if "stale" in t and ("agent" in t or "maria" in t): return "AGENT_STALENESS", "P2"
+        if "503" in t or "service unavailable" in t or "saturat" in t or ("llm" in t and "timeout" in t): return "LLM_SATURATION", "P2"
+        if "stale" in t and ("agent" in t or "maria" in t or "ingest" in t or "transcript" in t): return "STALENESS", "P2"
         if "llm" in t and ("escalat" in t or "tier" in t): return "LLM_ESCALATION", "P2"
-        if "output_invalid" in t or "locktimeout" in t: return "PIPELINE_FAILURE", "P1"
-        if "data quality" in t or "zero" in t: return "DATA_QUALITY", "P2"
+        if "backlog" in t or "queued" in t: return "QUEUE_BACKLOG", "P2"
+        if "data quality" in t or "data integrity" in t or "zero" in t: return "DATA_QUALITY", "P2"
         if "exit reason" in t and ("blank" in t or "''" in t): return "CLOSED_TRADE_REVIEW", "P2"
+        if "escalation_deduped" in t or "reaped" in t or "adopted" in t: return "JOB_RECOVERY", "P3"
         return "SYSTEM_HEALTH", "P3"
 
     events = []
@@ -13878,7 +13882,28 @@ def _system_siem_dashboard():
                 old_count = collapsed[dk]["repeat_count"]
                 collapsed[dk] = e.copy()
                 collapsed[dk]["repeat_count"] = old_count
+    # Critical-first: severity rank (P0..P3), then most-recent.
+    _rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    for e in collapsed.values():
+        g = dedupe[e["dedupe_key"]]
+        e["first_seen"] = g["first"]; e["last_seen"] = g["last"]
     collapsed_list = sorted(collapsed.values(), key=lambda e: e.get("timestamp") or "", reverse=True)
+    collapsed_list = sorted(collapsed_list, key=lambda e: _rank.get(e["severity"], 9))  # stable → critical-first
+
+    # Correlation: cluster the deduped groups into incidents by (component, event_type) so related
+    # errors read as one thing (e.g. all atm_auto_approver PIPELINE_FAILURE, or all LLM_SATURATION).
+    corr = {}
+    for k, v in dedupe.items():
+        ck = f"{v.get('component') or '?'}|{v['event_type']}"
+        c = corr.setdefault(ck, {"component": v.get("component"), "event_type": v["event_type"],
+                                 "severity": v["severity"], "events": 0, "groups": 0,
+                                 "first": v["first"], "last": v["last"]})
+        c["events"] += v["count"]; c["groups"] += 1
+        if _rank.get(v["severity"], 9) < _rank.get(c["severity"], 9):
+            c["severity"] = v["severity"]
+        c["first"] = min(c["first"], v["first"]); c["last"] = max(c["last"], v["last"])
+    correlated = sorted(corr.values(),
+                        key=lambda c: (_rank.get(c["severity"], 9), -c["events"]))[:20]
 
     return {
         "total_events": len(events),
@@ -13893,6 +13918,8 @@ def _system_siem_dashboard():
             key=lambda x: -x["count"]
         )[:15],
         "recent_events": collapsed_list[:50],
+        "correlated": correlated,
+        "retention_days": 14,
         "period_days": 14,
     }
 
