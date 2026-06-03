@@ -18,6 +18,9 @@ TIMEOUT=8        # seconds per probe
 
 mkdir -p "$(dirname "$LOG")"
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
+# Heartbeat: touched every run (even when healthy & silent) so job_coverage_monitor
+# can confirm the watchdog itself is alive without spamming the action log.
+touch "/home/johnclaw/logs/.portfolio_watchdog_heartbeat" 2>/dev/null || true
 
 ok=0
 for i in $(seq 1 "$FAILS"); do
