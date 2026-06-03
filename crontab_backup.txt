@@ -390,3 +390,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 0 18,22 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_overnight.lock $PY scripts/catalyst_momentum_engine.py --band overnight --apply >> logs/catalyst_momentum_engine.log 2>&1
 # Holdings LLM health refresh (per-holding AI assessment — was unscheduled since 2026-05-11)
 15 7 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/holdings_llm_refresh.lock $PY scripts/holdings_llm_refresh.py --run --limit 50 >> logs/holdings_llm_refresh.log 2>&1
+# Drive docs sync (one-way push; was documented hourly but missing from cron)
+5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/drive_sync.lock bash scripts/sync-docs-to-drive.sh >> /home/johnclaw/logs/drive-sync.log 2>&1
+# Job coverage / heartbeat monitor (catches unscheduled + non-producing jobs)
+30 8,20 * * * cd $PROJ && $PY scripts/job_coverage_monitor.py >> logs/job_coverage_monitor.log 2>&1
