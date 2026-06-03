@@ -39,8 +39,8 @@ export default function HomeHub({ onDrill }: Props) {
   const pv = overview?.portfolio_value
   const todayChg = overview?.today_change
   const journal = overview?.journal ?? {}
-  const winRate = readiness?.win_rate
-  const wrTrades = readiness?.closed_usable ?? journal?.trade_count
+  const winRate = journal?.win_rate ?? readiness?.win_rate   // journal (all closed) — matches the headline strip
+  const wrTrades = journal?.trade_count ?? readiness?.closed_usable
   const regimeLabel = regime?.regime_label ?? '—'
   const vix = tradeAi?.vix
   const goCount = tradeAi?.go_count ?? 0
