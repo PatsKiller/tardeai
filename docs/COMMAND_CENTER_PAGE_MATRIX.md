@@ -267,3 +267,7 @@ The 12 Fidelity 401(k) commingled pools / institutional mutual funds (no public 
 | WM-BLAIR | IWP | US mid-cap growth |
 | AB-DISC-Z | IWN | US small-cap value |
 | FID-DIVINTL, SS-GACEQ | VXUS | international / global ex-US |
+
+### v3 Portfolio holdings rows — at-a-glance signals (2026-06-03e)
+
+Holdings table rows now carry decision signals without opening the drawer: **Symbol · Value · P/L% · RSI zone chip · Signal pill · %Port** (replaced Shares & Day-Change, which moved to the drawer). P/L% = `gain_loss/cost_basis` where basis exists (33/45 — all Schwab); **fidelity_401k funds (0/10) and cash show "—"** (no per-lot basis; purchase *date* does not exist in any source). RSI chip color-zoned (oversold=green/buy, overbought=amber/caution, neutral=gray), `*` = via public-ETF proxy. Signal pill colored (ADD green / TRIM-SELL red / WATCH-MONITOR amber / HOLD gray). Header shows technicals as-of timestamp. Drawer still holds the full fib ladder + ratings.

@@ -10,6 +10,19 @@ const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4'
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
 
+// Row at-a-glance helpers
+const rsiZoneColor = (s?: string) => s === 'oversold' ? '#22c55e' : s === 'overbought' ? '#f59e0b' : 'var(--text3)'
+const signalColor = (s?: string) => {
+  const t = (s || '').toUpperCase()
+  if (['ADD', 'BUY', 'STRONG_BUY', 'ACCUMULATE'].includes(t)) return '#22c55e'
+  if (['TRIM', 'SELL', 'REDUCE', 'EXIT'].includes(t)) return '#ef4444'
+  if (['MONITOR', 'WATCH', 'CAUTION'].includes(t)) return '#f59e0b'
+  return 'var(--text3)'   // HOLD / NEUTRAL
+}
+// P/L % only where real cost basis exists (401k funds have none → null → "—")
+const plPct = (h: any): number | null =>
+  (h.cost_basis != null && h.cost_basis > 0 && h.gain_loss != null) ? (h.gain_loss / h.cost_basis) * 100 : null
+
 export default function PortfolioHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Holdings')
   const [acctFilter, setAcctFilter] = useState<string | null>(null)
@@ -100,27 +113,48 @@ export default function PortfolioHub({ onDrill }: Props) {
 
           {/* Holdings table */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, maxHeight: 500, overflowY: 'auto' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Holdings ({holdingsList.length})</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
-              <span>Symbol</span><span>Value</span><span>Shares</span><span>Day Chg</span><span>% Port</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Holdings ({holdingsList.length})</div>
+              {holdings?.enrichment_as_of && <div style={{ fontSize: 8, color: 'var(--text3)' }} title={new Date(holdings.enrichment_as_of).toLocaleString()}>technicals as of {new Date(holdings.enrichment_as_of).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
             </div>
-            {holdingsList.map((h: any) => (
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.85fr 1.25fr 0.85fr 0.6fr', fontSize: 9, color: 'var(--text3)', padding: '4px 6px', borderBottom: '1px solid var(--border)' }}>
+              <span>Symbol</span><span>Value</span><span>P/L%</span><span>RSI</span><span>Signal</span><span>% Port</span>
+            </div>
+            {holdingsList.map((h: any) => {
+              const pl = plPct(h)
+              const zc = rsiZoneColor(h.rsi_status)
+              return (
               <div key={`${h.symbol}-${h.account}`}
                 onClick={() => onDrill({ title: h.symbol, subtitle: `${h.account} · ${h.name}`, endpoint: '/api/v2/portfolio/holdings', rows: [h] })}
-                style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 1fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
+                style={{ display: 'grid', gridTemplateColumns: '1.5fr 0.9fr 0.85fr 1.25fr 0.85fr 0.6fr', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{h.symbol}</div>
                   <div style={{ fontSize: 8, color: 'var(--text3)' }}>{h.account}</div>
                 </div>
                 <span style={{ color: 'var(--text0)' }}>{fmt$(h.market_value, 0)}</span>
-                <span style={{ color: 'var(--text2)' }}>{h.shares}</span>
-                <span style={{ color: (h.day_change_pct ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>
-                  {h.day_change_pct != null ? `${h.day_change_pct >= 0 ? '+' : ''}${h.day_change_pct.toFixed(1)}%` : '—'}
+                {/* P/L% — green/red; "—" where no cost basis (e.g. 401k funds) */}
+                <span style={{ color: pl == null ? 'var(--text3)' : pl >= 0 ? '#22c55e' : '#ef4444', fontWeight: pl == null ? 400 : 600 }}>
+                  {pl == null ? '—' : `${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%`}
+                </span>
+                {/* RSI zone chip (+* when via proxy) */}
+                <span>
+                  {h.rsi != null
+                    ? <span title={h.proxy ? `proxy: ${h.proxy.ticker} (${h.proxy.label})` : h.rsi_status} style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: `${zc}1a`, color: zc, whiteSpace: 'nowrap' }}>
+                        {Math.round(h.rsi)}{h.proxy ? '*' : ''} {h.rsi_status === 'oversold' ? 'buy' : h.rsi_status === 'overbought' ? 'caution' : 'neutral'}
+                      </span>
+                    : <span style={{ color: 'var(--text3)' }}>—</span>}
+                </span>
+                {/* Signal pill */}
+                <span>
+                  {h.signal
+                    ? <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, background: `${signalColor(h.signal)}1a`, color: signalColor(h.signal) }}>{h.signal}</span>
+                    : <span style={{ color: 'var(--text3)' }}>—</span>}
                 </span>
                 <span style={{ color: 'var(--text2)' }}>{h.portfolio_pct != null ? `${h.portfolio_pct.toFixed(1)}%` : '—'}</span>
               </div>
-            ))}
+            )})}
           </div>
+          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>P/L% shown where cost basis exists (Schwab); 401(k) funds carry no per-lot basis → "—". RSI * = via public-ETF proxy. Day change, shares, fib ladder & full ratings in the row drawer.</div>
         </div>
       )}
 
