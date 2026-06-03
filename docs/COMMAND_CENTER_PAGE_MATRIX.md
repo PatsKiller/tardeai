@@ -281,3 +281,9 @@ New **Pipeline** tab (default) in System hub — one at-a-glance view of every p
 - **RAG** — embeddings total, +7d, model, latest-embed freshness.
 - **Agent jobs** — queued/processing/pending (self-healing reaper), completed/failed today.
 Freshness colored green/amber/red vs each stage's SLA. Read-only.
+
+## v3 System hub — Apps + Jobs tabs (2026-06-03g, v2 parity)
+
+Two v2 pages that had no v3 home are now System-hub tabs:
+- **Apps** (`/api/v2/system/applications`) — software inventory + version drift. KPI strip (total/current/behind/unknown/not-installed), table with installed→latest + status, click for update command. Was v2 System Applications.
+- **Jobs** (`/api/v2/system/scheduled-jobs`) — systemd timers + cron, grouped Hermes / Trade AI / Other with status dots. Was v2 Scheduled Jobs. ("unknown" status = systemctl not resolvable for that unit — a backend gap.)
