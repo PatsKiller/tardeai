@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-06-03T11:50:00.111980+00:00",
+  "status": "healthy",
+  "safety": {
+    "ALPACA_MODE": "paper",
+    "LLM_DISABLE_LIVE_EXECUTION": "true"
+  },
+  "facts_summary": {
+    "tables": null,
+    "scripts": null,
+    "cron_jobs": null,
+    "strategies": null
+  },
+  "a1a_summary": {
+    "status": "unknown",
+    "findings": 0,
+    "by_severity": {}
+  }
+}

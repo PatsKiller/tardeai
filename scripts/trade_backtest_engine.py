@@ -56,6 +56,126 @@ def compute_atr(df, period=14):
     return float(tr.tail(period).mean())
 
 
+def compute_macd(closes, fast=12, slow=26, sig=9):
+    """MACD line/signal/histogram + a human state label, from daily closes."""
+    if len(closes) < slow + sig:
+        return None
+    ema_fast = closes.ewm(span=fast, adjust=False).mean()
+    ema_slow = closes.ewm(span=slow, adjust=False).mean()
+    line = ema_fast - ema_slow
+    signal = line.ewm(span=sig, adjust=False).mean()
+    hist = line - signal
+    l, s, h = float(line.iloc[-1]), float(signal.iloc[-1]), float(hist.iloc[-1])
+    h_prev = float(hist.iloc[-2]) if len(hist) > 1 else h
+    crossed_up = h > 0 and h_prev <= 0
+    crossed_dn = h < 0 and h_prev >= 0
+    if crossed_up:
+        state = 'bullish_crossover'
+    elif crossed_dn:
+        state = 'bearish_crossover'
+    elif l > s and h >= h_prev:
+        state = 'bullish_momentum'
+    elif l > s and h < h_prev:
+        state = 'bullish_fading'
+    elif l < s and h <= h_prev:
+        state = 'bearish_momentum'
+    else:
+        state = 'bearish_fading'
+    return {'line': round(l, 4), 'signal': round(s, 4), 'hist': round(h, 4), 'state': state}
+
+
+def compute_bollinger(closes, price, period=20, mult=2):
+    """Position of price within Bollinger bands (0=lower, 1=upper) + state."""
+    if len(closes) < period or price <= 0:
+        return None
+    win = closes.tail(period)
+    mid = float(win.mean()); sd = float(win.std())
+    if sd == 0:
+        return None
+    upper, lower = mid + mult * sd, mid - mult * sd
+    pct = (price - lower) / (upper - lower) if upper > lower else 0.5
+    state = 'above_upper' if price > upper else 'upper_half' if price >= mid else 'lower_half' if price > lower else 'below_lower'
+    return {'pct': round(pct, 3), 'state': state}
+
+
+def compute_adx(df, period=14):
+    """Wilder ADX (trend strength) from daily OHLC."""
+    if len(df) < period * 2 + 1:
+        return None
+    high, low, close = df['High'], df['Low'], df['Close']
+    up = high.diff(); dn = -low.diff()
+    plus_dm = ((up > dn) & (up > 0)) * up
+    minus_dm = ((dn > up) & (dn > 0)) * dn
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1 / period, adjust=False).mean()
+    plus_di = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr.replace(0, float('inf'))
+    minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr.replace(0, float('inf'))
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, float('inf'))
+    adx = dx.ewm(alpha=1 / period, adjust=False).mean()
+    v = float(adx.iloc[-1])
+    return round(v, 1) if v == v else None  # NaN guard
+
+
+def compute_fib(df_entry, price, lookback=60):
+    """Nearest Fibonacci retracement level of entry within the recent swing leg."""
+    win = df_entry.tail(lookback)
+    if len(win) < 10 or price <= 0:
+        return None
+    hi, lo = float(win['High'].max()), float(win['Low'].min())
+    if hi <= lo:
+        return None
+    # retracement from the high (uptrend pullback frame): 0 at high, 1 at low
+    retr = (hi - price) / (hi - lo)
+    levels = [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0]
+    nearest = min(levels, key=lambda x: abs(x - retr))
+    return {'level': nearest, 'leg_high': round(hi, 2), 'leg_low': round(lo, 2)}
+
+
+def detect_candle(df_entry):
+    """Simple daily candlestick label at the entry bar."""
+    if len(df_entry) < 2:
+        return None
+    o, h, l, c = (float(df_entry['Open'].iloc[-1]), float(df_entry['High'].iloc[-1]),
+                  float(df_entry['Low'].iloc[-1]), float(df_entry['Close'].iloc[-1]))
+    po, pc = float(df_entry['Open'].iloc[-2]), float(df_entry['Close'].iloc[-2])
+    rng = h - l
+    if rng <= 0:
+        return None
+    body = abs(c - o); lower_wick = min(o, c) - l; upper_wick = h - max(o, c)
+    if c > o and pc < po and c >= po and o <= pc:
+        return 'bullish_engulfing'
+    if c < o and pc > po and c <= po and o >= pc:
+        return 'bearish_engulfing'
+    if body <= rng * 0.1:
+        return 'doji'
+    if lower_wick >= body * 2 and upper_wick <= body:
+        return 'hammer'
+    if upper_wick >= body * 2 and lower_wick <= body:
+        return 'shooting_star'
+    return 'bullish_marubozu' if c > o and body >= rng * 0.7 else 'bearish_marubozu' if c < o and body >= rng * 0.7 else 'neutral'
+
+
+def detect_structure(df_entry, price):
+    """Heuristic market-structure tag from recent swing behaviour."""
+    win = df_entry.tail(40)
+    if len(win) < 20:
+        return None
+    recent_hi = float(win['High'].tail(10).max())
+    prior_hi = float(win['High'].head(20).max())
+    recent_lo = float(win['Low'].tail(10).min())
+    sma20 = float(win['Close'].tail(20).mean())
+    near_hi = price >= recent_hi * 0.99
+    if near_hi and recent_hi > prior_hi:
+        return 'breakout'
+    if price > sma20 and recent_lo > float(win['Low'].head(20).min()):
+        return 'pullback_in_uptrend'
+    if price < sma20 and recent_hi < prior_hi:
+        return 'downtrend'
+    if abs(price - sma20) / sma20 < 0.02:
+        return 'range'
+    return 'trend_continuation' if price > sma20 else 'reversal_attempt'
+
+
 def grade_entry(rsi, volume_ratio, sma50_dist_pct):
     if rsi is None: return 'D'
     vr = volume_ratio or 1.0
@@ -157,6 +277,24 @@ def backtest_trade(trade, df_cache):
         if result['entry_atr'] and entry_price > 0:
             result['entry_atr_stop_pct'] = round((result['entry_atr'] * 2 / entry_price) * 100, 2)
 
+        # MACD / Bollinger / ADX / Fibonacci / candle / structure (all from daily OHLCV)
+        try:
+            macd = compute_macd(entry_closes)
+            if macd:
+                result['entry_macd_line'] = macd['line']; result['entry_macd_signal'] = macd['signal']
+                result['entry_macd_hist'] = macd['hist']; result['entry_macd_state'] = macd['state']
+            bb = compute_bollinger(entry_closes, entry_price)
+            if bb:
+                result['entry_bb_pct'] = bb['pct']; result['entry_bb_state'] = bb['state']
+            result['entry_adx'] = compute_adx(df_entry)
+            fib = compute_fib(df_entry, entry_price)
+            if fib:
+                result['entry_fib_level'] = fib['level']; result['entry_fib_leg_high'] = fib['leg_high']; result['entry_fib_leg_low'] = fib['leg_low']
+            result['entry_candle'] = detect_candle(df_entry)
+            result['entry_structure'] = detect_structure(df_entry, entry_price)
+        except Exception:
+            pass
+
         # Better entry (lowest in 5d before)
         try:
             prior_5d = df_entry.tail(6).iloc[:-1]
@@ -173,6 +311,12 @@ def backtest_trade(trade, df_cache):
         df_exit = df[df.index <= close_date]
         if len(df_exit) > 14:
             result['exit_rsi'] = compute_rsi(df_exit['Close'])
+            try:
+                em = compute_macd(df_exit['Close'])
+                if em:
+                    result['exit_macd_state'] = em['state']
+            except Exception:
+                pass
 
         # Forward prices after exit
         df_after = df[df.index > close_date]
@@ -216,7 +360,11 @@ def upsert_result(conn, result):
             'better_entry_existed', 'best_entry_price', 'entry_savings',
             'exit_rsi', 'max_price_5d_after', 'max_price_10d_after', 'max_price_20d_after',
             'left_on_table_5d', 'left_on_table_10d', 'left_on_table_20d', 'exit_was_early',
-            'entry_grade', 'exit_grade', 'overall_grade', 'data_quality', 'error_msg']
+            'entry_grade', 'exit_grade', 'overall_grade', 'data_quality', 'error_msg',
+            'entry_macd_line', 'entry_macd_signal', 'entry_macd_hist', 'entry_macd_state',
+            'entry_bb_pct', 'entry_bb_state', 'entry_adx',
+            'entry_fib_level', 'entry_fib_leg_high', 'entry_fib_leg_low',
+            'entry_candle', 'entry_structure', 'exit_macd_state']
     values = [result.get(c) for c in cols]
     placeholders = ', '.join(['%s'] * len(cols))
     updates = ', '.join([f"{c}=EXCLUDED.{c}" for c in cols if c != 'trade_key'])

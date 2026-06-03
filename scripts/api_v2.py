@@ -2443,6 +2443,34 @@ def _compute_journal_insights(totals, setup_rows, tf_rows, emotion_rows, mistake
     return insights
 
 
+def _attach_backtest_grades(trades):
+    """Enrich a list of trade dicts (each carrying a 'trade_key') with entry_grade /
+    exit_grade from trade_backtest_results. Mutates in place; silent no-op on error so
+    the journal never fails just because grading data is missing."""
+    keys = [t.get("trade_key") for t in trades if t.get("trade_key")]
+    if not keys:
+        return
+    try:
+        rows = _db_query(
+            """SELECT trade_key, entry_grade, exit_grade, entry_rsi, left_on_table_20d
+               FROM trade_backtest_results
+               WHERE trade_key = ANY(%s) AND entry_grade IS NOT NULL""",
+            (keys,), fetch="all"
+        )
+        gmap = {r["trade_key"]: r for r in (rows or [])}
+        for t in trades:
+            g = gmap.get(t.get("trade_key"))
+            if g:
+                t["entry_grade"] = g.get("entry_grade")
+                t["exit_grade"] = g.get("exit_grade")
+                if g.get("entry_rsi") is not None:
+                    t["entry_rsi"] = float(g["entry_rsi"])
+                if g.get("left_on_table_20d") is not None:
+                    t["left_on_table_20d"] = float(g["left_on_table_20d"])
+    except Exception:
+        pass
+
+
 def journal():
     """GET /api/v2/journal — closed trades from DB (trade_closed table)."""
     import psycopg2.extras
@@ -2484,6 +2512,9 @@ def journal():
             }
             item["trade_key"] = f"{item['symbol']}:{item['account']}:{item['close_date']}"
             trades.append(item)
+
+    # Enrich with entry/exit grades from backtest grading (join on trade_key)
+    _attach_backtest_grades(trades)
 
     real_trades = [t for t in trades if (t.get("pnl") or 0) != 0]
 
@@ -3392,8 +3423,8 @@ def _agents_summary():
             if ea["agent"] == "social_scalp":
                 ea["total"] = int(scalp_row.get("cnt", 0))
                 ea["latest"] = _json_clean(scalp_row.get("latest"))
-    # Enrich iris
-    iris_row = _db_query("SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM iris_run_log", fetch="one")
+    # Enrich iris (iris_run_log timestamp column is ran_at, not created_at)
+    iris_row = _db_query("SELECT COUNT(*) as cnt, MAX(ran_at) as latest FROM iris_run_log", fetch="one")
     if iris_row:
         for ea in extra_agents:
             if ea["agent"] == "iris":
@@ -3404,6 +3435,9 @@ def _agents_summary():
     _AGENT_HOME_TABLES = [
         ("alex", "SELECT COUNT(*) as cnt, MAX(created_at) as latest FROM cio_decisions"),
         ("aegis", "SELECT COUNT(*) as cnt, MAX(observed_at) as latest FROM aegis_portfolio_briefs"),
+        # iris writes to iris_run_log (ran_at), not watchlist_agent_results — without this its
+        # dashboard "last run" stays pinned to its last watchlist row and looks stale.
+        ("iris", "SELECT COUNT(*) as cnt, MAX(ran_at) as latest FROM iris_run_log"),
     ]
     for _agent_name, _sql in _AGENT_HOME_TABLES:
         try:
@@ -12625,11 +12659,172 @@ def _system_applications():
     return {"ok": True, "applications": apps, "summary": summary, "versions_checked_at": _vcache_ts}
 
 
+def _hermes_infra():
+    """GET /api/v2/hermes/infra — service health (SearXNG/Docker, gateway, Ollama, Postgres),
+    web-source provenance (domains), and the research funnel (staged→promoted→embedded)."""
+    import urllib.request as _u
+    from urllib.parse import urlparse as _up
+
+    def _ping(url, timeout=3):
+        try:
+            with _u.urlopen(url, timeout=timeout) as r:
+                return 200 <= r.status < 500
+        except Exception:
+            return False
+
+    services = []
+    sx_up = _ping(os.environ.get("SEARXNG_URL", "http://127.0.0.1:18888/").split("/search")[0] or "http://127.0.0.1:18888/")
+    sourced = _db_query("SELECT COUNT(*) c FROM hermes_research_intelligence WHERE source_urls_json IS NOT NULL AND source_urls_json::text NOT IN ('null','[]','{}')", fetch="one") or {}
+    services.append({"name": "SearXNG", "kind": "docker", "status": "up" if sx_up else "down", "detail": "127.0.0.1:18888 (searxng/searxng)", "sourced_rows": _json_clean(sourced.get("c", 0))})
+    # Ollama + loaded models
+    ol_up = _ping("http://127.0.0.1:11434/api/tags")
+    models = ""
+    try:
+        with _u.urlopen("http://127.0.0.1:11434/api/ps", timeout=3) as r:
+            import json as _j
+            models = ", ".join(m.get("name", "") for m in _j.loads(r.read()).get("models", []))
+    except Exception:
+        pass
+    services.append({"name": "Ollama (LLM)", "kind": "service", "status": "up" if ol_up else "down", "detail": models or "no models loaded"})
+    # Hermes gateway (pid file)
+    gw = "down"
+    try:
+        pidf = PROJECT_ROOT / "hermes_sidecar" / ".hermes" / "gateway.pid"
+        if pidf.exists():
+            raw = pidf.read_text().strip()
+            import json as _j
+            pid = int(_j.loads(raw).get("pid")) if raw.startswith("{") else int(raw)
+            os.kill(pid, 0); gw = "up"
+    except Exception:
+        gw = "down"
+    services.append({"name": "Hermes Gateway", "kind": "process", "status": gw, "detail": "hermes sidecar :18790"})
+    services.append({"name": "Postgres", "kind": "db", "status": "up", "detail": "trade_ai"})  # this query proves it
+
+    # Web-source domains (provenance) — parse source_urls_json
+    domains = {}
+    rows = _db_query("SELECT source_urls_json FROM hermes_research_intelligence WHERE source_urls_json IS NOT NULL AND source_urls_json::text NOT IN ('null','[]','{}') LIMIT 500") or []
+    for r in rows:
+        try:
+            urls = r["source_urls_json"]
+            if isinstance(urls, str):
+                import json as _j; urls = _j.loads(urls)
+            if isinstance(urls, dict):
+                urls = list(urls.values())
+            for u in (urls or []):
+                if isinstance(u, str) and u.startswith("http"):
+                    d = _up(u).netloc.replace("www.", "")
+                    if d:
+                        domains[d] = domains.get(d, 0) + 1
+        except Exception:
+            continue
+    top_domains = sorted(domains.items(), key=lambda x: -x[1])[:15]
+
+    # Research funnel (provenance flow counts)
+    f = _db_query("SELECT COUNT(*) FILTER (WHERE status='staged') staged, COUNT(*) FILTER (WHERE status='promoted') promoted, COUNT(*) total FROM hermes_research_intelligence", fetch="one") or {}
+    emb = _db_query("SELECT COUNT(*) c FROM hermes_embedding_queue WHERE embedding_status='completed'", fetch="one") or {}
+    return {
+        "services": services,
+        "source_domains": [{"domain": d, "n": n} for d, n in top_domains],
+        "funnel": {"staged": _json_clean(f.get("staged", 0)), "promoted": _json_clean(f.get("promoted", 0)),
+                   "embedded": _json_clean(emb.get("c", 0)), "total": _json_clean(f.get("total", 0))},
+    }
+
+
+def _hermes_sources():
+    """GET /api/v2/hermes/sources — the source registry: web domains (yield-scored, self-learning)
+    + connector types (social/youtube/sec/rss/AI-APIs/seeking-alpha) with active/dormant status."""
+    try:
+        rows = _db_query("SELECT source_type, source_name, source_url, credibility_score, specialty, active, notes "
+                         "FROM research_sources ORDER BY active DESC, source_type, credibility_score DESC") or []
+        out = []
+        for r in rows:
+            sp = r.get("specialty")
+            out.append({"type": r["source_type"], "name": r["source_name"], "url": r.get("source_url"),
+                        "credibility": _json_clean(r.get("credibility_score")), "active": r.get("active"),
+                        "specialty": (sp[0] if isinstance(sp, list) and sp else sp), "notes": r.get("notes")})
+        active = sum(1 for x in out if x["active"])
+        return {"sources": out, "active": active, "total": len(out)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _hermes_provenance():
+    """GET /api/v2/hermes/provenance — per-research-item provenance for the node-graph lane:
+    SearXNG → source domain → research item → (promoted) → RAG/embedded."""
+    from urllib.parse import urlparse as _up
+    import json as _j
+    try:
+        rows = _db_query("""
+            SELECT r.id, COALESCE(NULLIF(r.symbol,''), LEFT(r.topic, 26)) AS label, r.status, r.research_type,
+                   r.source_urls_json, r.hermes_agent_name,
+                   EXISTS(SELECT 1 FROM hermes_embedding_queue q
+                          WHERE q.source_research_id = r.id AND q.embedding_status='completed') AS embedded
+            FROM hermes_research_intelligence r
+            ORDER BY r.created_at DESC LIMIT 36""") or []
+        items = []
+        for r in rows:
+            dom = None
+            try:
+                urls = r["source_urls_json"]
+                if isinstance(urls, str):
+                    urls = _j.loads(urls)
+                if isinstance(urls, dict):
+                    urls = list(urls.values())
+                for u in (urls or []):
+                    if isinstance(u, str) and u.startswith("http"):
+                        dom = _up(u).netloc.replace("www.", ""); break
+            except Exception:
+                pass
+            items.append({"id": r["id"], "label": r["label"] or f"#{r['id']}", "status": r["status"],
+                          "type": r["research_type"], "agent": r["hermes_agent_name"],
+                          "domain": dom, "embedded": bool(r["embedded"])})
+        return {"items": items}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _hermes_agent_footprint():
+    """GET /api/v2/hermes/agent-footprint — VALIDATED per-agent execution footprint.
+    Separates approval-state (governance) from actual runtime rows so the workflow graph
+    shows whether jobs are really flowing, not just the design-doc label."""
+    try:
+        by_agent = _db_query(
+            "SELECT hermes_agent_name AS agent, COUNT(*) AS rows, MAX(created_at)::date AS last_active "
+            "FROM hermes_research_intelligence WHERE hermes_agent_name IS NOT NULL "
+            "GROUP BY 1 ORDER BY 2 DESC") or []
+        # active job classifications (research_type breakdown) per agent — "what they're working on"
+        types = _db_query(
+            "SELECT hermes_agent_name AS agent, research_type AS klass, COUNT(*) AS n "
+            "FROM hermes_research_intelligence WHERE hermes_agent_name IS NOT NULL AND research_type IS NOT NULL "
+            "GROUP BY 1,2 ORDER BY 1, 3 DESC") or []
+        cls_by_agent = {}
+        for t in types:
+            cls_by_agent.setdefault(t["agent"], []).append({"type": t["klass"], "n": _json_clean(t["n"])})
+        for a in by_agent:
+            a["classifications"] = cls_by_agent.get(a["agent"], [])
+        eq = _db_query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE embedding_status='completed') AS completed, "
+                       "MAX(created_at)::date AS last_active FROM hermes_embedding_queue", fetch="one") or {}
+        pa = _db_query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE dry_run) AS dry_run, "
+                       "COUNT(*) FILTER (WHERE approved_by IS NOT NULL) AS approved, MAX(promoted_at)::date AS last_active "
+                       "FROM hermes_promotion_audit", fetch="one") or {}
+        me = _db_query("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE metadata_json->>'test' = 'true') AS smoke_tests, "
+                       "MAX(created_at)::date AS last_active FROM hermes_memory_events", fetch="one") or {}
+        return {
+            "by_agent": [{k: _json_clean(v) for k, v in r.items()} for r in by_agent],
+            "embedding_queue": {k: _json_clean(v) for k, v in eq.items()},
+            "promotion_audit": {k: _json_clean(v) for k, v in pa.items()},
+            "memory_events": {k: _json_clean(v) for k, v in me.items()},
+            "note": "Execution footprint is independent of approval. Rows present ≠ governance-approved; many are autonomous-loop / dry-run / smoke-test writes.",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def _hermes_research_backlog():
     """GET /api/v2/hermes/research-backlog — read-only research backlog items."""
     rows = _db_query("""
         SELECT id, symbol, topic, LEFT(summary, 400) AS summary, confidence_score,
-               status, evidence_json, created_at
+               status, evidence_json, source_urls_json, created_at
         FROM hermes_research_intelligence
         WHERE research_type = 'research_backlog'
         ORDER BY created_at DESC
@@ -14126,6 +14321,10 @@ ROUTES = {
     "/api/v2/hermes/pipeline-quality": lambda: _hermes_pipeline_quality(),
     "/api/v2/hermes/promotion-review": lambda: _hermes_promotion_review(),
     "/api/v2/hermes/research-backlog": lambda: _hermes_research_backlog(),
+    "/api/v2/hermes/agent-footprint": lambda: _hermes_agent_footprint(),
+    "/api/v2/hermes/infra": lambda: _hermes_infra(),
+    "/api/v2/hermes/provenance": lambda: _hermes_provenance(),
+    "/api/v2/hermes/sources": lambda: _hermes_sources(),
     "/api/v2/hermes/research": lambda: _hermes_research_preview(),
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
@@ -18263,7 +18462,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 # Merge Alpaca real-time
                 if t['symbol'] in _alpaca_live and t.get('status') == 'open':
                     td['alpaca'] = _alpaca_live[t['symbol']]
+                # trade_key for backtest-grade linkage (closed trades)
+                _cd = (str(t.get('closed_at') or '')[:10]) if t.get('status') == 'closed' else ''
+                td['trade_key'] = f"{t.get('symbol','')}:{t.get('account','')}:{_cd}"
                 enriched.append(td)
+            # Enrich closed paper trades with entry/exit grades (join on trade_key)
+            _attach_backtest_grades(enriched)
             _open = [t for t in enriched if t.get('status') == 'open']
             _closed = [t for t in enriched if t.get('status') == 'closed']
             # Analytics — only count real trades (non-zero PnL) for win rate
@@ -20878,6 +21082,102 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _lim = min(int(_q.get("limit", 100)), 500)
             rows = _db_query(f"SELECT id as result_id, run_id, strategy_id, run_type, total_trades as simulated_trades, wins, losses, win_rate, profit_factor, expectancy_r, total_pnl, avg_pnl, avg_r_multiple, max_drawdown_pct, equity_curve_json, sample_size, created_at FROM strategy_backtest_results{_where} ORDER BY created_at DESC LIMIT {_lim}", _p) or []
             return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/result-history":
+        # Append-only "potential over time" — one permanent snapshot row per run.
+        try:
+            _q = query or {}
+            _w, _p = ["run_id IS NOT NULL"], []
+            rt = _q.get("run_type") or "replay_trades"
+            if rt and rt != "all":
+                _w.append("run_type=%s"); _p.append(rt)
+            _where = " WHERE " + " AND ".join(_w)
+            rows = _db_query(
+                f"SELECT to_char(snapshot_at, 'YYYY-MM-DD') AS snapshot_date, snapshot_at, run_id, run_type, "
+                f"trades, wins, win_rate, total_pnl, avg_r_multiple, expectancy_r "
+                f"FROM backtest_result_history{_where} ORDER BY snapshot_at ASC LIMIT 500", _p) or []
+            return 200, {"ok": True, "data": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/atm/setup-advisory":
+        # Advisory-only setup-quality prior + per-proposal advisory (never a gate/block).
+        try:
+            _q = query or {}
+            prior = _db_query("SELECT dimension, band, n, win_rate, avg_pnl, avg_left, grade_score, "
+                              "llm_score, dominant_verdict, confidence, note FROM setup_quality_prior "
+                              "WHERE dimension='rsi_band' ORDER BY band") or []
+            _w, _p = ["1=1"], []
+            if _q.get("proposal_id"):
+                _w.append("proposal_id=%s"); _p.append(_q["proposal_id"])
+            if _q.get("flag"):
+                _w.append("advisory_flag=%s"); _p.append(_q["flag"])
+            adv = _db_query(
+                f"SELECT proposal_id, symbol, status, rsi, band, prior_score, prior_win_rate, "
+                f"prior_avg_left, dominant_verdict, confidence, advisory_flag, note "
+                f"FROM proposal_setup_advisory WHERE {' AND '.join(_w)} "
+                f"ORDER BY prior_score ASC NULLS LAST LIMIT 500", _p) or []
+            return 200, {"ok": True, "data": {
+                "prior": [{k: _json_clean(v) for k, v in r.items()} for r in prior],
+                "advisories": [{k: _json_clean(v) for k, v in r.items()} for r in adv],
+                "disclaimer": "Advisory only — derived from post-trade research. Never blocks execution or any gate. Labelled by sample size/confidence.",
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/setup-advisory/candidates":
+        # Advisory-only candidate (incubator/watchlist) setup-quality advisory. Never gates.
+        try:
+            _q = query or {}
+            _w, _p = ["1=1"], []
+            ent = _q.get("entity")
+            if ent in ("incubator", "watchlist"):
+                _w.append("entity_type=%s"); _p.append(ent)
+            if _q.get("flag"):
+                _w.append("advisory_flag=%s"); _p.append(_q["flag"])
+            rows = _db_query(
+                f"SELECT entity_type, symbol, status, rsi, band, prior_score, prior_win_rate, "
+                f"prior_avg_left, dominant_verdict, confidence, advisory_flag, note, snapshot_date "
+                f"FROM candidate_setup_advisory WHERE {' AND '.join(_w)} "
+                f"ORDER BY prior_score ASC NULLS LAST, symbol LIMIT 800", _p) or []
+            counts = _db_query(
+                "SELECT entity_type, advisory_flag, COUNT(*) n FROM candidate_setup_advisory GROUP BY 1,2") or []
+            return 200, {"ok": True, "data": {
+                "advisories": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "counts": [{k: _json_clean(v) for k, v in r.items()} for r in counts],
+                "disclaimer": "Advisory only — current technical posture vs the post-trade prior. Never gates promotion/scoring.",
+            }}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if base_path == "/api/v2/backtesting/trade-evaluations":
+        # Structured LLM trade evaluations (research/journaling only — not advice).
+        try:
+            _q = query or {}
+            _w, _p = ["review_stage='structured_backtest_eval'"], []
+            if _q.get("verdict"):
+                _w.append("eval_verdict=%s"); _p.append(_q["verdict"])
+            if _q.get("symbol"):
+                _w.append("symbol=%s"); _p.append(_q["symbol"])
+            _where = " WHERE " + " AND ".join(_w)
+            _lim = min(int(_q.get("limit", 200)), 500)
+            rows = _db_query(
+                f"SELECT id, symbol, to_char(trade_close_date,'YYYY-MM-DD') AS close_date, model_name, "
+                f"prompt_version, status, eval_overall_score, eval_verdict, summary, strengths, weaknesses, "
+                f"lessons AS improvements, confidence, output_payload, generated_at "
+                f"FROM trade_llm_reviews{_where} ORDER BY generated_at DESC LIMIT {_lim}", _p) or []
+            # Aggregate verdict distribution + avg score for the header
+            agg = _db_query(
+                "SELECT eval_verdict, COUNT(*) n, ROUND(AVG(eval_overall_score),0) avg_score "
+                "FROM trade_llm_reviews WHERE review_stage='structured_backtest_eval' AND eval_verdict IS NOT NULL "
+                "GROUP BY eval_verdict ORDER BY n DESC") or []
+            return 200, {"ok": True, "data": {
+                "evaluations": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+                "verdict_distribution": [{k: _json_clean(v) for k, v in r.items()} for r in agg],
+                "disclaimer": "Post-trade research/journaling and model evaluation. Not live trading advice.",
+            }}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

@@ -1442,6 +1442,8 @@ Aggregates ALL data for a single closed trade into a structured response:
 
 Agents are accessible via Telegram and WhatsApp. Configuration is in `config/agents.yaml` and personality/behavior rules in the agents bible (`docs/project/agents_bible.md`).
 
+**Full agent workflows** (fleet roster, schedules, allocation chain Maria→Steph→Risk→Tax→Alex, v3 AgentsHub surfaces): see `docs/AGENT_AND_HERMES_WORKFLOWS.md` Part 1.
+
 ### Backend Automation Agents
 
 | Agent | Role | Script |
@@ -1853,7 +1855,8 @@ John replies in Telegram → telegram_command_handler executes retry
 |---------|--------|-----------|----------|
 | **PostgreSQL down** | All services halt | `pg_isready` + watchdog | Restart service; restore from 7-day rolling backup |
 | **Ollama crash** | LLM classification stops | Health check on `:11434` | Systemd auto-restart; cloud fallback activates |
-| **Portfolio Server crash** | API + frontend unavailable | Health check on `:7777` | `pkill + restart`; systemd auto-restart |
+| **Portfolio Server crash** | API + frontend unavailable | Health check on `:7777` | `pkill + restart`; systemd auto-restart (`Restart=always`) |
+| **Portfolio Server HANG** (alive but unresponsive) | API + frontend hang; `/v2/` and `/v3/` unreachable | `scripts/portfolio_server_watchdog.sh` (cron */2) probes `/api/health`; systemd `Restart=always` does NOT catch a hang | Watchdog kills the (johnclaw-owned) pid → systemd respawns. Root cause fixed: api_v2 was `importlib.reload`-ed on *every* `/api/v2/` request, which deadlocked the threaded server under concurrent dashboard polling. Now mtime-gated + lock-guarded in `portfolio_server.py:_get_api_v2()` — reloads only when the source file changes. (Incident 2026-06-03.) |
 | **Finviz cookie expired** | No new screener candidates | Screener stage reports 0 results | Manual browser re-authentication |
 | **Cloud LLM budget exhausted** | Falls back to next provider | Budget counter in `.env` | Resets daily; or increase budget |
 | **Network outage** | External data sources unavailable | Source staleness exceeds threshold | Pipeline operates on cached data; alerts operator |
@@ -1869,6 +1872,29 @@ John replies in Telegram → telegram_command_handler executes retry
 | Source code | Git | Full history | `.git/` |
 | Portfolio state | JSON snapshot | 10 daily snapshots | `data/portfolios/snapshots/` |
 | Systemd services | Config backup | Per-change | `backups/systemd/` |
+
+### Restarting the Portfolio Server (`:7777`)
+
+The service runs as systemd unit `tradeai-portfolio-server` (`User=johnclaw`, `Restart=always`). Two ways to restart, depending on privileges:
+
+1. **With sudo (preferred — clean restart):**
+   ```
+   sudo systemctl restart tradeai-portfolio-server
+   ```
+   In a Claude Code session, run it via the `!` prefix so it executes in the operator's shell:
+   `! sudo systemctl restart tradeai-portfolio-server`
+   To allow this without an interactive password prompt, grant passwordless sudo for just this unit — create `/etc/sudoers.d/portfolio-server` (via `sudo visudo -f /etc/sudoers.d/portfolio-server`) containing:
+   ```
+   johnclaw ALL=(root) NOPASSWD: /usr/bin/systemctl restart tradeai-portfolio-server, /usr/bin/systemctl stop tradeai-portfolio-server, /usr/bin/systemctl start tradeai-portfolio-server
+   ```
+
+2. **Without sudo (kill + auto-respawn):** the process is owned by `johnclaw`, so SIGTERM/SIGKILL it and `Restart=always` brings it back in seconds — no sudo needed. This is how automation (and the hang watchdog) recovers it:
+   ```
+   kill -TERM "$(pgrep -f scripts/portfolio_server.py | head -1)"   # SIGKILL if it survives
+   ```
+   Note: `systemctl restart` itself requires interactive auth and will fail for `johnclaw` without the sudoers rule above.
+
+After restart, verify: `curl -s -o /dev/null -w '%{http_code}' http://localhost:7777/api/health` → `200`. The hang watchdog (`scripts/portfolio_server_watchdog.sh`, cron */2) performs this kill+respawn automatically if `/api/health` stops responding. `api_v2.py` edits hot-reload on the next request (mtime-gated); edits to `portfolio_server.py` itself require a restart.
 
 ### Recovery Procedures
 
@@ -1894,17 +1920,19 @@ Hermes is Trade AI's near-24/7 research desk, second brain, memory layer, and in
 - Trade AI remains the system of record and only execution authority
 - Hermes writes only to `hermes_*` staging tables — never to production execution tables
 - Hermes has no broker access, no proposal/trade/journal mutation authority
-- Auto-promotion is prohibited — all promotions require manual operator approval
+- Research auto-promotion (staged → promoted → optional RAG embedding) is **bounded and reversible** — it concerns research intelligence only and does **not** relax any trade/proposal gate (Safety Rules §19 hold)
 
-**Current state:**
+**Current state (2026-06-03):**
 
-- Hermes agent: v0.15.2 (NousResearch/hermes-agent)
-- Gateway: active on port 18790 (systemd, auto-restart)
-- Headless browser: Playwright + Chromium (local web research)
-- Autonomous timer: daily 01:00 UTC, ticker_challenger loop, --max-rows 2
-- Model: gemma3:12b via local Ollama (no external APIs)
-- Kill switch: `touch hermes_sidecar/.hermes/DISABLED`
-- Dashboard: Hermes Chat (`/v2/hermes`) + Hermes Intelligence (`/v2/hermes-intelligence`)
+- **Chief Coordinator runs the fleet live** (`--apply`) on a `*/15` flock-guarded cron (`scripts/hermes_coordinator.py`), per Operator Directive B (2026-06-02). Verified live 2026-06-03 (tick 08:09: "3 promoted, 4 agents run").
+- Per-tick caps: librarian 10, autonomous loop 3/sub-loop, promote 10, embed 2.
+- Autonomous loop: `ticker_challenger` + `pipeline_quality` sub-loops via Coordinator.
+- Weekly source curation: Sun 11:30 PM (`scripts/hermes_source_curation.py` → `research_sources`).
+- Model: gemma3:12b primary / gemma3:4b for fast continuous loops, via local Ollama (no external APIs).
+- Kill switch: `touch hermes_sidecar/.hermes/DISABLED` (master); also `COORDINATOR_DISABLED`, `LIBRARIAN_DISABLED`.
+- Gateway: active on port 18790 (systemd, auto-restart). Dashboard: v3 HermesHub (`/v3/`, Hermes hub).
+
+**Full Hermes workflows** (fleet roster + run-state, per-tick caps, workflow chain, safety controls, v3 surfaces): see `docs/AGENT_AND_HERMES_WORKFLOWS.md` Part 2.
 
 **Staging tables (6):** hermes_research_intelligence, hermes_validation_findings, hermes_alerts, hermes_embedding_queue, hermes_memory_events, hermes_promotion_audit
 
@@ -2105,3 +2133,22 @@ Gate status is available at `/api/v2/live-trading-gate`.
 | **6. UI/UX** | Global alert banner (4 active alerts), freshness badges (green/yellow/red), Today's Actions panel on Overview | `GlobalAlertBanner.tsx`, `FreshnessBadge.tsx` |
 | **7. Feedback Loops** | Proposal outcome chains (38 linked), alert effectiveness scoring (31 scored), strategy snapshots (4), agent sample tracking | `feedback_loop_processor.py`, `20260511_feedback_loop_closure.sql` |
 | **8. Production Readiness** | API auth (token-based), backup verification (10/10 passing), live trading gate (4 gates, all FAIL = paper only) | `backup_verify.py`, `/api/v2/live-trading-gate` |
+
+### Session — 2026-06-03 (Rating surfacing + workflow docs)
+
+| Area | Summary | Key Artifacts |
+|------|---------|---------------|
+| **Entry/exit ratings** | Surfaced existing grade data where the operator looks: inline entry/exit **Grade column** in v3 Journal trade log; **"entry setup ~N"** badge per open position in v3 Trading. Diagnosed coverage (~74/76 Schwab closed trades graded). | `api_v2.py:_attach_backtest_grades()`, `JournalHub.tsx`, `TradingHub.tsx` |
+| **Agent & Hermes workflows** | New canonical workflow reference; corrected stale MASTER §18b (Hermes now live coordinator-driven `*/15`, bounded reversible auto-promote — research only, no trade-gate relaxation). | `docs/AGENT_AND_HERMES_WORKFLOWS.md`, MASTER §11/§18b, `COMMAND_CENTER_PAGE_MATRIX.md` |
+| **DOCX** | Append-only session addendum to canonical Reference Architecture. | `scripts/update_docx_session_2026_06_03.py` |
+
+### Session — 2026-06-03b (Server hang fix + dashboard accuracy + v3 additions)
+
+| Area | Summary | Key Artifacts |
+|------|---------|---------------|
+| **Server hang (critical)** | Portfolio server deadlocked (alive, serving nothing; `/v2/` & `/v3/` down) from `importlib.reload(api_v2)` on every request under concurrent dashboard polling. Fixed: mtime-gated + lock-guarded reload (`_get_api_v2()`) — reloads only on file change; also a big latency win (~25ms vs full-module reload). Added hang **watchdog** (cron */2) since `Restart=always` only catches crashes, not hangs. | `portfolio_server.py:_get_api_v2()`, `scripts/portfolio_server_watchdog.sh`, MASTER §18 |
+| **Agent "last run" accuracy** | Dashboard showed aegis/iris as stale though both ran. Root cause: `agents/summary` derived `last_run` only from `watchlist_agent_results`; iris writes to `iris_run_log.ran_at`. Fixed iris via `_AGENT_HOME_TABLES`. aegis was correct (nightly brief cadence). Added staleness coloring (prevention) + honest "no handoffs" copy (worker agents don't write `agent_handoffs`; synthesis/Alex/auto_research/system do). | `api_v2.py:_agents_summary()`, `AgentsHub.tsx` |
+| **v3 Trade AI tab** | Ported v2 `/v2/trade-ai` market-opportunities scanner into v3 Trading hub (GO/WAIT/NO-GO, score/RVOL/catalyst/critic, run KPIs). | `TradingHub.tsx`, `/api/v2/trade-ai` |
+| **v3 Portfolio account filters** | Account filter chips on Holdings (per-account counts/value). | `PortfolioHub.tsx` |
+| **Human Review actions** | Escalation-queue drawer now has navigation links (Inbox, Agent Collaboration) + clear action explanation. DetailDrawer gained read-only `links`. | `AgentsHub.tsx`, `DetailDrawer.tsx` |
+| **Drive sync** | Large-file (>1 MB) markdown no longer `--convert-to=doc` (Google conversion timed out on a 3.4 MB report); uploads raw so it mirrors. | `scripts/sync-docs-to-drive.sh` |

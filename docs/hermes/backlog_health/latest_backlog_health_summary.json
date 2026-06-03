@@ -1,0 +1,307 @@
+{
+  "date": "2026-06-03",
+  "timestamp": "2026-06-03T06:46:42.406760+00:00",
+  "checks": {
+    "total_backlog": 63,
+    "open_count": 0,
+    "high_priority_count": 36,
+    "stale_count": 0,
+    "stale_ids": [],
+    "duplicate_risk_count": 53,
+    "duplicate_risks": [
+      {
+        "id": 25,
+        "duplicate_of": 27,
+        "key": "NULL:backtest_contradiction"
+      },
+      {
+        "id": 32,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 33,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 54,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 53,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 52,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 51,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 50,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 57,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 55,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 56,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 59,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 60,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 58,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 63,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 61,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 62,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 66,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 65,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 64,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 68,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 69,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 67,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 71,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 72,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 70,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 75,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 73,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 74,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 76,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 78,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 77,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 81,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 79,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 80,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 84,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 82,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 83,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 87,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 85,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 86,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 90,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 89,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 88,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 92,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 93,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 91,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 94,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 95,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 96,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 99,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 97,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      },
+      {
+        "id": 98,
+        "duplicate_of": 34,
+        "key": "NULL:unknown"
+      }
+    ],
+    "missing_owner_agent": 53,
+    "missing_research_questions": 53,
+    "missing_evidence": 0,
+    "missing_symbol": 60,
+    "source_surfaces": {
+      "unknown": 58,
+      "catalyst": 1,
+      "journal": 1,
+      "backtest": 3
+    },
+    "oldest_item": {
+      "id": 21,
+      "created": "2026-05-31 21:36:31",
+      "age_days": 2
+    },
+    "newest_item": {
+      "id": 98,
+      "created": "2026-06-03 02:39:01",
+      "age_days": 0
+    },
+    "ready_for_discovery": 0,
+    "not_ready_for_discovery": 0,
+    "operator_review_list": []
+  },
+  "warnings": [
+    "53 potential duplicates",
+    "53 items missing owner agent"
+  ],
+  "total_warnings": 2
+}

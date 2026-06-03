@@ -1,0 +1,118 @@
+# Agent & Hermes Workflows
+
+**Status:** Canonical workflow reference · Validated 2026-06-03
+**Scope:** End-to-end workflows for (1) the core agent fleet and (2) the Hermes sidecar challenger system. Linked from `MASTER_SYSTEM_DOCUMENTATION.md` §11 (Agent Layer) and §18b (Hermes Sidecar). See also `AGENT_ROSTER.md`, `AGENT_PAGES_DETAIL.md`, and `docs/hermes/`.
+
+Run-state is reported honestly: **operational** = scheduled and running; **designed** = built, not auto-scheduled; **dormant** = connector ready, awaiting config; **disabled** = present but kill-switched/commented.
+
+---
+
+## Part 1 — Agent Fleet Workflows
+
+The core agents are local-LLM workers (`gemma3:12b` primary, `gemma3:4b` fallback via Ollama — no external APIs for routine work; Alex may escalate to Claude). Conversational access is via the OpenClaw gateway (:18789) over Telegram/WhatsApp. Backend automation runs on cron/systemd.
+
+### Fleet roster & run-state
+
+| Agent | Role | Trigger / schedule | Key outputs | Run-state |
+|-------|------|--------------------|-------------|-----------|
+| **Maria** | Research / catalyst verification, watchlist batch | Job worker, every ~15 min (`process_watchlist_agent_jobs.py`) | `watchlist_agent_results` | operational |
+| **Steph** | Income / allocation & account-fit | Job worker, every ~15 min | `watchlist_agent_results` | operational |
+| **Risk** | Stop coverage, portfolio heat, risk-gate validation | Job worker, every ~15 min; `risk_gate.py` | `watchlist_agent_results`, risk-gate evals | operational |
+| **Tax** | Tax-loss harvest, Roth/IRMAA, wash-sale | Job worker, every ~15 min | `watchlist_agent_results` | operational |
+| **Alex (CIO)** | Escalation arbiter, strategic oversight, retirement | 5:00 AM daily; 7:15 AM hygiene; 8:00 AM Sun weekly; monthly 1st | `cio_decisions`, `alert_events` | operational |
+| **Aegis** | Overnight surveillance, morning briefs, social sentiment, synthesis | 8 PM overnight, 8 AM surveillance, 11 AM/3 PM social, 7 PM ingest, 9 PM synthesis, 8:05 AM brief | `aegis_portfolio_briefs`, morning brief (PDF+Telegram) | operational |
+| **Iris** | Intelligence librarian — taxonomy, routing, RAG coverage audits | Weekly Sun 10 AM + daily gap scan (Phase 41 migration pending) | `iris_run_log`, `iris_proposals` | designed |
+| **Social Scalp** | Social mention scan → GO/WAIT/AVOID | Event-driven (scalp pipeline) | scalp signals | operational |
+| **Scalp Critic** | Catalyst validation / signal gating | Event-driven, follows Social Scalp | validated signals | operational |
+
+### Processing schedule (job worker)
+
+| Window | Interval | Jobs/run | Context |
+|--------|----------|----------|---------|
+| Market hours (6 AM–7 PM) | 15 min | 10 | Active trading |
+| Overnight (8 PM–11 PM) | 5 min | 25 | Batch |
+| Weekend | 10 min | 15 | Catch-up |
+
+### Allocation workflow chain
+
+```
+Maria (catalyst/news)  →  Steph (allocation/income fit)  →  Risk (stops/heat, risk gate)  →  Tax (optimization)
+                                                                      │
+                                                              Alex (CIO arbiter) ── escalations → John (Telegram/WhatsApp)
+```
+
+Agents never execute trades. Their outputs are advisory inputs to the proposal lifecycle (§10), which remains human-in-the-loop.
+
+### v3 surfaces
+
+- **AgentsHub.tsx** — Roster, Calibration, Workflow graph (live handoff edges from `/api/v2/agent-pipeline`), Performance.
+- Endpoints: `/api/v2/agent-pipeline`, `/agent-health`, `/agent-calibration/agents`, `/agent-collaboration`, `/agent-dashboard?agent=X`, `/agents/summary`.
+
+---
+
+## Part 2 — Hermes Sidecar Workflows
+
+Hermes is Trade AI's near-24/7 research desk, memory layer, and independent challenger. It is **not** a trading worker: it writes only to `hermes_*` staging tables, has no broker/proposal/trade/journal mutation authority, and every promotion is audited and reversible.
+
+**Architecture note (current, 2026-06-03):** Per Operator Directive B (2026-06-02), the **Chief Hermes Coordinator** runs the fleet live (`--apply`) on a `*/15` flock-guarded cron. Research auto-promotion (staged → promoted, then optional RAG embedding) is **enabled but bounded and reversible** — this concerns *research intelligence only* and does **not** relax any trade/proposal gate (Safety Rules §19 remain in force: proposals are human-in-the-loop, no broker access). Verified live 2026-06-03: coordinator tick at 08:09 ("3 promoted, 4 agents run"), no kill switch present.
+
+### Hermes fleet roster & run-state
+
+| Component | Purpose | Trigger | Key outputs | Run-state |
+|-----------|---------|---------|-------------|-----------|
+| **Chief Coordinator** | Orchestrate fleet, enforce per-tick caps, route tasks, auto-promote | `*/15` cron, flock-guarded | `hermes_memory_events`, `hermes_promotion_audit` | operational |
+| **Autonomous Loop** | Ticker-thesis challenge + pipeline-quality validation | via Coordinator (`--max-rows 3` per sub-loop) | `hermes_research_intelligence` (`ticker_thesis_challenge`, `pipeline_quality`) | operational |
+| **Source Discovery** | Discover sources via SearXNG, stage candidates | via Coordinator | `hermes_research_intelligence` (`source_discovery`) | operational |
+| **Librarian** | Review staged findings; route to embed/promote/backlog | via Coordinator (cap 10/tick) | status updates (no direct embed/promote) | operational |
+| **Embedding Curator** | Select high-confidence research for RAG | via Coordinator (cap 2/tick) | `hermes_embedding_queue` → `content_embeddings` | operational |
+| **Auto-Promote** | Staged → promoted (bounded, reversible) | via Coordinator (cap 10/tick) | `hermes_research_intelligence.status='promoted'` + audit | operational |
+| **Source Curation** | Track source yield (promoted/total), update registry | Weekly Sun 11:30 PM cron | `research_sources` | operational |
+| **Backlog Manager** | Structured research backlog (no dedicated table — surfaces backlog-tagged intel) | via Coordinator | backlog-tagged `hermes_research_intelligence` | designed |
+| **Catalyst Momentum Engine** | Catalyst-driven momentum/scalp research on 3 cadence bands | Manual / on-demand | advisory intel + gated paper proposals (11 gates) | designed |
+| **RSS Ingest** | Parse `config/hermes_rss_feeds.txt`, stage items | Manual | `hermes_research_intelligence` (`source='rss'`) | dormant (no feeds configured) |
+| **Backlog Health Check** | Read-only backlog health report | Manual | `docs/hermes/backlog_health/` | designed |
+| **Embedding Promotion Reviewer** | Dry-run embed/promote recommendations | Manual | `docs/hermes/embedding_promotion_reviews/` | designed |
+
+### Per-tick caps (Coordinator)
+
+`CAP_LIBRARIAN=10` · `CAP_AUTONOMOUS=3` · `CAP_PROMOTE=10` · `CAP_EMBED=2`. Caps bound load; the kill switch halts everything on the next tick.
+
+### Hermes workflow chain
+
+```
+SearXNG ─→ Source Discovery ─┐
+RSS (dormant) ───────────────┤
+Autonomous Loop ─────────────┤→  staged hermes_research_intelligence
+Catalyst Momentum Engine ────┘                    │
+                                          Librarian (route)
+                                     ┌────────────┼─────────────┐
+                              Embedding Curator   Auto-Promote   Backlog
+                                     │             │
+                            content_embeddings  promoted intel ──→ feeds core agents (Maria/Steph/Risk/Alex)
+                              (RAG corpus)        + hermes_promotion_audit (reversible)
+```
+
+The Catalyst Momentum Engine has two feeds: (1) advisory research → staging → promote → RAG; (2) gated paper proposals via `auto_proposal_generator.py` — never bypasses the 11 safety gates + risk gate, paper-only, human approval required.
+
+### Safety controls
+
+- **Kill switches** (halt fleet next tick): `hermes_sidecar/.hermes/DISABLED` (master), `COORDINATOR_DISABLED`, `LIBRARIAN_DISABLED`.
+- **Locks** (prevent overlap): `/tmp/hermes_coordinator.lock`, `/tmp/hermes_source_curation.lock`, `/tmp/hermes_autonomous_loop.lock`.
+- **Reversibility:** every promotion writes `hermes_promotion_audit.rollback_sql`.
+- Hermes reads main-system context only through read-only safe views (`hermes_v_*`).
+
+### Data outputs
+
+- **Tables:** `hermes_research_intelligence` (core staging), `hermes_promotion_audit`, `hermes_embedding_queue`, `content_embeddings`, `hermes_memory_events`, `research_sources`, `hermes_validation_findings`, `hermes_alerts`.
+- **File reports:** `docs/hermes/observations/`, `docs/hermes/backlog_health/`, `docs/hermes/embedding_promotion_reviews/`, `docs/hermes/librarian_loop_dryruns/`, `docs/hermes/phase3b_dryrun/`.
+
+### v3 surfaces
+
+- **HermesHub.tsx** — Overview, Workflow, Provenance, Sources, Research, Dual Opinion, Pipeline; run-state colors (operational/live/running-unapproved/designed/disabled).
+- Endpoints: `/api/v2/hermes/health`, `/self-learning-overview`, `/advisory-choices`, `/research-backlog`, `/dual-opinion`, `/pipeline-quality`, `/promotion-review`, `/agent-footprint`, `/infra`, `/provenance`, `/sources`.
+
+---
+
+## Change history
+
+- **2026-06-03** — Initial canonical workflow reference. Captured live coordinator-driven Hermes fleet (directive B), honest run-states, and the agent allocation chain. Supersedes the stale "autonomous timer: daily 01:00 / auto-promotion prohibited" description previously in MASTER §18b.

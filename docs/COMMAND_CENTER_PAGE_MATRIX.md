@@ -140,6 +140,7 @@ Route `/v3/strategy` → **Backtest** tab. Full read-only port of v2 `/v2/backte
 
 **Feedback loop (advisory-only, never gates):** the setup-quality prior attaches a caution/favorable badge ("⚠ setup ~N") wherever an entry/candidate's RSI falls in a historically weak/strong band:
 - **Trading → Proposals** — per-proposal advisory. Source: `/api/v2/atm/setup-advisory`.
+- **Trading → Open Trades** (2026-06-03) — per open position, an "entry setup ~N" badge matched by symbol, since open trades have no exit grade yet. Source: `/api/v2/open-trades` + `/api/v2/atm/setup-advisory`.
 - **Strategy → Incubator** — per-candidate advisory badge. Source: `/api/v2/setup-advisory/candidates?entity=incubator`.
 - **Watchlist** (new v3 page, nav `/v3/watchlist`) — active items + advisory strip + per-item badge. Source: `/api/v2/watchlist/items` + `/api/v2/setup-advisory/candidates?entity=watchlist`.
 
@@ -149,6 +150,73 @@ Never blocks execution, promotion, or scoring.
 | Strategy / Trades / Missed / Results / Runs | Ported v2 tables + charts | `/api/v2/backtesting/{results,trades,runs,missed-opportunities}` |
 | Trail Analysis / MFE-MAE / Optimization / LLM Review Coverage | Ported v2 analysis tabs | `/api/v2/backtesting/{trailing-stop-analysis,mfe-analysis,trailing-optimization}`, `/api/v2/lifecycle/llm-review-status` |
 | Drill drawer | Sparkline + entry/exit grade badges + per-trade backtest lookup (Journal↔Backtest link) | `/api/v2/journal/backtest/{key}` |
+
+## v3 Journal — entry/exit grade column (2026-06-03)
+
+The Journal trade log now shows an inline **Grade** column (entry/exit letter grades A–D, colored) for every closed trade, in addition to the existing drill-drawer badges. Grades come from backtest-replay grading (`trade_backtest_results`) joined server-side on `trade_key` (`{symbol}:{account}:{close_date}`).
+
+- Coverage: ~74/76 Schwab closed trades graded; paper trades are not backtest-graded (show "—").
+- Backend: `/api/v2/journal` and `/api/v2/automated-trade-journal` rows enriched via `_attach_backtest_grades()` (adds `entry_grade`, `exit_grade`, `entry_rsi`, `left_on_table_20d`).
+- Advisory/retrospective only; never gates anything.
+
+## v3 Agents hub (rebound + Workflow, 2026-06-02)
+
+Route `/v3/agents`. Previously mis-wired (showed "Agent 0…9", raw JSON, bare numbers). Fixed to bind the real fields; added a React Flow workflow view. Read-only.
+
+| Tab | What it shows | Data source (correct fields) |
+|---|---|---|
+| **Roster** | Named agents + actions, buy/sell/hold, avg-conf, last-run, proposal-allowed/shadow-only badge | `/api/v2/agents/summary` (field **`agent`**, not `name`) |
+| **Calibration** | Per-agent cards: accuracy ring, correct/wrong/neutral bar, Confidence/Cal-err/Overconf/Underconf, **PROPOSAL ALLOWED / SHADOW ONLY** badge, recs/symbols/resolved | `/api/v2/agent-calibration/{status,windows,agents}` (windows carry `accuracy`, `sample_size_status`, `*confidence_score`) |
+| **Workflow** *(new)* | React Flow graph — **★ Alex/CIO as orchestrator hub**; nodes = roster agents (colored by calibration health) + non-roster pipeline nodes (grey, e.g. synthesis/human_review/auto_research); **live edges** from `/agent-pipeline` (animated; escalations amber) + documented **configured chain** maria→steph→risk→tax (dashed, labeled, not live); click node → drawer with calibration + RACI + recent handoffs | `/api/v2/agent-pipeline` (live `from_agent→to_agent`+`escalated`) + `/agent-calibration/windows`. Live edges real; configured chain clearly labeled; none fabricated |
+| **Performance** | Table: agent, period, recs, accuracy%, conf, rule-violations, overrides (was leaking raw JSON) | `/api/v2/agent-performance` (fields `agent`, `accuracy_pct`, …) |
+
+Roster shows real runtime model **gemma3:12b** (roster doc's qwen3:14b label is superseded/disabled). New dependency: `reactflow` ^11.11.4 (MIT) in `apps/command-center-v3`. **Wall:** this is the core OpenClaw fleet only — Hermes challenger agents are a separate population in the Hermes hub; no control edge crosses between them.
+
+## v3 Hermes hub — Workflow tab (2026-06-02, separate fleet)
+
+Route `/v3/hermes` → **Workflow** tab. The Hermes challenger fleet as a React Flow graph, kept in the Hermes hub (NOT the Agents hub) to preserve the challenger wall.
+
+| Element | Detail | Source |
+|---|---|---|
+| Nodes | 7 Hermes agents + 1 external "Trade AI safe views" node | `HERMES_AGENT_CONTRACTS_AND_PERMISSIONS.md` |
+| **Run-state — TWO AXES, validated** | Approval (governance, from contracts) vs **execution footprint (validated DB rows)**. operational-approved (Source Discovery 13, Promotion Review 15) = green; **running-but-NOT-approved** (Librarian 13 autonomous-loop, Backlog Mgr 5, Embedding Curator 9 — code wrote real rows, not governance-approved) = amber; design-only (Coordinator — 1 smoke-test row) = grey dashed; disabled (Autonomous Research Mgr) = red. Node shows real row count + mode; drawer shows approval and execution separately. | `/api/v2/hermes/agent-footprint` (validated per-agent rows) + contracts doc |
+| Edges | Configured handoffs (dashed, **not** animated — most agents not live); Coordinator "orchestrates" edges | contracts handoff targets |
+| **The wall** | ONE-WAY "reads (read-only)" arrow from Trade AI → Hermes agents only. **No control edge to the core fleet.** Kill-switch + autonomous-loop indicator | architecture mandate |
+| Drawer | Per-agent contract: mission, allowed reads/writes, forbidden, caps, activation phase, live activity | contracts doc |
+
+Run-state (validated 2026-06-02 against `/api/v2/hermes/agent-footprint`, then **operator-approved**): originally 2 approved + 3 running-but-unapproved; per operator directive the 3 staging-only running agents (Librarian, Backlog Manager, Embedding Curator) were **APPROVED 2026-06-02** (governance reconciled to validated footprint). Now: **5 approved-operational, 1 design-pending (Coordinator — smoke-test only), 1 disabled (Autonomous Research Manager — unchanged).** Approval is staging-only (no new powers; Forbidden lists unchanged); Embedding Curator approval does not cover the still-gated RAG worker. The two fleets stay separate; the only cross-link is the read-only arrow.
+
+**Core Agents Workflow — pipeline nodes:** non-roster handoff endpoints (synthesis, auto_research, **human_review**) render as grey "pipeline" nodes. Their drawers describe the node and surface routed items (e.g. human_review = operator escalation sink, showing escalated symbols + reasons) rather than empty agent fields.
+
+## v3 DetailDrawer (all modals) — readability overhaul (2026-06-02)
+
+The shared drill drawer (`DetailDrawer.tsx`) used by **every** v3 modal now renders human-readable content instead of raw DB fields:
+- Keys humanized (snake_case → Title Case + acronym map: RSI, MACD, P&L, RACI, CIO, ATR…).
+- JSON-string blobs **parsed into readable nested sub-fields** (e.g. dual-opinion `tradeai_original`/`hermes_audit` → Score/Decision/Summary, not raw `{"…"}`).
+- ISO timestamps formatted; statuses/verdicts color-coded (green=agree/operational/approved, red=disagree/disabled/error, amber=staged/caution/not-approved); `— Section —` keys render as headers.
+
+Hermes **Research** tab: findings shown as plain-English cards (title + meaning + suggested resolution + where-to-resolve) with severity dots, de-duped and severity-sorted.
+
+**Workflow drawers (Agents + Hermes) — work + schedule, not just tables (2026-06-02):** node drawers now show **active job classifications + counts** (Hermes = `research_type` breakdown from `/api/v2/hermes/agent-footprint`, e.g. "research_backlog: 25"; core agents = buy/sell/hold rec counts from `/agents/summary`), the **run mode** (live `--apply`, no longer stale "dry-run"), and the **schedule / next run** (Hermes = Coordinator cron */15, "≤15 min" or "HALTED" if kill switch armed; core = "*/10–15 via agent job worker"). Node labels show the top classification + row count.
+
+## v3 Hermes — SearXNG / infra visibility + provenance (2026-06-03)
+
+New endpoint `/api/v2/hermes/infra` (service health + web-source domains + research funnel) powers four additions:
+- **A — SearXNG node** on the Workflow graph (Docker `127.0.0.1:18888`), edge → Source Discovery ("web search"), colored by live health.
+- **B — per-finding sources**: Research-tab cards show the web-source domains (`source_urls_json`) a finding was based on (shown only when present — internal/self-generated findings have none).
+- **C — infra health strip** (always visible): SearXNG (Docker), Ollama (loaded models), Hermes Gateway (pid), Postgres — green/red dots; click for detail. Surfaces silent-dependency failures.
+- **D — Provenance tab** (new): funnel SearXNG → staged → promoted (→ core intel) → embedded (→ RAG) + top web-source domains, **plus a full React Flow provenance lane** (`/api/v2/hermes/provenance`) tracing each recent research item as a connected node: SearXNG/Internal → source domain → **🤖 producing agent** → research item (color = staged/promoted) → Core RAG (purple edge if embedded). Click an item → its full provenance (id, status, producing agent, web source, embedded?).
+
+Gateway health reads the JSON `gateway.pid`; SearXNG/Ollama via HTTP ping.
+
+## v3 Hermes — source self-learning + connectors (2026-06-03)
+
+`hermes_source_curation.py` (cron nightly 23:30) + `/api/v2/hermes/sources` + new **Sources tab**:
+- **Track A (self-learning):** every web domain scored by **yield = (promoted+embedded) ÷ research it produced**; ≥30% = preferred (boosted in future SearXNG queries), low = candidate/noise. Surfaced as a yield bar list + colors the provenance-lane domain nodes (green/amber/red). Example: trading-course domains (tradezella, warriortrading) auto-flagged red 0%.
+- **Track B (new-site discovery):** domains seen for the first time auto-registered as candidates for vetting.
+- **Connectors registry (`research_sources`):** social (Reddit/Stocktwits/X), YouTube transcripts, SEC Form 4 = **active** (live pipelines); RSS = `hermes_rss_ingest.py` (dormant until `config/hermes_rss_feeds.txt`); **OpenAI/Anthropic/xAI = ACTIVE** (keys already in `.env`) but **not auto-scheduled into the */15 loop** (API-cost guard — operator enables when ready); Seeking Alpha = dormant (needs key, via official API not cookies).
+
+**Ingestion timing → TradeAI:** curated research reaches the core in **~15–30 min** (auto-promote → `hermes_advisory_cache_worker` writes `llm_intelligence_cache` hermes_* + RAG embeddings → core agents read next run), carrying SearXNG/source provenance — near-real-time, not same-second. **SearXNG never uses logins/cookies** (public metasearch only); your AIs/premium sources integrate via official APIs.
 
 ## Agent Pages Cross-Reference
 
@@ -166,3 +234,12 @@ Never blocks execution, promotion, or scoring.
 - **Calibration** = How accurate are they? (quality)
 - **Collaboration** = How do they work together? (governance)
 - **Dashboard** = Deep dive on one agent (detail)
+
+## v3 additions (2026-06-03b)
+
+| Surface | What changed | Source |
+|---|---|---|
+| **Trading → Trade AI** (new tab, default) | Market-opportunities scanner ported from v2 `/v2/trade-ai`: GO/WAIT/NO-GO decisions, run KPIs (GO/WAIT/NO-GO/scanned/VIX/regime), per-ticker score/grade/RVOL/price/chg/catalyst/critic verdict; click → full scan detail. Read-only. | `/api/v2/trade-ai` |
+| **Portfolio → Holdings account filter** | Account filter chips (per-account count + value); filters holdings table. | `/api/v2/portfolio/holdings` (field: account) |
+| **Agents → Human Review drawer** | Escalation queue now shows navigation links (Open Inbox `/v2/inbox`, Agent Collaboration `/v2/agent-collaboration`) + a plain-language explanation of the operator action. Drawer is review-only; links navigate, never mutate. | `/api/v2/agent-pipeline` (handoffs) |
+| **Agents → Roster "Last run"** | Staleness coloring (≤1.5d green, ≤3d amber, older red) so a genuinely stopped agent is obvious. iris last-run corrected (`iris_run_log.ran_at`). Worker-agent "no handoffs" copy clarified (handoffs are written by the synthesis/escalation pipeline, not individual workers). | `/api/v2/agents/summary` |

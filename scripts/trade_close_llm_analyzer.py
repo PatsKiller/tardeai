@@ -333,6 +333,190 @@ def _preflight_llm_health():
     return len(failed) == 0, checks, failed
 
 
+# ════════════════════════════════════════════════════════════════════
+# Structured Backtest Trade Evaluation (gemma3:12b)
+# Reviews real closed trades enriched by trade_backtest_engine.py
+# (RSI/MACD/Fib/ADX/BB/structure/candle). Produces structured scores +
+# verdict. Self-contained; does NOT touch the prose review path above.
+# Post-trade research / journaling only — NOT live trading advice.
+# ════════════════════════════════════════════════════════════════════
+
+STRUCTURED_PROMPT_VERSION = "structured_eval_v1"
+STRUCTURED_VERDICTS = {
+    "high-quality setup", "valid setup but poor execution", "weak setup", "momentum chase",
+    "entered too early", "entered too late", "should have waited for fib retracement",
+    "should have waited for vwap confirmation", "should have waited for macd confirmation",
+    "good entry, poor exit", "poor entry, good salvage", "invalid trade relative to regime",
+}
+
+
+def _structured_snapshot(row):
+    """Build the model-facing snapshot from a trade_backtest_results row.
+    Only includes signals we actually captured; VWAP/intraday are absent by design."""
+    def f(x):
+        return None if x is None else float(x)
+    return {
+        "symbol": row["symbol"],
+        "open_date": str(row["open_date"]),
+        "close_date": str(row["close_date"]),
+        "direction": "long",  # trade_closed universe is long-only equity
+        "actual_entry_price": f(row["actual_entry_price"]),
+        "actual_exit_price": f(row["actual_exit_price"]),
+        "actual_pnl": f(row["actual_pnl"]),
+        "actual_pnl_pct": f(row["actual_pnl_pct"]),
+        "hold_days": row["hold_days"],
+        "entry": {
+            "rsi": f(row["entry_rsi"]),
+            "macd_line": f(row["entry_macd_line"]), "macd_signal": f(row["entry_macd_signal"]),
+            "macd_hist": f(row["entry_macd_hist"]), "macd_state": row["entry_macd_state"],
+            "adx": f(row["entry_adx"]),
+            "bollinger_pct": f(row["entry_bb_pct"]), "bollinger_state": row["entry_bb_state"],
+            "fib_retracement_level": f(row["entry_fib_level"]),
+            "fib_leg_high": f(row["entry_fib_leg_high"]), "fib_leg_low": f(row["entry_fib_leg_low"]),
+            "candlestick": row["entry_candle"], "structure": row["entry_structure"],
+            "sma20_dist_pct": f(row["entry_sma20_dist_pct"]), "sma50_dist_pct": f(row["entry_sma50_dist_pct"]),
+            "sma200_dist_pct": f(row["entry_sma200_dist_pct"]),
+            "volume_ratio": f(row["entry_volume_ratio"]), "atr": f(row["entry_atr"]),
+            "atr_stop_pct": f(row["entry_atr_stop_pct"]), "pct_52w": f(row["entry_52w_percentile"]),
+            "better_entry_existed": row["better_entry_existed"], "best_entry_price": f(row["best_entry_price"]),
+            "rule_based_grade": row["entry_grade"],
+        },
+        "exit": {
+            "rsi": f(row["exit_rsi"]), "macd_state": row["exit_macd_state"],
+            "left_on_table_20d": f(row["left_on_table_20d"]), "exit_was_early": row["exit_was_early"],
+            "max_price_20d_after": f(row["max_price_20d_after"]), "rule_based_grade": row["exit_grade"],
+        },
+        "data_not_captured": ["VWAP", "intraday_structure", "session", "spread/slippage"],
+    }
+
+
+def _build_structured_prompt(snap):
+    return (
+        "You are an expert backtesting intelligence assistant for POST-TRADE technical review. "
+        "This is research/journaling, NOT live trading advice.\n\n"
+        "Evaluate whether this completed trade was technically sound at entry, well managed, and properly exited. "
+        "Use ONLY the supplied data. Do NOT invent signals. Fields under data_not_captured are unavailable — do not "
+        "penalize the setup for their absence; instead list them under data_gaps.\n\n"
+        "Separate outcome from quality: a winning trade can still be a bad trade, and a losing trade can still be a "
+        "good trade. If confluence is weak, say so bluntly. If waiting for a fib retracement / MACD confirmation / "
+        "RSI reset would likely improve expectancy, state it explicitly.\n\n"
+        f"TRADE DATA (JSON):\n{json.dumps(snap, indent=1)}\n\n"
+        "Return ONLY valid JSON with EXACTLY this shape:\n"
+        "{\n"
+        '  "summary": "1-2 sentence executive summary",\n'
+        '  "scores": {"confluence_score": 0-100, "entry_timing_score": 0-100, "exit_quality_score": 0-100, '
+        '"risk_reward_score": 0-100, "management_score": 0-100, "overall_score": 0-100},\n'
+        '  "verdict": "one of: high-quality setup | valid setup but poor execution | weak setup | momentum chase | '
+        'entered too early | entered too late | should have waited for fib retracement | should have waited for vwap '
+        'confirmation | should have waited for macd confirmation | good entry, poor exit | poor entry, good salvage | '
+        'invalid trade relative to regime",\n'
+        '  "entry_assessment": {"quality": "A-grade|acceptable|weak|poor", "timing": "early|optimal|late", '
+        '"strengths": [], "weaknesses": [], "should_wait_for_retracement": true/false, "better_fib_zone": ""},\n'
+        '  "exit_assessment": {"quality": "good|acceptable|weak|poor", "timing": "early|optimal|late", '
+        '"strengths": [], "weaknesses": []},\n'
+        '  "improvements": [],\n'
+        '  "data_gaps": []\n'
+        "}\n"
+        "Every judgment must reference specific supplied values (e.g. 'RSI 71 + MACD bullish_fading = momentum "
+        "exhaustion'). Be critical and evidence-based."
+    )
+
+
+def _validate_structured(parsed):
+    """Returns (ok, classification, headline_score, verdict)."""
+    if not parsed or not isinstance(parsed, dict):
+        return False, "model_error", None, None
+    sc = parsed.get("scores") or {}
+    keys = ["confluence_score", "entry_timing_score", "exit_quality_score", "risk_reward_score", "management_score", "overall_score"]
+    have = [k for k in keys if isinstance(sc.get(k), (int, float))]
+    verdict = (parsed.get("verdict") or "").strip().lower()
+    if len(have) < 4 or not parsed.get("summary"):
+        cls = "empty_shell" if not parsed.get("summary") else "partial_review"
+        return False, cls, sc.get("overall_score"), (verdict or None)
+    cls = "meaningful_structured_review" if (len(have) == 6 and verdict in STRUCTURED_VERDICTS) else "partial_review"
+    return True, cls, sc.get("overall_score"), (verdict if verdict in STRUCTURED_VERDICTS else (verdict or None))
+
+
+def _write_structured_eval(conn, snap, ihash, parsed, raw, classification, score, verdict, model):
+    cur = conn.cursor()
+    ea = (parsed or {}).get("entry_assessment") or {}
+    xa = (parsed or {}).get("exit_assessment") or {}
+    strengths = (ea.get("strengths") or []) + (xa.get("strengths") or [])
+    weaknesses = (ea.get("weaknesses") or []) + (xa.get("weaknesses") or [])
+    cur.execute("""
+        INSERT INTO trade_llm_reviews
+          (symbol, trade_close_date, review_stage, model_provider, model_name, prompt_version,
+           input_snapshot_hash, generated_at, status, summary, strengths, weaknesses,
+           lessons, confidence, input_snapshot, output_payload, source_table,
+           eval_overall_score, eval_verdict, created_at, updated_at)
+        VALUES (%s,%s,'structured_backtest_eval','local',%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s,%s,%s,
+                'trade_backtest_results',%s,%s,NOW(),NOW())
+    """, [
+        snap["symbol"], snap["close_date"], model, STRUCTURED_PROMPT_VERSION, ihash,
+        classification, (parsed or {}).get("summary"),
+        json.dumps(strengths), json.dumps(weaknesses),
+        json.dumps((parsed or {}).get("improvements") or []),
+        (float(score) / 100.0 if isinstance(score, (int, float)) else None),
+        json.dumps(snap), json.dumps(parsed or {"raw": raw[:500] if raw else None}),
+        (float(score) if isinstance(score, (int, float)) else None), verdict,
+    ])
+
+
+def run_structured_eval(args):
+    """Batch structured evaluation of enriched closed trades. Read-only to trades; only writes reviews."""
+    model = getattr(args, "eval_model", None) or "gemma3:12b"
+    conn = _get_conn()
+    import psycopg2.extras
+    rcur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    # Candidate pool: enriched rows, largest left-on-table first. Dedup is by setup-hash
+    # below (identical setups across accounts collapse to one eval — no redundant calls).
+    rcur.execute("""
+        SELECT * FROM trade_backtest_results r
+        WHERE r.data_quality IN ('full','partial') AND r.entry_macd_state IS NOT NULL
+        ORDER BY r.left_on_table_20d DESC NULLS LAST
+    """)
+    candidates = rcur.fetchall()
+    # Hashes already evaluated (successfully) — skip; model_error hashes are allowed to retry.
+    rcur.execute("SELECT input_snapshot_hash FROM trade_llm_reviews "
+                 "WHERE review_stage='structured_backtest_eval' AND status <> 'model_error'")
+    seen = {r["input_snapshot_hash"] for r in rcur.fetchall() if r["input_snapshot_hash"]}
+    log.info(f"Structured eval: {len(candidates)} candidate(s), {len(seen)} already evaluated, target {args.limit} (model {model}, apply={args.apply})")
+    done = 0
+    for row in candidates:
+        if done >= args.limit:
+            break
+        snap = _structured_snapshot(row)
+        ihash = hashlib.sha256(json.dumps(snap, default=str, sort_keys=True).encode()).hexdigest()[:16]
+        if ihash in seen:
+            continue  # identical setup already evaluated (or duplicate account-trade)
+        seen.add(ihash)
+        prompt = _build_structured_prompt(snap)
+        if not args.allow_local_llm and args.dry_run:
+            log.info(f"  [dry-run] {snap['symbol']} {snap['close_date']} — prompt {len(prompt)} chars (no model call)")
+            done += 1
+            continue
+        # Per-trade isolation: a single ollama timeout/error must NOT kill the whole batch.
+        try:
+            raw = _call_ollama_direct(prompt, model=model, timeout=420)
+        except Exception as e:
+            log.warning(f"  {snap['symbol']} {snap['close_date']}: model call failed ({type(e).__name__}: {e}); skipping, will retry next run")
+            seen.discard(ihash)
+            done += 1
+            continue
+        parsed, _perr = _extract_json(raw)
+        ok, cls, score, verdict = _validate_structured(parsed)
+        log.info(f"  {snap['symbol']} {snap['close_date']}: {cls} score={score} verdict={verdict}")
+        done += 1  # count each model call against --limit (calls are the expensive unit)
+        if cls == "model_error":
+            seen.discard(ihash)  # allow a failed setup to retry on a later run
+        if args.apply and args.confirm_llm_review_write and cls != "model_error":
+            _write_structured_eval(conn, snap, ihash, parsed, raw, cls, score, verdict, model)
+            conn.commit()
+    log.info(f"Structured eval complete: {done} evaluated")
+    conn.close()
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description="LLM Close-of-Trade Analyzer v4.1")
     p.add_argument("--dry-run", action="store_true", default=True)
@@ -348,6 +532,9 @@ def main():
     p.add_argument("--json-out", type=str)
     p.add_argument("--model-name", default="gemma3:4b")
     p.add_argument("--prompt-version", default="close_analysis_v1")
+    p.add_argument("--structured", action="store_true",
+                   help="Run structured backtest trade evaluation (scores+verdict) over enriched trade_backtest_results.")
+    p.add_argument("--eval-model", default="gemma3:12b", help="Model for --structured evaluation.")
     args = p.parse_args()
     if args.apply:
         args.dry_run = False
@@ -358,6 +545,20 @@ def main():
     if alpaca != "paper":
         log.error(f"ALPACA_MODE={alpaca}, must be paper. Aborting.")
         sys.exit(1)
+
+    # ── Structured evaluation path (self-contained; reuses ALPACA paper gate above) ──
+    # No hard preflight: this path is non-mutating (writes only trade_llm_reviews rows,
+    # records an honest model_error on any model failure). The slow CPU health-check
+    # subprocess is advisory here, so a failure/timeout warns but does not abort.
+    if args.structured:
+        if args.apply:
+            try:
+                ok, _checks, failed = _preflight_llm_health()
+                if not ok:
+                    log.warning(f"LLM preflight advisory failed ({', '.join(failed)}); proceeding (non-mutating path).")
+            except Exception as e:
+                log.warning(f"LLM preflight advisory skipped: {e}")
+        return run_structured_eval(args)
 
     # LLM safety preflight — required before --apply
     if args.apply:

@@ -136,13 +136,20 @@ while IFS= read -r filepath; do
     target_parent="$DRIVE_FOLDER_ID"
   fi
 
-  # Upload — convert text files to Google Docs for Drive API readability
+  # Upload — convert text files to Google Docs for Drive API readability.
+  # BUT Google Docs conversion of large files times out (http2 timeout). Skip
+  # conversion above 1 MB and upload raw so the file still mirrors to Drive.
   CONVERT_FLAG=""
-  case "$filepath" in
-    *.md)  CONVERT_FLAG="--convert-to=doc" ;;
-    *.csv) CONVERT_FLAG="--convert-to=sheet" ;;
-    *.txt) CONVERT_FLAG="--convert-to=doc" ;;
-  esac
+  fsize=$(stat -c%s "$filepath" 2>/dev/null || echo 0)
+  if [ "$fsize" -le 1048576 ]; then
+    case "$filepath" in
+      *.md)  CONVERT_FLAG="--convert-to=doc" ;;
+      *.csv) CONVERT_FLAG="--convert-to=sheet" ;;
+      *.txt) CONVERT_FLAG="--convert-to=doc" ;;
+    esac
+  else
+    log "LARGE (${fsize}B): $relpath — uploading raw (no Doc conversion)"
+  fi
   if gog drive upload "$filepath" --account "$GOG_ACCOUNT" --parent "$target_parent" $CONVERT_FLAG --no-input 2>>"$LOG"; then
     grep -v "^${relpath}|" "$MANIFEST" > "${MANIFEST}.new" 2>/dev/null || touch "${MANIFEST}.new"
     echo "${relpath}|${hash}" >> "${MANIFEST}.new"
