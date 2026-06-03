@@ -5,7 +5,7 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Returns', 'Dividends', 'Tax'] as const
+const TABS = ['Holdings', 'Returns', 'Dividends', 'Forecast', 'Tax'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -31,6 +31,7 @@ export default function PortfolioHub({ onDrill }: Props) {
   const { data: divs } = useApi<any>('/api/v2/dividends', 120_000)
   const { data: taxLots } = useApi<any>('/api/v2/tax-lots', 120_000)
   const { data: perfData } = useApi<any>('/api/v2/portfolio/performance', 120_000)
+  const { data: forecast } = useApi<any>('/api/v2/forecast', 300_000)
 
   const sectors = overview?.sectors ?? []
   const allHoldings = holdings?.holdings ?? []
@@ -201,6 +202,51 @@ export default function PortfolioHub({ onDrill }: Props) {
         </div>
       )}
       {tab === 'Returns' && !perfData && <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading performance data...</div>}
+      {tab === 'Forecast' && (() => {
+        const f = forecast?.data ?? forecast ?? {}
+        const proj = f.projections ?? {}
+        const payers = f.top_dividend_payers ?? []
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+              {[
+                { k: 'Annual dividend income', v: fmt$(f.annual_dividend_income ?? 0, 0), c: '#22c55e' },
+                { k: 'Monthly avg', v: fmt$(f.monthly_dividend_avg ?? 0, 0), c: 'var(--text0)' },
+                { k: 'Portfolio yield', v: `${(f.portfolio_yield_pct ?? 0).toFixed(2)}%`, c: '#60a5fa' },
+                { k: 'Retirement age', v: f.retirement_age ?? '—', c: '#a855f7' },
+              ].map(s => (
+                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Projections (10y)</div>
+                {Object.entries(proj).map(([k, v]: any) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
+                    <span style={{ color: 'var(--text3)', textTransform: 'capitalize' }}>{k}</span>
+                    <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{typeof v === 'object' ? fmt$(v.value ?? v.projected_value ?? v.total ?? 0, 0) : (typeof v === 'number' ? fmt$(v, 0) : String(v))}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, maxHeight: 240, overflowY: 'auto' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Top Dividend Payers</div>
+                {payers.slice(0, 10).map((p: any, i: number) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: '3px 0', borderBottom: '1px solid var(--border)', fontSize: 10, alignItems: 'center' }}>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{p.symbol}</span>
+                    <span style={{ color: '#22c55e' }}>{Number(p.yield_pct ?? 0).toFixed(1)}%</span>
+                    <span style={{ color: 'var(--text2)' }}>{fmt$(p.annual_income ?? 0, 0)}/y</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/forecast — {f.assumptions?.basis ?? 'dividend-income projection'}. {f.assumptions?.limitations ?? ''}</div>
+          </div>
+        )
+      })()}
+
       {tab === 'Tax' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Tax Lots ({taxLots?.count ?? 0})</div>

@@ -3,7 +3,7 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Crons', 'LLM'] as const
+const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Crons', 'LLM'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -28,6 +28,7 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: pipe } = useApi<any>('/api/v2/system/pipeline-health', 60_000)
   const { data: apps } = useApi<any>('/api/v2/system/applications', 300_000)
   const { data: jobs } = useApi<any>('/api/v2/system/scheduled-jobs', 120_000)
+  const { data: access } = useApi<any>('/api/v2/system/access-links', 300_000)
 
   const timers = qct?.timers_total ?? 0
   const cronCount = qct?.cron_count ?? 0
@@ -352,6 +353,45 @@ export default function SystemHub({ onDrill }: Props) {
               })}
             </div>
             <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/applications — software inventory + version drift. Click a row for the update command.</div>
+          </div>
+        )
+      })()}
+
+      {tab === 'Access' && (() => {
+        const x = access?.data ?? access ?? {}
+        const services = x.services ?? []
+        const ts = x.tailscale ?? {}
+        const hc = (h: string) => h === 'up' || h === 'ok' || h === 'healthy' ? '#22c55e' : h === 'down' ? '#ef4444' : 'var(--text3)'
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Services ({services.length})</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 8 }}>
+                {services.map((s: any, i: number) => (
+                  <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: 'var(--bg2)', borderRadius: 6, textDecoration: 'none', border: '1px solid var(--border)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: '#60a5fa' }}>{s.name} →</div>
+                      <div style={{ fontSize: 8, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.category} · {s.url}</div>
+                    </div>
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: hc(s.health), flexShrink: 0 }} title={s.health} />
+                  </a>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Tailscale</div>
+                <div style={{ fontSize: 10, color: 'var(--text2)', fontFamily: 'var(--mono)' }}>{ts.fqdn ?? '—'}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'var(--mono)', marginTop: 3 }}>{ts.ip ?? ''}</div>
+                {ts.ssh && <div style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'var(--mono)', marginTop: 3 }}>{ts.ssh}</div>}
+              </div>
+              <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Drive</div>
+                <div style={{ fontSize: 10, color: 'var(--text2)' }}>{x.drive?.folder_name ?? '—'}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>{(x.hermes_reports ?? []).length} Hermes reports</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)' }}>Source: /api/v2/system/access-links</div>
           </div>
         )
       })()}

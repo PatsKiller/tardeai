@@ -5,7 +5,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Scalp'] as const
+const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -20,6 +20,7 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: execQual } = useApi<any>('/api/v2/execution-quality', 120_000)
   const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000)
   const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000)
+  const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000)
 
   const advMap: Record<string, any> = {}
   const advBySym: Record<string, any> = {}
@@ -201,6 +202,44 @@ export default function TradingHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality</div>
         </div>
       )}
+
+      {tab === 'Broker Recon' && (() => {
+        const r = recon?.data ?? recon ?? {}
+        const runs = r.runs ?? []
+        const items = r.items ?? []
+        const latest = runs[0] ?? {}
+        const stClr = (s: string) => /ok|matched|clean/i.test(s || '') ? '#22c55e' : /unmatched|mismatch|orphan|issue/i.test(s || '') ? '#ef4444' : 'var(--text3)'
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+              {[
+                { k: 'Orders seen', v: latest.orders_seen ?? '—', c: 'var(--text0)' },
+                { k: 'Trades matched', v: latest.trades_matched ?? '—', c: '#22c55e' },
+                { k: 'Unmatched broker', v: latest.unmatched_broker_orders ?? 0, c: (latest.unmatched_broker_orders ?? 0) > 0 ? '#ef4444' : 'var(--text3)' },
+                { k: 'Unmatched local', v: latest.unmatched_local_trades ?? 0, c: (latest.unmatched_local_trades ?? 0) > 0 ? '#ef4444' : 'var(--text3)' },
+              ].map(s => (
+                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: s.c }}>{s.v}</div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Reconciliation items ({items.length})</div>
+              {items.length === 0 ? <div style={{ color: '#22c55e', fontSize: 11 }}>No unmatched items — broker and local in sync.</div> :
+              items.slice(0, 20).map((it: any, i: number) => (
+                <div key={i} onClick={() => onDrill({ title: it.symbol ?? it.broker_order_id, subtitle: it.reconciliation_state, endpoint: '/api/v2/broker-reconciliation', rows: [it] })}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text0)' }}>{it.symbol ?? '—'}</span>
+                  <span style={{ color: stClr(it.reconciliation_state), fontSize: 9 }}>{it.reconciliation_state ?? ''}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 9 }}>{it.issue_code ?? it.broker ?? ''}</span>
+                </div>
+              ))}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/broker-reconciliation — DB vs Alpaca. Latest run: {latest.broker ?? ''} {latest.run_status ?? ''} {latest.started_at ? new Date(latest.started_at).toLocaleString() : ''}</div>
+            </div>
+          </div>
+        )
+      })()}
 
       {tab === 'Scalp' && scalpData && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
