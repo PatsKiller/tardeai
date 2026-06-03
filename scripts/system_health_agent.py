@@ -351,6 +351,15 @@ def _get_conn():
 def _log_event(conn, component, event_type, severity, message, action=None, success=None):
     try:
         cur = conn.cursor()
+        # Source-side dedup: the */5 agent re-emits the same per-component event ~288x/day,
+        # which is the SIEM firehose. Log only state CHANGES (and first occurrences) — if the
+        # same (event_type, severity) for this component was logged in the last 25 min, skip.
+        cur.execute("""SELECT event_type, severity FROM system_health_events
+                       WHERE component = %s AND created_at > NOW() - INTERVAL '25 minutes'
+                       ORDER BY created_at DESC LIMIT 1""", [component])
+        last = cur.fetchone()
+        if last and last[0] == event_type and last[1] == severity:
+            return  # unchanged state already recorded — suppress the repeat
         cur.execute("""INSERT INTO system_health_events
             (component, event_type, severity, message, action_taken, success)
             VALUES (%s, %s, %s, %s, %s, %s)""",

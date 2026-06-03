@@ -13792,6 +13792,20 @@ def _system_siem_dashboard():
         ORDER BY created_at DESC LIMIT 100
     """, [cutoff]) or []
 
+    # Source 4: hermes_alerts (research-layer findings)
+    ha_rows = _db_query("""
+        SELECT id, hermes_agent_name, alert_type, severity, symbol,
+               LEFT(COALESCE(title,'') || ' ' || COALESCE(description,''), 200) as msg, created_at
+        FROM hermes_alerts WHERE created_at > %s ORDER BY created_at DESC LIMIT 100
+    """, [cutoff]) or []
+
+    # Source 5: open_trade_alerts
+    ota_rows = _db_query("""
+        SELECT id, symbol, alert_type, severity,
+               LEFT(COALESCE(title,'') || ' ' || COALESCE(message,''), 200) as msg, created_at
+        FROM open_trade_alerts WHERE created_at > %s ORDER BY created_at DESC LIMIT 100
+    """, [cutoff]) or []
+
     # Classify events → (type, severity P0..P3). Order matters (first match wins).
     def _classify(text):
         t = (text or "").lower()
@@ -13836,6 +13850,25 @@ def _system_siem_dashboard():
             "symbol": None, "component": "telegram",
             "message": text[:150],
             "dedupe_key": f"{etype}:sys:telegram",
+        })
+
+    for r in ha_rows:
+        etype, esev = _classify((r.get("msg") or "") + " " + (r.get("alert_type") or ""))
+        events.append({
+            "id": f"ha-{r['id']}", "timestamp": _json_clean(r["created_at"]),
+            "source": "hermes_alerts", "event_type": etype, "severity": esev,
+            "symbol": r.get("symbol"), "component": r.get("hermes_agent_name") or "hermes",
+            "message": (r.get("msg") or "")[:150],
+            "dedupe_key": f"{etype}:{r.get('symbol','sys')}:{r.get('hermes_agent_name','hermes')}",
+        })
+    for r in ota_rows:
+        etype, esev = _classify((r.get("msg") or "") + " " + (r.get("alert_type") or ""))
+        events.append({
+            "id": f"ota-{r['id']}", "timestamp": _json_clean(r["created_at"]),
+            "source": "open_trade_alerts", "event_type": etype, "severity": esev,
+            "symbol": r.get("symbol"), "component": "open_trades",
+            "message": (r.get("msg") or "")[:150],
+            "dedupe_key": f"{etype}:{r.get('symbol','sys')}:open_trades",
         })
 
     events.sort(key=lambda e: e.get("timestamp") or "", reverse=True)
