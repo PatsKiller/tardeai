@@ -18,6 +18,18 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE = Path.home() / ".local" / "state" / "siem_notified.json"
 COOLDOWN_H = 6  # re-ping a still-active incident at most this often
+RECENT_H = 2    # only alert on incidents whose last event was within this window (not stale 14d history)
+
+
+def _within(iso, hours):
+    """True if the ISO timestamp is within `hours` of now."""
+    from datetime import datetime
+    try:
+        dt = datetime.fromisoformat(str(iso))
+        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+        return (now - dt).total_seconds() <= hours * 3600
+    except Exception:
+        return False
 
 
 def _load_state():
@@ -62,7 +74,8 @@ def main():
     except Exception as e:
         print(f"[siem-notify] could not read SIEM: {e}"); return 0
 
-    incidents = [c for c in data.get("correlated", []) if c.get("severity") in ("P0", "P1")]
+    incidents = [c for c in data.get("correlated", [])
+                 if c.get("severity") in ("P0", "P1") and _within(c.get("last"), RECENT_H)]
     state = _load_state()
     now = time.time()
     sent = 0
