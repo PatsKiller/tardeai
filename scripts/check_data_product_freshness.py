@@ -139,6 +139,12 @@ def main():
           _db_age_hours("SELECT MAX(created_at) FROM cio_decisions"),
           "cio_decisions MAX(created_at)")
 
+    # Per-holding LLM health assessment (blind spot until 2026-06-03 — refresh job was unscheduled)
+    check("holdings_llm_health", 48,
+          _db_age_hours("SELECT MAX(holdings_llm_at) FROM watchlist_items WHERE source='portfolio'"),
+          "watchlist_items MAX(holdings_llm_at)",
+          ".venv/bin/python scripts/holdings_llm_refresh.py --run --limit 50")
+
     check("agent_calibration", 168,
           _db_age_hours("SELECT MAX(computed_at) FROM agent_calibration"),
           "agent_calibration MAX(computed_at)",
