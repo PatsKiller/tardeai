@@ -252,3 +252,18 @@ Holding drill-drawer (`/api/v2/portfolio/holdings`) now shows a **Technical Anal
 - **Fibonacci retracement ladder** — 52w high/low reconstructed from `week52_high_pct`/`week52_low_pct` + price; levels 0/23.6/38.2/50/61.8/78.6/100%, current retracement %, nearest level highlighted. Field `fib`.
 - **Ratings** — signal, analyst_rating, recom_score, pi_score.
 - **Non-tradeable assets** (e.g. `FID-CONTRA-F` Fidelity 401k pool, cash) carry `data_available:false` + an `analysis_note` explaining there is no public ticker / market data — instead of a wall of "—". 31/45 holdings enrich; the rest are commingled funds/cash with no public ticker.
+
+### Public-ETF proxies for non-tradeable holdings (2026-06-03d)
+
+The 12 Fidelity 401(k) commingled pools / institutional mutual funds (no public ticker) now map to a labeled public-ETF **proxy** so the holding drawer can show RSI zone + fib retracement for the asset class. Proxies are picked from the enrichment universe and always shown with a "(proxy)" banner + disclaimer. Backend: `_HOLDING_PROXY_MAP` in `api_v2.py`; row carries `proxy:{ticker,label}`. Dollar fib levels are omitted for proxies (different price scale) — retracement % + nearest level shown instead. Cash stays unproxied.
+
+| Holding | Proxy | Asset class |
+|---|---|---|
+| FID-CONTRA-F, FCNTX, JPM-LGCG | SCHG | US large-cap growth |
+| SP500-D | SPY | S&P 500 |
+| VANG-FTSE-SOC | SPY | US large-cap blend (ESG) |
+| TRP-LVAL, AMANX | SCHD | US large-cap value / dividend |
+| SS-SMMD | IJH | US mid-cap blend |
+| WM-BLAIR | IWP | US mid-cap growth |
+| AB-DISC-Z | IWN | US small-cap value |
+| FID-DIVINTL, SS-GACEQ | VXUS | international / global ex-US |

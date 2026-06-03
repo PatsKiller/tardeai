@@ -252,7 +252,9 @@ function HoldingAnalysis({ h }: { h: Record<string, any> }) {
   const card: CSSProperties = { marginBottom: 12, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 8 }
   const head = (t: string) => <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}><span>{t}</span><span style={{ textTransform: 'none' }}>data as of {refreshTxt}</span></div>
 
-  if (!h.data_available) {
+  const proxy = h.proxy as { ticker: string; label: string } | undefined
+  // Only a bare note when there's no direct data AND no proxy fallback (e.g. cash).
+  if (!h.data_available && !proxy) {
     return (
       <div style={card}>
         {head('Technical Analysis')}
@@ -272,7 +274,12 @@ function HoldingAnalysis({ h }: { h: Record<string, any> }) {
 
   return (
     <div style={card}>
-      {head('Technical Analysis')}
+      {head(proxy ? `Technical Analysis · via ${proxy.ticker} (proxy)` : 'Technical Analysis')}
+      {proxy && (
+        <div style={{ fontSize: 9, color: '#f59e0b', background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.2)', borderRadius: 5, padding: '4px 8px', marginBottom: 8, lineHeight: 1.4 }}>
+          Proxy: <b>{proxy.ticker}</b> ({proxy.label}). This fund/pool has no public ticker — technicals below approximate the asset class, not the exact holding.
+        </div>
+      )}
       {/* RSI + zone */}
       {rsi != null && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: fib ? 10 : 4 }}>
@@ -289,20 +296,22 @@ function HoldingAnalysis({ h }: { h: Record<string, any> }) {
           </div>
         </div>
       )}
-      {/* Fib retracement ladder */}
-      {fib && fib.levels && (
+      {/* Fib retracement */}
+      {fib && (
         <div>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}>
             Fibonacci retracement · {fib.retracement_from_high_pct}% off 52w high · nearest <span style={{ color: 'var(--text1)', fontWeight: 700 }}>{fib.nearest_level}</span>
           </div>
-          {Object.entries(fib.levels).map(([label, price]: any) => {
-            const isNear = label === fib.nearest_level
-            return (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 6px', borderRadius: 4, fontSize: 10, background: isNear ? 'rgba(96,165,250,.12)' : 'transparent', color: isNear ? '#60a5fa' : 'var(--text2)', fontWeight: isNear ? 700 : 400 }}>
-                <span>{label}</span><span style={{ fontFamily: 'monospace' }}>${Number(price).toFixed(2)}</span>
-              </div>
-            )
-          })}
+          {fib.levels
+            ? Object.entries(fib.levels).map(([label, price]: any) => {
+                const isNear = label === fib.nearest_level
+                return (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 6px', borderRadius: 4, fontSize: 10, background: isNear ? 'rgba(96,165,250,.12)' : 'transparent', color: isNear ? '#60a5fa' : 'var(--text2)', fontWeight: isNear ? 700 : 400 }}>
+                    <span>{label}</span><span style={{ fontFamily: 'monospace' }}>${Number(price).toFixed(2)}</span>
+                  </div>
+                )
+              })
+            : <div style={{ fontSize: 9, color: 'var(--text3)' }}>{proxy ? 'Dollar levels omitted for proxy (different price scale); position % shown above.' : ''}</div>}
         </div>
       )}
       {/* Ratings */}

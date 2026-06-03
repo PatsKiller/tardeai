@@ -238,30 +238,61 @@ def overview():
 
 
 def _fib_analysis(price, high_pct, low_pct):
-    """Reconstruct 52-week range from %-from-high / %-above-low and return fib
-    retracement levels + the price's current position. Returns None if not computable
-    (e.g. NAV-priced funds with no technical data)."""
+    """52-week fib retracement from %-from-high / %-above-low. The retracement position
+    and nearest level are computable from the percentages alone (price cancels out);
+    absolute dollar levels are added only when a real `price` is supplied (proxies omit
+    them since the proxy's price scale differs from the fund NAV). Returns None if not
+    computable (e.g. NAV-priced funds with no technical data)."""
     try:
-        price = float(price); high_pct = float(high_pct); low_pct = float(low_pct)
-        high = price / (1 + high_pct / 100.0)   # high_pct = (price-high)/high*100
-        low = price / (1 + low_pct / 100.0)     # low_pct  = (price-low)/low*100
-    except (TypeError, ValueError, ZeroDivisionError):
+        high_pct = float(high_pct); low_pct = float(low_pct)
+    except (TypeError, ValueError):
         return None
-    rng = high - low
-    if rng <= 0 or high <= 0:
+    # Work in a price-independent frame (P=100) to get the retracement position.
+    try:
+        rel_high = 100.0 / (1 + high_pct / 100.0)   # high_pct = (price-high)/high*100
+        rel_low = 100.0 / (1 + low_pct / 100.0)      # low_pct  = (price-low)/low*100
+    except ZeroDivisionError:
+        return None
+    rel_rng = rel_high - rel_low
+    if rel_rng <= 0 or rel_high <= 0:
         return None
     ratios = [("0% (52w high)", 0.0), ("23.6%", 0.236), ("38.2%", 0.382),
               ("50%", 0.5), ("61.8%", 0.618), ("78.6%", 0.786), ("100% (52w low)", 1.0)]
-    levels = {label: round(high - rng * r, 2) for label, r in ratios}
-    retr = (high - price) / rng * 100.0   # 0 at high, 100 at low
-    # nearest fib ratio
+    retr = (rel_high - 100.0) / rel_rng * 100.0   # 0 at high, 100 at low
     nearest = min(ratios, key=lambda lr: abs(lr[1] * 100 - retr))
-    return {
-        "week52_high": round(high, 2), "week52_low": round(low, 2),
-        "retracement_from_high_pct": round(retr, 1),
-        "nearest_level": nearest[0],
-        "levels": levels,
-    }
+    out = {"retracement_from_high_pct": round(retr, 1), "nearest_level": nearest[0]}
+    # Absolute dollar levels only when a real price is provided.
+    try:
+        p = float(price)
+        if p > 0:
+            high = p / (1 + high_pct / 100.0); low = p / (1 + low_pct / 100.0); rng = high - low
+            if rng > 0:
+                out["week52_high"] = round(high, 2)
+                out["week52_low"] = round(low, 2)
+                out["levels"] = {label: round(high - rng * r, 2) for label, r in ratios}
+    except (TypeError, ValueError):
+        pass
+    return out
+
+
+# Public-ETF proxies for non-tradeable holdings (401k commingled pools / institutional
+# mutual funds with no public ticker). Each value: (proxy_etf, asset-class label). Proxies
+# are chosen from the enrichment universe so technicals are available; they approximate the
+# holding's asset class, NOT the exact fund. Always surfaced with a "(proxy)" label.
+_HOLDING_PROXY_MAP = {
+    "FID-CONTRA-F":  ("SCHG", "US large-cap growth"),
+    "FCNTX":         ("SCHG", "US large-cap growth"),
+    "JPM-LGCG":      ("SCHG", "US large-cap growth"),
+    "SP500-D":       ("SPY",  "S&P 500"),
+    "VANG-FTSE-SOC": ("SPY",  "US large-cap blend (ESG)"),
+    "TRP-LVAL":      ("SCHD", "US large-cap value"),
+    "AMANX":         ("SCHD", "US large-cap value / dividend"),
+    "SS-SMMD":       ("IJH",  "US mid-cap blend"),
+    "WM-BLAIR":      ("IWP",  "US mid-cap growth"),
+    "AB-DISC-Z":     ("IWN",  "US small-cap value"),
+    "FID-DIVINTL":   ("VXUS", "international ex-US equity"),
+    "SS-GACEQ":      ("VXUS", "global ex-US equity"),
+}
 
 
 def portfolio_holdings():
@@ -401,10 +432,42 @@ def portfolio_holdings():
         # data_available = we have real market enrichment (False for NAV funds / cash)
         _row["data_available"] = bool(merged_rsi is not None or e_cache.get("pe") is not None or _row.get("fib"))
         if not _row["data_available"]:
-            _row["analysis_note"] = (
-                "Cash position." if p.get("is_cash") else
-                "No market data — commingled fund / 401(k) pool or NAV-priced asset with no public ticker. "
-                "Technical (RSI, fib, SMA) and fundamental data are not available for this symbol.")
+            # No direct market data — fall back to a labeled public-ETF proxy if mapped.
+            _proxy = _HOLDING_PROXY_MAP.get(sym) if not p.get("is_cash") else None
+            if _proxy:
+                _ptkr, _plabel = _proxy
+                _pe = ec.get(_ptkr, {}) if isinstance(ec.get(_ptkr), dict) else {}
+                _pt = ts.get(_ptkr, {}) if isinstance(ts.get(_ptkr), dict) else {}
+                _prsi = _pick(_pe, _pt, key="rsi")
+                _pstat = _pe.get("rsi_status") or _pt.get("rsi_status")
+                if not _pstat and _prsi is not None:
+                    _pstat = "oversold" if _prsi <= 30 else "overbought" if _prsi >= 70 else "neutral"
+                _pw52h = _pe.get("week52_high_pct"); _pw52l = _pe.get("week52_low_pct")
+                if _pw52h is None: _pw52h = _pt.get("week52_high")
+                if _pw52l is None: _pw52l = _pt.get("week52_low")
+                _pprice = _pt.get("price")   # proxy price (dollar fib levels only if present)
+                _pfib = _fib_analysis(_pprice, _pw52h, _pw52l)
+                if _prsi is not None or _pfib:
+                    _row["rsi"] = _prsi
+                    _row["rsi_status"] = _pstat
+                    _row["beta"] = _pick(_pe, _pt, key="beta")
+                    _row["sma20_pct"] = _pick(_pe, _pt, key="sma20_pct")
+                    _row["sma50_pct"] = _pick(_pe, _pt, key="sma50_pct")
+                    _row["sma200_pct"] = _pick(_pe, _pt, key="sma200_pct")
+                    _row["fib"] = _pfib
+                    _row["proxy"] = {"ticker": _ptkr, "label": _plabel}
+                    _row["analysis_note"] = (
+                        f"No direct market data for this fund/pool — showing {_ptkr} "
+                        f"({_plabel}) as a public proxy. Technicals approximate the asset class, "
+                        f"not the exact fund.")
+                else:
+                    _row["analysis_note"] = (
+                        f"No direct market data; proxy {_ptkr} has no cached technicals right now.")
+            else:
+                _row["analysis_note"] = (
+                    "Cash position." if p.get("is_cash") else
+                    "No market data — commingled fund / 401(k) pool or NAV-priced asset with no public ticker. "
+                    "Technical (RSI, fib, SMA) and fundamental data are not available for this symbol.")
         _row["enrichment_as_of"] = _enrich_as_of
     rows.sort(key=lambda r: -r["market_value"])
 
