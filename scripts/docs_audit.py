@@ -27,6 +27,8 @@ AUTH_ROOT_MD = {  # canonical references that always RETAIN
     "EXECUTIVE_ARCHITECTURE_OVERVIEW.md", "DASHBOARD_AUDIT_WORKFLOW.md",
 }
 AUTH_PATHS = {"project/PROJECT_DOC_INDEX.md", "project/SKILLS.md", "project/agents_bible.md"}
+# Canonical non-markdown artifacts that must NEVER be deleted (RETAIN).
+PROTECT_NEVER_DELETE = {"project/Trade_AI_v12_Reference_Architecture.docx"}
 
 ARCHIVED_PREFIXES = ("_archive/", "_trash/", "_generated/", "_findings/", "_audit/")
 DUMP_DIRS = {"source_exports", "source_snapshot", "current_source_text", "screenshots",
@@ -120,12 +122,20 @@ def main():
     # disposition
     def disposition(row):
         b, r, linked = row["bucket"], row["path"], row["linked"]
-        if b == "AUTHORITATIVE":
+        if b == "AUTHORITATIVE" or r in PROTECT_NEVER_DELETE:
             return "RETAIN"
         if r in dup_of:
             return "DELETE"  # exact duplicate; canonical kept
-        if b in ("SNAPSHOT-DUMP", "HEAVY-BINARY"):
-            return "RETAIN" if linked and row["ext"] in (".docx", ".pdf") else "DELETE"
+        if b == "HEAVY-BINARY":
+            # backups/handoff bundles + .bak copies -> DELETE; canonical design deliverables
+            # (docx/pdf/html that are alternate-format copies of authoritative docs) -> ARCHIVE.
+            nm = os.path.basename(r).lower()
+            if ".bak" in nm or row["ext"] in (".zip", ".tgz", ".tar", ".gz"):
+                return "DELETE"
+            return "ARCHIVE"
+        if b == "SNAPSHOT-DUMP":
+            # .docx.bak_* and code/screenshot/payload dumps -> DELETE
+            return "DELETE"
         if b == "ALREADY-ARCHIVED":
             # backups/bibles/trash/generated -> DELETE per operator; findings -> RETAIN
             if r.startswith("_findings/"):

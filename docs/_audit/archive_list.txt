@@ -441,6 +441,8 @@ hermes/HERMES_PHASE8E_PORTFOLIO_REFLECTION_LOOP_CLOSEOUT.md	924
 hermes/HERMES_PHASE9A_OBSERVATION_AND_STABILITY_AUDIT.md	644
 hermes/HERMES_PHASE9D_OBSERVATION_AND_INFRA_PLANNING_CLOSEOUT.md	976
 hermes/Hermes_Project_Memory_Notes_v4.md	2153
+hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.docx	47605
+hermes/Hermes_Sidecar_Strategy_for_Trade_AI_v4.pdf	338054
 hermes/PHASE189E_HERMES_MISSING_STOP_FAILURE_ANALYSIS.md	4423
 hermes/PHASE190E_HERMES_PROTECTION_VIEW_RULE_REPORT.md	2724
 hermes/PHASE191E_HERMES_PROFIT_PROTECTION_RULE.md	2525
@@ -669,6 +671,7 @@ project/SESSION_2026_05_29_SUMMARY.md	13169
 project/SESSION_2026_05_30_SUMMARY.md	7800
 project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md	1310
 project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md	12249
+project/Trade_AI_v12_System_Architecture.docx	51871
 project/dashboard_data_correctness/dashboard_cleanup_closeout.md	1524
 project/session_summaries/final_full_session_summary_2026_05_22_to_2026_05_24.md	7963
 proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md	5123
