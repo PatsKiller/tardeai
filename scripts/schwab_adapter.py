@@ -31,13 +31,21 @@ TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token"
 class SchwabAdapter:
     """Schwab broker adapter — same interface as AlpacaPaperAdapter."""
 
-    def __init__(self, dry_run=False):
+    def __init__(self, dry_run=False, account_label=None, account_number=None):
         self.dry_run = dry_run
         self.app_key = os.environ.get("SCHWAB_APP_KEY", "")
         self.app_secret = os.environ.get("SCHWAB_APP_SECRET", "")
         self.refresh_token = os.environ.get("SCHWAB_REFRESH_TOKEN", "")
         self.access_token = None
         self.account_hash = None
+        # Multi-account: John holds 3 Schwab accounts (rollover IRA, Roth IRA, taxable).
+        # The adapter MUST target a specific one — never blindly use accounts[0]. The Schwab
+        # account number is resolved per account_label from env SCHWAB_ACCT_<LABEL> (or passed
+        # directly). Without it, get_account() refuses to guess when >1 account is present.
+        self.account_label = account_label
+        self.account_number = account_number or (
+            os.environ.get(f"SCHWAB_ACCT_{account_label.upper()}", "") if account_label else ""
+        )
         self.enabled = bool(self.app_key and self.app_secret and self.refresh_token)
 
         if self.enabled:
@@ -93,18 +101,43 @@ class SchwabAdapter:
 
     # ── Account ──
 
+    def _ensure_account_hash(self):
+        """Resolve THIS account's hash, never blindly accounts[0] when multiple exist.
+        Returns (ok: bool, err: dict|None). Safe to call from any entry point."""
+        if self.account_hash:
+            return True, None
+        if not self.enabled:
+            return False, {"status": "disabled"}
+        accts = self._api_get("/trader/v1/accounts/accountNumbers") or []
+        if self.account_number:
+            # Match by full number or trailing digits (last-4 is what users usually have)
+            want = str(self.account_number)
+            match = next((a for a in accts
+                          if str(a.get("accountNumber", "")) == want
+                          or str(a.get("accountNumber", "")).endswith(want)), None)
+            if not match:
+                return False, {"status": "account_not_found",
+                               "error": f"Schwab account '{want}' not among {len(accts)} linked accounts"}
+            self.account_hash = match.get("hashValue")
+        elif len(accts) == 1:
+            self.account_hash = accts[0].get("hashValue")
+        elif len(accts) > 1:
+            # Ambiguous — refuse to guess. Configure SCHWAB_ACCT_<LABEL> or pass account_number.
+            return False, {"status": "ambiguous_account",
+                           "error": f"{len(accts)} Schwab accounts linked but none selected for "
+                                    f"label='{self.account_label}'. Set SCHWAB_ACCT_<LABEL>."}
+        else:
+            return False, {"status": "no_account_hash"}
+        return True, None
+
     def get_account(self):
         """Get account info including balances."""
         if not self.enabled:
             return {"status": "disabled"}
         try:
-            # First get account numbers/hashes
-            if not self.account_hash:
-                accts = self._api_get("/trader/v1/accounts/accountNumbers")
-                if accts and len(accts) > 0:
-                    self.account_hash = accts[0].get("hashValue")
-            if not self.account_hash:
-                return {"status": "no_account_hash"}
+            ok, err = self._ensure_account_hash()
+            if not ok:
+                return err
             data = self._api_get(f"/trader/v1/accounts/{self.account_hash}")
             acct = data.get("securitiesAccount", {})
             balances = acct.get("currentBalances", {})
@@ -124,7 +157,10 @@ class SchwabAdapter:
 
     def get_positions(self):
         """Get all open positions."""
-        if not self.enabled or not self.account_hash:
+        if not self.enabled:
+            return []
+        ok, _ = self._ensure_account_hash()
+        if not ok:
             return []
         try:
             data = self._api_get(f"/trader/v1/accounts/{self.account_hash}?fields=positions")
@@ -192,7 +228,10 @@ class SchwabAdapter:
 
     def get_open_orders(self):
         """Get all open orders."""
-        if not self.enabled or not self.account_hash:
+        if not self.enabled:
+            return []
+        ok, _ = self._ensure_account_hash()
+        if not ok:
             return []
         try:
             orders = self._api_get(f"/trader/v1/accounts/{self.account_hash}/orders?status=WORKING")

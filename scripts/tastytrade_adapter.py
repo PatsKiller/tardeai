@@ -32,13 +32,19 @@ SANDBOX_URL = "https://api.cert.tastytrade.com"
 class TastytradeAdapter:
     """Tastytrade broker adapter — same interface as AlpacaPaperAdapter."""
 
-    def __init__(self, dry_run=False, sandbox=True):
+    def __init__(self, dry_run=False, sandbox=True, account_label=None, account_number=None):
         self.dry_run = dry_run
         self.username = os.environ.get("TASTYTRADE_USERNAME", "")
         self.password = os.environ.get("TASTYTRADE_PASSWORD", "")
         self.base_url = SANDBOX_URL if sandbox else PROD_URL
         self.session_token = None
-        self.account_number = None
+        # Multi-account: target a specific account rather than blindly items[0]. Resolved from
+        # env TASTYTRADE_ACCT_<LABEL> or passed directly; if multiple accounts exist and none is
+        # selected, _fetch_account refuses to guess.
+        self.account_label = account_label
+        self.account_number = account_number or (
+            os.environ.get(f"TASTYTRADE_ACCT_{account_label.upper()}", "") if account_label else None
+        )
         self.enabled = bool(self.username and self.password)
 
         if self.enabled:
@@ -64,13 +70,28 @@ class TastytradeAdapter:
             log.error(f"[tastytrade] Auth error: {e}")
 
     def _fetch_account(self):
-        """Fetch the first available account number."""
+        """Resolve THIS account number — never blindly items[0] when multiple exist."""
         try:
             resp = self._api_get("/customers/me/accounts")
             items = resp.get("data", {}).get("items", [])
-            if items:
-                self.account_number = items[0].get("account", {}).get("account-number")
+            numbers = [it.get("account", {}).get("account-number") for it in items]
+            numbers = [n for n in numbers if n]
+            if self.account_number:
+                want = str(self.account_number)
+                match = next((n for n in numbers if n == want or str(n).endswith(want)), None)
+                if match:
+                    self.account_number = match
+                    log.info(f"[tastytrade] Account: {self.account_number}")
+                else:
+                    log.error(f"[tastytrade] Account '{want}' not among {len(numbers)} linked accounts")
+                    self.account_number = None
+            elif len(numbers) == 1:
+                self.account_number = numbers[0]
                 log.info(f"[tastytrade] Account: {self.account_number}")
+            elif len(numbers) > 1:
+                log.error(f"[tastytrade] {len(numbers)} accounts linked but none selected "
+                          f"(label='{self.account_label}'). Set TASTYTRADE_ACCT_<LABEL>.")
+                self.account_number = None
         except Exception as e:
             log.warning(f"[tastytrade] Failed to fetch account: {e}")
 
