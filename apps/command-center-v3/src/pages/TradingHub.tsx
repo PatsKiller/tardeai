@@ -109,11 +109,18 @@ export default function TradingHub({ onDrill }: Props) {
         const sectorEntries = Object.entries(sectors).sort((a, b) => (b[1] as number) - (a[1] as number))
         const sectorMax = sectorEntries.length ? Math.max(...sectorEntries.map(e => e[1] as number)) : 1
         const runGoMax = runHistory.length ? Math.max(1, ...runHistory.map((r: any) => r.go ?? 0)) : 1
+        // KPI counts reflect the displayed universe (matching copy lists / filter / table),
+        // NOT the current-run-only go_count/wait_count which read 0 on an underfilled run.
+        const goN = tradeAi?.universe_go ?? tickers.filter((t: any) => t.decision === 'GO').length
+        const waitN = tradeAi?.universe_wait ?? tickers.filter((t: any) => t.decision === 'WAIT').length
+        const universeN = tradeAi?.universe_count ?? tickers.length
+        const noGoN = tradeAi?.universe_nogo ?? Math.max(0, universeN - goN - waitN)
+        const scannedN = tradeAi?.current_run_scanned ?? tradeAi?.latest_run_symbols_scanned ?? tradeAi?.ticker_count
         const kpis = [
-          { label: 'GO', value: tradeAi?.go_count ?? 0, color: '#22c55e' },
-          { label: 'WAIT', value: tradeAi?.wait_count ?? 0, color: '#f59e0b' },
-          { label: 'NO-GO', value: tradeAi?.avoid_count ?? 0, color: '#ef4444' },
-          { label: 'Scanned', value: tradeAi?.ticker_count ?? tickers.length, color: 'var(--text0)' },
+          { label: 'GO', value: goN, color: '#22c55e' },
+          { label: 'WAIT', value: waitN, color: '#f59e0b' },
+          { label: 'NO-GO', value: noGoN, color: '#ef4444' },
+          { label: 'Universe', value: universeN, color: 'var(--text0)' },
           { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa' },
           { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7' },
         ]
@@ -124,7 +131,8 @@ export default function TradingHub({ onDrill }: Props) {
               <div style={{ fontSize: 9, color: 'var(--text3)' }}>
                 {tradeAi?.latest_run_label || tradeAi?.run_label || 'no run'}
                 {tradeAi?.latest_run_timestamp && ` · ${new Date(tradeAi.latest_run_timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`}
-                {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: tradeAi.run_health_status === 'healthy' ? '#22c55e' : '#f59e0b' }}>· {tradeAi.run_health_status}</span>}
+                {scannedN != null && ` · ${scannedN} scanned this run`}
+                {tradeAi?.run_health_status && <span style={{ marginLeft: 6, color: /healthy/i.test(tradeAi.run_health_status) ? '#22c55e' : '#ef4444' }}>· {tradeAi.run_health_status}</span>}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, margin: '10px 0 14px' }}>
