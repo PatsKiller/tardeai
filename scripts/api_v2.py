@@ -11930,8 +11930,17 @@ def _live_trading_gate():
                MIN(created_at) as first_trade,
                MAX(closed_at) as last_close
         FROM (SELECT *,
-                     (COALESCE(outcome_verdict,'')='PHANTOM'
-                      OR COALESCE(close_reason,'')='phantom_no_alpaca_position') AS _fake
+                     -- COUNTED rule (three-state, sample-preserving). EXCLUDE only:
+                     --   broker TERMINALLY refutes the fill (fill_verified_ok IS FALSE), OR
+                     --   verification couldn't run (fill_verified_ok IS NULL) AND the row is a
+                     --   PROVEN phantom — fall back to the conservative phantom-flag rule.
+                     -- A real-but-unverifiable trade (API outage, adapter-less account, qty/price
+                     -- mismatch on a real fill -> NULL) is NEVER silently dropped: it counts unless
+                     -- proven fake. fill_verified_ok IS TRUE always counts (broker truth wins).
+                     (fill_verified_ok IS FALSE
+                      OR (fill_verified_ok IS NULL
+                          AND (COALESCE(outcome_verdict,'')='PHANTOM'
+                               OR COALESCE(close_reason,'')='phantom_no_alpaca_position'))) AS _fake
               FROM paper_trades) pt
     """, fetch="one") or {}
 

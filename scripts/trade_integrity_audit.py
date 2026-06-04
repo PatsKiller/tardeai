@@ -159,6 +159,18 @@ def audit_trade(t, broker_syms, broker_stop_syms, reviews_by_trade):
     else:
         checks["data_fresh"] = "na"
 
+    # 7. Fill verification — surface the two-source verdict so a broker-refuted fill or a qty/price
+    #    MISMATCH is SEEN, not buried. (fill_verified_ok: TRUE=confirmed, FALSE=broker refutes,
+    #    NULL=couldn't verify — fall-back, not a failure.)
+    if t.get("fill_verified_ok") is False:
+        fail("fill_verification", "broker refuted the fill (terminal not-filled)")
+    elif t.get("_fill_verdict") == "MISMATCH":
+        warn("fill_verification", "fill qty/price mismatch vs broker — review (still counted)")
+    elif t.get("fill_verified_ok") is True:
+        checks["fill_verification"] = "pass"
+    else:
+        checks["fill_verification"] = "na"   # unverified / couldn't-run — not a failure
+
     # Trade AI verdict
     if any(v == "fail" for v in checks.values()):
         ai_verdict = "FAIL"
@@ -208,7 +220,8 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
         SELECT id, symbol, account, broker, shares, entry_price, stop_loss_price, planned_stop,
                target_1, status, lifecycle_state, broker_confirmed, broker_status, broker_order_id,
                pnl, outcome_verdict, close_reason, closed_via, current_price, last_synced_at,
-               strategy_id, proposal_id, stop_order_id, broker_stop_status
+               strategy_id, proposal_id, stop_order_id, broker_stop_status,
+               fill_verified_ok, confirmation_state
         FROM paper_trades {where} ORDER BY id
     """)
     cols = [d[0] for d in cur.description]
@@ -220,6 +233,19 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
         FROM paper_trade_multi_reviews GROUP BY paper_trade_id
     """)
     reviews_by_trade = {r[0]: {"cnt": r[1], "latest": r[2]} for r in cur.fetchall()}
+
+    # Latest fill-verification verdict per trade — so a broker-refuted / qty-price MISMATCH is
+    # visible in the audit (and on the v3 Brokers tab), not buried in the staging table.
+    try:
+        cur.execute("""
+            SELECT DISTINCT ON (paper_trade_id) paper_trade_id, verdict
+            FROM hermes_fill_verifications ORDER BY paper_trade_id, checked_at DESC
+        """)
+        fill_verdict = {r[0]: r[1] for r in cur.fetchall()}
+    except Exception:
+        fill_verdict = {}
+    for t in trades:
+        t["_fill_verdict"] = fill_verdict.get(t["id"])
 
     broker_syms, broker_stop_syms = _broker_state()
 
