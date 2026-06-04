@@ -117,6 +117,30 @@ class AlpacaPaperAdapter:
             "account_types": ["paper"],
         }
 
+    def _match_filled_order(self, symbol, qty=None):
+        """Find the broker's most-recent FILLED BUY order for `symbol` — the order that opened the
+        current position — so a pending row is promoted ANCHORED to a real order id, never by
+        symbol coincidence. Returns the order dict (id, client_order_id, ...) or None. Read-only."""
+        if not self.enabled or not self.api_key:
+            return None
+        try:
+            orders = self._api_get(f"/v2/orders?status=closed&symbols={symbol}&direction=desc&limit=50")
+        except Exception as e:
+            log.warning(f"[alpaca] _match_filled_order({symbol}) failed: {e}")
+            return None
+        buys = [o for o in (orders or [])
+                if o.get("symbol") == symbol and o.get("side") == "buy" and o.get("status") == "filled"]
+        if not buys:
+            return None
+        if qty is not None:
+            for o in buys:
+                try:
+                    if int(float(o.get("filled_qty") or 0)) == int(qty):
+                        return o
+                except (TypeError, ValueError):
+                    pass
+        return buys[0]   # most recent filled buy (direction=desc)
+
     def sync_positions(self, conn):
         """Sync Alpaca paper positions with paper_trades table."""
         positions = self.get_positions()
@@ -142,28 +166,49 @@ class AlpacaPaperAdapter:
             """, [current, unrealized, symbol, symbol])
 
             if cur.rowcount == 0:
-                # Check for pending trades that Alpaca filled but status wasn't updated
-                cur.execute("""
-                    UPDATE paper_trades
-                    SET status = 'open', broker_status = 'filled',
-                        entry_price = %s, current_price = %s, unrealized_pnl = %s,
-                        filled_at = NOW(), last_synced_at = NOW()
-                    WHERE symbol = %s AND status = 'pending' AND lifecycle_state = 'open'
-                      AND id = (SELECT id FROM paper_trades WHERE symbol = %s AND status = 'pending' ORDER BY created_at DESC LIMIT 1)
-                    RETURNING id, stop_loss
-                """, [avg_entry, current, unrealized, symbol, symbol])
-                fixed_row = cur.fetchone()
-                if fixed_row:
-                    trade_id_fixed, old_stop = fixed_row
-                    log.info(f"[alpaca] {symbol} promoted pending→open (filled at ${avg_entry:.2f})")
-                    # Universal stop validation (Fix 5)
-                    from trade_outcome_helpers import validate_and_recalc_stop
-                    new_stop, _recalced, _reason = validate_and_recalc_stop(
-                        entry_price=avg_entry, stop_loss=float(old_stop) if old_stop else None, direction='long')
-                    if _recalced:
-                        cur.execute("UPDATE paper_trades SET stop_loss=%s, stop_loss_price=%s WHERE id=%s",
-                                    [new_stop, new_stop, trade_id_fixed])
-                        log.warning(f"[alpaca] {symbol} stop recalculated: ${old_stop}→${new_stop} ({_reason})")
+                # ORDER-ANCHORED PROMOTION (STEP 3a). A pending row becomes 'open' (= COUNTED) ONLY
+                # when matched to a SPECIFIC filled broker order, capturing its broker_order_id.
+                # Symbol-only promotion was the proposal_approved phantom source — a pending row
+                # flipped 'open' against a coincidental position with no order linkage. If a pending
+                # row exists but no filled order matches, it is LEFT pending (never promoted
+                # unanchored), and no unknown_sync duplicate is created for it.
+                cur.execute("""SELECT id FROM paper_trades
+                               WHERE symbol=%s AND status='pending' AND lifecycle_state='open'
+                               ORDER BY created_at DESC LIMIT 1""", [symbol])
+                pend = cur.fetchone()
+                if pend:
+                    filled = self._match_filled_order(symbol, qty)
+                    if filled and filled.get("id"):
+                        cur.execute("""
+                            UPDATE paper_trades
+                            SET status = 'open', broker_status = 'filled',
+                                broker_order_id = COALESCE(broker_order_id, %s),
+                                client_order_id = COALESCE(client_order_id, %s),
+                                entry_price = %s, current_price = %s, unrealized_pnl = %s,
+                                filled_at = COALESCE(filled_at, NOW()), last_synced_at = NOW()
+                            WHERE id = %s
+                            RETURNING id, stop_loss
+                        """, [filled.get("id"), filled.get("client_order_id"),
+                              avg_entry, current, unrealized, pend[0]])
+                        fixed_row = cur.fetchone()
+                        if fixed_row:
+                            trade_id_fixed, old_stop = fixed_row
+                            log.info(f"[alpaca] {symbol} promoted pending→open ANCHORED to order "
+                                     f"{str(filled.get('id'))[:8]} (filled at ${avg_entry:.2f})")
+                            # Universal stop validation (Fix 5)
+                            from trade_outcome_helpers import validate_and_recalc_stop
+                            new_stop, _recalced, _reason = validate_and_recalc_stop(
+                                entry_price=avg_entry, stop_loss=float(old_stop) if old_stop else None, direction='long')
+                            if _recalced:
+                                cur.execute("UPDATE paper_trades SET stop_loss=%s, stop_loss_price=%s WHERE id=%s",
+                                            [new_stop, new_stop, trade_id_fixed])
+                                log.warning(f"[alpaca] {symbol} stop recalculated: ${old_stop}→${new_stop} ({_reason})")
+                            synced += 1
+                            continue
+                    # pending exists but could NOT be anchored to a filled order → leave pending,
+                    # do not promote unanchored, do not create an unknown_sync duplicate.
+                    log.warning(f"[alpaca] {symbol} held at broker but no matching filled order — "
+                                f"leaving pending (not promoting unanchored)")
                     synced += 1
                     continue
 
