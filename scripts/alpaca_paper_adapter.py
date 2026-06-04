@@ -203,6 +203,12 @@ class AlpacaPaperAdapter:
                                 cur.execute("UPDATE paper_trades SET stop_loss=%s, stop_loss_price=%s WHERE id=%s",
                                             [new_stop, new_stop, trade_id_fixed])
                                 log.warning(f"[alpaca] {symbol} stop recalculated: ${old_stop}→${new_stop} ({_reason})")
+                            # mandatory two-source fill verification on promotion (NON-FATAL)
+                            try:
+                                from trade_fill_verifier import verify_and_stamp_fill
+                                verify_and_stamp_fill(conn, trade_id_fixed)
+                            except Exception as _ve:
+                                log.warning(f"[alpaca] {symbol} fill-verify hook error (non-fatal): {_ve}")
                             synced += 1
                             continue
                     # pending exists but could NOT be anchored to a filled order → leave pending,
@@ -705,6 +711,7 @@ class AlpacaPaperAdapter:
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s)
+                RETURNING id
             """, [proposal_id, strategy_id, symbol, actual_shares, round(actual_shares * actual_entry, 2),
                   effective_stop, effective_stop, target_price, entry_price, actual_entry,
                   round(abs(actual_entry - effective_stop) * actual_shares, 2),
@@ -718,7 +725,17 @@ class AlpacaPaperAdapter:
                   effective_stop, _prot_status, _prot_defect,
                   f"Order type: {order_type_reason}. Fill verified: {fill_status}. "
                   f"Shares: {actual_shares}. Stop: ${effective_stop} {_stop_desc}."])
+            _new_trade_id = cur.fetchone()[0]
             conn.commit()
+
+            # Mandatory two-source fill verification on every automated trade (NON-FATAL — records
+            # broker truth + TradeAI/Hermes verdicts; never blocks execution or closes a position).
+            if _db_status == 'open' and _new_trade_id:
+                try:
+                    from trade_fill_verifier import verify_and_stamp_fill
+                    verify_and_stamp_fill(conn, _new_trade_id)
+                except Exception as _ve:
+                    log.warning(f"[alpaca] {symbol} fill-verify hook error (non-fatal): {_ve}")
 
             log.info(f"[alpaca] Order complete: {symbol} {actual_shares}sh @ ${actual_entry:.2f} "
                      f"({'market' if use_market else 'limit'}) status={_db_status} (order {order_id})")
