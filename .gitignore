@@ -107,3 +107,7 @@ data/searxng_queries/
 
 # YouTube auth cookies (secret — never commit)
 config/youtube_cookies.txt
+
+# broker-admin secrets (never commit)
+config/broker_credentials.env
+apps/broker-admin/.admin_password

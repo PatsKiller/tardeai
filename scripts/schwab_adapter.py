@@ -33,6 +33,11 @@ class SchwabAdapter:
 
     def __init__(self, dry_run=False, account_label=None, account_number=None):
         self.dry_run = dry_run
+        try:
+            from broker_secrets import load_into_env
+            load_into_env()
+        except Exception:
+            pass
         self.app_key = os.environ.get("SCHWAB_APP_KEY", "")
         self.app_secret = os.environ.get("SCHWAB_APP_SECRET", "")
         self.refresh_token = os.environ.get("SCHWAB_REFRESH_TOKEN", "")
