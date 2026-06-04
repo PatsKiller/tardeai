@@ -784,6 +784,30 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
         sig_id = sig["id"]
 
         try:
+            # 0. Regular-hours gate for intraday strategies (RTH-gate-on-generation).
+            # Intraday proposals (momentum_scalp/gap_and_go) minted premarket die on stale
+            # quotes before the 9:30 open — they EXPIRE or auto-reject (price-drift / blocked-
+            # too-long), so a real GO signal never becomes an approvable proposal (e.g. XOS &
+            # FOFO, 2026-06-04). Defer intraday generation to regular hours so it runs on live
+            # quotes; swing/position may still pre-stage after hours. force=True bypasses.
+            if not force:
+                try:
+                    from proposal_lifecycle import get_timeframe_class as _gtc
+                    _is_intraday = _gtc(sid) == "intraday"
+                except Exception:
+                    _is_intraday = sid in ("momentum_scalp", "gap_and_go")
+                if _is_intraday:
+                    from market_session import current_market_session
+                    _sess = current_market_session()
+                    if _sess != "regular":
+                        stats["proposals_skipped"] += 1
+                        reason = f"SKIPPED_OUTSIDE_RTH ({sid}: market {_sess}, deferred to regular hours)"
+                        log.info(f"  {sym}: {reason}")
+                        if not dry_run:
+                            record_decision(conn, run_label, sig, "SKIPPED_OUTSIDE_RTH", [reason], None, None, None)
+                        stats["details"].append({"symbol": sym, "decision": "SKIPPED_OUTSIDE_RTH", "reason": reason})
+                        continue
+
             # 1. Duplicate check
             dup = check_duplicate(conn, sig_id, sym, sid)
             if dup:
