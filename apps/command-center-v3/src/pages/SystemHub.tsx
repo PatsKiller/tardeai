@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
+import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
+import { getOperator, setOperator, getToken, setToken } from '../lib/adminWrite'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM'] as const
@@ -31,7 +33,11 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: access } = useApi<any>('/api/v2/system/access-links', 300_000)
   const { data: atmCfg } = useApi<any>('/api/v2/atm/config', 120_000)
   const { data: acctCfg } = useApi<any>('/api/v2/admin/accounts', 120_000)
-  const { data: auditLog } = useApi<any>('/api/v2/admin/audit-log', 30_000)
+  const { data: auditLog } = useApi<any>('/api/v2/admin/audit-log', 15_000)
+  const { data: stratEnable } = useApi<any>('/api/v2/admin/strategy-enablement', 30_000)
+  const { data: cronRetryable } = useApi<any>('/api/v2/admin/cron-retryable', 300_000)
+  const [pending, setPending] = useState<PendingAction | null>(null)
+  const [opTick, setOpTick] = useState(0)   // re-render after operator/token edits
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: riskCfg } = useApi<any>('/api/v2/risk', 60_000)
   const { data: brokers } = useApi<any>('/api/v2/system/broker-connectors', 60_000)
@@ -49,8 +55,11 @@ export default function SystemHub({ onDrill }: Props) {
   const siemKpis = siem?.kpis ?? {}
   const cronDups = crons?.duplicates ?? []
 
+  const fire = (path: string, body: any, label: string) => setPending({ path, body, label })
+
   return (
     <div>
+      <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => setOpTick(t => t + 1)} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text0)' }}>System</div>
@@ -245,9 +254,21 @@ export default function SystemHub({ onDrill }: Props) {
                       <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text1)' }}>{e.event_type} <span style={{ color: 'var(--text3)', fontWeight: 400 }}>· {e.component ?? '?'}</span></div>
                       <div style={{ fontSize: 9, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(e.message ?? '').slice(0, 70)}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      {e.repeat_count > 1 && <span style={{ fontSize: 9, fontWeight: 700, color: sevColor(e.severity), background: `${sevColor(e.severity)}1a`, padding: '1px 5px', borderRadius: 3 }}>×{e.repeat_count}</span>}
-                      <div style={{ fontSize: 8, color: 'var(--text3)' }}>{ago(e.last_seen ?? e.timestamp)} ago</div>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {e.repeat_count > 1 && <span style={{ fontSize: 9, fontWeight: 700, color: sevColor(e.severity), background: `${sevColor(e.severity)}1a`, padding: '1px 5px', borderRadius: 3 }}>×{e.repeat_count}</span>}
+                        {e.lifecycle_state && e.lifecycle_state !== 'active' && <span style={{ fontSize: 8, fontWeight: 700, color: e.lifecycle_state === 'resolved' ? '#22c55e' : '#f59e0b' }}>{e.lifecycle_state}</span>}
+                        {['alert_events', 'system_health_events'].includes(e.source) && (e.lifecycle_state ?? 'active') === 'active' && (() => {
+                          const aid = Number(String(e.id).split('-').pop())
+                          return (<>
+                            <button onClick={ev => { ev.stopPropagation(); fire('/api/v2/admin/alert/ack', { source: e.source, alert_id: aid }, `Ack ${e.severity} alert`) }}
+                              style={{ background: 'var(--bg2)', color: '#f59e0b', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 6px', fontSize: 8, cursor: 'pointer' }}>ack</button>
+                            <button onClick={ev => { ev.stopPropagation(); fire('/api/v2/admin/alert/resolve', { source: e.source, alert_id: aid }, `Resolve ${e.severity} alert`) }}
+                              style={{ background: 'var(--bg2)', color: '#22c55e', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 6px', fontSize: 8, cursor: 'pointer' }}>resolve</button>
+                          </>)
+                        })()}
+                      </div>
+                      <div style={{ fontSize: 8, color: 'var(--text3)' }}>{ago(e.last_seen ?? e.timestamp)} ago · click to inspect</div>
                     </div>
                   </div>
                 ))}
@@ -500,6 +521,66 @@ export default function SystemHub({ onDrill }: Props) {
                 )
               })}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Display only. To change ATM enablement or risk, use the guarded Telegram-approval path — not this page. Source: /api/v2/admin/accounts + /api/v2/atm/config</div>
+            </div>
+
+            {/* ── GUARDED WRITE CONTROLS (Tier-2/3) ── */}
+            <div style={{ background: 'rgba(34,197,94,.06)', border: '1px solid rgba(34,197,94,.25)', borderRadius: 10, padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Config Writes (guarded · Tier-2/3)</span>
+                <span style={{ fontSize: 9, color: '#22c55e' }}>access → confirm → apply → audit</span>
+              </div>
+              {/* operator + token */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>operator</span>
+                <input defaultValue={getOperator()} onBlur={e => { setOperator(e.target.value); setOpTick(t => t + 1) }}
+                  style={{ background: 'var(--bg0)', border: '1px solid var(--border)', color: 'var(--text1)', borderRadius: 5, padding: '4px 8px', fontSize: 11, width: 120 }} />
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>access token (if set)</span>
+                <input type="password" defaultValue={getToken()} onBlur={e => { setToken(e.target.value); setOpTick(t => t + 1) }}
+                  placeholder="optional on air-gap"
+                  style={{ background: 'var(--bg0)', border: '1px solid var(--border)', color: 'var(--text1)', borderRadius: 5, padding: '4px 8px', fontSize: 11, width: 160 }} />
+              </div>
+
+              {/* risk config editors */}
+              <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginBottom: 4 }}>Risk limits (atm_config.yaml · paper)</div>
+              {([
+                ['max_pct_per_trade', 'Max risk per trade', pl.max_pct_per_trade],
+                ['max_pct_per_strategy', 'Max % per strategy', pl.max_pct_per_strategy],
+                ['max_pct_per_sector', 'Max % per sector', pl.max_pct_per_sector],
+                ['max_concurrent', 'Max concurrent', pl.max_concurrent],
+                ['max_new_per_day', 'Max new / day', pl.max_new_per_day],
+                ['daily_loss_pct_hard_pause', 'Daily loss kill %', ks.daily_loss_pct_hard_pause],
+              ] as any[]).map(([field, label, cur]) => (
+                <div key={field} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px', borderBottom: '1px solid var(--border)', fontSize: 10 }}>
+                  <span style={{ color: 'var(--text3)' }}>{label}</span>
+                  <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text1)', fontFamily: 'var(--mono)' }}>{cur ?? '—'}</span>
+                    <button onClick={() => { const v = window.prompt(`New value for ${label} (current ${cur}):`, String(cur ?? '')); if (v !== null && v.trim() !== '') fire('/api/v2/admin/risk-config', { field, value: isNaN(Number(v)) ? v : Number(v) }, `Risk: ${label}`) }}
+                      style={{ background: 'var(--bg2)', color: '#60a5fa', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 8px', fontSize: 9, cursor: 'pointer' }}>edit</button>
+                  </span>
+                </div>
+              ))}
+
+              {/* strategy enablement */}
+              <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', margin: '12px 0 4px' }}>Strategy enablement (per account)</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 }}>
+                {((stratEnable?.data ?? stratEnable ?? {}).rows ?? []).map((r: any, i: number) => (
+                  <span key={i} style={{ fontSize: 9, fontFamily: 'var(--mono)', background: 'var(--bg2)', borderRadius: 4, padding: '2px 6px', color: r.enabled ? '#22c55e' : '#ef4444' }}>{r.strategy_id}@{r.account}: {r.enabled ? 'on' : 'off'}</span>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button onClick={() => { const s = window.prompt('strategy_id:'); if (!s) return; const a = window.prompt('account (e.g. alpaca_paper):', 'alpaca_paper'); if (!a) return; const en = window.confirm('OK = ENABLE, Cancel = DISABLE'); fire('/api/v2/admin/strategy/enablement', { strategy_id: s, account: a, enabled: en }, `Strategy ${s}@${a} ${en ? 'enable' : 'disable'}`) }}
+                  style={{ background: 'var(--bg2)', color: '#60a5fa', border: '1px solid var(--border)', borderRadius: 4, padding: '3px 10px', fontSize: 10, cursor: 'pointer' }}>set strategy enablement…</button>
+              </div>
+
+              {/* cron retry — non-trading allowlist only */}
+              <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', margin: '12px 0 4px' }}>Cron retry — non-trading only ({((cronRetryable?.data ?? cronRetryable ?? {}).jobs ?? []).length} eligible)</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {((cronRetryable?.data ?? cronRetryable ?? {}).jobs ?? []).slice(0, 30).map((j: string) => (
+                  <button key={j} onClick={() => fire('/api/v2/admin/cron/retry', { job: j }, `Re-run cron: ${j}`)}
+                    style={{ background: 'var(--bg2)', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 7px', fontSize: 8, fontFamily: 'var(--mono)', cursor: 'pointer' }}>{j} ↻</button>
+                ))}
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Trading/execution/approval jobs are excluded by allowlist (server-enforced). Tier-1 controls (ATM enable, live risk) are managed separately — not here.</div>
             </div>
 
             {/* Admin Audit Trail — every guarded Tier-2/3 write (append-only) */}

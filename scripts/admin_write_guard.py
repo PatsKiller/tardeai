@@ -93,6 +93,89 @@ def admin_write(*, action, target, old_value, new_value, apply_fn,
     }
 
 
+# ── Safety allowlists (STEP 2) ───────────────────────────────────────────────
+# Non-trading cron jobs that MAY be re-run from the admin surface. ALLOWLIST by design: any job
+# not listed — every trading/execution/proposal/approval job, and any new/unknown job — is
+# EXCLUDED. A trading job can only become retryable by being added here, which is never done.
+NON_TRADING_CRON_ALLOWLIST = {
+    # enrichment
+    "auto_enrichment_runner", "finviz_enrichment", "llm_intelligence_enrichment",
+    "symbol_enrichment", "holdings_llm_refresh",
+    # research
+    "auto_research", "alex_gov_research", "iterate_research_topics", "intel_auto_discovery",
+    "topic_ingestion", "hermes_source_curation", "hermes_youtube_discovery",
+    # embedding / index
+    "rag_indexer", "taxonomy_tagger",
+    # health / staleness
+    "backup_verify", "job_coverage_monitor", "log_error_scraper", "system_health_agent",
+    "health_agent_llm_review", "write_state_freshness_history", "youtube_cookie_health_check",
+    # data ingestion
+    "news_ingestion", "social_ingest", "sec_data_ingest", "fred_data_ingest",
+    "external_market_data_ingest", "price_db_sync", "sync_dividend_data", "youtube_transcript_ingest",
+}
+
+
+def cron_retry_allowed(job: str) -> bool:
+    return job in NON_TRADING_CRON_ALLOWLIST
+
+
+# Risk-config fields editable from the admin surface → their location in atm_config.yaml.
+# Paper-system sizing/limits (Tier-2/3). NOT a live-account control (the ATM is paper-only and the
+# live gate is shut); editing these never arms live execution.
+ATM_CONFIG_PATH = PROJECT_ROOT / "config" / "atm_config.yaml"
+RISK_CONFIG_FIELDS = {
+    "max_pct_per_trade":         ["defaults", "position_limits", "max_pct_per_trade"],
+    "max_pct_per_strategy":      ["defaults", "position_limits", "max_pct_per_strategy"],
+    "max_pct_per_sector":        ["defaults", "position_limits", "max_pct_per_sector"],
+    "max_concurrent":            ["defaults", "position_limits", "max_concurrent"],
+    "max_new_per_day":           ["defaults", "position_limits", "max_new_per_day"],
+    "daily_loss_pct_hard_pause": ["defaults", "kill_switches", "daily_loss_pct_hard_pause"],
+}
+
+
+def _ruamel():
+    from ruamel.yaml import YAML
+    y = YAML()                 # round-trip mode — PRESERVES comments & formatting
+    y.preserve_quotes = True
+    return y
+
+
+def read_yaml_value(path, key_path):
+    y = _ruamel()
+    with open(path) as f:
+        data = y.load(f)
+    node = data
+    for k in key_path[:-1]:
+        node = node.get(k, {}) if hasattr(node, "get") else {}
+    val = node.get(key_path[-1]) if hasattr(node, "get") else None
+    # cast ruamel scalar to a plain Python value for clean JSON in the audit/response
+    try:
+        return float(val) if isinstance(val, float) else (int(val) if isinstance(val, int) else val)
+    except Exception:
+        return val
+
+
+def write_yaml_value(path, key_path, new_value):
+    """Set a nested key in a YAML file, backing the file up FIRST (IRON RULE). Comments preserved
+    (ruamel round-trip). Returns old_value."""
+    import shutil
+    path = Path(path)
+    bdir = PROJECT_ROOT / "backups"
+    bdir.mkdir(exist_ok=True)
+    shutil.copy2(path, bdir / f"{path.stem}_{key_path[-1]}_premut.yaml.bak")   # IRON-RULE backup
+    y = _ruamel()
+    with open(path) as f:
+        data = y.load(f)
+    node = data
+    for k in key_path[:-1]:
+        node = node[k]
+    old = node.get(key_path[-1])
+    node[key_path[-1]] = new_value
+    with open(path, "w") as f:
+        y.dump(data, f)
+    return old
+
+
 def recent_audit(limit=50):
     try:
         conn = _conn()
