@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
+import ProposalsRich from '../components/ProposalsRich'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp'] as const
@@ -12,6 +13,8 @@ const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#
 
 export default function TradingHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Trade AI')
+  const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
+  const [copied, setCopied] = useState<string | null>(null)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
@@ -74,6 +77,38 @@ export default function TradingHub({ onDrill }: Props) {
 
       {tab === 'Trade AI' && (() => {
         const tickers: any[] = (tradeAi?.tickers ?? []).slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))
+        const filtered = tradeFilter === 'ALL' ? tickers : tickers.filter((t: any) => t.decision === tradeFilter)
+        const copyBoxes = (['GO', 'WAIT', 'ALL'] as const).map(type => {
+          const syms = (type === 'ALL' ? tickers : tickers.filter((t: any) => t.decision === type)).map((t: any) => t.symbol)
+          return { type, label: type === 'ALL' ? 'Universe' : type, syms, text: syms.join(','), color: type === 'GO' ? '#22c55e' : type === 'WAIT' ? '#f59e0b' : 'var(--text2)' }
+        })
+        const doCopy = (type: string, text: string) => {
+          const done = () => { setCopied(type); setTimeout(() => setCopied(null), 1500) }
+          if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done).catch(done)
+          else { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done() }
+        }
+        // Source badge config (parity with v2 Source column)
+        const srcCfg: Record<string, { icon: string; color: string; label: string }> = {
+          social: { icon: '💬', color: '#d97706', label: 'Social' },
+          portfolio: { icon: '💼', color: '#6366f1', label: 'Portfolio' },
+          personal_watchlist: { icon: '👤', color: '#6366f1', label: 'Personal' },
+          ai_discovered: { icon: '🤖', color: '#059669', label: 'AI' },
+          ai_watchlist: { icon: '🔍', color: '#059669', label: 'AI Watch' },
+          screener: { icon: '📊', color: '#0891b2', label: 'Finviz' },
+        }
+        const srcBadge = (t: any) => {
+          const c = srcCfg[t.source || 'screener'] || srcCfg.screener
+          return { ...c, label: t.source === 'social' && t.source_detail ? `Social ${t.source_detail}` : c.label }
+        }
+        const pctColor = (v: any) => { const n = parseFloat(v); return isNaN(n) ? 'var(--text3)' : n >= 0 ? '#22c55e' : '#ef4444' }
+        const pctText = (v: any) => (v === '' || v == null) ? '—' : `${v}%`
+        // Richer ticker table layout
+        const gridCols = '52px 72px 1fr 60px 30px 48px 64px 58px 58px 50px 1.3fr 1fr 1.6fr'
+        const runHistory: any[] = tradeAi?.run_history ?? []
+        const sectors: Record<string, number> = tradeAi?.sectors ?? {}
+        const sectorEntries = Object.entries(sectors).sort((a, b) => (b[1] as number) - (a[1] as number))
+        const sectorMax = sectorEntries.length ? Math.max(...sectorEntries.map(e => e[1] as number)) : 1
+        const runGoMax = runHistory.length ? Math.max(1, ...runHistory.map((r: any) => r.go ?? 0)) : 1
         const kpis = [
           { label: 'GO', value: tradeAi?.go_count ?? 0, color: '#22c55e' },
           { label: 'WAIT', value: tradeAi?.wait_count ?? 0, color: '#f59e0b' },
@@ -100,28 +135,140 @@ export default function TradingHub({ onDrill }: Props) {
                 </div>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '0.5fr 1fr 0.6fr 0.6fr 0.7fr 0.6fr 1.4fr 0.8fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
-              <span>Decision</span><span>Symbol</span><span>Score</span><span>RVOL</span><span>Price</span><span>Chg%</span><span>Catalyst</span><span>Critic</span>
+
+            {/* Copy lists (GO / WAIT / Universe) — paste into broker watchlist / ToS */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              {copyBoxes.map(b => (
+                <div key={b.type} style={{ flex: 1, padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                    <span style={{ fontSize: 8, color: b.color, fontWeight: 700 }}>{b.label} ({b.syms.length})</span>
+                    {b.syms.length > 0 && (
+                      <button onClick={() => doCopy(b.type, b.text)} style={{
+                        fontSize: 8, padding: '2px 8px', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
+                        border: `1px solid ${copied === b.type ? '#22c55e' : 'var(--border)'}`,
+                        background: copied === b.type ? 'rgba(34,197,94,.12)' : 'var(--bg1)',
+                        color: copied === b.type ? '#22c55e' : 'var(--text2)',
+                      }}>{copied === b.type ? '✓ Copied' : 'Copy'}</button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text0)', fontFamily: 'monospace', wordBreak: 'break-all', userSelect: 'all', cursor: 'text', minHeight: 16, maxHeight: 54, overflowY: 'auto' }}>
+                    {b.text || '—'}
+                  </div>
+                </div>
+              ))}
             </div>
-            {tickers.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 12 }}>No scan tickers in the latest run.</div> :
-            tickers.slice(0, 60).map((t: any, i: number) => (
+
+            {/* Decision filter */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+              {(['ALL', 'GO', 'WAIT'] as const).map(f => {
+                const active = tradeFilter === f
+                const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : '#60a5fa'
+                const count = f === 'ALL' ? tickers.length : tickers.filter((t: any) => t.decision === f).length
+                return (
+                  <button key={f} onClick={() => setTradeFilter(f)} style={{
+                    padding: '4px 12px', fontSize: 10, borderRadius: 5, cursor: 'pointer', fontWeight: active ? 700 : 500,
+                    border: `1px solid ${active ? fc : 'var(--border)'}`,
+                    background: active ? `${fc}22` : 'var(--bg2)', color: active ? fc : 'var(--text3)', fontFamily: 'monospace',
+                  }}>{f === 'ALL' ? 'Universe' : f} ({count})</button>
+                )
+              })}
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+            <div style={{ minWidth: 1080 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+              <span>Decision</span><span>Source</span><span>Symbol</span><span>Score</span><span>Grd</span><span>RVOL</span><span>Price</span><span>Chg%</span><span>Gap%</span><span>Float</span><span>Sector</span><span>Social</span><span>Catalyst</span>
+            </div>
+            {filtered.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 12 }}>No {tradeFilter === 'ALL' ? '' : tradeFilter + ' '}tickers in the latest run.</div> :
+            filtered.slice(0, 60).map((t: any, i: number) => {
+              const sb = srcBadge(t)
+              const country = t.country || ''
+              const flag = (!country || country === '🇺🇸' || country === 'United States') ? '' : country
+              const social = t.social_sentiment || ''
+              const socialColor = social.includes('Very Bullish') ? '#4ade80' : social.includes('Bullish') ? '#86efac' : social.includes('Bearish') ? '#f87171' : 'var(--text3)'
+              const score = t.score ?? 0
+              return (
               <div key={`${t.symbol}-${i}`} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.decision ?? ''} · score ${t.score ?? '—'} · ${t.sector ?? ''}`, endpoint: '/api/v2/trade-ai', rows: [t] })}
-                style={{ display: 'grid', gridTemplateColumns: '0.5fr 1fr 0.6fr 0.6fr 0.7fr 0.6fr 1.4fr 0.8fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${decisionColor(t.decision)}` }}>
+                style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 6, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center', borderLeft: `3px solid ${decisionColor(t.decision)}` }}>
                 <span style={{ fontWeight: 700, fontSize: 9, color: decisionColor(t.decision) }}>{t.decision || 'NO-GO'}</span>
-                <div>
+                <span title={sb.label} style={{ fontSize: 8, fontWeight: 600, padding: '1px 4px', borderRadius: 3, border: `1px solid ${sb.color}40`, color: sb.color, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sb.icon} {sb.label}</span>
+                <div style={{ overflow: 'hidden' }}>
                   <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</span>
-                  {t.grade && <span style={{ fontSize: 8, color: 'var(--text3)', marginLeft: 4 }}>{t.grade}</span>}
                   {t.decision_changed && <span title={`critic changed from ${t.original_decision}`} style={{ fontSize: 8, color: '#f59e0b', marginLeft: 4 }}>⟳</span>}
                 </div>
-                <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{t.score ?? '—'}</span>
-                <span style={{ color: (t.rvol ?? 0) >= 5 ? '#22c55e' : 'var(--text2)' }}>{t.rvol ? Number(t.rvol).toFixed(1) : '—'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ width: 24, height: 4, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden', flexShrink: 0 }}>
+                    <div style={{ width: `${Math.min(score, 50) * 2}%`, height: '100%', background: score >= 40 ? '#22c55e' : score >= 30 ? '#f59e0b' : 'var(--text3)' }} />
+                  </div>
+                  <span style={{ fontWeight: 600, color: score >= 40 ? '#22c55e' : score >= 30 ? '#f59e0b' : 'var(--text2)' }}>{t.score ?? '—'}</span>
+                </div>
+                <span style={{ fontWeight: 600, color: t.grade === 'A' ? '#22c55e' : 'var(--text2)' }}>{t.grade || '—'}</span>
+                <span style={{ color: (t.rvol ?? 0) >= 5 ? '#22c55e' : 'var(--text2)' }}>{t.rvol ? Number(t.rvol).toFixed(1) + 'x' : '—'}</span>
                 <span style={{ color: 'var(--text2)' }}>{t.price ? `$${Number(t.price).toFixed(2)}` : '—'}</span>
-                <span style={{ color: parseFloat(t.change_pct) >= 0 ? '#22c55e' : '#ef4444' }}>{t.change_pct !== '' && t.change_pct != null ? `${t.change_pct}%` : '—'}</span>
-                <span style={{ color: 'var(--text3)', fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.catalyst}>{t.catalyst || '—'}</span>
-                <span style={{ fontSize: 9, color: t.critic_verdict === 'GO' ? '#22c55e' : t.critic_verdict === 'AVOID' ? '#ef4444' : 'var(--text3)' }}>{t.critic_verdict ?? '—'}</span>
+                <span style={{ color: pctColor(t.change_pct), fontWeight: 600 }}>{pctText(t.change_pct)}</span>
+                <span style={{ color: pctColor(t.gap_pct) }}>{pctText(t.gap_pct)}</span>
+                <span style={{ color: 'var(--text2)' }}>{t.float_m != null && t.float_m !== '' ? `${t.float_m}M` : '—'}</span>
+                <span style={{ fontSize: 9, display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{flag}{flag ? ' ' : ''}{t.sector || '—'}</span>
+                  {t.vs_sector_pct != null && <span style={{ fontSize: 8, color: t.vs_sector_pct >= 0 ? '#4ade80' : '#f87171' }}>vs {t.sector_etf || 'sector'}: {t.vs_sector_pct >= 0 ? '+' : ''}{t.vs_sector_pct}%</span>}
+                </span>
+                {social ? (
+                  <span style={{ fontSize: 9, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <span style={{ fontWeight: 600, color: socialColor }}>{social}</span>
+                    {(t.social_reddit || t.social_stocktwits) ? <span style={{ fontSize: 8, color: 'var(--text3)' }}>R:{t.social_reddit || 0} ST:{t.social_stocktwits || 0}{t.social_bullish_pct != null ? ` (${Math.round(t.social_bullish_pct)}% bull)` : ''}</span> : null}
+                  </span>
+                ) : <span style={{ fontSize: 9, color: 'var(--text3)' }}>—</span>}
+                <span style={{ fontSize: 9, color: t.disqualified ? '#fca5a5' : t.catalyst_verified === false ? '#f59e0b' : 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }} title={t.catalyst}>
+                  {t.disqualified && <span style={{ fontSize: 7, background: '#7f1d1d', color: '#fca5a5', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>DQ</span>}
+                  {!t.disqualified && t.catalyst_verified === false && <span style={{ fontSize: 7, background: '#78350f', color: '#fcd34d', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>?</span>}
+                  {!t.disqualified && t.catalyst_verified === true && <span style={{ fontSize: 7, background: '#052e16', color: '#86efac', padding: '1px 4px', borderRadius: 2, fontWeight: 700, flexShrink: 0 }}>V</span>}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.catalyst || '—'}</span>
+                </span>
               </div>
-            ))}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/NO-GO). Read-only. Click a row for full scan detail. Showing top {Math.min(60, tickers.length)} of {tickers.length} by score.</div>
+            )})}
+            </div>
+            </div>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai (orchestrator scan: screener → enrichment → scalp critic → GO/WAIT/NO-GO). Click a row for full scan detail. Showing top {Math.min(60, filtered.length)} of {filtered.length}{tradeFilter !== 'ALL' ? ` ${tradeFilter}` : ''} by score{tradeFilter !== 'ALL' ? ` (${tickers.length} universe)` : ''}.</div>
+
+            {/* Run History + Sector Distribution */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 14 }}>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Run History <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({runHistory.length})</span></div>
+                {runHistory.length <= 1 ? <div style={{ color: 'var(--text3)', fontSize: 10 }}>Single run only</div> : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60 }}>
+                      {runHistory.slice().reverse().map((r: any, i: number) => (
+                        <div key={i} title={`${r.label} · GO ${r.go} · WAIT ${r.wait}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                          <div style={{ width: '100%', height: `${((r.go ?? 0) / runGoMax) * 100}%`, minHeight: (r.go ?? 0) > 0 ? 3 : 0, background: (r.go ?? 0) > 0 ? '#22c55e' : 'var(--border)', borderRadius: '2px 2px 0 0' }} />
+                          <span style={{ fontSize: 7, color: 'var(--text3)', marginTop: 2, whiteSpace: 'nowrap' }}>{r.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                      {runHistory.map((r: any, i: number) => (
+                        <div key={i} style={{ fontSize: 9, color: 'var(--text3)' }}><span style={{ fontWeight: 600, color: 'var(--text2)' }}>{r.label}</span> GO:{r.go} W:{r.wait}</div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Sector Distribution <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({sectorEntries.length})</span></div>
+                {sectorEntries.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 10 }}>No sector data available</div> : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
+                    {sectorEntries.map(([sec, count]) => (
+                      <div key={sec} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 110, fontSize: 9, color: 'var(--text2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sec}</span>
+                        <div style={{ flex: 1, height: 8, background: 'var(--bg3)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${((count as number) / sectorMax) * 100}%`, height: '100%', background: '#60a5fa', opacity: 0.7, borderRadius: 3 }} />
+                        </div>
+                        <span style={{ width: 28, fontSize: 9, color: 'var(--text1)', textAlign: 'right', fontWeight: 600 }}>{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )
       })()}
@@ -198,33 +345,7 @@ export default function TradingHub({ onDrill }: Props) {
         </>
       )}
 
-      {tab === 'Proposals' && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Proposals ({propList.length})</div>
-          {propList.slice(0, 20).map((p: any) => {
-            const adv = advMap[String(p.id)]
-            return (
-            <div key={p.id} onClick={() => onDrill({ title: `${p.symbol} #${p.id}`, subtitle: `${p.strategy_id} · ${p.status}`, endpoint: '/api/v2/paper-proposals', rows: [adv ? { ...p, setup_advisory: adv.note, setup_advisory_flag: adv.advisory_flag, setup_prior_score: adv.prior_score } : p] })}
-              style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-              <div>
-                <span style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace', marginRight: 8 }}>{p.symbol}</span>
-                <span style={{ color: 'var(--text3)' }}>{p.strategy_id}</span>
-                {adv && <span title={adv.note} style={{ marginLeft: 8, fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg2)', color: advColor(adv.advisory_flag), border: `1px solid ${advColor(adv.advisory_flag)}33` }}>
-                  {adv.advisory_flag === 'caution' ? '⚠ ' : ''}setup ~{adv.prior_score != null ? Number(adv.prior_score).toFixed(0) : '—'}
-                </span>}
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <span style={{ color: 'var(--text2)' }}>{fmt$(p.proposed_entry, 2)} → {fmt$(p.proposed_target1, 2)}</span>
-                <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 3,
-                  background: p.status === 'PENDING' ? 'rgba(245,158,11,.1)' : p.status === 'APPROVED' ? 'rgba(34,197,94,.1)' : 'rgba(107,114,128,.1)',
-                  color: p.status === 'PENDING' ? '#f59e0b' : p.status === 'APPROVED' ? '#22c55e' : 'var(--text3)',
-                }}>{p.status}</span>
-              </div>
-            </div>
-          )})}
-          <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/paper-proposals + /api/v2/atm/setup-advisory (setup-quality prior). Advisory-only — read-only, never gates execution.</div>
-        </div>
-      )}
+      {tab === 'Proposals' && <ProposalsRich />}
 
       {tab === 'Execution' && execQual && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>

@@ -16,7 +16,18 @@
   --cyan: #06b6d4;
   --mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* aliases for ported v2 primitives (ActionButton / StatusBadge / StateCard / ScreenerConfigModal) */
+  --accent: #60a5fa;
+  --accent-dim: rgba(96, 165, 250, 0.15);
+  --green-dim: rgba(34, 197, 94, 0.15);
+  --red-dim: rgba(239, 68, 68, 0.15);
+  --amber-dim: rgba(245, 158, 11, 0.15);
+  --bg3: #262a3d;
+  --radius: 6px;
+  --transition: all 0.15s ease;
 }
+
+@keyframes spin { to { transform: rotate(360deg); } }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
