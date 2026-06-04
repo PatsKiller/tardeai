@@ -269,28 +269,31 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
 
 
 def _enqueue_hermes_reviews(conn, trade_ids):
-    """Best-effort: queue agent review jobs for trades Hermes hasn't seen.
-    Uses the agent_jobs queue if present; otherwise no-op (reports 0)."""
+    """Generate the missing Hermes agent reviews by invoking the REAL reviewer
+    (multi_tier_trade_reviewer.py, realtime tier / gemma3:4b). Only CLOSED trades are
+    reviewable — open trades are skipped. Runs sequentially to avoid saturating the local
+    LLM. Returns the count successfully reviewed.
+
+    (The old agent_jobs queue path was a no-op — that table does not exist; reviews are
+    produced by the multi-tier reviewer, not an agent_jobs consumer.)"""
     if not trade_ids:
         return 0
+    import subprocess
     cur = conn.cursor()
-    try:
-        cur.execute("SELECT to_regclass('public.agent_jobs')")
-        if not cur.fetchone()[0]:
-            return 0
-        n = 0
-        for tid in trade_ids:
-            cur.execute("""
-                INSERT INTO agent_jobs (job_type, status, payload, created_at)
-                VALUES ('paper_trade_review', 'queued', %s, now())
-                ON CONFLICT DO NOTHING
-            """, [json.dumps({"paper_trade_id": tid, "source": "trade_integrity_audit"})])
-            n += cur.rowcount
-        conn.commit()
-        return n
-    except Exception:
-        conn.rollback()
-        return 0
+    cur.execute("SELECT id FROM paper_trades WHERE id = ANY(%s) AND status='closed'", [list(trade_ids)])
+    closed_ids = [r[0] for r in cur.fetchall()]
+    reviewer = str(PROJECT_ROOT / "scripts" / "multi_tier_trade_reviewer.py")
+    reviewed = 0
+    for tid in closed_ids:
+        try:
+            r = subprocess.run(
+                [sys.executable, reviewer, "--tier", "realtime", "--trade-id", str(tid)],
+                capture_output=True, text=True, timeout=180, cwd=str(PROJECT_ROOT))
+            if r.returncode == 0:
+                reviewed += 1
+        except Exception:
+            pass
+    return reviewed
 
 
 def main():
