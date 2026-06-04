@@ -256,6 +256,11 @@ def assess_proposal(conn, proposal: dict) -> dict:
     MAX_PRICE_MOVE_FROM_ENTRY_PCT = th["max_price_drift_pct"]
     MAX_SPREAD_PCT = th["max_spread_pct"]
     MIN_VOLUME = th["min_volume"]
+    try:
+        from proposal_lifecycle import get_timeframe_class
+        is_intraday = get_timeframe_class(strategy_id_raw) == "intraday"
+    except Exception:
+        is_intraday = strategy_id_raw in INTRADAY_STRATEGIES
 
     # -----------------------------------------------------------------------
     # 1. Get quote from multi-provider hierarchy
@@ -290,8 +295,13 @@ def assess_proposal(conn, proposal: dict) -> dict:
                 quote_age_seconds = (now_utc - qt).total_seconds()
 
                 max_age = MAX_QUOTE_AGE_SECONDS
-                if not is_market_hours():
-                    max_age = 86400  # relax to 24h after hours
+                # Swing/position may pre-stage after hours on a day-old quote (24h).
+                # Intraday must NOT relax: its 300s ceiling stays in force year-round so
+                # readiness can't show ACTIONABLE_READY on a stale premarket quote that
+                # the executor (flat 15-min check, paper_trade_logger.py:1138-1142) will
+                # then reject ("Need fresh market data"). This was the FOFO false-green.
+                if not is_market_hours() and not is_intraday:
+                    max_age = 86400  # relax to 24h after hours (swing/position only)
 
                 if quote_age_seconds <= max_age:
                     quote_fresh = True

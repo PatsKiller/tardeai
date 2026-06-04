@@ -22,21 +22,42 @@ ALERT_LOG = PROJ / "logs" / "proposal_alerts.log"
 
 
 def _db_query(sql, params=None, fetch="all"):
+    # _get_conn() returns a singleton connection with autocommit=False, so writes
+    # MUST be committed and a failed statement MUST be rolled back — otherwise the
+    # shared transaction is left aborted and poisons every later query on the conn.
+    # fetch="none" is for write statements (UPDATE/INSERT/DELETE): it skips the
+    # fetch (which raises on a no-result statement), commits, and returns rowcount.
+    conn = None
     try:
         from db_adapter import _get_conn
         conn = _get_conn()
-        if not conn: return [] if fetch == "all" else None
+        if not conn:
+            return [] if fetch == "all" else (0 if fetch == "none" else None)
         cur = conn.cursor()
         cur.execute(sql, params or [])
+        if fetch == "none":
+            rowcount = cur.rowcount
+            cur.close()
+            conn.commit()
+            return rowcount
         if fetch == "one":
             row = cur.fetchone()
-            return dict(zip([d[0] for d in cur.description], row)) if row else None
+            result = dict(zip([d[0] for d in cur.description], row)) if row else None
+            cur.close()
+            conn.commit()
+            return result
         rows = cur.fetchall()
         cols = [d[0] for d in cur.description]
-        conn.close()
+        cur.close()
+        conn.commit()
         return [dict(zip(cols, r)) for r in rows]
     except Exception:
-        return [] if fetch == "all" else None
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return [] if fetch == "all" else (0 if fetch == "none" else None)
 
 
 def _log_alert(alert_id, proposal_id, symbol, alert_type, urgency, sent, status, error=None):
@@ -236,7 +257,7 @@ def main():
                     try:
                         _db_query("""UPDATE paper_trade_proposals
                             SET last_alert_at=NOW(), alert_count=COALESCE(alert_count,0)+1
-                            WHERE id=%s""", [pr.get("id")])
+                            WHERE id=%s""", [pr.get("id")], fetch="none")
                     except Exception:
                         pass
             except Exception as e:
