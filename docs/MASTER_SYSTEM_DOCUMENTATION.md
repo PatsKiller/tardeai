@@ -1187,6 +1187,60 @@ instead of being parked. A `PENDING_TRADING_WINDOW` lifecycle is **designed** (a
 `pending_trading_window.py`); wiring into the approver is deferred to a later phase to avoid GO/WAIT
 changes.
 
+**Readiness/executor freshness alignment (2026-06-04):** `proposal_execution_readiness.py`
+previously relaxed the quote-age ceiling to 24h for *all* strategy classes outside regular hours.
+For **intraday** strategies (`momentum_scalp`, `gap_and_go`) this let a stale premarket quote
+surface as `ACTIONABLE_READY`, only for the approver to reject it on click ("Need fresh market
+data") — because the executor (`paper_trade_logger.py`, flat 15-min ceiling, no caller override)
+never relaxes. The after-hours relaxation is now gated to **swing/position only** (`is_intraday`
+guard derived from `get_timeframe_class`); intraday keeps its 300s ceiling year-round so readiness
+can no longer show a green card the executor will reject. Swing/position after-hours pre-staging on
+a day-old quote is unchanged.
+
+**RTH-gate on intraday proposal GENERATION (2026-06-04):** the freshness fix above stops the false
+green light but proposals were still *generated* premarket (04:00–09:00) on stale quotes, so they
+expired or auto-rejected (price-drift / blocked-too-long) before the 9:30 open — a real GO signal
+(e.g. XOS, FOFO on 2026-06-04) never became an approvable proposal. Fix: `auto_proposal_generator.py`
+→ `run_auto_proposals()` now skips intraday signals (`momentum_scalp`, `gap_and_go` via
+`get_timeframe_class`) when `current_market_session() != "regular"`, recording
+`SKIPPED_OUTSIDE_RTH` in `auto_proposal_decisions`. They regenerate on the next `*/30 9-16` run on
+live quotes. This single gate also covers the `catalyst_momentum_engine.py` premarket-scalp band,
+which shells out to `auto_proposal_generator.py`. The incubator promoter is unaffected — its
+`_CLASSIFICATION_STRATEGIES` excludes intraday. Swing/position generation is unchanged; `force=True`
+(manual operator runs) bypasses the gate.
+
+**Liquidity pre-screen on proposal GENERATION (2026-06-04):** the RTH-gate fixed *timing*, but the
+screener still fed structurally untradeable microcaps (FOFO live spread 19.8% / 8.5K shares; BNKK
+15% / 1.6K shares on 2026-06-04) that reached Telegram and were only rejected downstream by the
+execution-readiness layer — pure operator noise. Root cause: `strategy_signals` carries no absolute
+volume or spread (only `rvol`, a *ratio* — 22× a tiny base is still tiny), and no stored source is
+reliable for thin names (`trade_ai_scans.volume` NULL, `market_quotes` has no row for FOFO/BWEN), so
+a live quote is the only dependable liquidity source. Fix: `auto_proposal_generator.py` →
+`run_auto_proposals()` step 2e calls `_liquidity_prescreen(symbol, rules)` after strategy-criteria
+validation and before sizing (so it only quotes candidates that passed the cheap structural filters).
+It blocks when the live `spread_pct` exceeds `max_spread_pct` (5.0), or when **both** the share floor
+(`min_day_volume_shares` 25000) and the dollar floor (`min_dollar_day_volume` $100K) are breached,
+recording `SKIPPED_LIQUIDITY` in `auto_proposal_decisions` (+ `liquidity_rejected` stat). Thresholds
+live in `config/strategies/shared_risk_rules.yaml → liquidity_prescreen` (looser than the execution
+layer's ~1% momentum spread on purpose — generation catches *structurally* untradeable, approval
+stays the tighter backstop). **Fail-open by design:** outside regular hours, no quote, provider
+error, or config-disabled → it never blocks (swing/position after-hours pre-staging unaffected;
+`force=True` bypasses). Verified: blocks FOFO/BNKK/XOS on live quotes, passes AAPL; all fail-open
+paths confirmed.
+
+**Companion analysis — Hermes news → scalp catalyst (2026-06-04):** see
+`docs/HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md`. STEP 0 grounding found the
+`news_articles → news_to_catalyst.py → catalyst_events` classifier is **dead since 2026-04-27**
+(0 rows/7d), which silently starves `signal_fusion.py` (a live consumer of `catalyst_events`); the
+live scalp-catalyst path is `catalyst_momentum_engine.py` (SearXNG + screener candidates, not
+Hermes-discovered news); and Hermes already writes the shared Postgres
+(`hermes_research_intelligence`, 421 rows/24h) so no Docker bridge is needed. **Prompt #1 repair
+APPLIED 2026-06-04** (doc §12): root cause was a column-name mismatch in `news_ingestion.py`'s
+inline catalyst write (silent `except:pass` inside a green job) plus an unscheduled classifier;
+fixed both writers (deduped via a new unique index), re-wired `signal_fusion`, and added
+`intel_table_staleness_monitor.py` so this silent-failure class is caught next time. See that doc
+for the remaining integration options (Hermes bridge, tiered cadence).
+
 **Profit-protection advisory (Phase 191, advisory-only):** beyond *does a stop exist*, the system
 now evaluates *is the stop still appropriate given unrealized profit*. `profit_protection_advisory.py`
 (TradeAI scoring) computes stop quality — profit locked, giveback if stopped, R vs the broker stop
@@ -1746,6 +1800,35 @@ Every critical cron job is wrapped with `pipeline_alert.py` which:
 Wrapped pipelines: news_ingestion, youtube_ingest, overnight_batch, sec_data_ingest, event_detector, previously_traded, pipeline_watchdog.
 
 **Scale:** 56 scripts send Telegram alerts across 100+ unique call sites. All sends logged to `notification_log` table with dedupe keys.
+
+**Proposal-alert dedup fix (2026-06-04):** `send_telegram_proposal_alert.py` enforces a 30-min
+per-proposal dedup via `paper_trade_proposals.last_alert_at`. The write-back was silently failing —
+its `_db_query` helper never committed (singleton conn, `autocommit=False`) and ran the `UPDATE`
+through the `fetchall()` path, which raises on a no-result statement and was swallowed by a bare
+`except`, leaving the shared transaction aborted (and poisoning later queries on the conn).
+`last_alert_at` was therefore never persisted, so every `*/2` cron tick re-sent the identical card
+(e.g. ARTL ~10× on 2026-06-03). `_db_query` now has a `fetch="none"` write mode that commits and
+returns rowcount, with rollback-on-error; the dedup UPDATE uses it. Note: dedup is purely
+time-based — a genuine state change (ACTIONABLE → BLOCKED) within the 30-min window is also
+suppressed until the window elapses or the proposal auto-rejects after 30-min blocked.
+
+**Silent-failure watchdog stack (2026-06-04).** Built after a freshness scan found the
+`catalyst_events` pipeline had been silently dead ~5 weeks (no monitor watched for "table that
+should have rows has none"). Three independent layers:
+1. **`system_freshness_monitor.py`** (`*/20`) — registry-driven freshness/empty-vs-input/cron-logfile
+   checks; emits SIEM (`alert_events` `data_integrity`) + Telegram for P0/P1; **narrow safe
+   auto-fix** (allowlist of idempotent DB-only re-runs — `news_to_catalyst`, `hermes_news_bridge`,
+   `research_insight_extractor` — capped 2/day, always logged + escalated; never schema/column/
+   trading writes). Weekday-aware. Fail-tested end-to-end (Telegram delivery to operator device
+   confirmed).
+2. **`freshness_watchdog_heartbeat.py`** (`*/30`, independent — does not import the monitor) — pages
+   P0 if the monitor's heartbeat goes >70 min stale (watches the watchman; host-alive case).
+3. **Off-host ping** — `system_freshness_monitor` pings `FRESHNESS_HEARTBEAT_PING_URL` each run if
+   set (external uptime service; covers total-host death). **Env-gated — set the URL to activate.**
+
+Consolidated post-repair state: **`docs/SYSTEM_HEALTH_BASELINE_2026_06_04.md`** (signal lanes 4/5,
+freshness registry, 4-gate readout, open risks, watchdog coverage). Full narrative + decisions:
+`docs/HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md`.
 
 ### Central Alert Dispatcher (Phase 2)
 
