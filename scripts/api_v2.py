@@ -13829,18 +13829,18 @@ def _system_siem_dashboard():
 
     cutoff = _dtsiem.now(_tzsiem.utc) - _tdsiem(days=14)
 
-    # Source 1: alert_events
+    # Source 1: alert_events (resolved alerts age out of the active SIEM view)
     ae_rows = _db_query("""
         SELECT id, alert_type, symbol, severity, source_script,
-               LEFT(raw_text, 200) as raw_text, created_at
-        FROM alert_events WHERE created_at > %s
+               LEFT(raw_text, 200) as raw_text, created_at, lifecycle_state
+        FROM alert_events WHERE created_at > %s AND COALESCE(lifecycle_state,'active') <> 'resolved'
         ORDER BY created_at DESC LIMIT 200
     """, [cutoff]) or []
 
     # Source 2: system_health_events
     she_rows = _db_query("""
-        SELECT id, event_type, component, severity, LEFT(message, 200) as message, created_at
-        FROM system_health_events WHERE created_at > %s
+        SELECT id, event_type, component, severity, LEFT(message, 200) as message, created_at, lifecycle_state
+        FROM system_health_events WHERE created_at > %s AND COALESCE(lifecycle_state,'active') <> 'resolved'
         ORDER BY created_at DESC LIMIT 200
     """, [cutoff]) or []
 
@@ -13889,7 +13889,7 @@ def _system_siem_dashboard():
             "id": f"ae-{r['id']}", "timestamp": _json_clean(r["created_at"]),
             "source": "alert_events", "event_type": etype, "severity": esev,
             "symbol": r.get("symbol"), "component": r.get("source_script"),
-            "message": r.get("raw_text", "")[:150],
+            "message": r.get("raw_text", "")[:150], "lifecycle_state": r.get("lifecycle_state") or "active",
             "dedupe_key": f"{etype}:{r.get('symbol','sys')}:{r.get('source_script','?')}",
         })
     for r in she_rows:
@@ -13898,7 +13898,7 @@ def _system_siem_dashboard():
             "id": f"she-{r['id']}", "timestamp": _json_clean(r["created_at"]),
             "source": "system_health_events", "event_type": etype, "severity": esev,
             "symbol": None, "component": r.get("component"),
-            "message": r.get("message", "")[:150],
+            "message": r.get("message", "")[:150], "lifecycle_state": r.get("lifecycle_state") or "active",
             "dedupe_key": f"{etype}:sys:{r.get('component','?')}",
         })
     for r in nl_rows:
@@ -14820,6 +14820,8 @@ ROUTES = {
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
+    "/api/v2/admin/strategy-enablement": lambda: {"rows": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT strategy_id, account, enabled, updated_at, updated_by FROM strategy_enablement ORDER BY strategy_id, account") or [])]},
+    "/api/v2/admin/cron-retryable": lambda: {"jobs": sorted(__import__("admin_write_guard").NON_TRADING_CRON_ALLOWLIST)},
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
     "/api/v2/system/siem": lambda: _system_siem_dashboard(),
     "/api/v2/inbox": lambda: _inbox(),
@@ -15921,6 +15923,87 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 apply_fn=_apply, operator=operator,
                 confirmed=bool(b.get("confirm")), token=b.get("token"))
             return code, resp
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # cron retry — NON-TRADING jobs ONLY (allowlist; trading/unknown jobs excluded by construction)
+    if method == "POST" and base_path == "/api/v2/admin/cron/retry":
+        try:
+            from admin_write_guard import admin_write, cron_retry_allowed
+            b = body or {}
+            job = (b.get("job") or "").strip()
+            if not job:
+                return 400, {"ok": False, "error": "job required"}
+            if not cron_retry_allowed(job):
+                return 403, {"ok": False,
+                             "error": f"'{job}' is not on the non-trading retry allowlist (excluded)"}
+            operator = (b.get("operator") or "operator")[:60]
+            import subprocess as _sp
+            def _apply():
+                _sp.Popen([str(PROJECT_ROOT / ".venv/bin/python"),
+                           str(PROJECT_ROOT / "scripts" / f"{job}.py")],
+                          cwd=str(PROJECT_ROOT),
+                          stdout=open(PROJECT_ROOT / "logs" / f"{job}.log", "a"), stderr=_sp.STDOUT)
+            return admin_write(action="cron.retry", target=f"cron:{job}",
+                               old_value={"status": "manual-rerun-requested"},
+                               new_value={"action": "launched", "job": job},
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # risk config edit (atm_config.yaml; paper-system limits — NOT a live-account control)
+    if method == "POST" and base_path == "/api/v2/admin/risk-config":
+        try:
+            from admin_write_guard import (admin_write, RISK_CONFIG_FIELDS, ATM_CONFIG_PATH,
+                                           read_yaml_value, write_yaml_value)
+            b = body or {}
+            field = b.get("field")
+            if field not in RISK_CONFIG_FIELDS:
+                return 400, {"ok": False, "error": f"field not editable: {field}"}
+            if "value" not in b:
+                return 400, {"ok": False, "error": "value required"}
+            new_val = b.get("value")
+            kp = RISK_CONFIG_FIELDS[field]
+            old_val = read_yaml_value(ATM_CONFIG_PATH, kp)
+            operator = (b.get("operator") or "operator")[:60]
+
+            def _apply():
+                write_yaml_value(ATM_CONFIG_PATH, kp, new_val)
+
+            return admin_write(action="risk.config", target=f"atm_config:{field}",
+                               old_value={field: old_val}, new_value={field: new_val},
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # strategy enablement — enable/disable a strategy per account
+    if method == "POST" and base_path == "/api/v2/admin/strategy/enablement":
+        try:
+            from admin_write_guard import admin_write
+            b = body or {}
+            sid = (b.get("strategy_id") or "").strip()
+            acct = (b.get("account") or "").strip()
+            if not sid or not acct:
+                return 400, {"ok": False, "error": "strategy_id and account required"}
+            enabled = bool(b.get("enabled"))
+            cur_row = _db_query("SELECT enabled FROM strategy_enablement WHERE strategy_id=%s AND account=%s",
+                                (sid, acct), fetch="one")
+            old_enabled = cur_row.get("enabled") if cur_row else None
+            operator = (b.get("operator") or "operator")[:60]
+
+            def _apply():
+                _db_write("""INSERT INTO strategy_enablement (strategy_id, account, enabled, updated_at, updated_by)
+                             VALUES (%s,%s,%s,NOW(),%s)
+                             ON CONFLICT (strategy_id, account)
+                             DO UPDATE SET enabled=EXCLUDED.enabled, updated_at=NOW(), updated_by=EXCLUDED.updated_by""",
+                          (sid, acct, enabled, operator))
+
+            return admin_write(action="strategy.enablement", target=f"{sid}:{acct}",
+                               old_value={"enabled": old_enabled}, new_value={"enabled": enabled},
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

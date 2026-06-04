@@ -37,3 +37,13 @@ ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS acknowledged_at timest
 ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS acknowledged_by text;
 ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS resolved_at timestamptz;
 ALTER TABLE system_health_events ADD COLUMN IF NOT EXISTS resolved_by text;
+
+-- 3. Strategy enablement (STEP 2) — enable/disable a strategy per account.
+CREATE TABLE IF NOT EXISTS strategy_enablement (
+    strategy_id text NOT NULL,
+    account     text NOT NULL,
+    enabled     boolean NOT NULL DEFAULT true,
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    updated_by  text,
+    PRIMARY KEY (strategy_id, account)
+);
