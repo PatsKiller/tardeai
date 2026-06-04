@@ -62,20 +62,24 @@ def _conn():
     return get_connection()
 
 
-def _broker_symbols():
-    """Live broker holdings (source of truth) — symbols currently held at the broker.
-    Best-effort: if the adapter can't be reached, return None so we don't false-flag."""
+def _broker_state():
+    """Live broker state (source of truth): (held_symbols, stop_symbols).
+    held = symbols currently held; stop = symbols with a live protective stop order.
+    Returns (None, None) if the broker can't be reached, so we never false-flag."""
     try:
         from alpaca_paper_adapter import AlpacaPaperAdapter
         a = AlpacaPaperAdapter()
         if not a.enabled:
-            return None
-        return {p.get("symbol") for p in (a.get_positions() or []) if p.get("symbol")}
+            return None, None
+        held = {p.get("symbol") for p in (a.get_positions() or []) if p.get("symbol")}
+        stops = {o.get("symbol") for o in (a.get_open_orders() or [])
+                 if o.get("type") in ("stop", "stop_limit") and o.get("side") == "sell"}
+        return held, stops
     except Exception:
-        return None
+        return None, None
 
 
-def audit_trade(t, broker_syms, reviews_by_trade):
+def audit_trade(t, broker_syms, broker_stop_syms, reviews_by_trade):
     """Run Trade AI deterministic checks + Hermes coverage for one trade row (dict)."""
     checks, reasons = {}, []
     state = "open" if (t.get("status") == "open" or t.get("lifecycle_state") == "open") else "closed"
@@ -107,12 +111,20 @@ def audit_trade(t, broker_syms, reviews_by_trade):
     else:
         checks["not_phantom"] = "pass"
 
-    # 3. Protection — open trades must carry a stop
+    # 3. Protection — open trades must carry a stop. The BROKER is the source of truth: a live
+    #    sell-stop at the broker (or a recorded stop_order_id) IS protection, even if the DB's
+    #    stop_loss_price display column is stale/NULL. Only fall back to DB columns when broker
+    #    state is unavailable, so we never false-flag a protected position.
     if is_open:
-        if t.get("stop_loss_price") or t.get("planned_stop"):
+        has_broker_stop = (broker_stop_syms is not None and t.get("symbol") in broker_stop_syms)
+        has_recorded_stop = bool(t.get("stop_order_id")) and (t.get("broker_stop_status") not in (None, "canceled", "expired", "rejected"))
+        has_db_stop = bool(t.get("stop_loss_price") or t.get("planned_stop"))
+        if has_broker_stop or has_recorded_stop:
             checks["has_protection"] = "pass"
+        elif broker_stop_syms is None and has_db_stop:
+            checks["has_protection"] = "pass"  # broker unreachable — trust DB
         else:
-            fail("has_protection", "open trade has no stop")
+            fail("has_protection", "open trade has no stop at broker")
     else:
         checks["has_protection"] = "na"
 
@@ -190,7 +202,7 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
         SELECT id, symbol, account, broker, shares, entry_price, stop_loss_price, planned_stop,
                target_1, status, lifecycle_state, broker_confirmed, broker_status, broker_order_id,
                pnl, outcome_verdict, close_reason, closed_via, current_price, last_synced_at,
-               strategy_id, proposal_id
+               strategy_id, proposal_id, stop_order_id, broker_stop_status
         FROM paper_trades {where} ORDER BY id
     """)
     cols = [d[0] for d in cur.description]
@@ -203,9 +215,9 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
     """)
     reviews_by_trade = {r[0]: {"cnt": r[1], "latest": r[2]} for r in cur.fetchall()}
 
-    broker_syms = _broker_symbols()
+    broker_syms, broker_stop_syms = _broker_state()
 
-    results = [audit_trade(t, broker_syms, reviews_by_trade) for t in trades]
+    results = [audit_trade(t, broker_syms, broker_stop_syms, reviews_by_trade) for t in trades]
 
     if write:
         for r in results:

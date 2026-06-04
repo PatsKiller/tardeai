@@ -75,6 +75,18 @@ def get_alpaca_positions(env):
         return json.loads(resp.read())
 
 
+def get_alpaca_orders(env, status="open"):
+    key = env.get("ALPACA_API_KEY", "")
+    secret = env.get("ALPACA_SECRET_KEY", "")
+    base = env.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+    req = urllib.request.Request(
+        f"{base}/v2/orders?status={status}&limit=200",
+        headers={"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret},
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
+
 def reconcile(apply_fixes=False):
     env = get_env()
     conn = get_db_connection()
@@ -89,11 +101,19 @@ def reconcile(apply_fixes=False):
 
     alpaca_by_sym = {p["symbol"]: p for p in alpaca_pos}
 
+    # Live protective stops at the broker (source of truth for the stop price too)
+    try:
+        alpaca_orders = get_alpaca_orders(env, status="open")
+    except Exception:
+        alpaca_orders = []
+    stop_by_sym = {o["symbol"]: o for o in alpaca_orders
+                   if o.get("type") in ("stop", "stop_limit") and o.get("side") == "sell"}
+
     # Get DB open trades
     cur.execute("""
         SELECT id, symbol, entry_price, shares, status, lifecycle_state,
                broker_status, broker_confirmed, current_price, unrealized_pnl,
-               stop_loss_price, target_1, strategy_id
+               stop_loss_price, target_1, strategy_id, stop_order_id
         FROM paper_trades
         WHERE lifecycle_state = 'open' OR status = 'open'
         ORDER BY symbol
@@ -171,6 +191,32 @@ def reconcile(apply_fixes=False):
                         WHERE id=%s AND filled_at IS NULL""", [t["id"]])
                     conn.commit()
                     fixes.append(f"#{t['id']} {sym}: set filled_at -> broker_confirmed=true")
+
+            # Protective stop drift — the broker's live sell-stop is the source of truth for the
+            # stop price + order id. The DB display columns go stale (the monitor only rewrites
+            # them when it trails), which previously caused a protected position to look naked.
+            bstop = stop_by_sym.get(sym)
+            if bstop:
+                b_price = float(bstop.get("stop_price") or 0)
+                b_oid = bstop.get("id")
+                db_stop = float(t["stop_loss_price"]) if t.get("stop_loss_price") else 0
+                if b_price > 0 and (abs(db_stop - b_price) > 0.001 or t.get("stop_order_id") != b_oid):
+                    issues.append({
+                        "type": "STOP_DRIFT", "severity": "MEDIUM", "symbol": sym, "trade_id": t["id"],
+                        "detail": f"DB stop ${db_stop:.2f} vs broker ${b_price:.2f}",
+                    })
+                    if apply_fixes:
+                        cur.execute("""UPDATE paper_trades
+                            SET stop_loss_price=%s, stop_order_id=%s, broker_stop_status='new'
+                            WHERE id=%s""", [b_price, b_oid, t["id"]])
+                        conn.commit()
+                        fixes.append(f"#{t['id']} {sym}: stop {db_stop:.2f} -> {b_price:.2f} (broker truth)")
+            elif sym in alpaca_by_sym:
+                # Position held but NO protective stop at the broker — a real safety issue.
+                issues.append({
+                    "type": "NO_BROKER_STOP", "severity": "HIGH", "symbol": sym, "trade_id": t["id"],
+                    "detail": f"{sym} held at broker with no live sell-stop order",
+                })
 
     # 4. Broker holds but DB has ONLY closed records (no open record) → broker is source of
     #    truth, so a position SHOULD be open. A closed record on a symbol that ALSO has a current
