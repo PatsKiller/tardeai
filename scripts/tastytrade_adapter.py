@@ -34,6 +34,11 @@ class TastytradeAdapter:
 
     def __init__(self, dry_run=False, sandbox=True, account_label=None, account_number=None):
         self.dry_run = dry_run
+        try:
+            from broker_secrets import load_into_env
+            load_into_env()
+        except Exception:
+            pass
         self.username = os.environ.get("TASTYTRADE_USERNAME", "")
         self.password = os.environ.get("TASTYTRADE_PASSWORD", "")
         self.base_url = SANDBOX_URL if sandbox else PROD_URL

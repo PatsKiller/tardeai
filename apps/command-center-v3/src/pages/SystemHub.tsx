@@ -3,7 +3,7 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Crons', 'LLM'] as const
+const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -33,6 +33,8 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: acctCfg } = useApi<any>('/api/v2/admin/accounts', 120_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: riskCfg } = useApi<any>('/api/v2/risk', 60_000)
+  const { data: brokers } = useApi<any>('/api/v2/system/broker-connectors', 60_000)
+  const { data: tia } = useApi<any>('/api/v2/trade-integrity-audit', 60_000)
 
   const timers = qct?.timers_total ?? 0
   const cronCount = qct?.cron_count ?? 0
@@ -497,6 +499,93 @@ export default function SystemHub({ onDrill }: Props) {
                 )
               })}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Display only. To change ATM enablement or risk, use the guarded Telegram-approval path — not this page. Source: /api/v2/admin/accounts + /api/v2/atm/config</div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {tab === 'Brokers' && (() => {
+        const bd = brokers?.data ?? brokers ?? {}
+        const accts = bd.accounts ?? []
+        const sum = bd.summary ?? {}
+        const audit = (tia?.data ?? tia ?? {}).summary ?? {}
+        const CONN: Record<string, [string, string]> = {
+          connected: ['#22c55e', 'LIVE'],
+          ready_awaiting_creds: ['#f59e0b', 'READY · awaiting creds'],
+          validated: ['#60a5fa', 'VALIDATED'],
+          manual: ['var(--text3)', 'MANUAL (no API)'],
+          broken: ['#ef4444', 'BROKEN'],
+        }
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '8px 12px', fontSize: 10, color: '#f59e0b', lineHeight: 1.5 }}>
+              <b>READ-ONLY.</b> Broker connectivity & validation for due diligence — no secrets shown, no controls. Credential configuration happens in the separate <b>authenticated broker-admin app</b> (localhost-bound, password-gated), never on this dashboard. Only Alpaca is live API trading today.
+            </div>
+
+            {/* summary strip */}
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {[['API accounts', sum.api_accounts, '#60a5fa'], ['Live now', sum.live_now, '#22c55e'],
+                ['Awaiting creds', sum.ready_awaiting_creds, '#f59e0b'], ['Manual', sum.manual, 'var(--text3)'],
+                ['Broken', sum.broken, (sum.broken ?? 0) > 0 ? '#ef4444' : 'var(--text3)']].map(([k, v, c]: any) => (
+                <div key={k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 14px', minWidth: 92 }}>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: 'var(--mono)' }}>{v ?? '—'}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* per-account connectors */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Broker Connectors ({accts.length})</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.6fr 1.3fr 0.8fr 0.9fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                <span>Account</span><span>Broker</span><span>Mode</span><span>Connectivity</span><span>Creds</span><span>Last sync</span>
+              </div>
+              {accts.map((a: any, i: number) => {
+                const [clr, label] = CONN[a.connectivity] ?? ['var(--text3)', a.connectivity]
+                const credClr = a.configured ? '#22c55e' : a.api_enabled ? '#f59e0b' : 'var(--text3)'
+                return (
+                  <div key={i} onClick={() => onDrill({
+                    title: a.display_name || a.account_label,
+                    subtitle: `${a.broker} · ${a.mode} · ${label}`,
+                    endpoint: '/api/v2/system/broker-connectors',
+                    rows: [{
+                      account: a.account_label, broker: a.broker, mode: a.mode,
+                      api_enabled: a.api_enabled, connectivity: a.connectivity,
+                      wired_now: a.wired_now, routing_adapter: a.routing_adapter,
+                      configured: a.configured, env_present: a.env_present,
+                      interface_ok: a.interface_ok, missing_methods: a.missing_methods,
+                      validation_errors: a.validation_errors, open_positions: a.open_positions,
+                      last_sync: a.last_sync, notes: a.notes,
+                      configure_at: 'authenticated broker-admin app (localhost:8788)',
+                    }],
+                  })}
+                    style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.6fr 1.3fr 0.8fr 0.9fr', padding: '6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
+                    <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)', fontWeight: 600 }}>{a.account_label}</span>
+                    <span style={{ color: 'var(--text3)' }}>{a.broker}</span>
+                    <span style={{ color: a.mode === 'live' ? '#ef4444' : '#60a5fa', fontWeight: 600 }}>{a.mode}</span>
+                    <span style={{ color: clr, fontWeight: 600 }}>{label}</span>
+                    <span style={{ color: credClr }}>{a.configured ? 'set' : a.api_enabled ? 'missing' : 'n/a'}</span>
+                    <span style={{ color: ageColor(a.last_sync, 24), fontFamily: 'var(--mono)' }}>{fmtAge(a.last_sync)}</span>
+                  </div>
+                )
+              })}
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Click a row for validation detail. Source: /api/v2/system/broker-connectors</div>
+            </div>
+
+            {/* trade integrity audit summary */}
+            <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Trade Integrity Audit — Trade AI + Hermes dual sign-off</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {[['Green', audit.green, '#22c55e'], ['Yellow', audit.yellow, '#f59e0b'], ['Red', audit.red, (audit.red ?? 0) > 0 ? '#ef4444' : 'var(--text3)'],
+                  ['Remediated', audit.remediated, 'var(--text3)'], ['Hermes coverage', audit.hermes_coverage_pct != null ? `${audit.hermes_coverage_pct}%` : '—', '#60a5fa']].map(([k, v, c]: any) => (
+                  <div key={k} onClick={() => onDrill({ title: 'Trade Integrity Audit', subtitle: 'Trade AI rules + Hermes agent review, per trade', endpoint: '/api/v2/trade-integrity-audit', rows: (tia?.data ?? tia ?? {}).trades ?? [] })}
+                    style={{ cursor: 'pointer', background: 'var(--bg2)', borderRadius: 8, padding: '8px 14px', minWidth: 92 }}>
+                    <div style={{ fontSize: 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k}</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: c, fontFamily: 'var(--mono)' }}>{v ?? '—'}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>GREEN = Trade AI passed AND Hermes reviewed. Click for per-trade detail. Source: /api/v2/trade-integrity-audit</div>
             </div>
           </div>
         )
