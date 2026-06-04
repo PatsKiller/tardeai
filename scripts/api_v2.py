@@ -11912,17 +11912,27 @@ def _live_trading_gate():
     REQUIRED_MONTHS = 6
     REQUIRED_SAMPLE = 30
 
-    # Paper trade stats
+    # Paper trade stats.
+    # STEP 3(b): exclude integrity-flagged PHANTOMS from the gate's counting — a phantom was never a
+    # real broker round-trip, so it must not count toward the win rate (it previously counted as a
+    # loss via pnl<=0, deflating the metric). Rule = EXCLUDE-PROVABLY-FAKE: only rows the integrity
+    # check flagged (outcome_verdict='PHANTOM' or close_reason='phantom_no_alpaca_position'). Real
+    # legacy/unconfirmable trades and genuine breakevens are KEPT (verified vs rigorous confirm_fill:
+    # #29 NVDA is caught, no provably-fake row slips through — see step3_reconcile_filter.py). Phantoms
+    # are pnl=0, so gp/gl (profit factor) are unaffected; only closed/wins/losses change.
     stats = _db_query("""
         SELECT COUNT(*) as total,
-               COUNT(*) FILTER (WHERE status='closed') as closed,
-               COUNT(*) FILTER (WHERE status='closed' AND pnl > 0) as wins,
-               COUNT(*) FILTER (WHERE status='closed' AND pnl <= 0) as losses,
+               COUNT(*) FILTER (WHERE status='closed' AND NOT _fake) as closed,
+               COUNT(*) FILTER (WHERE status='closed' AND NOT _fake AND pnl > 0) as wins,
+               COUNT(*) FILTER (WHERE status='closed' AND NOT _fake AND pnl <= 0) as losses,
                COALESCE(SUM(CASE WHEN pnl > 0 THEN pnl ELSE 0 END), 0) as gp,
                COALESCE(SUM(CASE WHEN pnl < 0 THEN ABS(pnl) ELSE 0 END), 0) as gl,
                MIN(created_at) as first_trade,
                MAX(closed_at) as last_close
-        FROM paper_trades
+        FROM (SELECT *,
+                     (COALESCE(outcome_verdict,'')='PHANTOM'
+                      OR COALESCE(close_reason,'')='phantom_no_alpaca_position') AS _fake
+              FROM paper_trades) pt
     """, fetch="one") or {}
 
     closed = stats.get("closed", 0) or 0
