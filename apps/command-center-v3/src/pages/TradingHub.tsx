@@ -128,32 +128,72 @@ export default function TradingHub({ onDrill }: Props) {
 
       {tab === 'Open Trades' && (
         <>
-          <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }}>Open Positions ({trades.length})</div>
-            {trades.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No open paper trades</div> :
-            trades.map((t: any) => {
-              const adv = advBySym[t.symbol]
-              return (
-              <div key={t.id} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.strategy_id} · R=${t.r_multiple?.toFixed(2)}`, endpoint: '/api/v2/open-trades', rows: [adv ? { ...t, setup_advisory: adv.note, setup_advisory_flag: adv.advisory_flag, setup_prior_score: adv.prior_score, entry_rsi_band: adv.band } : t] })}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', padding: '8px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11 }}>
-                <div>
-                  <div style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace' }}>{t.symbol}</div>
-                  <div style={{ fontSize: 8, color: 'var(--text3)' }}>{t.strategy_id}</div>
-                </div>
-                <span style={{ color: 'var(--text2)' }}>{t.shares} @ {fmt$(t.entry_price, 2)}</span>
-                <span style={{ color: (t.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{fmt$(t.pnl, 2)}</span>
-                <span style={{ color: 'var(--text2)' }}>R: {t.r_multiple?.toFixed(2) ?? '—'}</span>
-                {adv
-                  ? <span title={adv.note} style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, alignSelf: 'center', justifySelf: 'start', background: 'var(--bg2)', color: advColor(adv.advisory_flag), border: `1px solid ${advColor(adv.advisory_flag)}33` }}>
-                      {adv.advisory_flag === 'caution' ? '⚠ ' : adv.advisory_flag === 'favorable' ? '✓ ' : ''}entry setup ~{adv.prior_score != null ? Number(adv.prior_score).toFixed(0) : '—'}
-                    </span>
-                  : <span style={{ fontSize: 9, color: t.risk_flags?.length ? '#f59e0b' : 'var(--text3)' }}>
-                      {t.trail_recommendation?.replace(/_/g, ' ') ?? '—'}
-                    </span>}
-              </div>
-            )})}
-            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/open-trades + /api/v2/atm/setup-advisory (entry-setup quality prior, matched by symbol — advisory-only, never gates). Open trades have no exit grade yet; entry-setup rating reflects the RSI-band prior at proposal time.</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Automated Positions ({trades.length})</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)' }}>Unrealized {fmt$(openTrades?.data?.total_unrealized_pnl ?? openTrades?.total_unrealized_pnl, 2)} · prices {openTrades?.data?.last_updated_at ? new Date(openTrades.data.last_updated_at).toLocaleString() : '—'}</div>
           </div>
+          {trades.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No open paper trades</div> :
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12, marginBottom: 12 }}>
+            {trades.map((t: any) => {
+              const adv = advBySym[t.symbol]
+              const pnlPos = (t.pnl ?? 0) >= 0
+              const entry = t.entry_price, cur = t.current_price, stop = t.stop_loss, tgt = t.target_1
+              const lo = Math.min(stop || cur, entry, cur), hi = Math.max(tgt || cur, entry, cur)
+              const zpos = (x: number) => hi > lo ? Math.max(0, Math.min(100, ((x - lo) / (hi - lo)) * 100)) : 50
+              const heldMs = t.opened_at ? Date.now() - Date.parse(t.opened_at) : 0
+              const heldStr = heldMs > 0 ? `${Math.floor(heldMs / 86400000)}d ${Math.floor((heldMs % 86400000) / 3600000)}h` : '—'
+              const rsiColor = t.rsi_status === 'oversold' ? '#22c55e' : t.rsi_status === 'overbought' ? '#ef4444' : 'var(--text2)'
+              return (
+                <div key={t.id} onClick={() => onDrill({ title: t.symbol, subtitle: `${t.strategy_id} · R=${t.r_multiple?.toFixed(2)}`, endpoint: '/api/v2/open-trades', rows: [adv ? { ...t, setup_advisory: adv.note, setup_advisory_flag: adv.advisory_flag, setup_prior_score: adv.prior_score } : t] })}
+                  style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, cursor: 'pointer' }}>
+                  {/* header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div>
+                      <span style={{ fontWeight: 700, color: 'var(--text0)', fontFamily: 'monospace', fontSize: 14 }}>{t.symbol}</span>
+                      <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>{t.strategy_id} · {t.shares} sh</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ color: pnlPos ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: 14 }}>{fmt$(t.pnl, 2)}</div>
+                      <div style={{ fontSize: 9, color: pnlPos ? '#22c55e' : '#ef4444' }}>{t.pnl_pct >= 0 ? '+' : ''}{t.pnl_pct}% · {t.r_multiple >= 0 ? '+' : ''}{t.r_multiple?.toFixed(2)}R</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 8, color: 'var(--text3)', marginBottom: 8 }}>Held {heldStr}{t.catalyst ? ` · ${t.catalyst}` : ''}</div>
+                  {/* stop / now / target */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: 'monospace', marginBottom: 4 }}>
+                    <span style={{ color: '#ef4444' }}>Stop {fmt$(stop, 2)}</span>
+                    <span style={{ color: 'var(--text0)', fontWeight: 700 }}>Now {fmt$(cur, 3)}</span>
+                    <span style={{ color: '#22c55e' }}>Target {tgt ? fmt$(tgt, 2) : '—'}</span>
+                  </div>
+                  {/* zone bar */}
+                  <div style={{ position: 'relative', height: 6, background: 'linear-gradient(90deg, rgba(239,68,68,.4), rgba(120,120,120,.2), rgba(34,197,94,.4))', borderRadius: 3, margin: '6px 0 4px' }}>
+                    <div title="entry" style={{ position: 'absolute', left: `${zpos(entry)}%`, top: -2, width: 2, height: 10, background: 'var(--text3)' }} />
+                    <div title="current" style={{ position: 'absolute', left: `${zpos(cur)}%`, top: -3, width: 8, height: 8, marginLeft: -4, borderRadius: '50%', background: '#60a5fa', border: '1px solid var(--bg0)' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'var(--text3)', marginBottom: 8 }}>
+                    <span>Stop dist {t.dist_to_stop_pct != null ? `${t.dist_to_stop_pct}%` : '—'}</span>
+                    <span>Target dist {t.dist_to_target_pct != null ? `${t.dist_to_target_pct}%` : '—'}</span>
+                  </div>
+                  {/* technicals */}
+                  <div style={{ display: 'flex', gap: 12, fontSize: 9, marginBottom: 6, flexWrap: 'wrap' }}>
+                    <span style={{ color: 'var(--text3)' }}>RSI <b style={{ color: rsiColor }}>{t.rsi_status ?? '—'}{t.rsi != null ? ` ${Math.round(t.rsi)}` : ''}</b></span>
+                    {t.fib?.nearest && <span style={{ color: 'var(--text3)' }}>Fib <b style={{ color: 'var(--text2)' }}>{t.fib.nearest}</b></span>}
+                    {t.pct_52w_high != null && <span style={{ color: 'var(--text3)' }}>52w hi <b style={{ color: 'var(--text2)' }}>{t.pct_52w_high}%</b></span>}
+                  </div>
+                  {/* trail advisory + flags */}
+                  <div style={{ fontSize: 8, color: 'var(--text3)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                    <span style={{ color: t.trail_recommendation?.startsWith('use_trail') ? '#f59e0b' : 'var(--text3)' }}>Trail: {t.trail_advice}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                    {adv && <span title={adv.note} style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg2)', color: advColor(adv.advisory_flag) }}>{adv.advisory_flag === 'caution' ? '⚠ ' : adv.advisory_flag === 'favorable' ? '✓ ' : ''}entry ~{adv.prior_score != null ? Number(adv.prior_score).toFixed(0) : '—'}</span>}
+                    {(t.risk_flags ?? []).map((f: string) => (
+                      <span key={f} style={{ fontSize: 8, padding: '1px 6px', borderRadius: 3, background: 'var(--bg2)', color: f === 'consider_partial_exit' ? '#22c55e' : '#f59e0b' }}>{f.replace(/_/g, ' ')}</span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>}
+          <div style={{ fontSize: 8, color: 'var(--text3)', margin: '0 0 12px' }}>Source: /api/v2/open-trades (entry/stop/target, R-multiple, trail advisory, RSI/fib technicals) + /api/v2/atm/setup-advisory. Prices update every 2 min during market hours (position monitor) + hourly broker sync.</div>
           <ProtectionPanel onDrill={onDrill} />
         </>
       )}

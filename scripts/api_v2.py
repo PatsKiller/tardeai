@@ -18227,6 +18227,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             for r in _tr:
                 trail_recs[r["strategy_id"]] = r
 
+            # Technicals — reuse the same caches the holdings page uses (RSI zone, fib levels)
+            ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
+            ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
+
             trades = []
             for t in raw:
                 entry = float(t.get("entry_price") or 0)
@@ -18252,6 +18256,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if r_m and r_m < -0.5: flags.append("losing_momentum")
                 if r_m and r_m > 0.8: flags.append("consider_partial_exit")
 
+                # Technicals (RSI zone + fib) for this symbol, from the shared caches
+                _sym = t["symbol"]
+                _ec = ec.get(_sym, {}) if isinstance(ec.get(_sym), dict) else {}
+                _ts = ts.get(_sym, {}) if isinstance(ts.get(_sym), dict) else {}
+                _rsi = _ec.get("rsi") if _ec.get("rsi") is not None else _ts.get("rsi")
+                _rsi_status = _ec.get("rsi_status") or _ts.get("rsi_status")
+                if not _rsi_status and _rsi is not None:
+                    try:
+                        _rv = float(_rsi)
+                        _rsi_status = "oversold" if _rv <= 30 else "overbought" if _rv >= 70 else "neutral"
+                    except Exception:
+                        pass
+                _hi = _ec.get("pct_from_52w_high") if _ec.get("pct_from_52w_high") is not None else _ts.get("pct_from_52w_high")
+                _lo = _ec.get("pct_from_52w_low") if _ec.get("pct_from_52w_low") is not None else _ts.get("pct_from_52w_low")
+                _fib = _fib_analysis(cur, _hi, _lo) if (_hi is not None or _lo is not None) else None
+
                 trades.append({
                     "id": t["id"], "symbol": t["symbol"],
                     "strategy_id": t.get("strategy_id"),
@@ -18270,6 +18290,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     "trail_advice": trail_advice,
                     "opened_at": str(t.get("created_at") or ""),
                     "catalyst": t.get("catalyst_at_entry"),
+                    "rsi": _rsi, "rsi_status": _rsi_status,
+                    "pct_52w_high": _hi, "pct_52w_low": _lo, "fib": _fib,
                 })
             # Most recent update timestamp from open trades
             _ot_updated = None
