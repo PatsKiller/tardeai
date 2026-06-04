@@ -105,3 +105,91 @@ def hermes_verify(conn, trade: dict) -> dict:
 def is_counted(trade: dict, tradeai: dict, hermes: dict) -> bool:
     """The COUNTED rule — broker-proven and two-source agreement. (Computed only in STEP 2.)"""
     return bool(trade.get("broker_order_id")) and tradeai.get("verified") and hermes.get("confirmed")
+
+
+import logging as _logging
+_log = _logging.getLogger("trade-fill-verifier")
+
+# Additive, nullable — no rewrite of existing rows.
+_VERIFY_COLUMNS_DDL = """
+ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS confirmation_state text;
+ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS fill_verified_by   text;
+ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS fill_verified_at   timestamptz;
+ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS fill_verified_ok   boolean;
+"""
+_columns_ensured = False
+
+
+def _ensure_verify_columns(conn):
+    global _columns_ensured
+    if _columns_ensured:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute(_VERIFY_COLUMNS_DDL)
+        conn.commit()
+        _columns_ensured = True
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        _log.warning(f"_ensure_verify_columns failed: {e}")
+
+
+def verify_and_stamp_fill(conn, trade_id):
+    """LIVE post-fill hook — confirm a freshly-opened trade at ITS broker and run two-source
+    (TradeAI + Hermes) verification, stamping the result on the trade and into the
+    hermes_fill_verifications staging table.
+
+    NON-FATAL by contract: it never raises into the execution path and never closes/blocks/
+    quarantines a position — it only records what the broker says. Downstream policy (the gate's
+    COUNTED rule, the integrity audit) decides what to do with an unverified trade. Broker is the
+    source of truth; this resolves the adapter from the account and names no vendor.
+    """
+    try:
+        _ensure_verify_columns(conn)
+        cur = conn.cursor()
+        cur.execute("""SELECT id, symbol, account, shares, entry_price, broker_order_id
+                       FROM paper_trades WHERE id=%s""", [trade_id])
+        row = cur.fetchone()
+        if not row:
+            return None
+        trade = dict(zip([d[0] for d in cur.description], row))
+
+        from broker_confirmation_gate import confirm_and_finalize
+        _fc, state = confirm_and_finalize(trade, apply=False)   # confirm at broker; we stamp here
+        ai = trade_ai_verify(trade)                              # TradeAI re-query
+        hz = hermes_verify(conn, trade)                          # Hermes independent (writes staging)
+
+        # THREE-STATE, not two. A real trade whose verification merely COULDN'T RUN must never be
+        # recorded the same as one the broker actively refutes — otherwise an API outage or an
+        # adapter-less account would silently drop real trades from the gate.
+        #   TRUE  = broker confirms filled AND both agree            -> safe to count
+        #   FALSE = broker TERMINALLY says no fill (canceled/rejected/expired) -> the only true exclude
+        #   NULL  = couldn't verify (unknown / no adapter / no order id / error / qty-price mismatch
+        #           on an otherwise-real fill) -> downstream MUST fall back to the phantom-flag rule
+        bstatus = (ai.get("broker_status") or "").lower()
+        if ai.get("verified") and hz.get("confirmed"):
+            verified_ok = True
+        elif bstatus in ("canceled", "cancelled", "rejected", "expired"):
+            verified_ok = False
+        else:
+            verified_ok = None
+
+        cur.execute("""UPDATE paper_trades
+                          SET confirmation_state=%s, fill_verified_by='tradeai',
+                              fill_verified_at=NOW(), fill_verified_ok=%s
+                        WHERE id=%s""", [state, verified_ok, trade_id])
+        conn.commit()
+        _log.info(f"[verify] #{trade_id} {trade.get('symbol')} state={state} "
+                  f"tradeai={ai['verdict']} hermes={hz['verdict']} verified_ok={verified_ok}")
+        return {"trade_id": trade_id, "state": state, "tradeai": ai["verdict"],
+                "hermes": hz["verdict"], "verified_ok": verified_ok}
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        _log.warning(f"verify_and_stamp_fill({trade_id}) non-fatal error: {e}")
+        return None
