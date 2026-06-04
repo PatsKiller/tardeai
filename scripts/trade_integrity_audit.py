@@ -197,7 +197,13 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
     cur.execute(DDL)
     conn.commit()
 
-    where = "WHERE status='open' OR lifecycle_state='open'" if open_only else ""
+    # cancelled orders never became a real round-trip — they are not trades and are excluded
+    # from the audit entirely (they don't need protection checks or Hermes review).
+    if open_only:
+        where = "WHERE status='open' OR lifecycle_state='open'"
+    else:
+        where = ("WHERE COALESCE(status,'') NOT IN ('cancelled','canceled') "
+                 "AND COALESCE(lifecycle_state,'') NOT IN ('cancelled','canceled')")
     cur.execute(f"""
         SELECT id, symbol, account, broker, shares, entry_price, stop_loss_price, planned_stop,
                target_1, status, lifecycle_state, broker_confirmed, broker_status, broker_order_id,
@@ -262,9 +268,14 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
         "trade_ai_fail": sum(1 for r in results if r["trade_ai_verdict"] == "FAIL"),
         "hermes_reviewed": sum(1 for r in results if r["hermes_verdict"] == "REVIEWED"),
         "hermes_unreviewed": sum(1 for r in results if r["hermes_verdict"] == "UNREVIEWED"),
+        # coverage measured over REVIEWABLE trades only (closed) — open trades can't be reviewed
+        "closed_total": sum(1 for r in results if r["trade_state"] == "closed"),
+        "closed_reviewed": sum(1 for r in results if r["trade_state"] == "closed" and r["hermes_verdict"] == "REVIEWED"),
         "broker_truth_available": broker_syms is not None,
         "hermes_enqueued": enqueued,
     }
+    ct, cr = summary["closed_total"], summary["closed_reviewed"]
+    summary["hermes_coverage_pct"] = round(100 * cr / ct, 1) if ct else 0.0
     return summary, results
 
 
@@ -324,7 +335,8 @@ def main():
     s = summary
     print(f"{s['total']} trades | GREEN {s['green']}  YELLOW {s['yellow']}  RED {s['red']}")
     print(f"Trade AI: PASS {s['trade_ai_pass']} / WARN {s['trade_ai_warn']} / FAIL {s['trade_ai_fail']}")
-    print(f"Hermes:   reviewed {s['hermes_reviewed']} / unreviewed {s['hermes_unreviewed']}"
+    print(f"Hermes:   {s['closed_reviewed']}/{s['closed_total']} closed reviewed "
+          f"({s['hermes_coverage_pct']}%)"
           + (f" | enqueued {s['hermes_enqueued']}" if args.enqueue_hermes else ""))
     if not s["broker_truth_available"]:
         print("NOTE: broker positions unavailable this run — phantom checks limited to flagged records.")
