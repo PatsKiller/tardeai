@@ -1047,6 +1047,23 @@ The broker is authoritative across the whole reconciliation surface — a positi
 - **DB-open but broker-flat (phantom):** `paper_trade_monitor.py` integrity-check closes it with `close_reason='phantom_no_alpaca_position'` and **voids the P&L** (`pnl=0, pnl_pct=0, r_multiple=0, outcome_verdict='PHANTOM'`). A phantom was never a real round-trip, so it must never book a computed win/loss — doing so previously polluted the paper Closed-Trade Review (e.g. MRVL +$126, SNOW +$131 as bogus wins). Voided phantoms drop out of journal stats via the existing `pnl != 0` filter.
 - **Broker-held but DB drift:** `alpaca_paper_reconciler.py --fix` overwrites DB `entry_price`, `shares`, and fill confirmation FROM the broker (never the reverse). Runs 09:35 & 16:05 on a schedule (not detect-only).
 - **Broker-held but no open DB record (orphan):** the adapter sync materializes a broker-confirmed record (`unknown_sync`). The reconciler's `CLOSED_BUT_HELD` check only fires when the broker holds a symbol with **no** matching open DB trade — a closed record on a symbol that *also* has a current open record is just history, not a mismatch.
+- **Protective-stop drift:** the broker's live sell-stop is the source of truth for the stop price/order-id too. The DB `stop_loss_price` column goes stale when the monitor hasn't trailed, so `alpaca_paper_reconciler --fix` syncs it from the broker (`STOP_DRIFT`) and raises `NO_BROKER_STOP` (HIGH) when a held position genuinely has no broker stop. (Display columns being stale once made a fully-protected position — TMHC with a live $68.02 stop — look naked.)
+
+### Trade Integrity Audit — dual sign-off
+
+`scripts/trade_integrity_audit.py` audits **every** trade with two independent signers and writes per-trade rows to `trade_integrity_audit`:
+- **Trade AI (deterministic):** broker-confirmed, not-phantom (vs broker holdings), has-protection (checks the **broker's** live stop, not the stale DB column), P&L integrity, lineage, data-freshness. Read-only — never mutates trades.
+- **Hermes (agent):** `paper_trade_multi_reviews` coverage; `--enqueue-hermes` requests reviews for unreviewed trades.
+
+`dual_status` is **GREEN** only when Trade AI PASSes **and** Hermes has reviewed. Already-remediated phantoms (closed + voided) are marked `remediated` and excluded from active REDs so live problems stand out. Hard failures push to SIEM (P1). Cron: every 15 min market hours. Endpoint: `/api/v2/trade-integrity-audit`.
+
+### Broker connectors & credential management
+
+The `accounts` table carries an explicit `api_enabled` flag (Alpaca + Schwab = API accounts; Fidelity 401k = manual/no-API). Connectors implement one broker-agnostic interface (`get_account/get_positions/get_open_orders/submit_entry/sync_positions/get_status`); `scripts/validate_broker_connectors.py` is a side-effect-free harness validating each. **Only Alpaca is live API trading today**; Schwab/Tastytrade are programmed but awaiting live credentials, and were fixed to be account-aware (they previously hardcoded `accounts[0]`, broken for the 3 Schwab accounts).
+
+Credential configuration has two surfaces:
+- **v3 Admin → Brokers tab (read-only):** connectivity, validation, cred-presence booleans (no secrets), last sync. Endpoint `/api/v2/system/broker-connectors`.
+- **`apps/broker-admin/` (Tier-2, secure):** the only place secrets are entered — localhost-bound, password-gated, CSRF-protected; writes `config/broker_credentials.env` (chmod 600, gitignored); adapters pick it up via `broker_secrets.load_into_env()` without overriding the main `.env`. The unauthenticated read-only dashboard never handles secrets.
 
 **Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
 If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal
