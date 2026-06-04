@@ -13998,6 +13998,134 @@ def _system_siem_dashboard():
     }
 
 
+def _trade_integrity_audit():
+    """GET /api/v2/trade-integrity-audit — latest dual (Trade AI + Hermes) audit per trade.
+
+    Read-only. Returns the most recent audit row per trade with both verdicts, the active
+    RED failures (excluding remediated historical phantoms), and Hermes review coverage.
+    """
+    rows = _db_query("""
+        SELECT DISTINCT ON (paper_trade_id)
+            paper_trade_id, symbol, account, broker, trade_state, trade_ai_verdict,
+            trade_ai_checks, trade_ai_reasons, hermes_verdict, hermes_review_count,
+            hermes_last_review_at, dual_status, remediated, audited_at
+        FROM trade_integrity_audit
+        ORDER BY paper_trade_id, audited_at DESC
+    """) or []
+    for r in rows:
+        r["hermes_last_review_at"] = _json_clean(r.get("hermes_last_review_at"))
+        r["audited_at"] = _json_clean(r.get("audited_at"))
+    total = len(rows)
+    def _ct(pred):
+        return sum(1 for r in rows if pred(r))
+    return {
+        "trades": rows,
+        "active_failures": [r for r in rows if r["dual_status"] == "RED"],
+        "summary": {
+            "total": total,
+            "green": _ct(lambda r: r["dual_status"] == "GREEN"),
+            "yellow": _ct(lambda r: r["dual_status"] == "YELLOW"),
+            "red": _ct(lambda r: r["dual_status"] == "RED"),
+            "remediated": _ct(lambda r: r.get("remediated")),
+            "trade_ai_pass": _ct(lambda r: r["trade_ai_verdict"] == "PASS"),
+            "trade_ai_fail": _ct(lambda r: r["trade_ai_verdict"] == "FAIL"),
+            "hermes_reviewed": _ct(lambda r: r["hermes_verdict"] == "REVIEWED"),
+            "hermes_unreviewed": _ct(lambda r: r["hermes_verdict"] == "UNREVIEWED"),
+            "hermes_coverage_pct": round(100 * _ct(lambda r: r["hermes_verdict"] == "REVIEWED") / total, 1) if total else 0,
+        },
+        "last_audit": _json_clean(max((r["audited_at"] for r in rows), default=None)),
+    }
+
+
+def _system_broker_connectors():
+    """GET /api/v2/system/broker-connectors — READ-ONLY broker/account connectivity.
+
+    Surfaces, per account, which broker backs it, whether it is an API account,
+    whether the connector is wired/live, credential presence (boolean only — NEVER
+    secrets), interface-validation results, and last sync. No write controls; actual
+    credential configuration happens in the separate authenticated broker-admin app.
+    """
+    # 1. account-keyed source of truth
+    accounts = _db_query("""
+        SELECT account_label, broker, mode, api_enabled, auto_execution_capable,
+               routing_adapter, equity_source, enabled, notes
+        FROM accounts ORDER BY api_enabled DESC, broker, account_label
+    """) or []
+
+    # 2. per-broker connector validation (side-effect-free harness; returns booleans, no secrets)
+    validation_by_broker = {}
+    try:
+        import importlib
+        vbc = importlib.import_module("validate_broker_connectors")
+        vbc = importlib.reload(vbc)  # pick up on-disk harness in the long-running server
+        for r in vbc.validate_all():
+            validation_by_broker[r["broker"]] = r
+    except Exception as e:
+        validation_by_broker = {"_error": str(e)}
+
+    # 3. last broker sync per account (paper_trades carries last_synced_at for API accounts)
+    sync_rows = _db_query("""
+        SELECT broker, MAX(last_synced_at) AS last_sync, COUNT(*) FILTER (WHERE status='open') AS open_ct
+        FROM paper_trades GROUP BY broker
+    """) or []
+    sync_by_broker = {r["broker"]: r for r in sync_rows if r.get("broker")}
+
+    out = []
+    for a in accounts:
+        broker = a.get("broker")
+        v = validation_by_broker.get(broker, {})
+        syn = sync_by_broker.get(broker, {})
+        wired_now = bool(a.get("routing_adapter"))
+        # connectivity label: live(connected) > ready(awaiting creds) > validated > broken > manual
+        if not a.get("api_enabled"):
+            connectivity = "manual"          # e.g. Fidelity 401k — no API, statement import only
+        elif v.get("connectivity") == "connected" or (wired_now and v.get("configured")):
+            connectivity = "connected"
+        elif v.get("valid") and not v.get("configured"):
+            connectivity = "ready_awaiting_creds"
+        elif v.get("valid"):
+            connectivity = "validated"
+        else:
+            connectivity = "broken"
+        out.append({
+            "account_label": a.get("account_label"),
+            "display_name": a.get("account_label", "").replace("_", " ").title(),
+            "broker": broker,
+            "mode": a.get("mode"),
+            "api_enabled": bool(a.get("api_enabled")),
+            "auto_execution_capable": bool(a.get("auto_execution_capable")),
+            "wired_now": wired_now,
+            "routing_adapter": a.get("routing_adapter"),
+            "equity_source": a.get("equity_source"),
+            "enabled": bool(a.get("enabled")),
+            "notes": a.get("notes"),
+            "connectivity": connectivity,
+            # validation (read-only booleans — no secret values ever)
+            "interface_ok": not v.get("missing_methods") if v else None,
+            "missing_methods": v.get("missing_methods") if v else None,
+            "configured": v.get("configured") if v else None,
+            "env_present": v.get("env_present") if v else None,
+            "validation_errors": v.get("errors") if v else None,
+            "last_sync": _json_clean(syn.get("last_sync")) if syn else None,
+            "open_positions": syn.get("open_ct") if syn else None,
+        })
+
+    api_accounts = [r for r in out if r["api_enabled"]]
+    return {
+        "accounts": out,
+        "summary": {
+            "total": len(out),
+            "api_accounts": len(api_accounts),
+            "live_now": sum(1 for r in out if r["connectivity"] == "connected"),
+            "ready_awaiting_creds": sum(1 for r in out if r["connectivity"] == "ready_awaiting_creds"),
+            "manual": sum(1 for r in out if r["connectivity"] == "manual"),
+            "broken": sum(1 for r in out if r["connectivity"] == "broken"),
+        },
+        "config_surface": "read-only — credential configuration lives in the authenticated broker-admin app",
+        "as_of": _now_iso() if "_now_iso" in globals() else None,
+    }
+
+
 def _system_feed_health():
     """GET /api/v2/system/feed-health — read-only feed health status."""
     # Finviz screener health
@@ -14651,6 +14779,8 @@ ROUTES = {
     "/api/v2/system/scheduled-jobs": lambda: _system_scheduled_jobs(),
     "/api/v2/llm/high-queue": lambda: _high_llm_queue(),
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
+    "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
+    "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
     "/api/v2/system/siem": lambda: _system_siem_dashboard(),
     "/api/v2/inbox": lambda: _inbox(),
