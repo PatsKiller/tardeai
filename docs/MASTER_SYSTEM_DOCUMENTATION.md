@@ -1057,6 +1057,8 @@ The broker is authoritative across the whole reconciliation surface — a positi
 
 `dual_status` is **GREEN** only when Trade AI PASSes **and** Hermes has reviewed. Already-remediated phantoms (closed + voided) are marked `remediated` and excluded from active REDs so live problems stand out. Hard failures push to SIEM (P1). Cron: every 15 min market hours. Endpoint: `/api/v2/trade-integrity-audit`.
 
+**Hermes review pipeline.** The agent reviews are produced by `scripts/multi_tier_trade_reviewer.py` (local LLM — gemma3:4b realtime / gemma3:27b overnight) and stored in `paper_trade_multi_reviews`. Only **closed** trades are reviewable. Coverage was stuck at ~36% because the per-trade tiers were never scheduled (only weekly/monthly were) and the audit's `--enqueue-hermes` wrote to a non-existent `agent_jobs` table. Fixed: `--enqueue-hermes` now invokes the real reviewer per unreviewed closed trade, and an **overnight reviewer cron (22:30 weekdays)** keeps coverage current. Coverage is measured over real closed trades (status=`closed`) — `cancelled` orders are not real round-trips and are excluded.
+
 ### Broker connectors & credential management
 
 The `accounts` table carries an explicit `api_enabled` flag (Alpaca + Schwab = API accounts; Fidelity 401k = manual/no-API). Connectors implement one broker-agnostic interface (`get_account/get_positions/get_open_orders/submit_entry/sync_positions/get_status`); `scripts/validate_broker_connectors.py` is a side-effect-free harness validating each. **Only Alpaca is live API trading today**; Schwab/Tastytrade are programmed but awaiting live credentials, and were fixed to be account-aware (they previously hardcoded `accounts[0]`, broken for the 3 Schwab accounts).
