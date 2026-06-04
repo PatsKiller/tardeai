@@ -28,6 +28,18 @@ global_disqualifiers:
   - id: DATA_QUALITY_LOW
     action: BLOCK_OR_DOWNGRADE
 
+# Liquidity pre-screen applied at proposal GENERATION (auto_proposal_generator.py),
+# regular-hours only. A cheap structural gate that stops untradeable microcaps
+# (e.g. FOFO 15% spread / 8.5K shares, BNKK 15.7% / 1.6K shares on 2026-06-04)
+# from ever becoming a Telegram proposal. The execution-readiness layer remains
+# the tighter backstop at approval (max_spread_pct ~1% for momentum). Fail-open:
+# after-hours, no quote, or any data error => NOT blocked (never block on bad data).
+liquidity_prescreen:
+  enabled: true
+  max_spread_pct: 5.0          # live bid/ask spread ceiling; structurally-untradeable above this
+  min_day_volume_shares: 25000 # block on volume only if BOTH this AND the dollar floor are breached
+  min_dollar_day_volume: 100000
+
 risk_limits:
   daily_loss_limit_multiplier_testing: 4
   daily_loss_limit_multiplier_live: 3

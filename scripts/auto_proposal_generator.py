@@ -233,6 +233,66 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
     return True, '', None
 
 
+def _liquidity_prescreen(symbol: str, rules: dict) -> tuple:
+    """Structural liquidity gate at GENERATION time. Returns (ok: bool, reason: str).
+
+    Stops untradeable microcaps (wide spread / no real volume) from becoming
+    proposals — the noise the execution layer would block anyway, but only after
+    it has already pinged Telegram. strategy_signals carries no absolute volume or
+    spread, so we read a live quote (the only reliable source for thin names).
+
+    Fail-open by design: outside regular hours (pre/after-market spreads are wide
+    for everyone), or when no quote / data error, this NEVER blocks — swing/position
+    after-hours pre-staging is unaffected and the execution-readiness layer stays the
+    tighter backstop at approval.
+    """
+    liq = (rules or {}).get("liquidity_prescreen") or {}
+    if not liq.get("enabled", True):
+        return True, ""
+
+    # Regular-hours only — off-hours quotes are not trustworthy for this gate.
+    try:
+        from market_session import current_market_session
+        if current_market_session() != "regular":
+            return True, ""
+    except Exception:
+        return True, ""
+
+    try:
+        from market_quote_provider import get_best_quote
+        q = get_best_quote(symbol) or {}
+    except Exception:
+        return True, ""  # never block on a data/provider error
+
+    spread = q.get("spread_pct")
+    last = q.get("last_price")
+    dayvol = q.get("day_volume")
+
+    max_spread = float(liq.get("max_spread_pct", 5.0))
+    min_shares = float(liq.get("min_day_volume_shares", 25000))
+    min_dollar_vol = float(liq.get("min_dollar_day_volume", 100000))
+
+    if spread is not None:
+        try:
+            if float(spread) > max_spread:
+                return False, f"spread {float(spread):.1f}% > {max_spread:.1f}% ceiling (illiquid)"
+        except (TypeError, ValueError):
+            pass
+
+    # Volume floor: block only when BOTH the share AND dollar floors are breached,
+    # so a low-share/high-price or high-share/low-price name is not falsely rejected.
+    if last and dayvol:
+        try:
+            ddv = float(last) * float(dayvol)
+            if float(dayvol) < min_shares and ddv < min_dollar_vol:
+                return False, (f"day volume {float(dayvol):,.0f}sh / ${ddv:,.0f} below floor "
+                               f"({min_shares:,.0f}sh & ${min_dollar_vol:,.0f})")
+        except (TypeError, ValueError):
+            pass
+
+    return True, ""
+
+
 def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> list:
     """Get current-day planned strategy signals eligible for auto-proposal."""
     cur = conn.cursor()
@@ -771,6 +831,7 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
         "proposals_skipped": 0,
         "duplicates_skipped": 0,
         "risk_rejected": 0,
+        "liquidity_rejected": 0,
         "quality_rejected": 0,
         "source_cap_rejected": 0,
         "sizing_adjusted": 0,
@@ -888,6 +949,22 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     if not dry_run:
                         record_decision(conn, run_label, sig, "SKIPPED_STRATEGY_CRITERIA", [fail_reason], None, None, None)
                     stats["details"].append({"symbol": sym, "decision": "SKIPPED_STRATEGY_CRITERIA", "reason": reason})
+                    continue
+
+            # 2e. Liquidity pre-screen (live quote, regular-hours only, fail-open).
+            # Stops untradeable microcaps (wide spread / no real volume) from ever
+            # becoming a Telegram proposal — the noise the execution layer blocks at
+            # approval but only after it has already alerted. force=True bypasses.
+            if not force:
+                liq_ok, liq_reason = _liquidity_prescreen(sym, shared_rules)
+                if not liq_ok:
+                    stats["liquidity_rejected"] += 1
+                    stats["proposals_skipped"] += 1
+                    reason = f"SKIPPED_LIQUIDITY ({sym}: {liq_reason})"
+                    log.info(f"  {sym}: {reason}")
+                    if not dry_run:
+                        record_decision(conn, run_label, sig, "SKIPPED_LIQUIDITY", [liq_reason], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_LIQUIDITY", "reason": reason})
                     continue
 
             # 3. Normalize sizing
