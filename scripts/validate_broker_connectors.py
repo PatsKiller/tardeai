@@ -80,9 +80,11 @@ def validate_one(module_name, spec):
         "env_present": _check_env(spec["env"]),
         "errors": [],
     }
-    # 1. import
+    # 1. import (reload so a long-running host process always sees on-disk code, not a
+    #    module cached at startup — otherwise stale adapters misreport their interface)
     try:
         mod = importlib.import_module(module_name)
+        mod = importlib.reload(mod)
         result["imports"] = True
     except Exception as e:
         result["errors"].append(f"import: {e}")
