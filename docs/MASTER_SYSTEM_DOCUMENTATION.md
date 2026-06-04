@@ -1067,6 +1067,16 @@ Credential configuration has two surfaces:
 - **v3 Admin → Brokers tab (read-only):** connectivity, validation, cred-presence booleans (no secrets), last sync. Endpoint `/api/v2/system/broker-connectors`.
 - **`apps/broker-admin/` (Tier-2, secure):** the only place secrets are entered — localhost-bound, password-gated, CSRF-protected; writes `config/broker_credentials.env` (chmod 600, gitignored); adapters pick it up via `broker_secrets.load_into_env()` without overriding the main `.env`. The unauthenticated read-only dashboard never handles secrets.
 
+### Broker-confirmation gate — phantom elimination (vendor-neutral)
+
+Phantoms = journal rows that never confirmed at the broker. Root cause (diagnosed): (1) the `proposal_approved` path promoted `pending → open` matched by **symbol**, dropping the `broker_order_id`; (2) the `alpaca_sync` path wrote `open` rows with no order id. The clean `submit_entry` path (awaits fill, stamps order id) produced zero phantoms.
+
+The fix is a single broker-neutral confirmation door — no path, for any broker, creates a COUNTED row without walking through it:
+- **Contract:** `scripts/broker_adapter.py` defines the vendor-neutral `BrokerAdapter` (`submit_order/get_order_status/confirm_fill/get_positions/...`) and `adapter_for(account)` (resolves the broker from config, imports `broker_confirm_<broker>.py` by name). **Zero vendor literals** in the gate/verifier (grep-asserted); `alpaca` appears only in `broker_confirm_alpaca.py`.
+- **Two-source verification:** `scripts/trade_fill_verifier.py` — TradeAI re-queries the order; **Hermes independently re-checks read-only**, writing verdicts only to `hermes_fill_verifications` (never mutates `paper_trades`). A row is COUNTED only if broker-proven AND both agree. `confirm_fill` catches order-linked-but-unfilled rows a naive "has order id" check misses (e.g. #29 NVDA).
+- **STEP 3a (live):** `alpaca_paper_adapter.sync_positions` promotion is now **order-anchored** — a pending row becomes `open` only when matched to a specific filled broker order (capturing `broker_order_id`/`client_order_id`); otherwise it is left pending (no unanchored promotion, no `unknown_sync` duplicate). Forward-only; rewrites no history.
+- **STEP 3b (live):** the live-trading-gate excludes integrity-flagged phantoms from its counting (see Live Trading Gate). Rule = **exclude-provably-fake** (keep real legacy/breakeven trades), reconciled against rigorous `confirm_fill` via `scripts/step3_reconcile_filter.py`.
+
 **Limit orders:** Bracket order (buy + stop + target as legs). All legs submitted atomically.
 If the limit buy doesn't fill by end of day (TIF=day), the order expires. The proposal
 remains in PENDING state and will be re-evaluated by the execution sweep on the next
@@ -2094,12 +2104,14 @@ Currently in **paper-only validation mode** (6-month validation window before li
 
 Live trading is locked behind 4 gates (all must pass simultaneously):
 
-| Gate | Requirement | Current | Status |
+| Gate | Requirement | Current (2026-06-03) | Status |
 |------|------------|---------|--------|
-| Win Rate | >= 55% | ~0% (3 closed) | NOT MET |
-| Profit Factor | >= 1.3 | 0.0 (insufficient data) | NOT MET |
-| Sample Size | >= 30 closed trades | 3 | NOT MET |
-| Time in Paper | >= 6 months | ~1 month | NOT MET |
+| Win Rate | >= 55% | 59.1% (broker-proven) | metric met, blocked on sample |
+| Profit Factor | >= 1.3 | 3.66 | metric met, blocked on sample |
+| Sample Size | >= 30 closed trades | 22 | NOT MET |
+| Time in Paper | >= 6 months | ~0.9 months | NOT MET |
+
+**Counting rule (STEP 3b):** the win-rate/profit-factor counts **exclude integrity-flagged phantoms** (`outcome_verdict='PHANTOM'` or `close_reason='phantom_no_alpaca_position'`) — a phantom was never a real broker round-trip, so counting it (it previously scored as a `pnl<=0` loss) deflated the metric. Rule = **exclude-provably-fake**: real legacy/unconfirmable trades and genuine breakevens are kept. This lifted the honest win rate from 44.8% → **59.1%** (sample 29 → 22). The gate **stays closed** — sample (22<30) and duration (0.9<6mo) still fail. Verified vs rigorous `confirm_fill` (`step3_reconcile_filter.py`): no provably-fake row is counted; #29 NVDA is caught. The number is conservative (breakevens count as losses).
 
 Gate status is available at `/api/v2/live-trading-gate`.
 
