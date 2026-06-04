@@ -31,6 +31,7 @@ export default function SystemHub({ onDrill }: Props) {
   const { data: access } = useApi<any>('/api/v2/system/access-links', 300_000)
   const { data: atmCfg } = useApi<any>('/api/v2/atm/config', 120_000)
   const { data: acctCfg } = useApi<any>('/api/v2/admin/accounts', 120_000)
+  const { data: auditLog } = useApi<any>('/api/v2/admin/audit-log', 30_000)
   const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
   const { data: riskCfg } = useApi<any>('/api/v2/risk', 60_000)
   const { data: brokers } = useApi<any>('/api/v2/system/broker-connectors', 60_000)
@@ -500,6 +501,39 @@ export default function SystemHub({ onDrill }: Props) {
               })}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Display only. To change ATM enablement or risk, use the guarded Telegram-approval path — not this page. Source: /api/v2/admin/accounts + /api/v2/atm/config</div>
             </div>
+
+            {/* Admin Audit Trail — every guarded Tier-2/3 write (append-only) */}
+            {(() => {
+              const al = (auditLog?.data ?? auditLog ?? {})
+              const entries = al.entries ?? []
+              const RES: Record<string, string> = { applied: '#22c55e', failed: '#ef4444', rejected: '#f59e0b' }
+              return (
+                <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>Admin Audit Trail ({entries.length})</span>
+                    <span style={{ fontSize: 9, color: 'var(--text3)' }}>append-only · access → confirm → apply → audit</span>
+                  </div>
+                  {entries.length === 0 && <div style={{ fontSize: 10, color: 'var(--text3)', padding: '6px' }}>No admin writes yet.</div>}
+                  {entries.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.1fr 1.6fr 1.8fr 0.7fr', fontSize: 8, color: 'var(--text3)', padding: '3px 6px', borderBottom: '1px solid var(--border)', textTransform: 'uppercase' }}>
+                      <span>When</span><span>Action</span><span>Target</span><span>Change (old → new)</span><span>Result</span>
+                    </div>
+                  )}
+                  {entries.slice(0, 25).map((e: any) => (
+                    <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '1.1fr 1.1fr 1.6fr 1.8fr 0.7fr', padding: '5px 6px', borderBottom: '1px solid var(--border)', fontSize: 9, alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{fmtAge(e.ts)} ago</span>
+                      <span style={{ color: 'var(--text1)', fontWeight: 600 }}>{e.action}</span>
+                      <span style={{ color: 'var(--text2)', fontFamily: 'var(--mono)' }}>{e.target}</span>
+                      <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${JSON.stringify(e.old_value)} → ${JSON.stringify(e.new_value)}`}>
+                        {JSON.stringify(e.old_value)} → {JSON.stringify(e.new_value)}
+                      </span>
+                      <span style={{ color: RES[e.result] ?? 'var(--text3)', fontWeight: 700 }}>{e.result}{e.operator ? ` · ${e.operator}` : ''}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/admin/audit-log (admin_audit_log, append-only). Every Tier-2/3 config write is recorded here.</div>
+                </div>
+              )
+            })()}
           </div>
         )
       })()}

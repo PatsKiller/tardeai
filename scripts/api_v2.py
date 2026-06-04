@@ -14062,6 +14062,19 @@ def _trade_integrity_audit():
     }
 
 
+def _admin_audit_log_view():
+    """GET /api/v2/admin/audit-log — the append-only admin write trail, newest first.
+    Read-only view of every Tier-2/3 write that passed through admin_write_guard."""
+    try:
+        from admin_write_guard import recent_audit
+        rows = recent_audit(100)
+    except Exception as e:
+        return {"entries": [], "error": str(e)}
+    for r in rows:
+        r["ts"] = _json_clean(r.get("ts"))
+    return {"entries": rows, "count": len(rows)}
+
+
 def _system_broker_connectors():
     """GET /api/v2/system/broker-connectors — READ-ONLY broker/account connectivity.
 
@@ -14806,6 +14819,7 @@ ROUTES = {
     "/api/v2/system/feed-health": lambda: _system_feed_health(),
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
+    "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
     "/api/v2/system/siem": lambda: _system_siem_dashboard(),
     "/api/v2/inbox": lambda: _inbox(),
@@ -15871,6 +15885,42 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if result:
                 return 200, {"ok": True, "data": {"rejected": True, "queue_id": queue_id}}
             return 500, {"ok": False, "error": "Reject update failed"}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── ADMIN WRITE SURFACE (Tier-2/3) — every write routes through admin_write_guard ──
+    # ACCESS -> CONFIRM (two-step) -> APPLY -> AUDIT. NO Tier-1 (live-execution) control here.
+    if method == "POST" and base_path in ("/api/v2/admin/alert/ack", "/api/v2/admin/alert/resolve"):
+        try:
+            from admin_write_guard import admin_write
+            b = body or {}
+            source = b.get("source", "alert_events")
+            if source not in ("alert_events", "system_health_events"):   # allowlist — no SQL injection
+                return 400, {"ok": False, "error": "invalid source"}
+            aid = b.get("alert_id")
+            if not aid:
+                return 400, {"ok": False, "error": "alert_id required"}
+            cur_state = _db_query(f"SELECT id, severity, lifecycle_state FROM {source} WHERE id=%s",
+                                  (aid,), fetch="one")
+            if not cur_state:
+                return 404, {"ok": False, "error": "alert not found"}
+            operator = (b.get("operator") or "operator")[:60]
+            is_ack = base_path.endswith("/ack")
+            new_state = "acknowledged" if is_ack else "resolved"
+            tcol = "acknowledged" if is_ack else "resolved"
+
+            def _apply():
+                _db_write(
+                    f"UPDATE {source} SET lifecycle_state=%s, {tcol}_at=NOW(), {tcol}_by=%s WHERE id=%s",
+                    (new_state, operator, aid))
+
+            code, resp = admin_write(
+                action=f"alert.{new_state}", target=f"{source}:{aid}",
+                old_value={"lifecycle_state": cur_state.get("lifecycle_state"), "severity": cur_state.get("severity")},
+                new_value={"lifecycle_state": new_state, f"{tcol}_by": operator},
+                apply_fn=_apply, operator=operator,
+                confirmed=bool(b.get("confirm")), token=b.get("token"))
+            return code, resp
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 
