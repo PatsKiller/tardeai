@@ -14018,6 +14018,10 @@ def _trade_integrity_audit():
     total = len(rows)
     def _ct(pred):
         return sum(1 for r in rows if pred(r))
+    # Hermes coverage is measured over REVIEWABLE trades (closed only) — open positions can't be
+    # reviewed, and cancelled orders are already excluded upstream by the audit.
+    closed_total = _ct(lambda r: r["trade_state"] == "closed")
+    closed_reviewed = _ct(lambda r: r["trade_state"] == "closed" and r["hermes_verdict"] == "REVIEWED")
     return {
         "trades": rows,
         "active_failures": [r for r in rows if r["dual_status"] == "RED"],
@@ -14031,7 +14035,9 @@ def _trade_integrity_audit():
             "trade_ai_fail": _ct(lambda r: r["trade_ai_verdict"] == "FAIL"),
             "hermes_reviewed": _ct(lambda r: r["hermes_verdict"] == "REVIEWED"),
             "hermes_unreviewed": _ct(lambda r: r["hermes_verdict"] == "UNREVIEWED"),
-            "hermes_coverage_pct": round(100 * _ct(lambda r: r["hermes_verdict"] == "REVIEWED") / total, 1) if total else 0,
+            "closed_total": closed_total,
+            "closed_reviewed": closed_reviewed,
+            "hermes_coverage_pct": round(100 * closed_reviewed / closed_total, 1) if closed_total else 0,
         },
         "last_audit": _json_clean(max((r["audited_at"] for r in rows), default=None)),
     }
