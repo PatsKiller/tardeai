@@ -4,9 +4,10 @@ import { fmt$ } from '../lib/format'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionOutcomesPanel from '../components/ProtectionOutcomesPanel'
+import BacktestPanel from '../components/BacktestPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection'] as const
+const TABS = ['Trades', 'Analytics', 'Lessons', 'Protection', 'Backtesting'] as const
 const TIME_RANGES = ['6M', '3M', '1M', 'YTD', '1Y', 'ALL'] as const
 
 const ACCT_COLOR: Record<string, string> = {
@@ -568,6 +569,9 @@ export default function JournalHub({ onDrill }: Props) {
 
       {/* ════════ PROTECTION TAB ════════ */}
       {tab === 'Protection' && <ProtectionOutcomesPanel onDrill={onDrill} />}
+
+      {/* ════════ BACKTESTING TAB (v2 port via shared v3 BacktestPanel) — driven by the shared account + time-range filters ════════ */}
+      {tab === 'Backtesting' && <BacktestPanel onDrill={onDrill} sharedAccount={acctFilter} sharedDateFrom={cutoff} />}
     </div>
   )
 }
