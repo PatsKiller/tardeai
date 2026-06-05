@@ -74,8 +74,10 @@ def fuse_signals(symbol: str, window_hours: int = 24) -> dict:
         scores = [float(s.get("engagement_score", 0.5) or 0.5) for s in social]
         social_score = min(1.0, sum(scores) / len(scores))
 
-    # Sentiment from catalyst analysis
-    cur.execute("SELECT overall_sentiment, confidence FROM catalyst_sentiment_analysis WHERE symbol=%s AND created_at > %s ORDER BY created_at DESC LIMIT 3", (sym, cutoff))
+    # Sentiment lane (2026-06-04): repointed from catalyst_sentiment_analysis (NO producer — always
+    # empty, so sentiment_score was stuck at the 0.5 default) to sentiment_observations, which carries
+    # the same overall_sentiment/confidence columns and now flows again (news_ingestion + sentiment_processor).
+    cur.execute("SELECT overall_sentiment, confidence FROM sentiment_observations WHERE symbol=%s AND created_at > %s ORDER BY created_at DESC LIMIT 3", (sym, cutoff))
     sentiments = cur.fetchall()
     sentiment_score = 0.5  # neutral default
     if sentiments:

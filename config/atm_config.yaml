@@ -40,7 +40,7 @@ defaults:
 # Same-day strategies: gap_and_go still skipped (requires sub-minute execution).
 # momentum_scalp REMOVED from skip list — ATM now allowed to process these.
 same_day_skip_strategies:
-  - gap_and_go
+- gap_and_go
 
 # Per-account overrides. account_label must exist in accounts table.
 accounts:
@@ -62,8 +62,8 @@ b1_tracking:
   observation_end: "2026-05-25"
   exclude_bucket2_during_observation: false
   bucket2_strategies:
-    - swing_breakout
-    - swing_trade
-    - earnings_post_momentum
-    - recovery_watch
-    - fib_retracement_bounce
+  - swing_breakout
+  - swing_trade
+  - earnings_post_momentum
+  - recovery_watch
+  - fib_retracement_bounce

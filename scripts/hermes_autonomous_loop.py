@@ -59,19 +59,52 @@ def get_db_connection():
 
 
 def get_ticker_targets(conn, max_rows=3):
-    """Select tickers with recent activity for challenge."""
+    """Select tickers for Hermes LLM research, prioritized (2026-06-04):
+       0. HELD positions across ALL accounts (trades + paper_trades, status=open) — re-researched if
+          not done in the last 24h, so live holdings get around-the-clock coverage.
+       1. OPEN proposals (actionable statuses) — same 24h re-research window.
+       2. CLOSED trades (retrospective reflection) — one-time (never re-researched).
+    Held/proposals use a 24h window (cycle daily); closed-trade reflection uses lifetime dedup.
+    """
     cur = conn.cursor()
     cur.execute("""
-        SELECT DISTINCT t.symbol, COUNT(*) AS trade_count
-        FROM hermes_v_trade_reflection_context t
-        WHERE t.lifecycle_state = 'closed' AND t.symbol IS NOT NULL
-          AND t.symbol NOT IN (SELECT symbol FROM hermes_research_intelligence WHERE symbol IS NOT NULL)
-        GROUP BY t.symbol
-        HAVING COUNT(*) >= 2
-        ORDER BY COUNT(*) DESC
-        LIMIT %s
+        WITH researched_recent AS (
+            SELECT DISTINCT symbol FROM hermes_research_intelligence
+            WHERE symbol IS NOT NULL AND created_at > now() - interval '24 hours'
+        ),
+        researched_ever AS (
+            SELECT DISTINCT symbol FROM hermes_research_intelligence WHERE symbol IS NOT NULL
+        ),
+        held AS (
+            -- only real equity/fund tickers (1-5 letters); excludes Schwab CUSIPs (bonds/securities)
+            SELECT symbol FROM trades       WHERE lower(status)='open' AND symbol ~ '^[A-Z]{1,5}$'
+            UNION
+            SELECT symbol FROM paper_trades WHERE lower(status)='open' AND symbol ~ '^[A-Z]{1,5}$'
+        ),
+        proposals AS (
+            SELECT symbol FROM paper_trade_proposals
+            WHERE symbol ~ '^[A-Z]{1,5}$'
+              AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
+        ),
+        targets AS (
+            SELECT symbol, 0 AS pri, 'held_position' AS src FROM held
+              WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
+            UNION
+            SELECT symbol, 1 AS pri, 'open_proposal' AS src FROM proposals
+              WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
+            UNION
+            SELECT t.symbol, 2 AS pri, 'closed_trade' AS src
+              FROM hermes_v_trade_reflection_context t
+              WHERE t.lifecycle_state='closed' AND t.symbol IS NOT NULL
+                AND t.symbol NOT IN (SELECT symbol FROM researched_ever)
+              GROUP BY t.symbol HAVING COUNT(*) >= 2
+        ),
+        deduped AS (
+            SELECT DISTINCT ON (symbol) symbol, src, pri FROM targets ORDER BY symbol, pri
+        )
+        SELECT symbol, src FROM deduped ORDER BY pri, symbol LIMIT %s
     """, (max_rows,))
-    return [{"symbol": row[0], "trade_count": row[1]} for row in cur.fetchall()]
+    return [{"symbol": row[0], "src": row[1], "trade_count": 0} for row in cur.fetchall()]
 
 
 def get_ticker_context(conn, symbol):
@@ -126,7 +159,7 @@ def run_ticker_challenger(args):
 
     for i, target in enumerate(targets):
         sym = target["symbol"]
-        print(f"\n  [{i+1}/{len(targets)}] {sym} ({target['trade_count']} trades)")
+        print(f"\n  [{i+1}/{len(targets)}] {sym} ({target.get('src','target')})")
 
         ctx = get_ticker_context(conn, sym)
 

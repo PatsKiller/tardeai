@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+# cron runs with a minimal PATH that omits ~/.local/bin, where the gog CLI lives — this made
+# the hourly cron sync fail silently ("gog: command not found", 0 uploaded) while interactive
+# runs worked. Prepend the absolute dir so gog resolves under cron. (2026-06-04)
+export PATH="/home/johnclaw/.local/bin:$PATH"
+
 export GOG_KEYRING_PASSWORD=$(cat /home/johnclaw/.openclaw/credentials/gog_keyring_password)
 GOG_ACCOUNT="john@jwwhiting.com"
 DRIVE_FOLDER_ID="1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR"  # Trade_AI_Docs_v2 (structured)

@@ -1,3 +1,4 @@
+SESSION_2026_06_04_SUMMARY.md	13492
 advisory/PHASE141_142_DUAL_OPINION_AND_CHOICE_TRACKING.md	2010
 advisory/PHASE143_144_INLINE_ADVISORY_REPORT.md	2917
 advisory/PHASE155_158_OBSERVATION_EVIDENCE_ESCALATION.md	2448
@@ -494,7 +495,7 @@ llm/PHASE53E_HIGH_LLM_INTEGRATION_PLAN.md	611
 llm/PHASE61A_OLLAMA_FAILURE_INVENTORY.md	1124
 llm/PHASE61B_OLLAMA_CONTENTION_POLICY.md	668
 maturity_hardening/maturity_control_board_latest.md	1027
-maturity_hardening/operator_readiness_latest.md	326
+maturity_hardening/operator_readiness_latest.md	135
 maturity_hardening/phase_readiness_latest.md	687
 maturity_hardening/post_stop_v2_maturity_refresh/00_README.md	323
 maturity_hardening/post_stop_v2_maturity_refresh/post_stop_v2_maturity_board.md	3002
@@ -513,6 +514,8 @@ openclaw_aegis_morning_brief_2026-05-30.md	3241
 openclaw_aegis_morning_brief_2026-05-31.md	3103
 openclaw_aegis_morning_brief_2026-06-01.md	3262
 openclaw_aegis_morning_brief_2026-06-02.md	3339
+openclaw_aegis_morning_brief_2026-06-03.md	3426
+openclaw_aegis_morning_brief_2026-06-04.md	3338
 operations/PHASE36A_CRON_RISK_AND_GROUPING_AUDIT.md	3456
 operations/PHASE36B_SCHEDULE_DUPLICATE_OVERLAP_AUDIT.md	2228
 operations/PHASE36C_SCHEDULED_JOB_CONSOLIDATION_DESIGN.md	2135
@@ -670,7 +673,7 @@ project/SESSION_2026_05_29_FINAL_SUMMARY.md	11352
 project/SESSION_2026_05_29_SUMMARY.md	13169
 project/SESSION_2026_05_30_SUMMARY.md	7800
 project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md	1310
-project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md	12249
+project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md	14870
 project/Trade_AI_v12_System_Architecture.docx	51871
 project/dashboard_data_correctness/dashboard_cleanup_closeout.md	1524
 project/session_summaries/final_full_session_summary_2026_05_22_to_2026_05_24.md	7963

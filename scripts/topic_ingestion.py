@@ -1211,8 +1211,17 @@ def main():
             (args.topic,)
         )
     else:
+        # Oldest-first (2026-06-04): per-article LLM curation means one run only covers ~7 of 17
+        # topics before the 30-min timeout. Ordering by priority alone starved low-priority topics
+        # (same 7 ran every time). last_searched ASC NULLS FIRST processes the MOST-STALE topics
+        # first, so the daily cron cycles all 17 fairly over ~3 days; priority is the tiebreaker.
+        # owner routing (2026-06-04): TradeAI's engine researches tradeai + shared topics.
+        # hermes-owned topics are handed off to Hermes via hermes_topic_monitor_bridge.py
+        # (which enqueues owner IN ('hermes','shared') into hermes_research_intelligence).
+        # shared = researched by BOTH engines.
         cur.execute(
-            "SELECT * FROM topic_monitor WHERE enabled = true ORDER BY priority, topic_id"
+            "SELECT * FROM topic_monitor WHERE enabled = true AND owner IN ('tradeai','shared') "
+            "ORDER BY last_searched ASC NULLS FIRST, priority, topic_id"
         )
 
     columns = [desc[0] for desc in cur.description]
