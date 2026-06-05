@@ -43,3 +43,13 @@ ran the real executor cycle with `atm_state.mode=active`:
 - Proposal stayed PENDING, paper_trade_id=None, approved_at=None; 0 ZZTEST paper_trades; paper_trades
   count unchanged (51→51). Synthetic proposal deleted afterward.
 - Proves the automation_mode gate overrides `atm_state.mode=active` (more restrictive) with no submission.
+
+## Verification — AUTO_PAPER approves (2026-06-05)
+Set `alpaca_paper` → AUTO_PAPER (guarded). Ran the executor in `dry_run` (which logs would-approve but
+never submits) with a force_approve synthetic ZZTEST proposal:
+- Log: `ZZTEST: dry_run_approved (would approve)` — passed the automation_mode gate + all gates.
+- paper_trades unchanged (51→51), 0 ZZTEST trades (dry_run never submits); atm_state.mode restored to
+  `active`; synthetic proposal deleted.
+- Differential confirmed: MANUAL_REVIEW → HELD; AUTO_PAPER → would-approve. Executor correctly reads
+  automation_mode in both directions. (Under active mode + AUTO_PAPER, approval submits to the Alpaca
+  PAPER endpoint — no real money.)
