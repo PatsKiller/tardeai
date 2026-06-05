@@ -33,3 +33,13 @@ remain held by the interlock.
 Helper reads alpaca_paper=AUTO_LIVE, schwab=MANUAL_REVIEW, unknown=None. Decision matrix correct.
 Executor one-cycle run clean (0 pending, mode=active, exit 0); 0 orders submitted. No endpoint/
 interlock/strategy/GO-WAIT change. Phase 205 untouched.
+
+## Verification — MANUAL_REVIEW hold (live cycle, 2026-06-05)
+Set `alpaca_paper` → MANUAL_REVIEW (guarded write, audited). Inserted a synthetic PENDING proposal
+(ZZTEST/alpaca_paper, R:R 2.0, risk_gate=APPROVED — would auto-approve under AUTO_PAPER/AUTO_LIVE) and
+ran the real executor cycle with `atm_state.mode=active`:
+- Log: `ZZTEST: HELD — account alpaca_paper automation_mode=MANUAL_REVIEW (no auto-approve; left PENDING)`.
+- Cycle: 0 approved / 0 rejected / 1 deferred.
+- Proposal stayed PENDING, paper_trade_id=None, approved_at=None; 0 ZZTEST paper_trades; paper_trades
+  count unchanged (51→51). Synthetic proposal deleted afterward.
+- Proves the automation_mode gate overrides `atm_state.mode=active` (more restrictive) with no submission.
