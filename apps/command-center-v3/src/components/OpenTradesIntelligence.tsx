@@ -157,7 +157,7 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
                 ) : (
                   <>
                     <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(p.market_value ?? 0)}</span>
-                    <span style={{ fontSize: 9, color: '#f59e0b' }}>{p.basis_warning === 'no_cost_basis' ? 'no cost basis' : 'basis unverified'}</span>
+                    <span style={{ fontSize: 9, color: '#f59e0b' }}>{p.basis_warning === 'no_cost_basis' ? 'no cost basis' : p.basis_warning === 'basis_needs_transfer_mapping' ? 'basis needs transfer mapping' : p.basis_warning === 'partial_transfer_in' ? 'partial transfer-in' : 'basis unverified'}</span>
                   </>
                 )}
                 {p.today_move_pct != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>today {pct(p.today_move_pct)}</span>}
@@ -168,6 +168,7 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
                 {p.stop_price != null ? ` · stop ${num(p.stop_price)}` : ''}
                 {p.target_price ? ` · tgt ${num(p.target_price)}` : ''}
                 {p.basis_reliable && p.cost_basis != null ? ` · basis ${fmt$(p.cost_basis)}` : ''}
+                {(p.cost_basis_source === 'operator_provided' || p.cost_basis_source === 'operator_provided_carry_forward') && <span style={{ color: '#a855f7' }}> · basis: owner provided</span>}
               </div>
 
               {/* technical + protection chips */}
