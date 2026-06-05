@@ -53,6 +53,58 @@ function ManageApiModal({ enums, initial, onClose, onSubmit }: any) {
   )
 }
 
+function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: any) {
+  const isLive = account.environment === 'live'
+  const [f, setF] = useState<any>({
+    automation_mode: policy.automation_mode ?? account.automation_mode ?? 'MANUAL_REVIEW',
+    approval_policy: policy.approval_policy ?? 'PROPOSAL_ONLY',
+    risk_per_trade_pct: policy.risk_per_trade_pct ?? '',
+    max_new_positions_per_day: policy.max_new_positions_per_day ?? '',
+    max_concurrent_positions: policy.max_concurrent_positions ?? '',
+    daily_loss_pause_pct: policy.daily_loss_pause_pct ?? '',
+  })
+  const set = (k: string, v: any) => setF({ ...f, [k]: v })
+  // AUTO_LIVE always disabled in the picker; AUTO_PAPER only for write-capable paper accounts
+  const modeOpts = (enums?.automation_modes ?? PAPER_MODES.concat(['AUTO_LIVE']))
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 440 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>Edit Automation — {account.display_name}</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>{account.broker} · {account.environment} · source {policy.source ?? '—'}. AUTO_LIVE is gate-interlocked (server refuses until the live gate passes).</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 11 }}>
+          <label>automation mode
+            <select style={{ ...inp, width: '100%' }} value={f.automation_mode} onChange={e => set('automation_mode', e.target.value)}>
+              {modeOpts.map((m: string) => {
+                const lock = m === 'AUTO_LIVE' || (m === 'AUTO_PAPER' && !account.api_write_enabled)
+                return <option key={m} value={m} disabled={lock}>{m}{lock ? ' (locked)' : ''}</option>
+              })}
+            </select>
+          </label>
+          <label>approval policy
+            <select style={{ ...inp, width: '100%' }} value={f.approval_policy} onChange={e => set('approval_policy', e.target.value)}>
+              {(enums?.approval_policies ?? ['PROPOSAL_ONLY', 'MANUAL_APPROVAL_REQUIRED', 'AUTO_SUBMIT_AFTER_VALIDATION']).map((a: string) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label>Risk % / trade<input style={{ ...inp, width: '100%' }} value={f.risk_per_trade_pct} onChange={e => set('risk_per_trade_pct', e.target.value)} /></label>
+          <label>Max new / day<input style={{ ...inp, width: '100%' }} value={f.max_new_positions_per_day} onChange={e => set('max_new_positions_per_day', e.target.value)} /></label>
+          <label>Max concurrent<input style={{ ...inp, width: '100%' }} value={f.max_concurrent_positions} onChange={e => set('max_concurrent_positions', e.target.value)} /></label>
+          <label>Daily-loss pause %<input style={{ ...inp, width: '100%' }} value={f.daily_loss_pause_pct} onChange={e => set('daily_loss_pause_pct', e.target.value)} /></label>
+        </div>
+        {isLive && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 8 }}>⚠ live account — AUTO_LIVE / AUTO_PAPER will be refused by the gate interlock.</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+          <button onClick={onClose} style={{ ...inp, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => {
+            const body: any = { account: account.account_key, automation_mode: f.automation_mode, approval_policy: f.approval_policy }
+            for (const k of ['risk_per_trade_pct', 'max_new_positions_per_day', 'max_concurrent_positions', 'daily_loss_pause_pct'])
+              if (f[k] !== '' && f[k] != null) body[k] = Number(f[k])
+            onSubmit(body)
+          }} style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 4, border: '1px solid #60a5fa', background: 'rgba(96,165,250,.15)', color: '#60a5fa', cursor: 'pointer' }}>Review change</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ATMControlPanel() {
   const { data: accountsResp } = useApi<any>('/api/v2/broker-accounts?api_only=true', 60_000)
   const { data: enums } = useApi<any>('/api/v2/broker-accounts/enums', 300_000)
@@ -68,6 +120,7 @@ export default function ATMControlPanel() {
   const gate = gateResp?.gate
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [showApi, setShowApi] = useState<any>(null) // null=closed, {}=add, {...}=edit
+  const [showAuto, setShowAuto] = useState(false)
   const tokenSet = !!getToken()
   const btn = (active: boolean, disabled?: boolean) => ({ fontSize: 11, fontWeight: 600, padding: '5px 11px', borderRadius: 6, cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${active ? '#60a5fa' : 'var(--border)'}`, opacity: disabled ? 0.4 : 1, background: active ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: active ? '#60a5fa' : 'var(--text2)' })
 
@@ -109,31 +162,20 @@ export default function ATMControlPanel() {
 
       {account && (
         <>
-          {/* AUTOMATION POLICY */}
+          {/* AUTOMATION POLICY — edit via modal */}
           <div style={card}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>{account.display_name} — Automation</div>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{account.display_name} — Automation</div>
+              <button disabled={!tokenSet} style={btn(false, !tokenSet)} onClick={() => setShowAuto(true)}>Edit Automation</button>
+            </div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 10 }}>
               mode <b style={{ color: '#60a5fa' }}>{policy.automation_mode ?? account.automation_mode}</b> · approval {policy.approval_policy ?? '—'} ·
               policy source <b style={{ color: policy.source === 'database' ? '#22c55e' : '#f59e0b' }}>{policy.source ?? '—'}</b>
               {policy.updated_at && ` · updated ${String(policy.updated_at).slice(0, 16).replace('T', ' ')}`}
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {PAPER_MODES.map(m => {
-                const isLive = account.environment === 'live'
-                const disabled = !tokenSet || (m === 'AUTO_PAPER' && !account.api_write_enabled)
-                return <button key={m} disabled={disabled} style={btn((policy.automation_mode ?? account.automation_mode) === m, disabled)}
-                  onClick={() => setPending({ path: '/api/v2/admin/broker-account/policy', body: { account: account.account_key, automation_mode: m }, label: `${account.account_key}: automation → ${m}` })}>{m}</button>
-              })}
-              <button disabled title="gate-interlocked: refused until live-trading gate passes" style={btn(false, true)}>🔒 AUTO_LIVE</button>
-            </div>
-            {/* risk limits (per-account) */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6 }}>
               {[['risk_per_trade_pct', 'Risk % / trade'], ['max_new_positions_per_day', 'Max new / day'], ['max_concurrent_positions', 'Max concurrent'], ['daily_loss_pause_pct', 'Daily-loss pause %']].map(([k, lbl]) => (
-                <div key={k} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text2)', minWidth: 110 }}>{lbl}</span>
-                  <span style={{ fontFamily: 'monospace', color: 'var(--text0)', minWidth: 40 }}>{String(policy[k] ?? '—')}</span>
-                  <RiskEdit field={k as string} label={lbl as string} account={account.account_key} disabled={!tokenSet} setPending={setPending} />
-                </div>
+                <div key={k} style={{ fontSize: 11, color: 'var(--text2)' }}>{lbl}: <b style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{String(policy[k] ?? '—')}</b></div>
               ))}
             </div>
           </div>
@@ -153,6 +195,9 @@ export default function ATMControlPanel() {
         </>
       )}
 
+      {showAuto && account && <AutomationPolicyModal account={account} policy={policy} enums={enums}
+        onClose={() => setShowAuto(false)}
+        onSubmit={(body: any) => { setShowAuto(false); setPending({ path: '/api/v2/admin/broker-account/policy', body, label: `${account.account_key}: automation → ${body.automation_mode} / ${body.approval_policy}` }) }} />}
       {showApi && <ManageApiModal enums={enums} initial={Object.keys(showApi).length ? showApi : null}
         onClose={() => setShowApi(null)}
         onSubmit={(f: any) => { setShowApi(null); setPending({ path: '/api/v2/admin/broker-account/api', body: f, label: `${f.account_key}: ${f.broker}/${f.environment} API (read=${!!f.api_read_enabled} write=${!!f.api_write_enabled})` }) }} />}
@@ -161,13 +206,3 @@ export default function ATMControlPanel() {
   )
 }
 
-function RiskEdit({ field, label, account, disabled, setPending }: any) {
-  const [v, setV] = useState('')
-  return (
-    <span style={{ display: 'flex', gap: 4 }}>
-      <input value={v} placeholder="new" disabled={disabled} onChange={e => setV(e.target.value)} style={{ ...inp, width: 56 }} />
-      <button disabled={disabled || !v} onClick={() => setPending({ path: '/api/v2/admin/broker-account/policy', body: { account, [field]: Number(v) }, label: `${account}: ${label} → ${v}` })}
-        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: disabled || !v ? 'not-allowed' : 'pointer', opacity: disabled || !v ? 0.4 : 1 }}>Set</button>
-    </span>
-  )
-}

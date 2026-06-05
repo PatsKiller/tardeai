@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS broker_capability_checks (
   last_checked_at TIMESTAMPTZ DEFAULT now(),
   evidence JSONB
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_cap_check ON broker_capability_checks(account_id, check_name);
 """
 
 CAP_CHECKS = ["broker_adapter_present", "auth_configured", "read_api_tested", "positions_sync_tested",
@@ -119,13 +120,15 @@ def main():
     for label, broker, mode, api_enabled, auto_cap, adapter in accts:
         is_paper = (mode == "paper")
         env = "paper" if is_paper else ("import" if broker == "fidelity" else "live")
-        write = bool(is_paper)  # only paper is write-enabled; live writes NOT proven
-        read = bool(api_enabled) or is_paper
+        # Phase 1: ONLY the paper account (alpaca) has a real trading API. Schwab/Fidelity have NO
+        # trading API yet (data may be imported separately) — read+write false until an API is added.
+        write = bool(is_paper)
+        read = bool(is_paper)
         adapter = adapter or (f"scripts.{broker}_adapter" if broker in ("alpaca", "schwab") else None)
         disp = {"alpaca_paper": "Alpaca Paper", "schwab_rollover_ira": "Schwab Rollover IRA",
                 "schwab_roth_ira": "Schwab Roth IRA", "schwab_taxable": "Schwab Taxable",
                 "fidelity_401k": "Fidelity 401k"}.get(label, label)
-        conn_status = "ok" if is_paper else ("read_only_pending_write" if read else "import_only")
+        conn_status = "ok" if is_paper else "no_trading_api"
         cur.execute("""INSERT INTO broker_accounts
             (account_key, display_name, broker, environment, is_enabled, api_read_enabled, api_write_enabled,
              supports_equities, supports_fractional, supports_bracket_orders, supports_stop_orders,
@@ -168,17 +171,13 @@ def main():
                                     "fill_confirmation_tested", "reconciliation_tested") else \
                      ("n/a" if cn == "live_write_armed" else "ok")
             elif broker == "schwab":
-                st = "ok" if cn in ("broker_adapter_present", "read_api_tested") else \
-                     ("not_proven" if cn in ("orders_api_implemented", "fill_confirmation_tested",
-                                             "cancel_replace_tested", "protective_stop_support_tested",
-                                             "reconciliation_tested") else
-                      ("not_implemented" if cn == "order_confirmation_implemented" else "not_proven"))
-                if cn == "live_write_armed": st = "not_proven"
-            else:  # fidelity import-only
+                # No Schwab trading API yet: only the adapter stub exists; everything else not_implemented.
+                st = "ok" if cn == "broker_adapter_present" else "not_implemented"
+            else:  # fidelity import-only (no trading API)
                 st = "n/a"
             cur.execute("""INSERT INTO broker_capability_checks (account_id, check_name, status, detail)
                            VALUES (%s,%s,%s,%s)
-                           ON CONFLICT DO NOTHING""", (bid, cn, st, f"seed status for {broker}"))
+                           ON CONFLICT (account_id, check_name) DO UPDATE SET status=EXCLUDED.status, last_checked_at=now()""", (bid, cn, st, f"seed status for {broker}"))
     c.commit()
     cur.execute("SELECT count(*) FROM broker_accounts"); ba = cur.fetchone()[0]
     cur.execute("SELECT count(*) FROM account_automation_policies"); ap = cur.fetchone()[0]
