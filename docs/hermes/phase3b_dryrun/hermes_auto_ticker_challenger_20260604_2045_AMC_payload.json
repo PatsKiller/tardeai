@@ -1,0 +1,56 @@
+{
+  "source": "hermes",
+  "phase": "3",
+  "task_id": "auto_ticker_challenger_20260604_2045_AMC",
+  "hermes_agent_name": "ticker_research_agent",
+  "research_type": "ticker_thesis_challenge",
+  "symbol": "AMC",
+  "topic": "AMC autonomous thesis challenge \u2014 0 trades",
+  "summary": "As of June 4, 2026, AMC Entertainment Holdings Inc. (AMC) exhibits a concerning trend with negative 21.03% returns over the 200-day SMA, coupled with a strong negative analyst recommendation (-98.88%) and a high short ratio (2.79). Despite a recent 5.13% week performance and 28.12% month performance, the company's long-term performance is weak (-38.81% YTD). The current RSI of 60.0 indicates a neutral condition, but the overall picture suggests significant risk.",
+  "thesis": "AMC's current financial performance, characterized by substantial negative returns and a highly unfavorable analyst outlook, indicates a fundamentally weak investment thesis requiring significant improvement before a positive outlook can be established.",
+  "evidence_json": {
+    "rsi": 60.0,
+    "sma20_pct": 2.98,
+    "sma50_pct": 26.62,
+    "sma200_pct": -21.03,
+    "analyst_recom": "-98.88%",
+    "challenge_points": [
+      "The strategy employed (unspecified) was not appropriately aligned with AMC\u2019s negative long-term trend and unfavorable analyst assessment.",
+      "The reliance on short-term performance metrics (week and month) obscures the underlying weakness indicated by the 200-day SMA."
+    ],
+    "source_views": [
+      "hermes_v_ticker_context",
+      "hermes_v_trade_reflection_context",
+      "hermes_v_proposal_context"
+    ],
+    "limitations": [
+      "The analysis is based solely on snapshot data from June 4, 2026, and does not account for potential future developments.",
+      "The provided data lacks information about the specific trading strategy employed, making it impossible to assess its effectiveness."
+    ],
+    "facts": [
+      "AMC's SMA200_pct is -21.03%",
+      "The analyst recommendation is -98.88%",
+      "The RSI is 60.0",
+      "The beta is 2.22",
+      "The short ratio is 2.79",
+      "The perf_week_pct is 5.13",
+      "The perf_month_pct is 28.12"
+    ],
+    "inferences": [
+      "The negative 200-day SMA return strongly suggests a prolonged period of underperformance.",
+      "The extremely negative analyst recommendation indicates a widespread lack of confidence in the company's future prospects.",
+      "The high short ratio suggests significant bearish sentiment among investors."
+    ],
+    "missing_data": [
+      "Detailed financial statements for recent periods (quarterly and annual) would provide a more granular understanding of the company's performance.",
+      "Information regarding the company's debt levels and cash flow would be crucial for assessing its financial health.",
+      "A breakdown of the analyst's rationale for the -98.88% recommendation would offer valuable context."
+    ],
+    "confidence_explanation": "The confidence level is high due to the presence of multiple negative indicators (negative SMA, negative analyst recommendation, high short ratio) within the provided data. However, the lack of information about the trading strategy and the reliance on a single snapshot date introduces some uncertainty.",
+    "run_id": "auto_ticker_challenger_20260604_2045"
+  },
+  "confidence_score": 0.85,
+  "freshness_date": "2026-06-04",
+  "model_used": "gemma3:12b",
+  "status": "staged"
+}
