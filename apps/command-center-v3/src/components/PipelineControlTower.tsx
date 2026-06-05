@@ -54,8 +54,13 @@ export default function PipelineControlTower() {
             <span>last run: <b style={{ color: gov.last_run?.overall === 'ok' ? '#22c55e' : '#f59e0b' }}>{gov.last_run?.overall ?? '—'}</b> {gov.last_run?.dry_run ? '(dry-run)' : ''}</span>
             <span>failures: <b style={{ color: (gov.failures?.length ? '#ef4444' : '#22c55e') }}>{gov.failures?.length ?? 0}</b></span>
             <span>retired legacy cron: <b style={{ color: '#60a5fa' }}>{gov.retired_legacy_cron}</b></span>
+            <span>retired legacy timers: <b style={{ color: '#60a5fa' }}>{gov.retired_legacy_timers ?? 0}/{gov.retired_legacy_timers_total ?? 4}</b></span>
             <span>active legacy gov cron: <b style={{ color: 'var(--text0)' }}>{gov.active_legacy_governance_cron}</b></span>
-            <span>next run: {gov.next_run}</span>
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 4 }}>
+            safety net: freshness monitor + watchdog <b style={{ color: '#22c55e' }}>untouched</b> ·
+            portfolio-maintenance: <b style={{ color: '#f59e0b' }}>{gov.portfolio_maintenance?.status ?? 'not_migrated'}</b>
+            {' '}({gov.portfolio_maintenance?.candidate_count ?? 0} candidates, design-only)
           </div>
           <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
             steps: {(gov.last_run?.steps ?? []).map((s: any) => `${s.name}:${s.status}`).join(' · ')} · Source: /api/v2/system/governance-pipeline-status
