@@ -18,6 +18,7 @@ HEARTBEAT_MARKER = "Watch-the-Watchman Dead-Man's Switch (Session 2026-06-04)"
 RESEARCH_MARKER = "Research Lane Revived — fusion 4 of 5 (Session 2026-06-04)"
 TOPICENG_MARKER = "topic_ingestion Root-Cause + Fix + Cadence + Monitor (Session 2026-06-04)"
 LIQUIDITY_MARKER = "Liquidity Pre-Screen at Proposal Generation (Session 2026-06-04)"
+BTFILTER_MARKER = "v3 Backtesting Tab Respects Shared Filters (Session 2026-06-04)"
 
 
 def h(doc, lvl):
@@ -367,6 +368,28 @@ def append_liquidity(doc):
         r[0].text, r[1].text = c, d
 
 
+def append_btfilter(doc):
+    p = doc.add_paragraph()
+    if h(doc, 2):
+        p.style = h(doc, 2)
+    p.text = BTFILTER_MARKER
+    doc.add_paragraph(
+        "Dashboard bug (v3 Journal hub): the Backtesting tab ignored the shared account chips and "
+        "time-range selection that drive every other Journal tab. JournalHub.tsx rendered "
+        "<BacktestPanel onDrill> passing NONE of its filter state (the code comment even claimed an "
+        "'all-accounts filter built in'), so the panel ran on its own independent filters and never "
+        "reacted to the operator's account/range choice. Fix: JournalHub now passes "
+        "sharedAccount={acctFilter} + sharedDateFrom={cutoff}; BacktestPanel seeds its internal "
+        "account/dateFrom state from those props and re-syncs on change, driving its backend reload. "
+        "The account keys line up exactly — strategy_backtest_trades.account stores the same "
+        "normalized values JournalHub uses (alpaca_paper, schwab_rollover_ira, schwab_taxable) — so "
+        "no translation is needed; the time range maps to the backend start_date. Selecting an "
+        "account narrows to that account's replays (account-agnostic champion sims show only under "
+        "'All'); schwab_roth_ira has no backtest rows so it correctly shows empty. Verified: tsc+vite "
+        "build clean; live API (:7777) /api/v2/backtesting/trades returns all=48, alpaca_paper=11, "
+        "schwab_rollover_ira=28, alpaca_paper since 2026-05-01=10.")
+
+
 def main():
     doc = Document(DOCX_PATH)
     changed = False
@@ -414,6 +437,10 @@ def main():
         append_liquidity(doc)
         changed = True
         print("liquidity pre-screen section appended")
+    if not _has(doc, BTFILTER_MARKER):
+        append_btfilter(doc)
+        changed = True
+        print("backtest-filter section appended")
     if changed:
         doc.save(DOCX_PATH)
         print("saved")
