@@ -53,3 +53,7 @@ Base universe corrected from `trades.status='open'` (stale phantom lots incl AXT
 
 ## 2026-06-05 basis validation
 Schwab/Fidelity cards now label the cost basis as **avg cost** (not 'entry'; paper still shows entry). Broker-imported `cost_basis` is sometimes partial/wrong (a few Schwab lots implied avg cost a fraction of price → impossible +1000s%). Added basis validation: positions with missing cost_basis (`no_cost_basis`) or implausible basis (`basis_unverified`: avg_cost <10% of price, or gain% >400 / <-99) are flagged (`basis_reliable=false`, `basis_warning`), their derived P&L is **suppressed** (card shows market value + 'basis unverified'), and they're excluded from `total_unrealized_pnl`. Summary `basis_unverified_count`. This dropped a fabricated ~$337k total to the honest reliable-only figure.
+
+
+## 2026-06-05 June-5 CSV basis + income repair
+Cost basis for real holdings comes from latest broker transaction CSVs (latest-file discovery), explicit transfer-basis overrides (cost_basis_overrides.json), and approved source mappings (Fidelity Positions PDF). Reinvested shares add to basis; dividends/interest are recorded separately in income_ledger.json. Unknown transfer basis is flagged (basis_needs_transfer_mapping / partial_transfer_in), never fabricated. Open Trades trusts explicit cost_basis_source (no false 'unverified' on legit large gains like V +613%); badges: 'basis: owner provided', 'basis needs transfer mapping'. See COST_BASIS_JUNE5_CSV_REPAIR_20260605.md.

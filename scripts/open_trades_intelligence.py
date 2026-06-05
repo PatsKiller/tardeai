@@ -155,6 +155,7 @@ def _load_base_positions():
                 "today_move_pct": float(h["day_change_pct"]) if h.get("day_change_pct") is not None else None,
                 "is_fund": bool(h.get("is_fund")), "price_updated_at": h.get("updated_at") or hj.get("last_repriced"),
                 "src": "holdings",
+                "cost_basis_source": h.get("cost_basis_source"), "basis_partial_flag": bool(h.get("basis_partial")),
             })
     except Exception as e:
         excluded.append({"account": None, "symbol": None, "reason": f"holdings.json load error: {e}", "source": "holdings.json"})
@@ -332,14 +333,20 @@ def build_intelligence():
             if upnl is None and cur_px is not None and ent is not None:
                 upnl = (cur_px - ent) * sh
                 upnl_pct = ((cur_px - ent) / ent * 100) if ent else None
-            # ── basis validation: broker-imported cost_basis is sometimes partial/wrong (e.g. a few
-            #    Schwab lots showing avg cost a fraction of price → impossible +1000s%). Flag unreliable
-            #    basis and suppress the derived P&L so we never display a fabricated gain. ──
+            # ── basis validation. Prefer the explicit cost_basis_source set by the import repair: a
+            #    trusted source (operator_provided, reconstructed_from_amounts, fidelity_positions_pdf)
+            #    is honoured as-is even with a large legit gain (e.g. V at $43 → +600%). Only fall back
+            #    to the heuristic when there is no source flag (legacy/unrepaired data). ──
+            TRUSTED = {"operator_provided", "operator_provided_carry_forward",
+                       "reconstructed_from_amounts", "fidelity_positions_pdf"}
             basis_reliable, basis_warning = True, None
             cbasis, avgc = p.get("cost_basis"), p.get("avg_cost")
-            if p.get("src") != "paper_trades":  # holdings (broker-imported basis)
-                if cbasis is None or avgc is None:
-                    basis_reliable, basis_warning = False, "no_cost_basis"
+            cbsrc = p.get("cost_basis_source")
+            if p.get("src") != "paper_trades":  # holdings
+                if p.get("basis_partial_flag") or cbasis is None or avgc is None:
+                    basis_reliable, basis_warning = False, (cbsrc or "no_cost_basis")
+                elif cbsrc in TRUSTED:
+                    basis_reliable, basis_warning = True, None  # authoritative basis — trust it
                 elif (cur_px and avgc < 0.10 * cur_px) or (upnl_pct is not None and (upnl_pct > 400 or upnl_pct < -99)):
                     basis_reliable, basis_warning = False, "basis_unverified"
             if not basis_reliable:
@@ -392,6 +399,7 @@ def build_intelligence():
                 "entry_price": ent, "avg_cost": p.get("avg_cost"), "cost_basis": p.get("cost_basis"),
                 "basis_kind": ("entry" if p.get("src") == "paper_trades" else "avg_cost"),
                 "basis_reliable": basis_reliable, "basis_warning": basis_warning,
+                "cost_basis_source": p.get("cost_basis_source"),
                 "current_price": cur_px, "market_value": p.get("market_value") or (cur_px * sh if cur_px else None),
                 "stop_price": stop, "target_price": tgt, "unrealized_pnl": upnl, "unrealized_pnl_pct": upnl_pct,
                 "today_move_pct": today, "r_multiple": float(lot["rmult"]) if lot.get("rmult") is not None else None,

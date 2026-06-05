@@ -56,11 +56,17 @@ def reconstruct_schwab_positions(
     account_type: str,
     price_cache: dict,
     revoked_symbols: set | None = None,
+    transfer_basis_overrides: dict | None = None,
 ) -> tuple[list[dict], dict]:
     """
     Parse a Schwab transaction CSV and reconstruct current positions.
     Returns (holdings_list, account_summary_dict).
+
+    transfer_basis_overrides: {symbol: per_share_basis} — explicit owner/source basis for shares that
+    arrive via Security Transfer / Journaled Shares with no Amount. When present, those inflows are
+    treated as KNOWN basis (qty * per_share) instead of flagging the position partial.
     """
+    transfer_basis_overrides = transfer_basis_overrides or {}
     revoked = revoked_symbols or set()
     positions: dict[str, dict] = {}  # sym -> {shares, last_txn_price, description}
 
@@ -118,13 +124,21 @@ def reconstruct_schwab_positions(
                 p["cost_acc"] *= (1 - frac)
                 p["xfer_shares"] *= (1 - frac)
 
-        # No-cost share movements (transfers/journals between accounts) → basis is unknown for those
-        # shares. Flag the whole position partial; we never fabricate a cost for transferred-in shares.
+        ov = transfer_basis_overrides.get(sym)
+        # No-cost share movements (transfers/journals between accounts). With an owner/source basis
+        # override they are KNOWN basis; otherwise the position is flagged partial (never fabricated).
         if action in ("Security Transfer", "Internal Transfer", "Journaled Shares"):
-            positions[sym]["has_xfer"] = True
-            positions[sym]["shares"] += qty            # qty is signed (negative = out)
-            if qty > 0:
-                positions[sym]["xfer_shares"] += qty
+            if ov is not None and qty > 0:                # overridden inflow → known basis
+                positions[sym]["shares"] += qty
+                positions[sym]["cost_acc"] += qty * ov
+            elif ov is not None and qty < 0:              # overridden outflow → average-cost reduction
+                _reduce_basis(positions[sym], -qty)
+                positions[sym]["shares"] += qty
+            else:                                          # unknown basis transfer
+                positions[sym]["has_xfer"] = True
+                positions[sym]["shares"] += qty           # qty signed (negative = out)
+                if qty > 0:
+                    positions[sym]["xfer_shares"] += qty
         elif action in BUY_ACTIONS and qty > 0:
             positions[sym]["shares"] += qty
             if amt < 0:                                   # cash outflow → real purchase cost
@@ -135,13 +149,9 @@ def reconstruct_schwab_positions(
         elif action in SELL_ACTIONS and qty > 0:
             _reduce_basis(positions[sym], qty)            # average-cost reduction
             positions[sym]["shares"] -= qty
-        elif action == "Journal" and qty > 0:
-            if amt_str.startswith("-"):
-                _reduce_basis(positions[sym], qty)
-                positions[sym]["shares"] -= qty
-            else:
-                positions[sym]["shares"] += qty
-                positions[sym]["xfer_shares"] += qty
+        elif action == "Journal":
+            # Internal same-account journal (often a -X/+X pair) → net-neutral for basis; just move shares.
+            positions[sym]["shares"] += qty               # qty signed
 
     # Build holdings list
     holdings = []

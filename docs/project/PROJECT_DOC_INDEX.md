@@ -9,6 +9,13 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Cost Basis — June 5 CSV + Income Repair (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/COST_BASIS_JUNE5_CSV_REPAIR_20260605.md` | Latest-CSV basis reconstruction + V owner override + FCNTX candidate + income ledger ($10,543.13) |
+| `scripts/patch_holdings_cost_basis.py` · `validate_holdings_cost_basis.py` | latest-file discovery + overrides + income ledger; 14/14 anchor validation |
+| `data/portfolios/input/cost_basis_overrides.json` · `state/income_ledger.json` | transfer-basis overrides + income ledger (gitignored data) |
+
 ## v3 Open Trades — Actionable Position Intelligence (2026-06-05)
 | Document | Purpose |
 |----------|---------|
