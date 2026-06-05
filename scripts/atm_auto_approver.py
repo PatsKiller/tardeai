@@ -70,6 +70,26 @@ def _set_atm_mode(conn, new_mode: str, changed_by: str, reason: str = None):
     conn.commit()
 
 
+def _account_automation_mode(conn, account):
+    """Per-account automation_mode from the broker/account model (account_automation_policies).
+    Returns the mode string, or None when there is no policy row (caller treats None as 'no override',
+    preserving current behaviour). Read-only; tolerant of a missing table (returns None)."""
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT p.automation_mode FROM account_automation_policies p
+            JOIN broker_accounts ba ON ba.id = p.account_id
+            WHERE lower(replace(ba.account_key, '_ira', '')) = lower(replace(%s, '_ira', ''))
+            LIMIT 1""", (account or "",))
+        r = cur.fetchone()
+        return r[0] if r else None
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+
+
 def _log_decision(conn, proposal_id, symbol, strategy_id, target_account,
                   account_broker, account_mode, decision, rejection_reasons,
                   classifier_health, positions_open_account, positions_open_total,
@@ -297,6 +317,34 @@ def run_cycle():
         acct = account_info.get(target, {})
         acct_broker = acct.get("broker", "unknown")
         acct_mode = acct.get("mode", "unknown")
+
+        # ── 0: Per-account automation_mode gate (broker/account model) ──
+        # ADDITIVE safety layer: it can only PREVENT auto-approval, never bypass the live-trading
+        # interlock and never change the submission endpoint (the account adapter + ALPACA_MODE still
+        # govern paper-vs-live). No policy row → no override (current behaviour preserved).
+        _amode = _account_automation_mode(conn, target)
+        if _amode in ("DISABLED", "MANUAL_REVIEW", "PAUSED_ENTRIES", "EMERGENCY_STOP"):
+            log.info(f"  {sym}: HELD — account {target} automation_mode={_amode} (no auto-approve; left PENDING for manual review)")
+            continue
+        if _amode == "AUTO_LIVE" and acct_mode == "live":
+            # Real-money live submission must pass the live-trading gate; never auto-arm live here.
+            _live_ok = False
+            try:
+                from live_trading_interlock import assert_writable, InterlockRefused, _conn as _il_conn
+                _ic = _il_conn()
+                try:
+                    assert_writable(_ic, target, action="AUTO_LIVE auto-submit")
+                    _live_ok = True
+                except InterlockRefused:
+                    _live_ok = False
+                finally:
+                    _ic.close()
+            except Exception:
+                _live_ok = False  # fail-closed
+            if not _live_ok:
+                log.info(f"  {sym}: HELD — AUTO_LIVE on live account {target} blocked by live-trading interlock")
+                continue
+        # AUTO_PAPER, AUTO_LIVE on a paper account (paper endpoint — no real money), or no policy → proceed.
 
         # ── 1: Stale proposal expiry check ──
         expiry_reason = None
