@@ -16429,22 +16429,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             fields = {k: v for k, v in b.items() if k in EDITABLE}
             if "automation_mode" in fields:
                 fields["automation_mode"] = new_mode
-            if not fields:
-                return 400, {"ok": False, "error": "no editable policy fields supplied"}
+            # display_name is the editable section/account NAME (lives on broker_accounts)
+            disp_new = b.get("display_name")
+            disp_new = disp_new.strip()[:120] if isinstance(disp_new, str) and disp_new.strip() else None
+            if not fields and not disp_new:
+                return 400, {"ok": False, "error": "no editable policy fields or display_name supplied"}
             operator = (b.get("operator") or "operator")[:60]
             old = _db_query("SELECT * FROM account_automation_policies WHERE account_id=%s",
                             (ba["id"],), fetch="one") or {}
+            old_disp = _db_query("SELECT display_name FROM broker_accounts WHERE id=%s", (ba["id"],), fetch="one")
             old_val = {k: _json_clean(old.get(k)) for k in fields}
+            new_val = dict(fields)
+            if disp_new:
+                old_val["display_name"] = (old_disp or {}).get("display_name")
+                new_val["display_name"] = disp_new
 
             def _apply():
-                sets = ", ".join(f"{k}=%s" for k in fields) + ", updated_at=now(), updated_by=%s, source='database'"
-                _db_write(f"UPDATE account_automation_policies SET {sets} WHERE account_id=%s",
-                          (*fields.values(), operator, ba["id"]))
+                if fields:
+                    sets = ", ".join(f"{k}=%s" for k in fields) + ", updated_at=now(), updated_by=%s, source='database'"
+                    _db_write(f"UPDATE account_automation_policies SET {sets} WHERE account_id=%s",
+                              (*fields.values(), operator, ba["id"]))
+                if disp_new:
+                    _db_write("UPDATE broker_accounts SET display_name=%s, updated_at=now() WHERE id=%s", (disp_new, ba["id"]))
                 _db_write("INSERT INTO account_automation_policy_audit (account_id, old_policy, new_policy, changed_by, change_reason) "
-                          "VALUES (%s,%s,%s,%s,%s)", (ba["id"], _j.dumps(old_val), _j.dumps(fields), operator, b.get("reason")))
+                          "VALUES (%s,%s,%s,%s,%s)", (ba["id"], _j.dumps(old_val), _j.dumps(new_val), operator, b.get("reason")))
 
             return admin_write(action="broker.automation_policy", target=f"account:{acct}",
-                               old_value=old_val, new_value=fields, apply_fn=_apply, operator=operator,
+                               old_value=old_val, new_value=new_val, apply_fn=_apply, operator=operator,
                                confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}

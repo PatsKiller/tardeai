@@ -62,6 +62,7 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
     max_new_positions_per_day: policy.max_new_positions_per_day ?? '',
     max_concurrent_positions: policy.max_concurrent_positions ?? '',
     daily_loss_pause_pct: policy.daily_loss_pause_pct ?? '',
+    display_name: account.display_name ?? account.account_key,
   })
   const set = (k: string, v: any) => setF({ ...f, [k]: v })
   // AUTO_LIVE always disabled in the picker; AUTO_PAPER only for write-capable paper accounts
@@ -71,6 +72,9 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
       <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 440 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>Edit Automation — {account.display_name}</div>
         <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>{account.broker} · {account.environment} · source {policy.source ?? '—'}. AUTO_LIVE is gate-interlocked (server refuses until the live gate passes).</div>
+        <label style={{ fontSize: 11, display: 'block', marginBottom: 10 }}>name (this section)
+          <input style={{ ...inp, width: '100%' }} value={f.display_name} onChange={e => set('display_name', e.target.value)} placeholder="e.g. Alpaca Paper — Conservative Auto" />
+        </label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: 11 }}>
           <label>automation mode
             <select style={{ ...inp, width: '100%' }} value={f.automation_mode} onChange={e => set('automation_mode', e.target.value)}>
@@ -95,6 +99,7 @@ function AutomationPolicyModal({ account, policy, enums, onClose, onSubmit }: an
           <button onClick={onClose} style={{ ...inp, cursor: 'pointer' }}>Cancel</button>
           <button onClick={() => {
             const body: any = { account: account.account_key, automation_mode: f.automation_mode, approval_policy: f.approval_policy }
+            if (f.display_name && f.display_name !== account.display_name) body.display_name = f.display_name
             for (const k of ['risk_per_trade_pct', 'max_new_positions_per_day', 'max_concurrent_positions', 'daily_loss_pause_pct'])
               if (f[k] !== '' && f[k] != null) body[k] = Number(f[k])
             onSubmit(body)
