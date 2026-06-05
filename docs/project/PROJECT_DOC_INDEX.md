@@ -3,6 +3,15 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## ATM → Broker/Account Automation Console — Phase 1 (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | **Account-aware Automation Control Center** — data model, API, UI, ownership map, remaining |
+| `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | Pre-build due diligence (current components/endpoints/hard-codings) |
+| `scripts/migrate_broker_account_model.py` | Additive tables (broker_accounts, account_automation_policies+audit, proposal_account_routes, broker_capability_checks) seeded from accounts+atm_config |
+| `apps/.../components/ATMControlPanel.tsx` | Rebuilt: API-capable account selector + per-account policy/risk/readiness + Manage-APIs modal (env paper/sandbox/live); AUTO_LIVE gate-locked |
+| API: `/api/v2/broker-accounts[/enums\|/automation-policy\|/readiness]` + guarded `/api/v2/admin/broker-account/{api,policy}` | account-aware read + gate-interlocked writes |
+
 ## Phase 204 — Portfolio Backup-Cadence Fix + Pilot (2026-06-05)
 | Document | Purpose |
 |----------|---------|
