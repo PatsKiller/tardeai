@@ -11398,6 +11398,64 @@ def _system_pipeline_summary():
             "namespace_note": "/api/v2 is the shared backend namespace serving canonical v3 UI (not v2 UI)"}
 
 
+# Modal dropdown enums (env names per operator: live/paper/sandbox; import/read-only for non-API feeds)
+BROKER_ENVIRONMENTS = ["paper", "sandbox", "live", "import", "read-only"]
+AUTOMATION_MODES = ["DISABLED", "MANUAL_REVIEW", "AUTO_PAPER", "AUTO_LIVE", "PAUSED_ENTRIES", "EMERGENCY_STOP"]
+APPROVAL_POLICIES = ["PROPOSAL_ONLY", "MANUAL_APPROVAL_REQUIRED", "AUTO_SUBMIT_AFTER_VALIDATION"]
+
+
+def _broker_account_enums():
+    """GET /api/v2/broker-accounts/enums — dropdown options for the add/edit-API + policy modals."""
+    return {"environments": BROKER_ENVIRONMENTS, "automation_modes": AUTOMATION_MODES,
+            "approval_policies": APPROVAL_POLICIES,
+            "note": "AUTO_LIVE and api_write on a live account are gate-interlocked (refused until the live gate passes)"}
+
+
+def _broker_accounts():
+    """GET /api/v2/broker-accounts — broker/account list + automation mode summary (read-only).
+    `?api_only=true` returns only API-capable accounts (the ATM page default)."""
+    rows = _db_query("""SELECT ba.account_key, ba.display_name, ba.broker, ba.environment,
+        ba.api_read_enabled, ba.api_write_enabled, ba.connection_status, ba.broker_adapter, ba.last_sync_at,
+        p.automation_mode, p.approval_policy, p.source AS policy_source, p.updated_at AS policy_updated_at
+        FROM broker_accounts ba LEFT JOIN account_automation_policies p ON p.account_id=ba.id
+        ORDER BY (ba.environment='paper') DESC, ba.account_key""") or []
+    out = []
+    for r in rows:
+        a = {k: _json_clean(v) for k, v in r.items()}
+        a["api_capable"] = bool(a.get("api_read_enabled") or a.get("api_write_enabled"))
+        out.append(a)
+    api_only = (_current_query.get("api_only") or "").lower() in ("1", "true", "yes")
+    if api_only:
+        out = [a for a in out if a["api_capable"]]
+    return {"accounts": out, "api_only": api_only}
+
+
+def _broker_account_policy():
+    """GET /api/v2/broker-accounts/automation-policy?account=KEY — full policy + source (read-only)."""
+    acct = (_current_query.get("account") or "").strip()
+    if not acct:
+        return {"error": "account query param required"}
+    row = _db_query("""SELECT p.*, ba.account_key, ba.environment, ba.api_write_enabled
+        FROM account_automation_policies p JOIN broker_accounts ba ON ba.id=p.account_id
+        WHERE ba.account_key=%s""", (acct,), fetch="one")
+    if not row:
+        return {"error": f"no automation policy for account '{acct}'"}
+    return {"policy": {k: _json_clean(v) for k, v in row.items()}}
+
+
+def _broker_account_readiness():
+    """GET /api/v2/broker-accounts/readiness?account=KEY — capability checks (read-only)."""
+    acct = (_current_query.get("account") or "").strip()
+    if not acct:
+        return {"error": "account query param required"}
+    rows = _db_query("""SELECT c.check_name, c.status, c.detail, c.last_checked_at
+        FROM broker_capability_checks c JOIN broker_accounts ba ON ba.id=c.account_id
+        WHERE ba.account_key=%s ORDER BY c.id""", (acct,)) or []
+    ready = bool(rows) and all(r["status"] in ("ok", "n/a") for r in rows)
+    return {"account": acct, "ready": ready,
+            "checks": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+
+
 def _governance_pipeline_status():
     """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
     import json as _j, subprocess as _sp
@@ -14899,6 +14957,10 @@ ROUTES = {
     "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
+    "/api/v2/broker-accounts": lambda: _broker_accounts(),
+    "/api/v2/broker-accounts/enums": lambda: _broker_account_enums(),
+    "/api/v2/broker-accounts/automation-policy": lambda: _broker_account_policy(),
+    "/api/v2/broker-accounts/readiness": lambda: _broker_account_readiness(),
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
@@ -16254,6 +16316,135 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return admin_write(action="atm.set_state", target=f"atm_state:{account}",
                                old_value={"mode": old_mode}, new_value={"mode": new_mode},
                                apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Add/Edit a broker API connection (guarded + gate-interlocked) — the ATM "manage APIs" modal ──
+    # environment ∈ {paper,sandbox,live,import,read-only}. Enabling api_write on a LIVE account is a
+    # live-arming action → refused by the interlock until the gate passes. New accounts get a default
+    # DISABLED policy. Secrets are NOT stored here (keys live in .env/keyring); this records the
+    # connection config + capability flags only.
+    if method == "POST" and base_path == "/api/v2/admin/broker-account/api":
+        try:
+            from admin_write_guard import admin_write
+            from live_trading_interlock import assert_writable, InterlockRefused, _conn as _il_conn
+            b = body or {}
+            acct = (b.get("account_key") or "").strip().lower().replace(" ", "_")
+            broker = (b.get("broker") or "").strip().lower()
+            env = (b.get("environment") or "").strip().lower()
+            if not acct or not broker:
+                return 400, {"ok": False, "error": "account_key and broker required"}
+            if env not in BROKER_ENVIRONMENTS:
+                return 400, {"ok": False, "error": f"environment must be one of {BROKER_ENVIRONMENTS}"}
+            read_en = bool(b.get("api_read_enabled"))
+            write_en = bool(b.get("api_write_enabled"))
+            # ── HARD INTERLOCK: enabling WRITE on a live account is live-arming → gate-gated ──
+            if write_en and env == "live":
+                _ic = _il_conn()
+                try:
+                    assert_writable(_ic, acct, action="enable api_write on live account")
+                except InterlockRefused as e:
+                    return 403, {"ok": False, "error": e.reason, "interlock": "live_trading_gate", "detail": e.detail}
+                except Exception:
+                    # account may not exist in accounts table yet → treat live+write as refused (fail-closed)
+                    return 403, {"ok": False, "error": "live api_write refused (gate not passed / account unknown)",
+                                 "interlock": "live_trading_gate"}
+                finally:
+                    _ic.close()
+            disp = (b.get("display_name") or acct).strip()[:120]
+            adapter = (b.get("broker_adapter") or (f"scripts.{broker}_adapter" if broker in ("alpaca", "schwab") else None))
+            caps = {k: bool(b.get(k)) for k in ("supports_equities", "supports_options", "supports_fractional",
+                    "supports_bracket_orders", "supports_stop_orders", "supports_trailing_stops", "supports_cancel_replace")}
+            operator = (b.get("operator") or "operator")[:60]
+            existing = _db_query("SELECT id, environment, api_read_enabled, api_write_enabled, broker_adapter "
+                                 "FROM broker_accounts WHERE account_key=%s", (acct,), fetch="one")
+            old_val = {k: _json_clean(existing.get(k)) for k in ("environment", "api_read_enabled", "api_write_enabled", "broker_adapter")} if existing else {}
+            new_val = {"environment": env, "api_read_enabled": read_en, "api_write_enabled": write_en, "broker_adapter": adapter}
+
+            def _apply():
+                _db_write("""INSERT INTO broker_accounts
+                    (account_key, display_name, broker, environment, is_enabled, api_read_enabled, api_write_enabled,
+                     supports_equities, supports_options, supports_fractional, supports_bracket_orders,
+                     supports_stop_orders, supports_trailing_stops, supports_cancel_replace, broker_adapter,
+                     connection_status, updated_at)
+                    VALUES (%s,%s,%s,%s,TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'configured',now())
+                    ON CONFLICT (account_key) DO UPDATE SET display_name=EXCLUDED.display_name,
+                      broker=EXCLUDED.broker, environment=EXCLUDED.environment,
+                      api_read_enabled=EXCLUDED.api_read_enabled, api_write_enabled=EXCLUDED.api_write_enabled,
+                      supports_equities=EXCLUDED.supports_equities, supports_options=EXCLUDED.supports_options,
+                      supports_fractional=EXCLUDED.supports_fractional, supports_bracket_orders=EXCLUDED.supports_bracket_orders,
+                      supports_stop_orders=EXCLUDED.supports_stop_orders, supports_trailing_stops=EXCLUDED.supports_trailing_stops,
+                      supports_cancel_replace=EXCLUDED.supports_cancel_replace, broker_adapter=EXCLUDED.broker_adapter,
+                      updated_at=now()""",
+                    (acct, disp, broker, env, read_en, write_en, caps["supports_equities"], caps["supports_options"],
+                     caps["supports_fractional"], caps["supports_bracket_orders"], caps["supports_stop_orders"],
+                     caps["supports_trailing_stops"], caps["supports_cancel_replace"], adapter))
+                # ensure a default (DISABLED) policy exists for a new account
+                _db_write("""INSERT INTO account_automation_policies (account_id, automation_mode, approval_policy, source, updated_by)
+                    SELECT id,'DISABLED','PROPOSAL_ONLY','default_seed',%s FROM broker_accounts WHERE account_key=%s
+                    ON CONFLICT (account_id) DO NOTHING""", (operator, acct))
+
+            return admin_write(action="broker.api_config", target=f"account:{acct}",
+                               old_value=old_val, new_value=new_val, apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Broker-account automation policy PATCH (guarded + gate-interlocked) ──
+    # AUTO_LIVE (or AUTO_PAPER on a live account) is refused by the interlock until the live gate
+    # passes. AUTO_PAPER requires an api_write_enabled account. No live arming here.
+    if method == "POST" and base_path == "/api/v2/admin/broker-account/policy":
+        try:
+            from admin_write_guard import admin_write
+            from live_trading_interlock import assert_writable, InterlockRefused, _conn as _il_conn
+            import json as _j
+            b = body or {}
+            acct = (b.get("account") or "").strip()
+            if not acct:
+                return 400, {"ok": False, "error": "account required"}
+            ba = _db_query("SELECT id, environment, api_write_enabled FROM broker_accounts WHERE account_key=%s",
+                           (acct,), fetch="one")
+            if not ba:
+                return 404, {"ok": False, "error": f"account {acct} not found"}
+            new_mode = (b.get("automation_mode") or "").strip().upper()
+            VALID_MODES = {"DISABLED", "MANUAL_REVIEW", "AUTO_PAPER", "AUTO_LIVE", "PAUSED_ENTRIES", "EMERGENCY_STOP"}
+            if new_mode and new_mode not in VALID_MODES:
+                return 400, {"ok": False, "error": f"invalid automation_mode (one of {sorted(VALID_MODES)})"}
+            # ── HARD INTERLOCK: any live-arming automation refused until the gate passes ──
+            if new_mode == "AUTO_LIVE" or (new_mode == "AUTO_PAPER" and ba["environment"] == "live"):
+                _ic = _il_conn()
+                try:
+                    assert_writable(_ic, acct, action=f"set automation {new_mode}")
+                except InterlockRefused as e:
+                    return 403, {"ok": False, "error": e.reason, "interlock": "live_trading_gate", "detail": e.detail}
+                finally:
+                    _ic.close()
+            if new_mode == "AUTO_PAPER" and not ba["api_write_enabled"]:
+                return 400, {"ok": False, "error": "AUTO_PAPER requires an api_write_enabled account"}
+            EDITABLE = {"automation_mode", "approval_policy", "risk_per_trade_pct", "max_new_positions_per_day",
+                        "max_concurrent_positions", "max_strategy_allocation_pct", "max_sector_allocation_pct",
+                        "daily_loss_pause_pct", "market_hours_only", "require_fresh_quote", "require_stop_defined",
+                        "require_target_defined"}
+            fields = {k: v for k, v in b.items() if k in EDITABLE}
+            if "automation_mode" in fields:
+                fields["automation_mode"] = new_mode
+            if not fields:
+                return 400, {"ok": False, "error": "no editable policy fields supplied"}
+            operator = (b.get("operator") or "operator")[:60]
+            old = _db_query("SELECT * FROM account_automation_policies WHERE account_id=%s",
+                            (ba["id"],), fetch="one") or {}
+            old_val = {k: _json_clean(old.get(k)) for k in fields}
+
+            def _apply():
+                sets = ", ".join(f"{k}=%s" for k in fields) + ", updated_at=now(), updated_by=%s, source='database'"
+                _db_write(f"UPDATE account_automation_policies SET {sets} WHERE account_id=%s",
+                          (*fields.values(), operator, ba["id"]))
+                _db_write("INSERT INTO account_automation_policy_audit (account_id, old_policy, new_policy, changed_by, change_reason) "
+                          "VALUES (%s,%s,%s,%s,%s)", (ba["id"], _j.dumps(old_val), _j.dumps(fields), operator, b.get("reason")))
+
+            return admin_write(action="broker.automation_policy", target=f"account:{acct}",
+                               old_value=old_val, new_value=fields, apply_fn=_apply, operator=operator,
                                confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
