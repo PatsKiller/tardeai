@@ -22,8 +22,10 @@
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | **Account-aware Automation Control Center** — data model, API, UI, ownership map, remaining |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | Pre-build due diligence (current components/endpoints/hard-codings) |
 | `scripts/migrate_broker_account_model.py` | Additive tables (broker_accounts, account_automation_policies+audit, proposal_account_routes, broker_capability_checks) seeded from accounts+atm_config |
-| `apps/.../components/ATMControlPanel.tsx` | Rebuilt: API-capable account selector + per-account policy/risk/readiness + Manage-APIs modal (env paper/sandbox/live); AUTO_LIVE gate-locked |
+| `apps/.../components/ATMControlPanel.tsx` | Rebuilt: API-capable account selector + per-account policy/risk/readiness + Manage-APIs modal (env paper/sandbox/live) + Edit-Automation modal (editable name); AUTO_LIVE selectable, env-gated |
 | API: `/api/v2/broker-accounts[/enums\|/automation-policy\|/readiness]` + guarded `/api/v2/admin/broker-account/{api,policy}` | account-aware read + gate-interlocked writes |
+| `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | Executor (atm_auto_approver) reads automation_mode (additive, interlock-preserving); verified MANUAL_REVIEW→held, AUTO_PAPER→approves |
+| `docs/project/PHASE_ATM_ALPACA_PAPER_AUTOLIVE_VERIFICATION_20260605.md` · `PHASE_ATM_AUTOMATION_MODAL_E2E_TEST_20260605.md` | E2E guarded policy-write + AUTO_LIVE-on-paper verification (env stays paper) |
 
 ## Phase 204 — Portfolio Backup-Cadence Fix + Pilot (2026-06-05)
 | Document | Purpose |
