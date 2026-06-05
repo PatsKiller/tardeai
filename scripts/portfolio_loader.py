@@ -498,6 +498,17 @@ def parse_fidelity_pdf_text(lines: List[str]) -> Dict:
                      "PDF format may have changed."
         }
 
+    # Cost basis per share, sourced from the Fidelity 'Portfolio Positions.pdf' (Cost basis column).
+    # The Statement Details PDF parsed here has no cost basis, so we read it from a side config that
+    # is refreshed when a new Positions PDF is imported. Missing/zero → cost_basis stays None (honest).
+    _cb_per_share = {}
+    try:
+        _cb_path = Path(__file__).resolve().parent.parent / "data" / "portfolios" / "input" / "fidelity_cost_basis.json"
+        if _cb_path.exists():
+            _cb_per_share = {k: v for k, v in json.loads(_cb_path.read_text()).items() if not k.startswith("_")}
+    except Exception:
+        _cb_per_share = {}
+
     # Build holdings — each fund has 6 values, take indices 1,3,5 (April data)
     holdings = []
     for idx, sym in enumerate(fund_order):
@@ -505,6 +516,8 @@ def parse_fidelity_pdf_text(lines: List[str]) -> Dict:
         shares = clean(number_lines[base + 1])   # April shares
         price  = clean(number_lines[base + 3])   # April price
         mv     = clean(number_lines[base + 5])   # April market value
+        _ps = _cb_per_share.get(sym)
+        _cb = round(_ps * shares, 2) if (_ps and shares) else None
         holdings.append({
             "symbol":       sym,
             "name":         NAME_MAP[sym],
@@ -521,8 +534,9 @@ def parse_fidelity_pdf_text(lines: List[str]) -> Dict:
             "reinvest_div": True,
             "day_change":   0.0,
             "day_change_pct": 0.0,
-            "cost_basis":   None,
-            "gain_loss":    None,
+            "cost_basis":   _cb,
+            "gain_loss":    round(mv - _cb, 2) if _cb else None,
+            "cost_basis_source": "fidelity_positions_pdf" if _cb else None,
         })
 
     total_value = round(sum(h["market_value"] for h in holdings), 2)
