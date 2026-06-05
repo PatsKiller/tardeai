@@ -1,36 +1,56 @@
 #!/usr/bin/env bash
-# run_portfolio_maintenance_pipeline.sh — Phase 202C HARDENED controller (P0-SAFE jobs only).
-# Reports + backups + read-only look-through. NO destructive jobs, NO price-cache, NO broker/trading/
-# proposal/protection. DRY_RUN=1 default; --apply runs the P0-safe steps. Non-cascading. Excluded
-# jobs (price-cache, db_retention) are echo-only EXCLUDED_NOT_RUN and never executed.
+# run_portfolio_maintenance_pipeline.sh — Phase 202G cadence-aware controller (Option B).
+# Each cadence runs ONLY its own steps, with its own lock/log/summary, preserving the distinct legacy
+# schedules (backup=Sat, daily, weekly=Sun, monthly, lookthrough=Sun). P0-safe only.
+#   --cadence {daily|weekly|monthly|backup|lookthrough|all}  (required)
+#   --dry-run (default) | --apply
+# --cadence all is MANUAL DRY-RUN/TEST ONLY — never scheduled in production.
+# NEVER: broker/order/proposal/protection/trading, db_retention, price-cache, live, Level 7.
+# Advisory-draft-generating report steps are labeled PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY (review-only,
+# non-broker, non-executing — they create recommendation/action-queue drafts for human review).
 set -euo pipefail
 PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$PROJ/scripts/pipelines/_pipeline_common.sh"   # load_env, assert_*, _ts, DRY_RUN parse
 
-PM_LOG_DIR="$PROJ/logs/pipelines/portfolio-maintenance"; mkdir -p "$PM_LOG_DIR"
+CADENCE=""
+for ((i=1; i<=$#; i++)); do
+  if [ "${!i}" = "--cadence" ]; then j=$((i+1)); CADENCE="${!j:-}"; fi
+done
+VALID_CADENCES="daily weekly monthly backup lookthrough all"
+if [ -z "$CADENCE" ]; then
+  echo "[ERROR] --cadence required (one of: $VALID_CADENCES)" >&2; exit 64
+fi
+if ! printf '%s\n' $VALID_CADENCES | grep -qx "$CADENCE"; then
+  echo "[ERROR] invalid --cadence '$CADENCE' (one of: $VALID_CADENCES)" >&2; exit 64
+fi
+if [ "$CADENCE" = "all" ] && [ "$DRY_RUN" != "1" ]; then
+  echo "[WARN] --cadence all --apply is MANUAL_TEST_ONLY — not for scheduled production." >&2
+fi
+
+LOG_DIR="$PROJ/logs/pipelines/portfolio-maintenance/$CADENCE"; mkdir -p "$LOG_DIR"
 RUN_TS="$(date -u +%Y%m%d_%H%M%S)"
-RUN_LOG="$PM_LOG_DIR/portfolio_${RUN_TS}.log"
-SUMMARY="$PROJ/data/runtime/portfolio_maintenance_pipeline_last_run.json"; mkdir -p "$(dirname "$SUMMARY")"
+RUN_LOG="$LOG_DIR/portfolio_${CADENCE}_${RUN_TS}.log"
+SUMMARY="$PROJ/data/runtime/portfolio_maintenance_${CADENCE}_last_run.json"; mkdir -p "$(dirname "$SUMMARY")"
 
 exec > >(tee -a "$RUN_LOG") 2>&1
 echo "=================================================================="
-echo "[$(_ts)] START portfolio-maintenance-pipeline DRY_RUN=$DRY_RUN log=$RUN_LOG"
+echo "[$(_ts)] START portfolio-maintenance cadence=$CADENCE DRY_RUN=$DRY_RUN log=$RUN_LOG"
 load_env
 assert_no_live_trading || exit $?
 assert_no_level7 || exit $?
-echo "[safety] P0-safe only — reports/backups/read-only; NO destructive, NO price-cache, NO broker/trading ✓"
-acquire_lock "portfolio-maintenance-pipeline" || exit 0
+echo "[safety] P0-safe only — no broker/order/proposal/protection/trading; no db_retention; no price-cache ✓"
+acquire_lock "portfolio-maintenance-$CADENCE" || exit 0
 cd "$PROJ"
 
-declare -a STEP_NAMES STEP_STATUS STEP_MS
+declare -a STEP_NAMES STEP_STATUS STEP_MS STEP_LABEL
 overall=0
 
 pm_step() {
-  local name="$1"; shift
+  local name="$1" label="$2"; shift 2
   local start end ms status
   start=$(date +%s%3N)
-  echo "  ---- step START: $name ($(_ts)) ----"
+  echo "  ---- step START: $name [$label] ($(_ts)) ----"
   if [ "$DRY_RUN" = "1" ]; then
     echo "    [DRY_RUN] would run: $*"; status="dry_run"
   else
@@ -38,44 +58,49 @@ pm_step() {
   fi
   end=$(date +%s%3N); ms=$((end-start))
   echo "  ---- step END: $name status=$status ${ms}ms ----"
-  STEP_NAMES+=("$name"); STEP_STATUS+=("$status"); STEP_MS+=("$ms")
-  return 0   # never cascade
+  STEP_NAMES+=("$name"); STEP_STATUS+=("$status"); STEP_MS+=("$ms"); STEP_LABEL+=("$label")
+  return 0
 }
+pm_excluded() { echo "  ---- EXCLUDED_NOT_RUN: $1 ($2) ----"
+  STEP_NAMES+=("$1"); STEP_STATUS+=("EXCLUDED_NOT_RUN"); STEP_MS+=(0); STEP_LABEL+=("EXCLUDED"); }
 
-pm_excluded() {
-  local name="$1" reason="$2"
-  echo "  ---- EXCLUDED_NOT_RUN: $name ($reason) ----"
-  STEP_NAMES+=("$name"); STEP_STATUS+=("EXCLUDED_NOT_RUN"); STEP_MS+=(0)
+run_backup() {
+  pm_step "portfolio_backup"  "BACKUP" bash "$PROJ/linux_launchers/run_pg_backup.sh"
+  pm_step "secrets_backup_env"  "BACKUP" bash "$PROJ/scripts/backup_secrets_state.sh" env
+  pm_step "secrets_backup_data" "BACKUP" bash "$PROJ/scripts/backup_secrets_state.sh" data
 }
+run_daily()      { pm_step "portfolio_daily_report"   "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio.sh"; }
+run_weekly()     { pm_step "portfolio_weekly_report"  "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"; }
+run_monthly()    { pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"; }
+run_lookthrough(){ pm_step "portfolio_lookthrough"    "READ_ONLY_SNAPSHOT" bash "$PROJ/linux_launchers/run_lookthrough.sh"; }
 
-# ── P0-safe steps (reports + backups + read-only) ──
-pm_step "portfolio_backup"          bash "$PROJ/linux_launchers/run_pg_backup.sh"
-pm_step "portfolio_daily_report"    bash "$PROJ/linux_launchers/run_portfolio.sh"
-pm_step "portfolio_weekly_report"   bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"
-pm_step "portfolio_monthly_report"  bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"
-pm_step "portfolio_lookthrough"     bash "$PROJ/linux_launchers/run_lookthrough.sh"
-pm_step "secrets_state_backup"      bash "$PROJ/scripts/backup_secrets_state.sh"
-
-# ── EXCLUDED (never run, even with --apply) ──
-pm_excluded "price_cache"   "writes price cache that feeds trading/proposal — diff-only, future gate"
-pm_excluded "db_retention"  "destructive DB deletes — prohibited this phase, future deletion-set diff"
+case "$CADENCE" in
+  backup)      run_backup ;;
+  daily)       run_daily ;;
+  weekly)      run_weekly ;;
+  monthly)     run_monthly ;;
+  lookthrough) run_lookthrough ;;
+  all)         run_backup; run_daily; run_weekly; run_monthly; run_lookthrough ;;
+esac
+# always-excluded (visibility)
+pm_excluded "price_cache"  "feeds trading/proposal — diff-only, future gate"
+pm_excluded "db_retention" "destructive DB deletes — prohibited, future deletion-set diff"
 
 {
   echo "{"
-  echo "  \"pipeline\": \"portfolio-maintenance\","
+  echo "  \"pipeline\": \"portfolio-maintenance\", \"cadence\": \"$CADENCE\","
   echo "  \"run_ts_utc\": \"$(_ts)\","
   echo "  \"dry_run\": $([ "$DRY_RUN" = "1" ] && echo true || echo false),"
+  echo "  \"manual_test_only\": $([ "$CADENCE" = "all" ] && echo true || echo false),"
   echo "  \"overall_status\": \"$([ $overall = 0 ] && echo ok || echo degraded)\","
   echo "  \"steps\": ["
   for i in "${!STEP_NAMES[@]}"; do
     sep=$([ "$i" -lt $((${#STEP_NAMES[@]}-1)) ] && echo "," || echo "")
-    echo "    {\"name\": \"${STEP_NAMES[$i]}\", \"status\": \"${STEP_STATUS[$i]}\", \"ms\": ${STEP_MS[$i]}}$sep"
+    echo "    {\"name\": \"${STEP_NAMES[$i]}\", \"status\": \"${STEP_STATUS[$i]}\", \"ms\": ${STEP_MS[$i]}, \"label\": \"${STEP_LABEL[$i]}\"}$sep"
   done
-  echo "  ],"
-  echo "  \"excluded\": [\"price_cache\", \"db_retention\"],"
-  echo "  \"log\": \"$RUN_LOG\""
+  echo "  ], \"log\": \"$RUN_LOG\""
   echo "}"
 } > "$SUMMARY"
 echo "[summary] wrote $SUMMARY"
-echo "[$(_ts)] END portfolio-maintenance-pipeline overall=$([ $overall = 0 ] && echo ok || echo degraded)"
+echo "[$(_ts)] END portfolio-maintenance cadence=$CADENCE overall=$([ $overall = 0 ] && echo ok || echo degraded)"
 exit 0
