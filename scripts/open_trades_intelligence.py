@@ -332,6 +332,18 @@ def build_intelligence():
             if upnl is None and cur_px is not None and ent is not None:
                 upnl = (cur_px - ent) * sh
                 upnl_pct = ((cur_px - ent) / ent * 100) if ent else None
+            # ── basis validation: broker-imported cost_basis is sometimes partial/wrong (e.g. a few
+            #    Schwab lots showing avg cost a fraction of price → impossible +1000s%). Flag unreliable
+            #    basis and suppress the derived P&L so we never display a fabricated gain. ──
+            basis_reliable, basis_warning = True, None
+            cbasis, avgc = p.get("cost_basis"), p.get("avg_cost")
+            if p.get("src") != "paper_trades":  # holdings (broker-imported basis)
+                if cbasis is None or avgc is None:
+                    basis_reliable, basis_warning = False, "no_cost_basis"
+                elif (cur_px and avgc < 0.10 * cur_px) or (upnl_pct is not None and (upnl_pct > 400 or upnl_pct < -99)):
+                    basis_reliable, basis_warning = False, "basis_unverified"
+            if not basis_reliable:
+                upnl, upnl_pct = None, None  # do not show P&L derived from unreliable basis
             today = p.get("today_move_pct")
             if today is None and q.get("day_change_pct") is not None:
                 today = float(q["day_change_pct"])
@@ -378,6 +390,8 @@ def build_intelligence():
                 "account": p["account"], "broker": p["broker"], "environment": p["environment"],
                 "strategy": p.get("strategy") or lot.get("strat") or pl.get("strat"), "shares": sh, "is_fund": p.get("is_fund", False),
                 "entry_price": ent, "avg_cost": p.get("avg_cost"), "cost_basis": p.get("cost_basis"),
+                "basis_kind": ("entry" if p.get("src") == "paper_trades" else "avg_cost"),
+                "basis_reliable": basis_reliable, "basis_warning": basis_warning,
                 "current_price": cur_px, "market_value": p.get("market_value") or (cur_px * sh if cur_px else None),
                 "stop_price": stop, "target_price": tgt, "unrealized_pnl": upnl, "unrealized_pnl_pct": upnl_pct,
                 "today_move_pct": today, "r_multiple": float(lot["rmult"]) if lot.get("rmult") is not None else None,
@@ -414,11 +428,12 @@ def build_intelligence():
             "source_of_truth": "current_holdings_plus_paper_positions",
             "excluded_stale_trade_rows": stale_count, "excluded_zero_share_rows": excl_counts["zero_share"],
             "excluded_non_ticker_rows": excl_counts["non_ticker"], "excluded_cash_rows": excl_counts["cash"],
+            "basis_unverified_count": sum(1 for p in positions if not p["basis_reliable"]),
             "last_price_update": max([p["price_updated_at"] for p in positions if p["price_updated_at"]] or [None]),
             "last_hermes_update": last_hermes, "last_technical_update": last_tech,
             "by_account": by_acct, "by_broker": by_broker,
             "risk_counts": {"near_stop": sum(1 for p in positions if p["protection"]["stop_near"]),
-                            "tp_missing": sum(1 for p in positions if p["protection"]["tp_missing"]),
+                            "tp_missing": sum(1 for p in positions if p["protection"]["tp_missing"] and p.get("basis_kind") != "avg_cost"),
                             "below_entry": sum(1 for p in positions if p["protection"]["below_entry"]),
                             "negative_news": sum(1 for p in positions if any(n.get("severity") == "high" for n in p["news"])),
                             "hermes_findings": sum(1 for p in positions if p["hermes"]["top_finding"] or p["hermes"]["alert_count_24h"]),

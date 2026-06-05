@@ -49,3 +49,7 @@ filter params, sector ETF perf table, company-name join, RSI-direction from 2-da
 
 ## 2026-06-05 false-positive fix
 Base universe corrected from `trades.status='open'` (stale phantom lots incl AXTI, 149 zero-share) to current holdings + paper positions. See `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md`. Regression: `scripts/validate_open_trades_intelligence.py`. 152→47 positions.
+
+
+## 2026-06-05 basis validation
+Schwab/Fidelity cards now label the cost basis as **avg cost** (not 'entry'; paper still shows entry). Broker-imported `cost_basis` is sometimes partial/wrong (a few Schwab lots implied avg cost a fraction of price → impossible +1000s%). Added basis validation: positions with missing cost_basis (`no_cost_basis`) or implausible basis (`basis_unverified`: avg_cost <10% of price, or gain% >400 / <-99) are flagged (`basis_reliable=false`, `basis_warning`), their derived P&L is **suppressed** (card shows market value + 'basis unverified'), and they're excluded from `total_unrealized_pnl`. Summary `basis_unverified_count`. This dropped a fabricated ~$337k total to the honest reliable-only figure.
