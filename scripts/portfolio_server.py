@@ -535,8 +535,26 @@ def write_holdings(data: dict) -> None:
     )
 
 
+def _nan_safe(obj):
+    """Recursively convert float NaN/Inf -> None so output is valid JSON (browsers reject NaN)."""
+    import math
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _nan_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_nan_safe(v) for v in obj]
+    return obj
+
+
 def json_response(handler, status: int, data: dict) -> None:
-    body = json.dumps(data, default=str).encode("utf-8")
+    # Phase 203 fix: never emit bare NaN/Infinity — Python json allows them by default but they are
+    # INVALID JSON and browser JSON.parse() rejects the whole payload (was blanking the v3 scanner).
+    # Fast path uses allow_nan=False (raises on NaN); only sanitize recursively when NaN is present.
+    try:
+        body = json.dumps(data, default=str, allow_nan=False).encode("utf-8")
+    except ValueError:
+        body = json.dumps(_nan_safe(data), default=str, allow_nan=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(body)))

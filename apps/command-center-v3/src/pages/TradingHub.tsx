@@ -16,7 +16,7 @@ export default function TradingHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('Trade AI')
   const [tradeFilter, setTradeFilter] = useState<'ALL' | 'GO' | 'WAIT'>('ALL')
   const [copied, setCopied] = useState<string | null>(null)
-  const { data: tradeAi } = useApi<any>('/api/v2/trade-ai', 60_000)
+  const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai', 60_000)
   const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000)
   const { data: proposals } = useApi<any>('/api/v2/paper-proposals', 60_000)
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000)
@@ -77,6 +77,23 @@ export default function TradingHub({ onDrill }: Props) {
       )}
 
       {tab === 'Trade AI' && (() => {
+        // Phase 203: do NOT render the KPI grid as 0/0/0/no-run when the API fetch is loading or
+        // errored — that silently masks a transient backend issue (e.g. DB contention) as an empty
+        // scanner. Show an explicit state instead. Genuine empty data still renders below.
+        if (!tradeAi) {
+          const errored = !!tradeAiError
+          return (
+            <div style={{ background: 'var(--bg1)', border: `1px solid ${errored ? '#ef4444' : 'var(--border)'}`, borderRadius: 10, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Market Opportunities Scanner</div>
+              <div style={{ fontSize: 12, color: errored ? '#ef4444' : 'var(--text3)' }}>
+                {tradeAiLoading && !errored ? 'Loading latest scanner run…'
+                  : errored ? '⚠ Scanner data temporarily unavailable — /api/v2/trade-ai did not respond (auto-retrying every 60s). This is an API/data-availability issue, not necessarily an empty scan. Check backend load (e.g. a long-running backup) if it persists.'
+                  : 'No scanner data yet.'}
+              </div>
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/trade-ai{tradeAiError ? ` · error: ${String(tradeAiError).slice(0, 80)}` : ''}</div>
+            </div>
+          )
+        }
         const tickers: any[] = (tradeAi?.tickers ?? []).slice().sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0))
         const filtered = tradeFilter === 'ALL' ? tickers : tickers.filter((t: any) => t.decision === tradeFilter)
         const copyBoxes = (['GO', 'WAIT', 'ALL'] as const).map(type => {
