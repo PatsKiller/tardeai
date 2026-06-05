@@ -3,6 +3,14 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## Phase 201 — Governance Timer Retirement + Portfolio-Maintenance Preflight (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE201_GOVERNANCE_TIMER_RETIREMENT_PORTFOLIO_PREFLIGHT_CLOSEOUT.md` | **Closeout + final checklist** |
+| `docs/architecture/PHASE201A..E*.md` | auto-cycle observation · timer overlap inventory · retirement gate · 4 redundant timers retired (reversible) · post-retirement validation |
+| `docs/architecture/PHASE201F..H*.md` | portfolio-maintenance preflight inventory · risk model · migration plan (design-only, 8 candidates) |
+| `docs/architecture/PHASE201I_V3_CONTROL_TOWER_POST_GOVERNANCE_STATUS.md` | v3 control tower: retired timers 4/4, portfolio not-migrated, safety net untouched |
+
 ## Phase 200 — Governance Cron Migration Pilot (2026-06-04)
 | Document | Purpose |
 |----------|---------|
