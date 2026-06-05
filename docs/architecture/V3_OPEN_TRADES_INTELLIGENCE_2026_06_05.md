@@ -10,7 +10,7 @@ and inline protection. NO writes anywhere.
   broker-normalized, graceful fallbacks.
 - Endpoint `GET /api/v2/open-trades/intelligence` (api_v2 `_open_trades_intelligence`). Existing
   `/api/v2/open-trades` untouched.
-- Data sources (READ-ONLY): positions `trades`; live price/P&L/today/RVOL `market_quotes` (fallback
+- Data sources (READ-ONLY): **positions = holdings.json (real accts) + paper_trades (alpaca paper)**; stale `trades.status=open` rows excluded to `excluded_items` (e.g. sold-out AXTI); live price/P&L/today/RVOL `market_quotes` (fallback
   `price_cache`); technicals `ticker_snapshot_daily` (RSI/SMA/perf) + `indicator_confluence_cache`
   (ATR/ADX/tier); news `news_articles`; Hermes `hermes_research_intelligence` + `hermes_alerts` +
   `hermes_validation_findings`; sector best-effort `aegis_symbol_snapshot_nightly`/`intelligence_entities`
@@ -45,3 +45,7 @@ Sector coverage low (most symbols lack a sector source → "unavailable"); 1d pe
 resistance + fib not yet wired; company_name null; RSI direction (rising/falling) needs prior snapshot;
 many Schwab holdings are funds/CUSIPs with no technicals/news (shown as missing). Follow-up: server-side
 filter params, sector ETF perf table, company-name join, RSI-direction from 2-day snapshot.
+
+
+## 2026-06-05 false-positive fix
+Base universe corrected from `trades.status='open'` (stale phantom lots incl AXTI, 149 zero-share) to current holdings + paper positions. See `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md`. Regression: `scripts/validate_open_trades_intelligence.py`. 152→47 positions.

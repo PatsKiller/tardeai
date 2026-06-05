@@ -28,6 +28,7 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
   const positions: any[] = data?.positions ?? []
   const summary = data?.summary ?? {}
   const flt = data?.filters ?? {}
+  const excluded: any[] = data?.excluded_items ?? []
 
   const visible = useMemo(() => {
     let v = positions.filter(p => {
@@ -83,8 +84,31 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
         <Stat label="Hermes findings" v={summary.risk_counts?.hermes_findings ?? 0} c="#a855f7" />
         <div style={{ marginLeft: 'auto', fontSize: 8, color: 'var(--text3)', textAlign: 'right' }}>
           {Object.entries(summary.by_account ?? {}).map(([k, n]: any) => <div key={k}>{k}: {n}</div>)}
+          <div style={{ marginTop: 3 }}>source: {summary.source_of_truth ?? '—'}</div>
         </div>
       </div>
+
+      {/* DIAGNOSTICS — excluded stale/invalid rows (proves the false-positive fix) */}
+      {(summary.excluded_stale_trade_rows > 0 || summary.excluded_zero_share_rows > 0 || summary.excluded_non_ticker_rows > 0) && (
+        <details style={{ ...card, padding: 8 }}>
+          <summary style={{ fontSize: 10, color: '#f59e0b', cursor: 'pointer' }}>
+            ⚠ Excluded stale trade rows: {summary.excluded_stale_trade_rows ?? 0}
+            {' · '}zero-share: {summary.excluded_zero_share_rows ?? 0}
+            {' · '}non-ticker CUSIPs: {summary.excluded_non_ticker_rows ?? 0}
+            {' · '}cash: {summary.excluded_cash_rows ?? 0}
+          </summary>
+          <div style={{ marginTop: 8, maxHeight: 220, overflow: 'auto' }}>
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginBottom: 4 }}>Not displayed as positions (not in current holdings / invalid). Source-of-truth = current holdings + paper positions.</div>
+            {excluded.slice(0, 60).map((e: any, i: number) => (
+              <div key={i} style={{ fontSize: 9, color: 'var(--text2)', padding: '1px 0' }}>
+                <span style={{ color: 'var(--text3)' }}>{e.account ?? '—'}</span> · <b>{e.symbol ?? '—'}</b> · {e.reason}
+                {e.stale_trade_count ? ` (${e.stale_trade_count} stale lot${e.stale_trade_count > 1 ? 's' : ''})` : ''}
+                <span style={{ color: 'var(--text3)' }}> · {e.source}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       {/* FILTER / SORT TOOLBAR */}
       <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>

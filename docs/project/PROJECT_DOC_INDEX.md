@@ -3,6 +3,12 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## v3 Open Trades — False-Positive Fix (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
+| `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
+
 ## v3 Open Trades — Actionable Position Intelligence (2026-06-05)
 | Document | Purpose |
 |----------|---------|
