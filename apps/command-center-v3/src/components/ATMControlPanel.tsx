@@ -3,215 +3,171 @@ import { useApi } from '../hooks/useApi'
 import AdminConfirmModal, { type PendingAction } from './AdminConfirmModal'
 import { getToken } from '../lib/adminWrite'
 
-// Editable ATM + proposal controls — PAPER-ONLY and GATE-INTERLOCKED (2026-06-04).
-// Every write routes through the proven admin_write guard (preview->confirm->audit). The server-side
-// interlock REFUSES any write targeting a live account until live_trading_allowed=true, so live
-// controls render disabled here AND are blocked server-side. Nothing live is wired.
+// Automation Control Center (broker/account-aware) — Phase 1.
+// Shows ONLY API-capable accounts. Per-account automation policy + readiness. "Manage APIs" modal
+// adds/edits broker API connections (environment: paper/sandbox/live). All writes route through the
+// proven admin_write guard. AUTO_LIVE + live api_write are gate-interlocked server-side (refused
+// until the live-trading gate passes). No live arming here.
 
-const ATM_MODES = ['disabled', 'dry_run', 'active', 'paused'] as const
-const RISK_FIELDS: { field: string; label: string }[] = [
-  { field: 'max_pct_per_trade', label: 'Max risk % / trade' },
-  { field: 'max_pct_per_strategy', label: 'Max % / strategy' },
-  { field: 'max_pct_per_sector', label: 'Max % / sector' },
-  { field: 'max_concurrent', label: 'Max concurrent positions' },
-  { field: 'max_new_per_day', label: 'Max new / day' },
-  { field: 'daily_loss_pct_hard_pause', label: 'Daily-loss hard-pause %' },
-]
-const PAPER = 'alpaca_paper'
-const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginBottom: 14 }
-const h = { fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 10 }
-const btn = (active: boolean, disabled?: boolean) => ({
-  fontSize: 11, fontWeight: 600, padding: '5px 12px', borderRadius: 6, cursor: disabled ? 'not-allowed' : 'pointer',
-  border: `1px solid ${active ? '#60a5fa' : 'var(--border)'}`, opacity: disabled ? 0.4 : 1,
-  background: active ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: active ? '#60a5fa' : 'var(--text2)',
-})
+const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 12 }
+const badge = (bg: string, fg: string) => ({ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: bg, color: fg })
+const inp = { fontSize: 11, padding: '4px 7px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text0)' }
+const PAPER_MODES = ['DISABLED', 'MANUAL_REVIEW', 'AUTO_PAPER', 'PAUSED_ENTRIES', 'EMERGENCY_STOP']
+
+function ManageApiModal({ enums, initial, onClose, onSubmit }: any) {
+  const [f, setF] = useState<any>(initial ?? { account_key: '', display_name: '', broker: 'alpaca', environment: 'paper', api_read_enabled: true, api_write_enabled: false })
+  const set = (k: string, v: any) => setF({ ...f, [k]: v })
+  const liveWrite = f.environment === 'live' && f.api_write_enabled
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+      <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 460, maxHeight: '88vh', overflow: 'auto' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>{initial ? 'Edit broker API' : 'Add broker API'}</div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>Secrets (keys) live in .env/keyring — this records the connection + capabilities only.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 11 }}>
+          <label>account key<input style={{ ...inp, width: '100%' }} value={f.account_key} disabled={!!initial} onChange={e => set('account_key', e.target.value)} /></label>
+          <label>display name<input style={{ ...inp, width: '100%' }} value={f.display_name} onChange={e => set('display_name', e.target.value)} /></label>
+          <label>broker<input style={{ ...inp, width: '100%' }} value={f.broker} onChange={e => set('broker', e.target.value)} /></label>
+          <label>environment
+            <select style={{ ...inp, width: '100%' }} value={f.environment} onChange={e => set('environment', e.target.value)}>
+              {(enums?.environments ?? ['paper', 'sandbox', 'live']).map((e: string) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </label>
+        </div>
+        <div style={{ display: 'flex', gap: 16, margin: '10px 0', fontSize: 11 }}>
+          <label><input type="checkbox" checked={!!f.api_read_enabled} onChange={e => set('api_read_enabled', e.target.checked)} /> api read</label>
+          <label><input type="checkbox" checked={!!f.api_write_enabled} onChange={e => set('api_write_enabled', e.target.checked)} /> api write</label>
+        </div>
+        {liveWrite && <div style={{ fontSize: 10, color: '#ef4444', marginBottom: 8 }}>⚠ live + api write is gate-interlocked — the server will refuse it until the live-trading gate passes.</div>}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 10, color: 'var(--text2)', marginBottom: 12 }}>
+          {['supports_equities', 'supports_options', 'supports_fractional', 'supports_bracket_orders', 'supports_stop_orders', 'supports_trailing_stops', 'supports_cancel_replace'].map(c => (
+            <label key={c}><input type="checkbox" checked={!!f[c]} onChange={e => set(c, e.target.checked)} /> {c.replace('supports_', '')}</label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ ...inp, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => onSubmit(f)} disabled={!f.account_key || !f.broker}
+            style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 4, border: '1px solid #60a5fa', background: 'rgba(96,165,250,.15)', color: '#60a5fa', cursor: 'pointer' }}>Review change</button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function ATMControlPanel() {
+  const { data: accountsResp } = useApi<any>('/api/v2/broker-accounts?api_only=true', 60_000)
+  const { data: enums } = useApi<any>('/api/v2/broker-accounts/enums', 300_000)
   const { data: gateResp } = useApi<any>('/api/v2/atm/gate-status', 60_000)
-  const { data: readyResp } = useApi<any>('/api/v2/atm/schwab-readiness', 60_000)
-  const { data: propResp } = useApi<any>('/api/v2/atm/actionable-proposals', 60_000)
+  const accounts: any[] = accountsResp?.accounts ?? []
+  const [sel, setSel] = useState<string>('')
+  const account = accounts.find(a => a.account_key === sel) ?? accounts[0]
+  const acctKey = account?.account_key
+  const { data: policyResp } = useApi<any>(acctKey ? `/api/v2/broker-accounts/automation-policy?account=${acctKey}` : '', 60_000)
+  const { data: readyResp } = useApi<any>(acctKey ? `/api/v2/broker-accounts/readiness?account=${acctKey}` : '', 60_000)
+  const policy = policyResp?.policy ?? {}
+  const readiness = readyResp
   const gate = gateResp?.gate
-  const accounts: any[] = gateResp?.accounts ?? []
-  const atmMode: string = gateResp?.atm_state?.mode ?? '—'
-  const riskCfg: Record<string, any> = gateResp?.risk_config ?? {}
-  const ready = readyResp
-  const proposals: any[] = propResp?.proposals ?? []
-
   const [pending, setPending] = useState<PendingAction | null>(null)
-  const [riskInput, setRiskInput] = useState<Record<string, string>>({})
-  const [editId, setEditId] = useState<number | null>(null)
-  const [editVals, setEditVals] = useState<Record<string, string>>({})
+  const [showApi, setShowApi] = useState<any>(null) // null=closed, {}=add, {...}=edit
   const tokenSet = !!getToken()
-
-  const ck = gate?.checks ?? {}
-  const Check = ({ k, label }: { k: string; label: string }) => {
-    const c = ck[k] ?? {}
-    return (
-      <div style={{ fontSize: 11, color: c.ok ? '#22c55e' : '#f59e0b' }}>
-        {c.ok ? '✓' : '○'} {label}: <b>{String(c.have)}</b> / {String(c.need)}
-      </div>
-    )
-  }
+  const btn = (active: boolean, disabled?: boolean) => ({ fontSize: 11, fontWeight: 600, padding: '5px 11px', borderRadius: 6, cursor: disabled ? 'not-allowed' : 'pointer', border: `1px solid ${active ? '#60a5fa' : 'var(--border)'}`, opacity: disabled ? 0.4 : 1, background: active ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: active ? '#60a5fa' : 'var(--text2)' })
 
   return (
     <div>
-      {!tokenSet && (
-        <div style={{ ...card, borderColor: '#f59e0b', background: 'rgba(245,158,11,.08)', color: '#f59e0b', fontSize: 11 }}>
-          ⚠ Admin token not set in this browser — writes will be refused (403). Set it in System → admin token.
+      <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>Automation Control Center</span>
+        <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>PAPER-ONLY</span>
+        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>🔒 LIVE TRADING PROHIBITED</span>
+        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>LEVEL 7 PROHIBITED</span>
+        <span style={badge('rgba(96,165,250,.12)', '#60a5fa')}>gate {gate?.passed ? 'PASSED' : 'BLOCKED'}</span>
+        <button onClick={() => setShowApi({})} disabled={!tokenSet} style={{ ...btn(false, !tokenSet), marginLeft: 'auto' }}>+ Manage APIs</button>
+      </div>
+      {!tokenSet && <div style={{ ...card, borderColor: '#f59e0b', color: '#f59e0b', fontSize: 11 }}>⚠ Admin token not set — writes disabled (read-only inspection).</div>}
+
+      {/* ACCOUNT SELECTOR — API-capable only */}
+      <div style={card}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Accounts with trading APIs ({accounts.length})</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 8 }}>
+          {accounts.map(a => {
+            const isSel = a.account_key === acctKey
+            return (
+              <div key={a.account_key} onClick={() => setSel(a.account_key)}
+                style={{ border: `1px solid ${isSel ? '#60a5fa' : 'var(--border)'}`, borderRadius: 8, padding: 8, cursor: 'pointer', background: isSel ? 'rgba(96,165,250,.08)' : 'var(--bg2)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text0)' }}>{a.display_name}</div>
+                <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 3 }}>
+                  {a.broker} · {a.environment} · {a.api_read_enabled ? 'read' : '—'}/{a.api_write_enabled ? 'write' : (a.environment === 'live' ? 'write not proven' : '—')}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                  <span style={{ fontSize: 9, color: '#60a5fa' }}>{a.automation_mode}</span>
+                  <span onClick={(e) => { e.stopPropagation(); setShowApi({ account_key: a.account_key, display_name: a.display_name, broker: a.broker, environment: a.environment, api_read_enabled: a.api_read_enabled, api_write_enabled: a.api_write_enabled }) }}
+                    style={{ fontSize: 9, color: 'var(--text3)', textDecoration: 'underline' }}>edit API</span>
+                </div>
+              </div>
+            )
+          })}
         </div>
+      </div>
+
+      {account && (
+        <>
+          {/* AUTOMATION POLICY */}
+          <div style={card}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 2 }}>{account.display_name} — Automation</div>
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+              mode <b style={{ color: '#60a5fa' }}>{policy.automation_mode ?? account.automation_mode}</b> · approval {policy.approval_policy ?? '—'} ·
+              policy source <b style={{ color: policy.source === 'database' ? '#22c55e' : '#f59e0b' }}>{policy.source ?? '—'}</b>
+              {policy.updated_at && ` · updated ${String(policy.updated_at).slice(0, 16).replace('T', ' ')}`}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {PAPER_MODES.map(m => {
+                const isLive = account.environment === 'live'
+                const disabled = !tokenSet || (m === 'AUTO_PAPER' && !account.api_write_enabled)
+                return <button key={m} disabled={disabled} style={btn((policy.automation_mode ?? account.automation_mode) === m, disabled)}
+                  onClick={() => setPending({ path: '/api/v2/admin/broker-account/policy', body: { account: account.account_key, automation_mode: m }, label: `${account.account_key}: automation → ${m}` })}>{m}</button>
+              })}
+              <button disabled title="gate-interlocked: refused until live-trading gate passes" style={btn(false, true)}>🔒 AUTO_LIVE</button>
+            </div>
+            {/* risk limits (per-account) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8, marginTop: 12 }}>
+              {[['risk_per_trade_pct', 'Risk % / trade'], ['max_new_positions_per_day', 'Max new / day'], ['max_concurrent_positions', 'Max concurrent'], ['daily_loss_pause_pct', 'Daily-loss pause %']].map(([k, lbl]) => (
+                <div key={k} style={{ fontSize: 11, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text2)', minWidth: 110 }}>{lbl}</span>
+                  <span style={{ fontFamily: 'monospace', color: 'var(--text0)', minWidth: 40 }}>{String(policy[k] ?? '—')}</span>
+                  <RiskEdit field={k as string} label={lbl as string} account={account.account_key} disabled={!tokenSet} setPending={setPending} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* READINESS */}
+          <div style={card}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>
+              {account.display_name} — Broker readiness <span style={{ color: readiness?.ready ? '#22c55e' : '#ef4444' }}>{readiness?.ready ? 'READY' : 'NOT READY'}</span>
+            </div>
+            {(readiness?.checks ?? []).map((c: any, i: number) => (
+              <div key={i} style={{ fontSize: 10, padding: '3px 0', borderBottom: '1px solid var(--border)', color: c.status === 'ok' ? '#22c55e' : c.status === 'n/a' ? 'var(--text3)' : '#f59e0b' }}>
+                <span style={{ marginRight: 6 }}>{c.status === 'ok' ? '✓' : c.status === 'n/a' ? '–' : '☐'}</span>{c.check_name} <span style={{ color: 'var(--text3)' }}>· {c.status}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>Source: /api/v2/broker-accounts/readiness</div>
+          </div>
+        </>
       )}
 
-      {/* GATE BANNER */}
-      <div style={{ ...card, borderColor: gate?.passed ? '#22c55e' : '#ef4444' }}>
-        <div style={h}>
-          Live-Trading Gate —{' '}
-          <span style={{ color: gate?.passed ? '#22c55e' : '#ef4444' }}>
-            {gate?.passed ? 'PASSED' : 'BLOCKED (live arming refused)'}
-          </span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 4 }}>
-          <Check k="days" label="Validation days" />
-          <Check k="closed_trades" label="Closed trades" />
-          <Check k="win_rate" label="Win rate" />
-          <Check k="profit_factor" label="Profit factor" />
-        </div>
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>
-          live_trading_allowed = <b>{String(gate?.live_trading_allowed)}</b> · the interlock blocks every
-          live-account write until this is true. Source: /api/v2/atm/gate-status
-        </div>
-      </div>
-
-      {/* ATM STATE (paper) */}
-      <div style={card}>
-        <div style={h}>ATM State — <span style={{ color: '#60a5fa' }}>alpaca_paper</span> (current: {atmMode})</div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {ATM_MODES.map(m => (
-            <button key={m} disabled={!tokenSet} style={btn(atmMode === m, !tokenSet)}
-              onClick={() => setPending({
-                path: '/api/v2/admin/atm/set-state', body: { account: PAPER, mode: m },
-                label: `Set ATM (paper) → ${m.toUpperCase()}`,
-              })}>{m.toUpperCase()}</button>
-          ))}
-        </div>
-      </div>
-
-      {/* RISK CONFIG (paper) */}
-      <div style={card}>
-        <div style={h}>Risk Limits — paper config (atm_config.yaml)</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10 }}>
-          {RISK_FIELDS.map(rf => (
-            <div key={rf.field} style={{ fontSize: 11 }}>
-              <div style={{ color: 'var(--text2)', marginBottom: 3 }}>{rf.label}</div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <span style={{ color: 'var(--text0)', fontFamily: 'monospace', minWidth: 50 }}>{String(riskCfg[rf.field] ?? '—')}</span>
-                <input value={riskInput[rf.field] ?? ''} placeholder="new" disabled={!tokenSet}
-                  onChange={e => setRiskInput({ ...riskInput, [rf.field]: e.target.value })}
-                  style={{ width: 64, fontSize: 11, padding: '2px 6px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text0)' }} />
-                <button disabled={!tokenSet || !riskInput[rf.field]} style={btn(false, !tokenSet || !riskInput[rf.field])}
-                  onClick={() => setPending({
-                    path: '/api/v2/admin/risk-config', body: { field: rf.field, value: Number(riskInput[rf.field]) },
-                    label: `Set ${rf.label} → ${riskInput[rf.field]}`,
-                  })}>Set</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ACCOUNTS — live disabled */}
-      <div style={card}>
-        <div style={h}>Accounts</div>
-        {accounts.map(a => {
-          const live = a.mode !== 'paper'
-          return (
-            <div key={a.account_label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 12 }}>
-                <span style={{ fontFamily: 'monospace', color: 'var(--text0)' }}>{a.account_label}</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 8 }}>{a.broker} · {a.mode}</span>
-              </div>
-              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, fontWeight: 600,
-                background: live ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)', color: live ? '#ef4444' : '#22c55e' }}>
-                {live ? '🔒 requires live-trading gate pass' : 'writable (paper)'}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* PROPOSAL ACTIONS */}
-      <div style={card}>
-        <div style={h}>Proposals — approve / adjust / edit ({proposals.length})</div>
-        {proposals.length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>No actionable proposals.</div>}
-        {proposals.map(p => {
-          const live = p.account !== 'paper' && !String(p.account).includes('paper')
-          const liveBlocked = live // server interlock will 403; disable in UI too
-          return (
-            <div key={p.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 12 }}>
-                  <b style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{p.symbol}</b>
-                  <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 8 }}>
-                    {p.strategy_id} · {p.status} · {p.account} · entry {p.proposed_entry} stop {p.proposed_stop} tgt {p.proposed_target1}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button disabled={!tokenSet || liveBlocked} style={btn(false, !tokenSet || liveBlocked)}
-                    onClick={() => setPending({ path: '/api/v2/admin/proposal/approve', body: { proposal_id: p.id }, label: `Approve ${p.symbol} (paper)` })}>Approve</button>
-                  <button disabled={!tokenSet || liveBlocked} style={btn(editId === p.id, !tokenSet || liveBlocked)}
-                    onClick={() => { setEditId(editId === p.id ? null : p.id); setEditVals({ proposed_entry: p.proposed_entry ?? '', proposed_stop: p.proposed_stop ?? '', proposed_target1: p.proposed_target1 ?? '', proposed_shares: p.proposed_shares ?? '' }) }}>Adjust / Edit</button>
-                </div>
-              </div>
-              {editId === p.id && (
-                <div style={{ marginTop: 8, padding: 8, background: 'var(--bg2)', borderRadius: 6 }}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {['proposed_entry', 'proposed_stop', 'proposed_target1', 'proposed_shares'].map(f => (
-                      <label key={f} style={{ fontSize: 10, color: 'var(--text3)' }}>
-                        {f.replace('proposed_', '')}
-                        <input value={editVals[f] ?? ''} onChange={e => setEditVals({ ...editVals, [f]: e.target.value })}
-                          style={{ width: 70, marginLeft: 4, fontSize: 11, padding: '2px 5px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text0)' }} />
-                      </label>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    {(() => {
-                      const fields: Record<string, number> = {}
-                      for (const f of ['proposed_entry', 'proposed_stop', 'proposed_target1', 'proposed_shares'])
-                        if (editVals[f] !== '' && editVals[f] != null) fields[f] = Number(editVals[f])
-                      return (
-                        <>
-                          <button disabled={!Object.keys(fields).length} style={btn(false, !Object.keys(fields).length)}
-                            onClick={() => setPending({ path: '/api/v2/admin/proposal/adjust-approve', body: { proposal_id: p.id, fields }, label: `Adjust & Approve ${p.symbol}` })}>Adjust &amp; Approve</button>
-                          <button disabled={!Object.keys(fields).length} style={btn(false, !Object.keys(fields).length)}
-                            onClick={() => setPending({ path: '/api/v2/admin/proposal/edit-criteria', body: { proposal_id: p.id, fields }, label: `Edit criteria ${p.symbol}` })}>Edit Criteria (no approve)</button>
-                        </>
-                      )
-                    })()}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* SCHWAB READINESS (visibility only) */}
-      <div style={card}>
-        <div style={h}>
-          Schwab Live Readiness —{' '}
-          <span style={{ color: ready?.schwab_live_ready ? '#22c55e' : '#ef4444' }}>
-            {ready?.schwab_live_ready ? 'READY' : 'NOT READY'}
-          </span>
-        </div>
-        {(ready?.items ?? []).map((it: any, i: number) => (
-          <div key={i} style={{ fontSize: 11, padding: '4px 0', borderBottom: '1px solid var(--border)', color: it.done ? '#22c55e' : 'var(--text2)' }}>
-            <span style={{ marginRight: 6 }}>{it.done ? '✓' : '☐'}</span>{it.item}
-            <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 6 }}>— {it.detail}</span>
-          </div>
-        ))}
-        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 8 }}>{ready?.note}</div>
-      </div>
-
-      <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => { setPending(null); setEditId(null) }} />
+      {showApi && <ManageApiModal enums={enums} initial={Object.keys(showApi).length ? showApi : null}
+        onClose={() => setShowApi(null)}
+        onSubmit={(f: any) => { setShowApi(null); setPending({ path: '/api/v2/admin/broker-account/api', body: f, label: `${f.account_key}: ${f.broker}/${f.environment} API (read=${!!f.api_read_enabled} write=${!!f.api_write_enabled})` }) }} />}
+      <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => setPending(null)} />
     </div>
+  )
+}
+
+function RiskEdit({ field, label, account, disabled, setPending }: any) {
+  const [v, setV] = useState('')
+  return (
+    <span style={{ display: 'flex', gap: 4 }}>
+      <input value={v} placeholder="new" disabled={disabled} onChange={e => setV(e.target.value)} style={{ ...inp, width: 56 }} />
+      <button disabled={disabled || !v} onClick={() => setPending({ path: '/api/v2/admin/broker-account/policy', body: { account, [field]: Number(v) }, label: `${account}: ${label} → ${v}` })}
+        style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: disabled || !v ? 'not-allowed' : 'pointer', opacity: disabled || !v ? 0.4 : 1 }}>Set</button>
+    </span>
   )
 }
