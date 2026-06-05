@@ -11,7 +11,7 @@ Phase 1 = data model + backend + UI; NO live writes, NO Schwab arm, NO strategy/
 - `account_automation_policy_audit` (immutable old→new)
 - `proposal_account_routes` · `broker_capability_checks`
 - Seeded from `accounts` + `atm_config.yaml`: alpaca_paper=paper/read+write/AUTO_PAPER (legacy_import);
-  schwab×3=live/read-only/write-not-proven/MANUAL_REVIEW; fidelity=import/DISABLED. `accounts` +
+  schwab×3=live but **NO trading API yet** (api_read/write=false, MANUAL_REVIEW); fidelity=import/no-API/DISABLED. **Only alpaca_paper has a real trading API** — `?api_only=true` returns alpaca only. `accounts` +
   `atm_config.yaml` retained (legacy); UI shows policy source+timestamp.
 
 ## API (read + guarded write; `/api/v2` namespace serving canonical v3)
@@ -25,8 +25,7 @@ Phase 1 = data model + backend + UI; NO live writes, NO Schwab arm, NO strategy/
 
 ## Frontend (`apps/command-center-v3/src/components/ATMControlPanel.tsx`)
 Automation Control Center: safety badges + "Manage APIs"; account selector (API-capable only, fidelity
-hidden); per-account automation modes (DISABLED/MANUAL_REVIEW/AUTO_PAPER/PAUSED_ENTRIES/EMERGENCY_STOP;
-AUTO_LIVE locked); per-account risk editor (source shown); broker-readiness checklist; ManageApiModal
+hidden); per-account automation **edit modal** (mode + approval + risk; AUTO_LIVE locked/gate-interlocked); per-account risk editor (source shown); broker-readiness checklist; ManageApiModal
 (account_key/display_name/broker/environment[paper|sandbox|live]/read+write/capabilities). All writes →
 AdminConfirmModal (preview→confirm→audit). No hard-coded account/broker; no v2 UI.
 
