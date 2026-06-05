@@ -3,6 +3,16 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## Phase 200 — Governance Cron Migration Pilot (2026-06-04)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE200_GOVERNANCE_CRON_MIGRATION_CLOSEOUT.md` | **Closeout + final checklist** (governance-only) |
+| `docs/architecture/PHASE200A..J*.md` | preflight · job selection · controller hardening · dry-run · parallel run · output diff · schedule · scheduled-cycle · cron retirement · v3 visibility |
+| `scripts/pipelines/run_governance_pipeline.sh` | Hardened governance controller (real executor, DRY_RUN default) |
+| `scripts/compare_governance_pipeline_outputs.py` | Legacy-vs-controller output diff |
+| `~/.config/systemd/user/tradeai-governance-pipeline.{service,timer}` | Controller schedule (Mon-Fri 07:40 + Sun 18:00) |
+| `/api/v2/system/governance-pipeline-status` | Read-only controller status for v3 Control Plane |
+
 ## Phase 199 — Runtime Control Plane Consolidation + v3 Governance (2026-06-04)
 | Document | Purpose |
 |----------|---------|
