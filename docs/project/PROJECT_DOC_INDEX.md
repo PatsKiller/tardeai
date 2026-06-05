@@ -3,6 +3,13 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## v3 Open Trades — Actionable Position Intelligence (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | All-account position command surface — endpoint, data sources, card design, ownership, no-write boundary |
+| `scripts/open_trades_intelligence.py` + `GET /api/v2/open-trades/intelligence` | read-only aggregate (technicals+news+Hermes+sector+protection), batched, NaN-safe |
+| `apps/.../components/OpenTradesIntelligence.tsx` | summary header + filter/sort toolbar + rich cards; ProtectionPanel collapsible |
+
 ## ATM → Broker/Account Automation Console — Phase 1 (2026-06-05)
 | Document | Purpose |
 |----------|---------|
