@@ -1,0 +1,87 @@
+import { useApi } from '../hooks/useApi'
+
+// Phase 199H — v3 runtime Control Plane view (pipeline ownership over the 199B inventory / 199C model).
+// Read-only: consumes /api/v2/system/pipeline-summary, /runtime-inventory, /atm/gate-status.
+// No cron enable/disable from UI. v3-only (no v2 UI touched).
+
+const card = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, marginBottom: 12 }
+const badge = (bg: string, fg: string) => ({ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 5, background: bg, color: fg })
+
+export default function PipelineControlTower() {
+  const { data: ps } = useApi<any>('/api/v2/system/pipeline-summary', 60_000)
+  const { data: inv } = useApi<any>('/api/v2/system/runtime-inventory', 60_000)
+  const { data: gateResp } = useApi<any>('/api/v2/atm/gate-status', 60_000)
+  const pipelines: any[] = ps?.pipelines ?? []
+  const summary = inv?.summary ?? {}
+  const dups: Record<string, number> = summary?.duplicate_scripts ?? {}
+  const gate = gateResp?.gate
+
+  return (
+    <div>
+      {/* SAFETY BADGES */}
+      <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={badge('rgba(34,197,94,.15)', '#22c55e')}>PAPER-ONLY</span>
+        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>🔒 LIVE TRADING PROHIBITED</span>
+        <span style={badge('rgba(239,68,68,.15)', '#ef4444')}>LEVEL 7 PROHIBITED</span>
+        <span style={badge('rgba(96,165,250,.12)', '#60a5fa')}>
+          gate {gate?.passed ? 'PASSED' : 'BLOCKED'} · trades {gate?.checks?.closed_trades?.have ?? '—'}/{gate?.checks?.closed_trades?.need ?? '—'}
+        </span>
+        <span style={{ fontSize: 9, color: 'var(--text3)', marginLeft: 'auto' }}>
+          v3 canonical · /api/v2 = shared backend namespace (not v2 UI)
+        </span>
+      </div>
+
+      {/* INVENTORY TOTALS */}
+      <div style={{ ...card, display: 'flex', gap: 18, fontSize: 11, color: 'var(--text2)', flexWrap: 'wrap' }}>
+        <span>Cron lines: <b style={{ color: 'var(--text0)' }}>{summary.total_cron_lines ?? '—'}</b></span>
+        <span>Services: <b style={{ color: 'var(--text0)' }}>{summary.total_systemd_services ?? '—'}</b></span>
+        <span>Timers: <b style={{ color: 'var(--text0)' }}>{summary.total_systemd_timers ?? '—'}</b></span>
+        <span>Unique scripts: <b style={{ color: 'var(--text0)' }}>{summary.unique_scripts ?? '—'}</b></span>
+        <span>Multi-scheduled: <b style={{ color: '#f59e0b' }}>{Object.keys(dups).length}</b></span>
+        <span>Unknown to triage: <b style={{ color: '#f59e0b' }}>{ps?.unknown_triage_count ?? '—'}</b></span>
+        {!inv?.available && <span style={{ color: '#ef4444' }}>inventory not generated — run inventory_runtime_jobs.py</span>}
+      </div>
+
+      {/* PIPELINE OWNERSHIP CARDS */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(330px,1fr))', gap: 10 }}>
+        {pipelines.map(p => (
+          <div key={p.pipeline} style={card}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#60a5fa', marginBottom: 6 }}>{p.pipeline}</div>
+            <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 6 }}>{(p.categories ?? []).join(' · ')}</div>
+            <div style={{ display: 'flex', gap: 14, fontSize: 11, color: 'var(--text2)' }}>
+              <span>cron <b style={{ color: 'var(--text0)' }}>{p.cron_jobs}</b></span>
+              <span>services <b style={{ color: 'var(--text0)' }}>{p.systemd_units}</b></span>
+              <span>compress <b style={{ color: (p.compression_candidates?.length ? '#f59e0b' : 'var(--text3)') }}>{p.compression_candidates?.length ?? 0}</b></span>
+            </div>
+            {p.compression_candidates?.length > 0 && (
+              <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
+                candidates: {p.compression_candidates.map((s: string) => s.replace('scripts/', '')).join(', ')}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* DUPLICATE-CRON RISK PANEL */}
+      <div style={{ ...card, marginTop: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>
+          Duplicate-cron risk (multi-scheduled scripts — compression candidates)
+        </div>
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 8 }}>
+          Mostly intentional multi-cadence (same script, different times). Compression = ownership
+          consolidation under a pipeline controller, NOT deletion. No disabling from this UI.
+        </div>
+        {Object.entries(dups).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([s, n]) => (
+          <div key={s} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, padding: '3px 0', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ fontFamily: 'monospace', color: 'var(--text2)' }}>{s.replace('scripts/', '')}</span>
+            <span style={{ color: '#f59e0b' }}>{n}× scheduled</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 6 }}>
+        Source: /api/v2/system/pipeline-summary + /runtime-inventory + /atm/gate-status (read-only) ·
+        last inventory in data/runtime/runtime_job_inventory_latest.json
+      </div>
+    </div>
+  )
+}
