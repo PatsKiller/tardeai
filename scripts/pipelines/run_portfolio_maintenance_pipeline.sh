@@ -64,13 +64,17 @@ pm_step() {
 pm_excluded() { echo "  ---- EXCLUDED_NOT_RUN: $1 ($2) ----"
   STEP_NAMES+=("$1"); STEP_STATUS+=("EXCLUDED_NOT_RUN"); STEP_MS+=(0); STEP_LABEL+=("EXCLUDED"); }
 
+# backup cadence = the DAILY backup set only (legacy: pg_backup daily 02:00 + secrets env daily 05:30).
+# secrets-data is WEEKLY (legacy Sun 05:45) -> lives in the weekly cadence to preserve its cadence.
 run_backup() {
-  pm_step "portfolio_backup"  "BACKUP" bash "$PROJ/linux_launchers/run_pg_backup.sh"
-  pm_step "secrets_backup_env"  "BACKUP" bash "$PROJ/scripts/backup_secrets_state.sh" env
-  pm_step "secrets_backup_data" "BACKUP" bash "$PROJ/scripts/backup_secrets_state.sh" data
+  pm_step "portfolio_backup"   "BACKUP_DAILY" bash "$PROJ/linux_launchers/run_pg_backup.sh"
+  pm_step "secrets_backup_env" "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" env
 }
 run_daily()      { pm_step "portfolio_daily_report"   "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio.sh"; }
-run_weekly()     { pm_step "portfolio_weekly_report"  "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"; }
+run_weekly()     {
+  pm_step "portfolio_weekly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"
+  pm_step "secrets_backup_data"     "BACKUP_WEEKLY" bash "$PROJ/scripts/backup_secrets_state.sh" data
+}
 run_monthly()    { pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"; }
 run_lookthrough(){ pm_step "portfolio_lookthrough"    "READ_ONLY_SNAPSHOT" bash "$PROJ/linux_launchers/run_lookthrough.sh"; }
 
