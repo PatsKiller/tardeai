@@ -3,9 +3,10 @@ import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
 import { getOperator, setOperator, getToken, setToken } from '../lib/adminWrite'
+import PipelineControlTower from '../components/PipelineControlTower'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM'] as const
+const TABS = ['Pipeline', 'Control Plane', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -151,6 +152,8 @@ export default function SystemHub({ onDrill }: Props) {
           </div>
         )
       })()}
+
+      {tab === 'Control Plane' && <PipelineControlTower />}
 
       {tab === 'Queue' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
