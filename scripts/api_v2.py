@@ -11404,6 +11404,16 @@ AUTOMATION_MODES = ["DISABLED", "MANUAL_REVIEW", "AUTO_PAPER", "AUTO_LIVE", "PAU
 APPROVAL_POLICIES = ["PROPOSAL_ONLY", "MANUAL_APPROVAL_REQUIRED", "AUTO_SUBMIT_AFTER_VALIDATION"]
 
 
+def _open_trades_intelligence():
+    """GET /api/v2/open-trades/intelligence — aggregate read-only position intelligence (all accounts).
+    Enriched with technicals + news + Hermes + sector-relative + protection. No writes."""
+    try:
+        import open_trades_intelligence as _oti
+        return _oti.build_intelligence()
+    except Exception as e:
+        return {"error": str(e), "summary": {}, "filters": {}, "positions": []}
+
+
 def _broker_account_enums():
     """GET /api/v2/broker-accounts/enums — dropdown options for the add/edit-API + policy modals."""
     return {"environments": BROKER_ENVIRONMENTS, "automation_modes": AUTOMATION_MODES,
@@ -14957,6 +14967,7 @@ ROUTES = {
     "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
+    "/api/v2/open-trades/intelligence": lambda: _open_trades_intelligence(),
     "/api/v2/broker-accounts": lambda: _broker_accounts(),
     "/api/v2/broker-accounts/enums": lambda: _broker_account_enums(),
     "/api/v2/broker-accounts/automation-policy": lambda: _broker_account_policy(),
