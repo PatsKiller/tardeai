@@ -1,7 +1,18 @@
 # Trade AI v12 — Documentation Index
 
-**Updated:** 2026-06-02
+**Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
+
+## Phase 199 — Runtime Control Plane Consolidation + v3 Governance (2026-06-04)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE199_RUNTIME_CONTROL_PLANE_V3_GOVERNANCE_CLOSEOUT.md` | **Closeout + final checklist** |
+| `docs/architecture/PHASE199A..J*.md` | Preflight · inventory · ownership model · compression plan · controller skeletons · v3 QCT plan/API/impl · snapshot generator · validation |
+| `scripts/inventory_runtime_jobs.py` | Runtime job inventory (211 cron/32 timers/30 svc/143 unique/31 dup) |
+| `scripts/pipelines/` | 7 dry-run pipeline controllers + safety harness (no schedules wired) |
+| `scripts/generate_state_of_repo_snapshot.py` | → `docs/project/STATE_OF_REPO_LATEST.md` |
+| `docs/ATM_PROPOSAL_CONTROLS_2026_06_04.md` | Editable ATM + proposal controls (paper-only, gate-interlocked) |
+| `docs/HERMES_POSITION_PROPOSAL_RESEARCH_2026_06_04.md` | Hermes 24/7 held-position + proposal research |
 
 ---
 
