@@ -11,6 +11,7 @@ export default function PipelineControlTower() {
   const { data: ps } = useApi<any>('/api/v2/system/pipeline-summary', 60_000)
   const { data: inv } = useApi<any>('/api/v2/system/runtime-inventory', 60_000)
   const { data: gateResp } = useApi<any>('/api/v2/atm/gate-status', 60_000)
+  const { data: gov } = useApi<any>('/api/v2/system/governance-pipeline-status', 60_000)
   const pipelines: any[] = ps?.pipelines ?? []
   const summary = inv?.summary ?? {}
   const dups: Record<string, number> = summary?.duplicate_scripts ?? {}
@@ -41,6 +42,26 @@ export default function PipelineControlTower() {
         <span>Unknown to triage: <b style={{ color: '#f59e0b' }}>{ps?.unknown_triage_count ?? '—'}</b></span>
         {!inv?.available && <span style={{ color: '#ef4444' }}>inventory not generated — run inventory_runtime_jobs.py</span>}
       </div>
+
+      {/* GOVERNANCE PIPELINE — Phase 200 migrated (controller status) */}
+      {gov && (
+        <div style={{ ...card, borderColor: gov.last_run?.overall === 'ok' ? '#22c55e' : '#f59e0b' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>
+            Governance Pipeline — migrated to controller (Phase 200)
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: 'var(--text2)' }}>
+            <span>controller: <b style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{gov.controller}</b></span>
+            <span>last run: <b style={{ color: gov.last_run?.overall === 'ok' ? '#22c55e' : '#f59e0b' }}>{gov.last_run?.overall ?? '—'}</b> {gov.last_run?.dry_run ? '(dry-run)' : ''}</span>
+            <span>failures: <b style={{ color: (gov.failures?.length ? '#ef4444' : '#22c55e') }}>{gov.failures?.length ?? 0}</b></span>
+            <span>retired legacy cron: <b style={{ color: '#60a5fa' }}>{gov.retired_legacy_cron}</b></span>
+            <span>active legacy gov cron: <b style={{ color: 'var(--text0)' }}>{gov.active_legacy_governance_cron}</b></span>
+            <span>next run: {gov.next_run}</span>
+          </div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6 }}>
+            steps: {(gov.last_run?.steps ?? []).map((s: any) => `${s.name}:${s.status}`).join(' · ')} · Source: /api/v2/system/governance-pipeline-status
+          </div>
+        </div>
+      )}
 
       {/* PIPELINE OWNERSHIP CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(330px,1fr))', gap: 10 }}>

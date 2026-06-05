@@ -11398,6 +11398,42 @@ def _system_pipeline_summary():
             "namespace_note": "/api/v2 is the shared backend namespace serving canonical v3 UI (not v2 UI)"}
 
 
+def _governance_pipeline_status():
+    """GET /api/v2/system/governance-pipeline-status — Phase 200 governance controller status (read-only)."""
+    import json as _j, subprocess as _sp
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    last = {}
+    p = os.path.join(root, "data", "runtime", "governance_pipeline_last_run.json")
+    if os.path.exists(p):
+        try:
+            last = _j.load(open(p))
+        except Exception:
+            pass
+
+    def _sh(c):
+        try:
+            return _sp.run(c, shell=True, capture_output=True, text=True, timeout=15).stdout
+        except Exception:
+            return ""
+    cron = _sh("crontab -l 2>/dev/null")
+    retired = cron.count("PHASE200_MIGRATED_TO_GOVERNANCE_PIPELINE")
+    gov_keys = ("run_scheduled_a1a_check", "run_scheduled_system_facts", "report_governance_status",
+                "run_scheduled_maturity_control_board", "report_operator_readiness")
+    active_legacy = sum(1 for ln in cron.splitlines()
+                        if ln.strip() and not ln.strip().startswith("#")
+                        and any(k in ln for k in gov_keys))
+    timers = _sh("systemctl --user list-timers --all 2>/dev/null")
+    next_run = next((" ".join(ln.split()[0:3]) for ln in timers.splitlines()
+                     if "governance-pipeline" in ln and ln.split()[0:3]), "see timer")
+    failures = [s for s in last.get("steps", []) if "FAIL" in str(s.get("status", ""))]
+    return {"controller": "run_governance_pipeline.sh", "timer": "tradeai-governance-pipeline.timer",
+            "last_run": {"run_ts": last.get("run_ts_utc"), "overall": last.get("overall_status"),
+                         "dry_run": last.get("dry_run"), "steps": last.get("steps", [])},
+            "failures": failures, "next_run": next_run,
+            "retired_legacy_cron": retired, "active_legacy_governance_cron": active_legacy,
+            "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited"}}
+
+
 def _research_topics_unified():
     """GET /api/v2/research-topics — unified view of user research + topic monitor."""
     user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
@@ -14853,6 +14889,7 @@ ROUTES = {
     "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),
     "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
     "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
+    "/api/v2/system/governance-pipeline-status": lambda: _governance_pipeline_status(),
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
