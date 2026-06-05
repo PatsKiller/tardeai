@@ -12,7 +12,15 @@ import type { DrillContext } from './DetailDrawer'
  * champion rows are seeded/uniform simulations).
  * ------------------------------------------------------------------ */
 
-interface Props { onDrill: (ctx: DrillContext) => void }
+interface Props {
+  onDrill: (ctx: DrillContext) => void
+  /** Account + time-range filters owned by JournalHub, applied across all tabs.
+   *  sharedAccount is a normalized account key (e.g. 'alpaca_paper', 'schwab_rollover_ira'),
+   *  matching strategy_backtest_trades.account exactly; '' = all accounts.
+   *  sharedDateFrom is the time-range cutoff (YYYY-MM-DD), fed to the backend start_date. */
+  sharedAccount?: string
+  sharedDateFrom?: string
+}
 
 interface BtStatus {
   datasets_total: number; runs_total: number; trades_total: number
@@ -97,7 +105,7 @@ const WrTooltip = ({ active, payload, label }: any) => {
 
 type TabId = 'overview' | 'strategy' | 'trades' | 'missed' | 'results' | 'runs' | 'trailing' | 'mfe' | 'optimization' | 'llm_reviews' | 'entry_quality' | 'capture' | 'potential' | 'trade_eval'
 
-export default function BacktestPanel({ onDrill }: Props) {
+export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateFrom = '' }: Props) {
   const [status, setStatus] = useState<BtStatus | null>(null)
   const [runs, setRuns] = useState<BtRun[]>([])
   const [results, setResults] = useState<BtResult[]>([])
@@ -118,13 +126,14 @@ export default function BacktestPanel({ onDrill }: Props) {
   const [selectedStrategy, setSelectedStrategy] = useState<string | null>(null)
   const [selectedResult, setSelectedResult] = useState<BtResult | null>(null)
   const [runFilter, setRunFilter] = useState('all')
-  // Filters
-  const [dateFrom, setDateFrom] = useState('')
+  // Filters — account + dateFrom seed from JournalHub's shared filters so the
+  // Backtesting tab honors the same account/time-range selection as every other tab.
+  const [dateFrom, setDateFrom] = useState(sharedDateFrom)
   const [dateTo, setDateTo] = useState('')
   const [strategyFilter, setStrategyFilter] = useState('')
   const [runTypeFilter, setRunTypeFilter] = useState('replay_trades')  // default = real data
   const [brokerFilter, setBrokerFilter] = useState('')
-  const [accountFilter, setAccountFilter] = useState('')
+  const [accountFilter, setAccountFilter] = useState(sharedAccount)
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({ strategies: [], run_ids: [], run_types: [], brokers: [], accounts: [], broker_accounts: [], minDate: '', maxDate: '', data_quality_gaps: [] })
 
   const filtersActive = Boolean(dateFrom || dateTo || strategyFilter || runTypeFilter || brokerFilter || accountFilter)
@@ -190,7 +199,12 @@ export default function BacktestPanel({ onDrill }: Props) {
     setLoading(false)
   }, [])
 
-  useEffect(() => { loadData({ dateFrom: '', dateTo: '', strategy: '', runType: 'replay_trades', broker: '', account: '' }) }, [loadData])
+  // Initial load honors the shared account + time-range seeded into state above.
+  useEffect(() => { loadData({ dateFrom, dateTo: '', strategy: '', runType: 'replay_trades', broker: '', account: accountFilter }) }, [loadData])  // eslint-disable-line react-hooks/exhaustive-deps
+  // Propagate JournalHub's shared filters → internal state (triggers the reload effect below).
+  // Setting state to the same value (e.g. on mount) is a no-op, so no duplicate fetch.
+  useEffect(() => { setAccountFilter(sharedAccount) }, [sharedAccount])
+  useEffect(() => { setDateFrom(sharedDateFrom) }, [sharedDateFrom])
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return }
     loadData({ dateFrom, dateTo, strategy: strategyFilter, runType: runTypeFilter, broker: brokerFilter, account: accountFilter })
