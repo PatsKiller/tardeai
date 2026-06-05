@@ -149,13 +149,25 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
 
               {/* P&L + plan */}
               <div style={{ display: 'flex', gap: 12, marginTop: 8, alignItems: 'baseline' }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: (p.unrealized_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(p.unrealized_pnl ?? 0)}</span>
-                <span style={{ fontSize: 12, color: (p.unrealized_pnl_pct ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{pct(p.unrealized_pnl_pct)}</span>
+                {p.unrealized_pnl != null ? (
+                  <>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: p.unrealized_pnl >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(p.unrealized_pnl)}</span>
+                    <span style={{ fontSize: 12, color: (p.unrealized_pnl_pct ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{pct(p.unrealized_pnl_pct)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{fmt$(p.market_value ?? 0)}</span>
+                    <span style={{ fontSize: 9, color: '#f59e0b' }}>{p.basis_warning === 'no_cost_basis' ? 'no cost basis' : 'basis unverified'}</span>
+                  </>
+                )}
                 {p.today_move_pct != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>today {pct(p.today_move_pct)}</span>}
                 {p.r_multiple != null && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{num(p.r_multiple, 1)}R</span>}
               </div>
               <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 6, fontFamily: 'monospace' }}>
-                entry {num(p.entry_price)} · now {num(p.current_price)} · stop {num(p.stop_price)} · tgt {p.target_price ? num(p.target_price) : '—'}
+                {p.basis_kind === 'avg_cost' ? 'avg cost' : 'entry'} {p.basis_reliable ? num(p.entry_price) : 'n/a'} · now {num(p.current_price)}
+                {p.stop_price != null ? ` · stop ${num(p.stop_price)}` : ''}
+                {p.target_price ? ` · tgt ${num(p.target_price)}` : ''}
+                {p.basis_reliable && p.cost_basis != null ? ` · basis ${fmt$(p.cost_basis)}` : ''}
               </div>
 
               {/* technical + protection chips */}
@@ -163,8 +175,8 @@ export default function OpenTradesIntelligence({ onDrill }: { onDrill: (c: Drill
                 <span style={chip('var(--bg2)', rsiColor(t.rsi_bucket))}>RSI {t.rsi != null ? num(t.rsi, 0) : '—'} {t.rsi_bucket}</span>
                 <span style={chip('var(--bg2)', t.trend_label === 'bullish' ? '#22c55e' : t.trend_label === 'bearish' ? '#ef4444' : 'var(--text2)')}>{t.trend_label}</span>
                 {t.stale && <span style={chip('rgba(245,158,11,.15)', '#f59e0b')}>technicals stale</span>}
-                {pr.tp_missing && <span style={chip('rgba(245,158,11,.15)', '#f59e0b')}>TP missing</span>}
-                {pr.below_entry && <span style={chip('rgba(245,158,11,.15)', '#f59e0b')}>below entry</span>}
+                {pr.tp_missing && p.basis_kind !== 'avg_cost' && <span style={chip('rgba(245,158,11,.15)', '#f59e0b')}>TP missing</span>}
+                {pr.below_entry && <span style={chip('rgba(245,158,11,.15)', '#f59e0b')}>{p.basis_kind === 'avg_cost' ? 'below cost' : 'below entry'}</span>}
                 {pr.stop_near && <span style={chip('rgba(239,68,68,.15)', '#ef4444')}>stop near</span>}
                 {pr.trailing_candidate && <span style={chip('rgba(96,165,250,.15)', '#60a5fa')}>trailing candidate</span>}
                 {p.hermes?.alert_count_24h > 0 && <span style={chip('rgba(239,68,68,.15)', '#ef4444')}>Hermes alert</span>}
