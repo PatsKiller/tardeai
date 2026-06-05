@@ -1,0 +1,24 @@
+PHASE 204H-204J EVIDENCE — 2026-06-05 (verification of already-completed work; no re-apply)
+================================================================
+[safety] ALPACA_MODE=paper | LIVE_TRADING=absent | LLM_DISABLE_LIVE_EXECUTION=true
+[holdings] portfolio-intelligence total_value=1,198,153.28 ; latest snapshot=1,199,711.87 (>$1M OK)
+[apply] bywn67s4t completed; process not running; summary dry_run=false overall=ok
+[apply] portfolio_backup ok 361518ms; secrets_backup_env ok 2231ms; price_cache+db_retention EXCLUDED_NOT_RUN
+[pg backup] /home/johnclaw/db_backups/trade_ai_20260605_121534.sql.gz = 999911971 bytes
+[secrets-env] encrypted env_backup_20260605_122135.tar.gz.gpg uploaded to Drive folder 1GYbZyM8nTfwuh-h2EsWTxbMpXlEUA6Qi
+[secrets-data] correctly EXCLUDED from backup cadence (moved to weekly cadence)
+--- authoritative comparator (scripts/compare_portfolio_backup_outputs.py) ---
+BACKUP CADENCE OUTPUT DIFF: PASS (0 unacceptable)
+  OK   db_backup: 999MB fresh 0.20h: trade_ai_20260605_121534.sql.gz
+  OK   portfolio_backup: ok
+  OK   secrets_backup_env: ok
+  OK   excluded:price_cache: EXCLUDED_NOT_RUN
+  OK   excluded:db_retention: EXCLUDED_NOT_RUN
+--- scheduling (systemd user timer; legacy retained) ---
+controller timer: active next=Sat 2026-06-06 02:30:00
+legacy portfolio-backup.timer: active
+other portfolio cadences scheduled? (must be none):
+  none
+--- crontab unchanged (secrets cron + safety net) ---
+crontab lines: 437 | secrets cron: 2 | safety-net: 2
+[rollback] systemctl --user disable --now tradeai-portfolio-backup-cadence.timer
