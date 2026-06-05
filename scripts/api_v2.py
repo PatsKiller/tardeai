@@ -11246,6 +11246,26 @@ def _get_current_month_dividends(div_cal):
 
 # ── Reports hub endpoint (was missing) ────────────────────────────────────
 
+def _research_topics_registry():
+    """GET /api/v2/research-topics/registry — ALL topic_monitor topics (incl paused) for the
+    management modal, with owner (tradeai|hermes|shared) and editable fields. Read-only."""
+    rows = _db_query("""
+        SELECT topic_id, display_name, owner, priority, enabled,
+               search_queries, video_queries, max_age_days, min_articles,
+               last_searched, last_found_count
+        FROM topic_monitor
+        ORDER BY enabled DESC, owner, priority, topic_id
+    """) or []
+    return {
+        "topics": [{k: _json_clean(v) for k, v in r.items()} for r in rows],
+        "count": len(rows),
+        "owners": ["tradeai", "hermes", "shared"],
+        "note": ("Registry over topic_monitor. owner routes which engine researches the topic: "
+                 "tradeai+shared are processed by topic_ingestion.py (TradeAI); hermes-owned topics "
+                 "are flagged for Hermes. Edits are guarded (admin_write -> admin_audit_log)."),
+    }
+
+
 def _research_topics_unified():
     """GET /api/v2/research-topics — unified view of user research + topic monitor."""
     user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
@@ -14695,6 +14715,7 @@ ROUTES = {
     "/api/v2/autonomy-progress": lambda: _autonomy_progress(),
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: _research_topics_unified(),
+    "/api/v2/research-topics/registry": lambda: _research_topics_registry(),
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
@@ -16002,6 +16023,106 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             return admin_write(action="strategy.enablement", target=f"{sid}:{acct}",
                                old_value={"enabled": old_enabled}, new_value={"enabled": enabled},
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Research Topic Registry CRUD (guarded via admin_write -> admin_audit_log) ──
+    if method == "POST" and base_path == "/api/v2/admin/topic/upsert":
+        try:
+            from admin_write_guard import admin_write
+            import json as _json
+            b = body or {}
+            tid = (b.get("topic_id") or "").strip().lower().replace(" ", "_")
+            if not tid:
+                return 400, {"ok": False, "error": "topic_id required"}
+            display = (b.get("display_name") or tid).strip()[:120]
+            owner = (b.get("owner") or "shared").strip().lower()
+            if owner not in ("tradeai", "hermes", "shared"):
+                return 400, {"ok": False, "error": "owner must be tradeai|hermes|shared"}
+            priority = int(b.get("priority") or 5)
+            enabled = bool(b.get("enabled", True))
+            sq = b.get("search_queries") or []
+            vq = b.get("video_queries") or []
+            if isinstance(sq, str):
+                sq = [s.strip() for s in sq.splitlines() if s.strip()]
+            if isinstance(vq, str):
+                vq = [s.strip() for s in vq.splitlines() if s.strip()]
+            max_age = int(b.get("max_age_days") or 30)
+            min_art = int(b.get("min_articles") or 3)
+            operator = (b.get("operator") or "operator")[:60]
+            existing = _db_query("SELECT display_name, owner, priority, enabled, search_queries, "
+                                 "video_queries, max_age_days, min_articles FROM topic_monitor WHERE topic_id=%s",
+                                 (tid,), fetch="one")
+            old_value = {k: _json_clean(v) for k, v in existing.items()} if existing else None
+            new_value = {"display_name": display, "owner": owner, "priority": priority,
+                         "enabled": enabled, "search_queries": sq, "video_queries": vq,
+                         "max_age_days": max_age, "min_articles": min_art}
+
+            def _apply():
+                _db_write("""INSERT INTO topic_monitor
+                        (topic_id, display_name, owner, priority, enabled, search_queries,
+                         video_queries, max_age_days, min_articles, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s,NOW())
+                    ON CONFLICT (topic_id) DO UPDATE SET
+                        display_name=EXCLUDED.display_name, owner=EXCLUDED.owner,
+                        priority=EXCLUDED.priority, enabled=EXCLUDED.enabled,
+                        search_queries=EXCLUDED.search_queries, video_queries=EXCLUDED.video_queries,
+                        max_age_days=EXCLUDED.max_age_days, min_articles=EXCLUDED.min_articles,
+                        updated_at=NOW()""",
+                    (tid, display, owner, priority, enabled, _json.dumps(sq), _json.dumps(vq),
+                     max_age, min_art))
+
+            return admin_write(action="topic.upsert", target=f"topic:{tid}",
+                               old_value=old_value, new_value=new_value,
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/admin/topic/toggle":
+        try:
+            from admin_write_guard import admin_write
+            b = body or {}
+            tid = (b.get("topic_id") or "").strip()
+            if not tid:
+                return 400, {"ok": False, "error": "topic_id required"}
+            enabled = bool(b.get("enabled"))
+            row = _db_query("SELECT enabled FROM topic_monitor WHERE topic_id=%s", (tid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": f"topic not found: {tid}"}
+            operator = (b.get("operator") or "operator")[:60]
+
+            def _apply():
+                _db_write("UPDATE topic_monitor SET enabled=%s, updated_at=NOW() WHERE topic_id=%s",
+                          (enabled, tid))
+
+            return admin_write(action="topic.toggle", target=f"topic:{tid}",
+                               old_value={"enabled": row.get("enabled")}, new_value={"enabled": enabled},
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    if method == "POST" and base_path == "/api/v2/admin/topic/delete":
+        try:
+            from admin_write_guard import admin_write
+            b = body or {}
+            tid = (b.get("topic_id") or "").strip()
+            if not tid:
+                return 400, {"ok": False, "error": "topic_id required"}
+            row = _db_query("SELECT display_name, owner, enabled FROM topic_monitor WHERE topic_id=%s",
+                            (tid,), fetch="one")
+            if not row:
+                return 404, {"ok": False, "error": f"topic not found: {tid}"}
+            operator = (b.get("operator") or "operator")[:60]
+
+            def _apply():
+                _db_write("DELETE FROM topic_monitor WHERE topic_id=%s", (tid,))
+
+            return admin_write(action="topic.delete", target=f"topic:{tid}",
+                               old_value={k: _json_clean(v) for k, v in row.items()}, new_value=None,
                                apply_fn=_apply, operator=operator,
                                confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:

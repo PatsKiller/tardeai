@@ -113,6 +113,7 @@ def run(as_json: bool = False):
                  severity, confidence, impact_score, source, source_url, published_at,
                  raw_payload)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (symbol, headline) DO NOTHING
             RETURNING id
         """, (
             symbol, strategy_type, ctype, title, summary,
@@ -120,7 +121,10 @@ def run(as_json: bool = False):
             source or "news_to_catalyst", source_url, published_at,
             json.dumps({"news_article_id": nid, "classifier": "keyword_v1"})
         ))
-        new_id = cur.fetchone()[0]
+        _row = cur.fetchone()
+        if _row is None:
+            continue  # (symbol, headline) already present (race with news_ingestion inline) — skip
+        new_id = _row[0]
         created.append({
             "catalyst_id": new_id,
             "news_id": nid,

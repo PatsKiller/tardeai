@@ -201,12 +201,28 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
     keywords = scores.get("matched_keywords", [])
 
     # Catalyst + sentiment — use savepoints to prevent transaction abort
+    # NOTE (2026-06-04 repair): this INSERT previously used columns title/relevance_score
+    # which do NOT exist on catalyst_events (headline/impact_score) — it failed silently on
+    # every article (savepoint rollback + except:pass) and wrote 0 rows for ~5 weeks. Columns
+    # corrected; classify the type (no generic-'news' quality loss) and dedup on (symbol,
+    # headline) so this and the scheduled news_to_catalyst.py classifier can both run safely.
     if relevance > 0.3:
         try:
+            from news_to_catalyst import _classify, _severity_from_weight
+            ctype = _classify(title, summary)
+            severity = _severity_from_weight(float(relevance))
+        except Exception:
+            ctype, severity = "news", "low"
+        try:
             cur.execute("SAVEPOINT ds_cat")
-            cur.execute("""INSERT INTO catalyst_events (symbol, strategy_type, catalyst_type, title, description, source, relevance_score)
-                VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
-                (symbol, strategy_type, "news", title, summary, source, relevance))
+            cur.execute("""INSERT INTO catalyst_events
+                    (symbol, strategy_type, catalyst_type, headline, description,
+                     severity, confidence, impact_score, source, published_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (symbol, headline) DO NOTHING""",
+                (symbol, strategy_type, ctype, title, summary,
+                 severity, round(float(relevance), 2), round(float(relevance) * 10, 1),
+                 source, article.get("published_at")))
             cur.execute("RELEASE SAVEPOINT ds_cat")
         except Exception:
             try: cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
@@ -218,10 +234,14 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
         pos = sum(1 for s in SENTIMENT_POSITIVE if s in text_lower)
         neg = sum(1 for s in SENTIMENT_NEGATIVE if s in text_lower)
         sentiment = "positive" if pos > neg else "negative" if neg > pos else "neutral"
+        # 2026-06-04 repair: columns were source/sentiment/score/raw_text which do NOT exist
+        # (table has source_type/overall_sentiment/sentiment_score/raw_text_snippet) — silently
+        # failing (savepoint rollback + except:pass) since the schema migration; frozen 2026-05-10.
         cur.execute("SAVEPOINT ds_sent")
-        cur.execute("""INSERT INTO sentiment_observations (symbol, source, sentiment, score, raw_text)
-            VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
-            (symbol, source, sentiment, relevance, title))
+        cur.execute("""INSERT INTO sentiment_observations
+                (symbol, strategy_type, source_type, overall_sentiment, sentiment_score, raw_text_snippet)
+            VALUES (%s, %s, %s, %s, %s, %s)""",
+            (symbol, strategy_type, source, sentiment, relevance, title[:500]))
         cur.execute("RELEASE SAVEPOINT ds_sent")
     except Exception:
         try: cur.execute("ROLLBACK TO SAVEPOINT ds_sent")

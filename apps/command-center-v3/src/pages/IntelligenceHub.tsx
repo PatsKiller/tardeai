@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
+import ResearchTopicsModal from '../components/ResearchTopicsModal'
+import IntelligenceWorkflow from '../components/IntelligenceWorkflow'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['News', 'Research', 'Sources'] as const
+const TABS = ['News', 'Research', 'Sources', 'Workflow'] as const
 
 export default function IntelligenceHub({ onDrill }: Props) {
   const [tab, setTab] = useState<typeof TABS[number]>('News')
+  const [showTopics, setShowTopics] = useState(false)
   const { data: intel } = useApi<any>('/api/v2/market-intelligence', 120_000)
   const { data: researchData } = useApi<any>('/api/v2/research-topics', 120_000)
 
@@ -29,8 +32,14 @@ export default function IntelligenceHub({ onDrill }: Props) {
               color: tab === t ? '#60a5fa' : 'var(--text3)', fontWeight: tab === t ? 700 : 400,
             }}>{t}</button>
           ))}
+          <button onClick={() => setShowTopics(true)} style={{
+            padding: '4px 12px', fontSize: 11, borderRadius: 5, border: '1px solid rgba(168,85,247,.3)',
+            cursor: 'pointer', background: 'rgba(168,85,247,.15)', color: '#a855f7', fontWeight: 600,
+          }}>Manage Topics</button>
         </div>
       </div>
+
+      {showTopics && <ResearchTopicsModal onClose={() => setShowTopics(false)} />}
 
       {tab === 'News' && (
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -99,6 +108,7 @@ export default function IntelligenceHub({ onDrill }: Props) {
         </div>
       )}
       {tab === 'Sources' && <div style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Intelligence sources — Brave depleted per audit</div>}
+      {tab === 'Workflow' && <IntelligenceWorkflow onDrill={onDrill} />}
     </div>
   )
 }
