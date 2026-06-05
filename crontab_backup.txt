@@ -113,7 +113,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 */5 20-23 * * 1-5 cd $PROJ && { [ -f /tmp/tradeai_deep_llm_window.lock ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [deep-llm-lock] skipped — deep overnight LLM window active" >> $PROJ/logs/watchlist_agent_jobs.log && exit 0; true; } && flock -n -E 99 /tmp/tradeai_watchlist_agent_jobs.lock timeout 12m $PY scripts/process_watchlist_agent_jobs.py --limit 5 >> logs/watchlist_agent_jobs.log 2>&1; rc=$?; [ $rc -eq 99 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [flock] skipped — previous instance still running" >> $PROJ/logs/watchlist_agent_jobs.log; [ $rc -eq 124 ] && echo "$(date +\%Y-\%m-\%d\ \%H:\%M:\%S) [timeout] process_watchlist_agent_jobs exceeded 12m runtime cap" >> $PROJ/logs/watchlist_agent_jobs.log
 */5 9-15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1
 # STOP-V2.2: replaced by unified_stop_supervisor
-#*/5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
+*/2 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1
 */5 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_sweep.lock bash scripts/market_day_gate.sh $PY scripts/paper_execution_sweep.py >> logs/paper_execution.log 2>&1
 0 10 * * 0 cd $PROJ && flock -n /tmp/weekly_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier weekly >> logs/weekly_trade_review.log 2>&1
 0 10 * * 1-5 cd $PROJ && $PY scripts/cleanup_stale_proposals.py --apply >> logs/cleanup_stale_proposals.log 2>&1
@@ -217,7 +217,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 35 6 * * 1-5 cd $PROJ && $PY scripts/classify_candidates.py >> logs/classify_candidates_cron.log 2>&1
 35 6 * * 1-5 cd $PROJ && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
 35 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1
-35 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py >> logs/alpaca_reconciler.log 2>&1
+35 9 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py --fix >> logs/alpaca_reconciler.log 2>&1
 40 12 * * 1-5 cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1
 40 6 * * 1-5 cd $PROJ && $PY scripts/intel_auto_discovery.py --telegram >> logs/intel_discovery.log 2>&1
 40 7 * * 1-5 cd $PROJ && $PY scripts/portfolio_level_qa.py >> logs/portfolio_qa.log 2>&1
@@ -228,7 +228,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 5 10 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1
 5 16 * * 1-5 cd $PROJ && $PY scripts/market_regime_collector.py --apply >> logs/regime_collector.log 2>&1 && $PY scripts/market_regime_classifier.py --apply >> logs/regime_classifier.log 2>&1
 5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && ./scripts/run_scheduled_atp2_research_cycle.sh --cycle eod >> logs/atp2_research_cycle_cron.log 2>&1
-5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py >> logs/alpaca_reconciler.log 2>&1
+5 16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/alpaca_paper_reconciler.py --fix >> logs/alpaca_reconciler.log 2>&1
 5 18 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/tradeai_a1a_check.lock ./scripts/run_scheduled_a1a_check.sh >> logs/governance_a1a_check.log 2>&1
 5 7 * * 1-5 cd $PROJ && $PY scripts/sync_dividend_data.py >> logs/dividend_sync.log 2>&1
 5 8 * * 1-5 cd $PROJ && $PY scripts/aegis_morning_brief_delivery.py >> logs/aegis_brief.log 2>&1
@@ -305,7 +305,7 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 
 # ── Intelligence Pipeline Gaps Fixed (2026-05-24) ──
 # Topic ingestion (weekly Wednesday + Saturday for broad coverage)
-0 9 * * 3,6 cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries >> logs/topic_ingestion.log 2>&1
+0 9 * * * cd $PROJ && timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries >> logs/topic_ingestion.log 2>&1
 # Aegis synthesis (daily 9 PM, after overnight data collection)
 0 21 * * * cd $PROJ && $PY scripts/aegis_synthesis.py >> logs/aegis_synthesis.log 2>&1
 # Aegis nightly ingestion (daily 7 PM)
@@ -407,3 +407,29 @@ PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python
 # SIEM: scrape file-only errors into alert_events + notify on critical incidents
 */20 * * * * cd $PROJ && $PY scripts/log_error_scraper.py >> logs/log_error_scraper.log 2>&1
 */15 * * * * cd $PROJ && $PY scripts/siem_critical_notify.py >> logs/siem_critical_notify.log 2>&1
+*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_integrity_audit.lock $PY scripts/trade_integrity_audit.py >> logs/trade_integrity_audit.log 2>&1
+30 22 * * 1-5 cd $PROJ && flock -n /tmp/overnight_trade_review.lock $PY scripts/multi_tier_trade_reviewer.py --tier overnight >> logs/overnight_trade_review.log 2>&1
+
+# ── Catalyst pipeline repair (2026-06-04): classifier + fusion + staleness monitor ──
+# Was dark since 2026-04-27 (catalyst_events) / 2026-05-11 (fused_signals); see
+# docs/HERMES_NEWS_TO_SCALP_CATALYST_INTEGRATION_2026_06_04.md §11.
+45 6,12,18 * * * cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1
+0 7,13 * * 1-5 cd $PROJ && flock -n /tmp/signal_fusion.lock timeout 20m $PY scripts/signal_fusion.py --full >> logs/signal_fusion.log 2>&1
+# ── Hermes news bridge (2026-06-04, Prompt #2): hermes_research_intelligence -> news_articles (source=hermes) -> catalyst chain ──
+40 6,12,18 * * * cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1
+# ── SCALP catalyst tier (2026-06-04, Prompt #3, operator-approved): quota-free (SearXNG+DB only), 04:00-12:00 ET weekdays, every 10 min ──
+*/10 4-11 * * 1-5 cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1
+*/10 4-11 * * 1-5 cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1
+# ── System freshness & silent-failure monitor (2026-06-04): registry-driven; SIEM+Telegram P0/P1; narrow safe auto-fix (idempotent re-runs only, capped). Supersedes intel_table_staleness_monitor.py ──
+*/20 * * * * cd $PROJ && flock -n /tmp/system_freshness_monitor.lock $PY scripts/system_freshness_monitor.py --send --auto-fix >> logs/system_freshness_monitor.log 2>&1
+# ── Dead-man's switch for the freshness watchdog (2026-06-04): independent in-host check that system_freshness_monitor is still running; pages P0 if its heartbeat goes stale. (External off-host coverage = monitor's FRESHNESS_HEARTBEAT_PING_URL.) ──
+*/30 * * * * cd $PROJ && flock -n /tmp/freshness_watchdog_heartbeat.lock $PY scripts/freshness_watchdog_heartbeat.py --send >> logs/freshness_watchdog_heartbeat.log 2>&1
+# ── Research lane (2026-06-04, operator-approved revive): keyword insight extractor (news + catalysts -> research_insights -> signal_fusion research lane). Was frozen 2026-04-27 (unscheduled). DB-only, idempotent, dedup-guarded. ──
+50 6,12,18 * * * cd $PROJ && flock -n /tmp/research_insight_extractor.lock $PY scripts/research_insight_extractor.py >> logs/research_insight_extractor.log 2>&1
+# ── Hermes topic bridge (2026-06-04): enqueue topic_monitor owner IN (hermes,shared) topics into hermes_research_intelligence (staged) so Hermes researches them. Symmetric to topic_ingestion (tradeai,shared). ──
+30 7 * * * cd $PROJ && flock -n /tmp/hermes_topic_monitor_bridge.lock $PY scripts/hermes_topic_monitor_bridge.py --apply --max-rows 5 >> logs/hermes_topic_monitor_bridge.log 2>&1
+# ── Heartbeat receiver respawn (2026-06-04): keep the in-network layer-3 ping receiver alive ──
+
+# ── Encrypted offsite backup → Google Drive (.env daily, data/ weekly) [added 2026-06-04] ──
+30 5 * * *   cd $PROJ && flock -n /tmp/backup_env.lock  bash scripts/backup_secrets_state.sh env  >> logs/backup_secrets.log 2>&1
+45 5 * * 0   cd $PROJ && flock -n /tmp/backup_data.lock bash scripts/backup_secrets_state.sh data >> logs/backup_secrets.log 2>&1
