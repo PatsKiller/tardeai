@@ -44,3 +44,7 @@ Proposal grid + edit-modal (account-routing) redesign; test-connection/dry-run-o
 BrokerAdapter additive methods (get_quote/validate_order/dry_run/cancel/replace/reconcile); SchwabAdapter
 write stubs return NOT_PROVEN; legacy atm_config.yaml decommission once policy is execution-source-of-truth;
 full unit/api/frontend test suite.
+
+
+## 2026-06-05 executor wiring
+The auto-approver now CONSUMES `automation_mode` (additive gate): DISABLED/MANUAL_REVIEW/PAUSED/EMERGENCY → held; AUTO_PAPER/AUTO_LIVE-on-paper → submit (paper endpoint); AUTO_LIVE-on-live → live-interlock-gated. See `ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md`.
