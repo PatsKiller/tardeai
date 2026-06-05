@@ -11426,11 +11426,20 @@ def _governance_pipeline_status():
     next_run = next((" ".join(ln.split()[0:3]) for ln in timers.splitlines()
                      if "governance-pipeline" in ln and ln.split()[0:3]), "see timer")
     failures = [s for s in last.get("steps", []) if "FAIL" in str(s.get("status", ""))]
+    # retired governance timers = disabled (no symlink in user timers.target.wants)
+    wants = os.path.expanduser("~/.config/systemd/user/timers.target.wants")
+    gov_timers = ["tradeai-governance-facts.timer", "tradeai-governance-status.timer",
+                  "tradeai-maturity-board.timer", "tradeai-operator-readiness.timer"]
+    retired_timers = sum(1 for t in gov_timers if not os.path.exists(os.path.join(wants, t)))
     return {"controller": "run_governance_pipeline.sh", "timer": "tradeai-governance-pipeline.timer",
             "last_run": {"run_ts": last.get("run_ts_utc"), "overall": last.get("overall_status"),
                          "dry_run": last.get("dry_run"), "steps": last.get("steps", [])},
             "failures": failures, "next_run": next_run,
             "retired_legacy_cron": retired, "active_legacy_governance_cron": active_legacy,
+            "retired_legacy_timers": retired_timers, "retired_legacy_timers_total": len(gov_timers),
+            "portfolio_maintenance": {"status": "not_migrated", "candidate_count": 8,
+                                      "controller": "run_portfolio_maintenance_pipeline.sh (dry-run skeleton)"},
+            "safety_net": {"freshness_monitor": "untouched", "watchdog": "untouched"},
             "safety": {"paper_only": True, "live_trading": False, "level7": "prohibited"}}
 
 
