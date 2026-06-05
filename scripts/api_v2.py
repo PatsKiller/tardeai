@@ -11345,6 +11345,59 @@ def _atm_schwab_readiness():
                     "only after every prerequisite is met."}
 
 
+def _runtime_inv_path():
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "runtime", "runtime_job_inventory_latest.json")
+
+
+def _system_runtime_inventory():
+    """GET /api/v2/system/runtime-inventory — Phase 199B runtime inventory (read-only)."""
+    import json as _j
+    p = _runtime_inv_path()
+    if not os.path.exists(p):
+        return {"available": False, "note": "run scripts/inventory_runtime_jobs.py to generate"}
+    try:
+        d = _j.load(open(p))
+        return {"available": True, "summary": d.get("summary", {}),
+                "cron_count": len(d.get("cron_jobs", [])),
+                "systemd_count": len(d.get("systemd_jobs", []))}
+    except Exception as e:
+        return {"available": False, "error": str(e)[:120]}
+
+
+_PIPELINE_CATEGORY_MAP = {
+    "tradeai-market-pipeline": ["MARKET_PIPELINE", "MARKET_MORNING", "DATA_FEED"],
+    "tradeai-after-close-pipeline": ["AFTER_CLOSE", "OVERNIGHT_BATCH"],
+    "hermes-advisory-pipeline": ["HERMES_ADVISORY"],
+    "hermes-research-pipeline": ["HERMES_RESEARCH"],
+    "llm-control-pipeline": ["LLM_QUEUE"],
+    "governance-pipeline": ["GOVERNANCE"],
+    "portfolio-maintenance-pipeline": ["PORTFOLIO_MAINTENANCE"],
+}
+
+
+def _system_pipeline_summary():
+    """GET /api/v2/system/pipeline-summary — 199C pipelines mapped over the 199B inventory (read-only)."""
+    import json as _j
+    p = _runtime_inv_path()
+    inv = _j.load(open(p)) if os.path.exists(p) else {"cron_jobs": [], "systemd_jobs": [], "summary": {}}
+    cron = inv.get("cron_jobs", [])
+    systemd = inv.get("systemd_jobs", [])
+    dups = inv.get("summary", {}).get("duplicate_scripts", {})
+    out = []
+    for name, cats in _PIPELINE_CATEGORY_MAP.items():
+        jobs = [j for j in cron if j.get("category") in cats]
+        units = [j for j in systemd if j.get("category") in cats]
+        comp = sorted({j["script"] for j in jobs if j.get("script") in dups})
+        out.append({"pipeline": name, "categories": cats, "cron_jobs": len(jobs),
+                    "systemd_units": len(units), "compression_candidates": comp})
+    return {"pipelines": out,
+            "standalone_services": [j.get("name") for j in systemd if j.get("category") == "24_7_SERVICE"],
+            "unknown_triage_count": len([j for j in cron if j.get("category") == "UNKNOWN"]),
+            "safety": {"live_trading": False, "level7": "prohibited", "paper_only": True},
+            "namespace_note": "/api/v2 is the shared backend namespace serving canonical v3 UI (not v2 UI)"}
+
+
 def _research_topics_unified():
     """GET /api/v2/research-topics — unified view of user research + topic monitor."""
     user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
@@ -14798,6 +14851,8 @@ ROUTES = {
     "/api/v2/atm/gate-status": lambda: _atm_gate_status(),
     "/api/v2/atm/schwab-readiness": lambda: _atm_schwab_readiness(),
     "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),
+    "/api/v2/system/runtime-inventory": lambda: _system_runtime_inventory(),
+    "/api/v2/system/pipeline-summary": lambda: _system_pipeline_summary(),
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
