@@ -3,6 +3,14 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## Phase 204 — Portfolio Backup-Cadence Fix + Pilot (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE204_PORTFOLIO_BACKUP_CADENCE_FIX_AND_PILOT_CLOSEOUT.md` | **Closeout** — secrets backup fixed (arg bug, not gog); backup cadence scheduled (daily 02:30, parallel, no retirement) |
+| `docs/architecture/PHASE204A..I*.md` | secrets failure snapshot · env diff · safe repro · minimal fix · cadence-aware redesign · dry-runs · backup apply · output diff · schedule report |
+| `scripts/pipelines/run_portfolio_maintenance_pipeline.sh` | cadence-aware (`--cadence backup\|daily\|weekly\|monthly\|lookthrough\|all`); backup=pg+secrets-env (daily), secrets-data→weekly; price_cache+db_retention excluded |
+| `scripts/compare_portfolio_backup_outputs.py` | backup-cadence output diff (rejects dry-run summaries) |
+
 ## Phase 203 — v3 Empty Scanner Root-Cause + Fix (2026-06-05)
 | Document | Purpose |
 |----------|---------|
