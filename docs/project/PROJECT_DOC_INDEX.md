@@ -3,6 +3,18 @@
 **Updated:** 2026-06-04
 **Protocol:** Any documentation change must follow `/docs/A1A.md` protocol.
 
+## Phase 203 — v3 Empty Scanner Root-Cause + Fix (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/PHASE203_V3_EMPTY_SCANNER_ROOT_CAUSE_CLOSEOUT.md` | **Closeout** — root cause = invalid-JSON (NaN) serialization, NOT migration |
+| `docs/architecture/PHASE203A..I*.md` | symptom · runtime · schedule-diff · API source · feed · frontend mapping · root-cause · fix · validation |
+| Fix: `portfolio_server.json_response` NaN/Inf→null (valid JSON, all endpoints) + `TradingHub` explicit error state |
+
+## Phase 202 — Portfolio-Maintenance P0-Safe Migration Pilot (2026-06-05, HELD)
+| Document | Purpose |
+|----------|---------|
+| `docs/architecture/PHASE202A..F*.md` | preflight · P0-safe selection · excluded · controller hardening · dry-run · parallel apply · output diff. **HELD at 202F:** cadence mismatch + reports generate advisory drafts via LLM → operator decision (A: backups-only / B: per-cadence redesign) before scheduling/retiring |
+
 ## Phase 201 — Governance Timer Retirement + Portfolio-Maintenance Preflight (2026-06-05)
 | Document | Purpose |
 |----------|---------|
