@@ -98,23 +98,50 @@ def reconstruct_schwab_positions(
                 "shares": 0.0,
                 "last_txn_price": 0.0,
                 "description": (row.get("Description") or sym).strip(),
+                "cost_acc": 0.0,      # cumulative cost basis from actual buy Amounts (average-cost)
+                "xfer_shares": 0.0,   # shares acquired with NO cost data (Security Transfer / journal in)
+                "has_xfer": False,    # any no-cost transfer in/out → cost basis is partial/unknown
             }
 
         if price > 0:
             positions[sym]["last_txn_price"] = price
 
-        if action in BUY_ACTIONS and qty > 0:
+        # amount string from the CSV: "-$1,234.56" (cash out = purchase), "$1,234.56", or blank.
+        # _parse_price strips the sign, so recover it from the leading '-'.
+        amt_str = (row.get("Amount") or "").strip()
+        amt = (-_parse_price(amt_str) if amt_str.startswith("-") else _parse_price(amt_str)) if amt_str else 0.0
+
+        def _reduce_basis(p, sold_qty):
+            sb = p["shares"]
+            if sb > 0:
+                frac = min(sold_qty, sb) / sb
+                p["cost_acc"] *= (1 - frac)
+                p["xfer_shares"] *= (1 - frac)
+
+        # No-cost share movements (transfers/journals between accounts) → basis is unknown for those
+        # shares. Flag the whole position partial; we never fabricate a cost for transferred-in shares.
+        if action in ("Security Transfer", "Internal Transfer", "Journaled Shares"):
+            positions[sym]["has_xfer"] = True
+            positions[sym]["shares"] += qty            # qty is signed (negative = out)
+            if qty > 0:
+                positions[sym]["xfer_shares"] += qty
+        elif action in BUY_ACTIONS and qty > 0:
             positions[sym]["shares"] += qty
+            if amt < 0:                                   # cash outflow → real purchase cost
+                positions[sym]["cost_acc"] += -amt
+            else:                                         # split/other in → no cost in CSV
+                positions[sym]["has_xfer"] = True
+                positions[sym]["xfer_shares"] += qty
         elif action in SELL_ACTIONS and qty > 0:
+            _reduce_basis(positions[sym], qty)            # average-cost reduction
             positions[sym]["shares"] -= qty
-        # Journal with negative amount = shares leaving
         elif action == "Journal" and qty > 0:
-            amount = _parse_price(row.get("Amount", ""))
-            orig_amount = (row.get("Amount") or "").strip()
-            if orig_amount.startswith("-"):
+            if amt_str.startswith("-"):
+                _reduce_basis(positions[sym], qty)
                 positions[sym]["shares"] -= qty
             else:
                 positions[sym]["shares"] += qty
+                positions[sym]["xfer_shares"] += qty
 
     # Build holdings list
     holdings = []
@@ -134,9 +161,19 @@ def reconstruct_schwab_positions(
 
         mv      = shares * price
         day_chg = shares * (price - prev)
-        cost    = shares * pos["last_txn_price"] if pos["last_txn_price"] > 0 else mv
-        gain    = mv - cost
-        gain_pct = (gain / cost * 100) if cost > 0 else 0.0
+        # Cost basis = summed actual buy Amounts (average-cost). If any shares were transferred in
+        # without cost data (Security Transfer / journal in), the basis is partial → report it as
+        # unknown (None) rather than a misleading understated number.
+        basis_partial = pos.get("has_xfer", False) or pos.get("xfer_shares", 0.0) > 0.001
+        acc_cost = round(pos.get("cost_acc", 0.0), 2)
+        if basis_partial or acc_cost <= 0:
+            cost_basis_out, gain_out, gain_pct_out = None, None, None
+            cost = 0.0  # not added to total_cost (unknown)
+        else:
+            cost = acc_cost
+            cost_basis_out = acc_cost
+            gain_out = round(mv - acc_cost, 2)
+            gain_pct_out = round((mv - acc_cost) / acc_cost * 100, 4) if acc_cost > 0 else None
         port_pct = 0.0  # Will be recalculated by portfolio_loader
 
         holdings.append({
@@ -149,9 +186,11 @@ def reconstruct_schwab_positions(
             "shares":          shares,
             "price":           round(price, 4),
             "market_value":    round(mv, 2),
-            "cost_basis":      round(cost, 2),
-            "gain_loss":       round(gain, 2),
-            "gain_loss_pct":   round(gain_pct, 4),
+            "cost_basis":      cost_basis_out,
+            "gain_loss":       gain_out,
+            "gain_loss_pct":   gain_pct_out,
+            "basis_partial":   basis_partial,
+            "cost_basis_source": "transactions_sum",
             "day_change":      round(day_chg, 2),
             "day_change_pct":  round((price - prev) / prev * 100, 4) if prev > 0 else 0.0,
             "portfolio_pct":   0.0,
