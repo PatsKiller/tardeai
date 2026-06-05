@@ -16422,8 +16422,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             VALID_MODES = {"DISABLED", "MANUAL_REVIEW", "AUTO_PAPER", "AUTO_LIVE", "PAUSED_ENTRIES", "EMERGENCY_STOP"}
             if new_mode and new_mode not in VALID_MODES:
                 return 400, {"ok": False, "error": f"invalid automation_mode (one of {sorted(VALID_MODES)})"}
-            # ── HARD INTERLOCK: any live-arming automation refused until the gate passes ──
-            if new_mode == "AUTO_LIVE" or (new_mode == "AUTO_PAPER" and ba["environment"] == "live"):
+            # ── AUTO_LIVE: gated by ACCOUNT ENVIRONMENT, not the mode label.
+            #    PAPER/sandbox account -> no real-money risk (paper endpoint) -> ALLOWED (settable).
+            #    LIVE account -> real money -> gate-interlocked (403 until the live-trading gate passes).
+            #    Real live execution remains independently governed by live_trading_interlock at order time. ──
+            if new_mode == "AUTO_LIVE" and ba["environment"] == "live":
+                _ic = _il_conn()
+                try:
+                    assert_writable(_ic, acct, action="set AUTO_LIVE")
+                except InterlockRefused as e:
+                    return 403, {"ok": False, "error": e.reason, "interlock": "live_trading_gate", "detail": e.detail}
+                finally:
+                    _ic.close()
+            # ── HARD INTERLOCK: AUTO_PAPER on a LIVE account refused until the gate passes ──
+            if new_mode == "AUTO_PAPER" and ba["environment"] == "live":
                 _ic = _il_conn()
                 try:
                     assert_writable(_ic, acct, action=f"set automation {new_mode}")
