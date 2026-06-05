@@ -4,9 +4,10 @@ import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import ProtectionPanel from '../components/ProtectionPanel'
 import ProposalsRich from '../components/ProposalsRich'
+import ATMControlPanel from '../components/ATMControlPanel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp'] as const
+const TABS = ['Trade AI', 'Open Trades', 'Proposals', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls'] as const
 
 // GO / WAIT / NO-GO decision color
 const decisionColor = (d?: string) => d === 'GO' ? '#22c55e' : d === 'WAIT' ? '#f59e0b' : '#ef4444'
@@ -423,6 +424,7 @@ export default function TradingHub({ onDrill }: Props) {
           <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/scalp/live</div>
         </div>
       )}
+      {tab === 'ATM Controls' && <ATMControlPanel />}
     </div>
   )
 }

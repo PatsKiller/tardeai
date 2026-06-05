@@ -11266,6 +11266,85 @@ def _research_topics_registry():
     }
 
 
+def _atm_gate_status():
+    """GET /api/v2/atm/gate-status — live-trading gate state + progress + per-account interlock
+    status (paper = writable now; live = blocked until the gate passes). Read-only."""
+    import live_trading_interlock as ilk
+    conn = ilk._conn()
+    try:
+        gs = ilk.gate_status(conn)
+        accts = _db_query("SELECT account_label, broker, mode, enabled, auto_execution_capable "
+                          "FROM accounts ORDER BY mode, account_label") or []
+        rows = []
+        for a in accts:
+            a = {k: _json_clean(v) for k, v in a.items()}
+            a["interlock"] = ("writable" if (a.get("mode") == "paper" or gs.get("passed"))
+                              else "blocked_gate_not_passed")
+            rows.append(a)
+        atm = _db_query("SELECT mode, last_state_change_at, last_state_change_by, paused_until, "
+                        "pause_reason FROM atm_state WHERE id=1", fetch="one") or {}
+        risk = {}
+        try:
+            from admin_write_guard import RISK_CONFIG_FIELDS, ATM_CONFIG_PATH, read_yaml_value
+            risk = {f: read_yaml_value(ATM_CONFIG_PATH, kp) for f, kp in RISK_CONFIG_FIELDS.items()}
+        except Exception:
+            pass
+        return {"gate": gs, "accounts": rows,
+                "atm_state": {k: _json_clean(v) for k, v in atm.items()},
+                "risk_config": risk}
+    finally:
+        conn.close()
+
+
+def _atm_actionable_proposals():
+    """GET /api/v2/atm/actionable-proposals — proposals the operator can act on (approve/adjust/edit)."""
+    rows = _db_query("""SELECT id, symbol, status, strategy_id, signal_grade,
+                          COALESCE(target_account, proposed_account, 'alpaca_paper') AS account,
+                          proposed_entry, proposed_stop, proposed_target1, proposed_target2, proposed_shares
+                        FROM paper_trade_proposals
+                        WHERE status IN ('PENDING','APPROVED_FOR_PAPER_TEST','MODIFIED')
+                        ORDER BY created_at DESC LIMIT 30""") or []
+    return {"proposals": [{k: _json_clean(v) for k, v in r.items()} for r in rows]}
+
+
+def _atm_schwab_readiness():
+    """GET /api/v2/atm/schwab-readiness — the unchecked prerequisites that must ALL be true before
+    Schwab live could ever arm. Pure visibility checklist; wires nothing live."""
+    import os as _os
+    import live_trading_interlock as ilk
+    conn = ilk._conn()
+    try:
+        gs = ilk.gate_status(conn)
+    finally:
+        conn.close()
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    confirm_exists = _os.path.exists(_os.path.join(root, "scripts", "broker_confirm_schwab.py"))
+    adapter_impl = False
+    ap = _os.path.join(root, "scripts", "schwab_adapter.py")
+    if _os.path.exists(ap):
+        src = open(ap).read()
+        adapter_impl = ("def submit_entry" in src) and ("NotImplementedError" not in src)
+    ck = gs.get("checks", {})
+    items = [
+        {"item": "Live-trading gate passed", "done": bool(gs.get("passed")),
+         "detail": (f"days {ck.get('days',{}).get('have')}/{ck.get('days',{}).get('need')} · "
+                    f"trades {ck.get('closed_trades',{}).get('have')}/{ck.get('closed_trades',{}).get('need')} · "
+                    f"win {ck.get('win_rate',{}).get('have')}/{ck.get('win_rate',{}).get('need')} · "
+                    f"PF {ck.get('profit_factor',{}).get('have')}/{ck.get('profit_factor',{}).get('need')}")},
+        {"item": "Schwab broker-confirmation module (broker_confirm_schwab.py)", "done": confirm_exists,
+         "detail": "exists" if confirm_exists else "missing — Schwab fills cannot be confirmed yet"},
+        {"item": "Schwab order submission implemented (schwab_adapter, non-stub)", "done": adapter_impl,
+         "detail": "implemented" if adapter_impl else "stub / no live submit path"},
+        {"item": "Broker-confirmation PROVEN on Schwab (fills verified live)", "done": False,
+         "detail": "not yet demonstrated on Schwab"},
+        {"item": "Operator out-of-band live-arm confirmation", "done": False,
+         "detail": "deliberate manual step — taken only after every item above is green"},
+    ]
+    return {"schwab_live_ready": all(i["done"] for i in items), "items": items,
+            "note": "Wires nothing live. Live Schwab arming is a deliberate out-of-band step taken "
+                    "only after every prerequisite is met."}
+
+
 def _research_topics_unified():
     """GET /api/v2/research-topics — unified view of user research + topic monitor."""
     user_topics = _db_query("SELECT * FROM user_research_topics WHERE status='active' ORDER BY priority DESC, updated_at DESC") or []
@@ -14716,6 +14795,9 @@ ROUTES = {
     "/api/v2/sec/form4/symbol": lambda: {"error": "Use /api/v2/sec/form4?symbol=V"},
     "/api/v2/research-topics": lambda: _research_topics_unified(),
     "/api/v2/research-topics/registry": lambda: _research_topics_registry(),
+    "/api/v2/atm/gate-status": lambda: _atm_gate_status(),
+    "/api/v2/atm/schwab-readiness": lambda: _atm_schwab_readiness(),
+    "/api/v2/atm/actionable-proposals": lambda: _atm_actionable_proposals(),
     "/api/v2/finviz-screeners": lambda: {"screeners": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT * FROM finviz_screeners WHERE active=TRUE ORDER BY screener_id") or [])]},
     "/api/v2/intelligence-sources": lambda: {"sources": [{k: _json_clean(v) for k, v in r.items()} for r in (_db_query("SELECT screener_id, display_name, strategy_type, finviz_url, description, keywords, sources, added_by, schedule, active, last_run, results_count, created_at, updated_at FROM finviz_screeners ORDER BY strategy_type, screener_id") or [])]},
     "/api/v2/youtube/transcripts": lambda: _youtube_transcripts(),
@@ -15990,6 +16072,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             operator = (b.get("operator") or "operator")[:60]
 
             def _apply():
+                import shutil, time as _t
+                shutil.copy(str(ATM_CONFIG_PATH), f"{ATM_CONFIG_PATH}.bak_{int(_t.time())}")  # IRON RULE
                 write_yaml_value(ATM_CONFIG_PATH, kp, new_val)
 
             return admin_write(action="risk.config", target=f"atm_config:{field}",
@@ -16024,6 +16108,117 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return admin_write(action="strategy.enablement", target=f"{sid}:{acct}",
                                old_value={"enabled": old_enabled}, new_value={"enabled": enabled},
                                apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── ATM state control (PAPER-ONLY, gate-interlocked) ──
+    # Interlock runs FIRST: a live-account target is refused (403) before any guard/confirm/apply,
+    # until paper_validation_policy.live_trading_allowed is TRUE. atm_state is global (paper-effective:
+    # only paper auto-executes; live accounts are interlock-blocked here and not executed downstream).
+    if method == "POST" and base_path == "/api/v2/admin/atm/set-state":
+        try:
+            from admin_write_guard import admin_write
+            from live_trading_interlock import assert_writable, InterlockRefused, _conn as _il_conn
+            b = body or {}
+            account = (b.get("account") or "").strip()
+            new_mode = (b.get("mode") or "").strip().lower()
+            VALID = {"disabled", "dry_run", "active", "paused"}
+            if not account:
+                return 400, {"ok": False, "error": "account required"}
+            if new_mode not in VALID:
+                return 400, {"ok": False, "error": f"mode must be one of {sorted(VALID)}"}
+            # ── HARD INTERLOCK (before guard/confirm/apply) ──
+            _ic = _il_conn()
+            try:
+                assert_writable(_ic, account, action=f"set ATM {new_mode}")
+            except InterlockRefused as e:
+                return 403, {"ok": False, "error": e.reason,
+                             "interlock": "live_trading_gate", "detail": e.detail}
+            finally:
+                _ic.close()
+            operator = (b.get("operator") or "operator")[:60]
+            reason = b.get("reason") or None
+            row = _db_query("SELECT mode, config_hash FROM atm_state WHERE id=1", fetch="one") or {}
+            old_mode = row.get("mode", "disabled")
+            cfg_hash = row.get("config_hash", "")
+
+            def _apply():
+                _db_write("UPDATE atm_state SET mode=%s, last_state_change_at=NOW(), "
+                          "last_state_change_by=%s, pause_reason=%s WHERE id=1",
+                          (new_mode, operator, reason))
+                _db_write("INSERT INTO atm_state_events (old_mode, new_mode, changed_by, reason, config_hash) "
+                          "VALUES (%s,%s,%s,%s,%s)", (old_mode, new_mode, operator, reason, cfg_hash))
+
+            return admin_write(action="atm.set_state", target=f"atm_state:{account}",
+                               old_value={"mode": old_mode}, new_value={"mode": new_mode},
+                               apply_fn=_apply, operator=operator,
+                               confirmed=bool(b.get("confirm")), token=b.get("token"))
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # ── Proposal controls: approve / adjust-approve / edit-criteria (guarded + gate-interlocked) ──
+    # Interlock runs FIRST on the proposal's target account; live targets are refused until the gate
+    # passes. Approved proposals go to the paper (alpaca) path; no live broker is reached.
+    if method == "POST" and base_path in ("/api/v2/admin/proposal/approve",
+                                          "/api/v2/admin/proposal/adjust-approve",
+                                          "/api/v2/admin/proposal/edit-criteria"):
+        try:
+            from admin_write_guard import admin_write
+            from live_trading_interlock import assert_writable, InterlockRefused, _conn as _il_conn
+            b = body or {}
+            pid = b.get("proposal_id")
+            if not pid:
+                return 400, {"ok": False, "error": "proposal_id required"}
+            prop = _db_query("SELECT id, symbol, status, target_account, proposed_account, "
+                             "proposed_entry, proposed_stop, proposed_target1, proposed_target2, proposed_shares "
+                             "FROM paper_trade_proposals WHERE id=%s", (pid,), fetch="one")
+            if not prop:
+                return 404, {"ok": False, "error": f"proposal {pid} not found"}
+            acct = prop.get("target_account") or prop.get("proposed_account") or "alpaca_paper"
+            kind = base_path.rsplit("/", 1)[-1]
+            # ── HARD INTERLOCK (before guard/confirm/apply) ──
+            _ic = _il_conn()
+            try:
+                assert_writable(_ic, acct, action=f"proposal {kind}")
+            except InterlockRefused as e:
+                return 403, {"ok": False, "error": e.reason,
+                             "interlock": "live_trading_gate", "detail": e.detail}
+            finally:
+                _ic.close()
+            operator = (b.get("operator") or "operator")[:60]
+            EDITABLE = {"proposed_entry", "proposed_stop", "proposed_target1", "proposed_target2", "proposed_shares"}
+            edits = {}
+            for k, v in (b.get("fields") or {}).items():
+                if k not in EDITABLE:
+                    return 400, {"ok": False, "error": f"field not editable: {k}"}
+                try:
+                    edits[k] = float(v)
+                except (TypeError, ValueError):
+                    return 400, {"ok": False, "error": f"field {k} must be numeric"}
+            is_approve = kind == "approve"
+            is_adjust = kind == "adjust-approve"
+            is_edit = kind == "edit-criteria"
+            if (is_adjust or is_edit) and not edits:
+                return 400, {"ok": False, "error": "fields required for adjust/edit"}
+            old_val = {k: _json_clean(prop.get(k)) for k in edits}
+            new_val = dict(edits)
+            if is_approve or is_adjust:
+                old_val["status"] = prop.get("status")
+                new_val["status"] = "APPROVED_FOR_PAPER_TEST"
+
+            def _apply():
+                if edits:
+                    sets = ", ".join(f"{k}=%s" for k in edits) + ", updated_at=NOW()"
+                    _db_write(f"UPDATE paper_trade_proposals SET {sets} WHERE id=%s", (*edits.values(), pid))
+                if is_approve or is_adjust:
+                    _db_write("UPDATE paper_trade_proposals SET status='APPROVED_FOR_PAPER_TEST', "
+                              "approved_at=NOW(), approved_by=%s, updated_at=NOW() WHERE id=%s", (operator, pid))
+
+            action = ("proposal.approve" if is_approve else
+                      "proposal.adjust_approve" if is_adjust else "proposal.edit_criteria")
+            return admin_write(action=action, target=f"proposal:{pid}:{prop.get('symbol')}",
+                               old_value=old_val, new_value=new_val, apply_fn=_apply, operator=operator,
                                confirmed=bool(b.get("confirm")), token=b.get("token"))
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
