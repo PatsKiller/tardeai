@@ -248,7 +248,11 @@ def run_ticker_challenger(args):
             results.append({"symbol": sym, "status": "failed", "error": str(e)[:200]})
             continue
 
-        # Normalize
+        # Normalize. hermes_agent_name + research_type are DETERMINISTIC metadata (the same constants
+        # passed to build_research_prompt) — stamp them from code, never rely on the LLM to echo them
+        # (gemma3 intermittently omits them -> the sole cause of "MISSING required column" rejections).
+        output["hermes_agent_name"] = "ticker_research_agent"
+        output["research_type"] = "ticker_thesis_challenge"
         output.setdefault("confidence_score", 0.5)
         output.setdefault("freshness_date", date.today().isoformat())
         output.setdefault("model_used", LOOP_MODEL)
