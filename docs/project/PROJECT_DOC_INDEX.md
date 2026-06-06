@@ -1,3 +1,8 @@
+## Closed-Loop Structured News Linkage (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_NEWS_LINKAGE_20260606.md` | trade_instance_news structured FK by lifecycle window (35 links/27 instances); open-trade hold-window capped |
+
 ## Closed-Loop Imported Edge Comparison (2026-06-06)
 | Document | Purpose |
 |----------|---------|

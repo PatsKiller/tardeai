@@ -87,7 +87,7 @@ Commit audited: **f188ebe**. SELECT-only. Denominator = trade_instances (not pap
   (schwab 152 + paper 29) — all-trades targeting; drain NOT run (cert only).
 - Journal 19 (15 ti); backtest 95 (92 ti: schwab 58 + paper 34).
 - Shadow: scores 57, efficacy 3, outcome_fed_back 25/169; graft INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT.
-- News: no structured FK to trade_instance (symbol/date only).
+- News: structured FK ADDED 2026-06-06 (trade_instance_news; 35 links/27 instances; entry/pre_entry/hold/exit). See CLOSED_LOOP_NEWS_LINKAGE_20260606.md.
 
 ### Verdicts
 - STRUCTURE = PASS · DATA DENSITY = PARTIAL (edge RESOLVED; Hermes/news/import-lineage still accumulating)
