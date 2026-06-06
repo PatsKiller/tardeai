@@ -95,3 +95,35 @@ Commit audited: **f188ebe**. SELECT-only. Denominator = trade_instances (not pap
 
 ### Safety
 ALPACA_MODE=paper, live disabled; SELECT-only; no broker/order/GO-WAIT/strategy/live/Phase-205; no graft.
+
+---
+## Post-6c3d62f news-linkage certification (2026-06-06)
+
+Commit audited: **6c3d62f**. SELECT-only. Denominator = trade_instances.
+
+### News correlation — RESOLVED (was symbol/date-only)
+- Structured FK **`trade_instance_news`** present: 35 links across 27 trade_instances
+  (schwab_import 32, alpaca_paper 3); by relation entry_window 16, pre_entry 13, hold_window 4, exit_window 2.
+- Summary counts on trade_instances: entry-news 12, hold-news 2, exit-news 1 instances.
+- Open-trade hold_window capped (no firehose). Recent-corpus limit (~6wk) → older imports unlinked, honest.
+
+### Full stage snapshot @6c3d62f
+- trade_instances 353 (alpaca_paper 51 + schwab_import 302). Imports lack strategy/signal/proposal (302/339/310).
+- Edge comparison 101 (paper 43 proposal-edge + schwab 58 per-trade-backtest; 0 fabricated) — RESOLVED.
+- News linkage trade_instance_news 35/27 — RESOLVED (structured FK).
+- Hermes 1277 total, 7 by trade_instance_id; backlog 181 (schwab 152 + paper 29) — all-trades, drain paused.
+- Journal 19 (15 ti); backtest 95 (92 ti). Shadow 57 / efficacy 3 / outcome_fed_back 25/169.
+- Graft INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT. closed_paper_trade in canonical path = 0.
+
+### Verdicts
+- STRUCTURE = PASS · DATA DENSITY = PARTIAL (edge + news RESOLVED; Hermes backlog + import lineage still accumulating)
+- AUTONOMOUS LEARNING = SHADOW_ONLY / DO_NOT_GRAFT (GO/WAIT + strategy untouched).
+
+### Remaining density gaps (not structure)
+1. Hermes reflection backlog 181 (all-trades; drain paused per operator).
+2. Imported trades lack strategy/signal/proposal lineage (upstream import-ledger limitation).
+3. News corpus recent (~6wk) — older imported trades unlinked until corpus deepens.
+4. Minor: proposal_snapshot_id NULL on paper edge rows (provenance label only); trade_key NULL on 149 opens.
+
+### Safety
+ALPACA_MODE=paper, live disabled; SELECT-only; no broker/order/GO-WAIT/strategy/live/Phase-205; no graft.
