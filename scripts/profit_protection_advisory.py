@@ -186,6 +186,66 @@ def score(a):
     return "NO_ACTION", f"Gain {pct:.1f}% — below review threshold; no action.", supporting, data_state
 
 
+def load_shadow_rules(cur):
+    """Phase 206 — load latest shadow threshold recommendations by family (DIAGNOSTIC ONLY).
+
+    Read-only. These are supporting evidence surfaced in the audit; they NEVER change the
+    advisory thresholds, stop movement, or execution. Returns {} if the table is absent."""
+    try:
+        cur.execute("""select strategy_family, graft_verdict, proposed_thresholds, confidence
+                       from profit_protection_shadow_recommendations
+                       where run_id = (select max(run_id) from profit_protection_shadow_recommendations)""")
+        return {r[0]: {"graft_verdict": r[1], "proposed_thresholds": r[2], "confidence": r[3]}
+                for r in cur.fetchall()}
+    except Exception:
+        return {}
+
+
+def canonical_link(cur, paper_trade_id):
+    """Phase 206 — map an open paper trade to its canonical trade_instance (read-only)."""
+    try:
+        cur.execute("""select id, source_system, execution_account, execution_environment, execution_broker
+                       from trade_instances
+                       where source_table='paper_trades' and source_trade_id = %s::text
+                       limit 1""", (str(paper_trade_id),))
+        r = cur.fetchone()
+        if r:
+            return {"trade_instance_id": r[0], "source_system": r[1],
+                    "execution_account": r[2], "execution_environment": r[3], "execution_broker": r[4]}
+    except Exception:
+        pass
+    return {"trade_instance_id": None, "source_system": "alpaca_paper",
+            "execution_account": None, "execution_environment": "paper", "execution_broker": "alpaca"}
+
+
+def enrich_audit(a, shadow_rules):
+    """Phase 206 — additive audit fields. Pure analytics; no execution side effects."""
+    pnl = a.get("unrealized_pnl") or 0
+    locked = a.get("profit_locked_usd") or 0
+    protectable = round(max(0.0, pnl), 2)
+    gain_at_risk = round(max(0.0, pnl - locked), 2)
+    a["protectable_profit"] = protectable
+    a["gain_at_risk"] = gain_at_risk
+    a["giveback_pct_if_stopped"] = round(gain_at_risk / protectable, 4) if protectable > 0 else None
+    a["current_capture_ratio"] = round(locked / pnl, 4) if pnl > 0 else None
+    # threshold_reason: which advisory threshold band the position sits in
+    pct = a.get("unrealized_pct")
+    if pct is None:
+        a["threshold_reason"] = "pct_uncomputable"
+    elif pct >= GAIN_PCT_LOCK:
+        a["threshold_reason"] = f"gain {pct:.1f}% >= lock threshold {GAIN_PCT_LOCK:.0f}%"
+    elif pct >= GAIN_PCT_REVIEW:
+        a["threshold_reason"] = f"gain {pct:.1f}% in review band [{GAIN_PCT_REVIEW:.0f}%,{GAIN_PCT_LOCK:.0f}%)"
+    else:
+        a["threshold_reason"] = f"gain {pct:.1f}% below review threshold {GAIN_PCT_REVIEW:.0f}%"
+    # shadow_rule_triggered: diagnostic-only evidence for this family (never grafted)
+    fam = a.get("strategy_family")
+    sr = shadow_rules.get(fam)
+    a["shadow_rule_triggered"] = ({"family": fam, "verdict": sr["graft_verdict"],
+                                   "confidence": sr["confidence"]} if sr else None)
+    return a
+
+
 def hermes_second_opinion(a, action):
     """Lightweight rule-based second opinion (full Hermes rules in 191E)."""
     if not a.get("quote_fresh"):
@@ -210,6 +270,7 @@ def run(persist=True):
                           market_regime,vix_at_entry
                    from paper_trades where status='open' order by id""")
     rows = cur.fetchall()
+    shadow_rules = load_shadow_rules(cur)   # Phase 206: diagnostic-only evidence
     advisories = []
     counts = {"reviewed": len(rows), "take_profit_missing": 0, "stop_quality_advisory": 0,
               "trailing_eligible": 0, "profit_lock_advisory": 0, "action_required": 0}
@@ -217,6 +278,9 @@ def run(persist=True):
         sym = row[1]
         q = fresh_quote(sym)
         a = audit_trade(row, q)
+        # Phase 206: canonical all-trades linkage + additive audit fields (no execution change)
+        a.update(canonical_link(cur, a["trade_id"]))
+        a = enrich_audit(a, shadow_rules)
         action, reason, supporting, data_state = score(a)
         hop, hreason = hermes_second_opinion(a, action)
         op_req = action not in ("NO_ACTION",)

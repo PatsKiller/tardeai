@@ -14884,6 +14884,90 @@ def _atm_advisory_outcomes():
                     "others are honest unknowns. No execution."}
 
 
+def _atm_profit_capture():
+    """Phase 206 — canonical all-trades profit-capture analysis (read-only, advisory).
+
+    Sources trade_profit_capture_analysis (all sources: alpaca_paper + schwab_import). Give-back
+    is measured ONLY where bar-based MFE exists; others are honestly flagged DATA_INCOMPLETE.
+    No execution, no order/stop/strategy mutation. Includes shadow rule-backtest recovery
+    potential (evidence only)."""
+    rows = _db_query("SELECT * FROM trade_profit_capture_analysis ORDER BY money_left_usd DESC NULLS LAST, id") or []
+    trades = [{k: _json_clean(v) for k, v in r.items()} for r in rows]
+
+    winners = [t for t in trades if t.get("winner")]
+    measurable_win = [t for t in winners if t.get("measurable")]
+    gaveback = [t for t in measurable_win if (t.get("money_left_usd") or 0) > 0]
+    missed = [t for t in trades if t.get("protection_missed")]
+    adv_existed = [t for t in winners if t.get("advisory_existed")]
+    acted = [t for t in winners if t.get("operator_acted")]
+    no_adv = [t for t in trades if t.get("failure_class") == "NO_ADVISORY_GENERATED"]
+
+    def _breakdown(key):
+        out = {}
+        for t in trades:
+            k = t.get(key) or "unknown"
+            out[k] = out.get(k, 0) + 1
+        return out
+
+    def _money_breakdown(key):
+        out = {}
+        for t in gaveback:
+            k = t.get(key) or "unknown"
+            out[k] = round(out.get(k, 0) + (t.get("money_left_usd") or 0), 2)
+        return out
+
+    # rule-backtest potential recovery (latest run, best net rule) — evidence only
+    bt = _db_query("""SELECT rule_name, avoided_giveback, net_improvement, recommendation_confidence
+                      FROM profit_protection_rule_backtests
+                      WHERE run_id = (SELECT max(run_id) FROM profit_protection_rule_backtests)
+                      ORDER BY net_improvement DESC NULLS LAST LIMIT 1""", fetch="one")
+    best_rule = {k: _json_clean(v) for k, v in bt.items()} if bt else None
+
+    summary = {
+        "winners_measured": len(measurable_win),
+        "winners_with_giveback": len(gaveback),
+        "money_left_on_table_usd": round(sum(t.get("money_left_usd") or 0 for t in gaveback), 2),
+        "protection_missed": len(missed),
+        "advisory_existed": len(adv_existed),
+        "operator_acted": len(acted),
+        "no_advisory_generated": len(no_adv),
+        "rule_backtest_potential_recovery_usd": (best_rule or {}).get("avoided_giveback"),
+        "rule_backtest_best_rule": (best_rule or {}).get("rule_name"),
+        "total_closed": len(trades),
+        "measurable_closed": len([t for t in trades if t.get("measurable")]),
+    }
+    breakdowns = {
+        "by_source_system": _breakdown("source_system"),
+        "by_strategy": _breakdown("strategy_id"),
+        "by_failure_class": _breakdown("failure_class"),
+        "by_account": _breakdown("execution_account"),
+        "by_advisory_action": _breakdown("advisory_action"),
+        "by_operator_decision": _breakdown("operator_decision"),
+        "money_left_by_source_system": _money_breakdown("source_system"),
+        "money_left_by_strategy": _money_breakdown("strategy_id"),
+    }
+    # per-row warnings (honest categories)
+    for t in trades:
+        w = []
+        fc = t.get("failure_class")
+        if fc == "NO_ADVISORY_GENERATED":
+            w.append("Protection missed — protectable profit but no advisory generated")
+        if fc == "ADVISORY_IGNORED":
+            w.append("Advisory ignored — advisory existed but no operator action")
+        if fc == "ADVISORY_TOO_LATE":
+            w.append("Advisory late — came after most give-back occurred")
+        if fc == "DATA_INCOMPLETE":
+            w.append("Data incomplete — MFE/MAE or bars missing")
+        t["warnings"] = w
+
+    return {
+        "summary": summary, "breakdowns": breakdowns, "trades": trades,
+        "labels": {"mode": "Advisory only", "execution": "No broker/order changes",
+                   "shadow": "Shadow recommendations do not modify GO/WAIT or strategy."},
+        "note": "Canonical all-trades profit-capture. Give-back scored only on bar-based MFE; "
+                "others flagged DATA_INCOMPLETE (honest unknown). Read-only, advisory only."}
+
+
 def _atm_adjustment_proposals_list():
     """Phase 192E — paper protection adjustment proposals (read-only). Frontend-neutral
     (Command Center v2 + v3). Latest PROPOSED candidates grouped by trade."""
@@ -14924,6 +15008,7 @@ ROUTES = {
     "/api/v2/atm/profit-protection-advisory": lambda: _atm_profit_protection_advisory(),
     "/api/v2/atm/protection-adjustment-proposals": lambda: _atm_adjustment_proposals_list(),
     "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
+    "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
     "/api/v2/overview": overview,
     "/api/v2/portfolio/holdings": portfolio_holdings,
