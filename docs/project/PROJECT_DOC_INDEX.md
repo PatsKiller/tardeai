@@ -9,6 +9,12 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Step 5 — Shadow DB + Loop-Closure (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_STEP5_SHADOW_DB_AND_FEEDBACK_20260605.md` | candidate_shadow_scores (DB-keyed shadow) + outcome_fed_back closure (9->19) |
+| `scripts/persist_shadow_scores.py` · strategy_learning_shadow_scorer.py | persist shadow to DB + set outcome_fed_back where learning derived |
+
 ## Closed-Loop Step 4 — Edge Comparison (2026-06-05)
 | Document | Purpose |
 |----------|---------|
