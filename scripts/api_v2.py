@@ -14216,7 +14216,10 @@ def _system_siem_dashboard():
             dedupe[dk] = {"count": 0, "severity": e["severity"], "event_type": e["event_type"],
                           "component": e.get("component"), "first": e["timestamp"], "last": e["timestamp"]}
         dedupe[dk]["count"] += 1
-        dedupe[dk]["last"] = e["timestamp"]
+        # events are sorted newest-first, so track true earliest/latest explicitly
+        # (ISO8601 strings share a fixed tz offset → lexical min/max is chronological).
+        dedupe[dk]["first"] = min(dedupe[dk]["first"], e["timestamp"])
+        dedupe[dk]["last"] = max(dedupe[dk]["last"], e["timestamp"])
 
     for e in events:
         g = dedupe[e["dedupe_key"]]
