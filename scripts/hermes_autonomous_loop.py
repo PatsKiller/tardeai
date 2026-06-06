@@ -58,16 +58,35 @@ def get_db_connection():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=db_pass)
 
 
-def get_ticker_targets(conn, max_rows=3):
+def get_ticker_targets(conn, max_rows=3, drain_closed_trades=False):
     """Select tickers for Hermes LLM research, prioritized (2026-06-04):
        0. HELD positions across ALL accounts (trades + paper_trades, status=open) — re-researched if
           not done in the last 24h, so live holdings get around-the-clock coverage.
        1. OPEN proposals (actionable statuses) — same 24h re-research window.
        2. CLOSED trades (retrospective reflection) — one-time (never re-researched).
     Held/proposals use a 24h window (cycle daily); closed-trade reflection uses lifetime dedup.
+
+    drain_closed_trades=True (manual DRAIN MODE only): closed_trade_needing_reflection becomes the sole
+    priority-0 tier and held/proposals are skipped for THIS RUN ONLY — used to pull down the all-trades
+    closed backlog without held-position starvation. Normal production cron priority is unchanged
+    (drain mode is off by default). Canonical: targets carry trade_instance_id (not legacy paper ids).
     """
     cur = conn.cursor()
-    cur.execute("""
+    # Drain mode = closed-trade reflection only (held/proposals skipped this run). Normal = held-first.
+    targets_block = (
+        "SELECT symbol, 0 AS pri, 'closed_trade_needing_reflection:'||source_system AS src, ti_id "
+        "FROM needs_reflection"
+    ) if drain_closed_trades else (
+        "SELECT symbol, 0 AS pri, 'held_position' AS src, NULL::bigint AS ti_id FROM held "
+        "  WHERE symbol NOT IN (SELECT symbol FROM researched_recent) "
+        "UNION ALL "
+        "SELECT symbol, 1 AS pri, 'open_proposal' AS src, NULL::bigint FROM proposals "
+        "  WHERE symbol NOT IN (SELECT symbol FROM researched_recent) "
+        "UNION ALL "
+        "SELECT symbol, 1 AS pri, 'closed_trade_needing_reflection:'||source_system AS src, ti_id "
+        "  FROM needs_reflection"
+    )
+    cur.execute(("""
         WITH researched_recent AS (
             SELECT DISTINCT symbol FROM hermes_research_intelligence
             WHERE symbol IS NOT NULL AND created_at > now() - interval '24 hours'
@@ -97,21 +116,14 @@ def get_ticker_targets(conn, max_rows=3):
               AND NOT EXISTS (SELECT 1 FROM hermes_research_intelligence h WHERE h.trade_instance_id = ti.id)
         ),
         targets AS (
-            SELECT symbol, 0 AS pri, 'held_position' AS src, NULL::bigint AS ti_id FROM held
-              WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
-            UNION ALL
-            SELECT symbol, 1 AS pri, 'open_proposal' AS src, NULL::bigint FROM proposals
-              WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
-            UNION ALL
-            SELECT symbol, 1 AS pri, 'closed_trade_needing_reflection:'||source_system AS src, ti_id
-              FROM needs_reflection
+            __TARGETS_BLOCK__
         ),
         deduped AS (
             SELECT DISTINCT ON (symbol) symbol, src, pri, ti_id FROM targets
               ORDER BY symbol, pri, ti_id DESC NULLS LAST
         )
         SELECT symbol, src, ti_id FROM deduped ORDER BY pri, symbol LIMIT %s
-    """, (max_rows,))
+    """).replace("__TARGETS_BLOCK__", targets_block), (max_rows,))
     rows = cur.fetchall()
     # Resolve canonical trade_instance_id + legacy related_trade_id (paper only). Imported Schwab/Fidelity
     # trades link by trade_instance_id (related_trade_id stays NULL — never fabricated).
@@ -177,12 +189,20 @@ def run_ticker_challenger(args):
     from hermes_staging_ingest import validate_payload
 
     conn = get_db_connection()
-    targets = get_ticker_targets(conn, args.max_rows)
+    drain = getattr(args, "drain_closed_trades", False)
+    targets = get_ticker_targets(conn, args.max_rows, drain_closed_trades=drain)
 
     if not targets:
         print("No new ticker targets found (all already researched)")
         conn.close()
         return []
+
+    if drain:
+        from collections import Counter
+        by_src = Counter((t["src"].split(":")[1] if ":" in t["src"] else t["src"]) for t in targets)
+        print(f"drain_closed_trades=true | target_tier=closed_trade_needing_reflection | "
+              f"target_count={len(targets)} | by_source_system={dict(by_src)} | "
+              f"with_trade_instance_id={sum(1 for t in targets if t.get('trade_instance_id'))} | held_position_skipped=true")
 
     run_id = f"auto_ticker_challenger_{datetime.now().strftime('%Y%m%d_%H%M')}"
     print(f"Run ID: {run_id}")
@@ -293,6 +313,9 @@ def main():
     parser.add_argument("--loop", required=True, choices=["ticker_challenger", "portfolio_reflection", "pipeline_quality"])
     parser.add_argument("--apply", action="store_true", help="Apply to DB (default: dry-run)")
     parser.add_argument("--max-rows", type=int, default=3)
+    parser.add_argument("--drain-closed-trades", action="store_true",
+                        help="Manual DRAIN MODE: prioritize closed_trade_needing_reflection over held-position "
+                             "monitoring for THIS RUN ONLY (off by default; normal cron priority unchanged).")
     args = parser.parse_args()
 
     check_kill_switch()
