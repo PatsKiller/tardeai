@@ -253,6 +253,10 @@ def run_ticker_challenger(args):
         # (gemma3 intermittently omits them -> the sole cause of "MISSING required column" rejections).
         output["hermes_agent_name"] = "ticker_research_agent"
         output["research_type"] = "ticker_thesis_challenge"
+        # topic is deterministic too (built for the prompt) -> stamp from code. summary is LLM CONTENT and
+        # is intentionally NOT defaulted: an empty/sparse model output stays a legitimate reject (we never
+        # fabricate review content); the drain loop re-attempts such symbols on a later pass.
+        output.setdefault("topic", f"{sym} autonomous thesis challenge — {target.get('trade_count', 0)} trades")
         output.setdefault("confidence_score", 0.5)
         output.setdefault("freshness_date", date.today().isoformat())
         output.setdefault("model_used", LOOP_MODEL)
