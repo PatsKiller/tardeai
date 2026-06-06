@@ -9,6 +9,11 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Certification RE-AUDIT (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_LEARNING_CERTIFICATION_REAUDIT_20260605.md` | Post-Steps-1-6 re-run: STRUCTURE=PASS, DATA DENSITY=PARTIAL; was->now matrix |
+
 ## Closed-Loop Step 6 — Lessons->Scoring (Shadow Evidence) (2026-06-05)
 | Document | Purpose |
 |----------|---------|
