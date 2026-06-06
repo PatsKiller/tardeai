@@ -1,3 +1,9 @@
+## v3 LLM-Review Provenance Backfill + Base Data Quality (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_LLM_REVIEW_PROVENANCE_BACKFILL_20260606.md` | exact provenance backfill (strategy 4->2055, ti 4->28, 100% provenance) + writer-side stamping; filters 6/6 |
+| `docs/project/V3_BACKTESTING_BASE_DATA_QUALITY_PLAN_20260606.md` | advisory per-tab data trust scorecard (excellent/usable/advisory/untrusted) |
+
 ## v3 Backtesting Filters — All Tabs (2026-06-06)
 | Document | Purpose |
 |----------|---------|
