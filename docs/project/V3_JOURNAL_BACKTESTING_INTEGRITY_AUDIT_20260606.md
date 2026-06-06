@@ -32,11 +32,12 @@ distinct proposals, not join rows.
 `would_win` = `simulated_pnl > 0`; no verdict field. The "21 win / 29 lose" metric is unreliable. FIX: add
 explicit `verdict` (WIN/LOSS/BREAKEVEN/NO_FILL/INSUFFICIENT) from the sim row, not bare P&L sign.
 
-## 6. Optimization tab — repeated breakeven-threshold blocks (needs fix, not applied)
+## 6. Optimization tab — repeated breakeven-threshold blocks — FIXED 2026-06-06
 Repeated identical breakeven-threshold families = response-shape/rendering bug in
-`trailing-optimization` / `mfe-analysis` output (or the frontend mapping without dedup). FIX: dedup the
-optimization result set server-side by (strategy, threshold-family) and verify the response is not
-cross-joined.
+`trailing-optimization` / `mfe-analysis` output (or the frontend mapping without dedup). FIXED: `/api/v2/backtesting/trailing-optimization` was `SELECT * ... ORDER BY created_at DESC` returning ALL
+267 history rows (one per strategy_family PER RUN, ~65 runs each). Now `SELECT DISTINCT ON (strategy_family)
+... ORDER BY strategy_family, created_at DESC` → 5 latest-per-family rows + diagnostics{distinct_families,
+raw_history_rows}. v3 tab shows 'latest for N families (collapsed from 267 historical run rows)'. Verified 267->5.
 
 ## 7. LLM review errors — 1778/2102 (85%), but ROOT CAUSE is INFRASTRUCTURE (triaged)
 Error classification (status='error'):
@@ -71,7 +72,7 @@ evaluate_shadow_efficacy → INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT (n<20); GO/WAIT 
 | 3 | endpoint freshness/source | documented |
 | 4 | missed-proposal dedup | **FIXED** 2026-06-06 (1461->168; proposal_id key) |
 | 5 | missed-proposal verdict field | **FIXED** 2026-06-06 (sim_outcome_verdict incl MIXED) |
-| 6 | optimization repeated blocks | FINDING (fix recommended) |
+| 6 | optimization repeated blocks | **FIXED** 2026-06-06 (DISTINCT ON strategy_family; 267->5 latest-per-family) |
 | 7 | LLM review 85% errors | **FIXED** 2026-06-06 (Ollama health gate: skip+classify, no flood) |
 | 8 | stale-basis pollution | **FIXED** (10 invalidated, reversible) |
 | 9 | per-row provenance | FINDING (fix recommended) |

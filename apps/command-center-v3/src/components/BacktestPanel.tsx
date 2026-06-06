@@ -1139,7 +1139,12 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
       {/* ===== OPTIMIZATION ===== */}
       {tab === 'optimization' && (
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 12 }}>Simulates breakeven thresholds per strategy family to find the optimal trailing tier config.</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>Simulates breakeven thresholds per strategy family to find the optimal trailing tier config.</div>
+          {optData?.diagnostics && (
+            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 12 }}>
+              Showing latest optimization for {optData.diagnostics.distinct_families} strategy families (collapsed from {optData.diagnostics.raw_history_rows} historical run rows).
+            </div>
+          )}
           {(optData?.results || []).length === 0 ? <Empty label="No optimization data for current filters." card /> : (
             (optData.results).map((r: any, i: number) => {
               const optBE = String(cfgBE(r.optimized_config))
