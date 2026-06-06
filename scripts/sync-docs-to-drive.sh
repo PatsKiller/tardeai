@@ -103,6 +103,8 @@ find "$SRC/docs" -type f \
   ! -path "*/state/*" \
   ! -path "*/.git/*" \
   ! -path "*/__pycache__/*" \
+  ! -path "*/hermes/phase3b_dryrun/*" \
+  ! -name "hermes_auto_*_payload.json" \
   ! -name "*.pyc" ! -name "*.log" ! -name "*.sql" \
   ! -name "*.tar.gz" ! -name "*.zip" \
   ! -name ".env*" ! -name "*.key" ! -name "*.pem" ! -name "*.token" \
