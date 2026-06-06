@@ -1,3 +1,8 @@
+## Drive Sync Runtime-Dump Excludes (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/DRIVE_SYNC_RUNTIME_DUMP_EXCLUDES_20260606.md` | exclude Hermes drain payloads + snapshot JSON (phase3b_dryrun, backlog_health/*.json, latest_*_summary.json) from Drive sync via is_runtime_dump_excluded() helper; SKIPPED/CLEANUP logging; 12 stale JSONs purged, curated .md preserved |
+
 ## V3 Protection Give-Back + Canonical Profit-Capture (Phase 206, 2026-06-06)
 | Document | Purpose |
 |----------|---------|
