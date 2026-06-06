@@ -9,6 +9,12 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Step 3 — Keyspace Unification (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_STEP3_KEYSPACE_UNIFICATION_20260605.md` | paper_trades.trade_key + journal/backtest paper_trade_id; backtest engine UNIONs paper trades |
+| `scripts/unify_trade_keyspace.py` · trade_backtest_engine.py · api_v2 journal_review_write | additive keyspace + paper-aware generators |
+
 ## Closed-Loop Step 2 — Hermes Trade Linkage (2026-06-05)
 | Document | Purpose |
 |----------|---------|

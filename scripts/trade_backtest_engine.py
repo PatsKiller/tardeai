@@ -205,6 +205,7 @@ def backtest_trade(trade, df_cache):
 
     result = {
         'trade_key': trade['trade_key'],
+        'paper_trade_id': trade.get('paper_trade_id'),
         'symbol': sym,
         'open_date': trade['open_date'],
         'close_date': trade['close_date'],
@@ -353,7 +354,7 @@ def backtest_trade(trade, df_cache):
 
 
 def upsert_result(conn, result):
-    cols = ['trade_key', 'symbol', 'open_date', 'close_date',
+    cols = ['trade_key', 'paper_trade_id', 'symbol', 'open_date', 'close_date',
             'actual_entry_price', 'actual_exit_price', 'actual_pnl', 'actual_pnl_pct', 'hold_days',
             'entry_rsi', 'entry_sma20_dist_pct', 'entry_sma50_dist_pct', 'entry_sma200_dist_pct',
             'entry_volume_ratio', 'entry_52w_percentile', 'entry_atr', 'entry_atr_stop_pct',
@@ -379,12 +380,23 @@ def upsert_result(conn, result):
 def run_all():
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
+    # Schwab import (trade_closed) + the PAPER loop (closed paper_trades) — unified keyspace so backtest
+    # comparison covers paper trades too. paper_trade_id is carried so the link is explicit.
     cur.execute("""
         SELECT symbol || ':' || account || ':' || close_date::text as trade_key,
                symbol, open_date, close_date, trade_type,
-               buy_price, sell_price, shares, pnl, pnl_pct, hold_days
+               buy_price, sell_price, shares, pnl, pnl_pct, hold_days,
+               NULL::bigint AS paper_trade_id
         FROM trade_closed
         WHERE buy_price > 0 OR pnl != 0
+        UNION ALL
+        SELECT symbol || ':' || account || ':' || exit_time::date::text as trade_key,
+               symbol, entry_time::date AS open_date, exit_time::date AS close_date, 'paper' AS trade_type,
+               entry_price AS buy_price, exit_price AS sell_price, shares, pnl, pnl_pct,
+               CASE WHEN hold_time_min IS NOT NULL THEN round(hold_time_min/1440.0)::int ELSE NULL END AS hold_days,
+               id AS paper_trade_id
+        FROM paper_trades
+        WHERE exit_time IS NOT NULL AND symbol ~ '^[A-Z]{1,5}$' AND COALESCE(entry_price,0) > 0
         ORDER BY symbol, open_date
     """)
     trades = [dict(r) for r in cur.fetchall()]
