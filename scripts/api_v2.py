@@ -22318,6 +22318,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             status["classification_classified"] = _cls_done
             status["classification_unclassified"] = _cls_total - _cls_done
             status["classification_pct"] = round(100 * _cls_done / max(_cls_total, 1), 1)
+            # Per-pipeline last-run timestamps — "Last run" is otherwise ambiguous across distinct
+            # pipelines (strategy backtester vs trade-backtest engine vs LLM review vs edge), which made
+            # the single badge look stale while other pipelines were fresh.
+            def _maxts(sql):
+                try:
+                    r = _db_query(sql, fetch="one")
+                    return _json_clean(list(r.values())[0]) if r else None
+                except Exception:
+                    return None
+            status["last_runs"] = {
+                "strategy_backtester": _maxts("SELECT MAX(created_at) m FROM strategy_backtest_runs"),
+                "trade_backtest_engine": _maxts("SELECT MAX(computed_at) m FROM trade_backtest_results"),
+                "llm_review": _maxts("SELECT MAX(generated_at) m FROM trade_llm_reviews"),
+                "edge_comparison": _maxts("SELECT MAX(updated_at) m FROM trade_edge_comparison"),
+            }
+            status["last_run_overall"] = max([v for v in status["last_runs"].values() if v], default=None)
             return 200, {"ok": True, "data": status}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}

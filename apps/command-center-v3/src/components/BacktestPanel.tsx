@@ -26,6 +26,8 @@ interface BtStatus {
   datasets_total: number; runs_total: number; trades_total: number
   trades_filtered?: number; runs_filtered?: number; filters_active?: boolean
   classification_classified?: number; classification_total?: number; classification_unclassified?: number
+  last_runs?: { strategy_backtester?: string | null; trade_backtest_engine?: string | null; llm_review?: string | null; edge_comparison?: string | null }
+  last_run_overall?: string | null
 }
 interface BtRun { run_id: string; run_type: string; strategy_id: string; status: string; start_date: string; end_date: string }
 interface BtResult {
@@ -342,8 +344,15 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
           <div style={{ fontSize: 12, color: 'var(--text1)' }}>Daily 6 AM ET (active) · full sweep Sun 10 PM ET</div>
         </div>
         <div style={{ flexShrink: 0, borderLeft: '1px solid var(--border)', paddingLeft: 16 }}>
-          <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', fontWeight: 700 }}>Last run</div>
-          <div style={{ fontSize: 12, color: G }}>{cadence.last || '—'}</div>
+          <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', fontWeight: 700 }}>Last run (any pipeline)</div>
+          <div style={{ fontSize: 12, color: G }} title={status?.last_runs ? Object.entries(status.last_runs).map(([k, v]) => `${k}: ${v ? String(v).slice(0, 16) : '—'}`).join('\n') : ''}>
+            {(status?.last_run_overall ? String(status.last_run_overall).slice(0, 16) : (cadence.last || '—'))}
+          </div>
+          {status?.last_runs && (
+            <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 1 }}>
+              strat {status.last_runs.strategy_backtester ? String(status.last_runs.strategy_backtester).slice(5, 10) : '—'} · eng {status.last_runs.trade_backtest_engine ? String(status.last_runs.trade_backtest_engine).slice(5, 10) : '—'} · llm {status.last_runs.llm_review ? String(status.last_runs.llm_review).slice(5, 10) : '—'} · edge {status.last_runs.edge_comparison ? String(status.last_runs.edge_comparison).slice(5, 10) : '—'}
+            </div>
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 120, height: 34 }}>
           <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', fontWeight: 700, marginBottom: -2 }}>Runs / day (14d)</div>
