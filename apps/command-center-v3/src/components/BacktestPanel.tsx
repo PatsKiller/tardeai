@@ -1171,17 +1171,34 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
       )}
 
       {/* ===== LLM REVIEW COVERAGE ===== */}
-      {tab === 'llm_reviews' && (
+      {tab === 'llm_reviews' && (() => {
+        const eb = llmReviewData?.error_breakdown ?? {}
+        const runs = llmReviewData?.runs ?? {}
+        const oh = llmReviewData?.ollama_health ?? {}
+        const healthy = oh.healthy
+        const banner = healthy === true
+          ? { c: G, bg: 'rgba(34,197,94,.08)', bd: 'rgba(34,197,94,.25)', t: `Ollama healthy${oh.latency_ms != null ? ` (${oh.latency_ms}ms)` : ''}` }
+          : healthy === false
+          ? { c: R, bg: 'rgba(239,68,68,.08)', bd: 'rgba(239,68,68,.25)', t: `Ollama currently unhealthy — ${oh.failure_class ?? 'unavailable'}` }
+          : { c: A, bg: 'rgba(245,158,11,.08)', bd: 'rgba(245,158,11,.25)', t: 'Ollama health unknown' }
+        const complete = (llmReviewData?.total_reviews ?? 0) - (llmReviewData?.error_count ?? 0) - (llmReviewData?.pending_count ?? 0) - (eb.invalidated_stale_basis ?? 0)
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ fontSize: 11, color: B, padding: '8px 12px', background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.15)', borderRadius: 6 }}>
-            LLM review rows cover paper trades and backtest rows. Backtest review counts reflect historical analysis coverage, not approved live proposals or broker activity. Errors are review-generation / parser issues, not failed trades.
+          <div style={{ fontSize: 11, color: banner.c, padding: '8px 12px', background: banner.bg, border: `1px solid ${banner.bd}`, borderRadius: 6, fontWeight: 600 }}>
+            ● {banner.t}
+            {runs.last_skipped_at && <span style={{ color: A, fontWeight: 400 }}> · last review run skipped {String(runs.last_skipped_at).slice(0, 16)} ({runs.last_skipped_reason})</span>}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ fontSize: 10, color: 'var(--text3)', padding: '6px 12px', background: 'rgba(96,165,250,.06)', border: '1px solid rgba(96,165,250,.15)', borderRadius: 6 }}>
+            Infra errors are model/service availability failures (Ollama down/timeout), NOT failed trades or failed strategy logic. Parser errors are true review-generation issues. {runs.last_successful_at ? `Last successful run: ${String(runs.last_successful_at).slice(0, 16)}.` : 'No completed run recorded yet.'} Retryable backlog: {eb.retryable ?? 0} (manual/bounded).
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10 }}>
             {[
-              { label: 'Total Review Rows', value: llmReviewData?.total_reviews ?? 0, color: 'var(--text0)' },
-              { label: 'Complete', value: (llmReviewData?.total_reviews ?? 0) - (llmReviewData?.error_count ?? 0) - (llmReviewData?.pending_count ?? 0), color: G },
-              { label: 'Errors', value: llmReviewData?.error_count ?? 0, color: (llmReviewData?.error_count ?? 0) > 0 ? R : G },
-              { label: 'Pending', value: llmReviewData?.pending_count ?? 0, color: A },
+              { label: 'Total Rows', value: llmReviewData?.total_reviews ?? 0, color: 'var(--text0)' },
+              { label: 'Complete', value: complete, color: G },
+              { label: 'Infra errors', value: eb.infrastructure_errors ?? 0, color: A },
+              { label: 'Parser errors', value: eb.parser_errors ?? 0, color: R },
+              { label: 'Empty/null', value: eb.empty_null_reviews ?? 0, color: 'var(--text3)' },
+              { label: 'Retryable', value: eb.retryable ?? 0, color: B },
             ].map(k => (
               <div key={k.label} style={{ ...card, textAlign: 'center' }}>
                 <div style={{ fontSize: 26, fontWeight: 700, color: k.color }}>{k.value}</div>
@@ -1237,7 +1254,8 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
             )}
           </div>
         </div>
-      )}
+        )
+      })()}
 
       <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 16, textAlign: 'center' }}>Read-only port of v2 /backtesting. Sources: /api/v2/backtesting/* + /api/v2/lifecycle/llm-review-status</div>
     </div>

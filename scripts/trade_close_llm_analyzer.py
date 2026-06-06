@@ -517,6 +517,26 @@ def run_structured_eval(args):
     return 0
 
 
+def _record_review_run(run_type, source, model, status, health, counts=None):
+    """Insert a run-level row into llm_review_runs (run-level skip/complete bookkeeping). Best-effort."""
+    counts = counts or {}
+    try:
+        conn = _get_conn()
+        if not conn:
+            return
+        cur = conn.cursor()
+        cur.execute("""INSERT INTO llm_review_runs
+            (run_type, source, model, completed_at, status, health_status, attempted_count,
+             completed_count, infrastructure_error_count, parser_error_count, null_review_count, skipped_count)
+            VALUES (%s,%s,%s, now(), %s, %s, %s,%s,%s,%s,%s,%s)""",
+            (run_type, source, model, status, json.dumps(health or {}),
+             counts.get("attempted", 0), counts.get("completed", 0), counts.get("infra", 0),
+             counts.get("parser", 0), counts.get("null", 0), counts.get("skipped", 0)))
+        conn.commit(); conn.close()
+    except Exception as e:
+        log.warning(f"_record_review_run failed (non-fatal): {e}")
+
+
 def main():
     p = argparse.ArgumentParser(description="LLM Close-of-Trade Analyzer v4.1")
     p.add_argument("--dry-run", action="store_true", default=True)
@@ -535,6 +555,10 @@ def main():
     p.add_argument("--structured", action="store_true",
                    help="Run structured backtest trade evaluation (scores+verdict) over enriched trade_backtest_results.")
     p.add_argument("--eval-model", default="gemma3:12b", help="Model for --structured evaluation.")
+    p.add_argument("--retry-infra-failures", action="store_true",
+                   help="Bounded retry of retryable=true infrastructure-failure review rows (health-gated).")
+    p.add_argument("--max-retries", type=int, default=1, help="Max retry attempts per row (default 1).")
+    p.add_argument("--max-rows", type=int, default=50, help="Max rows for retry mode (default 50).")
     args = p.parse_args()
     if args.apply:
         args.dry_run = False
@@ -552,12 +576,29 @@ def main():
     # subprocess is advisory here, so a failure/timeout warns but does not abort.
     if args.structured:
         if args.apply:
+            # HARD Ollama health gate: skip cleanly (one run-level SKIPPED record) instead of grinding
+            # through the batch and flooding trade_llm_reviews with per-trade infrastructure-error rows.
             try:
-                ok, _checks, failed = _preflight_llm_health()
-                if not ok:
-                    log.warning(f"LLM preflight advisory failed ({', '.join(failed)}); proceeding (non-mutating path).")
+                from llm_health_gate import check_ollama_health
+                health = check_ollama_health(model=args.eval_model)
             except Exception as e:
-                log.warning(f"LLM preflight advisory skipped: {e}")
+                health = {"healthy": False, "failure_class": "invalid_response", "message": f"health check error: {e}"}
+            if not health.get("healthy"):
+                _record_review_run("structured_backtest_eval", args.source, args.eval_model,
+                                   "SKIPPED_LLM_UNHEALTHY", health)
+                msg = {"status": "SKIPPED_LLM_UNHEALTHY", "reason": health.get("failure_class"),
+                       "message": health.get("message"), "health": health}
+                log.warning(f"LLM review SKIPPED — Ollama unhealthy ({health.get('failure_class')}): {health.get('message')}")
+                if args.json_out:
+                    Path(args.json_out).parent.mkdir(parents=True, exist_ok=True)
+                    Path(args.json_out).write_text(json.dumps(msg, default=str, indent=2))
+                print(json.dumps(msg, default=str, indent=2))
+                return  # exit 0 — not a per-trade failure
+            log.info(f"LLM health gate PASSED ({health.get('latency_ms')}ms)")
+            res = run_structured_eval(args)
+            _record_review_run("structured_backtest_eval", args.source, args.eval_model, "COMPLETED",
+                               health, {"attempted": args.limit})
+            return res
         return run_structured_eval(args)
 
     # LLM safety preflight — required before --apply
