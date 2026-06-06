@@ -19,7 +19,18 @@ from collections import defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
-MIN_SAMPLE = 20   # operator may approve a strategy-specific pilot below this
+MIN_SAMPLE = 20   # reliable-evidence floor; operator may approve a strategy-specific pilot below this
+
+
+def confidence_from_reliable(n):
+    """Confidence keyed to RELIABLE sample size, never raw n (mirrors the hardened backtest)."""
+    if n < 10:
+        return "insufficient"
+    if n < 20:
+        return "weak"
+    if n < 50:
+        return "moderate"
+    return "stronger"
 
 
 def load_env():
@@ -49,7 +60,7 @@ def current_thresholds(family):
         return {}
 
 
-def run(apply, json_path, md_path, run_id, min_sample):
+def run(apply, json_path, md_path, run_id, min_sample, operator_override=False):
     load_env()
     import psycopg2.extras
     conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -62,12 +73,15 @@ def run(apply, json_path, md_path, run_id, min_sample):
     """)
     rows = cur.fetchall()
 
-    # latest backtest run, best rule per family
-    cur.execute("SELECT max(run_id) m FROM profit_protection_rule_backtests")
-    latest = cur.fetchone()["m"]
+    # latest backtest run (by recency, not string order), best rule per family
+    cur.execute("SELECT run_id FROM profit_protection_rule_backtests ORDER BY created_at DESC LIMIT 1")
+    _lr = cur.fetchone()
+    latest = _lr["run_id"] if _lr else None
     cur.execute("""SELECT rule_name, strategy_family, sample_size, baseline_money_left,
                           avoided_giveback, premature_exit_cost, net_improvement,
-                          recommendation_confidence, recommended
+                          recommendation_confidence, recommended,
+                          reliable_sample_size, winner_sample_size, triggered_sample_size,
+                          estimate_quality, premature_exit_cost_known, graft_verdict
                    FROM profit_protection_rule_backtests WHERE run_id = %s""", (latest,))
     backtests = [dict(r) for r in cur.fetchall()]
     conn.close()
@@ -96,37 +110,51 @@ def run(apply, json_path, md_path, run_id, min_sample):
 
     recs = []
     for fam, agg in sorted(by_fam.items()):
-        n = agg["n"]
         best = best_rule_for(fam)
         cur_th = current_thresholds(fam)
+        # RELIABLE sample size from the hardened backtest is the evidence basis — NOT raw family n.
+        reliable_n = (best.get("reliable_sample_size") if best else None) or 0
+        premature_known = bool(best.get("premature_exit_cost_known")) if best else False
+        est_q = (best.get("estimate_quality") if best else None) or "unknown"
+        conf = confidence_from_reliable(reliable_n)
+
         if best is None:
-            verdict, conf = "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE", "low"
+            verdict = "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE"
             proposed, exp_red, exp_prem = {}, 0.0, 0.0
             notes = "No backtest evidence available for this family."
-        elif best["net_improvement"] is not None and best["net_improvement"] <= 0:
-            verdict, conf = "REJECTED_NEGATIVE_EDGE", best["recommendation_confidence"]
+        elif reliable_n < min_sample:
+            # HARD RULE: reliable_sample_size < floor -> always insufficient evidence.
+            verdict = "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE"
+            proposed = {"candidate_rule": best["rule_name"]}
+            exp_red = float(best["avoided_giveback"] or 0); exp_prem = float(best["premature_exit_cost"] or 0)
+            notes = (f"Best candidate {best['rule_name']} reliable_n={reliable_n} < floor {min_sample}. "
+                     f"Recovery ${exp_red} is an {est_q} (upper bound). Operator may approve a "
+                     "strategy-specific pilot, but no auto-graft.")
+        elif (best["net_improvement"] is not None and best["net_improvement"] <= 0):
+            verdict = "REJECTED_NEGATIVE_EDGE"
             proposed = {"rejected_rule": best["rule_name"]}
             exp_red, exp_prem = 0.0, float(best["premature_exit_cost"] or 0)
             notes = f"Best candidate {best['rule_name']} net {best['net_improvement']} does not beat baseline."
-        elif n < min_sample:
-            verdict, conf = "DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE", "low"
-            proposed = {"candidate_rule": best["rule_name"],
-                        "trigger": best["rule_name"]}
-            exp_red, exp_prem = float(best["avoided_giveback"] or 0), float(best["premature_exit_cost"] or 0)
-            notes = (f"Positive edge ({best['rule_name']} net {best['net_improvement']}) but n={n} < {min_sample}. "
-                     "Operator may approve a strategy-specific pilot.")
-        else:
-            verdict, conf = "ELIGIBLE_FOR_OPERATOR_REVIEW", best["recommendation_confidence"]
+        elif not premature_known and not operator_override:
+            # HARD RULE: premature-exit cost unknown -> cannot be eligible without explicit override.
+            verdict = "DO_NOT_GRAFT_PREMATURE_COST_UNKNOWN"
             proposed = {"candidate_rule": best["rule_name"]}
-            exp_red, exp_prem = float(best["avoided_giveback"] or 0), float(best["premature_exit_cost"] or 0)
-            notes = (f"{best['rule_name']} avoids ${best['avoided_giveback']} give-back at "
-                     f"${best['premature_exit_cost']} premature-exit cost over n={n}. Operator review only.")
+            exp_red = float(best["avoided_giveback"] or 0); exp_prem = float(best["premature_exit_cost"] or 0)
+            notes = (f"{best['rule_name']} reliable_n={reliable_n} meets the floor, but premature-exit "
+                     f"cost is unknown ({est_q}); recovery is an upper bound. Needs intrabar path or "
+                     "explicit operator override before review.")
+        else:
+            verdict = "ELIGIBLE_FOR_OPERATOR_REVIEW"
+            proposed = {"candidate_rule": best["rule_name"]}
+            exp_red = float(best["avoided_giveback"] or 0); exp_prem = float(best["premature_exit_cost"] or 0)
+            notes = (f"{best['rule_name']} reliable_n={reliable_n}, recovery ${exp_red} ({est_q}). "
+                     f"Premature cost {'known' if premature_known else 'operator-overridden'}. Operator review only.")
 
         recs.append({
             "run_id": run_id, "strategy_family": fam,
             "current_thresholds": json.dumps(cur_th),
             "proposed_thresholds": json.dumps(proposed),
-            "evidence_sample_size": n,
+            "evidence_sample_size": reliable_n,
             "expected_giveback_reduction": round(exp_red, 2),
             "expected_premature_exit_cost": round(exp_prem, 2),
             "confidence": conf, "graft_verdict": verdict, "notes": notes,
@@ -171,8 +199,10 @@ if __name__ == "__main__":
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--run-id", default=None)
     ap.add_argument("--min-sample", type=int, default=MIN_SAMPLE)
+    ap.add_argument("--operator-override", action="store_true",
+                    help="explicit operator override to allow ELIGIBLE despite unknown premature-exit cost")
     ap.add_argument("--json", default=None)
     ap.add_argument("--markdown", default=None)
     a = ap.parse_args()
     rid = a.run_id or "ppsr_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run(a.apply, a.json, a.markdown, rid, a.min_sample)
+    run(a.apply, a.json, a.markdown, rid, a.min_sample, a.operator_override)

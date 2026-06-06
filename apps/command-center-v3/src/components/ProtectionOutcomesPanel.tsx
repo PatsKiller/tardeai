@@ -82,7 +82,21 @@ export default function ProtectionOutcomesPanel({ onDrill }: Props) {
         {card('Advisory existed', `${s.advisory_existed ?? 0}`, '#60a5fa')}
         {card('Operator acted', `${s.operator_acted ?? 0}`, (s.operator_acted ?? 0) > 0 ? '#22c55e' : '#f59e0b')}
         {card('No advisory', `${s.no_advisory_generated ?? 0}`, '#ef4444')}
-        {card('Rule recovery', fmt$(s.rule_backtest_potential_recovery_usd ?? 0, 0), '#a78bfa', s.rule_backtest_best_rule ? `${s.rule_backtest_best_rule} (shadow)` : 'shadow only')}
+        {card('Rule recovery (~UB)', fmt$(s.rule_backtest_potential_recovery_usd ?? 0, 0), '#a78bfa',
+          s.rule_backtest_best_rule ? `${s.rule_backtest_best_rule} · reliable n=${s.rule_backtest_reliable_n ?? 0}` : 'shadow only')}
+      </div>
+
+      {/* Evidence-quality qualifier — keep the directional signal but qualify it honestly */}
+      <div style={{ marginBottom: 14, padding: '8px 12px', background: 'rgba(167,139,250,.06)', border: '1px solid rgba(167,139,250,.2)', borderRadius: 8, fontSize: 10, color: 'var(--text2)' }}>
+        <span style={{ fontWeight: 700, color: '#a78bfa' }}>Best shadow rule: {s.rule_backtest_best_rule ?? '—'}</span>
+        {'  ·  '}reliable n: <b>{s.rule_backtest_reliable_n ?? 0}</b> (raw {s.rule_backtest_raw_n ?? 0})
+        {'  ·  '}estimate: <b>{(s.rule_backtest_estimate_quality ?? 'upper_bound_single_peak').replace(/_/g, ' ')}</b>
+        {'  ·  '}graft: <b style={{ color: '#f59e0b' }}>{(s.rule_backtest_graft_verdict ?? 'DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE').replace(/_/g, ' ')}</b>
+        {s.rule_backtest_premature_cost_known === false && (
+          <div style={{ marginTop: 4, color: '#f59e0b', fontSize: 9 }}>
+            ⚠ Recovery is an upper bound — single-peak MFE cannot order stop-trigger vs later profit; premature-exit cost is unknown. Not decision-grade; not grafted.
+          </div>
+        )}
       </div>
 
       {/* Breakdowns */}

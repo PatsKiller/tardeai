@@ -67,6 +67,16 @@ full intrabar path); `data_quality='approx_single_peak'`, confidence de-rated.
 Best candidate: **trail5_after_2R**. Partial-TP rules show net-negative (premature exit cost > avoided),
 correctly **not** recommended.
 
+> **Update (Phase 206b, 2026-06-06):** a quality review found this raw signal is **not decision-grade**
+> — the population is loser-dominated, 62% of trades have ≤3 MFE bars, and `mfe_r` outliers up to 48R
+> are artifacts. After hardening (data-quality gate + winners-only + reliable-sample reporting + honest
+> premature-exit labelling), the headline collapses: `trail5_after_2R` recovery falls from $2,727.77
+> (raw n=34) to **~$447 upper bound at reliable n=2**, confidence `high → insufficient`, premature-exit
+> cost flagged **unknown**, verdict **DO_NOT_GRAFT_INSUFFICIENT_EVIDENCE**. See
+> `PROFIT_CAPTURE_BACKTEST_QUALITY_REVIEW_20260606.md` and
+> `PROFIT_CAPTURE_RULE_BACKTEST_HARDENING_20260606.md`. Re-run with:
+> `backtest_profit_protection_rules.py --quality-gated --winners-only --min-bars-analyzed 10 --max-mfe-r 20 --require-planned-stop`.
+
 ## Shadow threshold recommendations (advisory only — nothing grafted)
 
 `run_id ppsr_20260606`, MIN_SAMPLE=20. **No family is eligible for graft** — every family is below
