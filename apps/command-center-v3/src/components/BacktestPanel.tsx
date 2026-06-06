@@ -83,6 +83,12 @@ function fmt$(n: number | null | undefined) { const v = Number(n ?? 0); return (
 function fmtR(n: number | null | undefined) { const v = Number(n ?? 0); return (v >= 0 ? '+' : '') + v.toFixed(2) + 'R' }
 function safeStr(s: string | null | undefined, fallback = 'unknown') { return (s ?? fallback).replace(/_/g, ' ') }
 function num(n: number | null | undefined) { return Number(n ?? 0) }
+// Advisory data-trust tier → color (does NOT affect GO/WAIT; base-data quality only)
+function trustColor(tier?: string) {
+  return tier === 'excellent' ? '#22c55e' : tier === 'usable' ? '#60a5fa' : tier === 'advisory' ? '#f59e0b' : tier === 'untrusted' ? '#ef4444' : 'var(--text3)'
+}
+// map tab id -> data-quality scorecard key
+const TRUST_TAB_KEY: Record<string, string> = { entry_quality: 'entry_quality', trade_eval: 'trade_eval', missed: 'missed', llm_reviews: 'llm_review_coverage' }
 // Outcome supplied by backend `sim_outcome_verdict` (deduped by canonical proposal_id) — NOT derived
 // from P&L sign in the UI. MIXED = the proposal's sim runs disagree (shown, not hidden).
 function missedVerdictColor(v?: string) {
@@ -131,6 +137,7 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
   const [mfeData, setMfeData] = useState<any>(null)
   const [optData, setOptData] = useState<any>(null)
   const [llmReviewData, setLlmReviewData] = useState<any>(null)
+  const [dataQuality, setDataQuality] = useState<any>(null)
   const [eqSummary, setEqSummary] = useState<any>(null)       // entry/exit grading summary
   const [eqAnalytics, setEqAnalytics] = useState<any>(null)   // rsi/coaching/best-worst
   const [liveReadiness, setLiveReadiness] = useState<any>(null) // live paper win-rates (edge decay)
@@ -191,7 +198,7 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
       })
     }
     try {
-      const [mfe, opt, llm, eqs, eqa, live, hist, tev, adv] = await Promise.allSettled([
+      const [mfe, opt, llm, eqs, eqa, live, hist, tev, adv, dq] = await Promise.allSettled([
         fetch('/api/v2/backtesting/mfe-analysis' + qs).then(r => r.json()),
         fetch('/api/v2/backtesting/trailing-optimization' + qs).then(r => r.json()),
         fetch('/api/v2/lifecycle/llm-review-status' + qs).then(r => r.json()),
@@ -201,7 +208,9 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
         fetch('/api/v2/backtesting/result-history' + (f.runType ? `?run_type=${encodeURIComponent(f.runType)}` : '')).then(r => r.json()).catch(() => ({ ok: false })),
         fetch('/api/v2/backtesting/trade-evaluations' + qs).then(r => r.json()).catch(() => ({ ok: false })),
         fetch('/api/v2/atm/setup-advisory').then(r => r.json()).catch(() => ({ ok: false })),
+        fetch('/api/v2/backtesting/data-quality').then(r => r.json()).catch(() => ({ ok: false })),
       ])
+      if (dq.status === 'fulfilled' && dq.value?.ok) setDataQuality(dq.value.data)
       if (mfe.status === 'fulfilled' && mfe.value?.ok) setMfeData(mfe.value.data)
       if (opt.status === 'fulfilled' && opt.value?.ok) setOptData(opt.value.data)
       if (llm.status === 'fulfilled' && llm.value?.ok) setLlmReviewData(llm.value.data)
@@ -447,14 +456,26 @@ export default function BacktestPanel({ onDrill, sharedAccount = '', sharedDateF
 
       {/* Sub-tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+        {TABS.map(t => {
+          const tk = TRUST_TAB_KEY[t.id]; const tier = tk && dataQuality?.tabs?.[tk]?.tier
+          return (
+          <button key={t.id} onClick={() => setTab(t.id)} title={tier ? `Data trust: ${tier}${dataQuality?.tabs?.[tk]?.pct != null ? ` (${Math.round(dataQuality.tabs[tk].pct * 100)}% linked/clean)` : ''} — ${dataQuality?.tabs?.[tk]?.basis || ''}` : undefined} style={{
             padding: '8px 14px', fontSize: 12, fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer',
             borderBottom: tab === t.id ? `2px solid ${B}` : '2px solid transparent',
             color: tab === t.id ? B : 'var(--text3)', whiteSpace: 'nowrap', marginBottom: -1,
-          }}>{t.label}</button>
-        ))}
+          }}>{tier && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: trustColor(tier), marginRight: 6, verticalAlign: 'middle' }} />}{t.label}</button>
+          )
+        })}
       </div>
+      {dataQuality?.tabs && (
+        <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: -10, marginBottom: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 700, textTransform: 'uppercase' }}>Data trust</span>
+          {[['excellent', 'Excellent'], ['usable', 'Usable'], ['advisory', 'Advisory'], ['untrusted', 'Untrusted']].map(([k, lbl]) => (
+            <span key={k}><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: trustColor(k), marginRight: 4 }} />{lbl}</span>
+          ))}
+          <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>advisory only — base-data quality per tab; does not affect GO/WAIT</span>
+        </div>
+      )}
 
       {/* ===== OVERVIEW ===== */}
       {tab === 'overview' && (

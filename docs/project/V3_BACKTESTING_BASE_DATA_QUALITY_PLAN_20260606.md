@@ -30,3 +30,12 @@ Excellent/Usable/Advisory/Untrusted). Keep advisory; never gate GO/WAIT. Improve
 
 ## Safety
 Read-only diagnostic. No trading/GO-WAIT/strategy/Phase-205 impact.
+
+## Surfaced in UI (2026-06-06)
+- Endpoint `/api/v2/backtesting/data-quality` returns per-tab {tier, pct, linked, basis} + legend.
+- v3 Backtesting tabs now show a colored **data-trust dot** (Excellent green / Usable blue / Advisory amber
+  / Untrusted red) on Entry Quality, AI Trade Eval, Missed, LLM Review Coverage, with a hover tooltip
+  (tier + % linked/clean + basis) and a legend strip ("advisory only — does not affect GO/WAIT").
+- Current tiers: entry_quality EXCELLENT (97%) · edge_comparison EXCELLENT (100%) · trade_eval ADVISORY
+  (47%) · missed ADVISORY · hermes_reflections UNTRUSTED (22%, backlog) · llm_review_coverage UNTRUSTED
+  (15% clean — infra errors retryable, separate). Honest; advisory only.
