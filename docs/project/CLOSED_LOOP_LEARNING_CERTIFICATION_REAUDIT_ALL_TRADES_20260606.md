@@ -127,3 +127,36 @@ Commit audited: **6c3d62f**. SELECT-only. Denominator = trade_instances.
 
 ### Safety
 ALPACA_MODE=paper, live disabled; SELECT-only; no broker/order/GO-WAIT/strategy/live/Phase-205; no graft.
+
+---
+## Post structured-news-linkage certification — NOISE GUARD (2026-06-06)
+
+Commit audited: **01d3c66**. SELECT-only; no new news links created (read-only validation of existing).
+
+### News linkage — STRUCTURED_LINKAGE_ADDED · DATA_DENSITY_PARTIAL · NOISE_BLOCKED (PASS)
+- trade_instance_news: 35 links / 27 distinct trade_instances (schwab_import 32, alpaca_paper 3).
+- by window: entry_window 16, pre_entry 13, hold_window 4, exit_window 2.
+- linked: imported 26 instances + paper 1.
+- **Noise guard (all PASS):**
+  - max news links per trade_instance: **3** (not a firehose)
+  - avg links per linked trade: **1.30**
+  - OPEN trades with hold_window links: **0** (firehose prevented — open trades capped at entry window)
+  - non-ticker / topic news linked: **0** (ticker filter holds)
+  - total **35** ≈ expected range, NOT 15,108.
+- Unlinked reason: older imports predate the ~6-week news corpus; topic/non-ticker excluded; open trades
+  capped to entry window. Honest — never fabricated.
+
+### Status of the rest (stable @01d3c66)
+- trade_instances 353 (alpaca_paper 51 + schwab_import 302); imports lack strategy/signal/proposal lineage.
+- Edge 101 (paper 43 proposal-edge + schwab 58 per-trade-backtest; 0 fabricated; 0 dup) — RESOLVED.
+- Hermes 1277 / 7 by ti; backlog 181 (schwab 152 + paper 29) — all-trades; drain paused.
+- Journal 15 by ti; backtest 92 by ti. Shadow 57 / efficacy 3 / outcome_fed_back 25/169.
+- Graft INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT; closed_paper_trade canonical-path refs 0; paper_trade_id 62 (compat).
+
+### Verdicts
+- STRUCTURE = PASS · EDGE = RESOLVED · NEWS = STRUCTURED_LINKAGE_ADDED (noise-blocked)
+- DATA DENSITY = PARTIAL (corpus depth + Hermes backlog + import lineage)
+- AUTONOMOUS LEARNING = SHADOW_ONLY / DO_NOT_GRAFT (GO/WAIT + strategy untouched).
+
+### Safety
+ALPACA_MODE=paper, live disabled; SELECT-only; no broker/order/GO-WAIT/strategy/live/Phase-205; no graft.
