@@ -1,3 +1,8 @@
+## Closed-Loop Imported Edge Comparison (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md` | trade_edge_comparison 43->101 (schwab per-trade-backtest, no fabricated proposal edge) |
+
 ## Closed-Loop ALL-TRADES Certification Re-Audit (2026-06-06)
 | Document | Purpose |
 |----------|---------|

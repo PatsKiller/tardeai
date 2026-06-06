@@ -36,7 +36,8 @@ Commit audited: **db1aae3**. SELECT-only audit (no trading/GO-WAIT/strategy/orde
 ## 5. Backtest linkage — PASS
 - total 95 | by trade_instance_id 92 | only-paper_trade_id 0 | imported 58 + paper 34. Covers imports.
 
-## 6. Edge comparison linkage — PARTIAL
+## 6. Edge comparison linkage — RESOLVED 2026-06-06 (was PARTIAL)
+> Imported trades now populate canonical trade_edge_comparison via per-trade backtest (101 total: paper 43 + schwab 58). See CLOSED_LOOP_IMPORTED_EDGE_COMPARISON_20260606.md.
 - canonical `trade_edge_comparison`: 43, all by trade_instance_id, but **all alpaca_paper**.
 - Reason: Schwab imports have no `proposal_backtest_snapshot` (proposal-time expected edge). Per-trade
   backtests exist for 58 imports → a per-trade-backtest edge could populate them (follow-on). Canonical
