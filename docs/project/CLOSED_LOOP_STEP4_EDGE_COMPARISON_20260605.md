@@ -33,3 +33,15 @@ Phase-205 changes. Additive table + read-only analysis (no execution path touche
 ## Next step
 Step 5: persist shadow scores to a DB table keyed to the candidate, and set
 proposal_outcome_chain.outcome_fed_back when a lesson/score is derived (close the loop-closure flag).
+
+## Enrichment (2026-06-05) — per-trade backtest signal wired in
+`compute_edge_comparison.py` now bases on ALL closed paper trades (43, was 17) and LEFT JOINs the
+per-trade entry-quality backtest (`trade_backtest_results`, linked by paper_trade_id from Step 3) in
+addition to the proposal-snapshot. New columns: bt_entry_grade, bt_overall_grade, bt_better_entry_existed,
+bt_left_on_table_20d, bt_exit_was_early, backtest_assessment.
+- edge_compared (proposal snapshot): 2 (still snapshot-data-limited).
+- **backtest_compared (per-trade): 32** — better_entry_existed 13, better_entry_and_early_exit 14,
+  exited_early 3, entry_exit_optimal 2 (+ 9 no_per_trade_backtest, 2 insufficient, 8 phantom).
+- Signal example: several WINs (ANY/APPS/ASPN) had grade-D entries with a better entry available and
+  early exits — "won despite poor timing, left money on the table." That feeds the learning loop.
+Read-only analysis; no GO/WAIT/strategy/order change.

@@ -18,7 +18,7 @@ is wired but **gated behind evidence + operator approval** (lessons NOT grafted)
 | paper_trade.trade_key | absent | **100%** | 3 |
 | hermes_research_intelligence.related_trade_id | 0% (0/1170) | write-path wired; **2** backfilled (1:1) | 2 |
 | backtest results linked → paper_trade | 0 | **34** (backtest engine run; 32 full + 2 insufficient; 8 of 42 lacked history) | 3 |
-| post-exit edge comparison | none | **17** comparisons (2 with real expected edge) | 4 |
+| post-exit edge comparison | none | **43** trades; 2 proposal-edge + **32 per-trade backtest** comparisons | 4 |
 | shadow scores in DB | 0 (file-based) | **57** (candidate_shadow_scores; scorer persists each run) | 5 |
 | proposal_outcome_chain.outcome_fed_back | 5% | **11%** (19/169) | 5 |
 | lessons → production scoring | not applied | shadow-first evidence layer + **do-not-graft gate** | 6 |
