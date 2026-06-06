@@ -39,3 +39,23 @@ is wired but **gated behind evidence + operator approval** (lessons NOT grafted)
 
 ## Safety
 SELECT-only audit. ALPACA_MODE=paper, live disabled. No order/GO-WAIT/strategy/proposal/Phase-205 changes.
+
+## Re-audit snapshot v2 (2026-06-05, after backtest run + edge enrichment)
+Verdict unchanged: **STRUCTURE = PASS · DATA DENSITY = PARTIAL (improving)**. All six mechanisms in
+place and flowing; remaining low percentages are data accumulation, learning→production stays gated.
+
+| Stage | Coverage now |
+|---|---|
+| 1 execution lineage — signal_id / broker / candidate | 27% / 84% / 84% |
+| 3 trade_key | 100% |
+| 2 hermes related_trade_id | 2 / 1256 (write-path live; current research targets are live Schwab holdings w/ no paper_trade → fills as paper-loop symbols are researched) |
+| 3 backtest results → paper_trade | 34 linked (32 full) |
+| 4 edge comparison | 43 trades · 2 proposal-edge · **32 per-trade backtest** |
+| 5 candidate_shadow_scores (DB) | 57 |
+| 5 outcome_fed_back | 11% (19/169) |
+| 6 shadow efficacy / graft | 3 evaluable → INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT (gated) |
+
+**Weakest remaining link = Hermes trade linkage** (2/1256): the stamping is correct, but Hermes is
+currently researching live Schwab holdings (no paper_trade to link). It rises automatically when the
+challenger researches paper-loop symbols. Everything else is structurally closed; the loop now produces
+real per-trade learning signal (e.g. 27 of 32 graded paper trades show a better entry existed / early exit).
