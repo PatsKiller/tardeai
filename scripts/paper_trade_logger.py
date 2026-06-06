@@ -1357,6 +1357,15 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
         now = datetime.now(timezone.utc)
         entry_ctx = _get_entry_regime(conn)
 
+        # ── Execution lineage (broker/account-neutral; sourced from the proposal, not hardcoded) ──
+        try:
+            from trade_lineage import extract_lineage_from_proposal
+            _lin = extract_lineage_from_proposal(conn, proposal_id)
+        except Exception as _e:
+            _lin = {"signal_id": None, "source_signal_id": None, "strategy_card_id": None, "candidate_id": None,
+                    "execution_account": None, "execution_broker": None, "execution_environment": None,
+                    "lineage_confidence": "missing", "lineage_source": "missing", "lineage_notes": {}}
+
         # Insert paper trade — status=pending (not yet submitted to broker)
         # broker is NULL until an actual Alpaca order is submitted via proposal_paper_submitter
         cur.execute("""
@@ -1367,6 +1376,9 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 intel_readiness, trade_plan_id, proposal_id, setup_type, signal_grade,
                 risk_gate_result, risk_gate_reason_codes,
                 market_regime, vix_at_entry,
+                signal_id, source_signal_id, source_strategy_card_id, strategy_card_id, candidate_id,
+                source_proposal_id, execution_account, execution_broker, execution_environment,
+                lineage_source, lineage_stamped_at, lineage_confidence, lineage_notes,
                 status, broker, opened_via, logged_by, automation_source
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s,
@@ -1375,6 +1387,9 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
                 %s, %s, %s, %s, %s,
                 %s, %s,
                 %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, NOW(), %s, %s,
                 'pending', NULL, 'proposal_approved', 'dashboard', 'proposal'
             ) RETURNING id
         """, [
@@ -1388,6 +1403,10 @@ def approve_proposal(proposal_id: int, override_shares: int = None,
             prop.get('setup_type'), prop.get('signal_grade'),
             rg_result, json.dumps(rg_codes),
             entry_ctx["regime"], entry_ctx["vix"],
+            _lin.get('signal_id'), _lin.get('source_signal_id'), _lin.get('strategy_card_id'),
+            _lin.get('strategy_card_id'), _lin.get('candidate_id'),
+            str(proposal_id), _lin.get('execution_account'), _lin.get('execution_broker'), _lin.get('execution_environment'),
+            _lin.get('lineage_source'), _lin.get('lineage_confidence'), json.dumps(_lin.get('lineage_notes') or {}),
         ])
         paper_trade_id = cur.fetchone()[0]
 

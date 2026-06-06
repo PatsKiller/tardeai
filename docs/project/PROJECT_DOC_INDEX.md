@@ -9,6 +9,13 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Step 1 — Execution Lineage (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_STEP1_EXECUTION_LINEAGE_20260605.md` | Stamp signal/card/candidate + broker/account lineage on paper_trades; exact backfill; coverage |
+| `docs/project/CLOSED_LOOP_STEP1_LINEAGE_DUE_DILIGENCE_20260605.md` | Submit-path + schema due diligence |
+| `scripts/trade_lineage.py` · `backfill_trade_lineage.py` · `validate_trade_lineage_step1.py` | neutral lineage helper + exact backfill + 10/10 validation |
+
 ## Cost Basis — June 5 CSV + Income Repair (2026-06-05)
 | Document | Purpose |
 |----------|---------|
