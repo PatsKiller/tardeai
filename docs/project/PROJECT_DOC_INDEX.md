@@ -9,6 +9,12 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Step 6 — Lessons->Scoring (Shadow Evidence) (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_STEP6_LESSONS_TO_SCORING_SHADOW_20260605.md` | shadow-vs-outcome efficacy + graft gate (INSUFFICIENT_EVIDENCE_DO_NOT_GRAFT; n=3) |
+| `scripts/evaluate_shadow_efficacy.py` | candidate_shadow_efficacy; evidence only, never alters GO/WAIT |
+
 ## Closed-Loop Step 5 — Shadow DB + Loop-Closure (2026-06-05)
 | Document | Purpose |
 |----------|---------|
