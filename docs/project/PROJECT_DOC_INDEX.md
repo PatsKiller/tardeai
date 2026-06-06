@@ -1,3 +1,8 @@
+## v3 Backtesting Filters — All Tabs (2026-06-06)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/V3_BACKTESTING_FILTERS_ALL_TABS_20260606.md` | account/strategy filter wired into Entry Quality + AI Trade Eval + all tab fetches (registry arity dispatch); honest upstream data gaps noted |
+
 ## v3 LLM-Review Per-Row Provenance (2026-06-06)
 | Document | Purpose |
 |----------|---------|
