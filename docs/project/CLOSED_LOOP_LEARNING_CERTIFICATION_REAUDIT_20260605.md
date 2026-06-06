@@ -17,7 +17,7 @@ is wired but **gated behind evidence + operator approval** (lessons NOT grafted)
 | paper_trade.candidate_id | 0% | **84%** | 1 |
 | paper_trade.trade_key | absent | **100%** | 3 |
 | hermes_research_intelligence.related_trade_id | 0% (0/1170) | write-path wired; **2** backfilled (1:1) | 2 |
-| backtest results linked → paper_trade | 0 | **1** (42 paper trades now in backtest scope; rest populate next run) | 3 |
+| backtest results linked → paper_trade | 0 | **34** (backtest engine run; 32 full + 2 insufficient; 8 of 42 lacked history) | 3 |
 | post-exit edge comparison | none | **17** comparisons (2 with real expected edge) | 4 |
 | shadow scores in DB | 0 (file-based) | **57** (candidate_shadow_scores; scorer persists each run) | 5 |
 | proposal_outcome_chain.outcome_fed_back | 5% | **11%** (19/169) | 5 |
@@ -33,7 +33,7 @@ is wired but **gated behind evidence + operator approval** (lessons NOT grafted)
 
 ## Remaining (data density, not structure)
 1. signal_id stuck at 27% until upstream proposals capture source_signal_id more often (>44%).
-2. backtest-linked = 1 until the next scheduled backtest run backfills the 42 in-scope paper trades.
+2. backtest-linked now **34/42** after running the engine (8 lacked sufficient price history) — refreshes on each scheduled run.
 3. Hermes backfill conservative (1:1 only); forward write-path covers new paper-loop reflection.
 4. Shadow graft remains blocked (n<20) — by design; the evaluator opens it automatically when evidence clears.
 
