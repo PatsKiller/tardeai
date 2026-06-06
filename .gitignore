@@ -111,3 +111,8 @@ config/youtube_cookies.txt
 # broker-admin secrets (never commit)
 config/broker_credentials.env
 apps/broker-admin/.admin_password
+
+# Hermes runtime artifacts (machine-generated each challenger/loop cycle — not source)
+docs/hermes/phase3b_dryrun/
+docs/hermes/**/latest_*.json
+hermes_sidecar/.hermes/channel_directory.json
