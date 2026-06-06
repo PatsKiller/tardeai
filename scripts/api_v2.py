@@ -6884,6 +6884,11 @@ def journal_review_write(body: dict):
         _pt = _db_query("SELECT array_agg(id) AS ids FROM paper_trades WHERE trade_key = %s", (trade_key,), fetch="one")
         if _pt and _pt.get("ids") and len(_pt["ids"]) == 1:
             fields["paper_trade_id"] = _pt["ids"][0]
+        # Canonical all-trades link: resolve trade_instance_id by trade_key (covers paper AND imported
+        # Schwab/Fidelity reviews — paper_trade_id is legacy-compat, trade_instance_id is canonical).
+        _ti = _db_query("SELECT array_agg(id) AS ids FROM trade_instances WHERE trade_key = %s", (trade_key,), fetch="one")
+        if _ti and _ti.get("ids") and len(_ti["ids"]) == 1:
+            fields["trade_instance_id"] = _ti["ids"][0]
 
         cols = list(fields.keys())
         placeholders = ["%s"] * len(cols)

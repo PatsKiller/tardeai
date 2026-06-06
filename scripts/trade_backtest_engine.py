@@ -354,7 +354,18 @@ def backtest_trade(trade, df_cache):
 
 
 def upsert_result(conn, result):
-    cols = ['trade_key', 'paper_trade_id', 'symbol', 'open_date', 'close_date',
+    # Canonical all-trades link: resolve trade_instance_id from the paper id or the trade_key (covers
+    # paper AND imported Schwab/Fidelity backtests). paper_trade_id stays as legacy-compat.
+    if not result.get('trade_instance_id'):
+        rc = conn.cursor()
+        if result.get('paper_trade_id') is not None:
+            rc.execute("SELECT id FROM trade_instances WHERE source_table='paper_trades' AND source_trade_id=%s",
+                       (str(result['paper_trade_id']),))
+        else:
+            rc.execute("SELECT id FROM trade_instances WHERE trade_key=%s", (result.get('trade_key'),))
+        r = rc.fetchone()
+        result['trade_instance_id'] = r[0] if r else None
+    cols = ['trade_key', 'paper_trade_id', 'trade_instance_id', 'symbol', 'open_date', 'close_date',
             'actual_entry_price', 'actual_exit_price', 'actual_pnl', 'actual_pnl_pct', 'hold_days',
             'entry_rsi', 'entry_sma20_dist_pct', 'entry_sma50_dist_pct', 'entry_sma200_dist_pct',
             'entry_volume_ratio', 'entry_52w_percentile', 'entry_atr', 'entry_atr_stop_pct',

@@ -87,57 +87,57 @@ def get_ticker_targets(conn, max_rows=3):
               AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
         ),
         -- closed PAPER trades with NO Hermes reflection linked yet → per-trade reflection (Step 7).
-        -- Keyed on trade-linkage (not symbol freshness), so it bypasses researched_recent and carries
-        -- the exact paper_trade id to stamp related_trade_id.
-        closed_paper AS (
-            SELECT symbol, id AS pt_id FROM paper_trades pt
-            WHERE (lower(coalesce(status,''))='closed' OR exit_time IS NOT NULL)
-              AND symbol ~ '^[A-Z]{1,5}$'
-              AND NOT EXISTS (SELECT 1 FROM hermes_research_intelligence h WHERE h.related_trade_id = pt.id)
+        -- CANONICAL closed-trade reflection (all-trades, broker/account-neutral): any closed
+        -- trade_instance (paper OR imported Schwab/Fidelity) with NO Hermes reflection linked yet.
+        -- Keyed on trade-linkage (not symbol freshness) so it bypasses researched_recent and carries
+        -- the exact trade_instance id (paper is just one source_system).
+        needs_reflection AS (
+            SELECT symbol, id AS ti_id, source_system FROM trade_instances ti
+            WHERE lower(coalesce(status,''))='closed' AND symbol ~ '^[A-Z]{1,5}$'
+              AND NOT EXISTS (SELECT 1 FROM hermes_research_intelligence h WHERE h.trade_instance_id = ti.id)
         ),
         targets AS (
-            SELECT symbol, 0 AS pri, 'held_position' AS src, NULL::bigint AS pt_id FROM held
+            SELECT symbol, 0 AS pri, 'held_position' AS src, NULL::bigint AS ti_id FROM held
               WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
             UNION ALL
             SELECT symbol, 1 AS pri, 'open_proposal' AS src, NULL::bigint FROM proposals
               WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
             UNION ALL
-            SELECT symbol, 1 AS pri, 'closed_paper_trade' AS src, pt_id FROM closed_paper
-            UNION ALL
-            SELECT t.symbol, 3 AS pri, 'closed_trade' AS src, NULL::bigint
-              FROM hermes_v_trade_reflection_context t
-              WHERE t.lifecycle_state='closed' AND t.symbol IS NOT NULL
-                AND t.symbol NOT IN (SELECT symbol FROM researched_ever)
-              GROUP BY t.symbol HAVING COUNT(*) >= 2
+            SELECT symbol, 1 AS pri, 'closed_trade_needing_reflection:'||source_system AS src, ti_id
+              FROM needs_reflection
         ),
         deduped AS (
-            SELECT DISTINCT ON (symbol) symbol, src, pri, pt_id FROM targets
-              ORDER BY symbol, pri, pt_id DESC NULLS LAST
+            SELECT DISTINCT ON (symbol) symbol, src, pri, ti_id FROM targets
+              ORDER BY symbol, pri, ti_id DESC NULLS LAST
         )
-        SELECT symbol, src, pt_id FROM deduped ORDER BY pri, symbol LIMIT %s
+        SELECT symbol, src, ti_id FROM deduped ORDER BY pri, symbol LIMIT %s
     """, (max_rows,))
     rows = cur.fetchall()
-    # Resolve related_trade_id / related_proposal_id so trade-reflection research is lineage-linked
-    # (paper loop: paper_trades.id / paper_trade_proposals.id; live Schwab held positions have no
-    # paper trade so related_trade_id stays NULL — never fabricated).
+    # Resolve canonical trade_instance_id + legacy related_trade_id (paper only). Imported Schwab/Fidelity
+    # trades link by trade_instance_id (related_trade_id stays NULL — never fabricated).
     targets = []
-    for symbol, src, pt_id in rows:
+    for symbol, src, ti_id in rows:
         rtid = rpid = None
-        if pt_id is not None:                 # closed_paper_trade tier → exact unlinked trade id
-            rtid = pt_id
+        tiid = ti_id
+        if ti_id is not None:                 # closed_trade_needing_reflection → canonical instance
+            cur.execute("SELECT source_table, source_trade_id FROM trade_instances WHERE id=%s", (ti_id,))
+            r = cur.fetchone()
+            if r and r[0] == 'paper_trades':
+                rtid = int(r[1])
         else:
             cur.execute("SELECT id FROM paper_trades WHERE symbol=%s AND lower(coalesce(status,''))='open' ORDER BY id DESC LIMIT 1", (symbol,))
             r = cur.fetchone()
-            if not r and src == 'closed_trade':
-                cur.execute("SELECT id FROM paper_trades WHERE symbol=%s ORDER BY id DESC LIMIT 1", (symbol,))
-                r = cur.fetchone()
             rtid = r[0] if r else None
+            if rtid is not None:
+                cur.execute("SELECT id FROM trade_instances WHERE source_table='paper_trades' AND source_trade_id=%s", (str(rtid),))
+                ti = cur.fetchone()
+                tiid = ti[0] if ti else None
         cur.execute("""SELECT id FROM paper_trade_proposals WHERE symbol=%s
                        AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
                        ORDER BY id DESC LIMIT 1""", (symbol,))
         r = cur.fetchone()
         rpid = r[0] if r else None
-        targets.append({"symbol": symbol, "src": src, "trade_count": 0,
+        targets.append({"symbol": symbol, "src": src, "trade_count": 0, "trade_instance_id": tiid,
                         "related_trade_id": rtid, "related_proposal_id": rpid})
     return targets
 
@@ -232,8 +232,10 @@ def run_ticker_challenger(args):
         output.setdefault("confidence_score", 0.5)
         output.setdefault("freshness_date", date.today().isoformat())
         output.setdefault("model_used", LOOP_MODEL)
-        # ── Step 2 lineage: link trade-reflection research to its trade / proposal (paper loop) ──
+        # ── Lineage: link reflection to its canonical trade_instance (all-trades) + legacy paper id ──
         output["symbol"] = sym
+        if target.get("trade_instance_id") is not None:
+            output["trade_instance_id"] = target["trade_instance_id"]
         if target.get("related_trade_id") is not None:
             output["related_trade_id"] = target["related_trade_id"]
         if target.get("related_proposal_id") is not None:
