@@ -48,7 +48,7 @@ place and flowing; remaining low percentages are data accumulation, learning→p
 |---|---|
 | 1 execution lineage — signal_id / broker / candidate | 27% / 84% / 84% |
 | 3 trade_key | 100% |
-| 2 hermes related_trade_id | 2 / 1256 (write-path live; current research targets are live Schwab holdings w/ no paper_trade → fills as paper-loop symbols are researched) |
+| 2 hermes related_trade_id | **4** (Step 7 added closed_paper_trade targeting tier; 6/6 targets linked; cron works through ~40 remaining) |
 | 3 backtest results → paper_trade | 34 linked (32 full) |
 | 4 edge comparison | 43 trades · 2 proposal-edge · **32 per-trade backtest** |
 | 5 candidate_shadow_scores (DB) | 57 |

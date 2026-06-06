@@ -86,37 +86,52 @@ def get_ticker_targets(conn, max_rows=3):
             WHERE symbol ~ '^[A-Z]{1,5}$'
               AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
         ),
+        -- closed PAPER trades with NO Hermes reflection linked yet → per-trade reflection (Step 7).
+        -- Keyed on trade-linkage (not symbol freshness), so it bypasses researched_recent and carries
+        -- the exact paper_trade id to stamp related_trade_id.
+        closed_paper AS (
+            SELECT symbol, id AS pt_id FROM paper_trades pt
+            WHERE (lower(coalesce(status,''))='closed' OR exit_time IS NOT NULL)
+              AND symbol ~ '^[A-Z]{1,5}$'
+              AND NOT EXISTS (SELECT 1 FROM hermes_research_intelligence h WHERE h.related_trade_id = pt.id)
+        ),
         targets AS (
-            SELECT symbol, 0 AS pri, 'held_position' AS src FROM held
+            SELECT symbol, 0 AS pri, 'held_position' AS src, NULL::bigint AS pt_id FROM held
               WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
-            UNION
-            SELECT symbol, 1 AS pri, 'open_proposal' AS src FROM proposals
+            UNION ALL
+            SELECT symbol, 1 AS pri, 'open_proposal' AS src, NULL::bigint FROM proposals
               WHERE symbol NOT IN (SELECT symbol FROM researched_recent)
-            UNION
-            SELECT t.symbol, 2 AS pri, 'closed_trade' AS src
+            UNION ALL
+            SELECT symbol, 1 AS pri, 'closed_paper_trade' AS src, pt_id FROM closed_paper
+            UNION ALL
+            SELECT t.symbol, 3 AS pri, 'closed_trade' AS src, NULL::bigint
               FROM hermes_v_trade_reflection_context t
               WHERE t.lifecycle_state='closed' AND t.symbol IS NOT NULL
                 AND t.symbol NOT IN (SELECT symbol FROM researched_ever)
               GROUP BY t.symbol HAVING COUNT(*) >= 2
         ),
         deduped AS (
-            SELECT DISTINCT ON (symbol) symbol, src, pri FROM targets ORDER BY symbol, pri
+            SELECT DISTINCT ON (symbol) symbol, src, pri, pt_id FROM targets
+              ORDER BY symbol, pri, pt_id DESC NULLS LAST
         )
-        SELECT symbol, src FROM deduped ORDER BY pri, symbol LIMIT %s
+        SELECT symbol, src, pt_id FROM deduped ORDER BY pri, symbol LIMIT %s
     """, (max_rows,))
     rows = cur.fetchall()
     # Resolve related_trade_id / related_proposal_id so trade-reflection research is lineage-linked
     # (paper loop: paper_trades.id / paper_trade_proposals.id; live Schwab held positions have no
     # paper trade so related_trade_id stays NULL — never fabricated).
     targets = []
-    for symbol, src in rows:
+    for symbol, src, pt_id in rows:
         rtid = rpid = None
-        cur.execute("SELECT id FROM paper_trades WHERE symbol=%s AND lower(coalesce(status,''))='open' ORDER BY id DESC LIMIT 1", (symbol,))
-        r = cur.fetchone()
-        if not r and src == 'closed_trade':
-            cur.execute("SELECT id FROM paper_trades WHERE symbol=%s ORDER BY id DESC LIMIT 1", (symbol,))
+        if pt_id is not None:                 # closed_paper_trade tier → exact unlinked trade id
+            rtid = pt_id
+        else:
+            cur.execute("SELECT id FROM paper_trades WHERE symbol=%s AND lower(coalesce(status,''))='open' ORDER BY id DESC LIMIT 1", (symbol,))
             r = cur.fetchone()
-        rtid = r[0] if r else None
+            if not r and src == 'closed_trade':
+                cur.execute("SELECT id FROM paper_trades WHERE symbol=%s ORDER BY id DESC LIMIT 1", (symbol,))
+                r = cur.fetchone()
+            rtid = r[0] if r else None
         cur.execute("""SELECT id FROM paper_trade_proposals WHERE symbol=%s
                        AND status IN ('PENDING','APPROVED','APPROVED_FOR_PAPER_TEST','MODIFIED')
                        ORDER BY id DESC LIMIT 1""", (symbol,))

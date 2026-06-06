@@ -9,6 +9,11 @@
 | `docs/project/OPEN_TRADES_FALSE_POSITIVE_ROOT_CAUSE_20260605.md` | Root cause (trades.status=open phantom lots, AXTI) + fix (source of truth = holdings.json + paper_trades; stale excluded) |
 | `scripts/validate_open_trades_intelligence.py` | Regression: no AXTI/zero-share/CUSIP/dup; current-holdings count |
 
+## Closed-Loop Step 7 — Hermes Paper-Loop Targeting (2026-06-05)
+| Document | Purpose |
+|----------|---------|
+| `docs/project/CLOSED_LOOP_STEP7_HERMES_PAPER_TARGETING_20260605.md` | closed_paper_trade targeting tier; related_trade_id 2->4, cron works through rest |
+
 ## Closed-Loop Certification RE-AUDIT (2026-06-05)
 | Document | Purpose |
 |----------|---------|
