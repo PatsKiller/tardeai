@@ -20,12 +20,29 @@ python3 scripts/audit/dashboard_crawler.py --bases http://localhost:7777
 python3 scripts/audit/extract_routes.py
 ```
 
+### Targeted Journal hub crawl (v3 — every tab + sub-tab + drill-down)
+The Journal hub (`/v3/journal`) is a BrowserRouter SPA whose tabs and embedded
+Backtesting-panel sub-tabs switch via click (no URL change), so the generic route
+crawler can't reach them. Use the dedicated crawler:
+```bash
+.venv/bin/python scripts/audit/crawl_journal_v3.py
+```
+Captures, in one tarball: the 5 Journal tabs (Trades, Analytics, Lessons,
+Protection, Backtesting), all 14 Backtesting sub-tabs (Overview, Entry Quality,
+AI Trade Eval, Capture, Potential Over Time, Strategy, Trades, Missed, Results,
+Runs, Trail Analysis, MFE/MAE, Optimization, LLM Review Coverage), and a
+representative drill-down drawer — plus per-page console-error counts in
+`crawl_summary.json`. 2026-06-06 baseline: 20/20 OK, 0 console errors.
+
 ## Output
-- `docs/playwright/audit_<port>_<timestamp>.tgz` — one tarball per base URL
-- Each tarball contains `<port>/*.png` (full-page screenshots) + `<port>/manifest.json`
+- `docs/playwright/audit_<port>_<timestamp>.tgz` — one tarball per base URL (full crawl)
+- `docs/playwright/journal_audit_<timestamp>.tgz` — Journal hub crawl (PNGs + `crawl_summary.json`)
+- Each full-crawl tarball contains `<port>/*.png` (full-page screenshots) + `<port>/manifest.json`
+- Tarballs live under `docs/`, so the hourly docs→Drive sync mirrors them to `Trade_AI_Docs_v2`.
 
 ## Retention
-Each crawl deletes the previous tarball for that port, then creates a new one. Only the latest run per port is kept.
+Each crawl deletes the previous tarball for that scope (`audit_<port>_*` or
+`journal_audit_*`), then creates a new one. Only the latest run per scope is kept.
 
 ## Auditing with Claude
 1. Extract the tarball: `tar xzf docs/playwright/audit_7777_*.tgz`

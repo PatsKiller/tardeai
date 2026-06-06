@@ -1,7 +1,7 @@
 # System Health Agent Architecture
 
-**Updated:** 2026-05-29
-**Files:** `scripts/system_health_agent.py` (1,124 lines), `scripts/claude_escalation_handler.py` (271 lines), `scripts/pipeline_health_monitor.py` (171 lines)
+**Updated:** 2026-06-06
+**Files:** `scripts/system_health_agent.py`, `scripts/claude_escalation_handler.py` (271 lines), `scripts/pipeline_health_monitor.py` (171 lines), `scripts/siem_critical_notify.py`
 
 ---
 
@@ -51,19 +51,65 @@ Cron (*/5 min)
 
 ### LLM & Intelligence
 - llm_backtesting, topic_curator, incubator_screener, content_entity_links
+- `trade_close_llm_analyzer` — log corrected to `structured_eval.log` (was pointed
+  at a non-existent `llm_backtesting/close_analyzer.log`); schedule `0 21 * * 1-5`
 
 ### Governance
 - maturity_board, governance_check, cio_decisions
+
+### Roster changes (2026-06-06)
+- **Removed** `overnight_batch` — intentionally retired (cron tagged
+  `PHASE102-RETIRED`, last clean run 2026-05-29); monitoring a retired job produced
+  a permanent STALE false positive.
+- **Removed** `delayed_trade_llm_reviewer` and `monthly_grok_meta_review` — never
+  built (no backing script, no cron); they produced permanent `MISSING` false positives.
+- **Added** `update_agent_performance` (`0 20 * * 1-5`) — the agent-performance
+  scorer rehomed out of the retired `overnight_batch`. It writes
+  `agent_performance_history` (consumed by the weekly portfolio review + agent-perf
+  displays), which had been frozen since 2026-05-31 once `overnight_batch` retired.
 
 ## Health Check Logic
 
 For each component, the agent checks:
 
-1. **Log freshness**: Is the log file recent? (configurable max_age per component)
+1. **Log freshness**: Is the log file recent? — **schedule-aware** (see below)
 2. **Lock contention**: Is a flock lock stuck? (older than expected runtime)
 3. **Output validity**: Does the log contain errors, tracebacks, or anomalies?
 
-Results: `OK`, `STALE`, `FAILED`, `LOCKED`
+Results: `OK`, `STALE`, `MISSING`, `FAILED`, `LOCKED`
+
+### Schedule-Aware Staleness (2026-06-06)
+
+Freshness is **no longer** a blind elapsed-time threshold. Each component declares
+its real cron schedule (a string, or a **list** of cron strings for jobs with
+multiple cron entries). The agent parses it and flags `STALE` **only if the last
+log output predates the most recent scheduled fire** (plus a grace = `max_runtime`
++ 10 min). `event-driven`/unparseable schedules fall back to the fixed `max_age_min`.
+
+Cron evaluation lives in `_cron_field_matches` / `_cron_fires_at` /
+`_prev_scheduled_fire` and supports `*`, lists, ranges, and `/steps`, with correct
+day-of-week handling (Sun=0..Sat=6, 7=Sun).
+
+**Root cause this replaced:** the prior logic compared `age_min > max_age_min` with
+no awareness of the cron day-of-week, so **weekday-only jobs (`1-5`) were flagged
+STALE every weekend** — producing recurring overnight Telegram floods. The one
+schedule-skip attempt was broken (it parsed the wrong cron field via
+`split("*")[1]`, only matched a hardcoded list of hour-range strings, and ignored
+comma-list hours like `9,10,12,14,16`).
+
+### Downstream: SIEM relationship
+
+Health-agent escalations are written to `system_health_events` / `alert_events`.
+The SIEM dashboard (`/api/v2/system/siem`, `_system_siem_dashboard()` in
+`api_v2.py`) classifies them into correlated incidents; `siem_critical_notify.py`
+(cron `*/15`) Telegrams one deduped alert per P0/P1 incident whose **newest** event
+is within 2h. Therefore a staleness false positive cascades into SIEM `PIPELINE_FAILURE`
+P1 spam. Two SIEM fixes shipped with the staleness fix:
+- `api_v2.py` dedupe `first`/`last` were **inverted** (events sorted newest-first,
+  so "first-seen" was the newest) → corrected to `min()`/`max()`, restoring the
+  notifier's within-2h recency guard.
+- The SIEM excludes `lifecycle_state='resolved'` events, so historical false
+  positives are cleared by resolving them (no restart needed for that path).
 
 ## Auto-Remediation (Self-Healing)
 

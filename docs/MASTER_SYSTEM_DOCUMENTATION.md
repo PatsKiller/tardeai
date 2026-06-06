@@ -294,7 +294,8 @@ The pipeline runs **31 stages organized into 7 groups**. Each group has a design
 
 | Stage | Script | Inputs | Outputs |
 |-------|--------|--------|---------|
-| Overnight Batch | `overnight_batch.py` | Daily data | Consolidated metrics |
+| Overnight Intelligence | `aegis_overnight.py` (systemd `aegis-overnight.timer` 20:00 + cron `0 20 * * *`) | Nightly deltas, sentiment, transcripts | Briefs, candidates, morning handoff |
+| ~~Overnight Batch~~ | ~~`overnight_batch.py`~~ | — | **RETIRED** (PHASE102; cron tagged `PHASE102-RETIRED`, last run 2026-05-29). Its agent-performance scorer was rehomed to `update_agent_performance.py` (cron `0 20 * * 1-5`) |
 | Agent Outcome Scorer | `agent_outcome_scorer.py` | Past recommendations | Performance grades |
 | Strategy Weekly Review | `strategy_weekly_review.py` | Strategy signals | Performance reports |
 | Overnight Embeddings | `overnight_batch_embeddings.py` | New content | Refreshed RAG index |
