@@ -64,16 +64,30 @@ pm_step() {
 pm_excluded() { echo "  ---- EXCLUDED_NOT_RUN: $1 ($2) ----"
   STEP_NAMES+=("$1"); STEP_STATUS+=("EXCLUDED_NOT_RUN"); STEP_MS+=(0); STEP_LABEL+=("EXCLUDED"); }
 
-# backup cadence = the DAILY backup set only (legacy: pg_backup daily 02:00 + secrets env daily 05:30).
-# secrets-data is WEEKLY (legacy Sun 05:45) -> lives in the weekly cadence to preserve its cadence.
+# backup cadence = the canonical owner of ALL backups (2026-06-06: legacy timers/crons retired).
+#   - portfolio_backup (pg) + secrets_backup_env: run every daily fire.
+#   - secrets_backup_data: folded in here with a WEEKLY staleness gate (>=6 days since last success),
+#     replacing the legacy Sun 05:45 data-weekly cron. Single owner, no new timer, self-healing.
+SECRETS_DATA_STAMP="$PROJ/data/runtime/last_secrets_data_backup.stamp"
 run_backup() {
   pm_step "portfolio_backup"   "BACKUP_DAILY" bash "$PROJ/linux_launchers/run_pg_backup.sh"
   pm_step "secrets_backup_env" "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" env
+  # weekly-gated secrets-data
+  local age=999
+  [ -f "$SECRETS_DATA_STAMP" ] && age=$(( ( $(date +%s) - $(stat -c %Y "$SECRETS_DATA_STAMP") ) / 86400 ))
+  if [ "$age" -ge 6 ]; then
+    pm_step "secrets_backup_data" "BACKUP_WEEKLY_GATED" bash "$PROJ/scripts/backup_secrets_state.sh" data
+    # stamp only on success (last recorded step status)
+    [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ] && { mkdir -p "$(dirname "$SECRETS_DATA_STAMP")"; touch "$SECRETS_DATA_STAMP"; }
+  else
+    echo "  ---- GATED_SKIP: secrets_backup_data (last success ${age}d ago, <6d) ----"
+    STEP_NAMES+=("secrets_backup_data"); STEP_STATUS+=("GATED_SKIP_FRESH"); STEP_MS+=(0); STEP_LABEL+=("BACKUP_WEEKLY_GATED")
+  fi
 }
 run_daily()      { pm_step "portfolio_daily_report"   "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio.sh"; }
+# secrets-data now owned by the gated backup cadence (above); run_weekly keeps only the advisory report.
 run_weekly()     {
   pm_step "portfolio_weekly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_weekly.sh"
-  pm_step "secrets_backup_data"     "BACKUP_WEEKLY" bash "$PROJ/scripts/backup_secrets_state.sh" data
 }
 run_monthly()    { pm_step "portfolio_monthly_report" "PORTFOLIO_ADVISORY_DRAFT_REVIEW_ONLY" bash "$PROJ/linux_launchers/run_portfolio_monthly.sh"; }
 run_lookthrough(){ pm_step "portfolio_lookthrough"    "READ_ONLY_SNAPSHOT" bash "$PROJ/linux_launchers/run_lookthrough.sh"; }
